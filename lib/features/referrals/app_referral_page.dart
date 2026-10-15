@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_referral_repository.dart';
+import 'app_referral_composer.dart';
 
 class AppReferralPage extends StatefulWidget {
   const AppReferralPage({
@@ -28,9 +29,18 @@ class _AppReferralPageState extends State<AppReferralPage> {
   Map<String, dynamic>? _snapshot;
   String? _error;
   bool _busy = false;
+  late final AppReferralComposer _composer;
   @override
   void initState() {
     super.initState();
+    _composer = AppReferralComposer(
+      actorId: () => widget.repository.client.auth.currentUser?.id,
+      prepare: (name, phone, friendInvite) => widget.repository.prepare(
+        name, phone, friendInvite: friendInvite,
+      ),
+      openComposer: (uri) => launchUrl(uri),
+      recordOpened: widget.repository.recordComposerOpened,
+    );
     _name.text = widget.initialName;
     _phone.text = widget.initialPhone;
     _load();
@@ -61,31 +71,41 @@ class _AppReferralPageState extends State<AppReferralPage> {
   }
 
   Future<void> _send() async {
+    if (_busy) {
+      return;
+    }
     setState(() => _busy = true);
     try {
-      final result = await widget.repository.prepare(
-        _name.text,
-        _phone.text,
+      final outcome = await _composer.send(
+        name: _name.text,
+        phone: _phone.text,
         friendInvite: widget.friendInvite,
       );
-      final uri = Uri(
-        scheme: 'sms',
-        path: result['phone'].toString(),
-        queryParameters: {'body': result['message'].toString()},
-      );
-      if (!await launchUrl(uri)) throw StateError('SMS作成画面を開けませんでした。');
-      await widget.repository.recordComposerOpened(result['id'].toString());
-      await _load();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('招待を準備できません。名前・電話番号・配布URL・利用権限を確認してください。'),
-          ),
-        );
+      if (!mounted) {
+        return;
+      }
+      final message = switch (outcome) {
+        AppReferralComposeOutcome.launchFailed =>
+          'SMS作成画面を開けませんでした。同じ入力で再試行すると準備済みの招待を使います。',
+        AppReferralComposeOutcome.recordFailed =>
+          'SMS作成画面は開きましたが履歴を更新できませんでした。「履歴を更新」で記録だけ再試行できます。送信・配達は未確認です。',
+        AppReferralComposeOutcome.prepareFailed =>
+          '招待を準備できません。名前・電話番号・配布URL・利用権限を確認してください。',
+        AppReferralComposeOutcome.actorChanged =>
+          'ログイン情報が変わりました。画面を開き直してください。',
+        _ => null,
+      };
+      if (message != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      // Preparation may have saved a history row even if the local composer failed.
+      if (mounted) {
+        await _load();
+      }
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -131,7 +151,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
               builder: (context) => AlertDialog(
                 title: const Text('SKOアプリ招待の使い方'),
                 content: const Text(
-                  '名前・電話番号を入力して送信を押すとSMS作成画面が開きます。送信・配達は確認できません。社員の初回登録とは別の紹介機能です。新規登録の確認後、登録前の最終招待者を記録します。ポイント数・使い道は未定です。履歴はこの画面で確認できます。',
+                  '名前・電話番号を入力して送信を押すとSMS作成画面が開きます。送信・配達は確認できません。社員の初回登録とは別の紹介機能です。紹介元確定とポイント付与はまだ接続されていません。SMS起動失敗は同じ入力で再試行でき、起動後の記録失敗は「履歴を更新」で記録だけを再試行します。画面を閉じると再試行状態は引き継ぎません。ポイント数・使い道は未定です。履歴はこの画面で確認できます。',
                 ),
                 actions: [
                   TextButton(
@@ -186,10 +206,12 @@ class _AppReferralPageState extends State<AppReferralPage> {
               ] else if (data['can_invite'] == true) ...[
                 TextField(
                   controller: _name,
+                  enabled: !_busy && !_composer.needsRecordRetry,
                   decoration: const InputDecoration(labelText: '名前'),
                 ),
                 TextField(
                   controller: _phone,
+                  enabled: !_busy && !_composer.needsRecordRetry,
                   keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(labelText: '電話番号'),
                 ),
@@ -199,7 +221,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
                   onPressed: _busy || data['distribution_url_ready'] != true
                       ? null
                       : _send,
-                  child: const Text('送信'),
+                  child: Text(_composer.needsRecordRetry ? '履歴を更新' : '送信'),
                 ),
                 const Text('SMS作成画面を開きます。送信・配達を保証する表示ではありません。'),
               ] else

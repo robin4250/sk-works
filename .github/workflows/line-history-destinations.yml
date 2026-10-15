@@ -1,0 +1,29 @@
+name: LINE history destination scope
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*line_history_analysis_destinations.sql'
+      - 'tool/verify_line_history_destinations.mjs'
+      - 'lib/features/chat/line_source_upload_page.dart'
+      - 'lib/features/chat/line_import_repository.dart'
+      - '.github/workflows/line-history-destinations.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*line_history_analysis_destinations.sql'
+      - 'tool/verify_line_history_destinations.mjs'
+      - 'lib/features/chat/line_source_upload_page.dart'
+      - 'lib/features/chat/line_import_repository.dart'
+permissions:
+  contents: read
+jobs:
+  sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/line-history-sql --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.7
+      - run: node tool/verify_line_history_destinations.mjs /tmp/line-history-sql/node_modules/@electric-sql/pglite/dist/index.js

@@ -1,4 +1,5 @@
 import '../../international/language_controller.dart';
+
 import 'package:flutter/material.dart';
 
 import 'app_notification_repository.dart';
@@ -6,6 +7,8 @@ import 'source_notification_target.dart';
 import 'source_notification_target_page.dart';
 import 'attention_center_repository.dart';
 import 'attention_center_item.dart';
+import 'notification_explanation_page.dart';
+import '../settings/company_module_settings_repository.dart';
 import '../people/own_document_registration_page.dart';
 import '../auth/secondary_protected_page.dart';
 import '../invoices/invoice_cloud_page.dart';
@@ -56,22 +59,34 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final repository = _repository;
     if (repository == null) {
       if (mounted) {
-        setState(() { _loading = false; _error = '通知センターを利用できません。'; });
+        setState(() {
+          _loading = false;
+          _error = '通知センターを利用できません。';
+        });
       }
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final data = await repository.load();
       if (!mounted) {
         return;
       }
-      setState(() { _data = data; _loading = false; });
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
     } catch (error) {
       if (!mounted) {
         return;
       }
-      setState(() { _loading = false; _error = error.toString(); });
+      setState(() {
+        _loading = false;
+        _error = error.toString();
+      });
     }
   }
 
@@ -88,25 +103,70 @@ class _NotificationsPageState extends State<NotificationsPage> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-      SkoLanguageController.trParams('通知を開けませんでした: {error}', {'error': error}),
-    )));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          SkoLanguageController.trParams('通知を開けませんでした: {error}', {
+            'error': error,
+          }),
+        ),
+      ),
+    );
   }
 
   Future<void> _open(AttentionCenterItem item) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => NotificationExplanationPage(
+          item: item,
+          canOpenTarget: () async {
+            final module = notificationModule(item.actionKey);
+            if (module == null) return true;
+            final settings = CompanyModuleSettingsRepository.maybeCreate();
+            if (settings == null) return false;
+            final states = await settings.loadOptionalModuleStates();
+            return states[module] == true;
+          },
+          openTarget: (pageContext) => _openTarget(item, pageContext),
+        ),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _openTarget(
+    AttentionCenterItem item,
+    BuildContext pageContext,
+  ) async {
     if (_opening) {
       return;
     }
     setState(() => _opening = true);
     try {
       final data = _data;
-      final ids = data?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[];
+      final ids =
+          data?.notificationIdsByItemKey[item.deduplicationKey] ??
+          const <String>[];
       final record = ids.isNotEmpty ? data?.notificationsById[ids.first] : null;
-      final target = record ?? AppNotificationRecord(
-        id: '', kind: item.source, title: item.title, body: item.body,
-        createdAt: item.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0),
-        read: true, actionKey: item.actionKey, actionId: item.actionId,
-      );
+      final target =
+          record ??
+          AppNotificationRecord(
+            id: '',
+            kind: item.source,
+            title: item.title,
+            body: item.body,
+            createdAt: item.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0),
+            read: true,
+            actionKey: item.actionKey,
+            actionId: item.actionId,
+          );
+      final module = notificationModule(target.actionKey);
+      if (module != null) {
+        final settings = CompanyModuleSettingsRepository.maybeCreate();
+        if (settings == null) throw StateError('機能の利用状態を確認できません');
+        final states = await settings.loadOptionalModuleStates();
+        if (states[module] != true) throw StateError('この機能は現在停止中です');
+      }
       DateTime? payrollMonth;
       if (target.actionKey == 'payroll_review') {
         final review = PayrollReviewRepository.maybeCreate();
@@ -124,15 +184,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
         final savedTarget = await repository.sourceTarget(target);
         destination = SourceNotificationTargetPage(target: savedTarget);
       } else {
-        destination = notificationDestination(target, payrollMonth: payrollMonth);
+        destination = notificationDestination(
+          target,
+          payrollMonth: payrollMonth,
+        );
       }
       if (!mounted) {
         return;
       }
       if (destination == null && target.actionKey != null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-          SkoLanguageController.tr('関連画面への案内を準備しています'),
-        )));
+        if (!pageContext.mounted) return;
+        ScaffoldMessenger.of(pageContext).showSnackBar(
+          SnackBar(content: Text(SkoLanguageController.tr('関連画面への案内を準備しています'))),
+        );
         return;
       }
       // System tasks have no notification id and never write a synthetic read state.
@@ -146,17 +210,20 @@ class _NotificationsPageState extends State<NotificationsPage> {
       }
       final page = destination;
       if (page != null) {
-        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+        if (!pageContext.mounted) return;
+        await Navigator.of(pageContext)
+            .push(MaterialPageRoute<void>(builder: (_) => page));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-          SkoLanguageController.tr('お知らせを確認しました'),
-        )));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(SkoLanguageController.tr('お知らせを確認しました'))),
+        );
       }
       if (mounted) {
         await _load();
       }
     } catch (error) {
       _showError(error);
+      rethrow;
     } finally {
       if (mounted) {
         setState(() => _opening = false);
@@ -168,54 +235,133 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     final data = _data;
-    final items = data?.snapshot.items.where((item) => !_pendingOnly || item.needsAction).toList()
-        ?? const <AttentionCenterItem>[];
+    final items =
+        data?.snapshot.items
+            .where((item) => !_pendingOnly || item.needsAction)
+            .toList() ??
+        const <AttentionCenterItem>[];
     return Scaffold(
       appBar: AppBar(
-        title: Text(SkoLanguageController.tr('お知らせ'), style: const TextStyle(fontWeight: FontWeight.w900)),
-        actions: [if (data?.notificationsById.values.any((item) => !item.read) == true)
-          TextButton(onPressed: _opening ? null : _markAll,
-            child: Text(SkoLanguageController.tr('すべて既読')))],
+        title: Text(
+          SkoLanguageController.tr('お知らせ'),
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        actions: [
+          if (data?.notificationsById.values.any((item) => !item.read) == true)
+            TextButton(
+              onPressed: _opening ? null : _markAll,
+              child: Text(SkoLanguageController.tr('すべて既読')),
+            ),
+        ],
       ),
-      body: SafeArea(child: Column(children: [
-        Padding(padding: const EdgeInsets.all(12), child: SegmentedButton<bool>(
-          segments: [
-            ButtonSegment(value: false, label: Text(SkoLanguageController.tr('すべて'))),
-            ButtonSegment(value: true, label: Text(SkoLanguageController.tr('要対応'))),
-          ], selected: {_pendingOnly},
-          onSelectionChanged: (values) => setState(() => _pendingOnly = values.single),
-        )),
-        if (data?.unavailableSources.isNotEmpty == true)
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(SkoLanguageController.tr('一部のお知らせを取得できません。再読み込みしてください。'))),
-        if (_error != null)
-          Padding(padding: const EdgeInsets.all(16), child: Text(SkoLanguageController.tr(_error!))),
-        Expanded(child: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(onRefresh: _load, child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(12),
-              children: [
-                if (items.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(
-                  child: Text(SkoLanguageController.tr(_pendingOnly
-                    ? '未対応の項目はありません' : '新しいお知らせはありません')))),
-                for (final item in items) Card(child: ListTile(
-                  leading: CircleAvatar(child: Icon(item.needsAction
-                    ? Icons.notifications_active_outlined : Icons.notifications_outlined)),
-                  title: Text(item.title, style: TextStyle(fontWeight:
-                    item.needsAction || !item.read ? FontWeight.w900 : FontWeight.w600)),
-                  subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    if (item.body.isNotEmpty) Text(item.body),
-                    if (item.state != AttentionCenterState.information) Text(_businessDescription(item)),
-                    if (item.createdAt != null) Text(_formatDate(item.createdAt!),
-                      style: Theme.of(context).textTheme.bodySmall),
-                  ]),
-                  trailing: item.source == 'notification' && !item.read
-                    ? const Badge(child: Icon(Icons.chevron_right)) : const Icon(Icons.chevron_right),
-                  onTap: _opening ? null : () => _open(item),
-                )),
-              ],
-            ))),
-      ])),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: SegmentedButton<bool>(
+                segments: [
+                  ButtonSegment(
+                    value: false,
+                    label: Text(SkoLanguageController.tr('すべて')),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    label: Text(SkoLanguageController.tr('要対応')),
+                  ),
+                ],
+                selected: {_pendingOnly},
+                onSelectionChanged: (values) =>
+                    setState(() => _pendingOnly = values.single),
+              ),
+            ),
+            if (data?.unavailableSources.isNotEmpty == true)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Text(
+                  SkoLanguageController.tr('一部のお知らせを取得できません。再読み込みしてください。'),
+                ),
+              ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(SkoLanguageController.tr(_error!)),
+              ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(12),
+                        children: [
+                          if (items.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Center(
+                                child: Text(
+                                  SkoLanguageController.tr(
+                                    _pendingOnly
+                                        ? '未対応の項目はありません'
+                                        : '新しいお知らせはありません',
+                                  ),
+                                ),
+                              ),
+                            ),
+                          for (final item in items)
+                            Card(
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  child: Icon(
+                                    item.needsAction
+                                        ? Icons.notifications_active_outlined
+                                        : Icons.notifications_outlined,
+                                  ),
+                                ),
+                                title: Text(
+                                  item.title,
+                                  style: TextStyle(
+                                    fontWeight: item.needsAction || !item.read
+                                        ? FontWeight.w900
+                                        : FontWeight.w600,
+                                  ),
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (item.body.isNotEmpty) Text(item.body),
+                                    if (item.state !=
+                                        AttentionCenterState.information)
+                                      Text(_businessDescription(item)),
+                                    if (item.createdAt != null)
+                                      Text(
+                                        _formatDate(item.createdAt!),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall,
+                                      ),
+                                  ],
+                                ),
+                                trailing:
+                                    item.source == 'notification' && !item.read
+                                    ? const Badge(
+                                        child: Icon(Icons.chevron_right),
+                                      )
+                                    : const Icon(Icons.chevron_right),
+                                onTap: _opening ? null : () => _open(item),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -229,12 +375,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
       AttentionCenterState.information => '',
     };
     final date = item.targetDate;
-    final targetDate = date == null ? null
-      : item.actionKey == 'payroll_review' || item.actionKey == 'invoice_approval'
+    final targetDate = date == null
+        ? null
+        : item.actionKey == 'payroll_review' ||
+              item.actionKey == 'invoice_approval'
         ? '${date.year}/${date.month.toString().padLeft(2, '0')}'
         : '${date.year}/${date.month}/${date.day}';
-    return [if (item.targetName?.isNotEmpty == true) item.targetName!,
-      if (targetDate != null) targetDate, SkoLanguageController.tr(label)].join(' / ');
+    return [
+      if (item.targetName?.isNotEmpty == true) item.targetName!,
+      if (targetDate != null) targetDate,
+      SkoLanguageController.tr(label),
+    ].join(' / ');
   }
 
   String _formatDate(DateTime value) {
@@ -245,24 +396,35 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
 /// Known notification routes reuse the same protected pages as the home menu.
 /// Repositories in each destination retain their existing access checks and RLS.
-Widget? notificationDestination(AppNotificationRecord item, {DateTime? payrollMonth}) => switch (item.actionKey) {
-  'route_billing_quantity_request' =>
-    RouteBillingQuantityApprovalsPage(initialRequestId: item.actionId),
+Widget? notificationDestination(
+  AppNotificationRecord item, {
+  DateTime? payrollMonth,
+}) => switch (item.actionKey) {
+  'route_billing_quantity_request' => RouteBillingQuantityApprovalsPage(
+    initialRequestId: item.actionId,
+  ),
   'attendance_today' => const TodayAttendancePage(),
   'document_register' => const OwnDocumentRegistrationPage(),
   'chat_group_invite' => const ChatCloudPage(showGroupsInitially: true),
   'site_map' => const GeneralSiteMapPage(),
-  'site_share_approval' => SiteShareApprovalPage(initialRequestId: item.actionId),
+  'site_share_approval' => SiteShareApprovalPage(
+    initialRequestId: item.actionId,
+  ),
   'site_information_request' || 'site_information_request_result' =>
     SiteInformationApprovalsPage(initialRequestId: item.actionId),
   'vehicle_documents' => const VehicleRoutePage(),
-  'daily_report_edit_request' =>
-    DailyReportApprovalsPage(initialRequestId: item.actionId),
-  'paid_leave_request' => PaidLeaveApprovalsPage(initialRequestId: item.actionId),
-  'attendance_correction_request' =>
-    AttendanceCorrectionApprovalsPage(initialRequestId: item.actionId),
-  'worker_personnel_change' =>
-    WorkerPersonnelChangeApprovalsPage(initialRequestId: item.actionId),
+  'daily_report_edit_request' => DailyReportApprovalsPage(
+    initialRequestId: item.actionId,
+  ),
+  'paid_leave_request' => PaidLeaveApprovalsPage(
+    initialRequestId: item.actionId,
+  ),
+  'attendance_correction_request' => AttendanceCorrectionApprovalsPage(
+    initialRequestId: item.actionId,
+  ),
+  'worker_personnel_change' => WorkerPersonnelChangeApprovalsPage(
+    initialRequestId: item.actionId,
+  ),
   'worker_personnel_change_completed' => const PeopleCloudPage(),
   'payroll_settings' => SecondaryProtectedPage(
     title: SkoLanguageController.tr('個別給与設定'),
@@ -288,5 +450,23 @@ Widget? notificationDestination(AppNotificationRecord item, {DateTime? payrollMo
     ),
   ),
   'settings' => const SettingsPage(),
+  _ => null,
+};
+
+/// Recheck optional modules when following a historical notice, not only on home.
+String? notificationModule(String? actionKey) => switch (actionKey) {
+  'document_register' => 'documents',
+  'chat_group_invite' => 'chat',
+  'site_map' ||
+  'site_share_approval' ||
+  'site_information_request' ||
+  'site_information_request_result' ||
+  'admin_sites' ||
+  'site_payment_agreement' => 'sites',
+  'vehicle_documents' => 'vehicle_routes',
+  'invoice_approval' || 'route_billing_quantity_request' => 'invoices',
+  'attendance_today' ||
+  'paid_leave_request' ||
+  'attendance_correction_request' => 'attendance',
   _ => null,
 };
