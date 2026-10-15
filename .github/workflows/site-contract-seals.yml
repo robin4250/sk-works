@@ -27,3 +27,30 @@ jobs:
         run: node tool/verify_site_contract_seals.mjs /tmp/site-contract-proof/node_modules/@electric-sql/pglite/dist/index.js
       - name: Verify integration with actual agreement SQL and official seal helper
         run: node tool/verify_site_contract_integration.mjs /tmp/site-contract-proof/node_modules/@electric-sql/pglite/dist/index.js
+
+  real-postgres-seal-races:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_site_contract_fixture
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned disposable PostgreSQL client
+        run: npm install --prefix /tmp/site-contract-pg --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - name: Verify observed sender and recipient company-row races
+        run: node tool/verify_site_contract_postgres.mjs /tmp/site-contract-pg/node_modules/pg/lib/index.js
+        env:
+          SKO_SITE_CONTRACT_DATABASE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_site_contract_fixture
