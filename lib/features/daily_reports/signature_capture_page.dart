@@ -220,6 +220,9 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        foregroundDecoration: BoxDecoration(
                           border: Border.all(
                             color: Theme.of(context).colorScheme.outlineVariant,
                           ),
