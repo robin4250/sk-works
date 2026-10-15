@@ -68,6 +68,16 @@
       ]
     },
     {
+      "key": "friends",
+      "chapters": [
+        "チャット一覧・未読・グループ写真"
+      ],
+      "sources": [
+        "lib/features/chat/chat_friends_page.dart",
+        "lib/app_v2.dart"
+      ]
+    },
+    {
       "key": "chat",
       "chapters": [
         "チャット・お知らせ",
