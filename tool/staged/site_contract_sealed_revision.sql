@@ -60,6 +60,11 @@ begin
  perform private.site_payment_pair(p_item,p_company);
  return jsonb_build_object('company_id',p_company,'shared_item_id',p_item,
   'proposal_id',p_proposal,'revision',current_revision,'seal_snapshot',seal,
+  'atomic_seal_version',1,'rollout_enabled',true,
+  'sender_company_id',sender,'recipient_company_id',recipient,
+  'can_send',p_proposal is null and p_company=sender,
+  'can_approve',p_proposal is not null and p_company=recipient and not exists(
+   select 1 from private.site_contract_seals s where s.proposal_id=p_proposal and s.company_id=p_company),
   'seal_hash',encode(sha256(convert_to(seal::text,'UTF8')),'hex'));
 end $$;
 revoke all on function private.preview_site_contract_seal(uuid,uuid,uuid) from public,anon,authenticated;
@@ -176,7 +181,7 @@ create trigger site_contract_confirmation_requires_seal before insert on private
 
 create function private.site_contract_workspace(p_item uuid,p_company uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare pair jsonb; proposals jsonb;
+declare pair jsonb; proposals jsonb; sender uuid; recipient uuid; latest uuid;
 begin
  pair:=private.site_payment_pair(p_item,p_company);
  select coalesce(jsonb_agg(jsonb_build_object('id',p.id,'revision',p.revision,'terms',p.terms,
@@ -186,7 +191,19 @@ begin
     'action',s.action,'recorded_at',s.recorded_at,'seal_snapshot',s.seal_snapshot)),'[]'::jsonb)
     from private.site_contract_seals s where s.proposal_id=p.id)) order by p.revision desc),'[]'::jsonb)
  into proposals from private.site_payment_proposals p where p.shared_item_id=p_item;
- return pair||jsonb_build_object('proposals',proposals);
+ select d.sender_company_id,d.recipient_company_id into sender,recipient
+ from private.company_data_delivery_items i join private.document_deliveries d on d.id=i.delivery_id
+ where i.id=p_item;
+ select p.id into latest from private.site_payment_proposals p
+ where p.shared_item_id=p_item order by p.revision desc limit 1;
+ -- Hints describe existing authority, never grant it. Mutations recheck every
+ -- boundary and exact preview snapshot; older backends omit this version.
+ return pair||jsonb_build_object('proposals',proposals,'atomic_seal_version',1,
+  'rollout_enabled',true,'sender_company_id',sender,'recipient_company_id',recipient,
+  'can_send',p_company=sender,'can_approve',p_company=recipient and exists(
+   select 1 from private.site_contract_seals s where s.proposal_id=latest
+    and s.company_id=sender and s.action='sent') and not exists(
+   select 1 from private.site_contract_seals s where s.proposal_id=latest and s.company_id=p_company));
 end $$;
 revoke all on function private.site_contract_workspace(uuid,uuid) from public,anon,authenticated;
 revoke all on function private.send_sealed_site_contract(uuid,uuid,integer,jsonb,text),
