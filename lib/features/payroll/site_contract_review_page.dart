@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import 'site_contract_status.dart';
+import 'site_contract_action_coordinator.dart';
+import 'site_contract_action_review_page.dart';
 
 /// Reads the existing sealed workspace; this page has no mutation or signing API.
 class SiteContractReviewPage extends StatefulWidget {
@@ -73,10 +75,19 @@ class _SiteContractReviewPageState extends State<SiteContractReviewPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('契約候補を確認'), actions: [
+      PopupMenuButton<SiteContractAction>(tooltip: '送信・承認の確認',
+        onSelected: (action) => Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => SiteContractActionReviewPage(action: action,
+            sharedItemId: widget.sharedItemId, companyId: widget.companyId))),
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: SiteContractAction.send, child: Text('送信内容を確認')),
+          PopupMenuItem(value: SiteContractAction.approve, child: Text('承認内容を確認')),
+        ],
+      ),
       IconButton(tooltip: '使い方', icon: const Icon(Icons.help_outline),
         onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(
           title: const Text('契約候補の確認'),
-          content: const Text('現在の合意と変更候補を分けて表示します。相手の押印承認が揃うまで現行条件は変わりません。双方承認済みでも適用開始日前なら次回の合意として表示します。押印日時・担当者は保存済み記録だけを表示し、従来の確認操作を押印済みとは扱いません。この画面を見るだけでは送信・押印・承認・金額変更は行いません。利用設定がOFFまたは提供前の場合は契約内容を表示しません。'),
+          content: const Text('現在の合意と変更候補を分けて表示します。相手の押印承認が揃うまで現行条件は変わりません。双方承認済みでも適用開始日前なら次回の合意として表示します。押印日時・担当者は保存済み記録だけを表示し、従来の確認操作を押印済みとは扱いません。この画面を見るだけでは送信・押印・承認・金額変更は行いません。右上のメニューから操作前の確認へ進めます。実会社印と最新版が確認できない場合や提供前は準備中のまま操作できません。利用設定がOFFまたは提供前の場合は契約内容を表示しません。'),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
         )),
       ),
