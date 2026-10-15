@@ -88,6 +88,16 @@ class ChatCloudRepository {
       for (final row in rawOrigins.whereType<Map>())
         row['group_id'].toString(): row['origin'].toString(),
     };
+    final analysisIds = <String>{};
+    try {
+      final raw = await _client.rpc('line_history_analysis_ids');
+      if (raw is! List) throw StateError('分析先の区分を取得できませんでした。');
+      analysisIds.addAll(raw.map((id) => id.toString()));
+    } on PostgrestException catch (error) {
+      // Before the additive migration, no analysis destinations can exist.
+      if (error.code != 'PGRST202' && error.code != '42883') rethrow;
+    }
+    if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
     final canManageLineBinding = value.role == 'owner' || value.role == 'admin';
 
     final groupRows = await _client
@@ -158,6 +168,7 @@ class ChatCloudRepository {
     for (final raw in groupRows) {
       final group = Map<String, dynamic>.from(raw);
       final groupId = group['id']?.toString() ?? '';
+      if (analysisIds.contains(groupId)) continue;
       final binding = bindingsByGroup[groupId];
       final site = group['sites'];
 
