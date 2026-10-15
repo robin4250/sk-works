@@ -1,4 +1,24 @@
 -- Approval-first company relationships. No payroll or contract prices are copied.
+-- Verified production definitions: refuse to replace an unexpected endpoint.
+do $guard$
+begin
+ if to_regprocedure('private.confirm_trade_company_link(uuid,uuid)') is null
+ or md5(pg_get_functiondef('private.confirm_trade_company_link(uuid,uuid)'::regprocedure)) <> '46272a03a2af799f623f400df8149bc5'
+ or to_regprocedure('public.confirm_trade_company_link(uuid,uuid)') is null
+ or md5(pg_get_functiondef('public.confirm_trade_company_link(uuid,uuid)'::regprocedure)) <> 'e8edc3fae4174fbeeecca0b81a798760' then
+  raise exception '会社連携の既存定義が変更されています。バックアップと差分を確認してください';
+ end if;
+end $guard$;
+
+-- Dedicated boundary: the shared legacy helper also permits manager accounts.
+create function private.trade_link_company_admin_id() returns uuid
+language sql stable security definer set search_path='' as $function$
+ select cm.company_id from public.company_members cm
+ where auth.uid() is not null and private.account_access_allowed()
+ and cm.user_id=auth.uid() and cm.role::text in ('owner','admin')
+ order by cm.company_id limit 1
+$function$;
+revoke all on function private.trade_link_company_admin_id() from public,anon,authenticated;
 alter table private.company_connections add column if not exists link_start_month date;
 create table private.trade_company_link_settings (
  company_id uuid primary key references public.companies(id), enabled boolean not null default false
@@ -18,7 +38,7 @@ alter table private.trade_company_link_requests enable row level security;
 revoke all on private.trade_company_link_settings, private.trade_company_link_requests from public,anon,authenticated;
 
 create function private.trade_company_link_workspace() returns jsonb language plpgsql security definer set search_path='' as $$
-declare cid uuid:=private.current_company_admin_id();
+declare cid uuid:=private.trade_link_company_admin_id();
 begin
  if auth.uid() is null or cid is null then raise exception '管理者のみ操作できます'; end if;
  return jsonb_build_object('enabled',coalesce((select enabled from private.trade_company_link_settings where company_id=cid),false),
@@ -29,13 +49,13 @@ begin
  where cid in(r.sender_company_id,r.target_company_id)),'[]'::jsonb));
 end $$;
 create function private.set_trade_company_link_enabled(p_enabled boolean) returns void language plpgsql security definer set search_path='' as $$
-declare cid uuid:=private.current_company_admin_id();
+declare cid uuid:=private.trade_link_company_admin_id();
 begin
  if auth.uid() is null or cid is null then raise exception '管理者のみ操作できます'; end if;
  insert into private.trade_company_link_settings values(cid,p_enabled) on conflict(company_id) do update set enabled=excluded.enabled;
 end $$;
 create function private.search_trade_company_links(p_query text) returns jsonb language plpgsql security definer set search_path='' as $$
-declare cid uuid:=private.current_company_admin_id(); q text:=trim(p_query);
+declare cid uuid:=private.trade_link_company_admin_id(); q text:=trim(p_query);
 begin
  if auth.uid() is null or cid is null then raise exception '管理者のみ操作できます'; end if;
  if not coalesce((select enabled from private.trade_company_link_settings where company_id=cid),false) then raise exception '会社連携は停止中です'; end if;
@@ -46,7 +66,7 @@ begin
  order by c.name,c.id limit 30)x),'[]'::jsonb);
 end $$;
 create function private.request_trade_company_link(p_target_company_id uuid,p_local_role text,p_start_month date) returns uuid language plpgsql security definer set search_path='' as $$
-declare cid uuid:=private.current_company_admin_id(); rid uuid;
+declare cid uuid:=private.trade_link_company_admin_id(); rid uuid;
 begin
  if auth.uid() is null or cid is null then raise exception '管理者のみ操作できます'; end if;
  if cid=p_target_company_id or p_local_role not in('customer','subcontractor') or p_start_month is null or extract(day from p_start_month)<>1 then raise exception '申請内容が不正です'; end if;
@@ -103,7 +123,7 @@ begin
  end if;
 end $$;
 create function private.respond_trade_company_link(p_request_id uuid,p_action text) returns void language plpgsql security definer set search_path='' as $$
-declare cid uuid:=private.current_company_admin_id(); r private.trade_company_link_requests%rowtype;
+declare cid uuid:=private.trade_link_company_admin_id(); r private.trade_company_link_requests%rowtype;
 begin
  if auth.uid() is null or cid is null then raise exception '管理者のみ操作できます'; end if;
  select * into r from private.trade_company_link_requests where id=p_request_id for update;
