@@ -1,8 +1,9 @@
 /// Registration order, with existing direct-chat friends stably promoted.
 List<Map<String, dynamic>> orderChatFriends(
   List<Map<String, dynamic>> friends,
-  Iterable<Map<String, dynamic>> groups,
-) {
+  Iterable<Map<String, dynamic>> groups, {
+  Set<String> pinnedUserIds = const {},
+}) {
   final directUsers = {
     for (final group in groups)
       if (group['group_type'] == 'direct' &&
@@ -24,8 +25,14 @@ List<Map<String, dynamic>> orderChatFriends(
   final ordered = indexed.map((item) => item.$2).toList();
   return [
     for (final friend in ordered)
-      if (directUsers.contains(friend['user_id']?.toString())) friend,
+      if (pinnedUserIds.contains(friend['user_id']?.toString())) friend,
     for (final friend in ordered)
-      if (!directUsers.contains(friend['user_id']?.toString())) friend,
+      if (!pinnedUserIds.contains(friend['user_id']?.toString()) &&
+          directUsers.contains(friend['user_id']?.toString()))
+        friend,
+    for (final friend in ordered)
+      if (!pinnedUserIds.contains(friend['user_id']?.toString()) &&
+          !directUsers.contains(friend['user_id']?.toString()))
+        friend,
   ];
 }
