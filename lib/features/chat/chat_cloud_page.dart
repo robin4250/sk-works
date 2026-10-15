@@ -178,6 +178,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     final repository = _repository;
     final userId = repository?.currentUserId ?? 'anonymous';
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted || repository?.currentUserId != userId) return;
     _pinnedGroupIds =
         prefs.getStringList('sko_chat_pinned_$userId')?.toSet() ?? <String>{};
     _hiddenGroupIds =
@@ -233,6 +234,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       _groups = [];
       _messages = [];
       _friends = [];
+      _pinnedGroupIds = {};
+      _hiddenGroupIds = {};
+      _mutedGroupIds = {};
       _selectedGroupId = null;
       _readScope = null;
       _sending = false;
@@ -2071,7 +2075,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     final groups = _accessibleListGroups
         .where((g) => g['group_type'] == 'partner')
         .toList();
-    groups.sort(_compareListActivity);
+    groups.sort((a, b) => _lastActivity(b).compareTo(_lastActivity(a)));
     return groups;
   }
 
