@@ -3,11 +3,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'site_payment_agreement_document.dart';
 import 'site_payment_terms_comparison.dart';
+import 'site_contract_status.dart';
 import 'payment_certificates_page.dart';
 
 /// Only the deployed, enabled server workspace exposes editable agreements.
 class SitePaymentAgreementPage extends StatefulWidget {
-  const SitePaymentAgreementPage({super.key});
+  const SitePaymentAgreementPage({super.key, this.sharedItemId});
+  final String? sharedItemId;
   @override
   State<SitePaymentAgreementPage> createState() => _SitePaymentAgreementPageState();
 }
@@ -22,7 +24,7 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
   SupabaseClient get _client => SupabaseBackend.client;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() { super.initState(); _item = widget.sharedItemId; _load(); }
 
   Future<void> _load() async {
     if (!SupabaseBackend.isInitialized || _client.auth.currentUser == null) {
@@ -53,6 +55,21 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
       for (final p in _workspace!['proposals'] as List)
         if (p is Map) Map<String, dynamic>.from(p),
   ];
+
+  Widget _contractStatus() {
+    final status = SiteContractStatus.fromProposals(_proposals,
+      parentCompanyId: '${_workspace!['parent_company_id']}',
+      childCompanyId: '${_workspace!['child_company_id']}', today: DateTime.now());
+    return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [Icon(Icons.circle, size: 12,
+          color: status.isContracted ? Colors.green : Colors.orange),
+          const SizedBox(width: 8), Text(status.label)]),
+        if (status.active != null) Text('現在の合意：第${status.active!['revision']}版'),
+        if (status.pending != null) const Text('新しい提案の確認中です。現在の合意は保持されます。'),
+        const Text('会社間の支払合意です。従業員給与の手当とは別です。'),
+      ])));
+  }
 
   Future<void> _confirm(Map<String, dynamic> proposal) async {
     setState(() => _busy = true);
@@ -205,6 +222,7 @@ class _SitePaymentAgreementPageState extends State<SitePaymentAgreementPage> {
       if(_targets.isEmpty) const Text('利用可能な共有現場はありません。双方の会社で機能が有効な承認済み現場が対象です。'),
       for(final target in _targets) ListTile(title:Text('${target['site_name']}／${target['counterparty_name']}'),onTap:(){_item=target['shared_item_id'].toString();_load();}),
       if(_workspace!=null) ...[
+        _contractStatus(),
         _comparison(),
         FilledButton(onPressed:_edit,child:const Text('新しい金額を提案')),
         for(var i=0;i<_proposals.length;i++) Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
