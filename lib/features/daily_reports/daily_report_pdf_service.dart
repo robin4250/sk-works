@@ -486,8 +486,10 @@ class DailyReportPdfService {
     }
 
     if (elements.isEmpty) return null;
+    final svgWidth = width == width.truncateToDouble() ? '${width.toInt()}' : '$width';
+    final svgHeight = height == height.truncateToDouble() ? '${height.toInt()}' : '$height';
     return '<svg xmlns="http://www.w3.org/2000/svg" '
-        'viewBox="0 0 ${width.toInt()} ${height.toInt()}">'
+        'viewBox="0 0 $svgWidth $svgHeight">'
         '${elements.join()}'
         '</svg>';
   }

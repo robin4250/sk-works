@@ -9,14 +9,16 @@ import 'package:sk_works/features/daily_reports/signature_capture_page.dart';
 
 void main() {
   test('portrait and landscape capture dimensions survive existing RPC wrapper', () {
-    for (final size in [const Size(320, 640), const Size(900, 240)]) {
+    for (final size in [const Size(320, 640), const Size(900, 240), const Size(844.5, 232.75)]) {
       final result = SignatureResult(signerName: '署名', canvasSize: size,
         strokes: [[const Offset(.1, .2), const Offset(.9, .8)]]);
       final saved = jsonDecode(jsonEncode({'strokes': result.toJson()}));
       expect(SignatureResult.sizeFromJson(saved), size);
       expect(SignatureResult.fromJson(saved), result.strokes);
       final svg = DailyReportPdfService.signatureSvg(saved)!;
-      expect(svg, contains('viewBox="0 0 ${size.width.toInt()} ${size.height.toInt()}"'));
+      final dimensions = RegExp(r'viewBox="0 0 ([0-9.]+) ([0-9.]+)"').firstMatch(svg)!;
+      expect(double.parse(dimensions.group(1)!), size.width);
+      expect(double.parse(dimensions.group(2)!), size.height);
       expect(svg, contains('${(size.width * .9).toStringAsFixed(1)},${(size.height * .8).toStringAsFixed(1)}'));
     }
   });
