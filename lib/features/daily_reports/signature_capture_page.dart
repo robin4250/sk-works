@@ -178,7 +178,12 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Text('画面を横向きにすると大きくサインできます。記入時の縦横比を保って保存します。'),
+              child: Text(
+                '端末を横向きにして、大きな入力画面で\n'
+                '横書きでサインすることをおすすめします。',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
             if (widget.signerNameOptions.any((name) => name.trim().isNotEmpty))
               Padding(
@@ -291,7 +296,7 @@ class SignaturePreview extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: CustomPaint(
-        painter: SignaturePainter(strokes: strokes, canvasSize: canvasSize),
+        painter: SignaturePainter(strokes: strokes, canvasSize: canvasSize, fitInk: true),
         size: Size.infinite,
       ),
     );
@@ -299,16 +304,24 @@ class SignaturePreview extends StatelessWidget {
 }
 
 class SignaturePainter extends CustomPainter {
-  const SignaturePainter({required this.strokes, this.canvasSize});
+  const SignaturePainter({required this.strokes, this.canvasSize, this.fitInk = false});
 
   final List<List<Offset>> strokes;
   final Size? canvasSize;
+  final bool fitInk;
 
   @override
   void paint(Canvas canvas, Size size) {
     final source = canvasSize ?? const Size(400, 120);
-    final fitted = applyBoxFit(BoxFit.contain, source, size).destination;
-    final origin = Offset((size.width - fitted.width) / 2, (size.height - fitted.height) / 2);
+    final bounds = fitInk
+        ? signatureInkBounds(strokes, source)
+        : Offset.zero & source;
+    final fitted = applyBoxFit(BoxFit.contain, bounds.size, size).destination;
+    final scale = fitted.width / bounds.width;
+    final origin = Offset((size.width - fitted.width) / 2,
+        (size.height - fitted.height) / 2) - bounds.topLeft * scale;
+    Offset project(Offset point) => origin +
+        Offset(point.dx * source.width, point.dy * source.height) * scale;
     final paint = Paint()
       ..color = Colors.black
       ..strokeWidth = 2.4
@@ -319,9 +332,11 @@ class SignaturePainter extends CustomPainter {
     for (final stroke in strokes) {
       if (stroke.isEmpty) continue;
       final path = Path();
-      path.moveTo(origin.dx + stroke.first.dx * fitted.width, origin.dy + stroke.first.dy * fitted.height);
+      final first = project(stroke.first);
+      path.moveTo(first.dx, first.dy);
       for (final point in stroke.skip(1)) {
-        path.lineTo(origin.dx + point.dx * fitted.width, origin.dy + point.dy * fitted.height);
+        final projected = project(point);
+        path.lineTo(projected.dx, projected.dy);
       }
       canvas.drawPath(path, paint);
     }
@@ -330,4 +345,24 @@ class SignaturePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant SignaturePainter oldDelegate) =>
       true; // Capture appends points to the same stroke list while drawing.
+}
+
+/// Trim blank canvas space, retaining original pixel geometry and stroke edges.
+Rect signatureInkBounds(List<List<Offset>> strokes, Size source) {
+  final points = strokes.expand((stroke) => stroke).where(
+      (point) => point.dx.isFinite && point.dy.isFinite).toList();
+  if (points.isEmpty) return Offset.zero & source;
+  var left = points.first.dx.clamp(0.0, 1.0) * source.width;
+  var right = left;
+  var top = points.first.dy.clamp(0.0, 1.0) * source.height;
+  var bottom = top;
+  for (final point in points.skip(1)) {
+    final x = point.dx.clamp(0.0, 1.0) * source.width;
+    final y = point.dy.clamp(0.0, 1.0) * source.height;
+    if (x < left) left = x;
+    if (x > right) right = x;
+    if (y < top) top = y;
+    if (y > bottom) bottom = y;
+  }
+  return Rect.fromLTRB(left - 2.4, top - 2.4, right + 2.4, bottom + 2.4);
 }
