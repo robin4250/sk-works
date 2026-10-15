@@ -6,6 +6,7 @@ import '../../international/language_controller.dart';
 import 'line_joined_groups_page.dart';
 import 'line_source_upload_page.dart';
 import 'line_billing_directory_page.dart';
+import 'line_reading_rules_page.dart';
 
 /// Four billing entries plus the existing chat; this screen grants no permissions.
 class LineMasterWorkspacePage extends StatelessWidget {
@@ -172,7 +173,10 @@ class _LineMasterWorkspacePageState extends State<_LineMasterWorkspacePageConten
             widget.invoiceBuilder ?? (_) => const LineBillingDirectoryPage(kind: LineBillingDirectoryKind.invoices)),
           _entry('line-master-rates', Icons.price_change_outlined, '単価設定',
             '対象月の人工・残業・早出・手当の履歴単価',
-            widget.ratesBuilder ?? (_) => const LineBillingDirectoryPage(kind: LineBillingDirectoryKind.rates)),
+            widget.ratesBuilder ?? (_) => LineBillingDirectoryPage(
+              kind: LineBillingDirectoryKind.rates,
+              readingRulesBuilder: (context, groupId, sources) =>
+                LineReadingRulesPage(groupId: groupId, sources: sources))),
           _entry('line-master-upload', Icons.upload_file_outlined, '元データ取込',
             'TXT・ZIPを読み取り、月別表へ自動入力',
             widget.uploadBuilder ?? (_) => const LineSourceUploadPage()),

@@ -149,11 +149,18 @@ class _LineReadingRulesPageState extends State<LineReadingRulesPage> {
   Future<void> _save() async {
     setState(() => busy = true);
     try {
-      final result = await repo!.save(widget.groupId, revision, rules);
+      final predicted = <String, LineReadingRule>{for (final rule in rules) rule.phrase: rule};
+      for (final phrase in lineReadingPhrases(widget.sources)) {
+        final candidate = lineAutomaticReadingRule(phrase.phrase,
+          saved: rules, sites: sites, workers: workers);
+        if (candidate != null) predicted.putIfAbsent(phrase.phrase, () => candidate);
+      }
+      final saved = predicted.values.toList();
+      final result = await repo!.save(widget.groupId, revision, saved);
       if (!mounted) return;
-      setState(() => revision = result['revision'] as int);
+      setState(() { revision = result['revision'] as int; rules = saved; });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('読み取りルールを保存しました。過去の表・承認済みデータは変更していません。')),
+        const SnackBar(content: Text('保存しました。現場・氏名は次回の新規読取へ反映します。保存済みの行は保持します。')),
       );
     } catch (e) {
       if (mounted) {
@@ -188,7 +195,7 @@ class _LineReadingRulesPageState extends State<LineReadingRulesPage> {
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text(
-                    '繰り返し使う語句を選んで、現場・氏名・手当などに振り分けます。原文と出典は保持します。既存の手修正・確定データを自動で上書きしません。',
+                    '繰り返し使う語句を選んで、現場・氏名・手当などに振り分けます。原文と出典は保持します。既存の手修正・確定データを自動で上書きしません。現場・氏名の登録名は次回の新規読取へ反映します。他の区分の独自ルール適用は準備中です。',
                   ),
                 ),
                 for (final r in rules)
