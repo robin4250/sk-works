@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/chat/line_reading_rules.dart';
+import 'package:sk_works/features/chat/line_reading_rules.dart';
 
 void main() {
   test('unique references suggest category; ambiguity and manual choices are preserved', () {
