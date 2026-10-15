@@ -13,10 +13,18 @@ class AppReferralRepository {
     return Map<String, dynamic>.from(raw as Map);
   }
 
-  Future<Map<String, dynamic>> prepare(String name, String phone) async {
+  Future<Map<String, dynamic>> prepare(
+    String name,
+    String phone, {
+    bool friendInvite = false,
+  }) async {
     final raw = await client.rpc(
       'app_referral_prepare',
-      params: {'p_name': name.trim(), 'p_phone': phone.trim()},
+      params: {
+        'p_name': name.trim(),
+        'p_phone': phone.trim(),
+        'p_source': friendInvite ? 'friend_add' : 'app_invite',
+      },
     );
     return Map<String, dynamic>.from(raw as Map);
   }

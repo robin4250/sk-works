@@ -10,6 +10,7 @@ create table private.app_referral_invitations (
  id uuid primary key default gen_random_uuid(), inviter_id uuid not null references auth.users(id),
  company_id uuid not null references public.companies(id), recipient_name text not null,
  recipient_phone text not null, created_at timestamptz not null default clock_timestamp(),
+ source text not null default 'app_invite' check(source in ('app_invite','friend_add')),
  composer_opened_at timestamptz, registered_user_id uuid unique references auth.users(id),
  registered_at timestamptz, points integer check(points is null or points>=0),
  check((registered_user_id is null)=(registered_at is null))
@@ -50,9 +51,9 @@ begin
    if phone !~ '^0[0-9]{9,10}$' or length(trim(coalesce(p_args->>'name',''))) not between 1 and 100 then raise exception 'invalid name or phone'; end if;
    if c is null then raise exception 'company membership required'; end if;
    -- Do not infer existing registration from an unverified profile phone.
-   insert into private.app_referral_invitations(inviter_id,company_id,recipient_name,recipient_phone)
-   values(u,c,trim(p_args->>'name'),phone) returning * into r;
-   return jsonb_build_object('id',r.id,'phone',phone,'message',r.recipient_name||' 様'||E'\nSKOアプリへのご招待です。'||E'\n'||s.distribution_url||E'\n招待番号: '||r.id::text);
+   insert into private.app_referral_invitations(inviter_id,company_id,recipient_name,recipient_phone,source)
+   values(u,c,trim(p_args->>'name'),phone,coalesce(p_args->>'source','app_invite')) returning * into r;
+   return jsonb_build_object('id',r.id,'phone',phone,'message',r.recipient_name||' 様'||E'\n'||case when r.source='friend_add' then 'SKOアプリからの友達追加です' else 'SKOアプリへのご招待です。' end||E'\n'||s.distribution_url||E'\n招待番号: '||r.id::text);
  end if;
  if p_action='opened' then
    if not s.enabled or not (coalesce(admin,false) or master or s.public_enabled) then raise exception 'invitation disabled' using errcode='42501'; end if;
@@ -65,7 +66,9 @@ begin
  if p_action='master' and not master then raise exception 'master administrator required' using errcode='42501'; end if;
  select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc),'[]'::jsonb) into rows from (
    select i.id,i.inviter_id,i.company_id,coalesce(p.display_name,'名前未登録') inviter_name,
-   coalesce(cmp.name,'会社名未登録') company_name,i.recipient_name,i.recipient_phone,i.created_at,i.registered_user_id,i.registered_at,i.points,
+   coalesce(cmp.name,'会社名未登録') company_name,i.recipient_name,i.recipient_phone,i.created_at,i.registered_user_id,i.registered_at,i.points,i.source,
+   case when i.source='friend_add' and i.registered_at is not null then '友達追加経由で新規登録'
+        when i.source='friend_add' then '友達追加経由' else 'SKOアプリ招待' end source_label,
    case when i.registered_at is not null then '登録確認済み' when i.composer_opened_at is not null then 'SMS作成画面を開いた（送信・配達未確認）' else '招待を準備（未送信）' end state_label
    from private.app_referral_invitations i left join public.user_profiles p on p.user_id=i.inviter_id
    left join public.companies cmp on cmp.id=i.company_id
@@ -90,8 +93,8 @@ grant usage on schema private to authenticated;
 
 create function public.app_referral_snapshot() returns jsonb language sql security invoker set search_path='' as $$ select private.app_referral_dispatch('snapshot') $$;
 create function public.app_referral_master_snapshot() returns jsonb language sql security invoker set search_path='' as $$ select private.app_referral_dispatch('master') $$;
-create function public.app_referral_prepare(p_name text,p_phone text) returns jsonb language sql security invoker set search_path='' as $$ select private.app_referral_dispatch('prepare',jsonb_build_object('name',p_name,'phone',p_phone)) $$;
+create function public.app_referral_prepare(p_name text,p_phone text,p_source text default 'app_invite') returns jsonb language sql security invoker set search_path='' as $$ select private.app_referral_dispatch('prepare',jsonb_build_object('name',p_name,'phone',p_phone,'source',p_source)) $$;
 create function public.app_referral_composer_opened(p_invitation_id uuid) returns jsonb language sql security invoker set search_path='' as $$ select private.app_referral_dispatch('opened',jsonb_build_object('id',p_invitation_id)) $$;
 create function public.app_referral_save_settings(p_enabled boolean,p_public_enabled boolean,p_notify_master boolean,p_distribution_url text) returns jsonb language sql security invoker set search_path='' as $$ select private.app_referral_dispatch('settings',jsonb_build_object('enabled',p_enabled,'public_enabled',p_public_enabled,'notify_master',p_notify_master,'url',p_distribution_url)) $$;
-revoke all on function public.app_referral_snapshot(),public.app_referral_master_snapshot(),public.app_referral_prepare(text,text),public.app_referral_composer_opened(uuid),public.app_referral_save_settings(boolean,boolean,boolean,text) from public,anon;
-grant execute on function public.app_referral_snapshot(),public.app_referral_master_snapshot(),public.app_referral_prepare(text,text),public.app_referral_composer_opened(uuid),public.app_referral_save_settings(boolean,boolean,boolean,text) to authenticated;
+revoke all on function public.app_referral_snapshot(),public.app_referral_master_snapshot(),public.app_referral_prepare(text,text,text),public.app_referral_composer_opened(uuid),public.app_referral_save_settings(boolean,boolean,boolean,text) from public,anon;
+grant execute on function public.app_referral_snapshot(),public.app_referral_master_snapshot(),public.app_referral_prepare(text,text,text),public.app_referral_composer_opened(uuid),public.app_referral_save_settings(boolean,boolean,boolean,text) to authenticated;

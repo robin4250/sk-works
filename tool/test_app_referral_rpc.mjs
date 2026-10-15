@@ -48,10 +48,14 @@ await assert.rejects(()=>db.query(`select public.app_referral_save_settings(true
 await db.query(`select public.app_referral_save_settings(true,true,false,'https://testflight.apple.com/join/ABCD1234')`);
 await as(member);
 await assert.rejects(()=>db.query(`select public.app_referral_composer_opened('${invitation.id}')`),/unavailable/);
-await rpc(`select public.app_referral_prepare('Another','08012345678') result`);
+const friend=await rpc(`select public.app_referral_prepare('Another','08012345678','friend_add') result`);
+assert.ok(friend.message.includes('SKOアプリからの友達追加です'));
+assert.ok(!friend.message.includes('SKOアプリへのご招待です。'));
+await assert.rejects(()=>db.query(`select public.app_referral_prepare('Another','08012345678','arbitrary')`),/check constraint/);
 await as(owner,true);
 const all=await rpc('select public.app_referral_master_snapshot() result');
 assert.equal(all.invitations.length,2);
+assert.equal(all.invitations.find(row=>row.id===friend.id).source_label,'友達追加経由');
 assert.equal(all.notify_master,false);
 assert.equal(all.attribution_connected,false);
 assert.ok(all.rankings.every(row=>Number(row.registration_count)===0 && row.points===null));

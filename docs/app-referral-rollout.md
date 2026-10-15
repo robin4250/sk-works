@@ -4,6 +4,10 @@
 
 `AppReferralPage(repository: AppReferralRepository(client))` は本人の紹介画面。
 `master: true` はマスターのSKO ID管理・招待記録・ランキング・配布設定。
+友達追加側は `friendInvite: true, initialName: name, initialPhone: phone` を渡す。
+専用の履歴を別保存せず、同じ紹介招待RPCでsource=`friend_add`を記録する。
+SMS案内は「SKOアプリからの友達追加です」、履歴は「友達追加経由」。
+既存ユーザーとの友達関係成立を紹介による新規登録として集計しない。
 ホーム等の入口は `app_referral_snapshot.can_invite` が true のときのみ表示する。
 サーバーは全呼出し時にもアカウント・会社所属・機能設定・権限を再確認する。
 初期値は機能OFF・一般公開OFF。管理者はowner/admin（managerを含めない）。

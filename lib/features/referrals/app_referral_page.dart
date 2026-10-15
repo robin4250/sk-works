@@ -8,9 +8,15 @@ class AppReferralPage extends StatefulWidget {
     super.key,
     required this.repository,
     this.master = false,
+    this.friendInvite = false,
+    this.initialName = '',
+    this.initialPhone = '',
   });
   final AppReferralRepository repository;
   final bool master;
+  final bool friendInvite;
+  final String initialName;
+  final String initialPhone;
   @override
   State<AppReferralPage> createState() => _AppReferralPageState();
 }
@@ -25,6 +31,8 @@ class _AppReferralPageState extends State<AppReferralPage> {
   @override
   void initState() {
     super.initState();
+    _name.text = widget.initialName;
+    _phone.text = widget.initialPhone;
     _load();
   }
 
@@ -46,15 +54,20 @@ class _AppReferralPageState extends State<AppReferralPage> {
         _error = null;
       });
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() => _error = '招待機能を読み込めません。サーバー設定・利用権限を確認してください。');
+      }
     }
   }
 
   Future<void> _send() async {
     setState(() => _busy = true);
     try {
-      final result = await widget.repository.prepare(_name.text, _phone.text);
+      final result = await widget.repository.prepare(
+        _name.text,
+        _phone.text,
+        friendInvite: widget.friendInvite,
+      );
       final uri = Uri(
         scheme: 'sms',
         path: result['phone'].toString(),
@@ -64,12 +77,13 @@ class _AppReferralPageState extends State<AppReferralPage> {
       await widget.repository.recordComposerOpened(result['id'].toString());
       await _load();
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('招待を準備できません。名前・電話番号・配布URL・利用権限を確認してください。'),
           ),
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -86,9 +100,10 @@ class _AppReferralPageState extends State<AppReferralPage> {
       );
       await _load();
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('設定を保存できませんでした。')));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -101,7 +116,13 @@ class _AppReferralPageState extends State<AppReferralPage> {
     final rankings = data?['rankings'] as List? ?? const [];
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.master ? 'SKO ID管理・紹介記録' : 'SKOアプリ招待'),
+        title: Text(
+          widget.master
+              ? 'SKO ID管理・紹介記録'
+              : widget.friendInvite
+              ? '友達追加からSKOへ招待'
+              : 'SKOアプリ招待',
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
@@ -191,7 +212,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
                     '${row['recipient_name']}　${row['recipient_phone']}',
                   ),
                   subtitle: Text(
-                    '${referralJapanTime(row['created_at'].toString())}\n${row['state_label']}'
+                    '${referralJapanTime(row['created_at'].toString())}\n${row['source_label']}／${row['state_label']}'
                     '${widget.master ? '\n招待者: ${row['inviter_name']}／${row['company_name']}' : ''}',
                   ),
                 ),
