@@ -29,6 +29,7 @@ class ChatCloudPage extends StatefulWidget {
     super.key,
     this.viewerOnlyFriends = false,
     this.showGroupsInitially = false,
+    this.friendsRequest = 0,
     this.createGroupInitially = false,
     this.initialLineDirectoryId,
     this.initialGroupId,
@@ -39,6 +40,8 @@ class ChatCloudPage extends StatefulWidget {
 
   final bool viewerOnlyFriends;
   final bool showGroupsInitially;
+  /// Opens the existing friend picker when the Home shortcut is requested.
+  final int friendsRequest;
   final bool createGroupInitially;
   final String? initialLineDirectoryId;
   final String? initialGroupId;
@@ -163,6 +166,20 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       _tab = _ChatTab.groups;
     }
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatCloudPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.friendsRequest == oldWidget.friendsRequest ||
+        widget.friendsRequest == 0) return;
+    final actor = _repository?.currentUserId;
+    final epoch = _dispatchEpoch;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || actor == null || actor != _repository?.currentUserId ||
+          epoch != _dispatchEpoch) return;
+      unawaited(_openFriendsForChat());
+    });
   }
 
   @override

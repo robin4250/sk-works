@@ -74,6 +74,37 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('Home request opens the existing friend picker once and returns to chat', (tester) async {
+    final repo = await open(tester);
+    Widget chat(int request) => MaterialApp(home: ChatCloudPage(
+      repository: repo, actorChanges: repo.actors.stream, friendsRequest: request,
+    ));
+    await tester.pumpWidget(chat(1));
+    await tester.pumpAndSettle();
+    expect(find.text('友達検索'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(chat(1));
+    await tester.pumpAndSettle();
+    expect(find.text('友達検索'), findsNothing);
+    await tester.pumpWidget(chat(2));
+    await tester.pumpAndSettle();
+    expect(find.text('友達検索'), findsOneWidget);
+  });
+
+  testWidgets('actor change cancels a queued Home friend request', (tester) async {
+    final repo = await open(tester);
+    tester.binding.addPostFrameCallback((_) {
+      repo.actor = 'other';
+      repo.actors.add('other');
+    });
+    await tester.pumpWidget(MaterialApp(home: ChatCloudPage(
+      repository: repo, actorChanges: repo.actors.stream, friendsRequest: 1,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('友達検索'), findsNothing);
+  });
+
   testWidgets('DM pin orders the list and mute remains local to the actor', (tester) async {
     await open(tester);
     await swipe(tester, 'old', 600);
