@@ -1,4 +1,5 @@
 import 'line_release_access.dart';
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -31,7 +32,8 @@ class ChatCloudRepository {
       .map((state) => state.session?.user.id)
       .distinct();
 
-  Future<bool> lineReleaseAvailable() => LineReleaseRepository(_client).available();
+  Future<bool> lineReleaseAvailable() =>
+      LineReleaseRepository(_client).available();
 
   Future<void> _requireLineRelease() async {
     if (!await lineReleaseAvailable()) throw StateError('LINEトークは現在利用できません。');
@@ -80,7 +82,9 @@ class ChatCloudRepository {
     final actor = currentUserId;
     final value = await membership();
     final lineAvailable = await lineReleaseAvailable();
-    final rawOrigins = lineAvailable ? await _client.rpc('line_shared_chat_groups') : <dynamic>[];
+    final rawOrigins = lineAvailable
+        ? await _client.rpc('line_shared_chat_groups')
+        : <dynamic>[];
     if (rawOrigins is! List || currentUserId != actor) {
       throw StateError('LINEグループを読み込めませんでした。');
     }
@@ -211,7 +215,8 @@ class ChatCloudRepository {
         'display_name': displayName,
         'avatar_url': avatarUrl,
         'can_edit_group_photo': photo?['can_edit'] == true,
-        'can_delete_group': group['created_by'] != null && photo?['can_edit'] == true,
+        'can_delete_group':
+            group['created_by'] != null && photo?['can_edit'] == true,
         'direct_other_user_id': directOtherUserId,
         'line_binding_present': lineAvailable && binding != null,
         'line_binding_enabled': lineAvailable && binding?['status'] == 'active',
@@ -430,7 +435,8 @@ class ChatCloudRepository {
         !result.any((row) => row['user_id']?.toString() == currentUser.id)) {
       result.add({
         'user_id': currentUser.id,
-        'display_name': currentUser.userMetadata?['display_name']?.toString() ??
+        'display_name':
+            currentUser.userMetadata?['display_name']?.toString() ??
             currentUser.phone ??
             currentUser.email ??
             '自分',
@@ -772,7 +778,9 @@ class ChatCloudRepository {
           final actor = currentUserId;
           final allowed = await lineReleaseAvailable();
           if (currentUserId != actor) return <Map<String, dynamic>>[];
-          final messages = normalizeChatMessageOrder(filterLineReleaseMessages(rows, allowed));
+          final messages = normalizeChatMessageOrder(
+            filterLineReleaseMessages(rows, allowed),
+          );
           if (messages.isEmpty) return messages;
 
           final ids = messages.map((row) => row['id'].toString()).toList();
@@ -804,7 +812,10 @@ class ChatCloudRepository {
           final stillAllowed = await lineReleaseAvailable();
           if (currentUserId != actor) return <Map<String, dynamic>>[];
           return [
-            for (final message in filterLineReleaseMessages(messages, stillAllowed))
+            for (final message in filterLineReleaseMessages(
+              messages,
+              stillAllowed,
+            ))
               {
                 ...message,
                 'attachments':
@@ -948,13 +959,12 @@ class ChatCloudRepository {
         'uploaded_by': user.id,
       });
 
-      await _client.storage.from(_attachmentBucket).uploadBinary(
+      await _client.storage
+          .from(_attachmentBucket)
+          .uploadBinary(
             storagePath,
             bytes,
-            fileOptions: FileOptions(
-              upsert: false,
-              contentType: mimeType,
-            ),
+            fileOptions: FileOptions(upsert: false, contentType: mimeType),
           );
     } catch (_) {
       // Keep metadata in place until Storage cleanup runs because the
@@ -965,10 +975,10 @@ class ChatCloudRepository {
         // The upload may have failed before an object was created.
       }
       try {
-        await _client.from('chat_attachments').delete().eq(
-              'storage_path',
-              storagePath,
-            );
+        await _client
+            .from('chat_attachments')
+            .delete()
+            .eq('storage_path', storagePath);
       } catch (_) {
         // Best effort; the original attachment error remains primary.
       }
@@ -1022,17 +1032,28 @@ class ChatCloudRepository {
   }
 
   Future<Map<String, dynamic>?> _latestConversationMessage(
-    String groupId, Set<String> blocked,
+    String groupId,
+    Set<String> blocked,
   ) async {
     final allowed = await lineReleaseAvailable();
-    var query = _client.from('chat_messages')
-      .select('id,body,sender_user_id,sent_at,origin')
-      .eq('communication_group_id', groupId);
+    var query = _client
+        .from('chat_messages')
+        .select('id,body,sender_user_id,sent_at,origin')
+        .eq('communication_group_id', groupId);
     if (!allowed) query = query.neq('origin', 'line');
-    final rows = await (blocked.isEmpty ? query : query.or(
-      'sender_user_id.is.null,sender_user_id.not.in.(${blocked.join(',')})',
-    )).order('sent_at', ascending: false).order('id', ascending: false).limit(1);
-    final visible = filterLineReleaseMessages(List<Map<String, dynamic>>.from(rows), await lineReleaseAvailable());
+    final rows =
+        await (blocked.isEmpty
+                ? query
+                : query.or(
+                    'sender_user_id.is.null,sender_user_id.not.in.(${blocked.join(',')})',
+                  ))
+            .order('sent_at', ascending: false)
+            .order('id', ascending: false)
+            .limit(1);
+    final visible = filterLineReleaseMessages(
+      List<Map<String, dynamic>>.from(rows),
+      await lineReleaseAvailable(),
+    );
     return visible.isEmpty ? null : visible.first;
   }
 
@@ -1047,8 +1068,11 @@ class ChatCloudRepository {
       if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
       final latest = await _latestConversationMessage(id, blocked);
       if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
-      result[id] = ChatConversationSummary(unread: 0,
-        body: latest?['body']?.toString(), sentAt: latest?['sent_at']?.toString());
+      result[id] = ChatConversationSummary(
+        unread: 0,
+        body: latest?['body']?.toString(),
+        sentAt: latest?['sent_at']?.toString(),
+      );
     }
     return result;
   }
@@ -1080,10 +1104,14 @@ class ChatCloudRepository {
             .order('id')
             .range(offset, offset + 999);
         final allowed = await lineReleaseAvailable();
-        count += filterLineReleaseMessages(List<Map<String, dynamic>>.from(rows), allowed).where((row) {
-          final sender = row['sender_user_id']?.toString();
-          return sender != actor && !blocked.contains(sender);
-        }).length;
+        count +=
+            filterLineReleaseMessages(
+              List<Map<String, dynamic>>.from(rows),
+              allowed,
+            ).where((row) {
+              final sender = row['sender_user_id']?.toString();
+              return sender != actor && !blocked.contains(sender);
+            }).length;
         if (rows.length < 1000) break;
       }
       if (currentUserId != actor) throw StateError('ログイン状態が変わりました。');
@@ -1097,10 +1125,47 @@ class ChatCloudRepository {
   }
 
   Future<Map<String, dynamic>> loadFriendWorkspace() async {
+    final actor = currentUserId;
     final raw = await _client.rpc('sko_friend_workspace');
-    return raw is Map
+    final workspace = raw is Map
         ? Map<String, dynamic>.from(raw)
-        : const <String, dynamic>{};
+        : <String, dynamic>{};
+    try {
+      final profiles = await _client.rpc('sko_friend_public_profiles');
+      if (actor != currentUserId) return <String, dynamic>{};
+      final byUser = <String, Map<String, dynamic>>{
+        if (profiles is List)
+          for (final row in profiles.whereType<Map>())
+            row['user_id'].toString(): Map<String, dynamic>.from(row),
+      };
+      final friends = workspace['friends'];
+      if (friends is List) {
+        workspace['friends'] = await Future.wait(
+          friends.whereType<Map>().map((row) async {
+            final profile = byUser[row['user_id']?.toString()];
+            final result = <String, dynamic>{
+              ...Map<String, dynamic>.from(row),
+              'public_profile_loaded': profile != null,
+              if (profile != null) ...profile,
+            };
+            final path = profile?['avatar_storage_path']?.toString();
+            if (path != null && path.isNotEmpty) {
+              try {
+                result['avatar_url'] = await _client.storage
+                    .from('profile-photos')
+                    .createSignedUrl(path, 60);
+              } catch (_) {
+                /* Keep the safe placeholder if photo access changed. */
+              }
+            }
+            return result;
+          }),
+        );
+      }
+    } catch (_) {
+      // Additive API may not be deployed yet. Never fetch private employee data.
+    }
+    return actor == currentUserId ? workspace : <String, dynamic>{};
   }
 
   Future<Map<String, dynamic>?> searchFriendBySkoId(String skoId) async {
@@ -1263,8 +1328,10 @@ List<Map<String, dynamic>> normalizeChatMessageOrder(
   return result;
 }
 
-
 /// Fail closed for LINE while retaining ordinary SKO rows.
 List<Map<String, dynamic>> filterLineReleaseMessages(
-  List<Map<String, dynamic>> rows, bool available,
-) => rows.where((row) => available || row['origin'] != 'line').toList(growable: false);
+  List<Map<String, dynamic>> rows,
+  bool available,
+) => rows
+    .where((row) => available || row['origin'] != 'line')
+    .toList(growable: false);

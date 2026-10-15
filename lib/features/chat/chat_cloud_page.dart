@@ -16,6 +16,7 @@ import 'chat_appearance_page.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_group_delete_confirmation.dart';
 import 'chat_friends_page.dart';
+import 'chat_direct_search_page.dart';
 import 'chat_list_widgets.dart';
 import 'line_joined_groups_page.dart';
 import 'line_linked_talk_page.dart';
@@ -1240,6 +1241,40 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     await _startDirect(friend);
   }
 
+  Future<void> _searchDirectConversation() async {
+    final group = _selectedGroup;
+    if (group?['group_type'] != 'direct') return;
+    final groupId = _selectedGroupId;
+    final actor = _repository?.currentUserId;
+    final id = await Navigator.of(context).push<String>(MaterialPageRoute(
+      builder: (_) => ChatDirectSearchPage(
+        messages: List<Map<String,dynamic>>.from(_messages),
+        peerName: group?['name']?.toString() ?? '友達',
+      ),
+    ));
+    if (!mounted || id == null || groupId != _selectedGroupId || actor != _repository?.currentUserId) return;
+    // Lazy rows outside the viewport are not mounted. Walk the existing list
+    // until the exact message key is built, then align that original bubble.
+    if (!_scrollController.hasClients) return;
+    setState(() => _chatChromeVisible = true);
+    _scrollController.jumpTo(0);
+    for (var step=0; step<=_messages.length && mounted; step++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (groupId != _selectedGroupId || actor != _repository?.currentUserId) return;
+      final target=_messageKeys[id]?.currentContext;
+      if (target!=null) {
+        await Scrollable.ensureVisible(target,alignment:0.5,duration:const Duration(milliseconds:200));
+        return;
+      }
+      if (!_scrollController.hasClients) return;
+      final position=_scrollController.position;
+      final next=(position.pixels+position.viewportDimension*0.8).clamp(0.0,position.maxScrollExtent);
+      if (next<=position.pixels) break;
+      _scrollController.jumpTo(next);
+    }
+    if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('該当メッセージは削除または更新されました。再検索してください。')));
+  }
+
   Future<void> _createCustomGroup() async {
     await _editGroupPhoto(create: true);
   }
@@ -2143,6 +2178,8 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                             ),
                           ),
                     actions: [
+                      if (selected?['group_type'] == 'direct')
+                        IconButton(tooltip:'トーク内検索',onPressed:_searchDirectConversation,icon:const Icon(Icons.search)),
                       IconButton(
                           tooltip: SkoLanguageController.tr('再読み込み'),
                           onPressed: _loading ? null : _loadGroupsOnly,

@@ -1,0 +1,26 @@
+name: Friend public identity boundary
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*friend_public_profile*'
+      - 'tool/verify_friend_public_profile.cjs'
+      - '.github/workflows/friend-public-profile.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*friend_public_profile*'
+      - 'tool/verify_friend_public_profile.cjs'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/friend-identity-proof --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.14
+      - run: node tool/verify_friend_public_profile.cjs
+        env:
+          PGLITE_MODULE: /tmp/friend-identity-proof/node_modules/@electric-sql/pglite
