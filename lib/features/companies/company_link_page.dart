@@ -96,9 +96,10 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
         startMonth: DateTime(selected.year, selected.month),
       );
       await _reload();
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('連携申請を送信しました')));
+      }
     });
   }
 
@@ -264,9 +265,10 @@ class _CompanyLinkPageState extends State<CompanyLinkPage> {
     final results = await widget.repository.searchLinkCompanies(_query.text);
     if (mounted) {
       setState(() => _results = results);
-      if (results.isEmpty)
+      if (results.isEmpty) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('該当する会社はありません')));
+      }
     }
   });
 }
