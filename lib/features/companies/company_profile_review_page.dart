@@ -90,7 +90,30 @@ class _CompanyProfileReviewPageState extends State<CompanyProfileReviewPage> {
       'corporate_number': '法人番号',
     };
     return Scaffold(
-      appBar: AppBar(title: const Text('連携会社情報の更新確認')),
+      appBar: AppBar(
+        title: const Text('連携会社情報の更新確認'),
+        actions: [
+          IconButton(
+            tooltip: '使い方',
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('会社情報更新の使い方'),
+                content: const Text(
+                  '旧登録情報と、会社本人が変更した更新候補を比較してください。「更新する」を確認した場合だけ自社の登録内容へ反映します。旧情報と更新日時は履歴に残ります。「今回は更新しない」では登録内容を維持します。\n\n契約単価・従業員の手当・過去帳票は変更されません。通知は右上のベルから繰り返し確認できます。',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('閉じる'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
