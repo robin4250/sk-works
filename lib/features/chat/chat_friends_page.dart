@@ -348,7 +348,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         .where(
           (friend) =>
               _friendQuery.trim().isEmpty ||
-              ['display_name', 'sko_id'].any(
+              ['display_name', 'company_name', 'sko_id'].any(
                 (key) => (friend[key]?.toString() ?? '').toLowerCase().contains(
                   _friendQuery.trim().toLowerCase(),
                 ),
@@ -405,7 +405,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                     child: TextField(
                       decoration: const InputDecoration(
                         labelText: '友達検索',
-                        hintText: '氏名・SKO ID',
+                        hintText: '氏名・所属会社・SKO ID',
                         prefixIcon: Icon(Icons.search),
                         border: OutlineInputBorder(),
                       ),
@@ -427,9 +427,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                               final friend = friends[index];
                               return Card(
                                 child: ListTile(
-                                  leading: const CircleAvatar(
-                                    child: Icon(Icons.person_outline),
-                                  ),
+                                  leading: ChatFriendAvatar(friend: friend),
                                   title: Text(
                                     friend['display_name']?.toString() ??
                                         ChatFriendsStrings.tr('SKOユーザー'),
@@ -437,7 +435,9 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                                       fontWeight: FontWeight.w900,
                                     ),
                                   ),
-                                  subtitle: const Text('所属会社：未確認'),
+                                  subtitle: Text(
+                                    '所属会社：${friendCompanyLabel(friend)}',
+                                  ),
                                   trailing: const Icon(Icons.chevron_right),
                                   onTap: () => widget.selectForGroupInvite
                                       ? Navigator.of(context).pop(friend)
