@@ -1,0 +1,19 @@
+name: Company link approval SQL
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*company_link_requests.sql'
+      - 'tool/company_link_sql_test.cjs'
+      - '.github/workflows/company-link-sql.yml'
+jobs:
+  approval:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/company-link-test @electric-sql/pglite@0.5.10 --no-audit --no-fund
+      - run: NODE_PATH=/tmp/company-link-test/node_modules node tool/company_link_sql_test.cjs

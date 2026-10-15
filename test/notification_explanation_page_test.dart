@@ -17,6 +17,44 @@ const item = AttentionCenterItem(
 );
 
 void main() {
+  test(
+    'company link notice fails closed without an authenticated backend',
+    () async {
+      expect(await companyLinkNotificationAvailable(), isFalse);
+      expect(companyLinkNotificationDestination('request-id'), isNull);
+      expect(companyLinkNotificationDestination(null), isNull);
+    },
+  );
+
+  testWidgets(
+    'company link notice keeps its explanation when workspace is OFF',
+    (tester) async {
+      const request = AttentionCenterItem(
+        id: 'company-notice',
+        source: 'notification',
+        title: '会社連携申請',
+        body: '開始月を確認してください',
+        state: AttentionCenterState.pending,
+        actionKey: 'company_link_request',
+        actionId: 'request-id',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NotificationExplanationPage(
+            item: request,
+            canOpenTarget: () async => false,
+            openTarget: (_) async => fail('OFF company linking must not open'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('会社連携申請'), findsOneWidget);
+      expect(find.textContaining('承認前に会社連携は成立しません'), findsOneWidget);
+      expect(find.text('開く'), findsNothing);
+    },
+  );
+
+
   test('profile notification preserves the exact target and fails closed without login', () async {
     final target = notificationDestination(AppNotificationRecord(
       id: 'profile-notice', kind: 'company_profile_review', title: '更新', body: '',

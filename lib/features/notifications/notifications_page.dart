@@ -11,6 +11,8 @@ import 'notification_explanation_page.dart';
 import '../settings/company_module_settings_repository.dart';
 import '../../data/supabase_backend.dart';
 import '../companies/company_profile_review_page.dart';
+import '../companies/company_link_page.dart';
+import '../companies/trade_company_repository.dart';
 import '../people/own_document_registration_page.dart';
 import '../auth/secondary_protected_page.dart';
 import '../invoices/invoice_cloud_page.dart';
@@ -122,6 +124,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
         builder: (_) => NotificationExplanationPage(
           item: item,
           canOpenTarget: () async {
+            if (item.actionKey == 'company_link_request') {
+              return companyLinkNotificationAvailable();
+            }
             if (item.actionKey == 'company_profile_review') {
               return companyProfileNotificationAvailable();
             }
@@ -165,6 +170,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
             actionKey: item.actionKey,
             actionId: item.actionId,
           );
+      if (target.actionKey == 'company_link_request' &&
+          !await companyLinkNotificationAvailable()) {
+        throw StateError('会社検索・連携申請は現在停止中です');
+      }
       if (target.actionKey == 'company_profile_review' &&
           !await companyProfileNotificationAvailable()) {
         throw StateError('会社情報更新確認は現在停止中です');
@@ -409,6 +418,7 @@ Widget? notificationDestination(
   AppNotificationRecord item, {
   DateTime? payrollMonth,
 }) => switch (item.actionKey) {
+  'company_link_request' => companyLinkNotificationDestination(item.actionId),
   'company_profile_review' => item.actionId == null || item.actionId!.isEmpty
       ? null
       : CompanyProfileReviewPage(initialReviewId: item.actionId),
@@ -489,4 +499,21 @@ Future<bool> companyProfileNotificationAvailable() async {
       SupabaseBackend.client.auth.currentUser == null) return false;
   final raw = await SupabaseBackend.client.rpc('company_profile_review_workspace');
   return raw is Map && raw['enabled'] == true;
+}
+
+/// Both checks use the server workspace so OFF and changed roles fail closed.
+Future<bool> companyLinkNotificationAvailable() async {
+  final repository = TradeCompanyRepository.maybeCreate();
+  if (repository == null) return false;
+  return (await repository.linkWorkspace())['enabled'] == true;
+}
+
+Widget? companyLinkNotificationDestination(String? requestId) {
+  final repository = TradeCompanyRepository.maybeCreate();
+  if (repository == null || requestId == null || requestId.isEmpty) return null;
+  return CompanyLinkPage(
+    repository: repository,
+    mode: TradeCompanyPageMode.customer,
+    initialRequestId: requestId,
+  );
 }
