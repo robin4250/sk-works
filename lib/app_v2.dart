@@ -805,7 +805,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       'footer_home' => 'home',
       'attendance' || 'attendance_list' => 'attendance_sheet',
       'footer_sites' || 'site_register' || 'site_map' => 'sites',
-      'chat' || 'friends' => 'chat',
+      'chat' => 'chat',
+      'friends' => 'chat',
       'clock_in' || 'clock_out' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'employee_register' ||
@@ -835,7 +836,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       'daily_report' || 'approvals' => 'daily_report',
       'payroll' || 'payroll_adjustments' => 'payroll',
       'invoices' => 'invoice',
-      'chat' || 'friends' => 'chat',
+      'chat' => 'chat',
+      'friends' => 'chat',
       'people' || 'employee_register' || 'initial_registration' => 'people',
       'qualification_certificates' ||
       'qualification_register' ||
@@ -950,7 +952,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       'clock_out' =>
         'attendance',
       'footer_sites' || 'site_register' || 'site_map' || 'admin_sites' || 'sites' => 'sites',
-      'chat' || 'friends' => 'chat',
+      'chat' => 'chat',
+      'friends' => 'chat',
       'invoices' => 'invoices',
       'qualifications' || 'qualification_certificates' || 'qualification_register' || 'employee_qualifications' => 'qualifications',
       'documents' || 'document_register' => 'documents',
