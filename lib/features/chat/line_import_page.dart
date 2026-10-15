@@ -9,6 +9,7 @@ import 'line_historical_monthly_import.dart';
 import 'line_import_repository.dart';
 import 'line_reading_rules.dart';
 import 'line_reading_rule_application.dart';
+import 'line_reading_reapply_page.dart';
 import 'line_historical_monthly_import_page.dart';
 import 'line_historical_invoice_page.dart';
 import 'line_historical_amount_preview.dart';
@@ -153,6 +154,13 @@ class _LineImportPageState extends State<_LineImportPageContent> {
       _unreadable = prepared.unreadableSourceIds.length;
       _comparisonConfirmed = false; _dirty = true;
     });
+  }
+
+  Future<void> _openReadingReapply() async {
+    if (_groupId == null || _dirty || _pending != null || _formalPending != null) return;
+    final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) =>
+      LineReadingReapplyPage(groupId: _groupId!, month: _month, repositoryOverride: _repository)));
+    if (changed == true && mounted) await _load();
   }
 
   Future<void> _reimport() async {
@@ -301,7 +309,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
           if (steel && allowance.text.trim().isEmpty) { update(() => validation = 'PC・鉄骨手当の登録名を入力してください。'); return; }
           final w = _workers.singleWhere((item) => item['id'] == worker), s = _sites.singleWhere((item) => item['id'] == site);
           Navigator.pop(context, {...row, 'work_date': date.text.trim(), 'worker_id': worker, 'worker_name': w['name'], 'site_id': site, 'site_name': s['name'], 'customer_id': s['customer_id'], 'formal_site_name': formalName.text.trim(),
-            'assumed_fields': <String, dynamic>{}, 'man_days': quantity, 'man_days_inferred': false, 'overtime_hours': ot, 'early_hours': eh, 'night_work': category == 'night' || category == 'holiday_night', 'work_category': category, 'allowance_names': allowance.text.split('、').map((name) => name.trim()).where((name) => name.isNotEmpty).toSet().toList(), 'steel_allowance': steel, 'confirmed': true, 'review_reason': ''});
+            'reading_origin': {'kind': 'manual'}, 'assumed_fields': <String, dynamic>{}, 'man_days': quantity, 'man_days_inferred': false, 'overtime_hours': ot, 'early_hours': eh, 'night_work': category == 'night' || category == 'holiday_night', 'work_category': category, 'allowance_names': allowance.text.split('、').map((name) => name.trim()).where((name) => name.isNotEmpty).toSet().toList(), 'steel_allowance': steel, 'confirmed': true, 'review_reason': ''});
         }, child: const Text('確認済みにする'))],
     )));
     date.dispose(); formalName.dispose(); days.dispose(); overtime.dispose(); early.dispose(); allowance.dispose();
@@ -449,7 +457,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
 
   void _show(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(title: Text(_title),
-    content: const SingleChildScrollView(child: Text('月別表は各月を選んで確認・入れ直しできます。残業・早出の時間が書かれていない場合は1時間を仮置きし、数値に「（仮）」を表示します。仮の数値を押し、時間を入力して「この数値を採用」を押すと、その欄の仮状態だけ解除します。他の数値・仮状態は残り、行全体は自動で確認済みになりません。行を開いて「確認済みにする」場合も、残っている仮値の採用チェックが必要です。仮状態が残る行は確認済み集計・正式確認へ進めません。参考額には未確認の値も含まれるため、正式額と分けて確認してください。全行確認・LINEノート照合・保存の後、現場別単価と正式下書きプレビューを確認して正式請求へ進みます。\n\n語句の区分はLINEマスター権限の「単価設定」→「初期設定・読み取りルール」で履歴を選び、回数順の語句を押して変更し、「読み取りルールを保存」を押します。次回の新規候補へ反映し、保存済みの修正・原文は変更しません。\n\n指定初期単価の参考請求額を表示し、数量を修正すると再計算します。数量不明・不明手当・重複疑いは対象外件数を表示します。正式な金額は現場別単価を保存し、請求書の正式下書きプレビューで確認します。受信済みの投稿、またはLINEから書き出した履歴から対象月の候補を抽出します。作業員・現場・数量を確認して修正し、重複行は除外してください。\n\nLINEノートの集計を貼り付けて人数・人工・残業・早出と照合します。確認後に保存してください。再取込では変わっていない投稿の修正を保持し、変わった投稿は要確認へ戻します。一般メンバーは本人の確認済み出勤だけ閲覧できます。\n\nマスターのOFFでも保存データは消しません。正式な勤怠・請求書の登録は別の確認・承認手順を通します。')),
+    content: const SingleChildScrollView(child: Text('月別表は各月を選んで確認・入れ直しできます。残業・早出の時間が書かれていない場合は1時間を仮置きし、数値に「（仮）」を表示します。仮の数値を押し、時間を入力して「この数値を採用」を押すと、その欄の仮状態だけ解除します。他の数値・仮状態は残り、行全体は自動で確認済みになりません。行を開いて「確認済みにする」場合も、残っている仮値の採用チェックが必要です。仮状態が残る行は確認済み集計・正式確認へ進めません。参考額には未確認の値も含まれるため、正式額と分けて確認してください。全行確認・LINEノート照合・保存の後、現場別単価と正式下書きプレビューを確認して正式請求へ進みます。\n\n保存済み未確認行への再適用は、変更を保存してから「保存済み未確認行へ語句ルールを再適用」を開きます。変更前後を見て必要な項目だけ採用し、採用した項目だけ保存します。自動生成の由来が確認できる行だけが対象で、由来不明の旧行・手修正・確認済み行は個別編集してください。数量・他の仮状態・原文は変わらず、自動で確認済みにはなりません。\n\n語句の区分はLINEマスター権限の「単価設定」→「初期設定・読み取りルール」で履歴を選び、回数順の語句を押して変更し、「読み取りルールを保存」を押します。次回の新規候補へ反映し、保存済みの修正・原文は変更しません。\n\n指定初期単価の参考請求額を表示し、数量を修正すると再計算します。数量不明・不明手当・重複疑いは対象外件数を表示します。正式な金額は現場別単価を保存し、請求書の正式下書きプレビューで確認します。受信済みの投稿、またはLINEから書き出した履歴から対象月の候補を抽出します。作業員・現場・数量を確認して修正し、重複行は除外してください。\n\nLINEノートの集計を貼り付けて人数・人工・残業・早出と照合します。確認後に保存してください。再取込では変わっていない投稿の修正を保持し、変わった投稿は要確認へ戻します。一般メンバーは本人の確認済み出勤だけ閲覧できます。\n\nマスターのOFFでも保存データは消しません。正式な勤怠・請求書の登録は別の確認・承認手順を通します。')),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]));
 
   @override
@@ -507,6 +515,9 @@ class _LineImportPageState extends State<_LineImportPageContent> {
         for (final total in totals) ListTile(contentPadding: EdgeInsets.zero, title: Text(total['name'].toString()), subtitle: Text('人工 ${total['man_days']} ／ 残業 ${total['overtime_hours']}時間 ／ 早出 ${total['early_hours']}時間')),
         if (widget.target == 'invoice' && shown.isNotEmpty) ...[
           const SizedBox(height: 12),
+          OutlinedButton.icon(onPressed: editable && !_dirty ? _openReadingReapply : null,
+            icon: const Icon(Icons.preview_outlined), label: const Text('保存済み未確認行へ語句ルールを再適用')),
+          if (_dirty) const Text('再適用プレビューは変更を保存してから開けます。'),
           const Text('月別表（行を押して確認・修正）'),
           SingleChildScrollView(scrollDirection: Axis.horizontal,
             child: DataTable(showCheckboxColumn: false,
@@ -552,7 +563,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
           title: Text('${_rows[index]['work_date']}  ${_rows[index]['worker_name']}'),
           subtitle: Text('${_rows[index]['site_name']}  人工 ${_rows[index]['man_days'] ?? '要確認'}\n${_rows[index]['excluded'] == true ? '除外' : _rows[index]['confirmed'] == true ? '確認済み' : _rows[index]['review_reason'] ?? '要確認'}'),
           onTap: editable ? () => _edit(index) : null,
-          trailing: editable ? Checkbox(value: _rows[index]['excluded'] == true, onChanged: (value) => setState(() { _rows[index]['excluded'] = value == true; _comparisonConfirmed = false; _dirty = true; })) : null,
+          trailing: editable ? Checkbox(value: _rows[index]['excluded'] == true, onChanged: (value) => setState(() { _rows[index]['excluded'] = value == true; _rows[index]['reading_origin'] = {'kind': 'manual'}; _comparisonConfirmed = false; _dirty = true; })) : null,
         )),
         if (_canEdit) ...[
           const SizedBox(height: 16), TextField(controller: _note, readOnly: !editable, maxLines: 6, minLines: 3,
