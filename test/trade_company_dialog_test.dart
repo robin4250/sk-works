@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/companies/trade_company_dialog.dart';
+import 'package:sk_works/features/companies/trade_company_dialog.dart';
 
 void main() {
   testWidgets(
