@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_friends_strings.dart';
+import 'chat_friend_profile_page.dart';
 
 class ChatFriendsPage extends StatefulWidget {
   const ChatFriendsPage({
@@ -280,6 +281,23 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     }
   }
 
+  Future<void> _openFriend(Map<String, dynamic> friend) async {
+    final startChat = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => ChatFriendProfilePage(friend: friend)),
+    );
+    if (!mounted || startChat != true) return;
+    Navigator.of(context).pop(friend);
+  }
+
+  Future<void> _openAdd() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => ChatFriendsPage(repository: _repository),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
@@ -288,6 +306,18 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     final friends = _rows('friends');
 
     return Scaffold(
+      bottomNavigationBar: widget.selectForChat
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: FilledButton.icon(
+                  onPressed: _loading || _busy ? null : _openAdd,
+                  icon: const Icon(Icons.person_add_alt_1),
+                  label: const Text('追加'),
+                ),
+              ),
+            )
+          : null,
       appBar: AppBar(
         title: Text(
           widget.selectForChat
@@ -338,7 +368,9 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                               ),
                             ),
                             trailing: const Icon(Icons.chevron_right),
-                            onTap: () => Navigator.of(context).pop(friend),
+                            onTap: () => widget.selectForGroupInvite
+                                ? Navigator.of(context).pop(friend)
+                                : _openFriend(friend),
                           ),
                         );
                       },
