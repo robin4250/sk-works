@@ -1,0 +1,67 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sk_works/features/notifications/attention_center_item.dart';
+import 'package:sk_works/features/notifications/notification_explanation_page.dart';
+
+const item = AttentionCenterItem(
+  id: 'notice',
+  source: 'notification',
+  title: '現場の確認',
+  body: '対象現場の内容をご確認ください。',
+  state: AttentionCenterState.pending,
+  actionKey: 'site_share_approval',
+  actionId: 'saved-target',
+);
+
+void main() {
+  testWidgets(
+    'explanation never acts until link, and back returns to explanation',
+    (tester) async {
+      var opened = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NotificationExplanationPage(
+            item: item,
+            openTarget: (context) async {
+              opened++;
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const Scaffold(body: Text('対象現場')),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(opened, 0);
+      expect(find.text('このページは右上のベルマークから何度も見れます！'), findsOneWidget);
+      await tester.ensureVisible(find.text('開く'));
+      await tester.tap(find.text('開く'));
+      await tester.pumpAndSettle();
+      expect(opened, 1);
+      expect(find.text('対象現場'), findsOneWidget);
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('通知の説明'), findsOneWidget);
+      expect(find.text('開く'), findsOneWidget);
+    },
+  );
+
+  testWidgets('disabled feature retains explanation and hides open button', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NotificationExplanationPage(
+          item: item,
+          canOpenTarget: () async => false,
+          openTarget: (_) async => fail('disabled target opened'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('現場の確認'), findsOneWidget);
+    expect(find.text('開く'), findsNothing);
+  });
+}
