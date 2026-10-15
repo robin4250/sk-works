@@ -496,7 +496,9 @@ String? notificationModule(String? actionKey) => switch (actionKey) {
 /// The server workspace checks current membership and account availability.
 Future<bool> companyProfileNotificationAvailable() async {
   if (!SupabaseBackend.isInitialized ||
-      SupabaseBackend.client.auth.currentUser == null) return false;
+      SupabaseBackend.client.auth.currentUser == null) {
+    return false;
+  }
   final raw = await SupabaseBackend.client.rpc('company_profile_review_workspace');
   return raw is Map && raw['enabled'] == true;
 }
