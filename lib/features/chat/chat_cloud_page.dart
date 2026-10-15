@@ -1291,7 +1291,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         return;
       }
       final target = _messageKeys[id]?.currentContext;
-      if (target != null) {
+      if (target != null && target.mounted) {
         await Scrollable.ensureVisible(
           target, alignment: 0.5, duration: const Duration(milliseconds: 200),
         );
@@ -1308,7 +1308,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       }
       _scrollController.jumpTo(next);
     }
-    if (valid()) {
+    if (mounted && valid()) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('該当メッセージは削除または更新されました。再検索してください。'),
       ));
