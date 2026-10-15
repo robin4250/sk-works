@@ -2,7 +2,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'trade_document_attachment.dart';
 import 'trade_document_date_defaults.dart';
-import '../invoices/invoice_settings_repository.dart';
 
 class TradeDocumentAttachmentRepository {
   TradeDocumentAttachmentRepository(this._client);
@@ -47,9 +46,10 @@ class TradeDocumentAttachmentRepository {
     payload.addAll(tradeDocumentDateDefaults(payload['month'].toString()));
     payload['notes'] = '';
     if (subjectKind == 'payment_certificate') {
-      final settings = await InvoiceSettingsRepository(_client).loadForDocument();
+      final settings = await _client.rpc('invoice_document_settings');
+      if (settings is! Map) throw StateError('請求書の件名を取得できません。');
       _sameActor(actor);
-      payload['work_name'] = settings.invoiceSubject;
+      payload['work_name'] = settings['invoice_subject']?.toString() ?? '';
       payload['work_address'] = '';
       payload['intro_text'] = '発注者（以下「甲」という）は、受注者（以下「乙」という）に対し、下記の通り工事を発注します。';
       payload['payment_conditions'] = tradeDocumentDefaultPaymentConditions(payload['month'].toString());
