@@ -13,6 +13,9 @@ create function private.line_reading_rules_workspace(p_group_id uuid)
 returns jsonb language plpgsql stable security definer set search_path='' as $$
 declare access jsonb; record private.line_reading_rules;
 begin
+ if auth.uid() is null or public.is_current_user_master_admin() is distinct from true then
+  raise exception 'master reading rules access required' using errcode='42501';
+ end if;
  access:=private.line_import_access(p_group_id,'invoice');
  select * into record from private.line_reading_rules where group_id=p_group_id;
  return jsonb_build_object('revision',coalesce(record.revision,0),'rules',coalesce(record.rules,'[]'::jsonb),'can_edit',access->'can_edit');
@@ -22,6 +25,9 @@ create function private.save_line_reading_rules(p_group_id uuid,p_expected_revis
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare access jsonb; rule jsonb; revision integer;
 begin
+ if auth.uid() is null or public.is_current_user_master_admin() is distinct from true then
+  raise exception 'master reading rules access required' using errcode='42501';
+ end if;
  access:=private.line_import_access(p_group_id,'invoice');
  if not (access->>'can_edit')::boolean then raise exception 'rules edit denied' using errcode='42501';end if;
  if p_rules is null or jsonb_typeof(p_rules)<>'array' or jsonb_array_length(p_rules)>1000 then raise exception 'invalid rules';end if;

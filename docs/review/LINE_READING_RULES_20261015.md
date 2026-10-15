@@ -26,4 +26,4 @@ revision 競合防止・初回挿入の排他・入力型/長さ/重複検査。
 - 過去表や手修正の再適用、原文へ戻る導線、専用機能 ON/OFF
 - Flutter/iOS CI、実機操作、本番 migration は未完了
 
-過去表の再集計・全分類適用・数値予測・正式請求完了とは案内しない。SQLは依存PRの内容を維持し、追加変更・本番適用なし。
+過去表の再集計・全分類適用・数値予測・正式請求完了とは案内しない。辞書の未適用migrationだけにMaster専用guardを追加。既存import access本体は不変更、本番適用なし。会社owner/admin/managerだけではRPC直呼び不可。実import/access定義を読込む隔離fixtureで境界を検証。
