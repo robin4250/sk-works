@@ -22,6 +22,7 @@ import '../payroll/payroll_review_page.dart';
 import '../attendance/today_attendance_page.dart';
 import '../payroll/payroll_review_repository.dart';
 import '../payroll/payment_certificates_page.dart';
+import '../payroll/site_contract_notification_page.dart';
 import '../settings/settings_page.dart';
 import '../settings/master_protected_page.dart';
 import '../security/security_incident_page.dart';
@@ -418,6 +419,7 @@ Widget? notificationDestination(
   AppNotificationRecord item, {
   DateTime? payrollMonth,
 }) => switch (item.actionKey) {
+  'site_payment_agreement' => SiteContractNotificationPage(notificationId: item.id),
   'company_link_request' => companyLinkNotificationDestination(item.actionId),
   'company_profile_review' => item.actionId == null || item.actionId!.isEmpty
       ? null

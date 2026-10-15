@@ -3,12 +3,14 @@ on:
   pull_request:
     paths:
       - 'tool/staged/site_contract_sealed_revision.sql'
+      - 'supabase/migrations/*site_contract_notification_delivery.sql'
       - 'tool/verify_site_contract*.mjs'
       - '.github/workflows/site-contract-seals.yml'
   push:
     branches: [main]
     paths:
       - 'tool/staged/site_contract_sealed_revision.sql'
+      - 'supabase/migrations/*site_contract_notification_delivery.sql'
       - 'tool/verify_site_contract*.mjs'
       - '.github/workflows/site-contract-seals.yml'
 permissions:
@@ -27,6 +29,9 @@ jobs:
         run: node tool/verify_site_contract_seals.mjs /tmp/site-contract-proof/node_modules/@electric-sql/pglite/dist/index.js
       - name: Verify integration with actual agreement SQL and official seal helper
         run: node tool/verify_site_contract_integration.mjs /tmp/site-contract-proof/node_modules/@electric-sql/pglite/dist/index.js
+
+      - name: Verify in-app contract notification delivery and receipt isolation
+        run: node tool/verify_site_contract_notifications.mjs /tmp/site-contract-proof/node_modules/@electric-sql/pglite/dist/index.js
 
   real-postgres-seal-races:
     runs-on: ubuntu-latest
