@@ -19,3 +19,18 @@ Map<String, String> tradeDocumentDateDefaults(String month) {
     'period_end': date(DateTime(year, number + 1, 0)),
   };
 }
+
+String tradeDocumentJapaneseDate(String value) {
+  final date = DateTime.tryParse(value);
+  if (date == null || date.toIso8601String().substring(0, 10) != value) {
+    throw FormatException('日付を確認してください。');
+  }
+  return '${date.year}年${date.month}月${date.day}日';
+}
+
+String tradeDocumentDefaultPaymentConditions(String month) {
+  final dates = tradeDocumentDateDefaults(month);
+  final start = DateTime.parse(dates['period_start']!);
+  final deadline = DateTime(start.year, start.month + 2, 0);
+  return '工事完了確認後、${deadline.year}年${deadline.month}月末日までに乙の指定口座に振り込む。';
+}
