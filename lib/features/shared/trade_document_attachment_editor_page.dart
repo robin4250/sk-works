@@ -53,6 +53,19 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       }
       if (_version == 0) {
         _payload.addAll(tradeDocumentDateDefaults(_payload['month'].toString()));
+        if (_order) {
+          if (_payload['payment_conditions'] == null ||
+              _payload['payment_conditions'].toString().trim().isEmpty ||
+              _payload['payment_conditions'] == '工事完了確認後、乙の指定口座に振り込む。') {
+            _payload['payment_conditions'] = tradeDocumentDefaultPaymentConditions(_payload['month'].toString());
+          }
+          if ((_payload['notes']?.toString().trim() ?? '').isEmpty) {
+            _payload['notes'] = '・本工事は建設業許可を必要としない軽微な工事である。\\n・乙は、工事中の事故等について一切の責任を負う。';
+          }
+        } else {
+          _payload['issue_date'] = DateTime.now().toUtc().add(const Duration(hours: 9))
+              .toIso8601String().substring(0, 10);
+        }
       }
       for(final key in ['issue_date','order_date','work_name','work_address','period_start','period_end','payment_conditions','notes','tax_amount_yen','total_amount_yen','intro_text','acceptance_text']){
         _fields[key]=TextEditingController(text:_payload[key]?.toString()??'');
@@ -83,7 +96,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       for(final party in ['issuer','counterparty']){
         value[party]={for(final key in ['name','address','corporate_number','representative_name'])key:_fields['$party.$key']!.text.trim()};
       }
-      if(!_order){value['acceptance_text']=(value['acceptance_text'] as String).replaceAll('{order_date}',value['order_date'].toString());}
+      if(!_order){value['acceptance_text']=(value['acceptance_text'] as String).replaceAll('{order_date}',tradeDocumentJapaneseDate(value['order_date'].toString()));}
       await _repo!.save(subjectKind:widget.subjectKind,subjectId:widget.subjectId,
         sourceRevision:widget.sourceRevision,expectedVersion:_version,payload:value);
       if(!mounted||!_sameActor||_revoked)return;
