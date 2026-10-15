@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/chat/chat_friend_order.dart';
+import 'package:sk_works/features/chat/chat_friend_order.dart';
 
 void main() {
   test('pins precede direct peers while preserving registration order', () {

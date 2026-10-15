@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../lib/features/chat/chat_cloud_repository.dart';
-import '../lib/features/chat/chat_friends_page.dart';
+import 'package:sk_works/features/chat/chat_cloud_repository.dart';
+import 'package:sk_works/features/chat/chat_friends_page.dart';
 
 class _Repository implements ChatCloudRepository {
   String actor = 'self';

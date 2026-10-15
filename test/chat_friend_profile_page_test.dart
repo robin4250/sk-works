@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/features/chat/chat_friend_profile_page.dart';
+import 'package:sk_works/features/chat/chat_friend_profile_page.dart';
 
 void main() {
   testWidgets(
