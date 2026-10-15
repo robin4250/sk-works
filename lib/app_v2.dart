@@ -168,6 +168,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final _usageAnalyticsRepository = UsageAnalyticsRepository.maybeCreate();
 
   Map<String, bool> _moduleStates = const {};
+  int _friendsRequest = 0;
+  String? _friendHomeActor;
+  bool _friendHomeVisible = true;
+  String? get _currentHomeActor => SupabaseBackend.isInitialized
+      ? SupabaseBackend.client.auth.currentUser?.id : 'local';
+  bool _homeActionHidden(String key) => key == 'friends'
+      ? _friendHomeActor != _currentHomeActor || !_friendHomeVisible
+      : _hiddenHomeActionKeys.contains(key);
   Map<String, bool> _subAdminHomeStates = const {};
   Map<String, int> _usage = const {};
   int _homeGridColumns = 2;
@@ -614,7 +622,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadHomeLayout() async {
+    final actor = _currentHomeActor;
     final prefs = await SharedPreferences.getInstance();
+    final friendVisible = actor != null &&
+        (prefs.getBool('sko_friend_home_visible_$actor') ?? true);
     final columns = (prefs.getInt('sko_home_grid_columns') ?? 2).clamp(1, 4);
     final order = prefs.getStringList('sko_home_action_order') ?? const <String>[];
     final hidden = prefs.getStringList('sko_home_hidden_actions') ?? const <String>[];
@@ -627,8 +638,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         labelOverrides[key.substring(prefix.length)] = value;
       }
     }
-    if (!mounted) return;
+    if (!mounted || actor != _currentHomeActor) return;
     setState(() {
+      _friendHomeActor = actor;
+      _friendHomeVisible = friendVisible;
       _homeGridColumns = columns;
       _homeActionOrder = List<String>.from(order);
       _hiddenHomeActionKeys = hidden.toSet();
@@ -644,6 +657,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _setHomeActionVisible(String key, bool visible) async {
+    if (key == 'friends') {
+      final actor = _currentHomeActor;
+      if (actor == null || actor != _friendHomeActor) return;
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted || actor != _currentHomeActor) return;
+      await prefs.setBool('sko_friend_home_visible_$actor', visible);
+      if (!mounted || actor != _currentHomeActor) return;
+      setState(() => _friendHomeVisible = visible);
+      return;
+    }
     final next = <String>{..._hiddenHomeActionKeys};
     if (visible) {
       next.remove(key);
@@ -783,6 +806,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       'attendance' || 'attendance_list' => 'attendance_sheet',
       'footer_sites' || 'site_register' || 'site_map' => 'sites',
       'chat' => 'chat',
+      'friends' => 'chat',
       'clock_in' || 'clock_out' || 'attendance_verify' || 'workplace_select' || 'attendance_method_vehicle' => 'attendance',
       'daily_report' || 'approvals' => 'daily_report',
       'employee_register' ||
@@ -813,6 +837,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       'payroll' || 'payroll_adjustments' => 'payroll',
       'invoices' => 'invoice',
       'chat' => 'chat',
+      'friends' => 'chat',
       'people' || 'employee_register' || 'initial_registration' => 'people',
       'qualification_certificates' ||
       'qualification_register' ||
@@ -898,6 +923,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // Ignore retired shortcut keys retained in older home preferences.
     if (key == 'signatures') return;
 
+    if (key == 'friends' && SupabaseBackend.isInitialized) {
+      final actor = _currentHomeActor;
+      if (actor == null || actor != _tutorialUserId) return;
+      try {
+        final states = await _moduleSettingsRepository?.loadOptionalModuleStates();
+        if (!mounted || actor != _currentHomeActor || states == null) return;
+        setState(() => _moduleStates = states);
+      } catch (_) {
+        if (mounted && actor == _currentHomeActor) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('チャットの利用設定を確認できません。再度お試しください。')),
+          );
+        }
+        return;
+      }
+    }
+
     final requiredModule = switch (key) {
       'attendance' ||
       'attendance_list' ||
@@ -911,6 +953,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         'attendance',
       'footer_sites' || 'site_register' || 'site_map' || 'admin_sites' || 'sites' => 'sites',
       'chat' => 'chat',
+      'friends' => 'chat',
       'invoices' => 'invoices',
       'qualifications' || 'qualification_certificates' || 'qualification_register' || 'employee_qualifications' => 'qualifications',
       'documents' || 'document_register' => 'documents',
@@ -1006,8 +1049,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       setState(() => _selectedIndex = 2);
       return;
     }
-    if (key == 'chat') {
-      setState(() => _selectedIndex = 3);
+    if (key == 'chat' || key == 'friends') {
+      if (key == 'friends') {
+        // A fresh ON response may have just replaced the disabled chat page.
+        // Mount that existing surface before delivering its one-time request.
+        final actor = _currentHomeActor;
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || actor != _currentHomeActor || !_moduleEnabled('chat')) {
+          return;
+        }
+      }
+      if (key == 'friends' && SupabaseBackend.isInitialized &&
+          SupabaseBackend.client.auth.currentUser?.id != _tutorialUserId) {
+        return;
+      }
+      setState(() {
+        _selectedIndex = 3;
+        if (key == 'friends') _friendsRequest++;
+      });
       return;
     }
     if (key == 'menu') {
@@ -1349,6 +1408,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
+      if (_moduleEnabled('chat'))
+        _MenuAction(
+          key: 'friends',
+          label: SkoLanguageController.tr('友達一覧'),
+          icon: Icons.people_outline,
+          homeEligible: true,
+          accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
+        ),
       _MenuAction(key: 'traffic_guidance', label: SkoLanguageController.tr('交通案内'),
         icon: Icons.train_rounded, homeEligible: false,
         accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限')),
@@ -1699,7 +1766,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           actionOrder: _homeActionOrder,
           visibleHomeKeys: {
             for (final item in _menuItems)
-              if (!_hiddenHomeActionKeys.contains(item.key)) item.key,
+              if (!_homeActionHidden(item.key)) item.key,
           },
           shortcuts: [
             for (final item in _homeLayoutItems)
@@ -1787,7 +1854,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   List<_HomeLayoutItem> get _homeLayoutItems {
     return [
       for (final item in _menuItems)
-        if (item.homeEligible && !_hiddenHomeActionKeys.contains(item.key))
+        if (item.homeEligible && !_homeActionHidden(item.key))
           _HomeLayoutItem(
             item.key,
             item.label,
@@ -1917,7 +1984,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             icon: const Icon(Icons.edit_note_outlined),
                           ),
                         Switch(
-                          value: !_hiddenHomeActionKeys.contains(item.key),
+                          value: !_homeActionHidden(item.key),
                           onChanged: (value) =>
                               _setHomeActionVisible(item.key, value),
                         ),
@@ -1944,7 +2011,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ? const SiteCloudPage()
           : _ModuleDisabledPage(label: SkoLanguageController.tr('現場')),
       _moduleEnabled('chat')
-          ? ChatCloudPage(viewerOnlyFriends: _isViewer)
+          ? ChatCloudPage(viewerOnlyFriends: _isViewer, friendsRequest: _friendsRequest)
           : _ModuleDisabledPage(label: SkoLanguageController.tr('チャット')),
       _menuPage(),
     ];

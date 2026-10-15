@@ -8,6 +8,7 @@ import 'chat_cloud_repository.dart';
 import 'chat_friends_strings.dart';
 import 'chat_friend_profile_page.dart';
 import 'chat_friend_order.dart';
+import 'chat_actor_guard.dart';
 
 class ChatFriendsPage extends StatefulWidget {
   const ChatFriendsPage({
@@ -37,10 +38,12 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
   String _friendQuery = '';
   Set<String> _pinnedFriends = {};
   String? _actor;
+  final _profileActorEpoch = ValueNotifier<int>(0);
   StreamSubscription<String?>? _actorSubscription;
 
   Map<String, dynamic> _workspace = const {};
   Map<String, dynamic>? _searchResult;
+  int _workspaceLoadEpoch = 0;
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -57,10 +60,12 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
   @override
   void initState() {
     super.initState();
-    if (widget.selectForChat) {
-      _actor = _repository?.currentUserId;
+    _actor = _repository?.currentUserId;
       _actorSubscription = _repository?.watchActorChanges().listen((actor) {
         if (!mounted || actor == _actor) return;
+        _actor = actor;
+        _profileActorEpoch.value++;
+        _workspaceLoadEpoch++;
         setState(() {
           _workspace = const {};
           _pinnedFriends = {};
@@ -68,13 +73,13 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
           _loading = false;
         });
       });
-    }
     _load();
   }
 
   @override
   void dispose() {
     _actorSubscription?.cancel();
+    _profileActorEpoch.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -89,11 +94,13 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       return;
     }
 
+    final actor = repository.currentUserId;
+    final epoch = _profileActorEpoch.value;
+    final loadEpoch = ++_workspaceLoadEpoch;
     try {
-      final actor = widget.selectForChat ? repository.currentUserId : null;
       final workspace = await repository.loadFriendWorkspace();
       final prefs = widget.selectForChat ? await SharedPreferences.getInstance() : null;
-      if (!mounted || (widget.selectForChat && actor != repository.currentUserId)) return;
+      if (!mounted || (actor != repository.currentUserId || epoch != _profileActorEpoch.value || loadEpoch != _workspaceLoadEpoch)) return;
       setState(() {
         _actor = actor;
         _pinnedFriends = actor == null
@@ -105,7 +112,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || actor != repository.currentUserId || epoch != _profileActorEpoch.value || loadEpoch != _workspaceLoadEpoch) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -335,10 +342,11 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
   Future<void> _openFriend(Map<String, dynamic> friend) async {
     final actor = _actor;
     if (actor == null || actor != _repository?.currentUserId) return;
+    final epoch = _profileActorEpoch.value;
     final startChat = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => ChatFriendProfilePage(friend: friend)),
+      MaterialPageRoute(builder: (_) => ChatActorGuard(epoch: _profileActorEpoch, initialEpoch: epoch, child: ChatFriendProfilePage(friend: friend))),
     );
-    if (!mounted || startChat != true || actor != _repository?.currentUserId) return;
+    if (!mounted || startChat != true || actor != _repository?.currentUserId || epoch != _profileActorEpoch.value) return;
     Navigator.of(context).pop(friend);
   }
 
@@ -391,8 +399,8 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       builder: (context) => AlertDialog(
         title: const Text('友達一覧の使い方'),
         content: const SingleChildScrollView(child: Text(
-          '登録済み友達の氏名・SKO IDを検索できます。検索を消すと一覧へ戻ります。\n\n'
-          '友達を押すと公開名とSKO IDを確認し、「チャットを始める」で既存の個別チャットを開きます。写真・所属会社は現在未確認です。\n\n'
+          '登録済み友達の氏名・公開会社名・SKO IDを検索できます。検索を消すと一覧へ戻ります。\n\n'
+          '友達を押すと公開名とSKO IDを確認し、「チャットを始める」で既存の個別チャットを開きます。写真・所属会社は承認済み友達の公開情報だけを表示します。写真は短時間の閲覧URLを使用し、取得できない場合は標準アイコンになります。\n\n'
           '左から右へスワイプするとピン留め／解除できます。この端末のログイン中ユーザーごとに保存し、友達や会話は削除しません。並びはピン留め、既存の個別チャット相手、その他の登録順です。登録日時が無い行は取得順を保ちます。\n\n'
           '下の「追加」→「ID検索」で申請・承認を管理します。電話番号通知は準備中で、案内を押しても送信されません。トーク本文や全履歴の検索はこの画面では行いません。',
         )),
@@ -415,7 +423,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
             .where(
               (friend) =>
                   _friendQuery.trim().isEmpty ||
-                  ['display_name', 'sko_id'].any(
+                  ['display_name', 'company_name', 'sko_id'].any(
                     (key) => (friend[key]?.toString() ?? '')
                         .toLowerCase()
                         .contains(_friendQuery.trim().toLowerCase()),
@@ -473,7 +481,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                     child: TextField(
                       decoration: const InputDecoration(
                         labelText: '友達検索',
-                        hintText: '氏名・SKO ID',
+                        hintText: '氏名・所属会社・SKO ID',
                         prefixIcon: Icon(Icons.search),
                         border: OutlineInputBorder(),
                       ),
@@ -512,9 +520,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                                 ),
                                 child: Card(
                                   child: ListTile(
-                                    leading: const CircleAvatar(
-                                      child: Icon(Icons.person_outline),
-                                    ),
+                                    leading: ChatFriendAvatar(friend: friend),
                                     title: Text(
                                       friend['display_name']?.toString() ??
                                           ChatFriendsStrings.tr('SKOユーザー'),
@@ -522,7 +528,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
                                         fontWeight: FontWeight.w900,
                                       ),
                                     ),
-                                    subtitle: const Text('所属会社：未確認'),
+                                    subtitle: Text('所属会社：${friendCompanyLabel(friend)}'),
                                     trailing: _pinnedFriends.contains(friend['user_id']?.toString())
                                         ? const Icon(Icons.push_pin)
                                         : const Icon(Icons.chevron_right),

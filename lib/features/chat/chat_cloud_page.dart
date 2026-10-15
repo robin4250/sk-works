@@ -16,6 +16,8 @@ import 'chat_appearance_page.dart';
 import 'chat_cloud_repository.dart';
 import 'chat_group_delete_confirmation.dart';
 import 'chat_friends_page.dart';
+import 'chat_direct_search_page.dart';
+import 'chat_actor_guard.dart';
 import 'chat_list_widgets.dart';
 import 'line_joined_groups_page.dart';
 import 'line_linked_talk_page.dart';
@@ -27,6 +29,7 @@ class ChatCloudPage extends StatefulWidget {
     super.key,
     this.viewerOnlyFriends = false,
     this.showGroupsInitially = false,
+    this.friendsRequest = 0,
     this.createGroupInitially = false,
     this.initialLineDirectoryId,
     this.initialGroupId,
@@ -37,6 +40,8 @@ class ChatCloudPage extends StatefulWidget {
 
   final bool viewerOnlyFriends;
   final bool showGroupsInitially;
+  /// Opens the existing friend picker when the Home shortcut is requested.
+  final int friendsRequest;
   final bool createGroupInitially;
   final String? initialLineDirectoryId;
   final String? initialGroupId;
@@ -129,6 +134,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   StreamSubscription<String?>? _actorSubscription;
   String? _watchedActor;
   int _dispatchEpoch = 0;
+  final _searchActorEpoch = ValueNotifier<int>(0);
 
   bool get _readVisible =>
       mounted &&
@@ -163,6 +169,24 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   }
 
   @override
+  void didUpdateWidget(covariant ChatCloudPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.friendsRequest == oldWidget.friendsRequest ||
+        widget.friendsRequest == 0) {
+      return;
+    }
+    final actor = _repository?.currentUserId;
+    final epoch = _dispatchEpoch;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || actor == null || actor != _repository?.currentUserId ||
+          epoch != _dispatchEpoch) {
+        return;
+      }
+      unawaited(_openFriendsForChat());
+    });
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final access = widget.lineReleaseAccess ?? LineReleaseScope.of(context) ?? LineReleaseAccess.maybeCreate();
@@ -178,6 +202,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     final repository = _repository;
     final userId = repository?.currentUserId ?? 'anonymous';
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted || repository?.currentUserId != userId) return;
     _pinnedGroupIds =
         prefs.getStringList('sko_chat_pinned_$userId')?.toSet() ?? <String>{};
     _hiddenGroupIds =
@@ -188,13 +213,19 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         prefs.getBool('sko_app_notification_sound_enabled') ?? true;
   }
 
-  Future<void> _saveListPreference(String kind, Set<String> values) async {
-    final repository = _repository;
-    final userId = repository?.currentUserId ?? 'anonymous';
+  Future<void> _saveListPreference(
+    String kind,
+    Set<String> values, {
+    String? expectedActor,
+  }) async {
+    final userId = expectedActor ?? _repository?.currentUserId;
+    if (userId == null) return;
+    final snapshot = values.toList(growable: false);
     final prefs = await SharedPreferences.getInstance();
+    if (_repository?.currentUserId != userId) return;
     await prefs.setStringList(
       'sko_chat_${kind}_$userId',
-      values.toList(growable: false),
+      snapshot,
     );
   }
 
@@ -205,6 +236,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     _actorSubscription?.cancel();
     _summarySubscription?.cancel();
     _subscription?.cancel();
+    _searchActorEpoch.dispose();
     _composer.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -213,6 +245,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   void _actorChanged(String? actor) {
     if (!mounted || actor == _watchedActor) return;
     _watchedActor = actor;
+    _searchActorEpoch.value++;
     _dispatchEpoch++;
     _subscription?.cancel();
     _summarySubscription?.cancel();
@@ -227,6 +260,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       _groups = [];
       _messages = [];
       _friends = [];
+      _pinnedGroupIds = {};
+      _hiddenGroupIds = {};
+      _mutedGroupIds = {};
       _selectedGroupId = null;
       _readScope = null;
       _sending = false;
@@ -965,10 +1001,16 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   Future<void> _startDirect(Map<String, dynamic> member) async {
     final repository = _repository;
     if (repository == null) return;
+    final actor = repository.currentUserId;
+    if (actor == null) return;
     try {
       final id = await repository.startDirectChat(member['user_id'].toString());
+      if (!mounted || repository.currentUserId != actor) return;
+      if (_hiddenGroupIds.remove(id)) {
+        await _saveListPreference('hidden', _hiddenGroupIds, expectedActor: actor);
+      }
       await _loadGroupsOnly();
-      if (!mounted) return;
+      if (!mounted || repository.currentUserId != actor) return;
       await _selectGroup(id);
     } catch (error) {
       if (!mounted) return;
@@ -1215,9 +1257,12 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   }
 
   Future<void> _openFriendsForChat() async {
+    final actor = _repository?.currentUserId;
+    if (actor == null) return;
     final friend = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
         builder: (_) => ChatFriendsPage(
+          repository: _repository,
           selectForChat: true,
           existingGroups: [
             for (final group in _groups)
@@ -1229,8 +1274,66 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         ),
       ),
     );
-    if (friend == null || !mounted) return;
+    if (friend == null || !mounted || _repository?.currentUserId != actor) return;
     await _startDirect(friend);
+  }
+
+  Future<void> _searchDirectConversation() async {
+    final group = _selectedGroup;
+    if (group?['group_type'] != 'direct') {
+      return;
+    }
+    final groupId = _selectedGroupId;
+    final actor = _repository?.currentUserId;
+    final epoch = _dispatchEpoch;
+    final sessionEpoch = _searchActorEpoch.value;
+    final id = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => ChatActorGuard(
+          epoch: _searchActorEpoch,
+          initialEpoch: sessionEpoch,
+          child: ChatDirectSearchPage(
+            messages: List<Map<String, dynamic>>.from(_messages),
+            peerName: group?['name']?.toString() ?? '友達',
+          ),
+        ),
+      ),
+    );
+    bool valid() => mounted && groupId == _selectedGroupId &&
+        actor == _repository?.currentUserId && epoch == _dispatchEpoch;
+    if (!valid() || id == null || !_scrollController.hasClients) {
+      return;
+    }
+    setState(() => _chatChromeVisible = true);
+    _scrollController.jumpTo(0);
+    for (var step = 0; step <= _messages.length && valid(); step++) {
+      await WidgetsBinding.instance.endOfFrame;
+      if (!valid()) {
+        return;
+      }
+      final target = _messageKeys[id]?.currentContext;
+      if (target != null && target.mounted) {
+        await Scrollable.ensureVisible(
+          target, alignment: 0.5, duration: const Duration(milliseconds: 200),
+        );
+        return;
+      }
+      if (!_scrollController.hasClients) {
+        return;
+      }
+      final position = _scrollController.position;
+      final next = (position.pixels + position.viewportDimension * 0.8)
+          .clamp(0.0, position.maxScrollExtent);
+      if (next <= position.pixels) {
+        break;
+      }
+      _scrollController.jumpTo(next);
+    }
+    if (mounted && valid()) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('該当メッセージは削除または更新されました。再検索してください。'),
+      ));
+    }
   }
 
   Future<void> _createCustomGroup() async {
@@ -1984,9 +2087,16 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     _ChatTab.partner => _partnerGroups,
   }, _unreadCounts);
 
+  int _compareListActivity(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final aPinned = _pinnedGroupIds.contains(a['id']?.toString());
+    final bPinned = _pinnedGroupIds.contains(b['id']?.toString());
+    if (aPinned != bPinned) return aPinned ? -1 : 1;
+    return _lastActivity(b).compareTo(_lastActivity(a));
+  }
+
   List<Map<String, dynamic>> get _allGroups {
     final groups = _accessibleListGroups.toList();
-    groups.sort((a, b) => _lastActivity(b).compareTo(_lastActivity(a)));
+    groups.sort(_compareListActivity);
     return groups;
   }
 
@@ -2011,7 +2121,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     final groups = _accessibleListGroups
         .where((g) => g['group_type'] == 'direct')
         .toList();
-    groups.sort((a, b) => _lastActivity(b).compareTo(_lastActivity(a)));
+    groups.sort(_compareListActivity);
     return groups;
   }
 
@@ -2136,6 +2246,8 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                             ),
                           ),
                     actions: [
+                      if (selected?['group_type'] == 'direct')
+                        IconButton(tooltip: '読み込み済みトーク内検索', onPressed: _searchDirectConversation, icon: const Icon(Icons.search)),
                       IconButton(
                           tooltip: SkoLanguageController.tr('再読み込み'),
                           onPressed: _loading ? null : _loadGroupsOnly,
@@ -2676,6 +2788,27 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     DismissDirection direction,
   ) async {
     if (direction == DismissDirection.endToStart) {
+      if (group['group_type'] == 'direct') {
+        final actor = _repository?.currentUserId;
+        final epoch = _dispatchEpoch;
+        final groupId = group['id']?.toString() ?? '';
+        if (actor == null || groupId.isEmpty) return false;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('個別トークを一覧から削除しますか？'),
+            content: const Text('自分のこの端末の一覧から外します。相手の一覧・友達関係・メッセージは削除しません。友達から再開できます。'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('戻る')),
+              FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('削除')),
+            ],
+          ),
+        );
+        if (!mounted || confirmed != true || _repository?.currentUserId != actor || _dispatchEpoch != epoch) return false;
+        setState(() => _hiddenGroupIds.add(groupId));
+        await _saveListPreference('hidden', _hiddenGroupIds, expectedActor: actor);
+        return false;
+      }
       await _showCustomGroupLeftActions(group);
     } else if (direction == DismissDirection.startToEnd) {
       await _showCustomGroupRightActions(group);
@@ -2759,6 +2892,9 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   }
 
   Future<void> _showCustomGroupRightActions(Map<String, dynamic> group) async {
+    final actor = _repository?.currentUserId;
+    final epoch = _dispatchEpoch;
+    if (actor == null) return;
     final groupId = group['id']?.toString() ?? '';
     if (groupId.isEmpty) return;
     final pinned = _pinnedGroupIds.contains(groupId);
@@ -2787,7 +2923,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         ),
       ),
     );
-    if (!mounted || action == null) return;
+    if (!mounted || action == null || _repository?.currentUserId != actor || _dispatchEpoch != epoch) return;
     if (action == 'pin') {
       setState(() {
         if (pinned) {
@@ -2796,7 +2932,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
           _pinnedGroupIds.add(groupId);
         }
       });
-      await _saveListPreference('pinned', _pinnedGroupIds);
+      await _saveListPreference('pinned', _pinnedGroupIds, expectedActor: actor);
     } else if (action == 'sound') {
       setState(() {
         if (muted) {
@@ -2805,7 +2941,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
           _mutedGroupIds.add(groupId);
         }
       });
-      await _saveListPreference('muted', _mutedGroupIds);
+      await _saveListPreference('muted', _mutedGroupIds, expectedActor: actor);
     }
   }
 
@@ -2851,13 +2987,14 @@ class _ChatCloudPageState extends State<ChatCloudPage>
           ),
         );
 
-        if (!enableGroupActions || !_isCustomGroup(group)) {
+        if ((!enableGroupActions || !_isCustomGroup(group)) &&
+            group['group_type'] != 'direct') {
           return card;
         }
 
         final groupId = group['id']?.toString() ?? '';
         return Dismissible(
-          key: ValueKey('custom-group-$groupId'),
+          key: ValueKey('chat-list-actions-$groupId'),
           confirmDismiss: (direction) =>
               _handleCustomGroupSwipe(group, direction),
           background: Container(
@@ -2890,12 +3027,14 @@ class _ChatCloudPageState extends State<ChatCloudPage>
               color: Theme.of(context).colorScheme.errorContainer,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Icon(Icons.visibility_off_outlined),
-                SizedBox(width: 10),
-                Icon(Icons.delete_outline),
+                if (group['group_type'] != 'direct') ...[
+                  const Icon(Icons.visibility_off_outlined),
+                  const SizedBox(width: 10),
+                ],
+                const Icon(Icons.delete_outline),
               ],
             ),
           ),
