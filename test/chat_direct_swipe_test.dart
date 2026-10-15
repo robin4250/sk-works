@@ -144,4 +144,20 @@ void main() {
     expect(prefs.getStringList('sko_chat_pinned_self'), isNull);
     expect(prefs.getStringList('sko_chat_pinned_other'), isNull);
   });
+  testWidgets('returning to the original actor cannot reuse an old confirmation', (tester) async {
+    final repo = await open(tester);
+    await swipe(tester, 'old', -600);
+    repo.actor = 'other';
+    repo.actors.add('other');
+    await tester.pumpAndSettle();
+    repo.actor = 'self';
+    repo.actors.add('self');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '削除'));
+    await tester.pumpAndSettle();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList('sko_chat_hidden_self'), isNull);
+    expect(find.text('古い個別トーク'), findsOneWidget);
+  });
+
 }

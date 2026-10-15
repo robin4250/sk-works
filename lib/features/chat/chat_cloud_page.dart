@@ -2704,6 +2704,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     if (direction == DismissDirection.endToStart) {
       if (group['group_type'] == 'direct') {
         final actor = _repository?.currentUserId;
+        final epoch = _dispatchEpoch;
         final groupId = group['id']?.toString() ?? '';
         if (actor == null || groupId.isEmpty) return false;
         final confirmed = await showDialog<bool>(
@@ -2717,7 +2718,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
             ],
           ),
         );
-        if (!mounted || confirmed != true || _repository?.currentUserId != actor) return false;
+        if (!mounted || confirmed != true || _repository?.currentUserId != actor || _dispatchEpoch != epoch) return false;
         setState(() => _hiddenGroupIds.add(groupId));
         await _saveListPreference('hidden', _hiddenGroupIds, expectedActor: actor);
         return false;
@@ -2806,6 +2807,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
 
   Future<void> _showCustomGroupRightActions(Map<String, dynamic> group) async {
     final actor = _repository?.currentUserId;
+    final epoch = _dispatchEpoch;
     if (actor == null) return;
     final groupId = group['id']?.toString() ?? '';
     if (groupId.isEmpty) return;
@@ -2835,7 +2837,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         ),
       ),
     );
-    if (!mounted || action == null || _repository?.currentUserId != actor) return;
+    if (!mounted || action == null || _repository?.currentUserId != actor || _dispatchEpoch != epoch) return;
     if (action == 'pin') {
       setState(() {
         if (pinned) {
