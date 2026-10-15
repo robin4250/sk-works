@@ -36,14 +36,20 @@ await assert.rejects(db.query('select private.send_sealed_site_contract($1,$2,0,
 const p=(await db.query('select private.send_sealed_site_contract($1,$2,0,$3) id',[item,a,terms])).rows[0].id;
 await assert.rejects(db.query('select private.approve_sealed_site_contract($1,$2)',[p,a]),/受信側/);
 await db.exec(`set test.actor='${b}'`);
+await assert.rejects(db.query('select private.confirm_site_payment_terms($1,$2)',[p,b]),/押印承認/);
 await db.query('select private.approve_sealed_site_contract($1,$2)',[p,b]);
 const seals=(await db.query('select * from private.site_contract_seals order by company_id')).rows;
 await db.query('select private.approve_sealed_site_contract($1,$2)',[p,b]);
 assert.deepEqual((await db.query('select * from private.site_contract_seals order by company_id')).rows,seals);
 assert.equal((await db.query('select count(*)::int n from private.site_contract_notification_outbox')).rows[0].n,4);
 await db.exec(`set test.actor='${a}'`);
-await db.query('select private.send_sealed_site_contract($1,$2,1,$3)',[item,a,terms]);
+const second=(await db.query('select private.send_sealed_site_contract($1,$2,1,$3) id',[item,a,terms])).rows[0].id;
 assert.equal((await db.query('select count(*)::int n from private.site_contract_seals where proposal_id=$1',[p])).rows[0].n,2);
 assert.equal((await db.query('select count(*)::int n from private.site_payment_confirmations where proposal_id=$1',[p])).rows[0].n,2);
+const workspace=(await db.query('select public.site_contract_workspace($1,$2) value',[item,a])).rows[0].value;
+assert.equal(workspace.proposals[0].id,second);
+assert.equal(workspace.proposals[0].confirmations.length,1);
+assert.equal(workspace.proposals[1].seals.length,2);
+assert.ok(workspace.proposals[1].seals.every(s=>s.seal_snapshot.company_id===s.company_id));
 console.log('PASS actor isolation, forged actor rejection, sender/recipient boundary, immutable/idempotent seals, both-party outbox, prior agreement preservation');
 } finally { await db.close(); }

@@ -82,13 +82,47 @@ begin
  then return; end if;
  seal:=private.document_company_seal_snapshot(null,p_company,true)->'company_seal_snapshot';
  if seal is null or jsonb_typeof(seal)<>'object' then raise exception '会社角印を設定してください。'; end if;
- perform private.confirm_site_payment_terms(p_proposal,p_company);
  insert into private.site_contract_seals values(p_proposal,p_company,auth.uid(),'approved',seal,now());
+ perform private.confirm_site_payment_terms(p_proposal,p_company);
  insert into private.site_contract_notification_outbox(proposal_id,company_id,event,payload)
  select p_proposal,cid,'terms_approved',jsonb_build_object('action_key','site_payment_agreement',
   'shared_item_id',p.shared_item_id,'proposal_id',p_proposal,'company_id',cid,'event','terms_approved')
  from unnest(array[sender,recipient]) cid on conflict do nothing;
 end $$;
+-- Once this shared site uses sealed contracts, the legacy confirmation RPC
+-- cannot approve an unsealed proposal or manufacture the other party's seal.
+create function private.guard_site_contract_confirmation() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare item uuid;
+begin
+ select shared_item_id into item from private.site_payment_proposals where id=new.proposal_id;
+ if exists(select 1 from private.site_contract_seals s join private.site_payment_proposals p
+   on p.id=s.proposal_id where p.shared_item_id=item)
+ and not exists(select 1 from private.site_contract_seals s where s.proposal_id=new.proposal_id
+   and s.company_id=new.company_id and s.actor_id=auth.uid()) then
+  raise exception '注文書・注文請書の押印承認画面から操作してください。' using errcode='42501';
+ end if;
+ return new;
+end $$;
+revoke all on function private.guard_site_contract_confirmation() from public,anon,authenticated;
+create trigger site_contract_confirmation_requires_seal before insert on private.site_payment_confirmations
+ for each row execute function private.guard_site_contract_confirmation();
+
+create function private.site_contract_workspace(p_item uuid,p_company uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare pair jsonb; proposals jsonb;
+begin
+ pair:=private.site_payment_pair(p_item,p_company);
+ select coalesce(jsonb_agg(jsonb_build_object('id',p.id,'revision',p.revision,'terms',p.terms,
+  'confirmations',(select coalesce(jsonb_agg(jsonb_build_object('company_id',s.company_id,
+    'confirmed_at',s.recorded_at)),'[]'::jsonb) from private.site_contract_seals s where s.proposal_id=p.id),
+  'seals',(select coalesce(jsonb_agg(jsonb_build_object('company_id',s.company_id,'actor_id',s.actor_id,
+    'action',s.action,'recorded_at',s.recorded_at,'seal_snapshot',s.seal_snapshot)),'[]'::jsonb)
+    from private.site_contract_seals s where s.proposal_id=p.id)) order by p.revision desc),'[]'::jsonb)
+ into proposals from private.site_payment_proposals p where p.shared_item_id=p_item;
+ return pair||jsonb_build_object('proposals',proposals);
+end $$;
+revoke all on function private.site_contract_workspace(uuid,uuid) from public,anon,authenticated;
 revoke all on function private.send_sealed_site_contract(uuid,uuid,integer,jsonb),
  private.approve_sealed_site_contract(uuid,uuid) from public,anon,authenticated;
 create function public.send_sealed_site_contract(p_item uuid,p_company uuid,
@@ -97,12 +131,16 @@ create function public.send_sealed_site_contract(p_item uuid,p_company uuid,
 create function public.approve_sealed_site_contract(p_proposal uuid,p_company uuid)
 returns void language sql set search_path='' as
  $$select private.approve_sealed_site_contract(p_proposal,p_company)$$;
+create function public.site_contract_workspace(p_item uuid,p_company uuid)
+returns jsonb language sql set search_path='' as
+ $$select private.site_contract_workspace(p_item,p_company)$$;
 revoke all on function public.send_sealed_site_contract(uuid,uuid,integer,jsonb),
- public.approve_sealed_site_contract(uuid,uuid) from public,anon;
+ public.approve_sealed_site_contract(uuid,uuid),public.site_contract_workspace(uuid,uuid) from public,anon;
 grant execute on function public.send_sealed_site_contract(uuid,uuid,integer,jsonb),
  public.approve_sealed_site_contract(uuid,uuid),
  private.send_sealed_site_contract(uuid,uuid,integer,jsonb),
- private.approve_sealed_site_contract(uuid,uuid) to authenticated;
+ private.approve_sealed_site_contract(uuid,uuid),public.site_contract_workspace(uuid,uuid),
+ private.site_contract_workspace(uuid,uuid) to authenticated;
 -- Rollout is checked by existing site_payment_pair on every mutation.
 -- Remains staged until legacy confirmation entry, PDF and pricing integration
 -- have been reviewed together; outbox is not a delivered notification.
