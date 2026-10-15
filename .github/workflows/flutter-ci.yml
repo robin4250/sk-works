@@ -110,12 +110,12 @@ jobs:
           python -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
           python tool/prepare_pdf_fixture_font.py
 
-      - name: Test
+      - name: Pre-device release gate and Flutter tests
         env:
           SKO_PAYROLL_FINALIZATION_FIXTURE_PATH: build/payroll-finalization-response.json
           SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
           SKO_PDF_OUTPUT_DIR: build/pdf-fixtures
-        run: flutter test
+        run: bash tool/pre_device_release_gate.sh
 
       - name: Save generated adopted PDF comparison files
         if: always()
@@ -128,9 +128,6 @@ jobs:
             build/pdf-fixtures/daily_report_photo_pages_*.png
             build/pdf-fixtures/payment_agreement_*.png
           if-no-files-found: warn
-
-      - name: Pre-device release gate
-        run: bash tool/pre_device_release_gate.sh
 
       - name: Build Android debug APK
         run: flutter build apk --debug
