@@ -51,11 +51,12 @@ class _LineReadingRulesPageState extends State<LineReadingRulesPage> {
         loading = false;
       });
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           error = '設定を取得できませんでした。再読込してください。';
           loading = false;
         });
+      }
     }
   }
 
@@ -119,7 +120,7 @@ class _LineReadingRulesPageState extends State<LineReadingRulesPage> {
             ),
             FilledButton(
               onPressed: () {
-                if (controller.text.trim().isNotEmpty)
+                if (controller.text.trim().isNotEmpty) {
                   Navigator.pop(
                     context,
                     LineReadingRule(
@@ -128,6 +129,7 @@ class _LineReadingRulesPageState extends State<LineReadingRulesPage> {
                       value: controller.text.trim(),
                     ),
                   );
+                }
               },
               child: const Text('設定'),
             ),
@@ -136,11 +138,12 @@ class _LineReadingRulesPageState extends State<LineReadingRulesPage> {
       ),
     );
     controller.dispose();
-    if (result != null && mounted)
+    if (result != null && mounted) {
       setState(() {
         rules.removeWhere((r) => r.phrase == result.phrase);
         rules.add(result);
       });
+    }
   }
 
   Future<void> _save() async {
@@ -153,10 +156,11 @@ class _LineReadingRulesPageState extends State<LineReadingRulesPage> {
         const SnackBar(content: Text('読み取りルールを保存しました。過去の表・承認済みデータは変更していません。')),
       );
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('保存できませんでした。他の更新がある場合は再読込してください。')),
         );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }

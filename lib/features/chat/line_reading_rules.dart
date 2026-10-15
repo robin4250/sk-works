@@ -56,8 +56,9 @@ List<({String phrase, int count, String example})> lineReadingPhrases(
       );
       if (phrase.isEmpty ||
           phrase.length > 80 ||
-          RegExp(r'^[\d./年月日時分\-]+$').hasMatch(phrase))
+          RegExp(r'^[\d./年月日時分\-]+$').hasMatch(phrase)) {
         continue;
+      }
       counts[phrase] = (counts[phrase] ?? 0) + 1;
       examples.putIfAbsent(phrase, () => body);
     }
@@ -91,13 +92,14 @@ LineReadingRule? lineAutomaticReadingRule(
     (LineReadingKind.worker, workers),
   ]) {
     final matches = entry.$2.where((v) => v['name'] == phrase).toList();
-    if (matches.length == 1)
+    if (matches.length == 1) {
       candidates.add(
         LineReadingRule(phrase: phrase, kind: entry.$1, value: phrase),
       );
+    }
     if (matches.length > 1) return null;
   }
-  if (allowances.where((a) => a == phrase).length == 1)
+  if (allowances.where((a) => a == phrase).length == 1) {
     candidates.add(
       LineReadingRule(
         phrase: phrase,
@@ -105,7 +107,8 @@ LineReadingRule? lineAutomaticReadingRule(
         value: phrase,
       ),
     );
-  if (phrase == '残業')
+  }
+  if (phrase == '残業') {
     candidates.add(
       LineReadingRule(
         phrase: phrase,
@@ -113,7 +116,8 @@ LineReadingRule? lineAutomaticReadingRule(
         value: 'overtime_hours',
       ),
     );
-  if (phrase == '早出')
+  }
+  if (phrase == '早出') {
     candidates.add(
       LineReadingRule(
         phrase: phrase,
@@ -121,6 +125,7 @@ LineReadingRule? lineAutomaticReadingRule(
         value: 'early_hours',
       ),
     );
+  }
   if (candidates.length != 1) return null;
   return candidates.single;
 }
@@ -134,8 +139,9 @@ List<Map<String, dynamic>> lineReadingSuggestions(
   for (final row in rows) {
     if (row['confirmed'] == true ||
         row['manually_edited'] == true ||
-        row['edited'] == true)
+        row['edited'] == true) {
       continue;
+    }
     for (final field in ['site_name', 'worker_name']) {
       final kind = field == 'site_name'
           ? LineReadingKind.site
@@ -144,7 +150,7 @@ List<Map<String, dynamic>> lineReadingSuggestions(
           .where((r) => r.kind == kind && r.phrase == row[field])
           .toList();
       final values = matches.map((r) => r.value).toSet();
-      if (values.length == 1 && values.single != row[field])
+      if (values.length == 1 && values.single != row[field]) {
         out.add({
           'row_id': row['row_id'],
           'source_message_id': row['source_message_id'],
@@ -153,6 +159,7 @@ List<Map<String, dynamic>> lineReadingSuggestions(
           'after': values.single,
           'requires_confirmation': true,
         });
+      }
     }
   }
   return out;

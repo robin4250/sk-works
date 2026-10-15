@@ -16,11 +16,13 @@ class LineReadingRulesRepository {
     String name,
     Map<String, dynamic> params,
   ) async {
-    if (owner == null || client.auth.currentUser?.id != owner)
+    if (owner == null || client.auth.currentUser?.id != owner) {
       throw StateError('ログインが変わりました。');
+    }
     final result = await client.rpc(name, params: params);
-    if (client.auth.currentUser?.id != owner || result is! Map)
+    if (client.auth.currentUser?.id != owner || result is! Map) {
       throw StateError('読み取り設定を確認できません。');
+    }
     return Map<String, dynamic>.from(result);
   }
 
