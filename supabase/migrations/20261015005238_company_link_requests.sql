@@ -86,13 +86,15 @@ begin
  end if;
  select * into strict tc from public.trade_companies where id=tid and company_id=p_owner;
  if p_role='customer' and tc.customer_id is null then
-  select id into legacy_id from public.customers where company_id=p_owner and lower(trim(name))=lower(trim(tc.name)) order by created_at limit 1;
+  select count(*),min(id::text)::uuid into n,legacy_id from public.customers where company_id=p_owner and lower(trim(name))=lower(trim(tc.name));
+  if n>1 then raise exception '同名の取引先が複数あります。請求先を確認・整理してから再承認してください'; end if;
   if legacy_id is null then
    insert into public.customers(company_id,name,billing_name,billing_address) values(p_owner,tc.name,tc.name,tc.address) returning id into legacy_id;
   end if;
   update public.trade_companies set customer_id=legacy_id where id=tid and company_id=p_owner;
  elsif p_role='subcontractor' and tc.partner_company_id is null then
-  select id into legacy_id from public.partner_companies where company_id=p_owner and lower(trim(name))=lower(trim(tc.name)) order by created_at limit 1;
+  select count(*),min(id::text)::uuid into n,legacy_id from public.partner_companies where company_id=p_owner and lower(trim(name))=lower(trim(tc.name));
+  if n>1 then raise exception '同名の協力会社が複数あります。契約先を確認・整理してから再承認してください'; end if;
   if legacy_id is null then
    insert into public.partner_companies(company_id,name,phone,email,address,postal_code,trade_role,status)
    values(p_owner,tc.name,tc.phone,tc.email,tc.address,tc.postal_code,'subcontractor','active') returning id into legacy_id;
