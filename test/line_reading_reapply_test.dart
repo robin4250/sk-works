@@ -45,6 +45,23 @@ void main() {
     expect(lineReadingSuggestions([auto],rules), hasLength(2));
     expect(lineReadingReapplyEligible(lineRepairAssumedQuantity(auto,'early_hours',2)), false);
   });
+  test('latest rule uses original alias after an earlier automatic canonical assignment', () {
+    final row={...automatic(), 'site_name':'新宿ビル工事'};
+    final proposals=lineReadingSuggestions([row], const [
+      LineReadingRule(phrase:'新宿',kind:LineReadingKind.site,value:'新宿第2')]);
+    expect(proposals,hasLength(1));
+    expect(proposals.single['before'],'新宿ビル工事');
+    expect(proposals.single['after'],'新宿第2');
+    final unknown={...row,'reading_origin':{'kind':'automatic','source_fingerprint':row['source_fingerprint']}};
+    expect(lineReadingSuggestions([unknown],rules),isEmpty);
+  });
+  test('row identity collision cannot apply a proposal to another original message', () {
+    final original=automatic(), other={...automatic(),'source_message_id':'different-post'};
+    final p=lineReadingSuggestions([original],rules);
+    final result=lineAcceptReadingSuggestions([other],p,
+      {lineReadingSuggestionKey(p.first):'site'},sites:sites,workers:workers);
+    expect(result.single,other);
+  });
   test('one explicit field acceptance preserves source quantities assumptions and unselected field', () {
     final row=automatic(), proposals=lineReadingSuggestions([automatic()],rules);
     final saved=lineAcceptReadingSuggestions([row],proposals,

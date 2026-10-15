@@ -137,6 +137,9 @@ bool lineReadingReapplyEligible(Map<String, dynamic> row) {
     row['manually_edited'] != true && row['edited'] != true &&
     !'${row['row_id']}'.startsWith('manual:') &&
     origin is Map && origin['kind'] == 'automatic' &&
+    origin['phrases'] is Map &&
+    (origin['phrases'] as Map)['site_name'] is String &&
+    (origin['phrases'] as Map)['worker_name'] is String &&
     row['source_fingerprint'] is String && (row['source_fingerprint'] as String).isNotEmpty &&
     origin['source_fingerprint'] == row['source_fingerprint'];
 }
@@ -154,7 +157,8 @@ List<Map<String, dynamic>> lineReadingSuggestions(
           ? LineReadingKind.site
           : LineReadingKind.worker;
       final matches = rules
-          .where((r) => r.kind == kind && r.phrase == row[field])
+          .where((r) => r.kind == kind && r.phrase ==
+            ((row['reading_origin'] as Map)['phrases'] as Map)[field])
           .toList();
       final values = matches.map((r) => r.value).toSet();
       if (values.length == 1 && values.single != row[field]) {
@@ -173,7 +177,7 @@ List<Map<String, dynamic>> lineReadingSuggestions(
 }
 
 String lineReadingSuggestionKey(Map<String, dynamic> suggestion) =>
-    '${suggestion['row_id']}:${suggestion['field']}';
+    '${suggestion['source_message_id']}:${suggestion['row_id']}:${suggestion['field']}';
 
 List<Map<String, dynamic>> lineReadingUniqueTargets(List<Map<String, dynamic>> refs) =>
   refs.where((r) => r['id'] != null && '${r['id']}'.isNotEmpty && r['name'] is String && (r['name'] as String).trim().isNotEmpty &&
@@ -191,7 +195,10 @@ List<Map<String, dynamic>> lineAcceptReadingSuggestions(
     for (final proposal in suggestions.where((p) => p['row_id'] == original['row_id'])) {
       final field = proposal['field'];
       if (!['site_name', 'worker_name'].contains(field) ||
-          original[field] != proposal['before']) continue;
+          proposal['source_message_id'] != original['source_message_id'] ||
+          original[field] != proposal['before']) {
+        continue;
+      }
       final id = accepted[lineReadingSuggestionKey(proposal)];
       if (id == null) continue;
       final targets = lineReadingUniqueTargets(field == 'site_name' ? sites : workers)

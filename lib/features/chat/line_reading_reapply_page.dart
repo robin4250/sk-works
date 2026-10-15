@@ -60,7 +60,8 @@ class _ReapplyState extends State<_Reapply> {
             .where((target) => target['name'] == proposal['after']).toList();
           if (targets.length == 1) selected[lineReadingSuggestionKey(proposal)] = '${targets.single['id']}';
         }
-      });
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => error = '再適用候補を取得できません。マスター権限・接続・設定を確認してください。');
     } finally { if (mounted) setState(() => busy = false); }
@@ -78,12 +79,14 @@ class _ReapplyState extends State<_Reapply> {
       await repo!.save(pending!);
       if (mounted) Navigator.pop(context, true);
     } on PostgrestException catch (e) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         if (['40001','42501','22023'].contains(e.code)) {
           pending = null; accepted.clear();
           error = '保存元が変更されたか権限が変わりました。再読込して前後を確認し直してください。';
         } else { error = '保存結果を確認できません。同じ内容を再送できます。'; }
-      });
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => error = '保存結果を確認できません。同じ内容を再送できます。');
     } finally { if (mounted) setState(() => busy = false); }

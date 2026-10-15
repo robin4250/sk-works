@@ -100,7 +100,8 @@ class LineImportDraft {
           (status.overtimeHours > 0 || status.earlyHours > 0);
         result.add({
           'row_id': rowId, 'source_message_id': id, 'source_fingerprint': fingerprint,
-          'reading_origin': {'kind': 'automatic', 'source_fingerprint': fingerprint},
+          'reading_origin': {'kind': 'automatic', 'source_fingerprint': fingerprint,
+            'phrases': {'site_name': candidate.siteName, 'worker_name': candidate.workerName}},
           if (completion != null) 'completion_source_message_id': completion['id'],
           if (completion != null) 'completion_source_fingerprint': completionFingerprint,
           'work_date': '${candidate.workDate.year.toString().padLeft(4, '0')}-${candidate.workDate.month.toString().padLeft(2, '0')}-${candidate.workDate.day.toString().padLeft(2, '0')}',
