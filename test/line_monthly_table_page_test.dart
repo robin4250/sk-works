@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/chat/line_import_page.dart';
+import 'package:sk_works/features/chat/line_reading_rules.dart';
 import 'package:sk_works/features/chat/line_import_repository.dart';
 import 'package:sk_works/features/chat/line_historical_monthly_import_page.dart';
 import 'package:sk_works/features/chat/line_historical_invoice_page.dart';
@@ -45,6 +46,8 @@ class _Repository extends LineImportRepository {
         workers: [{'id': 'w', 'name': '山田'}],
         sites: [{'id': 's', 'name': '現場A', 'customer_id': 'c'}],
       );
+  @override
+  Future<List<LineReadingRule>> readingRules(String groupId) async => [];
   @override
   Future<List<Map<String, dynamic>>> sources(String groupId) async => [];
   @override

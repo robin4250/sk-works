@@ -49,21 +49,24 @@ void main() {
     expect(repo, contains('contractAmountYen'));
   });
 
-  test('link merge and site calculation conflict always require confirmation', () {
+  test('company linking uses reciprocal approval and calculation source requires confirmation', () {
     final page =
         File('lib/features/companies/trade_company_page.dart').readAsStringSync();
     final repo = File(
       'lib/features/companies/trade_company_repository.dart',
     ).readAsStringSync();
 
-    expect(page, contains('SKO連携候補が見つかりました'));
-    expect(page, contains('会社データを統合しますか？'));
-    expect(page, contains('同じ会社であることを確認してから統合してください。'));
+    final links = File('lib/features/companies/company_link_page.dart').readAsStringSync();
+    expect(page, contains('CompanyLinkPage'));
+    expect(page, isNot(contains('確認して統合')));
+    expect(links, contains('連携申請を送信しますか？'));
+    expect(links, contains('連携を承認しますか？'));
     expect(page, contains('barrierDismissible: false'));
     expect(page, contains('管理現場の設定を使う'));
     expect(page, contains('取引会社の契約を使う'));
     expect(page, contains('協力会社の契約を使う'));
-    expect(repo, contains("'trade_company_link_candidates'"));
+    expect(repo, contains("'request_trade_company_link'"));
+    expect(repo, contains("'respond_trade_company_link'"));
     expect(repo, contains("'select_site_calculation_source'"));
   });
 

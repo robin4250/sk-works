@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AppReferralRepository {
   const AppReferralRepository(this.client);
   final SupabaseClient client;
+  String? get currentActorId => client.auth.currentUser?.id;
 
   Future<Map<String, dynamic>> load({bool master = false}) async {
     final raw = await client.rpc(

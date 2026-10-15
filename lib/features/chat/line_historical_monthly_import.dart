@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'line_history_parser.dart';
 import 'line_import_draft.dart';
+import 'line_reading_rules.dart';
 
 /// The supplied history ends in September 2026: 33 editable months.
 List<DateTime> lineHistoricalMonths() => List.unmodifiable(
@@ -30,11 +31,32 @@ List<Map<String, dynamic>> lineHistorySources(String text) {
 lineMonthlyCandidates(List<Map<String, dynamic>> history, DateTime month,
     {List<Map<String, dynamic>> previous = const [],
      List<Map<String, dynamic>> workers = const [],
-     List<Map<String, dynamic>> sites = const []}) {
+     List<Map<String, dynamic>> sites = const [],
+     List<LineReadingRule> readingRules = const []}) {
   final extracted = LineImportDraft.extract(
     lineCanonicalImportPosts(history, previous: previous), month, previous: previous);
   final rows = [for (final row in extracted.rows) Map<String, dynamic>.from(row)];
+  // A saved row may contain an older explicit correction without a marker.
+  // Apply aliases only to newly extracted rows, never to retained fingerprints.
+  final retained = {for (final row in previous)
+    '${row['row_id']}:${row['source_fingerprint']}'};
   for (final row in rows) {
+    if (!retained.contains('${row['row_id']}:${row['source_fingerprint']}') &&
+        row['confirmed'] != true && row['manually_edited'] != true && row['edited'] != true) {
+      for (final entry in [
+        ('site_name', LineReadingKind.site, sites),
+        ('worker_name', LineReadingKind.worker, workers),
+      ]) {
+        final aliases = readingRules.where((r) => r.kind == entry.$2 &&
+          r.phrase == row[entry.$1]).toList();
+        if (aliases.length != 1) continue;
+        final targets = entry.$3.where((r) => r['name'] == aliases.single.value).toList();
+        // Names are the existing dictionary contract: resolve only a unique ID.
+        if (targets.length == 1 && targets.single['id'] != null) {
+          row[entry.$1] = aliases.single.value;
+        }
+      }
+    }
     if (row['worker_id'] == null) {
       final matches = workers.where((w) => w['name'] == row['worker_name']).toList();
       if (matches.length == 1) row['worker_id'] = matches.single['id'];

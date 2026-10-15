@@ -130,6 +130,53 @@ class TradeCompanyRepository {
     ];
   }
 
+  Future<Map<String, dynamic>> linkWorkspace() async {
+    final raw = await _client.rpc('trade_company_link_workspace');
+    return Map<String, dynamic>.from(raw as Map);
+  }
+
+  Future<void> setLinkEnabled(bool enabled) async {
+    await _client.rpc(
+      'set_trade_company_link_enabled',
+      params: {'p_enabled': enabled},
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> searchLinkCompanies(String query) async {
+    final raw = await _client.rpc(
+      'search_trade_company_links',
+      params: {'p_query': query.trim()},
+    );
+    return [
+      for (final row in raw as List) Map<String, dynamic>.from(row as Map),
+    ];
+  }
+
+  Future<void> requestLink({
+    required String companyId,
+    required TradeCompanyPageMode mode,
+    required DateTime startMonth,
+  }) async {
+    await _client.rpc(
+      'request_trade_company_link',
+      params: {
+        'p_target_company_id': companyId,
+        'p_local_role': mode == TradeCompanyPageMode.customer
+            ? 'customer'
+            : 'subcontractor',
+        'p_start_month':
+            '${startMonth.year}-${startMonth.month.toString().padLeft(2, '0')}-01',
+      },
+    );
+  }
+
+  Future<void> respondLink(String id, String action) async {
+    await _client.rpc(
+      'respond_trade_company_link',
+      params: {'p_request_id': id, 'p_action': action},
+    );
+  }
+
   Future<String> saveCompany({
     String? id,
     required String name,
