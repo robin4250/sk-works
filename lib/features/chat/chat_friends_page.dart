@@ -17,7 +17,8 @@ class ChatFriendsPage extends StatefulWidget {
   final ChatCloudRepository? repository;
   final bool selectForChat;
   final bool selectForGroupInvite;
-  final Future<void> Function(BuildContext context)? onPhoneInvitation;
+  final Future<void> Function(BuildContext context, String source)?
+  onPhoneInvitation;
 
   @override
   State<ChatFriendsPage> createState() => _ChatFriendsPageState();
@@ -321,7 +322,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
           const SnackBar(content: Text('電話番号通知は準備中です。送信は行われていません。')),
         );
       } else {
-        await open(context);
+        await open(context, 'friend_add');
       }
       if (mounted) await _load();
       return;

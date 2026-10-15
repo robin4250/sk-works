@@ -41,7 +41,7 @@ class ChatCloudPage extends StatefulWidget {
   final bool showGroupsInitially;
   final bool createGroupInitially;
   final bool showFriendsInitially;
-  final Future<void> Function(BuildContext context)? onPhoneFriendInvitation;
+  final Future<void> Function(BuildContext context, String source)? onPhoneFriendInvitation;
   final String? initialLineDirectoryId;
   final String? initialGroupId;
   @visibleForTesting
