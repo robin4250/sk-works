@@ -4,14 +4,28 @@
 
 ## 対象と現在地
 
-- 統合元は PR #1065。確認画面・実会社印プレビュー・送信・承認を同じ版と会社印で照合する。
-- PR #1068 は Supabase CLI 2.121.0 の `migration new` で生成した `20261015080425_site_contract_sealed_revision.sql` を追加する。
+- PR #1065 の確認画面・実会社印プレビュー・送信・承認は main `e42ed70cf3cdc5ca3e5af615548efe18764067cd` へ統合済み。同じ版と会社印で照合する。
+- PR #1068 の migration と本手順は main `3db6e2bf04c113970ac5c6bc08317b0dc281af95` へ統合済み。source は Supabase CLI 2.121.0 の `migration new` で生成した `20261015080425_site_contract_sealed_revision.sql`。
 - migration は `tool/staged/site_contract_sealed_revision.sql` とバイト単位で同一。SHA256 は `5581fb8066792cf63400d22039fb89e90330b72b00e91a6c85943cc931245da3`。
-- この文書を追加した時点では本番未適用。#1065 の最新 head の全体 Flutter / iOS 検証は進行中。PGlite と実 PostgreSQL の競合検証は成功済み。過去 head の成功を新しい動作変更へ流用しない。
+- #1065 は head `1ea` の全7 checks（Flutter / iOS Release / PGlite / 実 PostgreSQL の競合検証を含む）の成功後に統合した。以後の動作変更にはその版の検証が必要。
+- 本番は公式 `apply_migration` で反映済み。公式履歴 `20261015083346 site_contract_sealed_revision` は上記 source に対応する。二重適用や履歴の改名はしない。
+- 「文書追加時点では未本番・全体 CI 中」は反映前の過去状態。現在はアプリ・migration の main 統合と本番反映が済んでおり、利用設定 OFF と下記の未完了項目は別に残っている。
 - 利用設定は初期 OFF を維持する。実押印・実承認・実通知を開発ツールから作成しない。
 - 通知 outbox は配送完了を意味しない。通知配送、契約書 PDF、適用日別の請求計算、実機確認は別の未完了項目。
 
+### 2026-10-15 本番反映後の確認記録
+
+- 新規 seals / notification outbox、既存の提案・確認・rollout は各0件。rollout は OFF を維持し、実押印・実承認・実通知は行っていない。
+- 新規 private 表の RLS・直接アクセス拒否、公開 RPC の anon 実行拒否を確認した。
+- 実ユーザー・実対象を使わない未ログイン確認で workspace / preview / send は `42501`、approve は nil 提案に対する not found で拒否された。これは実ユーザーによる押印・承認の動作確認ではない。
+- 下表の既存4関数の定義 MD5・ACL、既存会社2件・通知33件の内容は反映前後で不変。
+- security advisors は INFO 127 → 129。既存 WARNING の件数 158 / 1 は変わっていない。
+
+以上は反映時点の記録であり、将来の件数や状態を保証しない。再開時は適用済み履歴を確認し、必要な未完了作業へ進む。
+
 ## 反映前
+
+以下は未適用の変更を反映するときの手順。今回の migration は反映済みなので、再開時に同じ SQL を再実行しない。
 
 1. Issue #273、最新 main、#1065/#1068 の最新 head と検証結果を確認する。既存差分を破棄したり main を巻き戻したりしない。
 2. 本番への変更担当を一人に固定する。ほかの担当は隔離データベースだけで検証する。
