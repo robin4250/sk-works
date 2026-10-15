@@ -11,11 +11,13 @@ class ChatFriendsPage extends StatefulWidget {
     this.repository,
     this.selectForChat = false,
     this.selectForGroupInvite = false,
+    this.onPhoneInvitation,
   });
 
   final ChatCloudRepository? repository;
   final bool selectForChat;
   final bool selectForGroupInvite;
+  final Future<void> Function(BuildContext context)? onPhoneInvitation;
 
   @override
   State<ChatFriendsPage> createState() => _ChatFriendsPageState();
@@ -290,6 +292,40 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
   }
 
   Future<void> _openAdd() async {
+    final method = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.search),
+              title: const Text('ID検索'),
+              onTap: () => Navigator.pop(context, 'id'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.sms_outlined),
+              title: const Text('電話番号通知'),
+              subtitle: const Text('SKOアプリからの友達追加です'),
+              onTap: () => Navigator.pop(context, 'phone'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || method == null) return;
+    if (method == 'phone') {
+      final open = widget.onPhoneInvitation;
+      if (open == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('電話番号通知は準備中です。送信は行われていません。')),
+        );
+      } else {
+        await open(context);
+      }
+      if (mounted) await _load();
+      return;
+    }
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => ChatFriendsPage(repository: _repository),

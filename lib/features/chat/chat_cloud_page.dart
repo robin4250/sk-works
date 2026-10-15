@@ -28,6 +28,8 @@ class ChatCloudPage extends StatefulWidget {
     this.viewerOnlyFriends = false,
     this.showGroupsInitially = false,
     this.createGroupInitially = false,
+    this.showFriendsInitially = false,
+    this.onPhoneFriendInvitation,
     this.initialLineDirectoryId,
     this.initialGroupId,
     this.repository,
@@ -38,6 +40,8 @@ class ChatCloudPage extends StatefulWidget {
   final bool viewerOnlyFriends;
   final bool showGroupsInitially;
   final bool createGroupInitially;
+  final bool showFriendsInitially;
+  final Future<void> Function(BuildContext context)? onPhoneFriendInvitation;
   final String? initialLineDirectoryId;
   final String? initialGroupId;
   @visibleForTesting
@@ -121,6 +125,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   final Map<String, int> _summaryGenerations = {};
   String? _readScope;
   bool _initialGroupCreationOpened = false;
+  bool _initialFriendsOpened = false;
   bool _initialConversationOpened = false;
   final Map<String, ({String groupId, String state})> _lineDispatch = {};
   final Set<String> _lineDispatchBusy = {};
@@ -159,6 +164,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     if (widget.showGroupsInitially) {
       _tab = _ChatTab.groups;
     }
+    if (widget.showFriendsInitially) _tab = _ChatTab.friends;
     _load();
   }
 
@@ -336,6 +342,11 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       await _subscribeSummaryChanges();
       await _refreshUnreadCounts(groups);
       await _subscribeSelected();
+      if (mounted && widget.showFriendsInitially && !_initialFriendsOpened &&
+          repository.currentUserId == actor) {
+        _initialFriendsOpened = true;
+        await _openFriendsForChat();
+      }
       if (!_initialConversationOpened &&
           widget.initialGroupId != null &&
           mounted &&
@@ -1217,7 +1228,11 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   Future<void> _openFriendsForChat() async {
     final friend = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(
-        builder: (_) => const ChatFriendsPage(selectForChat: true),
+        builder: (_) => ChatFriendsPage(
+          repository: _repository,
+          selectForChat: true,
+          onPhoneInvitation: widget.onPhoneFriendInvitation,
+        ),
       ),
     );
     if (friend == null || !mounted) return;
