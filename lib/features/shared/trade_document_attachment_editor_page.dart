@@ -54,7 +54,6 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       if (_version == 0) {
         _payload.addAll(tradeDocumentDateDefaults(_payload['month'].toString()));
         if (_order) {
-          _payload['work_name'] = '鳶工・安全設備・足場組み立て解体作業';
           if (_payload['payment_conditions'] == null ||
               _payload['payment_conditions'].toString().trim().isEmpty ||
               _payload['payment_conditions'] == '工事完了確認後、乙の指定口座に振り込む。') {
