@@ -8,6 +8,7 @@ import 'line_import_draft.dart';
 import 'line_historical_monthly_import.dart';
 import 'line_import_repository.dart';
 import 'line_reading_rules.dart';
+import 'line_reading_rule_application.dart';
 import 'line_historical_monthly_import_page.dart';
 import 'line_historical_invoice_page.dart';
 import 'line_historical_amount_preview.dart';
@@ -210,8 +211,39 @@ class _LineImportPageState extends State<_LineImportPageContent> {
     }
   }
 
+  Future<void> _repairAssumed(int index, String field) async {
+    final row = _rows[index];
+    final controller = TextEditingController(text: '${row[field] ?? 1}');
+    String? error;
+    final value = await showDialog<double>(context: context, builder: (context) =>
+      StatefulBuilder(builder: (context, update) => AlertDialog(
+        title: Text(field == 'overtime_hours' ? '残業時間（仮）を確認' : '早出時間（仮）を確認'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${(lineAssumedFields(row)[field] as Map?)?['reason'] ?? ''}'),
+          TextField(controller: controller, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(labelText: '時間', errorText: error)),
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('戻る')),
+          FilledButton(onPressed: () {
+            final parsed = double.tryParse(controller.text);
+            if (parsed == null || !parsed.isFinite || parsed < 0 || parsed > 24) {
+              update(() => error = '0〜24時間で入力してください。'); return;
+            }
+            Navigator.pop(context, parsed);
+          }, child: const Text('この数値を採用'))],
+      )));
+    controller.dispose();
+    if (value != null && mounted) setState(() {
+      _rows[index] = lineRepairAssumedQuantity(row, field, value);
+      _comparisonConfirmed = false; _dirty = true;
+    });
+  }
+
   Future<void> _edit(int index) async {
     final row = Map<String, dynamic>.from(_rows[index]);
+    final assumed = lineAssumedFields(row);
+    var overtimeReviewed = !assumed.containsKey('overtime_hours');
+    var earlyReviewed = !assumed.containsKey('early_hours');
     final date = TextEditingController(text: row['work_date']?.toString() ?? '');
     final formalName = TextEditingController(text: row['formal_site_name']?.toString() ?? '');
     final days = TextEditingController(text: row['man_days']?.toString() ?? '');
@@ -242,10 +274,21 @@ class _LineImportPageState extends State<_LineImportPageContent> {
           onChanged: (value) => category = value ?? 'day', decoration: const InputDecoration(labelText: '勤務区分')),
         CheckboxListTile(value: steel, onChanged: (value) => update(() => steel = value == true), title: const Text('PC・鉄骨手当（設定を確認）')),
         TextField(controller: allowance, decoration: const InputDecoration(labelText: '手当名（登録名を「、」区切り）', hintText: '会社・現場に設定している名称')),
+        if (assumed.containsKey('overtime_hours')) CheckboxListTile(
+          value: overtimeReviewed, title: const Text('残業の仮値を確認して採用'),
+          subtitle: Text('${(assumed['overtime_hours'] as Map)['reason']}'),
+          onChanged: (v) => update(() => overtimeReviewed = v == true)),
+        if (assumed.containsKey('early_hours')) CheckboxListTile(
+          value: earlyReviewed, title: const Text('早出の仮値を確認して採用'),
+          subtitle: Text('${(assumed['early_hours'] as Map)['reason']}'),
+          onChanged: (v) => update(() => earlyReviewed = v == true)),
         if (validation != null) Text(validation!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
       ])),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('戻る')),
         FilledButton(onPressed: () {
+          if (!overtimeReviewed || !earlyReviewed) {
+            update(() => validation = '仮の時間を確認し、採用する項目にチェックしてください。'); return;
+          }
           final workDate = DateTime.tryParse(date.text.trim());
           if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date.text.trim()) || workDate == null || workDate.toIso8601String().substring(0, 10) != date.text.trim() || workDate.year != _month.year || workDate.month != _month.month) {
             update(() => validation = '対象月の日付をYYYY-MM-DD形式で入力してください。'); return;
@@ -257,7 +300,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
           if (steel && allowance.text.trim().isEmpty) { update(() => validation = 'PC・鉄骨手当の登録名を入力してください。'); return; }
           final w = _workers.singleWhere((item) => item['id'] == worker), s = _sites.singleWhere((item) => item['id'] == site);
           Navigator.pop(context, {...row, 'work_date': date.text.trim(), 'worker_id': worker, 'worker_name': w['name'], 'site_id': site, 'site_name': s['name'], 'customer_id': s['customer_id'], 'formal_site_name': formalName.text.trim(),
-            'man_days': quantity, 'man_days_inferred': false, 'overtime_hours': ot, 'early_hours': eh, 'night_work': category == 'night' || category == 'holiday_night', 'work_category': category, 'allowance_names': allowance.text.split('、').map((name) => name.trim()).where((name) => name.isNotEmpty).toSet().toList(), 'steel_allowance': steel, 'confirmed': true, 'review_reason': ''});
+            'assumed_fields': <String, dynamic>{}, 'man_days': quantity, 'man_days_inferred': false, 'overtime_hours': ot, 'early_hours': eh, 'night_work': category == 'night' || category == 'holiday_night', 'work_category': category, 'allowance_names': allowance.text.split('、').map((name) => name.trim()).where((name) => name.isNotEmpty).toSet().toList(), 'steel_allowance': steel, 'confirmed': true, 'review_reason': ''});
         }, child: const Text('確認済みにする'))],
     )));
     date.dispose(); formalName.dispose(); days.dispose(); overtime.dispose(); early.dispose(); allowance.dispose();
@@ -266,7 +309,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
 
   Future<void> _save() async {
     if (_groupId == null) return;
-    final allConfirmed = _rows.where((row) => row['excluded'] != true).every((row) => row['confirmed'] == true);
+    final allConfirmed = _rows.where((row) => row['excluded'] != true).every((row) => row['confirmed'] == true && !lineHasAssumedQuantities(row));
     final confirmed = _comparisonConfirmed && allConfirmed && _note.text.trim().isNotEmpty;
     if (_comparisonConfirmed && (!allConfirmed || _note.text.trim().isEmpty || !_rows.any((row) => row['excluded'] != true))) {
       _show('明細の確認とLINEノートの照合メモを確認してください。'); return;
@@ -429,7 +472,7 @@ class _LineImportPageState extends State<_LineImportPageContent> {
           })),
         if (widget.monthlyTable) ...[
           const SizedBox(height: 12),
-          const Text('連携チャットと書き出しデータをまとめた月間表です。行を押して手入力で修正できます。'),
+          const Text('連携チャットと書き出しデータをまとめた月間表です。行を押して手入力で修正できます。（仮）の時間はその数値を押して個別修正し、仮値を採用する場合も確認操作が必要です。'),
           OutlinedButton.icon(onPressed: _monthLocked || _groupId == null ? null : _openMonthlyImport,
             icon: const Icon(Icons.file_open_outlined), label: const Text('TXT・ZIPと受信データを月間表へ入れ直す')),
           if (_canEdit) FilledButton(onPressed: _busy || !_enabled ? null : _save, child: Text(_pending == null ? '月間表を保存' : '同じ内容を再送')),
@@ -480,8 +523,10 @@ class _LineImportPageState extends State<_LineImportPageContent> {
                   DataCell(Text(row['site_name']?.toString() ?? '')),
                   DataCell(Text(row['formal_site_name']?.toString() ?? '未入力')),
                   DataCell(Text(row['man_days'] == null ? '要確認' : '${row['man_days']}${row['man_days_inferred'] == true ? '（仮）' : ''}')),
-                  DataCell(Text(row['overtime_hours']?.toString() ?? '要確認')),
-                  DataCell(Text(row['early_hours']?.toString() ?? '要確認')),
+                  DataCell(Text('${row['overtime_hours'] ?? '要確認'}${lineAssumedFields(row).containsKey('overtime_hours') ? '（仮）' : ''}'),
+                    onTap: editable && lineAssumedFields(row).containsKey('overtime_hours') ? () => _repairAssumed(_rows.indexOf(row), 'overtime_hours') : null),
+                  DataCell(Text('${row['early_hours'] ?? '要確認'}${lineAssumedFields(row).containsKey('early_hours') ? '（仮）' : ''}'),
+                    onTap: editable && lineAssumedFields(row).containsKey('early_hours') ? () => _repairAssumed(_rows.indexOf(row), 'early_hours') : null),
                   DataCell(Text((row['allowance_names'] as List? ?? []).join('、'))),
                 ],
               )])),
@@ -499,6 +544,8 @@ class _LineImportPageState extends State<_LineImportPageContent> {
                 icon: const Icon(Icons.add), label: const Text('この投稿から行を追加・振り分け')),
             ]),
         ],
+        if (_rows.any(lineHasAssumedQuantities))
+          const Text('（仮）の時間は未確認です。仮の数値を押すとその欄だけ修正できます。確認済み集計・正式請求へは含めません。'),
         const Divider(), Text('明細 ${shown.length}件', style: Theme.of(context).textTheme.titleMedium),
         for (var index = 0; index < _rows.length; index++) if (_workerFilter == null || _rows[index]['worker_id'] == _workerFilter) Card(child: ListTile(
           title: Text('${_rows[index]['work_date']}  ${_rows[index]['worker_name']}'),

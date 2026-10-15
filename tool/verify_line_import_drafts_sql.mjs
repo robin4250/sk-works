@@ -140,4 +140,18 @@ assert.equal((await db.query('select count(*)::int n from attendance_entries')).
 await db.exec('delete from attendance_entries');
 const missingAllowance=await save(88,1,[{...row(0,'本人'),allowance_names:['未登録手当']}],[source],'invoice',true);
 await rejected(()=>q('select public.line_invoice_preview($1,2) value',[missingAllowance.draft_id]),/手当の名称/);
+// Structured per-field assumptions survive the actual save/load JSONB contract.
+const assumedFields={overtime_hours:{value:1,reason:'時間未記載のため仮1時間',source_message_id:source.id},early_hours:{value:1,reason:'時間未記載のため仮1時間',source_message_id:source.id}};
+const assumedRow={...row(0,'本人'),confirmed:false,overtime_hours:1,early_hours:1,assumed_fields:assumedFields};
+const assumedDraft=await save(90,2,[assumedRow],[source],'invoice',false);
+const assumedLoaded=await q("select public.line_import_workspace($1,'invoice','2026-10-01') value",[id(20)]);
+assert.deepEqual(assumedLoaded.candidate_rows[0].assumed_fields,assumedFields);
+assert.equal(assumedLoaded.candidate_rows[0].confirmed,false);
+await rejected(()=>q('select public.line_invoice_preview($1,$2) value',[assumedDraft.draft_id,assumedDraft.revision]),/LINE確認データを保存し直してください/);
+const repairedFields={early_hours:assumedFields.early_hours};
+await save(91,3,[{...assumedRow,overtime_hours:3,assumed_fields:repairedFields}],[source],'invoice',false);
+const repairedLoaded=await q("select public.line_import_workspace($1,'invoice','2026-10-01') value",[id(20)]);
+assert.equal(repairedLoaded.candidate_rows[0].overtime_hours,3);
+assert.deepEqual(repairedLoaded.candidate_rows[0].assumed_fields,repairedFields);
+assert.equal(repairedLoaded.candidate_rows[0].confirmed,false);
 await db.close();console.log('LINE imports: reversible Master flags, own-worker privacy, source/revision/duplicate guards, signature to ordinary approval, exact general invoice math, drift rejection and atomic draft receipts passed.');

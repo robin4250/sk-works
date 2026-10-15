@@ -27,3 +27,15 @@ revision 競合防止・初回挿入の排他・入力型/長さ/重複検査。
 - Flutter/iOS CI、実機操作、本番 migration は未完了
 
 過去表の再集計・全分類適用・数値予測・正式請求完了とは案内しない。辞書の未適用migrationだけにMaster専用guardを追加。既存import access本体は不変更、本番適用なし。会社owner/admin/managerだけではRPC直呼び不可。実import/access定義を読込む隔離fixtureで境界を検証。
+
+## 残分類・仮時間の候補解釈（別段階）
+
+- 対象は新規未確認候補のみ。同fingerprintの保存済み行、手修正、確認済みは維持。原文へ文字置換しない。
+- 残業・早出の明示値は実数、語句だけなら仮1時間。assumed_fieldsに対象field/value/reason/source_message_idを保存。
+- 月別表の仮数値を押してその欄だけ修正でき、当該metadataだけ解除。他の値・仮状態・出典は保持、confirmedは自動trueにしない。
+- 通常の確認操作でも仮値の採用を明示確認。仮metadataがある間は確認済集計から除外し、正式保存の確認条件を満たさない。
+- 手当はallowance_names、勤務区分はday/night/holiday/holiday_nightへの明確な対応のみ。対象外はtoken単位で、行を削除しない。
+- 同一現場でも従業員名を照合して残業を個別解釈。複数の現場だけの報告から一意に選べない場合は未確認のまま。
+- 既存JSONB保存契約でstructured metadataが保存・再読込・片側補修されることと、未確認の正式preview拒否を隔離検証。SQL変更なし。
+
+残件：手当回数の個別数量、区分の曖昧表現・自由文推測、既存保存行へ辞書を再適用するプレビュー、server側対象ID辞書契約、同一人物の重複報告の選択。仮数値は勤務語のある残業・早出1時間に限定し、人工や単価を無条件に作らない。
