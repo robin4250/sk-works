@@ -1905,8 +1905,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       const SizedBox(height: 6),
                       Text(
                         SkoLanguageController.isEnglish
-                            ? 'Manage Home and Menu in one list. Toggle visibility, drag to reorder, and choose 1–4 columns.'
-                            : 'ホームとメニューを同じ一覧で管理します。管理者メニューに表示される全項目をホームボタンにできます。スイッチで表示ON/OFF、項目を長押しして上下へドラッグ、1〜4列を選択できます。',
+                            ? 'Manage Home and Menu in one list. Toggle visibility, drag to reorder, and choose 1–4 columns. Borders match Home: thick for administrators, double for viewers, single for sub-administrators.'
+                            : 'ホームとメニューを同じ一覧で管理します。管理者メニューに表示される全項目をホームボタンにできます。スイッチで表示ON/OFF、項目を長押しして上下へドラッグ、1〜4列を選択できます。カードの枠はホームと共通で、管理者は太枠、閲覧権限は二重枠、サブ管理者は一本枠です。',
                       ),
                       const SizedBox(height: 12),
                       SegmentedButton<int>(
@@ -1939,11 +1939,22 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           onReorderItem: _reorderHomeAction,
           itemBuilder: (context, i) {
             final item = items[i];
+            final access = _shortcutAccessForMenuItem(item);
+            final doubleBorder =
+                (access == HomeShortcutAccess.viewer ||
+                    item.key == 'payment_certificates') &&
+                item.key != 'employee_resources';
+            final borderWidth = access == HomeShortcutAccess.admin
+                ? 4.0
+                : (access == HomeShortcutAccess.subAdmin ||
+                        access == HomeShortcutAccess.viewer || doubleBorder
+                    ? 1.8
+                    : 0.0);
             return Padding(
               key: ValueKey('menu_${item.key}'),
               padding: const EdgeInsets.only(bottom: 8),
               child: Container(
-                decoration: item.key == 'payment_certificates'
+                decoration: doubleBorder
                     ? BoxDecoration(
                         border: Border.all(
                           color: Theme.of(context).colorScheme.primary,
@@ -1953,14 +1964,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       )
                     : null,
                 child: Card(
-                  margin: item.key == 'payment_certificates'
+                  margin: doubleBorder
                       ? const EdgeInsets.all(3)
                       : null,
-                  shape: item.key == 'payment_certificates'
+                  shape: borderWidth > 0
                       ? RoundedRectangleBorder(
                           side: BorderSide(
                             color: Theme.of(context).colorScheme.primary,
-                            width: 1.8,
+                            width: borderWidth,
                           ),
                           borderRadius: BorderRadius.circular(20),
                         )
