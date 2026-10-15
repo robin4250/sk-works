@@ -193,6 +193,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         return;
       }
       if (destination == null && target.actionKey != null) {
+        if (!pageContext.mounted) return;
         ScaffoldMessenger.of(pageContext).showSnackBar(
           SnackBar(content: Text(SkoLanguageController.tr('関連画面への案内を準備しています'))),
         );
