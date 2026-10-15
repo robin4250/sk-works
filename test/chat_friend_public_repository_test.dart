@@ -103,7 +103,9 @@ void main() {
             }
           }
         } finally {
-          if (!release.isCompleted) release.complete();
+          if (!release.isCompleted) {
+            release.complete();
+          }
           await client.dispose();
           await server.close(force: true);
         }

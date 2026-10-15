@@ -43,6 +43,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
 
   Map<String, dynamic> _workspace = const {};
   Map<String, dynamic>? _searchResult;
+  int _workspaceLoadEpoch = 0;
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -64,6 +65,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         if (!mounted || actor == _actor) return;
         _actor = actor;
         _profileActorEpoch.value++;
+        _workspaceLoadEpoch++;
         setState(() {
           _workspace = const {};
           _pinnedFriends = {};
@@ -92,12 +94,13 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       return;
     }
 
+    final actor = repository.currentUserId;
+    final epoch = _profileActorEpoch.value;
+    final loadEpoch = ++_workspaceLoadEpoch;
     try {
-      final actor = repository.currentUserId;
-      final epoch = _profileActorEpoch.value;
       final workspace = await repository.loadFriendWorkspace();
       final prefs = widget.selectForChat ? await SharedPreferences.getInstance() : null;
-      if (!mounted || (actor != repository.currentUserId || epoch != _profileActorEpoch.value)) return;
+      if (!mounted || (actor != repository.currentUserId || epoch != _profileActorEpoch.value || loadEpoch != _workspaceLoadEpoch)) return;
       setState(() {
         _actor = actor;
         _pinnedFriends = actor == null
@@ -109,7 +112,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || actor != repository.currentUserId || epoch != _profileActorEpoch.value || loadEpoch != _workspaceLoadEpoch) return;
       setState(() {
         _loading = false;
         _error = error.toString();
