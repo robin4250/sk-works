@@ -132,7 +132,7 @@ class _SiteContractActionReviewPageState extends State<SiteContractActionReviewP
         actions: [IconButton(tooltip: '使い方', icon: const Icon(Icons.help_outline),
           onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(
             title: const Text('押印前の確認'),
-            content: const Text('最新版の条件と、サーバーから取得した実会社印を確認してチェックしてください。金額は既存候補をそのまま使い、変更しません。送信で適用開始日が未登録の場合は対象期間内の日付を入力します。実行直前に版と会社印を再確認し、サーバーも同一印のhashを原子的に検証します。応答不明時は成功とせず、再読み込みで記録を確認してください。相手の承認は自動作成しません。双方承認・適用日までは現行の合意を保持します。操作の有効化・本番配備・PDFや請求計算への接続は別の確認が必要です。'),
+            content: const Text('最新版の条件と登録済みの会社印を確認してチェックしてください。金額は現在の候補をそのまま使います。送信時に適用開始日が未登録の場合は、対象期間内の日付を入力してください。実行直前に条件と会社印を再確認します。変更があれば処理を止めるので、再読み込みして確認し直してください。結果が確認できない場合は、保存記録を確認してから操作してください。相手の承認は自動では行われません。双方の承認と適用日までは現在の合意を保持します。この画面の承認だけでは請求金額は変わりません。'),
             actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
           )))],
       ),
