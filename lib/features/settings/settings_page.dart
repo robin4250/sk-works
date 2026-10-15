@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../notifications/notification_bell.dart';
+import '../referrals/app_referral_personal_entry.dart';
+import '../referrals/app_referral_repository.dart';
+import '../companies/company_profile_review_page.dart';
 import '../companies/company_link_page.dart';
 import '../companies/trade_company_repository.dart';
 import '../help/floating_help_controller.dart';
@@ -164,6 +167,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      if (_usesCloud)
+                        AppReferralPersonalEntry(
+                          repository: AppReferralRepository(SupabaseBackend.client),
+                        ),
                       Text(
                         SkoLanguageController.tr('表示言語'),
                         style: Theme.of(context).textTheme.titleMedium,
@@ -337,6 +344,24 @@ class _SettingsPageState extends State<SettingsPage> {
                                   ),
                                 );
                               },
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Card(
+                            child: ListTile(
+                              leading: const Icon(Icons.business_outlined),
+                              title: const Text('連携会社情報の更新確認'),
+                              subtitle: const Text(
+                                '変更通知のON／OFF・旧情報と更新候補の比較。'
+                                '確認した場合だけ登録内容を更新します。'
+                                '操作方法は右上の？から確認できます。',
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const CompanyProfileReviewPage(),
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 16),

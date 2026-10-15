@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../referrals/app_referral_master_entry.dart';
+import '../referrals/app_referral_repository.dart';
 import '../chat/line_import_feature_settings_panel.dart';
 import '../../international/language_controller.dart';
 import '../../data/supabase_backend.dart';
@@ -19,6 +21,9 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
   final _repository = MasterFeatureControlsRepository.maybeCreate();
   final _weatherProviderRepository = SupabaseBackend.isInitialized
       ? WeatherProviderSettingsRepository(SupabaseBackend.client) : null;
+
+  final _referralRepository = SupabaseBackend.isInitialized
+      ? AppReferralRepository(SupabaseBackend.client) : null;
 
   MasterFeatureAvailability? _availability;
   bool _loading = true;
@@ -140,6 +145,8 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
                     : ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
+                          if (_referralRepository != null)
+                            AppReferralMasterEntry(repository: _referralRepository),
                           const LineImportFeatureSettingsPanel(),
                           if (_weatherProviderRepository != null)
                             WeatherProviderSettingsPanel(
