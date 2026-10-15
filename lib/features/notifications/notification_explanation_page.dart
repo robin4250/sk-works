@@ -52,17 +52,19 @@ class _NotificationExplanationPageState
   Future<void> _checkAvailability() async {
     try {
       final available = await widget.canOpenTarget?.call() ?? true;
-      if (mounted)
+      if (mounted) {
         setState(() {
           _available = available;
           _checking = false;
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _available = false;
           _checking = false;
         });
+      }
     }
   }
 
@@ -76,6 +78,7 @@ class _NotificationExplanationPageState
         if (mounted) setState(() => _available = false);
         return;
       }
+      if (!mounted) return;
       await widget.openTarget(context);
     } catch (_) {
       if (mounted) setState(() => _error = '対象を開けません。削除・権限・機能の利用状態を確認してください。');
