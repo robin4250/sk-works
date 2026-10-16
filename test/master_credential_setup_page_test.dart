@@ -9,7 +9,7 @@ class _Access implements MasterCredentialAccess {
   @override MasterCredentialBinding? binding = _binding;
   final events = StreamController<void>.broadcast(sync: true);
   @override Stream<void> get changes => events.stream;
-  bool configured = false, denied = false, unknown = false, found = false;
+  bool configured = false, denied = false, unknown = false, found = false, terminal = false;
   int begins = 0, commits = 0, receipts = 0;
   String? operation, verification, password;
   MasterCredentialPending? journal;
@@ -21,7 +21,7 @@ class _Access implements MasterCredentialAccess {
   @override Future<MasterCredentialChallenge> begin(MasterCredentialBinding binding, MasterCredentialPending pending) async { begins++; operation = pending.operation; if (beginWait != null) return beginWait!.future; return challenge(); }
   MasterCredentialChallenge challenge() => MasterCredentialChallenge(id: 'challenge', nonce: 'synthetic-in-memory', expiresAt: DateTime.now().toUtc().add(const Duration(seconds: 120)));
   @override Future<void> commit(MasterCredentialBinding binding, MasterCredentialPending pending, MasterCredentialChallenge challenge, {required String verificationPassword, required String newPassword}) async { commits++; verification = verificationPassword; password = newPassword; if (commitWait != null) await commitWait!.future; if (unknown) throw StateError('synthetic unknown'); }
-  @override Future<bool> receipt(MasterCredentialBinding binding, MasterCredentialPending pending) async { receipts++; return found; }
+  @override Future<MasterCredentialReceipt> receipt(MasterCredentialBinding binding, MasterCredentialPending pending) async { receipts++; return terminal ? MasterCredentialReceipt.notApplied : found ? MasterCredentialReceipt.applied : MasterCredentialReceipt.pending; }
   @override Future<MasterCredentialPending?> pending(MasterCredentialBinding binding) async => journal;
   @override Future<void> remember(MasterCredentialPending pending) async { journal = pending; if (rememberWait != null) await rememberWait!.future; }
   @override Future<void> forget(MasterCredentialPending pending) async { if (journal?.requestId == pending.requestId) journal = null; }
@@ -116,6 +116,15 @@ void main() {
     oldChallenge.complete(access.challenge()); for (var i = 0; i < 5; i++) { await t.pump(); }
     access.rememberWait!.complete(); await t.pumpAndSettle();
     expect(access.commits, 1); expect(find.text('Master専用パスワードの保存が完了しました。'), findsOneWidget);
+  });
+  testWidgets('explicit terminal not_applied clears pending without claiming success or resending', (t) async {
+    final access = _Access()..unknown = true; await _show(t, access); await _fill(t);
+    await t.tap(find.text('初回登録して保存')); await t.pumpAndSettle();
+    access.terminal = true; await t.tap(find.text('保存結果を照合')); await t.pumpAndSettle();
+    expect(access.commits, 1); expect(access.journal, isNull);
+    expect(find.text('Master専用パスワードの保存が完了しました。'), findsNothing);
+    expect(find.textContaining('保存されていないことを確認しました'), findsOneWidget);
+    expect(find.text('再読み込み'), findsOneWidget);
   });
   testWidgets('unknown result never resends and not_found receipt remains pending', (t) async {
     final access = _Access()..unknown = true; await _show(t, access); await _fill(t);

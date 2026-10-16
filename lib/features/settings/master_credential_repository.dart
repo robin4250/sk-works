@@ -36,13 +36,14 @@ class MasterCredentialPending {
   bool belongsTo(MasterCredentialBinding binding) => actor == binding.actor && sessionId == binding.sessionId && deviceFingerprint == binding.deviceFingerprint;
   Map<String, dynamic> toJson() => {'actor': actor, 'session_id': sessionId, 'device_fingerprint': deviceFingerprint, 'request_id': requestId, 'operation': operation, 'version': version};
 }
+enum MasterCredentialReceipt { applied, notApplied, pending }
 abstract class MasterCredentialAccess {
   MasterCredentialBinding? get binding;
   Stream<void> get changes;
   Future<MasterCredentialStatus> read(MasterCredentialBinding binding);
   Future<MasterCredentialChallenge> begin(MasterCredentialBinding binding, MasterCredentialPending pending);
   Future<void> commit(MasterCredentialBinding binding, MasterCredentialPending pending, MasterCredentialChallenge challenge, {required String verificationPassword, required String newPassword});
-  Future<bool> receipt(MasterCredentialBinding binding, MasterCredentialPending pending);
+  Future<MasterCredentialReceipt> receipt(MasterCredentialBinding binding, MasterCredentialPending pending);
   Future<MasterCredentialPending?> pending(MasterCredentialBinding binding);
   Future<void> remember(MasterCredentialPending pending);
   Future<void> forget(MasterCredentialPending pending);
@@ -114,13 +115,16 @@ class MasterCredentialRepository implements MasterCredentialAccess {
     final value = await _rpc('complete_master_password_operation', captured, {'p_device_key': captured.deviceKey, 'p_challenge_id': challenge.id, 'p_nonce': challenge.nonce, 'p_existing_password': verificationPassword, 'p_new_password': newPassword, 'p_request_id': pending.requestId});
     _applied(value, pending);
   }
-  @override Future<bool> receipt(MasterCredentialBinding captured, MasterCredentialPending pending) async {
+  @override Future<MasterCredentialReceipt> receipt(MasterCredentialBinding captured, MasterCredentialPending pending) async {
     _pendingBinding(captured, pending);
     final value = await _rpc('read_master_password_request', captured, {'p_device_key': captured.deviceKey, 'p_request_id': pending.requestId});
     if (value['request_id'] != pending.requestId) throw const FormatException('Invalid Master receipt');
-    if (value['status'] == 'not_found' && _keys(value, {'protocol','status','request_id'})) return false;
+    if (_keys(value, {'protocol','status','request_id'})) {
+      if (value['status'] == 'not_found') return MasterCredentialReceipt.pending;
+      if (value['status'] == 'not_applied') return MasterCredentialReceipt.notApplied;
+    }
     if (value['status'] != 'found' || !_keys(value, {'protocol','status','request_id','result'})) throw const FormatException('Invalid Master receipt');
-    _applied(_response(value['result']), pending); return true;
+    _applied(_response(value['result']), pending); return MasterCredentialReceipt.applied;
   }
   // Only nonsecret operation identity is durable. Never store credentials/nonce.
   String _prefix(String actor, String session) => 'sko_master_credential_pending_${actor}_${session}_';
