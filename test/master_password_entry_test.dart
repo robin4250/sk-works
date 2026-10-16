@@ -39,8 +39,8 @@ Future<void> _show(WidgetTester t, _Access access, {bool wrapper = false, bool s
   t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   final child = const Scaffold(body: Text('MASTER-PRIVATE-CONTENT'));
   await t.pumpWidget(MaterialApp(home: wrapper
-    ? MasterProtectedPage(title: 'Master', child: child, dedicatedMode: true, dedicatedAccess: access)
-    : MasterPasswordProtectedPage(title: 'Master', child: child, access: access, settingsBuilder: settingsBuilder)));
+    ? MasterProtectedPage(title: 'Master', dedicatedMode: true, dedicatedAccess: access, child: child)
+    : MasterPasswordProtectedPage(title: 'Master', access: access, settingsBuilder: settingsBuilder, child: child)));
   if (settle) { await t.pumpAndSettle(); } else { await t.pump(); await t.pump(); }
 }
 Future<void> _unlock(WidgetTester t, {String password = 'dedicated-master-password', bool settle = true}) async {

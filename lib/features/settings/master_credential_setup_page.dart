@@ -111,12 +111,16 @@ class _MasterCredentialSetupPageState extends State<MasterCredentialSetupPage> w
     final generation = ++_generation; _loaded = binding;
     setState(() { _busy = true; _message = null; });
     try {
-      final found = await widget.access.receipt(binding, pending);
+      final result = await widget.access.receipt(binding, pending);
       if (!_valid(generation, binding)) return;
-      if (found) {
+      if (result == MasterCredentialReceipt.applied || result == MasterCredentialReceipt.notApplied) {
         if (!await _forget(pending)) throw StateError('Operation identity unresolved');
         if (!_valid(generation, binding)) return;
-        setState(() { _pending = null; _complete = true; });
+        setState(() {
+          _pending = null; _status = null;
+          _complete = result == MasterCredentialReceipt.applied;
+          _message = _complete ? null : 'この操作は保存されていないことを確認しました。再読み込みして、新しく本人確認してください。';
+        });
       } else { setState(() => _message = '保存結果はまだ確定できません。再送せず、時間をおいて再度照合してください。'); }
     } catch (_) { if (_valid(generation, binding)) setState(() => _message = '結果を照合できませんでした。再送せず、時間をおいて確認してください。'); }
     finally { if (mounted && generation == _generation) setState(() => _busy = false); }

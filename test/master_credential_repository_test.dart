@@ -26,7 +26,7 @@ class _Wire {
       else if (name == 'current_master_password_status') { value = {'protocol':_protocol,'status':denied ? 'denied':'ready',if (!denied) 'configured':false,if (!denied) 'credential_version':0}; }
       else if (name == 'begin_master_password_operation') { value = {'protocol':_protocol,'status':'challenge','operation':'setup','expected_version':0,'request_id':_request,'challenge_id':_challenge,'nonce':List.filled(64,'a').join(),'expires_at':DateTime.now().toUtc().add(const Duration(seconds:120)).toIso8601String()}; }
       else if (name == 'complete_master_password_operation') { value = malformed ? {..._applied(),'credential_version':2} : _applied(); }
-      else if (name == 'read_master_password_request') { value = {'protocol':_protocol,'status':found ? 'found':'not_found','request_id':_request,if(found) 'result':_applied()}; }
+      else if (name == 'read_master_password_request') { value = {'protocol':_protocol,'status':terminal ? 'not_applied' : found ? 'found':'not_found','request_id':_request,if(found) 'result':_applied()}; }
       else { throw StateError('Unexpected fixture request'); }
       return http.Response(jsonEncode(value),200,headers:{'content-type':'application/json'},request:r);
     }));
@@ -34,7 +34,7 @@ class _Wire {
   }
   late final SupabaseClient client;
   late final MasterCredentialRepository repository;
-  bool enabled = true, denied = false, malformed = false, found = false;
+  bool enabled = true, denied = false, malformed = false, found = false, terminal = false;
   final calls = <http.Request>[];
   Future<void> start() => client.auth.setInitialSession(jsonEncode(_session()));
   MasterCredentialPending pending() => MasterCredentialPending(actor:_actor,sessionId:_sid,deviceFingerprint:repository.binding!.deviceFingerprint,requestId:_request,operation:'setup',version:0);
@@ -63,8 +63,9 @@ void main() {
     final w = _Wire(); await w.start(); final binding = w.repository.binding!; final pending = w.pending();
     final challenge = await w.repository.begin(binding,pending); w.malformed = true;
     await expectLater(w.repository.commit(binding,pending,challenge,verificationPassword:'synthetic-secondary',newPassword:'synthetic-master'),throwsA(isA<FormatException>()));
-    expect(await w.repository.receipt(binding,pending),false); w.found = true;
-    expect(await w.repository.receipt(binding,pending),true);
+    expect(await w.repository.receipt(binding,pending),MasterCredentialReceipt.pending); w.terminal = true;
+    expect(await w.repository.receipt(binding,pending),MasterCredentialReceipt.notApplied); w.terminal = false; w.found = true;
+    expect(await w.repository.receipt(binding,pending),MasterCredentialReceipt.applied);
     expect(jsonDecode(w.calls.last.body),{'p_device_key':_device,'p_request_id':_request});
     await w.client.dispose();
   });

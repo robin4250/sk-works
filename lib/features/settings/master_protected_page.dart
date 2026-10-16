@@ -262,7 +262,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
 
   @override
   Widget build(BuildContext context) {
-    if (widget.dedicatedMode) return MasterPasswordProtectedPage(title: widget.title, child: widget.child, access: widget.dedicatedAccess);
+    if (widget.dedicatedMode) return MasterPasswordProtectedPage(title: widget.title, access: widget.dedicatedAccess, child: widget.child);
     if (_loading) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),

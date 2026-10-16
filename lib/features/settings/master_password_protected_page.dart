@@ -43,6 +43,7 @@ class _MasterPasswordProtectedPageState extends State<MasterPasswordProtectedPag
     if (!_current && (_loaded != null || _busy)) _lock(rebuild: false);
   }
   void _lock({bool rebuild = true}) {
+    if (!mounted) return;
     _generation++; _password.clear(); _clearCaptured?.call();
     _expiry?.cancel(); _expiry = null;
     final wait = _resume; _resume = null;
@@ -150,6 +151,7 @@ class _MasterPasswordProtectedPageState extends State<MasterPasswordProtectedPag
       if (!_valid(generation, binding)) return;
       if (!await _face(generation, binding)) throw const MasterCredentialRejected('not_verified');
       if (!_valid(generation, binding)) return;
+      if (!mounted) return;
       await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => widget.settingsBuilder?.call(access.settingsAccess) ?? MasterCredentialSetupPage(access: access.settingsAccess)));
       // Settings success never grants unlock. Re-read and request dedicated auth.
       if (mounted && binding.sameAs(access.binding) && _current && _lifecycle == AppLifecycleState.resumed) {
