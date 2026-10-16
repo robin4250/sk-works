@@ -1,0 +1,19 @@
+name: Personnel export PDF preview
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/personnel_export_page.dart'
+      - 'lib/features/shared/pdf_pinch_pages.dart'
+      - 'test/personnel_export_pdf_preview_test.dart'
+      - '.github/workflows/personnel-export-pdf-preview.yml'
+jobs:
+  focused-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/people/personnel_export_page.dart test/personnel_export_pdf_preview_test.dart
+      - run: flutter test test/personnel_export_pdf_preview_test.dart test/pdf_pinch_pages_test.dart --reporter expanded

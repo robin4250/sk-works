@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -5,6 +7,7 @@ import 'package:printing/printing.dart';
 
 import '../../domain/company_data_transfer.dart';
 import '../../domain/personnel_export_selection.dart';
+import '../shared/pdf_pinch_pages.dart';
 
 enum PersonnelExportOperation { send, print }
 
@@ -271,6 +274,38 @@ class _PersonnelExportPageState extends State<PersonnelExportPage> {
         ],
       ),
     );
-    await Printing.layoutPdf(onLayout: (_) => document.save());
+    final bytes = await document.save();
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => PersonnelExportPdfPreviewPage(bytes: bytes),
+      ),
+    );
   }
+}
+class PersonnelExportPdfPreviewPage extends StatelessWidget {
+  const PersonnelExportPdfPreviewPage({super.key, required this.bytes});
+  final Uint8List bytes;
+
+  /// Reuses one generated document for the preview and native print action.
+  static PdfPreview previewFor(Uint8List bytes) => PdfPreview(
+    build: (_) async => bytes,
+    initialPageFormat: PdfPageFormat.a4,
+    canChangeOrientation: false,
+    canChangePageFormat: false,
+    canDebug: false,
+    dynamicLayout: false,
+    useActions: true,
+    allowPrinting: true,
+    allowSharing: false,
+    pagesBuilder: (context, pages) => PdfPinchPages(pages: pages),
+    onError: (_, __) => const Center(
+      child: Text('PDFを表示できませんでした。戻って再度お試しください。')),
+  );
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('出力内容のPDFプレビュー')),
+    body: previewFor(bytes),
+  );
 }
