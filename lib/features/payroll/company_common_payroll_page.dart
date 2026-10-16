@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
+import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'company_common_allowance_repository.dart';
 import 'company_common_allowance_pending_store.dart';
@@ -174,8 +174,8 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     if (!_valid(generation) || _busy || _confirming || _pending != null || _conflict || _state?.canEdit != true) throw StateError('現在は保存できません');
     final legacy = [for (final slot in _state!.legacyRefs) {
       'slot': slot['slot'], 'id': slot['id'], 'generation': slot['generation'],
-      'name': _legacyNames[slot['slot']]!.text.trim().isEmpty ? null : _legacyNames[slot['slot']]!.text.trim(),
-      'source_unit': _legacyUnits[slot['slot']]!.text.trim(), 'amount_yen': int.parse(_legacyAmounts[slot['slot']]!.text.trim()),
+      'name': _legacyNames[slot['slot']]!.text == (slot['name'] ?? '') ? slot['name'] : (_legacyNames[slot['slot']]!.text.trim().isEmpty ? null : _legacyNames[slot['slot']]!.text.trim()),
+      'source_unit': _legacyUnits[slot['slot']]!.text == slot['source_unit'] ? slot['source_unit'] : _legacyUnits[slot['slot']]!.text.trim(), 'amount_yen': int.parse(_legacyAmounts[slot['slot']]!.text.trim()),
     }];
     final adoption = _state!.expectedSource['legacy_adopted'] != true;
     if (adoption) {
@@ -188,7 +188,13 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
       if (mounted) setState(() => _confirming = false);
       if (confirmed != true || !_valid(generation)) throw StateError('保存を中止しました');
     }
-    final pending = CompanyCommonAllowancePending(actorId: _actor!, companyId: widget.companyId, payrollType: type.name, expectedVersion: _state!.version, expectedSource: _state!.expectedSource, legacySlots: legacy, confirmAdoption: adoption, requestId: const Uuid().v4(), items: [
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+    final requestId = '${hex.substring(0,8)}-${hex.substring(8,12)}-${hex.substring(12,16)}-${hex.substring(16,20)}-${hex.substring(20)}';
+    final pending = CompanyCommonAllowancePending(actorId: _actor!, companyId: widget.companyId, payrollType: type.name, expectedVersion: _state!.version, expectedSource: _state!.expectedSource, legacySlots: legacy, confirmAdoption: adoption, requestId: requestId, items: [
       for (final item in values) {'id': item.id.startsWith('new-unit-item-') ? null : item.id, 'client_key': item.id, 'section': item.section.name, 'unit': item.unit.name, 'name': item.name.trim(), 'amount_yen': int.parse(item.rate)},
     ]);
     setState(() { _busy = true; _error = null; _pending = pending; });
@@ -207,7 +213,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     } on PostgrestException catch (error) {
       if (journalWritten && ['42501', '40001', '22023', 'PGRST202'].contains(error.code) && _valid(generation)) {
         await _store.clear(pending);
-        if (_valid(generation)) setState(() { _pending = null; _conflict = true; _error = '保存は受け付けられませんでした。入力を保持しています。再読み込みして確認してください。'; });
+        if (_valid(generation)) setState(() { _pending = null; _conflict = true; _error = error.code == '22023' && error.message == 'past allowance display unit requires dated compatibility' ? '過去の出勤表の単位を保護するため、この単位変更はまだ保存できません。入力内容は保持しています。' : '保存は受け付けられませんでした。入力を保持しています。再読み込みして確認してください。'; });
       }
       rethrow;
     } catch (_) {

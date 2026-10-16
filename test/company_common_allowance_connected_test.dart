@@ -199,4 +199,13 @@ void main() {
   await tester.tap(find.text('戻る')); await tester.pumpAndSettle(); expect(repo.writes, 0); expect(store.pending, isNull); expect(find.text('未採用の追加'), findsOneWidget);
   await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
  });
+ testWidgets('unmodified legal legacy whitespace survives unrelated extras save', (tester) async {
+  final raw = state();
+  final refs = raw['legacy_refs'] as List;
+  refs[0] = {...refs[0] as Map, 'name': '${' ' * 100}元の名称${' ' * 100}'};
+  final repo = FakeRepository()..value = CompanyCommonAllowanceState.parse(raw, company); final store = MemoryStore(); await show(tester, repo, store);
+  await add(tester, '追加だけ'); await save(tester); expect(repo.last!.legacySlots.first['name'], refs[0]['name']);
+  expect(repo.last!.legacySlots.first['source_unit'], refs[0]['source_unit']); await tester.tap(find.text('閉じる')); await tester.pumpAndSettle();
+  await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
+ });
 }
