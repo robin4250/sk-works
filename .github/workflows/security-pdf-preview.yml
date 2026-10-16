@@ -1,0 +1,23 @@
+name: Security PDF preview
+on:
+  pull_request:
+    paths:
+      - 'lib/features/security/security_incident_page.dart'
+      - 'lib/features/security/security_pdf_preview.dart'
+      - 'test/security_pdf_preview_test.dart'
+      - '.github/workflows/security-pdf-preview.yml'
+permissions:
+  contents: read
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/security/security_pdf_preview.dart lib/features/security/security_incident_page.dart test/security_pdf_preview_test.dart
+      - run: flutter test test/security_pdf_preview_test.dart test/security_export_guard_test.dart test/security_actor_boundary_test.dart

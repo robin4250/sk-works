@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../international/language_controller.dart';
 import '../shared/company_seal_pdf.dart';
+import 'security_pdf_preview.dart';
 import '../settings/master_protected_page.dart';
 import 'security_export_guard.dart';
 import 'security_actor_boundary.dart';
@@ -99,8 +100,8 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
       content: SingleChildScrollView(
         child: Text(
           _text(
-            'マスター専用の記録です。検知は攻撃確定ではありません。調査区分と収集状態を分けて確認します。収集中・前後ログ不足の記録は完全な記録ではありません。印刷・保存・共有は同じ安全化済みの内容です。本文・個人情報・秘密情報は含めません。隔離環境の検証段階で、本番の自動遮断は行いません。',
-            'Master-only records. Detection does not confirm an attack. Investigation and collection states are separate. Collecting or missing logs indicate incomplete records. Print, save and share use the same sanitized report, without message bodies, personal information or secrets. This is an isolated validation stage, without automatic production blocking.',
+            'マスター専用の記録です。検知は攻撃確定ではありません。調査区分と収集状態を分けて確認します。収集中・前後ログ不足の記録は完全な記録ではありません。PDFプレビューは2本指で拡大できます。印刷・保存・共有は同じ安全化済みの内容で、出力時に権限を再確認します。本文・個人情報・秘密情報は含めません。隔離環境の検証段階で、本番の自動遮断は行いません。',
+            'Master-only records. Detection does not confirm an attack. Investigation and collection states are separate. Collecting or missing logs indicate incomplete records. Pinch the PDF preview with two fingers to zoom. Print, save and share recheck authorization and use the same sanitized report, without message bodies, personal information or secrets. This is an isolated validation stage, without automatic production blocking.',
           ),
         ),
       ),
@@ -243,6 +244,11 @@ class _SecurityIncidentDetailPageState
             runSpacing: 8,
             children: [
               OutlinedButton.icon(
+                onPressed: _busy ? null : () => _beginExport(_SecurityExportKind.preview),
+                icon: const Icon(Icons.preview_outlined),
+                label: Text(_text('PDFプレビュー', 'PDF preview')),
+              ),
+              OutlinedButton.icon(
                 onPressed: _busy ? null : () => _beginExport(_SecurityExportKind.print),
                 icon: const Icon(Icons.print_outlined),
                 label: Text(_text('印刷', 'Print')),
@@ -296,7 +302,7 @@ class SecurityIncidentReport {
   }
 }
 
-enum _SecurityExportKind { print, pdf, json }
+enum _SecurityExportKind { preview, print, pdf, json }
 
 /// Owns the handoff after the fresh MasterProtectedPage challenge. The source
 /// detail may lock during Face ID without disposing this authenticated action.
@@ -324,7 +330,9 @@ class _SecurityIncidentExportActionState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _run());
+    if (widget.kind != _SecurityExportKind.preview) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _run());
+    }
   }
 
   Future<void> _run() async {
@@ -392,8 +400,32 @@ class _SecurityIncidentExportActionState
     }
   }
 
+  Future<void> _authorizePreview() async {
+    final repository = SecurityIncidentRepository.maybeCreate();
+    if (repository == null) throw StateError('Unavailable');
+    await authorizeSecurityExport(
+      actor: widget.actor,
+      currentActor: () => repository.currentActor,
+      isActive: () => mounted,
+      reauthenticate: () async => true,
+      authorizeSnapshot: () => repository.authorizeExport(widget.report, widget.actor),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => widget.kind == _SecurityExportKind.preview
+      ? SecurityPdfPreview(
+          authorize: _authorizePreview,
+          buildPdf: () => SecurityIncidentReport.build(widget.report, english: widget.english),
+          printPdf: (bytes) async {
+            await Printing.layoutPdf(name: 'SKO-security-${widget.report.record.id}.pdf', onLayout: (_) async => bytes);
+          },
+          sharePdf: (bytes) async {
+            await Printing.sharePdf(bytes: bytes, filename: 'SKO-security-${widget.report.record.id}.pdf');
+          },
+          english: widget.english,
+        )
+      : Scaffold(
     appBar: AppBar(
       title: Text(widget.english ? 'Export security record' : 'セキュリティ記録の出力'),
     ),
