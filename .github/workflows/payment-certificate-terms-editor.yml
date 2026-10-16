@@ -1,0 +1,17 @@
+name: Payment certificate terms editor
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payment_certificate_terms_*.dart'
+      - 'test/payment_certificate_terms_editor_test.dart'
+      - '.github/workflows/payment-certificate-terms-editor.yml'
+jobs:
+  editor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/payroll/payment_certificate_terms_draft.dart lib/features/payroll/payment_certificate_terms_editor.dart test/payment_certificate_terms_editor_test.dart
+      - run: flutter test test/payment_certificate_terms_editor_test.dart --reporter expanded
