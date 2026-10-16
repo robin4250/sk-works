@@ -14,6 +14,7 @@ import 'security_export_guard.dart';
 import 'security_actor_boundary.dart';
 import 'security_incident.dart';
 import 'security_incident_repository.dart';
+import 'platform_monitor_page.dart';
 import 'security_incident_report.dart';
 
 import 'dart:convert';
@@ -118,6 +119,18 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
     appBar: AppBar(
       title: Text(_text('セキュリティ記録', 'Security records')),
       actions: [
+        IconButton(
+          tooltip: 'プラットフォーム監視',
+          icon: const Icon(Icons.monitor_heart_outlined),
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute(
+              builder: (_) => const MasterProtectedPage(
+                title: 'プラットフォーム監視',
+                child: SecurityActorBoundary(child: PlatformMonitorPage()),
+              ),
+            ),
+          ),
+        ),
         IconButton(
           onPressed: _help,
           icon: const Icon(Icons.help_outline),
@@ -436,3 +449,4 @@ class _SecurityIncidentExportActionState
     ),
   );
 }
+
