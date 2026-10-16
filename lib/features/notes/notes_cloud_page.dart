@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../../data/supabase_backend.dart';
 
 import 'notes_cloud_repository.dart';
 
@@ -6,21 +10,32 @@ class NotesCloudPage extends StatefulWidget {
   const NotesCloudPage({
     super.key,
     this.initialGroupId,
+    this.repository,
+    this.currentActorId,
   });
 
   final String? initialGroupId;
+  final NotesCloudRepository? repository;
+  final String? Function()? currentActorId;
 
   @override
   State<NotesCloudPage> createState() => _NotesCloudPageState();
 }
 
 class _NotesCloudPageState extends State<NotesCloudPage> {
-  final _repository = NotesCloudRepository.maybeCreate();
+  late final _repository = widget.repository ?? NotesCloudRepository.maybeCreate();
   final _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _groups = [];
   List<Map<String, dynamic>> _notes = [];
   String? _selectedGroupId;
+  final _groupGuard = CommunicationLoadGuard();
+  final _contentGuard = CommunicationLoadGuard();
+  StreamSubscription<dynamic>? _authSubscription;
+  String? get _actorId => widget.currentActorId?.call() ??
+      (SupabaseBackend.isInitialized
+          ? SupabaseBackend.client.auth.currentUser?.id
+          : null);
   bool _loading = true;
   bool _loadingNotes = false;
   String? _error;
@@ -28,17 +43,48 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
   @override
   void initState() {
     super.initState();
+    if (SupabaseBackend.isInitialized) {
+      var actor = _actorId;
+      _authSubscription = SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
+        if (actor == _actorId) return;
+        actor = _actorId;
+        _groupGuard.invalidate();
+        _contentGuard.invalidate();
+        if (!mounted) return;
+        setState(() {
+          _groups = [];
+          _notes = [];
+          _selectedGroupId = null;
+          _loadingNotes = false;
+        });
+        _load();
+      });
+    }
     _load();
   }
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
+    _groupGuard.invalidate();
+    _contentGuard.invalidate();
     _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    if (_repository == null) {
+    final actor = _actorId;
+    final preferredGroup = _selectedGroupId ?? widget.initialGroupId;
+    final request = _groupGuard.invalidate();
+    _contentGuard.invalidate();
+    setState(() {
+      _groups = [];
+      _notes = [];
+      _selectedGroupId = null;
+      _loading = true;
+      _error = null;
+    });
+    if (_repository == null || actor == null) {
       setState(() {
         _loading = false;
         _error = 'Supabaseに接続されていません。';
@@ -48,19 +94,23 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
 
     try {
       final groups = await _repository.loadGroups();
-      if (!mounted) return;
+      if (!mounted || !_groupGuard.accepts(request, actor, _actorId)) return;
       setState(() {
         _groups = groups;
         _selectedGroupId = groups.any(
-          (group) => group['id']?.toString() == widget.initialGroupId,
+          (group) => group['id']?.toString() == preferredGroup,
         )
-            ? widget.initialGroupId
-            : (groups.isEmpty ? null : groups.first['id'] as String);
+            ? preferredGroup
+            : (preferredGroup != null || groups.isEmpty
+                ? null : groups.first['id'] as String);
+        if (preferredGroup != null && _selectedGroupId == null) {
+          _error = '指定されたグループを表示できません。参加権限を確認してください。';
+        }
         _loading = false;
       });
       if (_selectedGroupId != null) await _loadNotes();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_groupGuard.accepts(request, actor, _actorId)) return;
       setState(() {
         _loading = false;
         _error = e.toString();
@@ -70,21 +120,31 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
 
   Future<void> _loadNotes() async {
     final groupId = _selectedGroupId;
+    final actor = _actorId;
+    final request = _contentGuard.invalidate();
     if (_repository == null || groupId == null) return;
     setState(() {
+      _notes = [];
       _loadingNotes = true;
       _error = null;
     });
     try {
       final notes = await _repository.loadNotes(groupId);
-      if (!mounted) return;
+      if (!mounted || !_contentGuard.accepts(request, actor, _actorId,
+          requestedGroup: groupId, currentGroup: _selectedGroupId)) {
+        return;
+      }
       setState(() {
         _notes = notes;
         _loadingNotes = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_contentGuard.accepts(request, actor, _actorId,
+          requestedGroup: groupId, currentGroup: _selectedGroupId)) {
+        return;
+      }
       setState(() {
+        _notes = [];
         _loadingNotes = false;
         _error = e.toString();
       });
@@ -114,15 +174,15 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : RefreshIndicator(
-                onRefresh: _loadNotes,
+                onRefresh: _load,
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
                   children: [
-                    if (_groups.isEmpty)
-                      const Card(
+                    if (_groups.isEmpty || _selectedGroupId == null)
+                      Card(
                         child: Padding(
-                          padding: EdgeInsets.all(18),
-                          child: Text('ノートを作成するには、先に通信グループを作成してください。'),
+                          padding: const EdgeInsets.all(18),
+                          child: Text(_error ?? '表示できる参加グループがありません。'),
                         ),
                       )
                     else ...[
@@ -212,21 +272,27 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
   }
 
   Future<void> _addNote() async {
+    final actor = _actorId;
+    final groupId = _selectedGroupId;
     final result = await Navigator.of(context).push<_NoteDraft>(
       MaterialPageRoute(builder: (_) => const _NoteFormPage()),
     );
-    if (result == null || _repository == null || _selectedGroupId == null) return;
+    if (!mounted || result == null || _repository == null || groupId == null ||
+        actor != _actorId || groupId != _selectedGroupId) {
+      return;
+    }
 
     try {
       await _repository.insertNote(
-        groupId: _selectedGroupId!,
+        groupId: groupId,
         title: result.title,
         body: result.body,
         isPinned: result.isPinned,
       );
+      if (!mounted || actor != _actorId || groupId != _selectedGroupId) return;
       await _loadNotes();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || actor != _actorId || groupId != _selectedGroupId) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ノートを保存できませんでした: $e')),
       );
@@ -234,11 +300,23 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
   }
 
   void _showNote(Map<String, dynamic> note) {
+    final actor = _actorId;
+    final groupId = _selectedGroupId;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
+      builder: (sheetContext) => StreamBuilder<dynamic>(
+        stream: SupabaseBackend.isInitialized
+            ? SupabaseBackend.client.auth.onAuthStateChange : null,
+        builder: (_, __) {
+          if (actor != _actorId || groupId != _selectedGroupId) {
+            return const SafeArea(child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('利用者またはグループが変更されました。開き直してください。'),
+            ));
+          }
+          return SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             20,
@@ -263,10 +341,13 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
                   IconButton(
                     tooltip: note['is_pinned'] == true ? 'ピンを外す' : 'ピン留め',
                     onPressed: () async {
+                      if (actor != _actorId || groupId != _selectedGroupId) return;
                       final next = note['is_pinned'] != true;
                       Navigator.pop(sheetContext);
                       await _repository?.setPinned(note['id'] as String, next);
-                      await _loadNotes();
+                      if (mounted && actor == _actorId && groupId == _selectedGroupId) {
+                        await _loadNotes();
+                      }
                     },
                     icon: Icon(
                       note['is_pinned'] == true
@@ -283,9 +364,12 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
               const SizedBox(height: 20),
               OutlinedButton.icon(
                 onPressed: () async {
+                  if (actor != _actorId || groupId != _selectedGroupId) return;
                   Navigator.pop(sheetContext);
                   await _repository?.deleteNote(note['id'] as String);
-                  await _loadNotes();
+                  if (mounted && actor == _actorId && groupId == _selectedGroupId) {
+                    await _loadNotes();
+                  }
                 },
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('削除'),
@@ -293,6 +377,8 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
             ],
           ),
         ),
+      );
+        },
       ),
     );
   }
@@ -383,4 +469,16 @@ class _NoteFormPageState extends State<_NoteFormPage> {
       ),
     );
   }
+}
+
+class CommunicationLoadGuard {
+  int _generation = 0;
+  int invalidate() => ++_generation;
+
+  bool accepts(int generation, String? requestedActor, String? currentActor,
+      {String? requestedGroup, String? currentGroup}) =>
+      generation == _generation &&
+      requestedActor != null &&
+      requestedActor == currentActor &&
+      requestedGroup == currentGroup;
 }

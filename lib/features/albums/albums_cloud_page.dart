@@ -1,25 +1,41 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../../data/supabase_backend.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'albums_cloud_repository.dart';
+import '../notes/notes_cloud_page.dart' show CommunicationLoadGuard;
 
 class AlbumsCloudPage extends StatefulWidget {
   const AlbumsCloudPage({
     super.key,
     this.initialGroupId,
+    this.repository,
+    this.currentActorId,
   });
 
   final String? initialGroupId;
+  final AlbumsCloudRepository? repository;
+  final String? Function()? currentActorId;
 
   @override
   State<AlbumsCloudPage> createState() => _AlbumsCloudPageState();
 }
 
 class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
-  final _repository = AlbumsCloudRepository.maybeCreate();
+  late final _repository = widget.repository ?? AlbumsCloudRepository.maybeCreate();
   List<Map<String, dynamic>> _groups = [];
   List<Map<String, dynamic>> _albums = [];
   String? _selectedGroupId;
+  final _groupGuard = CommunicationLoadGuard();
+  final _contentGuard = CommunicationLoadGuard();
+  StreamSubscription<dynamic>? _authSubscription;
+  String? get _actorId => widget.currentActorId?.call() ??
+      (SupabaseBackend.isInitialized
+          ? SupabaseBackend.client.auth.currentUser?.id
+          : null);
   bool _loading = true;
   bool _loadingAlbums = false;
   String? _error;
@@ -27,11 +43,47 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
   @override
   void initState() {
     super.initState();
+    if (SupabaseBackend.isInitialized) {
+      var actor = _actorId;
+      _authSubscription = SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
+        if (actor == _actorId) return;
+        actor = _actorId;
+        _groupGuard.invalidate();
+        _contentGuard.invalidate();
+        if (!mounted) return;
+        setState(() {
+          _groups = [];
+          _albums = [];
+          _selectedGroupId = null;
+          _loadingAlbums = false;
+        });
+        _load();
+      });
+    }
     _load();
   }
 
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    _groupGuard.invalidate();
+    _contentGuard.invalidate();
+    super.dispose();
+  }
+
   Future<void> _load() async {
-    if (_repository == null) {
+    final actor = _actorId;
+    final preferredGroup = _selectedGroupId ?? widget.initialGroupId;
+    final request = _groupGuard.invalidate();
+    _contentGuard.invalidate();
+    setState(() {
+      _groups = [];
+      _albums = [];
+      _selectedGroupId = null;
+      _loading = true;
+      _error = null;
+    });
+    if (_repository == null || actor == null) {
       setState(() {
         _loading = false;
         _error = 'Supabaseに接続されていません。';
@@ -40,19 +92,23 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
     }
     try {
       final groups = await _repository.loadGroups();
-      if (!mounted) return;
+      if (!mounted || !_groupGuard.accepts(request, actor, _actorId)) return;
       setState(() {
         _groups = groups;
         _selectedGroupId = groups.any(
-          (group) => group['id']?.toString() == widget.initialGroupId,
+          (group) => group['id']?.toString() == preferredGroup,
         )
-            ? widget.initialGroupId
-            : (groups.isEmpty ? null : groups.first['id'] as String);
+            ? preferredGroup
+            : (preferredGroup != null || groups.isEmpty
+                ? null : groups.first['id'] as String);
+        if (preferredGroup != null && _selectedGroupId == null) {
+          _error = '指定されたグループを表示できません。参加権限を確認してください。';
+        }
         _loading = false;
       });
       await _loadAlbums();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_groupGuard.accepts(request, actor, _actorId)) return;
       setState(() {
         _loading = false;
         _error = e.toString();
@@ -62,21 +118,31 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
 
   Future<void> _loadAlbums() async {
     final groupId = _selectedGroupId;
+    final actor = _actorId;
+    final request = _contentGuard.invalidate();
     if (_repository == null || groupId == null) return;
     setState(() {
+      _albums = [];
       _loadingAlbums = true;
       _error = null;
     });
     try {
       final albums = await _repository.loadAlbums(groupId);
-      if (!mounted) return;
+      if (!mounted || !_contentGuard.accepts(request, actor, _actorId,
+          requestedGroup: groupId, currentGroup: _selectedGroupId)) {
+        return;
+      }
       setState(() {
         _albums = albums;
         _loadingAlbums = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_contentGuard.accepts(request, actor, _actorId,
+          requestedGroup: groupId, currentGroup: _selectedGroupId)) {
+        return;
+      }
       setState(() {
+        _albums = [];
         _loadingAlbums = false;
         _error = e.toString();
       });
@@ -98,15 +164,15 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : RefreshIndicator(
-                onRefresh: _loadAlbums,
+                onRefresh: _load,
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
                   children: [
-                    if (_groups.isEmpty)
-                      const Card(
+                    if (_groups.isEmpty || _selectedGroupId == null)
+                      Card(
                         child: Padding(
-                          padding: EdgeInsets.all(18),
-                          child: Text('アルバムを使うには、先に通信グループを作成してください。'),
+                          padding: const EdgeInsets.all(18),
+                          child: Text(_error ?? '表示できる参加グループがありません。'),
                         ),
                       )
                     else ...[
@@ -195,6 +261,7 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
   }
 
   Future<void> _createAlbum() async {
+    final actor = _actorId;
     final groupId = _selectedGroupId;
     if (_repository == null || groupId == null) return;
     final nameController = TextEditingController();
@@ -235,7 +302,7 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
         ],
       ),
     );
-    if (result != true) {
+    if (!mounted || result != true || actor != _actorId || groupId != _selectedGroupId) {
       nameController.dispose();
       descriptionController.dispose();
       return;
@@ -246,9 +313,10 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
         name: nameController.text,
         description: descriptionController.text,
       );
+      if (!mounted || actor != _actorId || groupId != _selectedGroupId) return;
       await _loadAlbums();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || actor != _actorId || groupId != _selectedGroupId) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('アルバムを作成できませんでした: $e')),
       );
@@ -277,6 +345,12 @@ class AlbumDetailPage extends StatefulWidget {
 
 class _AlbumDetailPageState extends State<AlbumDetailPage> {
   final _picker = ImagePicker();
+  final _detailGuard = CommunicationLoadGuard();
+  StreamSubscription<dynamic>? _authSubscription;
+  String? get _actorId => SupabaseBackend.isInitialized
+      ? SupabaseBackend.client.auth.currentUser?.id : null;
+  String? _ownerId;
+  bool get _sameActor => _ownerId != null && _ownerId == _actorId;
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   bool _uploading = false;
@@ -287,24 +361,48 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   @override
   void initState() {
     super.initState();
+    _ownerId = _actorId;
+    if (SupabaseBackend.isInitialized) {
+      _authSubscription = SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
+        if (_sameActor || !mounted) return;
+        _detailGuard.invalidate();
+        setState(() {
+          _items = [];
+          _loading = false;
+          _error = '利用者が変更されました。アルバムを開き直してください。';
+        });
+      });
+    }
     _load();
   }
 
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    _detailGuard.invalidate();
+    super.dispose();
+  }
+
   Future<void> _load() async {
+    final actor = _actorId;
+    final request = _detailGuard.invalidate();
+    if (!_sameActor) return;
     setState(() {
+      _items = [];
       _loading = true;
       _error = null;
     });
     try {
       final items = await widget.repository.loadItems(_albumId);
-      if (!mounted) return;
+      if (!mounted || !_detailGuard.accepts(request, actor, _actorId)) return;
       setState(() {
         _items = items;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_detailGuard.accepts(request, actor, _actorId)) return;
       setState(() {
+        _items = [];
         _loading = false;
         _error = e.toString();
       });
@@ -315,11 +413,11 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.album['name'].toString()),
+        title: Text(_sameActor ? widget.album['name'].toString() : 'アルバム'),
         actions: [
           PopupMenuButton<String>(
             onSelected: (value) {
-              if (value == 'delete') _deleteAlbum();
+              if (_sameActor && value == 'delete') _deleteAlbum();
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'delete', child: Text('アルバムを削除')),
@@ -328,7 +426,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _uploading ? null : _pickPhotos,
+        onPressed: !_sameActor || _uploading ? null : _pickPhotos,
         icon: _uploading
             ? const SizedBox.square(
                 dimension: 18,
@@ -414,11 +512,12 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   Future<void> _pickPhotos() async {
     try {
       final files = await _picker.pickMultiImage(imageQuality: 90);
-      if (files.isEmpty) return;
+      if (files.isEmpty || !_sameActor) return;
       if (!mounted) return;
       setState(() => _uploading = true);
       for (final file in files) {
         final bytes = await file.readAsBytes();
+        if (!mounted || !_sameActor) return;
         await widget.repository.uploadPhoto(
           groupId: widget.groupId,
           albumId: _albumId,
@@ -428,7 +527,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       }
       await _load();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_sameActor) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('写真を追加できませんでした: $e')),
       );
@@ -455,12 +554,12 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (!mounted || !_sameActor || confirmed != true) return;
     try {
       await widget.repository.deleteItem(item);
       await _load();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_sameActor) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('写真を削除できませんでした: $e')),
       );
@@ -485,13 +584,13 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (!mounted || !_sameActor || confirmed != true) return;
     try {
       await widget.repository.deleteAlbum(_albumId);
-      if (!mounted) return;
+      if (!mounted || !_sameActor) return;
       Navigator.of(context).pop(true);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_sameActor) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('アルバムを削除できませんでした: $e')),
       );
