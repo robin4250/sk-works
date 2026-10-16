@@ -26,25 +26,43 @@ grant usage on schema public,private,auth to authenticated,anon;
 grant select on company_members,member_feature_permissions,worker_personnel_profiles,worker_family_members to authenticated;
 grant select(id,company_id,user_id) on workers to authenticated;`);
 for(const f of e.functions)await db.exec(f);
+// Columns used by the ACTUAL canonical read RPC; all values remain synthetic.
+await db.exec(`alter table workers add column name text default 'synthetic worker',add column affiliation text default 'employee',add column role text,add column phone text,add column employee_number text,add column department text,add column hire_date date,add column status text default 'active',add column created_at timestamptz default now(),add column updated_at timestamptz default now();
+alter table worker_personnel_profiles add column blood_type text,add column emergency_name text,add column emergency_relation text,add column emergency_phone text,add column emergency_address text,add column family_composition text,add column updated_at timestamptz default now();
+alter table worker_family_members add column relation text,add column birth_date date,add column is_dependent boolean;`);
+await db.exec(fs.readFileSync(path.join(here,'canonical_read_rpc_fixture.sql'),'utf8'));
 for(const t of ['company_members','member_feature_permissions','workers','worker_personnel_profiles','worker_family_members'])await db.exec(`alter table ${t} enable row level security`);
 for(const p of e.policies){let q=`create policy "${p.policyname}" on ${p.tablename} as ${p.permissive} for ${p.cmd} to authenticated`;if(p.qual)q+=` using (${p.qual.replaceAll('app_role','text')})`;if(p.with_check)q+=` with check (${p.with_check.replaceAll('app_role','text')})`;await db.exec(q);}
 for(const [key,actor]of Object.entries(actors)){const role=key.startsWith('manager')?'manager':key==='deleted'?'owner':['owner','admin','viewer'].includes(key)?key:'employee';await db.query('insert into company_members values($1,$2,$3)',[key==='outsider'?F:C,actor,role]);await db.query('insert into member_feature_permissions(company_id,user_id,can_manage_people)values($1,$2,$3)',[C,actor,key==='managerOn']);}
 await db.query('insert into private.account_deletion_access_restrictions values($1)',[actors.deleted]);
-await db.query('insert into workers values($1,$2,$3),($4,$5,$6)',[W,C,actors.self,WF,F,actors.outsider]);
-await db.query('insert into worker_personnel_profiles values($1,$2,$3),($4,$5,$6)',[W,C,'synthetic own-company address',WF,F,'synthetic foreign address']);
-await db.query('insert into worker_family_members values($1,$2,$3,$4),($5,$6,$7,$8)',[id(30),W,C,'synthetic family',id(31),WF,F,'foreign family']);
+await db.query('insert into workers(id,company_id,user_id) values($1,$2,$3),($4,$5,$6)',[W,C,actors.self,WF,F,actors.outsider]);
+await db.query('insert into worker_personnel_profiles(worker_id,company_id,address) values($1,$2,$3),($4,$5,$6)',[W,C,'synthetic own-company address',WF,F,'synthetic foreign address']);
+await db.query('insert into worker_family_members(id,worker_id,company_id,name) values($1,$2,$3,$4),($5,$6,$7,$8)',[id(30),W,C,'synthetic family',id(31),WF,F,'foreign family']);
 async function actor(uid){await db.exec('reset role');await db.query("select set_config('fixture.actor',$1,false)",[uid??'']);await db.exec('set role authenticated');}
 async function ownCounts(){return [(await db.query('select address from worker_personnel_profiles where company_id=$1',[C])).rows.length,(await db.query('select name from worker_family_members where company_id=$1',[C])).rows.length];}
 await actor(actors.managerOff);
 assert.equal((await db.query('select private.personnel_view_allowed($1) allowed',[C])).rows[0].allowed,false);
+await assert.rejects(db.query('select public.employee_personnel_view($1)',[C]),x=>x.code==='42501','Actual canonical company-list RPC denies disabled manager');
 assert.deepEqual(await ownCounts(),[1,1],'Original live policies MUST reproduce the permission bypass');
 await db.exec('reset role');
+async function migrationInvariant(){
+ const rows={};for(const table of ['company_members','member_feature_permissions','workers','worker_personnel_profiles','worker_family_members','private.account_deletion_access_restrictions'])rows[table]=(await db.query(`select to_jsonb(t) payload from ${table} t order by to_jsonb(t)::text`)).rows;
+ const grants=(await db.query("select c.relname,c.relacl::text,a.attname,a.attacl::text from pg_class c join pg_namespace n on n.oid=c.relnamespace left join pg_attribute a on a.attrelid=c.oid and a.attnum>0 and not a.attisdropped where n.nspname='public' and c.relname in ('worker_personnel_profiles','worker_family_members') order by c.relname,a.attnum")).rows;
+ const writes=(await db.query("select * from pg_policies where schemaname='public' and tablename in ('worker_personnel_profiles','worker_family_members') and cmd<>'SELECT' order by tablename,policyname")).rows;
+ return {rows,grants,writes};
+}
+const invariantBefore=await migrationInvariant();
 await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261016104441_personnel_direct_read_permission_guard.sql'),'utf8'));
+assert.deepEqual(await migrationInvariant(),invariantBefore,'Migration preserves every synthetic business row, column/table grant and non-SELECT policy');
 for(const [key,expected]of Object.entries({managerOff:0,managerOn:1,owner:1,admin:1,viewer:1,self:1,employee:0,outsider:0,deleted:0})){
  await actor(actors[key]);assert.deepEqual(await ownCounts(),[expected,expected],key);
+ const companyListAllowed=['managerOn','owner','admin','viewer'].includes(key);
+ if(companyListAllowed){const payload=(await db.query('select public.employee_personnel_view($1) payload',[C])).rows[0].payload;assert.equal(payload.records.length,1,key+' actual company-list RPC');assert.equal(payload.records[0].address,'synthetic own-company address');assert.equal(payload.records[0].familyMembers.length,1);}
+ else await assert.rejects(db.query('select public.employee_personnel_view($1)',[C]),x=>x.code==='42501',key+' cannot list coworkers via RPC');
  if(key!=='outsider')assert.equal((await db.query('select count(*)::int n from worker_personnel_profiles where company_id=$1',[F])).rows[0].n,0,`${key}: foreign tenant`);
 }
 await db.exec('reset role');await db.query('update member_feature_permissions set can_manage_people=false where user_id=$1',[actors.managerOn]);await actor(actors.managerOn);assert.deepEqual(await ownCounts(),[0,0],'Permission revocation applies without JWT refresh');
+await assert.rejects(db.query('select public.employee_personnel_view($1)',[C]),x=>x.code==='42501','Actual RPC sees revoked permission immediately');
 await db.exec('reset role');await db.query('update member_feature_permissions set can_manage_people=true where user_id=$1',[actors.managerOn]);
 await db.query('insert into private.account_deletion_access_restrictions values($1)',[actors.self]);await actor(actors.self);assert.deepEqual(await ownCounts(),[0,0],'Deleted self denied');await db.exec('reset role');await db.query('delete from private.account_deletion_access_restrictions where user_id=$1',[actors.self]);
 await actor(null);assert.deepEqual(await ownCounts(),[0,0],'Missing actor denied');
@@ -59,7 +77,11 @@ if(process.env.SKO_PERSONNEL_POSTGREST_URL){
  for(const [key,expected]of Object.entries({managerOff:0,managerOn:1,owner:1,admin:1,viewer:1,self:1,employee:0,outsider:0,deleted:0}))for(const table of ['worker_personnel_profiles','worker_family_members']){
   const r=await fetch(new URL(`/${table}?company_id=eq.${C}&select=company_id`,base),{headers:{Authorization:`Bearer ${token(actors[key])}`}});assert.equal(r.status,200,`${key}/${table}`);assert.equal((await r.json()).length,expected,`HTTP ${key}/${table}`);
  }
+ for(const key of Object.keys(actors)){
+  const allowed=['managerOn','owner','admin','viewer'].includes(key);
+  const r=await fetch(new URL('/rpc/employee_personnel_view',base),{method:'POST',headers:{Authorization:`Bearer ${token(actors[key])}`,'Content-Type':'application/json'},body:JSON.stringify({p_company:C})});assert.equal(r.status,allowed?200:403,`Actual RPC HTTP ${key}`);if(allowed)assert.equal((await r.json()).records.length,1);
+ }
  const r=await fetch(new URL('/worker_personnel_profiles?select=address',base));assert.equal(r.status,401,'Anonymous HTTP denied');
- console.log('PASS: real PostgreSQL17 + signed-JWT PostgREST direct REST role matrix');
+ console.log('PASS: real PostgreSQL17 + signed-JWT PostgREST actual canonical RPC and direct REST role matrix');
 }
 await db.close();console.log('PASS: original bypass reproduced, actual additive migration applied, permission OFF/ON/revoked, self/owner/admin/viewer, employee/other-company/anonymous/deleted matrix');
