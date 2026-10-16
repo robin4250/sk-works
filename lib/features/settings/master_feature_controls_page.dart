@@ -8,17 +8,26 @@ import '../../international/language_controller.dart';
 import '../../data/supabase_backend.dart';
 import '../home/weather_provider_settings_panel.dart';
 import 'master_feature_controls_repository.dart';
+import '../auth/operation_reauthentication_repository.dart';
+import 'master_feature_proof_dialog.dart';
 
 class MasterFeatureControlsPage extends StatefulWidget {
-  const MasterFeatureControlsPage({super.key});
+  const MasterFeatureControlsPage({super.key, this.repository, this.reauthentication});
+
+  @visibleForTesting final MasterFeatureControlsRepository? repository;
+  @visibleForTesting final OperationReauthenticationRepository? reauthentication;
 
   @override
   State<MasterFeatureControlsPage> createState() =>
       _MasterFeatureControlsPageState();
 }
 
-class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
-  final _repository = MasterFeatureControlsRepository.maybeCreate();
+class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
+    with WidgetsBindingObserver {
+  late final _repository = widget.repository ?? MasterFeatureControlsRepository.maybeCreate();
+  AppLifecycleState _lifecycle = AppLifecycleState.resumed;
+  int _generation = 0;
+  Route<dynamic>? _operationDialog;
   final _weatherProviderRepository = SupabaseBackend.isInitialized
       ? WeatherProviderSettingsRepository(SupabaseBackend.client) : null;
 
@@ -33,11 +42,50 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
   @override
   void initState() {
     super.initState();
+    _lifecycle = WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final wasResumed = _lifecycle == AppLifecycleState.resumed;
+    _lifecycle = state;
+    if (state != AppLifecycleState.resumed) {
+      _generation++;
+      final dialog = _operationDialog;
+      if (dialog != null && dialog.isActive) {
+        dialog.navigator?.removeRoute(dialog);
+      }
+      setState(() { _busyKey = null; _loading = false; });
+    } else if (!wasResumed) {
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _generation++;
+    super.dispose();
+  }
+
+  Future<T?> _showOperationDialog<T>({
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    final route = DialogRoute<T>(context: context, builder: builder,
+      barrierDismissible: barrierDismissible);
+    _operationDialog = route;
+    try {
+      return await Navigator.of(context, rootNavigator: true).push<T>(route);
+    } finally {
+      if (identical(_operationDialog, route)) _operationDialog = null;
+    }
+  }
+
   Future<void> _load() async {
-    if (_busyKey != null) return;
+    if (_busyKey != null || _lifecycle != AppLifecycleState.resumed) return;
     final repository = _repository;
     if (repository == null) {
       setState(() {
@@ -48,22 +96,29 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
     }
 
     final actor = repository.actorId;
+    final generation = ++_generation;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final value = await repository.load();
-      if (!mounted || actor == null || repository.actorId != actor) return;
+      if (!mounted || actor == null || repository.actorId != actor ||
+          generation != _generation || _lifecycle != AppLifecycleState.resumed) {
+        return;
+      }
       setState(() {
         _availability = value;
         _loading = false;
       });
-    } catch (error) {
-      if (!mounted) return;
+    } catch (_) {
+      if (!mounted || generation != _generation || repository.actorId != actor ||
+          _lifecycle != AppLifecycleState.resumed) {
+        return;
+      }
       setState(() {
         _loading = false;
-        _error = error.toString();
+        _error = 'マスター機能設定を読み込めません。権限・接続を確認して再読み込みしてください。';
       });
     }
   }
@@ -74,49 +129,69 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
     required bool current,
   }) async {
     final repository = _repository;
-    if (repository == null || _busyKey != null || _loading) return;
+    if (repository == null || _busyKey != null || _loading ||
+        _lifecycle != AppLifecycleState.resumed ||
+        !MasterFeatureControlsRepository.supportedFeatures.contains(featureKey)) {
+      return;
+    }
     final actor = repository.actorId;
     if (actor == null) return;
     final next = !current;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(next ? '$labelを有効にする' : '$labelを一時停止する'),
-        content: Text(
-          next
-              ? '$labelを再び利用できる状態にします。既存データや履歴はそのまま残ります。'
-              : '$labelを新しく利用できない状態にします。既存データや履歴は削除しません。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('戻る'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(next ? '有効にする' : '一時停止する'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || repository.actorId != actor) return;
-
+    final generation = ++_generation;
+    bool currentOperation() => mounted && generation == _generation &&
+        repository.actorId == actor && _lifecycle == AppLifecycleState.resumed;
     setState(() => _busyKey = featureKey);
     try {
+      final confirmed = await _showOperationDialog<bool>(
+        builder: (dialogContext) => AlertDialog(
+          title: Text(next ? '$labelを有効にする' : '$labelを一時停止する'),
+          content: Text(
+            next
+                ? '$labelを再び利用できる状態にします。既存データや履歴はそのまま残ります。'
+                : '$labelを新しく利用できない状態にします。既存データや履歴は削除しません。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(next ? '有効にする' : '一時停止する'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !currentOperation()) return;
+      final required = await repository.reauthenticationRequired();
+      if (!currentOperation()) return;
+      String? proof;
+      if (required) {
+        final verifier = widget.reauthentication ?? OperationReauthenticationRepository.maybeCreate();
+        if (verifier == null) throw StateError('本人確認を利用できません。');
+        proof = await _showOperationDialog<String>(barrierDismissible: false,
+          builder: (_) => MasterFeatureProofDialog(expectedActor: actor,
+            currentActor: () => repository.actorId, label: label, enabled: next,
+            requestProof: (password) => verifier.requestProof(password: password,
+              operation: 'master.feature.set', target: {'feature_key': featureKey, 'enabled': next})));
+        if (proof == null) return;
+      }
+      if (!currentOperation()) return;
       final updated = await repository.setEnabled(
         featureKey: featureKey,
         enabled: next,
+        proof: proof,
+        expectedActor: actor,
       );
-      if (!mounted || repository.actorId != actor) return;
+      if (!currentOperation()) return;
       setState(() => _availability = updated);
-    } catch (error) {
-      if (!mounted) return;
+    } catch (_) {
+      if (!mounted || !currentOperation()) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('変更できませんでした: $error')),
+        const SnackBar(content: Text('変更できませんでした。本人確認・権限・接続を確認してください。')),
       );
     } finally {
-      if (mounted) setState(() => _busyKey = null);
+      if (currentOperation()) setState(() => _busyKey = null);
     }
   }
 
@@ -130,13 +205,13 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
           const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
-            onPressed: _loading || _busyKey != null ? null : _load,
+            onPressed: _loading || _busyKey != null || _lifecycle != AppLifecycleState.resumed ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
         ],
       ),
       body: SafeArea(
-        child: _loading
+        child: _loading && availability == null
             ? const Center(child: CircularProgressIndicator())
             : _error != null
                 ? Center(child: Text(_error!, textAlign: TextAlign.center))
@@ -214,7 +289,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage> {
     return Card(
       child: SwitchListTile(
         value: enabled,
-        onChanged: _busyKey != null || _loading
+        onChanged: _busyKey != null || _loading || _lifecycle != AppLifecycleState.resumed
             ? null
             : (_) => _toggle(
                   featureKey: featureKey,

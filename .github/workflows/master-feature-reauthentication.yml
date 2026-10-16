@@ -1,0 +1,32 @@
+name: Master feature client reauthentication
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/master_feature_controls_*'
+      - 'lib/features/settings/master_feature_proof_dialog.dart'
+      - 'lib/features/auth/operation_reauthentication_repository.dart'
+      - 'test/master_feature_reauthentication_test.dart'
+      - '.github/workflows/master-feature-reauthentication.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/features/settings/master_feature_controls_*'
+      - 'lib/features/settings/master_feature_proof_dialog.dart'
+      - 'test/master_feature_reauthentication_test.dart'
+      - '.github/workflows/master-feature-reauthentication.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/settings/master_feature_controls_repository.dart lib/features/settings/master_feature_controls_page.dart lib/features/settings/master_feature_proof_dialog.dart test/master_feature_reauthentication_test.dart
+      - run: flutter test test/master_feature_reauthentication_test.dart test/master_feature_controls_ui_contract_test.dart test/master_feature_controls_contract_test.dart test/operation_reauthentication_repository_test.dart
