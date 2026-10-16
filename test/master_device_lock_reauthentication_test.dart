@@ -116,7 +116,7 @@ void main() {
     await verify(tester);expect(proofs.requests, 1);
     expect(find.byKey(const Key('master-device-lock-password')), findsNothing);
     await pendingChange;
-    expect(devices.changes, 1);
+    expect(devices.changes, 1, reason: tester.widgetList<Text>(find.byType(Text)).map((widget) => widget.data).join(' | '));
   });
   test('SDK only missing capability downgrades; new proof setter carries exact nonce', () async {
     int status = 200;Object result = {'protocol': 'sko-master-device-lock-v1', 'enabled': true};
