@@ -44,6 +44,30 @@ class FixtureSource implements TutorialEvidenceSource, TutorialSetupEvidenceSour
 }
 
 void main() {
+  test('four membership roles only receive authorized preparation actions', () async {
+    const personal = {'profile', 'document_register'};
+    const setup = {'trade_companies', 'subcontractors', 'site_register',
+      'payroll_settings', 'payment_certificate_settings'};
+    for (final role in ['employee', 'viewer', 'manager', 'admin']) {
+      final source = FixtureSource()..role = role;
+      // Include read-only management routes for viewer: a visible page alone
+      // must not turn company registration into a required viewer task.
+      final allowed = {...personal, ...setup, 'company_documents'};
+      final snapshot = await TutorialEvidenceRepository(source)
+          .load(availableActionKeys: allowed);
+      final actions = snapshot.tasks.map((task) => task.actionKey).toSet();
+      expect(actions.difference(allowed), isEmpty);
+      if (role == 'employee' || role == 'viewer') {
+        expect(actions.intersection(setup), isEmpty);
+        expect(source.setupReads, 0);
+      }
+      expect(actions.contains('company_documents'), role == 'admin');
+      final disabled = await TutorialEvidenceRepository(source)
+          .load(availableActionKeys: {'profile'});
+      expect(disabled.tasks.every((task) => task.actionKey == 'profile'), isTrue);
+    }
+  });
+
   test('delegated manager only reads visible setup routes; viewer reads none', () async {
     final source = FixtureSource()..role = 'manager';
     final repo = TutorialEvidenceRepository(source);

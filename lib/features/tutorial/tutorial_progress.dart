@@ -1,5 +1,5 @@
 /// Tutorial progress is computed from persisted evidence, never page views.
-enum TutorialRole { employee, subAdministrator, administrator }
+enum TutorialRole { employee, subAdministrator, administrator, viewer }
 
 enum TutorialRequirement { required, recommended, optional }
 
@@ -14,6 +14,7 @@ enum TutorialPriority { urgent, high, normal, low }
 TutorialRole tutorialRoleFromMembership(String role) => switch (role) {
   'owner' || 'admin' => TutorialRole.administrator,
   'manager' => TutorialRole.subAdministrator,
+  'viewer' => TutorialRole.viewer,
   _ => TutorialRole.employee,
 };
 

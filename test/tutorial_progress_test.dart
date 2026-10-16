@@ -105,7 +105,7 @@ void main() {
     expect(tutorialRoleFromMembership('owner'), TutorialRole.administrator);
     expect(tutorialRoleFromMembership('admin'), TutorialRole.administrator);
     expect(tutorialRoleFromMembership('manager'), TutorialRole.subAdministrator);
-    expect(tutorialRoleFromMembership('viewer'), TutorialRole.employee);
+    expect(tutorialRoleFromMembership('viewer'), TutorialRole.viewer);
   });
   test('repeated task IDs and repeated checkpoint IDs cannot inflate counts', () {
     final repeated = task('company', checkpoints: ['name', 'name']);
