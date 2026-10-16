@@ -1,0 +1,24 @@
+name: Site identity company rollout isolation
+on:
+  pull_request:
+    paths:
+      - 'tool/staged/site_identity_company_rollout.sql'
+      - 'tool/test_site_identity_company_rollout.mjs'
+      - '.github/workflows/site-identity-company-rollout.yml'
+  push:
+    branches: ['feat/site-identity-company-rollout-20261016']
+permissions:
+  contents: read
+jobs:
+  isolated-rollout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix "$RUNNER_TEMP/site-identity-rollout-runtime" --no-audit --no-fund --ignore-scripts --save-exact @electric-sql/pglite@0.3.14
+      - run: node tool/test_site_identity_company_rollout.mjs "$RUNNER_TEMP/site-identity-rollout-runtime/node_modules/@electric-sql/pglite/dist/index.js"
