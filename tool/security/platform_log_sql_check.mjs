@@ -28,6 +28,9 @@ try{
  await denied(ingest({...batch,events:[batch.events[0],batch.events[0]]}),/invalid platform batch/);
  await denied(ingest({...batch,source:'auth_audit_logs'}),/invalid platform event/);
  await denied(ingest({...batch,source:'edge_logs',company_id:'forged'}),/invalid platform batch/);
+ await denied(ingest({...batch,key_epoch:2,events:[batch.events[0],{...batch.events[0],event_key:'b'.repeat(64),raw_ip:'secret'}]}),/invalid platform event/);
+ await denied(ingest({...batch,key_epoch:2,events:[{...batch.events[0],source_key:'a'.repeat(64),source_tracking:'verified'}]}),/invalid platform event/);
+ await db.exec('begin');const large={...batch,key_epoch:9,events:Array.from({length:1000},(_,i)=>({...batch.events[0],event_key:i.toString(16).padStart(64,'0')}))};assert.equal((await ingest(large)).rows[0].n,1000);await db.exec('rollback');
  await db.exec('reset role');assert.equal((await db.query('select count(*)::int n from private.platform_monitor_events')).rows[0].n,1);
  for(const options of [{},{master:true,account:false}]){await role('authenticated',options);await denied(db.query("select public.master_platform_security_monitor('x')"),/unavailable/);}
  await role('authenticated',{master:true});await denied(db.query("select public.master_platform_security_monitor('x')"),/proof unavailable/);

@@ -40,7 +40,7 @@ begin
  -- Serialize toggle, retention and capacity in the same transaction, never business rows.
  perform 1 from private.platform_monitor_control where singleton and enabled for update;
  if not found then raise exception 'platform monitoring disabled' using errcode='55000';end if;
- if p_batch is null or jsonb_typeof(p_batch)<>'object' or octet_length(p_batch::text)>262144 or
+ if p_batch is null or jsonb_typeof(p_batch)<>'object' or octet_length(p_batch::text)>524288 or
  (select array_agg(k order by k) from jsonb_object_keys(p_batch) k) is distinct from array['coverage','events','key_epoch','source','window_from','window_to']::text[] then raise exception 'invalid platform batch';end if;
  if jsonb_typeof(p_batch->'source')<>'string' or jsonb_typeof(p_batch->'window_from')<>'string' or jsonb_typeof(p_batch->'window_to')<>'string' or jsonb_typeof(p_batch->'coverage')<>'string' or jsonb_typeof(p_batch->'key_epoch')<>'number' or p_batch->>'key_epoch' !~ '^[1-9][0-9]{0,6}$' or jsonb_typeof(p_batch->'events')<>'array' then raise exception 'invalid platform batch';end if;
  s:=p_batch->>'source';wf:=(p_batch->>'window_from')::timestamptz;wt:=(p_batch->>'window_to')::timestamptz;epoch:=(p_batch->>'key_epoch')::integer;coverage:=p_batch->>'coverage';
