@@ -320,4 +320,23 @@ void main() {
       expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsOneWidget);
     });
 
+  testWidgets('failed signature save keeps pending signature for a successful retry',
+    (tester) async {
+      final repo = EditableReports(client)..failSign = true;
+      await prepareCompletion(tester, repo);
+      final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
+      await reveal(tester, finish);
+      await tester.tap(finish);
+      await tester.pumpAndSettle();
+      expect(repo.signCalls, 1);
+      expect(repo.signed, isFalse);
+      expect(tester.widget<FilledButton>(finish).onPressed, isNotNull);
+      expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsNothing);
+      repo.failSign = false;
+      await tester.tap(finish);
+      await tester.pumpAndSettle();
+      expect(repo.signCalls, 2);
+      expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsOneWidget);
+    });
+
 }
