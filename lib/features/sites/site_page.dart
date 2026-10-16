@@ -347,6 +347,7 @@ class _SiteFormPageState extends State<SiteFormPage> {
   final _notes = TextEditingController();
   SiteStatus _status = SiteStatus.preparing;
   bool _saving = false;
+  bool _returning = false;
   String? _saveError;
   String? _draftId;
 
@@ -385,6 +386,7 @@ class _SiteFormPageState extends State<SiteFormPage> {
             padding: const EdgeInsets.all(16),
             children: [
               TextFormField(
+                enabled: !_saving && !_returning,
                 controller: _name,
                 decoration: const InputDecoration(labelText: '現場名'),
                 validator: (value) => value == null || value.trim().isEmpty
@@ -393,6 +395,7 @@ class _SiteFormPageState extends State<SiteFormPage> {
               ),
               const SizedBox(height: 14),
               TextFormField(
+                enabled: !_saving && !_returning,
                 controller: _customer,
                 decoration: const InputDecoration(labelText: '取引先'),
                 validator: (value) => value == null || value.trim().isEmpty
@@ -409,51 +412,62 @@ class _SiteFormPageState extends State<SiteFormPage> {
                           child: Text(status.label),
                         ))
                     .toList(),
-                onChanged: (value) => setState(() => _status = value ?? _status),
+                onChanged: _saving || _returning
+                    ? null
+                    : (value) => setState(() => _status = value ?? _status),
               ),
               const SizedBox(height: 14),
               TextField(
+                enabled: !_saving && !_returning,
                 controller: _formalName,
                 decoration: const InputDecoration(labelText: '現場正式名称'),
               ),
               const SizedBox(height: 14),
               TextField(
+                enabled: !_saving && !_returning,
                 controller: _manager,
                 decoration: const InputDecoration(labelText: '担当者'),
               ),
               const SizedBox(height: 14),
               TextField(
+                enabled: !_saving && !_returning,
                 controller: _representativeName,
                 decoration: const InputDecoration(labelText: '現場責任者'),
               ),
               const SizedBox(height: 14),
               TextField(
+                enabled: !_saving && !_returning,
                 controller: _representativePhone,
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(labelText: '責任者電話番号'),
               ),
               const SizedBox(height: 14),
               TextField(
+                enabled: !_saving && !_returning,
                 controller: _address,
                 decoration: const InputDecoration(labelText: '現場住所'),
               ),
               const SizedBox(height: 14),
               TextField(
+                enabled: !_saving && !_returning,
                 controller: _nearestStation,
                 decoration: const InputDecoration(labelText: '最寄りの駅'),
               ),
               const SizedBox(height: 14),
               TextField(
+                enabled: !_saving && !_returning,
                 controller: _startDate,
                 decoration: const InputDecoration(labelText: '開始日 (YYYY/MM/DD)'),
               ),
               const SizedBox(height: 14),
               TextField(
+                enabled: !_saving && !_returning,
                 controller: _endDate,
                 decoration: const InputDecoration(labelText: '終了日 (YYYY/MM/DD)'),
               ),
               const SizedBox(height: 14),
               TextField(
+                enabled: !_saving && !_returning,
                 controller: _notes,
                 maxLines: 3,
                 decoration: const InputDecoration(labelText: '備考'),
@@ -466,7 +480,7 @@ class _SiteFormPageState extends State<SiteFormPage> {
               ],
               const SizedBox(height: 20),
               FilledButton.icon(
-                onPressed: _saving ? null : _submit,
+                onPressed: _saving || _returning ? null : _submit,
                 icon: _saving
                     ? const SizedBox(width: 18, height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2))
@@ -483,7 +497,7 @@ class _SiteFormPageState extends State<SiteFormPage> {
   }
 
   Future<void> _submit() async {
-    if (_saving || !(_formKey.currentState?.validate() ?? false)) return;
+    if (_saving || _returning || !(_formKey.currentState?.validate() ?? false)) return;
     _draftId ??= DateTime.now().microsecondsSinceEpoch.toString();
     final draft = SiteRecord(
         id: _draftId!,
@@ -512,7 +526,10 @@ class _SiteFormPageState extends State<SiteFormPage> {
     try {
       final saved = await onSave(draft);
       if (!mounted) return;
-      setState(() => _saving = false);
+      setState(() {
+        _returning = true;
+        _saving = false;
+      });
       // PopScope must rebuild before this intentional successful return.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) Navigator.of(context).pop(saved);

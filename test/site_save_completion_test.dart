@@ -33,10 +33,13 @@ void main() {
     SiteRecord? result;
     await open(tester, (draft) { calls++; return pending.future; },
         (value) => result = value);
+    final submit = tester.widget<FilledButton>(find.byType(FilledButton)).onPressed!;
     await tester.tap(find.text('登録する'));
     await tester.pump();
     expect(calls, 1);
     expect(result, isNull);
+    expect(tester.widgetList<TextField>(find.byType(TextField))
+        .every((field) => field.enabled == false), isTrue);
     expect(find.text('保存中…'), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull);
     await tester.binding.handlePopRoute();
@@ -44,7 +47,10 @@ void main() {
     expect(find.byType(SiteFormPage), findsOneWidget);
     pending.complete(const SiteRecord(id: 'saved-id', name: '墨田現場',
         customerName: '取引会社', status: SiteStatus.preparing));
+    await tester.pump();
+    submit(); // A stale tap callback must not submit after successful completion.
     await tester.pumpAndSettle();
+    expect(calls, 1);
     expect(result?.id, 'saved-id');
     expect(find.byType(SiteFormPage), findsNothing);
   });
