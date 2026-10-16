@@ -1,0 +1,36 @@
+name: Site identity PostgreSQL races
+on:
+  pull_request:
+    paths:
+      - tool/staged/site_identity_links.sql
+      - tool/verify_site_identity_postgres_races.mjs
+      - .github/workflows/site-identity-postgres-races.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres16:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        # Match the repository's attendance-postgres-races service version.
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_site_identity_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_site_identity_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/site-identity-pg" --save-exact --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - name: Verify independent sessions in a disposable PostgreSQL 16 fixture
+        env:
+          SKO_SITE_IDENTITY_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_site_identity_fixture
+        run: node tool/verify_site_identity_postgres_races.mjs "$RUNNER_TEMP/site-identity-pg/node_modules/pg/lib/index.js"
