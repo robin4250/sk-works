@@ -25,7 +25,7 @@ class _Proofs extends OperationReauthenticationRepository {
   @override
   Future<String> requestProof({required String password, required String operation,
       required Map<String, dynamic> target}) async {
-    requests++;expect(operation, 'master.device.lock');expect(password, 'synthetic-primary');
+    requests++;expectSync(operation, 'master.device.lock');expectSync(password, 'synthetic-primary');
     this.target = target;if (fail) throw StateError('synthetic denied');
     return pending == null ? 'synthetic-single-use-proof' : await pending!.future;
   }
@@ -52,7 +52,10 @@ class _Devices implements MasterDeviceRepository {
   }
   @override
   Future<void> setLocked({required String deviceId, required bool locked, String? proof}) async {
-    expect(deviceId, masterDeviceId);changes++;this.locked = locked;this.proof = proof;
+    // Callback may originate outside WidgetTester's guarded tap zone when a
+    // stale onPressed is deliberately invoked. Synchronous checks avoid nesting
+    // a new async test guard inside the in-progress pumpAndSettle.
+    expectSync(deviceId, masterDeviceId);changes++;this.locked = locked;this.proof = proof;
   }
   static const masterDeviceId = deviceId;
   @override
