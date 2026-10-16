@@ -24,6 +24,9 @@ try{
  config=config.replace(/^project_id = .*$/m,`project_id = "${project}"`).replaceAll('54321','53921').replaceAll('54322','53922').replaceAll('54320','53920').replaceAll('54323','53923').replaceAll('54324','53924').replaceAll('54327','53927').replaceAll('54329','53929').replaceAll('127.0.0.1:3000','127.0.0.1:53921');
  // Only generated local config changes; product provider/Auth configuration is untouched.
  config=config.replace(/(\[db.seed\][\s\S]*?enabled = )true/, '$1false');
+ // CLI-documented fallback: avoid hot-reload worker reuse in a finite CI test.
+ // This is generated local fixture configuration, not a production runtime claim.
+ config=config.replace(/^policy = "per_worker"$/m,'policy = "oneshot"');
  await fs.writeFile(configPath,config,{mode:0o600});
  const fn=path.join(workdir,'supabase/functions/reauthenticate-operation');await fs.mkdir(fn,{recursive:true});
  for(const name of ['index.ts','handler.mjs'])await fs.copyFile(path.join(root,'supabase/functions/reauthenticate-operation',name),path.join(fn,name));
