@@ -51,10 +51,12 @@ void main() {
         completion.future, () => disposed++)),
     ));
     changes.add('owner');
+    await tester.idle();
     await tester.pump();
     expect(find.text('password update pending'), findsOneWidget);
     expect(disposed, 0);
     completion.complete();
+    await tester.idle();
     await tester.pump();
     expect(find.text('registration completed'), findsOneWidget);
     expect(disposed, 0);
@@ -77,6 +79,7 @@ void main() {
       final oldNavigator = navigator.currentState;
       expect(find.text('private file'), findsOneWidget);
       changes.add(actor);
+      await tester.idle();
       await tester.pump();
       expect(find.text('private file'), findsNothing);
       expect(disposed, 1);
@@ -102,6 +105,7 @@ void main() {
     await tester.pumpAndSettle();
     final current = navigator.currentState;
     changes.add('owner');
+    await tester.idle();
     await tester.pump();
     expect(find.text('private file'), findsOneWidget);
     expect(navigator.currentState, same(current));
@@ -116,10 +120,12 @@ void main() {
       child: const MaterialApp(home: Text('private file')),
     ));
     changes.addError(StateError('unavailable'));
+    await tester.idle();
     await tester.pump();
     expect(find.text('private file'), findsNothing);
     expect(find.textContaining('確認できません'), findsOneWidget);
     changes.add('owner');
+    await tester.idle();
     await tester.pump();
     expect(find.text('private file'), findsNothing);
     await tester.pump();
@@ -140,6 +146,7 @@ void main() {
       builder: (_) => _PrivatePage(() {}))));
     await tester.pumpAndSettle();
     changes.add(null); changes.add('owner');
+    await tester.idle();
     await tester.pump();
     await tester.pumpAndSettle();
     expect(find.text('private file'), findsNothing);
