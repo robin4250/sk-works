@@ -39,6 +39,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   String _companyName = '';
   String? _error;
   bool _reloadOnResume=false;
+  bool _refreshContactsOnResume=false;
 
   @override
   void initState() {
@@ -55,6 +56,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     setState(() {
       if(session?.revoked==true){_records.clear();_canManagePeople=false;_canViewPeople=false;}
       else if(session?.snapshot==null){
+        if(session?.active==false)_refreshContactsOnResume=true;
         final basic=_records.map((record)=>PersonRecord.fromJson({...record.toJson(),
           'phone':'','email':'','notes':'','bloodType':'','address':'',
           'emergencyName':'','emergencyRelation':'','emergencyPhone':'','emergencyAddress':'',
@@ -64,10 +66,28 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       }
       else {_canManagePeople=session!.snapshot!.canManage;_canViewPeople=true;}
     });
+    if(_refreshContactsOnResume&&session?.active==true&&session?.snapshot!=null){
+      _refreshContactsOnResume=false;_refreshRoster(session!);
+    }
     if(_reloadOnResume&&session?.active==true&&session?.snapshot!=null){
       _reloadOnResume=false;
       WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_load();});
     }
+  }
+
+  Future<void> _refreshRoster(PersonnelPrivacySession session) async {
+    final repository=_repository;
+    if(repository==null)return;
+    final lease=session.epoch;
+    try{
+      final rows=await repository.loadAll(expectedCompany:session.company);
+      session.verify(lease);
+      if(!mounted||_privacy!=session)return;
+      setState((){_records..clear()..addAll(rows.map((row)=>PersonRecord.fromJson({...row,
+        'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
+        'emergencyPhone':'','emergencyAddress':'','familyComposition':'','familyMembers':<dynamic>[],
+      })));});
+    }catch(_){/* Keep scrubbed roster; never restore a stale response. */}
   }
 
   Future<void> _load() async {
@@ -341,17 +361,21 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                               _showDetails(record);
                                               return;
                                             }
+                                            final id=record.id, kind=record.kind;
+                                            final session=_privacy, repository=_repository;
+                                            final displayCompany=_companyName;
+                                            final canManage=_canManagePeople, canView=_canViewPeople;
                                             Navigator.of(context).push(
                                               MaterialPageRoute(
                                                 builder: (_) =>
                                                     EmployeePersonnelDetailPage(
-                                                  record: PersonRecord(id:record.id,kind:record.kind,name:''),
-                                                  privacySession: _privacy,
+                                                  record: PersonRecord(id:id,kind:kind,name:''),
+                                                  privacySession: session,
                                                   allEmployees: const [],
-                                                  companyName: _companyName,
-                                                  canManage: _canManagePeople,
-                                                  canViewFamily: _canViewPeople,
-                                                  portraitLoader: () => _repository!.portraitUrl(record.id,companyId:_privacy!.company),
+                                                  companyName: displayCompany,
+                                                  canManage: canManage,
+                                                  canViewFamily: canView,
+                                                  portraitLoader: () => repository!.portraitUrl(id,companyId:session!.company),
                                                 ),
                                               ),
                                             );
@@ -535,13 +559,15 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         : [initialRecord];
     if (records.isEmpty || !mounted) return;
     final workerIds=records.map((record)=>record.id).toSet();
+    final previewRecords=records.map((record)=>PersonRecord(id:record.id,kind:record.kind,name:'')).toList(growable:false);
+    final session=_privacy, displayCompany=_companyName;
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => EmployeePersonnelPrintPage(
-          companyName: _companyName,
-          privacySession: _privacy,
-          records: records.map((record)=>PersonRecord(id:record.id,kind:record.kind,name:'')).toList(growable:false),
+          companyName: displayCompany,
+          privacySession: session,
+          records: previewRecords,
           action: operation == PersonnelExportOperation.send
               ? EmployeePersonnelPreviewAction.send
               : EmployeePersonnelPreviewAction.print,
@@ -551,7 +577,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                     MaterialPageRoute(
                       builder: (_) => PersonnelBundleSendPage(
                         workerIds: workerIds,
-                        privacySession:_privacy,
+                        privacySession:session,
                       ),
                     ),
                   );
@@ -638,7 +664,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     final workerIds = <String>{record.id};
     final page = switch (kind) {
       TransferPayloadKind.personnelBundle =>
-        PersonnelBundleSendPage(workerIds: workerIds),
+        PersonnelBundleSendPage(workerIds: workerIds,privacySession:_privacy),
       TransferPayloadKind.qualificationsOnly =>
         QualificationSendPage(workerIds: workerIds),
       TransferPayloadKind.documentsOnly =>
@@ -649,6 +675,10 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     );
   }
   Future<void> _callPhone(String phone) async {
+    final session=_privacy;
+    if(session==null)return;
+    try{await session.read();session.verify(session.epoch);}catch(_){return;}
+    if(!mounted||_privacy!=session)return;
     final domestic = domesticPhoneDisplay(phone);
     final dial = domestic.replaceAll(RegExp(r'[^0-9+]'), '');
     if (dial.isEmpty) return;

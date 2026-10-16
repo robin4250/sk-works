@@ -180,8 +180,9 @@ void main(){
     repository:CompanyDocumentExchangeRepository.forTesting(client),beforeLoad:()async{checks++;if(denied)throw const PersonnelScopeChanged();})));
   await tester.pump();denied=true;
   source.complete(http.Response(jsonEncode([{'id':worker,'worker_id':worker,'kind':'worker_personnel','name':'Late Private Name'}]),200,request:http.Request('POST',Uri.parse('https://personnel-fixture.invalid/rest/v1/rpc/company_document_exchange')),headers:{'content-type':'application/json'}));
+  await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:20)));
   await tester.pumpAndSettle();expect(checks,2);expect(find.text('Late Private Name'),findsNothing);
-  await tester.pumpWidget(const SizedBox());await client.dispose();
+  await tester.pumpWidget(const SizedBox());await tester.runAsync(()=>client.dispose());
  });
  testWidgets('initial paused lifecycle does not fetch until resumed',(tester)async{
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);

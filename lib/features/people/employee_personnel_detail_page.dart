@@ -115,6 +115,9 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
   }
 
   Future<void> _callPhone(BuildContext context, String phone) async {
+    final session=privacySession;
+    if(session!=null){try{await session.read(workerIds:{record.id});session.verify(session.epoch);}catch(_){return;}}
+    if(!context.mounted)return;
     final domestic = domesticPhoneDisplay(phone);
     final dial = domestic.replaceAll(RegExp(r'[^0-9+]'), '');
     if (dial.isEmpty) return;
