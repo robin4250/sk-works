@@ -51,13 +51,14 @@ def source():
 
 def check_ci(sha):
     # gh supplies its existing authentication; neither tokens nor logs are read.
-    url = 'repos/robin4250/sk-works/actions/runs?head_sha=' + sha + '&event=push&per_page=100'
+    url = 'repos/robin4250/sk-works/actions/runs?head_sha=' + sha + '&per_page=100'
     data = json.loads(run(['gh', 'api', url]))
     require(data.get('total_count', 101) <= 100, 'CI results exceed the bounded response; review required')
     result = {}
     for name in REQUIRED_CI:
         runs = [r for r in data.get('workflow_runs', []) if r.get('name') == name
-                and r.get('head_sha') == sha and r.get('head_branch') == 'main' and r.get('event') == 'push']
+                and r.get('head_sha') == sha and r.get('head_branch') == 'main'
+                and r.get('event') in ('push', 'workflow_dispatch')]
         require(runs, 'Missing exact-main CI: ' + name)
         latest = max(runs, key=lambda r: (r.get('run_number', 0), r.get('run_attempt', 0)))
         require(latest.get('status') == 'completed' and latest.get('conclusion') == 'success',

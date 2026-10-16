@@ -5,7 +5,7 @@
 ## 実行する検査
 
 - 候補作成前・ビルド開始前・検証後・アップロード前に、main、origin/mainとの一致、追跡/未追跡の未保存変更なしを照合します。変更を削除・退避・resetする処理はありません。
-- GitHub CLIの既存認証でexact main SHAのpush CIを照合し、Flutter CI / iOS CI / Secret Scan / TestFlight provenanceの最新実行が成功していなければ停止します。CI API失敗・結果不足・100件超過も停止します。トークンやログを取得・表示しません。
+- GitHub CLIの既存認証でexact main SHAのpushまたは手動実行CIを照合し、Flutter CI / iOS CI / Secret Scan / TestFlight provenanceの最新実行が成功していなければ停止します。CI API失敗・結果不足・100件超過も停止します。トークンやログを取得・表示しません。
 - 成功した `flutter build ipa --release --export-method app-store` の開始記録より新しいIPAを1個に限定します。複数の既存IPAは自動削除しません。必要なら利用者が保管してから再試行します。
 - IPAを一時領域に展開し、危険なZIPパス・symlink・過大な展開を拒否します。Bundle ID、version/build、AOT、Debug kernel不在、広範ATS無効化なしを確認します。
 - macOS codesignのstrict/deep検証、署名entitlements、配布profileのteam/application identifier/get-task-allow=false、App Store/TestFlight区分、有効期限、profile内署名証明書との一致を検証します。
@@ -17,6 +17,13 @@
 commitとIPAを暗号学的に結び付けた埋め込み証明はありません。clean SHA・構築開始時刻・通常の固定Releaseビルド経路・検査したファイルのhashによる取り違え防止です。App.frameworkの存在とDebug kernel不在だけで任意の偽装バイナリをReleaseと認証しません。codesign/profile検査はMacのローカル信頼ストアとツールに依存し、Apple側での受付・証明書失効状態・サービス全体の安全性の確認を代替しません。所有者やrootが権限を戻してコピーやツールを書き換えるホスト侵害を、この一時コピーで防げるとは扱いません。
 
 候補作成には既存の `bash tool/testflight_candidate.sh`、APIアップロードには `bash tool/testflight_upload.sh` を使用します。追加要件はPython 3と認証済みGitHub CLIです。APIキー未設定時にOrganizerの別Archiveを自動で開く経路は停止し、検証済みIPAのTransporter利用を案内します。Transporterで別ファイルを選ぶ操作までこのスクリプトが制御することはできません。
+
+専用provenance検査は変更パスに関係なく全main pushで実行します。既存Flutter/iOS CIのpushパス条件は維持し、exact mainで必要な実行がない場合だけ、担当者が次の手動実行を開始できます。このPRで実行要求は送っていません。実行後は成功を待ち、mainが進んでいたら新しいSHAで再確認します。古いSHAや別ブランチの成功は採用しません。
+
+```bash
+gh workflow run flutter-ci.yml --ref main
+gh workflow run ios-ci.yml --ref main
+```
 
 ## 検査の範囲
 

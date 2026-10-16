@@ -8,10 +8,6 @@ on:
       - '.github/workflows/testflight-provenance.yml'
   push:
     branches: [main]
-    paths:
-      - 'tool/testflight*'
-      - 'tool/test_testflight_provenance.py'
-      - '.github/workflows/testflight-provenance.yml'
 permissions:
   contents: read
 jobs:

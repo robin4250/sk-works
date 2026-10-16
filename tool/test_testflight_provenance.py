@@ -127,6 +127,17 @@ class ProvenanceTests(unittest.TestCase):
         self.assertEqual((repo / 'saved.txt').read_text(), 'unsaved')
         self.assertEqual((repo / 'untracked.txt').read_text(), 'keep')
 
+    def test_manual_main_ci_is_allowed_only_on_exact_commit(self):
+        runs = [{'id': i, 'name': name, 'head_sha': SHA, 'head_branch': 'main', 'event': 'workflow_dispatch',
+                 'run_number': 1, 'status': 'completed', 'conclusion': 'success'}
+                for i, name in enumerate(p.REQUIRED_CI)]
+        with patch.object(p, 'run', return_value=json.dumps({'total_count': len(runs), 'workflow_runs': runs}).encode()):
+            self.assertEqual(len(p.check_ci(SHA)), len(p.REQUIRED_CI))
+            with self.assertRaises(ValueError): p.check_ci('b' * 40)
+        runs[0]['head_branch'] = 'other'
+        with patch.object(p, 'run', return_value=json.dumps({'total_count': len(runs), 'workflow_runs': runs}).encode()):
+            with self.assertRaises(ValueError): p.check_ci(SHA)
+
     def test_manifest_tamper_stale_and_identity(self):
         manifest = self.root / 'manifest.json'
         data = {'schema': 1, 'commit': SHA, 'branch': 'main', 'build_mode': 'release',
