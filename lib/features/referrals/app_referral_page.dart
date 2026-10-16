@@ -152,20 +152,24 @@ class _AppReferralPageState extends State<AppReferralPage> {
   Future<void> _save() async {
     setState(() => _busy = true);
     try {
-      final saveSettings = _usesDistribution
-          ? widget.repository.saveSettingsPreservingDistributionUrl
-          : widget.repository.saveSettings;
-      await saveSettings(
-        enabled: _snapshot!['enabled'] == true,
-        publicEnabled: _snapshot!['public_enabled'] == true,
-        notifyMaster: _snapshot!['notify_master'] == true,
-        url: _url.text,
-      );
+      final enabled = _snapshot!['enabled'] == true;
+      final publicEnabled = _snapshot!['public_enabled'] == true;
+      final notifyMaster = _snapshot!['notify_master'] == true;
+      if (_usesDistribution) {
+        await widget.repository.saveSettingsPreservingDistributionUrl(
+          enabled: enabled, publicEnabled: publicEnabled, notifyMaster: notifyMaster,
+        );
+      } else {
+        await widget.repository.saveSettings(
+          enabled: enabled, publicEnabled: publicEnabled,
+          notifyMaster: notifyMaster, url: _url.text,
+        );
+      }
       await _load();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('設定を保存できませんでした。')));
+            .showSnackBar(const SnackBar(content: Text('設定を保存できませんでした。既存の配布URL・利用権限を確認し、再読み込みしてください。')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);

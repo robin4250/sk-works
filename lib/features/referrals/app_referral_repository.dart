@@ -57,14 +57,17 @@ class AppReferralRepository {
     required bool enabled,
     required bool publicEnabled,
     required bool notifyMaster,
-    required String url,
   }) async {
     final current = await load(master: true);
+    final currentUrl = current['distribution_url'];
+    if (!current.containsKey('distribution_url') || currentUrl is! String) {
+      throw StateError('既存の配布URLを取得できません。再読み込みしてから保存してください。');
+    }
     await saveSettings(
       enabled: enabled,
       publicEnabled: publicEnabled,
       notifyMaster: notifyMaster,
-      url: current['distribution_url']?.toString() ?? '',
+      url: currentUrl,
     );
   }
 
