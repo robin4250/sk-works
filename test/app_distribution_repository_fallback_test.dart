@@ -18,7 +18,7 @@ void main() {
         httpClient:MockClient((request) async {
           calls.add(request.url.path);
           return http.Response(jsonEncode(snapshot),200,
-            headers:{'content-type':'application/json'});
+            request:request,headers:{'content-type':'application/json'});
         }));
       await expectLater(AppReferralRepository(client).saveSettingsPreservingDistributionUrl(
         enabled:true,publicEnabled:false,notifyMaster:false),
@@ -33,10 +33,10 @@ void main() {
       httpClient:MockClient((request) async {
         if(request.url.path.endsWith('app_distribution_snapshot')) {
           return http.Response('{"distribution_url":""}',200,
-            headers:{'content-type':'application/json'});
+            request:request,headers:{'content-type':'application/json'});
         }
         saved=jsonDecode(request.body) as Map<String,dynamic>;
-        return http.Response('{}',200,headers:{'content-type':'application/json'});
+        return http.Response('{}',200,request:request,headers:{'content-type':'application/json'});
       }));
     await AppReferralRepository(client).saveSettingsPreservingDistributionUrl(
       enabled:true,publicEnabled:false,notifyMaster:false);
@@ -51,7 +51,7 @@ void main() {
         httpClient:MockClient((request) async {
           calls.add(request.url.path);
           return http.Response(jsonEncode({'code':code,'message':'blocked'}),403,
-            headers:{'content-type':'application/json'});
+            request:request,headers:{'content-type':'application/json'});
         }));
       await expectLater(AppReferralRepository(client).load(),throwsA(isA<PostgrestException>()));
       expect(calls,['/rest/v1/rpc/app_distribution_snapshot']);
@@ -65,10 +65,10 @@ void main() {
         calls.add(request.url.path);
         if(request.url.path.endsWith('app_distribution_snapshot')) {
           return http.Response(jsonEncode({'code':'PGRST202','message':'missing'}),404,
-            headers:{'content-type':'application/json'});
+            request:request,headers:{'content-type':'application/json'});
         }
         return http.Response(jsonEncode({'can_invite':true}),200,
-          headers:{'content-type':'application/json'});
+          request:request,headers:{'content-type':'application/json'});
       }));
     expect((await AppReferralRepository(client).load())['can_invite'],true);
     expect(calls,['/rest/v1/rpc/app_distribution_snapshot','/rest/v1/rpc/app_referral_snapshot']);
@@ -81,10 +81,10 @@ void main() {
         if(request.url.path.endsWith('app_distribution_snapshot')) {
           return http.Response(jsonEncode({
             'distribution_channels':[], 'distribution_url':'https://testflight.apple.com/join/CURRENT',
-          }),200,headers:{'content-type':'application/json'});
+          }),200,request:request,headers:{'content-type':'application/json'});
         }
         saved=jsonDecode(request.body) as Map<String,dynamic>;
-        return http.Response('{}',200,headers:{'content-type':'application/json'});
+        return http.Response('{}',200,request:request,headers:{'content-type':'application/json'});
       }));
     await AppReferralRepository(client).saveSettingsPreservingDistributionUrl(
       enabled:true,publicEnabled:false,notifyMaster:false);
