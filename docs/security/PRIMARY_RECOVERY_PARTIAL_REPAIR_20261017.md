@@ -13,3 +13,24 @@ This partial repair removes only primary-reset SMS request/verify methods and UI
 Before restoring the requested previous experience, identify the previously working installed app version/source and its actual server-verifiable login/recovery credential or session handling. A valid authenticated recovery capability is required; a local-auth success or preferences user ID alone is insufficient. Do not revive retired SMS, automatically register dual email, add new account recovery mechanisms, or alter Auth providers/admin roles as a substitute.
 
 Tests: dedicated workflow analyzes the changed Dart files and runs actual Flutter widgets against the locked Supabase SDK with a synthetic HTTP mock. It checks forgotten-password API count zero and password update zero, unavailable UI/back behavior, ordinary phone-password authentication, and initial registration/OTP authentication. Source guards ensure reset-specific entry points are absent while employee initial update/QR remain. These checks do not prove successful real-device Face ID primary recovery or production delivery. Review the workflow results before integration.
+
+## Follow-up: first logout might reveal a different, older login page
+
+The user's hypothesis was checked against exact base 02cab526 and the existing build entries. No routing change is made on the assumption that an undiscovered new primary Face ID screen exists.
+
+| Check | Evidence and result | Limit |
+| --- | --- | --- |
+| Active entry | `lib/main.dart` imports/exports `app_v2.dart` and runs `SkWorksApp`; root also checked the iPhone/TestFlight scripts default to main without an alternate `--target`. | Installed binary/build version and unpushed Mac source can still differ. |
+| Authenticated app | `app_v2` uses `SupabaseAuthGate` when initialized, passing its sign-out callback into `HomePage`. | Local development fallback is separate and has no authenticated logout. |
+| First logout | Home logout calls the gate callback → repository `auth.signOut()` → gate reload → absent currentUser → `SecureAuthPage`. | This source route does not identify the prior installed build. |
+| Pushed routes | `AuthenticatedNavigationBoundary` observes actor→null and recreates the Navigator, disposing pushed private pages. | This protects navigation; it is not a password recovery credential. |
+| Legacy app | `lib/app.dart` is a local prototype with direct HomePage and no distinct Login/Auth/Supabase/Face primary recovery screen. | Only the inspected source, not all historical device binaries. |
+| Biometric settings | No biometric-preference deletion appears on the inspected logout chain. Secondary settings remain keyed by user ID; Master stored device-key lookup itself requires currentUser. | Persisted configuration does not authenticate a logged-out account. |
+| OS autofill | Existing phone/password fields have autofill hints; there is no app-side password-vault extraction or custom retained-token restoration on logout. | Saved OS passwords and Face ID autofill can only be checked on the device. Autofill can support ordinary password login; it is not demonstrated primary reset. |
+| Alternate Face route | The inspected primary UI contains no biometric authentication call. Secondary reset and Master gateways require different existing credentials/session. | A valid prior primary route remains unlocated; no guessed new route or new authentication mechanism is added. |
+
+Root separately inspected named recovery branches including `recovery/iphone-good-20261001-0249` at `3d69b8fd538172e49ff270ddefe21e58ab7ddbc1`, secondary Face persistence and Master emergency recovery candidates. Their primary SecureAuthPage portions still contained SMS recovery and no primary biometric call. This further bounds the hypothesis without claiming every historical build was recovered.
+
+Implementation/product snapshot: `569ce306fce9a9513d562c908a9b150e320593ac`. Its dedicated run **38936131588**, job **117091986287**, analyzed all changed Dart files with **No issues**, and all **7 tests passed**, including 3 actual widget/locked-SDK synthetic HTTP cases. The first test proves forgot/back behavior with API count zero; the next two prove ordinary password login and initial-registration OTP authentication. QR entry visibility is tested; scanner/camera operation and real-device primary Face recovery are not.
+
+Earlier `fdcca1b` analyze failure and `e5ade5e`/`30b4dba` fixture timeouts are superseded by successful exact 569 dedicated results, not silently relabelled as success. The test fixture lifecycle was moved outside Flutter's fake clock; product assertions were retained. This follow-up is documentation only; its commit has the same product/test/workflow files as 569. Full Flutter/iOS checks must still be tracked by their actual commit, and the app/account recovery remains unresolved pending prior installed source or real valid recovery capability evidence.
