@@ -22,7 +22,12 @@ http.Response jsonResponse(Object value, [int status = 200]) =>
 class Fixture {
   Fixture() {
     client = SupabaseClient('https://fixture.invalid', 'public_fixture',
-      httpClient: MockClient(handle), authOptions: const AuthClientOptions(autoRefreshToken: false));
+      httpClient: MockClient((request) async {
+        final response = await handle(request);
+        // PostgREST 2.9.1 reads response.request for HEAD/content parsing.
+        return http.Response.bytes(response.bodyBytes, response.statusCode,
+          headers: response.headers, request: request, reasonPhrase: response.reasonPhrase);
+      }), authOptions: const AuthClientOptions(autoRefreshToken: false));
     repository = OperationReauthenticationRepository(client);
   }
   late final SupabaseClient client;

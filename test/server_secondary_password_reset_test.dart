@@ -113,8 +113,11 @@ void main() {
     await open(tester, access);
     await tester.enterText(find.byKey(const Key('primary-password')), 'synthetic-primary');
     await tester.tap(find.text('本人確認する')); await tester.pump();
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden,
+        AppLifecycleState.paused, AppLifecycleState.hidden,
+        AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
     transport.pending!.complete('synthetic-single-use-proof'); await tester.pumpAndSettle();
     expect(find.byKey(const Key('reset-password')), findsNothing);
     await expectLater(access.save('synthetic-replay'), throwsStateError);
