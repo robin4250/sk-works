@@ -1,0 +1,40 @@
+name: PDF pinch previews
+on:
+  push:
+    branches: ['fix/document-pdf-pinch-previews-20261016']
+  pull_request:
+    paths:
+      - 'lib/features/shared/pdf_pinch_pages.dart'
+      - 'lib/features/shared/resource_registration_card.dart'
+      - 'lib/features/people/company_delivery_inbox_page.dart'
+      - 'lib/features/help/manual_pdf_service.dart'
+      - 'lib/features/settings/company_seal_settings_page.dart'
+      - 'test/*pdf*pinch*'
+      - 'test/financial_preview_uses_template_pdf_contract_test.dart'
+      - '.github/workflows/pdf-pinch-preview.yml'
+jobs:
+  focused-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: >-
+          flutter analyze
+          lib/features/shared/pdf_pinch_pages.dart
+          lib/features/shared/resource_registration_card.dart
+          lib/features/people/company_delivery_inbox_page.dart
+          lib/features/help/manual_pdf_service.dart
+          lib/features/settings/company_seal_settings_page.dart
+          test/pdf_pinch_pages_test.dart
+          test/document_pdf_pinch_wiring_test.dart
+          test/financial_preview_uses_template_pdf_contract_test.dart
+      - run: >-
+          flutter test
+          test/pdf_pinch_pages_test.dart
+          test/document_pdf_pinch_wiring_test.dart
+          test/financial_preview_uses_template_pdf_contract_test.dart

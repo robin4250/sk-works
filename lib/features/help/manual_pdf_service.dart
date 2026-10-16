@@ -5,6 +5,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../shared/pdf_pinch_pages.dart';
+
 import '../../international/language_controller.dart';
 import '../shared/pdf_bytes_cache.dart';
 import 'manual_content.dart';
@@ -184,6 +186,13 @@ class ManualPdfPreviewPage extends StatefulWidget {
 class _ManualPdfPreviewPageState extends State<ManualPdfPreviewPage> {
   final _pdfBytes = PdfBytesCache();
 
+  Future<Uint8List> _buildPreviewPdf(PdfPageFormat format) =>
+      _pdfBytes.get(() => widget._section != null
+          ? ManualPdfService.buildChapter(widget._section!, format: format)
+          : widget._pamphlet
+          ? ManualPdfService.buildPamphlet(format: format)
+          : ManualPdfService.buildRoleManual(widget._role!, format: format));
+
   @override
   void didUpdateWidget(covariant ManualPdfPreviewPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -204,7 +213,8 @@ class _ManualPdfPreviewPageState extends State<ManualPdfPreviewPage> {
 
     return Scaffold(
       appBar: AppBar(title: Text(SkoLanguageController.tr(title))),
-      body: PdfPreview(
+      body: PdfPreview.builder(
+        pagesBuilder: (_, pages) => PdfPinchPages(pages: pages),
         initialPageFormat: PdfPageFormat.a4,
         canChangePageFormat: false,
         canChangeOrientation: false,
@@ -215,13 +225,7 @@ class _ManualPdfPreviewPageState extends State<ManualPdfPreviewPage> {
             : pamphlet
             ? ManualPdfService.pamphletFileName
             : ManualPdfService.fileNameForRole(role!),
-        build: (format) => _pdfBytes.get(
-          () => section != null
-              ? ManualPdfService.buildChapter(section, format: format)
-              : pamphlet
-              ? ManualPdfService.buildPamphlet(format: format)
-              : ManualPdfService.buildRoleManual(role!, format: format),
-        ),
+        build: _buildPreviewPdf,
       ),
     );
   }

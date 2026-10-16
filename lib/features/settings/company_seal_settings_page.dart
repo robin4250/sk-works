@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+
 import '../../domain/company_seal_design.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+
+import '../shared/pdf_pinch_pages.dart';
 
 import '../shared/company_seal_pdf.dart';
 import 'company_seal_style_repository.dart';
@@ -243,13 +247,17 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
         ),
       );
       final bytes = await document.save();
+      Future<Uint8List> buildPreviewPdf(PdfPageFormat _) async => bytes;
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => Scaffold(
             appBar: AppBar(title: Text(SkoLanguageController.tr('角印プレビュー'))),
-            body: PdfPreview(
-              build: (_) async => bytes,
+            body: PdfPreview.builder(
+              pagesBuilder: (_, pages) => PdfPinchPages(pages: pages),
+              build: buildPreviewPdf,
+              allowPrinting: true,
+              allowSharing: true,
               canChangePageFormat: false,
               canChangeOrientation: false,
             ),
@@ -331,6 +339,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
         data.offsetInBytes,
         data.lengthInBytes,
       );
+      Future<Uint8List> buildPreviewPdf(PdfPageFormat _) async => bytes;
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -338,8 +347,11 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
             appBar: AppBar(
               title: Text(SkoLanguageController.tr('書体の解説（作者原文）')),
             ),
-            body: PdfPreview(
-              build: (_) async => bytes,
+            body: PdfPreview.builder(
+              pagesBuilder: (_, pages) => PdfPinchPages(pages: pages),
+              build: buildPreviewPdf,
+              allowPrinting: true,
+              allowSharing: true,
               canChangePageFormat: false,
               canChangeOrientation: false,
             ),

@@ -9,6 +9,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'company_document_exchange_repository.dart';
+import '../shared/pdf_bytes_cache.dart';
+import '../shared/pdf_pinch_pages.dart';
 
 class CompanyDeliveryInboxPage extends StatefulWidget {
   const CompanyDeliveryInboxPage({super.key});
@@ -800,7 +802,7 @@ class _ReceivedTransferItem {
   }
 }
 
-class _ReceivedDataPdfPreview extends StatelessWidget {
+class _ReceivedDataPdfPreview extends StatefulWidget {
   const _ReceivedDataPdfPreview({
     required this.title,
     required this.items,
@@ -808,6 +810,24 @@ class _ReceivedDataPdfPreview extends StatelessWidget {
 
   final String title;
   final List<_ReceivedTransferItem> items;
+
+  @override
+  State<_ReceivedDataPdfPreview> createState() => _ReceivedDataPdfPreviewState();
+}
+
+class _ReceivedDataPdfPreviewState extends State<_ReceivedDataPdfPreview> {
+  final _pdfBytes = PdfBytesCache();
+
+  @override
+  void didUpdateWidget(covariant _ReceivedDataPdfPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.title != widget.title || oldWidget.items != widget.items) {
+      _pdfBytes.invalidate();
+    }
+  }
+
+  Future<Uint8List> _buildPreviewPdf(PdfPageFormat _) =>
+      _pdfBytes.get(_buildPdf);
 
   Future<Uint8List> _buildPdf() async {
     final regular = await PdfGoogleFonts.notoSansJPRegular();
@@ -821,11 +841,11 @@ class _ReceivedDataPdfPreview extends StatelessWidget {
         margin: const pw.EdgeInsets.all(14 * PdfPageFormat.mm),
         build: (_) => [
           pw.Text(
-            title,
+            widget.title,
             style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 10),
-          for (final item in items)
+          for (final item in widget.items)
             pw.Container(
               margin: const pw.EdgeInsets.only(bottom: 7),
               child: pw.Column(
@@ -850,13 +870,14 @@ class _ReceivedDataPdfPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('印刷プレビュー')),
-      body: PdfPreview(
-        build: (_) => _buildPdf(),
+      body: PdfPreview.builder(
+        pagesBuilder: (_, pages) => PdfPinchPages(pages: pages),
+        build: _buildPreviewPdf,
         canChangePageFormat: false,
         canChangeOrientation: false,
         allowPrinting: true,
         allowSharing: true,
-        pdfFileName: title + '.pdf',
+        pdfFileName: widget.title + '.pdf',
       ),
     );
   }

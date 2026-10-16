@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import 'pdf_pinch_pages.dart';
 import '../../international/language_controller.dart';
 
 /// One saved attachment is one slot, even when the file is a multi-page PDF.
@@ -211,13 +213,15 @@ class _ResourceAttachmentThumbnailState extends State<ResourceAttachmentThumbnai
       await widget.attachment.validateAccess?.call();
       if (!mounted || content != _original || path != widget.attachment.path) return;
       final pdf = _isPdf(bytes);
+      Future<Uint8List> buildPreviewPdf(PdfPageFormat _) async => bytes;
       await showDialog<void>(context: context, builder: (context) => Dialog.fullscreen(
         child: Scaffold(
           appBar: AppBar(title: Text(widget.attachment.label), leading: IconButton(
             tooltip: SkoLanguageController.tr('閉じる'), icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))),
-          body: pdf ? PdfPreview(build: (_) async => bytes, useActions: false,
+          body: pdf ? PdfPreview.builder(build: buildPreviewPdf,
+            pagesBuilder: (_, pages) => PdfPinchPages(pages: pages), useActions: true,
             canDebug: false, canChangeOrientation: false, canChangePageFormat: false,
-            allowPrinting: false, allowSharing: false, dynamicLayout: false,
+            allowPrinting: true, allowSharing: false, dynamicLayout: false,
             onError: (_, __) => Center(child: Text(SkoLanguageController.tr('PDFを表示できませんでした。'))))
             : Center(child: InteractiveViewer(minScale: .5, maxScale: 5,
                 child: Image.memory(bytes, fit: BoxFit.contain,
