@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import '../payroll/company_common_payroll_page.dart';
 import 'company_common_tax_page.dart';
+import 'company_common_rates_page.dart';
 
 class CompanyCommonSettingsScope {
   const CompanyCommonSettingsScope(this.companyId, this.name, this.canEdit);
@@ -17,12 +18,13 @@ class CompanyCommonSettingsScope {
 /// Membership hints only select the scope; each child RPC authorizes it again.
 class CompanyCommonSettingsPage extends StatefulWidget {
   const CompanyCommonSettingsPage({super.key, this.companyId,
-    this.scopeLoader, this.currentActor, this.allowancesBuilder, this.taxBuilder});
+    this.scopeLoader, this.currentActor, this.allowancesBuilder, this.taxBuilder, this.ratesBuilder});
   final String? companyId;
   @visibleForTesting final Future<List<CompanyCommonSettingsScope>> Function()? scopeLoader;
   @visibleForTesting final String? Function()? currentActor;
   @visibleForTesting final Widget Function(BuildContext, String)? allowancesBuilder;
   @visibleForTesting final Widget Function(BuildContext, String)? taxBuilder;
+  @visibleForTesting final Widget Function(BuildContext, String)? ratesBuilder;
   @override
   State<CompanyCommonSettingsPage> createState() => _CompanyCommonSettingsPageState();
 }
@@ -162,18 +164,18 @@ class _CompanyCommonSettingsPageState extends State<CompanyCommonSettingsPage>
 
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(
     title: const Text('会社共通設定'),
-    content: const Text('手当は「時給・日給・月給」「時間・日・月単位」「支給・控除」で切り替え、追加・編集・削除します。元からある3枠は日単位の支給の先頭に残し、同じ会社データを使います。消費税・福利厚生費もこの設定内で管理します。保存が確認できた時だけ完了を表示します。結果不明時は再送せず保存状態を確認してください。共通項目の個別給料設定・計算・明細への接続は、接続確認が済むまで完了扱いにしません。'),
+    content: const Text('手当は「時給・日給・月給」「時間・日・月単位」「支給・控除」で切り替え、追加・編集・削除します。元からある3枠は日単位の支給の先頭に残し、同じ会社データを使います。消費税・福利厚生費もこの設定内で管理します。保存が確認できた時だけ完了を表示します。結果不明時は再送せず保存状態を確認してください。残業・早出・夜勤・休日の登録済み単価は「残業・早出など」で編集できます。各タブは同じ会社の設定を保存します。社員ごとの追加項目は「個別給料設定」で管理します。'),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]));
 
   @override
   Widget build(BuildContext context) {
     final selected = _selected;
     final covered = !_foreground || !_verified || _invalidated;
-    final content = DefaultTabController(length: 2, child: Scaffold(
+    final content = DefaultTabController(length: 3, child: Scaffold(
       appBar: AppBar(title: const Text('会社共通設定'), actions: [
         IconButton(tooltip: '会社共通設定の使い方', onPressed: _help, icon: const Icon(Icons.help_outline)),
       ], bottom: selected == null ? null : const TabBar(tabs: [
-        Tab(text: '手当'), Tab(text: '消費税・福利厚生費'),
+        Tab(text: '手当'), Tab(text: '消費税・福利厚生費'), Tab(text: '残業・早出など'),
       ])),
       body: selected == null ? ListView(padding: const EdgeInsets.all(16), children: [
         if (_error != null) Text(_error!),
@@ -188,6 +190,7 @@ class _CompanyCommonSettingsPageState extends State<CompanyCommonSettingsPage>
             CompanyCommonPayrollPage(companyId: selected.companyId, embedded: true),
         widget.taxBuilder?.call(context, selected.companyId) ??
             CompanyCommonTaxPage(companyId: selected.companyId, embedded: true),
+        widget.ratesBuilder?.call(context, selected.companyId) ?? CompanyCommonRatesPage(companyId: selected.companyId, embedded: true),
       ]));
       }),
     ));
@@ -202,3 +205,4 @@ class _CompanyCommonSettingsPageState extends State<CompanyCommonSettingsPage>
     ]);
   }
 }
+

@@ -16,13 +16,14 @@ class _DraftEditorState extends State<DraftEditor> {
 }
 Widget page({String? company, Future<List<CompanyCommonSettingsScope>> Function()? loader, String? Function()? actor}) => MaterialApp(home: CompanyCommonSettingsPage(companyId: company,
  currentActor: actor ?? () => 'actor', scopeLoader: loader ?? () async => [const CompanyCommonSettingsScope('company-a', '会社A', true)],
- allowancesBuilder: (_, id) => DraftEditor('allowances-$id'), taxBuilder: (_, id) => DraftEditor('tax-$id')));
+ allowancesBuilder: (_, id) => DraftEditor('allowances-$id'), taxBuilder: (_, id) => DraftEditor('tax-$id'), ratesBuilder: (_, id) => DraftEditor('rates-$id')));
 void main() {
  testWidgets('both tabs use selected company and retain unsaved drafts across switching', (tester) async {
   await tester.pumpWidget(page(company: 'company-a')); await tester.pumpAndSettle();
   await tester.enterText(find.byKey(const ValueKey('allowances-company-a')), '未保存の手当');
   await tester.tap(find.text('消費税・福利厚生費')); await tester.pumpAndSettle();
   await tester.enterText(find.byKey(const ValueKey('tax-company-a')), '未保存の税率');
+  await tester.tap(find.text('残業・早出など')); await tester.pumpAndSettle(); await tester.enterText(find.byKey(const ValueKey('rates-company-a')), '未保存の旧単価');
   await tester.tap(find.text('手当')); await tester.pumpAndSettle(); expect(find.text('未保存の手当'), findsOneWidget);
   await tester.tap(find.text('消費税・福利厚生費')); await tester.pumpAndSettle(); expect(find.text('未保存の税率'), findsOneWidget);
   await tester.pumpWidget(const SizedBox());
@@ -62,3 +63,4 @@ void main() {
   expect(app, contains("if (!_nestedActionKeys.contains('company_common_allowances')) return;"));
  });
 }
+
