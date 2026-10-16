@@ -1,10 +1,12 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+// Test-only transport injection; http is pinned by the repository lockfile.
+// ignore: depend_on_referenced_packages
 import 'package:http/http.dart' as http;
+// ignore: depend_on_referenced_packages
 import 'package:http/testing.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sk_works/features/auth/employee_onboarding_pages.dart';

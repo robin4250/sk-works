@@ -252,6 +252,7 @@ class _EmployeeProfileOnboardingPageState
   StreamSubscription<dynamic>? _authSubscription;
   String? _actorId;
   bool _identityChanged = false;
+  bool _foreground = true;
   int _epoch = 0;
   EmployeeOnboardingPhotoCapability? _photoCapability;
 
@@ -273,6 +274,7 @@ class _EmployeeProfileOnboardingPageState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
     if (state != AppLifecycleState.resumed) {
       _epoch++;
     } else if (!_busy && !_identityChanged) {
@@ -282,7 +284,7 @@ class _EmployeeProfileOnboardingPageState
 
   EmployeeOnboardingRequest _request() {
     final epoch = _epoch;
-    return _repository!.beginRequest(() => mounted && !_identityChanged &&
+    return _repository!.beginRequest(() => mounted && _foreground && !_identityChanged &&
         _actorId != null && _repository!.currentUserId == _actorId && _epoch == epoch);
   }
 
