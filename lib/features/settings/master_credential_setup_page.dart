@@ -33,7 +33,9 @@ class _MasterCredentialSetupPageState extends State<MasterCredentialSetupPage> w
   }
   void _clear() { _existing.clear(); _password.clear(); _confirm.clear(); _challenge = null; _clearCaptured?.call(); }
   void _invalidate({bool rebuild = true}) {
-    _generation++; _clear(); _complete = false; _status = null; _loaded = null; _busy = false;
+    _generation++; _clear(); _complete = false; _status = null;
+    final binding = widget.access.binding;
+    if (_pending != null && (binding == null || !_pending!.belongsTo(binding))) _pending = null; _loaded = null; _busy = false;
     _message = '本人確認を中断しました。再読み込みしてください。';
     if (rebuild && mounted) setState(() {});
   }
@@ -63,7 +65,7 @@ class _MasterCredentialSetupPageState extends State<MasterCredentialSetupPage> w
   Future<void> _save() async {
     final status = _status, binding = _loaded;
     if (_busy || status == null || binding == null || _pending != null || !_valid(_generation, binding)) return;
-    if (_existing.text.isEmpty || utf8.encode(_existing.text).length > 72 || _password.text.length < 8 || utf8.encode(_password.text).length > 72 || _password.text != _confirm.text) {
+    if (_existing.text.isEmpty || utf8.encode(_existing.text).length > 72 || _password.text.runes.length < 8 || utf8.encode(_password.text).length > 72 || _password.text != _confirm.text) {
       setState(() => _message = '確認用パスワードと、一致する新しいMaster専用パスワードを入力してください。新しいパスワードは8文字以上、UTF-8で72バイト以内です。'); return;
     }
     String existing = _existing.text, password = _password.text;

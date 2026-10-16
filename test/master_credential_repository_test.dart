@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -39,6 +40,7 @@ class _Wire {
   MasterCredentialPending pending() => MasterCredentialPending(actor:_actor,sessionId:_sid,deviceFingerprint:repository.binding!.deviceFingerprint,requestId:_request,operation:'setup',version:0);
 }
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   test('default OFF and denied status cannot expose a credential form contract', () async {
     final w = _Wire(); await w.start(); w.enabled = false;
     await expectLater(w.repository.read(w.repository.binding!),throwsA(isA<MasterCredentialRejected>()));
@@ -66,15 +68,28 @@ void main() {
     expect(jsonDecode(w.calls.last.body),{'p_device_key':_device,'p_request_id':_request});
     await w.client.dispose();
   });
-  test('memory-only journal contains operation metadata and refuses overwrite by another request', () async {
+  test('journal corruption and device changes fail closed; other sessions cannot read it', () async {
+    final w = _Wire(); await w.start(); final binding = w.repository.binding!, pending = w.pending();
+    await w.repository.remember(pending);
+    final otherSession = MasterCredentialBinding(binding.actor, 'other-session', binding.token, binding.deviceKey);
+    expect(await w.repository.pending(otherSession), isNull);
+    final otherDevice = MasterCredentialBinding(binding.actor, binding.sessionId, binding.token, 'different-device-key-longer-than-32');
+    await expectLater(w.repository.pending(otherDevice), throwsA(isA<FormatException>()));
+    final prefs = await SharedPreferences.getInstance(); await prefs.setString(prefs.getKeys().single, '{');
+    await expectLater(w.repository.pending(binding), throwsA(isA<FormatException>()));
+    await w.client.dispose();
+  });
+  test('durable metadata restores the same session and refuses conflicting requests', () async {
     final w = _Wire(); await w.start(); final binding = w.repository.binding!, pending = w.pending();
     await w.repository.remember(pending); expect((await w.repository.pending(binding))!.requestId,_request);
     expect(pending.toJson().keys.toSet(),{'actor','session_id','device_fingerprint','request_id','operation','version'});
     final other = MasterCredentialPending(actor:_actor,sessionId:_sid,deviceFingerprint:binding.deviceFingerprint,requestId:newMasterCredentialRequestId(),operation:'setup',version:0);
     await expectLater(w.repository.remember(other),throwsStateError);
-    await expectLater(w.repository.forget(other),throwsStateError);
-    await w.repository.forget(pending); expect(await w.repository.pending(binding),isNull);
-    final fresh = MasterCredentialRepository(w.client,deviceKey:_device); expect(await fresh.pending(binding),isNull);
+    await w.repository.forget(other); // Another UUID must not delete this request.
+    final fresh = MasterCredentialRepository(w.client,deviceKey:_device); expect((await fresh.pending(binding))!.requestId,_request);
+    final prefs = await SharedPreferences.getInstance(); final stored = prefs.getString(prefs.getKeys().single)!;
+    expect(stored, isNot(contains(binding.token))); expect(stored, isNot(contains(_device)));
+    await w.repository.forget(pending); expect(await fresh.pending(binding),isNull);
     await w.client.dispose();
   });
 }

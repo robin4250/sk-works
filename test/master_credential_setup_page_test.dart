@@ -13,12 +13,13 @@ class _Access implements MasterCredentialAccess {
   int begins = 0, commits = 0, receipts = 0;
   String? operation, verification, password;
   MasterCredentialPending? journal;
+  Completer<void>? commitWait;
   Completer<MasterCredentialStatus>? loadWait;
   Completer<MasterCredentialChallenge>? beginWait;
   @override Future<MasterCredentialStatus> read(MasterCredentialBinding binding) async { if (denied) throw const MasterCredentialRejected('denied'); if (loadWait != null) return loadWait!.future; return MasterCredentialStatus(configured: configured, version: configured ? 3 : 0); }
   @override Future<MasterCredentialChallenge> begin(MasterCredentialBinding binding, MasterCredentialPending pending) async { begins++; operation = pending.operation; if (beginWait != null) return beginWait!.future; return challenge(); }
   MasterCredentialChallenge challenge() => MasterCredentialChallenge(id: 'challenge', nonce: 'synthetic-in-memory', expiresAt: DateTime.now().toUtc().add(const Duration(seconds: 120)));
-  @override Future<void> commit(MasterCredentialBinding binding, MasterCredentialPending pending, MasterCredentialChallenge challenge, {required String verificationPassword, required String newPassword}) async { commits++; verification = verificationPassword; password = newPassword; if (unknown) throw StateError('synthetic unknown'); }
+  @override Future<void> commit(MasterCredentialBinding binding, MasterCredentialPending pending, MasterCredentialChallenge challenge, {required String verificationPassword, required String newPassword}) async { commits++; verification = verificationPassword; password = newPassword; if (commitWait != null) await commitWait!.future; if (unknown) throw StateError('synthetic unknown'); }
   @override Future<bool> receipt(MasterCredentialBinding binding, MasterCredentialPending pending) async { receipts++; return found; }
   @override Future<MasterCredentialPending?> pending(MasterCredentialBinding binding) async => journal;
   @override Future<void> remember(MasterCredentialPending pending) async { journal = pending; }
@@ -66,6 +67,14 @@ void main() {
     final access = _Access(); await _show(t, access); await _fill(t, confirm: 'different');
     await t.tap(find.text('初回登録して保存')); await t.pumpAndSettle(); expect(access.begins, 0); expect(access.commits, 0);
   });
+  testWidgets('UTF16 pairs do not bypass the eight-codepoint password minimum', (t) async {
+    final access = _Access(); await _show(t, access);
+    await t.enterText(find.byType(TextField).at(0), 'existing-secret');
+    await t.enterText(find.byType(TextField).at(1), '😀😀😀😀');
+    await t.enterText(find.byType(TextField).at(2), '😀😀😀😀');
+    await t.tap(find.text('初回登録して保存')); await t.pumpAndSettle();
+    expect(access.begins, 0); expect(access.commits, 0);
+  });
   testWidgets('background clears secrets and rejects late challenge', (t) async {
     final access = _Access()..beginWait = Completer<MasterCredentialChallenge>(); await _show(t, access); await _fill(t);
     await t.tap(find.text('初回登録して保存')); await t.pump();
@@ -84,6 +93,14 @@ void main() {
     final access = _Access(); await _show(t, access); await _fill(t);
     access.binding = const MasterCredentialBinding('actor-B', 'session-B', 'token-B', 'synthetic-device-key-longer-than-32'); access.events.add(null); await t.pumpAndSettle();
     expect(find.byType(TextField), findsNothing); expect(access.commits, 0);
+  });
+  testWidgets('late successful commit cannot show completion to another actor', (t) async {
+    final access = _Access()..commitWait = Completer<void>(); await _show(t, access); await _fill(t);
+    await t.tap(find.text('初回登録して保存')); for (var i = 0; i < 5; i++) { await t.pump(); }
+    expect(access.commits, 1);
+    access.binding = const MasterCredentialBinding('actor-B', 'session-B', 'token-B', 'synthetic-device-key-longer-than-32'); access.events.add(null);
+    access.commitWait!.complete(); await t.pumpAndSettle();
+    expect(find.text('Master専用パスワードの保存が完了しました。'), findsNothing); expect(find.byType(TextField), findsNothing);
   });
   testWidgets('unknown result never resends and not_found receipt remains pending', (t) async {
     final access = _Access()..unknown = true; await _show(t, access); await _fill(t);

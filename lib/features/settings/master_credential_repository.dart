@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const _protocol = 'sko-master-password-v1';
@@ -89,7 +90,9 @@ class MasterCredentialRepository implements MasterCredentialAccess {
     if (capability['enabled'] != true) throw const MasterCredentialRejected('disabled');
     final value = await _rpc('current_master_password_status', captured, {'p_device_key': captured.deviceKey});
     if (!_keys(value, {'protocol','status','configured','credential_version'}) || value['status'] != 'ready' || value['configured'] is! bool) throw const FormatException('Invalid Master status');
-    return MasterCredentialStatus(configured: value['configured'] as bool, version: _version(value['credential_version']));
+    final version = _version(value['credential_version']);
+    if (value['configured'] == false && version != 0 || value['configured'] == true && version < 1) throw const FormatException('Invalid Master credential state');
+    return MasterCredentialStatus(configured: value['configured'] as bool, version: version);
   }
   void _pendingBinding(MasterCredentialBinding captured, MasterCredentialPending pending) {
     if (!pending.belongsTo(captured) || !{'setup','change'}.contains(pending.operation) || pending.version < 0 || !_uuid.hasMatch(pending.requestId)) throw const MasterCredentialRejected('denied');
@@ -119,24 +122,34 @@ class MasterCredentialRepository implements MasterCredentialAccess {
     if (value['status'] != 'found' || !_keys(value, {'protocol','status','request_id','result'})) throw const FormatException('Invalid Master receipt');
     _applied(_response(value['result']), pending); return true;
   }
-  // Operation metadata is memory-only; credentials and nonce are never retained.
-  final Map<String, MasterCredentialPending> _pending = {};
-  String _journal(String actor, String session) => '${actor}_$session';
+  // Only nonsecret operation identity is durable. Never store credentials/nonce.
+  String _prefix(String actor, String session) => 'sko_master_credential_pending_${actor}_${session}_';
+  String _key(MasterCredentialPending pending) => '${_prefix(pending.actor, pending.sessionId)}${pending.requestId}';
+  MasterCredentialPending _decode(String raw) {
+    final value = jsonDecode(raw);
+    if (value is! Map || value.length != 6 || !value.keys.every({'actor','session_id','device_fingerprint','request_id','operation','version'}.contains) || value['actor'] is! String || value['session_id'] is! String || value['device_fingerprint'] is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(value['device_fingerprint'] as String) || value['request_id'] is! String || !_uuid.hasMatch(value['request_id'] as String) || !{'setup','change'}.contains(value['operation'])) throw const FormatException('Unresolved Master operation');
+    return MasterCredentialPending(actor: value['actor'] as String, sessionId: value['session_id'] as String, deviceFingerprint: value['device_fingerprint'] as String, requestId: value['request_id'] as String, operation: value['operation'] as String, version: _version(value['version']));
+  }
   @override Future<void> remember(MasterCredentialPending pending) async {
-    final key = _journal(pending.actor, pending.sessionId);
-    final previous = _pending[key];
-    if (previous != null && previous.requestId != pending.requestId) throw StateError('Unresolved Master operation');
-    _pending[key] = pending;
+    final prefs = await SharedPreferences.getInstance();
+    final key = _key(pending), raw = jsonEncode(pending.toJson());
+    final keys = prefs.getKeys().where((k) => k.startsWith(_prefix(pending.actor, pending.sessionId))).toList();
+    if (keys.any((k) => k != key) || prefs.containsKey(key) && prefs.getString(key) != raw) throw StateError('Unresolved Master operation');
+    if (!await prefs.setString(key, raw) || prefs.getString(key) != raw) throw StateError('Unable to retain operation identity');
   }
   @override Future<MasterCredentialPending?> pending(MasterCredentialBinding captured) async {
-    final value = _pending[_journal(captured.actor, captured.sessionId)];
-    if (value != null && !value.belongsTo(captured)) throw const FormatException('Unresolved Master operation');
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys().where((k) => k.startsWith(_prefix(captured.actor, captured.sessionId))).toList();
+    if (keys.isEmpty) return null;
+    if (keys.length != 1) throw const FormatException('Conflicting Master operations');
+    final value = _decode(prefs.getString(keys.single) ?? '');
+    if (!value.belongsTo(captured) || _key(value) != keys.single) throw const FormatException('Unresolved Master operation');
     return value;
   }
   @override Future<void> forget(MasterCredentialPending pending) async {
-    final key = _journal(pending.actor, pending.sessionId);
-    final previous = _pending[key];
-    if (previous != null && previous.requestId != pending.requestId) throw StateError('Operation identity changed');
-    _pending.remove(key);
+    final prefs = await SharedPreferences.getInstance(); final key = _key(pending);
+    if (!prefs.containsKey(key)) return;
+    if (prefs.getString(key) != jsonEncode(pending.toJson())) throw StateError('Operation identity changed');
+    if (!await prefs.remove(key)) throw StateError('Unable to clear operation identity');
   }
 }
