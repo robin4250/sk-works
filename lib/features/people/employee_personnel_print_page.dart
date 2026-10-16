@@ -137,13 +137,13 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final session=privacySession;
-    if(session!=null&&!_privacyResolved)return PersonnelPrivacyView(session:session,builder:(context,raw){
+    if(session!=null&&!_privacyResolved){return PersonnelPrivacyView(session:session,builder:(context,raw){
       final selected=raw.where((row)=>_ids.contains(row['id']?.toString())).toList(growable:false);
       if(selected.length!=_ids.length)return const Center(child:Text('対象の社員情報を再確認してください。'));
       return EmployeePersonnelPrintPage(companyName:companyName,
         records:selected.map(PersonRecord.fromJson).toList(growable:false),action:action,
         onConfirmSend:onConfirmSend,privacySession:session,privacyResolved:true);
-    });
+    });}
     return Scaffold(
       appBar: AppBar(
         title: Text(

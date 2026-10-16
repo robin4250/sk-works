@@ -62,9 +62,9 @@ void main(){
   final client=SupabaseClient('https://personnel-fixture.invalid','fixture-only-key',
    authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((request)async{
     if(request.url.path.endsWith('/company_members'))return http.Response(jsonEncode([{'company_id':companyA,'role':'viewer'}]),200,request:request,headers:{'content-type':'application/json'});
-    if(request.url.path.endsWith('/rpc/employee_personnel_view'))return http.Response(jsonEncode({'company_id':companyA,'records':[
+    if(request.url.path.endsWith('/rpc/employee_personnel_view')){return http.Response(jsonEncode({'company_id':companyA,'records':[
       ...snapshot(role:'viewer',manage:false).records,{'id':'inactive','name':'Inactive','active':false},
-    ]}),200,request:request,headers:{'content-type':'application/json'});
+    ]}),200,request:request,headers:{'content-type':'application/json'});}
     throw StateError('Unexpected fixture request ${request.url.path}');
    }));
   final repository=PeopleCloudRepository.forTesting(client,actor:()=>actor);
