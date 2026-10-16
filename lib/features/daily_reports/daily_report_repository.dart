@@ -1,3 +1,4 @@
+import 'daily_report_edit_session.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -101,6 +102,7 @@ class DailyReportRecord {
     this.responsibleSignatureJson,
     this.signedAt,
     this.notificationRetryScope,
+    this.companyId,
   });
 
   final String id;
@@ -119,6 +121,7 @@ class DailyReportRecord {
   final Object? responsibleSignatureJson;
   final DateTime? signedAt;
   final SavedReportNotificationRetry? notificationRetryScope;
+  final String? companyId;
 
   bool get signed => status == 'signed';
 }
@@ -610,6 +613,7 @@ class DailyReportRepository {
 
     return DailyReportRecord(
       id: row['id']?.toString() ?? '',
+      companyId: row['company_id']?.toString(),
       notificationRetryScope: savedReportNotificationScopeFromRow(row, notificationRetryUserId,
       ),
       siteId: row['site_id']?.toString(),
@@ -1015,6 +1019,31 @@ class DailyReportRepository {
     return _client.storage
         .from(bucket)
         .createSignedUrl(path, 3600);
+  }
+
+  Future<DailyReportEditSession?> approvedEditSession(DailyReportRecord report) async {
+    final actor = currentActorId;
+    final company = report.companyId;
+    if (actor == null || company == null) return null;
+    final rows = await _client.from('daily_report_edit_requests')
+      .select('id').eq('report_id', report.id).eq('company_id', company)
+      .eq('requested_by', actor).eq('status', 'approved')
+      .order('created_at', ascending: false).limit(1);
+    if (currentActorId != actor) throw const DailyReportActorChanged();
+    if (rows.isEmpty) return null;
+    return DailyReportEditSession(actorId: actor, companyId: company,
+      reportId: report.id, requestId: rows.first['id'] as String);
+  }
+
+  /// Checks this exact consumed request, never a historical request by date/name.
+  Future<bool> verifyEditSession(DailyReportEditSession session) async {
+    if (currentActorId != session.actorId) throw const DailyReportActorChanged();
+    final row = await _client.from('daily_report_edit_requests').select('id')
+      .eq('id', session.requestId).eq('report_id', session.reportId)
+      .eq('company_id', session.companyId).eq('requested_by', session.actorId)
+      .eq('status', 'used').maybeSingle();
+    if (currentActorId != session.actorId) throw const DailyReportActorChanged();
+    return row != null;
   }
 
   /// Read-only capability hint. The existing draft RPC remains authoritative.

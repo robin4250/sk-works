@@ -4,13 +4,38 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:sk_works/features/daily_reports/daily_report_page.dart';
+import 'package:sk_works/features/daily_reports/daily_report_edit_session.dart';
+import 'package:sk_works/features/daily_reports/signature_capture_page.dart';
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class EditableReports extends DailyReportRepository {
   EditableReports(super.client) : super.forTesting();
   bool approved = true, signed = true, failSave = false;
-  int saves = 0;
+  int saves = 0, signCalls = 0;
+  bool reporterSigned = false, failSign = false, commitThenThrow = false;
+  Object? responsible;
+  String? responsibleName;
+  @override
+  Future<DailyReportEditSession?> approvedEditSession(DailyReportRecord report) async =>
+    approved ? const DailyReportEditSession(actorId: 'owner', companyId: 'company-a',
+      reportId: 'report-a', requestId: 'request-a') : null;
+  @override
+  Future<bool> verifyEditSession(DailyReportEditSession session) async =>
+    !approved && session.requestId == 'request-a' && session.actorId == 'owner' &&
+    session.companyId == 'company-a' && session.reportId == 'report-a';
+  @override
+  Future<String> loadResponsibleName({String? siteId, String? routeAssignmentId}) async => '責任者';
+  @override
+  Future<void> sign({required String reportId, required String signerName,
+    required Object signatureJson}) async {
+    signCalls++;
+    if (failSign) throw StateError('offline');
+    signed = true;
+    responsible = {'strokes': signatureJson};
+    responsibleName = signerName;
+    if (commitThenThrow) throw StateError('response lost');
+  }
   @override
   String? get currentActorId => 'owner';
   @override
@@ -24,10 +49,12 @@ class EditableReports extends DailyReportRepository {
   Future<DailyReportRecord?> loadReport({required DateTime date,
     String? siteId, String? routeAssignmentId, String? vehicleClockInAnchorId,
     String? reportId}) async => DailyReportRecord(
-      id: 'report-a', date: date, siteId: 'site-a', siteName: '対象現場',
+      id: 'report-a', companyId: 'company-a', date: date, siteId: 'site-a', siteName: '対象現場',
       workDescription: '保存済み内容', status: signed ? 'signed' : 'draft', workers: [],
-      reporterSignatureJson: signed ? {'strokes': []} : null,
-      responsibleSignatureJson: signed ? {'strokes': []} : null);
+      reporterSignatureJson: signed || reporterSigned
+        ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null,
+      responsibleSignerName: responsibleName,
+      responsibleSignatureJson: responsible ?? (signed ? {'strokes': []} : null));
   @override
   Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({String? reportId,
     required DateTime date, String? siteId, String? routeAssignmentId}) async => [];
@@ -41,6 +68,7 @@ class EditableReports extends DailyReportRepository {
     expect(workDescription, '保存済み内容');
     if (failSave || !approved) throw StateError('save denied');
     signed = false;
+    reporterSigned = false;
     approved = false;
     return reportId!;
   }
@@ -123,4 +151,66 @@ void main() {
     expect(repo.saves, 0);
     expect(repo.signed, isTrue);
   });
+  Future<void> prepareCompletion(WidgetTester tester, EditableReports repo) async {
+    repo.signed = false;
+    repo.approved = false;
+    repo.reporterSigned = true;
+    await DailyReportEditSessionStore().remember(const DailyReportEditSession(
+      actorId: 'owner', companyId: 'company-a', reportId: 'report-a',
+      requestId: 'request-a', confirmed: true));
+    await open(tester, repo);
+    final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)).first;
+    await tester.ensureVisible(tile);
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+    expect(find.byType(SignatureCapturePage), findsOneWidget);
+    Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+      const SignatureResult(signerName: '責任者',
+        strokes: [[Offset(0.3, 0.4), Offset(0.5, 0.6)]]));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('restored edit stages responsible signature and finalizes only on explicit completion',
+    (tester) async {
+      final repo = EditableReports(client);
+      await prepareCompletion(tester, repo);
+      expect(repo.signCalls, 0);
+      final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
+      await tester.ensureVisible(finish);
+      await tester.tap(finish);
+      await tester.pumpAndSettle();
+      expect(repo.signCalls, 1);
+      expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsOneWidget);
+      expect(await DailyReportEditSessionStore().load('owner', 'report-a'), isNull);
+    });
+
+  testWidgets('lost response retains signature and retry reads committed report without signing twice',
+    (tester) async {
+      final repo = EditableReports(client)..commitThenThrow = true;
+      await prepareCompletion(tester, repo);
+      final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
+      await tester.ensureVisible(finish);
+      await tester.tap(finish);
+      await tester.pumpAndSettle();
+      expect(repo.signCalls, 1);
+      expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsNothing);
+      await tester.tap(finish);
+      await tester.pumpAndSettle();
+      expect(repo.signCalls, 1);
+      expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsOneWidget);
+    });
+
+  testWidgets('changed report text invalidates the staged responsible signature',
+    (tester) async {
+      final repo = EditableReports(client);
+      await prepareCompletion(tester, repo);
+      final description = find.byType(TextField).first;
+      await tester.ensureVisible(description);
+      await tester.enterText(description, '変更した作業');
+      await tester.pumpAndSettle();
+      final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
+      expect(tester.widget<FilledButton>(finish).onPressed, isNull);
+      expect(repo.signCalls, 0);
+    });
+
 }
