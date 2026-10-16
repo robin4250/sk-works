@@ -7,6 +7,10 @@ import 'package:sk_works/features/shared/pdf_pinch_pages.dart';
 
 void main() {
   testWidgets('PDF pages pinch immediately and retain all document pages', (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final bytes = Uint8List.fromList(base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII='));
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PdfPinchPages(
       pages: [for (var i = 0; i < 2; i++)
