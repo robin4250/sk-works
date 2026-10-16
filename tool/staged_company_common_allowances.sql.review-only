@@ -176,8 +176,7 @@ begin
   or legacy_item->'slot' is distinct from ref->'slot' or legacy_item->'id' is distinct from ref->'id'
   or legacy_item->'generation' is distinct from ref->'generation'
   or (legacy_item->'source_unit' is distinct from ref->'source_unit' and (jsonb_typeof(legacy_item->'source_unit')<>'string' or length(btrim(legacy_item->>'source_unit')) not between 1 and 12))
-  or (legacy_item->'name'<>'null'::jsonb and jsonb_typeof(legacy_item->'name')<>'string')
-  or length(coalesce(legacy_item->>'name',''))>80
+  or (legacy_item->'name' is distinct from ref->'name' and ((legacy_item->'name'<>'null'::jsonb and jsonb_typeof(legacy_item->'name')<>'string') or length(btrim(coalesce(legacy_item->>'name','')))>80))
   or jsonb_typeof(legacy_item->'amount_yen')<>'number' or legacy_item->>'amount_yen' !~ '^(0|[1-9][0-9]*)$'
   or (legacy_item->>'amount_yen')::numeric>2147483647 then
    raise exception 'invalid legacy allowance reference' using errcode='22023';end if;
