@@ -1,0 +1,30 @@
+name: Existing session and secondary recovery chain
+on:
+  pull_request:
+    paths:
+      - 'test/session_secondary_recovery_chain_test.dart'
+      - '.github/workflows/session-secondary-recovery-chain.yml'
+      - 'lib/features/auth/**'
+      - 'lib/data/supabase_backend.dart'
+  push:
+    branches: [main]
+    paths:
+      - 'test/session_secondary_recovery_chain_test.dart'
+      - '.github/workflows/session-secondary-recovery-chain.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze test/session_secondary_recovery_chain_test.dart
+      - name: Existing SDK and screens, synthetic configuration only
+        run: flutter test --dart-define=SKO_SESSION_CHAIN_FIXTURE=true --dart-define=SUPABASE_URL=https://session-fixture.invalid --dart-define=SUPABASE_PUBLISHABLE_KEY=public_fixture test/session_secondary_recovery_chain_test.dart
