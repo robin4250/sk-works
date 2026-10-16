@@ -206,7 +206,7 @@ void main(){
  testWidgets('incomplete inactive details cannot open a destructive full editor',(tester)async{
   final session=PersonnelPrivacySession(actor:actor,company:companyB,currentActor:()=>actor,load:()async=>PersonnelPrivacySnapshot(actor:actor,company:companyB,role:'owner',canManage:true,
     records:[{'id':worker,'kind':'employee','name':'Basic Inactive','active':false,'personnelBasicOnly':true}]));
-  await tester.pumpWidget(MaterialApp(home:EmployeePersonnelDetailPage(record:const PersonRecord(id:worker,kind:PersonKind.employee,name:''),allEmployees:const[],companyName:'Fixture',privacySession:session)));
+  await tester.pumpWidget(MaterialApp(home:EmployeePersonnelDetailPage(record:const PersonRecord(id:worker,kind:PersonKind.employee,name:''),allEmployees:const[],companyName:'Fixture',canViewFamily:false,privacySession:session)));
   await tester.pumpAndSettle();expect(find.text('Basic Inactive'),findsWidgets);expect(find.text('編集'),findsNothing);
   await tester.pumpWidget(const SizedBox());session.dispose();
  });
