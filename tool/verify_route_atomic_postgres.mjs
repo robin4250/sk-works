@@ -23,7 +23,7 @@ await ctl.query(await fs.readFile(new URL('./staged/route_atomic_save.sql',impor
 await ctl.query('insert into route_atomic_private.rollout values($1,true)',[A]);
 const pidA=(await a.query('select pg_backend_pid() p')).rows[0].p,pidB=(await b.query('select pg_backend_pid() p')).rows[0].p;
 const snapshot=async(c=ctl)=>(await c.query('select route_atomic_private.snapshot($1,$2) s',[A,R])).rows[0].s;
-const save=async(c,p,n,data={route_name:'atomic name',notes:'atomic'})=>(await c.query('select route_atomic_private.save($1,$2,$3,$4,$5,$6) s',[A,cmd(n),R,p,data,stops])).rows[0].s;
+const save=async(c,p,n,data={route_name:'atomic name',notes:'atomic'})=>(await c.query('select route_atomic_private.save($1,$2,$3,$4,$5,$6) s',[A,cmd(n),R,p,data,JSON.stringify(stops)])).rows[0].s;
 // New API starts first; direct legacy metadata writer waits then is denied.
 let p=await snapshot();
 await a.query('begin');await save(a,p,1);
@@ -47,7 +47,7 @@ assert.equal(staleResult.error?.code,'40001');assert.equal((await snapshot()).ro
 // Source IDs and every stop survive a late insert/update failure after body UPDATE.
 p=await snapshot();const before=JSON.stringify(p);
 await a.query("set test.fail_stop='yes'");
-const late=await outcome(a.query('select route_atomic_private.save($1,$2,$3,$4,$5,$6)',[A,cmd(5),R,p,{route_name:'must rollback'},[{...stops[0],address:'changed'},stops[1]]]));
+const late=await outcome(a.query('select route_atomic_private.save($1,$2,$3,$4,$5,$6)',[A,cmd(5),R,p,{route_name:'must rollback'},JSON.stringify([{...stops[0],address:'changed'},stops[1]])]));
 assert.equal(late.error?.code,'P0001');assert.equal(JSON.stringify(await snapshot()),before);
 await a.query("set test.fail_stop='no'");
 // ON legacy stop insert is rejected even with a forged custom setting.

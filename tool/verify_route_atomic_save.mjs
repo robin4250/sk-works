@@ -60,6 +60,10 @@ await db.exec(`insert into private.route_journey_captures(company_id,route_assig
 p=await snapshot();before=await all();
 await rejects(()=>save(p,[stops[1]],6),'55000');assert.equal(await all(),before);
 await rejects(()=>save(p,[stops[0],stops[1]],6),'55000');assert.equal(await all(),before);
+await db.exec("select set_config('test.fail_stop','yes',false)");
+await rejects(()=>save(p,[stops[1],stops[0],{address:'late failure with old history',source_kind:'address'}],6,A,R,{route_name:'must rollback',notes:'must rollback'}),'P0001');
+assert.equal(await all(),before);
+await db.exec("select set_config('test.fail_stop','no',false)");
 await db.exec(`insert into attendance_verifications(company_id,route_assignment_id) values('${A}','${R}')`);
 p=await snapshot();before=await all();
 await rejects(()=>save(p,[stops[1],stops[0],{address:'append',source_kind:'address'}],6),'55000');

@@ -139,7 +139,7 @@ begin
  insert into public.route_assignments(id,company_id,service_date,route_name,notes,responsible_name,responsible_phone,created_by,updated_by)
  values(rid,p_company,null,btrim(p_data->>'route_name'),nullif(btrim(p_data->>'notes'),''),nullif(btrim(p_data->>'responsible_name'),''),nullif(btrim(p_data->>'responsible_phone'),''),uid,uid);
  else
- update public.route_assignments set route_name=btrim(p_data->>'route_name'),notes=nullif(btrim(p_data->>'notes'),''),
+ update public.route_assignments set route_name=btrim(p_data->>'route_name'),notes=case when p_data?'notes' then nullif(btrim(p_data->>'notes'),'') else notes end,
  responsible_name=case when p_data?'responsible_name' then nullif(btrim(p_data->>'responsible_name'),'') else responsible_name end,
  responsible_phone=case when p_data?'responsible_phone' then nullif(btrim(p_data->>'responsible_phone'),'') else responsible_phone end,updated_by=uid where id=rid and company_id=p_company;
  end if;
