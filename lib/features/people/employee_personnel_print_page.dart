@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'people_page.dart';
+import 'people_cloud_repository.dart';
 import 'phone_display.dart';
 
 enum EmployeePersonnelPreviewAction { print, send }
@@ -19,16 +20,43 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
     required this.records,
     this.action = EmployeePersonnelPreviewAction.print,
     this.onConfirmSend,
-  });
+    this.privacySession,
+    bool privacyResolved=false,
+  }) : _privacyResolved=privacyResolved;
 
   final String companyName;
   final List<PersonRecord> records;
+  final PersonnelPrivacySession? privacySession;
+  final bool _privacyResolved;
   final EmployeePersonnelPreviewAction action;
   final Future<void> Function(BuildContext context)? onConfirmSend;
 
   bool get _isSend => action == EmployeePersonnelPreviewAction.send;
 
+  Set<String> get _ids=>records.map((row)=>row.id).toSet();
+  Future<List<PersonRecord>> _freshForExport() async {
+    final session=privacySession;
+    if(session==null)return records;
+    final values=await session.read(workerIds:_ids,forExport:true);
+    return values.map(PersonRecord.fromJson).toList(growable:false);
+  }
+
+  Future<void> _runExport(BuildContext context) async {
+    try {
+      await _freshForExport();
+      if(!context.mounted)return;
+      final lease=privacySession?.epoch;
+      if(lease!=null)privacySession!.verify(lease);
+      if(_isSend){await onConfirmSend?.call(context);}
+      else {await Printing.layoutPdf(onLayout:(_)=>_buildPdf());}
+    } catch(_){
+      if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('社員情報の権限を再確認できません。開き直してください。')));
+    }
+  }
+
   Future<Uint8List> _buildPdf() async {
+    final records=await _freshForExport();
+    final lease=privacySession?.epoch;
     final regular = await PdfGoogleFonts.notoSansJPRegular();
     final bold = await PdfGoogleFonts.notoSansJPBold();
     final document = pw.Document(
@@ -101,11 +129,21 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
       ),
     );
 
-    return document.save();
+    final bytes=await document.save();
+    if(lease!=null)privacySession!.verify(lease);
+    return bytes;
   }
 
   @override
   Widget build(BuildContext context) {
+    final session=privacySession;
+    if(session!=null&&!_privacyResolved)return PersonnelPrivacyView(session:session,builder:(context,raw){
+      final selected=raw.where((row)=>_ids.contains(row['id']?.toString())).toList(growable:false);
+      if(selected.length!=_ids.length)return const Center(child:Text('対象の社員情報を再確認してください。'));
+      return EmployeePersonnelPrintPage(companyName:companyName,
+        records:selected.map(PersonRecord.fromJson).toList(growable:false),action:action,
+        onConfirmSend:onConfirmSend,privacySession:session,privacyResolved:true);
+    });
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -136,16 +174,7 @@ class EmployeePersonnelPrintPage extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: FilledButton.icon(
-                onPressed: _isSend
-                    ? () async {
-                        final action = onConfirmSend;
-                        if (action != null) {
-                          await action(context);
-                        }
-                      }
-                    : () => Printing.layoutPdf(
-                          onLayout: (_) => _buildPdf(),
-                        ),
+                onPressed: privacySession?.snapshot?.canManage==false ? null : () => _runExport(context),
                 icon: Icon(
                   _isSend ? Icons.send_outlined : Icons.print_outlined,
                 ),
@@ -302,3 +331,4 @@ class _EmployeePersonnelPreviewSheet extends StatelessWidget {
         ),
       );
 }
+

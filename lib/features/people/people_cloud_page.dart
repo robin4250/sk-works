@@ -19,7 +19,8 @@ import 'worker_document_send_page.dart';
 import 'worker_personnel_approver_settings_page.dart';
 
 class PeopleCloudPage extends StatefulWidget {
-  const PeopleCloudPage({super.key});
+  const PeopleCloudPage({super.key,this.companyId});
+  final String? companyId;
 
   @override
   State<PeopleCloudPage> createState() => _PeopleCloudPageState();
@@ -28,6 +29,7 @@ class PeopleCloudPage extends StatefulWidget {
 class _PeopleCloudPageState extends State<PeopleCloudPage> {
   final _repository = PeopleCloudRepository.maybeCreate();
   final _records = <PersonRecord>[];
+  PersonnelPrivacySession? _privacy;
   String _query = '';
   PersonKind? _filter;
   bool _loading = true;
@@ -43,6 +45,19 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     _load();
   }
 
+  @override
+  void dispose() { _privacy?.removeListener(_privacyChanged);_privacy?.dispose();super.dispose(); }
+
+  void _privacyChanged() {
+    if (!mounted) return;
+    final session=_privacy;
+    setState(() {
+      if(session?.revoked==true){_records.clear();_canManagePeople=false;_canViewPeople=false;}
+      else if(session?.snapshot==null){_canManagePeople=false;_canViewPeople=false;}
+      else {_canManagePeople=session!.snapshot!.canManage;_canViewPeople=true;}
+    });
+  }
+
   Future<void> _load() async {
     final repository = _repository;
     if (repository == null) {
@@ -55,17 +70,28 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     }
     final actor = repository.actorId;
     try {
+      final member=await repository.membership(companyId:widget.companyId);
+      _privacy?.revoke();
+      _privacy?.removeListener(_privacyChanged);
+      _privacy?.dispose();
+      final privacy=repository.privacySession(member.companyId);
+      _privacy=privacy;
+      privacy.addListener(_privacyChanged);
+      privacy.start();
       final values = await Future.wait([
-        repository.loadAll(),
-        repository.canManagePeople(),
-        repository.companyName(),
-        repository.canConfigurePersonnelApprovers(),
-        repository.canViewPeople(),
+        repository.loadAll(expectedCompany:member.companyId),
+        repository.canManagePeople(companyId:member.companyId),
+        repository.companyName(companyId:member.companyId),
+        repository.canConfigurePersonnelApprovers(companyId:member.companyId),
+        repository.canViewPeople(companyId:member.companyId),
       ]);
       if (actor == null || repository.actorId != actor) throw StateError('ログイン情報が変更されました。再読み込みしてください。');
       final rows = values[0] as List<Map<String, dynamic>>;
-      final loaded = rows.map(PersonRecord.fromJson).toList();
-      if (!mounted) return;
+      final loaded = rows.map((row)=>PersonRecord.fromJson({...row,
+        'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
+        'emergencyPhone':'','emergencyAddress':'','familyComposition':'','familyMembers':<dynamic>[],
+      })).toList();
+      if (!mounted || _privacy!=privacy || privacy.revoked) return;
       setState(() {
         _records
           ..clear()
@@ -306,18 +332,13 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                               MaterialPageRoute(
                                                 builder: (_) =>
                                                     EmployeePersonnelDetailPage(
-                                                  record: record,
-                                                  allEmployees: _records
-                                                      .where(
-                                                        (item) =>
-                                                            item.kind !=
-                                                            PersonKind.partnerCompany,
-                                                      )
-                                                      .toList(growable: false),
+                                                  record: PersonRecord(id:record.id,kind:record.kind,name:''),
+                                                  privacySession: _privacy,
+                                                  allEmployees: const [],
                                                   companyName: _companyName,
                                                   canManage: _canManagePeople,
                                                   canViewFamily: _canViewPeople,
-                                                  portraitLoader: () => _repository!.portraitUrl(record.id),
+                                                  portraitLoader: () => _repository!.portraitUrl(record.id,companyId:_privacy!.company),
                                                 ),
                                               ),
                                             );
@@ -500,7 +521,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       MaterialPageRoute(
         builder: (_) => EmployeePersonnelPrintPage(
           companyName: _companyName,
-          records: records,
+          privacySession: _privacy,
+          records: records.map((record)=>PersonRecord(id:record.id,kind:record.kind,name:'')).toList(growable:false),
           action: operation == PersonnelExportOperation.send
               ? EmployeePersonnelPreviewAction.send
               : EmployeePersonnelPreviewAction.print,
@@ -668,3 +690,4 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+

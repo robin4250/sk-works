@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'employee_personnel_edit_page.dart';
 import 'employee_personnel_print_page.dart';
 import 'people_page.dart';
+import 'people_cloud_repository.dart';
 import 'personnel_bundle_send_page.dart';
 import 'phone_display.dart';
 
@@ -16,7 +17,9 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     this.canManage = true,
     required this.canViewFamily,
     this.portraitLoader,
-  });
+    this.privacySession,
+    bool privacyResolved=false,
+  }) : _privacyResolved=privacyResolved;
 
   final PersonRecord record;
   final List<PersonRecord> allEmployees;
@@ -24,6 +27,8 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
   final bool canManage;
   final bool canViewFamily;
   final Future<String?> Function()? portraitLoader;
+  final PersonnelPrivacySession? privacySession;
+  final bool _privacyResolved;
 
   Future<bool?> _chooseScope(BuildContext context, String action) {
     return showModalBottomSheet<bool>(
@@ -58,7 +63,8 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => EmployeePersonnelPrintPage(
           companyName: companyName,
-          records: targets,
+          privacySession: privacySession,
+          records: privacySession==null?targets:targets.map((row)=>PersonRecord(id:row.id,kind:row.kind,name:'')).toList(growable:false),
           action: EmployeePersonnelPreviewAction.send,
           onConfirmSend: (previewContext) async {
             await Navigator.of(previewContext).push<bool>(
@@ -82,7 +88,8 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => EmployeePersonnelPrintPage(
           companyName: companyName,
-          records: targets,
+          privacySession: privacySession,
+          records: privacySession==null?targets:targets.map((row)=>PersonRecord(id:row.id,kind:row.kind,name:'')).toList(growable:false),
         ),
       ),
     );
@@ -142,6 +149,17 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final session=privacySession;
+    if(session!=null&&!_privacyResolved) {
+      return PersonnelPrivacyView(session:session,builder:(context,raw){
+        final current=raw.where((row)=>row['id']?.toString()==record.id).toList(growable:false);
+        if(current.length!=1)return const Center(child:Text('対象の社員情報を表示できません。'));
+        return EmployeePersonnelDetailPage(record:PersonRecord.fromJson(current.single),
+          allEmployees:raw.map(PersonRecord.fromJson).toList(growable:false),
+          companyName:companyName,canManage:session.snapshot!.canManage,canViewFamily:true,
+          portraitLoader:portraitLoader,privacySession:session,privacyResolved:true);
+      });
+    }
     final rows = <(String, String)>[
       ('社員番号', record.employeeNumber),
       ('名前', record.name),
@@ -375,6 +393,9 @@ class _PersonnelPortrait extends StatefulWidget {
 class _PersonnelPortraitState extends State<_PersonnelPortrait> {
   late final Future<String?> _portrait =
       widget.loader?.call() ?? Future.value(null);
+  String? _loadedUrl;
+  @override
+  void dispose(){final url=_loadedUrl;if(url!=null)NetworkImage(url).evict();super.dispose();}
   @override
   Widget build(BuildContext context) => Center(
     child: SizedBox(
@@ -396,6 +417,7 @@ class _PersonnelPortraitState extends State<_PersonnelPortrait> {
           if (snapshot.hasError) return placeholder('顔写真を取得できません');
           final url = snapshot.data;
           if (url == null) return placeholder('顔写真未登録');
+          _loadedUrl=url;
           return Image.network(
             url,
             fit: BoxFit.contain,
@@ -407,3 +429,4 @@ class _PersonnelPortraitState extends State<_PersonnelPortrait> {
     ),
   );
 }
+

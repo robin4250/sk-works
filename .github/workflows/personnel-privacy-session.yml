@@ -1,0 +1,26 @@
+name: Personnel client privacy session
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/people_cloud_repository.dart'
+      - 'lib/features/people/people_cloud_page.dart'
+      - 'lib/features/people/employee_personnel_detail_page.dart'
+      - 'lib/features/people/employee_personnel_print_page.dart'
+      - 'test/personnel_privacy_session_test.dart'
+      - '.github/workflows/personnel-privacy-session.yml'
+permissions:
+  contents: read
+jobs:
+  privacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart analyze lib/features/people/people_cloud_repository.dart lib/features/people/people_cloud_page.dart lib/features/people/employee_personnel_detail_page.dart lib/features/people/employee_personnel_print_page.dart test/personnel_privacy_session_test.dart
+      - run: flutter test test/personnel_privacy_session_test.dart
