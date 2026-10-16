@@ -5,7 +5,7 @@
 ## 実行する検査
 
 - 候補作成前・ビルド開始前・検証後・アップロード前に、main、origin/mainとの一致、追跡/未追跡の未保存変更なしを照合します。変更を削除・退避・resetする処理はありません。
-- GitHub CLIの既存認証でexact main SHAのpush CIを照合し、Flutter CI / iOS CI / Secret Scanの最新実行が成功していなければ停止します。CI API失敗・結果不足・100件超過も停止します。トークンやログを取得・表示しません。
+- GitHub CLIの既存認証でexact main SHAのpush CIを照合し、Flutter CI / iOS CI / Secret Scan / TestFlight provenanceの最新実行が成功していなければ停止します。CI API失敗・結果不足・100件超過も停止します。トークンやログを取得・表示しません。
 - 成功した `flutter build ipa --release --export-method app-store` の開始記録より新しいIPAを1個に限定します。複数の既存IPAは自動削除しません。必要なら利用者が保管してから再試行します。
 - IPAを一時領域に展開し、危険なZIPパス・symlink・過大な展開を拒否します。Bundle ID、version/build、AOT、Debug kernel不在、広範ATS無効化なしを確認します。
 - macOS codesignのstrict/deep検証、署名entitlements、配布profileのteam/application identifier/get-task-allow=false、App Store/TestFlight区分、有効期限、profile内署名証明書との一致を検証します。

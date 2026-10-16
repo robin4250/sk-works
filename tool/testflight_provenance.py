@@ -16,7 +16,7 @@ import tempfile
 import zipfile
 
 BUNDLE = 'com.skworks.skWorks'
-REQUIRED_CI = {'Flutter CI', 'iOS CI', 'Secret Scan'}
+REQUIRED_CI = {'Flutter CI', 'iOS CI', 'Secret Scan', 'TestFlight provenance'}
 
 
 def require(value, reason):

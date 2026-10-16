@@ -102,11 +102,11 @@ class ProvenanceTests(unittest.TestCase):
         runs = [{'id': i, 'name': name, 'head_sha': SHA, 'head_branch': 'main', 'event': 'push',
                  'run_number': 1, 'status': 'completed', 'conclusion': 'success'}
                 for i, name in enumerate(p.REQUIRED_CI)]
-        with patch.object(p, 'run', return_value=json.dumps({'total_count': 3, 'workflow_runs': runs}).encode()):
-            self.assertEqual(len(p.check_ci(SHA)), 3)
+        with patch.object(p, 'run', return_value=json.dumps({'total_count': len(runs), 'workflow_runs': runs}).encode()):
+            self.assertEqual(len(p.check_ci(SHA)), len(p.REQUIRED_CI))
             with self.assertRaises(ValueError): p.check_ci('b' * 40)
         runs.append({**runs[0], 'id': 99, 'run_number': 2, 'conclusion': 'failure'})
-        with patch.object(p, 'run', return_value=json.dumps({'total_count': 4, 'workflow_runs': runs}).encode()):
+        with patch.object(p, 'run', return_value=json.dumps({'total_count': len(runs), 'workflow_runs': runs}).encode()):
             with self.assertRaises(ValueError): p.check_ci(SHA)
 
     def test_dirty_real_git_checkout_is_preserved(self):
