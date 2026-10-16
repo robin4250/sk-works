@@ -10,16 +10,20 @@ class NotesCloudPage extends StatefulWidget {
   const NotesCloudPage({
     super.key,
     this.initialGroupId,
+    this.repository,
+    this.currentActorId,
   });
 
   final String? initialGroupId;
+  final NotesCloudRepository? repository;
+  final String? Function()? currentActorId;
 
   @override
   State<NotesCloudPage> createState() => _NotesCloudPageState();
 }
 
 class _NotesCloudPageState extends State<NotesCloudPage> {
-  final _repository = NotesCloudRepository.maybeCreate();
+  late final _repository = widget.repository ?? NotesCloudRepository.maybeCreate();
   final _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _groups = [];
@@ -28,9 +32,10 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
   final _groupGuard = CommunicationLoadGuard();
   final _contentGuard = CommunicationLoadGuard();
   StreamSubscription<dynamic>? _authSubscription;
-  String? get _actorId => SupabaseBackend.isInitialized
-      ? SupabaseBackend.client.auth.currentUser?.id
-      : null;
+  String? get _actorId => widget.currentActorId?.call() ??
+      (SupabaseBackend.isInitialized
+          ? SupabaseBackend.client.auth.currentUser?.id
+          : null);
   bool _loading = true;
   bool _loadingNotes = false;
   String? _error;
@@ -69,7 +74,7 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
 
   Future<void> _load() async {
     final actor = _actorId;
-    final preferredGroup = _selectedGroupId ?? preferredGroup;
+    final preferredGroup = _selectedGroupId ?? widget.initialGroupId;
     final request = _groupGuard.invalidate();
     _contentGuard.invalidate();
     setState(() {
@@ -194,7 +199,11 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
                         onChanged: (value) async {
                           if (value == null) return;
                           setState(() => _selectedGroupId = value);
-                          await _loadNotes();
+                          if (mounted && actor == _actorId && groupId == _selectedGroupId) {
+                        if (mounted && actor == _actorId && groupId == _selectedGroupId) {
+                    if (mounted && actor == _actorId && groupId == _selectedGroupId) await _loadNotes();
+                  }
+                      }
                         },
                       ),
                       const SizedBox(height: 12),
@@ -263,21 +272,25 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
   }
 
   Future<void> _addNote() async {
+    final actor = _actorId;
+    final groupId = _selectedGroupId;
     final result = await Navigator.of(context).push<_NoteDraft>(
       MaterialPageRoute(builder: (_) => const _NoteFormPage()),
     );
-    if (result == null || _repository == null || _selectedGroupId == null) return;
+    if (!mounted || result == null || _repository == null || groupId == null ||
+        actor != _actorId || groupId != _selectedGroupId) return;
 
     try {
       await _repository.insertNote(
-        groupId: _selectedGroupId!,
+        groupId: groupId,
         title: result.title,
         body: result.body,
         isPinned: result.isPinned,
       );
+      if (!mounted || actor != _actorId || groupId != _selectedGroupId) return;
       await _loadNotes();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || actor != _actorId || groupId != _selectedGroupId) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ノートを保存できませんでした: $e')),
       );
@@ -285,6 +298,8 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
   }
 
   void _showNote(Map<String, dynamic> note) {
+    final actor = _actorId;
+    final groupId = _selectedGroupId;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -314,10 +329,11 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
                   IconButton(
                     tooltip: note['is_pinned'] == true ? 'ピンを外す' : 'ピン留め',
                     onPressed: () async {
+                      if (actor != _actorId || groupId != _selectedGroupId) return;
                       final next = note['is_pinned'] != true;
                       Navigator.pop(sheetContext);
                       await _repository?.setPinned(note['id'] as String, next);
-                      await _loadNotes();
+                      if (mounted && actor == _actorId && groupId == _selectedGroupId) await _loadNotes();
                     },
                     icon: Icon(
                       note['is_pinned'] == true
@@ -334,6 +350,7 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
               const SizedBox(height: 20),
               OutlinedButton.icon(
                 onPressed: () async {
+                  if (actor != _actorId || groupId != _selectedGroupId) return;
                   Navigator.pop(sheetContext);
                   await _repository?.deleteNote(note['id'] as String);
                   await _loadNotes();

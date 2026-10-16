@@ -12,25 +12,30 @@ class AlbumsCloudPage extends StatefulWidget {
   const AlbumsCloudPage({
     super.key,
     this.initialGroupId,
+    this.repository,
+    this.currentActorId,
   });
 
   final String? initialGroupId;
+  final AlbumsCloudRepository? repository;
+  final String? Function()? currentActorId;
 
   @override
   State<AlbumsCloudPage> createState() => _AlbumsCloudPageState();
 }
 
 class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
-  final _repository = AlbumsCloudRepository.maybeCreate();
+  late final _repository = widget.repository ?? AlbumsCloudRepository.maybeCreate();
   List<Map<String, dynamic>> _groups = [];
   List<Map<String, dynamic>> _albums = [];
   String? _selectedGroupId;
   final _groupGuard = CommunicationLoadGuard();
   final _contentGuard = CommunicationLoadGuard();
   StreamSubscription<dynamic>? _authSubscription;
-  String? get _actorId => SupabaseBackend.isInitialized
-      ? SupabaseBackend.client.auth.currentUser?.id
-      : null;
+  String? get _actorId => widget.currentActorId?.call() ??
+      (SupabaseBackend.isInitialized
+          ? SupabaseBackend.client.auth.currentUser?.id
+          : null);
   bool _loading = true;
   bool _loadingAlbums = false;
   String? _error;
@@ -68,7 +73,7 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
 
   Future<void> _load() async {
     final actor = _actorId;
-    final preferredGroup = _selectedGroupId ?? preferredGroup;
+    final preferredGroup = _selectedGroupId ?? widget.initialGroupId;
     final request = _groupGuard.invalidate();
     _contentGuard.invalidate();
     setState(() {
@@ -252,6 +257,7 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
   }
 
   Future<void> _createAlbum() async {
+    final actor = _actorId;
     final groupId = _selectedGroupId;
     if (_repository == null || groupId == null) return;
     final nameController = TextEditingController();
@@ -292,7 +298,7 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
         ],
       ),
     );
-    if (result != true) {
+    if (!mounted || result != true || actor != _actorId || groupId != _selectedGroupId) {
       nameController.dispose();
       descriptionController.dispose();
       return;
@@ -303,9 +309,10 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
         name: nameController.text,
         description: descriptionController.text,
       );
+      if (!mounted || actor != _actorId || groupId != _selectedGroupId) return;
       await _loadAlbums();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || actor != _actorId || groupId != _selectedGroupId) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('アルバムを作成できませんでした: $e')),
       );
@@ -501,11 +508,12 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   Future<void> _pickPhotos() async {
     try {
       final files = await _picker.pickMultiImage(imageQuality: 90);
-      if (files.isEmpty) return;
+      if (files.isEmpty || !_sameActor) return;
       if (!mounted) return;
       setState(() => _uploading = true);
       for (final file in files) {
         final bytes = await file.readAsBytes();
+        if (!mounted || !_sameActor) return;
         await widget.repository.uploadPhoto(
           groupId: widget.groupId,
           albumId: _albumId,
@@ -515,7 +523,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       }
       await _load();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_sameActor) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('写真を追加できませんでした: $e')),
       );
@@ -542,12 +550,12 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (!mounted || !_sameActor || confirmed != true) return;
     try {
       await widget.repository.deleteItem(item);
       await _load();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_sameActor) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('写真を削除できませんでした: $e')),
       );
@@ -572,13 +580,13 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (!mounted || !_sameActor || confirmed != true) return;
     try {
       await widget.repository.deleteAlbum(_albumId);
-      if (!mounted) return;
+      if (!mounted || !_sameActor) return;
       Navigator.of(context).pop(true);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_sameActor) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('アルバムを削除できませんでした: $e')),
       );
