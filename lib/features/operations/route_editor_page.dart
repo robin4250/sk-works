@@ -13,6 +13,7 @@ class RouteEditorPage extends StatefulWidget {
     required this.partners,
     required this.vehicles,
     this.route,
+    this.repository,
   });
 
   final List<Map<String, dynamic>> sites;
@@ -20,13 +21,15 @@ class RouteEditorPage extends StatefulWidget {
   final List<Map<String, dynamic>> partners;
   final List<Map<String, dynamic>> vehicles;
   final Map<String, dynamic>? route;
+  final VehicleRouteRepository? repository;
 
   @override
   State<RouteEditorPage> createState() => _RouteEditorPageState();
 }
 
 class _RouteEditorPageState extends State<RouteEditorPage> {
-  final _repository = VehicleRouteRepository.maybeCreate();
+  late final _repository =
+      widget.repository ?? VehicleRouteRepository.maybeCreate();
   late final TextEditingController _name;
   late final TextEditingController _notes;
   late final TextEditingController _responsibleName;
@@ -180,32 +183,33 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(widget.route == null ? 'ルートを登録しますか？' : 'ルートを更新しますか？'),
-        content: Text(
-          _name.text.trim() +
-              ' / 地点 ' +
-              stops.length.toString() +
-              '件',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('戻る'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('確定して保存'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
+    FocusScope.of(context).unfocus();
     setState(() => _saving = true);
     try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(widget.route == null ? 'ルートを登録しますか？' : 'ルートを更新しますか？'),
+          content: Text(
+            _name.text.trim() +
+                ' / 地点 ' +
+                stops.length.toString() +
+                '件',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('確定して保存'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+
       await repository.saveRoute(
         id: widget.route?['id']?.toString(),
         name: _name.text,
@@ -213,6 +217,26 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
         responsibleName: _responsibleName.text,
         responsiblePhone: _responsiblePhone.text,
         stops: stops,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: const Text('保存完了'),
+            content: Text(widget.route == null
+                ? 'ルートを登録しました。ルート一覧で確認できます。'
+                : 'ルートを更新しました。ルート一覧で確認できます。'),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('ルート一覧へ'),
+              ),
+            ],
+          ),
+        ),
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -228,73 +252,83 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.route == null ? 'ルートを登録' : 'ルートを変更'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        children: [
-          TextField(
-            controller: _name,
-            decoration: const InputDecoration(
-              labelText: 'ルート名',
-              border: OutlineInputBorder(),
+    return PopScope(
+      canPop: !_saving,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.route == null ? 'ルートを登録' : 'ルートを変更'),
+        ),
+        body: AbsorbPointer(
+          absorbing: _saving,
+          child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: [
+            TextField(
+              controller: _name,
+              enabled: !_saving,
+              decoration: const InputDecoration(
+                labelText: 'ルート名',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _responsibleName,
-            maxLength: 120,
-            decoration: const InputDecoration(
-              labelText: '責任者名',
-              helperText: 'ルートの日報サインに初期表示します。未登録の場合は日報で入力できます。',
-              border: OutlineInputBorder(),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _responsibleName,
+              enabled: !_saving,
+              maxLength: 120,
+              decoration: const InputDecoration(
+                labelText: '責任者名',
+                helperText: 'ルートの日報サインに初期表示します。未登録の場合は日報で入力できます。',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _responsiblePhone,
-            keyboardType: TextInputType.phone,
-            maxLength: 40,
-            decoration: const InputDecoration(
-              labelText: '責任者電話番号',
-              border: OutlineInputBorder(),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _responsiblePhone,
+              enabled: !_saving,
+              keyboardType: TextInputType.phone,
+              maxLength: 40,
+              decoration: const InputDecoration(
+                labelText: '責任者電話番号',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'ルート地点',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 6),
-          const Text('現場・取引会社・下請け会社・駐車場を選ぶか、住所を直接入力できます。'),
-          const SizedBox(height: 10),
-          for (var i = 0; i < _stops.length; i++) _stopCard(i, _stops[i]),
-          OutlinedButton.icon(
-            onPressed: _saving ? null : _addStop,
-            icon: const Icon(Icons.add_location_alt_outlined),
-            label: const Text('地点を追加'),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _notes,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: '備考',
-              border: OutlineInputBorder(),
+            const SizedBox(height: 16),
+            const Text(
+              'ルート地点',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
             ),
-          ),
-          const SizedBox(height: 18),
-          FilledButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: const Icon(Icons.save_outlined),
-            label: Text(_saving ? '保存中…' : '確定して保存'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
+            const SizedBox(height: 6),
+            const Text('現場・取引会社・下請け会社・駐車場を選ぶか、住所を直接入力できます。'),
+            const SizedBox(height: 10),
+            for (var i = 0; i < _stops.length; i++) _stopCard(i, _stops[i]),
+            OutlinedButton.icon(
+              onPressed: _saving ? null : _addStop,
+              icon: const Icon(Icons.add_location_alt_outlined),
+              label: const Text('地点を追加'),
             ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _notes,
+              enabled: !_saving,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: '備考',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: const Icon(Icons.save_outlined),
+              label: Text(_saving ? '保存中…' : '確定して保存'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
+            ),
+          ],
           ),
-        ],
+        ),
       ),
     );
   }
