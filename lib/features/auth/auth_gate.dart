@@ -76,6 +76,7 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
   }
 
   void _reload() {
+    if (!mounted) return;
     setState(() {
       _state = _loadState();
     });
