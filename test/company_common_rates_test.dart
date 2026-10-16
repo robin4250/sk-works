@@ -99,4 +99,13 @@ void main() {
   expect(find.textContaining('ログイン状態が変わりました'),findsOneWidget); expect(find.text('残業・早出などの単価を保存しました。'),findsNothing); expect(store.pending,isNotNull);
   await tester.pumpWidget(const SizedBox()); await repo.events.close(); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
  });
+ testWidgets('fresh source conflict preserves four-column draft and never dispatches a write', (tester) async {
+  final repo = FakeRates(), store = MemoryStore(); await mount(tester,repo,store); await enter(tester,'5125');
+  repo.current = CompanyCommonRatesState.parse({...commonRatesObject(fixtures()['initial']),'version':1,'rates':{...repo.current.rates,'early_hour_rate_yen':987}},company);
+  await tester.tap(find.text('保存')); await tester.pumpAndSettle(); expect(repo.writes,0); expect(store.pending,isNull);
+  expect(find.text('5125'),findsOneWidget); expect(find.textContaining('更新されています'),findsOneWidget);
+  await tester.tap(find.text('最新設定を確認')); await tester.pumpAndSettle(); expect(find.textContaining('987'),findsOneWidget);
+  await tester.tap(find.text('戻る')); await tester.pumpAndSettle(); expect(repo.writes,0);
+  await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
+ });
 }
