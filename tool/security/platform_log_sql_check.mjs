@@ -12,6 +12,7 @@ create function private.consume_reauthentication_proof(operation text,target jso
  update private.fixture_proofs set used=true where fixture_proofs.proof=consume_reauthentication_proof.proof and not used;
  if not found then raise exception 'proof unavailable';end if;end$$;
 grant usage on schema private,auth to authenticated,service_role,anon;`);
+const restore=await import('./platform_restore_check.mjs');await restore.createProtectedFixture(db);const protectedBefore=await restore.snapshotProtected(db);
 await db.exec(await readFile(new URL('../../supabase/migrations/20261016104838_platform_security_monitor.sql',import.meta.url),'utf8'));
 const to=new Date(Date.now()-60000).toISOString(),from=new Date(Date.parse(to)-300000).toISOString();
 const batch=sanitizePlatformRows({source:'edge_logs',rows:[{id:'fixture',timestamp:new Date(Date.parse(from)+60000).toISOString(),status:403,target:'/rest/v1/example?secret=x'}],from,to,hmacKey:Buffer.alloc(32,9),keyEpoch:1});
@@ -39,6 +40,7 @@ try{
  await denied(db.query("select public.master_platform_security_monitor('fixture-proof')"),/proof unavailable/);
  await db.exec('reset role;update private.platform_monitor_control set enabled=false');await role('authenticated',{master:true});await denied(db.query("select public.master_platform_security_monitor('x')"),/disabled/);
  if(process.env.SKO_PLATFORM_POSTGREST_URL){await db.exec('reset role;update private.platform_monitor_control set enabled=true');await (await import('./platform_log_http_check.mjs')).checkHttp(db,batch);}
+ await restore.verifyProtectedRestore(db,protectedBefore);
  console.log('PASS platform SQL default-off, service-only, strict metadata, idempotency/conflicts/atomic rollback, master/account/proof/privacy');
  console.log('LIMIT: auth/master/proof are explicit fixture stubs; real session/nonce transport is auth lane integration, not production verified.');
 }finally{await db.close();}
