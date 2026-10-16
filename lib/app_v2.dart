@@ -232,10 +232,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final scope = _attendanceBadgeScope;
     final repository = AttendanceUpdateBadgeRepository.maybeCreate();
     if (scope == null || repository == null) {
-      if (mounted) setState(() {
-        _attendanceBadge = null;
-        _attendanceBadgeUnavailable = true;
-      });
+      if (mounted) {
+        setState(() {
+          _attendanceBadge = null;
+          _attendanceBadgeUnavailable = true;
+        });
+      }
       return;
     }
     bool current() {
@@ -261,7 +263,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final scope = _attendanceBadgeScope;
     final repository = AttendanceUpdateBadgeRepository.maybeCreate();
     if (snapshot == null || scope == null || !snapshot.scope.same(scope) ||
-        repository == null) return;
+        repository == null) {
+      return;
+    }
     ++_attendanceBadgeGeneration;
     try {
       await repository.acknowledge(snapshot, openedAt);
