@@ -199,11 +199,7 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
                         onChanged: (value) async {
                           if (value == null) return;
                           setState(() => _selectedGroupId = value);
-                          if (mounted && actor == _actorId && groupId == _selectedGroupId) {
-                        if (mounted && actor == _actorId && groupId == _selectedGroupId) {
-                    if (mounted && actor == _actorId && groupId == _selectedGroupId) await _loadNotes();
-                  }
-                      }
+                          await _loadNotes();
                         },
                       ),
                       const SizedBox(height: 12),
