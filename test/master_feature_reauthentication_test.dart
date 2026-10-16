@@ -71,6 +71,14 @@ class _Features implements MasterFeatureControlsRepository {
   @override
   dynamic noSuchMethod(Invocation invocation) => throw StateError('Unexpected feature method');
 }
+// A confirmation intentionally leaves a busy progress indicator on the page
+// beneath a non-opaque dialog. Assertions wait for finite route animations,
+// never for that intentionally non-settling indicator or a pending response.
+Future<void> _frames(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
+}
 Future<void> _open(WidgetTester tester, _Features repository, _Proofs proofs) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   tester.view.physicalSize = const Size(1200, 2400);
@@ -78,11 +86,11 @@ Future<void> _open(WidgetTester tester, _Features repository, _Proofs proofs) as
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(MaterialApp(home: MasterFeatureControlsPage(repository: repository, reauthentication: proofs)));
-  await tester.pumpAndSettle();
+  await _frames(tester);
 }
 Future<void> _confirm(WidgetTester tester, {bool enabling = false}) async {
   await tester.tap(find.widgetWithText(SwitchListTile, '車両管理'));
-  await tester.pumpAndSettle();
+  await _frames(tester);
   await tester.tap(find.widgetWithText(FilledButton, enabling ? '有効にする' : '一時停止する'));
   // Some cases intentionally keep capability/write futures pending. Advance
   // route animation without waiting for their visible progress indicator.
@@ -93,9 +101,9 @@ Future<void> _confirm(WidgetTester tester, {bool enabling = false}) async {
 Future<void> _verify(WidgetTester tester) async {
   await tester.enterText(find.byKey(const Key('master-feature-password')), 'synthetic-primary');
   await tester.tap(find.text('本人確認して変更'));
-  await tester.pumpAndSettle();
+  await _frames(tester);
   await tester.pump();
-  await tester.pumpAndSettle();
+  await _frames(tester);
 }
 String token(String actor) {
   String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
@@ -176,9 +184,9 @@ void main() {
     final f = _Features(), p = _Proofs();
     await _open(tester, f, p);
     await tester.tap(find.widgetWithText(SwitchListTile, '車両管理'));
-    await tester.pumpAndSettle();
+    await _frames(tester);
     await tester.tap(find.text('戻る'));
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(f.caps, 0);
     f.capFailure = true;
     await _confirm(tester);
@@ -188,14 +196,14 @@ void main() {
     f.capFailure = false;
     await _confirm(tester);
     await tester.tap(find.text('キャンセル'));
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(f.changes, isEmpty);
     p.fail = true;
     await _confirm(tester);
     await _verify(tester);
     expect(f.changes, isEmpty);
     await tester.tap(find.text('キャンセル'));
-    await tester.pumpAndSettle();
+    await _frames(tester);
     p.fail = false;
     f.writeFailure = true;
     await _confirm(tester);
@@ -209,10 +217,10 @@ void main() {
     final callback = tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, '車両管理')).onChanged!;
     callback(false);
     callback(false);
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(find.text('車両管理を一時停止する'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, '一時停止する'));
-    await tester.pumpAndSettle();
+    await _frames(tester);
     await _verify(tester);
     expect(p.calls, 1);
     expect(f.changes.length, 1);
@@ -225,7 +233,7 @@ void main() {
     await _confirm(tester);
     f.currentActor = actorB;
     pending.complete(true);
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(f.changes, isEmpty);
     expect(p.calls, 0);
     expect(find.byKey(const Key('master-feature-password')), findsNothing);
@@ -235,10 +243,10 @@ void main() {
     await _open(tester, f, p);
     final existingPanelState = tester.state(find.byType(LineImportFeatureSettingsPanel));
     await tester.tap(find.widgetWithText(SwitchListTile, '車両管理'));
-    await tester.pumpAndSettle();
+    await _frames(tester);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(find.text('車両管理を一時停止する'), findsNothing);
     expect(identical(tester.state(find.byType(LineImportFeatureSettingsPanel)), existingPanelState), true);
     expect(f.caps, 0);
@@ -250,10 +258,10 @@ void main() {
     expect(tester.widget<TextField>(find.byKey(const Key('master-feature-password'))).controller!.text, isEmpty);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(find.byKey(const Key('master-feature-password')), findsNothing);
     p.pending!.complete(nonce);
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(f.changes, isEmpty);
     p.pending = null;
     await _confirm(tester);
@@ -271,10 +279,10 @@ void main() {
     expect(f.changes.length, 1);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(f.loads, 2);
     pending.complete(const MasterFeatureAvailability(vehicleManagement: false, routeAssignment: false));
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, '車両管理')).value, true);
   });
   for (final interrupt in ['actor', 'background']) {
@@ -291,14 +299,14 @@ void main() {
           if (proof != null) returned++;
         }, child: const Text('open')))));
       await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
+      await _frames(tester);
       await tester.enterText(find.byKey(const Key('master-feature-password')), 'synthetic-primary');
       await tester.tap(find.text('本人確認して変更'));
       pending.complete(nonce);
       await tester.idle();
       if (interrupt == 'actor') { actor = actorB; }
       else { tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); }
-      await tester.pumpAndSettle();
+      await _frames(tester);
       expect(returned, 0);
       expect(find.byKey(const Key('master-feature-password')), findsOneWidget);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
