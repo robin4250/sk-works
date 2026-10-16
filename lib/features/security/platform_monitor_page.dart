@@ -10,7 +10,8 @@ class PlatformMonitorPage extends StatefulWidget {
   State<PlatformMonitorPage> createState() => _PlatformMonitorPageState();
 }
 
-class _PlatformMonitorPageState extends State<PlatformMonitorPage> {
+class _PlatformMonitorPageState extends State<PlatformMonitorPage>
+    with WidgetsBindingObserver {
   final _password = TextEditingController();
   final _repository = PlatformMonitorRepository.maybeCreate();
   bool _checking = true;
@@ -18,43 +19,88 @@ class _PlatformMonitorPageState extends State<PlatformMonitorPage> {
   bool _busy = false;
   String? _error;
   PlatformMonitorSnapshot? _snapshot;
+  int _generation = 0;
+  AppLifecycleState _lifecycle = AppLifecycleState.resumed;
 
   @override
   void initState() {
     super.initState();
-    _check();
-  }
-
-  Future<void> _check() async {
-    try {
-      final check = widget.checkAvailable ?? _repository?.available;
-      final available = check != null && await check();
-      if (mounted) setState(() { _checking = false; _available = available; });
-    } catch (_) {
-      if (mounted) setState(() { _checking = false; _error = '接続・権限を確認できません。再度開いてください。'; });
-    }
-  }
-
-  Future<void> _load() async {
-    if (_busy || _password.text.isEmpty) return;
-    final load = widget.loadSnapshot ?? _repository?.load;
-    if (load == null) return;
-    setState(() { _busy = true; _error = null; _snapshot = null; });
-    try {
-      final snapshot = await load(_password.text);
-      if (mounted) setState(() => _snapshot = snapshot);
-    } on PlatformMonitorUnavailable {
-      if (mounted) setState(() => _available = false);
-    } catch (_) {
-      if (mounted) setState(() => _error = '監視記録を取得できません。認証・権限・接続を確認してください。');
-    } finally {
-      if (mounted) _password.clear();
-      if (mounted) setState(() => _busy = false);
+    _lifecycle = WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
+    if (_lifecycle == AppLifecycleState.resumed) {
+      _check();
+    } else {
+      _checking = false;
     }
   }
 
   @override
-  void dispose() { _password.dispose(); super.dispose(); }
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final wasResumed = _lifecycle == AppLifecycleState.resumed;
+    _lifecycle = state;
+    if (state != AppLifecycleState.resumed) {
+      // Every background transition invalidates both capability and read work.
+      // Returning later never restores a snapshot or reuses its proof/password.
+      _generation++;
+      _password.clear();
+      setState(() {
+        _checking = false;
+        _available = false;
+        _busy = false;
+        _snapshot = null;
+        _error = null;
+      });
+    } else if (!wasResumed) {
+      setState(() { _checking = true; });
+      _check();
+    }
+  }
+
+  Future<void> _check() async {
+    if (_lifecycle != AppLifecycleState.resumed) return;
+    final generation = ++_generation;
+    try {
+      final check = widget.checkAvailable ?? _repository?.available;
+      final available = check != null && await check();
+      if (mounted && generation == _generation && _lifecycle == AppLifecycleState.resumed) {
+        setState(() { _checking = false; _available = available; });
+      }
+    } catch (_) {
+      if (mounted && generation == _generation && _lifecycle == AppLifecycleState.resumed) {
+        setState(() { _checking = false; _error = '接続・権限を確認できません。再度開いてください。'; });
+      }
+    }
+  }
+
+  Future<void> _load() async {
+    if (_busy || !_available || _lifecycle != AppLifecycleState.resumed || _password.text.isEmpty) return;
+    final load = widget.loadSnapshot ?? _repository?.load;
+    if (load == null) return;
+    final generation = ++_generation;
+    final password = _password.text;
+    _password.clear();
+    setState(() { _busy = true; _error = null; _snapshot = null; });
+    bool current() => mounted && generation == _generation && _lifecycle == AppLifecycleState.resumed;
+    try {
+      final snapshot = await load(password);
+      if (current()) setState(() => _snapshot = snapshot);
+    } on PlatformMonitorUnavailable {
+      if (current()) setState(() => _available = false);
+    } catch (_) {
+      if (current()) setState(() => _error = '監視記録を取得できません。認証・権限・接続を確認してください。');
+    } finally {
+      if (current()) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _generation++;
+    _password.clear();
+    _password.dispose();
+    super.dispose();
+  }
 
   static const _results = {
     'unknown': '結果不明', 'http_success': 'HTTP成功（攻撃判定ではありません）',
