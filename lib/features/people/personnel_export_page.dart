@@ -241,7 +241,8 @@ class _PersonnelExportPageState extends State<PersonnelExportPage> {
     setState(() => _submitting = true);
     try {
       if (widget.operation == PersonnelExportOperation.print) {
-        await _printSelection(selection, selectedNames);
+        final printed = await _printSelection(selection, selectedNames);
+        if (!printed) return;
       }
       if (!mounted) return;
       Navigator.of(context).pop(
@@ -256,7 +257,7 @@ class _PersonnelExportPageState extends State<PersonnelExportPage> {
     }
   }
 
-  Future<void> _printSelection(
+  Future<bool> _printSelection(
     PersonnelExportSelection selection,
     List<String> selectedNames,
   ) async {
@@ -275,37 +276,61 @@ class _PersonnelExportPageState extends State<PersonnelExportPage> {
       ),
     );
     final bytes = await document.save();
-    if (!mounted) return;
-    await Navigator.of(context).push<void>(
+    if (!mounted) return false;
+    final printed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => PersonnelExportPdfPreviewPage(bytes: bytes),
       ),
     );
+    return printed == true;
   }
 }
-class PersonnelExportPdfPreviewPage extends StatelessWidget {
+class PersonnelExportPdfPreviewPage extends StatefulWidget {
   const PersonnelExportPdfPreviewPage({super.key, required this.bytes});
   final Uint8List bytes;
 
-  /// Reuses one generated document for the preview and native print action.
-  static PdfPreview previewFor(Uint8List bytes) => PdfPreview(
-    build: (_) async => bytes,
-    initialPageFormat: PdfPageFormat.a4,
-    canChangeOrientation: false,
-    canChangePageFormat: false,
-    canDebug: false,
-    dynamicLayout: false,
-    useActions: true,
-    allowPrinting: true,
-    allowSharing: false,
-    pagesBuilder: (context, pages) => PdfPinchPages(pages: pages),
-    onError: (_, __) => const Center(
-      child: Text('PDFを表示できませんでした。戻って再度お試しください。')),
-  );
+  @override
+  State<PersonnelExportPdfPreviewPage> createState() => _PersonnelExportPdfPreviewPageState();
+}
+
+class _PersonnelExportPdfPreviewPageState extends State<PersonnelExportPdfPreviewPage> {
+  late final Uint8List _bytes;
+  late final Future<Uint8List> Function(PdfPageFormat) _buildPdf;
+  late final PdfPreview _preview;
+
+  @override
+  void initState() {
+    super.initState();
+    // This route owns one immutable generated document and one stable callback.
+    _bytes = Uint8List.fromList(widget.bytes).asUnmodifiableView();
+    _buildPdf = (_) async => _bytes;
+    _preview = PdfPreview.builder(
+      build: _buildPdf,
+      initialPageFormat: PdfPageFormat.a4,
+      canChangeOrientation: false,
+      canChangePageFormat: false,
+      canDebug: false,
+      dynamicLayout: false,
+      useActions: true,
+      allowPrinting: true,
+      allowSharing: false,
+      pagesBuilder: (context, pages) => PdfPinchPages(pages: pages),
+      onPrinted: (_) {
+        if (mounted) Navigator.of(context).pop(true);
+      },
+      onPrintError: (_, __) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('印刷できませんでした。もう一度お試しください。')));
+      },
+      onError: (_, __) => const Center(
+        child: Text('PDFを表示できませんでした。戻って再度お試しください。')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('出力内容のPDFプレビュー')),
-    body: previewFor(bytes),
+    body: _preview,
   );
 }
