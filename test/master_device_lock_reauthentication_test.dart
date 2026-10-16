@@ -111,9 +111,11 @@ void main() {
   testWidgets('stale duplicate lock callback cannot open duplicate proof requests', (tester) async {
     final devices = _Devices(),proofs = _Proofs();await _open(tester, devices, proofs);
     final callback = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'ロック')).onPressed!;
-    callback();callback();await tester.pumpAndSettle();expect(devices.capabilityCalls, 1);
+    final pendingChange = (callback as dynamic)() as Future<void>;
+    callback();await tester.pumpAndSettle();expect(devices.capabilityCalls, 1);
     await verify(tester);expect(proofs.requests, 1);
     expect(find.byKey(const Key('master-device-lock-password')), findsNothing);
+    await pendingChange;
     expect(devices.changes, 1);
   });
   test('SDK only missing capability downgrades; new proof setter carries exact nonce', () async {
