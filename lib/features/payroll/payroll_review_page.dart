@@ -159,7 +159,10 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
               child: LayoutBuilder(builder: (context, constraints) {
                 final buttonWidth = (constraints.maxWidth - 20) / 3;
-                final fontSize = ((buttonWidth - 38) / 6 /
+                final taxSize = (buttonWidth - 38) / 4;
+                final textSize = (buttonWidth - 12) / 6;
+                final fittingSize = taxSize < textSize ? taxSize : textSize;
+                final fontSize = (fittingSize /
                     MediaQuery.textScalerOf(context).scale(1)).clamp(1.0, 14.0);
                 final buttonStyle = OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -186,12 +189,11 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                 )),
                 const SizedBox(width: 10),
                 Expanded(child: SizedBox(height: 48,
-                  child: OutlinedButton.icon(
+                  child: OutlinedButton(
                     key: const ValueKey('payroll-individual-settings-entry'),
                     style: buttonStyle,
                     onPressed: widget.onOpenSettings,
-                    icon: const Icon(Icons.manage_accounts_outlined, size: 18),
-                    label: Text(SkoLanguageController.tr('個別給料設定'), maxLines: 1),
+                    child: Text(SkoLanguageController.tr('個別給料設定'), maxLines: 1),
                   ),
                 )),
               ]);
