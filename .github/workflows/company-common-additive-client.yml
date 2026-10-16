@@ -7,6 +7,7 @@ on:
       - 'lib/features/payroll/company_common_allowance_pending_store.dart'
       - 'test/company_common_allowance_connected_test.dart'
       - 'test/company_common_payroll_page_test.dart'
+      - 'test/fixtures/company_common_allowance_sql_response.json'
       - '.github/workflows/company-common-additive-client.yml'
 permissions:
   contents: read

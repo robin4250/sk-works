@@ -72,6 +72,7 @@ class CompanyCommonAllowancePending {
   Map<String, dynamic> toJson() => {'actor_id': actorId, 'company_id': companyId, 'request_id': requestId, ...payload};
   factory CompanyCommonAllowancePending.parse(Object? raw) {
     final x = _object(raw);
+    if (x['operation'] != 'allowances') throw const FormatException('保存確認記録の操作が一致しません');
     return CompanyCommonAllowancePending(actorId: x['actor_id'] as String, companyId: x['company_id'] as String, requestId: x['request_id'] as String, payrollType: x['payroll_type'] as String, expectedVersion: x['expected_version'] as int, expectedSource: _object(x['expected_source']), legacySlots: (x['legacy_slots'] as List).map(_object).toList(), confirmAdoption: x['confirm_adoption'] as bool, items: (x['items'] as List).map(_object).toList());
   }
 }

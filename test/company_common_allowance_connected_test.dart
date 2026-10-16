@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,6 +70,24 @@ void main() {
    expect(() => CompanyCommonAllowanceState.parse(value, 'other'), throwsFormatException);
    expect(() => CompanyCommonAllowanceState.parse({...value, 'version': -1}, company), throwsFormatException);
   }
+ });
+ test('actual isolated SQL candidate responses parse and receipt matches original command exactly', () async {
+  // PGlite executed PR1152 SQL; all actors, UUIDs and prices are synthetic.
+  // This is SQL/client serialization coverage, not a live DataAPI test.
+  final fixture = jsonDecode(File('test/fixtures/company_common_allowance_sql_response.json').readAsStringSync()) as Map;
+  final receipt = Map<String, dynamic>.from(fixture['receipt'] as Map);
+  final payload = Map<String, dynamic>.from(receipt['request_payload'] as Map);
+  final p = CompanyCommonAllowancePending.parse({...payload, 'actor_id': receipt['actor_id'], 'company_id': receipt['company_id'], 'request_id': receipt['request_id']});
+  var corrupt = false;
+  final repo = SupabaseCompanyCommonAllowanceRepository.forTesting(actor: () => p.actorId, invoke: (name, args) async {
+   if (name == 'read_company_common_allowances_admin') return fixture['initial'];
+   if (name == 'save_company_common_allowances') { expect(args['p_expected_source'], payload['expected_source']); expect(args['p_legacy_slots'], payload['legacy_slots']); expect(args['p_items'], payload['items']); return fixture['saved']; }
+   return corrupt ? {...receipt, 'actor_id': 'wrong-actor'} : receipt;
+  });
+  final before = await repo.read(p.companyId); expect(before.expectedSource['legacy_adopted'], false);
+  final after = await repo.save(p); expect(after.legacyRefs[0]['id'], isNot(after.legacyRefs[1]['id'])); expect(after.items.map((x) => x['unit']).toSet(), {'hour', 'day', 'month'});
+  expect((await repo.reconcile(p))!.version, after.version);
+  corrupt = true; await expectLater(repo.reconcile(p), throwsFormatException);
  });
  test('repository uses only company-common RPCs and reconciles exact actor payload receipt', () async {
   final pending = command(); final names = <String>[];
@@ -166,5 +185,12 @@ void main() {
   repo.changes.add(null); repo.changes.add(actor); await tester.pump();
   expect(find.text('前の入力', skipOffstage: false), findsNothing); expect(repo.writes, 0);
   await tester.pumpWidget(const SizedBox()); await repo.changes.close(); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
+ });
+ testWidgets('first legacy adoption needs explicit confirmation and cancel sends nothing', (tester) async {
+  final raw = state(); raw['expected_source'] = {...source(), 'legacy_adopted': false};
+  final repo = FakeRepository()..value = CompanyCommonAllowanceState.parse(raw, company); final store = MemoryStore(); await show(tester, repo, store);
+  await add(tester, '未採用の追加'); await save(tester); expect(find.text('既存手当を引き継いで保存'), findsOneWidget);
+  await tester.tap(find.text('戻る')); await tester.pumpAndSettle(); expect(repo.writes, 0); expect(store.pending, isNull); expect(find.text('未採用の追加'), findsOneWidget);
+  await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
  });
 }
