@@ -211,3 +211,14 @@ Keychain contents and the installed IPA were not inspected. No real biometric
 prompt or credential was used. Native code, application authentication, local
 settings, production Auth and data are unchanged. A logged-out local_auth success
 must not be substituted for server-authorized primary account recovery.
+
+
+## 本人追加回答による原因の確定（2026-10-17 JST）
+
+本人が、前回Face IDで本人確認した画面の見出しは **「第2パスワードの再設定」** だったと確認しました。これにより、前回の体験は既知の #872 の画面・対象と一致したことが確定しました。本書の過去の「前回のprimary Face経路は未特定／説明できない」という未確定記録は履歴として残しますが、この本人回答による切り分けが現在の判断として優先します。
+
+原因は、ログイン済みセッション内の第2パスワード再設定と、明示ログアウト後の本パスワード（ログイン用）の「忘れた場合」が、別の資格情報・別経路だったことです。前者のFace ID再設定は `set_secondary_password` を呼び、ログイン用の本パスワードを変更しません。セッションが継続していた間は、後者のログイン画面を経由せずにアプリを使えていました。失われたprimary Face復旧機能を発見・復活したという意味ではありません。
+
+この確認を受けた修正候補は、本パスワードと第2パスワードの違い、端末に保存したログイン用パスワードを確認して通常ログインに戻る案内、この画面からの本パスワード再設定・SMS復旧が利用できないことの明示に限定します。利用不可のprimary SMS復旧入口だけを対象とし、正常な第2Face再設定・Master認証・メール設定・初期登録SMS・従業員QR・電話番号変更SMSは保持します。原因特定前の削除禁止は守られ、以前の候補はHOLDのまま保存されていました。
+
+本人の本パスワードによる再ログイン、実機での最終動作はまだ未確認です。第2パスワードを本パスワードの代わりに使う処理や、新たなFace primary認証方式・匿名パスワード変更権限は追加しません。本番のAuth設定・RLS・役割・会社情報・従業員データの変更は **0** です。候補は全CIと独立レビューまでdraftで保持し、この文書追記自体は本番反映や復旧完了を意味しません。
