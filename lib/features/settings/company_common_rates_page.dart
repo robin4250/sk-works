@@ -245,7 +245,7 @@ class _CompanyCommonRatesPageState extends State<CompanyCommonRatesPage> with Wi
     final generation = _generation;
     final route = DialogRoute<bool>(context: context, builder: (context) => AlertDialog(
       title: const Text('最新の設定を確認'),
-      content: Text([for (final key in companyCommonRateLabels.keys) '${companyCommonRateLabels[key]}\n保存済み：${latest.rates[key]}／入力中：${_rates[key]!.text}'].join('\n\n') + '\n\n入力を保持して編集を続けます。まだ保存は行いません。'),
+      content: Text('${[for (final key in companyCommonRateLabels.keys) '${companyCommonRateLabels[key]}\n保存済み：${latest.rates[key]}／入力中：${_rates[key]!.text}'].join('\n\n')}\n\n入力を保持して編集を続けます。まだ保存は行いません。'),
       actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('戻る')),
         FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('確認して編集を続ける'))]));
     _dialog = route;

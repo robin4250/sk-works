@@ -39,7 +39,7 @@ Future<void> mount(WidgetTester tester, FakeRates repo, MemoryStore store) async
  tester.view.physicalSize = const Size(900,1200); tester.view.devicePixelRatio = 1;
  await tester.pumpWidget(MaterialApp(home:CompanyCommonRatesPage(companyId:company,repository:repo,pendingStore:store))); await tester.pumpAndSettle();
 }
-Future<void> enter(WidgetTester tester, String value) => tester.enterText(find.byKey(const Key('company-common-rates-overtime_hour_rate_yen')),value);
+Future<void> enter(WidgetTester tester, String value) async { await tester.enterText(find.byKey(const Key('company-common-rates-overtime_hour_rate_yen')),value); await tester.pump(); }
 void main() {
  test('actual isolated rates SQL responses and receipt use strict four-column operation', () {
   final data = fixtures(); final request = fixtureRequest();
@@ -65,7 +65,7 @@ void main() {
  });
  testWidgets('four old values edit and save through rates-only callback then show completion', (tester) async {
   final repo = FakeRates(), store = MemoryStore(); await mount(tester,repo,store);
-  for (final key in companyCommonRateLabels.keys) expect(find.byKey(Key('company-common-rates-$key')),findsOneWidget);
+  for (final key in companyCommonRateLabels.keys) { expect(find.byKey(Key('company-common-rates-$key')),findsOneWidget); }
   await enter(tester,'5125'); await tester.tap(find.text('保存')); await tester.pumpAndSettle();
   expect(repo.writes,1); expect(repo.last!.rates['overtime_hour_rate_yen'],5125); expect(repo.last!.rates['early_hour_rate_yen'],0);
   expect(find.text('残業・早出などの単価を保存しました。'),findsOneWidget); expect(store.pending,isNull);

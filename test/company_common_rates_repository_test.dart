@@ -45,7 +45,7 @@ class Wire {
     }
     if (errorCode != null) return json({'code': errorCode, 'message': 'synthetic'}, errorCode == 'PGRST202' ? 404 : 403);
     if (r.url.path.endsWith('/read_company_common_rate_settings')) return json(fixture()['initial']);
-    if (r.url.path.endsWith('/save_company_common_rates_settings')) {
+    if (r.url.path.endsWith('/save_company_common_rate_settings')) {
       await duringSave?.call(); return json(overrideSave ?? fixture()['result']);
     }
     if (r.url.path.endsWith('/read_company_common_allowance_request')) return json(fixture()['receipt']);
@@ -58,7 +58,7 @@ void main() {
     final bearer = 'Bearer ${w.client.auth.currentSession!.accessToken}';
     expect((await w.repository.read(company)).rates['overtime_hour_rate_yen'], 0);
     expect((await w.repository.save(request())).rates['overtime_hour_rate_yen'], 5125);
-    final write = w.calls.singleWhere((r) => r.url.path.endsWith('/save_company_common_rates_settings'));
+    final write = w.calls.singleWhere((r) => r.url.path.endsWith('/save_company_common_rate_settings'));
     expect(write.headers['authorization'], bearer);
     expect(jsonDecode(write.body), {'p_company_id': company, 'p_expected_version': 0,
       'p_expected_rates': request().expectedRates, 'p_rates': request().rates, 'p_request_id': rid});
@@ -81,7 +81,7 @@ void main() {
     final original = 'Bearer ${w.client.auth.currentSession!.accessToken}';
     w.duringSave = () async { w.currentActor = otherActor; await w.login(); };
     await expectLater(w.repository.save(request()), throwsStateError);
-    expect(w.calls.singleWhere((r) => r.url.path.endsWith('/save_company_common_rates_settings')).headers['authorization'], original);
+    expect(w.calls.singleWhere((r) => r.url.path.endsWith('/save_company_common_rate_settings')).headers['authorization'], original);
     final count = w.calls.length;
     await expectLater(w.repository.save(request()), throwsStateError);
     expect(w.calls.length, count);
@@ -90,7 +90,7 @@ void main() {
     final w = Wire(); addTearDown(w.client.dispose); await w.login();
     w.overrideSave = {...commonRatesObject(fixture()['result']), 'request_id': '40000000-0000-4000-8000-000000000099'};
     await expectLater(w.repository.save(request()), throwsFormatException);
-    expect(w.calls.where((r) => r.url.path.endsWith('/save_company_common_rates_settings')).length, 1);
+    expect(w.calls.where((r) => r.url.path.endsWith('/save_company_common_rate_settings')).length, 1);
   });
 }
 
