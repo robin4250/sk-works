@@ -57,6 +57,13 @@ begin
  where p.company_id=p_company and p.site_id=x.site and p.output_type='invoice' for share;
  if not found or pref.source not in ('site','trade_company') then
  raise exception 'explicit registered source required' using errcode='55000';end if;
+ if not exists(select 1 from public.trade_companies t
+ join public.sites s on s.id=x.site and s.company_id=t.company_id
+ join public.customers c on c.id=t.customer_id and c.company_id=t.company_id
+ where t.id=pref.trade_company_id and t.company_id=p_company
+ and t.linked_company_id=x.recipient and t.trade_role in('customer','both')
+ and s.customer_id=t.customer_id) then
+ raise exception 'registered invoice party/site mapping required' using errcode='42501';end if;
  select jsonb_build_object('unit_price',z.billing_unit_price_yen,
  'monthly',z.billing_monthly_rate_yen,'square_price',z.billing_square_meter_unit_price_yen,
  'square_quantity',z.billing_square_meter_quantity,'contract',z.billing_contract_amount_yen,

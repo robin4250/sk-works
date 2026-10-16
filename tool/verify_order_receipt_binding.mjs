@@ -9,25 +9,28 @@ create function auth.uid() returns uuid language sql as $$select nullif(current_
 create function private.account_access_allowed() returns boolean language sql as $$select current_setting('fixture.allowed',true)='yes'$$;
 create table public.companies(id uuid primary key,company_seal_enabled boolean,tax_rate numeric);
 create table public.company_members(company_id uuid,user_id uuid,role text);
-create table public.sites(id uuid primary key,company_id uuid);
+create table public.customers(id uuid primary key,company_id uuid);
+create table public.sites(id uuid primary key,company_id uuid,customer_id uuid);
 create table private.company_connections(parent_company_id uuid,child_company_id uuid,status text);
 create table private.document_deliveries(id uuid primary key,sender_company_id uuid,recipient_company_id uuid);
 create table private.company_data_delivery_items(id uuid primary key,delivery_id uuid,payload_kind text,payload jsonb);
 create table private.site_share_inbox(data_item_id uuid primary key,recipient_company_id uuid,status text,accepted_site_id uuid);
 create table public.site_calculation_source_preferences(company_id uuid,site_id uuid,output_type text,trade_company_id uuid,source text,selected_at timestamptz);
 create table public.site_financial_settings(company_id uuid,site_id uuid,billing_unit_price_yen numeric,billing_monthly_rate_yen numeric,billing_square_meter_unit_price_yen numeric,billing_square_meter_quantity numeric,billing_contract_amount_yen numeric,billing_rate_formula jsonb,billing_rate_overrides jsonb);
-create table public.trade_companies(id uuid primary key,company_id uuid,linked_company_id uuid,trade_role text);
+create table public.trade_companies(id uuid primary key,company_id uuid,linked_company_id uuid,trade_role text,customer_id uuid);
 create table public.trade_company_contracts(company_id uuid,trade_company_id uuid,contract_method text,daily_rate_yen integer,monthly_rate_yen integer,square_meter_unit_price_yen integer,square_meter_quantity numeric,contract_amount_yen integer,updated_at timestamptz);
 -- Official helper is a deterministic fixture: real rendering/hash/locking tests remain separate.
 create function private.document_company_seal_snapshot(uuid,uuid,boolean) returns jsonb language sql as $$select jsonb_build_object('company_seal_snapshot',jsonb_build_object('name','fixture-seal','revision',current_setting('fixture.seal',true)))$$;
 insert into companies values('${A}',true,10),('${B}',true,10);
 insert into company_members values('${A}','${U}','admin'),('${B}','${U}','admin');
-insert into sites values('${S}','${A}');
+insert into customers values('${T}','${A}');
+insert into sites values('${S}','${A}','${T}');
+insert into trade_companies values('${T}','${A}','${B}','customer','${T}');
 insert into private.company_connections values('${B}','${A}','accepted');
 insert into private.document_deliveries values('${D}','${A}','${B}');
 insert into private.company_data_delivery_items values('${I}','${D}','site_share','{"source_site_id":"${S}","name":"fixture"}');
 insert into private.site_share_inbox values('${I}','${B}','pending',null);
-insert into site_calculation_source_preferences values('${A}','${S}','invoice',null,'site','2026-10-01');
+insert into site_calculation_source_preferences values('${A}','${S}','invoice','${T}','site','2026-10-01');
 insert into site_financial_settings values('${A}','${S}',32800,0,0,0,0,'{"base_mode":"daily","hourly_base":false}','{}');
 select set_config('fixture.actor','${U}',false),set_config('fixture.allowed','yes',false),set_config('fixture.seal','1',false);
 `);
@@ -72,14 +75,14 @@ await rejects(()=>q('select site_contract_binding_private.preview($1,$2,$3)',[B,
 await rejects(()=>q('select site_contract_binding_private.preview($1,$2,$3)',[A,I,'payment_certificate']),'0A000');
 await db.exec(`update private.company_connections set parent_company_id='${A}',child_company_id='${B}'`);
 assert.equal((await preview()).parent_company_id,A);
-await db.exec(`insert into trade_companies values('${T}','${A}','${B}','customer');insert into trade_company_contracts values('${A}','${T}','monthly',200,400,300,2,500,'2026-10-01');update site_calculation_source_preferences set source='trade_company',trade_company_id='${T}'`);
+await db.exec(`insert into trade_company_contracts values('${A}','${T}','monthly',200,400,300,2,500,'2026-10-01');update site_calculation_source_preferences set source='trade_company',trade_company_id='${T}'`);
 for(const [method,unit,price] of [['daily','day',200],['monthly','month',400],['square_meter','square_meter',300],['contract','lump_sum',500]]){
 await db.exec(`update trade_company_contracts set contract_method='${method}'`);
 const v=await preview();assert.equal(v.unit,unit);assert.equal(v.unit_price_yen,price);
 }
 await db.exec(`update trade_companies set linked_company_id='${A}'`);
 await rejects(preview,'42501');
-await db.exec(`update site_calculation_source_preferences set source='site',trade_company_id=null`);
+await db.exec(`update trade_companies set linked_company_id='${B}';update site_calculation_source_preferences set source='site',trade_company_id='${T}'`);
 let stale=await preview();
 await db.exec(`update sites set company_id='${B}'`);
 await rejects(()=>bind(stale,'00000000-0000-4000-8000-000000000014',1),'42501');
