@@ -14,3 +14,15 @@ test('source and missing/duplicate anchor drift abort before setup',()=>{
  for(const changed of [source+'\n',source.replace(" phase='original-app-fixtures';",''),source+" phase='original-app-fixtures';"]){assert.throws(()=>instrumentSessionLifecycle(changed,config),/drift/);}
 });
 test('remote helper import refused',()=>assert.throws(()=>instrumentSessionLifecycle(source,{...config,checkUrl:'https://example.invalid/hook.mjs'}),/local files/));
+
+test('synthetic phone route allowlist refuses SMS/OTP/provider and real numbers',async()=>{
+ const {assertPhoneLifecycleRequest}=await import('./auth_session_lifecycle_check.mjs');
+ const phone='+12025550123';
+ assert.doesNotThrow(()=>assertPhoneLifecycleRequest('/auth/v1/admin/users',{service:true,body:{phone,password:'synthetic-test-only',phone_confirm:true}}));
+ assert.doesNotThrow(()=>assertPhoneLifecycleRequest('/auth/v1/token?grant_type=password',{body:{phone,password:'synthetic-test-only'}}));
+ for(const route of ['/auth/v1/otp','/auth/v1/verify','/auth/v1/signup','/auth/v1/resend','/auth/v1/recover','/auth/v1/settings','https://example.invalid/auth/v1/token?grant_type=password']){
+  assert.throws(()=>assertPhoneLifecycleRequest(route,{body:{phone,password:'synthetic-test-only'}}),/permits/);
+ }
+ assert.throws(()=>assertPhoneLifecycleRequest('/auth/v1/admin/users',{service:true,body:{phone,password:'synthetic-test-only',phone_confirm:false}}),/permits/);
+ assert.throws(()=>assertPhoneLifecycleRequest('/auth/v1/token?grant_type=password',{body:{phone:'+10000000000',password:'synthetic-test-only'}}),/permits/);
+});

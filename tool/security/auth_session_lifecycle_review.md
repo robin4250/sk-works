@@ -71,3 +71,30 @@ Synthetic user/session/provider rows are isolated and discarded with the existin
 fixture. Full production config, original backup/restore and real administrator
 retention are outside this test. No new sign-in method or production authorization
 is introduced. Record exact CI head and outcome before treating runtime as verified.
+
+## Additional PHONE/password case (separate from successful email snapshot)
+
+The successful email-only baseline remains commit
+`e184750df321a24981ca9b960982808f1d325c22` with dedicated CI38939479802 success.
+A later test-only commit appends a real phone-password case after EVERY original
+email/local/global assertion, in the SAME existing isolated GoTrue runtime. The
+original runner source/hash/anchor/setup, product Auth and provider settings are
+unchanged. New phone results must be reported against the later exact head.
+
+A fixed fictional NANP555-0100..0199 E164 (`+12025550123`) is admin-created with
+`phone_confirm:true` and a freshly generated local test password. It never names an
+employee or actual recipient. Confirmed-at is required BEFORE password grant.
+The added case permits ONLY admin confirmed-user creation, password grant with
+phone, refresh grant and LOCAL logout, with exact allowed body keys. It records
+and asserts those six routes; signup/OTP/verify/resend/recover/provider/settings
+and any nonlocal/other-phone request are refused BEFORE dispatch. The underlying
+original callback still refuses any origin outside its generated loopback API.
+No SMS/OTP/provider branch or configuration modification is invoked. Dependency/
+container bootstrap remains the original fixture; no whole-host network-none claim.
+
+Actual server assertions require one phone UID/session, refresh retaining its SID,
+local logout removing it, both old refresh tokens rejected, stable phone/provider/
+confirmation fields and untouched original master/admin/other sessions. The
+original app/company/provider invariants and full Edge suite still run afterward.
+This is admin-preconfirmed fictional-phone password semantics, not live employee
+onboarding, SMS delivery, real provider setup, native persistence or Face hardware.
