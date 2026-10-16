@@ -1,0 +1,65 @@
+name: Decoy kernel network isolation
+on:
+  pull_request:
+    paths:
+      - 'tool/security/decoy_network_none*'
+      - 'tool/security/isolated_transport.mjs'
+      - 'tool/security/decoy_lab.mjs'
+      - '.github/workflows/decoy-network-none.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/security/decoy_network_none*'
+      - 'tool/security/isolated_transport.mjs'
+      - 'tool/security/decoy_lab.mjs'
+      - '.github/workflows/decoy-network-none.yml'
+permissions:
+  contents: read
+jobs:
+  network-none:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run only synthetic fixture inside an inspected network namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture_dir=$(mktemp -d "$RUNNER_TEMP/sko-decoy-network.XXXXXX")
+          fixture_name="sko-decoy-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            docker rm -f "$fixture_name" >/dev/null 2>&1 || true
+            chmod u+w "$fixture_dir"
+            rm -rf "$fixture_dir"
+          }
+          trap cleanup EXIT
+          for file in decoy_network_none_check.mjs isolated_transport.mjs decoy_lab.mjs; do
+            install -m 444 "tool/security/$file" "$fixture_dir/$file"
+          done
+          chmod 555 "$fixture_dir"
+          docker pull node:22-bookworm-slim
+          fixture_image=$(docker image inspect --format '{{.Id}}' node:22-bookworm-slim)
+          docker create --name "$fixture_name" --network none --ipc none \
+            --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+            --user 65534:65534 --pids-limit 64 --memory 256m --cpus 1 \
+            --tmpfs /tmp:rw,noexec,nosuid,size=8m \
+            --mount "type=bind,src=$fixture_dir,dst=/fixture,readonly" \
+            --env SKO_DECOY_NETWORK_NONE_FIXTURE=1 \
+            --entrypoint node "$fixture_image" /fixture/decoy_network_none_check.mjs
+          docker inspect "$fixture_name" > "$RUNNER_TEMP/sko-decoy-inspect-${GITHUB_RUN_ID}.json"
+          python3 - "$RUNNER_TEMP/sko-decoy-inspect-${GITHUB_RUN_ID}.json" <<'PY'
+          import json,sys
+          x=json.load(open(sys.argv[1]))[0]
+          h=x['HostConfig']
+          assert h['NetworkMode']=='none' and not h['Privileged'] and h['ReadonlyRootfs']
+          assert not h.get('PortBindings') and h['CapDrop']==['ALL']
+          assert 'no-new-privileges:true' in h['SecurityOpt']
+          assert x['Config']['User']=='65534:65534'
+          mounts=x['Mounts']
+          assert len([m for m in mounts if m['Type']=='bind'])==1
+          assert all(not m['RW'] and m['Destination']=='/fixture' for m in mounts if m['Type']=='bind')
+          print('PASS: inspected network-none, no published ports, read-only fixture-only mount, non-root, dropped capabilities')
+          PY
+          rm "$RUNNER_TEMP/sko-decoy-inspect-${GITHUB_RUN_ID}.json"
+          docker start -a "$fixture_name"
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$fixture_name")" = 0
