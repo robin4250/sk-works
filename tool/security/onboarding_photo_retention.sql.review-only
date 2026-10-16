@@ -96,22 +96,24 @@ $function$;
 -- CREATE OR REPLACE retains the existing profile RPC OID, signature and ACL.
 create function private.read_employee_onboarding_photo_capability()
 returns jsonb language plpgsql stable security definer set search_path='' as $cap$
-declare subject uuid:=auth.uid(); current_invite public.employee_registration_invites%rowtype;
+declare subject uuid:=auth.uid(); current_invite record;
 begin
  if subject is null or private.account_access_allowed() is not true then
   raise exception 'onboarding capability unavailable' using errcode='42501';
  end if;
- select * into current_invite from public.employee_registration_invites
- where auth_user_id=subject order by created_at desc nulls last,id desc limit 1;
+ select i.status,
+  (i.password_changed_at is not null or i.identity_verified_at is not null) ready,
+  (nullif(btrim(i.portrait_path),'') is not null
+   or nullif(btrim(i.my_number_front_path),'') is not null
+   or nullif(btrim(i.my_number_back_path),'') is not null) has_images
+ into current_invite from public.employee_registration_invites i
+ where i.auth_user_id=subject order by i.created_at desc nulls last,i.id desc limit 1;
  if not found or current_invite.status is null or current_invite.status not in ('profile_pending','approval_pending')
- or (current_invite.password_changed_at is null and current_invite.identity_verified_at is null) then
+ or current_invite.ready is not true then
   raise exception 'onboarding capability unavailable' using errcode='42501';
  end if;
  return jsonb_build_object(
-  'has_existing_images',
-    nullif(btrim(current_invite.portrait_path),'') is not null
-    or nullif(btrim(current_invite.my_number_front_path),'') is not null
-    or nullif(btrim(current_invite.my_number_back_path),'') is not null,
+  'has_existing_images',current_invite.has_images,
   'photo_upload_allowed',false);
 end $cap$;
 create function public.employee_onboarding_photo_capability()
