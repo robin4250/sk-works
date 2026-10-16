@@ -4,6 +4,8 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    '承認済みの編集を開始': 'Start approved editing',
+    '編集できる状態になりました。編集後は報告者・責任者のサインを登録してください。': 'Editing is enabled. Add new reporter and supervisor signatures after editing.',
     '保存済みトーク': 'Saved received talks',
     "閲覧のみ": "Read only",
     "単位別の支給・控除": "Unit Earnings and Deductions",

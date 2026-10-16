@@ -967,7 +967,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
           ],
         ),
       );
-      if (confirmed != true || !mounted || repository.currentActorId != actor) return;
+      if (confirmed != true || !mounted || repository.currentActorId != actor) {
+        return;
+      }
       if (!await repository.hasApprovedEdit(report.id) ||
           repository.currentActorId != actor || !mounted ||
           _report?.id != report.id) {
