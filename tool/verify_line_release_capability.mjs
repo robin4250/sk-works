@@ -4,6 +4,9 @@ import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 process.on('uncaughtException',e=>{console.error(e.message,e.code,e.where ?? '');process.exit(1);});
 let earlyWrappers=[];
+let originalGateDefinition;
+let originalGateMetadata;
+let originalWrapperMetadata;
 const testflightLock=process.argv.includes('--testflight-lock');
 const {PGlite} = await import(pathToFileURL(process.argv[2]).href);
 const db = new PGlite();
@@ -103,6 +106,8 @@ if(testflightLock) {
  await role('postgres');
  const settingsBefore=(await db.query('select * from private.line_general_release_settings')).rows;
  const gateMetadata=await scalar("select jsonb_build_object('acl',proacl,'config',proconfig,'owner',proowner) v from pg_proc where oid='private.line_actor_release_allowed(uuid)'::regprocedure");
+ originalGateDefinition=await scalar("select pg_get_functiondef('private.line_actor_release_allowed(uuid)'::regprocedure) v");
+ originalGateMetadata=await scalar("select to_jsonb(x) v from (select proacl::text,proowner,prolang,prosrc,prosecdef,provolatile,proconfig,proargnames from pg_proc where oid='private.line_actor_release_allowed(uuid)'::regprocedure)x");
  await db.exec(readFileSync('docs/security/staged/line_testflight_master_only.sql.review-only','utf8'));
  await assert.rejects(db.exec(readFileSync('docs/security/staged/line_testflight_master_only.sql.review-only','utf8')),/LINE actor gate changed/,'Changed gate is never silently overwritten');
  await db.exec('rollback');
@@ -119,6 +124,7 @@ if(testflightLock) {
  await db.exec('set check_function_bodies=on');
  const metadata=async()=> (await db.query("select proname,proacl::text,proowner,prosecdef,provolatile,proconfig,proargnames from pg_proc where pronamespace='public'::regnamespace order by oid")).rows;
  const metadataBefore=await metadata();
+ originalWrapperMetadata=(await db.query("select proname,proacl::text,proowner,prolang,prosrc,prosecdef,provolatile,proconfig,proargnames from pg_proc where pronamespace='public'::regnamespace order by oid")).rows;
  await db.exec(readFileSync('docs/security/staged/line_testflight_early_rpc_gate.sql.review-only','utf8'));
  assert.deepEqual(await metadata(),metadataBefore,'Early guards retain ACL/owner/invoker/volatility/config/argument names');
  await assert.rejects(db.exec(readFileSync('docs/security/staged/line_testflight_early_rpc_gate.sql.review-only','utf8')),/LINE wrapper changed/);await db.exec('rollback');
@@ -225,6 +231,24 @@ if(testflightLock && process.env.SKO_LINE_RELEASE_POSTGREST_URL) {
  r=await http(null,'/chat_messages?select=id');assert.equal(r.status,401,'Anonymous direct REST denied');
  r=await http(null,'/rpc/line_release_capability',{});assert.equal(r.status,401,'Anonymous capability denied');
  console.log('PASS: real signed-JWT PostgREST general role capability/direct LINE/bindings/RPC403, master own scope, foreign/anonymous rejection and ordinary SKO preservation.');
+}
+if(testflightLock) {
+ await role('postgres');
+ const snapshot=async()=>{
+  const result={};
+  for(const table of ['private.line_general_release_settings','private.master_admins','public.company_members','public.communication_group_members','public.chat_messages','public.line_group_bindings','private.master_admin_audit_log'])result[table]=(await db.query(`select to_jsonb(t) row from ${table} t order by to_jsonb(t)::text`)).rows;
+  return result;
+ };
+ const beforeRestore=await snapshot();
+ await db.exec('set check_function_bodies=off');
+ await db.exec(originalGateDefinition);
+ for(const f of earlyWrappers)await db.exec(f.definition);
+ await db.exec('set check_function_bodies=on');
+ assert.deepEqual(await scalar("select to_jsonb(x) v from (select proacl::text,proowner,prolang,prosrc,prosecdef,provolatile,proconfig,proargnames from pg_proc where oid='private.line_actor_release_allowed(uuid)'::regprocedure)x"),originalGateMetadata,'Restored original actor definition and ACL/owner/config/language exactly');
+ assert.deepEqual((await db.query("select proname,proacl::text,proowner,prolang,prosrc,prosecdef,provolatile,proconfig,proargnames from pg_proc where pronamespace='public'::regnamespace order by oid")).rows,originalWrapperMetadata,'Restored original wrappers exactly');
+ assert.deepEqual(await snapshot(),beforeRestore,'Restore never changes synthetic saved settings/admins/roles/members/history/audit');
+ await actor(2);await role('authenticated');assert.equal((await scalar('select public.line_release_capability() v')).available,true,'Old general=true restoration reopens general access: explicit emergency risk, not a production instruction');
+ console.log('PASS: isolated exact-definition/owner/ACL/config/language restore; synthetic settings, master/admin and company/group memberships/history/audit unchanged. Restoring old general=true reopens access.');
 }
 await role('anon');await assert.rejects(scalar('select public.line_release_capability() v'));
 console.log(testflightLock?'TestFlight master-only lock: retained saved settings, denied general roles despite setting=true, preserved master scope/SKO/history/ACL; optional signed-JWT HTTP fixture runs separately; Realtime not tested.':'LINE release real SQL: default-on, additive RLS, roles, direct reads, definer denial, queued claim recheck, webhook reception, master existing scope, SKO preservation, audit and ON recovery passed. Realtime delivery and external HTTP races require separate integration validation.');
