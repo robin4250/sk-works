@@ -35,9 +35,23 @@ class _Access implements MasterPasswordEntryAccess {
     if (!ok) throw const MasterCredentialRejected('not_verified');
   }
 }
-Future<void> _show(WidgetTester t, _Access access, {bool wrapper = false, bool settle = true, Widget Function(MasterCredentialAccess)? settingsBuilder}) async {
+class _DraftChild extends StatefulWidget {
+  const _DraftChild();
+  @override State<_DraftChild> createState() => _DraftChildState();
+}
+class _DraftChildState extends State<_DraftChild> {
+  final draft = TextEditingController();
+  int opened = 0;
+  @override void dispose() { draft.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) => Scaffold(body: Column(children: [
+    TextField(key: const Key('master-child-draft'), controller: draft),
+    Text('opened:$opened'),
+    FilledButton(onPressed: () { setState(() => opened++); showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('MASTER-DIALOG'), actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('閉じる'))])); }, child: const Text('子画面の確認')),
+  ]));
+}
+Future<void> _show(WidgetTester t, _Access access, {bool wrapper = false, bool settle = true, Widget Function(MasterCredentialAccess)? settingsBuilder, Widget? privateChild}) async {
   t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-  final child = const Scaffold(body: Text('MASTER-PRIVATE-CONTENT'));
+  final child = privateChild ?? const Scaffold(body: Text('MASTER-PRIVATE-CONTENT'));
   await t.pumpWidget(MaterialApp(home: wrapper
     ? MasterProtectedPage(title: 'Master', dedicatedMode: true, dedicatedAccess: access, child: child)
     : MasterPasswordProtectedPage(title: 'Master', access: access, settingsBuilder: settingsBuilder, child: child)));
@@ -116,4 +130,27 @@ void main() {
     access.readWait = null; await t.tap(find.text('再読み込み')); await t.pumpAndSettle(); await _unlock(t);
     expect(find.text('MASTER-PRIVATE-CONTENT'), findsOneWidget); await _close(t, access);
   });
+  testWidgets('normal Master child popup preserves its draft and local state after unlock', (t) async {
+    final access = _Access(); await _show(t, access, privateChild: const _DraftChild()); await _unlock(t);
+    await t.enterText(find.byKey(const Key('master-child-draft')), 'existing-unsaved-draft');
+    await t.tap(find.text('子画面の確認')); await t.pumpAndSettle();
+    expect(find.text('MASTER-DIALOG'), findsOneWidget);
+    await t.tap(find.text('閉じる')); await t.pumpAndSettle();
+    expect(find.text('opened:1'), findsOneWidget);
+    expect(t.widget<TextField>(find.byKey(const Key('master-child-draft'))).controller!.text, 'existing-unsaved-draft');
+    expect(access.passwords, ['dedicated-master-password']); await _close(t, access);
+  });
+  testWidgets('old actor Face completion does not interrupt newer actor authentication', (t) async {
+    final access = _Access()..faceWait = Completer<bool>(); final oldFace = access.faceWait!;
+    await _show(t, access); await _unlock(t, settle: false);
+    access.binding = const MasterCredentialBinding('other-actor', _sid, 'synthetic-B', 'other-device-key-longer-than-32-characters'); access.events.add(null); await t.pump();
+    await t.tap(find.text('再読み込み')); await t.pumpAndSettle();
+    access.faceWait = Completer<bool>(); await _unlock(t, settle: false);
+    oldFace.complete(true); await t.pump(); await t.pump();
+    expect(access.passwords, isEmpty);
+    access.faceWait!.complete(true); await t.pumpAndSettle();
+    expect(access.passwords, ['dedicated-master-password']);
+    expect(find.text('MASTER-PRIVATE-CONTENT'), findsOneWidget); await _close(t, access);
+  });
+
 }

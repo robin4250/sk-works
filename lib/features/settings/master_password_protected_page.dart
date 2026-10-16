@@ -40,7 +40,7 @@ class _MasterPasswordProtectedPageState extends State<MasterPasswordProtectedPag
   }
   @override void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_current && (_loaded != null || _busy)) _lock(rebuild: false);
+    if (!_current && !_unlocked && (_loaded != null || _busy)) _lock(rebuild: false);
   }
   void _lock({bool rebuild = true}) {
     if (!mounted) return;
@@ -115,7 +115,8 @@ class _MasterPasswordProtectedPageState extends State<MasterPasswordProtectedPag
     String password = _password.text;
     _password.clear();
     if (password.isEmpty || utf8.encode(password).length > 72) { setState(() => _message = 'Master専用パスワードを入力してください。'); return; }
-    _clearCaptured = () => password = '';
+    final clearCaptured = () { password = ''; };
+    _clearCaptured = clearCaptured;
     final generation = ++_generation;
     setState(() { _busy = true; _message = null; });
     try {
@@ -137,7 +138,8 @@ class _MasterPasswordProtectedPageState extends State<MasterPasswordProtectedPag
     } catch (_) {
       if (mounted && generation == _generation) setState(() => _message = 'Master専用の本人確認を完了できませんでした。第2パスワードの代用はできません。再読み込みして確認してください。');
     } finally {
-      password = ''; _clearCaptured = null;
+      password = '';
+      if (identical(_clearCaptured, clearCaptured)) _clearCaptured = null;
       if (mounted && generation == _generation) setState(() { _busy = false; _nativePrompt = false; });
     }
   }
