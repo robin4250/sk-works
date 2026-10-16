@@ -252,13 +252,14 @@ class _EmployeeProfileOnboardingPageState
   StreamSubscription<dynamic>? _authSubscription;
   String? _actorId;
   bool _identityChanged = false;
-  bool _foreground = true;
+  bool _foreground = false;
   int _epoch = 0;
   EmployeeOnboardingPhotoCapability? _photoCapability;
 
   @override
   void initState() {
     super.initState();
+    _foreground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _repository = widget.repository ?? EmployeeOnboardingRepository.maybeCreate();
     _actorId = _repository?.currentUserId;
@@ -290,7 +291,7 @@ class _EmployeeProfileOnboardingPageState
 
   Future<void> _loadPhotoCapability() async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null || !_foreground || _identityChanged) return;
     try {
       final request = _request();
       final capability = await repository.loadPhotoCapability(request: request);

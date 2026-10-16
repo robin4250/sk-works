@@ -152,6 +152,34 @@ void main() {
     }
   });
 
+  testWidgets('initially paused page waits for resume and preserves its draft', (tester) async {
+    for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    addTearDown(() {
+      for (final state in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+    });
+    var submitted = 0;
+    await showPage(tester, f, () => submitted++);
+    await fill(tester);
+    expect(f.caps, 0);
+    expect(f.storage, isEmpty);
+    expect(f.named(safeName), isEmpty);
+    for (final state in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    await tester.pumpAndSettle();
+    expect(f.caps, 1);
+    expect(tester.widget<TextField>(find.byType(TextField).first).controller!.text, 'synthetic field 0');
+    await send(tester);
+    expect(submitted, 1);
+    expect(f.caps, 3);
+    expect(f.named(safeName), hasLength(1));
+    expect(f.storage, isEmpty);
+  });
+
   testWidgets('paused photos omit upload and use only new seven-text RPC', (tester) async {
     var submitted = 0;
     await showPage(tester, f, () => submitted++);
