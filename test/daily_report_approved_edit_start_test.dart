@@ -134,10 +134,10 @@ void main() {
       expect(repo.signed, isFalse);
       expect(find.byKey(const ValueKey('daily-report-begin-approved-edit')), findsNothing);
       final reporter = tester.widget<ListTile>(
-        find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile)).first);
+        find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile)));
       expect(reporter.onTap, isNotNull);
       final supervisor = tester.widget<ListTile>(
-        find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)).first);
+        find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)));
       expect(supervisor.onTap, isNotNull);
     });
   testWidgets('no approved request keeps signed report locked', (tester) async {
@@ -146,7 +146,7 @@ void main() {
     expect(find.byKey(const ValueKey('daily-report-begin-approved-edit')), findsNothing);
     expect(repo.saves, 0);
     final reporter = tester.widget<ListTile>(
-      find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile)).first);
+      find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile)));
     expect(reporter.onTap, isNull);
   });
   testWidgets('cancel or save failure never reports successful edit start', (tester) async {
@@ -181,7 +181,7 @@ void main() {
       actorId: 'owner', companyId: 'company-a', reportId: 'report-a',
       requestId: 'request-a', confirmed: true));
     await open(tester, repo);
-    final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)).first;
+    final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile));
     await reveal(tester, tile);
     await tester.tap(tile);
     await tester.pumpAndSettle();
@@ -226,7 +226,7 @@ void main() {
     (tester) async {
       final repo = EditableReports(client);
       await prepareCompletion(tester, repo);
-      final description = find.byType(TextField).first;
+      final description = find.byType(TextField);
       await reveal(tester, description);
       await tester.enterText(description, '変更した作業');
       await tester.pumpAndSettle();
@@ -257,7 +257,7 @@ void main() {
         requestId: 'different-request', confirmed: true));
       await open(tester, repo);
       expect(find.byKey(const ValueKey('daily-report-finish-approved-edit')), findsNothing);
-      final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)).first;
+      final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile));
       await reveal(tester, tile);
       await tester.tap(tile);
       await tester.pumpAndSettle();
@@ -271,7 +271,7 @@ void main() {
         ..signed = false ..approved = false ..reporterSigned = true;
       await open(tester, repo);
       expect(find.byKey(const ValueKey('daily-report-finish-approved-edit')), findsNothing);
-      final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)).first;
+      final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile));
       await reveal(tester, tile);
       await tester.tap(tile);
       await tester.pumpAndSettle();
@@ -290,7 +290,7 @@ void main() {
       await tester.tap(find.text('編集を開始').last);
       await tester.pumpAndSettle();
       final reporterTile = find.ancestor(of: find.text('報告者サイン'),
-        matching: find.byType(ListTile)).first;
+        matching: find.byType(ListTile));
       await reveal(tester, reporterTile);
       await tester.tap(reporterTile);
       await tester.pumpAndSettle();
@@ -302,7 +302,7 @@ void main() {
       expect(repo.signCalls, 0);
       expect(repo.reporterSigned, isTrue);
       final responsibleTile = find.ancestor(of: find.text('責任者サイン'),
-        matching: find.byType(ListTile)).first;
+        matching: find.byType(ListTile));
       await reveal(tester, responsibleTile);
       await tester.tap(responsibleTile);
       await tester.pumpAndSettle();

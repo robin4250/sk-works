@@ -26,7 +26,8 @@ void main() {
   test('mismatched actor or report in persisted value is rejected', () async {
     final store = DailyReportEditSessionStore(read: (_) async => jsonEncode(
       const DailyReportEditSession(actorId: 'other', companyId: 'c',
-        reportId: 'r', requestId: 'q').toJson()));
+        reportId: 'r', requestId: 'q').toJson()),
+      write: (_, _) async {}, remove: (_) async {});
     await expectLater(store.load('a', 'r'), throwsFormatException);
   });
 }
