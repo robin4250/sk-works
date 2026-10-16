@@ -9,7 +9,7 @@ const run=promisify(execFile),root=process.cwd(),project=`sko-platform-proof-${r
 const parent=path.resolve(process.env.RUNNER_TEMP??'');
 if(!process.env.CI||!process.env.RUNNER_TEMP||parent==='/'||Object.keys(process.env).some(k=>/^SUPABASE_(ACCESS_TOKEN|DB_PASSWORD|URL|SERVICE_ROLE_KEY|SECRET_KEY|PROJECT_REF)$/.test(k)))throw Error('Isolated CI without hosted credentials required');
 const workdir=path.join(parent,project),cliArgs=['--yes','supabase@2.121.0'];
-let phase='setup',db,server,started=false,owns=false;
+let phase='setup',db,server,started=false,owns=false,lastHttp;
 const cli=(args,timeout=120000)=>run('npx',[...cliArgs,...args,'--workdir',workdir],{cwd:root,timeout,maxBuffer:1024*1024,env:process.env});
 const read=p=>fs.readFile(path.join(root,p),'utf8');
 const hash=s=>createHash('sha256').update(s).digest('hex');
@@ -44,7 +44,9 @@ try{
  const serviceHeaders={apikey:serviceKey,...(!serviceKey.startsWith('sb_'+'secret_')?{Authorization:`Bearer ${serviceKey}`}:{})};
  async function request(route,{token,body,service=false,method='POST'}={}){
   const url=new URL(route,api);if(url.origin!==api.origin)throw Error('Nonlocal request refused');
-  return fetch(url,{method,redirect:'error',signal:AbortSignal.timeout(20000),headers:{...(service?serviceHeaders:{apikey:publicKey}),...(token?{Authorization:`Bearer ${token}`}:{}) ,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  const response=await fetch(url,{method,redirect:'error',signal:AbortSignal.timeout(20000),headers:{...(service?serviceHeaders:{apikey:publicKey}),...(token?{Authorization:`Bearer ${token}`}:{}) ,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  let code;try{const data=await response.clone().json();const candidate=typeof data.error==='string'?data.error:data.code;if(typeof candidate==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(candidate))code=candidate;}catch{/* Never log response content. */}
+  lastHttp={route,status:response.status,code};return response;
  }
  async function rpc(name,body,token,service=false){return request(`/rest/v1/rpc/${name}`,{body,token,service});}
  const password=`fixture-${randomBytes(20).toString('hex')}!A1`;
@@ -71,7 +73,7 @@ try{
  await db.query("notify pgrst,'reload schema'");
  async function oldRead(token){const r=await rpc('master_security_incidents',{},token);statusCode(r,200);return r.json();}
  let oldBefore;for(let i=0;i<30;i++){const r=await rpc('master_security_incidents',{},master.access_token);if(r.status===200){oldBefore=await r.json();break;}if(r.status!==404&&r.status!==503)throw Error('Original monitor initialization failed');await wait(300);}assert.equal(oldBefore?.incidents.length,1,'Actual original RPC must return synthetic evidence');
- async function protectedIdentity(){return (await db.query(`select jsonb_build_object('members',(select jsonb_agg(to_jsonb(x) order by user_id) from public.company_members x),'companies',(select jsonb_agg(to_jsonb(x) order by id) from public.companies x),'masters',(select jsonb_agg(to_jsonb(x) order by user_id) from private.master_admins x),'identities',(select jsonb_agg(jsonb_build_object('user_id',user_id,'provider',provider,'provider_id',provider_id) order by user_id,provider) from auth.identities)) state`)).rows[0].state;}
+ async function protectedIdentity(){return (await db.query(`select jsonb_build_object('members',(select jsonb_agg(to_jsonb(x) order by user_id) from public.company_members x),'companies',(select jsonb_agg(to_jsonb(x) order by id) from public.companies x),'masters',(select jsonb_agg(to_jsonb(x) order by user_id) from private.master_admins x),'users',(select jsonb_agg(jsonb_build_object('id',id,'email',email,'phone',phone,'app_metadata',raw_app_meta_data) order by id) from auth.users),'identities',(select jsonb_agg(jsonb_build_object('user_id',user_id,'provider',provider,'provider_id',provider_id) order by user_id,provider) from auth.identities)) state`)).rows[0].state;}
  const protectedBefore=await protectedIdentity();
  phase='actual-staged-sql';
  await db.query(await read('tool/staged/reauthentication_proofs.sql'));
@@ -102,13 +104,13 @@ try{
  statusCode(await consume(p),403);
  phase='actual-negative-boundaries';
  const wrong=await obtain(master.access_token,{...proofBody,password:'wrong-fixture-password'});assert.ok([400,401,403].includes(wrong.status));
- statusCode(await obtain(normalAdmin.access_token),403);statusCode(await obtain(other.access_token),403);
- statusCode(await obtain(master.access_token,{...proofBody,target:{scope:'other'}}),400);
- const second=await login(users.master),bound=await proof();statusCode(await consume(bound,second.access_token),403);statusCode(await consume(bound),200);
- const expiring=await proof();await db.query("update private.reauthentication_proofs set issued_at=statement_timestamp()-interval '3 minutes',expires_at=statement_timestamp()-interval '1 minute' where proof_hash=$1",[hash(expiring)]);statusCode(await consume(expiring),403);
- const disabled=await proof();await db.query('update private.master_admins set enabled=false,disabled_at=clock_timestamp() where user_id=$1',[users.master.id]);statusCode(await consume(disabled),403);statusCode(await obtain(),403);await db.query('update private.master_admins set enabled=true,disabled_at=null where user_id=$1',[users.master.id]);statusCode(await consume(disabled),200);
- const restricted=await proof();await db.query('insert into private.account_deletion_access_restrictions values($1)',[users.master.id]);statusCode(await consume(restricted),403);await db.query('delete from private.account_deletion_access_restrictions where user_id=$1',[users.master.id]);statusCode(await consume(restricted),200);
- const revoked=await proof(second.access_token);statusCode(await request('/auth/v1/logout?scope=local',{token:second.access_token}),204);assert.equal((await db.query('select count(*)::int n from auth.sessions where id=$1',[claims(second.access_token).session_id])).rows[0].n,0);assert.ok([401,403].includes((await consume(revoked,second.access_token)).status));
+ phase='negative-nonmaster-admin';statusCode(await obtain(normalAdmin.access_token),403);phase='negative-other-admin';statusCode(await obtain(other.access_token),403);
+ phase='negative-target';statusCode(await obtain(master.access_token,{...proofBody,target:{scope:'other'}}),400);
+ phase='negative-cross-session';const second=await login(users.master),bound=await proof();statusCode(await consume(bound,second.access_token),403);statusCode(await consume(bound),200);
+ phase='negative-expiry';const expiring=await proof();await db.query("update private.reauthentication_proofs set issued_at=statement_timestamp()-interval '3 minutes',expires_at=statement_timestamp()-interval '1 minute' where proof_hash=$1",[hash(expiring)]);statusCode(await consume(expiring),403);
+ phase='negative-disabled-master';const disabled=await proof();await db.query('update private.master_admins set enabled=false,disabled_at=clock_timestamp() where user_id=$1',[users.master.id]);statusCode(await consume(disabled),403);statusCode(await obtain(),403);await db.query('update private.master_admins set enabled=true,disabled_at=null where user_id=$1',[users.master.id]);statusCode(await consume(disabled),200);
+ phase='negative-restricted-account';const restricted=await proof();await db.query('insert into private.account_deletion_access_restrictions values($1)',[users.master.id]);statusCode(await consume(restricted),403);await db.query('delete from private.account_deletion_access_restrictions where user_id=$1',[users.master.id]);statusCode(await consume(restricted),200);
+ phase='negative-revoked-session';const revoked=await proof(second.access_token);statusCode(await request('/auth/v1/logout?scope=local',{token:second.access_token}),204);assert.equal((await db.query('select count(*)::int n from auth.sessions where id=$1',[claims(second.access_token).session_id])).rows[0].n,0);assert.ok([401,403].includes((await consume(revoked,second.access_token)).status));
  phase='original-master-and-identities-preserved';
  assert.deepEqual(await oldRead(master.access_token),oldBefore,'Original real synthetic RPC remains unchanged with the new monitor enabled');
  assert.deepEqual(await protectedIdentity(),protectedBefore,'Account identity/provider/company/member/master fields remain unchanged');
@@ -117,7 +119,9 @@ try{
  console.log('PASS actual local GoTrue -> Edge password verification -> temporary-session cleanup -> service proof -> PostgREST platform read; TTL/replay/session/master/account/target/default-OFF boundaries.');
  console.log('PASS actual original synthetic RPC unchanged, normal-admin Auth session and original-master session/identity/company/member/master values preserved; notification outbox remains empty.');
  console.log('LIMIT: minimal fake app/account prerequisites, not complete production RLS/config/provider OAuth/device validation; no hosted connection, real secrets, external mail or production change.');
-}catch(error){console.error(`FAIL local platform/auth integration phase=${phase} code=${typeof error?.code==='string'?error.code:'E2E_ASSERTION'}${typeof error?.actual==='number'&&typeof error?.expected==='number'?` actual=${error.actual} expected=${error.expected}`:''}`);process.exitCode=1;}
+}catch(error){console.error(`FAIL local platform/auth integration phase=${phase} code=${typeof error?.code==='string'?error.code:'E2E_ASSERTION'}${typeof error?.actual==='number'&&typeof error?.expected==='number'?` actual=${error.actual} expected=${error.expected}`:''}`);if(lastHttp)console.error(JSON.stringify(lastHttp));
+ if(started){try{const logs=await run('docker',['logs','--tail','100',`supabase_edge_runtime_${project}`],{timeout:10000,maxBuffer:262144});const text=logs.stdout+logs.stderr;const tags=['InvalidWorkerCreation','WORKER_LIMIT','CPU time limit','TypeError','SyntaxError','connection refused','worker boot'];console.error(JSON.stringify({local_edge_diagnostic_counts:Object.fromEntries(tags.map(tag=>[tag,text.split(tag).length-1]))}));}catch{console.error('Local Edge diagnostic unavailable');}}
+ process.exitCode=1;}
 finally{
  if(db)await db.end().catch(()=>{});
  if(server){server.kill('SIGTERM');}
