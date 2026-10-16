@@ -41,7 +41,7 @@ class EmployeeOnboardingRepository {
     request.check();
     try {
       final value = await _client.rpc('employee_onboarding_photo_capability')
-          .setHeader('Authorization', request.authorization);
+          .setHeader('Authorization', request.authorization).retry(enabled: false);
       request.check();
       return EmployeeOnboardingPhotoCapability.parse(value);
     } on PostgrestException catch (error) {
@@ -66,6 +66,7 @@ class EmployeeOnboardingRepository {
     await storage.uploadBinary(
           path,
           bytes,
+          retryAttempts: request == null ? null : 0,
           fileOptions: FileOptions(
             contentType: safeExt == 'png' ? 'image/png' : 'image/jpeg',
             upsert: false,
@@ -112,7 +113,7 @@ class EmployeeOnboardingRepository {
     if (request == null) {
       await call;
     } else {
-      await call.setHeader('Authorization', request.authorization);
+      await call.setHeader('Authorization', request.authorization).retry(enabled: false);
       request.check();
     }
   }
@@ -126,7 +127,7 @@ class EmployeeOnboardingRepository {
     request.check();
     await _client.rpc('save_employee_onboarding_profile_without_photos',
       params: fields.map((key, value) => MapEntry('p_$key', value.trim())),
-    ).setHeader('Authorization', request.authorization);
+    ).setHeader('Authorization', request.authorization).retry(enabled: false);
     request.check();
   }
 
