@@ -5,6 +5,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'employee_invite_repository.dart';
+import '../../data/supabase_backend.dart';
+import '../referrals/app_referral_page.dart';
+import '../referrals/app_referral_repository.dart';
 import 'employee_registration_page.dart';
 import '../../international/language_controller.dart';
 
@@ -26,6 +29,7 @@ class _EmployeeInitialRegistrationPageState
   String? _error;
   EmployeeInviteResult? _result;
   bool _savingUrl = false;
+  String? _loadedActor;
 
   @override
   void initState() {
@@ -42,11 +46,14 @@ class _EmployeeInitialRegistrationPageState
       });
       return;
     }
+    final actor = SupabaseBackend.client.auth.currentUser?.id;
     try {
       final results = await Future.wait([
         repository.loadRegisteredEmployees(),
         repository.loadTestFlightUrl(),
       ]);
+      if (!mounted || actor == null || SupabaseBackend.client.auth.currentUser?.id != actor) return;
+      _loadedActor = actor;
       final employees = results[0] as List<InitialRegistrationEmployee>;
       _testFlightUrl.text = results[1] as String;
       if (!mounted) return;
@@ -105,6 +112,18 @@ class _EmployeeInitialRegistrationPageState
     } finally {
       if (mounted) setState(() => _busyWorkerId = null);
     }
+  }
+
+  void _sendDistribution(InitialRegistrationEmployee employee) {
+    if (_loadedActor == null || SupabaseBackend.client.auth.currentUser?.id != _loadedActor) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => AppReferralPage(
+        repository: AppReferralRepository(SupabaseBackend.client),
+        invitationKind: 'employee',
+        initialName: employee.name,
+        initialPhone: employee.phone,
+      ),
+    ));
   }
 
   String _shareText(EmployeeInviteResult result) {
@@ -177,7 +196,8 @@ class _EmployeeInitialRegistrationPageState
                       padding: const EdgeInsets.all(16),
                       child: Text(
                         '従業員登録済みの人へ、TestFlightと本人専用の初回ログイン情報を順番に送ります。'
-                        '未送信 $unsent人 / 登録済み ${_employees.length}人',
+                        '未送信 $unsent人 / 登録済み ${_employees.length}人。'
+                        '初回登録作成済みの人には「URLを追加送信」からTestFlight・WEB版の案内だけを送れます。ログイン情報は再発行しません。',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -258,7 +278,10 @@ class _EmployeeInitialRegistrationPageState
                         ),
                         isThreeLine: true,
                         trailing: employee.invited
-                            ? const Icon(Icons.check_circle_outline)
+                            ? OutlinedButton(
+                                onPressed: _busyWorkerId == null ? () => _sendDistribution(employee) : null,
+                                child: const Text('URLを追加送信'),
+                              )
                             : FilledButton(
                                 onPressed: _busyWorkerId == null
                                     ? () => _send(employee)
