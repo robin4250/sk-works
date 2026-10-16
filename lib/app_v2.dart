@@ -1,3 +1,4 @@
+import 'features/payroll/company_common_payroll_page.dart';
 import 'features/chat/line_release_access.dart';
 import 'features/referrals/app_referral_page.dart';
 import 'features/referrals/app_referral_repository.dart';
@@ -1154,6 +1155,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case 'expense_claims':
         page = const ExpenseHomePage();
         break;
+      case 'company_common_allowances':
+        if (!_nestedActionKeys.contains('company_common_allowances')) return;
+        page = const SecondaryProtectedPage(
+          title: '社内共通手当',
+          child: CompanyCommonPayrollPage(),
+        );
+        break;
       case 'company_tax_rates':
         if (!_nestedActionKeys.contains('company_tax_rates')) return;
         page = const CompanyPayrollRatesHomePage();
@@ -1197,7 +1205,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         page = SecondaryProtectedPage(
           title: '給料一覧',
           child: PayrollReviewPage(onOpenSettings: (_identity.isAdmin || _isViewer) ? () => _openHomeAction('payroll_settings') : null,
-            onOpenTaxRates: (_identity.isAdmin || _isViewer) ? () => _openHomeAction('company_tax_rates') : null),
+            onOpenTaxRates: (_identity.isAdmin || _isViewer) ? () => _openHomeAction('company_tax_rates') : null,
+            onOpenCommonAllowances: (_identity.isAdmin || _isViewer) ? () => _openHomeAction('company_common_allowances') : null),
         );
         break;
       case 'payment_certificates':
@@ -1389,6 +1398,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Set<String> get _nestedActionKeys => {
     if (_identity.isAdmin || _isViewer) 'company_tax_rates',
+    if (_identity.isAdmin || _isViewer) 'company_common_allowances',
     if (_moduleEnabled('attendance') &&
         _identity.isManagement &&
         _identity.can('can_manage_attendance') &&
@@ -1848,6 +1858,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       'payroll_adjustments',
       'payroll_review',
       'company_tax_rates',
+      'company_common_allowances',
       'attendance_list',
     };
     const admin = <String>{
