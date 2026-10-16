@@ -196,7 +196,14 @@ try {
     await user.query('begin');const applied=await finish(user,first,nextSecret,masterSecret);assert.equal(applied.status,'applied');
     const pid=(await racer.query('select pg_backend_pid() pid')).rows[0].pid;const pending=finish(racer,second,nextSecret,'fixture-race-loser');let blocked=false;
     for(let n=0;n<100;n++){if((await admin.query('select cardinality(pg_blocking_pids($1))>0 blocked',[pid])).rows[0].blocked){blocked=true;break;}await new Promise(r=>setTimeout(r,10));}
-    assert.equal(blocked,true);await user.query('commit');denied(await pending);currentVersion=applied.credential_version;
+    assert.equal(blocked,true);
+    const reader=await connection(),readerPid=(await reader.query('select pg_backend_pid() pid')).rows[0].pid;
+    const receipt=read(reader,first.request_id);let receiptBlocked=false;
+    for(let n=0;n<100;n++){if((await admin.query('select cardinality(pg_blocking_pids($1))>0 blocked',[readerPid])).rows[0].blocked){receiptBlocked=true;break;}await new Promise(r=>setTimeout(r,10));}
+    assert.equal(receiptBlocked,true,'receipt must wait for in-flight completion, never return terminal early');
+    await user.query('commit');denied(await pending);
+    const found=await receipt;assert.equal(found.status,'found');assert.deepEqual(found.result,applied);
+    currentVersion=applied.credential_version;
   });
   await check('rolled-back operation leaves no applied receipt or credential change',async()=>{
     const ch=await begin(user,'change',currentVersion);await user.query('begin');assert.equal((await finish(user,ch,masterSecret,nextSecret)).status,'applied');await user.query('rollback');
@@ -213,6 +220,31 @@ try {
     assert.deepEqual((await read(user,ch.request_id)).result,out);
     assert.notEqual((await verify(ch,nextSecret)).status,'verified');
     const change=await begin(user,'change',currentVersion);assert.notEqual((await verify(change,nextSecret)).status,'verified');
+  });
+  await check('terminal receipts distinguish consumed/expired requests from live or missing unknown requests',async()=>{
+    assert.equal((await read(user,randomUUID())).status,'not_found');
+    const live=await begin(user,'change',currentVersion);assert.equal(live.status,'challenge');
+    assert.equal((await read(user,live.request_id)).status,'not_found');
+    const wrong=await begin(user,'change',currentVersion);assert.equal((await finish(user,wrong,'fixture-wrong-master')).status,'not_verified');
+    assert.equal((await read(user,wrong.request_id)).status,'not_applied');
+    denied(await finish(user,wrong,nextSecret,masterSecret));
+    const invalid=await begin(user,'change',currentVersion);assert.equal((await finish(user,invalid,nextSecret,'short')).status,'invalid');
+    assert.equal((await read(user,invalid.request_id)).status,'not_applied');
+    denied(await finish(user,invalid,nextSecret,masterSecret));
+    const expired=await begin(user,'change',currentVersion);assert.equal(expired.status,'challenge');
+    await admin.query("with t as (select clock_timestamp() stamp) update private.master_password_challenges set issued_at=t.stamp-interval '3 minutes',expires_at=t.stamp-interval '1 minute' from t where id=$1",[expired.challenge_id]);
+    assert.equal((await read(user,expired.request_id)).status,'not_applied');
+    assert.equal((await finish(user,expired,nextSecret,masterSecret)).status,'expired');
+    const other=await connection(ids[5],sessions[5]);assert.equal((await read(other,expired.request_id,otherKey)).status,'not_found');
+    const sid=randomUUID();await admin.query('insert into auth.sessions values($1,$2,null)',[sid,ids[0]]);
+    const second=await connection(ids[0],sid);assert.equal((await read(second,expired.request_id)).status,'not_found');
+    const newDevice=randomUUID(),newKey='fixture-second-device-for-same-master'.padEnd(64,'c');
+    await admin.query('insert into private.master_devices(id,master_user_id,device_key) values($1,$2,$3)',[newDevice,ids[0],newKey]);
+    assert.equal((await read(user,expired.request_id,newKey)).status,'not_found');
+    assert.equal((await status(user)).credential_version,currentVersion);
+    // Finish the live request with an invalid payload so it is terminal and does
+    // not occupy the quota used by the separate lockout test below.
+    assert.equal((await finish(user,live,nextSecret,'short')).status,'invalid');
   });
   await check('dedicated incorrect password attempts persist and lock without changing credentials',async()=>{
     for(let n=0;n<5;n++){const ch=await begin(user,'change',currentVersion);if(ch.status!=='challenge'){assert.equal(ch.status,'locked');break;}const out=await finish(user,ch,'fixture-wrong-master');assert.ok(['not_verified','locked'].includes(out.status));}
@@ -239,6 +271,23 @@ try {
       assert.ok(r.status===403||(r.ok&&(await r.json()).status==='denied'));
     }
     const r=await call('current_master_password_status',{p_device_key:key},jwt());assert.equal(r.status,200);assert.equal((await r.json()).configured,true);
+  });
+  await check('signed REST terminal read resolves a discarded wrong-secret response and expiry without later application',async()=>{
+    const token=jwt(ids[5],sessions[5]);
+    const open=async()=>{const r=await call('begin_master_password_operation',{p_device_key:otherKey,p_operation:'change',p_expected_version:1,p_request_id:randomUUID()},token);assert.equal(r.status,200);const ch=await r.json();assert.equal(ch.status,'challenge');return ch;};
+    const receipt=async ch=>{const r=await call('read_master_password_request',{p_device_key:otherKey,p_request_id:ch.request_id},token);assert.equal(r.status,200);return r.json();};
+    const wrong=await open();assert.equal((await receipt(wrong)).status,'not_found');
+    const lost=await call('complete_master_password_operation',{p_device_key:otherKey,p_challenge_id:wrong.challenge_id,p_nonce:wrong.nonce,p_existing_password:'fixture-wrong-master',p_new_password:nextSecret,p_request_id:wrong.request_id},token);
+    assert.equal(lost.status,200);await lost.body?.cancel(); // Deliberately discard result; no POST retry.
+    assert.equal((await receipt(wrong)).status,'not_applied');
+    const again=await call('complete_master_password_operation',{p_device_key:otherKey,p_challenge_id:wrong.challenge_id,p_nonce:wrong.nonce,p_existing_password:masterSecret,p_new_password:nextSecret,p_request_id:wrong.request_id},token);
+    assert.equal(again.status,200);assert.equal((await again.json()).status,'conflict');
+    const expired=await open();
+    await admin.query("with t as (select clock_timestamp() stamp) update private.master_password_challenges set issued_at=t.stamp-interval '3 minutes',expires_at=t.stamp-interval '1 minute' from t where id=$1",[expired.challenge_id]);
+    assert.equal((await receipt(expired)).status,'not_applied');
+    const out=await call('complete_master_password_operation',{p_device_key:otherKey,p_challenge_id:expired.challenge_id,p_nonce:expired.nonce,p_existing_password:masterSecret,p_new_password:nextSecret,p_request_id:expired.request_id},token);
+    assert.equal(out.status,200);assert.equal((await out.json()).status,'expired');
+    assert.equal((await status(await connection(ids[5],sessions[5]),otherKey)).credential_version,1);
   });
   await check('all original identities/roles/company/secondary hashes and original RPC definitions survive',async()=>{
     // Additional synthetic session belongs only to the fixture.
