@@ -12,6 +12,16 @@ checks. The public signature/wrapper, active-worker filter, complete JSON payloa
 function owner, ACL, security mode and search path remain unchanged. Viewer and
 self access keep their existing dedicated endpoints/table scope.
 
+Both new helper checks use `IS NOT TRUE`, so an unknown/NULL result is denied.
+The actual deployed people-permission column is NOT NULL and the current account
+helper returns a non-null Boolean. Deliberate fixture-only NULL fault injection
+nevertheless verifies the hardened legacy endpoint rejects unknown results;
+NULL people permission also agrees with canonical and direct-table rejection.
+An artificial NULL-returning replacement of the account helper is not a current
+production leak finding. The unchanged canonical read RPC's behavior under that
+different future dependency definition is outside this fix and needs separate
+hardening review before such a dependency change is ever deployed.
+
 The disposable tests apply the actual #1125 migration first, reproduce the actual
 legacy RPC leak despite corrected table RLS, then apply this actual second
 migration. They exercise the exact public/private legacy functions and canonical

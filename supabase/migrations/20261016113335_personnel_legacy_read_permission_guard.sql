@@ -42,8 +42,8 @@ begin
     and cm.role::text in ('owner','admin','manager')
   limit 1;
   if v_company is null
-     or not private.account_access_allowed()
-     or not private.has_company_feature(v_company,'can_manage_people') then
+     or private.account_access_allowed() is not true
+     or private.has_company_feature(v_company,'can_manage_people') is not true then
     raise exception '社員情報の閲覧権限がありません' using errcode='42501';
   end if;
 

@@ -84,7 +84,7 @@ await drift("create or replace function private.employee_personnel_rows() return
 await drift('grant execute on function public.employee_personnel_rows() to anon','revoke execute on function public.employee_personnel_rows() from anon','Public wrapper ACL drift');
 await drift("create or replace function public.employee_personnel_rows() returns jsonb language sql set search_path='' as $$select '[]'::jsonb$$",originalPublic,'Public wrapper source drift');
 await db.exec(migration);assert.deepEqual(await capsule(),baseline,'Only the targeted private function source may change');
-const expectedSource=originalSource.replace('if v_company is null then',"if v_company is null\n     or not private.account_access_allowed()\n     or not private.has_company_feature(v_company,'can_manage_people') then").replace("raise exception '社員情報の閲覧権限がありません';","raise exception '社員情報の閲覧権限がありません' using errcode='42501';");
+const expectedSource=originalSource.replace('if v_company is null then',"if v_company is null\n     or private.account_access_allowed() is not true\n     or private.has_company_feature(v_company,'can_manage_people') is not true then").replace("raise exception '社員情報の閲覧権限がありません';","raise exception '社員情報の閲覧権限がありません' using errcode='42501';");
 assert.equal(await targetSource(),expectedSource,'Private function changes only permission gate and authorization SQLSTATE');
 for(const [key,expected]of Object.entries({managerOff:0,managerOn:2,owner:2,admin:2,viewer:1,self:1,retiredSelf:1,employee:0,outsider:0,deleted:0})){
  await actor(actors[key]);assert.deepEqual(await ownCounts(),[expected,expected],key+' direct personnel/family');
@@ -96,6 +96,12 @@ for(const [key,expected]of Object.entries({managerOff:0,managerOn:2,owner:2,admi
  else await assert.rejects(db.query('select public.employee_personnel_view($1)',[C]),x=>x.code==='42501');
 }
 await db.exec('reset role');await db.query('update member_feature_permissions set can_manage_people=false where user_id=$1',[actors.managerOn]);await actor(actors.managerOn);assert.deepEqual(await ownCounts(),[0,0]);await assert.rejects(db.query('select public.employee_personnel_rows()'),x=>x.code==='42501','Permission revocation immediately affects legacy RPC');await db.exec('reset role');await db.query('update member_feature_permissions set can_manage_people=true where user_id=$1',[actors.managerOn]);
+// Fault injection only: production permission column is NOT NULL. Simulate an
+// unknown helper result and prove all normal personnel read paths fail closed.
+await db.query('update member_feature_permissions set can_manage_people=null where user_id=$1',[actors.managerOn]);await actor(actors.managerOn);assert.equal((await db.query('select private.has_company_feature($1,$2) allowed',[C,'can_manage_people'])).rows[0].allowed,null);assert.deepEqual(await ownCounts(),[0,0]);await assert.rejects(db.query('select public.employee_personnel_rows()'),x=>x.code==='42501','NULL people permission must deny legacy RPC');await assert.rejects(db.query('select public.employee_personnel_view($1)',[C]),x=>x.code==='42501','NULL people permission denies canonical RPC');await db.exec('reset role');await db.query('update member_feature_permissions set can_manage_people=true where user_id=$1',[actors.managerOn]);
+const accountDefinition=e.functions.find(x=>x.includes('FUNCTION private.account_access_allowed('));
+await db.exec("create or replace function private.account_access_allowed() returns boolean language sql stable security definer set search_path='' as $$select null::boolean$$");await actor(actors.owner);assert.deepEqual(await ownCounts(),[0,0]);await assert.rejects(db.query('select public.employee_personnel_rows()'),x=>x.code==='42501','NULL account helper must deny legacy RPC');await db.exec('reset role');await db.exec(accountDefinition);assert.deepEqual(await capsule(),baseline,'Fault injection restores all helper source and permission state');
+console.log('PASS: deliberate NULL people-permission fault denies legacy/canonical/direct reads; NULL account-helper fault denies hardened legacy RPC; production helper and NOT NULL schema restored unchanged');
 await actor(null);await assert.rejects(db.query('select public.employee_personnel_rows()'),x=>x.code==='42501');await db.exec('reset role;set role anon');await assert.rejects(db.query('select public.employee_personnel_rows()'),x=>x.code==='42501');await db.exec('reset role');
 if(process.env.SKO_PERSONNEL_POSTGREST_URL){
  const base=new URL(process.env.SKO_PERSONNEL_POSTGREST_URL);if(!['127.0.0.1','localhost'].includes(base.hostname))throw Error('Loopback fixture only');
@@ -108,6 +114,11 @@ if(process.env.SKO_PERSONNEL_POSTGREST_URL){
   for(const table of ['worker_personnel_profiles','worker_family_members']){const d=await call(`/${table}?company_id=eq.${C}&select=company_id`,key);assert.equal(d.status,200);assert.equal((await d.json()).length,count,'Direct REST '+key+'/'+table);}
   const canonical=await call('/rpc/employee_personnel_view',key,{p_company:C});assert.equal(canonical.status,['managerOn','owner','admin','viewer'].includes(key)?200:403,'Canonical HTTP '+key);
  }
+ await db.query('update member_feature_permissions set can_manage_people=null where user_id=$1',[actors.managerOn]);
+ for(const route of ['/rpc/employee_personnel_rows','/rpc/employee_personnel_view']){const r=await call(route,'managerOn',route.endsWith('_view')?{p_company:C}:{});assert.equal(r.status,403,'NULL permission signed RPC '+route);}
+ for(const table of ['worker_personnel_profiles','worker_family_members']){const r=await call(`/${table}?company_id=eq.${C}&select=company_id`,'managerOn');assert.equal(r.status,200);assert.deepEqual(await r.json(),[],'NULL permission direct REST '+table);}
+ await db.query('update member_feature_permissions set can_manage_people=true where user_id=$1',[actors.managerOn]);
+ await db.exec("create or replace function private.account_access_allowed() returns boolean language sql stable security definer set search_path='' as $$select null::boolean$$");const nullAccount=await call('/rpc/employee_personnel_rows','owner',{});assert.equal(nullAccount.status,403,'NULL account helper signed legacy RPC');await db.exec(accountDefinition);
  const anon=await fetch(new URL('/rpc/employee_personnel_rows',base),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});assert.equal(anon.status,401);
  console.log('PASS: PostgreSQL17 + signed HTTP actual legacy and canonical RPC/direct REST authorization matrix');
 }
