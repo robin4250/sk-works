@@ -1,0 +1,18 @@
+name: App distribution channels
+on:
+  pull_request:
+    paths:
+      - 'tool/staged/app_distribution_channels.sql'
+      - 'tool/test_app_distribution_channels.mjs'
+      - '.github/workflows/app-distribution-channels.yml'
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm install --prefix /tmp/distribution-sql --ignore-scripts @electric-sql/pglite@0.3.14
+      - run: node tool/test_app_distribution_channels.mjs
+        env:
+          PGLITE_PACKAGE: /tmp/distribution-sql/node_modules/@electric-sql/pglite/dist/index.js
