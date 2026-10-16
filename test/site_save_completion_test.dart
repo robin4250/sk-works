@@ -23,7 +23,8 @@ void main() {
     await tester.enterText(find.byType(TextFormField).at(0), '墨田現場');
     await tester.enterText(find.byType(TextFormField).at(1), '取引会社');
     await tester.scrollUntilVisible(find.text('登録する'), 350,
-        scrollable: find.byType(Scrollable).last);
+        scrollable: find.descendant(of: find.byType(ListView),
+            matching: find.byType(Scrollable)).first);
   }
 
   testWidgets('waits for save, blocks duplicate submit and back, returns saved row',
@@ -70,13 +71,15 @@ void main() {
     expect(result, isNull);
     expect(find.byType(SiteFormPage), findsOneWidget);
     await tester.scrollUntilVisible(find.text('現場名'), -350,
-        scrollable: find.byType(Scrollable).last);
+        scrollable: find.descendant(of: find.byType(ListView),
+            matching: find.byType(Scrollable)).first);
     expect(tester.widget<TextFormField>(find.byType(TextFormField).at(0))
         .controller?.text, '墨田現場');
     expect(tester.widget<TextFormField>(find.byType(TextFormField).at(1))
         .controller?.text, '取引会社');
     await tester.scrollUntilVisible(find.text('登録する'), 350,
-        scrollable: find.byType(Scrollable).last);
+        scrollable: find.descendant(of: find.byType(ListView),
+            matching: find.byType(Scrollable)).first);
     await tester.tap(find.text('登録する'));
     await tester.pumpAndSettle();
     expect(calls, 2);
