@@ -8,9 +8,13 @@ class AppReferralRepository {
   String? get currentActorId => client.auth.currentUser?.id;
 
   Future<Map<String, dynamic>> load({bool master = false}) async {
-    final raw = await client.rpc(
-      master ? 'app_referral_master_snapshot' : 'app_referral_snapshot',
-    );
+    dynamic raw;
+    try {
+      raw = await client.rpc('app_distribution_snapshot', params: {'p_master': master});
+    } on PostgrestException catch (error) {
+      if (error.code != 'PGRST202') rethrow;
+      raw = await client.rpc(master ? 'app_referral_master_snapshot' : 'app_referral_snapshot');
+    }
     return Map<String, dynamic>.from(raw as Map);
   }
 
@@ -28,6 +32,40 @@ class AppReferralRepository {
       },
     );
     return Map<String, dynamic>.from(raw as Map);
+  }
+
+  Future<Map<String, dynamic>> prepareDistribution(
+    String name, String phone, String channel, String kind,
+  ) async {
+    final raw = await client.rpc('app_distribution_prepare', params: {
+      'p_name': name.trim(), 'p_phone': phone.trim(),
+      'p_channel': channel, 'p_kind': kind,
+    });
+    return Map<String, dynamic>.from(raw as Map);
+  }
+
+  Future<void> saveDistributionLinks(String testflight, String web, String guide) =>
+    client.rpc('app_distribution_save_links', params: {
+      'p_testflight_url': testflight.trim(), 'p_web_url': web.trim(),
+      'p_public_url': guide.trim(),
+    });
+
+  /// New channel settings must not write the invisible legacy URL controller.
+  /// The legacy RPC still requires a URL, so read its current value immediately
+  /// before saving flags. An atomic flags-only RPC remains a server follow-up.
+  Future<void> saveSettingsPreservingDistributionUrl({
+    required bool enabled,
+    required bool publicEnabled,
+    required bool notifyMaster,
+    required String url,
+  }) async {
+    final current = await load(master: true);
+    await saveSettings(
+      enabled: enabled,
+      publicEnabled: publicEnabled,
+      notifyMaster: notifyMaster,
+      url: current['distribution_url']?.toString() ?? '',
+    );
   }
 
   Future<void> recordComposerOpened(String id) => client.rpc(
