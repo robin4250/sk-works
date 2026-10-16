@@ -1051,6 +1051,12 @@ class _SiteEditRequestPageState extends State<SiteEditRequestPage> {
       _submitError = null;
     });
     try {
+      var decisionMade = false;
+      void decide(BuildContext dialogContext, bool approved) {
+        if (decisionMade) return;
+        decisionMade = true;
+        Navigator.pop(dialogContext, approved);
+      }
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -1058,11 +1064,11 @@ class _SiteEditRequestPageState extends State<SiteEditRequestPage> {
           content: Text(_tr('登録済みの現場情報は承認後に反映されます。', 'Changes to registered site information are applied after approval.')),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
+              onPressed: () => decide(dialogContext, false),
               child: Text(_tr('戻る', 'Back')),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
+              onPressed: () => decide(dialogContext, true),
               child: Text(_tr('確定して申請', 'Confirm and Submit')),
             ),
           ],

@@ -55,7 +55,10 @@ void main() {
     await open(tester, (_) async { calls++; }, (value) => result = value);
     await tester.tap(find.text('変更内容を確認'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('戻る'));
+    final cancel = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, '戻る')).onPressed!;
+    cancel();
+    cancel();
     await tester.pumpAndSettle();
     expect(calls, 0);
     expect(result, isNull);
@@ -106,9 +109,13 @@ void main() {
     staleSubmit();
     await tester.pump();
     expect(find.text('確定して申請'), findsOneWidget);
-    await tester.tap(find.text('確定して申請'));
+    final confirm = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, '確定して申請')).onPressed!;
+    confirm();
+    confirm(); // A second tap during dialog exit must not pop the form.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(SiteEditRequestPage), findsOneWidget);
     expect(calls, 1);
     expect(result, isNull);
     expect(tester.widgetList<TextField>(find.byType(TextField))
