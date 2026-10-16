@@ -146,3 +146,60 @@ to read it. Company ON/OFF, saved history and financial records must be retained
 One genuine Reisho is staged for free internal trials; the other four typefaces
 and paid-distribution licensing are unfinished. CI/PGlite/PDF proofs are not
 production application, backup recovery, iPhone operation or TestFlight evidence.
+
+## Source-only recovery preparation
+
+The source integration checkpoint is
+`a086828bb46819d74ca1bf9bd245e8f94a90dbdf` (#819 includes #816). This does not
+supersede the dated production observations above. It is the currently reviewed
+source checkpoint containing the genuine font, coverage data and saved-seal
+parser; it is not a guarantee that it can read metadata from future revisions.
+
+`tool/pre_install_source_backup.sh` checks Darwin, Xcode 27.0 and a clean working
+tree, then writes `commit.txt`, `status.txt` and `source.bundle` with `umask 077`.
+The bundle contains Git objects reachable from the saved HEAD. Ignored local
+credentials, generated iOS files, builds, iPhone data and production database
+rows are excluded. The script already runs `git bundle verify`, but verification
+alone is not an exercised checkout recovery.
+
+An operator can inspect a saved source backup in a **new empty directory** on
+the Mac. Substitute the actual backup directory printed by the script. These
+commands do not change the current checkout or install an app:
+
+```bash
+sko_source_backup_dir="/absolute/path/to/the/printed/pre-install-backup"
+test -f "$sko_source_backup_dir/commit.txt" && test -f "$sko_source_backup_dir/source.bundle"
+sko_source_commit="$(cat "$sko_source_backup_dir/commit.txt")"
+test "${#sko_source_commit}" -eq 40
+git -C /Users/ryuichi/Desktop/sk-works bundle verify "$sko_source_backup_dir/source.bundle"
+sko_recovery_dir="$(mktemp -d "$HOME/SKO-source-review-XXXXXX")"
+git clone --no-checkout "$sko_source_backup_dir/source.bundle" "$sko_recovery_dir"
+git -C "$sko_recovery_dir" checkout -b review-saved-source "$sko_source_commit"
+test "$(git -C "$sko_recovery_dir" rev-parse HEAD)" = "$sko_source_commit"
+test -z "$(git -C "$sko_recovery_dir" status --porcelain --untracked-files=all)"
+```
+
+Run each line only after the previous line succeeds; stop on any failure. A
+successful checkout demonstrates restoration of that saved source only. A
+pre-install backup may predate genuine-seal support. Before considering any
+Release replacement after new seal snapshots exist, review compatibility with
+the stored metadata and confirm the candidate source retains at least:
+
+- `lib/domain/company_seal_snapshot.dart` and the shared
+  `lib/features/shared/company_seal_pdf.dart`, plus all three document readers;
+- `assets/fonts/company-seal/aoyagi-reisho/AoyagiReisho.ttf`, `coverage.json`,
+  the bundled original usage/explanation files and their asset declarations.
+
+File presence alone does not establish parser or glyph compatibility. Compare
+the candidate to the reviewed checkpoint and validate rendering in an isolated
+environment without copying real document data to CI. Do not overwrite the
+current checkout, drop saved seal keys or install an old app merely because its
+bundle verifies. Keep the current app and data until a compatible Release has
+been reviewed. These source-only steps do not acquire the protected database
+backup or validate financial-row restoration.
+
+`docs/recovery/pre_company_seal_visibility_functions_20261008.json` contains two
+old function definitions from a different checkpoint. It is not the fresh set of
+all functions patched by the current migrations, nor a backup of their owners,
+ACLs, triggers, company settings or document rows. Do not replay it as a complete
+database rollback or substitute it for the protected backup described above.
