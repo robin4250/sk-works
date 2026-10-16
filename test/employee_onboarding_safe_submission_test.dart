@@ -81,7 +81,7 @@ class Fixture {
   }
 
   http.Response json(Object? value, [int status = 200]) => http.Response(jsonEncode(value), status, headers: {'content-type': 'application/json'});
-  http.Response error(String code) => json({'code': code, 'message': 'synthetic rejection', 'details': null, 'hint': null}, code == 'PGRST202' ? 404 : 403);
+  http.Response error(String code) => json({'code': code, 'message': 'synthetic rejection', 'details': null, 'hint': null}, code == 'PGRST202' ? 404 : (code == '55000' ? 500 : 403));
   Iterable<http.Request> named(String name) => requests.where((r) => r.url.path.endsWith('/$name'));
   Iterable<http.Request> get storage => requests.where((r) => r.url.path.startsWith('/storage/'));
 }
