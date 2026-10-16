@@ -1,0 +1,60 @@
+name: Personnel write permission guard
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/*personnel_write_permission_guard.sql'
+      - 'tool/security/personnel_write/**'
+      - '.github/workflows/personnel-write-permission-guard.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/*personnel_write_permission_guard.sql'
+      - 'tool/security/personnel_write/**'
+      - '.github/workflows/personnel-write-permission-guard.yml'
+permissions:
+  contents: read
+jobs:
+  pglite-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/personnel_write/verify.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+  postgres-rest-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_personnel_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_personnel_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      postgrest:
+        image: postgrest/postgrest:v16.4
+        env:
+          PGRST_DB_URI: postgres://postgres:fixture-only@postgres:5432/sko_personnel_fixture
+          PGRST_DB_ANON_ROLE: anon
+          PGRST_DB_SCHEMAS: public
+          PGRST_DB_PRE_REQUEST: private.check_account_access
+          PGRST_DB_TX_END: rollback-allow-override
+          PGRST_JWT_SECRET: synthetic-personnel-fixture-secret-at-least-32-characters
+        ports: ['3000:3000']
+    env:
+      SKO_PERSONNEL_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_personnel_fixture
+      SKO_PERSONNEL_POSTGREST_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/personnel_write/verify.mjs "$PWD/tool/security/personnel_rls/pg_adapter.mjs"
