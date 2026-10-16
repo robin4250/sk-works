@@ -102,6 +102,9 @@ await assert.rejects(()=>db.query("select public.app_referral_composer_opened($1
 await assert.rejects(()=>db.query("select distribution_url_snapshot from private.app_referral_invitations"),/permission denied/);
 await as(owner,true);
 await db.query("select public.app_distribution_save_links('','https://web.example.com/new','https://sko.example.com/new')");
+const webOnly=await rpc('select public.app_distribution_snapshot(true) result');
+assert.equal(webOnly.distribution_url_ready,true);
+assert.equal(webOnly.distribution_channels.find(c=>c.key==='testflight').ready,false);
 await db.exec('reset role');
 assert.equal((await db.query("select distribution_url_snapshot u from private.app_referral_invitations where id=$1",[web.id])).rows[0].u,'https://web.example.com/app');
 assert.equal((await db.query('select count(*) n from auth.users')).rows[0].n,2);

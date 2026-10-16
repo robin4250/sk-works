@@ -25,7 +25,7 @@ begin
    tf:=trim(coalesce(p_args->>'testflight',''));
    web:=trim(coalesce(p_args->>'web',''));
    guide:=trim(coalesce(p_args->>'public',''));
-   if tf<>'' and tf !~ '^https://testflight\.apple\.com/join/[A-Za-z0-9]+$' then
+   if length(tf)>2048 or tf<>'' and tf !~ '^https://testflight\.apple\.com/join/[A-Za-z0-9]+$' then
      raise exception 'invalid TestFlight URL'; end if;
    foreach url in array array[web,guide] loop
      if url<>'' and (length(url)>2048 or
@@ -51,7 +51,8 @@ begin
      order by item.ordinality),'[]'::jsonb)
    into history from jsonb_array_elements(state->'invitations') with ordinality item(value,ordinality)
      join private.app_referral_invitations i on i.id=(item.value->>'id')::uuid;
-   return state || jsonb_build_object('distribution_channels',jsonb_build_array(
+   return state || jsonb_build_object('distribution_url_ready',tf<>'' or web<>'' or (guide<>'' and s.public_enabled),
+     'distribution_channels',jsonb_build_array(
      jsonb_build_object('key','testflight','label','TestFlight版','ready',tf<>''),
      jsonb_build_object('key','web','label','WEB版','ready',web<>''),
      jsonb_build_object('key','public','label','公開版の案内','ready',guide<>'' and s.public_enabled)),
