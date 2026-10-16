@@ -74,6 +74,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   List<DailyReportEvidenceRecord> _evidence = const [];
   bool _loading = true;
   bool _saving = false;
+  bool _approvedEditAvailable = false;
   String? _notificationRetryReportId;
   final _notificationRetries = SavedReportNotificationRetryStore();
   SavedReportNotificationRetry? _notificationRetry;
@@ -265,6 +266,16 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (widget.initialReportId != null && existing?.id != widget.initialReportId) {
         throw StateError('選んだ保存済み日報を確認できません。日報一覧を再読み込みしてください。');
       }
+      // Approval does not change a signed report until its owner explicitly
+      // starts editing. Never erase signatures merely by opening this page.
+      var approvedEditAvailable = false;
+      if (existing?.signed == true) {
+        try {
+          approvedEditAvailable = await repository.hasApprovedEdit(existing!.id);
+        } catch (_) {
+          // A missing/denied capability must never unlock a report.
+        }
+      }
       final evidence = await repository.loadAttendanceEvidence(
         reportId: existing?.id,
         date: date,
@@ -307,6 +318,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       setState(() {
         _error = null;
         _report = existing;
+        _approvedEditAvailable = approvedEditAvailable;
         _siteName = existing?.siteName ?? group?.siteName ?? '';
         if (widget.initialReportId != null && existing != null) {
           _groups = [DailyReportSiteGroup(siteId: existing.siteId,
@@ -934,6 +946,60 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
+  Future<void> _beginApprovedEdit() async {
+    final repository = _repository;
+    final report = _report;
+    final actor = repository?.currentActorId;
+    if (_saving || _visitReport || repository == null || report == null ||
+        !report.signed || !_approvedEditAvailable || actor == null) {
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('承認済みの編集を開始'),
+          content: const Text('編集を開始すると以前のサインを解除します。編集後に報告者と責任者の再サインが必要です。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('キャンセル')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('編集を開始')),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted || repository.currentActorId != actor) {
+        return;
+      }
+      if (!await repository.hasApprovedEdit(report.id) ||
+          repository.currentActorId != actor || !mounted ||
+          _report?.id != report.id) {
+        throw StateError('承認済みの編集申請を確認できません。再読み込みしてください。');
+      }
+      // This RPC consumes only the current actor's approved request and clears
+      // obsolete signatures in the same existing transaction.
+      final id = await _saveDraft(ownsBusyState: false);
+      if (!mounted || repository.currentActorId != actor) return;
+      if (id != report.id || _report?.id != report.id || _signed ||
+          _report?.reporterSignatureJson != null ||
+          _report?.responsibleSignatureJson != null) {
+        throw StateError('編集開始を確認できません。日報を再読み込みしてください。');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('編集できる状態になりました。編集後は報告者・責任者のサインを登録してください。'),
+      )));
+    } catch (error) {
+      if (mounted && repository.currentActorId == actor) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('編集を開始できませんでした: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _requestEdit() async {
     if (_saving) return;
     final report = _report;
@@ -1274,7 +1340,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               icon: const Icon(Icons.save_outlined),
                               label: Text(SkoLanguageController.tr('登録')),
                             ),
-                          if (_signed && !_visitReport)
+                          if (_signed && !_visitReport && _approvedEditAvailable)
+                            FilledButton.icon(
+                              key: const ValueKey('daily-report-begin-approved-edit'),
+                              onPressed: _saving ? null : _beginApprovedEdit,
+                              icon: const Icon(Icons.edit_outlined),
+                              label: Text(SkoLanguageController.tr('承認済みの編集を開始')),
+                            ),
+                          if (_signed && !_visitReport && !_approvedEditAvailable)
                             FilledButton.tonalIcon(
                               onPressed: _saving ? null : _requestEdit,
                               icon: const Icon(Icons.edit_outlined),

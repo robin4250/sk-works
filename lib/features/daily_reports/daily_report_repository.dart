@@ -1017,6 +1017,17 @@ class DailyReportRepository {
         .createSignedUrl(path, 3600);
   }
 
+  /// Read-only capability hint. The existing draft RPC remains authoritative.
+  Future<bool> hasApprovedEdit(String reportId) async {
+    final actor = currentActorId;
+    if (actor == null) return false;
+    final rows = await _client.from('daily_report_edit_requests')
+        .select('id').eq('report_id', reportId)
+        .eq('requested_by', actor).eq('status', 'approved').limit(1);
+    if (currentActorId != actor) throw const DailyReportActorChanged();
+    return rows.isNotEmpty;
+  }
+
   Future<String> requestEdit({
     required String reportId,
     String? reason}) async {
