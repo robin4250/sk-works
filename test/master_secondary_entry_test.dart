@@ -95,7 +95,11 @@ void main() {
   testWidgets('real background invalidates late Face without bootstrap or unlock', (tester) async {
     final access = _Access()..biometricWait = Completer<bool>(); await _show(tester, access);
     await tester.tap(find.text('Face ID / Touch IDで開く')); await tester.pumpAndSettle();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused); await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     access.biometricWait!.complete(true); await tester.pumpAndSettle();
     expect(find.text('MASTER-CONTENT'), findsNothing); expect(access.bootstrapCalls, 0);
@@ -144,6 +148,7 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); await tester.pump();
     access.biometricWait!.complete(true); await tester.pumpAndSettle();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden); await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await tester.pumpAndSettle();
     expect(find.text('MASTER-CONTENT'), findsNothing); await _close(tester);
   });
