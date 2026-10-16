@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 process.on('uncaughtException',e=>{console.error(e.message,e.code,e.where ?? '');process.exit(1);});
+let earlyWrappers=[];
 const testflightLock=process.argv.includes('--testflight-lock');
 const {PGlite} = await import(pathToFileURL(process.argv[2]).href);
 const db = new PGlite();
@@ -107,6 +108,20 @@ if(testflightLock) {
  await db.exec('rollback');
  assert.deepEqual((await db.query('select * from private.line_general_release_settings')).rows,settingsBefore,'Saved release state and audit metadata preserved');
  assert.deepEqual(await scalar("select jsonb_build_object('acl',proacl,'config',proconfig,'owner',proowner) v from pg_proc where oid='private.line_actor_release_allowed(uuid)'::regprocedure"),gateMetadata);
+ earlyWrappers=JSON.parse(readFileSync('tool/fixtures/line_testflight_public_wrappers_20261016.json','utf8'));
+ await db.exec('set check_function_bodies=off');
+ for(const f of earlyWrappers) {
+  await db.exec(f.definition);
+  const signature=`public.${f.name}(${f.args.split(', ').map(a=>a.split(' ').slice(1).join(' ')).join(',')})`;
+  await db.exec(`revoke all on function ${signature} from public,anon,authenticated,service_role;grant execute on function ${signature} to authenticated`);
+  if(f.acl.includes('service_role='))await db.exec(`grant execute on function ${signature} to service_role`);
+ }
+ await db.exec('set check_function_bodies=on');
+ const metadata=async()=> (await db.query("select proname,proacl::text,proowner,prosecdef,provolatile,proconfig,proargnames from pg_proc where pronamespace='public'::regnamespace order by oid")).rows;
+ const metadataBefore=await metadata();
+ await db.exec(readFileSync('docs/security/staged/line_testflight_early_rpc_gate.sql.review-only','utf8'));
+ assert.deepEqual(await metadata(),metadataBefore,'Early guards retain ACL/owner/invoker/volatility/config/argument names');
+ await assert.rejects(db.exec(readFileSync('docs/security/staged/line_testflight_early_rpc_gate.sql.review-only','utf8')),/LINE wrapper changed/);await db.exec('rollback');
  await role('authenticated');
  assert.equal((await scalar('select public.line_release_capability() v')).available,false,'Saved general_enabled=true cannot bypass TestFlight lock');
 }
@@ -123,6 +138,11 @@ for(const n of [2,3,4,5,6,7]) {
   await assert.rejects(db.query(query,query.includes('$2')?[id(20),id(30)]:query.includes('$1')?[id(20)]:[]));
  }
 }
+if(testflightLock)for(const f of earlyWrappers) {
+ await actor(2);await role('authenticated');
+ const args=f.args.split(', ');
+ await assert.rejects(db.query(`select public.${f.name}(${args.map((_,i)=>'$'+(i+1)).join(',')})`,args.map(()=>null)),e=>e.code==='42501',`Early SQL ${f.name}`);
+}
 await actor(2);await role('authenticated');
 assert.equal(await scalar("select count(*)::int v from chat_messages where origin='sk_works'"),2,'Ordinary SKO history remains readable');
 await actor(3);await role('authenticated');
@@ -135,7 +155,7 @@ await role('postgres');assert.equal(await scalar("select private.content_review_
 assert.equal((await scalar("select private.content_review_payload('message',$1) v",[skoId])).text,'Saved SKO');
 await role('authenticated');assert.ok(await scalar("select private.report_chat_message($1,'other') v",[skoId]));
 await actor(2);await role('authenticated');
-await assert.rejects(scalar('select public.prepare_line_chat_dispatch($1) v',[message]),/access required/);
+await assert.rejects(scalar('select public.prepare_line_chat_dispatch($1) v',[message]),testflightLock?e=>e.code==='42501':/access required/);
 await role('service_role');await assert.rejects(scalar('select public.claim_line_chat_dispatch($1,$2) v',[ticket,id(2)]),/access required/);
 await role('authenticated');
 const skOnly=(await db.query(`insert into chat_messages(company_id,communication_group_id,sender_user_id,origin,body,sender_display_name) values($1,$2,$3,'sk_works','SKO only during OFF','Fixture') returning id`,[id(10),id(20),id(2)])).rows[0].id;
@@ -159,7 +179,7 @@ await actor(2);await role('authenticated');assert.equal(await scalar("select cou
 await actor(1);await role('authenticated');await scalar('select public.set_line_general_release_enabled(true) v');
 await actor(2);await role('authenticated');assert.equal(await scalar("select count(*)::int v from chat_messages where origin='line'"),testflightLock?0:2);
 if(testflightLock) {
- await assert.rejects(scalar('select public.prepare_line_chat_dispatch($1) v',[message]),/access required/);
+ await assert.rejects(scalar('select public.prepare_line_chat_dispatch($1) v',[message]),testflightLock?e=>e.code==='42501':/access required/);
  await role('postgres');assert.equal(await scalar('select general_enabled v from private.line_general_release_settings'),true,'Master saved setting retained, distribution lock remains authoritative');
 } else {
 const resumed=(await scalar('select public.prepare_line_chat_dispatch($1) v',[message])).ticket;
@@ -192,9 +212,14 @@ if(testflightLock && process.env.SKO_LINE_RELEASE_POSTGREST_URL) {
   r=await http(n,"/chat_messages?origin=eq.line&select=id");assert.equal(r.status,200);assert.deepEqual(await r.json(),[],`Direct REST LINE denied actor ${n}`);
   r=await http(n,'/line_group_bindings?select=id');assert.equal(r.status,200);assert.deepEqual(await r.json(),[]);
   r=await http(n,'/rpc/begin_line_group_claim',{p_communication_group_id:id(20)});assert.equal(r.status,403);assert.equal((await r.json()).code,'42501',`RPC semantic denial actor ${n}`);
+  for(const f of earlyWrappers) {
+   const body=Object.fromEntries(f.args.split(', ').map(a=>[a.split(' ')[0],null]));
+   r=await http(n,`/rpc/${f.name}`,body);assert.equal(r.status,403,`Early HTTP ${n}/${f.name}`);assert.equal((await r.json()).code,'42501',`No lookup/existence error before gate ${f.name}`);
+  }
  }
  let r=await http(2,'/chat_messages?body=eq.Saved%20SKO&select=body');assert.equal(r.status,200);assert.deepEqual(await r.json(),[{body:'Saved SKO'}],'Ordinary SKO remains readable');
  r=await http(1,'/rpc/line_release_capability',{});assert.equal(r.status,200);assert.equal((await r.json()).available,true);
+ r=await http(1,'/rpc/line_chat_sender_preferences',{p_group_id:id(20),p_mode:null,p_nickname:null});assert.equal(r.status,200);assert.equal((await r.json()).mode,'name','Master delegates to original private sender preferences');
  r=await http(1,`/chat_messages?origin=eq.line&communication_group_id=eq.${id(20)}&select=id`);assert.equal(r.status,200);assert.equal((await r.json()).length,2,'Master own group LINE retained');
  r=await http(1,`/chat_messages?origin=eq.line&communication_group_id=eq.${id(21)}&select=id`);assert.equal(r.status,200);assert.deepEqual(await r.json(),[],'Master exception does not grant foreign group');
  r=await http(null,'/chat_messages?select=id');assert.equal(r.status,401,'Anonymous direct REST denied');

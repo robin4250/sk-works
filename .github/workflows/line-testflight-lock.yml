@@ -2,7 +2,9 @@ name: LINE TestFlight master-only lock
 on:
   pull_request:
     paths:
-      - 'docs/security/staged/line_testflight_master_only.sql.review-only'
+      - 'docs/security/staged/line_testflight*.sql.review-only'
+      - 'tool/fixtures/line_testflight_public_wrappers_20261016.json'
+      - 'docs/security/line_deployed_access_inventory_20261016.md'
       - 'tool/verify_line_release_capability.mjs'
       - 'docs/security/line_testflight_lock_review.md'
       - '.github/workflows/line-testflight-lock.yml'
