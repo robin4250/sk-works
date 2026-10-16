@@ -71,7 +71,7 @@ class _Features implements MasterFeatureControlsRepository {
   @override
   dynamic noSuchMethod(Invocation invocation) => throw StateError('Unexpected feature method');
 }
-Future<void> open(WidgetTester tester, _Features repository, _Proofs proofs) async {
+Future<void> _open(WidgetTester tester, _Features repository, _Proofs proofs) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   tester.view.physicalSize = const Size(1200, 2400);
   tester.view.devicePixelRatio = 1;
@@ -80,13 +80,17 @@ Future<void> open(WidgetTester tester, _Features repository, _Proofs proofs) asy
   await tester.pumpWidget(MaterialApp(home: MasterFeatureControlsPage(repository: repository, reauthentication: proofs)));
   await tester.pumpAndSettle();
 }
-Future<void> confirm(WidgetTester tester, {bool enabling = false}) async {
+Future<void> _confirm(WidgetTester tester, {bool enabling = false}) async {
   await tester.tap(find.widgetWithText(SwitchListTile, '車両管理'));
   await tester.pumpAndSettle();
   await tester.tap(find.widgetWithText(FilledButton, enabling ? '有効にする' : '一時停止する'));
-  await tester.pumpAndSettle();
+  // Some cases intentionally keep capability/write futures pending. Advance
+  // route animation without waiting for their visible progress indicator.
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
 }
-Future<void> verify(WidgetTester tester) async {
+Future<void> _verify(WidgetTester tester) async {
   await tester.enterText(find.byKey(const Key('master-feature-password')), 'synthetic-primary');
   await tester.tap(find.text('本人確認して変更'));
   await tester.pumpAndSettle();
@@ -143,18 +147,18 @@ class _Wire {
 void main() {
   testWidgets('ON preserves confirmation and requires proof for the exact feature and next value', (tester) async {
     final f = _Features(), p = _Proofs();
-    await open(tester, f, p);
+    await _open(tester, f, p);
     expect(find.text('Master 機能設定'), findsOneWidget);
     expect(find.text('LINE追加機能'), findsOneWidget);
     expect(find.textContaining('既存データや履歴は削除しません'), findsNothing);
-    await confirm(tester);
+    await _confirm(tester);
     expect(f.changes, isEmpty);
     expect(find.text('機能を一時停止する'), findsOneWidget);
-    await verify(tester);
+    await _verify(tester);
     expect(f.changes.single, {'feature_key': 'vehicle_management', 'enabled': false, 'proof': nonce});
     expect(p.target, {'feature_key': 'vehicle_management', 'enabled': false});
-    await confirm(tester, enabling: true);
-    await verify(tester);
+    await _confirm(tester, enabling: true);
+    await _verify(tester);
     expect(f.changes.last['enabled'], true);
     expect(p.target, {'feature_key': 'vehicle_management', 'enabled': true});
     expect(find.text('LINE追加機能'), findsOneWidget);
@@ -162,46 +166,46 @@ void main() {
   testWidgets('OFF preserves the legacy confirmation and no password prompt', (tester) async {
     final f = _Features()..required = false;
     final p = _Proofs();
-    await open(tester, f, p);
-    await confirm(tester);
+    await _open(tester, f, p);
+    await _confirm(tester);
     expect(f.changes.single['proof'], null);
     expect(p.calls, 0);
     expect(find.byKey(const Key('master-feature-password')), findsNothing);
   });
   testWidgets('cancel, capability error, proof error and failed save never downgrade or retry writes', (tester) async {
     final f = _Features(), p = _Proofs();
-    await open(tester, f, p);
+    await _open(tester, f, p);
     await tester.tap(find.widgetWithText(SwitchListTile, '車両管理'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('戻る'));
     await tester.pumpAndSettle();
     expect(f.caps, 0);
     f.capFailure = true;
-    await confirm(tester);
+    await _confirm(tester);
     expect(f.changes, isEmpty);
     expect(p.calls, 0);
     expect(find.textContaining('synthetic private'), findsNothing);
     f.capFailure = false;
-    await confirm(tester);
+    await _confirm(tester);
     await tester.tap(find.text('キャンセル'));
     await tester.pumpAndSettle();
     expect(f.changes, isEmpty);
     p.fail = true;
-    await confirm(tester);
-    await verify(tester);
+    await _confirm(tester);
+    await _verify(tester);
     expect(f.changes, isEmpty);
     await tester.tap(find.text('キャンセル'));
     await tester.pumpAndSettle();
     p.fail = false;
     f.writeFailure = true;
-    await confirm(tester);
-    await verify(tester);
+    await _confirm(tester);
+    await _verify(tester);
     expect(f.changes.length, 1);
     expect(f.changes.single['proof'], nonce);
   });
   testWidgets('stale duplicate callback opens only one confirmation and proof', (tester) async {
     final f = _Features(), p = _Proofs();
-    await open(tester, f, p);
+    await _open(tester, f, p);
     final callback = tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, '車両管理')).onChanged!;
     callback(false);
     callback(false);
@@ -209,7 +213,7 @@ void main() {
     expect(find.text('車両管理を一時停止する'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, '一時停止する'));
     await tester.pumpAndSettle();
-    await verify(tester);
+    await _verify(tester);
     expect(p.calls, 1);
     expect(f.changes.length, 1);
   });
@@ -217,8 +221,8 @@ void main() {
     final pending = Completer<bool>();
     final f = _Features()..pendingCapability = pending;
     final p = _Proofs();
-    await open(tester, f, p);
-    await confirm(tester);
+    await _open(tester, f, p);
+    await _confirm(tester);
     f.currentActor = actorB;
     pending.complete(true);
     await tester.pumpAndSettle();
@@ -228,7 +232,7 @@ void main() {
   });
   testWidgets('background cancels confirmation and pending proof; resume needs fresh confirmation and proof', (tester) async {
     final f = _Features(), p = _Proofs();
-    await open(tester, f, p);
+    await _open(tester, f, p);
     final existingPanelState = tester.state(find.byType(LineImportFeatureSettingsPanel));
     await tester.tap(find.widgetWithText(SwitchListTile, '車両管理'));
     await tester.pumpAndSettle();
@@ -239,7 +243,7 @@ void main() {
     expect(identical(tester.state(find.byType(LineImportFeatureSettingsPanel)), existingPanelState), true);
     expect(f.caps, 0);
     p.pending = Completer<String>();
-    await confirm(tester);
+    await _confirm(tester);
     await tester.enterText(find.byKey(const Key('master-feature-password')), 'synthetic-primary');
     await tester.tap(find.text('本人確認して変更'));
     await tester.pump();
@@ -252,8 +256,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(f.changes, isEmpty);
     p.pending = null;
-    await confirm(tester);
-    await verify(tester);
+    await _confirm(tester);
+    await _verify(tester);
     expect(p.calls, 2);
     expect(f.changes.length, 1);
     expect(find.text('LINE追加機能'), findsOneWidget);
@@ -262,8 +266,8 @@ void main() {
     final pending = Completer<MasterFeatureAvailability>();
     final f = _Features()..required = false..pendingWrite = pending;
     final p = _Proofs();
-    await open(tester, f, p);
-    await confirm(tester);
+    await _open(tester, f, p);
+    await _confirm(tester);
     expect(f.changes.length, 1);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);

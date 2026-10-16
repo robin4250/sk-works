@@ -104,14 +104,18 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
     try {
       final value = await repository.load();
       if (!mounted || actor == null || repository.actorId != actor ||
-          generation != _generation || _lifecycle != AppLifecycleState.resumed) return;
+          generation != _generation || _lifecycle != AppLifecycleState.resumed) {
+        return;
+      }
       setState(() {
         _availability = value;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || generation != _generation || repository.actorId != actor ||
-          _lifecycle != AppLifecycleState.resumed) return;
+          _lifecycle != AppLifecycleState.resumed) {
+        return;
+      }
       setState(() {
         _loading = false;
         _error = 'マスター機能設定を読み込めません。権限・接続を確認して再読み込みしてください。';
@@ -127,7 +131,9 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
     final repository = _repository;
     if (repository == null || _busyKey != null || _loading ||
         _lifecycle != AppLifecycleState.resumed ||
-        !MasterFeatureControlsRepository.supportedFeatures.contains(featureKey)) return;
+        !MasterFeatureControlsRepository.supportedFeatures.contains(featureKey)) {
+      return;
+    }
     final actor = repository.actorId;
     if (actor == null) return;
     final next = !current;
@@ -180,7 +186,7 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
       if (!currentOperation()) return;
       setState(() => _availability = updated);
     } catch (_) {
-      if (!currentOperation()) return;
+      if (!mounted || !currentOperation()) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('変更できませんでした。本人確認・権限・接続を確認してください。')),
       );
