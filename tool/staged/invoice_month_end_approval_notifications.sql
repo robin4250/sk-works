@@ -4,9 +4,9 @@
 begin;
 do $dependencies$
 begin
- if not exists(select 1 from pg_proc where oid='private.enqueue_notification(uuid,uuid,text,text,text,text,uuid)'::regprocedure and md5(prosrc)='260ef8dc60ec1917cc0c8dc85ea52872') then raise exception 'dependency drift: enqueue_notification'; end if;
- if not exists(select 1 from pg_proc where oid='private.check_account_access()'::regprocedure and md5(prosrc)='c7f028de1b3703dc4f2b3b57e01b78ef') then raise exception 'dependency drift: check_account_access'; end if;
- if not exists(select 1 from pg_proc where oid='public.account_server_access_allowed(uuid)'::regprocedure and md5(prosrc)='b5a5a5a040399576031c78b31e8b43e9') then raise exception 'dependency drift: account_server_access_allowed'; end if;
+ if not exists(select 1 from pg_proc where oid='private.enqueue_notification(uuid,uuid,text,text,text,text,uuid)'::regprocedure and prorettype='uuid'::regtype and md5(prosrc)='260ef8dc60ec1917cc0c8dc85ea52872') then raise exception 'dependency drift: enqueue_notification'; end if;
+ if not exists(select 1 from pg_proc where oid='private.check_account_access()'::regprocedure and prorettype='void'::regtype and md5(prosrc)='c7f028de1b3703dc4f2b3b57e01b78ef') then raise exception 'dependency drift: check_account_access'; end if;
+ if not exists(select 1 from pg_proc where oid='public.account_server_access_allowed(uuid)'::regprocedure and prorettype='boolean'::regtype and md5(prosrc)='b5a5a5a040399576031c78b31e8b43e9') then raise exception 'dependency drift: account_server_access_allowed'; end if;
 end $dependencies$;
 create table if not exists private.invoice_month_end_rollout(
  company_id uuid primary key references public.companies(id) on delete cascade,
