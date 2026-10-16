@@ -146,9 +146,11 @@ class SecureOnboardingRepository {
     await _client.rpc('mark_employee_initial_password_changed');
   }
 
-  Future<bool> secondaryPasswordConfigured() async {
+  Future<bool> secondaryPasswordConfigured({String? accessToken}) async {
     if (_client.auth.currentUser == null) return false;
-    final value = await _client.rpc('secondary_password_configured');
+    if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
+    final request = _client.rpc('secondary_password_configured');
+    final value = await (accessToken == null ? request : request.setHeader('Authorization', 'Bearer $accessToken'));
     return value == true;
   }
 
@@ -159,11 +161,13 @@ class SecureOnboardingRepository {
     );
   }
 
-  Future<bool> verifySecondaryPassword(String password) async {
-    final value = await _client.rpc(
+  Future<bool> verifySecondaryPassword(String password, {String? accessToken}) async {
+    if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
+    final request = _client.rpc(
       'verify_secondary_password',
       params: {'p_password': password},
     );
+    final value = await (accessToken == null ? request : request.setHeader('Authorization', 'Bearer $accessToken'));
     return value == true;
   }
 
@@ -230,4 +234,3 @@ class SecureOnboardingRepository {
     return text.isEmpty ? null : text;
   }
 }
-

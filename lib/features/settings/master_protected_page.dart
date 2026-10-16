@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/supabase_backend.dart';
 import '../auth/secure_onboarding_repository.dart';
 import 'master_device_repository.dart';
 import 'master_password_protected_page.dart';
@@ -21,12 +22,20 @@ class MasterProtectedPage extends StatefulWidget {
     required this.child,
     this.dedicatedMode = const bool.fromEnvironment('SKO_MASTER_PASSWORD_V1', defaultValue: false),
     this.dedicatedAccess,
+    this.legacyDeviceRepository,
+    this.legacyAuthRepository,
+    this.legacySessionToken,
+    this.legacyChanges,
   });
 
   final String title;
   final Widget child;
   final bool dedicatedMode;
   final MasterPasswordEntryAccess? dedicatedAccess;
+  final MasterDeviceRepository? legacyDeviceRepository;
+  final SecureOnboardingRepository? legacyAuthRepository;
+  final String? Function()? legacySessionToken;
+  final Stream<void>? legacyChanges;
 
   @override
   State<MasterProtectedPage> createState() => _MasterProtectedPageState();
@@ -34,8 +43,8 @@ class MasterProtectedPage extends StatefulWidget {
 
 class _MasterProtectedPageState extends State<MasterProtectedPage>
     with WidgetsBindingObserver {
-  final _deviceRepository = MasterDeviceRepository.maybeCreate();
-  final _authRepository = SecureOnboardingRepository.maybeCreate();
+  late final MasterDeviceRepository? _deviceRepository;
+  late final SecureOnboardingRepository? _authRepository;
   final _localAuth = LocalAuthentication();
   final _password = TextEditingController();
 
@@ -49,60 +58,90 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
   bool _secondaryConfigured = false;
   bool _unlocked = false;
   String? _error;
+  String? _loadedActor;
+  String? _loadedToken;
+  StreamSubscription<void>? _authChanges;
+  int _generation = 0;
+  bool _nativePrompt = false;
+  Completer<bool>? _resume;
+  VoidCallback? _clearCaptured;
+  AppLifecycleState _lifecycle = AppLifecycleState.resumed;
+  String? get _currentToken => widget.legacySessionToken != null
+      ? widget.legacySessionToken!()
+      : SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentSession?.accessToken : null;
+
+  bool _same(int generation, String actor, String token, {bool nativeInactive = false}) =>
+      mounted && generation == _generation && _deviceRepository?.currentUserId == actor &&
+      _authRepository?.currentUser?.id == actor && _currentToken == token &&
+      ModalRoute.of(context)?.isCurrent == true &&
+      (_lifecycle == AppLifecycleState.resumed || nativeInactive && _nativePrompt && _lifecycle == AppLifecycleState.inactive);
 
   @override
   void initState() {
     super.initState();
+    _deviceRepository = widget.legacyDeviceRepository ?? MasterDeviceRepository.maybeCreate();
+    _authRepository = widget.legacyAuthRepository ?? SecureOnboardingRepository.maybeCreate();
     if (widget.dedicatedMode) return;
+    _lifecycle = WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
+    final changes = widget.legacyChanges ?? (SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.onAuthStateChange.map((_) {}) : null);
+    _authChanges = changes?.listen((_) {
+      if (_loadedActor != null && (_deviceRepository?.currentUserId != _loadedActor || _currentToken != _loadedToken)) _lock();
+    }, onError: (Object _) => _lock());
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!widget.dedicatedMode && !_unlocked && (_busy || _loading) && ModalRoute.of(context)?.isCurrent == false) _lock();
   }
 
   Future<void> _load() async {
     final deviceRepository = _deviceRepository;
     final authRepository = _authRepository;
     final userId = deviceRepository?.currentUserId;
-    if (deviceRepository == null || authRepository == null || userId == null) {
-      setState(() {
-        _loading = false;
-        _error = 'Master認証を利用できません。';
-      });
+    final token = _currentToken;
+    if (deviceRepository == null || authRepository == null || userId == null || token == null) {
+      setState(() { _loading = false; _error = 'Master認証を利用できません。'; });
       return;
     }
-
+    final generation = ++_generation;
     try {
-      if (!await deviceRepository.isMasterAdmin()) {
-        throw StateError('Master管理者権限が必要です。');
-      }
-
+      if (!await deviceRepository.isMasterAdmin(accessToken: token)) throw StateError('Master管理者権限が必要です。');
+      if (!_same(generation, userId, token)) return;
       final prefs = await SharedPreferences.getInstance();
+      if (!_same(generation, userId, token)) return;
       var deviceKey = prefs.getString('sko_master_device_key_$userId');
       if (deviceKey == null || deviceKey.length < 32) {
         deviceKey = _newDeviceKey();
         await prefs.setString('sko_master_device_key_$userId', deviceKey);
+        if (!_same(generation, userId, token)) return;
       }
-
-      final status = await deviceRepository.currentDeviceStatus(deviceKey);
-      final secondaryConfigured =
-          await authRepository.secondaryPasswordConfigured();
-      final biometricAvailable = await _localAuth.isDeviceSupported() &&
-          await _localAuth.canCheckBiometrics;
-
-      if (!mounted) return;
+      final status = await deviceRepository.currentDeviceStatus(deviceKey, accessToken: token);
+      if (!_same(generation, userId, token)) return;
+      final secondaryConfigured = await authRepository.secondaryPasswordConfigured(accessToken: token);
+      if (!_same(generation, userId, token)) return;
+      final supported = await _localAuth.isDeviceSupported();
+      if (!_same(generation, userId, token)) return;
+      final biometricAvailable = supported && await _localAuth.canCheckBiometrics;
+      if (!_same(generation, userId, token)) return;
       setState(() {
         _deviceKey = deviceKey;
         _trustedDevice = status['trusted'] == true;
         _canBootstrap = status['can_bootstrap'] == true;
         _secondaryConfigured = secondaryConfigured;
         _biometricAvailable = biometricAvailable;
+        _loadedActor = userId;
+        _loadedToken = token;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = error.toString();
-      });
+      if (mounted && generation == _generation) setState(() { _loading = false; _error = error.toString(); });
+    } finally {
+      if (mounted && generation == _generation && _loading) {
+        setState(() { _loading = false; _error = 'ログイン状態が変わりました。再読み込みしてください。'; });
+      }
     }
   }
 
@@ -113,91 +152,85 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
   }
 
   Future<void> _authenticate() async {
+    if (_busy || _loading || _lifecycle != AppLifecycleState.resumed) return;
     final deviceRepository = _deviceRepository;
     final authRepository = _authRepository;
+    final actor = deviceRepository?.currentUserId;
+    final token = _currentToken;
     final deviceKey = _deviceKey;
-    if (deviceRepository == null ||
-        authRepository == null ||
-        deviceKey == null ||
-        _password.text.isEmpty) {
-      return;
+    if (deviceRepository == null || authRepository == null || actor == null || token == null || deviceKey == null || actor != _loadedActor || token != _loadedToken) {
+      setState(() => _error = 'ログイン状態を再読み込みしてください。'); return;
     }
-
-    if (!_secondaryConfigured) {
-      setState(() => _error = 'Master画面を開く前に第2パスワードの設定が必要です。');
-      return;
-    }
-    if (!_biometricAvailable) {
-      setState(() => _error = 'Master画面はFace ID / Touch ID対応端末でのみ利用できます。');
-      return;
-    }
-    if (!_trustedDevice && !_canBootstrap) {
-      setState(() => _error = 'この端末は信頼済みMaster端末ではありません。');
-      return;
-    }
-
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
+    String password = _password.text;
+    _password.clear();
+    if (password.isEmpty) return;
+    if (!_secondaryConfigured) { setState(() => _error = 'Master画面を開く前に第2パスワードの設定が必要です。'); return; }
+    if (!_biometricAvailable) { setState(() => _error = 'Master画面はFace ID / Touch ID対応端末でのみ利用できます。'); return; }
+    if (!_trustedDevice && !_canBootstrap) { setState(() => _error = 'この端末は信頼済みMaster端末ではありません。'); return; }
+    final generation = ++_generation;
+    void clearCaptured() { password = ''; }
+    _clearCaptured = clearCaptured;
+    setState(() { _busy = true; _error = null; });
     try {
+      if (!await deviceRepository.isMasterAdmin(accessToken: token)) throw StateError('Master管理者権限が必要です。');
+      if (!_same(generation, actor, token)) return;
+      final before = await deviceRepository.currentDeviceStatus(deviceKey, accessToken: token);
+      if (!_same(generation, actor, token)) return;
+      if (before['trusted'] != true && before['can_bootstrap'] != true) throw StateError('この端末は信頼済みMaster端末ではありません。');
+      _nativePrompt = true;
       final biometricVerified = await _localAuth.authenticate(
         localizedReason: '${widget.title}を開くため生体認証を確認します',
-        options: const AuthenticationOptions(
-          biometricOnly: true,
-          stickyAuth: true,
-        ),
+        options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
       );
-      if (!biometricVerified) {
-        throw StateError('生体認証を確認できませんでした。');
+      if (!_same(generation, actor, token, nativeInactive: true)) return;
+      if (!biometricVerified) throw StateError('生体認証を確認できませんでした。');
+      if (_lifecycle == AppLifecycleState.inactive) {
+        final wait = Completer<bool>(); _resume = wait;
+        final resumed = await wait.future;
+        if (identical(_resume, wait)) _resume = null;
+        if (!resumed || !_same(generation, actor, token)) return;
       }
-
-      final secondPasswordVerified =
-          await authRepository.verifySecondaryPassword(_password.text);
-      if (!secondPasswordVerified) {
-        throw StateError('第2パスワードが違います。');
+      _nativePrompt = false;
+      final secondPasswordVerified = await authRepository.verifySecondaryPassword(password, accessToken: token);
+      password = '';
+      if (!_same(generation, actor, token)) return;
+      if (!secondPasswordVerified) throw StateError('第2パスワードが違います。');
+      final isMasterAdmin = await deviceRepository.isMasterAdmin(accessToken: token);
+      if (!_same(generation, actor, token)) return;
+      if (!isMasterAdmin) throw StateError('Master管理者権限が必要です。');
+      final current = await deviceRepository.currentDeviceStatus(deviceKey, accessToken: token);
+      if (!_same(generation, actor, token)) return;
+      if (current['trusted'] != true) {
+        if (before['can_bootstrap'] != true || current['can_bootstrap'] != true) throw StateError('信頼済み端末の状態が変わりました。');
+        await deviceRepository.bootstrapFirstDevice(deviceKey: deviceKey, deviceName: _deviceName(), deviceType: _deviceType(), platform: Platform.operatingSystem, accessToken: token);
+        if (!_same(generation, actor, token)) return;
+        final registered = await deviceRepository.currentDeviceStatus(deviceKey, accessToken: token);
+        if (!_same(generation, actor, token)) return;
+        if (registered['trusted'] != true) throw StateError('信頼済みMaster端末を確認できませんでした。');
       }
-
-      if (!_trustedDevice && _canBootstrap) {
-        await deviceRepository.bootstrapFirstDevice(
-          deviceKey: deviceKey,
-          deviceName: _deviceName(),
-          deviceType: _deviceType(),
-          platform: Platform.operatingSystem,
-        );
-        _trustedDevice = true;
-        _canBootstrap = false;
-      }
-
+      _trustedDevice = true;
+      _canBootstrap = false;
+      final finalMaster = await deviceRepository.isMasterAdmin(accessToken: token);
+      if (!_same(generation, actor, token)) return;
       final now = DateTime.now();
       final blocked = MasterStepUpPolicy.requiresFreshAuthentication(
-        isMasterAdmin: true,
+        isMasterAdmin: finalMaster,
         trustedDevice: _trustedDevice,
         biometricVerified: biometricVerified,
         secondPasswordVerified: secondPasswordVerified,
         verifiedAt: now,
         now: now,
       );
-      if (blocked) {
-        throw StateError('Master認証を完了できませんでした。');
-      }
-
-      _password.clear();
-      _expiryTimer?.cancel();
-      _expiryTimer = Timer(MasterStepUpPolicy.sessionDuration, _lock);
-      if (!mounted) return;
-      setState(() {
-        _unlocked = true;
-        _busy = false;
-      });
+      if (blocked) throw StateError('Master認証を完了できませんでした。');
+      _expiryTimer?.cancel(); _expiryTimer = Timer(MasterStepUpPolicy.sessionDuration, _lock);
+      if (!_same(generation, actor, token)) return;
+      setState(() { _unlocked = true; _busy = false; });
     } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _unlocked = false;
-        _error = error.toString();
-      });
+      if (mounted && generation == _generation) setState(() { _busy = false; _unlocked = false; _error = error.toString(); });
+    } finally {
+      password = '';
+      if (identical(_clearCaptured, clearCaptured)) _clearCaptured = null;
+      if (mounted && generation == _generation) setState(() { _busy = false; _nativePrompt = false; });
     }
   }
 
@@ -230,6 +263,11 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
           : 'other';
 
   void _lock() {
+    _generation++;
+    _clearCaptured?.call();
+    final wait = _resume; _resume = null;
+    if (wait != null && !wait.isCompleted) wait.complete(false);
+    _nativePrompt = false;
     _expiryTimer?.cancel();
     _expiryTimer = null;
     _password.clear();
@@ -240,11 +278,18 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
     setState(() {
       _unlocked = false;
       _busy = false;
+      if (_loading) { _loading = false; _error = '本人確認の読み込みを中断しました。再読み込みしてください。'; }
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycle = state;
+    if (state == AppLifecycleState.resumed) {
+      final wait = _resume;
+      if (wait != null && !wait.isCompleted) wait.complete(true);
+    }
+    if (state == AppLifecycleState.inactive && _nativePrompt) { _password.clear(); return; }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
@@ -254,6 +299,9 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
 
   @override
   void dispose() {
+    _generation++; _clearCaptured?.call();
+    final wait = _resume; if (wait != null && !wait.isCompleted) wait.complete(false);
+    _authChanges?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _expiryTimer?.cancel();
     _password.dispose();
@@ -320,6 +368,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
                           ),
                         ),
                       ],
+                      if (_error != null) TextButton(onPressed: _busy ? null : () { setState(() { _loading = true; _error = null; }); _load(); }, child: const Text('再読み込み')),
                       const SizedBox(height: 18),
                       FilledButton.icon(
                         onPressed: _busy ? null : _authenticate,
