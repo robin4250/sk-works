@@ -1,15 +1,15 @@
 # Real Auth server session lifecycle — existing isolated stack reused
 
 This test-only lane complements the Flutter/Face mock tests. No authentication
-product code, production provider setup, second-password/primary-password behavior, SMS path,
+product code, provider setup, second-password/primary-password behavior, SMS path,
 RLS or production config is changed. New files only. No iPhone is connected.
 
 The existing `platform_auth_gotrue_e2e.mjs` (#1144) owns the pinned CLI2.121.0 local
 GoTrue/Kong/PostgreSQL/Edge stack and always cleans up. It is deliberately NOT
 copied as a tracked parallel fixture or modified. A new runner checks its exact
 SHA256 `79c128c9c03c138084712512ebfcaa1e68cdd5b2641f02cf7c17cc6b99b3e655`,
-unique setup/config anchors and required origin/empty-DB/cleanup/assertion contracts. It creates
-a private700/600 temporary source copy, adds local helper imports and hooks
+one setup anchor and required origin/empty-DB/cleanup/assertion contracts. It creates
+a private700/600 temporary source copy, adds one local helper import and hook
 before app fixture creation, and imports that copy. The original adapter import
 is resolved to the same repository-local module. Any drift fails BEFORE stack
 setup; every original assertion/cleanup byte remains after removing the hook and
@@ -72,49 +72,28 @@ fixture. Full production config, original backup/restore and real administrator
 retention are outside this test. No new sign-in method or production authorization
 is introduced. Record exact CI head and outcome before treating runtime as verified.
 
-## Additional PHONE/password case (separate from successful email snapshot)
+## Preserved, unverified phone experiment
 
-The successful email-only baseline remains commit
-`e184750df321a24981ca9b960982808f1d325c22` with dedicated CI38939479802 success.
-A later test-only commit appends a real phone-password case after EVERY original
-email/local/global assertion, in the SAME existing isolated GoTrue runtime. The
-original tracked runner source/hash and product Auth settings are unchanged.
-Only an owned, generated local CLI config is adjusted as described below. New phone results must be reported against the later exact head.
+The normal required suite remains the original email/password server lifecycle and
+entire unchanged #1144 Edge/proof suite. No phone assertion is skipped or reported
+as successful here. A separate incomplete experiment is preserved exactly at
+79a6682790cf776049b1ee5593d70e3f6d10b441:
+https://github.com/robin4250/sk-works/tree/experiment/auth-phone-provider-disabled-79a668
 
-A fixed fictional NANP555-0100..0199 E164 (`+12025550123`) is admin-created with
-`phone_confirm:true` and a freshly generated local test password. It never names an
-employee or actual recipient. Confirmed-at is required BEFORE password grant.
-The added case permits ONLY admin confirmed-user creation, password grant with
-phone, refresh grant and LOCAL logout, with exact allowed body keys. It records
-and asserts those six routes; signup/OTP/verify/resend/recover/provider/settings
-and any nonlocal/other-phone request are refused BEFORE dispatch. The underlying
-original callback still refuses any origin outside its generated loopback API.
-No SMS/OTP sending branch or production configuration modification is invoked. Dependency/
-container bootstrap remains the original fixture; no whole-host network-none claim.
+Phone password grant expected200 but returned422 phone_provider_disabled in
+CI38940621802/job117107020821 (e0260a0), diagnostic CI38941232596/job117109093331
+(728d64b), and owned-config attempt CI38942121981/job117112087830 (79a668).
+The last run's six guard tests and preceding real email assertions passed; the
+phone case did not pass. No provider transport or fake credentials were enabled.
 
-Actual server assertions require one phone UID/session, refresh retaining its SID,
-local logout removing it, both old refresh tokens rejected, stable phone/provider/
-confirmation fields and untouched original master/admin/other sessions. The
-original app/company/provider invariants and full Edge suite still run afterward.
-This is admin-preconfirmed fictional-phone password semantics, not live employee
-onboarding, SMS delivery, real provider setup, native persistence or Face hardware.
+CLI2.121.0 resolveAuthSms forces enable_signup false when every SMS provider is
+disabled (local-config-values.ts:1986–2005); gotrue.service.ts:388 forwards that to
+GOTRUE_EXTERNAL_PHONE_ENABLED. sms.ts:81+ requires provider credentials when a
+transport is enabled. Therefore the supported CLI config cannot provide this
+phone test under the transport-disabled constraint. Phone password server success,
+real employee onboarding, SMS delivery and actual iPhone behavior remain unverified.
 
-## Isolated phone-provider prerequisite and previous failures
-
-The phone addition at e0260a0 failed dedicated CI38940621802/job117107020821:
-password grant returned422 while200 remained required. Diagnostic-only728d64b
-failed CI38941232596/job117109093331 with the safe enum
-`phone_provider_disabled`. Prior email/local/global assertions passed in both runs.
-These failures do not verify phone login.
-
-CLI2.121.0 initializes `auth.sms.enable_signup=false`. The local-only helper now
-requires exactly one SMS section, one disabled Twilio section and exactly one
-assignment for each checked key. It changes only SMS enable_signup to true.
-SMS enable_confirmations remains false, Twilio enabled remains false, SID fields
-remain empty and the token remains the unused environment placeholder. Any
-conflicting duplicate, unknown provider, credential environment or default drift
-fails closed. The postcondition reverses the one flag and requires byte equality.
-The helper accepts only the existing original fixture ownership marker, exact
-random project/config path, private directory and real paths without symlinks.
-No tracked Auth config, original fixture, hosted provider or production setting is
-changed. Phone runtime at the new fix head must pass before being reported verified.
+Official pinned source:
+- https://github.com/supabase/cli/blob/v2.121.0/apps/cli/src/command-internal/local-config-values.ts
+- https://github.com/supabase/cli/blob/v2.121.0/apps/cli/src/commands/start/services/gotrue.service.ts
+- https://github.com/supabase/cli/blob/v2.121.0/packages/config/src/auth/sms.ts

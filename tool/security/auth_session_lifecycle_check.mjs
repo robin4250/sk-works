@@ -42,39 +42,4 @@ export async function verifySessionLifecycle({request,db,password,claims,guarded
  assert.equal((await request('/auth/v1/logout?scope=local',{token:legitimate.access_token})).status,204);assert.equal(await count(created.id),0);
  console.log('PASS actual GoTrue lifecycle: password login, refresh-token rehydration with the same server session, app-default LOCAL logout revokes that refresh chain and preserves another session, explicit GLOBAL revocation rejects its old chain, legitimate password relogin creates a new session; original identity/provider/master/admin sessions preserved.');
  console.log('LIMIT lifecycle: HTTP server semantics only, not real Dart process restart, iPhone persistence, Face ID, OAuth or instant access-JWT invalidation. Rotation reuse grace is not treated as a failure; revoked refresh chains must be rejected.');
- await verifyPhonePasswordLifecycle({request,db,password,claims,guardedSessions});
-}
-
-
-// NANP 555-0100..0199 fictional range, not any actual employee/recipient.
-const syntheticPhone='+12025550123';
-export function assertPhoneLifecycleRequest(route,options={}) {
- const keys=Object.keys(options.body??{}).sort().join(',');
- const allowed=(route==='/auth/v1/admin/users'&&options.service===true&&keys==='password,phone,phone_confirm'&&options.body.phone===syntheticPhone&&options.body.phone_confirm===true&&typeof options.body.password==='string')
- ||(route==='/auth/v1/token?grant_type=password'&&options.service!==true&&keys==='password,phone'&&options.body.phone===syntheticPhone&&typeof options.body.password==='string')
- ||(route==='/auth/v1/token?grant_type=refresh_token'&&options.service!==true&&keys==='refresh_token'&&typeof options.body.refresh_token==='string')
- ||(route==='/auth/v1/logout?scope=local'&&options.service!==true&&options.body===undefined&&typeof options.token==='string');
- if(!allowed||(options.method??'POST')!=='POST')throw Error('Phone fixture permits confirmed-admin/password/refresh/local-logout only');
-}
-async function verifyPhonePasswordLifecycle({request,db,password,claims,guardedSessions}) {
- const routes=[];
- const call=async(route,options)=>{assertPhoneLifecycleRequest(route,options);routes.push(route);return request(route,options);};
- const sessionCount=async uid=>(await db.query('select count(*)::int n from auth.sessions where user_id=$1',[uid])).rows[0].n;
- const originalSessions=[];for(const x of guardedSessions)originalSessions.push(claims(x.access_token).session_id);
- // Already-confirmed creation has NO signup/OTP/SMS/verification branch.
- const creation=await call('/auth/v1/admin/users',{service:true,body:{phone:syntheticPhone,password,phone_confirm:true}});
- assert.equal(creation.status,200,'Synthetic preconfirmed phone creation');const user=await creation.json();assert.ok(user.id);assert.ok(user.phone_confirmed_at);assert.equal(user.phone?.replace(/^\+/,''),syntheticPhone.slice(1));
- const identity=async()=>(await db.query(`select jsonb_build_object('user',(select jsonb_build_object('id',id,'phone',phone,'email',email,'app_metadata',raw_app_meta_data,'phone_confirmed_at',phone_confirmed_at,'phone_change',phone_change,'phone_change_token',phone_change_token,'phone_change_sent_at',phone_change_sent_at) from auth.users where id=$1),'identities',(select jsonb_agg(jsonb_build_object('user_id',user_id,'provider',provider,'provider_id',provider_id) order by provider,provider_id) from auth.identities where user_id=$1)) v`,[user.id])).rows[0].v;
- const before=await identity();assert.equal(await sessionCount(user.id),0);
- const login=await call('/auth/v1/token?grant_type=password',{body:{phone:syntheticPhone,password}});if(login.status!==200){let code='UNCLASSIFIED_AUTH_CODE';try{const error=await login.clone().json();if(typeof error.error_code==='string'&&/^[a-z0-9_]{1,64}$/.test(error.error_code))code=error.error_code;}catch{}console.error(JSON.stringify({phase:'synthetic_phone_password_grant',status:login.status,code}));}assert.equal(login.status,200,'Real phone/password grant');const first=await login.json();assert.equal(first.user.id,user.id);assert.ok(first.access_token&&first.refresh_token);const sid=claims(first.access_token).session_id;assert.ok(sid);assert.equal(claims(first.access_token).sub,user.id);assert.equal(await sessionCount(user.id),1);
- const refresh=await call('/auth/v1/token?grant_type=refresh_token',{body:{refresh_token:first.refresh_token}});assert.equal(refresh.status,200,'Phone session refresh');const next=await refresh.json();assert.equal(next.user.id,user.id);assert.equal(claims(next.access_token).session_id,sid);assert.equal(await sessionCount(user.id),1);
- assert.equal((await call('/auth/v1/logout?scope=local',{token:next.access_token})).status,204);assert.equal(await sessionCount(user.id),0);
- for(const refresh_token of [first.refresh_token,next.refresh_token]){
-  const rejected=await call('/auth/v1/token?grant_type=refresh_token',{body:{refresh_token}});assert.ok([400,401].includes(rejected.status),'Revoked phone refresh chain rejected');const body=await rejected.json();assert.equal(body.access_token,undefined);assert.equal(body.refresh_token,undefined);assert.equal(body.user,undefined);
- }
- assert.deepEqual(await identity(),before,'Phone UID/provider/confirmation unchanged; no phone-change or OTP branch');
- for(const id of originalSessions)assert.equal((await db.query('select count(*)::int n from auth.sessions where id=$1',[id])).rows[0].n,1,'Original master/admin/other session preserved');
- assert.deepEqual(routes,['/auth/v1/admin/users','/auth/v1/token?grant_type=password','/auth/v1/token?grant_type=refresh_token','/auth/v1/logout?scope=local','/auth/v1/token?grant_type=refresh_token','/auth/v1/token?grant_type=refresh_token']);
- console.log('PASS actual GoTrue PHONE/password: preconfirmed synthetic E164 creates one UID/session, password grant and refresh retain it, LOCAL logout deletes the session and rejects both old refresh tokens; provider/confirmation/original sessions unchanged; exact route allowlist has no SMS/OTP/signup/verify/resend/recovery call.');
- console.log('LIMIT phone: isolated admin-preconfirmed fictional phone only; no SMS delivery, real employee credentials, production provider config, iPhone or Face hardware validation.');
 }
