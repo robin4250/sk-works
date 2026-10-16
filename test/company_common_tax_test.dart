@@ -222,7 +222,7 @@ void main() {
     repo.value['can_edit'] = false;
     await _save(tester);
     expect(repo.saves, isEmpty); expect(active.writes, 0); expect(_text(tester, _tax()), '11');
-    expect(tester.widget<TextFormField>(_tax()).readOnly, true);
+    expect(tester.widget<TextField>(find.descendant(of: _tax(), matching: find.byType(TextField))).readOnly, true);
     await tester.pumpWidget(const SizedBox());
     await _show(tester, repo, active);
     expect(find.text('閲覧のみ'), findsOneWidget);
