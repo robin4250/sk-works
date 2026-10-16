@@ -1,4 +1,6 @@
 import 'features/chat/line_release_access.dart';
+import 'features/referrals/app_referral_page.dart';
+import 'features/referrals/app_referral_repository.dart';
 import 'features/settings/master_feature_controls_repository.dart';
 import 'dart:async';
 import 'dart:io';
@@ -1077,6 +1079,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     Widget? page;
 
     switch (key) {
+      case 'app_invite':
+        if (!SupabaseBackend.isInitialized) return;
+        page = AppReferralPage(
+          repository: AppReferralRepository(SupabaseBackend.client),
+        );
+        break;
       case 'clock_in':
         page = const AttendanceVerificationPage(
           initialEventType: 'clock_in',
@@ -1408,6 +1416,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   List<_MenuAction> get _menuItems {
     final items = <_MenuAction>[
+      _MenuAction(
+        key: 'app_invite',
+        label: SkoLanguageController.tr('SKO招待'),
+        icon: Icons.person_add_alt_1_outlined,
+        homeEligible: true,
+        accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
+      ),
       if (_moduleEnabled('chat'))
         _MenuAction(
           key: 'friends',
