@@ -21,6 +21,8 @@ create table private.platform_monitor_events (
  occurred_at timestamptz not null,
  result text not null check(result in ('unknown','http_success','unauthenticated','forbidden','rate_limited','server_error','permission_denied')),
  target_key text check(target_key ~ '^[0-9a-f]{64}$'),
+ source_key text check(source_key is null),
+ source_tracking text not null check(source_tracking='unavailable'),
  saved_at timestamptz not null default clock_timestamp(),
  primary key(source,key_epoch,event_key)
 );
@@ -48,7 +50,7 @@ begin
  select * into old_window from private.platform_monitor_windows where source=s and window_from=wf and window_to=wt and key_epoch=epoch;
  if found and (old_window.coverage<>coverage or old_window.event_count<>jsonb_array_length(p_batch->'events') or old_window.batch_digest<>encode(sha256(convert_to(p_batch::text,'UTF8')),'hex')) then raise exception 'platform batch conflict' using errcode='40001';end if;
  for e in select value from jsonb_array_elements(p_batch->'events') loop
-  if jsonb_typeof(e)<>'object' or (select array_agg(k order by k) from jsonb_object_keys(e) k) is distinct from array['event_key','occurred_at','result','target_key']::text[] or jsonb_typeof(e->'event_key')<>'string' or e->>'event_key' !~ '^[0-9a-f]{64}$' or jsonb_typeof(e->'occurred_at')<>'string' or jsonb_typeof(e->'result')<>'string' or e->>'result' not in ('unknown','http_success','unauthenticated','forbidden','rate_limited','server_error','permission_denied') or (e->'target_key'<>'null'::jsonb and (jsonb_typeof(e->'target_key')<>'string' or e->>'target_key' !~ '^[0-9a-f]{64}$')) then raise exception 'invalid platform event';end if;
+  if jsonb_typeof(e)<>'object' or (select array_agg(k order by k) from jsonb_object_keys(e) k) is distinct from array['event_key','occurred_at','result','source_key','source_tracking','target_key']::text[] or jsonb_typeof(e->'event_key')<>'string' or e->>'event_key' !~ '^[0-9a-f]{64}$' or jsonb_typeof(e->'occurred_at')<>'string' or jsonb_typeof(e->'result')<>'string' or e->>'result' not in ('unknown','http_success','unauthenticated','forbidden','rate_limited','server_error','permission_denied') or (e->'target_key'<>'null'::jsonb and (jsonb_typeof(e->'target_key')<>'string' or e->>'target_key' !~ '^[0-9a-f]{64}$')) or e->'source_key' is distinct from 'null'::jsonb or e->>'source_tracking' is distinct from 'unavailable' then raise exception 'invalid platform event';end if;
   at_time:=(e->>'occurred_at')::timestamptz;
   if not isfinite(at_time) or at_time<wf or at_time>=wt or (s='auth_audit_logs' and (e->>'result'<>'unknown' or e->'target_key'<>'null'::jsonb)) or (s='postgres_logs' and (e->>'result' not in ('unknown','permission_denied') or e->'target_key'<>'null'::jsonb)) or (s='edge_logs' and e->>'result'='permission_denied') then raise exception 'invalid platform event';end if;
   select * into old from private.platform_monitor_events where source=s and key_epoch=epoch and event_key=e->>'event_key';
@@ -56,7 +58,7 @@ begin
    if old.occurred_at<>at_time or old.result<>e->>'result' or old.target_key is distinct from e->>'target_key' then raise exception 'platform event conflict' using errcode='40001';end if;
   else
    if old_window.source is not null then raise exception 'platform batch conflict' using errcode='40001';end if;
-   insert into private.platform_monitor_events(source,key_epoch,event_key,occurred_at,result,target_key) values(s,epoch,e->>'event_key',at_time,e->>'result',e->>'target_key');
+   insert into private.platform_monitor_events(source,key_epoch,event_key,occurred_at,result,target_key,source_key,source_tracking) values(s,epoch,e->>'event_key',at_time,e->>'result',e->>'target_key',null,'unavailable');
   end if;
   n:=n+1;
  end loop;
@@ -84,7 +86,7 @@ begin
  -- to a tenant inferred from a path/JWT/body. Only enabled platform master reads.
  perform private.consume_reauthentication_proof('master.security_incidents.read','{"scope":"platform"}'::jsonb,p_proof);
  select jsonb_build_object('version',1,'source_provenance','supabase_platform_logs','scope','platform_operator','retention_days',7,'coverage','bounded_queries_not_continuous_monitoring',
- 'events',coalesce((select jsonb_agg(x) from (select source,key_epoch,event_key,occurred_at,result,target_key from private.platform_monitor_events where occurred_at>=clock_timestamp()-interval '7 days' order by occurred_at desc,source,event_key limit 100)x),'[]'::jsonb),
+ 'events',coalesce((select jsonb_agg(x) from (select source,key_epoch,event_key,occurred_at,result,target_key,source_key,source_tracking from private.platform_monitor_events where occurred_at>=clock_timestamp()-interval '7 days' order by occurred_at desc,source,event_key limit 100)x),'[]'::jsonb),
  'windows',coalesce((select jsonb_agg(x) from (select source,window_from,window_to,key_epoch,coverage,event_count from private.platform_monitor_windows where window_to>=clock_timestamp()-interval '7 days' order by window_to desc,source limit 100)x),'[]'::jsonb)) into report;
  return report;
 end $$;

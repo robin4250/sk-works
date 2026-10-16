@@ -33,7 +33,7 @@ export function sanitizePlatformRows({source,rows,from,to,hmacKey,keyEpoch}){
   }else if(source==='postgres_logs'&&row.sqlstate==='42501')result='permission_denied';
   // A 200/empty response is never classified as a successful RLS bypass or attack.
   const target_key=source==='edge_logs'&&typeof row.target==='string'&&row.target.startsWith('/')&&row.target.length<=4096?hash('target',row.target.split(/[?#]/,1)[0]):null;
-  events.push({event_key,occurred_at,result,target_key});
+  events.push({event_key,occurred_at,result,target_key,source_key:null,source_tracking:'unavailable'});
  }
  return {source,window_from:from,window_to:to,key_epoch:keyEpoch,coverage:rows.length>1000?'capacity_limited':'bounded_query',events};
 }
