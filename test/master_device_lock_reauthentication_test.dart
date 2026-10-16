@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:sk_works/features/auth/operation_reauthentication_repository.dart';
 import 'package:sk_works/features/settings/master_device_management_page.dart';
+import 'package:sk_works/features/settings/master_device_lock_proof_dialog.dart';
 import 'package:sk_works/features/settings/master_device_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -75,6 +76,48 @@ Future<void> verify(WidgetTester tester) async {
   await tester.pump();await tester.pumpAndSettle();
 }
 void main() {
+  for (final interruption in ['background', 'actor']) {
+    testWidgets('post-proof frame rejects $interruption interruption and permits a fresh retry', (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      String? currentActor = actor;
+      final pending = Completer<String>();
+      int returnedProofs = 0;
+      int requests = 0;
+      await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) =>
+        TextButton(onPressed: () async {
+          final proof = await showDialog<String>(context: context, builder: (_) =>
+            MasterDeviceLockProofDialog(expectedActor: actor, currentActor: () => currentActor,
+              deviceName: 'synthetic device', locked: true, requestProof: (_) async {
+                requests++;
+                return requests == 1 ? await pending.future : 'fresh-synthetic-proof';
+              }));
+          if (proof != null) returnedProofs++;
+        }, child: const Text('open')))));
+      await tester.tap(find.text('open'));await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('master-device-lock-password')), 'synthetic-primary');
+      await tester.tap(find.text('本人確認して変更'));
+      pending.complete('stale-synthetic-proof');
+      // Flush proof completion without executing the scheduled frame callback.
+      await tester.idle();
+      expect(returnedProofs, 0);
+      if (interruption == 'background') {
+        for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+        }
+      } else {
+        currentActor = '10000000-0000-0000-0000-000000000002';
+      }
+      await tester.pumpAndSettle();
+      expect(returnedProofs, 0);
+      expect(find.byKey(const Key('master-device-lock-password')), findsOneWidget);
+      currentActor = actor;
+      for (final state in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      await tester.pumpAndSettle();await verify(tester);
+      expect(requests, 2);expect(returnedProofs, 1);
+    });
+  }
   testWidgets('ON requires primary proof, binds exact device/value and completes lock then unlock', (tester) async {
     final devices = _Devices(),proofs = _Proofs();await _open(tester, devices, proofs);
     await lock(tester);expect(devices.changes, 0);await verify(tester);
