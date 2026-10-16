@@ -1,0 +1,141 @@
+{
+  "policies": [
+    {
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "company_members",
+      "permissive": "RESTRICTIVE",
+      "policyname": "account_deletion_access_guard",
+      "schemaname": "public",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "cmd": "ALL",
+      "qual": "private.has_company_role(company_id, ARRAY['owner'::app_role])",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "company_members",
+      "permissive": "PERMISSIVE",
+      "policyname": "company_members_owner_manage",
+      "schemaname": "public",
+      "with_check": "private.has_company_role(company_id, ARRAY['owner'::app_role])"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(user_id = ( SELECT auth.uid() AS uid))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "company_members",
+      "permissive": "PERMISSIVE",
+      "policyname": "company_members_self_read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "member_feature_permissions",
+      "permissive": "RESTRICTIVE",
+      "policyname": "account_deletion_access_guard",
+      "schemaname": "public",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "((user_id = ( SELECT auth.uid() AS uid)) OR (EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = member_feature_permissions.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text]))))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "member_feature_permissions",
+      "permissive": "PERMISSIVE",
+      "policyname": "company managers can read feature permissions",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "ALL",
+      "qual": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = member_feature_permissions.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text])))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "member_feature_permissions",
+      "permissive": "PERMISSIVE",
+      "policyname": "owners and admins can manage feature permissions",
+      "schemaname": "public",
+      "with_check": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = member_feature_permissions.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text])))))"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = worker_family_members.worker_id) AND (w.company_id = worker_family_members.company_id) AND ((w.user_id = ( SELECT auth.uid() AS uid)) OR (EXISTS ( SELECT 1\n           FROM company_members cm\n          WHERE ((cm.company_id = w.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text])))))))))",
+      "roles": [
+        "public"
+      ],
+      "tablename": "worker_family_members",
+      "permissive": "PERMISSIVE",
+      "policyname": "worker family members read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = worker_personnel_profiles.worker_id) AND (w.company_id = worker_personnel_profiles.company_id) AND ((w.user_id = ( SELECT auth.uid() AS uid)) OR (EXISTS ( SELECT 1\n           FROM company_members cm\n          WHERE ((cm.company_id = w.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text])))))))))",
+      "roles": [
+        "public"
+      ],
+      "tablename": "worker_personnel_profiles",
+      "permissive": "PERMISSIVE",
+      "policyname": "personnel profile read",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "workers",
+      "permissive": "RESTRICTIVE",
+      "policyname": "account_deletion_access_guard",
+      "schemaname": "public",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = workers.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)))))",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "workers",
+      "permissive": "PERMISSIVE",
+      "policyname": "company members can read workers",
+      "schemaname": "public",
+      "with_check": null
+    },
+    {
+      "cmd": "ALL",
+      "qual": "private.has_company_feature(company_id, 'can_manage_people'::text)",
+      "roles": [
+        "authenticated"
+      ],
+      "tablename": "workers",
+      "permissive": "PERMISSIVE",
+      "policyname": "people managers can manage workers",
+      "schemaname": "public",
+      "with_check": "private.has_company_feature(company_id, 'can_manage_people'::text)"
+    }
+  ],
+  "functions": [
+    "CREATE OR REPLACE FUNCTION private.account_access_allowed()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and not exists(\n  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())\n$function$\n",
+    "CREATE OR REPLACE FUNCTION private.has_company_feature(p_company_id uuid, p_feature text)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'private', 'pg_temp'\nAS $function$\ndeclare\n  v_user_id uuid := auth.uid();\n  v_role text;\n  v_perm public.member_feature_permissions%rowtype;\nbegin\n  if v_user_id is null or p_company_id is null then\n    return false;\n  end if;\n\n  select cm.role::text\n  into v_role\n  from public.company_members cm\n  where cm.company_id = p_company_id\n    and cm.user_id = v_user_id\n  limit 1;\n\n  if v_role is null then\n    return false;\n  end if;\n\n  if v_role in ('owner', 'admin') then\n    return true;\n  end if;\n\n  select *\n  into v_perm\n  from public.member_feature_permissions\n  where company_id = p_company_id\n    and user_id = v_user_id;\n\n  if not found then\n    return case\n      when v_role = 'manager'\n       and p_feature in (\n         'can_manage_attendance',\n         'can_approve_daily_report_edits'\n       )\n      then true\n      else false\n    end;\n  end if;\n\n  return case p_feature\n    when 'can_view_invoices' then\n      v_perm.can_view_invoices or v_perm.can_manage_invoices\n    when 'can_manage_invoices' then\n      v_perm.can_manage_invoices\n    when 'can_view_admin_site_data' then\n      false\n    when 'can_manage_admin_site_data' then\n      false\n    when 'can_manage_payroll' then\n      v_perm.can_manage_payroll\n    when 'can_manage_people' then\n      v_perm.can_manage_people\n    when 'can_manage_attendance' then\n      v_perm.can_manage_attendance\n    when 'can_approve_daily_report_edits' then\n      v_perm.can_approve_daily_report_edits\n    when 'can_manage_partner_chat' then\n      v_perm.can_manage_partner_chat\n    else false\n  end;\nend;\n$function$\n",
+    "CREATE OR REPLACE FUNCTION private.personnel_view_allowed(p_company uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and private.account_access_allowed()\n and exists(select 1 from public.company_members m\n where m.company_id=p_company and m.user_id=auth.uid()\n and (m.role::text in ('owner','admin','viewer')\n or (m.role::text='manager' and private.has_company_feature(p_company,'can_manage_people'))));\n$function$\n"
+  ]
+}
