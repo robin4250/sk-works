@@ -18,12 +18,15 @@ export async function createProtectedFixture(db){
 }
 export async function snapshotProtected(db){
  const tables=await db.query(`select n.nspname,c.relname,pg_get_userbyid(c.relowner) owner,c.relacl::text acl,c.relrowsecurity,c.relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where c.relkind='r' and n.nspname in ('public','private','auth') order by 1,2`);
- const funcs=await db.query(`select n.nspname,p.proname,pg_get_function_identity_arguments(p.oid) arguments,p.proacl::text acl,pg_get_functiondef(p.oid) definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private','auth') and p.prokind='f' order by 1,2,3`);
+ const funcs=await db.query(`select n.nspname,p.proname,pg_get_function_identity_arguments(p.oid) arguments,p.proacl::text acl,pg_get_userbyid(p.proowner) owner,pg_get_functiondef(p.oid) definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private','auth') and p.prokind='f' order by 1,2,3`);
  const policies=await db.query(`select schemaname,tablename,policyname,roles::text,cmd,qual,with_check from pg_policies where schemaname in ('public','private','auth') order by 1,2,3`);
  const roles=await db.query(`select rolname,rolsuper,rolinherit,rolcreaterole,rolcreatedb,rolcanlogin,rolreplication,rolbypassrls from pg_roles order by rolname`);
+ const indexes=await db.query(`select schemaname,tablename,indexname,indexdef from pg_indexes where schemaname in ('public','private','auth') order by 1,2,3`);
+ const constraints=await db.query(`select n.nspname,c.relname,k.conname,pg_get_constraintdef(k.oid) definition from pg_constraint k join pg_class c on c.oid=k.conrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','private','auth') order by 1,2,3`);
+ const memberships=await db.query(`select pg_get_userbyid(roleid) role_name,pg_get_userbyid(member) member_name,admin_option,inherit_option,set_option from pg_auth_members order by 1,2`);
  const data={};
  for(const table of ['public.platform_restore_fixture_companies','public.platform_restore_fixture_members','private.platform_restore_fixture_master','private.platform_restore_fixture_auth_settings','private.platform_restore_fixture_synthetic'])data[table]=(await db.query(`select to_jsonb(x) row from ${table} x order by to_jsonb(x)::text`)).rows;
- return {tables:tables.rows,funcs:funcs.rows,policies:policies.rows,roles:roles.rows,data};
+ return {tables:tables.rows,funcs:funcs.rows,policies:policies.rows,roles:roles.rows,indexes:indexes.rows,constraints:constraints.rows,memberships:memberships.rows,data};
 }
 export async function verifyProtectedRestore(db,before){
  await db.exec('reset role');
