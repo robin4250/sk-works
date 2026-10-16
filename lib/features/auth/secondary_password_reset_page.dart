@@ -389,7 +389,8 @@ class _ResetState extends State<SecondaryPasswordResetPage>
                     child: const Text('再設定する'),
                   ),
                 ],
-                if (_busy) const LinearProgressIndicator(),
+                if (_authenticating || _saving || _requirementsLoading)
+                  const LinearProgressIndicator(),
                 if (_message != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
