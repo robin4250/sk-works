@@ -9,6 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/secure_onboarding_repository.dart';
 import 'master_device_repository.dart';
+import 'master_password_protected_page.dart';
+import 'master_password_entry_repository.dart';
 import 'master_emergency_recovery_page.dart';
 import 'master_step_up_policy.dart';
 
@@ -17,10 +19,14 @@ class MasterProtectedPage extends StatefulWidget {
     super.key,
     required this.title,
     required this.child,
+    this.dedicatedMode = const bool.fromEnvironment('SKO_MASTER_PASSWORD_V1', defaultValue: false),
+    this.dedicatedAccess,
   });
 
   final String title;
   final Widget child;
+  final bool dedicatedMode;
+  final MasterPasswordEntryAccess? dedicatedAccess;
 
   @override
   State<MasterProtectedPage> createState() => _MasterProtectedPageState();
@@ -47,6 +53,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
   @override
   void initState() {
     super.initState();
+    if (widget.dedicatedMode) return;
     WidgetsBinding.instance.addObserver(this);
     _load();
   }
@@ -255,6 +262,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.dedicatedMode) return MasterPasswordProtectedPage(title: widget.title, child: widget.child, access: widget.dedicatedAccess);
     if (_loading) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),
