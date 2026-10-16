@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Confidential critical state export, never a production approval",
+  "type": "object",
+  "required": ["schema", "sections"],
+  "properties": {
+    "schema": {"const": "sko-critical-state-v1"},
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["admin_identity", "company_memberships", "master_role_assignments", "feature_flags", "schema_acl_fingerprint", "edge_deployment_fingerprint", "auth_provider_configuration_fingerprint"],
+      "properties": {
+        "admin_identity": {"allOf": [{"$ref": "#/$defs/section"}, {"properties": {"value": {"$ref": "#/$defs/identity"}}}]},
+        "company_memberships": {"allOf": [{"$ref": "#/$defs/section"}, {"properties": {"value": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/identity"}}}}]},
+        "master_role_assignments": {"allOf": [{"$ref": "#/$defs/section"}, {"properties": {"value": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["user_id", "enabled"], "properties": {"user_id": {"type": "string", "minLength": 1}, "enabled": {"type": "boolean"}}}}}}]},
+        "feature_flags": {"allOf": [{"$ref": "#/$defs/section"}, {"properties": {"value": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "boolean"}}}}]},
+        "schema_acl_fingerprint": {"$ref": "#/$defs/fingerprintSection"},
+        "edge_deployment_fingerprint": {"$ref": "#/$defs/fingerprintSection"},
+        "auth_provider_configuration_fingerprint": {"$ref": "#/$defs/fingerprintSection"}
+      }
+    }
+  },
+  "$defs": {
+    "identity": {
+      "type": "object", "required": ["user_id", "company_id", "role"],
+      "properties": {"user_id": {"type": "string", "minLength": 1}, "company_id": {"type": "string", "minLength": 1}, "role": {"type": "string", "minLength": 1}}
+    },
+    "fingerprintSection": {"allOf": [{"$ref": "#/$defs/section"}, {"properties": {"value": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}]},
+    "section": {
+      "type": "object",
+      "required": ["status", "value", "evidence_sha256"],
+      "properties": {
+        "status": {"enum": ["observed", "unknown"]},
+        "value": {},
+        "evidence_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}
