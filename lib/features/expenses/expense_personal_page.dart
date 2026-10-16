@@ -33,6 +33,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
   ExpenseReceiptAttachment? _receipt;
   DateTime _date = DateTime.now(), _month = DateTime.now();
   bool _busy = true, _ready = false;
+  bool _submitting = false;
   String? _error, _actor;
   int _generation = 0;
   @override
@@ -143,8 +144,10 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
     final generation = ++_generation;
     setState(() {
       _busy = true;
+      _submitting = true;
       _error = null;
     });
+    final companyName = _scope!['company_name']?.toString() ?? '所属会社';
     try {
       final draft =
           _pending ??
@@ -166,11 +169,36 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         _receipt = null;
         _month = DateTime.parse(draft.date);
       });
-      await _loadSelection(generation);
-      if (mounted && _current(generation)) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('経費を申請しました')));
+      var acknowledged = false;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('経費の申請が完了しました'),
+          content: Text(
+            '$companyNameへの経費申請を登録しました。承認状況は、この画面の申請履歴で確認できます。',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () {
+                if (acknowledged) return;
+                acknowledged = true;
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('申請履歴を確認'),
+            ),
+          ],
+        ),
+      );
+      if (!_current(generation)) return;
+      try {
+        await _loadSelection(generation);
+      } catch (_) {
+        if (_current(generation)) {
+          setState(() {
+            _ready = false;
+            _error = '申請は登録済みですが、履歴を再読み込みできませんでした。再申請せず、この画面を再読み込みしてください。';
+          });
+        }
       }
     } catch (e) {
       if (mounted && generation == _generation) {
@@ -180,7 +208,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         );
       }
     } finally {
-      if (mounted && generation == _generation) setState(() => _busy = false);
+      if (mounted && generation == _generation) {
+        setState(() { _busy = false; _submitting = false; });
+      }
     }
   }
 
@@ -329,7 +359,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         pending == null &&
         _pendingChange == null &&
         _access?.actor == _actor;
-    return Scaffold(
+    return PopScope(
+      canPop: !_submitting,
+      child: Scaffold(
       appBar: AppBar(toolbarHeight: kToolbarHeight, title: const Text('経費申請')),
       body: _actor != null && _access?.actor != _actor
           ? const Center(child: Text('ログイン情報が変わりました。開き直してください。'))
@@ -549,6 +581,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                 ),
               ],
             ),
+      ),
     );
   }
 }
