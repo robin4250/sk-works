@@ -27,7 +27,7 @@ class AppReferralComposer {
   final Future<void> Function(String id) recordOpened;
 
   bool _busy = false;
-  (String, String, String, bool)? _key;
+  (String, String, String, bool, String)? _key;
   String? _invitationId;
   Uri? _uri;
   bool _opened = false;
@@ -45,6 +45,7 @@ class AppReferralComposer {
     required String name,
     required String phone,
     required bool friendInvite,
+    String distributionKey = '',
   }) async {
     if (_busy) {
       return AppReferralComposeOutcome.busy;
@@ -60,7 +61,7 @@ class AppReferralComposer {
       if (canonicalPhone.startsWith('+81')) {
         canonicalPhone = '0${canonicalPhone.substring(3)}';
       }
-      final key = (actor, name.trim(), canonicalPhone, friendInvite);
+      final key = (actor, name.trim(), canonicalPhone, friendInvite, distributionKey);
       if (_key != key) {
         _clear();
       }
