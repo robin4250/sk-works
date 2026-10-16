@@ -12,14 +12,22 @@ abstract class SecondaryPasswordResetAccess {
   Future<void> save(String password);
 }
 
-class _DeviceResetAccess implements SecondaryPasswordResetAccess {
+class DeviceSecondaryPasswordResetAccess implements SecondaryPasswordResetAccess {
+  DeviceSecondaryPasswordResetAccess({
+    @visibleForTesting OperationReauthenticationRepository? reauthenticationRepository,
+    @visibleForTesting String? Function()? currentActor,
+  }) : _injectedReauthentication = reauthenticationRepository, _currentActor = currentActor;
+  final OperationReauthenticationRepository? _injectedReauthentication;
+  final String? Function()? _currentActor;
+  OperationReauthenticationRepository? get _reauthentication =>
+      _injectedReauthentication ?? OperationReauthenticationRepository.maybeCreate();
   final _auth = LocalAuthentication();
   bool? serverRequired;
   String? _proof;
   int _generation = 0;
   void invalidateProof() { _generation++; _proof = null; }
   Future<bool> loadRequirement() async {
-    final repository = OperationReauthenticationRepository.maybeCreate();
+    final repository = _reauthentication;
     if (repository == null) throw StateError('Authentication required');
     serverRequired = (await repository.capabilities())['secondary_password'] == true;
     return serverRequired!;
@@ -27,7 +35,7 @@ class _DeviceResetAccess implements SecondaryPasswordResetAccess {
   SecureOnboardingRepository? get _repository =>
       SecureOnboardingRepository.maybeCreate();
   @override
-  String? get currentUserId => _repository?.currentUser?.id;
+  String? get currentUserId => _currentActor?.call() ?? _repository?.currentUser?.id;
   @override
   Future<bool> authenticate() => _auth.authenticate(
     localizedReason: '第2パスワードを再設定するため本人確認します',
@@ -42,7 +50,7 @@ class _DeviceResetAccess implements SecondaryPasswordResetAccess {
     if (serverRequired!) {
       final generation = _generation;
       final actor = currentUserId;
-      final repository = OperationReauthenticationRepository.maybeCreate();
+      final repository = _reauthentication;
       if (repository == null || actor == null) throw StateError('Authentication required');
       final proof = await repository.requestProof(password: password,
         operation: 'secondary_password.replace', target: {'user_id': actor});
@@ -58,17 +66,17 @@ class _DeviceResetAccess implements SecondaryPasswordResetAccess {
 
   @override
   Future<void> save(String password) async {
-    final repository = _repository;
-    if (repository == null) throw StateError('Authentication required');
     if (serverRequired == null) throw StateError('Authentication unavailable');
     if (serverRequired!) {
       final proof = _proof;
       _proof = null;
       if (proof == null) throw StateError('Reauthentication required');
-      final verified = OperationReauthenticationRepository.maybeCreate();
+      final verified = _reauthentication;
       if (verified == null) throw StateError('Authentication required');
       await verified.replaceSecondaryPassword(password, proof);
     } else {
+      final repository = _repository;
+      if (repository == null) throw StateError('Authentication required');
       await repository.setSecondaryPassword(password);
     }
   }
@@ -88,7 +96,7 @@ class SecondaryPasswordResetPage extends StatefulWidget {
 
 class _ResetState extends State<SecondaryPasswordResetPage>
     with WidgetsBindingObserver {
-  late final _access = widget.access ?? _DeviceResetAccess();
+  late final _access = widget.access ?? DeviceSecondaryPasswordResetAccess();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
   final _primaryPassword = TextEditingController();
@@ -112,7 +120,7 @@ class _ResetState extends State<SecondaryPasswordResetPage>
     _lifecycle =
         WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
-    if (widget.access == null) {
+    if (_access is DeviceSecondaryPasswordResetAccess) {
       _requirementsLoading = true;
       _loadRequirement();
     }
@@ -120,7 +128,7 @@ class _ResetState extends State<SecondaryPasswordResetPage>
 
   Future<void> _loadRequirement() async {
     try {
-      final required = await (_access as _DeviceResetAccess).loadRequirement();
+      final required = await (_access as DeviceSecondaryPasswordResetAccess).loadRequirement();
       if (!mounted) return;
       setState(() {
         _serverRequired = required;
@@ -139,8 +147,8 @@ class _ResetState extends State<SecondaryPasswordResetPage>
   }
 
   void _clear() {
-    if (_access is _DeviceResetAccess) {
-      (_access as _DeviceResetAccess).invalidateProof();
+    if (_access is DeviceSecondaryPasswordResetAccess) {
+      _access.invalidateProof();
     }
     _generation++;
     _actor = null;

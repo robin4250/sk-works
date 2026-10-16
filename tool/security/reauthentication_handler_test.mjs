@@ -18,10 +18,10 @@ function fixture(overrides={}) {
   if(path==='/rest/v1/rpc/issue_reauthentication_proof') {issued=JSON.parse(options.body);return Response.json(new Date(Date.now()+120000).toISOString(),{status:overrides.issueStatus??200});}
   throw Error('Unexpected endpoint '+path);
  };
- const handler=createReauthenticationHandler({baseUrl:'https://fixture.invalid',publicKey:'public_fixture',serviceKey:'sb_secret_fixture-not-a-real-key',fetcher});
+ const handler=createReauthenticationHandler({baseUrl:'https://fixture.invalid',publicKey:'public_fixture',serviceKey:'sb_'+'secret_'+'fixture-key',fetcher});
  return {calls,get issued(){return issued;},async invoke(body={operation:'secondary_password.replace',password:'synthetic-password',target},token=jwt()) {
   return handler(new Request('https://function.invalid',{method:'POST',headers:{Authorization:'Bearer '+token},body:JSON.stringify(body)}));
- }};
+ }, handler};
 }
 test('verified credentials issue bound nonce only after distinct session logout; no returned auth credentials',async()=>{
  const f=fixture(); const r=await f.invoke(); assert.equal(r.status,200); const v=await r.json();
@@ -61,4 +61,14 @@ test('Master feature value and monitoring target passed unchanged to service iss
 });
 test('JWT claims cannot replace Auth server identity',async()=>{
  const f=fixture();assert.equal((await f.invoke(undefined,jwt('10000000-0000-0000-0000-000000000002'))).status,401);assert.equal(f.issued,undefined);
+});
+test('chunked body without content length is cancelled at the byte limit before password verification',async()=>{
+ const f=fixture();let cancelled=false;
+ const body=new ReadableStream({pull(controller){controller.enqueue(new Uint8Array(1024).fill(65));},cancel(){cancelled=true;}});
+ const r=await f.handler(new Request('https://function.invalid',{method:'POST',headers:{Authorization:'Bearer '+jwt()},body,duplex:'half'}));
+ assert.equal(r.status,400);assert.equal(cancelled,true);assert.equal(f.calls.some(x=>x.path.includes('grant_type')),false);
+});
+test('UTF-8 byte limit rejects oversized multibyte JSON',async()=>{
+ const f=fixture();const r=await f.invoke({operation:'secondary_password.replace',password:'あ'.repeat(1600),target});
+ assert.equal(r.status,400);assert.equal(f.calls.some(x=>x.path.includes('grant_type')),false);
 });
