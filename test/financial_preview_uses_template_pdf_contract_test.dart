@@ -34,7 +34,7 @@ void main() {
     expect(source, contains('PdfPageFormat.a4'));
     expect(
       source,
-      contains('PaymentCertificatePdfService.buildPdf(record)'),
+      contains('PaymentCertificatePdfService.buildPdf(widget.record)'),
     );
   });
 }
