@@ -1,0 +1,61 @@
+name: Platform security monitor
+on:
+  pull_request:
+    paths:
+      - 'tool/security/platform_*'
+      - 'tool/security/platform_review/**'
+      - 'supabase/migrations/*platform_security_monitor.sql'
+      - '.github/workflows/platform-security-monitor.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/security/platform_*'
+      - 'tool/security/platform_review/**'
+      - 'supabase/migrations/*platform_security_monitor.sql'
+      - '.github/workflows/platform-security-monitor.yml'
+permissions:
+  contents: read
+jobs:
+  adapter-and-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node --test tool/security/platform_log_adapter_test.mjs
+      - run: node tool/security/platform_log_sql_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+  signed-http-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: platform-fixture-only
+          POSTGRES_DB: sko_platform_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_platform_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      postgrest:
+        image: postgrest/postgrest:v16.4
+        env:
+          PGRST_DB_URI: postgres://postgres:platform-fixture-only@postgres:5432/sko_platform_fixture
+          PGRST_DB_ANON_ROLE: anon
+          PGRST_DB_SCHEMAS: public
+          PGRST_JWT_SECRET: platform-fixture-only-secret-at-least-32-characters
+        ports: ['3000:3000']
+    env:
+      SKO_PLATFORM_FIXTURE_URL: postgres://postgres:platform-fixture-only@127.0.0.1:5432/sko_platform_fixture
+      SKO_PLATFORM_POSTGREST_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/platform_log_sql_check.mjs "$PWD/tool/security/platform_log_pg_adapter.mjs"
