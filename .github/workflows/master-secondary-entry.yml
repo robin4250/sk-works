@@ -1,0 +1,24 @@
+name: Master shared secondary entry isolated
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/master_protected_page.dart'
+      - 'test/master_secondary_entry_test.dart'
+      - 'test/master_protected_page_contract_test.dart'
+      - '.github/workflows/master-secondary-entry.yml'
+permissions:
+  contents: read
+jobs:
+  master-entry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/settings/master_protected_page.dart test/master_secondary_entry_test.dart test/master_protected_page_contract_test.dart
+      - run: flutter test test/master_secondary_entry_test.dart test/master_protected_page_contract_test.dart test/master_step_up_policy_test.dart
