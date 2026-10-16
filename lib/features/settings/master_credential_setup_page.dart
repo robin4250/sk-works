@@ -125,13 +125,27 @@ class _MasterCredentialSetupPageState extends State<MasterCredentialSetupPage> w
     } catch (_) { if (_valid(generation, binding)) setState(() => _message = '結果を照合できませんでした。再送せず、時間をおいて確認してください。'); }
     finally { if (mounted && generation == _generation) setState(() => _busy = false); }
   }
+  Future<void> _showHelp() async {
+    if (_busy) return;
+    _invalidate();
+    await showDialog<void>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Master専用パスワードについて'),
+      content: const SingleChildScrollView(child: Text(
+        '信頼済みのMaster端末で、Master本人だけが登録・変更できます。\n\n'
+        '初回登録は、現在の第2パスワードで本人確認します。設定後の変更は、現在のMaster専用パスワードで確認します。\n\n'
+        '通常ログイン用パスワード・会社情報・第2パスワードは変更しません。\n\n'
+        '通信結果が不明な場合は再送せず、「保存結果を照合」で確認してください。\n\n'
+        '安全のため入力は消去しました。閉じた後は再読み込みしてください。')),
+      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('閉じる'))],
+    ));
+  }
   @override void dispose() {
     _generation++; _clear(); _subscription?.cancel(); WidgetsBinding.instance.removeObserver(this);
     _existing.dispose(); _password.dispose(); _confirm.dispose(); super.dispose();
   }
   @override Widget build(BuildContext context) {
     final status = _status;
-    return Scaffold(appBar: AppBar(title: const Text('Master専用パスワード')), body: SafeArea(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return Scaffold(appBar: AppBar(title: const Text('Master専用パスワード'), actions: [IconButton(tooltip: 'ヘルプ', icon: const Icon(Icons.help_outline), onPressed: _busy ? null : _showHelp)]), body: SafeArea(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (_complete) ...[
         const Icon(Icons.check_circle_outline, size: 56),
         const Text('Master専用パスワードの保存が完了しました。'),
