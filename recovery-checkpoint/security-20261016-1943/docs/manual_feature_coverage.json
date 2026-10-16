@@ -1,0 +1,398 @@
+{
+  "revision_date": "2026-10-13",
+  "items": [
+    {
+      "key": "traffic_guidance",
+      "chapters": [
+        "天気・交通とホームの並べ替え"
+      ],
+      "sources": [
+        "lib/features/traffic/traffic_home_card.dart"
+      ]
+    },
+    {
+      "key": "weather_forecast",
+      "chapters": [
+        "天気・交通とホームの並べ替え"
+      ],
+      "sources": [
+        "lib/features/home/weather_forecast_card.dart"
+      ]
+    },
+    {
+      "key": "expense_claims",
+      "chapters": [
+        "本人の経費申請と領収書",
+        "経費の承認・振り分け"
+      ],
+      "sources": [
+        "lib/features/expenses/expense_personal_page.dart",
+        "lib/features/expenses/expense_review_detail_page.dart"
+      ]
+    },
+    {
+      "key": "tutorial",
+      "chapters": [
+        "はじめに・SKOの基本"
+      ],
+      "sources": [
+        "lib/features/help/manual_content.dart"
+      ]
+    },
+    {
+      "key": "notifications",
+      "chapters": [
+        "チャット・お知らせ"
+      ],
+      "sources": [
+        "lib/features/notifications/notifications_page.dart"
+      ]
+    },
+    {
+      "key": "attendance",
+      "chapters": [
+        "出勤表"
+      ],
+      "sources": [
+        "lib/features/attendance/worker_attendance_sheet_page.dart"
+      ]
+    },
+    {
+      "key": "daily_report",
+      "chapters": [
+        "日報・責任者サイン",
+        "日報の現場別・月別閲覧"
+      ],
+      "sources": [
+        "lib/features/daily_reports/daily_report_month_page.dart"
+      ]
+    },
+    {
+      "key": "friends",
+      "chapters": [
+        "チャット一覧・未読・グループ写真"
+      ],
+      "sources": [
+        "lib/features/chat/chat_friends_page.dart",
+        "lib/app_v2.dart"
+      ]
+    },
+    {
+      "key": "chat",
+      "chapters": [
+        "チャット・お知らせ",
+        "チャット一覧・未読・グループ写真"
+      ],
+      "sources": [
+        "lib/features/chat/chat_cloud_page.dart"
+      ]
+    },
+    {
+      "key": "site_register",
+      "chapters": [
+        "現場・現場単価の管理"
+      ],
+      "sources": [
+        "lib/features/sites/site_cloud_page.dart"
+      ]
+    },
+    {
+      "key": "employee_resources",
+      "chapters": [
+        "本人の書類・資格カード",
+        "社員の書類・資格カード"
+      ],
+      "sources": [
+        "lib/features/people/worker_document_page.dart",
+        "lib/features/qualifications/qualification_cloud_page.dart"
+      ]
+    },
+    {
+      "key": "people",
+      "chapters": [
+        "社員データと個人情報の変更承認"
+      ],
+      "sources": [
+        "lib/features/people/employee_personnel_detail_page.dart"
+      ]
+    },
+    {
+      "key": "initial_registration",
+      "chapters": [
+        "管理者の初回設定"
+      ],
+      "sources": [
+        "lib/app_v2.dart"
+      ]
+    },
+    {
+      "key": "employee_register",
+      "chapters": [
+        "従業員登録を手伝う",
+        "管理者の初回設定"
+      ],
+      "sources": [
+        "lib/app_v2.dart"
+      ]
+    },
+    {
+      "key": "employee_onboarding_approvals",
+      "chapters": [
+        "従業員の本登録承認"
+      ],
+      "sources": [
+        "lib/app_v2.dart"
+      ]
+    },
+    {
+      "key": "payroll",
+      "chapters": [
+        "給与明細と第2パスワード"
+      ],
+      "sources": [
+        "lib/features/payroll/payroll_statements_page.dart"
+      ]
+    },
+    {
+      "key": "payment_certificates",
+      "chapters": [
+        "月別支払証明書と現場別合意帳票"
+      ],
+      "sources": [
+        "lib/features/payroll/payment_certificates_page.dart"
+      ]
+    },
+    {
+      "key": "payment_certificate_settings",
+      "chapters": [
+        "支払証明書の単価・計算式設定"
+      ],
+      "sources": [
+        "lib/features/payroll/payment_certificates_page.dart"
+      ]
+    },
+    {
+      "key": "payroll_settings",
+      "chapters": [
+        "個別給与設定の確認・登録"
+      ],
+      "sources": [
+        "lib/features/payroll/individual_payroll_settings_page.dart"
+      ]
+    },
+    {
+      "key": "payroll_adjustments",
+      "chapters": [
+        "給与調整の対象日と登録・修正"
+      ],
+      "sources": [
+        "lib/features/payroll/payroll_adjustment_page.dart"
+      ]
+    },
+    {
+      "key": "qualifications",
+      "chapters": [
+        "本人の書類・資格カード",
+        "社員の書類・資格カード"
+      ],
+      "sources": [
+        "lib/features/qualifications/own_qualification_registration_page.dart",
+        "lib/features/qualifications/qualification_cloud_page.dart"
+      ]
+    },
+    {
+      "key": "documents",
+      "chapters": [
+        "本人の書類・資格カード",
+        "社員の書類・資格カード"
+      ],
+      "sources": [
+        "lib/features/people/own_document_registration_page.dart",
+        "lib/features/people/worker_document_page.dart"
+      ]
+    },
+    {
+      "key": "company_documents",
+      "chapters": [
+        "会社データ・角印・提出書類の送信"
+      ],
+      "sources": [
+        "lib/features/people/company_submitted_documents_page.dart"
+      ]
+    },
+    {
+      "key": "company_delivery_inbox",
+      "chapters": [
+        "協力会社から受信した社員・書類"
+      ],
+      "sources": [
+        "lib/features/people/company_delivery_inbox_page.dart"
+      ]
+    },
+    {
+      "key": "company_deliveries",
+      "chapters": [
+        "協力会社から受信した社員・書類"
+      ],
+      "sources": [
+        "lib/features/people/company_delivery_inbox_page.dart"
+      ]
+    },
+    {
+      "key": "trade_companies",
+      "chapters": [
+        "取引会社・協力会社の登録と契約"
+      ],
+      "sources": [
+        "lib/features/companies/trade_company_page.dart"
+      ]
+    },
+    {
+      "key": "subcontractors",
+      "chapters": [
+        "取引会社・協力会社の登録と契約"
+      ],
+      "sources": [
+        "lib/features/companies/trade_company_page.dart"
+      ]
+    },
+    {
+      "key": "invoices",
+      "chapters": [
+        "請求書・第2認証",
+        "通常請求書の下書き・プレビュー"
+      ],
+      "sources": [
+        "lib/features/invoices/invoice_cloud_page.dart"
+      ]
+    },
+    {
+      "key": "site_map",
+      "chapters": [
+        "現場マップと複数地点表示"
+      ],
+      "sources": [
+        "lib/features/sites/site_map_page.dart"
+      ]
+    },
+    {
+      "key": "admin_sites",
+      "chapters": [
+        "現場の給与用・請求用単価"
+      ],
+      "sources": [
+        "lib/features/sites/admin_site_financial_page.dart"
+      ]
+    },
+    {
+      "key": "vehicle_routes",
+      "chapters": [
+        "車両・ルートの確認と選択",
+        "車両とルートの登録・管理",
+        "ルート勤務の現場到着・現場移動"
+      ],
+      "sources": [
+        "lib/features/operations/vehicle_route_page.dart",
+        "lib/features/operations/vehicle_route_selection_page.dart",
+        "lib/features/attendance/route_journey_capture_page.dart"
+      ]
+    },
+    {
+      "key": "profile",
+      "chapters": [
+        "本人情報・本登録",
+        "プロフィール・ヘルプ・印刷"
+      ],
+      "sources": [
+        "lib/features/profile/profile_page.dart"
+      ]
+    },
+    {
+      "key": "notes",
+      "chapters": [
+        "ノートの作成・検索・ピン留め"
+      ],
+      "sources": [
+        "lib/features/notes/notes_cloud_page.dart"
+      ]
+    },
+    {
+      "key": "albums",
+      "chapters": [
+        "アルバムの作成・写真の追加"
+      ],
+      "sources": [
+        "lib/features/albums/albums_cloud_page.dart"
+      ]
+    },
+    {
+      "key": "approvals",
+      "chapters": [
+        "日報修正の承認",
+        "ルート請求数量の承認",
+        "ルートの請求数量を申請する",
+        "社員データと個人情報の変更承認"
+      ],
+      "sources": [
+        "lib/features/route_billing/route_billing_quantity_approvals_page.dart",
+        "lib/features/route_billing/route_customer_day_quantity_page.dart",
+        "lib/features/people/worker_personnel_change_approvals_page.dart"
+      ]
+    },
+    {
+      "key": "line_talk",
+      "chapters": [
+        "LINEトークと月別請求書",
+        "LINE出勤表・請求書の確認と申請",
+        "LINE参加グループ一覧と通常グループへの追加"
+      ],
+      "sources": [
+        "lib/features/chat/line_talk_hub_page.dart",
+        "lib/features/chat/line_import_page.dart",
+        "lib/features/chat/line_historical_invoice_bridge_page.dart",
+        "lib/features/chat/line_joined_groups_page.dart",
+        "lib/features/chat/line_linked_talk_page.dart",
+        "lib/features/chat/chat_cloud_repository.dart"
+      ]
+    },
+    {
+      "key": "today_line",
+      "chapters": [
+        "本日のLINE出勤候補を確認する"
+      ],
+      "sources": [
+        "lib/features/chat/today_line_attendance_page.dart"
+      ]
+    },
+    {
+      "key": "appearance",
+      "chapters": [
+        "ホーム外観と表示・並び順"
+      ],
+      "sources": [
+        "lib/features/home/home_appearance.dart"
+      ]
+    },
+    {
+      "key": "settings",
+      "chapters": [
+        "設定・通知音・動かせるヘルプ",
+        "会社単価・手当設定"
+      ],
+      "sources": [
+        "lib/features/settings/settings_page.dart"
+      ]
+    },
+    {
+      "key": "help",
+      "chapters": [
+        "設定・通知音・動かせるヘルプ",
+        "プロフィール・ヘルプ・印刷"
+      ],
+      "sources": [
+        "lib/features/help/manual_library_page.dart",
+        "lib/features/help/help_page.dart"
+      ]
+    }
+  ]
+}

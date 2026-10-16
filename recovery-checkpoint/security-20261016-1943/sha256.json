@@ -1,0 +1,5 @@
+{
+  "docs/manual_feature_coverage.json": "07bb32a6a31374743f46dd84cdd26a09e2820fa704578e3c511836174d364177",
+  "lib/features/help/manual_content.dart": "3a801d73fe6ecbc13e29adb352388522882adc44422129d5650a2ffeff8e0571",
+  "test/menu_permissions_restore_contract_test.dart": "01559ea57c118f8ef13844b6f669acbda8b405b304a129aa2f941f17ac047e5e"
+}
