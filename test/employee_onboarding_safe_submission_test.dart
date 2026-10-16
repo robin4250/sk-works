@@ -12,12 +12,28 @@ import 'package:image_picker/image_picker.dart';
 import 'package:sk_works/features/auth/employee_onboarding_pages.dart';
 import 'package:sk_works/features/auth/employee_onboarding_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+// Test-only deterministic JSON codec; package version is locked.
+// ignore: depend_on_referenced_packages
+import 'package:yet_another_json_isolate/yet_another_json_isolate.dart';
 
 const actor = '10000000-0000-4000-8000-000000000001';
 const other = '10000000-0000-4000-8000-000000000002';
 const capName = 'employee_onboarding_photo_capability';
 const safeName = 'save_employee_onboarding_profile_without_photos';
 const oldName = 'save_employee_onboarding_profile';
+
+// The SDK's worker isolate is outside widget fake time. Keep the same dart:convert
+// JSON semantics in-process so pumpAndSettle awaits every mocked request branch.
+class FixtureJson extends YAJsonIsolate {
+  @override
+  Future<void> initialize() async {}
+  @override
+  Future<void> dispose() async {}
+  @override
+  Future<dynamic> decode(String json) async => jsonDecode(json);
+  @override
+  Future<String> encode(Object? json) async => jsonEncode(json);
+}
 
 class Fixture {
   late final SupabaseClient client;
@@ -35,6 +51,7 @@ class Fixture {
   Future<void> start() async {
     client = SupabaseClient('https://synthetic-onboarding.invalid', 'synthetic-anon',
       authOptions: const AuthClientOptions(autoRefreshToken: false),
+      isolate: FixtureJson(),
       httpClient: MockClient(respond));
     repository = EmployeeOnboardingRepository(client);
     await login(actor);
@@ -208,7 +225,9 @@ void main() {
         if (mode == 'denied') f.capError = '42501';
         if (mode == 'changed') f.capError = 'PGRST202';
         if (mode == 'actor') await f.login(other);
-        if (mode == 'background') tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        if (mode == 'background') {
+          for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) { tester.binding.handleAppLifecycleStateChanged(state); }
+        }
       };
       await send(tester);
       expect(submitted, 0);
@@ -216,7 +235,10 @@ void main() {
       expect(f.named(safeName), isEmpty);
       expect(f.storage, isEmpty);
       expect(tester.widget<TextField>(find.byType(TextField).first).controller!.text, 'synthetic field 0');
-      if (mode == 'background') tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      if (mode == 'background') {
+        for (final state in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) { tester.binding.handleAppLifecycleStateChanged(state); }
+        await tester.pumpAndSettle();
+      }
     });
   }
 
