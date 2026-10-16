@@ -34,6 +34,16 @@ identity/owner/history preservation and exact original function/ACL restoration.
 Widget/SDK tests exercise the actual device page and proof dialog with mocked
 transport. These are not a real phone or production recovery/login test.
 
+Dedicated CI run `38896353671` at commit
+`0e1be472d4523e664e76f532134d0e5d8de3c8d3` passed both jobs: PostgreSQL 17
+restore/authorization/concurrency and 23 Edge tests (`116957647427`), plus
+Flutter analysis and all 10 page/dialog/SDK/existing-contract tests
+(`116957647747`). The manually invoked stale callback fixture uses synchronous
+assertions inside callbacks to avoid Flutter test-zone guard conflicts; its
+single capability request, single proof and single completed mutation checks
+remain enforced. Whole-application Flutter/iOS CI after retargeting to main
+remains a separate integration gate.
+
 Production application/enforcement still requires confidential backup, isolated
 restore, normal-administrator UI comparison, an impact report and the user's
 explicit approval. This branch does not satisfy or bypass that approval boundary.
