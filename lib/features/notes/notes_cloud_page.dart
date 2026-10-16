@@ -304,7 +304,17 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
+      builder: (sheetContext) => StreamBuilder<dynamic>(
+        stream: SupabaseBackend.isInitialized
+            ? SupabaseBackend.client.auth.onAuthStateChange : null,
+        builder: (_, __) {
+          if (actor != _actorId || groupId != _selectedGroupId) {
+            return const SafeArea(child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('利用者またはグループが変更されました。開き直してください。'),
+            ));
+          }
+          return SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             20,
@@ -365,6 +375,8 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
             ],
           ),
         ),
+      );
+        },
       ),
     );
   }
