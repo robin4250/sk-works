@@ -35,7 +35,7 @@ Wrong secrets increment the new Master-specific failure counter and return a gen
 
 Passwords: new secret at least 8 characters and at most 72 UTF8 bytes (bcrypt limit); existing secret nonempty and at most 72 UTF8 bytes. No trim/normalization. Dedicated bcrypt salt cost12 is newly generated: shared hashes are not copied or moved. Separate stores remain separate even if a user types the same value. Password equality is not used to infer roles or account linking.
 
-All new operations use existing deletion advisory barrier plus account_access_allowed, auth.users allowed/not anonymous, auth.sessions same actor/not expired, enabled Master and own trusted device row checks/locks; time-based session expiry is rechecked after waiting. Trusted device_key is a bearer secret, not hardware attestation. Native Face is an additional client check, not server proof.
+All new operations use existing deletion advisory barrier plus account_access_allowed, auth.users allowed/not anonymous, auth.sessions same actor/not expired, enabled Master and own trusted device row checks/locks; time-based session and nonce expiry are rechecked after lock waits and all bcrypt work, immediately before credential mutation or successful unlock. Definer paths contain only pg_catalog/extensions/pg_temp; crypto requires pgcrypto in the trusted extensions schema, never public search-path resolution. Cross-actor request-UUID INSERT races use ON CONFLICT and return generic conflict. Trusted device_key is a bearer secret, not hardware attestation. Native Face is an additional client check, not server proof.
 
 ## Unknown commit, privacy and receipts
 
