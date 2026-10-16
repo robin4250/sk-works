@@ -14,16 +14,19 @@ class VehicleEditorPage extends StatefulWidget {
   const VehicleEditorPage({
     super.key,
     this.vehicle,
+    this.repository,
   });
 
   final Map<String, dynamic>? vehicle;
+  final VehicleRouteRepository? repository;
 
   @override
   State<VehicleEditorPage> createState() => _VehicleEditorPageState();
 }
 
 class _VehicleEditorPageState extends State<VehicleEditorPage> {
-  final _repository = VehicleRouteRepository.maybeCreate();
+  late final _repository =
+      widget.repository ?? VehicleRouteRepository.maybeCreate();
   final _picker = ImagePicker();
 
   late final TextEditingController _name;
@@ -35,12 +38,17 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
   _PendingDocument? _compulsoryDoc;
   _PendingDocument? _voluntaryDoc;
   bool _saving = false;
+  String? _savedVehicleId;
+  bool _bodySaved = false;
+  String? _partialSaveMessage;
+  final _uploadedDocumentKinds = <String>{};
   bool _canManageVehicleNotifications = false;
 
   @override
   void initState() {
     super.initState();
     final row = widget.vehicle;
+    _savedVehicleId = row?['id']?.toString();
     _name = TextEditingController(
       text: row?['display_name']?.toString() ?? '',
     );
@@ -171,10 +179,13 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
 
     final row = widget.vehicle;
     final registrationReady = _registrationDoc != null ||
+        _uploadedDocumentKinds.contains('registration') ||
         (row?['registration_document_path']?.toString().isNotEmpty == true);
     final compulsoryReady = _compulsoryDoc != null ||
+        _uploadedDocumentKinds.contains('compulsory') ||
         (row?['compulsory_insurance_path']?.toString().isNotEmpty == true);
     final voluntaryReady = _voluntaryDoc != null ||
+        _uploadedDocumentKinds.contains('voluntary') ||
         (row?['voluntary_insurance_path']?.toString().isNotEmpty == true);
     final missingLabels = <String>[
       if (!registrationReady) '車検証',
@@ -182,6 +193,10 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
       if (!voluntaryReady) '任意保険証書',
     ];
 
+    FocusScope.of(context).unfocus();
+    setState(() => _saving = true);
+    var stage = '車両本体';
+    try {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -210,18 +225,20 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (!mounted || confirmed != true) return;
 
-    setState(() => _saving = true);
-    try {
       final vehicleId = await repository.saveVehicle(
-        id: widget.vehicle?['id']?.toString(),
+        id: _savedVehicleId,
         name: _name.text,
         registrationNumber: _registration.text,
         odometerKm: odometer,
         storageAddress: _storageAddress.text,
       );
 
+      _savedVehicleId = vehicleId;
+      _bodySaved = true;
+
+      stage = '車両書類';
       for (final entry in <(String, _PendingDocument?)>[
         ('registration', _registrationDoc),
         ('compulsory', _compulsoryDoc),
@@ -236,26 +253,51 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
           filename: document.filename,
           contentType: document.contentType,
         );
+        _uploadedDocumentKinds.add(entry.$1);
+        switch (entry.$1) {
+          case 'registration': _registrationDoc = null;
+          case 'compulsory': _compulsoryDoc = null;
+          case 'voluntary': _voluntaryDoc = null;
+        }
       }
 
+      stage = '未登録書類の通知';
       final missingAfterSave =
           await repository.notifyMissingVehicleDocuments(vehicleId);
       if (!mounted) return;
-      if (missingAfterSave.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+      _partialSaveMessage = null;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: const Text('保存完了'),
             content: Text(
-              '車両を登録しました。未登録書類は後から追加してください：' +
-                  missingAfterSave.join('・'),
+              (widget.vehicle == null ? '車両を登録しました。' : '車両を更新しました。') +
+              (missingAfterSave.isEmpty
+                ? '車両一覧で確認できます。'
+                : '未登録書類は後から追加してください：' + missingAfterSave.join('・')),
             ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('車両一覧へ'),
+              ),
+            ],
           ),
-        );
-      }
-      Navigator.of(context).pop(true);
-    } catch (error) {
+        ),
+      );
       if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (_) {
+      if (!mounted) return;
+      final message = _bodySaved
+          ? '車両本体は保存済みです。' + stage + 'の処理を完了できませんでした。同じ車両に再試行します。'
+          : '車両の保存結果を確認できませんでした。入力は残っています。再保存前に車両一覧で登録状態を確認してください。';
+      setState(() => _partialSaveMessage = message);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('車両を保存できませんでした: ' + error.toString())),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -265,13 +307,22 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
   @override
   Widget build(BuildContext context) {
     final row = widget.vehicle;
-    return Scaffold(
+    return PopScope(
+      canPop: !_saving,
+      child: Scaffold(
       appBar: AppBar(
         title: Text(widget.vehicle == null ? '車両を登録' : '車両を変更'),
       ),
-      body: ListView(
+      body: AbsorbPointer(
+        absorbing: _saving,
+        child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
+          if (_partialSaveMessage != null)
+            Card(child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(_partialSaveMessage!),
+            )),
           if (row?['id'] != null && _canManageVehicleNotifications)
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
@@ -292,6 +343,7 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
             ),
           TextField(
             controller: _name,
+            enabled: !_saving,
             decoration: const InputDecoration(
               labelText: '表示名',
               border: OutlineInputBorder(),
@@ -300,6 +352,7 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
           const SizedBox(height: 12),
           TextField(
             controller: _registration,
+            enabled: !_saving,
             decoration: const InputDecoration(
               labelText: '車両番号',
               border: OutlineInputBorder(),
@@ -308,6 +361,7 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
           const SizedBox(height: 12),
           TextField(
             controller: _odometer,
+            enabled: !_saving,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: '走行距離',
@@ -318,6 +372,7 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
           const SizedBox(height: 12),
           TextField(
             controller: _storageAddress,
+            enabled: !_saving,
             decoration: const InputDecoration(
               labelText: '保管場所（駐車場の住所）',
               hintText: '例：東京都墨田区○○1-2-3',
@@ -339,7 +394,9 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
           const SizedBox(height: 8),
           _documentTile(
             title: '車検証',
-            existing: row?['registration_document_path'],
+            existing: _uploadedDocumentKinds.contains('registration')
+                ? 'saved'
+                : row?['registration_document_path'],
             pending: _registrationDoc,
             onPick: () async {
               final value = await _pickDocument('車検証');
@@ -350,7 +407,9 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
           ),
           _documentTile(
             title: '自賠責保険',
-            existing: row?['compulsory_insurance_path'],
+            existing: _uploadedDocumentKinds.contains('compulsory')
+                ? 'saved'
+                : row?['compulsory_insurance_path'],
             pending: _compulsoryDoc,
             onPick: () async {
               final value = await _pickDocument('自賠責保険');
@@ -361,7 +420,9 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
           ),
           _documentTile(
             title: '任意保険証書',
-            existing: row?['voluntary_insurance_path'],
+            existing: _uploadedDocumentKinds.contains('voluntary')
+                ? 'saved'
+                : row?['voluntary_insurance_path'],
             pending: _voluntaryDoc,
             onPick: () async {
               final value = await _pickDocument('任意保険証書');
@@ -380,6 +441,8 @@ class _VehicleEditorPageState extends State<VehicleEditorPage> {
             ),
           ),
         ],
+        ),
+      ),
       ),
     );
   }
