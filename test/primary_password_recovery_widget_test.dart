@@ -30,10 +30,13 @@ class _Wire {
   final calls = <http.Request>[];
 }
 Future<void> _show(WidgetTester tester, _Wire w, VoidCallback onAuthenticated) async {
+  debugPrint('primary fixture: prepare surface');
   await tester.binding.setSurfaceSize(const Size(900, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  addTearDown(w.client.dispose);
+  addTearDown(() => tester.runAsync(w.client.dispose));
+  debugPrint('primary fixture: mount');
   await tester.pumpWidget(MaterialApp(home: SecureAuthPage(repository: w.repository, onAuthenticated: onAuthenticated)));
+  debugPrint('primary fixture: mounted');
 }
 void main() {
   testWidgets('forgot is unavailable: no SMS, no update, no fake biometric and back clears credentials', (tester) async {
@@ -52,7 +55,8 @@ void main() {
     expect(tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text, isEmpty);
     expect(find.text('従業員登録QRでログイン'), findsOneWidget);
     expect(w.calls, isEmpty);
-  });
+    debugPrint('primary fixture: forgot assertions complete');
+  }, timeout: const Timeout(Duration(seconds: 30)));
   testWidgets('ordinary phone password login still authenticates through SDK', (tester) async {
     final w = _Wire(); var authenticated = 0;
     await _show(tester, w, () => authenticated++);
@@ -65,7 +69,7 @@ void main() {
     expect(w.calls.single.url.queryParameters['grant_type'], 'password');
     expect(jsonDecode(w.calls.single.body), containsPair('phone', '+819012345678'));
     expect(w.calls.where((r) => r.url.path == '/auth/v1/otp' || r.url.path == '/auth/v1/user'), isEmpty);
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
   testWidgets('initial registration retains separate SMS verification, QR entry and no recovery reset', (tester) async {
     final w = _Wire(); var authenticated = 0;
     await _show(tester, w, () => authenticated++);
@@ -82,5 +86,5 @@ void main() {
     expect(authenticated, 1);
     expect(w.calls.last.url.path, '/auth/v1/verify');
     expect(w.calls.where((r) => r.url.path == '/auth/v1/otp' || r.url.path == '/auth/v1/user'), isEmpty);
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }
