@@ -37,3 +37,17 @@ test('current unified query uses precise UTC SQL bounds and conservative provide
  let calls=0;await assert.rejects(collectPlatformWindow({...base,projectRef:'abcdefghijklmnopqrst',managementToken:'fixture-token-not-production',fetchImpl:async()=>{calls++;return new Response('{}',{status:410});}}),/unavailable/);assert.equal(calls,1,'No fallback to removed or alternate endpoints');
  assert.equal(sanitizePlatformRows({...base,rows:[{...row,timestamp:'2026-10-16 10:01:00.123456'}]}).events[0].occurred_at,'2026-10-16T10:01:00.123Z');
 });
+
+test('UTC timestamp fractions one through nine normalize to milliseconds without identity collapse',()=>{
+ for(let precision=1;precision<=9;precision++){
+  const fraction='123456789'.slice(0,precision);
+  for(const separator of ['T',' '])for(const suffix of ['','Z']){
+   const event=sanitizePlatformRows({...base,rows:[{...row,timestamp:`2026-10-16${separator}10:01:00.${fraction}${suffix}`}]}).events[0];
+   assert.equal(event.occurred_at,'2026-10-16T10:01:00.'+fraction.slice(0,3).padEnd(3,'0')+'Z');
+  }
+ }
+ const rows=[{...row,id:'00000000-0000-4000-8000-000000000001',timestamp:'2026-10-16T10:01:00.123456788Z'},{...row,id:'00000000-0000-4000-8000-000000000002',timestamp:'2026-10-16T10:01:00.123456789Z'}];
+ const events=sanitizePlatformRows({...base,rows}).events;
+ assert.equal(events[0].occurred_at,events[1].occurred_at);assert.notEqual(events[0].event_key,events[1].event_key);
+ assert.throws(()=>sanitizePlatformRows({...base,rows:[{...row,timestamp:'2026-10-16T10:01:00.1234567890Z'}]}));
+});
