@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import '../auth/secure_onboarding_repository.dart';
@@ -23,7 +24,7 @@ abstract class MasterSecondaryAccess {
   Future<bool> biometricAvailable();
   Future<bool> biometric();
   Future<bool> verify(String password);
-  Future<void> bootstrap(String key, String name, String type, String platform);
+  Future<void> bootstrap(String key, String name, String type, String platform, String capturedToken);
 }
 class _ExistingMasterAccess implements MasterSecondaryAccess {
   final _device = MasterDeviceRepository.maybeCreate();
@@ -37,11 +38,21 @@ class _ExistingMasterAccess implements MasterSecondaryAccess {
   @override Future<bool> biometricAvailable() async => await _local.isDeviceSupported() && await _local.canCheckBiometrics;
   @override Future<bool> biometric() => _local.authenticate(localizedReason: 'Master管理を開くため本人確認します', options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true));
   @override Future<bool> verify(String password) async => await _auth?.verifySecondaryPassword(password) ?? false;
-  @override Future<void> bootstrap(String key, String name, String type, String platform) async {
-    final device = _device;
-    if (device == null) throw StateError('Master認証を利用できません。');
-    await device.bootstrapFirstDevice(deviceKey: key, deviceName: name, deviceType: type, platform: platform);
+  @override Future<void> bootstrap(String key, String name, String type, String platform, String capturedToken) async {
+    if (!SupabaseBackend.isInitialized) throw StateError('Master認証を利用できません。');
+    await bootstrapMasterDeviceWithCapturedSession(SupabaseBackend.client, key: key, name: name, type: type, platform: platform, capturedToken: capturedToken);
   }
+}
+
+/// Existing bootstrap RPC, fixed to the session which approved this operation.
+/// A request already sent for actor A is not server-cancelled by a later actor B.
+Future<void> bootstrapMasterDeviceWithCapturedSession(SupabaseClient client, {
+  required String key, required String name, required String type,
+  required String platform, required String capturedToken,
+}) async {
+  await client.rpc('bootstrap_first_master_device', params: {
+    'p_device_key': key, 'p_device_name': name, 'p_device_type': type, 'p_platform': platform,
+  }).setHeader('Authorization', 'Bearer $capturedToken');
 }
 
 /// Local entry gate only. Important server operation proofs remain separate.
@@ -145,7 +156,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -218,7 +229,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
       var trusted = after['trusted'] == true;
       if (bootstrap) {
         if (after['can_bootstrap'] != true || after['trusted'] == true) throw StateError('端末の登録状態が変わりました。');
-        await _access.bootstrap(key, _deviceName(), _deviceType(), Platform.operatingSystem);
+        await _access.bootstrap(key, _deviceName(), _deviceType(), Platform.operatingSystem, token);
         if (!_valid(generation, actor, token)) return;
         final registered = await _access.status(key);
         trusted = registered['trusted'] == true;
@@ -281,6 +292,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
     final wait = _resumeWait;
     _resumeWait = null;
     if (wait != null && !wait.isCompleted) wait.complete(false);
+    final interruptedLoad = _loading;
     _generation++;
     _nativePrompt = false;
     _expiryTimer?.cancel();
@@ -293,6 +305,10 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
     setState(() {
       _unlocked = false;
       _busy = false;
+      if (interruptedLoad) {
+        _loading = false;
+        _error = '本人確認の読み込みを中断しました。再読み込みしてください。';
+      }
     });
   }
 

@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,19 +24,20 @@ class _Access implements MasterSecondaryAccess {
   final passwords = <String>[];
   Completer<bool>? biometricWait;
   Completer<bool>? passwordWait;
+  Completer<bool>? configuredWait;
   @override Future<bool> isMaster() async { masterCalls++; return master; }
   @override Future<Map<String,dynamic>> status(String key) async => {'trusted': trusted, 'can_bootstrap': canBootstrap};
-  @override Future<bool> configured() async => configuredValue;
+  @override Future<bool> configured() async => configuredWait == null ? configuredValue : configuredWait!.future;
   @override Future<bool> biometricAvailable() async => true;
   @override Future<bool> biometric() async { biometricCalls++; return biometricWait == null ? bioResult : biometricWait!.future; }
   @override Future<bool> verify(String password) async { passwords.add(password); return passwordWait == null ? passwordResult : passwordWait!.future; }
-  @override Future<void> bootstrap(String key, String name, String type, String platform) async { bootstrapCalls++; trusted = true; canBootstrap = false; }
+  @override Future<void> bootstrap(String key, String name, String type, String platform, String capturedToken) async { bootstrapCalls++; trusted = true; canBootstrap = false; }
 }
-Future<void> _show(WidgetTester tester, _Access access, {bool opted = true}) async {
+Future<void> _show(WidgetTester tester, _Access access, {bool opted = true, bool settle = true}) async {
   SharedPreferences.setMockInitialValues({'sko_master_device_key_$_actor': 'synthetic-device-key-longer-than-32-characters', 'sko_secondary_biometric_enabled_$_actor': opted});
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   await tester.pumpWidget(MaterialApp(home: MasterProtectedPage(title: 'Master test', access: access, child: const Scaffold(body: Text('MASTER-CONTENT')))));
-  await tester.pumpAndSettle();
+  if (settle) { await tester.pumpAndSettle(); } else { for (var i = 0; i < 5; i++) { await tester.pump(); } }
 }
 Future<void> _password(WidgetTester tester) async {
   await tester.enterText(find.byType(TextField), 'existing-secondary');
@@ -169,6 +174,33 @@ void main() {
     await tester.tap(find.text('再読み込み')); await tester.pumpAndSettle();
     await _password(tester); expect(find.text('MASTER-CONTENT'), findsOneWidget);
     await _close(tester);
+  });
+
+  testWidgets('interrupted initial load offers reload instead of a permanent spinner', (tester) async {
+    final access = _Access()..configuredWait = Completer<bool>(); await _show(tester, access, settle: false);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); await tester.pump();
+    access.configuredWait!.complete(true);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('再読み込み'), findsOneWidget);
+    access.configuredWait = null;
+    await tester.tap(find.text('再読み込み')); await tester.pumpAndSettle();
+    await _password(tester); expect(find.text('MASTER-CONTENT'), findsOneWidget); await _close(tester);
+  });
+  test('bootstrap uses the captured bearer and only the existing exact RPC target', () async {
+    final calls = <http.Request>[];
+    final client = SupabaseClient('https://master-bootstrap-fixture.invalid', 'public_fixture',
+      headers: {'Authorization': 'Bearer synthetic-later-B'},
+      authOptions: AuthClientOptions(autoRefreshToken: false),
+      httpClient: MockClient((r) async {
+        expect(r.url.host, 'master-bootstrap-fixture.invalid'); calls.add(r);
+        expect(r.url.path, '/rest/v1/rpc/bootstrap_first_master_device');
+        expect(r.headers['Authorization'], 'Bearer synthetic-approved-A');
+        expect(jsonDecode(r.body), {'p_device_key': 'synthetic-key', 'p_device_name': 'synthetic-name', 'p_device_type': 'iphone', 'p_platform': 'ios'});
+        return http.Response('null', 200, headers: {'content-type': 'application/json'}, request: r);
+      }));
+    await bootstrapMasterDeviceWithCapturedSession(client, key: 'synthetic-key', name: 'synthetic-name', type: 'iphone', platform: 'ios', capturedToken: 'synthetic-approved-A');
+    expect(calls.length, 1); await client.dispose();
   });
 
 }
