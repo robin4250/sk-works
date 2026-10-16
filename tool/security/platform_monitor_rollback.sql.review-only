@@ -1,0 +1,31 @@
+-- REVIEW ONLY. Never execute automatically or against production.
+-- Prerequisites: explicit operator approval AFTER an encrypted authorized snapshot,
+-- isolated successful restore of that snapshot, impact report and UI comparison;
+-- stop the trusted collector, turn ONLY the new platform control OFF and verify.
+-- This script neither grants consent nor changes any original account/member,
+-- master, Apple/Google, synthetic record, role, authentication or business setting.
+begin;
+do $$
+begin
+ if current_user <> 'postgres' or current_setting('sko.platform_monitor_snapshot_restore_verified',true) is distinct from 'isolated-restore-verified-v1' then
+  raise exception 'verified isolated restore and operator preconditions required';
+ end if;
+ perform 1 from private.platform_monitor_control where singleton for update;
+ if not found or (select count(*) from private.platform_monitor_control)<>1 or exists(select 1 from private.platform_monitor_control where enabled) then
+  raise exception 'platform monitor must be disabled';
+ end if;
+ -- Never erase captured evidence. Export/retention decisions need a separately
+ -- reviewed plan; nonempty new tables make this structural rollback refuse.
+ if exists(select 1 from private.platform_monitor_events) or exists(select 1 from private.platform_monitor_windows) then
+  raise exception 'platform evidence must be preserved; structural rollback refused';
+ end if;
+end $$;
+drop function public.master_platform_security_monitor(text);
+drop function private.read_platform_monitor(text);
+drop function public.service_ingest_platform_monitor(jsonb);
+drop function private.ingest_platform_monitor_batch(jsonb);
+-- No CASCADE: an unexpected new dependency must abort the whole transaction.
+drop table private.platform_monitor_events;
+drop table private.platform_monitor_windows;
+drop table private.platform_monitor_control;
+commit;
