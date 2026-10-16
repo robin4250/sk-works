@@ -72,7 +72,9 @@ class _AttendanceNotificationPageState extends State<AttendanceNotificationPage>
         ? SupabaseAttendanceNoticeSource(SupabaseBackend.client) : null);
     _actor = _source?.actor;
     _subscription = _source?.actorChanges.listen((actor) {
-      if (actor != _actor) _invalidateActor();
+      if (actor != _actor) {
+        _invalidateActor();
+      }
     }, onError: (Object error) => _invalidateActor());
     _load();
   }
@@ -80,12 +82,14 @@ class _AttendanceNotificationPageState extends State<AttendanceNotificationPage>
   void _invalidateActor() {
     _actorChanged = true;
     _generation++;
-    if (mounted) setState(() {
+    if (mounted) {
+      setState(() {
       _rows = [];
       _date = null;
       _loading = false;
       _error = 'ログイン状態が変わったか、確認できません。通知一覧から開き直してください。';
-    });
+      });
+    }
   }
 
   @override
