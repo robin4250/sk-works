@@ -10,7 +10,7 @@ import 'package:sk_works/features/notifications/app_notification_repository.dart
 const target = '12345678-1234-1234-1234-123456789abc';
 const other = '87654321-4321-4321-4321-cba987654321';
 class FakeVehicleRepository extends VehicleRouteRepository {
-  FakeVehicleRepository() : super.forTesting(SupabaseClient('https://fixture.invalid','fixture-key'));
+  FakeVehicleRepository() : super.forTesting(SupabaseClient('https://fixture.invalid','fixture-key', authOptions: const AuthClientOptions(autoRefreshToken: false)));
   String? actor = 'actor-a';
   bool allowed = true;
   List<Map<String,dynamic>> rows = [{'id':other,'display_name':'別車両'},{'id':target,'display_name':'通知対象車両'}];
