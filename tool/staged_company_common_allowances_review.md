@@ -175,3 +175,13 @@ an existing service_role grant (the synthetic migration may omit that grant).
 Restoration must first reinstall the exact pre-candidate unit function, then drop
 only the new schema/APIs/triggers; tests restore its original OID/ACL before a
 reapply and restore the price-free baseline together with the new catalog.
+
+A real fixture `AFTER UPDATE OF tax_rate` spy asserts common adopt/extras/legacy
+edits produce zero tax-update events; the new tax save exactly one; the actual
+old combined saver retains its original event even when the value is unchanged.
+This verifies trigger dispatch semantics, not production invoice recalculation.
+The reader fixture grants service_role EXECUTE before baseline capture to match
+the observed live ACL and verifies it remains callable after replacement/restore.
+Ordinary members cannot directly read unit_aliases or execute compatibility helpers.
+No PDF document or physical printing was rendered by these SQL tests; preserved
+unit-map output is indirect evidence for the unchanged PDF consumers only.
