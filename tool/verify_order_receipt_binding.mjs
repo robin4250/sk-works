@@ -1,0 +1,101 @@
+const { PGlite } = await import(process.argv[2] ?? '@electric-sql/pglite');
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const db = new PGlite();
+const A='00000000-0000-4000-8000-000000000001', B='00000000-0000-4000-8000-000000000002', U='00000000-0000-4000-8000-000000000003', S='00000000-0000-4000-8000-000000000004', I='00000000-0000-4000-8000-000000000005', D='00000000-0000-4000-8000-000000000006', T='00000000-0000-4000-8000-000000000007';
+await db.exec(`
+create role anon;create role authenticated;create schema private;create schema auth;
+create function auth.uid() returns uuid language sql as $$select nullif(current_setting('fixture.actor',true),'')::uuid$$;
+create function private.account_access_allowed() returns boolean language sql as $$select current_setting('fixture.allowed',true)='yes'$$;
+create table public.companies(id uuid primary key,company_seal_enabled boolean,tax_rate numeric);
+create table public.company_members(company_id uuid,user_id uuid,role text);
+create table public.sites(id uuid primary key,company_id uuid);
+create table private.company_connections(parent_company_id uuid,child_company_id uuid,status text);
+create table private.document_deliveries(id uuid primary key,sender_company_id uuid,recipient_company_id uuid);
+create table private.company_data_delivery_items(id uuid primary key,delivery_id uuid,payload_kind text,payload jsonb);
+create table private.site_share_inbox(data_item_id uuid primary key,recipient_company_id uuid,status text,accepted_site_id uuid);
+create table public.site_calculation_source_preferences(company_id uuid,site_id uuid,output_type text,trade_company_id uuid,source text,selected_at timestamptz);
+create table public.site_financial_settings(company_id uuid,site_id uuid,billing_unit_price_yen numeric,billing_monthly_rate_yen numeric,billing_square_meter_unit_price_yen numeric,billing_square_meter_quantity numeric,billing_contract_amount_yen numeric,billing_rate_formula jsonb,billing_rate_overrides jsonb);
+create table public.trade_companies(id uuid primary key,company_id uuid,linked_company_id uuid,trade_role text);
+create table public.trade_company_contracts(company_id uuid,trade_company_id uuid,contract_method text,daily_rate_yen integer,monthly_rate_yen integer,square_meter_unit_price_yen integer,square_meter_quantity numeric,contract_amount_yen integer,updated_at timestamptz);
+-- Official helper is a deterministic fixture: real rendering/hash/locking tests remain separate.
+create function private.document_company_seal_snapshot(uuid,uuid,boolean) returns jsonb language sql as $$select jsonb_build_object('company_seal_snapshot',jsonb_build_object('name','fixture-seal','revision',current_setting('fixture.seal',true)))$$;
+insert into companies values('${A}',true,10),('${B}',true,10);
+insert into company_members values('${A}','${U}','admin'),('${B}','${U}','admin');
+insert into sites values('${S}','${A}');
+insert into private.company_connections values('${B}','${A}','accepted');
+insert into private.document_deliveries values('${D}','${A}','${B}');
+insert into private.company_data_delivery_items values('${I}','${D}','site_share','{"source_site_id":"${S}","name":"fixture"}');
+insert into private.site_share_inbox values('${I}','${B}','pending',null);
+insert into site_calculation_source_preferences values('${A}','${S}','invoice',null,'site','2026-10-01');
+insert into site_financial_settings values('${A}','${S}',32800,0,0,0,0,'{"base_mode":"daily","hourly_base":false}','{}');
+select set_config('fixture.actor','${U}',false),set_config('fixture.allowed','yes',false),set_config('fixture.seal','1',false);
+`);
+await db.exec(await readFile(new URL('./staged/site_contract_receipt_binding.sql',import.meta.url),'utf8'));
+const q=(s,p=[])=>db.query(s,p);
+const preview=async()=> (await q('select site_contract_binding_private.preview($1,$2,$3) p',[A,I,'invoice'])).rows[0].p;
+const bind=async(p,c='00000000-0000-4000-8000-000000000010',rev=0)=>(await q('select site_contract_binding_private.bind($1,$2,$3,$4,$5) p',[A,I,c,rev,p])).rows[0].p;
+async function rejects(f,code){await assert.rejects(f,e=>e.code===code);}
+await rejects(preview,'55000');
+await db.exec(`insert into site_contract_binding_private.rollout values('${A}',true),('${B}',true)`);
+let p=await preview(); assert.equal(p.unit,'day');assert.equal(p.parent_company_id,B);assert.equal(p.sender_company_id,A);
+await rejects(()=>bind(null),'22023');
+const saved=await bind(p);assert.equal(saved.binding_revision,1);
+assert.deepEqual(await bind(p),saved); // lost response recovery
+await rejects(()=>bind({...p,unit_price_yen:1}),'22023');
+await rejects(()=>bind(p,'00000000-0000-4000-8000-000000000011'),'40001');
+p=await preview();
+await db.exec('update site_financial_settings set billing_unit_price_yen=33000');
+await rejects(()=>bind(p,'00000000-0000-4000-8000-000000000011',1),'40001');
+await db.exec("update site_financial_settings set billing_rate_formula='{\"base_mode\":\"hourly\",\"hourly_base\":true}'");
+p=await preview();assert.equal(p.unit,'hour');assert.equal(p.unit_price_yen,33000);
+await db.exec("select set_config('fixture.seal','2',false)");
+await rejects(()=>bind(p,'00000000-0000-4000-8000-000000000011',1),'40001');
+for(const [field,unit] of [['billing_monthly_rate_yen','month'],['billing_square_meter_unit_price_yen','square_meter'],['billing_contract_amount_yen','lump_sum']]){
+await db.exec(`update site_financial_settings set billing_unit_price_yen=0,billing_monthly_rate_yen=0,billing_square_meter_unit_price_yen=0,billing_square_meter_quantity=2,billing_contract_amount_yen=0`);
+await db.exec(`update site_financial_settings set ${field}=100`);
+assert.equal((await preview()).unit,unit);
+}
+await db.exec("update site_financial_settings set billing_unit_price_yen=100,billing_rate_formula='{}'");
+await rejects(preview,'22023');
+await db.exec("update site_financial_settings set billing_rate_formula='{\"base_mode\":\"daily\",\"hourly_base\":false}'");
+await db.exec("update company_members set role='manager'");
+await rejects(preview,'42501');
+await db.exec("update company_members set role='admin';select set_config('fixture.allowed','no',false)");
+await rejects(preview,'42501');
+await db.exec("select set_config('fixture.allowed','yes',false);update private.company_data_delivery_items set payload_kind='other'");
+await rejects(preview,'42501');
+await db.exec("update private.company_data_delivery_items set payload_kind='site_share';update companies set company_seal_enabled=false");
+await rejects(preview,'55000');
+await db.exec("update companies set company_seal_enabled=true");
+await rejects(()=>q('select site_contract_binding_private.preview($1,$2,$3)',[B,I,'invoice']),'42501');
+await rejects(()=>q('select site_contract_binding_private.preview($1,$2,$3)',[A,I,'payment_certificate']),'0A000');
+await db.exec(`update private.company_connections set parent_company_id='${A}',child_company_id='${B}'`);
+assert.equal((await preview()).parent_company_id,A);
+await db.exec(`insert into trade_companies values('${T}','${A}','${B}','customer');insert into trade_company_contracts values('${A}','${T}','monthly',200,400,300,2,500,'2026-10-01');update site_calculation_source_preferences set source='trade_company',trade_company_id='${T}'`);
+for(const [method,unit,price] of [['daily','day',200],['monthly','month',400],['square_meter','square_meter',300],['contract','lump_sum',500]]){
+await db.exec(`update trade_company_contracts set contract_method='${method}'`);
+const v=await preview();assert.equal(v.unit,unit);assert.equal(v.unit_price_yen,price);
+}
+await db.exec(`update trade_companies set linked_company_id='${A}'`);
+await rejects(preview,'42501');
+await db.exec(`update site_calculation_source_preferences set source='site',trade_company_id=null`);
+let stale=await preview();
+await db.exec(`update sites set company_id='${B}'`);
+await rejects(()=>bind(stale,'00000000-0000-4000-8000-000000000014',1),'42501');
+await db.exec(`update sites set company_id='${A}'`);
+await db.exec(`update site_contract_binding_private.rollout set enabled=false where company_id='${B}'`);
+await rejects(preview,'55000');
+await db.exec(`update site_contract_binding_private.rollout set enabled=true`);
+const before=JSON.stringify((await q('select * from site_financial_settings')).rows);
+await db.exec('begin');
+p=await preview();await bind(p,'00000000-0000-4000-8000-000000000012',1);
+await db.exec('rollback');
+assert.equal((await q('select count(*)::int n from site_contract_binding_private.bindings')).rows[0].n,1);
+assert.equal(JSON.stringify((await q('select * from site_financial_settings')).rows),before);
+assert.equal((await q("select has_schema_privilege('authenticated','site_contract_binding_private','usage') ok")).rows[0].ok,false);
+assert.equal((await q("select has_function_privilege('authenticated','site_contract_binding_private.bind(uuid,uuid,uuid,integer,jsonb)','execute') ok")).rows[0].ok,false);
+assert.equal((await q("select count(*)::int n from private.site_share_inbox")).rows[0].n,1);
+console.log('receipt binder: units, exact receipt, roles, OFF, command recovery, stale source/seal/revision, rollback, ACL passed; fixture only, no dispatch or approval');
+await db.close();
+
