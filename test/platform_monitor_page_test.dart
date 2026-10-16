@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/security/platform_monitor_page.dart';
 import 'package:sk_works/features/security/platform_monitor_repository.dart';
+import 'package:sk_works/features/security/security_incident.dart';
+import 'package:sk_works/features/security/security_incident_page.dart';
+import 'security_incident_test.dart' show fixture;
 
 Map<String, dynamic> report({List<Object?> events = const [], List<Object?> windows = const []}) => {
   'version': 1, 'source_provenance': 'supabase_platform_logs', 'scope': 'platform_operator',
@@ -69,6 +72,25 @@ void main() {
     await tester.tap(find.text('再認証して記録を表示')); await tester.pump();
     await tester.pumpWidget(const SizedBox());
     pending.complete(PlatformMonitorSnapshot.parse(report())); await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('existing synthetic list refresh and help keep their original behavior', (tester) async {
+    var loads = 0;
+    await tester.pumpWidget(MaterialApp(home: SecurityIncidentPage(loadRecords: () async {
+      loads++; return SecurityIncident.parseResponse(fixture());
+    })));
+    await tester.pumpAndSettle();
+    expect(find.text('セキュリティ記録'), findsOneWidget);
+    expect(find.text('要調査'), findsOneWidget);
+    expect(find.textContaining('一部不足'), findsOneWidget);
+    expect(find.byTooltip('プラットフォーム監視'), findsOneWidget);
+    await tester.tap(find.byTooltip('更新')); await tester.pumpAndSettle();
+    expect(loads, 2); expect(find.text('要調査'), findsOneWidget);
+    await tester.tap(find.byTooltip('ヘルプ')); await tester.pumpAndSettle();
+    expect(find.text('セキュリティ記録について'), findsOneWidget);
+    expect(find.textContaining('本番の自動遮断は行いません'), findsOneWidget);
+    expect(find.textContaining('SECRET'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
