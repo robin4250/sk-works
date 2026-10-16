@@ -12,28 +12,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:sk_works/features/auth/employee_onboarding_pages.dart';
 import 'package:sk_works/features/auth/employee_onboarding_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-// Test-only deterministic JSON codec; package version is locked.
-// ignore: depend_on_referenced_packages
-import 'package:yet_another_json_isolate/yet_another_json_isolate.dart';
 
 const actor = '10000000-0000-4000-8000-000000000001';
 const other = '10000000-0000-4000-8000-000000000002';
 const capName = 'employee_onboarding_photo_capability';
 const safeName = 'save_employee_onboarding_profile_without_photos';
 const oldName = 'save_employee_onboarding_profile';
-
-// The SDK's worker isolate is outside widget fake time. Keep the same dart:convert
-// JSON semantics in-process so pumpAndSettle awaits every mocked request branch.
-class FixtureJson extends YAJsonIsolate {
-  @override
-  Future<void> initialize() async {}
-  @override
-  Future<void> dispose() async {}
-  @override
-  Future<dynamic> decode(String json) async => jsonDecode(json);
-  @override
-  Future<String> encode(Object? json) async => jsonEncode(json);
-}
 
 class Fixture {
   late final SupabaseClient client;
@@ -51,7 +35,6 @@ class Fixture {
   Future<void> start() async {
     client = SupabaseClient('https://synthetic-onboarding.invalid', 'synthetic-anon',
       authOptions: const AuthClientOptions(autoRefreshToken: false),
-      isolate: FixtureJson(),
       httpClient: MockClient(respond));
     repository = EmployeeOnboardingRepository(client);
     await login(actor);
@@ -64,6 +47,13 @@ class Fixture {
   }
 
   Future<http.Response> respond(http.Request request) async {
+    final response = await _respond(request);
+    // Match a real HTTP transport: PostgREST inspects the originating request.
+    return http.Response.bytes(response.bodyBytes, response.statusCode,
+        headers: response.headers, request: request);
+  }
+
+  Future<http.Response> _respond(http.Request request) async {
     requests.add(request);
     final path = request.url.path;
     if (path == '/auth/v1/token') {
