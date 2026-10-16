@@ -45,7 +45,8 @@ class _DailyReportZoomPagesState extends State<DailyReportZoomPages> {
       children: [for (final page in widget.pages)
         Padding(padding: const EdgeInsets.only(bottom: 8),
           child: AspectRatio(aspectRatio: page.aspectRatio,
-            child: Image(image: page.image, fit: BoxFit.contain))),
+            child: ColoredBox(color: Colors.white,
+              child: Image(image: page.image, fit: BoxFit.contain)))),
       ],
     ),
   );
