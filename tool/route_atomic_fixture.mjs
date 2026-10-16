@@ -15,13 +15,13 @@ create table sites(id uuid primary key,company_id uuid);
 create table customers(id uuid primary key,company_id uuid);
 create table partner_companies(id uuid primary key,company_id uuid);
 create table vehicles(id uuid primary key,company_id uuid);
-create table route_assignments(id uuid primary key default gen_random_uuid(),company_id uuid not null references companies(id),
+create table route_assignments(id uuid primary key default gen_random_uuid(),company_id uuid not null references companies(id) on delete cascade,
  service_date date,route_name text not null check(length(btrim(route_name)) between 1 and 120),notes text check(notes is null or length(notes)<=2000),
  vehicle_id uuid,site_id uuid,driver_user_id uuid,is_active boolean not null default true,
  responsible_name text check(responsible_name is null or length(responsible_name)<=120),responsible_phone text check(responsible_phone is null or length(responsible_phone)<=40),
  created_by uuid,updated_by uuid,created_at timestamptz default now(),updated_at timestamptz default now());
-create table route_stops(id uuid primary key default gen_random_uuid(),company_id uuid not null references companies(id),
- route_assignment_id uuid not null references route_assignments(id),stop_order integer not null check(stop_order>=0),
+create table route_stops(id uuid primary key default gen_random_uuid(),company_id uuid not null references companies(id) on delete cascade,
+ route_assignment_id uuid not null references route_assignments(id) on delete cascade,stop_order integer not null check(stop_order>=0),
  site_id uuid references sites(id),address text,source_kind text check(source_kind is null or source_kind in('site','customer','partner','parking','address')),
  source_id uuid,source_label text,latitude double precision,longitude double precision,created_by uuid,updated_by uuid,
  created_at timestamptz default now(),updated_at timestamptz default now(),unique(route_assignment_id,stop_order),

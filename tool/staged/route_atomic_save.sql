@@ -1,7 +1,7 @@
 -- Staged only, not a migration. No existing function or row is replaced.
 create schema route_atomic_private;
 revoke all on schema route_atomic_private from public,anon,authenticated;
-create table route_atomic_private.rollout(company_id uuid primary key references public.companies(id),enabled boolean not null default false);
+create table route_atomic_private.rollout(company_id uuid primary key references public.companies(id) on delete cascade,enabled boolean not null default false);
 create table route_atomic_private.context(tx bigint not null,pid integer not null,company_id uuid not null,route_id uuid not null,actor uuid not null,primary key(tx,pid));
 create table route_atomic_private.receipts(company_id uuid not null,command_id uuid not null,actor uuid not null,request jsonb not null,result jsonb not null,primary key(company_id,command_id));
 alter table route_atomic_private.rollout enable row level security;
@@ -19,6 +19,8 @@ begin
  old_cid:=(to_jsonb(OLD)->>'company_id')::uuid;
  old_rid:=case when TG_TABLE_NAME='route_stops' then (to_jsonb(OLD)->>'route_assignment_id')::uuid else (to_jsonb(OLD)->>'id')::uuid end;
  end if;
+ -- A parent-company cascade keeps its existing delete semantics.
+ if TG_OP='DELETE' and not exists(select 1 from public.companies where id=cid) then return OLD;end if;
  -- Lock both tenant scopes in stable order; an ON row cannot be moved to OFF.
  insert into route_atomic_private.rollout(company_id)
  select distinct v from (values(cid),(old_cid)) x(v) where v is not null order by v on conflict do nothing;

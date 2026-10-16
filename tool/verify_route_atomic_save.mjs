@@ -84,6 +84,13 @@ assert.notEqual(added.route.id,R);assert.equal(added.stops.length,1);
 assert.equal((await snapshot()).route.notes,'legacy works');
 assert.equal((await q("select has_schema_privilege('authenticated','route_atomic_private','usage') v")).rows[0].v,false);
 assert.equal((await q("select has_table_privilege('authenticated','route_atomic_private.context','insert') v")).rows[0].v,false);
+assert.equal((await q("select has_function_privilege('authenticated','route_atomic_private.save(uuid,uuid,uuid,jsonb,jsonb,jsonb)','execute') v")).rows[0].v,false);
+await db.exec(`select set_config('test.actor','${V}',false);insert into route_atomic_private.rollout values('${B}',true)`);
+const other=await save(null,[{address:'B stop',source_kind:'address'}],30,B,null,{route_name:'B route'});
+await db.exec(`update route_atomic_private.rollout set enabled=false where company_id='${B}';delete from companies where id='${B}'`);
+assert.equal((await q('select count(*)::int n from route_assignments where id=$1',[other.route.id])).rows[0].n,0);
+assert.equal((await q('select count(*)::int n from route_stops where route_assignment_id=$1',[other.route.id])).rows[0].n,0);
+assert.equal((await q('select count(*)::int n from route_atomic_private.rollout where company_id=$1',[B])).rows[0].n,0);
 console.log('atomic route: late failure rollback, exact snapshot CAS, command recovery, stable stop IDs/order, history/tenant/role/feature/coordinates/parking/length guards, private context and OFF legacy compatibility passed; isolated fixture only');
 await db.close();
 
