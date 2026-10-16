@@ -1,0 +1,42 @@
+name: Canonical company four-rate editor
+on:
+  pull_request:
+    paths:
+      - 'tool/staged_company_rate_editor*'
+      - '.github/workflows/company-rate-editor-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-rates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic_fixture_only
+          POSTGRES_DB: sko_rate_editor_fixture
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - name: Disposable PGlite rate contract
+        run: node tool/staged_company_rate_editor_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Actual PG17 contract and observed two-session waits
+        env:
+          SKO_RATE_EDITOR_FIXTURE_URL: postgresql://postgres:synthetic_fixture_only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/sko_rate_editor_fixture
+        run: |
+          node tool/staged_company_rate_editor_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" --pg17
+          node tool/staged_company_rate_editor_race.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

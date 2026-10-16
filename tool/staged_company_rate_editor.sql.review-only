@@ -1,0 +1,77 @@
+-- REVIEW ONLY. Child of the exact staged common-allowance contract, not deployed.
+-- Retains canonical old four rate columns. No old combined saver/tax UPDATE.
+begin;
+set local lock_timeout='5s';
+-- Require the already-reviewed helpers and operation-neutral receipt schema.
+do $guard$ begin
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_common_allowance_private' and p.proname='authorize' and md5(p.prosrc)='cae5128564d93ecbada61cee2fd89231' and p.prosecdef and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""']) then raise exception 'common allowance rate dependency drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_common_allowance_private' and p.proname='session_id' and md5(p.prosrc)='68c68f275c23a22ba06d060c2923b9b9' and p.prosecdef and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""']) then raise exception 'common allowance rate dependency drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_common_allowance_private' and p.proname='lock_writer' and md5(p.prosrc)='098e515a1d09abbbb3b7b32b67abdabe' and p.prosecdef and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""']) then raise exception 'common allowance rate dependency drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_common_allowance_private' and p.proname='request_result' and md5(p.prosrc)='d19976d3bcf1769144456eef48fb6d37' and p.prosecdef and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""']) then raise exception 'common allowance rate dependency drift' using errcode='55000';end if;
+end $guard$;
+create function company_common_allowance_private.rate_values(cid uuid) returns jsonb
+language sql stable set search_path='' as $$
+ select jsonb_build_object('overtime_hour_rate_yen',r.overtime_hour_rate_yen,
+ 'early_hour_rate_yen',r.early_hour_rate_yen,'night_hour_rate_yen',r.night_hour_rate_yen,
+ 'holiday_day_rate_yen',r.holiday_day_rate_yen) from public.company_rate_settings r where r.company_id=cid
+$$;
+create function company_common_allowance_private.read_rates(cid uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare editable boolean;rates jsonb;
+begin
+ editable:=company_common_allowance_private.authorize(cid,false);
+ rates:=company_common_allowance_private.rate_values(cid);
+ if rates is null then raise exception 'company rate settings unavailable' using errcode='55000';end if;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'can_edit',editable,
+ 'version',coalesce((select version from company_common_allowance_private.state where company_id=cid),0),'rates',rates);
+end $$;
+create function company_common_allowance_private.save_rates(cid uuid,expected bigint,observed jsonb,rates jsonb,rid uuid) returns jsonb
+language plpgsql volatile security definer set search_path='' as $$
+declare v bigint;payload jsonb;receipt company_common_allowance_private.requests%rowtype;
+ outcome jsonb;value jsonb;
+begin
+ perform company_common_allowance_private.lock_writer(cid);
+ if expected is null or expected<0 or expected>9007199254740990 or rid is null
+ or observed is null or jsonb_typeof(observed)<>'object'
+ or rates is null or jsonb_typeof(rates)<>'object' or octet_length(rates::text)>1024
+ or (select count(*) from jsonb_object_keys(rates))<>4
+ or not(rates ?& array['overtime_hour_rate_yen','early_hour_rate_yen','night_hour_rate_yen','holiday_day_rate_yen']) then
+  raise exception 'invalid company rate editor request' using errcode='22023';end if;
+ for value in select x.value from jsonb_each(rates) x loop
+  if jsonb_typeof(value)<>'number' or value::text !~ '^(0|[1-9][0-9]*)$' or value::text::numeric>2147483647 then
+   raise exception 'invalid company rate amount' using errcode='22023';end if;
+ end loop;
+ payload:=jsonb_build_object('operation','rates','expected_version',expected,'expected_rates',observed,'rates',rates);
+ select * into receipt from company_common_allowance_private.requests where company_id=cid and request_id=rid;
+ if found then
+  if receipt.actor_id is distinct from auth.uid() or receipt.request_payload is distinct from payload then
+   raise exception 'request id payload mismatch' using errcode='22023';end if;
+  return receipt.result;
+ end if;
+ insert into company_common_allowance_private.state(company_id,version,created_by) values(cid,0,auth.uid()) on conflict(company_id) do nothing;
+ select version into v from company_common_allowance_private.state where company_id=cid for update;
+ if v<>expected or observed is distinct from company_common_allowance_private.rate_values(cid) then
+  raise exception 'company rate editor version conflict' using errcode='40001';end if;
+ update public.company_rate_settings set
+  overtime_hour_rate_yen=(rates->>'overtime_hour_rate_yen')::integer,
+  early_hour_rate_yen=(rates->>'early_hour_rate_yen')::integer,
+  night_hour_rate_yen=(rates->>'night_hour_rate_yen')::integer,
+  holiday_day_rate_yen=(rates->>'holiday_day_rate_yen')::integer,
+  updated_by=auth.uid(),updated_at=clock_timestamp() where company_id=cid;
+ update company_common_allowance_private.state set version=v+1 where company_id=cid;
+ insert into company_common_allowance_private.history(company_id,version,actor_id,payroll_type,request_id,operation,before_value,after_value)
+ values(cid,v+1,auth.uid(),null,rid,'rates',jsonb_build_object('rates',observed),jsonb_build_object('rates',rates));
+ outcome:=company_common_allowance_private.read_rates(cid)||jsonb_build_object('request_id',rid,'committed_version',v+1,'id_map','[]'::jsonb);
+ insert into company_common_allowance_private.requests(company_id,request_id,actor_id,payroll_type,operation,expected_version,request_payload,committed_version,result)
+ values(cid,rid,auth.uid(),null,'rates',expected,payload,v+1,outcome);
+ return outcome;
+end $$;
+revoke all on function company_common_allowance_private.rate_values(uuid),company_common_allowance_private.read_rates(uuid),company_common_allowance_private.save_rates(uuid,bigint,jsonb,jsonb,uuid) from public,anon,authenticated,service_role;
+grant execute on function company_common_allowance_private.read_rates(uuid),company_common_allowance_private.save_rates(uuid,bigint,jsonb,jsonb,uuid) to authenticated;
+create function public.read_company_common_rate_settings(p_company_id uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_common_allowance_private.read_rates(p_company_id)$$;
+create function public.save_company_common_rate_settings(p_company_id uuid,p_expected_version bigint,p_expected_rates jsonb,p_rates jsonb,p_request_id uuid) returns jsonb
+language sql volatile security invoker set search_path='' as $$select company_common_allowance_private.save_rates(p_company_id,p_expected_version,p_expected_rates,p_rates,p_request_id)$$;
+revoke all on function public.read_company_common_rate_settings(uuid),public.save_company_common_rate_settings(uuid,bigint,jsonb,jsonb,uuid) from public,anon,authenticated,service_role;
+grant execute on function public.read_company_common_rate_settings(uuid),public.save_company_common_rate_settings(uuid,bigint,jsonb,jsonb,uuid) to authenticated;
+commit;
