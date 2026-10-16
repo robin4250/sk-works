@@ -61,3 +61,9 @@ An anonymous fixture with sentinel identities is useful but cannot establish res
 6. Before ON, demonstrate dedicated-password loss recovery, protected restore, operator OFF, re-enable and API downgrade/withdrawal sequence without losing existing Master administration. No production enable until this passes and impact approval is obtained.
 
 No production apply/enable, backup, reset, restore or deployment authorization is granted by this document. The candidate remains default OFF/review-only; Stage2 gate, real recovery policy, production backup/restore and real-device validation are not complete.
+
+## Additional OFF / UI boundary notes
+
+At SQL head9fb2cab the enabled flag is read without a shared row lock, and completion's final post-bcrypt recheck covers nonce/context, not a fresh enabled read. Operator OFF must not be treated as cancellation of a completion already in flight. Any future OFF-to-API-removal or state-restoration sequence needs quiescence/transaction coordination and an isolated race test. No active-operation cancellation guarantee is established by this source.
+
+UI candidate PR1169 head9a8873ee91873138c6cdc2c3f3f1740e5418552b adds only new unconnected files, with explicit server capability/status before form, exact applied-result parsing and same-context receipt reads. Its journal stores nonsecret actor/session/device fingerprint/request/op/version, not passwords, nonce, token or raw device key. Keys are request-specific and conflicting/corrupt/device-mismatched pending state fails closed. The candidate explicitly retains old-session metadata rather than resolving another session's result. This source review does not establish native SharedPreferences crash durability, concurrent-process behavior, or successful latest CI/runtime. Those remain separate evidence requirements; no existing gate is wired.
