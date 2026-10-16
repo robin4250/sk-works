@@ -81,5 +81,17 @@ try{
  const oldJwtResponse=await download(users.own.token);assert.ok([200,400,401,403,404].includes(oldJwtResponse.status));await oldJwtResponse.arrayBuffer();
  console.log(`OBSERVED old access JWT after actual logout/session removal: ${oldJwtResponse.status===200?'still permits Storage until JWT expiry/current guard allows (remaining gap)':'Storage refused'}`);
  r=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',json:{refresh_token:users.own.refresh}});assert.ok([400,401,403].includes(r.status),'Logged-out refresh token denied');checks++;
+ // Disposable local backup/restore exercise only: preserve real fixture Auth identity and exact company membership.
+ const membershipBackup=(await db.query('select company_id,user_id,role::text role from public.company_members order by user_id')).rows;
+ const ownerBackup=membershipBackup.find(m=>m.user_id===users.owner.id);assert.equal(ownerBackup.role,'owner');
+ await db.query("update public.company_members set role='worker' where user_id=$1",[users.owner.id]);await denied(users.owner.token);
+ await db.query('update public.company_members set company_id=$1,role=$2::public.app_role where user_id=$3',[ownerBackup.company_id,ownerBackup.role,ownerBackup.user_id]);
+ assert.deepEqual((await db.query('select company_id,user_id,role::text role from public.company_members order by user_id')).rows,membershipBackup);
+ await allowed(users.owner.token);
+ const original=capture.storage_read_policy_inventory.find(p=>p.policyname==='worker_document_photo_managed_read').qual;
+ await db.query(`alter policy worker_document_photo_managed_read on storage.objects using (${original})`);
+ await allowed(users.owner.token);await allowed(users.manager.token);
+ assert.equal((await db.query('select count(*)::int n from auth.users where id=$1',[users.owner.id])).rows[0].n,1);
+ console.log('RESTORED original policy and backed-up synthetic owner membership; owner Auth identity retained. Original manager-OFF bypass returns and remains a known gap.');
  console.log(`PASS ${checks} actual local GoTrue/Storage HTTP checks. No production/CDN/cache-distribution equivalence or immediate old-JWT/issued-URL revocation claim.`);
 }catch(e){console.error('Fixture verification failed:',e.code??'',e.message);process.exitCode=1;}finally{await db.end();}

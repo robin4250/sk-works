@@ -42,3 +42,13 @@ CLI init/start/status/stop help was inspected with the pinned binary before
 authoring. The local authoring runtime has no Docker; real-stack execution is
 performed by the isolated GitHub Actions job, and success is recorded separately
 from source presence. Do not label this suite verified until that job passes.
+
+The final local-only restore exercise snapshots synthetic company memberships,
+changes the fixture owner's role, verifies access denial, restores its exact
+company/role/user relationship and verifies owner access and Auth identity survive.
+It also restores the copied original Storage policy and confirms legitimate owner
+access. The original manager-OFF bypass returns and is explicitly not considered
+safe. This does not backup or restore production, Apple/Google identities, refresh
+tokens or real sessions. Production permission/auth changes require the user's
+explicit final approval after backup/restore verification and administrator
+preservation; this suite never performs those production changes.

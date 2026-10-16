@@ -47,6 +47,15 @@ unchanged. Native PostgreSQL 17 CI and PGlite run the same fixture. Existing rea
 worker photo editor draft and managed/self repository HTTP tests run separately;
 their mocked backend responses do not prove production Storage HTTP authorization.
 
+The fixture additionally restores the exact original policy after candidate
+checks and confirms owner/admin/employee-self access, unchanged company
+memberships/permissions/table owners/ACL and saved evidence. The old manager
+feature-OFF bypass returns after restoration and is explicitly still a known
+gap. This is a disposable fixture restore exercise, not a production backup or
+production restoration guarantee. Production permission/auth changes require
+the user's explicit final approval after protected backup, restoration checks
+and administrator preservation; no such application occurs in this PR.
+
 The current actual `account_access_allowed` checks `auth.uid()` and account
 deletion restrictions, not `auth.sessions`. Permission-revocation checks use a
 fresh DB permission state with the same fixture subject. They do NOT demonstrate
