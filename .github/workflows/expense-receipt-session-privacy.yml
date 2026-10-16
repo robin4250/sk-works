@@ -1,0 +1,23 @@
+name: Expense receipt session privacy
+on:
+  pull_request:
+    paths:
+      - 'lib/features/expenses/expense_receipt_preview.dart'
+      - 'test/expense_receipt_privacy_test.dart'
+      - '.github/workflows/expense-receipt-session-privacy.yml'
+permissions:
+  contents: read
+jobs:
+  privacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/expenses/expense_receipt_preview.dart test/expense_receipt_privacy_test.dart
+      - run: flutter test test/expense_receipt_privacy_test.dart test/security_actor_boundary_test.dart
