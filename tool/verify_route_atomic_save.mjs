@@ -44,6 +44,10 @@ await rejects(()=>save(p,[{address:'bad gps',source_kind:'address',latitude:91,l
 await rejects(()=>save(p,stops,4,A,R,{route_name:'x',responsible_phone:'1'.repeat(41)}),'22023');
 await db.exec(`select set_config('test.actor','${V}',false)`);
 await rejects(()=>save(p,stops,4),'42501');
+await db.exec(`insert into company_members values('${A}','${V}','admin')`);
+await rejects(()=>save(p,stops,4),'40001');
+await rejects(()=>save(p,stops,1),'22023');
+await db.exec(`delete from company_members where company_id='${A}' and user_id='${V}'`);
 await db.exec(`select set_config('test.actor','${U}',false);update company_members set role='viewer' where user_id='${U}'`);
 await rejects(()=>save(p,stops,4),'42501');
 await db.exec(`update company_members set role='manager' where user_id='${U}'`);

@@ -38,7 +38,7 @@ create trigger zz_route_atomic_guard before insert or update or delete on public
 
 create function route_atomic_private.snapshot(p_company uuid,p_route uuid) returns jsonb
 language sql stable security definer set search_path='' as $$
- select jsonb_build_object('route',to_jsonb(r),'stops',coalesce(
+ select jsonb_build_object('actor_id',auth.uid(),'company_id',p_company,'route',to_jsonb(r),'stops',coalesce(
  (select jsonb_agg(to_jsonb(s) order by s.stop_order,s.id) from public.route_stops s where s.route_assignment_id=r.id and s.company_id=p_company),'[]'))
  from public.route_assignments r where r.id=p_route and r.company_id=p_company
 $$;
