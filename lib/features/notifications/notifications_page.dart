@@ -7,7 +7,6 @@ import 'source_notification_target.dart';
 import 'source_notification_target_page.dart';
 import 'attention_center_repository.dart';
 import 'attention_center_item.dart';
-import 'notification_explanation_page.dart';
 import '../settings/company_module_settings_repository.dart';
 import '../../data/supabase_backend.dart';
 import '../companies/company_profile_review_page.dart';
@@ -30,6 +29,7 @@ import '../security/security_actor_boundary.dart';
 import '../sites/admin_site_financial_page.dart';
 import '../attendance/paid_leave_approvals_page.dart';
 import '../daily_reports/daily_report_approvals_page.dart';
+import '../daily_reports/daily_report_page.dart';
 import '../attendance/attendance_correction_approvals_page.dart';
 import '../sites/site_map_page.dart';
 import '../sites/site_share_approval_page.dart';
@@ -120,28 +120,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _open(AttentionCenterItem item) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => NotificationExplanationPage(
-          item: item,
-          canOpenTarget: () async {
-            if (item.actionKey == 'company_link_request') {
-              return companyLinkNotificationAvailable();
-            }
-            if (item.actionKey == 'company_profile_review') {
-              return companyProfileNotificationAvailable();
-            }
-            final module = notificationModule(item.actionKey);
-            if (module == null) return true;
-            final settings = CompanyModuleSettingsRepository.maybeCreate();
-            if (settings == null) return false;
-            final states = await settings.loadOptionalModuleStates();
-            return states[module] == true;
-          },
-          openTarget: (pageContext) => _openTarget(item, pageContext),
-        ),
-      ),
-    );
+    try {
+      await _openTarget(item, context);
+    } catch (_) {
+      // _openTarget already displays the failure and preserves unread state
+      // when the target cannot be resolved.
+    }
     if (mounted) await _load();
   }
 
@@ -195,7 +179,31 @@ class _NotificationsPageState extends State<NotificationsPage> {
         payrollMonth = await review.notificationMonth(target.actionId ?? '');
       }
       Widget? destination;
-      if (SourceNotificationTarget.supports(target.actionKey)) {
+      if (target.actionKey == 'daily_report_edit_request' && target.actionId != null) {
+        final client = SupabaseBackend.client;
+        final actor = client.auth.currentUser?.id;
+        final request = await client.from('daily_report_edit_requests')
+            .select('report_id,status,requested_by').eq('id', target.actionId!).maybeSingle();
+        if (actor == null || client.auth.currentUser?.id != actor) {
+          throw StateError('ログイン状態が変わりました');
+        }
+        if (request?['status'] == 'approved' && request?['requested_by'] == actor) {
+          final report = await client.from('daily_reports')
+              .select('id,report_date,site_id,route_assignment_id')
+              .eq('id', request!['report_id']).single();
+          if (client.auth.currentUser?.id != actor) {
+            throw StateError('ログイン状態が変わりました');
+          }
+          destination = DailyReportPage(
+            initialReportId: report['id'] as String,
+            initialDate: DateTime.parse(report['report_date'] as String),
+            initialSiteId: report['site_id'] as String?,
+            initialRouteAssignmentId: report['route_assignment_id'] as String?,
+          );
+        } else {
+          destination = DailyReportApprovalsPage(initialRequestId: target.actionId);
+        }
+      } else if (SourceNotificationTarget.supports(target.actionKey)) {
         final repository = _notifications;
         if (repository == null) {
           throw StateError('Notifications unavailable');
