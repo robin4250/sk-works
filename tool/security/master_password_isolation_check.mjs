@@ -227,7 +227,9 @@ try {
   });
   await check('real signed HTTP rejects absent/bad/expired tokens and normal roles',async()=>{
     await admin.query("notify pgrst,'reload schema'");let ready=false;
-    for(let n=0;n<50;n++){try{const r=await fetch(http,{signal:AbortSignal.timeout(1000)});if(r.ok&&(await r.text()).includes('current_master_password_status')){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,200));}
+    // OpenAPI is role-filtered: anonymous must not list these authenticated RPCs.
+    // Poll only this read-only metadata GET using the fixture's signed JWT.
+    for(let n=0;n<50;n++){try{const r=await fetch(http,{headers:{Authorization:'Bearer '+jwt()},signal:AbortSignal.timeout(1000)});if(r.ok&&(await r.text()).includes('current_master_password_status')){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,200));}
     assert.equal(ready,true);
     for(const token of [undefined,jwt(ids[0],sessions[0],{},'fixture-wrong-signature'),jwt(ids[0],sessions[0],{exp:1})]){
       assert.ok([401,403].includes((await call('current_master_password_status',{p_device_key:key},token)).status));
