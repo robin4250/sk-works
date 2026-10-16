@@ -42,6 +42,13 @@ void main() {
     await t.pumpWidget(MaterialApp(home:SecureAuthPage(googleLogin:g,onAuthenticated:done)));
     await t.pumpAndSettle();
   }
+  testWidgets('unsupported default platform keeps phone and QR without Google entry', (t) async {
+    await t.pumpWidget(MaterialApp(home: SecureAuthPage(onAuthenticated: () {})));
+    await t.pumpAndSettle();
+    expect(ExistingGoogleLogin.supportedPlatform, false);
+    expect(find.text('登録済みのGoogleでログイン'), findsNothing);
+    expect(find.text('従業員登録QRでログイン'), findsOneWidget);
+  });
   testWidgets('launch is not success; existing SDK session and membership finish once', (t) async {
     final g=FakeGoogle(client); var done=0;
     await show(t,g,()=>done++);

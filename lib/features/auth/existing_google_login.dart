@@ -10,6 +10,8 @@ class ExistingGoogleLogin {
 
   final SupabaseClient client;
   static const nativeRedirect = 'com.skworks.sko://login-callback/';
+  static bool get supportedPlatform =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   static ExistingGoogleLogin? maybeCreate() => SupabaseBackend.isInitialized
       ? ExistingGoogleLogin(SupabaseBackend.client)
@@ -19,8 +21,8 @@ class ExistingGoogleLogin {
   Stream<AuthState> get changes => client.auth.onAuthStateChange;
 
   Future<bool> launch() {
-    if (kIsWeb) {
-      throw UnsupportedError('Native Google callback is required');
+    if (!supportedPlatform) {
+      throw UnsupportedError('Verified iOS Google callback is required');
     }
     return client.auth.signInWithOAuth(
         OAuthProvider.google,

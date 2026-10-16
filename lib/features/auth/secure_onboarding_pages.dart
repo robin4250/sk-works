@@ -358,7 +358,8 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
-                      if (!_registerMode && !_awaitingSms && !_passwordResetMode) ...[
+                      if ((widget.googleLogin != null || ExistingGoogleLogin.supportedPlatform) &&
+                          !_registerMode && !_awaitingSms && !_passwordResetMode) ...[
                         const SizedBox(height: 16),
                         OutlinedButton(
                           onPressed: _busy || _googlePending ? null : _startGoogle,
