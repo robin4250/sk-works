@@ -67,7 +67,7 @@ try{
  r=await rpc('save_employee_onboarding_profile_without_photos',legacy,payload);assert.equal(r.status,204);checks++;
  const safeSignature='(text,text,text,text,text,text,text)';
  await db.query('drop function public.save_employee_onboarding_profile_without_photos'+safeSignature+';drop function private.save_employee_onboarding_profile_without_photos'+safeSignature+";notify pgrst,'reload schema'");
- let missing=false;for(let i=0;i<30;i++){r=await save(legacy);if(r.status===404){missing=true;assert.equal((await r.json()).code,'PGRST202');break;}await new Promise(resolve=>setTimeout(resolve,100));}assert.equal(missing,true);checks++;
+ const beforeMissing=await snapshot();let missing=false;for(let i=0;i<30;i++){r=await save(legacy);assert.equal(r.status,404);const code=(await r.json()).code;assert.ok(['42883','PGRST202'].includes(code));if(code==='PGRST202'){missing=true;break;}await new Promise(resolve=>setTimeout(resolve,100));}assert.equal(missing,true);assert.deepEqual(await snapshot(),beforeMissing);checks++;
  const columns=['status','address','blood_type','family_composition','emergency_relation','emergency_name','emergency_phone','emergency_address','portrait_path','my_number_front_path','my_number_back_path','submitted_at'];
  for(const row of backups)await db.query(`update public.employee_registration_invites set ${columns.map((c,i)=>c+'=$'+(i+1)).join(',')} where id=$${columns.length+1}`,[...columns.map(c=>row[c]),row.id]);
  await db.query('truncate private.fixture_notifications;drop function public.employee_onboarding_photo_capability();drop function private.read_employee_onboarding_photo_capability()');await db.query(original);
