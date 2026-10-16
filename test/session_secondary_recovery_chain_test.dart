@@ -8,6 +8,8 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/data/supabase_backend.dart';
 import 'package:sk_works/features/auth/auth_gate.dart';
+import 'package:sk_works/features/auth/authenticated_navigation_boundary.dart';
+import 'package:sk_works/features/auth/secure_onboarding_pages.dart';
 import 'package:sk_works/features/auth/secondary_password_reset_page.dart';
 import 'package:sk_works/features/auth/secondary_protected_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -74,11 +76,11 @@ Future<void> _settle(WidgetTester tester) async {
   }
   await tester.pumpAndSettle();
 }
-Widget _gate() => MaterialApp(home: SupabaseAuthGate(homeBuilder: (logout) => Scaffold(body: Column(children: [
+Widget _gate() => AuthenticatedNavigationBoundary(child: MaterialApp(home: SupabaseAuthGate(homeBuilder: (logout) => Scaffold(body: Column(children: [
   const Text('synthetic authenticated home'),
   TextButton(onPressed: logout, child: const Text('fixture logout')),
   Builder(builder: (context) => TextButton(onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => const SecondaryProtectedPage(title: 'synthetic invoice', child: Text('protected fixture')))), child: const Text('fixture protected entry'))),
-]))));
+])))));
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   if (!const bool.fromEnvironment('SKO_SESSION_CHAIN_FIXTURE')) {
@@ -141,6 +143,23 @@ void main() {
     expect(Supabase.instance.client.auth.currentUser, isNull);
     expect(_prefs.containsKey(_storageKey), false);
     expect(_prefs.getBool(_bioKey), true);
+    expect(find.byType(SecureAuthPage), findsOneWidget);
+    // Recreate the SDK only after unmounting its actual navigation boundary.
+    // A cold signed-out start must show the same existing login widget.
+    final loggedOutRequestCount = _calls.length;
+    await tester.pumpWidget(const SizedBox.shrink()); await _settle(tester);
+    await tester.runAsync(() async {
+      await Supabase.instance.dispose();
+      await _initialize();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await tester.pumpWidget(_gate()); await _settle(tester);
+    expect(Supabase.instance.client.auth.currentSession, isNull);
+    expect(_prefs.containsKey(_storageKey), false);
+    expect(_prefs.getBool(_bioKey), true);
+    expect(_calls.length, loggedOutRequestCount);
+    expect(find.byType(SecureAuthPage), findsOneWidget);
+    expect(find.text('本パスワードを忘れた方'), findsOneWidget);
     final writes = _calls.where((r) => r.url.path.endsWith('/set_secondary_password')).length;
     // The actual device access refuses the save when no authenticated global repository actor exists.
     final loggedOutAccess = DeviceSecondaryPasswordResetAccess();
