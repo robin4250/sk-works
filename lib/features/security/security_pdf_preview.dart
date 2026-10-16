@@ -44,20 +44,26 @@ class _SecurityPdfPreviewState extends State<SecurityPdfPreview> {
   Future<void> _load() async {
     try {
       await widget.authorize();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       final bytes = await widget.buildPdf();
       await widget.authorize();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _bytes = bytes;
         _busy = false;
       });
     } catch (_) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _bytes = null;
         _failed = true;
         _busy = false;
-      });
+        });
+      }
     }
   }
 
@@ -66,19 +72,27 @@ class _SecurityPdfPreviewState extends State<SecurityPdfPreview> {
 
   Future<void> _handoff(Future<void> Function(Uint8List) output) async {
     final bytes = _bytes;
-    if (_busy || bytes == null || _failed) return;
+    if (_busy || bytes == null || _failed) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       await widget.authorize();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       await output(bytes);
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     } catch (_) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _bytes = null;
         _failed = true;
         _busy = false;
-      });
+        });
+      }
     }
   }
 
