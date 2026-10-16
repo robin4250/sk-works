@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
-      - run: node --test tool/security/platform_log_adapter_test.mjs
+      - run: node --test tool/security/platform_log_adapter_test.mjs tool/security/platform_batch_delivery_test.mjs
       - run: node tool/security/platform_log_sql_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
   signed-http-postgres:
     runs-on: ubuntu-latest
