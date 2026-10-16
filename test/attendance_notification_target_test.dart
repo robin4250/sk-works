@@ -104,6 +104,18 @@ void main() {
     source.change(null); await tester.pump();
     source.pending!.complete(row()); await tester.pumpAndSettle();
     expect(find.byType(Card), findsNothing);
-    expect(find.text('ログイン状態が変わりました。通知一覧から開き直してください。'), findsOneWidget);
+    expect(find.text('ログイン状態が変わったか、確認できません。通知一覧から開き直してください。'), findsOneWidget);
   });
+  testWidgets('auth stream error clears records and stays invalid after recovery', (tester) async {
+    final source = Source(); addTearDown(source.changes.close);
+    await open(tester, source);
+    source.changes.addError(StateError('auth unavailable'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Card), findsNothing);
+    expect(tester.takeException(), isNull);
+    source.change('actor'); await tester.pumpAndSettle();
+    expect(find.byType(Card), findsNothing);
+    expect(find.text('再読み込み'), findsNothing);
+  });
+
 }
