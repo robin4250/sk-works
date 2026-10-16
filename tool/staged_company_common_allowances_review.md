@@ -10,7 +10,9 @@ merged as the final contract. Existing company settings remain canonical.
 The original three `company_rate_settings.allowance_[1..3]` name/amount/display-unit
 columns remain the ONLY current values for those three items. Their existing
 random UUID lifecycle (`20261009201229_company_allowance_identity_lifecycle.sql`)
-is a required staged dependency; its functions/triggers/ACL are NOT replaced.
+is a required staged dependency; its functions/triggers/ACL are NOT replaced. The one original attendance unit-read
+RPC receives an explicitly guarded price-free compatibility call; its OID, owner,
+ACL, SECURITY DEFINER flag, arguments and search_path stay unchanged.
 Read has no side effects. First explicit confirmed allowance save compares the
 full original source, calls its existing adopt() once, and edits legacy + extras
 atomically. Existing adopted IDs are retained. Rename/price/display-unit edits keep
@@ -20,8 +22,9 @@ name matching, quantity inference and three-pay-type copies are forbidden.
 Legacy references occupy the first three rows in ALL pay-type day/earning groups:
 `applicability=all, section=earning, unit=day`. This is a UI grouping; `source_unit`
 retains the original free display unit (e.g. 回/組). It is never forced to 日 or used
-to move the item into hour/month groups. Explicit display-unit edits are permitted
-with original validation. Unedited NULL/blank/spaced names and display units stay
+to move the item into hour/month groups. Explicit display-unit edits are permitted with original validation only when
+they do not change an already-observed name→unit mapping. Ambiguous same-name unit
+changes wait for a future dated-history contract and are safely rejected. Unedited NULL/blank/spaced names and display units stay
 exact, including when only extras are saved. Existing invoice/payment/site links
 continue to read the same old columns. New extras are the extension only, stored
 once in the new private catalog. No existing payroll calculation is reimplemented.
@@ -126,7 +129,8 @@ strict limits, duplicate/foreign/retired IDs, old combined +2 version detection,
 tax-only first-save no adoption, tax two-column-only equality, exact operation-
 bound receipts after later updates, viewer/role/actor/session/expiry denial,
 failed history rollback of old+new data, pagination, source/config drift, original
-function OID/body/owner/ACL and all finalized payroll/daily/admin/session equality.
+function OID/body/owner/ACL equality except the one explicitly guarded unit-read
+body change, and all finalized payroll/daily/admin/session equality.
 Native two-connection tests must observe actual lock waits for new/new and old/new
 writers in both directions, and role/session revocation before waiting write.
 The new catalog is snapshotted only in memory, dropped/recreated and restored in
@@ -140,3 +144,34 @@ show unavailable when missing, preserve drafts and never pretend successful save
 
 Supabase current functions/RLS docs checked through search_docs. Changelog markdown
 fetch failed unsupported-content-type; no new version-specific API is assumed.
+
+
+## Phase 1 past-unit compatibility (intentional behavior boundary)
+
+At first explicit allowance adoption/save, save the EXISTING old RPC name→unit
+projection as a price-free company baseline. This preserves its exact trim/default/
+last-slot-wins behavior; it does not reconstruct pre-adoption history. The old RPC
+then merges that baseline with current units. Renaming/retiring an item retains old
+name/unit aliases, so month/day PDF and attendance consumers using the existing API
+can still resolve their old names. Ordinary company members retain this price-free
+read; new price/history access is not opened. No attendance/PDF source is modified.
+
+A narrowly scoped AFTER UPDATE trigger on existing company settings protects only
+companies with a baseline. A current map cannot change the unit of any name already
+observed in a prior transaction or initial baseline. This includes a duplicate-name
+winner being deleted and exposing a different unit. Such an operation raises22023,
+rolls back old/new values and histories and leaves the UI draft intact. An entirely
+new name first introduced by the SAME transaction may settle its final unit during
+the old combined saver's two updates; first-observation transaction identity uses
+postmaster-start time plus full transaction ID, not a reusable slot/user identity.
+Other original writers and authorization remain unchanged. Source-unit editing is
+therefore explicitly partial until dated records exist; do not claim all unit
+changes are complete. Unknown current access is not evidence of historical values.
+
+The candidate checks the actual old unit-read prosrc MD5
+`17310735021c3a953a093ed196261468`, owner/SD/search_path and auth/anon permissions before
+its sole body replacement. CREATE OR REPLACE preserves existing OID/ACL including
+an existing service_role grant (the synthetic migration may omit that grant).
+Restoration must first reinstall the exact pre-candidate unit function, then drop
+only the new schema/APIs/triggers; tests restore its original OID/ACL before a
+reapply and restore the price-free baseline together with the new catalog.

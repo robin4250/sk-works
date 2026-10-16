@@ -19,6 +19,13 @@ do $guard$ begin
  if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='labels' and md5(p.prosrc)='835f268de21abf694c10ccf764477543' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is true and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
  if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='edit_slot' and md5(p.prosrc)='7be66e2c3a683e522b44ede1d8205647' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is true and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
 end $guard$;
+do $guard$ begin
+ if not exists(select 1 from pg_proc p where p.oid='public.my_attendance_allowance_units()'::regprocedure
+ and md5(p.prosrc)='17310735021c3a953a093ed196261468' and p.prosecdef
+ and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=public, pg_temp']
+ and has_function_privilege('authenticated',p.oid,'EXECUTE') and not has_function_privilege('anon',p.oid,'EXECUTE')) then
+ raise exception 'attendance allowance unit source baseline drift' using errcode='55000';end if;
+end $guard$;
 create schema company_common_allowance_private;
 revoke all on schema company_common_allowance_private from public,anon,authenticated,service_role;
 create table company_common_allowance_private.state (
@@ -44,6 +51,13 @@ create table company_common_allowance_private.history (
  request_id uuid not null,operation text not null,before_value jsonb not null,after_value jsonb not null,
  primary key(company_id,version)
 );
+-- Price-free compatibility baseline, created only by an explicit allowance save.
+create table company_common_allowance_private.unit_aliases (
+ company_id uuid primary key,units jsonb not null check(jsonb_typeof(units)='object'),
+ observations jsonb not null default '{}'::jsonb check(jsonb_typeof(observations)='object'),
+ adopted_by uuid not null,adopted_at timestamptz not null default clock_timestamp()
+);
+alter table company_common_allowance_private.unit_aliases enable row level security;
 create table company_common_allowance_private.requests (
  company_id uuid not null,request_id uuid not null,actor_id uuid not null,
  payroll_type text,operation text not null,expected_version bigint not null,
@@ -56,6 +70,39 @@ alter table company_common_allowance_private.history enable row level security;
 alter table company_common_allowance_private.requests enable row level security;
 revoke all on all tables in schema company_common_allowance_private from public,anon,authenticated,service_role;
 
+-- Exactly the old RPC's trim/default/duplicate-key-winner projection, not price.
+create function company_common_allowance_private.current_units(cid uuid) returns jsonb
+language sql stable set search_path='' as $$
+ select jsonb_strip_nulls(jsonb_build_object(
+ coalesce(nullif(trim(r.allowance_1_name),''),'__none1'),coalesce(nullif(trim(r.allowance_1_unit),''),'回'),
+ coalesce(nullif(trim(r.allowance_2_name),''),'__none2'),coalesce(nullif(trim(r.allowance_2_unit),''),'回'),
+ coalesce(nullif(trim(r.allowance_3_name),''),'__none3'),coalesce(nullif(trim(r.allowance_3_unit),''),'回')))-'__none1'-'__none2'-'__none3'
+ from public.company_rate_settings r where r.company_id=cid
+$$;
+create function company_common_allowance_private.protect_unit_aliases() returns trigger
+language plpgsql volatile security definer set search_path='' as $$
+declare baseline jsonb;current_map jsonb;observed jsonb;xid text:=pg_postmaster_start_time()::text||':'||pg_current_xact_id()::text;
+begin
+ select units,observations into baseline,observed from company_common_allowance_private.unit_aliases where company_id=new.company_id for update;
+ if not found then return new;end if;
+ current_map:=company_common_allowance_private.current_units(new.company_id);
+ if exists(select 1 from jsonb_each(current_map) x where baseline ? x.key and baseline->x.key is distinct from x.value and observed->>x.key is distinct from xid) then
+  raise exception 'past allowance display unit requires dated compatibility' using errcode='22023';end if;
+ select observed||coalesce(jsonb_object_agg(x.key,to_jsonb(xid)) filter(where not(baseline ? x.key)),'{}'::jsonb) into observed from jsonb_each(current_map) x;
+ update company_common_allowance_private.unit_aliases set units=baseline||current_map,observations=observed where company_id=new.company_id;
+ return new;
+end $$;
+create trigger company_common_allowance_unit_compat after update on public.company_rate_settings
+for each row execute function company_common_allowance_private.protect_unit_aliases();
+create function company_common_allowance_private.merge_unit_aliases(cid uuid,current_map jsonb) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+begin
+ -- Keep original ordinary-member visibility, not the new admin price scope.
+ if auth.uid() is null or not exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid()) then
+  raise exception 'attendance allowance access denied' using errcode='42501';end if;
+ if not exists(select 1 from public.companies where id=cid) then return coalesce(current_map,'{}'::jsonb);end if;
+ return coalesce((select a.units from company_common_allowance_private.unit_aliases a where a.company_id=cid),'{}'::jsonb)||coalesce(current_map,'{}'::jsonb);
+end $$;
 create function company_common_allowance_private.session_id() returns uuid
 language plpgsql stable security definer set search_path='' as $$
 declare claims jsonb:=auth.jwt();sid text:=claims->>'session_id';
@@ -181,6 +228,8 @@ begin
   or (legacy_item->>'amount_yen')::numeric>2147483647 then
    raise exception 'invalid legacy allowance reference' using errcode='22023';end if;
  end loop;
+ insert into company_common_allowance_private.unit_aliases(company_id,units,adopted_by)
+ values(cid,company_common_allowance_private.current_units(cid),auth.uid()) on conflict(company_id) do nothing;
  if (expected_source->>'legacy_adopted')::boolean is not true then
   if confirm_adoption is not true then raise exception 'explicit legacy adoption confirmation required' using errcode='22023';end if;
   perform company_allowance_identity_private.adopt(cid,expected_source->'legacy_slots',true);
@@ -294,4 +343,37 @@ create function public.save_company_common_tax_settings(p_company_id uuid,p_expe
 language sql volatile security invoker set search_path='' as $$select company_common_allowance_private.save_tax(p_company_id,p_expected_version,p_expected_source,p_tax_rate,p_welfare_rate,p_request_id)$$;
 revoke all on function public.read_company_common_allowances_admin(uuid),public.save_company_common_allowances(uuid,text,bigint,jsonb,uuid,jsonb,jsonb,boolean),public.save_company_common_tax_settings(uuid,bigint,jsonb,numeric,numeric,uuid),public.read_company_common_allowance_request(uuid,uuid),public.read_company_common_allowances_history(uuid,bigint,integer) from public,anon,authenticated,service_role;
 grant execute on function public.read_company_common_allowances_admin(uuid),public.save_company_common_allowances(uuid,text,bigint,jsonb,uuid,jsonb,jsonb,boolean),public.save_company_common_tax_settings(uuid,bigint,jsonb,numeric,numeric,uuid),public.read_company_common_allowance_request(uuid,uuid),public.read_company_common_allowances_history(uuid,bigint,integer) to authenticated;
+create or replace function public.my_attendance_allowance_units()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path to 'public','pg_temp'
+as $$
+declare
+  v_user_id uuid:=auth.uid();
+  v_company_id uuid;
+  v_rates public.company_rate_settings%rowtype;
+begin
+  if v_user_id is null then raise exception 'authentication required'; end if;
+  select company_id into v_company_id
+  from public.company_members
+  where user_id=v_user_id
+  limit 1;
+  if v_company_id is null then return '{}'::jsonb; end if;
+
+  select * into v_rates
+  from public.company_rate_settings
+  where company_id=v_company_id;
+
+  return company_common_allowance_private.merge_unit_aliases(v_company_id,jsonb_strip_nulls(jsonb_build_object(
+    coalesce(nullif(trim(v_rates.allowance_1_name),''),'__none1'),
+      coalesce(nullif(trim(v_rates.allowance_1_unit),''),'回'),
+    coalesce(nullif(trim(v_rates.allowance_2_name),''),'__none2'),
+      coalesce(nullif(trim(v_rates.allowance_2_unit),''),'回'),
+    coalesce(nullif(trim(v_rates.allowance_3_name),''),'__none3'),
+      coalesce(nullif(trim(v_rates.allowance_3_unit),''),'回')
+  )) - '__none1' - '__none2' - '__none3');
+end;
+$$;
 commit;
