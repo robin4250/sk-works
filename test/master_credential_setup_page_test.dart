@@ -76,9 +76,24 @@ void main() {
     await t.tap(find.text('初回登録して保存')); await t.pumpAndSettle();
     expect(access.begins, 0); expect(access.commits, 0);
   });
+  testWidgets('help explains setup and change without exposing or retaining input', (t) async {
+    final access = _Access(); await _show(t, access); await _fill(t);
+    await t.tap(find.byTooltip('ヘルプ')); await t.pumpAndSettle();
+    expect(find.text('Master専用パスワードについて'), findsOneWidget);
+    expect(find.textContaining('現在の第2パスワードで本人確認'), findsOneWidget);
+    expect(find.textContaining('現在のMaster専用パスワードで確認'), findsOneWidget);
+    expect(find.textContaining('通信結果が不明な場合は再送せず'), findsOneWidget);
+    expect(find.text('existing-secret'), findsNothing); expect(find.text('new-master-password'), findsNothing);
+    await t.tap(find.text('閉じる')); await t.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing); expect(find.text('再読み込み'), findsOneWidget);
+    expect(access.begins, 0); expect(access.commits, 0);
+    await t.tap(find.text('再読み込み')); await t.pumpAndSettle();
+    for (final field in t.widgetList<TextField>(find.byType(TextField))) { expect(field.controller!.text, isEmpty); }
+  });
   testWidgets('background clears secrets and rejects late challenge', (t) async {
     final access = _Access()..beginWait = Completer<MasterCredentialChallenge>(); await _show(t, access); await _fill(t);
     await t.tap(find.text('初回登録して保存')); await t.pump();
+    expect(t.widget<IconButton>(find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == 'ヘルプ')).onPressed, isNull);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); await t.pump();
     access.beginWait!.complete(access.challenge()); await t.pump();
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await t.pumpAndSettle();
@@ -107,6 +122,7 @@ void main() {
     final oldChallenge = Completer<MasterCredentialChallenge>();
     final access = _Access()..beginWait = oldChallenge; await _show(t, access); await _fill(t);
     await t.tap(find.text('初回登録して保存')); await t.pump();
+    expect(t.widget<IconButton>(find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == 'ヘルプ')).onPressed, isNull);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); await t.pump();
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await t.pumpAndSettle();
     access.beginWait = null;

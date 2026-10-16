@@ -1,0 +1,25 @@
+name: Legacy Master first device AND recovery
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/master_protected_page.dart'
+      - 'lib/features/settings/master_device_repository.dart'
+      - 'lib/features/auth/secure_onboarding_repository.dart'
+      - 'test/master_first_device_auth_test.dart'
+      - '.github/workflows/master-first-device-auth.yml'
+permissions:
+  contents: read
+jobs:
+  first-device:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/settings/master_protected_page.dart lib/features/settings/master_device_repository.dart lib/features/auth/secure_onboarding_repository.dart test/master_first_device_auth_test.dart
+      - run: flutter test test/master_first_device_auth_test.dart test/master_protected_page_contract_test.dart test/master_step_up_policy_test.dart test/master_password_entry_test.dart test/master_password_entry_repository_test.dart
