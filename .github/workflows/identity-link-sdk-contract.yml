@@ -1,0 +1,22 @@
+name: Identity linking isolated SDK contract
+on:
+  pull_request:
+    paths:
+      - 'test/identity_link_sdk_contract_test.dart'
+      - '.github/workflows/identity-link-sdk-contract.yml'
+permissions:
+  contents: read
+jobs:
+  sdk-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze test/identity_link_sdk_contract_test.dart
+      - run: flutter test test/identity_link_sdk_contract_test.dart
