@@ -1,0 +1,23 @@
+name: Capture management retention design check
+on:
+  pull_request:
+    paths:
+      - 'supabase/tests/attendance_capture_management_retention_assertions.sql'
+      - 'tool/verify_capture_management_retention.mjs'
+      - '.github/workflows/capture-management-retention-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-design-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/retention-sql-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Reproduce management loss and verify experimental archive requirements
+        run: node tool/verify_capture_management_retention.mjs "$RUNNER_TEMP/retention-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js"
