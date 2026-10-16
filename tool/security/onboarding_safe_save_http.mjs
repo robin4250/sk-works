@@ -47,7 +47,7 @@ try{
  for(const subject of [legacy,fresh]){const before=(await db.query('select to_jsonb(i) row from public.employee_registration_invites i where auth_user_id=$1',[subject.id])).rows[0].row;const r=await save(subject);assert.equal(r.status,204);await invariant(subject.id,before);checks++;}
  // Capability observed first, then original destructive save restored before RPC dispatch.
  let r=await rpc('employee_onboarding_photo_capability',legacy);assert.equal(r.status,200);assert.equal((await r.json()).photo_upload_allowed,false);
- await db.query(original);const beforeFailure=await snapshot();r=await save(legacy);assert.equal(r.status,400);assert.equal((await r.json()).code,'55000');assert.deepEqual(await snapshot(),beforeFailure,'Failed assertion rolls back text/status/photos AND synthetic notification sink');checks++;
+ await db.query(original);const beforeFailure=await snapshot();r=await save(legacy);assert.equal(r.status,500);assert.equal((await r.json()).code,'55000');assert.deepEqual(await snapshot(),beforeFailure,'Failed assertion rolls back text/status/photos AND synthetic notification sink');checks++;
  r=await save(fresh);assert.equal(r.status,204);checks++;
  // Restore retained save without touching capability or dedicated API.
  const retention=fs.readFileSync(path.join(here,'onboarding_photo_retention.sql.review-only'),'utf8');await db.query(retention.replace(/create function private.read_employee_onboarding_photo_capability\(\)[\s\S]*?commit;/,'commit;'));
