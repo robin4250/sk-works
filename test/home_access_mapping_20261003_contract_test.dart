@@ -53,7 +53,10 @@ void main() {
     final resources = File('lib/features/home/employee_resources_page.dart').readAsStringSync();
     expect(resources, contains("('people', '社員データ'"));
     expect(app, contains("label: SkoLanguageController.tr('車両ルート')"));
-    expect(app, contains("label: SkoLanguageController.tr('本日のLINE')"));
+    expect(app, isNot(contains("key: 'today_line'")));
+    expect(app, contains("key: 'line_talk'"));
+    expect(app, contains("label: SkoLanguageController.tr('LINEトーク')"));
+    expect(app, contains("page = const LineTalkHubPage();"));
     expect(app, contains("label: SkoLanguageController.tr('背景')"));
     expect(app, contains("label: SkoLanguageController.tr('資格登録')"));
     expect(resources, contains("('employee_qualifications', '従業員資格'"));
