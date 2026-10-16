@@ -19,7 +19,9 @@ class ExistingGoogleLogin {
   Stream<AuthState> get changes => client.auth.onAuthStateChange;
 
   Future<bool> launch() {
-    if (kIsWeb) throw UnsupportedError('Native Google callback is required');
+    if (kIsWeb) {
+      throw UnsupportedError('Native Google callback is required');
+    }
     return client.auth.signInWithOAuth(
         OAuthProvider.google,
         redirectTo: nativeRedirect,
@@ -29,7 +31,9 @@ class ExistingGoogleLogin {
 
   Future<bool> hasExistingMembership(Session session) async {
     if (currentSession?.user.id != session.user.id ||
-        currentSession?.accessToken != session.accessToken) return false;
+        currentSession?.accessToken != session.accessToken) {
+      return false;
+    }
     final rows = await client
         .from('company_members')
         .select('company_id')
