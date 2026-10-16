@@ -20,16 +20,19 @@ class TradeCompanyPage extends StatefulWidget {
     super.key,
     required this.mode,
     this.onOpenDeliveries,
+    this.repository,
   });
   final VoidCallback? onOpenDeliveries;
   final TradeCompanyPageMode mode;
+  final TradeCompanyRepository? repository;
 
   @override
   State<TradeCompanyPage> createState() => _TradeCompanyPageState();
 }
 
 class _TradeCompanyPageState extends State<TradeCompanyPage> {
-  final _repository = TradeCompanyRepository.maybeCreate();
+  late final _repository = widget.repository ?? TradeCompanyRepository.maybeCreate();
+  bool _companyEditorOpen = false;
   List<TradeCompanyRecord> _items = const [];
   bool _loading = true;
   bool _linkEnabled = false;
@@ -217,46 +220,41 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   }
 
   Future<void> _register() async {
-    final draft = await showDialog<_CompanyDraft>(
-      context: context,
-      builder: (_) => _CompanyRegistrationDialog(title: _title),
-    );
-    if (draft == null || _repository == null) return;
-
-    final same = _items.where(
-      (item) =>
-          item.name.trim().toLowerCase() == draft.name.trim().toLowerCase(),
-    );
-    final existing = same.isEmpty ? null : same.first;
-    final desiredRole = widget.mode == TradeCompanyPageMode.customer
-        ? 'customer'
-        : 'subcontractor';
-    final role = existing == null || existing.tradeRole == desiredRole
-        ? desiredRole
-        : 'both';
-
+    final repository = _repository;
+    if (repository == null || _companyEditorOpen) return;
+    _companyEditorOpen = true;
     try {
-      final id = await _repository.saveCompany(
-        id: existing?.id,
-        name: draft.name,
-        tradeRole: role,
-        postalCode: draft.postalCode,
-        address: draft.address,
-        phone: draft.phone,
-        email: draft.email,
-        corporateNumber: draft.corporateNumber,
-        notes: draft.notes,
-        representativeName: draft.representativeName,
-        representativePhone: draft.representativePhone,
+      final id = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _CompanyRegistrationDialog(
+          title: _title,
+          onSave: (draft) {
+            final same = _items.where((item) =>
+              item.name.trim().toLowerCase() == draft.name.trim().toLowerCase());
+            final existing = same.isEmpty ? null : same.first;
+            final desiredRole = widget.mode == TradeCompanyPageMode.customer
+                ? 'customer' : 'subcontractor';
+            final role = existing == null || existing.tradeRole == desiredRole
+                ? desiredRole : 'both';
+            return repository.saveCompany(
+              id: existing?.id, name: draft.name, tradeRole: role,
+              postalCode: draft.postalCode, address: draft.address,
+              phone: draft.phone, email: draft.email,
+              corporateNumber: draft.corporateNumber, notes: draft.notes,
+              representativeName: draft.representativeName,
+              representativePhone: draft.representativePhone,
+            );
+          },
+        ),
       );
+      if (id == null || !mounted) return;
       await _load();
       if (!mounted) return;
       final saved = _items.where((item) => item.id == id);
       if (saved.isNotEmpty) await _offerLinkMerge(saved.first);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('登録できませんでした: $error')));
+    } finally {
+      _companyEditorOpen = false;
     }
   }
 
@@ -396,33 +394,28 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   }
 
   Future<void> _editCompany(TradeCompanyRecord item) async {
-    final draft = await showDialog<_CompanyDraft>(
-      context: context,
-      builder: (_) => _CompanyRegistrationDialog(title: _title, initial: item),
-    );
-    if (draft == null || _repository == null) return;
+    final repository = _repository;
+    if (repository == null || _companyEditorOpen) return;
+    _companyEditorOpen = true;
     try {
-      await _repository.saveCompany(
-        id: item.id,
-        name: draft.name,
-        tradeRole: item.tradeRole,
-        postalCode: draft.postalCode,
-        address: draft.address,
-        phone: draft.phone,
-        email: draft.email,
-        corporateNumber: draft.corporateNumber,
-        notes: draft.notes,
-        representativeName: draft.representativeName,
-        representativePhone: draft.representativePhone,
+      final id = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _CompanyRegistrationDialog(
+          title: _title, initial: item,
+          onSave: (draft) => repository.saveCompany(
+            id: item.id, name: draft.name, tradeRole: item.tradeRole,
+            postalCode: draft.postalCode, address: draft.address,
+            phone: draft.phone, email: draft.email,
+            corporateNumber: draft.corporateNumber, notes: draft.notes,
+            representativeName: draft.representativeName,
+            representativePhone: draft.representativePhone,
+          ),
+        ),
       );
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('会社情報を更新しました')));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('会社情報を更新できませんでした: $error')));
+      if (id != null && mounted) await _load();
+    } finally {
+      _companyEditorOpen = false;
     }
   }
 
@@ -626,7 +619,8 @@ class _CompanyDraft {
 }
 
 class _CompanyRegistrationDialog extends StatefulWidget {
-  const _CompanyRegistrationDialog({required this.title, this.initial});
+  const _CompanyRegistrationDialog({required this.title, required this.onSave, this.initial});
+  final Future<String> Function(_CompanyDraft draft) onSave;
   final String title;
   final TradeCompanyRecord? initial;
 
@@ -637,6 +631,9 @@ class _CompanyRegistrationDialog extends StatefulWidget {
 
 class _CompanyRegistrationDialogState
     extends State<_CompanyRegistrationDialog> {
+  bool _saving = false;
+  String? _savedId;
+  String? _error;
   late final TextEditingController _name;
   late final TextEditingController _postalCode;
   late final TextEditingController _address;
@@ -684,17 +681,58 @@ class _CompanyRegistrationDialogState
     super.dispose();
   }
 
+  Future<void> _save() async {
+    if (_saving || _savedId != null) return;
+    if (_name.text.trim().isEmpty) {
+      setState(() => _error = '会社名を入力してください。');
+      return;
+    }
+    final draft = _CompanyDraft(
+      name: _name.text.trim(), postalCode: _postalCode.text.trim(),
+      address: _address.text.trim(), phone: _phone.text.trim(),
+      email: _email.text.trim(), corporateNumber: _corporateNumber.text.trim(),
+      notes: _notes.text.trim(), representativeName: _representativeName.text.trim(),
+      representativePhone: _representativePhone.text.trim(),
+    );
+    setState(() { _saving = true; _error = null; });
+    try {
+      final id = await widget.onSave(draft);
+      if (!mounted) return;
+      if (id.isEmpty) throw StateError('保存結果を確認できません。');
+      setState(() => _savedId = id);
+    } catch (error) {
+      if (mounted) setState(() => _error = '保存できませんでした。入力を確認して再試行してください。 $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return TradeCompanyDialog(
+    return PopScope(
+      canPop: !_saving && _savedId == null,
+      child: TradeCompanyDialog(
       title: Text(
-        widget.initial == null ? '${widget.title}を登録' : '${widget.title}を編集',
+        _savedId != null
+            ? (widget.initial == null ? '登録しました' : '更新しました')
+            : (widget.initial == null ? '${widget.title}を登録' : '${widget.title}を編集'),
       ),
-      content: SizedBox(
+      content: _savedId != null
+          ? Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.check_circle, color: Colors.green, size: 48),
+              const SizedBox(height: 12),
+              Text('${_name.text.trim()}の会社情報を${widget.initial == null ? '登録' : '更新'}しました。'),
+              const SizedBox(height: 8),
+              const Text('一覧で保存した内容を確認できます。'),
+            ])
+          : AbsorbPointer(absorbing: _saving, child: SizedBox(
         width: 460,
         child: SingleChildScrollView(
           child: Column(
             children: [
+              if (_error != null) Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(_error!, key: const ValueKey('company-save-error'))),
               TextField(
                 controller: _name,
                 decoration: const InputDecoration(labelText: '会社名 *'),
@@ -748,32 +786,24 @@ class _CompanyRegistrationDialogState
             ],
           ),
         ),
-      ),
-      actions: [
+      )),
+      actions: _savedId != null ? [
+        FilledButton(onPressed: () => Navigator.of(context).pop(_savedId),
+          child: const Text('一覧で確認')),
+      ] : [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
           child: const Text('キャンセル'),
         ),
         FilledButton(
-          onPressed: () {
-            if (_name.text.trim().isEmpty) return;
-            Navigator.of(context).pop(
-              _CompanyDraft(
-                name: _name.text.trim(),
-                postalCode: _postalCode.text.trim(),
-                address: _address.text.trim(),
-                phone: _phone.text.trim(),
-                email: _email.text.trim(),
-                corporateNumber: _corporateNumber.text.trim(),
-                notes: _notes.text.trim(),
-                representativeName: _representativeName.text.trim(),
-                representativePhone: _representativePhone.text.trim(),
-              ),
-            );
-          },
-          child: Text(widget.initial == null ? '登録' : '保存'),
+          onPressed: _saving ? null : _save,
+          child: Text(_saving
+              ? (widget.initial == null ? '登録中…' : '更新中…')
+              : (widget.initial == null ? '登録' : '保存')),
+
         ),
       ],
+      ),
     );
   }
 }
