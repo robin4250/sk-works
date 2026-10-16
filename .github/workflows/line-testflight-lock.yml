@@ -4,6 +4,7 @@ on:
     paths:
       - 'docs/security/staged/line_testflight_master_only.sql.review-only'
       - 'tool/verify_line_release_capability.mjs'
+      - 'docs/security/line_testflight_lock_review.md'
       - '.github/workflows/line-testflight-lock.yml'
 jobs:
   postgres:
@@ -19,7 +20,16 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres -d sko_line_release_fixture"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      postgrest:
+        image: postgrest/postgrest:v16.4
+        env:
+          PGRST_DB_URI: postgres://postgres:fixture-only@postgres:5432/sko_line_release_fixture
+          PGRST_DB_ANON_ROLE: anon
+          PGRST_DB_SCHEMAS: public
+          PGRST_JWT_SECRET: synthetic-line-fixture-secret-at-least-32-characters
+        ports: ['3000:3000']
     env:
+      SKO_LINE_RELEASE_POSTGREST_URL: http://127.0.0.1:3000
       SKO_LINE_RELEASE_POSTGRES_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_line_release_fixture
     steps:
       - uses: actions/checkout@v4

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 process.on('uncaughtException',e=>{console.error(e.message,e.code,e.where ?? '');process.exit(1);});
@@ -12,7 +13,7 @@ const role = r => db.exec(`set role ${r}`);
 try {
 await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;
 create schema auth;create schema private;create type app_role as enum('owner','admin','manager','employee','viewer');
-create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
+create function auth.uid() returns uuid language sql stable as $$select coalesce(nullif(current_setting('test.uid',true),''),nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub')::uuid$$;
 create table auth.users(id uuid primary key);
 create table companies(id uuid primary key,name text);
 create table company_members(company_id uuid,user_id uuid,role app_role);
@@ -168,7 +169,37 @@ assert.equal(await scalar("select md5(jsonb_agg(to_jsonb(m) order by id)::text) 
 for(const r of ['anon','authenticated','service_role']) assert.equal(await scalar("select has_table_privilege($1,'private.line_general_release_settings','select') v",[r]),false);
 for(const r of ['anon','service_role']) assert.equal(await scalar("select has_function_privilege($1,'public.line_release_capability()','execute') v",[r]),false);
 for(const r of ['anon','authenticated','service_role']) assert.equal(await scalar("select has_function_privilege($1,'private.line_actor_release_allowed(uuid)','execute') v",[r]),false);
+// Actual signed-JWT HTTP transport is exercised only against the disposable PG17 fixture.
+if(testflightLock && process.env.SKO_LINE_RELEASE_POSTGREST_URL) {
+ const base=new URL(process.env.SKO_LINE_RELEASE_POSTGREST_URL);
+ if(base.protocol!=='http:' || base.hostname!=='127.0.0.1' || base.port!=='3000' || base.username || base.password || base.search || base.hash || base.pathname!=='/') throw Error('Exact disposable loopback HTTP fixture required');
+ await role('postgres');await db.exec("notify pgrst,'reload schema'");
+ const token=n=>{
+  const enc=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
+  const input=`${enc({alg:'HS256',typ:'JWT'})}.${enc({role:'authenticated',sub:id(n),exp:Math.floor(Date.now()/1000)+300})}`;
+  return input+'.'+crypto.createHmac('sha256','synthetic-line-fixture-secret-at-least-32-characters').update(input).digest('base64url');
+ };
+ const http=async(n,path,body)=>fetch(new URL(path,base),{method:body===undefined?'GET':'POST',headers:{...(n===null?{}:{Authorization:`Bearer ${token(n)}`}),...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+ for(let n=0;n<40;n++){
+  try {const r=await http(1,'/rpc/line_release_capability',{});if(r.ok)break;}catch{}
+  if(n===39)throw Error('PostgREST fixture not ready');
+  await new Promise(r=>setTimeout(r,250));
+ }
+ for(const n of [2,3,4,5,6,7]) {
+  let r=await http(n,'/rpc/line_release_capability',{});assert.equal(r.status,200);assert.equal((await r.json()).available,false,`HTTP capability denied actor ${n}`);
+  r=await http(n,"/chat_messages?origin=eq.line&select=id");assert.equal(r.status,200);assert.deepEqual(await r.json(),[],`Direct REST LINE denied actor ${n}`);
+  r=await http(n,'/line_group_bindings?select=id');assert.equal(r.status,200);assert.deepEqual(await r.json(),[]);
+  r=await http(n,'/rpc/begin_line_group_claim',{p_communication_group_id:id(20)});assert.equal(r.status,403);assert.equal((await r.json()).code,'42501',`RPC semantic denial actor ${n}`);
+ }
+ let r=await http(2,'/chat_messages?body=eq.Saved%20SKO&select=body');assert.equal(r.status,200);assert.deepEqual(await r.json(),[{body:'Saved SKO'}],'Ordinary SKO remains readable');
+ r=await http(1,'/rpc/line_release_capability',{});assert.equal(r.status,200);assert.equal((await r.json()).available,true);
+ r=await http(1,`/chat_messages?origin=eq.line&communication_group_id=eq.${id(20)}&select=id`);assert.equal(r.status,200);assert.equal((await r.json()).length,2,'Master own group LINE retained');
+ r=await http(1,`/chat_messages?origin=eq.line&communication_group_id=eq.${id(21)}&select=id`);assert.equal(r.status,200);assert.deepEqual(await r.json(),[],'Master exception does not grant foreign group');
+ r=await http(null,'/chat_messages?select=id');assert.equal(r.status,401,'Anonymous direct REST denied');
+ r=await http(null,'/rpc/line_release_capability',{});assert.equal(r.status,401,'Anonymous capability denied');
+ console.log('PASS: real signed-JWT PostgREST general role capability/direct LINE/bindings/RPC403, master own scope, foreign/anonymous rejection and ordinary SKO preservation.');
+}
 await role('anon');await assert.rejects(scalar('select public.line_release_capability() v'));
-console.log(testflightLock?'TestFlight master-only lock: retained saved settings, denied general roles despite setting=true, preserved master scope/SKO/history/ACL; HTTP/Realtime not tested.':'LINE release real SQL: default-on, additive RLS, roles, direct reads, definer denial, queued claim recheck, webhook reception, master existing scope, SKO preservation, audit and ON recovery passed. Realtime delivery and external HTTP races require separate integration validation.');
+console.log(testflightLock?'TestFlight master-only lock: retained saved settings, denied general roles despite setting=true, preserved master scope/SKO/history/ACL; optional signed-JWT HTTP fixture runs separately; Realtime not tested.':'LINE release real SQL: default-on, additive RLS, roles, direct reads, definer denial, queued claim recheck, webhook reception, master existing scope, SKO preservation, audit and ON recovery passed. Realtime delivery and external HTTP races require separate integration validation.');
 } finally { await db.close(); }
 
