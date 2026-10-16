@@ -19,7 +19,8 @@ import 'worker_document_send_page.dart';
 import 'worker_personnel_approver_settings_page.dart';
 
 class PeopleCloudPage extends StatefulWidget {
-  const PeopleCloudPage({super.key});
+  const PeopleCloudPage({super.key,this.companyId});
+  final String? companyId;
 
   @override
   State<PeopleCloudPage> createState() => _PeopleCloudPageState();
@@ -28,6 +29,7 @@ class PeopleCloudPage extends StatefulWidget {
 class _PeopleCloudPageState extends State<PeopleCloudPage> {
   final _repository = PeopleCloudRepository.maybeCreate();
   final _records = <PersonRecord>[];
+  PersonnelPrivacySession? _privacy;
   String _query = '';
   PersonKind? _filter;
   bool _loading = true;
@@ -36,11 +38,56 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   bool _canConfigurePersonnelApprovers = false;
   String _companyName = '';
   String? _error;
+  bool _reloadOnResume=false;
+  bool _refreshContactsOnResume=false;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() { _privacy?.removeListener(_privacyChanged);_privacy?.dispose();super.dispose(); }
+
+  void _privacyChanged() {
+    if (!mounted) return;
+    final session=_privacy;
+    setState(() {
+      if(session?.revoked==true){_records.clear();_canManagePeople=false;_canViewPeople=false;}
+      else if(session?.snapshot==null){
+        if(session?.active==false)_refreshContactsOnResume=true;
+        final basic=_records.map((record)=>PersonRecord.fromJson({...record.toJson(),
+          'phone':'','email':'','notes':'','bloodType':'','address':'',
+          'emergencyName':'','emergencyRelation':'','emergencyPhone':'','emergencyAddress':'',
+          'familyComposition':'','familyMembers':<dynamic>[],
+        })).toList(growable:false);
+        _records..clear()..addAll(basic);_canManagePeople=false;_canViewPeople=false;
+      }
+      else {_canManagePeople=session!.snapshot!.canManage;_canViewPeople=true;}
+    });
+    if(_refreshContactsOnResume&&session?.active==true&&session?.snapshot!=null){
+      _refreshContactsOnResume=false;_refreshRoster(session!);
+    }
+    if(_reloadOnResume&&session?.active==true&&session?.snapshot!=null){
+      _reloadOnResume=false;
+      WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_load();});
+    }
+  }
+
+  Future<void> _refreshRoster(PersonnelPrivacySession session) async {
+    final repository=_repository;
+    if(repository==null)return;
+    final lease=session.epoch;
+    try{
+      final rows=await repository.loadAll(expectedCompany:session.company);
+      session.verify(lease);
+      if(!mounted||_privacy!=session)return;
+      setState((){_records..clear()..addAll(rows.map((row)=>PersonRecord.fromJson({...row,
+        'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
+        'emergencyPhone':'','emergencyAddress':'','familyComposition':'','familyMembers':<dynamic>[],
+      })));});
+    }catch(_){/* Keep scrubbed roster; never restore a stale response. */}
   }
 
   Future<void> _load() async {
@@ -55,17 +102,29 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     }
     final actor = repository.actorId;
     try {
+      final member=await repository.membership(companyId:widget.companyId);
+      _privacy?.revoke();
+      _privacy?.removeListener(_privacyChanged);
+      _privacy?.dispose();
+      final privacy=repository.privacySession(member.companyId);
+      _privacy=privacy;
+      privacy.addListener(_privacyChanged);
+      privacy.start();
+      if(!privacy.active){_reloadOnResume=true;if(mounted)setState(()=>_loading=false);return;}
       final values = await Future.wait([
-        repository.loadAll(),
-        repository.canManagePeople(),
-        repository.companyName(),
-        repository.canConfigurePersonnelApprovers(),
-        repository.canViewPeople(),
+        repository.loadAll(expectedCompany:member.companyId),
+        repository.canManagePeople(companyId:member.companyId),
+        repository.companyName(companyId:member.companyId),
+        repository.canConfigurePersonnelApprovers(companyId:member.companyId),
+        repository.canViewPeople(companyId:member.companyId),
       ]);
       if (actor == null || repository.actorId != actor) throw StateError('ログイン情報が変更されました。再読み込みしてください。');
       final rows = values[0] as List<Map<String, dynamic>>;
-      final loaded = rows.map(PersonRecord.fromJson).toList();
-      if (!mounted) return;
+      final loaded = rows.map((row)=>PersonRecord.fromJson({...row,
+        'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
+        'emergencyPhone':'','emergencyAddress':'','familyComposition':'','familyMembers':<dynamic>[],
+      })).toList();
+      if (!mounted || _privacy!=privacy || privacy.revoked || !privacy.active) return;
       setState(() {
         _records
           ..clear()
@@ -243,7 +302,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(subtitleParts.join(' / ')),
-                                        if (record.phone.isNotEmpty)
+                                        if (_canViewPeople && record.phone.isNotEmpty)
                                           InkWell(
                                             onTap: () => _callPhone(
                                               record.phone,
@@ -284,7 +343,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                     trailing: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        if (record.phone.isNotEmpty)
+                                        if (_canViewPeople && record.phone.isNotEmpty)
                                           IconButton(
                                             tooltip: SkoLanguageController.isEnglish ? 'Call' : '電話をかける',
                                             onPressed: () =>
@@ -302,22 +361,21 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                               _showDetails(record);
                                               return;
                                             }
+                                            final id=record.id, kind=record.kind;
+                                            final session=_privacy, repository=_repository;
+                                            final displayCompany=_companyName;
+                                            final canManage=_canManagePeople, canView=_canViewPeople;
                                             Navigator.of(context).push(
                                               MaterialPageRoute(
                                                 builder: (_) =>
                                                     EmployeePersonnelDetailPage(
-                                                  record: record,
-                                                  allEmployees: _records
-                                                      .where(
-                                                        (item) =>
-                                                            item.kind !=
-                                                            PersonKind.partnerCompany,
-                                                      )
-                                                      .toList(growable: false),
-                                                  companyName: _companyName,
-                                                  canManage: _canManagePeople,
-                                                  canViewFamily: _canViewPeople,
-                                                  portraitLoader: () => _repository!.portraitUrl(record.id),
+                                                  record: PersonRecord(id:id,kind:kind,name:''),
+                                                  privacySession: session,
+                                                  allEmployees: const [],
+                                                  companyName: displayCompany,
+                                                  canManage: canManage,
+                                                  canViewFamily: canView,
+                                                  portraitLoader: () => repository!.portraitUrl(id,companyId:session!.company),
                                                 ),
                                               ),
                                             );
@@ -334,12 +392,17 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   }
 
   Future<void> _add() async {
+    final session=_privacy;
+    if(session==null)return;
     final draft = await Navigator.of(context).push<PersonRecord>(
-      MaterialPageRoute(builder: (_) => const PersonFormPage()),
+      MaterialPageRoute(builder: (_) => PersonnelPrivacyView(session:session,builder:(context,_)=>session.snapshot?.canManage==true?const PersonFormPage():const Center(child:Text('登録権限を確認できません。')))),
     );
     if (draft == null || _repository == null) return;
     try {
-      final row = await _repository.insert(draft.toJson());
+      if(_privacy!=session)throw const PersonnelScopeChanged();
+      await session.read(forExport:true);
+      if(!mounted||_privacy!=session)throw const PersonnelScopeChanged();
+      final row = await _repository.insert(draft.toJson(),expectedCompany:session.company);
       final saved = PersonRecord.fromJson(row);
       if (!mounted) return;
       setState(() => _records.insert(0, saved));
@@ -355,10 +418,12 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   }
 
   void _showDetails(PersonRecord record) {
+    final session=_privacy;
+    if(session==null)return;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
+      builder: (sheetContext) => PersonnelPrivacyView(session:session,builder:(context,_)=>session.snapshot?.canManage!=true?const Center(child:Text('表示権限を確認できません。')):SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
           child: Column(
@@ -370,7 +435,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               Text('区分: ${record.kind.label}'),
               if (record.companyName.isNotEmpty) Text('会社: ${record.companyName}'),
               if (record.role.isNotEmpty) Text('役割・職種: ${record.role}'),
-              if (record.phone.isNotEmpty)
+              if (_canViewPeople && record.phone.isNotEmpty)
                 TextButton.icon(
                   onPressed: () => _callPhone(record.phone),
                   icon: const Icon(Icons.phone_outlined),
@@ -409,7 +474,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 
@@ -495,12 +560,16 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             .toList(growable: false)
         : [initialRecord];
     if (records.isEmpty || !mounted) return;
+    final workerIds=records.map((record)=>record.id).toSet();
+    final previewRecords=records.map((record)=>PersonRecord(id:record.id,kind:record.kind,name:'')).toList(growable:false);
+    final session=_privacy, displayCompany=_companyName;
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => EmployeePersonnelPrintPage(
-          companyName: _companyName,
-          records: records,
+          companyName: displayCompany,
+          privacySession: session,
+          records: previewRecords,
           action: operation == PersonnelExportOperation.send
               ? EmployeePersonnelPreviewAction.send
               : EmployeePersonnelPreviewAction.print,
@@ -509,7 +578,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                   await Navigator.of(previewContext).push<bool>(
                     MaterialPageRoute(
                       builder: (_) => PersonnelBundleSendPage(
-                        workerIds: records.map((record) => record.id).toSet(),
+                        workerIds: workerIds,
+                        privacySession:session,
                       ),
                     ),
                   );
@@ -596,7 +666,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     final workerIds = <String>{record.id};
     final page = switch (kind) {
       TransferPayloadKind.personnelBundle =>
-        PersonnelBundleSendPage(workerIds: workerIds),
+        PersonnelBundleSendPage(workerIds: workerIds,privacySession:_privacy),
       TransferPayloadKind.qualificationsOnly =>
         QualificationSendPage(workerIds: workerIds),
       TransferPayloadKind.documentsOnly =>
@@ -607,6 +677,10 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     );
   }
   Future<void> _callPhone(String phone) async {
+    final session=_privacy;
+    if(session==null)return;
+    try{await session.read();session.verify(session.epoch);}catch(_){return;}
+    if(!mounted||_privacy!=session)return;
     final domestic = domesticPhoneDisplay(phone);
     final dial = domestic.replaceAll(RegExp(r'[^0-9+]'), '');
     if (dial.isEmpty) return;
@@ -668,3 +742,4 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+

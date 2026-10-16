@@ -14,6 +14,11 @@ class CompanyTransferSendPage extends StatefulWidget {
     required this.subjectLabel,
     required this.workerIds,
     required this.description,
+    this.beforeLoad,
+    this.beforeSend,
+    this.repository,
+    this.scopeChanges,
+    this.scopeAllowed,
   });
 
   final String title;
@@ -21,6 +26,11 @@ class CompanyTransferSendPage extends StatefulWidget {
   final String subjectLabel;
   final Set<String> workerIds;
   final String description;
+  final Future<void> Function()? beforeLoad;
+  final Future<void> Function()? beforeSend;
+  @visibleForTesting final CompanyDocumentExchangeRepository? repository;
+  final Listenable? scopeChanges;
+  final bool Function()? scopeAllowed;
 
   @override
   State<CompanyTransferSendPage> createState() =>
@@ -28,7 +38,7 @@ class CompanyTransferSendPage extends StatefulWidget {
 }
 
 class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
-  final _repository = CompanyDocumentExchangeRepository.maybeCreate();
+  CompanyDocumentExchangeRepository? get _repository=>widget.repository??CompanyDocumentExchangeRepository.maybeCreate();
   final _search = TextEditingController();
   final _note = TextEditingController();
   List<Map<String, dynamic>> _sources = const [];
@@ -38,19 +48,33 @@ class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
   bool _sendAll = true;
   bool _loading = true;
   bool _sending = false;
+  bool _confirming=false;
+  BuildContext? _confirmationContext;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    widget.scopeChanges?.addListener(_scopeChanged);
     _load();
   }
 
   @override
   void dispose() {
+    widget.scopeChanges?.removeListener(_scopeChanged);
     _search.dispose();
     _note.dispose();
     super.dispose();
+  }
+
+  void _scopeChanged(){
+    if(widget.scopeAllowed?.call()!=false)return;
+    final dialog=_confirmationContext;
+    if(dialog!=null){
+      WidgetsBinding.instance.addPostFrameCallback((_){
+        if(dialog.mounted&&ModalRoute.of(dialog)?.isCurrent==true)Navigator.of(dialog).pop(false);
+      });
+    }
   }
 
   Future<void> _load() async {
@@ -63,12 +87,16 @@ class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
       return;
     }
     try {
+      await widget.beforeLoad?.call();
+      if(!mounted)return;
       final values = await Future.wait([
         widget.sourceKind == 'daily_report_signature'
             ? repository.listSignatureSources()
             : repository.listSendableSources(),
         repository.listTransferTargets(),
       ]);
+      await widget.beforeLoad?.call();
+      if(!mounted)return;
       final sources = (values[0] as List<Map<String, dynamic>>).where((row) {
         if (row['kind']?.toString() != widget.sourceKind) return false;
         final workerId = row['worker_id']?.toString();
@@ -94,6 +122,7 @@ class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _sources=const [];_targets=const [];_selected.clear();
         _loading = false;
         _error = error.toString();
       });
@@ -298,13 +327,16 @@ class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
     final repository = _repository;
     final target = _target;
     final targetId = _targetCompanyId;
-    if (repository == null || target == null || targetId == null) return;
+    if (repository == null || target == null || targetId == null || _sending || _confirming) return;
     final targetName = target['company_name']?.toString() ?? '選択した会社';
     final mode = _sendAll ? '一覧送信（全部送る）' : '個別選択送信';
 
+    _confirming=true;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) {
+        _confirmationContext=dialogContext;
+        return AlertDialog(
         title: const Text('送信内容の最終確認'),
         content: SizedBox(
           width: 420,
@@ -340,13 +372,18 @@ class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
             child: const Text('確定して送信'),
           ),
         ],
-      ),
+      );
+      },
     );
+    _confirming=false;_confirmationContext=null;
     if (confirmed != true || !mounted) return;
 
     setState(() => _sending = true);
     try {
+      await widget.beforeSend?.call();
+      if(!mounted)return;
       await repository.sendConnected(
+        beforeWrite:widget.beforeSend,
         requestId: _newRequestId(),
         targetCompanyId: targetId,
         items: [

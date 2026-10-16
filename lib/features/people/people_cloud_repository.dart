@@ -1,9 +1,117 @@
+import 'dart:async';
+import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 
+class PersonnelScopeChanged implements Exception {
+  const PersonnelScopeChanged();
+  @override String toString() => '会社またはログイン情報が変更されました。開き直してください。';
+}
+
+class PersonnelPrivacySnapshot {
+  const PersonnelPrivacySnapshot({required this.actor, required this.company,
+    required this.role, required this.canManage, required this.records});
+  final String actor, company, role;
+  final bool canManage;
+  final List<Map<String,dynamic>> records;
+}
+
+/// Page-local data lease. No passwords, roles or memberships are persisted.
+/// Remote changes are detected by foreground polling (15s) and fresh actions,
+/// not instant revocation. No Realtime publication/configuration is changed.
+class PersonnelPrivacySession extends ChangeNotifier with WidgetsBindingObserver {
+  PersonnelPrivacySession({required this.actor, required this.company,
+    required this.currentActor, required this.load, this.actorChanges,
+    this.interval = const Duration(seconds:15)});
+  final String? actor;
+  final String company;
+  final String? Function() currentActor;
+  final Future<PersonnelPrivacySnapshot> Function() load;
+  final Stream<String?>? actorChanges;
+  final Duration interval;
+  StreamSubscription<String?>? _subscription;
+  Timer? _timer;
+  PersonnelPrivacySnapshot? snapshot;
+  Object? error;
+  int _epoch=0, _request=0;
+  bool _active=true, _revoked=false, _disposed=false, _started=false;
+  int get epoch=>_epoch;
+  bool get revoked=>_revoked;
+  bool get active=>_active;
+  void start() {
+    if(_started)return; _started=true;
+    WidgetsBinding.instance.addObserver(this);
+    _subscription=actorChanges?.listen((value){if(value!=actor)revoke();},onError:(_)=>revoke());
+    final state=WidgetsBinding.instance.lifecycleState;
+    _active=state==null||state==AppLifecycleState.resumed;
+    if(_active){_startTimer();unawaited(refresh());}
+  }
+  void _startTimer(){_timer?.cancel();_timer=Timer.periodic(interval,(_){if(_active)unawaited(refresh());});}
+  void _clear(Object reason,{bool permanent=false}) {
+    if(_disposed)return;
+    _request++;_epoch++;snapshot=null;error=reason;_revoked=_revoked||permanent;
+    notifyListeners();
+  }
+  void revoke()=>_clear(const PersonnelScopeChanged(),permanent:true);
+  void verify(int lease) {
+    if(_disposed||!_active||_revoked||actor==null||currentActor()!=actor||lease!=_epoch||snapshot==null)throw const PersonnelScopeChanged();
+  }
+  Future<void> refresh() async {try{await read();}catch(_){/* State was cleared; no stale fallback. */}}
+  Future<List<Map<String,dynamic>>> read({Set<String>? workerIds,bool forExport=false}) async {
+    if(_disposed||_revoked||actor==null||currentActor()!=actor){revoke();throw const PersonnelScopeChanged();}
+    if(!_active)throw const PersonnelScopeChanged();
+    final request=++_request, lease=_epoch;
+    PersonnelPrivacySnapshot value;
+    try { value=await load().timeout(const Duration(seconds:10)); }
+    catch(e){if(request==_request)_clear(e,permanent:e is PersonnelScopeChanged);rethrow;}
+    if(_disposed||!_active||_revoked||request!=_request||lease!=_epoch||currentActor()!=actor||value.actor!=actor||value.company!=company){
+      if(!_disposed&&request==_request)revoke();throw const PersonnelScopeChanged();
+    }
+    final previous=snapshot;
+    if(previous!=null&&(previous.role!=value.role||previous.canManage!=value.canManage))_epoch++;
+    snapshot=value;error=null;notifyListeners();
+    if(forExport&&!value.canManage)throw StateError('社員情報を出力する権限がありません');
+    final rows=workerIds==null?value.records:value.records.where((row)=>workerIds.contains(row['id']?.toString())).toList(growable:false);
+    if(workerIds!=null&&rows.length!=workerIds.length)throw StateError('対象の社員情報を再確認してください');
+    return rows;
+  }
+  @override void didChangeAppLifecycleState(AppLifecycleState state){
+    if(state==AppLifecycleState.paused||state==AppLifecycleState.hidden){_active=false;_timer?.cancel();_clear(StateError('本人確認を再確認しています'));}
+    if(state==AppLifecycleState.resumed&&!_revoked&&!_disposed){_active=true;_startTimer();unawaited(refresh());}
+  }
+  @override void dispose(){
+    if(_disposed)return;_disposed=true;_epoch++;_request++;snapshot=null;_timer?.cancel();_subscription?.cancel();
+    if(_started)WidgetsBinding.instance.removeObserver(this);super.dispose();
+  }
+}
+
+class PersonnelPrivacyView extends StatefulWidget {
+  const PersonnelPrivacyView({super.key,required this.session,required this.builder});
+  final PersonnelPrivacySession session;
+  final Widget Function(BuildContext,List<Map<String,dynamic>>) builder;
+  @override State<PersonnelPrivacyView> createState()=>_PersonnelPrivacyViewState();
+}
+class _PersonnelPrivacyViewState extends State<PersonnelPrivacyView> {
+  Widget? _authorizedChild;
+  @override void initState(){super.initState();widget.session.addListener(_changed);if(widget.session.active)unawaited(widget.session.refresh());}
+  void _changed(){if(mounted)setState((){});}
+  @override void dispose(){widget.session.removeListener(_changed);super.dispose();}
+  @override Widget build(BuildContext context){
+    final s=widget.session, value=s.snapshot;
+    if(value!=null&&!s.revoked&&s.active){_authorizedChild=widget.builder(context,value.records);return Offstage(offstage:false,child:_authorizedChild);}
+    // Keep legitimate unsaved controllers only while hidden in the background.
+    // Failed foreground reauthorization or identity loss destroys this subtree.
+    if(!s.active&&!s.revoked&&_authorizedChild!=null)return Offstage(child:_authorizedChild);
+    _authorizedChild=null;
+    return Directionality(textDirection:TextDirection.ltr,child:Center(child:Text(s.error==null?'社員情報を確認しています…':'社員情報を表示できません。画面を閉じて再確認してください。')));
+  }
+}
+
 class PeopleCloudRepository {
-  PeopleCloudRepository._(this._client);
+  PeopleCloudRepository._(this._client) : _actorForTesting=null;
+  @visibleForTesting PeopleCloudRepository.forTesting(this._client,{String? Function()? actor}) : _actorForTesting=actor;
+  final String? Function()? _actorForTesting;
 
   final SupabaseClient _client;
 
@@ -14,14 +122,12 @@ class PeopleCloudRepository {
     return PeopleCloudRepository._(client);
   }
 
-  Future<({String companyId, String role})> membership() async {
-    final user = _client.auth.currentUser;
-    if (user == null) throw StateError('SKOへのログインが必要です。');
-    final rows = await _client
-        .from('company_members')
-        .select('company_id, role')
-        .eq('user_id', user.id)
-        .limit(1);
+  Future<({String companyId, String role})> membership({String? companyId}) async {
+    final userId = actorId;
+    if (userId == null) throw StateError('SKOへのログインが必要です。');
+    var query = _client.from('company_members').select('company_id, role').eq('user_id', userId);
+    if(companyId!=null)query=query.eq('company_id',companyId);
+    final rows=await query.limit(1);
     if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
     return (
       companyId: rows.first['company_id'] as String,
@@ -29,8 +135,8 @@ class PeopleCloudRepository {
     );
   }
 
-  Future<String> companyName() async {
-    final member = await membership();
+  Future<String> companyName({String? companyId}) async {
+    final member = await membership(companyId:companyId);
     final row = await _client
         .from('companies')
         .select('name')
@@ -39,20 +145,18 @@ class PeopleCloudRepository {
     return row?['name']?.toString() ?? '';
   }
 
-  Future<bool> canManagePeople() async {
-    final member = await membership();
-    return member.role == 'owner' ||
-        member.role == 'admin' ||
-        member.role == 'manager';
+  Future<bool> canManagePeople({String? companyId}) async {
+    try { return (await readPersonnel(expectedCompany:companyId)).canManage; }
+    on PostgrestException catch(error){if(error.code=='42501')return false;rethrow;}
   }
 
-  Future<bool> canConfigurePersonnelApprovers() async {
-    final member = await membership();
+  Future<bool> canConfigurePersonnelApprovers({String? companyId}) async {
+    final member = await membership(companyId:companyId);
     return member.role == 'owner' || member.role == 'admin';
   }
 
-  Future<void> _requireManagePeople() async {
-    if (!await canManagePeople()) {
+  Future<void> _requireManagePeople({String? companyId}) async {
+    if (!await canManagePeople(companyId:companyId)) {
       throw StateError('社員情報は管理者・サブ管理者のみ利用できます。');
     }
   }
@@ -73,16 +177,82 @@ class PeopleCloudRepository {
     return rows.first['company_id'] as String;
   }
 
-  String? get actorId => _client.auth.currentUser?.id;
+  String? get actorId => _actorForTesting?.call() ?? _client.auth.currentUser?.id;
 
-  Future<bool> canViewPeople() async {
-    final member = await membership();
-    return ['owner', 'admin', 'manager', 'viewer'].contains(member.role);
+  Future<bool> canViewPeople({String? companyId}) async {
+    try { await readPersonnel(expectedCompany:companyId); return true; }
+    on PostgrestException catch (error) { if (error.code == '42501') return false; rethrow; }
   }
 
-  Future<String?> portraitUrl(String workerId) async {
+  Future<PersonnelPrivacySnapshot> readPersonnel({String? expectedCompany,bool includeInactive=false}) async {
     final actor = actorId;
-    final member = await membership();
+    final member = await membership(companyId:expectedCompany);
+    if (expectedCompany != null && member.companyId != expectedCompany) {
+      throw const PersonnelScopeChanged();
+    }
+    final raw = await _client.rpc('employee_personnel_view', params: {'p_company': member.companyId});
+    // Successful canonical read proves the scoped manager feature; viewer remains read-only.
+    final manage = ['owner','admin','manager'].contains(member.role);
+    final after = await membership(companyId:member.companyId);
+    if (actor == null || actorId != actor || after != member) {
+      throw const PersonnelScopeChanged();
+    }
+    if (raw is! Map || raw['company_id'] != member.companyId || raw['records'] is! List) {
+      throw StateError('社員情報の取得結果を確認できません');
+    }
+    final active=(raw['records'] as List).whereType<Map>().where((row)=>row['active']==true)
+      .map((row)=>Map<String,dynamic>.from(row)).toList(growable:false);
+    var records=active;
+    if(includeInactive&&manage){
+      final basic=(await loadAll(expectedCompany:member.companyId))
+        .where((row)=>row['active']==false&&row['kind']!='partnerCompany').toList(growable:false);
+      if(basic.isNotEmpty){
+        final ids=basic.map((row)=>row['id'].toString()).toList(growable:false);
+        final verified=await _client.from('workers').select('id').eq('company_id',member.companyId).eq('status','inactive').inFilter('id',ids);
+        if(verified.length!=ids.length)throw const PersonnelScopeChanged();
+        final defaultCompany=(await membership()).companyId;
+        if(defaultCompany==member.companyId){
+          final profiles=await _client.from('worker_personnel_profiles')
+            .select('worker_id,blood_type,address,emergency_name,emergency_relation,emergency_phone,emergency_address,family_composition')
+            .eq('company_id',member.companyId).inFilter('worker_id',ids);
+          final families=await _client.from('worker_family_members')
+            .select('id,worker_id,name,relation,birth_date,is_dependent')
+            .eq('company_id',member.companyId).inFilter('worker_id',ids);
+          final checked=await readPersonnel(expectedCompany:member.companyId);
+          if(!checked.canManage||checked.role!=member.role||(await membership()).companyId!=defaultCompany)throw const PersonnelScopeChanged();
+          records=[...checked.records,for(final row in basic){
+            ...row,
+            ..._inactivePrivateFields(profiles.where((p)=>p['worker_id']==row['id']).toList(growable:false)),
+            'familyMembers':families.where((f)=>f['worker_id']==row['id']).map((f)=>Map<String,dynamic>.from(f)).toList(growable:false),
+          }];
+        } else {
+          // No scoped phone read exists for a nondefault company. Show its
+          // legitimate basic row, but never submit an incomplete full payload.
+          records=[...active,for(final row in basic){...row,'personnelBasicOnly':true}];
+        }
+      }
+    }
+    if(actorId!=actor||(await membership(companyId:member.companyId))!=member)throw const PersonnelScopeChanged();
+    return PersonnelPrivacySnapshot(actor:actor,company:member.companyId,role:member.role,canManage:manage,records:records);
+  }
+
+  static Map<String,dynamic> _inactivePrivateFields(List<Map<String,dynamic>> profiles){
+    final p=profiles.isEmpty?const <String,dynamic>{}:profiles.single;
+    return {'bloodType':p['blood_type']??'','address':p['address']??'',
+      'emergencyName':p['emergency_name']??'','emergencyRelation':p['emergency_relation']??'',
+      'emergencyPhone':p['emergency_phone']??'','emergencyAddress':p['emergency_address']??'',
+      'familyComposition':p['family_composition']??''};
+  }
+
+  PersonnelPrivacySession privacySession(String company) => PersonnelPrivacySession(
+    actor: actorId, company: company, currentActor: () => actorId,
+    load: () => readPersonnel(expectedCompany: company,includeInactive:true),
+    actorChanges: _client.auth.onAuthStateChange.map((event) => event.session?.user.id),
+  );
+
+  Future<String?> portraitUrl(String workerId,{String? companyId}) async {
+    final actor = actorId;
+    final member = await membership(companyId:companyId);
     final path = await _client.rpc(
       'employee_personnel_portrait',
       params: {'p_company': member.companyId, 'p_worker': workerId},
@@ -100,43 +270,45 @@ class PeopleCloudRepository {
     return url;
   }
 
-  Future<List<Map<String, dynamic>>> loadAll() async {
-    final member = await membership();
-    if (member.role == 'viewer') {
-      final actor = actorId;
-      final raw = await _client.rpc(
-        'employee_personnel_view',
-        params: {'p_company': member.companyId},
-      );
-      if (actor == null ||
-          actorId != actor ||
-          raw is! Map ||
-          raw['company_id'] != member.companyId ||
-          raw['records'] is! List) {
-        throw StateError('社員情報の取得結果を確認できません');
-      }
-      return (raw['records'] as List)
-          .map((row) => Map<String, dynamic>.from(row as Map))
-          .toList(growable: false);
+  Future<List<Map<String, dynamic>>> loadAll({String? expectedCompany}) async {
+    final member = await membership(companyId:expectedCompany);
+    if (member.role == 'viewer') return (await readPersonnel(expectedCompany:member.companyId)).records;
+    if (!['owner','admin','manager'].contains(member.role)) throw StateError('社員一覧の閲覧権限がありません');
+    Future<List<Map<String,dynamic>>> basicRows() async {
+      // Contact columns are intentionally not directly granted. Preserve the
+      // RLS-authorized basic roster without selecting phone/email/private data.
+      final partners=await _client.from('partner_companies').select('id,name,trade_role,status').eq('company_id',member.companyId);
+      final byId={for(final row in partners)row['id'].toString():row['name']?.toString()??''};
+      final workers=await _client.from('workers').select('id,name,role,affiliation,status,partner_company_id').eq('company_id',member.companyId);
+      return [
+        for(final row in partners)<String,dynamic>{...row,'kind':'partnerCompany','role':row['trade_role'],'active':row['status']=='active'},
+        for(final row in workers)<String,dynamic>{...row,'kind':row['affiliation']=='partner_company'?'partnerWorker':'employee',
+          'company_name':byId[row['partner_company_id']?.toString()]??'','active':row['status']=='active'},
+      ];
     }
-    await _requireManagePeople();
-    final rows = await _client.rpc('people_management_records');
+    dynamic rows;
+    final memberships=await _client.from('company_members').select('company_id').eq('user_id',actorId!).limit(2);
+    if((memberships.length==1&&memberships.single['company_id']==member.companyId)||(await membership()).companyId==member.companyId){
+      try { rows = await _client.rpc('people_management_records'); }
+      on PostgrestException catch (error) {
+        if(error.code!='42501'&&!(error.code=='P0001'&&error.message=='people management permission required'))rethrow;
+        rows=await basicRows();
+      }
+    } else {
+      // The old no-argument RPC chooses an arbitrary first company; never use it
+      // to populate an explicitly different company in a multi-company account.
+      rows=await basicRows();
+    }
     if (rows is! List) return const <Map<String, dynamic>>[];
 
-    final personnelRaw = await _client.rpc('employee_personnel_rows');
-    final personnelRows = personnelRaw is List
-        ? personnelRaw
-              .whereType<Map>()
-              .map((row) => Map<String, dynamic>.from(row))
-              .toList(growable: false)
-        : const <Map<String, dynamic>>[];
+    var personnelRows = <Map<String,dynamic>>[];
+    try { personnelRows = (await readPersonnel(expectedCompany: member.companyId)).records; }
+    on PostgrestException catch (error) { if (error.code != '42501') rethrow; }
     final personnelByWorker = <String, Map<String, dynamic>>{
-      for (final row in personnelRows)
-        if ((row['worker_id']?.toString() ?? '').isNotEmpty)
-          row['worker_id'].toString(): row,
+      for (final row in personnelRows) row['id'].toString(): row,
     };
 
-    final companyId = await _companyId();
+    final companyId = member.companyId;
     final workerDates = await _client
         .from('workers')
         .select('id,created_at,updated_at,employee_number,department,hire_date')
@@ -166,36 +338,36 @@ class PeopleCloudRepository {
             'kind': value['kind'],
             'name': value['name'] ?? '',
             'companyName': value['company_name'] ?? '',
-            'phone': value['phone'] ?? '',
+            'phone': personnel['phone'] ?? value['phone'] ?? '',
             'email': value['email'] ?? '',
             'role': value['role'] ?? '',
             'employeeNumber':
-                personnel['employee_number'] ?? dates['employee_number'] ?? '',
+                personnel['employeeNumber'] ?? dates['employee_number'] ?? '',
             'department': personnel['department'] ?? dates['department'] ?? '',
-            'hireDate': personnel['hire_date'] ?? dates['hire_date'] ?? '',
+            'hireDate': personnel['hireDate'] ?? dates['hire_date'] ?? '',
             'notes': value['notes'] ?? '',
             'active': value['active'] == true,
             'createdAt': dates['created_at'] ?? '',
             'updatedAt': dates['updated_at'] ?? '',
-            'bloodType': personnel['blood_type'] ?? '',
+            'bloodType': personnel['bloodType'] ?? '',
             'address': personnel['address'] ?? '',
-            'emergencyName': personnel['emergency_name'] ?? '',
-            'emergencyRelation': personnel['emergency_relation'] ?? '',
-            'emergencyPhone': personnel['emergency_phone'] ?? '',
-            'emergencyAddress': personnel['emergency_address'] ?? '',
-            'familyComposition': personnel['family_composition'] ?? '',
-            'familyMembers': personnel['family_members'] is List
-                ? personnel['family_members']
+            'emergencyName': personnel['emergencyName'] ?? '',
+            'emergencyRelation': personnel['emergencyRelation'] ?? '',
+            'emergencyPhone': personnel['emergencyPhone'] ?? '',
+            'emergencyAddress': personnel['emergencyAddress'] ?? '',
+            'familyComposition': personnel['familyComposition'] ?? '',
+            'familyMembers': personnel['familyMembers'] is List
+                ? personnel['familyMembers']
                 : const <dynamic>[],
           };
         })
         .toList(growable: false);
   }
 
-  Future<Map<String, dynamic>> insert(Map<String, dynamic> record) async {
+  Future<Map<String, dynamic>> insert(Map<String, dynamic> record,{String? expectedCompany}) async {
     validatePersonnelMetadata(record);
-    await _requireManagePeople();
-    final companyId = await _companyId();
+    await _requireManagePeople(companyId:expectedCompany);
+    final companyId = expectedCompany ?? await _companyId();
     final kind = record['kind']?.toString() ?? 'employee';
     if (kind == 'partnerCompany') {
       final inserted = await _client
@@ -414,3 +586,4 @@ class PeopleCloudRepository {
     return text.isEmpty ? null : text;
   }
 }
+

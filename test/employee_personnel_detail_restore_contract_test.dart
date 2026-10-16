@@ -14,10 +14,11 @@ void main() {
 
     expect(repository, contains("member.role == 'owner'"));
     expect(repository, contains("member.role == 'admin'"));
-    expect(repository, contains("member.role == 'manager'"));
+    expect(repository, contains("readPersonnel(expectedCompany:companyId)"));
     expect(repository, contains("member.role == 'viewer'"));
     expect(page, contains("onTap: !_canViewPeople"));
-    expect(page, contains("canManage: _canManagePeople"));
+    expect(page, contains("privacySession: session"));
+    expect(page, contains("canManage: canManage"));
     expect(repository, contains("'employee_personnel_view'"));
   });
 
@@ -172,7 +173,12 @@ void main() {
       'supabase/migrations/20261002011817_add_employee_personnel_rows.sql',
     ).readAsStringSync();
 
-    expect(repository, contains("rpc('employee_personnel_rows')"));
+    // Legacy role-only PII RPC must never return as a fallback.
+    expect(repository, isNot(contains("rpc('employee_personnel_rows')")));
+    expect(repository, contains("rpc('employee_personnel_view', params: {'p_company': member.companyId})"));
+    expect(repository, contains("raw['company_id'] != member.companyId"));
+    expect(repository, contains("'bloodType': personnel['bloodType']"));
+    expect(repository, contains("'emergencyRelation': personnel['emergencyRelation']"));
     expect(migration, contains('employee_registration_invites'));
     expect(migration, contains("eri.status='approved'"));
     expect(migration, contains("'blood_type'"));
