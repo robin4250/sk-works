@@ -23,7 +23,7 @@ async function visible(actor,expected,name=photo,setup=''){
  assert.equal((await db.query(`select count(*)::int n from storage.objects where name=${q(name)}`)).rows[0].n,expected);checks++;
  }finally{await db.exec('rollback');}
 }
-const snapshot=async()=>(await db.query(`select jsonb_build_object('objects',(select jsonb_agg(to_jsonb(o) order by name) from storage.objects o),'statuses',(select jsonb_agg(to_jsonb(s)) from public.worker_document_statuses s),'workers',(select jsonb_agg(to_jsonb(w)) from public.workers w))::text digest`)).rows[0].digest;
+const snapshot=async()=>(await db.query(`select jsonb_build_object('objects',(select jsonb_agg(to_jsonb(o) order by name) from storage.objects o),'statuses',(select jsonb_agg(to_jsonb(s)) from public.worker_document_statuses s),'workers',(select jsonb_agg(to_jsonb(w)) from public.workers w),'members',(select jsonb_agg(to_jsonb(m) order by user_id) from public.company_members m),'permissions',(select jsonb_agg(to_jsonb(p) order by user_id) from public.member_feature_permissions p),'acl',(select jsonb_agg(jsonb_build_object('relation',c.oid::regclass::text,'owner',c.relowner,'acl',c.relacl::text) order by c.oid) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','private','storage') and c.relkind='r'))::text digest`)).rows[0].digest;
 try{
  await db.exec(`create role anon;create role authenticated;create schema auth;create schema private;create schema storage;
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('fixture.uid',true),'')::uuid$$;
@@ -76,6 +76,12 @@ try{
  await db.exec(`update public.member_feature_permissions set can_manage_people=true`);await visible(manager,1);
  await db.exec(`update public.member_feature_permissions set can_manage_people=false`);await visible(manager,0);
  assert.deepEqual(await snapshot(),before,'Existing rows/object payloads were rewritten');
+ // Exercise actual restoration of the copied original policy, not only failed-transaction rollback.
+ await db.exec(`alter policy worker_document_photo_managed_read on storage.objects using (${original})`);
+ assert.equal(await policy(),original,'Original policy expression restored exactly');
+ await visible(own,1);await visible(owner,1);await visible(admin,1);
+ await visible(manager,1);console.log('RESTORED original policy; role-only manager bypass intentionally returns and remains a known gap');
+ assert.deepEqual(await snapshot(),before,'Restore changed company membership, permissions, owners, ACL or saved evidence');
  // No auth.sessions check exists in the actual account guard: do not claim old JWT invalidation.
  const guard=capture.functions.find(f=>f.proname==='account_access_allowed').definition;
  assert.ok(!guard.includes('auth.sessions'));assert.match(guard,/account_deletion_access_restrictions/);
