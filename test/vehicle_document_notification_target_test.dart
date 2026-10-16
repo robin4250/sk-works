@@ -105,7 +105,7 @@ void main(){
   expect(opened,['通知対象車両']);
   await tester.tap(find.text('通知対象車両'));await tester.pumpAndSettle();
   expect(find.text('保存後の車両'),findsOneWidget);
-  expect(opened,['通知対象車両'],'saving does not push another editor automatically');
+  expect(opened,['通知対象車両'],reason:'saving does not push another editor automatically');
   await tester.tap(find.text('車両書類を開く'));await tester.pumpAndSettle();
   expect(opened,['通知対象車両','保存後の車両']);
  });
