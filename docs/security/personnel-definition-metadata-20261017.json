@@ -1,0 +1,224 @@
+{
+  "source_commit": "7ab795f3b2da14dd09fd4a6fc72897ec15f84ed5",
+  "scope": "catalog definitions and ledger only; no identities or business data; not a backup",
+  "tables": [
+    {
+      "acl": "{postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres}",
+      "rls": true,
+      "name": "worker_family_members",
+      "owner": "postgres",
+      "force_rls": false
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres}",
+      "rls": true,
+      "name": "worker_personnel_profiles",
+      "owner": "postgres",
+      "force_rls": false
+    }
+  ],
+  "policies": [
+    {
+      "name": "worker family members read",
+      "roles": [
+        "public"
+      ],
+      "table": "worker_family_members",
+      "command": "SELECT",
+      "qual_md5": "ebbb5d4863aefdbb313b26d24cf61a6d",
+      "check_md5": null,
+      "permissive": "PERMISSIVE"
+    },
+    {
+      "name": "personnel profile read",
+      "roles": [
+        "public"
+      ],
+      "table": "worker_personnel_profiles",
+      "command": "SELECT",
+      "qual_md5": "1f1384d90020f684fa997e8fa582e8a2",
+      "check_md5": null,
+      "permissive": "PERMISSIVE"
+    }
+  ],
+  "functions": [
+    {
+      "acl": "{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "set": false,
+      "args": "",
+      "kind": "f",
+      "name": "private.account_access_allowed",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "language": "sql",
+      "source_md5": "aeca25db212c043c472334026bd98724",
+      "volatility": "s",
+      "return_type": "boolean"
+    },
+    {
+      "acl": null,
+      "set": false,
+      "args": "p_worker_id uuid, p_payload jsonb, p_actor uuid",
+      "kind": "f",
+      "name": "private.apply_worker_personnel_payload",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "language": "plpgsql",
+      "source_md5": "445ae541afb2fcb376d49dde1388a84f",
+      "volatility": "v",
+      "return_type": "void"
+    },
+    {
+      "acl": null,
+      "set": false,
+      "args": "p_worker_id uuid",
+      "kind": "f",
+      "name": "private.can_edit_worker_personnel",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "language": "sql",
+      "source_md5": "ead531bcf8b745788cd01371ac405014",
+      "volatility": "s",
+      "return_type": "boolean"
+    },
+    {
+      "acl": null,
+      "set": false,
+      "args": "",
+      "kind": "f",
+      "name": "private.employee_personnel_rows",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "language": "plpgsql",
+      "source_md5": "3dd173b3ba0768718bbc6f326ea1fb18",
+      "volatility": "s",
+      "return_type": "jsonb"
+    },
+    {
+      "acl": null,
+      "set": false,
+      "args": "p_company_id uuid, p_feature text",
+      "kind": "f",
+      "name": "private.has_company_feature",
+      "owner": "postgres",
+      "config": [
+        "search_path=public, private, pg_temp"
+      ],
+      "definer": true,
+      "language": "plpgsql",
+      "source_md5": "ead168c7ebccdaf04657a66f1afd5d82",
+      "volatility": "s",
+      "return_type": "boolean"
+    },
+    {
+      "acl": null,
+      "set": false,
+      "args": "p_company_id uuid",
+      "kind": "f",
+      "name": "private.is_worker_personnel_approver",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "language": "sql",
+      "source_md5": "89ff4ccd5d61d8450aac76b5ef098f9a",
+      "volatility": "s",
+      "return_type": "boolean"
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "set": false,
+      "args": "p_company uuid",
+      "kind": "f",
+      "name": "private.personnel_view_allowed",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": false,
+      "language": "sql",
+      "source_md5": "e884314c5119e72345e7614802432b15",
+      "volatility": "s",
+      "return_type": "boolean"
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "set": false,
+      "args": "p_request_id uuid, p_approve boolean",
+      "kind": "f",
+      "name": "public.decide_worker_personnel_change",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "language": "plpgsql",
+      "source_md5": "93153d859f746b5e71dd28d37033737b",
+      "volatility": "v",
+      "return_type": "jsonb"
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "set": false,
+      "args": "",
+      "kind": "f",
+      "name": "public.employee_personnel_rows",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": false,
+      "language": "sql",
+      "source_md5": "1c119e25281012769df17297a56b1fe7",
+      "volatility": "v",
+      "return_type": "jsonb"
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "set": false,
+      "args": "p_company uuid",
+      "kind": "f",
+      "name": "public.employee_personnel_view",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": false,
+      "language": "sql",
+      "source_md5": "c5897a212efeda0730ff1fb85d3c03fb",
+      "volatility": "s",
+      "return_type": "jsonb"
+    },
+    {
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "set": false,
+      "args": "p_worker_id uuid, p_payload jsonb",
+      "kind": "f",
+      "name": "public.save_worker_personnel_profile",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "language": "plpgsql",
+      "source_md5": "c11956bf0845ab725312928c2422a7ab",
+      "volatility": "v",
+      "return_type": "jsonb"
+    }
+  ],
+  "column_acl": null,
+  "candidate_ledger": []
+}
