@@ -18,9 +18,9 @@ class _Wire {
   _Wire() {
     client = SupabaseClient('https://primary-recovery-fixture.invalid', 'public_fixture', authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: MockClient((r) async {
       calls.add(r);
-      if (r.url.path == '/auth/v1/signup') return http.Response(jsonEncode({'user': _user()}), 200, headers: {'content-type': 'application/json'});
-      if (r.url.path == '/auth/v1/token' || r.url.path == '/auth/v1/verify') return http.Response(jsonEncode({'access_token': _token(), 'refresh_token': 'synthetic', 'token_type': 'bearer', 'expires_in': 3600, 'user': _user()}), 200, headers: {'content-type': 'application/json'});
-      if (r.url.path == '/auth/v1/resend') return http.Response('{}', 200, headers: {'content-type': 'application/json'});
+      if (r.url.path == '/auth/v1/signup') return http.Response(jsonEncode({'user': _user()}), 200, headers: {'content-type': 'application/json'}, request: r);
+      if (r.url.path == '/auth/v1/token' || r.url.path == '/auth/v1/verify') return http.Response(jsonEncode({'access_token': _token(), 'refresh_token': 'synthetic', 'token_type': 'bearer', 'expires_in': 3600, 'user': _user()}), 200, headers: {'content-type': 'application/json'}, request: r);
+      if (r.url.path == '/auth/v1/resend') return http.Response('{}', 200, headers: {'content-type': 'application/json'}, request: r);
       throw StateError('Unexpected authentication request: ${r.url.path}');
     }));
     repository = SecureOnboardingRepository.forClient(client);

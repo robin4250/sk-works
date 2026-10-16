@@ -467,7 +467,7 @@ class _SecondaryPasswordSetupPageState
   String? _message;
 
   SecureOnboardingRepository? get _repository =>
-      widget.repository ?? SecureOnboardingRepository.maybeCreate();
+      SecureOnboardingRepository.maybeCreate();
 
   @override
   void initState() {
