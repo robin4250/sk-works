@@ -74,6 +74,8 @@ try {
  await deny(user.query("select public.set_secondary_password('synthetic-guc-forgery')"));
  await other.query("select public.set_secondary_password('synthetic-first-setup')");
  await deny(other.query("select public.set_secondary_password('synthetic-replace-without-proof')"));
+ const normalAdminProof=await issue('secondary_password.replace',{user_id:b},b,sb);
+ await replace(other,normalAdminProof,'synthetic-normal-admin-recovery');
  await deny(user.query('select public.issue_reauthentication_proof($1,$2,$3,$4,$5)',[a,sa,'secondary_password.replace',JSON.stringify(target),hash('synthetic') ]));
  const proof=await issue();
  await deny(replace(other,proof));await deny(replace(secondSession,proof));

@@ -83,8 +83,9 @@ production accounts, Auth configuration, complete database or a normal-admin UI
 comparison.
 
 Apple/Google or other OAuth-only users without an established primary password
-cannot obtain this password-only server proof. Do not enable the gate for these
-users, and do not replace their legitimate recovery with client booleans, token
+cannot obtain this password-only server proof. Gates are global per operation
+scope, so keep the affected scope OFF while any affected user lacks a verified
+alternative. Do not replace their legitimate recovery with client booleans, token
 refresh time or a newly assigned role. OFF preserves the existing biometric
 recovery and login code. A trustworthy OAuth/provider reauthentication alternative
 and its full recovery tests are required before universal rollout. No provider
