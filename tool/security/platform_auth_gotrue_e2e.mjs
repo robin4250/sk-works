@@ -9,7 +9,7 @@ const run=promisify(execFile),root=process.cwd(),project=`sko-platform-proof-${r
 const parent=path.resolve(process.env.RUNNER_TEMP??'');
 if(!process.env.CI||!process.env.RUNNER_TEMP||parent==='/'||Object.keys(process.env).some(k=>/^SUPABASE_(ACCESS_TOKEN|DB_PASSWORD|URL|SERVICE_ROLE_KEY|SECRET_KEY|PROJECT_REF)$/.test(k)))throw Error('Isolated CI without hosted credentials required');
 const workdir=path.join(parent,project),cliArgs=['--yes','supabase@2.121.0'];
-let phase='setup',db,server,started=false,owns=false,lastHttp;
+let phase='setup',db,server,started=false,owns=false,lastHttp,edgeOutput='',fixtureActor,fixtureSession;
 const cli=(args,timeout=120000)=>run('npx',[...cliArgs,...args,'--workdir',workdir],{cwd:root,timeout,maxBuffer:1024*1024,env:process.env});
 const read=p=>fs.readFile(path.join(root,p),'utf8');
 const hash=s=>createHash('sha256').update(s).digest('hex');
@@ -56,7 +56,7 @@ try{
  }
  async function login(user,pw=password){const r=await request('/auth/v1/token?grant_type=password',{body:{email:user.email,password:pw}});statusCode(r,200);const data=await r.json();assert.equal(data.user.id,user.id);assert.ok(claims(data.access_token).session_id);return data;}
  const master=await login(users.master),normalAdmin=await login(users.admin),other=await login(users.other);
- const masterSid=claims(master.access_token).session_id;
+ const masterSid=claims(master.access_token).session_id;fixtureActor=users.master.id;fixtureSession=masterSid;
  assert.equal((await db.query('select count(*)::int n from auth.sessions where id=$1 and user_id=$2',[masterSid,users.master.id])).rows[0].n,1,'Real GoTrue must create the original session');
  phase='original-app-fixtures';
  await db.query(await read('tool/security/platform_auth_e2e_dependencies.sql'));
@@ -83,7 +83,8 @@ try{
  assert.deepEqual(await protectedIdentity(),protectedBefore);
  await db.query("notify pgrst,'reload schema'");
  phase='actual-edge-runtime';
- server=spawn('npx',[...cliArgs,'functions','serve','--workdir',workdir],{cwd:root,stdio:'ignore',env:process.env});
+ server=spawn('npx',[...cliArgs,'functions','serve','--workdir',workdir],{cwd:root,stdio:['ignore','pipe','pipe'],env:process.env});
+ for(const stream of [server.stdout,server.stderr])stream.on('data',chunk=>{edgeOutput=(edgeOutput+chunk.toString()).slice(-65536);});
  let edgeReady=false;for(let i=0;i<90;i++){
   try{const r=await request('/functions/v1/reauthenticate-operation',{token:master.access_token,body:{operation:'master.security_incidents.read',target:{scope:'platform'},password}});if(r.status===403){const data=await r.json();if(data.error==='reauthentication_disabled'){edgeReady=true;break;}}}catch{/* Local startup may still be in progress. */}
   await wait(500);
@@ -108,7 +109,9 @@ try{
  phase='negative-target';statusCode(await obtain(master.access_token,{...proofBody,target:{scope:'other'}}),400);
  phase='negative-cross-session';const second=await login(users.master),bound=await proof();statusCode(await consume(bound,second.access_token),403);statusCode(await consume(bound),200);
  phase='negative-expiry';const expiring=await proof();await db.query("update private.reauthentication_proofs set issued_at=statement_timestamp()-interval '3 minutes',expires_at=statement_timestamp()-interval '1 minute' where proof_hash=$1",[hash(expiring)]);statusCode(await consume(expiring),403);
- phase='negative-disabled-master';const disabled=await proof();await db.query('update private.master_admins set enabled=false,disabled_at=clock_timestamp() where user_id=$1',[users.master.id]);statusCode(await consume(disabled),403);statusCode(await obtain(),403);await db.query('update private.master_admins set enabled=true,disabled_at=null where user_id=$1',[users.master.id]);statusCode(await consume(disabled),200);
+ phase='negative-disabled-master';const disabled=await proof();await db.query('update private.master_admins set enabled=false,disabled_at=clock_timestamp() where user_id=$1',[users.master.id]);statusCode(await consume(disabled),403);
+ statusCode(await rpc('issue_reauthentication_proof',{p_actor:users.master.id,p_session:masterSid,p_operation:'master.security_incidents.read',p_target:{scope:'platform'},p_proof_hash:hash(randomBytes(32).toString('hex'))},undefined,true),403);
+ statusCode(await obtain(),403);await db.query('update private.master_admins set enabled=true,disabled_at=null where user_id=$1',[users.master.id]);statusCode(await consume(disabled),200);
  phase='negative-restricted-account';const restricted=await proof();await db.query('insert into private.account_deletion_access_restrictions values($1)',[users.master.id]);statusCode(await consume(restricted),403);await db.query('delete from private.account_deletion_access_restrictions where user_id=$1',[users.master.id]);statusCode(await consume(restricted),200);
  phase='negative-revoked-session';const revoked=await proof(second.access_token);statusCode(await request('/auth/v1/logout?scope=local',{token:second.access_token}),204);assert.equal((await db.query('select count(*)::int n from auth.sessions where id=$1',[claims(second.access_token).session_id])).rows[0].n,0);assert.ok([401,403].includes((await consume(revoked,second.access_token)).status));
  phase='original-master-and-identities-preserved';
@@ -120,7 +123,15 @@ try{
  console.log('PASS actual original synthetic RPC unchanged, normal-admin Auth session and original-master session/identity/company/member/master values preserved; notification outbox remains empty.');
  console.log('LIMIT: minimal fake app/account prerequisites, not complete production RLS/config/provider OAuth/device validation; no hosted connection, real secrets, external mail or production change.');
 }catch(error){console.error(`FAIL local platform/auth integration phase=${phase} code=${typeof error?.code==='string'?error.code:'E2E_ASSERTION'}${typeof error?.actual==='number'&&typeof error?.expected==='number'?` actual=${error.actual} expected=${error.expected}`:''}`);if(lastHttp)console.error(JSON.stringify(lastHttp));
- if(started){try{const logs=await run('docker',['logs','--tail','100',`supabase_edge_runtime_${project}`],{timeout:10000,maxBuffer:262144});const text=logs.stdout+logs.stderr;const tags=['InvalidWorkerCreation','WORKER_LIMIT','CPU time limit','TypeError','SyntaxError','connection refused','worker boot'];console.error(JSON.stringify({local_edge_diagnostic_counts:Object.fromEntries(tags.map(tag=>[tag,text.split(tag).length-1]))}));}catch{console.error('Local Edge diagnostic unavailable');}}
+ if(server)console.error(JSON.stringify({edge_launcher_exit_code:server.exitCode,edge_launcher_signal:server.signalCode}));
+ if(started){try{
+  const listing=await run('docker',['ps','-a','--filter',`name=${project}`,'--format','{{.Names}}'],{timeout:10000,maxBuffer:65536});const names=listing.stdout.trim().split('\n').filter(Boolean);
+  console.error(JSON.stringify({owned_local_services:{edge:names.filter(n=>n.includes('edge')).length,kong:names.filter(n=>n.includes('kong')).length,database:names.filter(n=>n.includes('_db_')).length}}));
+  const edge=names.find(n=>n.includes('edge')&&n.endsWith(project));if(edge){const logs=await run('docker',['logs','--tail','100',edge],{timeout:10000,maxBuffer:262144});edgeOutput+=(logs.stdout+logs.stderr).slice(-65536);}
+ }catch{/* Only bounded process metadata is emitted below. */}}
+ const tags=['InvalidWorkerCreation','WORKER_LIMIT','CPU time limit','wall clock','TypeError','SyntaxError','connection refused','worker boot','error','shutdown'];console.error(JSON.stringify({local_edge_diagnostic_counts:Object.fromEntries(tags.map(tag=>[tag,edgeOutput.split(tag).length-1]))}));
+ if(db&&fixtureActor){try{console.error(JSON.stringify({local_auth_sessions:(await db.query('select count(*)::int active_sessions,count(*) filter(where id=$1)::int original_alive from auth.sessions where user_id=$2',[fixtureSession,fixtureActor])).rows[0]}));}catch{/* No raw query/response is printed. */}}
+
  process.exitCode=1;}
 finally{
  if(db)await db.end().catch(()=>{});
