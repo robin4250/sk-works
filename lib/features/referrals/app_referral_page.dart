@@ -80,7 +80,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
           _channel = widget.friendInvite ? 'public' : 'testflight';
           final channels = data['distribution_channels'] as List;
           if (!widget.friendInvite && !channels.any((c) => c is Map && c['key'] == _channel && c['ready'] == true) &&
-              channels.any((c) => c is Map && c['key'] == 'web' && c['ready'] == true)) _channel = 'web';
+              channels.any((c) => c is Map && c['key'] == 'web' && c['ready'] == true)) { _channel = 'web'; }
           _channelInitialized = true;
         }
         _url.text = data['distribution_url']?.toString() ?? '';
@@ -140,8 +140,10 @@ class _AppReferralPageState extends State<AppReferralPage> {
       await widget.repository.saveDistributionLinks(_testflight.text, _web.text, _guide.text);
       await _load();
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('配布先URLを保存できませんでした。URL・利用権限を確認してください。')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('配布先URLを保存できませんでした。URL・利用権限を確認してください。')));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

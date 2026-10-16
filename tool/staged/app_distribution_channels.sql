@@ -34,7 +34,7 @@ begin
    end loop;
    update private.app_referral_settings set testflight_url=tf,web_url=web,
      public_guide_url=guide,
-     distribution_url=case when distribution_url ~ '^https://testflight\\.apple\\.com/join/' then tf else distribution_url end,
+     distribution_url=case when distribution_url ~ '^https://testflight\.apple\.com/join/' then tf else distribution_url end,
      updated_at=clock_timestamp() where id;
    return '{}'::jsonb;
  end if;
