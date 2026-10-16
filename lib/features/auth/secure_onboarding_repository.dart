@@ -31,6 +31,8 @@ class EmployeeOnboardingState {
 class SecureOnboardingRepository {
   SecureOnboardingRepository._(this._client);
 
+  SecureOnboardingRepository.forClient(this._client);
+
   final SupabaseClient _client;
 
   static SecureOnboardingRepository? maybeCreate() {
@@ -228,3 +230,4 @@ class SecureOnboardingRepository {
     return text.isEmpty ? null : text;
   }
 }
+

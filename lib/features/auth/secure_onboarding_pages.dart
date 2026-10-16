@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,17 +9,119 @@ import '../../branding/product_brand.dart';
 import 'auth_error_message.dart';
 import 'employee_invite_scanner_page.dart';
 import 'secure_onboarding_repository.dart';
+import 'existing_google_login.dart';
 
 class SecureAuthPage extends StatefulWidget {
-  const SecureAuthPage({super.key, required this.onAuthenticated});
+  const SecureAuthPage({super.key, required this.onAuthenticated, this.repository, this.googleLogin});
 
   final VoidCallback onAuthenticated;
+  final SecureOnboardingRepository? repository;
+  final ExistingGoogleLogin? googleLogin;
 
   @override
   State<SecureAuthPage> createState() => _SecureAuthPageState();
 }
 
-class _SecureAuthPageState extends State<SecureAuthPage> {
+class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObserver {
+  ExistingGoogleLogin? _google;
+  StreamSubscription<AuthState>? _googleSubscription;
+  int _googleGeneration = 0;
+  bool _googlePending = false;
+  bool _googleChecking = false;
+  Session? _googleResult;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _completeGoogle();
+  }
+
+  void _cancelGoogle() {
+    _googleGeneration++;
+    _googleSubscription?.cancel();
+    _googleSubscription = null;
+    _googleResult = null;
+    _googleChecking = false;
+    _googlePending = false;
+  }
+
+  Future<void> _startGoogle() async {
+    if (_busy || _googlePending) return;
+    final google = widget.googleLogin ?? ExistingGoogleLogin.maybeCreate();
+    if (google == null) return;
+    if (google.currentSession != null) {
+      setState(() => _message = 'ログイン状態が変わりました。アプリを開き直して確認してください。');
+      return;
+    }
+    _google = google;
+    final generation = ++_googleGeneration;
+    _password.clear();
+    _passwordConfirm.clear();
+    _otp.clear();
+    setState(() { _googlePending = true; _message = null; });
+    _googleSubscription = google.changes.listen((event) {
+      if (!mounted || generation != _googleGeneration || !_googlePending) return;
+      if (event.event == AuthChangeEvent.signedOut) {
+        setState(_cancelGoogle);
+        return;
+      }
+      if (event.event != AuthChangeEvent.signedIn || event.session == null) return;
+      _googleResult = event.session;
+      _completeGoogle();
+    }, onError: (Object _) {
+      if (!mounted || generation != _googleGeneration) return;
+      setState(() { _cancelGoogle(); _message = 'Googleログインを完了できませんでした。もう一度お試しください。'; });
+    });
+    try {
+      final launched = await google.launch();
+      if (!mounted || generation != _googleGeneration) return;
+      if (!launched) {
+        setState(() { _cancelGoogle(); _message = 'Googleログインを開けませんでした。'; });
+      }
+      // Browser launch is not authentication. Only the SDK signedIn event may complete.
+    } catch (_) {
+      if (!mounted || generation != _googleGeneration) return;
+      setState(() { _cancelGoogle(); _message = 'Googleログインを開けませんでした。'; });
+    }
+  }
+
+  Future<void> _completeGoogle() async {
+    final google = _google;
+    final session = _googleResult;
+    if (!mounted || !_googlePending || _googleChecking || google == null || session == null) return;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+    final generation = _googleGeneration;
+    _googleChecking = true;
+    try {
+      final permitted = await google.hasExistingMembership(session);
+      if (!mounted || generation != _googleGeneration || !_googlePending) return;
+      final current = google.currentSession;
+      if (current?.user.id != session.user.id || current?.accessToken != session.accessToken) {
+        setState(() { _cancelGoogle(); _message = 'ログイン状態が変わりました。もう一度確認してください。'; });
+        return;
+      }
+      if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed || ModalRoute.of(context)?.isCurrent != true) {
+        _googleChecking = false;
+        return;
+      }
+      if (!permitted) {
+        setState(() { _cancelGoogle(); _message = 'このアカウントの既存の会社登録を確認できません。登録済みのGoogleアカウントか確認してください。'; });
+        return;
+      }
+      _cancelGoogle();
+      widget.onAuthenticated();
+    } catch (_) {
+      if (!mounted || generation != _googleGeneration) return;
+      setState(() { _cancelGoogle(); _message = '既存の会社登録を確認できませんでした。時間をおいてアプリを開き直してください。'; });
+    }
+  }
   final _phone = TextEditingController();
   final _password = TextEditingController();
   final _passwordConfirm = TextEditingController();
@@ -32,10 +136,12 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
   String? _message;
 
   SecureOnboardingRepository? get _repository =>
-      SecureOnboardingRepository.maybeCreate();
+      widget.repository ?? SecureOnboardingRepository.maybeCreate();
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cancelGoogle();
     _phone.dispose();
     _password.dispose();
     _passwordConfirm.dispose();
@@ -45,7 +151,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
 
   Future<void> _submit() async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null || _googlePending) return;
 
     if (_awaitingSms) {
       final code = _otp.text.replaceAll(RegExp(r'\D'), '');
@@ -252,6 +358,19 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
+                      if ((widget.googleLogin != null || ExistingGoogleLogin.supportedPlatform) &&
+                          !_registerMode && !_awaitingSms && !_passwordResetMode) ...[
+                        const SizedBox(height: 16),
+                        OutlinedButton(
+                          onPressed: _busy || _googlePending ? null : _startGoogle,
+                          child: const Text('登録済みのGoogleでログイン'),
+                        ),
+                        const Text('SKOで使用していたGoogleアカウントを選んでください。別のアカウントを選ぶと新規登録される場合があります。'),
+                      ],
+                      if (_googlePending) ...[
+                        const Text('Googleでの認証完了を待っています。'),
+                        TextButton(onPressed: () => setState(() { _cancelGoogle(); _message = '画面での待機を中止しました。開いているGoogle認証画面も閉じてください。'; }), child: const Text('Googleログインを中止')),
+                      ],
                       const SizedBox(height: 24),
                       if (_awaitingSms) ...[
                         TextField(
@@ -329,7 +448,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                       SizedBox(
                         height: 54,
                         child: FilledButton.icon(
-                          onPressed: _busy ? null : _submit,
+                          onPressed: _busy || _googlePending ? null : _submit,
                           icon: _busy
                               ? const SizedBox.square(
                                   dimension: 18,
@@ -362,7 +481,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                         SizedBox(
                           height: 50,
                           child: OutlinedButton.icon(
-                            onPressed: _busy
+                            onPressed: _busy || _googlePending
                                 ? null
                                 : () => setState(() {
                                       _registerMode = !_registerMode;
@@ -408,7 +527,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                         SizedBox(
                           height: 52,
                           child: OutlinedButton.icon(
-                            onPressed: _busy ? null : _scanEmployeeInvite,
+                            onPressed: _busy || _googlePending ? null : _scanEmployeeInvite,
                             icon: const Icon(Icons.qr_code_scanner),
                             label: const Text(
                               '従業員登録QRでログイン',
@@ -425,12 +544,12 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                       if (_awaitingSms) ...[
                         const SizedBox(height: 10),
                         TextButton.icon(
-                          onPressed: _busy ? null : _resendSms,
+                          onPressed: _busy || _googlePending ? null : _resendSms,
                           icon: const Icon(Icons.refresh),
                           label: const Text('SMSを再送'),
                         ),
                         TextButton(
-                          onPressed: _busy
+                          onPressed: _busy || _googlePending
                               ? null
                               : () => setState(() {
                                     _awaitingSms = false;
@@ -443,7 +562,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
 
                         if (!_registerMode)
                           TextButton(
-                            onPressed: _busy
+                            onPressed: _busy || _googlePending
                                 ? null
                                 : () async {
                                     if (!mounted) return;
@@ -1202,3 +1321,4 @@ class _InfoTile extends StatelessWidget {
     );
   }
 }
+
