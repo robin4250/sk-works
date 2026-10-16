@@ -136,7 +136,7 @@ class _CompanyCommonSettingsPageState extends State<CompanyCommonSettingsPage>
         if (requested != null && selected == null) {
           _editorEpoch++; _error = 'この会社の設定を表示する権限を確認できません。';
         } else if (_selected != null && selected != null &&
-            _selected!.canEdit != selected!.canEdit) {
+            _selected!.canEdit != selected.canEdit) {
           _editorEpoch++;
         }
         _selected = selected; _choices = List.unmodifiable(scopes);
