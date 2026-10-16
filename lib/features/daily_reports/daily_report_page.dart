@@ -910,8 +910,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
   Future<void> _sign() async {
     if (_saving) return;
     if (!_visitReport && _editSessionUnverified) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('編集申請の状態を確認できません。日報を再読み込みしてください。')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(SkoLanguageController.tr('編集申請の状態を確認できません。日報を再読み込みしてください。'))));
       return;
     }
     final signingActor = _repository?.currentActorId;
@@ -965,7 +965,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
           title: SkoLanguageController.tr('責任者サイン'),
           signerLabel: SkoLanguageController.tr('現場責任者名'),
           submitLabel: _editingApprovedReport
-              ? 'このサインを確認' : SkoLanguageController.tr('責任者サインで確定'),
+              ? SkoLanguageController.tr('このサインを確認') : SkoLanguageController.tr('責任者サインで確定'),
         ),
         ),
       );
@@ -1021,19 +1021,21 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final report = _report;
     final actor = repository?.currentActorId;
     if (_saving || _visitReport || repository == null || report == null ||
-        !report.signed || !_approvedEditAvailable || actor == null) return;
+        !report.signed || !_approvedEditAvailable || actor == null) {
+      return;
+    }
     setState(() => _saving = true);
     try {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('承認済みの編集を開始'),
-          content: const Text('編集を開始すると以前のサインを解除します。編集後に報告者と責任者の再サインが必要です。'),
+          content: Text(SkoLanguageController.tr('編集を開始すると以前のサインを解除します。編集後に報告者と責任者の再サインが必要です。')),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('キャンセル')),
+              child: Text(SkoLanguageController.tr('キャンセル'))),
             FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('編集を開始')),
+              child: Text(SkoLanguageController.tr('編集を開始'))),
           ],
         ),
       );
@@ -1171,17 +1173,17 @@ class _DailyReportPageState extends State<DailyReportPage> {
       });
       await Navigator.of(context).push<void>(MaterialPageRoute(
         builder: (completionContext) => Scaffold(
-          appBar: AppBar(title: const Text('編集完了'), automaticallyImplyLeading: false),
+          appBar: AppBar(title: Text(SkoLanguageController.tr('編集完了')), automaticallyImplyLeading: false),
           body: Center(child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               const Icon(Icons.check_circle, size: 72, color: Colors.green),
               const SizedBox(height: 16),
-              const Text('日報の編集を完了しました。保存して確定しました。'),
+              Text(SkoLanguageController.tr('日報の編集を完了しました。保存して確定しました。')),
               const SizedBox(height: 24),
               FilledButton(
                 onPressed: () => Navigator.of(completionContext).popUntil((route) => route.isFirst),
-                child: const Text('ホームへ戻る'),
+                child: Text(SkoLanguageController.tr('ホームへ戻る')),
               ),
             ]),
           )),
@@ -1536,14 +1538,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               padding: const EdgeInsets.only(bottom: 12),
                               child: Column(children: [
                                 Text(_pendingResponsibleSignature == null
-                                  ? '編集後に報告者・責任者のサインを登録し、「編集を完了」を押してください。画面を開き直した場合は責任者サインを再入力してください。'
-                                  : '責任者サインを確認しました。「編集を完了」で保存・確定します。'),
+                                  ? SkoLanguageController.tr('編集後に報告者・責任者のサインを登録し、「編集を完了」を押してください。画面を開き直した場合は責任者サインを再入力してください。')
+                                   : SkoLanguageController.tr('責任者サインを確認しました。「編集を完了」で保存・確定します。')),
                                 FilledButton.icon(
                                   key: const ValueKey('daily-report-finish-approved-edit'),
                                   onPressed: _saving || _pendingResponsibleSignature == null
                                     ? null : _finishApprovedEdit,
                                   icon: const Icon(Icons.check_circle_outline),
-                                  label: const Text('編集を完了'),
+                                  label: Text(SkoLanguageController.tr('編集を完了')),
                                 ),
                               ]),
                             ),
