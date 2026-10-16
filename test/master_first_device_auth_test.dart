@@ -22,6 +22,7 @@ Map<String,dynamic> _session(String actor) {
 }
 class _Fixture {
   late SupabaseClient client;
+  TargetPlatform? originalPlatform;
   final requests = <http.Request>[];
   final passwords = <String>[];
   final native = <String>[];
@@ -66,6 +67,7 @@ class _Fixture {
   }
 }
 Future<void> _show(WidgetTester t,_Fixture f) async {
+  f.originalPlatform=debugDefaultTargetPlatformOverride;
   debugDefaultTargetPlatformOverride=TargetPlatform.iOS;
   SharedPreferences.setMockInitialValues({});
   t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -81,7 +83,7 @@ Future<void> _show(WidgetTester t,_Fixture f) async {
       default: throw StateError('Unexpected native fixture method');
     }
   });
-  addTearDown(() { t.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,null); debugDefaultTargetPlatformOverride=null; });
+  addTearDown(() { t.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,null); debugDefaultTargetPlatformOverride=f.originalPlatform; });
   await t.binding.setSurfaceSize(const Size(900,1400));
   addTearDown(()=>t.binding.setSurfaceSize(null));
   await t.pumpWidget(MaterialApp(home:MasterProtectedPage(title:'Master fixture',legacyDeviceRepository:MasterDeviceRepository.forTesting(f.client),legacyAuthRepository:SecureOnboardingRepository.forClient(f.client),legacySessionToken:()=>f.client.auth.currentSession?.accessToken,legacyChanges:f.client.auth.onAuthStateChange.map((_) {}),child:const Scaffold(body:Text('LEGACY-AND-MASTER-CONTENT')))));
@@ -93,6 +95,7 @@ Future<void> _start(WidgetTester t) async {
 }
 Future<void> _close(WidgetTester t,_Fixture f) async {
   await t.pumpWidget(const SizedBox()); await t.pump(); await t.runAsync(()=>f.client.dispose());
+  debugDefaultTargetPlatformOverride=f.originalPlatform;
 }
 void main() {
   testWidgets('first device zero with existing secondary: Face inactive cannot erase the submitted secret; AND policy retained', (t) async {
@@ -143,3 +146,4 @@ void main() {
     expect(f.bootstraps,0); expect(find.text('LEGACY-AND-MASTER-CONTENT'),findsNothing); await _close(t,f);
   }, timeout: const Timeout(Duration(minutes: 1)));
 }
+
