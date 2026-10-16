@@ -72,3 +72,8 @@ test('UTF-8 byte limit rejects oversized multibyte JSON',async()=>{
  const f=fixture();const r=await f.invoke({operation:'secondary_password.replace',password:'あ'.repeat(1600),target});
  assert.equal(r.status,400);assert.equal(f.calls.some(x=>x.path.includes('grant_type')),false);
 });
+test('OAuth-only account without a password cannot be silently converted or issued proof',async()=>{
+ const f=fixture({user:{id:actor,email:'synthetic@example.invalid'},passwordStatus:400});
+ const r=await f.invoke();assert.equal(r.status,403);assert.equal(f.issued,undefined);
+ assert.equal(f.calls.some(x=>x.path.includes('/admin/')||x.path.includes('issue_reauthentication')),false);
+});
