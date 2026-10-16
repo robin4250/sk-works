@@ -1171,6 +1171,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         _editSession = null;
         _pendingResponsibleSignature = null;
       });
+      if (!mounted) return;
       await Navigator.of(context).push<void>(MaterialPageRoute(
         builder: (completionContext) => Scaffold(
           appBar: AppBar(title: Text(SkoLanguageController.tr('編集完了')), automaticallyImplyLeading: false),
