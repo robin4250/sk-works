@@ -56,3 +56,26 @@ python3 tool/security/recovery_compare.py --before /private/before.json --after 
 3. 隔離した実復元の結果、正常ケース維持と拒否ケース、復元前後の重要状態比較、戻す手順の実行結果。
 4. 残るunknown、利用者影響、ロールバック条件。unknownを合格にしない。
 5. 上記の具体的な変更に対する利用者の明示承認。別変更への包括承認として流用しない。
+
+## 取得手段の不足照合（2026-10-16・追加調査のみ）
+
+この節はツール定義と公式資料の照合であり、本番の権限・契約・バックアップ有無を実測した結果ではありません。秘密、実ID、実データ、Storageファイルを取得せず、本番SQLやdumpを実行していません。
+
+PATH上ではSupabase CLI、Postgres各CLI、Dockerを検出しませんでしたが、既存の `/tmp/sko-reauth-cli/supabase` **2.121.0** は確認済みです。実行したのは `--version`、`db dump --help`、`functions download --help`、`secrets list --help` だけです。他の場所のPostgres/Docker導入有無や接続資格情報は未確認です。CLIが存在することは、DB接続・Docker・backup読取権限・実復元が揃った証拠ではありません。
+
+| 対象 | 現在呼べるツール・確認済みの取得手段 | 足りないもの・取得前の条件 |
+|---|---|---|
+| schema/RLS/ACL/関数/拡張 | MCP `execute_sql` のcatalog限定SELECT、`list_tables`、`list_extensions`、`list_migrations`。CLI 2.121.0には `db dump` のschema/role/data各オプションあり | 接続権限を持つ担当、既存DB接続情報の安全な利用、Docker等の実行基盤、dump内容の棚卸し・時点整合。SQLのSELECT結果やmigration履歴を完全dumpと扱わない |
+| DB roles/data/アプリ管理者ID・所属 | 公式はroles/schema/dataを分けて取得。現在のMCPにはファイルとして完全backupを取得する専用ツールなし | 全対象を読めるDB接続と非公開保存先。実user/company/membership/master IDは採取・比較未実施。custom LOGIN roleのpasswordは通常dumpに含まれない。既存passwordを無断resetしない |
+| Authのユーザー・identity・関連行 | 公式の復元対象に `auth.users` 等あり。ただしCLI既定dumpはmanaged schemaを除外し、既定ではdata/custom roleも含まない | Auth行と既存IDが実際に含まれるdumpを確認。`auth`/`storage`の独自trigger/RLS、managed schema内独自function、migration historyは別の保存範囲として点検。元UUIDとアプリ所属の参照を復元後比較 |
+| 自動backup/PITR | 公式DashboardのDatabase Backups、Management APIのbackup一覧/予定取得 | このセッションにbackup一覧/downloadの専用MCPは露出なし。Backups Read権限を持つ担当の確認が必要。プラン・保存時点・download可否は未確認。`restore_project(project_id)`は対象backup・隔離先を指定できない変更系ツールなので検証用に呼ばない |
+| Storage bytes/metadata | 公式はS3/rclone等で別コピー。現在のMCP一覧にはobject取得ツールなし | 全対象を読めるサーバー側資格情報の安全な利用と保存容量。S3生成鍵はRLSを迂回する強い権限なので新規発行・取得は自動実施しない。DB内metadataだけではbytes復元不可。key/bucket/owner/会社参照・非公開設定とbytes digestを照合し、ファイルコピー成功だけで権限保持と扱わない |
+| 配備済みEdge | MCP `list_edge_functions` / `get_edge_function`、CLI `functions download`。2.121.0のhelpでDocker不要の `--use-api` を確認 | Edge Functions Readが必要。実取得は未実施。CLI downloadだけではimport map/deno.jsonが揃わないという公式注意あり。Git原本・配備bundle・依存・verify_jwt・versionの一致が必要 |
+| Edge secrets/Vault/暗号化 | 公式Management APIにsecret一覧権限等あり。CLIはlistのhelpのみ確認 | 一覧やdigestは値の復元用backupではない。元のsecret保管者・安全な復旧手段が必要。Vault/列暗号化がある場合は復号鍵の復旧方式も別確認。秘密値を本チャット・GitHub・標準出力へ取得しない |
+| Apple/Google・Auth/SMTP/redirect設定 | 公式Management APIのAuth Config Read、provider各consoleの管理者による非公開確認 | 現在のMCPにはAuth config取得が露出なし。接続済みアプリの権限不足と断定せず、取得経路が未準備と記録。providerコンソール権限、client識別/redirect/鍵保管先を確認。実ログイン・account紐付け・復旧は未検証 |
+
+取得に必要な権限は作業ごとに分けます。Management APIは対象project限定のBackups Read、Database Read、Edge Functions Read、Auth Config Read等を公式のscope表で確認し、所有者の権限を越えて付与できません。DB password接続はPATのscopeとは別の権限境界です。MCPに無い取得機能を、SQLからOSファイルを読んだり、別ツールの認証情報を取り出して代用しません。
+
+隔離先は実Postgres/Auth/Storageのバージョンと拡張を合わせ、外部送信を遮断します。復元先のdefault privilegesによる予期せぬGRANT追加、custom role password、Realtime publication、Auth/Storage独自定義、Vault鍵、Edge依存を照合対象に含めます。公式の汎用復元例をそのまま本番へ実行せず、不足した定義を削って合格にしません。self-hosted復元はJWT鍵やprovider設定が別であり、元の管理者ID保持と旧JWT継続利用は別の条件です。本番Apple/Googleのredirectを隔離試験のために書き換えません。
+
+一次資料（確認日2026-10-16）：[DB backups](https://supabase.com/docs/guides/platform/backups)、[CLI backup/restoreとmanaged schema注意](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore)、[db dumpの既定除外とdefault privileges](https://supabase.com/docs/reference/cli/supabase-db-dump)、[self-hosted復元の範囲](https://supabase.com/docs/guides/self-hosting/restore-from-platform)、[Storage別コピー](https://supabase.com/docs/guides/self-hosting/copy-from-platform-s3)、[PATの権限表](https://supabase.com/docs/guides/platform/personal-access-tokens)。changelogの[2026-10-06 scoped PAT一般提供](https://supabase.com/changelog/scoped-personal-access-tokens-ga)と[2026-06-17 self-hosted PG17移行](https://supabase.com/changelog/46080-self-hosted-supabase-upgrading-from-pg-15-to-17-breaking-change)も確認し、古い例のPostgres版や一律権限を前提にしません。
