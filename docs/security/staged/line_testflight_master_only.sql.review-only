@@ -1,0 +1,21 @@
+-- REVIEW ONLY. Not a normal migration; never automatically applied to production.
+-- TestFlight distribution lock: retain saved general release state and master settings.
+-- Existing public/private entrypoints already delegate to this actor gate.
+begin;
+set local lock_timeout='5s';
+do $guard$
+begin
+ if (select md5(prosrc) from pg_proc where oid='private.line_actor_release_allowed(uuid)'::regprocedure)
+     is distinct from 'f8ad4338c53cf972a415c9189b4053ae' then
+  raise exception 'LINE actor gate changed; review current definition before applying';
+ end if;
+end $guard$;
+create or replace function private.line_actor_release_allowed(p_actor uuid) returns boolean
+language sql stable security definer set search_path='' as $$
+ select p_actor is not null and exists(select 1 from auth.users where id=p_actor)
+ and not exists(select 1 from private.account_deletion_access_restrictions where user_id=p_actor)
+ and exists(select 1 from private.master_admins where user_id=p_actor and enabled)
+$$;
+-- CREATE OR REPLACE retains the original owner and grants. No data/settings are updated.
+-- Master exception is still intersected with existing group/company authorization.
+commit;
