@@ -38,7 +38,7 @@ class _Access implements ExpenseSubmissionAccess {
   }
 }
 
-Future<void> open(WidgetTester tester, _Access access,
+Future<void> _open(WidgetTester tester, _Access access,
     {ExpenseReceiptAttachment? receipt}) async {
   await tester.binding.setSurfaceSize(const Size(650, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -61,7 +61,7 @@ void main() {
   testWidgets('success is shown only after save and double acknowledgment keeps page',
       (tester) async {
     final access = _Access()..response = Completer<void>();
-    await open(tester, access);
+    await _open(tester, access);
     await tester.tap(find.text('申請する'));
     await tester.pump();
     expect(find.text('経費の申請が完了しました'), findsNothing);
@@ -89,7 +89,7 @@ void main() {
     final file = File('${dir.path}/receipt.png')..writeAsBytesSync([1, 2, 3]);
     final receipt = ExpenseReceiptAttachment(file.path, 'a' * 64, 3, 'image/png');
     final access = _Access()..fail = true;
-    await open(tester, access, receipt: receipt);
+    await _open(tester, access, receipt: receipt);
     await tester.tap(find.text('写真を撮る'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('申請する'), 300,
@@ -117,7 +117,7 @@ void main() {
   testWidgets('history refresh failure retains confirmed success and never resubmits',
       (tester) async {
     final access = _Access()..failRefresh = true;
-    await open(tester, access);
+    await _open(tester, access);
     await tester.tap(find.text('申請する'));
     await tester.pumpAndSettle();
     expect(find.text('経費の申請が完了しました'), findsOneWidget);

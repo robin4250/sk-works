@@ -83,7 +83,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         setState(() => _error = '申請先を確認できません。再読み込みしてください。');
       }
     } finally {
-      if (mounted && generation == _generation) setState(() => _busy = false);
+      if (mounted && generation == _generation) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -129,7 +131,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         setState(() => _error = '申請履歴を確認できません。再読み込みしてください。');
       }
     } finally {
-      if (mounted && generation == _generation) setState(() => _busy = false);
+      if (mounted && generation == _generation) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -169,6 +173,7 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         _receipt = null;
         _month = DateTime.parse(draft.date);
       });
+      if (!mounted) return;
       var acknowledged = false;
       await showDialog<void>(
         context: context,
@@ -215,7 +220,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
   }
 
   Future<void> _pickReceipt(ImageSource source) async {
-    if (_busy || _pending != null || _scope == null || _access?.actor != _actor) return;
+    if (_busy || _pending != null || _scope == null || _access?.actor != _actor) {
+      return;
+    }
     final generation = _generation, actor = _actor, scope = _scope;
     setState(() => _busy = true);
     try {
@@ -224,12 +231,20 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         photo = await widget.pickReceipt!(source);
       } else {
         final selected = await ImagePicker().pickImage(source: source, maxWidth: 1800, imageQuality: 85);
-        if (selected != null) photo = await ExpenseReceiptAttachment.capture(selected);
+        if (selected != null) {
+          photo = await ExpenseReceiptAttachment.capture(selected);
+        }
       }
-      if (!_current(generation) || actor != _actor || scope != _scope) return;
-      if (photo != null) setState(() { _receipt = photo; _error = null; });
+      if (!_current(generation) || actor != _actor || scope != _scope) {
+        return;
+      }
+      if (photo != null) {
+        setState(() { _receipt = photo; _error = null; });
+      }
     } catch (_) {
-      if (_current(generation)) setState(() => _error = '領収書を取得できません。カメラ・写真の許可と画像（10MB以内のJPEG／PNG）を確認してください。');
+      if (_current(generation)) {
+        setState(() => _error = '領収書を取得できません。カメラ・写真の許可と画像（10MB以内のJPEG／PNG）を確認してください。');
+      }
     } finally {
       if (_current(generation)) setState(() => _busy = false);
     }
@@ -291,7 +306,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
       if (!_current(generation)) return;
       setState(() {
         _pendingChange = null;
-        if (!command.withdrawing) _month = DateTime.parse(command.parameters['p_date']);
+        if (!command.withdrawing) {
+          _month = DateTime.parse(command.parameters['p_date']);
+        }
       });
       await _loadSelection(generation);
       if (mounted && _current(generation)) {
@@ -508,7 +525,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                         claim: claim,
                         onEdit: editable && _changes != null && !claim.withdrawn ? () async {
                           await _changeClaim(claim, withdraw: false);
-                          if (detailContext.mounted && _pendingChange == null && _error == null) Navigator.pop(detailContext);
+                          if (detailContext.mounted && _pendingChange == null && _error == null) {
+                            Navigator.pop(detailContext);
+                          }
                         } : null,
                         onDelete: editable && _changes != null && !claim.withdrawn ? () async {
                           await _changeClaim(claim, withdraw: true);
@@ -524,7 +543,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                             await showDialog<void>(context: detailContext, builder: (_) => ExpenseReviewHistoryDialog(
                               events: (result['events'] as List).map((e) => Map<String, dynamic>.from(e)).toList()));
                           } catch (_) {
-                            if (detailContext.mounted) ScaffoldMessenger.of(detailContext).showSnackBar(const SnackBar(content: Text('履歴を取得できません。再度確認してください。')));
+                            if (detailContext.mounted) {
+                              ScaffoldMessenger.of(detailContext).showSnackBar(const SnackBar(content: Text('履歴を取得できません。再度確認してください。')));
+                            }
                           }
                         },
                       ))),
