@@ -48,6 +48,29 @@ class RecoveryTests(unittest.TestCase):
         r.snapshot(self.repo, self.output)
         self.assertTrue(r.rehearse(self.output, self.parent)['dirty_status_equal'])
 
+    def test_binary_rename_unicode_and_unstaged_delete_restore(self):
+        binary = self.repo / 'binary.dat'
+        binary.write_bytes(bytes(range(256)))
+        r.command(self.repo, 'add', '--all')
+        r.command(self.repo, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'binary baseline')
+        r.command(self.repo, 'mv', 'keep.txt', '名前 with spaces.txt')
+        binary.write_bytes(bytes(reversed(range(256))))
+        (self.repo / 'roles.json').unlink()
+        (self.repo / '未保存.txt').write_text('synthetic confidential note')
+        before = r.state(self.repo)
+        r.snapshot(self.repo, self.output)
+        result = r.rehearse(self.output, self.parent)
+        self.assertTrue(result['source_files_equal'])
+        self.assertEqual(r.state(self.repo), before)
+
+    def test_staged_delete_then_untracked_replacement_restore(self):
+        r.command(self.repo, 'rm', 'keep.txt')
+        (self.repo / 'keep.txt').write_text('new untracked replacement')
+        r.snapshot(self.repo, self.output)
+        result = r.rehearse(self.output, self.parent)
+        self.assertTrue(result['staged_index_equal'])
+        self.assertTrue(result['dirty_status_equal'])
+
     def test_existing_output_and_output_inside_git_refused(self):
         self.output.mkdir()
         (self.output / 'sentinel').write_text('keep')

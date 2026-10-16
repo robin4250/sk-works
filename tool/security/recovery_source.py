@@ -92,7 +92,9 @@ def snapshot(repo, destination):
         private_write(destination / name, data)
     for name, entry in before['files'].items():
         if not entry.get('deleted'):
-            private_write(destination / 'current' / safe_relative(name), (repo / name).read_bytes())
+            current_bytes = (repo / name).read_bytes()
+            require(sha(current_bytes) == entry['sha256'], 'Source changed while copying; snapshot incomplete')
+            private_write(destination / 'current' / safe_relative(name), current_bytes)
     for path in destination.rglob('*'):
         if path.is_dir():
             path.chmod(0o700)
