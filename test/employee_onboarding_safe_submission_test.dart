@@ -117,7 +117,11 @@ Future<void> photos(WidgetTester tester) async {
 
 Future<void> send(WidgetTester tester) async {
   await tester.tap(find.text('本登録を申請'));
-  await tester.pumpAndSettle();
+  // Success invokes the navigation callback; this fixture deliberately keeps the
+  // page mounted, so its busy spinner remains animated. Pump bounded frames.
+  for (var i = 0; i < 20; i++) {
+    await tester.pump(const Duration(milliseconds: 20));
+  }
 }
 
 void main() {
