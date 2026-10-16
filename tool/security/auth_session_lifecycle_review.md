@@ -1,0 +1,99 @@
+# Real Auth server session lifecycle — existing isolated stack reused
+
+This test-only lane complements the Flutter/Face mock tests. No authentication
+product code, provider setup, second-password/primary-password behavior, SMS path,
+RLS or production config is changed. New files only. No iPhone is connected.
+
+The existing `platform_auth_gotrue_e2e.mjs` (#1144) owns the pinned CLI2.121.0 local
+GoTrue/Kong/PostgreSQL/Edge stack and always cleans up. It is deliberately NOT
+copied as a tracked parallel fixture or modified. A new runner checks its exact
+SHA256 `79c128c9c03c138084712512ebfcaa1e68cdd5b2641f02cf7c17cc6b99b3e655`,
+one setup anchor and required origin/empty-DB/cleanup/assertion contracts. It creates
+a private700/600 temporary source copy, adds one local helper import and hook
+before app fixture creation, and imports that copy. The original adapter import
+is resolved to the same repository-local module. Any drift fails BEFORE stack
+setup; every original assertion/cleanup byte remains after removing the hook and
+import adaptation (tested). The wrapper temp source is removed in finally.
+
+All SDK keys/tokens/passwords stay in the original fixture's memory; the new hook
+uses only its origin-checked request callback. It creates one separate confirmed
+`example.invalid` user. No mail is sent. All request routes are the existing local
+Auth endpoints, with redirects rejected. No direct network client is added. Hosted
+SUPABASE_* credentials/environment are refused. Dependency/image bootstrap on the
+GitHub runner still uses package registries; this is not a whole-runner network-none
+claim. No hosted project, real credentials or production data is contacted.
+
+## New actual server assertions
+
+1. Password login creates real auth.sessions A. After that first legitimate login,
+   capture user/provider identity fields as the stable baseline (not login times).
+2. Serialize/rehydrate only the refresh token in MEMORY and call the real refresh
+   grant. New JWT remains bound to session A; only one server session exists.
+3. A separate password login creates session B for the same fake user.
+4. LOCAL signout of A removes A's server row, refuses both its original and rotated
+   refresh tokens, and retains B. B's own refresh succeeds with the same B session.
+5. Explicit GLOBAL logout of B removes the remaining user sessions and rejects both
+   B refresh tokens. This is extra server revocation coverage, NOT app default.
+6. Legitimate password login C works and creates a different session. Identity and
+   providers stay unchanged. The original master/admin/other fixture sessions stay
+   valid. C is locally signed out to leave no extra active test sessions.
+
+The existing entire real Edge/proof/platform suite then executes unchanged, including
+original synthetic monitor, session-bound proof and provider/company/master checks.
+There is no replacement of server authentication with a biometric boolean.
+
+## Match to the pinned Dart logout behavior
+
+The repository locks supabase2.16.1/gotrue2.27.2. Official gotrue-v2.27.2 source:
+`GotrueClient.signOut({SignOutScope scope = SignOutScope.local})` forwards that scope
+explicitly to `admin.signOut(accessToken, scope: scope)`, which posts `/logout`
+with `scope.name`. Therefore the app's parameterless `.auth.signOut()` maps to the
+LOCAL case, even though the admin API's independent optional default is GLOBAL.
+The tag source was checked; the pub.dev archive's declared lock SHA was not
+independently redownloaded/hash-verified in this lane.
+
+- https://github.com/supabase/supabase-flutter/blob/gotrue-v2.27.2/packages/gotrue/lib/src/gotrue_client.dart
+- https://github.com/supabase/supabase-flutter/blob/gotrue-v2.27.2/packages/gotrue/lib/src/gotrue_admin_api.dart
+- Current Supabase signout docs checked through search_docs:
+  https://supabase.com/docs/guides/auth/signout
+
+## Explicit limits
+
+This proves the HTTP/server half of refresh-token restoration; not a real Dart
+process restart, iPhone secure-storage persistence, Face ID hardware, OAuth or app
+navigation disposal. The access JWT of a revoked session may remain cryptographically
+valid until exp; no immediate old-access-JWT rejection is claimed. Refresh rotation
+reuse grace is a separate documented behavior, so immediate pre-logout reuse is
+not asserted invalid. Post-logout old refresh chains MUST be refused and cannot
+be counted as passing merely because a device forgot its token.
+
+Synthetic user/session/provider rows are isolated and discarded with the existing
+fixture. Full production config, original backup/restore and real administrator
+retention are outside this test. No new sign-in method or production authorization
+is introduced. Record exact CI head and outcome before treating runtime as verified.
+
+## Preserved, unverified phone experiment
+
+The normal required suite remains the original email/password server lifecycle and
+entire unchanged #1144 Edge/proof suite. No phone assertion is skipped or reported
+as successful here. A separate incomplete experiment is preserved exactly at
+79a6682790cf776049b1ee5593d70e3f6d10b441:
+https://github.com/robin4250/sk-works/tree/experiment/auth-phone-provider-disabled-79a668
+
+Phone password grant expected200 but returned422 phone_provider_disabled in
+CI38940621802/job117107020821 (e0260a0), diagnostic CI38941232596/job117109093331
+(728d64b), and owned-config attempt CI38942121981/job117112087830 (79a668).
+The last run's six guard tests and preceding real email assertions passed; the
+phone case did not pass. No provider transport or fake credentials were enabled.
+
+CLI2.121.0 resolveAuthSms forces enable_signup false when every SMS provider is
+disabled (local-config-values.ts:1986–2005); gotrue.service.ts:388 forwards that to
+GOTRUE_EXTERNAL_PHONE_ENABLED. sms.ts:81+ requires provider credentials when a
+transport is enabled. Therefore the supported CLI config cannot provide this
+phone test under the transport-disabled constraint. Phone password server success,
+real employee onboarding, SMS delivery and actual iPhone behavior remain unverified.
+
+Official pinned source:
+- https://github.com/supabase/cli/blob/v2.121.0/apps/cli/src/command-internal/local-config-values.ts
+- https://github.com/supabase/cli/blob/v2.121.0/apps/cli/src/commands/start/services/gotrue.service.ts
+- https://github.com/supabase/cli/blob/v2.121.0/packages/config/src/auth/sms.ts
