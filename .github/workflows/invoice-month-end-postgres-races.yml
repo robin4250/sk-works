@@ -1,0 +1,43 @@
+name: Invoice month-end Postgres races
+on:
+  pull_request:
+    paths:
+      - 'tool/staged/invoice_month_end_approval_notifications.sql'
+      - 'tool/test_invoice_month_end_notifications.mjs'
+      - 'tool/test_invoice_month_end_postgres_races.mjs'
+      - '.github/workflows/invoice-month-end-postgres-races.yml'
+  push:
+    branches: ['fix/invoice-month-end-postgres-races-20261016']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  month-end-races:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: month-end-fixture
+          POSTGRES_DB: sko_invoice_month_end_race_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_invoice_month_end_race_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_INVOICE_MONTH_END_RACE_DATABASE_URL: postgres://postgres:month-end-fixture@127.0.0.1:5432/sko_invoice_month_end_race_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned isolated PostgreSQL client
+        run: npm install --prefix "$RUNNER_TEMP/invoice-month-end-runtime" --no-audit --no-fund --ignore-scripts pg@8.16.3
+      - name: Verify observed PostgreSQL lock races and committed receipts
+        run: node tool/test_invoice_month_end_postgres_races.mjs "$RUNNER_TEMP/invoice-month-end-runtime/node_modules/pg/lib/index.js"
