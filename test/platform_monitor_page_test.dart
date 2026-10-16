@@ -42,4 +42,34 @@ void main() {
     expect(find.textContaining('監視が動作した証拠はまだありません'), findsOneWidget);
     expect(find.textContaining('安全性を証明しません'), findsOneWidget);
   });
+  testWidgets('read permission failure is not an empty or inactive safe feed', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: PlatformMonitorPage(checkAvailable: () async => true, loadSnapshot: (_) async => throw StateError('secret'))));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'fixture-password');
+    await tester.tap(find.text('再認証して記録を表示')); await tester.pumpAndSettle();
+    expect(find.textContaining('監視記録を取得できません'), findsOneWidget);
+    expect(find.textContaining('監視未開始'), findsNothing);
+    expect(find.textContaining('保存対象の記録はありません'), findsNothing);
+    expect(find.textContaining('secret'), findsNothing);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
+  });
+  testWidgets('OFF server is explicitly not started after proof attempt', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: PlatformMonitorPage(checkAvailable: () async => true, loadSnapshot: (_) async => throw PlatformMonitorUnavailable())));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'fixture-password');
+    await tester.tap(find.text('再認証して記録を表示')); await tester.pumpAndSettle();
+    expect(find.textContaining('監視未開始'), findsOneWidget);
+    expect(find.textContaining('保存対象の記録はありません'), findsNothing);
+  });
+  testWidgets('late response after leaving does not reuse disposed password input', (tester) async {
+    final pending = Completer<PlatformMonitorSnapshot>();
+    await tester.pumpWidget(MaterialApp(home: PlatformMonitorPage(checkAvailable: () async => true, loadSnapshot: (_) => pending.future)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'fixture-password');
+    await tester.tap(find.text('再認証して記録を表示')); await tester.pump();
+    await tester.pumpWidget(const SizedBox());
+    pending.complete(PlatformMonitorSnapshot.parse(report())); await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
 }
