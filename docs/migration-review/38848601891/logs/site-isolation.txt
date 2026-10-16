@@ -1,0 +1,2 @@
+PASS: received-proof scope, stable IDs, idempotent current choice, revision CAS, directional detach, legacy attendance retained, exact own search, table ACL and role denial
+PASS: reverse direction preserves third party; repeated local records count one company; representative tie is stable

@@ -1,0 +1,1 @@
+Created new migration at supabase/migrations/20261016040338_invoice_month_end_approval_notifications.sql
