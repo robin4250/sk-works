@@ -16,6 +16,10 @@ const actors={managerOff:id(11),managerOn:id(12),owner:id(13),admin:id(14),viewe
 await db.exec(`create role authenticated;create role anon;create schema auth;create schema private;
 create function auth.uid() returns uuid language sql stable as $$select coalesce(nullif(current_setting('fixture.actor',true),''),nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub')::uuid$$;
 create table private.account_deletion_access_restrictions(user_id uuid);
+-- Synthetic identity/provider/master sentinels: no production IDs are used.
+create table auth.users(id uuid primary key);
+create table auth.identities(id uuid primary key,user_id uuid,provider text,provider_id text);
+create table private.master_admins(user_id uuid primary key,enabled boolean);
 create table company_members(company_id uuid,user_id uuid,role text);
 create table member_feature_permissions(company_id uuid,user_id uuid,can_view_invoices boolean default false,can_manage_invoices boolean default false,can_manage_payroll boolean default false,can_manage_people boolean default false,can_manage_attendance boolean default false,can_approve_daily_report_edits boolean default false,can_manage_partner_chat boolean default false);
 create table workers(id uuid,company_id uuid,user_id uuid);
@@ -35,6 +39,8 @@ await db.exec(fs.readFileSync(path.join(here,'canonical_read_rpc_fixture.sql'),'
 for(const t of ['company_members','member_feature_permissions','workers','worker_personnel_profiles','worker_family_members'])await db.exec(`alter table ${t} enable row level security`);
 for(const p of e.policies){let q=`create policy "${p.policyname}" on ${p.tablename} as ${p.permissive} for ${p.cmd} to authenticated`;if(p.qual)q+=` using (${p.qual.replaceAll('app_role','text')})`;if(p.with_check)q+=` with check (${p.with_check.replaceAll('app_role','text')})`;await db.exec(q);}
 for(const [key,actor]of Object.entries(actors)){const role=key.startsWith('manager')?'manager':key==='deleted'?'owner':['owner','admin','viewer'].includes(key)?key:'employee';await db.query('insert into company_members values($1,$2,$3)',[key==='outsider'?F:C,actor,role]);await db.query('insert into member_feature_permissions(company_id,user_id,can_manage_people)values($1,$2,$3)',[C,actor,key==='managerOn']);}
+for(const [key,uid]of Object.entries(actors)){await db.query('insert into auth.users values($1)',[uid]);await db.query('insert into auth.identities values($1,$2,$3,$4)',[id(100+Number(uid.slice(-2))),uid,'synthetic-fixture-provider','synthetic-'+key]);}
+await db.query('insert into private.master_admins values($1,true)',[actors.owner]);
 await db.query('insert into private.account_deletion_access_restrictions values($1)',[actors.deleted]);
 await db.query('insert into workers(id,company_id,user_id) values($1,$2,$3),($4,$5,$6)',[W,C,actors.self,WF,F,actors.outsider]);
 await db.query('insert into worker_personnel_profiles(worker_id,company_id,address) values($1,$2,$3),($4,$5,$6)',[W,C,'synthetic own-company address',WF,F,'synthetic foreign address']);
@@ -50,12 +56,17 @@ await assert.rejects(db.query('select public.employee_personnel_view($1)',[C]),x
 assert.deepEqual(await ownCounts(),[2,2],'Original live policies MUST reproduce the permission bypass, including retired records');
 await db.exec('reset role');
 async function migrationInvariant(){
- const rows={};for(const table of ['company_members','member_feature_permissions','workers','worker_personnel_profiles','worker_family_members','private.account_deletion_access_restrictions'])rows[table]=(await db.query(`select to_jsonb(t) payload from ${table} t order by to_jsonb(t)::text`)).rows;
- const grants=(await db.query("select c.relname,c.relacl::text,a.attname,a.attacl::text from pg_class c join pg_namespace n on n.oid=c.relnamespace left join pg_attribute a on a.attrelid=c.oid and a.attnum>0 and not a.attisdropped where n.nspname='public' and c.relname in ('worker_personnel_profiles','worker_family_members') order by c.relname,a.attnum")).rows;
+ const rows={};for(const table of ['company_members','member_feature_permissions','workers','worker_personnel_profiles','worker_family_members','private.account_deletion_access_restrictions','auth.users','auth.identities','private.master_admins'])rows[table]=(await db.query(`select to_jsonb(t) payload from ${table} t order by to_jsonb(t)::text`)).rows;
+ const grants=(await db.query("select n.nspname,c.relname,c.relacl::text,c.relrowsecurity,c.relforcerowsecurity,a.attname,a.attacl::text from pg_class c join pg_namespace n on n.oid=c.relnamespace left join pg_attribute a on a.attrelid=c.oid and a.attnum>0 and not a.attisdropped where n.nspname in ('public','private','auth') and c.relkind in ('r','p','v') order by n.nspname,c.relname,a.attnum")).rows;
+ const functions=(await db.query("select n.nspname,p.proname,pg_get_function_identity_arguments(p.oid) args,p.proacl::text,pg_get_functiondef(p.oid) definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private','auth') and p.prokind='f' order by n.nspname,p.proname,args")).rows;
+ const schemas=(await db.query("select nspname,nspacl::text from pg_namespace where nspname in ('public','private','auth') order by nspname")).rows;
  const writes=(await db.query("select * from pg_policies where schemaname='public' and tablename in ('worker_personnel_profiles','worker_family_members') and cmd<>'SELECT' order by tablename,policyname")).rows;
- return {rows,grants,writes};
+ return {rows,grants,functions,schemas,writes};
 }
 const invariantBefore=await migrationInvariant();
+const policiesBefore=(await db.query("select schemaname,tablename,policyname,permissive,to_jsonb(roles) roles,cmd,qual,with_check from pg_policies where schemaname in ('public','private','auth') order by schemaname,tablename,policyname")).rows;
+const originalSelectPolicies=policiesBefore.filter(p=>p.schemaname==='public'&&['worker_personnel_profiles','worker_family_members'].includes(p.tablename)&&p.cmd==='SELECT');
+assert.equal(originalSelectPolicies.length,2,'Capture exactly the two original SELECT policies before applying the candidate');
 await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261016104441_personnel_direct_read_permission_guard.sql'),'utf8'));
 assert.deepEqual(await migrationInvariant(),invariantBefore,'Migration preserves every synthetic business row, column/table grant and non-SELECT policy');
 for(const [key,expected]of Object.entries({managerOff:0,managerOn:2,owner:2,admin:2,viewer:1,self:1,retiredSelf:1,employee:0,outsider:0,deleted:0})){
@@ -92,4 +103,24 @@ if(process.env.SKO_PERSONNEL_POSTGREST_URL){
  const r=await fetch(new URL('/worker_personnel_profiles?select=address',base));assert.equal(r.status,401,'Anonymous HTTP denied');
  console.log('PASS: real PostgreSQL17 + signed-JWT PostgREST actual canonical RPC and direct REST role matrix');
 }
+// Emergency restoration rehearsal only. Restoring the original policies also
+// restores their known manager-permission bypass, so this is NOT a safe normal
+// rollback or an authorization to execute any production restoration.
+await db.exec('reset role;begin');
+const ident=s=>'"'+s.replaceAll('"','""')+'"';
+for(const p of originalSelectPolicies){
+ await db.exec(`drop policy ${ident(p.policyname)} on ${ident(p.schemaname)}.${ident(p.tablename)}`);
+ let sql=`create policy ${ident(p.policyname)} on ${ident(p.schemaname)}.${ident(p.tablename)} as ${p.permissive} for ${p.cmd} to ${p.roles.map(ident).join(',')}`;
+ if(p.qual)sql+=` using (${p.qual})`;if(p.with_check)sql+=` with check (${p.with_check})`;await db.exec(sql);
+}
+await db.exec('commit');
+assert.deepEqual((await db.query("select schemaname,tablename,policyname,permissive,to_jsonb(roles) roles,cmd,qual,with_check from pg_policies where schemaname in ('public','private','auth') order by schemaname,tablename,policyname")).rows,policiesBefore,'All original policies restored exactly');
+assert.deepEqual(await migrationInvariant(),invariantBefore,'Restoration preserves source functions, ACLs, business rows, IDs, roles, membership, master registration and provider identity sentinels');
+for(const [key,expected]of Object.entries({owner:2,admin:2,self:1,retiredSelf:1})){await actor(actors[key]);assert.deepEqual(await ownCounts(),[expected,expected],`Restored legitimate ${key} access`);}
+await actor(actors.managerOff);assert.deepEqual(await ownCounts(),[2,2],'Emergency restoration explicitly reopens the ORIGINAL known vulnerability');
+await assert.rejects(db.query('select public.employee_personnel_view($1)',[C]),x=>x.code==='42501','Original RPC remains protected after restoration');
+await db.exec('reset role');await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261016104441_personnel_direct_read_permission_guard.sql'),'utf8'));
+assert.deepEqual(await migrationInvariant(),invariantBefore,'Reapplying candidate still preserves identities and data');
+await actor(actors.managerOff);assert.deepEqual(await ownCounts(),[0,0]);await actor(actors.viewer);assert.deepEqual(await ownCounts(),[1,1]);
+console.log('PASS: isolated original-policy restoration and reapply; admin/self access and synthetic IDs/roles/membership/master/provider/source/ACL unchanged; old vulnerability reopening explicitly verified');
 await db.close();console.log('PASS: original bypass reproduced, actual additive migration applied, permission OFF/ON/revoked, self/owner/admin/viewer, employee/other-company/anonymous/deleted matrix');
