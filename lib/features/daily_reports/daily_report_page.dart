@@ -867,14 +867,6 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (_report?.id != reportId) throw StateError('対象日報が変わりました');
       final repository = _repository;
       if (repository == null) return;
-      if (_editingApprovedReport) {
-        setState(() {
-          _pendingResponsibleSignature = result;
-          _pendingSignatureFingerprint = _draftFingerprint();
-          _pendingReporterFingerprint = _signatureFingerprint(_report?.reporterSignatureJson);
-        });
-        return;
-      }
       if (_visitReport) {
         await repository.signVisit(
           reportId: reportId,
@@ -974,6 +966,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (_report?.id != reportId) throw StateError('対象日報が変わりました');
       final repository = _repository;
       if (repository == null) return;
+      if (_editingApprovedReport) {
+        setState(() {
+          _pendingResponsibleSignature = result;
+          _pendingSignatureFingerprint = _draftFingerprint();
+          _pendingReporterFingerprint = _signatureFingerprint(_report?.reporterSignatureJson);
+        });
+        return;
+      }
       if (_visitReport) {
         await repository.signVisit(
           reportId: reportId,

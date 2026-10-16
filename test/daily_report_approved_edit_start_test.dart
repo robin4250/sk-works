@@ -13,7 +13,8 @@ class EditableReports extends DailyReportRepository {
   EditableReports(super.client) : super.forTesting();
   bool approved = true, signed = true, failSave = false;
   String actor = 'owner';
-  int saves = 0, signCalls = 0;
+  int saves = 0, signCalls = 0, reporterCalls = 0;
+  Object? reporter;
   bool reporterSigned = false, failSign = false, commitThenThrow = false;
   Object? responsible;
   String? responsibleName;
@@ -27,6 +28,15 @@ class EditableReports extends DailyReportRepository {
     session.companyId == 'company-a' && session.reportId == 'report-a';
   @override
   Future<String> loadResponsibleName({String? siteId, String? routeAssignmentId}) async => '責任者';
+  @override
+  Future<void> saveReporterSignature({required String reportId,
+    required String signerName, required Object signatureJson}) async {
+    reporterCalls++;
+    expect(reportId, 'report-a');
+    expect(signerName, '報告者');
+    reporterSigned = true;
+    reporter = {'strokes': signatureJson};
+  }
   @override
   Future<void> sign({required String reportId, required String signerName,
     required Object signatureJson}) async {
@@ -52,8 +62,8 @@ class EditableReports extends DailyReportRepository {
     String? reportId}) async => DailyReportRecord(
       id: 'report-a', companyId: 'company-a', date: date, siteId: 'site-a', siteName: '対象現場',
       workDescription: '保存済み内容', status: signed ? 'signed' : 'draft', workers: [],
-      reporterSignatureJson: signed || reporterSigned
-        ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null,
+      reporterSignatureJson: reporter ?? (signed || reporterSigned
+        ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null),
       responsibleSignerName: responsibleName,
       responsibleSignatureJson: responsible ?? (signed ? {'strokes': []} : null));
   @override
@@ -259,6 +269,44 @@ void main() {
       await tester.pumpAndSettle();
       expect(repo.signCalls, 1);
       expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsNothing);
+    });
+
+  testWidgets('real reporter save precedes responsible staging and explicit completion',
+    (tester) async {
+      final repo = EditableReports(client);
+      await open(tester, repo);
+      await begin(tester);
+      await tester.tap(find.text('編集を開始').last);
+      await tester.pumpAndSettle();
+      final reporterTile = find.ancestor(of: find.text('報告者サイン'),
+        matching: find.byType(ListTile)).first;
+      await tester.ensureVisible(reporterTile);
+      await tester.tap(reporterTile);
+      await tester.pumpAndSettle();
+      expect(find.byType(SignatureCapturePage), findsOneWidget);
+      Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+        const SignatureResult(signerName: '報告者', strokes: [[Offset(0.2, 0.3)]]));
+      await tester.pumpAndSettle();
+      expect(repo.reporterCalls, 1);
+      expect(repo.signCalls, 0);
+      expect(repo.reporterSigned, isTrue);
+      final responsibleTile = find.ancestor(of: find.text('責任者サイン'),
+        matching: find.byType(ListTile)).first;
+      await tester.ensureVisible(responsibleTile);
+      await tester.tap(responsibleTile);
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.7, 0.8)]]));
+      await tester.pumpAndSettle();
+      expect(repo.reporterCalls, 1);
+      expect(repo.signCalls, 0);
+      final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
+      await tester.ensureVisible(finish);
+      await tester.tap(finish);
+      await tester.pumpAndSettle();
+      expect(repo.signCalls, 1);
+      expect(repo.responsibleName, '責任者');
+      expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsOneWidget);
     });
 
 }
