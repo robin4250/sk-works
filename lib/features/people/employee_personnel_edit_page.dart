@@ -7,9 +7,10 @@ import 'people_page.dart';
 import 'personnel_family_member.dart';
 
 class EmployeePersonnelEditPage extends StatefulWidget {
-  const EmployeePersonnelEditPage({super.key, required this.record});
+  const EmployeePersonnelEditPage({super.key, required this.record,this.privacySession});
 
   final PersonRecord record;
+  final PersonnelPrivacySession? privacySession;
 
   @override
   State<EmployeePersonnelEditPage> createState() =>
@@ -67,7 +68,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
       return;
     }
     try {
-      final member = await repository.membership();
+      final member = await repository.membership(companyId:widget.privacySession?.company);
       if (!mounted) return;
       setState(() {
         _directAdminSave = member.role == 'owner' || member.role == 'admin';
@@ -145,6 +146,12 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
 
     setState(() => _saving = true);
     try {
+      final session=widget.privacySession;
+      if(session!=null){
+        await session.read(forExport:true,workerIds:{widget.record.id});
+        if(!mounted)return;
+        session.verify(session.epoch);
+      }
       final result = await repository.savePersonnelProfile({
         ...widget.record.toJson(),
         'name': _name.text.trim(),

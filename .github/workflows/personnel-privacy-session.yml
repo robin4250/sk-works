@@ -6,6 +6,9 @@ on:
       - 'lib/features/people/people_cloud_page.dart'
       - 'lib/features/people/employee_personnel_detail_page.dart'
       - 'lib/features/people/employee_personnel_print_page.dart'
+      - 'lib/features/people/employee_personnel_edit_page.dart'
+      - 'lib/features/people/personnel_bundle_send_page.dart'
+      - 'lib/features/people/company_transfer_send_page.dart'
       - 'test/personnel_privacy_session_test.dart'
       - '.github/workflows/personnel-privacy-session.yml'
 permissions:
@@ -22,5 +25,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: dart analyze lib/features/people/people_cloud_repository.dart lib/features/people/people_cloud_page.dart lib/features/people/employee_personnel_detail_page.dart lib/features/people/employee_personnel_print_page.dart test/personnel_privacy_session_test.dart
+      - run: dart analyze lib/features/people/people_cloud_repository.dart lib/features/people/people_cloud_page.dart lib/features/people/employee_personnel_detail_page.dart lib/features/people/employee_personnel_print_page.dart lib/features/people/employee_personnel_edit_page.dart lib/features/people/personnel_bundle_send_page.dart lib/features/people/company_transfer_send_page.dart test/personnel_privacy_session_test.dart
       - run: flutter test test/personnel_privacy_session_test.dart

@@ -38,6 +38,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   bool _canConfigurePersonnelApprovers = false;
   String _companyName = '';
   String? _error;
+  bool _reloadOnResume=false;
 
   @override
   void initState() {
@@ -53,9 +54,20 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     final session=_privacy;
     setState(() {
       if(session?.revoked==true){_records.clear();_canManagePeople=false;_canViewPeople=false;}
-      else if(session?.snapshot==null){_canManagePeople=false;_canViewPeople=false;}
+      else if(session?.snapshot==null){
+        final basic=_records.map((record)=>PersonRecord.fromJson({...record.toJson(),
+          'phone':'','email':'','notes':'','bloodType':'','address':'',
+          'emergencyName':'','emergencyRelation':'','emergencyPhone':'','emergencyAddress':'',
+          'familyComposition':'','familyMembers':<dynamic>[],
+        })).toList(growable:false);
+        _records..clear()..addAll(basic);_canManagePeople=false;_canViewPeople=false;
+      }
       else {_canManagePeople=session!.snapshot!.canManage;_canViewPeople=true;}
     });
+    if(_reloadOnResume&&session?.active==true&&session?.snapshot!=null){
+      _reloadOnResume=false;
+      WidgetsBinding.instance.addPostFrameCallback((_){if(mounted)_load();});
+    }
   }
 
   Future<void> _load() async {
@@ -78,6 +90,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
       _privacy=privacy;
       privacy.addListener(_privacyChanged);
       privacy.start();
+      if(!privacy.active){_reloadOnResume=true;if(mounted)setState(()=>_loading=false);return;}
       final values = await Future.wait([
         repository.loadAll(expectedCompany:member.companyId),
         repository.canManagePeople(companyId:member.companyId),
@@ -91,7 +104,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
         'bloodType':'','address':'','emergencyName':'','emergencyRelation':'',
         'emergencyPhone':'','emergencyAddress':'','familyComposition':'','familyMembers':<dynamic>[],
       })).toList();
-      if (!mounted || _privacy!=privacy || privacy.revoked) return;
+      if (!mounted || _privacy!=privacy || privacy.revoked || !privacy.active) return;
       setState(() {
         _records
           ..clear()
@@ -269,7 +282,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(subtitleParts.join(' / ')),
-                                        if (record.phone.isNotEmpty)
+                                        if (_canViewPeople && record.phone.isNotEmpty)
                                           InkWell(
                                             onTap: () => _callPhone(
                                               record.phone,
@@ -310,7 +323,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                     trailing: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        if (record.phone.isNotEmpty)
+                                        if (_canViewPeople && record.phone.isNotEmpty)
                                           IconButton(
                                             tooltip: SkoLanguageController.isEnglish ? 'Call' : '電話をかける',
                                             onPressed: () =>
@@ -360,7 +373,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
     );
     if (draft == null || _repository == null) return;
     try {
-      final row = await _repository.insert(draft.toJson());
+      final row = await _repository.insert(draft.toJson(),expectedCompany:_privacy?.company);
       final saved = PersonRecord.fromJson(row);
       if (!mounted) return;
       setState(() => _records.insert(0, saved));
@@ -391,7 +404,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
               Text('区分: ${record.kind.label}'),
               if (record.companyName.isNotEmpty) Text('会社: ${record.companyName}'),
               if (record.role.isNotEmpty) Text('役割・職種: ${record.role}'),
-              if (record.phone.isNotEmpty)
+              if (_canViewPeople && record.phone.isNotEmpty)
                 TextButton.icon(
                   onPressed: () => _callPhone(record.phone),
                   icon: const Icon(Icons.phone_outlined),
@@ -516,6 +529,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             .toList(growable: false)
         : [initialRecord];
     if (records.isEmpty || !mounted) return;
+    final workerIds=records.map((record)=>record.id).toSet();
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -531,7 +545,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                   await Navigator.of(previewContext).push<bool>(
                     MaterialPageRoute(
                       builder: (_) => PersonnelBundleSendPage(
-                        workerIds: records.map((record) => record.id).toSet(),
+                        workerIds: workerIds,
+                        privacySession:_privacy,
                       ),
                     ),
                   );

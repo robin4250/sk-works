@@ -43,7 +43,9 @@ class PersonnelPrivacySession extends ChangeNotifier with WidgetsBindingObserver
     if(_started)return; _started=true;
     WidgetsBinding.instance.addObserver(this);
     _subscription=actorChanges?.listen((value){if(value!=actor)revoke();},onError:(_)=>revoke());
-    _startTimer(); unawaited(refresh());
+    final state=WidgetsBinding.instance.lifecycleState;
+    _active=state==null||state==AppLifecycleState.resumed;
+    if(_active){_startTimer();unawaited(refresh());}
   }
   void _startTimer(){_timer?.cancel();_timer=Timer.periodic(interval,(_){if(_active)unawaited(refresh());});}
   void _clear(Object reason,{bool permanent=false}) {
@@ -57,7 +59,8 @@ class PersonnelPrivacySession extends ChangeNotifier with WidgetsBindingObserver
   }
   Future<void> refresh() async {try{await read();}catch(_){/* State was cleared; no stale fallback. */}}
   Future<List<Map<String,dynamic>>> read({Set<String>? workerIds,bool forExport=false}) async {
-    if(_disposed||!_active||_revoked||actor==null||currentActor()!=actor){revoke();throw const PersonnelScopeChanged();}
+    if(_disposed||_revoked||actor==null||currentActor()!=actor){revoke();throw const PersonnelScopeChanged();}
+    if(!_active)throw const PersonnelScopeChanged();
     final request=++_request, lease=_epoch;
     PersonnelPrivacySnapshot value;
     try { value=await load().timeout(const Duration(seconds:10)); }
@@ -90,12 +93,17 @@ class PersonnelPrivacyView extends StatefulWidget {
   @override State<PersonnelPrivacyView> createState()=>_PersonnelPrivacyViewState();
 }
 class _PersonnelPrivacyViewState extends State<PersonnelPrivacyView> {
-  @override void initState(){super.initState();widget.session.addListener(_changed);unawaited(widget.session.refresh());}
+  Widget? _authorizedChild;
+  @override void initState(){super.initState();widget.session.addListener(_changed);if(widget.session.active)unawaited(widget.session.refresh());}
   void _changed(){if(mounted)setState((){});}
   @override void dispose(){widget.session.removeListener(_changed);super.dispose();}
   @override Widget build(BuildContext context){
     final s=widget.session, value=s.snapshot;
-    if(value!=null&&!s.revoked&&s.active)return widget.builder(context,value.records);
+    if(value!=null&&!s.revoked&&s.active){_authorizedChild=widget.builder(context,value.records);return Offstage(offstage:false,child:_authorizedChild);}
+    // Keep legitimate unsaved controllers only while hidden in the background.
+    // Failed foreground reauthorization or identity loss destroys this subtree.
+    if(!s.active&&!s.revoked&&_authorizedChild!=null)return Offstage(child:_authorizedChild);
+    _authorizedChild=null;
     return Directionality(textDirection:TextDirection.ltr,child:Center(child:Text(s.error==null?'社員情報を確認しています…':'社員情報を表示できません。画面を閉じて再確認してください。')));
   }
 }
@@ -147,8 +155,8 @@ class PeopleCloudRepository {
     return member.role == 'owner' || member.role == 'admin';
   }
 
-  Future<void> _requireManagePeople() async {
-    if (!await canManagePeople()) {
+  Future<void> _requireManagePeople({String? companyId}) async {
+    if (!await canManagePeople(companyId:companyId)) {
       throw StateError('社員情報は管理者・サブ管理者のみ利用できます。');
     }
   }
@@ -318,10 +326,10 @@ class PeopleCloudRepository {
         .toList(growable: false);
   }
 
-  Future<Map<String, dynamic>> insert(Map<String, dynamic> record) async {
+  Future<Map<String, dynamic>> insert(Map<String, dynamic> record,{String? expectedCompany}) async {
     validatePersonnelMetadata(record);
-    await _requireManagePeople();
-    final companyId = await _companyId();
+    await _requireManagePeople(companyId:expectedCompany);
+    final companyId = expectedCompany ?? await _companyId();
     final kind = record['kind']?.toString() ?? 'employee';
     if (kind == 'partnerCompany') {
       final inserted = await _client

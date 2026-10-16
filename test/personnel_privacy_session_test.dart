@@ -1,3 +1,5 @@
+// ignore_for_file: depend_on_referenced_packages
+// HTTP is supplied by the pinned Supabase dependency in this application.
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -82,6 +84,14 @@ void main(){
   expect(calls.any((path)=>path.endsWith('/rpc/employee_personnel_rows')),false);
   await client.dispose();
  });
+ testWidgets('initial paused lifecycle does not fetch until resumed',(tester)async{
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+  var loads=0;
+  final session=PersonnelPrivacySession(actor:actor,company:companyA,currentActor:()=>actor,load:()async{loads++;return snapshot();});
+  session.start();await tester.pump();expect(loads,0);expect(session.snapshot,isNull);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  await tester.pump();expect(loads,1);expect(session.snapshot,isNotNull);session.dispose();
+ });
  test('permission denial clears old PII and cancels prior output lease',()async{
   var denied=false;
   final session=PersonnelPrivacySession(actor:actor,company:companyA,currentActor:()=>actor,load:()async{
@@ -109,7 +119,9 @@ void main(){
   await tester.pumpWidget(MaterialApp(home:EmployeePersonnelDetailPage(
    record:const PersonRecord(id:worker,kind:PersonKind.employee,name:''),allEmployees:const[],
    companyName:'Fixture',canViewFamily:true,privacySession:session)));
-  await tester.pumpAndSettle();expect(find.text('Private Address'),findsWidgets);
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(find.text('Private Address'),300,scrollable:find.byType(Scrollable).first);
+  expect(find.text('Private Address'),findsWidgets);
   denied=true;await session.refresh();await tester.pump();
   expect(find.text('Private Address'),findsNothing);expect(find.text('Private Family'),findsNothing);
   await tester.pumpWidget(const SizedBox());session.dispose();

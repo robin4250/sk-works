@@ -14,6 +14,8 @@ class CompanyTransferSendPage extends StatefulWidget {
     required this.subjectLabel,
     required this.workerIds,
     required this.description,
+    this.beforeLoad,
+    this.beforeSend,
   });
 
   final String title;
@@ -21,6 +23,8 @@ class CompanyTransferSendPage extends StatefulWidget {
   final String subjectLabel;
   final Set<String> workerIds;
   final String description;
+  final Future<void> Function()? beforeLoad;
+  final Future<void> Function()? beforeSend;
 
   @override
   State<CompanyTransferSendPage> createState() =>
@@ -63,12 +67,16 @@ class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
       return;
     }
     try {
+      await widget.beforeLoad?.call();
+      if(!mounted)return;
       final values = await Future.wait([
         widget.sourceKind == 'daily_report_signature'
             ? repository.listSignatureSources()
             : repository.listSendableSources(),
         repository.listTransferTargets(),
       ]);
+      await widget.beforeLoad?.call();
+      if(!mounted)return;
       final sources = (values[0] as List<Map<String, dynamic>>).where((row) {
         if (row['kind']?.toString() != widget.sourceKind) return false;
         final workerId = row['worker_id']?.toString();
@@ -94,6 +102,7 @@ class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _sources=const [];_targets=const [];_selected.clear();
         _loading = false;
         _error = error.toString();
       });
@@ -298,7 +307,7 @@ class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
     final repository = _repository;
     final target = _target;
     final targetId = _targetCompanyId;
-    if (repository == null || target == null || targetId == null) return;
+    if (repository == null || target == null || targetId == null || _sending) return;
     final targetName = target['company_name']?.toString() ?? '選択した会社';
     final mode = _sendAll ? '一覧送信（全部送る）' : '個別選択送信';
 
@@ -346,6 +355,8 @@ class _CompanyTransferSendPageState extends State<CompanyTransferSendPage> {
 
     setState(() => _sending = true);
     try {
+      await widget.beforeSend?.call();
+      if(!mounted)return;
       await repository.sendConnected(
         requestId: _newRequestId(),
         targetCompanyId: targetId,

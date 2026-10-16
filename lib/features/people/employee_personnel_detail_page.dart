@@ -58,19 +58,24 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
   Future<void> _send(BuildContext context) async {
     final all = await _chooseScope(context, '送信');
     if (all == null || !context.mounted) return;
-    final targets = all ? allEmployees : [record];
+    final session=privacySession;
+    final displayCompany=companyName;
+    final targets = session==null ? (all ? allEmployees : [record])
+      : (all ? allEmployees : [record]).map((row)=>PersonRecord(id:row.id,kind:row.kind,name:'')).toList(growable:false);
+    final workerIds=targets.map((row)=>row.id).toSet();
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => EmployeePersonnelPrintPage(
-          companyName: companyName,
-          privacySession: privacySession,
-          records: privacySession==null?targets:targets.map((row)=>PersonRecord(id:row.id,kind:row.kind,name:'')).toList(growable:false),
+          companyName: displayCompany,
+          privacySession: session,
+          records: targets,
           action: EmployeePersonnelPreviewAction.send,
           onConfirmSend: (previewContext) async {
             await Navigator.of(previewContext).push<bool>(
               MaterialPageRoute(
                 builder: (_) => PersonnelBundleSendPage(
-                  workerIds: targets.map((item) => item.id).toSet(),
+                  workerIds: workerIds,
+                  privacySession: session,
                 ),
               ),
             );
@@ -83,16 +88,30 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
   Future<void> _print(BuildContext context) async {
     final all = await _chooseScope(context, '印刷');
     if (all == null || !context.mounted) return;
-    final targets = all ? allEmployees : [record];
+    final session=privacySession;
+    final displayCompany=companyName;
+    final targets = session==null ? (all ? allEmployees : [record])
+      : (all ? allEmployees : [record]).map((row)=>PersonRecord(id:row.id,kind:row.kind,name:'')).toList(growable:false);
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => EmployeePersonnelPrintPage(
-          companyName: companyName,
-          privacySession: privacySession,
-          records: privacySession==null?targets:targets.map((row)=>PersonRecord(id:row.id,kind:row.kind,name:'')).toList(growable:false),
+          companyName: displayCompany,
+          privacySession: session,
+          records: targets,
         ),
       ),
     );
+  }
+
+  void _edit(BuildContext context) {
+    final session=privacySession;
+    if(session==null){Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>EmployeePersonnelEditPage(record:record)));return;}
+    final id=record.id;
+    Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>PersonnelPrivacyView(session:session,builder:(context,rows){
+      final current=rows.where((row)=>row['id']?.toString()==id).toList(growable:false);
+      if(session.snapshot?.canManage!=true||current.length!=1)return const Center(child:Text('編集権限を確認できません。'));
+      return EmployeePersonnelEditPage(record:PersonRecord.fromJson(current.single),privacySession:session);
+    })));
   }
 
   Future<void> _callPhone(BuildContext context, String phone) async {
@@ -338,11 +357,7 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
             if (canManage) ...[
               const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).push<bool>(
-                  MaterialPageRoute(
-                    builder: (_) => EmployeePersonnelEditPage(record: record),
-                  ),
-                ),
+                onPressed: () => _edit(context),
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('編集'),
                 style: OutlinedButton.styleFrom(
