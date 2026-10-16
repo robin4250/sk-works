@@ -67,3 +67,34 @@ No production apply/enable, backup, reset, restore or deployment authorization i
 At SQL head9fb2cab the enabled flag is read without a shared row lock, and completion's final post-bcrypt recheck covers nonce/context, not a fresh enabled read. Operator OFF must not be treated as cancellation of a completion already in flight. Any future OFF-to-API-removal or state-restoration sequence needs quiescence/transaction coordination and an isolated race test. No active-operation cancellation guarantee is established by this source.
 
 UI candidate PR1169 head9a8873ee91873138c6cdc2c3f3f1740e5418552b adds only new unconnected files, with explicit server capability/status before form, exact applied-result parsing and same-context receipt reads. Its journal stores nonsecret actor/session/device fingerprint/request/op/version, not passwords, nonce, token or raw device key. Keys are request-specific and conflicting/corrupt/device-mismatched pending state fails closed. The candidate explicitly retains old-session metadata rather than resolving another session's result. This source review does not establish native SharedPreferences crash durability, concurrent-process behavior, or successful latest CI/runtime. Those remain separate evidence requirements; no existing gate is wired.
+
+## Updated rollout preconditions — root aggregate checkpoint
+
+This section updates the rollout decision, not the earlier pinned source reviews. Root reported a production read-only aggregate of one existing Master registration, zero trusted devices, and one existing shared-secondary credential associated with the Master. Root did not retrieve or disclose IDs, device keys, password hashes or provider values. This reviewer did not query production. Counts are a point-in-time precondition, not a protected backup or proof of successful authentication.
+
+The trusted-device-only new setup cannot be the first operational step while there is no trusted device. The existing primary account has been recovered separately; that does not create a trusted Master device or authorize changing its security state. Root/auth is preparing a separate old-gate Face-AND-password, input/lifecycle and captured-Bearer correction. This document neither implements nor certifies that correction.
+
+A normal UI action that registers the first Master device still adds production security state. Before executing it, describe the exact affected state and rollback/retention implications, preserve the required protected pre-change state, verify the legitimate actor and existing enrollment conditions, and obtain the required impact approval. Do not auto-register a device, fabricate a trusted key, enable the new flag, replace the existing Master ID, alter company roles, or skip existing enrollment/recovery conditions to make the new setup reachable. A code commit or passing CI is not this approval.
+
+### Shared-secondary initialization dependency
+
+The candidate's atomic server-side setup verification is meaningful, but its security also depends on how that shared-secondary secret was established. Auth/root identified a current legacy `public.set_secondary_password` path that can replace the shared-secondary password with a signed-in session alone when the separately staged proof gate is not enabled. No modification to that setter is included in this review.
+
+Consequently, compromise of a Master JWT plus trusted device key, followed by replacement through that legacy setter, is not addressed by the new dedicated setup verifier alone. Correct execution of Dart-to-PostgreSQL setup does not demonstrate resolution of that threat. Before ON, evaluate and harden the legitimate shared-secondary setup/recovery server-proof boundary, including a supported fresh-identity path for a Google-only Master, while preserving existing provider login, original Master identity, company membership and current shared hash. That hardening is a separately owned, separately reviewed change; do not reset an existing credential or grant a role as a workaround.
+
+### Remaining release gates, separated from source evidence
+
+| Gate | Current bounded status |
+|---|---|
+| Primary account login restoration | User/root confirmed separately; does not prove dedicated Master enrollment or recovery |
+| First trusted-device enrollment prerequisite | Zero devices in root's aggregate; no enrollment performed or approved by this document |
+| Dedicated init proof and legacy setter boundary | Unresolved ON-before evaluation/hardening condition |
+| Dedicated-password forgotten/reset policy | Still a separate unimplemented/unverified rollout requirement |
+| Protected backup and real isolated restoration | Not obtained/verified by this reviewer; actual administrator/company/provider comparisons remain required |
+| Private production request/SQL-bind logging configuration | Not verified; never log password, nonce, JWT, raw device key or stored hash |
+| Journal namespace retention and cleanup | Initial nonsecret journaling is not lifecycle cleanup proof. Define and test owner/session-scoped retention/cleanup without deleting unresolved requests or exposing another actor's metadata; do not resolve or resend another session's request |
+| Dedicated gate and old-gate compatibility | Separate source work in progress; explicit OFF compatibility, ON unknown failure and operator rollback/quiescence must be tested independently |
+| Real release/native biometric/provider/device behavior | Not established by source or synthetic tests |
+| Production state changes, apply, enable or enrollment approval | Not granted; the user's six protection conditions still apply |
+
+The earlier SQL9fb/UI9a observations are historical pinned reviews, not certification of later heads. At this update PR1170 has moved to 833733d518c59e02cfb50d974628896217709518, and UI1169 owner reported d7ec23f19383111aeb214b3a92f1fcdd21606097 with dedicated tests successful. Those later changes and CI evidence require their own exact-head review; this documentation update does not substitute for it. No production read/write, enrollment, credential reset, RLS/Auth/SQL/client change or shared-file edit was performed by this reviewer.
