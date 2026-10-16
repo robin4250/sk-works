@@ -78,22 +78,25 @@ class CompanyCommonAllowancePending {
 
 abstract interface class CompanyCommonAllowanceRepository {
   String? get actorId;
+  Stream<String?> get actorChanges;
   Future<CompanyCommonAllowanceState> read(String companyId);
   Future<CompanyCommonAllowanceState> save(CompanyCommonAllowancePending pending);
   Future<CompanyCommonAllowanceState?> reconcile(CompanyCommonAllowancePending pending);
 }
 
 class SupabaseCompanyCommonAllowanceRepository implements CompanyCommonAllowanceRepository {
-  SupabaseCompanyCommonAllowanceRepository._(this._client) : _invoke = null, _actor = null;
-  SupabaseCompanyCommonAllowanceRepository.forTesting({required Future<dynamic> Function(String, Map<String, dynamic>) invoke, required String? Function() actor}) : _client = null, _invoke = invoke, _actor = actor;
+  SupabaseCompanyCommonAllowanceRepository._(this._client) : _invoke = null, _actor = null, _actorChanges = null;
+  SupabaseCompanyCommonAllowanceRepository.forTesting({required Future<dynamic> Function(String, Map<String, dynamic>) invoke, required String? Function() actor, Stream<String?>? actorChanges}) : _client = null, _invoke = invoke, _actor = actor, _actorChanges = actorChanges;
   final SupabaseClient? _client;
   final Future<dynamic> Function(String, Map<String, dynamic>)? _invoke;
   final String? Function()? _actor;
+  final Stream<String?>? _actorChanges;
   static SupabaseCompanyCommonAllowanceRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized || SupabaseBackend.client.auth.currentUser == null) return null;
     return SupabaseCompanyCommonAllowanceRepository._(SupabaseBackend.client);
   }
   @override String? get actorId => _actor != null ? _actor() : _client?.auth.currentUser?.id;
+  @override Stream<String?> get actorChanges => _actorChanges ?? _client?.auth.onAuthStateChange.map((event) => event.session?.user.id) ?? const Stream.empty();
   Future<dynamic> _call(String name, Map<String, dynamic> args, {String? expectedActor}) async {
     final actor = actorId;
     if (actor == null || (expectedActor != null && actor != expectedActor)) throw StateError('ログイン情報が変更されました');

@@ -26,6 +26,8 @@ class MemoryStore implements CompanyCommonAllowancePendingStore {
 class FakeRepository implements CompanyCommonAllowanceRepository {
  String? who = actor;
  @override String? get actorId => who;
+ final changes = StreamController<String?>.broadcast(sync: true);
+ @override Stream<String?> get actorChanges => changes.stream;
  CompanyCommonAllowanceState value = CompanyCommonAllowanceState.parse(state(), company);
  bool loseReply = false, denyRead = false;
  int writes = 0, reads = 0, receipts = 0, counter = 0;
@@ -48,14 +50,14 @@ Future<void> show(WidgetTester tester, FakeRepository repo, MemoryStore store) a
  await tester.pumpAndSettle();
 }
 Future<void> add(WidgetTester tester, String name) async {
- await tester.ensureVisible(find.text('追加')); await tester.pumpAndSettle();
+ await tester.scrollUntilVisible(find.text('追加'), 250, scrollable: find.byType(Scrollable).first); await tester.pumpAndSettle();
  await tester.tap(find.text('追加')); await tester.pumpAndSettle();
  final names = find.byWidgetPredicate((widget) => widget is TextField && widget.decoration?.labelText == '項目名');
  final rates = find.byWidgetPredicate((widget) => widget is TextField && widget.decoration?.labelText != '項目名');
  await tester.ensureVisible(names.last); await tester.enterText(names.last, name); await tester.ensureVisible(rates.last); await tester.enterText(rates.last, '1200');
 }
 Future<void> save(WidgetTester tester) async {
- await tester.ensureVisible(find.text('登録')); await tester.pumpAndSettle();
+ await tester.scrollUntilVisible(find.text('登録'), 250, scrollable: find.byType(Scrollable).first); await tester.pumpAndSettle();
  await tester.tap(find.text('登録')); await tester.pumpAndSettle();
 }
 void main() {
@@ -128,7 +130,11 @@ void main() {
   final repo = FakeRepository()..value = CompanyCommonAllowanceState.parse(state(canEdit: false), company); final store = MemoryStore(); await show(tester, repo, store);
   expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '追加')).onPressed, isNull);
   await tester.pumpWidget(const SizedBox()); repo.value = CompanyCommonAllowanceState.parse(state(), company); await show(tester, repo, store); await add(tester, '未保存');
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused); await tester.pump(); expect(find.text('未保存'), findsNothing); expect(find.text('未保存', skipOffstage: false), findsOneWidget);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await tester.pumpAndSettle(); expect(find.text('未保存'), findsOneWidget);
   repo.who = 'other'; await tester.pump(const Duration(seconds: 1)); expect(find.text('未保存', skipOffstage: false), findsNothing); expect(repo.writes, 0);
   await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
@@ -154,5 +160,11 @@ void main() {
   expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '登録中')).onPressed, isNull);
   repo.gate!.complete(); await tester.pumpAndSettle(); await tester.tap(find.text('閉じる')); await tester.pumpAndSettle(); expect(repo.writes, 1);
   await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
+ });
+ testWidgets('logout and same actor return cannot revive old draft', (tester) async {
+  final repo = FakeRepository(), store = MemoryStore(); await show(tester, repo, store); await add(tester, '前の入力');
+  repo.changes.add(null); repo.changes.add(actor); await tester.pump();
+  expect(find.text('前の入力', skipOffstage: false), findsNothing); expect(repo.writes, 0);
+  await tester.pumpWidget(const SizedBox()); await repo.changes.close(); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
  });
 }

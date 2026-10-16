@@ -71,6 +71,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
   final _legacyUnits = <int, TextEditingController>{};
   bool _confirming = false;
   bool _loading = true, _busy = false, _active = true, _revoked = false, _conflict = false;
+  bool _authorized = true;
   int _generation = 0;
   String? _error;
   BuildContext? _dialogContext;
@@ -83,6 +84,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     super.initState();
     _repository = widget.repository ?? SupabaseCompanyCommonAllowanceRepository.maybeCreate();
     _actor = _repository?.actorId;
+    _actorSubscription = _repository?.actorChanges.listen((value) { if (value != _actor) _revoke(); }, onError: (_) => _revoke());
     _store = widget.pendingStore ?? FileCompanyCommonAllowancePendingStore(currentActor: () => _repository?.actorId);
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _active = lifecycle == null || lifecycle == AppLifecycleState.resumed;
@@ -93,12 +95,14 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     if (_active) unawaited(_load());
   }
   Timer? _identityTimer;
+  StreamSubscription<String?>? _actorSubscription;
   bool _valid(int generation) => mounted && !_revoked && _active && generation == _generation && _actor != null && _repository?.actorId == _actor;
   void _revoke() {
     if (!mounted || _revoked) return;
     _closeDialog();
     _generation++;
-    setState(() { _revoked = true; _state = null; _items.clear(); _error = 'ログイン情報または会社が変更されました。画面を開き直してください。'; });
+    for (final controller in [..._legacyNames.values, ..._legacyAmounts.values, ..._legacyUnits.values]) { controller.clear(); }
+    setState(() { _revoked = true; _state = null; _pending = null; _items.clear(); _error = 'ログイン情報または会社が変更されました。画面を開き直してください。'; });
   }
   @override void didUpdateWidget(covariant _ConnectedCompanyCommonPayrollPage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -107,7 +111,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
   @override void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden || state == AppLifecycleState.inactive) {
       _closeDialog();
-      _generation++; setState(() => _active = false);
+      _generation++; setState(() { _active = false; _authorized = false; });
     } else if (state == AppLifecycleState.resumed && !_revoked) {
       setState(() => _active = true);
       if (_state == null) { unawaited(_load()); } else { unawaited(_verifyResume()); }
@@ -122,11 +126,15 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
       if (!_valid(generation)) return;
       setState(() {
         _pending = pending;
+        _authorized = true;
         _conflict = fresh.version != _state!.version || !fresh.canEdit && _state!.canEdit;
         if (_conflict) _error = '設定が更新されたか権限が変更されました。入力内容を保持しています。保存せず再読み込みしてください。';
       });
+    } on PostgrestException catch (error) {
+      if (_valid(generation) && error.code == '42501') { _revoke(); }
+      else if (_valid(generation)) { setState(() { _authorized = false; _conflict = true; _error = '権限を再確認できません。入力内容を保持しています。'; }); }
     } catch (_) {
-      if (_valid(generation)) setState(() { _conflict = true; _error = '権限を再確認できません。入力内容を保持しています。'; });
+      if (_valid(generation)) setState(() { _authorized = false; _conflict = true; _error = '権限を再確認できません。入力内容を保持しています。'; });
     } finally { if (mounted && generation == _generation) setState(() => _busy = false); }
   }
   List<PayrollUnitItemDraft> _drafts(CompanyCommonAllowanceState state, CompanyPayrollType type) => [
@@ -156,7 +164,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
       final pending = await _store.read(actor, widget.companyId);
       final value = await repository.read(widget.companyId);
       if (!_valid(generation)) return;
-      setState(() { _pending = pending; _accept(value); _loading = false; _conflict = false; });
+      setState(() { _pending = pending; _accept(value); _loading = false; _conflict = false; _authorized = true; });
     } catch (_) {
       if (_valid(generation)) setState(() { _loading = false; _error = '会社共通手当を読み込めません。入力・保存は開始していません。'; });
     }
@@ -233,7 +241,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     final discard = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('入力を破棄して再読み込み'), content: const Text('各給与形態の未保存入力を破棄して、保存済みの設定を読み直します。'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('戻る')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('破棄して再読み込み'))]));
     if (discard == true && mounted && !_revoked && _active) await _load();
   }
-  @override void dispose() { _generation++; _identityTimer?.cancel(); for (final c in [..._legacyNames.values, ..._legacyAmounts.values, ..._legacyUnits.values]) { c.dispose(); } WidgetsBinding.instance.removeObserver(this); super.dispose(); }
+  @override void dispose() { _generation++; _identityTimer?.cancel(); _actorSubscription?.cancel(); for (final c in [..._legacyNames.values, ..._legacyAmounts.values, ..._legacyUnits.values]) { c.dispose(); } WidgetsBinding.instance.removeObserver(this); super.dispose(); }
   @override Widget build(BuildContext context) {
     Widget surface(Widget body) => widget.embedded ? body : Scaffold(appBar: AppBar(title: const Text('社内共通手当')), body: body);
     if (_revoked) return surface(Center(child: Text(_error!)));
@@ -257,7 +265,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
         if (_pending != null) TextButton(onPressed: _busy || !_active ? null : _reconcile, child: const Text('保存状態を確認')),
         if (_conflict && _pending == null) TextButton(onPressed: _busy || !_active ? null : _discardAndReload, child: const Text('入力を破棄して再読み込み')),
       ]));
-    return Stack(children: [Offstage(offstage: !_active, child: page), if (!_active) Positioned.fill(child: ColoredBox(color: Theme.of(context).colorScheme.surface, child: const Center(child: Text('本人確認を再確認しています'))))]);
+    return Stack(children: [Offstage(offstage: !_active || !_authorized, child: page), if (!_active || !_authorized) Positioned.fill(child: ColoredBox(color: Theme.of(context).colorScheme.surface, child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Text(_error ?? '本人確認を再確認しています'), if (_active) TextButton(onPressed: _busy ? null : _verifyResume, child: const Text('権限を再確認'))]))))]);
   }
 }
 
