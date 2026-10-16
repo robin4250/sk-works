@@ -115,7 +115,7 @@ class _MasterPasswordProtectedPageState extends State<MasterPasswordProtectedPag
     String password = _password.text;
     _password.clear();
     if (password.isEmpty || utf8.encode(password).length > 72) { setState(() => _message = 'Master専用パスワードを入力してください。'); return; }
-    final clearCaptured = () { password = ''; };
+    void clearCaptured() { password = ''; }
     _clearCaptured = clearCaptured;
     final generation = ++_generation;
     setState(() { _busy = true; _message = null; });
