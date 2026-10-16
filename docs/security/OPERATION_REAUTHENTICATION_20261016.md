@@ -49,7 +49,9 @@ its proof request/read consumer before `master_security` can be enabled. Other
 Master APIs still lack mandatory server step-up and require later integration.
 
 Before applying, review actual function ACLs/schema, capture rollback definitions,
-generate a unique migration using Supabase CLI, deploy/review Edge, validate
+promote the CLI-generated migration name
+`20261016105504_operation_reauthentication_proofs.sql` (Supabase CLI 2.121.0,
+`migration new`, local unlinked scratch project), deploy/review Edge, validate
 credentials and temporary-session cleanup in a separate Auth project, then test
 updated clients. Do not switch production gates ON from this branch or CI.
 
