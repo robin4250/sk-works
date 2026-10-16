@@ -131,14 +131,18 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
     try {
       final notes = await _repository.loadNotes(groupId);
       if (!mounted || !_contentGuard.accepts(request, actor, _actorId,
-          requestedGroup: groupId, currentGroup: _selectedGroupId)) return;
+          requestedGroup: groupId, currentGroup: _selectedGroupId)) {
+        return;
+      }
       setState(() {
         _notes = notes;
         _loadingNotes = false;
       });
     } catch (e) {
       if (!mounted || !_contentGuard.accepts(request, actor, _actorId,
-          requestedGroup: groupId, currentGroup: _selectedGroupId)) return;
+          requestedGroup: groupId, currentGroup: _selectedGroupId)) {
+        return;
+      }
       setState(() {
         _notes = [];
         _loadingNotes = false;
@@ -228,7 +232,7 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
                       else if (filtered.isEmpty)
                         const Card(
                           child: Padding(
-                            padding: const EdgeInsets.all(18),
+                            padding: EdgeInsets.all(18),
                             child: Text('ノートはまだありません。'),
                           ),
                         )
@@ -274,7 +278,9 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
       MaterialPageRoute(builder: (_) => const _NoteFormPage()),
     );
     if (!mounted || result == null || _repository == null || groupId == null ||
-        actor != _actorId || groupId != _selectedGroupId) return;
+        actor != _actorId || groupId != _selectedGroupId) {
+      return;
+    }
 
     try {
       await _repository.insertNote(

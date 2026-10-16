@@ -129,14 +129,18 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
     try {
       final albums = await _repository.loadAlbums(groupId);
       if (!mounted || !_contentGuard.accepts(request, actor, _actorId,
-          requestedGroup: groupId, currentGroup: _selectedGroupId)) return;
+          requestedGroup: groupId, currentGroup: _selectedGroupId)) {
+        return;
+      }
       setState(() {
         _albums = albums;
         _loadingAlbums = false;
       });
     } catch (e) {
       if (!mounted || !_contentGuard.accepts(request, actor, _actorId,
-          requestedGroup: groupId, currentGroup: _selectedGroupId)) return;
+          requestedGroup: groupId, currentGroup: _selectedGroupId)) {
+        return;
+      }
       setState(() {
         _albums = [];
         _loadingAlbums = false;
@@ -209,7 +213,7 @@ class _AlbumsCloudPageState extends State<AlbumsCloudPage> {
                       else if (_albums.isEmpty)
                         const Card(
                           child: Padding(
-                            padding: const EdgeInsets.all(18),
+                            padding: EdgeInsets.all(18),
                             child: Text('アルバムはまだありません。'),
                           ),
                         )
