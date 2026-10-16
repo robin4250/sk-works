@@ -1,0 +1,39 @@
+name: Site identity rollout PostgreSQL races
+on:
+  pull_request:
+    paths:
+      - 'tool/verify_site_identity_rollout_postgres_races.mjs'
+      - 'tool/fixtures/site_identity_rollout/schema.sql'
+      - 'tool/staged/site_identity_company_rollout.sql'
+      - '.github/workflows/site-identity-rollout-postgres-races.yml'
+  push:
+    branches: ['test/site-identity-rollout-postgres-races-20261016']
+permissions:
+  contents: read
+jobs:
+  postgres16:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_site_identity_rollout_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_site_identity_rollout_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/site-rollout-pg" --save-exact --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - name: Verify real advisory waits and stable-helper visibility
+        env:
+          SKO_SITE_IDENTITY_ROLLOUT_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_site_identity_rollout_fixture
+        run: node tool/verify_site_identity_rollout_postgres_races.mjs "$RUNNER_TEMP/site-rollout-pg/node_modules/pg/lib/index.js"
