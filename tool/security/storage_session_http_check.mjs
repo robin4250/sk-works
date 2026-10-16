@@ -49,13 +49,17 @@ try{
  insert into public.workers values(${q(worker)},${q(company)},${q(users.own.id)});
  insert into public.document_requirements values(${q(requirement)},${q(company)},true,'fixture','internal',1);
  insert into public.worker_document_statuses values(${q(record)},${q(company)},${q(worker)},${q(requirement)},${q(object)},array[${q(object)}],'submitted');`);
- await db.query(fs.readFileSync(path.join(here,'storage_session_feature_boundary.sql.review-only'),'utf8'));
  let r=await request('/storage/v1/bucket',{token:service,method:'POST',json:{id:'worker-documents',name:'worker-documents',public:false}});assert.equal(r.status,200,'Create private fixture bucket');
  const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6oAAAAABJRU5ErkJggg==','base64');
  r=await request('/storage/v1/object/worker-documents/'+object,{token:service,method:'POST',body:bytes,headers:{'Content-Type':'image/png','Cache-Control':'max-age=0'}});assert.equal(r.status,200,'Upload generated fixture bytes');
  const download=token=>request('/storage/v1/object/authenticated/worker-documents/'+object,{token});
  async function allowed(token){const response=await download(token);assert.equal(response.status,200,'Authorized actual Storage download');assert.deepEqual(Buffer.from(await response.arrayBuffer()),bytes);checks++;}
  async function denied(token){const response=await download(token);assert.ok([400,401,403,404].includes(response.status),'Denied actual Storage download');checks++;}
+ await db.query(`update public.member_feature_permissions set can_manage_people=false where user_id=${q(users.manager.id)}`);
+ await allowed(users.manager.token);console.log('REPRODUCED actual Storage HTTP: baseline role-only manager reads despite feature OFF');
+ await db.query(fs.readFileSync(path.join(here,'storage_session_feature_boundary.sql.review-only'),'utf8'));
+ await denied(users.manager.token);
+ await db.query(`update public.member_feature_permissions set can_manage_people=true where user_id=${q(users.manager.id)}`);
  await denied(anon);await denied(users.other.token);await allowed(users.own.token);await allowed(users.owner.token);await allowed(users.manager.token);
  r=await request('/storage/v1/object/sign/worker-documents/'+object,{token:users.manager.token,method:'POST',json:{expiresIn:2}});assert.equal(r.status,200,'Actual Storage signed URL issuance');
  const signed=await r.json();const relative=signed.signedURL??signed.signedUrl;assert.ok(typeof relative==='string');

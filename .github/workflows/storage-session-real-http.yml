@@ -27,6 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          unset SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY SUPABASE_ANON_KEY
           task_dir=$(mktemp -d "$RUNNER_TEMP/sko-storage-http.XXXXXX")
           chmod 700 "$task_dir"
           cleanup() {
