@@ -249,6 +249,19 @@ if "comgooglemaps" not in query_schemes:
 data["LSApplicationQueriesSchemes"] = query_schemes
 
 
+# Existing Supabase OAuth allowlist uses this scheme, not the Bundle ID.
+# Preserve every existing URL type and reject malformed entries before writing.
+url_types = data.get("CFBundleURLTypes", [])
+if not isinstance(url_types, list) or any(not isinstance(t, dict) for t in url_types):
+    raise SystemExit("Malformed CFBundleURLTypes; existing configuration preserved")
+for url_type in url_types:
+    schemes = url_type.get("CFBundleURLSchemes", [])
+    if not isinstance(schemes, list) or any(not isinstance(s, str) for s in schemes):
+        raise SystemExit("Malformed CFBundleURLSchemes; existing configuration preserved")
+if not any("com.skworks.sko" in t.get("CFBundleURLSchemes", []) for t in url_types):
+    url_types.append({"CFBundleURLName": "SKO authentication", "CFBundleURLSchemes": ["com.skworks.sko"]})
+data["CFBundleURLTypes"] = url_types
+
 # Runtime keeps normal iPhone pages portrait; signature capture may rotate.
 # Keep the iPad-specific orientation key and its existing policy untouched.
 data["UISupportedInterfaceOrientations"] = [
@@ -852,3 +865,4 @@ echo "5. iPhoneをUSB接続して信頼"
 echo "6. bash tool/ios_install_assistant.sh"
 echo "7. bash tool/run_ios_device.sh"
 echo "※ Xcodeの▶︎ RunもRelease構成です。実機導入は上記のRelease手順で行います。"
+

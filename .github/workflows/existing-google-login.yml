@@ -1,0 +1,26 @@
+name: Existing Google login isolated client
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/**'
+      - 'tool/prepare_ios.sh'
+      - 'test/existing_google_login_test.dart'
+      - 'test/google_callback_plist_test.py'
+      - '.github/workflows/existing-google-login.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/auth/existing_google_login.dart lib/features/auth/secure_onboarding_pages.dart lib/features/auth/secure_onboarding_repository.dart test/existing_google_login_test.dart
+      - run: python3 test/google_callback_plist_test.py
+      - run: flutter test test/existing_google_login_test.dart test/secondary_password_reset_page_test.dart test/server_secondary_password_reset_test.dart
