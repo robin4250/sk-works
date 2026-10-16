@@ -1,0 +1,52 @@
+{
+  "generated_by": "supabase migration new",
+  "cli_version": "2.121.0",
+  "setup_cli_commit": "3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf",
+  "workflow_commit": "0dfe213e39f703491df6cb46a3592b70689b4af1",
+  "workflow_run": "38848601891",
+  "deployable": false,
+  "database_connected": false,
+  "production_ddl_executed": false,
+  "cron_enabled": false,
+  "real_notifications_sent": false,
+  "generation_does_not_apply_sql": true,
+  "isolation": {
+    "runtime": "PGlite 0.3.14",
+    "invoice_exit": 0,
+    "site_exit": 0,
+    "evidence": [
+      "logs/invoice-isolation.txt",
+      "logs/site-isolation.txt"
+    ]
+  },
+  "migrations": [
+    {
+      "key": "invoice_month_end_approval_notifications",
+      "sourceDir": "source-invoice",
+      "sha": "bde05a64af4e2150372bde4ca1c1e31c08eebfd0",
+      "source": "tool/staged/invoice_month_end_approval_notifications.sql",
+      "rollout_control": "company_rows_default_false; no company enabled by SQL",
+      "deployable": false,
+      "filename": "20261016040338_invoice_month_end_approval_notifications.sql",
+      "source_sha256": "986cd3b8a17ae8329f7250d707f441fbaa05bc13a9fdc63c4a3744729bc8dd78",
+      "migration_sha256": "986cd3b8a17ae8329f7250d707f441fbaa05bc13a9fdc63c4a3744729bc8dd78",
+      "exact_sql_match": true,
+      "anonymous_rpc_permission_check": "source checks plus successful pinned isolated role assertions",
+      "rollout_evidence": "default false and isolated OFF-compatibility assertions"
+    },
+    {
+      "key": "site_identity_links",
+      "sourceDir": "source-site",
+      "sha": "df73d422c91bdc8bfd55d1138aff77c987c8f705",
+      "source": "tool/staged/site_identity_links.sql",
+      "rollout_control": "not_present; deployment blocked pending separate rollout design",
+      "deployable": false,
+      "filename": "20261016040341_site_identity_links.sql",
+      "source_sha256": "ebea83ae2ac538a6bd2453971c9b0ab13268e6249f312899c1f13d52e83715b5",
+      "migration_sha256": "ebea83ae2ac538a6bd2453971c9b0ab13268e6249f312899c1f13d52e83715b5",
+      "exact_sql_match": true,
+      "anonymous_rpc_permission_check": "source checks plus successful pinned isolated role assertions",
+      "rollout_evidence": "No rollout gate exists; this artifact must not be treated as deployment approval"
+    }
+  ]
+}

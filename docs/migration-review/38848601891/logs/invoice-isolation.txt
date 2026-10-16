@@ -1,0 +1,1 @@
+Invoice month-end gates, receipts, registration versions, ACL and drift assertions passed
