@@ -121,3 +121,28 @@ signedIn→signedOut event; a separate owner is handling that test. User-visible
 screenshots/build SHA and observed labels can distinguish the three recovery
 targets without guessing or weakening server authentication. Do not merge #1157
 as a claim that Face ID primary recovery is complete.
+
+
+## Additional historical device-install evidence
+
+The root reviewer newly read Issue #273 comments dated 2026-10-10. The following
+records strengthen the association with an installed Release build; they do not
+identify a credential that the user actually changed.
+
+| Comment | Recorded time (UTC / Japan) | Observed record |
+|---|---|---|
+| 6091422670 | 2026-10-10 00:08:55Z / 09:08:55 JST | Missing secondary-password reset entry identified; work started by reusing existing device biometrics and set_secondary_password. |
+| 6091493824 | 2026-10-10 00:16:29Z / 09:16:29 JST | #872 head 9f22fe2666794ac8db470059775e2d065587b3fa implemented Face ID or primary-password verification as two ways to authorize secondary reset; shared session unchanged and the real credential entered by its owner. |
+| 6091899565 | 2026-10-10 00:58:22Z / 09:58:22 JST | #871/#872 all CI successful and main 13266f8d; recorded device checkout tree d097893f matched, 1123 tests passed / 28 skipped; signed Release overwritten onto the existing app and launched. |
+| 6091979550 | 2026-10-10 01:06:05Z / 10:06:05 JST | Same version's display was checked; payroll save was not performed in that check. |
+
+These records make merge commit
+`13266f8dbf7f2c1cc5ca47fc86a173f23bfd4feb` a traceable candidate for a previously
+installed device version, beyond merely finding unused source code. The installed
+source included the secondary-reset route introduced by #872 and is consistent
+with the primary SMS recovery route continuing separately. However, the records
+do not establish that a reset was performed during that device session, which
+password was changed, or whether the user later ran another binary. Treat the
+installation record and the user's recalled credential-changing action as
+separate evidence. No new authentication implementation or SMS-removal proposal
+was applied to the device by this documentation update.
