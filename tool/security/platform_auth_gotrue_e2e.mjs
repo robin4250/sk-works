@@ -24,9 +24,6 @@ try{
  config=config.replace(/^project_id = .*$/m,`project_id = "${project}"`).replaceAll('54321','53921').replaceAll('54322','53922').replaceAll('54320','53920').replaceAll('54323','53923').replaceAll('54324','53924').replaceAll('54327','53927').replaceAll('54329','53929').replaceAll('127.0.0.1:3000','127.0.0.1:53921');
  // Only generated local config changes; product provider/Auth configuration is untouched.
  config=config.replace(/(\[db.seed\][\s\S]*?enabled = )true/, '$1false');
- // CLI-documented fallback: avoid hot-reload worker reuse in a finite CI test.
- // This is generated local fixture configuration, not a production runtime claim.
- config=config.replace(/^policy = "per_worker"$/m,'policy = "oneshot"');
  await fs.writeFile(configPath,config,{mode:0o600});
  const fn=path.join(workdir,'supabase/functions/reauthenticate-operation');await fs.mkdir(fn,{recursive:true});
  for(const name of ['index.ts','handler.mjs'])await fs.copyFile(path.join(root,'supabase/functions/reauthenticate-operation',name),path.join(fn,name));
@@ -49,7 +46,14 @@ try{
   const url=new URL(route,api);if(url.origin!==api.origin)throw Error('Nonlocal request refused');
   const response=await fetch(url,{method,redirect:'error',signal:AbortSignal.timeout(20000),headers:{...(service?serviceHeaders:{apikey:publicKey}),...(token?{Authorization:`Bearer ${token}`}:{}) ,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
   let code;try{const data=await response.clone().json();const candidate=typeof data.error==='string'?data.error:data.code;if(typeof candidate==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(candidate))code=candidate;}catch{/* Never log response content. */}
-  lastHttp={route,status:response.status,code};return response;
+  lastHttp={route,status:response.status,code};
+  if(response.status===502){
+   const text=(await response.clone().text()).slice(0,4096).toLowerCase();
+   const tags=['upstream','worker','boot','connection','timeout','bad gateway','invalidworkercreation'];
+   lastHttp.gateway_markers=Object.fromEntries(tags.map(tag=>[tag,text.includes(tag)]));
+   lastHttp.response_bytes=Buffer.byteLength(text);lastHttp.content_type=response.headers.get('content-type')?.split(';')[0];
+  }
+  return response;
  }
  async function rpc(name,body,token,service=false){return request(`/rest/v1/rpc/${name}`,{body,token,service});}
  const password=`fixture-${randomBytes(20).toString('hex')}!A1`;
@@ -130,9 +134,9 @@ try{
  if(started){try{
   const listing=await run('docker',['ps','-a','--filter',`name=${project}`,'--format','{{.Names}}'],{timeout:10000,maxBuffer:65536});const names=listing.stdout.trim().split('\n').filter(Boolean);
   console.error(JSON.stringify({owned_local_services:{edge:names.filter(n=>n.includes('edge')).length,kong:names.filter(n=>n.includes('kong')).length,database:names.filter(n=>n.includes('_db_')).length}}));
-  const edge=names.find(n=>n.includes('edge')&&n.endsWith(project));if(edge){const logs=await run('docker',['logs','--tail','100',edge],{timeout:10000,maxBuffer:262144});edgeOutput+=(logs.stdout+logs.stderr).slice(-65536);}
+  const edge=names.find(n=>n.includes('edge')&&n.includes(project));if(edge){const logs=await run('docker',['logs','--tail','100',edge],{timeout:10000,maxBuffer:262144});edgeOutput+=(logs.stdout+logs.stderr).slice(-65536);}
  }catch{/* Only bounded process metadata is emitted below. */}}
- const tags=['InvalidWorkerCreation','WORKER_LIMIT','CPU time limit','wall clock','TypeError','SyntaxError','connection refused','worker boot','error','shutdown'];console.error(JSON.stringify({local_edge_diagnostic_counts:Object.fromEntries(tags.map(tag=>[tag,edgeOutput.split(tag).length-1]))}));
+ const tags=['InvalidWorkerCreation','WORKER_LIMIT','CPU time limit','wall clock','TypeError','SyntaxError','connection refused','worker boot','error','shutdown','failed','Failed','exception','Exception','Uncaught','retired','idle','event loop'];console.error(JSON.stringify({local_edge_diagnostic_counts:Object.fromEntries(tags.map(tag=>[tag,edgeOutput.split(tag).length-1]))}));
  if(db&&fixtureActor){try{console.error(JSON.stringify({local_auth_sessions:(await db.query('select count(*)::int active_sessions,count(*) filter(where id=$1)::int original_alive from auth.sessions where user_id=$2',[fixtureSession,fixtureActor])).rows[0]}));}catch{/* No raw query/response is printed. */}}
 
  process.exitCode=1;}
