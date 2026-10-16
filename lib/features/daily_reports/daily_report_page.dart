@@ -23,6 +23,7 @@ import 'daily_report_month_page.dart';
 import '../operations/vehicle_driver_meter_page.dart';
 import 'daily_report_pending_notice.dart';
 import 'daily_report_repository.dart';
+import 'daily_report_edit_session.dart';
 import 'signature_capture_page.dart';
 import 'daily_report_zoom_pages.dart';
 import 'route_visit_report_context.dart';
@@ -75,6 +76,27 @@ class _DailyReportPageState extends State<DailyReportPage> {
   bool _loading = true;
   bool _saving = false;
   bool _approvedEditAvailable = false;
+  final _editSessions = DailyReportEditSessionStore();
+  DailyReportEditSession? _editSession;
+  bool _editSessionUnverified = false;
+  SignatureResult? _pendingResponsibleSignature;
+  String? _pendingSignatureFingerprint;
+  String? _pendingReporterFingerprint;
+
+  bool get _editingApprovedReport => !_visitReport && _editSession != null &&
+      _editSession!.actorId == _repository?.currentActorId &&
+      _editSession!.reportId == _report?.id;
+
+  void _invalidatePendingSignature() {
+    if (_pendingResponsibleSignature == null) {
+      return;
+    }
+    setState(() {
+      _pendingResponsibleSignature = null;
+      _pendingSignatureFingerprint = null;
+      _pendingReporterFingerprint = null;
+    });
+  }
   String? _notificationRetryReportId;
   final _notificationRetries = SavedReportNotificationRetryStore();
   SavedReportNotificationRetry? _notificationRetry;
@@ -121,6 +143,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     _date = DateTime(initial.year, initial.month, initial.day);
     _siteId = widget.initialSiteId;
     _routeAssignmentId = widget.routeVisitContext?.routeAssignmentId ?? widget.initialRouteAssignmentId;
+    _workDescription.addListener(_invalidatePendingSignature);
     _loadDay();
     if (!_visitReport) _restoreNotificationRetry();
   }
@@ -276,6 +299,30 @@ class _DailyReportPageState extends State<DailyReportPage> {
           // A missing/denied capability must never unlock a report.
         }
       }
+      DailyReportEditSession? editSession;
+      var editSessionUnverified = false;
+      final editActor = repository.currentActorId;
+      if (existing != null && editActor != null) {
+        try {
+          final saved = await _editSessions.load(editActor, existing.id);
+          editSessionUnverified = saved != null && !existing.signed;
+          if (saved != null && saved.companyId == existing.companyId) {
+            if (existing.signed) {
+              await _editSessions.clear(saved);
+            } else if (existing.status == 'draft' &&
+                await repository.verifyEditSession(saved)) {
+              editSession = saved;
+              editSessionUnverified = false;
+            }
+          }
+        } catch (_) {
+          editSessionUnverified = !existing.signed;
+          // Storage/network uncertainty cannot grant edit-session privileges.
+        }
+      }
+      if (repository.currentActorId != editActor) {
+        throw const DailyReportActorChanged();
+      }
       final evidence = await repository.loadAttendanceEvidence(
         reportId: existing?.id,
         date: date,
@@ -319,6 +366,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
         _error = null;
         _report = existing;
         _approvedEditAvailable = approvedEditAvailable;
+        _editSession = editSession;
+        _editSessionUnverified = editSessionUnverified;
         _siteName = existing?.siteName ?? group?.siteName ?? '';
         if (widget.initialReportId != null && existing != null) {
           _groups = [DailyReportSiteGroup(siteId: existing.siteId,
@@ -359,6 +408,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
       _odometer[worker.workerId] = TextEditingController(
         text: worker.odometerKm == null ? '' : _number(worker.odometerKm!),
       );
+    }
+    for (final controller in [
+      ..._overtime.values, ..._early.values, ..._night.values,
+      ..._allowanceLabel.values, ..._odometer.values,
+    ]) {
+      controller.addListener(_invalidatePendingSignature);
     }
   }
 
@@ -776,6 +831,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _signReporter() async {
     if (_saving || _signed || _visitReporterLocked) return;
+    _invalidatePendingSignature();
     final signingActor = _repository?.currentActorId;
     final signingDate = _date;
     final signingSite = _siteId;
@@ -845,6 +901,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _sign() async {
     if (_saving) return;
+    if (!_visitReport && _editSessionUnverified) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(SkoLanguageController.tr('編集申請の状態を確認できません。日報を再読み込みしてください。'))));
+      return;
+    }
     final signingActor = _repository?.currentActorId;
     final signingDate = _date;
     final signingSite = _siteId;
@@ -895,7 +956,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
           initialSignerName: responsibleName,
           title: SkoLanguageController.tr('責任者サイン'),
           signerLabel: SkoLanguageController.tr('現場責任者名'),
-          submitLabel: SkoLanguageController.tr('責任者サインで確定'),
+          submitLabel: _editingApprovedReport
+              ? SkoLanguageController.tr('このサインを確認') : SkoLanguageController.tr('責任者サインで確定'),
         ),
         ),
       );
@@ -904,6 +966,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (_report?.id != reportId) throw StateError('対象日報が変わりました');
       final repository = _repository;
       if (repository == null) return;
+      if (_editingApprovedReport) {
+        setState(() {
+          _pendingResponsibleSignature = result;
+          _pendingSignatureFingerprint = _draftFingerprint();
+          _pendingReporterFingerprint = _signatureFingerprint(_report?.reporterSignatureJson);
+        });
+        return;
+      }
       if (_visitReport) {
         await repository.signVisit(
           reportId: reportId,
@@ -960,12 +1030,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('承認済みの編集を開始'),
-          content: const Text('編集を開始すると以前のサインを解除します。編集後に報告者と責任者の再サインが必要です。'),
+          content: Text(SkoLanguageController.tr('編集を開始すると以前のサインを解除します。編集後に報告者と責任者の再サインが必要です。')),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('キャンセル')),
+              child: Text(SkoLanguageController.tr('キャンセル'))),
             FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('編集を開始')),
+              child: Text(SkoLanguageController.tr('編集を開始'))),
           ],
         ),
       );
@@ -977,6 +1047,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
           _report?.id != report.id) {
         throw StateError('承認済みの編集申請を確認できません。再読み込みしてください。');
       }
+      final session = await repository.approvedEditSession(report);
+      if (session == null || repository.currentActorId != actor || !mounted) {
+        throw StateError('編集申請の識別情報を確認できません');
+      }
+      await _editSessions.remember(session);
+      if (repository.currentActorId != actor || !mounted) {
+        throw const DailyReportActorChanged();
+      }
       // This RPC consumes only the current actor's approved request and clears
       // obsolete signatures in the same existing transaction.
       final id = await _saveDraft(ownsBusyState: false);
@@ -986,6 +1064,18 @@ class _DailyReportPageState extends State<DailyReportPage> {
           _report?.responsibleSignatureJson != null) {
         throw StateError('編集開始を確認できません。日報を再読み込みしてください。');
       }
+      if (!await repository.verifyEditSession(session) ||
+          repository.currentActorId != actor || !mounted) {
+        throw StateError('編集申請の使用済み状態を確認できません');
+      }
+      await _editSessions.remember(session.confirm());
+      if (!mounted || repository.currentActorId != actor) {
+        throw const DailyReportActorChanged();
+      }
+      setState(() {
+        _editSession = session.confirm();
+        _editSessionUnverified = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
         SkoLanguageController.tr('編集できる状態になりました。編集後は報告者・責任者のサインを登録してください。'),
       )));
@@ -994,6 +1084,116 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('編集を開始できませんでした: $error')),
         );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  String _signatureFingerprint(Object? signature) => jsonEncode(
+    SignatureResult(signerName: '', strokes: SignatureResult.fromJson(signature),
+      canvasSize: SignatureResult.sizeFromJson(signature)).toJson());
+
+  String _recordContentFingerprint(DailyReportRecord report) {
+    final workers = report.workers.toList()
+      ..sort((a, b) => a.workerId.compareTo(b.workerId));
+    return jsonEncode({'description': report.workDescription.trim(),
+      'workers': workers.map((worker) => worker.toRpcJson()).toList()});
+  }
+
+  Future<void> _finishApprovedEdit() async {
+    final repository = _repository;
+    final session = _editSession;
+    final signature = _pendingResponsibleSignature;
+    final report = _report;
+    if (_saving || !_editingApprovedReport || repository == null ||
+        session == null || signature == null || report == null) {
+      return;
+    }
+    final actor = session.actorId;
+    void checkContext() {
+      if (!mounted || repository.currentActorId != actor ||
+          _report?.id != session.reportId || _editSession?.requestId != session.requestId) {
+        throw const DailyReportActorChanged();
+      }
+    }
+    setState(() => _saving = true);
+    try {
+      checkContext();
+      if (_pendingSignatureFingerprint != _draftFingerprint() ||
+          _savedDraftFingerprint != _draftFingerprint() ||
+          _pendingReporterFingerprint != _signatureFingerprint(report.reporterSignatureJson)) {
+        _invalidatePendingSignature();
+        throw StateError('内容が変更されています。報告者・責任者のサインを確認してください。');
+      }
+      if (!await repository.verifyEditSession(session)) {
+        throw StateError('編集申請を確認できません');
+      }
+      checkContext();
+      Future<DailyReportRecord> reloadExact() async {
+        final row = await repository.loadReport(date: report.date,
+          siteId: report.siteId, routeAssignmentId: report.routeAssignmentId,
+          reportId: session.reportId);
+        checkContext();
+        if (row == null || row.id != session.reportId ||
+            row.companyId != session.companyId) {
+          throw StateError('対象日報を確認できません');
+        }
+        return row;
+      }
+      bool matchesSignature(DailyReportRecord row) =>
+        row.signed && row.responsibleSignerName?.trim() == signature.signerName.trim() &&
+        _signatureFingerprint(row.responsibleSignatureJson) ==
+          _signatureFingerprint({'strokes': signature.toJson()}) &&
+        _signatureFingerprint(row.reporterSignatureJson) == _pendingReporterFingerprint;
+      var latest = await reloadExact();
+      // A lost response may have committed. Read before retry; never submit
+      // another signature when the exact final state is already present.
+      if (!matchesSignature(latest)) {
+        if (latest.status != 'draft' || latest.responsibleSignatureJson != null ||
+            _recordContentFingerprint(latest) != _recordContentFingerprint(report) ||
+            _signatureFingerprint(latest.reporterSignatureJson) != _pendingReporterFingerprint) {
+          throw StateError('日報またはサインが変更されています。再読み込みしてください。');
+        }
+        await repository.sign(reportId: session.reportId,
+          signerName: signature.signerName, signatureJson: signature.toJson());
+        checkContext();
+        latest = await reloadExact();
+        if (!matchesSignature(latest)) {
+          throw StateError('編集完了を確認できません。同じ画面で再確認してください。');
+        }
+      }
+      checkContext();
+      await _editSessions.clear(session);
+      checkContext();
+      setState(() {
+        _report = latest;
+        _editSession = null;
+        _pendingResponsibleSignature = null;
+      });
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (completionContext) => Scaffold(
+          appBar: AppBar(title: Text(SkoLanguageController.tr('編集完了')), automaticallyImplyLeading: false),
+          body: Center(child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.check_circle, size: 72, color: Colors.green),
+              const SizedBox(height: 16),
+              Text(SkoLanguageController.tr('日報の編集を完了しました。保存して確定しました。')),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () => Navigator.of(completionContext).popUntil((route) => route.isFirst),
+                child: Text(SkoLanguageController.tr('ホームへ戻る')),
+              ),
+            ]),
+          )),
+        ),
+      ));
+    } catch (error) {
+      if (mounted && repository.currentActorId == actor) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('編集完了を確認できませんでした。サインを保持しています: $error')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1334,6 +1534,22 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               ),
                             ),
                           const SizedBox(height: 16),
+                          if (_editingApprovedReport && !_signed)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Column(children: [
+                                Text(_pendingResponsibleSignature == null
+                                  ? SkoLanguageController.tr('編集後に報告者・責任者のサインを登録し、「編集を完了」を押してください。画面を開き直した場合は責任者サインを再入力してください。')
+                                   : SkoLanguageController.tr('責任者サインを確認しました。「編集を完了」で保存・確定します。')),
+                                FilledButton.icon(
+                                  key: const ValueKey('daily-report-finish-approved-edit'),
+                                  onPressed: _saving || _pendingResponsibleSignature == null
+                                    ? null : _finishApprovedEdit,
+                                  icon: const Icon(Icons.check_circle_outline),
+                                  label: Text(SkoLanguageController.tr('編集を完了')),
+                                ),
+                              ]),
+                            ),
                           if (!_signed && !_visitReporterLocked)
                             FilledButton.icon(
                               onPressed: _saving ? null : _register,

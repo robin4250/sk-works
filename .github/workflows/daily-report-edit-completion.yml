@@ -1,0 +1,39 @@
+name: Daily report edit completion
+on:
+  pull_request:
+    paths:
+      - 'lib/features/daily_reports/**'
+      - 'test/daily_report_approved_edit_start_test.dart'
+      - 'test/daily_report_edit_session_test.dart'
+      - '.github/workflows/daily-report-edit-completion.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: daily-report-edit-completion-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze daily report edit flow
+        run: >-
+          flutter analyze
+          lib/features/daily_reports/daily_report_page.dart
+          lib/features/daily_reports/daily_report_repository.dart
+          lib/features/daily_reports/daily_report_edit_session.dart
+          test/daily_report_approved_edit_start_test.dart
+          test/daily_report_edit_session_test.dart
+      - name: Verify edit start, both signature roles and completion retries
+        run: >-
+          flutter test
+          test/daily_report_approved_edit_start_test.dart
+          test/daily_report_edit_session_test.dart
