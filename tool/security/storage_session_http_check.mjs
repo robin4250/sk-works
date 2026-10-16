@@ -10,7 +10,8 @@ const origin=status.API_URL??status.api_url;const dbUrl=status.DB_URL??status.db
 for(const address of [origin,dbUrl]){const u=new URL(address);assert.equal(u.hostname,'127.0.0.1','Loopback fixture only');}
 const anon=status.ANON_KEY??status.anon_key,service=status.SERVICE_ROLE_KEY??status.service_role_key;
 assert.ok(typeof anon==='string'&&typeof service==='string');
-const {Client}=await import(pathToFileURL(path.resolve(process.argv[3])).href);
+const pg=await import(pathToFileURL(path.resolve(process.argv[3])).href);
+const Client=pg.Client??pg.default?.Client;assert.equal(typeof Client,'function','Disposable PostgreSQL client available');
 const db=new Client({connectionString:dbUrl});await db.connect();
 const q=s=>"'"+s.replaceAll("'","''")+"'";
 async function request(route,{token=anon,method='GET',json,body,headers={}}={}){
@@ -61,6 +62,8 @@ try{
  await denied(users.manager.token);
  await db.query(`update public.member_feature_permissions set can_manage_people=true where user_id=${q(users.manager.id)}`);
  await denied(anon);await denied(users.other.token);await allowed(users.own.token);await allowed(users.owner.token);await allowed(users.manager.token);
+ await db.query('insert into private.account_deletion_access_restrictions values($1)',[users.own.id]);await denied(users.own.token);
+ await db.query('delete from private.account_deletion_access_restrictions where user_id=$1',[users.own.id]);await allowed(users.own.token);
  r=await request('/storage/v1/object/sign/worker-documents/'+object,{token:users.manager.token,method:'POST',json:{expiresIn:2}});assert.equal(r.status,200,'Actual Storage signed URL issuance');
  const signed=await r.json();const relative=signed.signedURL??signed.signedUrl;assert.ok(typeof relative==='string');
  assert.ok(relative.startsWith('/object/sign/')||relative.startsWith('/storage/v1/object/sign/'),'Only local signed Storage path');
