@@ -66,6 +66,12 @@ Future<void> _initialize() async {
     }));
 }
 Future<void> _settle(WidgetTester tester) async {
+  // The real SDK emits asynchronous auth/storage callbacks outside fake time.
+  // Drain those callbacks before settling the actual gate's subsequent frame.
+  for (var i = 0; i < 10; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+    await tester.pump(const Duration(milliseconds: 20));
+  }
   await tester.pumpAndSettle();
 }
 Widget _gate() => MaterialApp(home: SupabaseAuthGate(homeBuilder: (logout) => Scaffold(body: Column(children: [
