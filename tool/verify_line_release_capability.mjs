@@ -103,6 +103,8 @@ if(testflightLock) {
  const settingsBefore=(await db.query('select * from private.line_general_release_settings')).rows;
  const gateMetadata=await scalar("select jsonb_build_object('acl',proacl,'config',proconfig,'owner',proowner) v from pg_proc where oid='private.line_actor_release_allowed(uuid)'::regprocedure");
  await db.exec(readFileSync('docs/security/staged/line_testflight_master_only.sql.review-only','utf8'));
+ await assert.rejects(db.exec(readFileSync('docs/security/staged/line_testflight_master_only.sql.review-only','utf8')),/LINE actor gate changed/,'Changed gate is never silently overwritten');
+ await db.exec('rollback');
  assert.deepEqual((await db.query('select * from private.line_general_release_settings')).rows,settingsBefore,'Saved release state and audit metadata preserved');
  assert.deepEqual(await scalar("select jsonb_build_object('acl',proacl,'config',proconfig,'owner',proowner) v from pg_proc where oid='private.line_actor_release_allowed(uuid)'::regprocedure"),gateMetadata);
  await role('authenticated');
