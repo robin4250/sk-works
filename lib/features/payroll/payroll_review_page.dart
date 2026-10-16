@@ -7,10 +7,11 @@ import 'payroll_review_repository.dart';
 import 'payroll_statements_page.dart';
 
 class PayrollReviewPage extends StatefulWidget {
-  const PayrollReviewPage({super.key, this.initialMonth, this.onOpenSettings, this.onOpenTaxRates, this.repository});
+  const PayrollReviewPage({super.key, this.initialMonth, this.onOpenSettings, this.onOpenTaxRates, this.onOpenCommonAllowances, this.repository});
 
   final VoidCallback? onOpenSettings;
   final VoidCallback? onOpenTaxRates;
+  final VoidCallback? onOpenCommonAllowances;
   @visibleForTesting
   final PayrollReviewRepository? repository;
 
@@ -153,7 +154,7 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
       ),
       body: SafeArea(
         child: Column(children: [
-          if (widget.onOpenSettings != null || widget.onOpenTaxRates != null)
+          if (widget.onOpenSettings != null || widget.onOpenTaxRates != null || widget.onOpenCommonAllowances != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
               child: Row(children: [
@@ -164,6 +165,15 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
                     icon: const Icon(Icons.percent_outlined, size: 18),
                     label: FittedBox(fit: BoxFit.scaleDown,
                       child: Text(SkoLanguageController.tr('税率設定'), maxLines: 1)),
+                  ),
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: SizedBox(height: 48,
+                  child: OutlinedButton(
+                    key: const ValueKey('payroll-common-allowances-entry'),
+                    onPressed: widget.onOpenCommonAllowances,
+                    child: FittedBox(fit: BoxFit.scaleDown,
+                      child: Text(SkoLanguageController.tr('社内共通手当'), maxLines: 1)),
                   ),
                 )),
                 const SizedBox(width: 10),
