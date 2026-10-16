@@ -14,14 +14,19 @@ class CompareTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             before, after = Path(folder) / 'before.json', Path(folder) / 'after.json'
             data = {'schema': 'sko-critical-state-v1', 'sections': {
-                k: {'status': 'observed', 'value': {'synthetic_id': 'fixture-admin', 'enabled': False},
+                k: {'status': 'observed', 'value': 'b' * 64,
                     'evidence_sha256': 'a' * 64} for k in c.FIELDS}}
+            identity = {'user_id': 'synthetic-admin', 'company_id': 'synthetic-company', 'role': 'owner'}
+            data['sections']['admin_identity']['value'] = identity
+            data['sections']['company_memberships']['value'] = [dict(identity)]
+            data['sections']['master_role_assignments']['value'] = [{'user_id': 'synthetic-admin', 'enabled': True}]
+            data['sections']['feature_flags']['value'] = {'synthetic-feature': False}
             for path in (before, after):
                 path.write_text(json.dumps(data)); path.chmod(0o600)
             result = c.compare(before, after)
             self.assertTrue(result['all_critical_values_equal'])
             self.assertFalse(result['production_change_authorized'])
-            data['sections']['company_memberships']['value']['synthetic_id'] = 'different-fixture'
+            data['sections']['company_memberships']['value'][0]['user_id'] = 'different-fixture'
             after.write_text(json.dumps(data))
             self.assertEqual(c.compare(before, after)['changed_sections'], ['company_memberships'])
 

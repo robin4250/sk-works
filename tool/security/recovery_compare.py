@@ -31,6 +31,22 @@ def checked(path):
             raise ValueError('Unknown values block comparison')
         if not isinstance(section.get('evidence_sha256'), str) or not re.fullmatch('[0-9a-f]{64}', section['evidence_sha256']):
             raise ValueError('Evidence digest missing')
+        value = section['value']
+        def identity(row):
+            return isinstance(row, dict) and all(isinstance(row.get(k), str) and row[k]
+                for k in ('user_id', 'company_id', 'role'))
+        if key == 'admin_identity' and not identity(value):
+            raise ValueError('Administrator identifiers and role are required')
+        if key == 'company_memberships' and not (isinstance(value, list) and all(identity(v) for v in value)):
+            raise ValueError('Membership identifiers and roles are required')
+        if key == 'master_role_assignments' and not (isinstance(value, list) and all(isinstance(v, dict)
+                and isinstance(v.get('user_id'), str) and v['user_id']
+                and isinstance(v.get('enabled'), bool) for v in value)):
+            raise ValueError('Master assignment identifiers are required')
+        if key == 'feature_flags' and not (isinstance(value, dict) and all(isinstance(v, bool) for v in value.values())):
+            raise ValueError('Feature values must be observed booleans')
+        if key.endswith('_fingerprint') and not (isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value)):
+            raise ValueError('Observed configuration fingerprint required')
     return data
 
 
