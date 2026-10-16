@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -222,11 +224,15 @@ class EmployeeProfileOnboardingPage extends StatefulWidget {
     required this.name,
     required this.onSubmitted,
     required this.onSignOut,
+    this.repository,
+    this.imagePicker,
   });
 
   final String name;
   final VoidCallback onSubmitted;
   final Future<void> Function() onSignOut;
+  final EmployeeOnboardingRepository? repository;
+  final Future<XFile?> Function(ImageSource source)? imagePicker;
 
   @override
   State<EmployeeProfileOnboardingPage> createState() =>
@@ -234,7 +240,7 @@ class EmployeeProfileOnboardingPage extends StatefulWidget {
 }
 
 class _EmployeeProfileOnboardingPageState
-    extends State<EmployeeProfileOnboardingPage> {
+    extends State<EmployeeProfileOnboardingPage> with WidgetsBindingObserver {
   final _address = TextEditingController();
   final _family = TextEditingController();
   final _emergencyRelation = TextEditingController();
@@ -242,7 +248,56 @@ class _EmployeeProfileOnboardingPageState
   final _emergencyPhone = TextEditingController();
   final _emergencyAddress = TextEditingController();
   final _picker = ImagePicker();
-  final _repository = EmployeeOnboardingRepository.maybeCreate();
+  late final EmployeeOnboardingRepository? _repository;
+  StreamSubscription<dynamic>? _authSubscription;
+  String? _actorId;
+  bool _identityChanged = false;
+  int _epoch = 0;
+  EmployeeOnboardingPhotoCapability? _photoCapability;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _repository = widget.repository ?? EmployeeOnboardingRepository.maybeCreate();
+    _actorId = _repository?.currentUserId;
+    _authSubscription = _repository?.authChanges.listen((state) {
+      if (state.session?.user.id != _actorId) {
+        _identityChanged = true;
+        _epoch++;
+        if (mounted) setState(() => _message = 'ログイン状態が変わったため送信を中断しました。入力内容は保持しています。');
+      }
+    });
+    unawaited(_loadPhotoCapability());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _epoch++;
+    } else if (!_busy && !_identityChanged) {
+      unawaited(_loadPhotoCapability());
+    }
+  }
+
+  EmployeeOnboardingRequest _request() {
+    final epoch = _epoch;
+    return _repository!.beginRequest(() => mounted && !_identityChanged &&
+        _actorId != null && _repository!.currentUserId == _actorId && _epoch == epoch);
+  }
+
+  Future<void> _loadPhotoCapability() async {
+    final repository = _repository;
+    if (repository == null) return;
+    try {
+      final request = _request();
+      final capability = await repository.loadPhotoCapability(request: request);
+      request.check();
+      setState(() => _photoCapability = capability);
+    } catch (_) {
+      if (mounted) setState(() => _message = '写真登録の状態を確認できませんでした。入力内容を保持しています。送信時に再確認します。');
+    }
+  }
 
   String _bloodType = 'A';
   XFile? _portrait;
@@ -253,6 +308,9 @@ class _EmployeeProfileOnboardingPageState
 
   @override
   void dispose() {
+    _epoch++;
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_authSubscription?.cancel());
     _address.dispose();
     _family.dispose();
     _emergencyRelation.dispose();
@@ -283,6 +341,7 @@ class _EmployeeProfileOnboardingPageState
       ),
     );
     if (source == null) return null;
+    if (widget.imagePicker != null) return widget.imagePicker!(source);
     return _picker.pickImage(
       source: source,
       imageQuality: 88,
@@ -290,73 +349,81 @@ class _EmployeeProfileOnboardingPageState
     );
   }
 
-  bool get _complete =>
+  bool get _textComplete =>
       _address.text.trim().isNotEmpty &&
       _family.text.trim().isNotEmpty &&
       _emergencyRelation.text.trim().isNotEmpty &&
       _emergencyName.text.trim().isNotEmpty &&
       _emergencyPhone.text.trim().isNotEmpty &&
-      _emergencyAddress.text.trim().isNotEmpty &&
-      _portrait != null &&
-      _myNumberFront != null &&
-      _myNumberBack != null;
+      _emergencyAddress.text.trim().isNotEmpty;
 
   Future<void> _submit() async {
     final repository = _repository;
-    if (repository == null) return;
-    if (!_complete) {
+    if (repository == null || _busy) return;
+    if (!_textComplete) {
       setState(() => _message = SkoLanguageController.tr('未入力または未撮影の項目があります。'));
       return;
     }
-
-    setState(() {
-      _busy = true;
-      _message = null;
-    });
-
-    String? portraitPath;
-    String? frontPath;
-    String? backPath;
+    final fields = <String, String>{
+      'address': _address.text, 'blood_type': _bloodType,
+      'family_composition': _family.text, 'emergency_relation': _emergencyRelation.text,
+      'emergency_name': _emergencyName.text, 'emergency_phone': _emergencyPhone.text,
+      'emergency_address': _emergencyAddress.text,
+    };
+    final portrait = _portrait, front = _myNumberFront, back = _myNumberBack;
+    setState(() { _busy = true; _message = null; });
     try {
-      portraitPath = await repository.uploadImage(
-        kind: 'portrait',
-        bytes: await _portrait!.readAsBytes(),
-        filename: _portrait!.name,
-      );
-      frontPath = await repository.uploadImage(
-        kind: 'my-number-front',
-        bytes: await _myNumberFront!.readAsBytes(),
-        filename: _myNumberFront!.name,
-      );
-      backPath = await repository.uploadImage(
-        kind: 'my-number-back',
-        bytes: await _myNumberBack!.readAsBytes(),
-        filename: _myNumberBack!.name,
-      );
-
-      await repository.submitProfile(
-        address: _address.text,
-        bloodType: _bloodType,
-        familyComposition: _family.text,
-        emergencyRelation: _emergencyRelation.text,
-        emergencyName: _emergencyName.text,
-        emergencyPhone: _emergencyPhone.text,
-        emergencyAddress: _emergencyAddress.text,
-        portraitPath: portraitPath,
-        myNumberFrontPath: frontPath,
-        myNumberBackPath: backPath,
-      );
+      final request = _request();
+      final capability = await repository.loadPhotoCapability(request: request);
+      request.check();
+      setState(() => _photoCapability = capability);
+      final omitPhotos = capability?.photoUploadAllowed == false;
+      String? portraitPath, frontPath, backPath;
+      Future<String> upload(String kind, XFile file) async {
+        final bytes = await file.readAsBytes();
+        request.check();
+        return repository.uploadImage(kind: kind, bytes: bytes,
+            filename: file.name, request: request);
+      }
+      if (!omitPhotos) {
+        if (portrait == null || front == null || back == null) {
+          throw StateError('未入力または未撮影の項目があります。');
+        }
+        portraitPath = await upload('portrait', portrait);
+        request.check();
+        frontPath = await upload('my-number-front', front);
+        request.check();
+        backPath = await upload('my-number-back', back);
+        request.check();
+      }
+      // Recheck immediately before dispatch. Never silently switch routes mid-submit.
+      final confirmed = await repository.loadPhotoCapability(request: request);
+      request.check();
+      if ((confirmed?.photoUploadAllowed == false) != omitPhotos) {
+        throw StateError('写真登録の状態が変わりました。入力内容を確認して再度お試しください。');
+      }
+      if (omitPhotos) {
+        await repository.submitProfileWithoutPhotos(fields: fields, request: request);
+      } else {
+        await repository.submitProfile(
+          address: fields['address']!, bloodType: fields['blood_type']!,
+          familyComposition: fields['family_composition']!,
+          emergencyRelation: fields['emergency_relation']!,
+          emergencyName: fields['emergency_name']!, emergencyPhone: fields['emergency_phone']!,
+          emergencyAddress: fields['emergency_address']!,
+          portraitPath: portraitPath!, myNumberFrontPath: frontPath!,
+          myNumberBackPath: backPath!, request: request,
+        );
+      }
+      request.check();
       widget.onSubmitted();
-    } catch (error) {
-      await Future.wait([
-        repository.removeImage(portraitPath),
-        repository.removeImage(frontPath),
-        repository.removeImage(backPath),
-      ]);
+    } catch (_) {
+      // A failed response may follow a committed save. Never delete possibly-linked
+      // uploads or act as another account; keep text and photo selections for review.
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _message = '${SkoLanguageController.tr('本人情報を送信できませんでした')}: $error';
+        _message = '本人情報を送信できませんでした。入力内容は保持しています。ログイン状態と写真登録の状態を確認して再度お試しください。';
       });
     }
   }
@@ -486,12 +553,16 @@ class _EmployeeProfileOnboardingPageState
                   ),
             ),
             const SizedBox(height: 8),
+            if (_photoCapability?.photoUploadAllowed == false)
+              Text(_photoCapability!.hasExistingImages
+                  ? '写真の新規送信は停止中です。登録済み写真を保持し、本人情報のみ申請します。選択中の写真は送信されません。'
+                  : '写真の新規送信は停止中です。写真の選択なしで本人情報を申請できます。選択中の写真は送信されません。'),
             _imageTile(
               label: '${SkoLanguageController.tr('本人の写真')} *',
               file: _portrait,
               onTap: () async {
                 final file = await _pick(SkoLanguageController.tr('本人写真'));
-                if (file != null) setState(() => _portrait = file);
+                if (mounted && !_identityChanged && file != null) setState(() => _portrait = file);
               },
             ),
             _imageTile(
@@ -499,7 +570,7 @@ class _EmployeeProfileOnboardingPageState
               file: _myNumberFront,
               onTap: () async {
                 final file = await _pick(SkoLanguageController.tr('マイナンバーカード表面'));
-                if (file != null) setState(() => _myNumberFront = file);
+                if (mounted && !_identityChanged && file != null) setState(() => _myNumberFront = file);
               },
             ),
             _imageTile(
@@ -507,7 +578,7 @@ class _EmployeeProfileOnboardingPageState
               file: _myNumberBack,
               onTap: () async {
                 final file = await _pick(SkoLanguageController.tr('マイナンバーカード裏面'));
-                if (file != null) setState(() => _myNumberBack = file);
+                if (mounted && !_identityChanged && file != null) setState(() => _myNumberBack = file);
               },
             ),
             if (_message != null) ...[

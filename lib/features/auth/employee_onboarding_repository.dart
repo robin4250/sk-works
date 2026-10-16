@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 
 class EmployeeOnboardingRepository {
-  EmployeeOnboardingRepository._(this._client);
+  EmployeeOnboardingRepository(this._client);
 
   final SupabaseClient _client;
   static const bucket = 'employee-onboarding-documents';
@@ -13,7 +13,7 @@ class EmployeeOnboardingRepository {
   static EmployeeOnboardingRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
     if (SupabaseBackend.client.auth.currentUser == null) return null;
-    return EmployeeOnboardingRepository._(SupabaseBackend.client);
+    return EmployeeOnboardingRepository(SupabaseBackend.client);
   }
 
   String get _userId {
@@ -22,15 +22,48 @@ class EmployeeOnboardingRepository {
     return id;
   }
 
+  String? get currentUserId => _client.auth.currentUser?.id;
+  Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
+
+  EmployeeOnboardingRequest beginRequest(bool Function() isActive) {
+    final session = _client.auth.currentSession;
+    if (session == null) throw StateError('SKOへのログインが必要です。');
+    return EmployeeOnboardingRequest._(
+      session.user.id,
+      session.accessToken,
+      () => isActive() && currentUserId == session.user.id,
+    );
+  }
+
+  Future<EmployeeOnboardingPhotoCapability?> loadPhotoCapability({
+    required EmployeeOnboardingRequest request,
+  }) async {
+    request.check();
+    try {
+      final value = await _client.rpc('employee_onboarding_photo_capability')
+          .setHeader('Authorization', request.authorization);
+      request.check();
+      return EmployeeOnboardingPhotoCapability.parse(value);
+    } on PostgrestException catch (error) {
+      request.check();
+      if (error.code == 'PGRST202') return null;
+      rethrow;
+    }
+  }
+
   Future<String> uploadImage({
     required String kind,
     required Uint8List bytes,
     required String filename,
+    EmployeeOnboardingRequest? request,
   }) async {
+    request?.check();
     final safeExt = filename.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
     final path =
-        '$_userId/$kind-${DateTime.now().microsecondsSinceEpoch}.$safeExt';
-    await _client.storage.from(bucket).uploadBinary(
+        '${request?.userId ?? _userId}/$kind-${DateTime.now().microsecondsSinceEpoch}.$safeExt';
+    final storage = _client.storage.from(bucket);
+    if (request != null) storage.setHeader('Authorization', request.authorization);
+    await storage.uploadBinary(
           path,
           bytes,
           fileOptions: FileOptions(
@@ -38,6 +71,7 @@ class EmployeeOnboardingRepository {
             upsert: false,
           ),
         );
+    request?.check();
     return path;
   }
 
@@ -57,8 +91,10 @@ class EmployeeOnboardingRepository {
     required String portraitPath,
     required String myNumberFrontPath,
     required String myNumberBackPath,
+    EmployeeOnboardingRequest? request,
   }) async {
-    await _client.rpc(
+    request?.check();
+    final call = _client.rpc(
       'save_employee_onboarding_profile',
       params: {
         'p_address': address.trim(),
@@ -73,6 +109,25 @@ class EmployeeOnboardingRepository {
         'p_my_number_back_path': myNumberBackPath,
       },
     );
+    if (request == null) {
+      await call;
+    } else {
+      await call.setHeader('Authorization', request.authorization);
+      request.check();
+    }
+  }
+
+  // This endpoint asserts server-side retention even if the old save was restored.
+  // Missing/error responses MUST NOT fall back to the old NULL-photo endpoint.
+  Future<void> submitProfileWithoutPhotos({
+    required Map<String, String> fields,
+    required EmployeeOnboardingRequest request,
+  }) async {
+    request.check();
+    await _client.rpc('save_employee_onboarding_profile_without_photos',
+      params: fields.map((key, value) => MapEntry('p_$key', value.trim())),
+    ).setHeader('Authorization', request.authorization);
+    request.check();
   }
 
   Future<bool> canReview() async {
@@ -100,4 +155,37 @@ class EmployeeOnboardingRepository {
 
   Future<String> signedUrl(String path) =>
       _client.storage.from(bucket).createSignedUrl(path, 300);
+}
+
+
+class EmployeeOnboardingRequest {
+  EmployeeOnboardingRequest._(this.userId, this._token, this._isActive);
+  final String userId;
+  final String _token;
+  final bool Function() _isActive;
+  String get authorization => 'Bearer $_token';
+
+  void check() {
+    if (!_isActive()) {
+      throw StateError('ログイン状態または画面の状態が変わりました。入力内容を確認して再度お試しください。');
+    }
+  }
+}
+
+class EmployeeOnboardingPhotoCapability {
+  const EmployeeOnboardingPhotoCapability._(this.hasExistingImages, this.photoUploadAllowed);
+  final bool hasExistingImages;
+  final bool photoUploadAllowed;
+
+  static EmployeeOnboardingPhotoCapability parse(dynamic value) {
+    if (value is! Map || value.length != 2 ||
+        value['has_existing_images'] is! bool ||
+        value['photo_upload_allowed'] is! bool) {
+      throw const FormatException('写真登録の状態を確認できませんでした。');
+    }
+    return EmployeeOnboardingPhotoCapability._(
+      value['has_existing_images'] as bool,
+      value['photo_upload_allowed'] as bool,
+    );
+  }
 }
