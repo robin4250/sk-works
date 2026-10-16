@@ -24,6 +24,12 @@ PersonnelPrivacySnapshot snapshot({String company=companyA,String role='admin',b
  'id':worker,'kind':'employee','name':'Private Worker','address':'Private Address',
  'bloodType':'A','active':true,'familyMembers':[{'id':'family','name':'Private Family','relation':'子'}],
  }]);
+class _DelayedCompanySources implements CompanyDocumentExchangeRepository {
+  final sources=Completer<List<Map<String,dynamic>>>();
+  @override Future<List<Map<String,dynamic>>> listSendableSources()=>sources.future;
+  @override Future<List<Map<String,dynamic>>> listTransferTargets()async=>[];
+  @override dynamic noSuchMethod(Invocation invocation)=>super.noSuchMethod(invocation);
+}
 void main(){
  TestWidgetsFlutterBinding.ensureInitialized();
  test('explicit company B owner does not inherit first-company A manager denial',() async{
@@ -171,18 +177,38 @@ void main(){
   }
  });
  testWidgets('late shared source response is discarded after people permission denial',(tester)async{
-  final source=Completer<http.Response>();var denied=false,checks=0;
-  final client=SupabaseClient('https://personnel-fixture.invalid','fixture-only-key',authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((request)async{
-    if(request.url.path.endsWith('/company_document_exchange'))return source.future;
-    return http.Response('[]',200,request:request,headers:{'content-type':'application/json'});
-  }));
+  final repository=_DelayedCompanySources();var denied=false,checks=0;
   await tester.pumpWidget(MaterialApp(home:CompanyTransferSendPage(title:'Fixture',sourceKind:'worker_personnel',subjectLabel:'社員',workerIds:{worker},description:'Fixture',
-    repository:CompanyDocumentExchangeRepository.forTesting(client),beforeLoad:()async{checks++;if(denied)throw const PersonnelScopeChanged();})));
+    repository:repository,beforeLoad:()async{checks++;if(denied)throw const PersonnelScopeChanged();})));
   await tester.pump();denied=true;
-  source.complete(http.Response(jsonEncode([{'id':worker,'worker_id':worker,'kind':'worker_personnel','name':'Late Private Name'}]),200,request:http.Request('POST',Uri.parse('https://personnel-fixture.invalid/rest/v1/rpc/company_document_exchange')),headers:{'content-type':'application/json'}));
-  await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:20)));
+  repository.sources.complete([{'id':worker,'worker_id':worker,'kind':'worker_personnel','name':'Late Private Name'}]);
   await tester.pumpAndSettle();expect(checks,2);expect(find.text('Late Private Name'),findsNothing);
-  await tester.pumpWidget(const SizedBox());await tester.runAsync(()=>client.dispose());
+  await tester.pumpWidget(const SizedBox());
+ });
+ test('nondefault inactive company exposes only basics and never reads an incomplete private payload',()async{
+  final calls=<String>[];
+  final client=SupabaseClient('https://personnel-fixture.invalid','fixture-only-key',authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((request)async{
+    final path=request.url.path;calls.add(path);
+    http.Response response(Object value)=>http.Response(jsonEncode(value),200,request:request,headers:{'content-type':'application/json'});
+    if(path.endsWith('/company_members')){
+      return response(request.url.queryParameters['company_id']==null?[{'company_id':companyA,'role':'manager'},{'company_id':companyB,'role':'owner'}]:[{'company_id':companyB,'role':'owner'}]);
+    }
+    if(path.endsWith('/rpc/employee_personnel_view'))return response({'company_id':companyB,'records':[]});
+    if(path.endsWith('/workers'))return response([{'id':worker,'name':'Basic Inactive','status':'inactive','affiliation':'employee'}]);
+    if(path.endsWith('/partner_companies'))return response([]);
+    throw StateError('Unexpected private/default-company fixture request $path');
+  }));
+  final full=await PeopleCloudRepository.forTesting(client,actor:()=>actor).readPersonnel(expectedCompany:companyB,includeInactive:true);
+  expect(full.records.single['personnelBasicOnly'],true);expect(full.records.single['phone'],'');
+  expect(calls.any((p)=>p.contains('worker_personnel_profiles')||p.contains('worker_family_members')||p.contains('save_worker_personnel_profile')),false);
+  await client.dispose();
+ });
+ testWidgets('incomplete inactive details cannot open a destructive full editor',(tester)async{
+  final session=PersonnelPrivacySession(actor:actor,company:companyB,currentActor:()=>actor,load:()async=>PersonnelPrivacySnapshot(actor:actor,company:companyB,role:'owner',canManage:true,
+    records:[{'id':worker,'kind':'employee','name':'Basic Inactive','active':false,'personnelBasicOnly':true}]));
+  await tester.pumpWidget(MaterialApp(home:EmployeePersonnelDetailPage(record:const PersonRecord(id:worker,kind:PersonKind.employee,name:''),allEmployees:const[],companyName:'Fixture',privacySession:session)));
+  await tester.pumpAndSettle();expect(find.text('Basic Inactive'),findsWidgets);expect(find.text('編集'),findsNothing);
+  await tester.pumpWidget(const SizedBox());session.dispose();
  });
  testWidgets('initial paused lifecycle does not fetch until resumed',(tester)async{
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);

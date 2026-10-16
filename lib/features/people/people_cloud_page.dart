@@ -418,10 +418,12 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   }
 
   void _showDetails(PersonRecord record) {
+    final session=_privacy;
+    if(session==null)return;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
+      builder: (sheetContext) => PersonnelPrivacyView(session:session,builder:(context,_)=>session.snapshot?.canManage!=true?const Center(child:Text('表示権限を確認できません。')):SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
           child: Column(
@@ -472,7 +474,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 

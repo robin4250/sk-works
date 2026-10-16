@@ -16,7 +16,7 @@ class PersonnelBundleSendPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final session=privacySession;
-    if(session!=null)return PersonnelPrivacyView(session:session,builder:(context,_)=>_page(session));
+    if(session!=null)return PersonnelPrivacyView(session:session,builder:(context,_)=>session.snapshot?.canManage==true?_page(session):const Center(child:Text('送信権限を確認できません。')));
     return _page(null);
   }
   Widget _page(PersonnelPrivacySession? session){
