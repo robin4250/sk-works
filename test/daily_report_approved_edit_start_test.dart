@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class EditableReports extends DailyReportRepository {
   EditableReports(super.client) : super.forTesting();
   bool approved = true, signed = true, failSave = false;
+  String actor = 'owner';
   int saves = 0, signCalls = 0;
   bool reporterSigned = false, failSign = false, commitThenThrow = false;
   Object? responsible;
@@ -37,7 +38,7 @@ class EditableReports extends DailyReportRepository {
     if (commitThenThrow) throw StateError('response lost');
   }
   @override
-  String? get currentActorId => 'owner';
+  String? get currentActorId => actor;
   @override
   String? get notificationRetryUserId => null;
   @override
@@ -211,6 +212,53 @@ void main() {
       final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
       expect(tester.widget<FilledButton>(finish).onPressed, isNull);
       expect(repo.signCalls, 0);
+    });
+
+  testWidgets('actor switch after signature capture cannot complete the old report',
+    (tester) async {
+      final repo = EditableReports(client);
+      await prepareCompletion(tester, repo);
+      repo.actor = 'another-user';
+      final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
+      await tester.ensureVisible(finish);
+      await tester.tap(finish);
+      await tester.pumpAndSettle();
+      expect(repo.signCalls, 0);
+      expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsNothing);
+    });
+
+  testWidgets('different consumed request cannot restore edit completion',
+    (tester) async {
+      final repo = EditableReports(client)
+        ..signed = false ..approved = false ..reporterSigned = true;
+      await DailyReportEditSessionStore().remember(const DailyReportEditSession(
+        actorId: 'owner', companyId: 'company-a', reportId: 'report-a',
+        requestId: 'different-request', confirmed: true));
+      await open(tester, repo);
+      expect(find.byKey(const ValueKey('daily-report-finish-approved-edit')), findsNothing);
+      final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)).first;
+      await tester.ensureVisible(tile);
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      expect(find.byType(SignatureCapturePage), findsNothing);
+      expect(repo.signCalls, 0);
+    });
+
+  testWidgets('ordinary draft without edit session keeps existing signing flow',
+    (tester) async {
+      final repo = EditableReports(client)
+        ..signed = false ..approved = false ..reporterSigned = true;
+      await open(tester, repo);
+      expect(find.byKey(const ValueKey('daily-report-finish-approved-edit')), findsNothing);
+      final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)).first;
+      await tester.ensureVisible(tile);
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.1, 0.2)]]));
+      await tester.pumpAndSettle();
+      expect(repo.signCalls, 1);
+      expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsNothing);
     });
 
 }
