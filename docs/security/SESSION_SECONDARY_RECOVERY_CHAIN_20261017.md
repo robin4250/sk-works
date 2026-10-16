@@ -24,3 +24,11 @@ This does not identify which password the user reset in their prior installed bu
 Validation: dedicated workflow result and exact tested SHA must be recorded separately after execution; source existence alone is not success. The default-OFF capability is a synthetic test input, not a claim that production flags were changed.
 
 The integration case is enabled by `SKO_SESSION_CHAIN_FIXTURE=true` only in the dedicated workflow. Generic app CI skips that explicitly named case because it does not supply this synthetic configuration; the dedicated enabled path asserts both URL/key before SDK initialization. Dedicated success is required independently of generic CI.
+
+## Actual enabled test result
+
+Test/source/workflow head **a3b6feddf36281e6a96134f71f08fa3e26146932**: dedicated run **38939134942**, job **117102050080**, completed **success**. Analyze reported **No issues**. The enabled integration case `SDK persisted restart then explicit logout and login reaches existing secondary Face reset only` passed; it was not the generic-CI skipped case. All sequence/target/cancel/logged-out assertions above executed against the real pinned SDK and existing widgets/access class, with synthetic transport/platform responses.
+
+The initial 2ef7815 dedicated attempt passed SDK storage/recreation, authenticated home and logout session removal assertions but asserted the login frame before the real SDK's pending callback completed. The test now briefly drains bounded real-clock SDK/storage callbacks and pumps the following frame before retaining the same UI expectations. No product callback or authentication logic was changed. The first failed test is not represented as a successful run or as proof of a user-facing application bug.
+
+At verification time, Secret Scan and Route checks also succeeded; full Flutter and iOS workflows remained in progress. The subsequent commit that records this result is documentation only, with test/workflow source unchanged from a3b6fedd. Real iPhone/OS shutdown behavior and which password the user previously changed remain outside this synthetic result. PR1157 remains held and unmerged.
