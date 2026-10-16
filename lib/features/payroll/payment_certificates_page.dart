@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import '../shared/trade_document_actor_boundary.dart';
 import '../shared/trade_document_attachment_editor_page.dart';
 import '../shared/trade_document_template_settings_page.dart';
@@ -10,6 +11,7 @@ import 'package:printing/printing.dart';
 
 import '../notifications/notification_bell.dart';
 import '../shared/pdf_bytes_cache.dart';
+import '../shared/pdf_pinch_pages.dart';
 import '../../international/language_controller.dart';
 import '../../domain/rate_formula_settings.dart';
 import 'payment_certificate_pdf_service.dart';
@@ -258,6 +260,9 @@ class _PaymentCertificatePreviewPageState
   final _pdfBytes = PdfBytesCache();
   bool _sharing = false;
 
+  Future<Uint8List> _buildPreviewPdf(PdfPageFormat _) =>
+      _pdfBytes.get(() => PaymentCertificatePdfService.buildPdf(widget.record));
+
   Future<void> _saveOrShare() async {
     if (_sharing) return;
     final record = widget.record;
@@ -311,7 +316,12 @@ class _PaymentCertificatePreviewPageState
           const SkoNotificationBell()],
       ),
       body: Column(children: [
-        Expanded(child: PdfPreview(
+        Padding(padding: const EdgeInsets.all(8), child: Text(
+          SkoLanguageController.isEnglish
+              ? 'Pinch to zoom. Drag to move while zoomed.'
+              : '2本指で拡大・縮小／拡大後はドラッグで移動')),
+        Expanded(child: PdfPreview.builder(
+        pagesBuilder: (context, pages) => PdfPinchPages(pages: pages),
         initialPageFormat: PdfPageFormat.a4,
         canChangePageFormat: false,
         canChangeOrientation: false,
@@ -319,9 +329,7 @@ class _PaymentCertificatePreviewPageState
         allowSharing: false,
         pdfFileName:
             '${record.monthLabel}_${record.partnerCompanyName}_支払証明書.pdf',
-        build: (_) => _pdfBytes.get(
-          () => PaymentCertificatePdfService.buildPdf(record),
-        ),
+        build: _buildPreviewPdf,
       )),
         SafeArea(top: false, child: Padding(
           padding: const EdgeInsets.all(12),
