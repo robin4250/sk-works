@@ -1,0 +1,21 @@
+name: Source recovery rehearsal
+on:
+  pull_request:
+    paths:
+      - 'tool/security/recovery_*'
+      - 'docs/security/RECOVERY_REHEARSAL_AND_APPROVAL_20261016.md'
+      - 'docs/security/recovery_critical_state.schema.json'
+      - '.github/workflows/recovery-source-rehearsal.yml'
+permissions:
+  contents: read
+jobs:
+  source-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 tool/security/recovery_source_test.py
+      - run: python3 tool/security/recovery_compare_test.py

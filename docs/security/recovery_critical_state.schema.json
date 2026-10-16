@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Confidential critical state export, never a production approval",
+  "type": "object",
+  "required": ["schema", "sections"],
+  "properties": {
+    "schema": {"const": "sko-critical-state-v1"},
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["admin_identity", "company_memberships", "master_role_assignments", "feature_flags", "schema_acl_fingerprint", "edge_deployment_fingerprint", "auth_provider_configuration_fingerprint"],
+      "properties": {
+        "admin_identity": {"$ref": "#/$defs/section"},
+        "company_memberships": {"$ref": "#/$defs/section"},
+        "master_role_assignments": {"$ref": "#/$defs/section"},
+        "feature_flags": {"$ref": "#/$defs/section"},
+        "schema_acl_fingerprint": {"$ref": "#/$defs/section"},
+        "edge_deployment_fingerprint": {"$ref": "#/$defs/section"},
+        "auth_provider_configuration_fingerprint": {"$ref": "#/$defs/section"}
+      }
+    }
+  },
+  "$defs": {
+    "section": {
+      "type": "object",
+      "required": ["status", "value", "evidence_sha256"],
+      "properties": {
+        "status": {"enum": ["observed", "unknown"]},
+        "value": {},
+        "evidence_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}
