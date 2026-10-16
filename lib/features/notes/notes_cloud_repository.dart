@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../chat/ordinary_communication_groups.dart';
 
 class NotesCloudRepository {
   NotesCloudRepository._(this._client);
@@ -29,12 +30,7 @@ class NotesCloudRepository {
 
   Future<List<Map<String, dynamic>>> loadGroups() async {
     final companyId = await _companyId();
-    final rows = await _client
-        .from('communication_groups')
-        .select('id, name, site_id, group_type')
-        .eq('company_id', companyId)
-        .order('name');
-    return List<Map<String, dynamic>>.from(rows);
+    return ordinaryCommunicationGroups(_client, companyId);
   }
 
   Future<List<Map<String, dynamic>>> loadNotes(String groupId) async {
