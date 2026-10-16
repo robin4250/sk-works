@@ -1,15 +1,15 @@
 # Real Auth server session lifecycle — existing isolated stack reused
 
 This test-only lane complements the Flutter/Face mock tests. No authentication
-product code, provider setup, second-password/primary-password behavior, SMS path,
+product code, production provider setup, second-password/primary-password behavior, SMS path,
 RLS or production config is changed. New files only. No iPhone is connected.
 
 The existing `platform_auth_gotrue_e2e.mjs` (#1144) owns the pinned CLI2.121.0 local
 GoTrue/Kong/PostgreSQL/Edge stack and always cleans up. It is deliberately NOT
 copied as a tracked parallel fixture or modified. A new runner checks its exact
 SHA256 `79c128c9c03c138084712512ebfcaa1e68cdd5b2641f02cf7c17cc6b99b3e655`,
-one setup anchor and required origin/empty-DB/cleanup/assertion contracts. It creates
-a private700/600 temporary source copy, adds one local helper import and hook
+unique setup/config anchors and required origin/empty-DB/cleanup/assertion contracts. It creates
+a private700/600 temporary source copy, adds local helper imports and hooks
 before app fixture creation, and imports that copy. The original adapter import
 is resolved to the same repository-local module. Any drift fails BEFORE stack
 setup; every original assertion/cleanup byte remains after removing the hook and
@@ -78,8 +78,8 @@ The successful email-only baseline remains commit
 `e184750df321a24981ca9b960982808f1d325c22` with dedicated CI38939479802 success.
 A later test-only commit appends a real phone-password case after EVERY original
 email/local/global assertion, in the SAME existing isolated GoTrue runtime. The
-original runner source/hash/anchor/setup, product Auth and provider settings are
-unchanged. New phone results must be reported against the later exact head.
+original tracked runner source/hash and product Auth settings are unchanged.
+Only an owned, generated local CLI config is adjusted as described below. New phone results must be reported against the later exact head.
 
 A fixed fictional NANP555-0100..0199 E164 (`+12025550123`) is admin-created with
 `phone_confirm:true` and a freshly generated local test password. It never names an
@@ -89,7 +89,7 @@ phone, refresh grant and LOCAL logout, with exact allowed body keys. It records
 and asserts those six routes; signup/OTP/verify/resend/recover/provider/settings
 and any nonlocal/other-phone request are refused BEFORE dispatch. The underlying
 original callback still refuses any origin outside its generated loopback API.
-No SMS/OTP/provider branch or configuration modification is invoked. Dependency/
+No SMS/OTP sending branch or production configuration modification is invoked. Dependency/
 container bootstrap remains the original fixture; no whole-host network-none claim.
 
 Actual server assertions require one phone UID/session, refresh retaining its SID,
@@ -98,3 +98,23 @@ confirmation fields and untouched original master/admin/other sessions. The
 original app/company/provider invariants and full Edge suite still run afterward.
 This is admin-preconfirmed fictional-phone password semantics, not live employee
 onboarding, SMS delivery, real provider setup, native persistence or Face hardware.
+
+## Isolated phone-provider prerequisite and previous failures
+
+The phone addition at e0260a0 failed dedicated CI38940621802/job117107020821:
+password grant returned422 while200 remained required. Diagnostic-only728d64b
+failed CI38941232596/job117109093331 with the safe enum
+`phone_provider_disabled`. Prior email/local/global assertions passed in both runs.
+These failures do not verify phone login.
+
+CLI2.121.0 initializes `auth.sms.enable_signup=false`. The local-only helper now
+requires exactly one SMS section, one disabled Twilio section and exactly one
+assignment for each checked key. It changes only SMS enable_signup to true.
+SMS enable_confirmations remains false, Twilio enabled remains false, SID fields
+remain empty and the token remains the unused environment placeholder. Any
+conflicting duplicate, unknown provider, credential environment or default drift
+fails closed. The postcondition reverses the one flag and requires byte equality.
+The helper accepts only the existing original fixture ownership marker, exact
+random project/config path, private directory and real paths without symlinks.
+No tracked Auth config, original fixture, hosted provider or production setting is
+changed. Phone runtime at the new fix head must pass before being reported verified.
