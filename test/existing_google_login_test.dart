@@ -28,7 +28,7 @@ class FakeGoogle extends ExistingGoogleLogin {
   @override Session? get currentSession => session;
   @override Stream<AuthState> get changes => events.stream;
   @override Future<bool> launch() async { launches++; return launchResult; }
-  @override Future<bool> hasExistingMembership(Session s) async { reads++; return read?.future ?? membership; }
+  @override Future<bool> hasExistingMembership(Session s) async { reads++; if (read != null) return read!.future; return membership; }
   void signedIn() { session=fixtureSession(); events.add(AuthState(AuthChangeEvent.signedIn, session)); }
 }
 void main() {
@@ -73,11 +73,19 @@ void main() {
     expect(g.reads,1); g.session=null; g.read!.complete(true); await t.pumpAndSettle(); expect(done,0);
     await g.events.close();
   });
-  testWidgets('unknown membership and failed launch never complete', (t) async {
+  testWidgets('unknown membership never completes', (t) async {
     final g=FakeGoogle(client)..membership=false; var done=0;
     await show(t,g,()=>done++); await t.tap(find.text('登録済みのGoogleでログイン')); await t.pumpAndSettle();
     g.signedIn(); await t.pumpAndSettle(); expect(done,0);
     expect(find.textContaining('既存の会社登録を確認できません'),findsOneWidget);
+    await g.events.close();
+  });
+  testWidgets('failed browser launch never authenticates', (t) async {
+    final g=FakeGoogle(client)..launchResult=false; var done=0;
+    await show(t,g,()=>done++);
+    await t.tap(find.text('登録済みのGoogleでログイン')); await t.pumpAndSettle();
+    expect(done,0); expect(g.reads,0);
+    expect(find.text('Googleログインを開けませんでした。'),findsOneWidget);
     await g.events.close();
   });
   test('fixed session bearer, user filter, callback constant and no authentication writes', () async {
