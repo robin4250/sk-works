@@ -63,9 +63,20 @@ void main() {
       initialReportId: 'report-a', repositoryForTesting: repo)));
     await tester.pumpAndSettle();
   }
+  Future<void> reveal(WidgetTester tester, Finder finder) async {
+    final scrollable = find.byType(Scrollable).first;
+    if (finder.evaluate().isEmpty) {
+      tester.state<ScrollableState>(scrollable).position.jumpTo(0);
+      await tester.pumpAndSettle();
+    }
+    await tester.scrollUntilVisible(finder, 250, scrollable: scrollable, maxScrolls: 30);
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+  }
+
   Future<void> begin(WidgetTester tester) async {
     final button = find.byKey(const ValueKey('daily-report-begin-approved-edit'));
-    await tester.ensureVisible(button);
+    await reveal(tester, button);
     await tester.tap(button);
     await tester.pumpAndSettle();
   }
