@@ -3,6 +3,7 @@ const scopes = new Map([
  ['secondary_password.replace', 'secondary_password'],
  ['master.feature.set', 'master_feature'],
  ['master.security_incidents.read', 'master_security'],
+ ['master.device.lock', 'master_device_lock'],
 ]);
 const featureKeys = new Set(['vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop']);
 const reply = (status, data) => new Response(JSON.stringify(data), {
@@ -63,12 +64,15 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
   if(!target||typeof target!=='object'||Array.isArray(target))return reply(400,{error:'invalid_request'});
   if(payload.operation==='secondary_password.replace'&&(Object.keys(target).join(',')!=='user_id'||target.user_id!==user.id))return reply(400,{error:'invalid_request'});
   if(payload.operation==='master.feature.set'&&(Object.keys(target).sort().join(',')!=='enabled,feature_key'||!featureKeys.has(target.feature_key)||typeof target.enabled!=='boolean'))return reply(400,{error:'invalid_request'});
+  if(payload.operation==='master.device.lock'&&(Object.keys(target).sort().join(',')!=='device_id,locked'||!uuid.test(target.device_id??'')||target.device_id!==target.device_id.toLowerCase()||typeof target.locked!=='boolean'))return reply(400,{error:'invalid_request'});
   if(payload.operation==='master.security_incidents.read'&&(Object.keys(target).join(',')!=='scope'||target.scope!=='platform'))return reply(400,{error:'invalid_request'});
   try {
-   const capabilities=await request('/rest/v1/rpc/reauthentication_capabilities',{method:'POST',headers:{apikey:publicKey,Authorization:authorization,'Content-Type':'application/json'},body:'{}'});
+   const deviceOperation=payload.operation==='master.device.lock';
+   const capabilities=await request(deviceOperation?'/rest/v1/rpc/master_device_lock_capability':'/rest/v1/rpc/reauthentication_capabilities',{method:'POST',headers:{apikey:publicKey,Authorization:authorization,'Content-Type':'application/json'},body:'{}'});
    if(!capabilities.ok)return reply(503,{error:'reauthentication_unavailable'});
    const value=await capabilities.json();
-   if(value?.protocol!=='sko-reauthentication-v1'||value[scopes.get(payload.operation)]!==true)return reply(403,{error:'reauthentication_disabled'});
+   if(deviceOperation ? (value?.protocol!=='sko-master-device-lock-v1'||value.enabled!==true)
+     : (value?.protocol!=='sko-reauthentication-v1'||value[scopes.get(payload.operation)]!==true))return reply(403,{error:'reauthentication_disabled'});
   }catch{return reply(503,{error:'reauthentication_unavailable'});}
   let temporaryAccess,temporaryActor;
   try {
