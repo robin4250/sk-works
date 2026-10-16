@@ -102,9 +102,20 @@ void main() {
       initialReportId: 'report-a', repositoryForTesting: repo)));
     await tester.pumpAndSettle();
   }
+  Future<void> reveal(WidgetTester tester, Finder finder) async {
+    final scrollable = find.byType(Scrollable).first;
+    if (finder.evaluate().isEmpty) {
+      tester.state<ScrollableState>(scrollable).position.jumpTo(0);
+      await tester.pumpAndSettle();
+    }
+    await tester.scrollUntilVisible(finder, 250, scrollable: scrollable, maxScrolls: 30);
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+  }
+
   Future<void> begin(WidgetTester tester) async {
     final button = find.byKey(const ValueKey('daily-report-begin-approved-edit'));
-    await tester.ensureVisible(button);
+    await reveal(tester, button);
     await tester.tap(button);
     await tester.pumpAndSettle();
   }
@@ -171,7 +182,7 @@ void main() {
       requestId: 'request-a', confirmed: true));
     await open(tester, repo);
     final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)).first;
-    await tester.ensureVisible(tile);
+    await reveal(tester, tile);
     await tester.tap(tile);
     await tester.pumpAndSettle();
     expect(find.byType(SignatureCapturePage), findsOneWidget);
@@ -187,7 +198,7 @@ void main() {
       await prepareCompletion(tester, repo);
       expect(repo.signCalls, 0);
       final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
-      await tester.ensureVisible(finish);
+      await reveal(tester, finish);
       await tester.tap(finish);
       await tester.pumpAndSettle();
       expect(repo.signCalls, 1);
@@ -200,7 +211,7 @@ void main() {
       final repo = EditableReports(client)..commitThenThrow = true;
       await prepareCompletion(tester, repo);
       final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
-      await tester.ensureVisible(finish);
+      await reveal(tester, finish);
       await tester.tap(finish);
       await tester.pumpAndSettle();
       expect(repo.signCalls, 1);
@@ -216,7 +227,7 @@ void main() {
       final repo = EditableReports(client);
       await prepareCompletion(tester, repo);
       final description = find.byType(TextField).first;
-      await tester.ensureVisible(description);
+      await reveal(tester, description);
       await tester.enterText(description, '変更した作業');
       await tester.pumpAndSettle();
       final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
@@ -230,7 +241,7 @@ void main() {
       await prepareCompletion(tester, repo);
       repo.actor = 'another-user';
       final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
-      await tester.ensureVisible(finish);
+      await reveal(tester, finish);
       await tester.tap(finish);
       await tester.pumpAndSettle();
       expect(repo.signCalls, 0);
@@ -247,7 +258,7 @@ void main() {
       await open(tester, repo);
       expect(find.byKey(const ValueKey('daily-report-finish-approved-edit')), findsNothing);
       final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)).first;
-      await tester.ensureVisible(tile);
+      await reveal(tester, tile);
       await tester.tap(tile);
       await tester.pumpAndSettle();
       expect(find.byType(SignatureCapturePage), findsNothing);
@@ -261,7 +272,7 @@ void main() {
       await open(tester, repo);
       expect(find.byKey(const ValueKey('daily-report-finish-approved-edit')), findsNothing);
       final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)).first;
-      await tester.ensureVisible(tile);
+      await reveal(tester, tile);
       await tester.tap(tile);
       await tester.pumpAndSettle();
       Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
@@ -280,7 +291,7 @@ void main() {
       await tester.pumpAndSettle();
       final reporterTile = find.ancestor(of: find.text('報告者サイン'),
         matching: find.byType(ListTile)).first;
-      await tester.ensureVisible(reporterTile);
+      await reveal(tester, reporterTile);
       await tester.tap(reporterTile);
       await tester.pumpAndSettle();
       expect(find.byType(SignatureCapturePage), findsOneWidget);
@@ -292,7 +303,7 @@ void main() {
       expect(repo.reporterSigned, isTrue);
       final responsibleTile = find.ancestor(of: find.text('責任者サイン'),
         matching: find.byType(ListTile)).first;
-      await tester.ensureVisible(responsibleTile);
+      await reveal(tester, responsibleTile);
       await tester.tap(responsibleTile);
       await tester.pumpAndSettle();
       Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
@@ -301,7 +312,7 @@ void main() {
       expect(repo.reporterCalls, 1);
       expect(repo.signCalls, 0);
       final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
-      await tester.ensureVisible(finish);
+      await reveal(tester, finish);
       await tester.tap(finish);
       await tester.pumpAndSettle();
       expect(repo.signCalls, 1);
