@@ -15,8 +15,8 @@ export function platformQuery(source,from,to){
  return `select id, timestamp${fields} from logs where source = '${source}' and timestamp >= toDateTime64('${literal(from)}',3,'UTC') and timestamp < toDateTime64('${literal(to)}',3,'UTC') order by timestamp asc, id asc limit 1000`;
 }
 function at(value){
- // ClickHouse DateTime64 UTC can omit Z and use microseconds. Do not infer a local timezone.
- if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z?$/.test(value))throw Error('Invalid log timestamp');
+ // ClickHouse DateTime64 UTC can omit Z and use up to nanoseconds. Do not infer a local timezone.
+ if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z?$/.test(value))throw Error('Invalid log timestamp');
  const normalized=value.replace(' ','T');const d=new Date(normalized.endsWith('Z')?normalized:normalized+'Z');if(!Number.isFinite(+d))throw Error('Invalid log timestamp');return d.toISOString();
 }
 export function sanitizePlatformRows({source,rows,from,to,hmacKey,keyEpoch}){
