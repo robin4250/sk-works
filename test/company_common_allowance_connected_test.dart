@@ -142,8 +142,14 @@ void main() {
  testWidgets('unknown result retains input and durable command; receipt lookup never resends', (tester) async {
   final repo = FakeRepository()..loseReply = true; final store = MemoryStore(); await show(tester, repo, store);
   await add(tester, '失敗保持'); await save(tester); expect(store.pending, isNotNull); expect(repo.writes, 1); expect(find.text('失敗保持'), findsOneWidget);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused); await tester.pump();
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await tester.pumpAndSettle();
   await tester.tap(find.text('保存状態を確認')); await tester.pumpAndSettle(); expect(repo.writes, 1); expect(repo.receipts, 1); expect(store.pending, isNull);
-  await tester.tap(find.text('閉じる')); await tester.pumpAndSettle(); await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
+  await tester.tap(find.text('閉じる')); await tester.pumpAndSettle(); expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '追加')).onPressed, isNotNull); await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
  });
  testWidgets('viewer cannot add; background preserves drafts and actor switch destroys private subtree', (tester) async {
   final repo = FakeRepository()..value = CompanyCommonAllowanceState.parse(state(canEdit: false), company); final store = MemoryStore(); await show(tester, repo, store);

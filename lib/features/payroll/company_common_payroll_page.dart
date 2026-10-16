@@ -202,7 +202,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
       if (!_valid(generation)) return;
       await _store.clear(pending);
       if (!_valid(generation)) return;
-      setState(() { _pending = null; _accept(saved, only: type); });
+      setState(() { _pending = null; _conflict = false; _error = null; _accept(saved, only: type); });
       await _showComplete();
     } on PostgrestException catch (error) {
       if (journalWritten && ['42501', '40001', '22023', 'PGRST202'].contains(error.code) && _valid(generation)) {
@@ -230,7 +230,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
       if (saved == null) { setState(() => _error = '保存履歴がまだ確認できません。再送は行いません。時間をおいて確認してください。'); return; }
       await _store.clear(pending);
       if (!_valid(generation)) return;
-      setState(() { _pending = null; _accept(saved, only: CompanyPayrollType.values.byName(pending.payrollType)); });
+      setState(() { _pending = null; _conflict = false; _error = null; _accept(saved, only: CompanyPayrollType.values.byName(pending.payrollType)); });
       await _showComplete();
     } catch (_) {
       if (_valid(generation)) setState(() => _error = '保存結果を照合できません。再送せず入力・確認記録を保持しています。');
