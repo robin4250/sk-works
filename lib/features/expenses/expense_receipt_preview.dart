@@ -42,6 +42,8 @@ class _ExpenseReceiptPreviewState extends State<ExpenseReceiptPreview>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _suspended = lifecycle != null && lifecycle != AppLifecycleState.resumed;
     _actor = widget.initialActor ??
         (SupabaseBackend.isInitialized
             ? SupabaseBackend.client.auth.currentUser?.id
@@ -61,7 +63,7 @@ class _ExpenseReceiptPreviewState extends State<ExpenseReceiptPreview>
         _load();
       }
     }, onError: (Object error) => _revoke(), onDone: _revoke);
-    if (!_revoked) _load();
+    if (!_revoked && !_suspended) _load();
   }
 
   void _clear() {

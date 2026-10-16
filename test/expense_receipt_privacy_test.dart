@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/expenses/expense_receipt_preview.dart';
 
 void main() {
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
+  tearDown(() => binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
   Future<void> mount(WidgetTester tester, StreamController<String?> actors,
       Future<String> Function(String) loader,
       {Duration lifetime = const Duration(seconds: 300)}) async {
@@ -88,5 +91,20 @@ void main() {
     await tester.pump();
     expect(find.textContaining('image:'), findsNothing);
     expect(find.textContaining('本人確認'), findsOneWidget);
+  });
+
+  testWidgets('mounting while inactive never requests a URL until resume',
+      (tester) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    final actors = StreamController<String?>();
+    addTearDown(actors.close);
+    var calls = 0;
+    await mount(tester, actors, (_) async { calls++; return 'fresh'; });
+    expect(calls, 0);
+    expect(find.textContaining('image:'), findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(calls, 1);
+    expect(find.text('image:fresh'), findsOneWidget);
   });
 }
