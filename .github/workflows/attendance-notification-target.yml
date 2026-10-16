@@ -1,0 +1,23 @@
+name: Attendance notification target
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/attendance_notification_page.dart'
+      - 'lib/features/notifications/notifications_page.dart'
+      - 'test/attendance_notification_target_test.dart'
+      - '.github/workflows/attendance-notification-target.yml'
+permissions:
+  contents: read
+jobs:
+  target:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/attendance/attendance_notification_page.dart test/attendance_notification_target_test.dart
+      - run: flutter test test/attendance_notification_target_test.dart

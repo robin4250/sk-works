@@ -18,7 +18,7 @@ import '../invoices/invoice_cloud_page.dart';
 import '../chat/chat_cloud_page.dart';
 import '../payroll/individual_payroll_settings_page.dart';
 import '../payroll/payroll_review_page.dart';
-import '../attendance/today_attendance_page.dart';
+import '../attendance/attendance_notification_page.dart';
 import '../payroll/payroll_review_repository.dart';
 import '../payroll/payment_certificates_page.dart';
 import '../payroll/site_contract_notification_page.dart';
@@ -447,7 +447,7 @@ Widget? notificationDestination(
   'route_billing_quantity_request' => RouteBillingQuantityApprovalsPage(
     initialRequestId: item.actionId,
   ),
-  'attendance_today' => const TodayAttendancePage(),
+  'attendance_today' => AttendanceNotificationPage(verificationId: item.actionId ?? ''),
   'document_register' => const OwnDocumentRegistrationPage(),
   'chat_group_invite' => const ChatCloudPage(showGroupsInitially: true),
   'site_map' => const GeneralSiteMapPage(),
