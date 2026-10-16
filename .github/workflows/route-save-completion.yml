@@ -1,0 +1,22 @@
+name: Route save completion
+on:
+  pull_request:
+    paths:
+      - 'lib/features/operations/route_editor_page.dart'
+      - 'test/route_editor_completion_test.dart'
+      - '.github/workflows/route-save-completion.yml'
+permissions:
+  contents: read
+jobs:
+  route-save:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/operations/route_editor_page.dart test/route_editor_completion_test.dart
+      - run: flutter test test/route_editor_completion_test.dart
