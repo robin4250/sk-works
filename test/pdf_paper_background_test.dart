@@ -42,6 +42,7 @@ void main() {
         await tester.pumpAndSettle();
         final boundary = boundaryKey.currentContext!.findRenderObject()
             as RenderRepaintBoundary;
+        await tester.runAsync(() async {
         final screenshot = await boundary.toImage(pixelRatio: 1);
         final data = (await screenshot.toByteData(
           format: ui.ImageByteFormat.rawRgba))!;
@@ -56,6 +57,7 @@ void main() {
         expect(pixel(2, 2), background,
           reason: 'Surrounding preview keeps the selected theme');
         screenshot.dispose();
+        });
         final viewer = tester.widget<InteractiveViewer>(
           find.byType(InteractiveViewer));
         expect(viewer.minScale, 1);
