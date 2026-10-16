@@ -59,3 +59,26 @@ jobs:
           node-version: '22'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
       - run: node tool/security/platform_log_sql_check.mjs "$PWD/tool/security/platform_log_pg_adapter.mjs"
+  clickhouse-unified-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:25.3
+        env:
+          CLICKHOUSE_DB: sko_platform_fixture
+          CLICKHOUSE_USER: fixture
+          CLICKHOUSE_PASSWORD: fixture-only
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
+        ports: ['8123:8123']
+        options: >-
+          --health-cmd "clickhouse-client --user fixture --password fixture-only --query 'SELECT 1'"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      SKO_PLATFORM_CLICKHOUSE_URL: http://127.0.0.1:8123/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tool/security/platform_log_clickhouse_check.mjs
