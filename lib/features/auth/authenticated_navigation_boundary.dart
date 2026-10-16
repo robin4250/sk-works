@@ -42,7 +42,11 @@ class _AuthenticatedNavigationBoundaryState
             .map((event) => event.session?.user.id);
     _subscription = changes.listen((actor) {
       if (!mounted || (actor == _actor && !_failed)) return;
+      final previous = _actor;
       _actor = actor;
+      // A first sign-in is still owned by the existing onboarding/OTP callback:
+      // its password/profile update may be in flight after the SDK signedIn event.
+      if (previous == null && actor != null && !_failed && !_resetting) return;
       _reset();
     }, onError: (Object error) => _fail(), onDone: _fail);
   }

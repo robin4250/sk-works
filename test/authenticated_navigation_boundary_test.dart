@@ -17,7 +17,48 @@ class _PrivatePageState extends State<_PrivatePage> {
   Widget build(BuildContext context) => const Scaffold(body: Text('private file'));
 }
 
+class _InitialLoginFlow extends StatefulWidget {
+  const _InitialLoginFlow(this.completion, this.onDispose);
+  final Future<void> completion;
+  final VoidCallback onDispose;
+  @override
+  State<_InitialLoginFlow> createState() => _InitialLoginFlowState();
+}
+class _InitialLoginFlowState extends State<_InitialLoginFlow> {
+  bool _completed = false;
+  @override
+  void initState() {
+    super.initState();
+    widget.completion.then((_) { if (mounted) setState(() => _completed = true); });
+  }
+  @override
+  void dispose() { widget.onDispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) =>
+      Text(_completed ? 'registration completed' : 'password update pending');
+}
+
 void main() {
+  testWidgets('first sign-in preserves pending OTP/onboarding completion',
+      (tester) async {
+    final changes = StreamController<String?>();
+    addTearDown(changes.close);
+    final completion = Completer<void>();
+    var disposed = 0;
+    await tester.pumpWidget(AuthenticatedNavigationBoundary(
+      actorChanges: changes.stream,
+      child: MaterialApp(home: _InitialLoginFlow(
+        completion.future, () => disposed++)),
+    ));
+    changes.add('owner');
+    await tester.pump();
+    expect(find.text('password update pending'), findsOneWidget);
+    expect(disposed, 0);
+    completion.complete();
+    await tester.pump();
+    expect(find.text('registration completed'), findsOneWidget);
+    expect(disposed, 0);
+  });
   for (final actor in <String?>[null, 'other']) {
     testWidgets('identity $actor destroys pushed private pages and Navigator',
         (tester) async {
