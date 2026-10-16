@@ -1,0 +1,20 @@
+name: Attendance update badge
+on:
+  pull_request:
+    paths:
+      - 'lib/features/home/attendance_update_badge_repository.dart'
+      - 'lib/features/home/friendly_home_content.dart'
+      - 'lib/app_v2.dart'
+      - 'test/attendance_update_badge_test.dart'
+      - '.github/workflows/attendance-update-badge.yml'
+jobs:
+  scoped-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/home/attendance_update_badge_repository.dart lib/features/home/friendly_home_content.dart lib/app_v2.dart test/attendance_update_badge_test.dart
+      - run: flutter test test/attendance_update_badge_test.dart --reporter expanded

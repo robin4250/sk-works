@@ -48,6 +48,8 @@ class FriendlyHomeContent extends StatelessWidget {
     this.shortcuts = const <HomeShortcut>[],
     this.showAttendanceReport = true,
     this.showTodayAttendance = true,
+    this.attendanceUpdateCount,
+    this.attendanceUpdateUnavailable = false,
     this.attendanceStatus = const HomeAttendanceStatus(),
     this.routeActionState = HomeRouteActionState.unavailable,
     this.optionalClockInAllowed = true,
@@ -74,6 +76,8 @@ class FriendlyHomeContent extends StatelessWidget {
   final List<HomeShortcut> shortcuts;
   final bool showAttendanceReport;
   final bool showTodayAttendance;
+  final int? attendanceUpdateCount;
+  final bool attendanceUpdateUnavailable;
   final HomeAttendanceStatus attendanceStatus;
   final HomeRouteActionState routeActionState;
   final bool optionalClockInAllowed;
@@ -148,6 +152,8 @@ class FriendlyHomeContent extends StatelessWidget {
                 shortcuts: shortcuts,
                 showAttendanceReport: showAttendanceReport,
                 showTodayAttendance: showTodayAttendance,
+                attendanceUpdateCount: attendanceUpdateCount,
+                attendanceUpdateUnavailable: attendanceUpdateUnavailable,
                 attendanceStatus: attendanceStatus,
                 routeActionState: routeActionState,
                 optionalClockInAllowed: optionalClockInAllowed,
@@ -549,6 +555,8 @@ class _OrderedHomeContent extends StatelessWidget {
     required this.shortcuts,
     required this.showAttendanceReport,
     required this.showTodayAttendance,
+    required this.attendanceUpdateCount,
+    required this.attendanceUpdateUnavailable,
     required this.attendanceStatus,
     required this.routeActionState,
     required this.optionalClockInAllowed,
@@ -569,6 +577,8 @@ class _OrderedHomeContent extends StatelessWidget {
   final List<HomeShortcut> shortcuts;
   final bool showAttendanceReport;
   final bool showTodayAttendance;
+  final int? attendanceUpdateCount;
+  final bool attendanceUpdateUnavailable;
   final HomeAttendanceStatus attendanceStatus;
   final HomeRouteActionState routeActionState;
   final bool optionalClockInAllowed;
@@ -681,6 +691,8 @@ class _OrderedHomeContent extends StatelessWidget {
             child: Opacity(
               opacity: appearance.cardOpacity,
               child: _TodayAttendanceHomeCard(
+                updateCount: attendanceUpdateCount,
+                updateUnavailable: attendanceUpdateUnavailable,
                 buttonOpacity: appearance.cardButtonOpacity,
                 onOpen: onOpen,
               ),
@@ -825,10 +837,14 @@ class _HomeReorderSurface extends StatelessWidget {
 class _TodayAttendanceHomeCard extends StatelessWidget {
   const _TodayAttendanceHomeCard({
     required this.buttonOpacity,
+    required this.updateCount,
+    required this.updateUnavailable,
     required this.onOpen,
   });
 
   final double buttonOpacity;
+  final int? updateCount;
+  final bool updateUnavailable;
   final Future<void> Function(String key) onOpen;
 
   @override
@@ -851,10 +867,14 @@ class _TodayAttendanceHomeCard extends StatelessWidget {
                         ),
                   ),
                 ),
+                AttendanceUpdateCountBadge(count: updateCount),
                 const SizedBox(width: 8),
                 const NotificationSettingsButton(),
               ],
             ),
+            if (updateUnavailable)
+              const Text('未確認更新を確認できません。再読み込みしてください。',
+                key: ValueKey('attendance-update-unavailable')),
             const SizedBox(height: 6),
             FittedBox(
               fit: BoxFit.scaleDown,
@@ -1116,3 +1136,26 @@ class _HomeAction {
   final HomeShortcutAccess access;
 }
 
+
+class AttendanceUpdateCountBadge extends StatelessWidget {
+  const AttendanceUpdateCountBadge({super.key, required this.count});
+  final int? count;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = count;
+    if (value == null || value <= 0) return const SizedBox.shrink();
+    return Semantics(
+      label: '未確認の出勤更新$value件',
+      child: Container(
+        key: const ValueKey('attendance-update-count'),
+        constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+        child: Text(value > 99 ? '99+' : '$value',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+      ),
+    );
+  }
+}

@@ -49,6 +49,7 @@ import 'features/home/home_route_action_state.dart';
 import 'features/home/employee_resources_page.dart';
 import 'features/attendance/route_journey_capture_repository.dart';
 import 'features/home/home_attention_repository.dart';
+import 'features/home/attendance_update_badge_repository.dart';
 import 'features/home/home_weather_location_repository.dart';
 import 'features/home/weather_forecast_home_card.dart';
 import 'features/home/weather_forecast_gateway.dart';
@@ -208,6 +209,72 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   HomeAttendanceStatus _homeAttendanceStatus = const HomeAttendanceStatus();
   HomeRouteActionState _homeRouteActionState = HomeRouteActionState.unavailable;
   int _homeAttendanceGeneration = 0;
+  AttendanceBadgeSnapshot? _attendanceBadge;
+  bool _attendanceBadgeUnavailable = false;
+  int _attendanceBadgeGeneration = 0;
+  bool _attendanceBadgeOpening = false;
+  AttendanceBadgeScope? get _attendanceBadgeScope {
+    final actor = SupabaseBackend.isInitialized
+        ? SupabaseBackend.client.auth.currentUser?.id : null;
+    final company = _tutorialCompanyId;
+    if (actor == null || actor != _tutorialUserId || company == null) return null;
+    return AttendanceBadgeScope(actor, company, attendanceBadgeJstDate(DateTime.now()));
+  }
+  int? get _attendanceBadgeCount {
+    final scope = _attendanceBadgeScope;
+    final snapshot = _attendanceBadge;
+    return scope != null && snapshot != null && snapshot.scope.same(scope)
+        ? snapshot.count : null;
+  }
+
+  Future<void> _loadAttendanceUpdateBadge() async {
+    final request = ++_attendanceBadgeGeneration;
+    final scope = _attendanceBadgeScope;
+    final repository = AttendanceUpdateBadgeRepository.maybeCreate();
+    if (scope == null || repository == null) {
+      if (mounted) setState(() {
+        _attendanceBadge = null;
+        _attendanceBadgeUnavailable = true;
+      });
+      return;
+    }
+    bool current() {
+      final value = _attendanceBadgeScope;
+      return mounted && request == _attendanceBadgeGeneration &&
+          value != null && value.same(scope);
+    }
+    try {
+      final snapshot = await repository.load(scope);
+      if (!current()) return;
+      setState(() {
+        _attendanceBadge = snapshot;
+        _attendanceBadgeUnavailable = false;
+      });
+    } catch (_) {
+      if (!current()) return;
+      setState(() => _attendanceBadgeUnavailable = true);
+    }
+  }
+
+  Future<void> _acknowledgeAttendanceBadge(
+      AttendanceBadgeSnapshot? snapshot, DateTime openedAt) async {
+    final scope = _attendanceBadgeScope;
+    final repository = AttendanceUpdateBadgeRepository.maybeCreate();
+    if (snapshot == null || scope == null || !snapshot.scope.same(scope) ||
+        repository == null) return;
+    ++_attendanceBadgeGeneration;
+    try {
+      await repository.acknowledge(snapshot, openedAt);
+      final current = _attendanceBadgeScope;
+      if (!mounted || current == null || !current.same(scope)) return;
+      await _loadAttendanceUpdateBadge();
+    } catch (_) {
+      final current = _attendanceBadgeScope;
+      if (!mounted || current == null || !current.same(scope)) return;
+      setState(() => _attendanceBadgeUnavailable = true);
+    }
+  }
+
   bool _homeOptionalClockInAllowed = false;
   TrafficAvailability _homeTrafficAvailability = TrafficAvailability.unavailable;
   List<String> _homePendingRouteSourceIds = const [];
@@ -256,6 +323,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed || !mounted) return;
     // The gateway owns the registered region's calendar, including day changes.
     _loadWeatherLocation();
+    _loadAttendanceUpdateBadge();
   }
 
   Future<void> _loadHomeData() async {
@@ -270,7 +338,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _loadPayrollAdjustmentAccess(),
       _syncLanguage(),
     ]);
-    await _loadWeatherLocation();
+    await Future.wait([_loadWeatherLocation(), _loadAttendanceUpdateBadge()]);
   }
 
   Future<void> _loadWeatherLocation() async {
@@ -1041,11 +1109,25 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
     if (key == 'attendance_today') {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => const TodayAttendancePage(),
-        ),
+      if (_attendanceBadgeOpening) return;
+      _attendanceBadgeOpening = true;
+      final snapshot = _attendanceBadge;
+      final openedAt = DateTime.now();
+      final route = MaterialPageRoute<void>(
+        builder: (_) => const TodayAttendancePage(),
       );
+      try {
+        final closed = Navigator.of(context).push(route);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // A failed push or a route displaced before its first frame is not an open.
+          if (mounted && route.isCurrent) {
+            _acknowledgeAttendanceBadge(snapshot, openedAt);
+          }
+        });
+        await closed;
+      } finally {
+        _attendanceBadgeOpening = false;
+      }
       return;
     }
     if (key == 'footer_sites' || key == 'site_register') {
@@ -1808,6 +1890,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           showTodayAttendance:
               !_hiddenHomeActionKeys.contains('attendance_today'),
           attendanceStatus: _homeAttendanceStatus,
+          attendanceUpdateCount: _attendanceBadgeCount,
+          attendanceUpdateUnavailable: _attendanceBadgeUnavailable,
           optionalClockInAllowed: _homeOptionalClockInAllowed,
           routeActionState: _homeRouteActionState,
           hasPendingRouteRecord: _homePendingRouteSourceIds.isNotEmpty,
