@@ -111,8 +111,10 @@ void main() {
       expect(returnedProofs, 0);
       expect(find.byKey(const Key('master-device-lock-password')), findsOneWidget);
       currentActor = actor;
-      for (final state in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
-        tester.binding.handleAppLifecycleStateChanged(state);
+      if (interruption == 'background') {
+        for (final state in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+        }
       }
       await tester.pumpAndSettle();await verify(tester);
       expect(requests, 2);expect(returnedProofs, 1);

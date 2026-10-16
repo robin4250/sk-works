@@ -55,9 +55,24 @@ class _ProofState extends State<MasterDeviceLockProofDialog> with WidgetsBinding
       // Nonce returned once to this exact requested operation, never persisted.
       setState(() {_returned = true;_busy = false;});
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && ModalRoute.of(context)?.isCurrent == true) {
-          Navigator.of(context).pop(proof);
+        if (!mounted) return;
+        if (generation != _generation ||
+            widget.currentActor() != widget.expectedActor ||
+            _lifecycle != AppLifecycleState.resumed ||
+            ModalRoute.of(context)?.isCurrent != true) {
+          // The credential response and this frame are separate async turns.
+          // Discard the nonce if anything changed between them, and permit a
+          // fresh verification after returning to the original account/app.
+          _generation++;
+          _password.clear();
+          setState(() {
+            _returned = false;
+            _busy = false;
+            _error = 'ログイン状態が変わりました。本人確認をやり直してください。';
+          });
+          return;
         }
+        Navigator.of(context).pop(proof);
       });
     } catch (_) {
       if (mounted && generation == _generation) {
