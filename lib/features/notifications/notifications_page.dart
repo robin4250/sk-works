@@ -254,11 +254,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     final data = _data;
-    final items =
-        data?.snapshot.items
-            .where((item) => !_pendingOnly || item.needsAction)
-            .toList() ??
-        const <AttentionCenterItem>[];
+    bool unread(AttentionCenterItem item) =>
+        (data?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[])
+            .any((id) => data?.notificationsById[id]?.read == false);
+    final visible = data?.snapshot.items
+        .where((item) => !_pendingOnly || item.needsAction).toList() ??
+        <AttentionCenterItem>[];
+    // Stable partition: retain existing task/deadline order within each section.
+    final items = [
+      ...visible.where(unread),
+      ...visible.where((item) => !unread(item)),
+    ];
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -333,6 +339,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
                             ),
                           for (final item in items)
                             Card(
+                              color: unread(item)
+                                  ? Theme.of(context).colorScheme.primaryContainer
+                                  : null,
                               child: ListTile(
                                 leading: CircleAvatar(
                                   child: Icon(
@@ -352,6 +361,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    if (unread(item))
+                                      Text(SkoLanguageController.tr('未読'),
+                                        style: const TextStyle(fontWeight: FontWeight.w900)),
                                     if (item.body.isNotEmpty) Text(item.body),
                                     if (item.state !=
                                         AttentionCenterState.information)
@@ -366,7 +378,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                   ],
                                 ),
                                 trailing:
-                                    item.source == 'notification' && !item.read
+                                    unread(item)
                                     ? const Badge(
                                         child: Icon(Icons.chevron_right),
                                       )
