@@ -574,7 +574,7 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
     try {
       final rows = await repository.loadForInvoice(widget.invoice.invoiceId);
       if (!mounted) return;
-      await showModalBottomSheet<void>(
+      final cancellationRequested = await showModalBottomSheet<bool>(
         context: context,
         isScrollControlled: true,
         builder: (sheetContext) => SafeArea(
@@ -627,18 +627,9 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
                           ),
                         if (row.canCurrentUserCancel)
                           TextButton(
-                            onPressed: () async {
-                              Navigator.pop(sheetContext);
-                              try {
-                                await repository.cancel(
-                                  widget.invoice.invoiceId,
-                                );
-                                if (mounted) setState(() => _revision++);
-                              } catch (error) {
-                                _showError(error);
-                              }
-                            },
-                            child: const Text('承認取消'),
+                            onPressed: () =>
+                                Navigator.pop(sheetContext, true),
+                            child: const Text('承認を解除'),
                           ),
                       ],
                     ),
@@ -655,6 +646,19 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
             ),
           ),
         ),
+      );
+      if (!mounted || cancellationRequested != true) return;
+      final confirmed =
+          await showInvoiceApprovalCancellationConfirmation(context);
+      if (!mounted || !confirmed) return;
+      await repository.cancel(widget.invoice.invoiceId);
+      if (!mounted) return;
+      // Re-read server approval state before rebuilding the generated PDF.
+      await repository.loadForInvoice(widget.invoice.invoiceId);
+      if (!mounted) return;
+      setState(() => _revision++);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ご自身の承認を解除しました。')),
       );
     } catch (error) {
       _showError(error);
@@ -830,3 +834,28 @@ String _yen(int value) {
   return '${negative ? '-' : ''}¥$buffer';
 }
 
+
+Future<bool> showInvoiceApprovalCancellationConfirmation(
+  BuildContext context,
+) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('承認を解除しますか？'),
+        content: const Text(
+          'ご自身の承認印を解除して未承認に戻します。'
+          'ほかの承認者の承認と、これまでの承認履歴は保持されます。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('承認を解除'),
+          ),
+        ],
+      ),
+    ) ??
+    false;
