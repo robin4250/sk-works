@@ -36,6 +36,7 @@ void main() {
   setUpAll(() { client=SupabaseClient('https://google-login-fixture.invalid','public_fixture', authOptions:const AuthClientOptions(autoRefreshToken:false), httpClient:MockClient((r) async => throw StateError('No live authentication: ${r.url.host}'))); });
   tearDownAll(() async { await client.dispose(); });
   Future<void> show(WidgetTester t, FakeGoogle g, VoidCallback done) async {
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await t.binding.setSurfaceSize(const Size(900,1400));
     addTearDown(() => t.binding.setSurfaceSize(null));
     await t.pumpWidget(MaterialApp(home:SecureAuthPage(googleLogin:g,onAuthenticated:done)));
