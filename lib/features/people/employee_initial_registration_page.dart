@@ -52,7 +52,13 @@ class _EmployeeInitialRegistrationPageState
         repository.loadRegisteredEmployees(),
         repository.loadTestFlightUrl(),
       ]);
-      if (!mounted || actor == null || SupabaseBackend.client.auth.currentUser?.id != actor) return;
+      if (!mounted) return;
+      if (actor == null || SupabaseBackend.client.auth.currentUser?.id != actor) {
+        _testFlightUrl.clear();
+        setState(() { _employees = const []; _loadedActor = null; _loading = false;
+          _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+        return;
+      }
       _loadedActor = actor;
       final employees = results[0] as List<InitialRegistrationEmployee>;
       _testFlightUrl.text = results[1] as String;

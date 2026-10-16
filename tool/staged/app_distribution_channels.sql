@@ -33,7 +33,9 @@ begin
        or url ~ '[[:space:]@\\]') then raise exception 'invalid HTTPS guide URL'; end if;
    end loop;
    update private.app_referral_settings set testflight_url=tf,web_url=web,
-     public_guide_url=guide,updated_at=clock_timestamp() where id;
+     public_guide_url=guide,
+     distribution_url=case when distribution_url ~ '^https://testflight\\.apple\\.com/join/' then tf else distribution_url end,
+     updated_at=clock_timestamp() where id;
    return '{}'::jsonb;
  end if;
  tf:=case when s.testflight_url<>'' then s.testflight_url
@@ -54,7 +56,7 @@ begin
      jsonb_build_object('key','web','label','WEB版','ready',web<>''),
      jsonb_build_object('key','public','label','公開版の案内','ready',guide<>'' and s.public_enabled)),
      'distribution_links',case when coalesce((p_args->>'master')::boolean,false)
-       then jsonb_build_object('testflight',s.testflight_url,'web',web,'public',guide)
+       then jsonb_build_object('testflight',tf,'web',web,'public',guide)
        else '{}'::jsonb end,
      'invitations',history);
  end if;
