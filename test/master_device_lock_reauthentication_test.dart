@@ -58,7 +58,7 @@ class _Devices implements MasterDeviceRepository {
   @override
   dynamic noSuchMethod(Invocation invocation) => throw StateError('Unexpected device method');
 }
-Future<void> open(WidgetTester tester, _Devices devices, _Proofs proofs) async {
+Future<void> _open(WidgetTester tester, _Devices devices, _Proofs proofs) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   await tester.pumpWidget(MaterialApp(home: MasterDeviceManagementPage(repository: devices, reauthentication: proofs)));
   await tester.pumpAndSettle();
@@ -72,7 +72,7 @@ Future<void> verify(WidgetTester tester) async {
 }
 void main() {
   testWidgets('ON requires primary proof, binds exact device/value and completes lock then unlock', (tester) async {
-    final devices = _Devices(),proofs = _Proofs();await open(tester, devices, proofs);
+    final devices = _Devices(),proofs = _Proofs();await _open(tester, devices, proofs);
     await lock(tester);expect(devices.changes, 0);await verify(tester);
     expect(devices.changes, 1);expect(devices.proof, 'synthetic-single-use-proof');
     expect(proofs.target, {'device_id': deviceId, 'locked': true});
@@ -81,18 +81,18 @@ void main() {
     expect(proofs.target, {'device_id': deviceId, 'locked': false});
   });
   testWidgets('OFF preserves existing device flow without credentials', (tester) async {
-    final devices = _Devices()..required = false;final proofs = _Proofs();await open(tester, devices, proofs);
+    final devices = _Devices()..required = false;final proofs = _Proofs();await _open(tester, devices, proofs);
     await lock(tester);expect(devices.changes, 1);expect(devices.proof, null);expect(proofs.requests, 0);
   });
   testWidgets('capability error and cancelled or denied proof never call a legacy setter', (tester) async {
-    final devices = _Devices()..failCapability = true;final proofs = _Proofs();await open(tester, devices, proofs);
+    final devices = _Devices()..failCapability = true;final proofs = _Proofs();await _open(tester, devices, proofs);
     await lock(tester);expect(devices.changes, 0);expect(proofs.requests, 0);
     devices.failCapability = false;await lock(tester);await tester.tap(find.text('キャンセル'));await tester.pumpAndSettle();
     expect(devices.changes, 0);proofs.fail = true;await lock(tester);await verify(tester);
     expect(devices.changes, 0);expect(find.textContaining('本パスワードで本人確認できませんでした'), findsOneWidget);
   });
   testWidgets('actor switch and background invalidate late proofs', (tester) async {
-    final devices = _Devices(),proofs = _Proofs()..pending = Completer<String>();await open(tester, devices, proofs);
+    final devices = _Devices(),proofs = _Proofs()..pending = Completer<String>();await _open(tester, devices, proofs);
     await lock(tester);await tester.enterText(find.byKey(const Key('master-device-lock-password')), 'synthetic-primary');
     await tester.tap(find.text('本人確認して変更'));await tester.pump();
     devices.currentActor = '10000000-0000-0000-0000-000000000002';
@@ -108,7 +108,7 @@ void main() {
     proofs.pending!.complete('synthetic-single-use-proof');await tester.pumpAndSettle();expect(devices.changes, 0);
   });
   testWidgets('stale duplicate lock callback cannot open duplicate proof requests', (tester) async {
-    final devices = _Devices(),proofs = _Proofs();await open(tester, devices, proofs);
+    final devices = _Devices(),proofs = _Proofs();await _open(tester, devices, proofs);
     final callback = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'ロック')).onPressed!;
     callback();callback();await tester.pumpAndSettle();expect(devices.capabilityCalls, 1);
     await verify(tester);expect(proofs.requests, 1);expect(devices.changes, 1);

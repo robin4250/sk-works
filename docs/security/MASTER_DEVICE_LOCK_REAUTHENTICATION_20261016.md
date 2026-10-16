@@ -40,3 +40,8 @@ explicit approval. This branch does not satisfy or bypass that approval boundary
 
 A device lock is not JWT revocation and does not add step-up to the remaining
 Master APIs. Those separate gaps remain in the coverage inventory.
+
+Supabase CLI 2.121.0 generated the unlinked promotion filename
+`20261016113647_master_device_lock_reauthentication.sql`; only review-only
+`tool/staged` SQL is committed here. The pre-change lock routine fixture is a
+read-only `pg_get_functiondef` copy; it contains no actual device/account rows.
