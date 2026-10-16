@@ -28,9 +28,11 @@ try{
  const fn=path.join(workdir,'supabase/functions/reauthenticate-operation');await fs.mkdir(fn,{recursive:true});
  for(const name of ['index.ts','handler.mjs'])await fs.copyFile(path.join(root,'supabase/functions/reauthenticate-operation',name),path.join(fn,name));
  phase='local-stack';
+ // Keep one Edge runtime owner: start must not serve the function before
+ // the separately spawned functions-serve process has initialized it.
  // Output may contain local keys; capture in memory, never print/upload stdout/stderr.
  const existing=await run('docker',['ps','-a','--filter',`name=${project}`,'--format','{{.ID}}']);if(existing.stdout.trim())throw Error('Existing fixture container collision');
- started=true;await cli(['start','--exclude','realtime,storage-api,imgproxy,studio,postgres-meta,logflare,vector,supavisor'],600000);
+ started=true;await cli(['start','--exclude','edge-runtime,realtime,storage-api,imgproxy,studio,postgres-meta,logflare,vector,supavisor'],600000);
  const raw=await cli(['status','--output','json']);const status=JSON.parse(raw.stdout);
  const api=new URL(status.API_URL),database=new URL(status.DB_URL);
  if(!['127.0.0.1','localhost','[::1]'].includes(api.hostname)||api.protocol!=='http:'||api.port!=='53921'||!['127.0.0.1','localhost','[::1]'].includes(database.hostname)||database.port!=='53922'||database.pathname!=='/postgres')throw Error('Unexpected fixture endpoint');
@@ -90,6 +92,7 @@ try{
  assert.deepEqual(await protectedIdentity(),protectedBefore);
  await db.query("notify pgrst,'reload schema'");
  phase='actual-edge-runtime';
+ const beforeServe=await run('docker',['ps','--filter',`name=${project}`,'--format','{{.Names}}']);assert.ok(!beforeServe.stdout.split('\n').some(n=>n.includes('edge')),'No starter Edge runtime may satisfy serve readiness');
  server=spawn('npx',[...cliArgs,'functions','serve','--workdir',workdir],{cwd:root,stdio:['ignore','pipe','pipe'],env:process.env});
  for(const stream of [server.stdout,server.stderr])stream.on('data',chunk=>{edgeOutput=(edgeOutput+chunk.toString()).slice(-65536);});
  let edgeReady=false;for(let i=0;i<90;i++){
