@@ -1,4 +1,8 @@
 import 'trade_company_dialog.dart';
+import '../../data/supabase_backend.dart';
+import '../referrals/app_referral_page.dart';
+import '../referrals/app_referral_repository.dart';
+import 'company_invite_recipient_picker.dart';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -84,6 +88,28 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       })
       .toList(growable: false);
 
+  Future<void> _invite() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => CompanyInviteRecipientPicker(
+        companies: _visible,
+        onSelected: (company) {
+          Navigator.of(sheetContext).pop();
+          Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => AppReferralPage(
+              repository: AppReferralRepository(SupabaseBackend.client),
+              initialName: company == null ? '' :
+                  company.representativeName.trim().isNotEmpty
+                      ? company.representativeName : company.name,
+              initialPhone: company?.representativePhone ?? '',
+            ),
+          ));
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final visible = _visible;
@@ -94,6 +120,11 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: _loading || _repository == null ? null : _invite,
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+            label: const Text('招待'),
+          ),
           if (_linkEnabled)
             IconButton(
               tooltip: '会社を検索・連携申請',
