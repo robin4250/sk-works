@@ -86,7 +86,10 @@ class Fixture {
   Iterable<http.Request> get storage => requests.where((r) => r.url.path.startsWith('/storage/'));
 }
 
-Future<void> showPage(WidgetTester tester, Fixture fixture, VoidCallback submitted) async {
+Future<void> showPage(WidgetTester tester, Fixture fixture, VoidCallback submitted, {bool resume = true}) async {
+  if (resume) {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
   tester.view.physicalSize = const Size(1200, 2600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -162,7 +165,7 @@ void main() {
       }
     });
     var submitted = 0;
-    await showPage(tester, f, () => submitted++);
+    await showPage(tester, f, () => submitted++, resume: false);
     await fill(tester);
     expect(f.caps, 0);
     expect(f.storage, isEmpty);
