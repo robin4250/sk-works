@@ -88,17 +88,19 @@ grant usage on schema private,auth to authenticated;
  const pidCtl=(await ctl.query('select pg_backend_pid() pid')).rows[0].pid;
  const preview=async(c)=>(await c.query('select site_contract_binding_private.preview($1,$2,$3) v',[parent,item,'invoice'])).rows[0].v;
  const bind=async(c,p,command,rev=0)=>(await c.query('select site_contract_binding_private.bind($1,$2,$3,$4,$5) v',[parent,item,command,rev,p])).rows[0].v;
- const oldPreview=c=>c.query('select public.preview_site_contract_seal($1,$2,null)',[item,parent]);
+ const oldPreview=c=>c.query('select public.preview_site_contract_seal($1,$2,null) v',[item,parent]);
+ const oldSend=(c,hash)=>c.query('select public.send_sealed_site_contract($1,$2,0,$3,$4)',[item,parent,terms,hash]);
  const command='00000000-0000-0000-0000-000000000099';
- // Old real sealed preview starts first and holds canonical inbox row.
+ // Old real sealed send starts first and holds canonical inbox row.
  let p=await preview(ctl);
- await a.query('begin');await oldPreview(a);
+ const oldHash=(await oldPreview(ctl)).rows[0].v.seal_hash;
+ await a.query('begin');await oldSend(a,oldHash);
  const waiting=outcome(bind(b,p,command));await waitBlocked(ctl,pidB,pidA);
- await a.query('commit');assert.equal((await waiting).value.binding_revision,1);
- // Binder starts first; unchanged real old sealed preview waits and succeeds.
+ await a.query('rollback');assert.equal((await waiting).value.binding_revision,1);
+ // Binder starts first; unchanged real old sealed send waits and succeeds.
  p=await preview(ctl);
  await a.query('begin');await bind(a,p,'00000000-0000-0000-0000-000000000098',1);
- const oldWaiting=outcome(oldPreview(b));await waitBlocked(ctl,pidB,pidA);
+ const oldWaiting=outcome(oldSend(b,oldHash));await waitBlocked(ctl,pidB,pidA);
  await a.query('rollback');assert.ok((await oldWaiting).value);
  assert.equal((await ctl.query('select count(*)::int n from site_contract_binding_private.bindings')).rows[0].n,1);
  // Genuine source change lock wait must reject a stale preview after commit.
@@ -112,7 +114,7 @@ grant usage on schema private,auth to authenticated;
  await waitBlocked(ctl,pidB,pidA);await a.query('commit');assert.equal((await off).error?.code,'55000');
  await ctl.query('update private.site_payment_agreement_rollout set enabled=true');
  assert.equal((await ctl.query('select count(*)::int n from site_contract_binding_private.bindings')).rows[0].n,1);
- console.log('real PG: unchanged sealed preview / binder both orders observed; rollback, stale source and existing rollout OFF rejected');
+ console.log('real PG: unchanged sealed send / binder both orders observed; rollback, stale source and existing rollout OFF rejected');
 } finally {
  for(const c of clients) {try {await c.query('rollback');await c.end();}catch{}}
  if(created){await admin.query(`drop database "${database}" with (force)`);}
