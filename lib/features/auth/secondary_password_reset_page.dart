@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
 import 'secure_onboarding_repository.dart';
+import 'operation_reauthentication_repository.dart';
 import 'secondary_password_primary_verifier.dart';
 
 abstract class SecondaryPasswordResetAccess {
@@ -13,6 +14,16 @@ abstract class SecondaryPasswordResetAccess {
 
 class _DeviceResetAccess implements SecondaryPasswordResetAccess {
   final _auth = LocalAuthentication();
+  bool? serverRequired;
+  String? _proof;
+  int _generation = 0;
+  void invalidateProof() { _generation++; _proof = null; }
+  Future<bool> loadRequirement() async {
+    final repository = OperationReauthenticationRepository.maybeCreate();
+    if (repository == null) throw StateError('Authentication required');
+    serverRequired = (await repository.capabilities())['secondary_password'] == true;
+    return serverRequired!;
+  }
   SecureOnboardingRepository? get _repository =>
       SecureOnboardingRepository.maybeCreate();
   @override
@@ -26,16 +37,40 @@ class _DeviceResetAccess implements SecondaryPasswordResetAccess {
     ),
   );
   @override
-  Future<bool> authenticateWithPassword(String password) =>
-      SecondaryPasswordPrimaryVerifier(
-        currentUser: () => _repository?.currentUser,
-      ).verify(password);
+  Future<bool> authenticateWithPassword(String password) async {
+    if (serverRequired == null) throw StateError('Authentication unavailable');
+    if (serverRequired!) {
+      final generation = _generation;
+      final actor = currentUserId;
+      final repository = OperationReauthenticationRepository.maybeCreate();
+      if (repository == null || actor == null) throw StateError('Authentication required');
+      final proof = await repository.requestProof(password: password,
+        operation: 'secondary_password.replace', target: {'user_id': actor});
+      if (_generation != generation || currentUserId != actor) {
+        throw StateError('Authentication changed');
+      }
+      _proof = proof;
+      return true;
+    }
+    return SecondaryPasswordPrimaryVerifier(
+      currentUser: () => _repository?.currentUser).verify(password);
+  }
 
   @override
   Future<void> save(String password) async {
     final repository = _repository;
     if (repository == null) throw StateError('Authentication required');
-    await repository.setSecondaryPassword(password);
+    if (serverRequired == null) throw StateError('Authentication unavailable');
+    if (serverRequired!) {
+      final proof = _proof;
+      _proof = null;
+      if (proof == null) throw StateError('Reauthentication required');
+      final verified = OperationReauthenticationRepository.maybeCreate();
+      if (verified == null) throw StateError('Authentication required');
+      await verified.replaceSecondaryPassword(password, proof);
+    } else {
+      await repository.setSecondaryPassword(password);
+    }
   }
 }
 
@@ -59,6 +94,9 @@ class _ResetState extends State<SecondaryPasswordResetPage>
   final _primaryPassword = TextEditingController();
   late bool _usePassword = !widget.biometricAvailable;
   bool _nativePrompt = false;
+  bool _requirementsLoading = false;
+  bool _serverRequired = false;
+  bool _requirementsFailed = false;
   String? _actor;
   String? _pendingActor;
   String? _message;
@@ -66,7 +104,7 @@ class _ResetState extends State<SecondaryPasswordResetPage>
   bool _saving = false;
   int _generation = 0;
   AppLifecycleState _lifecycle = AppLifecycleState.resumed;
-  bool get _busy => _authenticating || _saving;
+  bool get _busy => _authenticating || _saving || _requirementsLoading || _requirementsFailed;
 
   @override
   void initState() {
@@ -74,9 +112,36 @@ class _ResetState extends State<SecondaryPasswordResetPage>
     _lifecycle =
         WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
+    if (widget.access == null) {
+      _requirementsLoading = true;
+      _loadRequirement();
+    }
+  }
+
+  Future<void> _loadRequirement() async {
+    try {
+      final required = await (_access as _DeviceResetAccess).loadRequirement();
+      if (!mounted) return;
+      setState(() {
+        _serverRequired = required;
+        if (required) _usePassword = true;
+        _requirementsLoading = false;
+        _requirementsFailed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _requirementsLoading = false;
+        _requirementsFailed = true;
+        _message = '本人確認の設定を確認できませんでした。再読み込みしてください。';
+      });
+    }
   }
 
   void _clear() {
+    if (_access is _DeviceResetAccess) {
+      (_access as _DeviceResetAccess).invalidateProof();
+    }
     _generation++;
     _actor = null;
     _pendingActor = null;
@@ -239,7 +304,14 @@ class _ResetState extends State<SecondaryPasswordResetPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('本人確認した後、新しい第2パスワードを設定します。'),
+                Text(_serverRequired
+                    ? 'ログイン用の本パスワードで本人確認した後、2分以内に新しい第2パスワードを設定してください。'
+                    : '本人確認した後、新しい第2パスワードを設定します。'),
+                if (_requirementsFailed)
+                  TextButton(onPressed: () {
+                    setState(() { _requirementsLoading = true; _requirementsFailed = false; });
+                    _loadRequirement();
+                  }, child: const Text('再読み込み')),
                 const SizedBox(height: 16),
                 if (_actor == null) ...[
                   SegmentedButton<bool>(
@@ -247,7 +319,7 @@ class _ResetState extends State<SecondaryPasswordResetPage>
                       ButtonSegment(
                         value: false,
                         label: const Text('Face ID / Touch ID'),
-                        enabled: widget.biometricAvailable,
+                        enabled: widget.biometricAvailable && !_serverRequired,
                       ),
                       const ButtonSegment(value: true, label: Text('本パスワード')),
                     ],
@@ -323,3 +395,4 @@ class _ResetState extends State<SecondaryPasswordResetPage>
     ),
   );
 }
+
