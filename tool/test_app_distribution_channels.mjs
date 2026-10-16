@@ -78,6 +78,9 @@ for(const url of ['http://web.example.com','https://user@web.example.com','https
 }
 await assert.rejects(()=>db.query("select public.app_distribution_save_links('https://example.com/join/X','','')"),/invalid TestFlight/);
 await db.query("select public.app_distribution_save_links('https://testflight.apple.com/join/NEW123','https://web.example.com/app','https://sko.example.com/start')");
+const oldFriend=await rpc("select public.app_referral_prepare('Legacy Friend','08012345678','friend_add') result");
+assert.match(oldFriend.message,/https:\/\/sko.example.com\/start/);
+assert.ok(!oldFriend.message.includes('testflight.apple.com'));
 const tf=await rpc("select public.app_distribution_prepare('Employee','09012345678','testflight','employee') result");
 const web=await rpc("select public.app_distribution_prepare('Employee','09012345678','web','employee') result");
 assert.notEqual(tf.id,web.id);
@@ -115,6 +118,7 @@ for(const signature of ['public.app_distribution_snapshot(boolean)','public.app_
 await as(owner,true);
 await db.query("select public.app_referral_save_settings(true,false,true,'https://testflight.apple.com/join/ABCD1234')");
 await assert.rejects(()=>db.query("select public.app_distribution_prepare('X','09012345678','public','friend')"),/public distribution disabled/);
+await assert.rejects(()=>db.query("select public.app_referral_prepare('X','09012345678','friend_add')"),/public distribution disabled/);
 await as(member);
 await assert.rejects(()=>db.query("select public.app_distribution_prepare('X','09012345678','web','app')"),/disabled/);
 await as(owner,true);

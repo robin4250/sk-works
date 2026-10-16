@@ -107,3 +107,12 @@ revoke all on function public.app_distribution_snapshot(boolean),
  public.app_distribution_save_links(text,text,text),public.app_distribution_prepare(text,text,text,text) from public,anon;
 grant execute on function public.app_distribution_snapshot(boolean),
  public.app_distribution_save_links(text,text,text),public.app_distribution_prepare(text,text,text,text) to authenticated;
+
+-- Existing public friend-invite callers must also use the published guide.
+create or replace function public.app_referral_prepare(p_name text,p_phone text,p_source text default 'app_invite')
+returns jsonb language sql security invoker set search_path='' as $$
+ select case when p_source='friend_add' then
+   private.app_distribution_dispatch('prepare',jsonb_build_object(
+     'name',p_name,'phone',p_phone,'channel','public','kind','friend'))
+ else private.app_referral_dispatch('prepare',jsonb_build_object(
+     'name',p_name,'phone',p_phone,'source',p_source)) end $$;
