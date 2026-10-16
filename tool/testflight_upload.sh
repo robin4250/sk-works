@@ -26,13 +26,8 @@ if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
   exit 1
 fi
 
-ipa=""
-for candidate in build/ios/ipa/*.ipa; do
-  if [[ -f "$candidate" ]]; then
-    ipa="$candidate"
-    break
-  fi
-done
+manifest="build/ios/sko-testflight-provenance.json"
+ipa="$(python3 tool/testflight_provenance.py validate --manifest "$manifest")"
 if [[ -z "$ipa" ]]; then
   echo "✗ IPAが見つかりません。先に bash tool/testflight_candidate.sh を実行してください。"
   exit 1
@@ -68,9 +63,12 @@ fi
 
 echo "✓ main @ $(git rev-parse --short HEAD)"
 echo "✓ IPA: $ipa"
-echo "✓ API Key ID: $key_id"
+echo "✓ App Store Connect認証設定を確認しました"
 echo
 echo "App Store Connectへアップロードします..."
+
+verified_ipa="$(python3 tool/testflight_provenance.py validate --manifest "$manifest")"
+[[ "$verified_ipa" == "$ipa" ]] || exit 1
 
 xcrun altool \
   --upload-app \
@@ -82,3 +80,4 @@ xcrun altool \
 echo
 echo "✓ TestFlightアップロード要求を送信しました。"
 echo "App Store Connect側の処理完了後、TestFlightビルドとして表示されます。"
+

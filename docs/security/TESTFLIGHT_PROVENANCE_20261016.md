@@ -1,0 +1,22 @@
+# TestFlight候補のソース・署名・IPA照合
+
+このゲートは候補の取り違えを防ぐ実装です。セキュリティ配布承認、LINEの本番制限、実JWTの他社拒否、実機合格を自動的に認定しません。既存の `docs/TESTFLIGHT_RELEASE_GATE.md` を満たすまで配布しません。
+
+## 実行する検査
+
+- 候補作成前・ビルド開始前・検証後・アップロード前に、main、origin/mainとの一致、追跡/未追跡の未保存変更なしを照合します。変更を削除・退避・resetする処理はありません。
+- GitHub CLIの既存認証でexact main SHAのpush CIを照合し、Flutter CI / iOS CI / Secret Scanの最新実行が成功していなければ停止します。CI API失敗・結果不足・100件超過も停止します。トークンやログを取得・表示しません。
+- 成功した `flutter build ipa --release --export-method app-store` の開始記録より新しいIPAを1個に限定します。複数の既存IPAは自動削除しません。必要なら利用者が保管してから再試行します。
+- IPAを一時領域に展開し、危険なZIPパス・symlink・過大な展開を拒否します。Bundle ID、version/build、AOT、Debug kernel不在、広範ATS無効化なしを確認します。
+- macOS codesignのstrict/deep検証、署名entitlements、配布profileのteam/application identifier/get-task-allow=false、App Store/TestFlight区分、有効期限、profile内署名証明書との一致を検証します。
+- 候補manifestはcommit/main/Releaseの構築記録、正確なIPA絶対パス、SHA256、version/build、署名識別、CI run IDを保持します。アップロード時はglob選択せず、このIPAの署名とSHAを再検証します。
+
+`build/ios/sko-testflight-provenance.json` はローカルの構築記録であり、署名された第三者証明ではありません。ローカルのコード実行権限を持つ攻撃者に対する改竄耐性を保証しません。Releaseは実行した構築コマンドとソースの同一性で確認し、AOTだけではProfileと区別しません。
+
+候補作成には既存の `bash tool/testflight_candidate.sh`、APIアップロードには `bash tool/testflight_upload.sh` を使用します。追加要件はPython 3と認証済みGitHub CLIです。APIキー未設定時にOrganizerの別Archiveを自動で開く経路は停止し、検証済みIPAのTransporter利用を案内します。Transporterで別ファイルを選ぶ操作までこのスクリプトが制御することはできません。
+
+## 検査の範囲
+
+`python3 tool/test_testflight_provenance.py` は実ZIP/合成plist・擬似署名ツール・一時Gitの実行試験です。Macの実署名証明書・Apple側のprofile・アーカイブ・アップロード・本番認証・データ・通知は使用しません。Linuxで署名確認を省略するオプションはありません。
+
+配布前には実Macで署名済みIPAの通過と、改変/古い候補/未保存変更の停止を確認します。プライバシーmanifest、署名済みentitlements、実SDK、権限拒否・ログアウト・actor変更・他社拒否、LINE非公開の確認は引き続き必要です。ゲートを通すための本番RLS弱化やフラグ変更は行いません。

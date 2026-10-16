@@ -1,0 +1,29 @@
+name: TestFlight provenance
+on:
+  pull_request:
+    paths:
+      - 'tool/testflight*'
+      - 'tool/test_testflight_provenance.py'
+      - 'test/testflight_candidate_contract_test.dart'
+      - '.github/workflows/testflight-provenance.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/testflight*'
+      - 'tool/test_testflight_provenance.py'
+      - '.github/workflows/testflight-provenance.yml'
+permissions:
+  contents: read
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Executable ZIP, signing-tool and dirty-source regressions
+        run: python3 tool/test_testflight_provenance.py
+      - name: Shell syntax
+        run: |
+          bash -n tool/testflight_candidate.sh
+          bash -n tool/testflight_preflight.sh
+          bash -n tool/testflight_upload.sh
+          bash -n tool/testflight_finish.sh
