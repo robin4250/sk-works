@@ -42,7 +42,7 @@ class _Devices implements MasterDeviceRepository {
   @override
   String? get currentUserId => currentActor;
   @override
-  Future<bool> isMasterAdmin() async => true;
+  Future<bool> isMasterAdmin({String? accessToken}) async => true;
   @override
   Future<List<MasterDeviceRecord>> loadDevices() async => [MasterDeviceRecord(
     id: deviceId, deviceName: 'synthetic device', deviceType: 'iphone',

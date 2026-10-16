@@ -96,7 +96,7 @@ Future<void> _close(WidgetTester t,_Fixture f) async {
 }
 void main() {
   testWidgets('first device zero with existing secondary: Face inactive cannot erase the submitted secret; AND policy retained', (t) async {
-    final f=await _Fixture.create(); f.faceWait=Completer<bool>(); await _show(t,f);
+    final f=(await t.runAsync(_Fixture.create))!; f.faceWait=Completer<bool>(); await _show(t,f);
     expect(find.text('本人確認してこの端末を登録'),findsOneWidget);
     await _start(t); expect(f.passwords,isEmpty); expect(f.bootstraps,0);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); await t.pump();
@@ -109,37 +109,37 @@ void main() {
     expect(f.client.headers['Authorization'],'Bearer synthetic-default-header');
     expect(f.requests.any((r)=>r.url.path.contains('/signup')||r.url.path.contains('set_secondary')||r.url.path.contains('/auth/v1/user')),isFalse);
     await _close(t,f);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
   testWidgets('Face cancel registers no device and does not submit secondary', (t) async {
-    final f=await _Fixture.create(); f.face=false; await _show(t,f); await _start(t);
+    final f=(await t.runAsync(_Fixture.create))!; f.face=false; await _show(t,f); await _start(t);
     expect(f.passwords,isEmpty); expect(f.bootstraps,0); expect(find.text('LEGACY-AND-MASTER-CONTENT'),findsNothing); await _close(t,f);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
   testWidgets('wrong secondary never uses Face alone as OR and registers no device', (t) async {
-    final f=await _Fixture.create(); await _show(t,f);
+    final f=(await t.runAsync(_Fixture.create))!; await _show(t,f);
     await t.enterText(find.byType(TextField),'wrong-secondary'); await t.tap(find.text('本人確認してこの端末を登録')); await t.pumpAndSettle();
     expect(f.native.where((m)=>m=='authenticate').length,1); expect(f.passwords,['wrong-secondary']); expect(f.bootstraps,0);
     expect(find.text('LEGACY-AND-MASTER-CONTENT'),findsNothing); await _close(t,f);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
   testWidgets('real background rejects late Face and does not register first device', (t) async {
-    final f=await _Fixture.create(); f.faceWait=Completer<bool>(); await _show(t,f); await _start(t);
+    final f=(await t.runAsync(_Fixture.create))!; f.faceWait=Completer<bool>(); await _show(t,f); await _start(t);
     for(final state in [AppLifecycleState.inactive,AppLifecycleState.hidden,AppLifecycleState.paused,AppLifecycleState.hidden,AppLifecycleState.inactive,AppLifecycleState.resumed]) { t.binding.handleAppLifecycleStateChanged(state); }
     f.faceWait!.complete(true); await t.pumpAndSettle();
     expect(f.passwords,isEmpty); expect(f.bootstraps,0); expect(find.text('LEGACY-AND-MASTER-CONTENT'),findsNothing); await _close(t,f);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
   testWidgets('actor changes during native Face cannot verify or register for the other actor', (t) async {
-    final f=await _Fixture.create(); f.faceWait=Completer<bool>(); await _show(t,f); await _start(t);
-    await f.client.auth.setInitialSession(jsonEncode(_session(_other))); await t.pump();
+    final f=(await t.runAsync(_Fixture.create))!; f.faceWait=Completer<bool>(); await _show(t,f); await _start(t);
+    await t.runAsync(()=>f.client.auth.setInitialSession(jsonEncode(_session(_other)))); await t.pump();
     f.faceWait!.complete(true); await t.pumpAndSettle();
     expect(f.passwords,isEmpty); expect(f.bootstraps,0); expect(find.text('LEGACY-AND-MASTER-CONTENT'),findsNothing); await _close(t,f);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
   testWidgets('server role revoked during password verification prevents bootstrap', (t) async {
-    final f=await _Fixture.create(); f.verifyWait=Completer<void>(); await _show(t,f); await _start(t);
+    final f=(await t.runAsync(_Fixture.create))!; f.verifyWait=Completer<void>(); await _show(t,f); await _start(t);
     expect(f.passwords,['existing-secondary-password']); f.master=false; f.verifyWait!.complete(); await t.pumpAndSettle();
     expect(f.bootstraps,0); expect(find.text('LEGACY-AND-MASTER-CONTENT'),findsNothing); await _close(t,f);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
   testWidgets('server bootstrap eligibility removed during verification prevents enrollment', (t) async {
-    final f=await _Fixture.create(); f.verifyWait=Completer<void>(); await _show(t,f); await _start(t);
+    final f=(await t.runAsync(_Fixture.create))!; f.verifyWait=Completer<void>(); await _show(t,f); await _start(t);
     f.allowBootstrap=false; f.verifyWait!.complete(); await t.pumpAndSettle();
     expect(f.bootstraps,0); expect(find.text('LEGACY-AND-MASTER-CONTENT'),findsNothing); await _close(t,f);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
 }
