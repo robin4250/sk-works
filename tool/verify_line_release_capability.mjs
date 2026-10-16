@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 process.on('uncaughtException',e=>{console.error(e.message,e.code,e.where ?? '');process.exit(1);});
+const testflightLock=process.argv.includes('--testflight-lock');
 const {PGlite} = await import(pathToFileURL(process.argv[2]).href);
 const db = new PGlite();
 const id = n => `00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
@@ -96,6 +97,16 @@ assert.equal((await scalar('select public.line_release_capability() v')).availab
 assert.equal(await scalar('select count(*)::int v from chat_messages'),2);
 const message=(await db.query(`insert into chat_messages(company_id,communication_group_id,sender_user_id,origin,body,sender_display_name) values($1,$2,$3,'sk_works','Queued before OFF','Fixture') returning id`,[id(10),id(20),id(2)])).rows[0].id;
 const ticket=(await scalar('select public.prepare_line_chat_dispatch($1) v',[message])).ticket;
+if(testflightLock) {
+ await role('postgres');
+ const settingsBefore=(await db.query('select * from private.line_general_release_settings')).rows;
+ const gateMetadata=await scalar("select jsonb_build_object('acl',proacl,'config',proconfig,'owner',proowner) v from pg_proc where oid='private.line_actor_release_allowed(uuid)'::regprocedure");
+ await db.exec(readFileSync('docs/security/staged/line_testflight_master_only.sql.review-only','utf8'));
+ assert.deepEqual((await db.query('select * from private.line_general_release_settings')).rows,settingsBefore,'Saved release state and audit metadata preserved');
+ assert.deepEqual(await scalar("select jsonb_build_object('acl',proacl,'config',proconfig,'owner',proowner) v from pg_proc where oid='private.line_actor_release_allowed(uuid)'::regprocedure"),gateMetadata);
+ await role('authenticated');
+ assert.equal((await scalar('select public.line_release_capability() v')).available,false,'Saved general_enabled=true cannot bypass TestFlight lock');
+}
 await actor(1);await role('authenticated');await scalar('select public.set_line_general_release_enabled(false) v');
 for(const n of [2,3,4,5,6,7]) {
  await actor(n);await role('authenticated');
@@ -143,9 +154,14 @@ await assert.rejects(scalar('select private.line_linked_talk($1,$2) v',[id(21),d
 await role('service_role');await db.query("insert into chat_messages(company_id,communication_group_id,origin,body) values($1,$2,'line','Received while OFF')",[id(10),id(20)]);
 await actor(2);await role('authenticated');assert.equal(await scalar("select count(*)::int v from chat_messages where origin='line'"),0);
 await actor(1);await role('authenticated');await scalar('select public.set_line_general_release_enabled(true) v');
-await actor(2);await role('authenticated');assert.equal(await scalar("select count(*)::int v from chat_messages where origin='line'"),2);
+await actor(2);await role('authenticated');assert.equal(await scalar("select count(*)::int v from chat_messages where origin='line'"),testflightLock?0:2);
+if(testflightLock) {
+ await assert.rejects(scalar('select public.prepare_line_chat_dispatch($1) v',[message]),/access required/);
+ await role('postgres');assert.equal(await scalar('select general_enabled v from private.line_general_release_settings'),true,'Master saved setting retained, distribution lock remains authoritative');
+} else {
 const resumed=(await scalar('select public.prepare_line_chat_dispatch($1) v',[message])).ticket;
 await role('service_role');assert.equal((await scalar('select public.claim_line_chat_dispatch($1,$2) v',[resumed,id(2)])).state,'claimed');
+}
 await role('postgres');assert.equal(await scalar("select count(*)::int v from private.master_admin_audit_log where action='line_general_access_changed'"),2);
 // Compare the original rows only: toggle/reception must not mutate them.
 assert.equal(await scalar("select md5(jsonb_agg(to_jsonb(m) order by id)::text) v from chat_messages m where body in ('Saved LINE','Saved SKO','Other company LINE')"),history);
@@ -153,5 +169,6 @@ for(const r of ['anon','authenticated','service_role']) assert.equal(await scala
 for(const r of ['anon','service_role']) assert.equal(await scalar("select has_function_privilege($1,'public.line_release_capability()','execute') v",[r]),false);
 for(const r of ['anon','authenticated','service_role']) assert.equal(await scalar("select has_function_privilege($1,'private.line_actor_release_allowed(uuid)','execute') v",[r]),false);
 await role('anon');await assert.rejects(scalar('select public.line_release_capability() v'));
-console.log('LINE release real SQL: default-on, additive RLS, roles, direct reads, definer denial, queued claim recheck, webhook reception, master existing scope, SKO preservation, audit and ON recovery passed. Realtime delivery and external HTTP races require separate integration validation.');
+console.log(testflightLock?'TestFlight master-only lock: retained saved settings, denied general roles despite setting=true, preserved master scope/SKO/history/ACL; HTTP/Realtime not tested.':'LINE release real SQL: default-on, additive RLS, roles, direct reads, definer denial, queued claim recheck, webhook reception, master existing scope, SKO preservation, audit and ON recovery passed. Realtime delivery and external HTTP races require separate integration validation.');
 } finally { await db.close(); }
+

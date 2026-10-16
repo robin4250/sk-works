@@ -1,0 +1,40 @@
+name: LINE TestFlight master-only lock
+on:
+  pull_request:
+    paths:
+      - 'docs/security/staged/line_testflight_master_only.sql.review-only'
+      - 'tool/verify_line_release_capability.mjs'
+      - '.github/workflows/line-testflight-lock.yml'
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_line_release_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_line_release_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_LINE_RELEASE_POSTGRES_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_line_release_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/line_release_fixture_dependencies
+      - run: node tool/verify_line_release_fixture_url.mjs
+      - run: node tool/verify_line_release_capability.mjs "$PWD/tool/fixtures/line_release_pg_adapter.mjs" --testflight-lock
+  pglite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/line_release_fixture_dependencies
+      - run: node tool/verify_line_release_capability.mjs "$PWD/tool/line_release_fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js" --testflight-lock
