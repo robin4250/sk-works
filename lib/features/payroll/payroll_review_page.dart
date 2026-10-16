@@ -157,36 +157,45 @@ class _PayrollReviewPageState extends State<PayrollReviewPage> {
           if (widget.onOpenSettings != null || widget.onOpenTaxRates != null || widget.onOpenCommonAllowances != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-              child: Row(children: [
+              child: LayoutBuilder(builder: (context, constraints) {
+                final buttonWidth = (constraints.maxWidth - 20) / 3;
+                final fontSize = ((buttonWidth - 38) / 6 /
+                    MediaQuery.textScalerOf(context).scale(1)).clamp(1.0, 14.0);
+                final buttonStyle = OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  textStyle: TextStyle(fontSize: fontSize),
+                );
+                return Row(children: [
                 Expanded(child: SizedBox(height: 48,
                   child: OutlinedButton.icon(
                     key: const ValueKey('payroll-tax-rates-entry'),
+                    style: buttonStyle,
                     onPressed: widget.onOpenTaxRates,
                     icon: const Icon(Icons.percent_outlined, size: 18),
-                    label: FittedBox(fit: BoxFit.scaleDown,
-                      child: Text(SkoLanguageController.tr('税率設定'), maxLines: 1)),
+                    label: Text(SkoLanguageController.tr('税率設定'), maxLines: 1),
                   ),
                 )),
                 const SizedBox(width: 10),
                 Expanded(child: SizedBox(height: 48,
                   child: OutlinedButton(
                     key: const ValueKey('payroll-common-allowances-entry'),
+                    style: buttonStyle,
                     onPressed: widget.onOpenCommonAllowances,
-                    child: FittedBox(fit: BoxFit.scaleDown,
-                      child: Text(SkoLanguageController.tr('社内共通手当'), maxLines: 1)),
+                    child: Text(SkoLanguageController.tr('社内共通手当'), maxLines: 1),
                   ),
                 )),
                 const SizedBox(width: 10),
                 Expanded(child: SizedBox(height: 48,
                   child: OutlinedButton.icon(
                     key: const ValueKey('payroll-individual-settings-entry'),
+                    style: buttonStyle,
                     onPressed: widget.onOpenSettings,
                     icon: const Icon(Icons.manage_accounts_outlined, size: 18),
-                    label: FittedBox(fit: BoxFit.scaleDown,
-                      child: Text(SkoLanguageController.tr('個別給料設定'), maxLines: 1)),
+                    label: Text(SkoLanguageController.tr('個別給料設定'), maxLines: 1),
                   ),
                 )),
-              ]),
+              ]);
+              }),
             ),
           Expanded(child: _loading
             ? const Center(child: CircularProgressIndicator())
