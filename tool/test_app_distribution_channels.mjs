@@ -117,7 +117,7 @@ await assert.rejects(()=>db.query("select public.app_distribution_prepare('X','0
 await as(owner,true);
 await db.query("select public.app_referral_save_settings(false,false,true,'https://testflight.apple.com/join/ABCD1234')");
 await assert.rejects(()=>db.query("select public.app_distribution_prepare('X','09012345678','web','company')"),/disabled/);
-await db.exec("reset role; create or replace function private.account_access_allowed() returns boolean language sql as $ select false $;");
+await db.exec("reset role; create or replace function private.account_access_allowed() returns boolean language sql as 'select false';");
 await as(owner,true);
 await assert.rejects(()=>db.query('select public.app_distribution_snapshot()'),/access denied/);
 console.log('Distribution channels: legacy compatibility, separate later WEB sends, immutable URL snapshots, no credential reissue/registration/points, public friend gate, owner history and Master-only settings passed.');
