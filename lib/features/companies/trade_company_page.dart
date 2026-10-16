@@ -89,13 +89,19 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       .toList(growable: false);
 
   Future<void> _invite() async {
+    final actor = SupabaseBackend.client.auth.currentUser?.id;
+    if (actor == null) return;
+    var selected = false;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => CompanyInviteRecipientPicker(
         companies: _visible,
         onSelected: (company) {
+          if (selected || !mounted) return;
+          selected = true;
           Navigator.of(sheetContext).pop();
+          if (SupabaseBackend.client.auth.currentUser?.id != actor) return;
           Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => AppReferralPage(
               repository: AppReferralRepository(SupabaseBackend.client),
