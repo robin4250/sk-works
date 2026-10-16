@@ -93,7 +93,7 @@ void main() {
   testWidgets('background clears secrets and rejects late challenge', (t) async {
     final access = _Access()..beginWait = Completer<MasterCredentialChallenge>(); await _show(t, access); await _fill(t);
     await t.tap(find.text('初回登録して保存')); await t.pump();
-    expect(t.widget<IconButton>(find.byTooltip('ヘルプ')).onPressed, isNull);
+    expect(t.widget<IconButton>(find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == 'ヘルプ')).onPressed, isNull);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); await t.pump();
     access.beginWait!.complete(access.challenge()); await t.pump();
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await t.pumpAndSettle();
@@ -122,7 +122,7 @@ void main() {
     final oldChallenge = Completer<MasterCredentialChallenge>();
     final access = _Access()..beginWait = oldChallenge; await _show(t, access); await _fill(t);
     await t.tap(find.text('初回登録して保存')); await t.pump();
-    expect(t.widget<IconButton>(find.byTooltip('ヘルプ')).onPressed, isNull);
+    expect(t.widget<IconButton>(find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == 'ヘルプ')).onPressed, isNull);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); await t.pump();
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await t.pumpAndSettle();
     access.beginWait = null;
