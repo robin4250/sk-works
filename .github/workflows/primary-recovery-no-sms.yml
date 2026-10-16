@@ -1,0 +1,29 @@
+name: Primary recovery without retired SMS
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/secure_onboarding_*'
+      - 'test/*password_recovery*'
+      - '.github/workflows/primary-recovery-no-sms.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/features/auth/secure_onboarding_*'
+      - 'test/*password_recovery*'
+      - '.github/workflows/primary-recovery-no-sms.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/auth/secure_onboarding_pages.dart lib/features/auth/secure_onboarding_repository.dart test/primary_password_recovery_widget_test.dart test/primary_password_recovery_contract_test.dart test/atomic_password_recovery_contract_test.dart
+      - run: flutter test test/primary_password_recovery_widget_test.dart test/primary_password_recovery_contract_test.dart test/atomic_password_recovery_contract_test.dart test/pre_device_documentation_contract_test.dart

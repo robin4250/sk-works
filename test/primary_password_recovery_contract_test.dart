@@ -1,21 +1,15 @@
 import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('primary password recovery requires existing phone SMS verification', () {
-    final pages =
-        File('lib/features/auth/secure_onboarding_pages.dart').readAsStringSync();
-    final repository =
-        File('lib/features/auth/secure_onboarding_repository.dart')
-            .readAsStringSync();
-
-    expect(pages, contains('本パスワードを忘れた方'));
-    expect(pages, contains('verifyPasswordResetSms'));
-    expect(pages, contains('updatePrimaryPassword'));
-    expect(repository, contains('requestPasswordResetSms'));
-    expect(repository, contains('shouldCreateUser: false'));
-    expect(repository, contains('verifyPasswordResetSms'));
-    expect(repository, contains('UserAttributes(password: password)'));
+  test('retired primary SMS reset has no repository entry point; initial registration remains', () {
+    final source = File('lib/features/auth/secure_onboarding_repository.dart').readAsStringSync();
+    expect(source, isNot(contains('requestPasswordResetSms')));
+    expect(source, isNot(contains('verifyPasswordResetSms')));
+    expect(source, isNot(contains('signInWithOtp(')));
+    expect(source, contains('Future<bool> registerAdmin('));
+    expect(source, contains('Future<void> verifySmsCode('));
+    expect(source, contains('Future<void> setEmployeePrimaryPassword('));
+    expect(source, contains('UserAttributes(password: password)'));
   });
 }

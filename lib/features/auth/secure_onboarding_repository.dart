@@ -31,6 +31,9 @@ class EmployeeOnboardingState {
 class SecureOnboardingRepository {
   SecureOnboardingRepository._(this._client);
 
+  /// Uses the supplied client without changing the global authentication state.
+  SecureOnboardingRepository.forClient(this._client);
+
   final SupabaseClient _client;
 
   static SecureOnboardingRepository? maybeCreate() {
@@ -90,25 +93,6 @@ class SecureOnboardingRepository {
     await _client.auth.signInWithPassword(
       phone: normalizeJapanesePhone(phone),
       password: password,
-    );
-  }
-
-  Future<void> requestPasswordResetSms({required String phone}) async {
-    await _client.auth.signInWithOtp(
-      phone: normalizeJapanesePhone(phone),
-      shouldCreateUser: false,
-      channel: OtpChannel.sms,
-    );
-  }
-
-  Future<void> verifyPasswordResetSms({
-    required String phone,
-    required String code,
-  }) async {
-    await _client.auth.verifyOTP(
-      type: OtpType.sms,
-      phone: normalizeJapanesePhone(phone),
-      token: code.trim(),
     );
   }
 
@@ -228,3 +212,4 @@ class SecureOnboardingRepository {
     return text.isEmpty ? null : text;
   }
 }
+
