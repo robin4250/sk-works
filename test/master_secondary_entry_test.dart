@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../lib/features/settings/master_protected_page.dart';
+import 'package:sk_works/features/settings/master_protected_page.dart';
 
 const _actor = '40000000-0000-0000-0000-000000000001';
 class _Access implements MasterSecondaryAccess {
@@ -124,4 +124,51 @@ void main() {
     expect(access.bootstrapCalls, 0); expect(access.passwords, isEmpty);
     expect(find.text('MASTER-CONTENT'), findsNothing); await _close(tester);
   });
+  testWidgets('Face completion during inactive waits for resumed before any unlock', (tester) async {
+    final access = _Access()..biometricWait = Completer<bool>(); await _show(tester, access);
+    await tester.tap(find.text('Face ID / Touch IDで開く')); await tester.pumpAndSettle();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); await tester.pump();
+    access.biometricWait!.complete(true); await tester.pumpAndSettle();
+    expect(find.text('MASTER-CONTENT'), findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await tester.pumpAndSettle();
+    expect(find.text('MASTER-CONTENT'), findsOneWidget); await _close(tester);
+  });
+  testWidgets('paused while waiting for Face resume rejects late completion', (tester) async {
+    final access = _Access()..biometricWait = Completer<bool>(); await _show(tester, access);
+    await tester.tap(find.text('Face ID / Touch IDで開く')); await tester.pumpAndSettle();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); await tester.pump();
+    access.biometricWait!.complete(true); await tester.pumpAndSettle();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden); await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await tester.pumpAndSettle();
+    expect(find.text('MASTER-CONTENT'), findsNothing); await _close(tester);
+  });
+  testWidgets('wrong shared password does not unlock or fall back to Face', (tester) async {
+    final access = _Access()..passwordResult = false; await _show(tester, access);
+    await _password(tester); expect(find.text('MASTER-CONTENT'), findsNothing);
+    expect(access.biometricCalls, 0); expect(find.textContaining('第2パスワードが違います。'), findsOneWidget);
+    await _close(tester);
+  });
+  testWidgets('role revoked during password verification blocks trusted entry', (tester) async {
+    final access = _Access()..passwordWait = Completer<bool>(); await _show(tester, access);
+    await tester.enterText(find.byType(TextField), 'existing-secondary');
+    await tester.tap(find.text('第2パスワードで開く')); await tester.pumpAndSettle();
+    access.master = false; access.passwordWait!.complete(true); await tester.pumpAndSettle();
+    expect(find.text('MASTER-CONTENT'), findsNothing); await _close(tester);
+  });
+  testWidgets('Face cancel does not unlock or submit password', (tester) async {
+    final access = _Access()..bioResult = false; await _show(tester, access);
+    await tester.tap(find.text('Face ID / Touch IDで開く')); await tester.pumpAndSettle();
+    expect(find.text('MASTER-CONTENT'), findsNothing); expect(access.passwords, isEmpty);
+    await _close(tester);
+  });
+  testWidgets('token refresh produces explicit reload and valid password works after reload', (tester) async {
+    final access = _Access(); await _show(tester, access);
+    access.token = 'synthetic-refreshed-token'; await _password(tester);
+    expect(find.text('MASTER-CONTENT'), findsNothing);
+    expect(find.textContaining('再読み込みしてください。'), findsOneWidget);
+    await tester.tap(find.text('再読み込み')); await tester.pumpAndSettle();
+    await _password(tester); expect(find.text('MASTER-CONTENT'), findsOneWidget);
+    await _close(tester);
+  });
+
 }

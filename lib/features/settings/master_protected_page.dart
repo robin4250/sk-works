@@ -87,6 +87,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
   String? _error;
   bool _biometricEnabled = false;
   bool _nativePrompt = false;
+  Completer<bool>? _resumeWait;
   int _generation = 0;
   String? _loadedActor;
   String? _loadedToken;
@@ -127,7 +128,11 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
           await _access.configured();
       final biometricAvailable = await _access.biometricAvailable();
 
-      if (!mounted || generation != _generation || _access.actor != userId || _access.token != token) return;
+      if (!mounted || generation != _generation) return;
+      if (_access.actor != userId || _access.token != token) {
+        setState(() { _loading = false; _loadedActor = null; _loadedToken = null; _error = 'ログイン状態が変わりました。再読み込みしてください。'; });
+        return;
+      }
       setState(() {
         _loadedActor = userId;
         _loadedToken = token;
@@ -164,7 +169,8 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
     final actor = _access.actor;
     final token = _access.token;
     final key = _deviceKey;
-    if (actor == null || token == null || actor != _loadedActor || token != _loadedToken || key == null || _lifecycle != AppLifecycleState.resumed) return;
+    if (_lifecycle != AppLifecycleState.resumed) return;
+    if (actor == null || token == null || actor != _loadedActor || token != _loadedToken || key == null) { setState(() => _error = 'ログイン状態が変わりました。再読み込みしてください。'); return; }
     final bootstrap = !_trustedDevice && _canBootstrap;
     String password = _password.text;
     _password.clear();
@@ -189,7 +195,13 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
         if (!_valid(generation, actor, token, allowInactivePrompt: true)) return;
         if (!ok) throw StateError('生体認証を確認できませんでした。');
         biometricVerified = ok;
-        if (_lifecycle != AppLifecycleState.resumed) throw StateError('画面に戻って本人確認をやり直してください。');
+        if (_lifecycle == AppLifecycleState.inactive) {
+          final wait = Completer<bool>();
+          _resumeWait = wait;
+          final resumed = await wait.future;
+          if (identical(_resumeWait, wait)) _resumeWait = null;
+          if (!resumed || !_valid(generation, actor, token)) return;
+        }
         _nativePrompt = false;
       }
       if (!face || bootstrap) {
@@ -216,7 +228,9 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
       if (!_valid(generation, actor, token)) return;
       if (!MasterSecondaryEntryPolicy.allows(master: master, trusted: trusted, configured: _secondaryConfigured,
           passwordVerified: passwordVerified, biometricVerified: biometricVerified,
-          biometricEnabled: _biometricEnabled, bootstrap: bootstrap)) throw StateError('Master認証を完了できませんでした。');
+          biometricEnabled: _biometricEnabled, bootstrap: bootstrap)) {
+        throw StateError('Master認証を完了できませんでした。');
+      }
       _expiryTimer?.cancel();
       _expiryTimer = Timer(MasterStepUpPolicy.sessionDuration, _lock);
       if (!_valid(generation, actor, token)) return;
@@ -227,7 +241,10 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
       password = '';
       if (generation == _generation) {
         _nativePrompt = false;
-        if (mounted) setState(() => _busy = false);
+        if (mounted) setState(() {
+          _busy = false;
+          if (_access.actor != actor || _access.token != token) _error = 'ログイン状態が変わりました。再読み込みしてください。';
+        });
       }
     }
   }
@@ -261,6 +278,9 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
           : 'other';
 
   void _lock() {
+    final wait = _resumeWait;
+    _resumeWait = null;
+    if (wait != null && !wait.isCompleted) wait.complete(false);
     _generation++;
     _nativePrompt = false;
     _expiryTimer?.cancel();
@@ -279,6 +299,10 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _lifecycle = state;
+    if (state == AppLifecycleState.resumed) {
+      final wait = _resumeWait;
+      if (wait != null && !wait.isCompleted) wait.complete(true);
+    }
     if (state == AppLifecycleState.inactive && _nativePrompt) {
       _password.clear();
       return;
@@ -289,6 +313,9 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
   @override
   void dispose() {
     _generation++;
+    final wait = _resumeWait;
+    if (wait != null && !wait.isCompleted) wait.complete(false);
+    _resumeWait = null;
     WidgetsBinding.instance.removeObserver(this);
     _expiryTimer?.cancel();
     _password.dispose();
@@ -354,6 +381,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
                           ),
                         ),
                       ],
+                      if (_error != null) TextButton(onPressed: _busy ? null : () { setState(() { _loading = true; _error = null; }); _load(); }, child: const Text('再読み込み')),
                       const SizedBox(height: 18),
                       FilledButton.icon(
                         onPressed: _busy ? null : _authenticate,
