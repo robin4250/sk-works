@@ -497,7 +497,9 @@ class _SiteFormPageState extends State<SiteFormPage> {
   }
 
   Future<void> _submit() async {
-    if (_saving || _returning || !(_formKey.currentState?.validate() ?? false)) return;
+    if (_saving || _returning || !(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
     _draftId ??= DateTime.now().microsecondsSinceEpoch.toString();
     final draft = SiteRecord(
         id: _draftId!,
