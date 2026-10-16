@@ -108,6 +108,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
           Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => AppReferralPage(
               repository: AppReferralRepository(SupabaseBackend.client),
+              invitationKind: 'company',
               initialName: company == null ? '' :
                   company.representativeName.trim().isNotEmpty
                       ? company.representativeName : company.name,

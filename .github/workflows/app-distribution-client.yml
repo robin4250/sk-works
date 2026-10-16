@@ -1,0 +1,21 @@
+name: App distribution client compatibility
+on:
+  pull_request:
+    paths:
+      - 'lib/features/referrals/**'
+      - 'lib/features/people/employee_initial_registration_page.dart'
+      - 'test/app_referral_distribution_test.dart'
+      - 'test/app_distribution_repository_fallback_test.dart'
+      - '.github/workflows/app-distribution-client.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/referrals lib/features/people/employee_initial_registration_page.dart test/app_referral_distribution_test.dart test/app_distribution_repository_fallback_test.dart
+      - run: flutter test test/app_referral_distribution_test.dart test/app_distribution_repository_fallback_test.dart test/app_referral_composer_test.dart test/app_referral_personal_entry_test.dart test/app_referral_master_entry_test.dart --reporter expanded
