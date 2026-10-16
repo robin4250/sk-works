@@ -147,6 +147,66 @@ class ProvenanceTests(unittest.TestCase):
         with patch.object(p, 'source', return_value=SHA):
             with self.assertRaises(ValueError): p.create(self.ipa, marker, self.root / 'out.json', '1.2.3', '42')
 
+    def test_create_rejects_mutation_during_inspection(self):
+        marker = self.root / 'start.json'
+        marker.write_text(json.dumps({'commit': SHA, 'branch': 'main', 'started_ns': self.ipa.stat().st_mtime_ns - 1}))
+        details = self.inspect()
+        def mutate(path):
+            path.write_bytes(path.read_bytes() + b'changed-during-inspection')
+            return details
+        with patch.object(p, 'source', return_value=SHA), patch.object(p, 'inspect_ipa', side_effect=mutate), patch.object(p, 'check_ci'):
+            with self.assertRaises(ValueError): p.create(self.ipa, marker, self.root / 'out.json', '1.2.3', '42')
+        self.assertFalse((self.root / 'out.json').exists())
+
+    def test_validate_rejects_mutation_during_inspection(self):
+        manifest = self.root / 'manifest.json'
+        details = self.inspect()
+        manifest.write_text(json.dumps({'schema': 1, 'commit': SHA, 'branch': 'main', 'build_mode': 'release',
+            'ipa': str(self.ipa), 'sha256': p.digest(self.ipa), **details}))
+        def mutate(path):
+            path.write_bytes(path.read_bytes() + b'changed-during-inspection')
+            return details
+        with patch.object(p, 'source', return_value=SHA), patch.object(p, 'inspect_ipa', side_effect=mutate), patch.object(p, 'check_ci'):
+            with self.assertRaises(ValueError): p.validate(manifest)
+
+    def test_stage_preserves_original_and_inspects_exact_read_only_copy(self):
+        manifest = self.root / 'manifest.json'
+        details = self.inspect()
+        original = self.ipa.read_bytes()
+        manifest.write_text(json.dumps({'schema': 1, 'commit': SHA, 'branch': 'main', 'build_mode': 'release',
+            'ipa': str(self.ipa), 'sha256': p.digest(self.ipa), **details}))
+        staging = self.root / 'private'
+        staging.mkdir(mode=0o700)
+        seen = []
+        def inspect(path):
+            seen.append(path)
+            return details
+        with patch.object(p, 'source', return_value=SHA), patch.object(p, 'inspect_ipa', side_effect=inspect), patch.object(p, 'check_ci'):
+            destination = p.stage(manifest, staging)
+        self.assertEqual(seen, [self.ipa, destination])
+        self.assertEqual(destination, staging / 'candidate.ipa')
+        self.assertEqual(destination.stat().st_mode & 0o777, 0o400)
+        self.assertEqual(destination.read_bytes(), original)
+        self.assertEqual(self.ipa.read_bytes(), original)
+
+    def test_stage_rejects_changed_copy_and_public_directory(self):
+        manifest = self.root / 'manifest.json'
+        details = self.inspect()
+        manifest.write_text(json.dumps({'schema': 1, 'commit': SHA, 'branch': 'main', 'build_mode': 'release',
+            'ipa': str(self.ipa), 'sha256': p.digest(self.ipa), **details}))
+        staging = self.root / 'public'
+        staging.mkdir(mode=0o755)
+        with patch.object(p, 'source', return_value=SHA), patch.object(p, 'inspect_ipa', return_value=details), patch.object(p, 'check_ci'):
+            with self.assertRaises(ValueError): p.stage(manifest, staging)
+        staging.chmod(0o700)
+        def inspect(path):
+            if path != self.ipa:
+                path.chmod(0o600)
+                path.write_bytes(path.read_bytes() + b'changed-copy')
+            return details
+        with patch.object(p, 'source', return_value=SHA), patch.object(p, 'inspect_ipa', side_effect=inspect), patch.object(p, 'check_ci'):
+            with self.assertRaises(ValueError): p.stage(manifest, staging)
+
 
 if __name__ == '__main__':
     unittest.main()

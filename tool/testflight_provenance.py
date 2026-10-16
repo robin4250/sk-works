@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import plistlib
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -130,12 +131,15 @@ def create(ipa, marker, output, version, build):
     start = json.loads(marker.read_text())
     require(start.get('commit') == sha and start.get('branch') == 'main', 'Build source changed')
     require(ipa.is_file() and ipa.stat().st_mtime_ns >= start['started_ns'], 'IPA predates this build')
+    before = digest(ipa)
     details = inspect_ipa(ipa)
+    require(digest(ipa) == before, 'IPA changed during signature inspection')
     require(details['version'] == version and details['build'] == build, 'IPA version/build mismatch')
     ci = check_ci(sha)
     result = {'schema': 1, 'commit': sha, 'branch': 'main', 'build_mode': 'release',
-              'ipa': str(ipa.resolve()), 'sha256': digest(ipa), 'ci_runs': ci, **details}
+              'ipa': str(ipa.resolve()), 'sha256': before, 'ci_runs': ci, **details}
     require(source() == sha, 'Source changed during verification')
+    require(digest(ipa) == before, 'IPA changed during candidate verification')
     output.parent.mkdir(parents=True, exist_ok=True)
     temp = output.with_suffix('.tmp')
     temp.write_text(json.dumps(result, indent=2) + '\n')
@@ -148,22 +152,49 @@ def validate(manifest):
     require(data.get('schema') == 1 and data.get('commit') == sha and data.get('branch') == 'main'
             and data.get('build_mode') == 'release', 'Stale or invalid candidate manifest')
     ipa = Path(data['ipa'])
-    require(ipa.is_absolute() and ipa.is_file() and digest(ipa) == data.get('sha256'), 'IPA missing or modified')
+    require(ipa.is_absolute() and ipa.is_file(), 'IPA missing')
+    before = digest(ipa)
+    require(before == data.get('sha256'), 'IPA modified')
     actual = inspect_ipa(ipa)
+    require(digest(ipa) == before, 'IPA changed during signature inspection')
     require(all(data.get(k) == v for k, v in actual.items()), 'IPA identity changed')
     check_ci(sha)
     require(source() == sha, 'Source changed during verification')
+    require(digest(ipa) == before, 'IPA changed during candidate verification')
     return ipa
+
+
+def stage(manifest, directory):
+    """Privately copy and inspect the exact immutable-by-default upload path."""
+    original = validate(manifest)
+    data = json.loads(manifest.read_text())
+    metadata = directory.lstat()
+    require(stat.S_ISDIR(metadata.st_mode) and not directory.is_symlink()
+            and metadata.st_uid == os.getuid() and metadata.st_mode & 0o077 == 0,
+            'Private owned staging directory required')
+    destination = directory / 'candidate.ipa'
+    with original.open('rb') as src, destination.open('xb') as dst:
+        shutil.copyfileobj(src, dst)
+        os.fchmod(dst.fileno(), 0o400)
+    before = digest(destination)
+    require(before == data['sha256'], 'IPA changed during copy')
+    actual = inspect_ipa(destination)
+    require(digest(destination) == before, 'Upload copy changed during inspection')
+    require(all(data.get(k) == v for k, v in actual.items()), 'Upload copy identity changed')
+    require(source() == data['commit'], 'Source changed before upload')
+    require(digest(destination) == before, 'Upload copy changed before use')
+    return destination
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('operation', choices=['source', 'start', 'create', 'validate'])
+    p.add_argument('operation', choices=['source', 'start', 'create', 'validate', 'stage'])
     p.add_argument('--ipa', type=Path)
     p.add_argument('--marker', type=Path)
     p.add_argument('--manifest', type=Path)
     p.add_argument('--version')
     p.add_argument('--build')
+    p.add_argument('--staging-dir', type=Path)
     args = p.parse_args()
     try:
         if args.operation == 'source':
@@ -177,9 +208,12 @@ def main():
         elif args.operation == 'create':
             require(all([args.ipa, args.marker, args.manifest, args.version, args.build]), 'Candidate inputs required')
             create(args.ipa, args.marker, args.manifest, args.version, args.build)
-        else:
+        elif args.operation == 'validate':
             require(args.manifest, 'Candidate manifest required')
             print(validate(args.manifest))
+        else:
+            require(args.manifest and args.staging_dir, 'Manifest and staging directory required')
+            print(stage(args.manifest, args.staging_dir))
     except (ValueError, OSError, KeyError, TypeError, zipfile.BadZipFile, plistlib.InvalidFileException):
         # Do not leak profile, credential, command output or filesystem contents.
         print('TestFlight verification failed. Preserve source and rebuild/review the exact candidate.', file=sys.stderr)

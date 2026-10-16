@@ -10,8 +10,11 @@
 - IPAを一時領域に展開し、危険なZIPパス・symlink・過大な展開を拒否します。Bundle ID、version/build、AOT、Debug kernel不在、広範ATS無効化なしを確認します。
 - macOS codesignのstrict/deep検証、署名entitlements、配布profileのteam/application identifier/get-task-allow=false、App Store/TestFlight区分、有効期限、profile内署名証明書との一致を検証します。
 - 候補manifestはcommit/main/Releaseの構築記録、正確なIPA絶対パス、SHA256、version/build、署名識別、CI run IDを保持します。アップロード時はglob選択せず、このIPAの署名とSHAを再検証します。
+- 署名検査の前後および最終照合でSHA256の不変を検査します。アップロードは所有者のみがアクセスできる一時ディレクトリの読み取り専用コピーを作り、そのコピーを署名・SHA照合して同じパスをaltoolへ渡します。終了時はコピーだけ削除し、元IPAを保持します。
 
 `build/ios/sko-testflight-provenance.json` はローカルの構築記録であり、署名された第三者証明ではありません。ローカルのコード実行権限を持つ攻撃者に対する改竄耐性を保証しません。Releaseは実行した構築コマンドとソースの同一性で確認し、AOTだけではProfileと区別しません。
+
+commitとIPAを暗号学的に結び付けた埋め込み証明はありません。clean SHA・構築開始時刻・通常の固定Releaseビルド経路・検査したファイルのhashによる取り違え防止です。App.frameworkの存在とDebug kernel不在だけで任意の偽装バイナリをReleaseと認証しません。codesign/profile検査はMacのローカル信頼ストアとツールに依存し、Apple側での受付・証明書失効状態・サービス全体の安全性の確認を代替しません。所有者やrootが権限を戻してコピーやツールを書き換えるホスト侵害を、この一時コピーで防げるとは扱いません。
 
 候補作成には既存の `bash tool/testflight_candidate.sh`、APIアップロードには `bash tool/testflight_upload.sh` を使用します。追加要件はPython 3と認証済みGitHub CLIです。APIキー未設定時にOrganizerの別Archiveを自動で開く経路は停止し、検証済みIPAのTransporter利用を案内します。Transporterで別ファイルを選ぶ操作までこのスクリプトが制御することはできません。
 

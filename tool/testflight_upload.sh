@@ -67,13 +67,14 @@ echo "✓ App Store Connect認証設定を確認しました"
 echo
 echo "App Store Connectへアップロードします..."
 
-verified_ipa="$(python3 tool/testflight_provenance.py validate --manifest "$manifest")"
-[[ "$verified_ipa" == "$ipa" ]] || exit 1
+upload_staging="$(mktemp -d "${TMPDIR:-/tmp}/sko-testflight-upload.XXXXXX")"
+trap 'rm -f "$upload_staging/candidate.ipa"; rmdir "$upload_staging" 2>/dev/null || true' EXIT
+verified_ipa="$(python3 tool/testflight_provenance.py stage --manifest "$manifest" --staging-dir "$upload_staging")"
 
 xcrun altool \
   --upload-app \
   --type ios \
-  --file "$ipa" \
+  --file "$verified_ipa" \
   --apiKey "$key_id" \
   --apiIssuer "$issuer_id"
 
