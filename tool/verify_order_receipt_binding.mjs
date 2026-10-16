@@ -11,6 +11,7 @@ create table public.companies(id uuid primary key,company_seal_enabled boolean,t
 create table public.company_members(company_id uuid,user_id uuid,role text);
 create table public.customers(id uuid primary key,company_id uuid);
 create table public.sites(id uuid primary key,company_id uuid,customer_id uuid);
+create table private.site_payment_agreement_rollout(company_id uuid primary key,enabled boolean);
 create table private.company_connections(parent_company_id uuid,child_company_id uuid,status text);
 create table private.document_deliveries(id uuid primary key,sender_company_id uuid,recipient_company_id uuid);
 create table private.company_data_delivery_items(id uuid primary key,delivery_id uuid,payload_kind text,payload jsonb);
@@ -22,6 +23,7 @@ create table public.trade_company_contracts(company_id uuid,trade_company_id uui
 -- Official helper is a deterministic fixture: real rendering/hash/locking tests remain separate.
 create function private.document_company_seal_snapshot(uuid,uuid,boolean) returns jsonb language sql as $$select jsonb_build_object('company_seal_snapshot',jsonb_build_object('name','fixture-seal','revision',current_setting('fixture.seal',true)))$$;
 insert into companies values('${A}',true,10),('${B}',true,10);
+insert into private.site_payment_agreement_rollout values('${A}',true),('${B}',true);
 insert into company_members values('${A}','${U}','admin'),('${B}','${U}','admin');
 insert into customers values('${T}','${A}');
 insert into sites values('${S}','${A}','${T}');

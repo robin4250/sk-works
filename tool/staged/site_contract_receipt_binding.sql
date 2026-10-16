@@ -19,7 +19,7 @@ revoke all on all tables in schema site_contract_binding_private from public,ano
 create function site_contract_binding_private.preview(p_company uuid,p_item uuid,p_output text)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare x record; conn record; f jsonb; pref record; terms jsonb; source jsonb;
- unit text; amount numeric; formula jsonb; seal jsonb; rev integer; site_snapshot jsonb;
+ unit text; amount numeric; formula jsonb; seal jsonb; rev integer; site_snapshot jsonb; initial_receipt jsonb;
 begin
  if auth.uid() is null or not private.account_access_allowed() or not exists(
  select 1 from public.company_members m where m.company_id=p_company
@@ -33,20 +33,34 @@ begin
  join private.document_deliveries d on d.id=i.delivery_id
  join private.site_share_inbox b on b.data_item_id=i.id
  and b.recipient_company_id=d.recipient_company_id
- where i.id=p_item and i.payload_kind='site_share' and b.status in ('pending','accepted')
- for share of i,d,b;
+ where i.id=p_item and i.payload_kind='site_share' and b.status in ('pending','accepted');
  if x.sender is distinct from p_company or x.sender=x.recipient or x.site is null then
  raise exception 'exact sender receipt required' using errcode='42501';end if;
+ initial_receipt:=to_jsonb(x);
  -- New rollout only. No automatic enablement or public settings API.
  perform 1 from site_contract_binding_private.rollout where company_id in(x.sender,x.recipient)
  order by company_id for share;
  if (select count(*) from site_contract_binding_private.rollout where company_id in(x.sender,x.recipient) and enabled)<>2 then
  raise exception 'binding rollout off' using errcode='55000';end if;
+ perform 1 from private.site_payment_agreement_rollout where company_id in(x.sender,x.recipient)
+ order by company_id for share;
+ if (select count(*) from private.site_payment_agreement_rollout where company_id in(x.sender,x.recipient) and enabled)<>2 then
+ raise exception 'existing agreement rollout off' using errcode='55000';end if;
  select c.parent_company_id parent,c.child_company_id child into conn
  from private.company_connections c where c.status='accepted' and
  ((c.parent_company_id=x.sender and c.child_company_id=x.recipient) or
  (c.parent_company_id=x.recipient and c.child_company_id=x.sender)) for share;
  if conn.parent is null then raise exception 'accepted company link required' using errcode='42501';end if;
+ -- Canonical existing sealed order: agreement rollout -> connection -> inbox -> company.
+ perform 1 from private.site_share_inbox where data_item_id=p_item for update;
+ select d.sender_company_id sender,d.recipient_company_id recipient,
+ (i.payload->>'source_site_id')::uuid site,b.status,b.accepted_site_id,i.payload
+ into x from private.company_data_delivery_items i
+ join private.document_deliveries d on d.id=i.delivery_id
+ join private.site_share_inbox b on b.data_item_id=i.id and b.recipient_company_id=d.recipient_company_id
+ where i.id=p_item and i.payload_kind='site_share' and b.status in ('pending','accepted') for share of i,d;
+ if not found or to_jsonb(x) is distinct from initial_receipt then
+ raise exception 'receipt changed while waiting' using errcode='40001';end if;
  perform 1 from public.companies where id in(x.sender,x.recipient) order by id for share;
  if not exists(select 1 from public.sites where id=x.site and company_id=x.sender) or
  (x.status='accepted' and not exists(select 1 from public.sites where id=x.accepted_site_id and company_id=x.recipient)) then
@@ -139,9 +153,7 @@ begin
  end if;
  perform pg_advisory_xact_lock(hashtextextended('site-contract-binding-item:'||p_item,0));
  fresh:=site_contract_binding_private.preview(p_company,p_item,'invoice');
- -- Lock receipt then re-read all dependencies before storing; no old function mutation.
- perform 1 from private.site_share_inbox where data_item_id=p_item for share;
- fresh:=site_contract_binding_private.preview(p_company,p_item,'invoice');
+ -- preview already holds canonical receipt/dependency row locks.
  if (fresh->>'expected_revision')::integer<>p_expected_revision or fresh<>p_preview then
  raise exception 'preview/source changed' using errcode='40001';end if;
  insert into site_contract_binding_private.bindings(company_id,command_id,item_id,revision,actor_id,request,snapshot)
