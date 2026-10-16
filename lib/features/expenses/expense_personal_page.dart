@@ -72,7 +72,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
       _actor = _access!.actor;
       if (_actor == null) throw StateError('ログインが必要です。');
       final scopes = await _access!.scopes();
-      if (!_current(generation)) return;
+      if (!_current(generation)) {
+        return;
+      }
       setState(() {
         _scopes = scopes;
         _scope = scopes.length == 1 ? scopes.single : null;
@@ -95,7 +97,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
       scope['company_id'],
       scope['worker_id'],
     );
-    if (!_current(generation)) return;
+    if (!_current(generation)) {
+      return;
+    }
     setState(() {
       _pending = pending;
       _ready = false;
@@ -104,19 +108,25 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
       scope['company_id'],
       scope['worker_id'],
     );
-    if (!_current(generation)) return;
+    if (!_current(generation)) {
+      return;
+    }
     setState(() => _pendingChange = change);
     final history = await _access!.history(
       scope['company_id'],
       scope['worker_id'],
       _month,
     );
-    if (!_current(generation)) return;
+    if (!_current(generation)) {
+      return;
+    }
     setState(() { _history = history; _ready = true; });
   }
 
   Future<void> _reload() async {
-    if (_scope == null) return _loadScopes();
+    if (_scope == null) {
+      return _loadScopes();
+    }
     final generation = ++_generation;
     setState(() {
       _busy = true;
@@ -165,7 +175,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
           );
       setState(() => _pending = draft);
       await _access!.submit(draft);
-      if (!_current(generation)) return;
+      if (!_current(generation)) {
+        return;
+      }
       setState(() {
         _pending = null;
         _description.clear();
@@ -173,7 +185,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         _receipt = null;
         _month = DateTime.parse(draft.date);
       });
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       var acknowledged = false;
       await showDialog<void>(
         context: context,
@@ -185,7 +199,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
           actions: [
             FilledButton(
               onPressed: () {
-                if (acknowledged) return;
+                if (acknowledged) {
+                  return;
+                }
                 acknowledged = true;
                 Navigator.pop(dialogContext);
               },
@@ -194,7 +210,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
           ],
         ),
       );
-      if (!_current(generation)) return;
+      if (!_current(generation)) {
+        return;
+      }
       try {
         await _loadSelection(generation);
       } catch (_) {
@@ -246,7 +264,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
         setState(() => _error = '領収書を取得できません。カメラ・写真の許可と画像（10MB以内のJPEG／PNG）を確認してください。');
       }
     } finally {
-      if (_current(generation)) setState(() => _busy = false);
+      if (_current(generation)) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -281,20 +301,28 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
           ],
         ),
       );
-      if (confirmed != true) return;
+      if (confirmed != true) {
+        return;
+      }
     } else {
       edit = await showDialog<ExpenseSubmission>(
         context: context,
         builder: (_) => ExpenseEditDialog(claim: claim, actor: _actor!),
       );
-      if (edit == null) return;
+      if (edit == null) {
+        return;
+      }
     }
-    if (!_current(generation)) return;
+    if (!_current(generation)) {
+      return;
+    }
     await _sendChange(ExpensePersonalChange.create(_actor!, claim, edit: edit));
   }
 
   Future<void> _sendChange(ExpensePersonalChange command) async {
-    if (_busy || _access?.actor != _actor) return;
+    if (_busy || _access?.actor != _actor) {
+      return;
+    }
     final generation = ++_generation;
     setState(() {
       _busy = true;
@@ -303,7 +331,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
     });
     try {
       await _changes!.send(command);
-      if (!_current(generation)) return;
+      if (!_current(generation)) {
+        return;
+      }
       setState(() {
         _pendingChange = null;
         if (!command.withdrawing) {
@@ -357,7 +387,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
     );
-    if (date == null || !mounted) return;
+    if (date == null || !mounted) {
+      return;
+    }
     if (month) {
       setState(() => _month = date);
       await _reload();
@@ -539,7 +571,9 @@ class _ExpensePersonalPageState extends State<ExpensePersonalPage> {
                         onHistory: _access is! ExpenseSubmissionRepository ? null : () async {
                           try {
                             final result = await (_access as ExpenseSubmissionRepository).reviewHistory(claim);
-                            if (!detailContext.mounted) return;
+                            if (!detailContext.mounted) {
+                              return;
+                            }
                             await showDialog<void>(context: detailContext, builder: (_) => ExpenseReviewHistoryDialog(
                               events: (result['events'] as List).map((e) => Map<String, dynamic>.from(e)).toList()));
                           } catch (_) {
