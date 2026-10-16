@@ -41,7 +41,7 @@ class _TrafficSignPainter extends CustomPainter {
     final accent = switch (destination) {
       TrafficDestination.nearestStation => const Color(0xffad1457),
       TrafficDestination.trainTransfer => const Color(0xff606060),
-      TrafficDestination.busStop => const Color(0xff00838f),
+      TrafficDestination.busStop => const Color(0xff1565c0),
     };
     final color = enabled ? accent : disabledColor;
     final body = Paint()..color = enabled ? Color.lerp(accent, Colors.white, .82)! : disabledColor;
