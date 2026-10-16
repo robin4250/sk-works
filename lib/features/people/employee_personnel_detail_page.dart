@@ -109,7 +109,7 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
     final id=record.id;
     Navigator.of(context).push<bool>(MaterialPageRoute(builder:(_)=>PersonnelPrivacyView(session:session,builder:(context,rows){
       final current=rows.where((row)=>row['id']?.toString()==id).toList(growable:false);
-      if(session.snapshot?.canManage!=true||current.length!=1)return const Center(child:Text('編集権限を確認できません。'));
+      if(session.snapshot?.canManage!=true||current.length!=1||current.single['personnelBasicOnly']==true)return const Center(child:Text('編集権限を確認できません。'));
       return EmployeePersonnelEditPage(record:PersonRecord.fromJson(current.single),privacySession:session);
     })));
   }
@@ -175,7 +175,7 @@ class EmployeePersonnelDetailPage extends StatelessWidget {
         if(current.length!=1)return const Center(child:Text('対象の社員情報を表示できません。'));
         return EmployeePersonnelDetailPage(record:PersonRecord.fromJson(current.single),
           allEmployees:raw.map(PersonRecord.fromJson).toList(growable:false),
-          companyName:companyName,canManage:session.snapshot!.canManage,canViewFamily:true,
+          companyName:companyName,canManage:session.snapshot!.canManage&&current.single['personnelBasicOnly']!=true,canViewFamily:current.single['personnelBasicOnly']!=true,
           portraitLoader:portraitLoader,privacySession:session,privacyResolved:true);
       });
     }

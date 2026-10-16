@@ -32,6 +32,8 @@ class PersonnelBundleSendPage extends StatelessWidget {
       session.verify(lease);
     }
     return CompanyTransferSendPage(
+      scopeChanges:session,
+      scopeAllowed:session==null?null:()=>session.active&&!session.revoked&&session.snapshot?.canManage==true,
       beforeLoad:session==null?null:authorize,
       beforeSend:session==null?null:authorize,
       title: '社員データを送信',

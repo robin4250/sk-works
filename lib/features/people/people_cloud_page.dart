@@ -368,12 +368,17 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
   }
 
   Future<void> _add() async {
+    final session=_privacy;
+    if(session==null)return;
     final draft = await Navigator.of(context).push<PersonRecord>(
-      MaterialPageRoute(builder: (_) => const PersonFormPage()),
+      MaterialPageRoute(builder: (_) => PersonnelPrivacyView(session:session,builder:(context,_)=>session.snapshot?.canManage==true?const PersonFormPage():const Center(child:Text('登録権限を確認できません。')))),
     );
     if (draft == null || _repository == null) return;
     try {
-      final row = await _repository.insert(draft.toJson(),expectedCompany:_privacy?.company);
+      if(_privacy!=session)throw const PersonnelScopeChanged();
+      await session.read(forExport:true);
+      if(!mounted||_privacy!=session)throw const PersonnelScopeChanged();
+      final row = await _repository.insert(draft.toJson(),expectedCompany:session.company);
       final saved = PersonRecord.fromJson(row);
       if (!mounted) return;
       setState(() => _records.insert(0, saved));

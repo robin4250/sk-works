@@ -142,13 +142,14 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
 
     setState(() => _saving = true);
     try {
       final session=widget.privacySession;
       if(session!=null){
-        await session.read(forExport:true,workerIds:{widget.record.id});
+        final current=await session.read(forExport:true,workerIds:{widget.record.id});
+        if(current.single['personnelBasicOnly']==true)throw StateError('個人情報を完全に再取得できないため保存を中止しました。');
         if(!mounted)return;
         session.verify(session.epoch);
       }

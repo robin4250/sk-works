@@ -184,7 +184,7 @@ class PeopleCloudRepository {
     on PostgrestException catch (error) { if (error.code == '42501') return false; rethrow; }
   }
 
-  Future<PersonnelPrivacySnapshot> readPersonnel({String? expectedCompany}) async {
+  Future<PersonnelPrivacySnapshot> readPersonnel({String? expectedCompany,bool includeInactive=false}) async {
     final actor = actorId;
     final member = await membership(companyId:expectedCompany);
     if (expectedCompany != null && member.companyId != expectedCompany) {
@@ -200,15 +200,53 @@ class PeopleCloudRepository {
     if (raw is! Map || raw['company_id'] != member.companyId || raw['records'] is! List) {
       throw StateError('社員情報の取得結果を確認できません');
     }
-    return PersonnelPrivacySnapshot(actor: actor, company: member.companyId,
-      role: member.role, canManage: manage,
-      records: (raw['records'] as List).whereType<Map>().where((row)=>row['active']==true)
-        .map((row) => Map<String,dynamic>.from(row)).toList(growable: false));
+    final active=(raw['records'] as List).whereType<Map>().where((row)=>row['active']==true)
+      .map((row)=>Map<String,dynamic>.from(row)).toList(growable:false);
+    var records=active;
+    if(includeInactive&&manage){
+      final basic=(await loadAll(expectedCompany:member.companyId))
+        .where((row)=>row['active']==false&&row['kind']!='partnerCompany').toList(growable:false);
+      if(basic.isNotEmpty){
+        final ids=basic.map((row)=>row['id'].toString()).toList(growable:false);
+        final verified=await _client.from('workers').select('id').eq('company_id',member.companyId).eq('status','inactive').inFilter('id',ids);
+        if(verified.length!=ids.length)throw const PersonnelScopeChanged();
+        final defaultCompany=(await membership()).companyId;
+        if(defaultCompany==member.companyId){
+          final profiles=await _client.from('worker_personnel_profiles')
+            .select('worker_id,blood_type,address,emergency_name,emergency_relation,emergency_phone,emergency_address,family_composition')
+            .eq('company_id',member.companyId).inFilter('worker_id',ids);
+          final families=await _client.from('worker_family_members')
+            .select('id,worker_id,name,relation,birth_date,is_dependent')
+            .eq('company_id',member.companyId).inFilter('worker_id',ids);
+          final checked=await readPersonnel(expectedCompany:member.companyId);
+          if(!checked.canManage||checked.role!=member.role||(await membership()).companyId!=defaultCompany)throw const PersonnelScopeChanged();
+          records=[...checked.records,for(final row in basic){
+            ...row,
+            ..._inactivePrivateFields(profiles.where((p)=>p['worker_id']==row['id']).toList(growable:false)),
+            'familyMembers':families.where((f)=>f['worker_id']==row['id']).map((f)=>Map<String,dynamic>.from(f)).toList(growable:false),
+          }];
+        } else {
+          // No scoped phone read exists for a nondefault company. Show its
+          // legitimate basic row, but never submit an incomplete full payload.
+          records=[...active,for(final row in basic){...row,'personnelBasicOnly':true}];
+        }
+      }
+    }
+    if(actorId!=actor||(await membership(companyId:member.companyId))!=member)throw const PersonnelScopeChanged();
+    return PersonnelPrivacySnapshot(actor:actor,company:member.companyId,role:member.role,canManage:manage,records:records);
+  }
+
+  static Map<String,dynamic> _inactivePrivateFields(List<Map<String,dynamic>> profiles){
+    final p=profiles.isEmpty?const <String,dynamic>{}:profiles.single;
+    return {'bloodType':p['blood_type']??'','address':p['address']??'',
+      'emergencyName':p['emergency_name']??'','emergencyRelation':p['emergency_relation']??'',
+      'emergencyPhone':p['emergency_phone']??'','emergencyAddress':p['emergency_address']??'',
+      'familyComposition':p['family_composition']??''};
   }
 
   PersonnelPrivacySession privacySession(String company) => PersonnelPrivacySession(
     actor: actorId, company: company, currentActor: () => actorId,
-    load: () => readPersonnel(expectedCompany: company),
+    load: () => readPersonnel(expectedCompany: company,includeInactive:true),
     actorChanges: _client.auth.onAuthStateChange.map((event) => event.session?.user.id),
   );
 
@@ -250,7 +288,7 @@ class PeopleCloudRepository {
     }
     dynamic rows;
     final memberships=await _client.from('company_members').select('company_id').eq('user_id',actorId!).limit(2);
-    if(memberships.length==1&&memberships.single['company_id']==member.companyId){
+    if((memberships.length==1&&memberships.single['company_id']==member.companyId)||(await membership()).companyId==member.companyId){
       try { rows = await _client.rpc('people_management_records'); }
       on PostgrestException catch (error) {
         if(error.code!='42501'&&!(error.code=='P0001'&&error.message=='people management permission required'))rethrow;

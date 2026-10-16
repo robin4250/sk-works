@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 
 class CompanyDocumentExchangeRepository {
   CompanyDocumentExchangeRepository._(this._client);
+  @visibleForTesting CompanyDocumentExchangeRepository.forTesting(this._client);
 
   final SupabaseClient _client;
 
@@ -187,6 +189,7 @@ class CompanyDocumentExchangeRepository {
     required String targetCompanyId,
     required List<Map<String, dynamic>> items,
     String note = '',
+    Future<void> Function()? beforeWrite,
   }) async {
     final signatureItems = items
         .where((item) => item['kind'] == 'daily_report_signature')
@@ -195,6 +198,7 @@ class CompanyDocumentExchangeRepository {
       if (signatureItems.length != items.length) {
         throw StateError('サイン一覧と他データは分けて送信してください。');
       }
+      await beforeWrite?.call();
       final value = await _client.rpc(
         'send_connected_signature_data',
         params: {
@@ -209,6 +213,7 @@ class CompanyDocumentExchangeRepository {
       return value?.toString() ?? requestId;
     }
 
+    await beforeWrite?.call();
     final code = await _client.rpc(
       'connected_parent_receive_code',
       params: {'p_parent_company_id': targetCompanyId},
@@ -217,6 +222,7 @@ class CompanyDocumentExchangeRepository {
     if (receiveCode.isEmpty) {
       throw StateError('接続済み会社への送信準備に失敗しました。');
     }
+    await beforeWrite?.call();
     final deliveryId = await send(
       requestId: requestId,
       receiveCode: receiveCode,
@@ -231,6 +237,8 @@ class CompanyDocumentExchangeRepository {
         .where((id) => id.isNotEmpty)
         .toList(growable: false);
     if (personnelWorkerIds.isNotEmpty) {
+      try {
+      await beforeWrite?.call();
       await _client.rpc(
         'append_employee_personnel_details',
         params: {
@@ -238,6 +246,10 @@ class CompanyDocumentExchangeRepository {
           'p_worker_ids': personnelWorkerIds,
         },
       );
+      } catch(error) {
+        if(beforeWrite==null)rethrow;
+        throw StateError('基本データは送信済みですが、個人情報の追加を完了できませんでした。再送せず送信履歴を確認してください。');
+      }
     }
 
     return deliveryId;
