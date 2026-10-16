@@ -78,6 +78,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   bool _approvedEditAvailable = false;
   final _editSessions = DailyReportEditSessionStore();
   DailyReportEditSession? _editSession;
+  bool _editSessionUnverified = false;
   SignatureResult? _pendingResponsibleSignature;
   String? _pendingSignatureFingerprint;
   String? _pendingReporterFingerprint;
@@ -299,19 +300,23 @@ class _DailyReportPageState extends State<DailyReportPage> {
         }
       }
       DailyReportEditSession? editSession;
+      var editSessionUnverified = false;
       final editActor = repository.currentActorId;
       if (existing != null && editActor != null) {
         try {
           final saved = await _editSessions.load(editActor, existing.id);
+          editSessionUnverified = saved != null && !existing.signed;
           if (saved != null && saved.companyId == existing.companyId) {
             if (existing.signed) {
               await _editSessions.clear(saved);
             } else if (existing.status == 'draft' &&
                 await repository.verifyEditSession(saved)) {
               editSession = saved;
+              editSessionUnverified = false;
             }
           }
         } catch (_) {
+          editSessionUnverified = !existing.signed;
           // Storage/network uncertainty cannot grant edit-session privileges.
         }
       }
@@ -362,6 +367,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         _report = existing;
         _approvedEditAvailable = approvedEditAvailable;
         _editSession = editSession;
+        _editSessionUnverified = editSessionUnverified;
         _siteName = existing?.siteName ?? group?.siteName ?? '';
         if (widget.initialReportId != null && existing != null) {
           _groups = [DailyReportSiteGroup(siteId: existing.siteId,
@@ -903,6 +909,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _sign() async {
     if (_saving) return;
+    if (!_visitReport && _editSessionUnverified) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('編集申請の状態を確認できません。日報を再読み込みしてください。')));
+      return;
+    }
     final signingActor = _repository?.currentActorId;
     final signingDate = _date;
     final signingSite = _siteId;
@@ -1059,7 +1070,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (!mounted || repository.currentActorId != actor) {
         throw const DailyReportActorChanged();
       }
-      setState(() => _editSession = session.confirm());
+      setState(() {
+        _editSession = session.confirm();
+        _editSessionUnverified = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
         SkoLanguageController.tr('編集できる状態になりました。編集後は報告者・責任者のサインを登録してください。'),
       )));
