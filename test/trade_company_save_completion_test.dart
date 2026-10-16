@@ -52,6 +52,7 @@ void main() {
       expect(repo.saves, 1);
       expect(find.text('登録しました'), findsNothing);
       expect(find.text('登録中…'), findsOneWidget);
+      expect(tester.widget<TextField>(find.byType(TextField).first).enabled, isFalse);
       final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '登録中…'));
       expect(button.onPressed, isNull);
       final cancel = tester.widget<TextButton>(find.widgetWithText(TextButton, 'キャンセル'));
