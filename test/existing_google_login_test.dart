@@ -35,11 +35,11 @@ void main() {
   late SupabaseClient client;
   setUpAll(() { client=SupabaseClient('https://google-login-fixture.invalid','public_fixture', authOptions:const AuthClientOptions(autoRefreshToken:false), httpClient:MockClient((r) async => throw StateError('No live authentication: ${r.url.host}'))); });
   tearDownAll(() async { await client.dispose(); });
-  Future<void> show(WidgetTester t, FakeGoogle g, VoidCallback done) async {
+  Future<void> show(WidgetTester t, FakeGoogle g, VoidCallback done, {GlobalKey<NavigatorState>? navigatorKey}) async {
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await t.binding.setSurfaceSize(const Size(900,1400));
     addTearDown(() => t.binding.setSurfaceSize(null));
-    await t.pumpWidget(MaterialApp(home:SecureAuthPage(googleLogin:g,onAuthenticated:done)));
+    await t.pumpWidget(MaterialApp(navigatorKey: navigatorKey, home:SecureAuthPage(googleLogin:g,onAuthenticated:done)));
     await t.pumpAndSettle();
   }
   testWidgets('unsupported default platform keeps phone and QR without Google entry', (t) async {
@@ -88,6 +88,21 @@ void main() {
     expect(find.textContaining('既存の会社登録を確認できません'),findsOneWidget);
     await g.events.close();
   });
+  testWidgets('route-only return resumes pending authorization without lifecycle change', (t) async {
+    final g=FakeGoogle(client); var done=0;
+    final navigation=GlobalKey<NavigatorState>();
+    await show(t,g,()=>done++, navigatorKey:navigation);
+    await t.tap(find.text('登録済みのGoogleでログイン')); await t.pumpAndSettle();
+    navigation.currentState!.push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('covered route'))));
+    await t.pumpAndSettle();
+    expect(t.binding.lifecycleState, AppLifecycleState.resumed);
+    g.signedIn(); await t.pumpAndSettle();
+    expect(done,0); expect(g.reads,0);
+    navigation.currentState!.pop(); await t.pumpAndSettle();
+    expect(t.binding.lifecycleState, AppLifecycleState.resumed);
+    expect(g.reads,1); expect(done,1);
+    await g.events.close();
+  });
   testWidgets('failed browser launch never authenticates', (t) async {
     final g=FakeGoogle(client)..launchResult=false; var done=0;
     await show(t,g,()=>done++);
@@ -114,3 +129,4 @@ void main() {
     await c.dispose();
   });
 }
+

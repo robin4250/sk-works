@@ -37,6 +37,20 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Observe this route, without adding a global auth/navigation listener.
+    // A route can become current again without an OS lifecycle transition.
+    final isCurrent = ModalRoute.of(context)?.isCurrent == true;
+    if (isCurrent && _googlePending) {
+      final generation = _googleGeneration;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && generation == _googleGeneration) _completeGoogle();
+      });
+    }
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _completeGoogle();
   }
@@ -55,7 +69,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
     final google = widget.googleLogin ?? ExistingGoogleLogin.maybeCreate();
     if (google == null) return;
     if (google.currentSession != null) {
-      setState(() => _message = 'ログイン状態が変わりました。アプリを開き直して確認してください。');
+      setState(() => _message = 'ログイン状態が残っています。会社登録を確認できない場合は、新規登録をせずサポートへ確認してください。');
       return;
     }
     _google = google;
@@ -119,7 +133,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
       widget.onAuthenticated();
     } catch (_) {
       if (!mounted || generation != _googleGeneration) return;
-      setState(() { _cancelGoogle(); _message = '既存の会社登録を確認できませんでした。時間をおいてアプリを開き直してください。'; });
+      setState(() { _cancelGoogle(); _message = '既存の会社登録を確認できませんでした。ログイン状態は残る場合があります。新規登録をせず、サポートへ確認してください。'; });
     }
   }
   final _phone = TextEditingController();
@@ -1321,4 +1335,5 @@ class _InfoTile extends StatelessWidget {
     );
   }
 }
+
 
