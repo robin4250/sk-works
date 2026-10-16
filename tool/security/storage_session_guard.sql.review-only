@@ -1,0 +1,33 @@
+-- REVIEW ONLY: no production apply or automatic migration. Default OFF.
+begin;
+set local lock_timeout='5s';
+create table private.storage_session_guard_rollout (
+ singleton boolean primary key default true check(singleton),
+ enabled boolean not null default false
+);
+alter table private.storage_session_guard_rollout enable row level security;
+revoke all on private.storage_session_guard_rollout from public,anon,authenticated,service_role;
+insert into private.storage_session_guard_rollout(singleton,enabled) values(true,false);
+create function private.worker_storage_session_allowed()
+returns boolean language plpgsql stable security definer set search_path='' as $$
+declare session_text text; session_uuid uuid; gate boolean;
+begin
+ -- The disabled gate preserves existing behavior. Enabling is an independent
+ -- operator action, never performed by application clients or this candidate.
+ select enabled into gate from private.storage_session_guard_rollout where singleton;
+ if gate is null then return false;end if;
+ if not gate then return true;end if;
+ if auth.uid() is null or private.account_access_allowed() is not true
+ or auth.jwt()->>'role' is distinct from 'authenticated' then return false;end if;
+ session_text:=auth.jwt()->>'session_id';
+ if session_text is null or session_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then return false;end if;
+ session_uuid:=session_text::uuid;
+ return exists(select 1 from auth.sessions s where s.id=session_uuid
+ and s.user_id=auth.uid() and (s.not_after is null or s.not_after>statement_timestamp()));
+end $$;
+revoke all on function private.worker_storage_session_allowed() from public,anon,authenticated,service_role;
+grant execute on function private.worker_storage_session_allowed() to authenticated;
+create policy worker_document_live_session_guard on storage.objects
+as restrictive for select to authenticated
+using (bucket_id<>'worker-documents' or private.worker_storage_session_allowed());
+commit;

@@ -1,0 +1,49 @@
+name: Isolated worker Storage live-session guard
+on:
+  pull_request:
+    paths:
+      - 'tool/security/storage_session_guard*'
+      - 'tool/security/storage_session_catalog.json'
+      - 'tool/security/storage_session_feature_boundary.sql.review-only'
+      - '.github/workflows/storage-session-live-guard.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actual-local-stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf
+        with:
+          version: 2.121.0
+      - name: Disposable stack, actual GoTrue and Storage HTTP, always cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY SUPABASE_ANON_KEY
+          task_dir=$(mktemp -d "$RUNNER_TEMP/sko-storage-http.XXXXXX")
+          chmod 700 "$task_dir"
+          cleanup() {
+            supabase stop --workdir "$task_dir" --no-backup >"$task_dir/stop.log" 2>&1 || true
+            rm -rf "$task_dir"
+          }
+          trap cleanup EXIT
+          supabase --version
+          supabase init --help >"$task_dir/init-help.txt"
+          supabase start --help >"$task_dir/start-help.txt"
+          supabase status --help >"$task_dir/status-help.txt"
+          supabase stop --help >"$task_dir/stop-help.txt"
+          supabase init --workdir "$task_dir" --yes >"$task_dir/init.log" 2>&1
+          supabase start --workdir "$task_dir" --exclude realtime,imgproxy,studio,postgres-meta,edge-runtime,logflare,vector,supavisor,mailpit >"$task_dir/start.log" 2>&1
+          supabase status --workdir "$task_dir" -o json >"$task_dir/status.json" 2>"$task_dir/status.log"
+          chmod 600 "$task_dir/status.json"
+          npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+          node tool/security/storage_session_guard_sql_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          node tool/security/storage_session_guard_http_check.mjs "$task_dir/status.json" "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
