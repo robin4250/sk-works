@@ -456,7 +456,7 @@ Widget? notificationDestination(
   ),
   'site_information_request' || 'site_information_request_result' =>
     SiteInformationApprovalsPage(initialRequestId: item.actionId),
-  'vehicle_documents' => const VehicleRoutePage(),
+  'vehicle_documents' => VehicleRoutePage(initialVehicleId: item.actionId ?? ''),
   'daily_report_edit_request' => DailyReportApprovalsPage(
     initialRequestId: item.actionId,
   ),

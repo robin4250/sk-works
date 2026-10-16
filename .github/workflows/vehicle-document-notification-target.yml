@@ -1,0 +1,24 @@
+name: Vehicle document notification target
+on:
+  pull_request:
+    paths:
+      - lib/features/notifications/notifications_page.dart
+      - lib/features/operations/vehicle_route_page.dart
+      - test/vehicle_document_notification_target_test.dart
+      - .github/workflows/vehicle-document-notification-target.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  target:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/notifications/notifications_page.dart lib/features/operations/vehicle_route_page.dart test/vehicle_document_notification_target_test.dart
+      - run: flutter test test/vehicle_document_notification_target_test.dart test/notification_payroll_routing_test.dart test/source_notification_target_test.dart test/vehicle_route_navigation_contract_test.dart test/vehicle_route_delegated_permission_ui_contract_test.dart test/vehicle_route_table_grants_contract_test.dart
