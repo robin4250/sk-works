@@ -12,6 +12,26 @@ function claims(token) {
  const parts=token.split('.'); if(parts.length!==3)throw Error('invalid_token');
  return JSON.parse(atob(parts[1].replaceAll('-','+').replaceAll('_','/')));
 }
+async function boundedJson(req) {
+ if(Number(req.headers.get('content-length')??0)>4096)throw Error('invalid_request');
+ const reader=req.body?.getReader();if(!reader)throw Error('invalid_request');
+ const chunks=[];let length=0,timer;
+ const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>{
+  void reader.cancel().catch(()=>{});reject(Error('invalid_request'));
+ },10000);});
+ try {
+  while(true) {
+   const chunk=await Promise.race([reader.read(),timeout]);
+   if(chunk.done)break;
+   length+=chunk.value.byteLength;
+   if(length>4096){void reader.cancel().catch(()=>{});throw Error('invalid_request');}
+   chunks.push(chunk.value);
+  }
+  const data=new Uint8Array(length);let offset=0;
+  for(const chunk of chunks){data.set(chunk,offset);offset+=chunk.byteLength;}
+  return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(data));
+ }finally{clearTimeout(timer);reader.releaseLock();}
+}
 export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetcher=fetch,random=crypto.getRandomValues.bind(crypto),digest=crypto.subtle.digest.bind(crypto.subtle)}) {
  const base=baseUrl?.replace(/\/$/,'');
  async function request(path, options) {
@@ -35,9 +55,7 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
   }catch{return reply(503,{error:'reauthentication_unavailable'});}
   let payload;
   try {
-   if(Number(req.headers.get('content-length')??0)>4096)return reply(400,{error:'invalid_request'});
-   const text=await req.text(); if(text.length>4096)return reply(400,{error:'invalid_request'});
-   payload=JSON.parse(text);
+   payload=await boundedJson(req);
   }catch{return reply(400,{error:'invalid_request'});}
   const {user,session}=verifiedAccess;
   if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).sort().join(',')!=='operation,password,target'||!scopes.has(payload.operation)||typeof payload.password!=='string'||payload.password.length===0||payload.password.length>1024)return reply(400,{error:'invalid_request'});

@@ -71,7 +71,7 @@ try {
  // A normal completed business transaction burns the proof exactly once. Failed
  // or rolled-back business changes leave the proof available for retry.
  const rollback=await issue();await user.query('begin');await replace(user,rollback,'synthetic-rolled-back');await user.query('rollback');await replace(user,rollback,'synthetic-after-rollback');
- const expiry=await issue();await admin.query("update private.reauthentication_proofs set issued_at=clock_timestamp()-interval '3 minutes',expires_at=clock_timestamp()-interval '1 minute' where proof_hash=$1",[hash(expiry)]);await deny(replace(user,expiry));
+ const expiry=await issue();await admin.query("update private.reauthentication_proofs set issued_at=statement_timestamp()-interval '3 minutes',expires_at=statement_timestamp()-interval '1 minute' where proof_hash=$1",[hash(expiry)]);await deny(replace(user,expiry));
  const revoked=await issue();await admin.query('delete from auth.sessions where id=$1',[sa]);await deny(replace(user,revoked));
  await admin.query('insert into auth.sessions values($1,$2,null)',[sa,a]);
  const restricted=await issue();await admin.query('insert into private.account_deletion_access_restrictions values($1)',[a]);await deny(replace(user,restricted));await deny(issue());await admin.query('delete from private.account_deletion_access_restrictions');
