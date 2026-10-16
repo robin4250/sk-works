@@ -1,0 +1,341 @@
+{
+  "origin": {
+    "candidate_commit": "7282a180de60b949fcbd6b35a6a47ae779af1244",
+    "environment": "synthetic PGlite only, no hosted connection"
+  },
+  "initial": {
+    "items": [],
+    "version": 0,
+    "can_edit": true,
+    "tax_rate": 10,
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "legacy_refs": [
+      {
+        "id": null,
+        "name": "既存手当",
+        "slot": 1,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 700,
+        "generation": null,
+        "source_unit": "回",
+        "applicability": "all"
+      },
+      {
+        "id": null,
+        "name": "既存手当",
+        "slot": 2,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 800,
+        "generation": null,
+        "source_unit": "回",
+        "applicability": "all"
+      },
+      {
+        "id": null,
+        "name": null,
+        "slot": 3,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 0,
+        "generation": null,
+        "source_unit": "回",
+        "applicability": "all"
+      }
+    ],
+    "welfare_rate": 0,
+    "expected_source": {
+      "tax_rate": 10,
+      "legacy_slots": [
+        {
+          "name": "既存手当",
+          "slot": 1,
+          "unit": "回",
+          "amount_yen": 700
+        },
+        {
+          "name": "既存手当",
+          "slot": 2,
+          "unit": "回",
+          "amount_yen": 800
+        },
+        {
+          "name": null,
+          "slot": 3,
+          "unit": "回",
+          "amount_yen": 0
+        }
+      ],
+      "welfare_rate": 0,
+      "legacy_adopted": false,
+      "legacy_version": 0
+    },
+    "contract_version": 1
+  },
+  "saved": {
+    "items": [],
+    "id_map": [],
+    "version": 1,
+    "can_edit": true,
+    "tax_rate": 8.5,
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "request_id": "40000000-0000-4000-8000-000000009001",
+    "legacy_refs": [
+      {
+        "id": null,
+        "name": "既存手当",
+        "slot": 1,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 700,
+        "generation": null,
+        "source_unit": "回",
+        "applicability": "all"
+      },
+      {
+        "id": null,
+        "name": "既存手当",
+        "slot": 2,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 800,
+        "generation": null,
+        "source_unit": "回",
+        "applicability": "all"
+      },
+      {
+        "id": null,
+        "name": null,
+        "slot": 3,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 0,
+        "generation": null,
+        "source_unit": "回",
+        "applicability": "all"
+      }
+    ],
+    "welfare_rate": 12.3456,
+    "expected_source": {
+      "tax_rate": 8.5,
+      "legacy_slots": [
+        {
+          "name": "既存手当",
+          "slot": 1,
+          "unit": "回",
+          "amount_yen": 700
+        },
+        {
+          "name": "既存手当",
+          "slot": 2,
+          "unit": "回",
+          "amount_yen": 800
+        },
+        {
+          "name": null,
+          "slot": 3,
+          "unit": "回",
+          "amount_yen": 0
+        }
+      ],
+      "welfare_rate": 12.3456,
+      "legacy_adopted": false,
+      "legacy_version": 0
+    },
+    "contract_version": 1,
+    "committed_version": 1
+  },
+  "receipt": {
+    "found": true,
+    "result": {
+      "items": [],
+      "id_map": [],
+      "version": 1,
+      "can_edit": true,
+      "tax_rate": 8.5,
+      "company_id": "10000000-0000-0000-0000-000000000001",
+      "request_id": "40000000-0000-4000-8000-000000009001",
+      "legacy_refs": [
+        {
+          "id": null,
+          "name": "既存手当",
+          "slot": 1,
+          "unit": "day",
+          "section": "earning",
+          "amount_yen": 700,
+          "generation": null,
+          "source_unit": "回",
+          "applicability": "all"
+        },
+        {
+          "id": null,
+          "name": "既存手当",
+          "slot": 2,
+          "unit": "day",
+          "section": "earning",
+          "amount_yen": 800,
+          "generation": null,
+          "source_unit": "回",
+          "applicability": "all"
+        },
+        {
+          "id": null,
+          "name": null,
+          "slot": 3,
+          "unit": "day",
+          "section": "earning",
+          "amount_yen": 0,
+          "generation": null,
+          "source_unit": "回",
+          "applicability": "all"
+        }
+      ],
+      "welfare_rate": 12.3456,
+      "expected_source": {
+        "tax_rate": 8.5,
+        "legacy_slots": [
+          {
+            "name": "既存手当",
+            "slot": 1,
+            "unit": "回",
+            "amount_yen": 700
+          },
+          {
+            "name": "既存手当",
+            "slot": 2,
+            "unit": "回",
+            "amount_yen": 800
+          },
+          {
+            "name": null,
+            "slot": 3,
+            "unit": "回",
+            "amount_yen": 0
+          }
+        ],
+        "welfare_rate": 12.3456,
+        "legacy_adopted": false,
+        "legacy_version": 0
+      },
+      "contract_version": 1,
+      "committed_version": 1
+    },
+    "actor_id": "20000000-0000-0000-0000-000000000001",
+    "operation": "tax",
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "request_id": "40000000-0000-4000-8000-000000009001",
+    "payroll_type": null,
+    "request_payload": {
+      "tax_rate": 8.5,
+      "operation": "tax",
+      "welfare_rate": 12.3456,
+      "expected_source": {
+        "tax_rate": 10,
+        "legacy_slots": [
+          {
+            "name": "既存手当",
+            "slot": 1,
+            "unit": "回",
+            "amount_yen": 700
+          },
+          {
+            "name": "既存手当",
+            "slot": 2,
+            "unit": "回",
+            "amount_yen": 800
+          },
+          {
+            "name": null,
+            "slot": 3,
+            "unit": "回",
+            "amount_yen": 0
+          }
+        ],
+        "welfare_rate": 0,
+        "legacy_adopted": false,
+        "legacy_version": 0
+      },
+      "expected_version": 0
+    },
+    "contract_version": 1,
+    "expected_version": 0,
+    "committed_version": 1
+  },
+  "missing": {
+    "found": false,
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "request_id": "40000000-0000-4000-8000-000000009999",
+    "contract_version": 1
+  },
+  "viewer": {
+    "items": [],
+    "version": 1,
+    "can_edit": false,
+    "tax_rate": 8.5,
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "legacy_refs": [
+      {
+        "id": null,
+        "name": "既存手当",
+        "slot": 1,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 700,
+        "generation": null,
+        "source_unit": "回",
+        "applicability": "all"
+      },
+      {
+        "id": null,
+        "name": "既存手当",
+        "slot": 2,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 800,
+        "generation": null,
+        "source_unit": "回",
+        "applicability": "all"
+      },
+      {
+        "id": null,
+        "name": null,
+        "slot": 3,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 0,
+        "generation": null,
+        "source_unit": "回",
+        "applicability": "all"
+      }
+    ],
+    "welfare_rate": 12.3456,
+    "expected_source": {
+      "tax_rate": 8.5,
+      "legacy_slots": [
+        {
+          "name": "既存手当",
+          "slot": 1,
+          "unit": "回",
+          "amount_yen": 700
+        },
+        {
+          "name": "既存手当",
+          "slot": 2,
+          "unit": "回",
+          "amount_yen": 800
+        },
+        {
+          "name": null,
+          "slot": 3,
+          "unit": "回",
+          "amount_yen": 0
+        }
+      ],
+      "welfare_rate": 12.3456,
+      "legacy_adopted": false,
+      "legacy_version": 0
+    },
+    "contract_version": 1
+  }
+}

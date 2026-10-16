@@ -44,6 +44,21 @@ Map<String, dynamic> _source(Object? value) {
       (source['legacy_slots'] as List).length != 3 || utf8.encode(jsonEncode(source)).length > 32768) {
     throw const FormatException('現在の会社設定を確認できません');
   }
+  final seen = <int>{};
+  for (final raw in source['legacy_slots'] as List) {
+    final slot = commonTaxObject(raw);
+    const keys = {'slot', 'name', 'unit', 'amount_yen'};
+    if (slot.length != keys.length || !slot.keys.every(keys.contains) || slot['slot'] is! int ||
+        slot['slot'] < 1 || slot['slot'] > 3 || !seen.add(slot['slot']) ||
+        (slot['name'] != null && slot['name'] is! String) || (slot['unit'] != null && slot['unit'] is! String) ||
+        slot['amount_yen'] is! int || slot['amount_yen'] < 0 || slot['amount_yen'] > 2147483647) {
+      throw const FormatException('現在の会社設定の項目を確認できません');
+    }
+  }
+  if ((source['legacy_adopted'] == false && source['legacy_version'] != 0) ||
+      (source['legacy_adopted'] == true && source['legacy_version'] < 1)) {
+    throw const FormatException('既存手当の版を確認できません');
+  }
   // Legacy source values are an opaque CAS snapshot. Never trim, default,
   // reinterpret units or normalize old names while editing only tax/welfare.
   CompanyCommonTaxRate.fromNumber(source['tax_rate']);

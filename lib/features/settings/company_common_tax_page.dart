@@ -89,7 +89,9 @@ class _CompanyCommonTaxPageState extends State<CompanyCommonTaxPage> with Widget
   void didUpdateWidget(covariant CompanyCommonTaxPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.companyId != widget.companyId || !identical(oldWidget.repository, widget.repository) ||
-        !identical(oldWidget.pendingStore, widget.pendingStore)) _invalidate();
+        !identical(oldWidget.pendingStore, widget.pendingStore)) {
+      _invalidate();
+    }
   }
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
