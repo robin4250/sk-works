@@ -116,11 +116,14 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
     if (_targetOpening || vehicle == null || !_notificationActorValid) return;
     _targetOpening = true;
     try {
-      await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) =>
+      final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) =>
         _VehicleNotificationActorBoundary(
           actorChanges: _actorChanges, actorValid: () => _notificationActorValid,
           child: widget.notificationEditorBuilder?.call(vehicle) ?? VehicleEditorPage(vehicle: vehicle),
         )));
+      if (mounted && changed == true && _notificationActorValid) {
+        await _loadNotificationVehicle();
+      }
     } finally {
       if (mounted) setState(() => _targetOpening = false);
     }

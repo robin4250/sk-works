@@ -90,4 +90,24 @@ void main(){
   expect(find.text('編集車両:$target'),findsNothing);
   await tester.pumpWidget(const SizedBox.shrink());await actors.close();
  });
+ testWidgets('saved editor reloads exact vehicle before explicit reopening',(tester) async{
+  final repo=FakeVehicleRepository();final opened=<String>[];
+  await tester.pumpWidget(MaterialApp(home:VehicleRoutePage(initialVehicleId:target,
+    repository:repo,notificationEditorBuilder:(row){
+      opened.add(row['display_name'] as String);
+      return Scaffold(appBar:AppBar(title:const Text('書類編集')),body:Builder(
+        builder:(context)=>FilledButton(onPressed:(){
+          repo.rows=[{'id':target,'display_name':'保存後の車両'}];
+          Navigator.pop(context,true);
+        },child:Text(row['display_name'] as String))));
+    })));
+  await tester.pumpAndSettle();
+  expect(opened,['通知対象車両']);
+  await tester.tap(find.text('通知対象車両'));await tester.pumpAndSettle();
+  expect(find.text('保存後の車両'),findsOneWidget);
+  expect(opened,['通知対象車両'],'saving does not push another editor automatically');
+  await tester.tap(find.text('車両書類を開く'));await tester.pumpAndSettle();
+  expect(opened,['通知対象車両','保存後の車両']);
+ });
+
 }
