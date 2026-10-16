@@ -74,4 +74,4 @@ try{
  assert.deepEqual(await meta(),beforeMeta);assert.deepEqual((await db.query('select * from public.company_members')).rows,members);assert.deepEqual((await db.query('select to_jsonb(i) row from public.employee_registration_invites i order by id')).rows.map(x=>x.row),backups);
  assert.equal((await db.query('select count(*)::int n from auth.users where id=$1',[owner.id])).rows[0].n,1);checks++;
  console.log(`PASS ${checks} actual GoTrue/Data API dedicated omission-RPC checks: stale capability/old-save rollback, real row-lock race, notifications rollback, missing RPC safe error, legacy/fresh preservation and complete source/data/admin restoration. No production/Storage/OAuth-provider proof.`);
-}catch(e){console.error('Safe-save HTTP fixture failed:',e.code??'',String(e.message).split('\n')[0]);process.exitCode=1;}finally{await db.end();}
+}catch(e){console.error('Safe-save HTTP fixture failed:',e.code??'',String(e.message).split('\n')[0],typeof e.actual==='number'?e.actual:'',typeof e.expected==='number'?e.expected:'',String(e.stack).split('\n').find(x=>x.includes('onboarding_safe_save_http.mjs:'))??'');process.exitCode=1;}finally{await db.end();}
