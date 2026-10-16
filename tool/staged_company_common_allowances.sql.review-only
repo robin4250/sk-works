@@ -1,0 +1,188 @@
+-- REVIEW ONLY, outside migrations. No production application or payroll caller.
+-- Existing company rate columns, legacy slot identities, quantities and finalized
+-- statements are never written. This is the single master for NEW additive items.
+begin;
+set local lock_timeout = '5s';
+create schema company_common_allowance_private;
+revoke all on schema company_common_allowance_private from public,anon,authenticated,service_role;
+create table company_common_allowance_private.state (
+ company_id uuid primary key, version bigint not null check(version between 0 and 9007199254740991),
+ created_by uuid not null, created_at timestamptz not null default clock_timestamp()
+);
+create table company_common_allowance_private.items (
+ id uuid primary key default gen_random_uuid(),company_id uuid not null,
+ payroll_type text not null check(payroll_type in ('daily','hourly','monthly')),
+ section text not null check(section in ('earning','deduction')),
+ unit text not null check(unit in ('hour','day','month')),
+ name text not null check(length(name) between 1 and 80 and name=btrim(name)),
+ amount_yen integer not null check(amount_yen>=0),position integer not null check(position>=0),
+ created_by uuid not null,created_at timestamptz not null default clock_timestamp(),
+ updated_by uuid not null,updated_at timestamptz not null default clock_timestamp(),
+ retired_by uuid,retired_at timestamptz,
+ unique(company_id,id),check((retired_by is null)=(retired_at is null))
+);
+create index company_common_allowance_active on company_common_allowance_private.items(company_id,payroll_type,position,id) where retired_at is null;
+create table company_common_allowance_private.history (
+ company_id uuid not null,version bigint not null,actor_id uuid not null,
+ changed_at timestamptz not null default clock_timestamp(),payroll_type text not null,
+ request_id uuid not null,before_value jsonb not null,after_value jsonb not null,
+ primary key(company_id,version)
+);
+create table company_common_allowance_private.requests (
+ company_id uuid not null,request_id uuid not null,actor_id uuid not null,
+ payroll_type text not null,expected_version bigint not null,
+ request_payload jsonb not null,committed_version bigint not null,result jsonb not null,
+ primary key(company_id,request_id)
+);
+alter table company_common_allowance_private.state enable row level security;
+alter table company_common_allowance_private.items enable row level security;
+alter table company_common_allowance_private.history enable row level security;
+alter table company_common_allowance_private.requests enable row level security;
+revoke all on all tables in schema company_common_allowance_private from public,anon,authenticated,service_role;
+
+create function company_common_allowance_private.authorize(cid uuid,editing boolean) returns boolean
+language plpgsql stable security definer set search_path='' as $$
+declare actor_role text;
+begin
+ if auth.uid() is null or private.account_access_allowed() is not true
+ or not exists(select 1 from public.companies where id=cid) then
+  raise exception 'company common allowance access denied' using errcode='42501';
+ end if;
+ select role::text into actor_role from public.company_members where company_id=cid and user_id=auth.uid();
+ if actor_role is null or actor_role not in ('owner','admin','viewer')
+ or (editing and actor_role not in ('owner','admin')) then
+  raise exception 'company common allowance access denied' using errcode='42501';
+ end if;
+ return actor_role in ('owner','admin');
+end $$;
+create function company_common_allowance_private.active_items(cid uuid,typ text default null) returns jsonb
+language sql stable set search_path='' as $$
+ select coalesce(jsonb_agg(jsonb_build_object('id',i.id,'payroll_type',i.payroll_type,
+ 'section',i.section,'unit',i.unit,'name',i.name,'amount_yen',i.amount_yen)
+ order by i.payroll_type,i.position,i.id),'[]'::jsonb)
+ from company_common_allowance_private.items i
+ where i.company_id=cid and i.retired_at is null and (typ is null or i.payroll_type=typ)
+$$;
+create function company_common_allowance_private.admin_state(cid uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare editable boolean;legacy jsonb;
+begin
+ editable:=company_common_allowance_private.authorize(cid,false);
+ select jsonb_build_array(
+ jsonb_build_object('slot',1,'name',r.allowance_1_name,'unit',r.allowance_1_unit,'amount_yen',r.allowance_1_amount_yen),
+ jsonb_build_object('slot',2,'name',r.allowance_2_name,'unit',r.allowance_2_unit,'amount_yen',r.allowance_2_amount_yen),
+ jsonb_build_object('slot',3,'name',r.allowance_3_name,'unit',r.allowance_3_unit,'amount_yen',r.allowance_3_amount_yen))
+ into legacy from public.company_rate_settings r where r.company_id=cid;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'can_edit',editable,
+ 'version',coalesce((select s.version from company_common_allowance_private.state s where s.company_id=cid),0),
+ 'items',company_common_allowance_private.active_items(cid),
+ 'legacy_unassigned',coalesce(legacy,'[]'::jsonb));
+end $$;
+create function company_common_allowance_private.request_result(cid uuid,rid uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare r company_common_allowance_private.requests%rowtype;
+begin
+ perform company_common_allowance_private.authorize(cid,true);
+ if rid is null then raise exception 'invalid request id' using errcode='22023';end if;
+ select * into r from company_common_allowance_private.requests where company_id=cid and request_id=rid and actor_id=auth.uid();
+ if not found then return jsonb_build_object('contract_version',1,'company_id',cid,'request_id',rid,'found',false);end if;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'request_id',rid,'found',true,
+ 'actor_id',r.actor_id,'payroll_type',r.payroll_type,'expected_version',r.expected_version,
+ 'request_payload',r.request_payload,'committed_version',r.committed_version,'result',r.result);
+end $$;
+create function company_common_allowance_private.save(cid uuid,typ text,expected bigint,rid uuid,input_items jsonb) returns jsonb
+language plpgsql volatile security definer set search_path='' as $$
+declare v bigint;payload jsonb;receipt company_common_allowance_private.requests%rowtype;
+ item jsonb;item_id uuid;seen uuid[]:='{}';keys_seen text[]:='{}';key text;pos integer:=0;
+ before_items jsonb;outcome jsonb;mapping jsonb:='[]';
+begin
+ perform company_common_allowance_private.authorize(cid,true);
+ if typ is null or typ not in ('daily','hourly','monthly') or expected is null or expected<0 or expected>9007199254740990
+ or rid is null or input_items is null or jsonb_typeof(input_items)<>'array'
+ or jsonb_array_length(input_items)>100 or octet_length(input_items::text)>131072 then
+  raise exception 'invalid company common allowance request' using errcode='22023';end if;
+ -- Shared lock order with the existing rate saver. No existing table UPDATE.
+ perform 1 from public.companies where id=cid for update;
+ if not found then raise exception 'company common allowance access denied' using errcode='42501';end if;
+ -- Revalidate and lock membership after waiting; concurrent role changes cannot
+ -- pass the decision boundary unnoticed and are serialized until this save ends.
+ perform 1 from public.company_members where company_id=cid and user_id=auth.uid()
+ and role::text in ('owner','admin') for share;
+ if not found or private.account_access_allowed() is not true then
+  raise exception 'company common allowance access denied' using errcode='42501';end if;
+ payload:=jsonb_build_object('payroll_type',typ,'expected_version',expected,'items',input_items);
+ select * into receipt from company_common_allowance_private.requests where company_id=cid and request_id=rid;
+ if found then
+  if receipt.actor_id is distinct from auth.uid() or receipt.request_payload is distinct from payload then
+   raise exception 'request id payload mismatch' using errcode='22023';end if;
+  return receipt.result;
+ end if;
+ insert into company_common_allowance_private.state(company_id,version,created_by)
+ values(cid,0,auth.uid()) on conflict(company_id) do nothing;
+ select version into v from company_common_allowance_private.state where company_id=cid for update;
+ if v<>expected then raise exception 'company common allowance version conflict' using errcode='40001';end if;
+ before_items:=company_common_allowance_private.active_items(cid,typ);
+ for item in select value from jsonb_array_elements(input_items) loop
+  if jsonb_typeof(item)<>'object' or (select count(*) from jsonb_object_keys(item))<>6
+  or not(item ?& array['id','client_key','section','unit','name','amount_yen'])
+  or jsonb_typeof(item->'client_key')<>'string' or item->>'client_key' !~ '^[A-Za-z0-9_-]{1,120}$'
+  or jsonb_typeof(item->'section')<>'string' or item->>'section' not in ('earning','deduction')
+  or jsonb_typeof(item->'unit')<>'string' or item->>'unit' not in ('hour','day','month')
+  or jsonb_typeof(item->'name')<>'string' or length(btrim(item->>'name')) not between 1 and 80
+  or jsonb_typeof(item->'amount_yen')<>'number' or item->>'amount_yen' !~ '^(0|[1-9][0-9]*)$'
+  or (item->>'amount_yen')::numeric>2147483647 then
+   raise exception 'invalid company common allowance item' using errcode='22023';end if;
+  key:=item->>'client_key';
+  if key=any(keys_seen) then raise exception 'duplicate client key' using errcode='22023';end if;
+  keys_seen:=array_append(keys_seen,key);
+  if item->'id'='null'::jsonb then
+   insert into company_common_allowance_private.items(company_id,payroll_type,section,unit,name,amount_yen,position,created_by,updated_by)
+   values(cid,typ,item->>'section',item->>'unit',btrim(item->>'name'),(item->>'amount_yen')::integer,pos,auth.uid(),auth.uid()) returning id into item_id;
+  else
+   if jsonb_typeof(item->'id')<>'string' or item->>'id' !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' then
+    raise exception 'invalid allowance id' using errcode='22023';end if;
+   item_id:=(item->>'id')::uuid;
+   if item_id=any(seen) then raise exception 'duplicate allowance id' using errcode='22023';end if;
+   update company_common_allowance_private.items set section=item->>'section',unit=item->>'unit',
+    name=btrim(item->>'name'),amount_yen=(item->>'amount_yen')::integer,position=pos,updated_by=auth.uid(),updated_at=clock_timestamp()
+   where id=item_id and company_id=cid and payroll_type=typ and retired_at is null;
+   if not found then raise exception 'allowance id unavailable' using errcode='22023';end if;
+  end if;
+  seen:=array_append(seen,item_id);mapping:=mapping||jsonb_build_array(jsonb_build_object('client_key',key,'id',item_id));pos:=pos+1;
+ end loop;
+ update company_common_allowance_private.items set retired_at=clock_timestamp(),retired_by=auth.uid(),updated_at=clock_timestamp(),updated_by=auth.uid()
+ where company_id=cid and payroll_type=typ and retired_at is null and not(id=any(seen));
+ update company_common_allowance_private.state set version=v+1 where company_id=cid;
+ insert into company_common_allowance_private.history(company_id,version,actor_id,payroll_type,request_id,before_value,after_value)
+ values(cid,v+1,auth.uid(),typ,rid,before_items,company_common_allowance_private.active_items(cid,typ));
+ outcome:=company_common_allowance_private.admin_state(cid)||jsonb_build_object('request_id',rid,'committed_version',v+1,'id_map',mapping);
+ insert into company_common_allowance_private.requests(company_id,request_id,actor_id,payroll_type,expected_version,request_payload,committed_version,result)
+ values(cid,rid,auth.uid(),typ,expected,payload,v+1,outcome);
+ return outcome;
+end $$;
+create function company_common_allowance_private.history_page(cid uuid,before_v bigint,lim integer) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare entries jsonb;oldest bigint;
+begin
+ perform company_common_allowance_private.authorize(cid,false);
+ if lim is null or lim not between 1 and 100 or (before_v is not null and before_v<1) then
+  raise exception 'invalid allowance history page' using errcode='22023';end if;
+ select coalesce(jsonb_agg(to_jsonb(h) order by version desc),'[]'::jsonb),min(version) into entries,oldest
+ from (select * from company_common_allowance_private.history where company_id=cid and (before_v is null or version<before_v) order by version desc limit lim) h;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'entries',entries,'before_version',
+ case when exists(select 1 from company_common_allowance_private.history where company_id=cid and version<oldest) then oldest end);
+end $$;
+revoke all on all functions in schema company_common_allowance_private from public,anon,authenticated,service_role;
+grant usage on schema company_common_allowance_private to authenticated;
+grant execute on function company_common_allowance_private.admin_state(uuid),company_common_allowance_private.save(uuid,text,bigint,uuid,jsonb),company_common_allowance_private.request_result(uuid,uuid),company_common_allowance_private.history_page(uuid,bigint,integer) to authenticated;
+create function public.read_company_common_allowances_admin(p_company_id uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_common_allowance_private.admin_state(p_company_id)$$;
+create function public.save_company_common_allowances(p_company_id uuid,p_payroll_type text,p_expected_version bigint,p_request_id uuid,p_items jsonb) returns jsonb
+language sql volatile security invoker set search_path='' as $$select company_common_allowance_private.save(p_company_id,p_payroll_type,p_expected_version,p_request_id,p_items)$$;
+create function public.read_company_common_allowance_request(p_company_id uuid,p_request_id uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_common_allowance_private.request_result(p_company_id,p_request_id)$$;
+create function public.read_company_common_allowances_history(p_company_id uuid,p_before_version bigint default null,p_limit integer default 50) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_common_allowance_private.history_page(p_company_id,p_before_version,p_limit)$$;
+revoke all on function public.read_company_common_allowances_admin(uuid),public.save_company_common_allowances(uuid,text,bigint,uuid,jsonb),public.read_company_common_allowance_request(uuid,uuid),public.read_company_common_allowances_history(uuid,bigint,integer) from public,anon,authenticated,service_role;
+grant execute on function public.read_company_common_allowances_admin(uuid),public.save_company_common_allowances(uuid,text,bigint,uuid,jsonb),public.read_company_common_allowance_request(uuid,uuid),public.read_company_common_allowances_history(uuid,bigint,integer) to authenticated;
+commit;
