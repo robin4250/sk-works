@@ -224,6 +224,7 @@ void main() {
         }
       };
       await send(tester);
+      expect(f.caps, 3, reason: 'Fault must be injected at the actual pre-dispatch recheck');
       expect(submitted, 0);
       expect(f.named(oldName), isEmpty);
       expect(f.named(safeName), isEmpty);
