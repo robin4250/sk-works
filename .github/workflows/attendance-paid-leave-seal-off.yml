@@ -1,0 +1,39 @@
+name: Attendance Paid Leave Seal OFF Integration
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tool/verify_attendance_paid_leave_seal_off.mjs'
+      - 'supabase/tests/attendance_paid_leave_seal_off_assertions.sql'
+      - '.github/workflows/attendance-paid-leave-seal-off.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_paid_leave_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_paid_leave_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned disposable database clients
+        run: npm install --prefix "$RUNNER_TEMP/sko-attendance-paid-leave" --save-exact --ignore-scripts --no-audit --no-fund pg@8.16.3 @electric-sql/pglite@0.3.14
+      - name: Isolated PGlite regression
+        run: node tool/verify_attendance_paid_leave_seal_off.mjs "$RUNNER_TEMP/sko-attendance-paid-leave/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Real PostgreSQL 17 regression
+        env:
+          SKO_PAID_LEAVE_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_paid_leave_fixture
+        run: node tool/verify_attendance_paid_leave_seal_off.mjs "$RUNNER_TEMP/sko-attendance-paid-leave/node_modules/pg/lib/index.js" --pg17
