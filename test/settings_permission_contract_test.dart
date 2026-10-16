@@ -14,7 +14,7 @@ void main() {
     expect(
       source,
       contains(
-        'CompanyAllowanceIdentityEntry(companyId: _companyId!, canManageCompany: _canManageCompany)',
+        'CompanyCommonSettingsEntry(companyId: _companyId!, canManageCompany: _canManageCompany)',
       ),
     );
     expect(source, isNot(contains(".from('companies').update(")));
@@ -53,3 +53,4 @@ void main() {
     );
   });
 }
+

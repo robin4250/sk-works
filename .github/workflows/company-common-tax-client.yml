@@ -1,0 +1,31 @@
+name: Company common tax client
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/company_common_tax_*'
+      - 'test/company_common_tax*'
+      - 'test/fixtures/company_common_tax_sql_response.json'
+      - '.github/workflows/company-common-tax-client.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/features/settings/company_common_tax_*'
+      - 'test/company_common_tax*'
+      - 'test/fixtures/company_common_tax_sql_response.json'
+      - '.github/workflows/company-common-tax-client.yml'
+permissions:
+  contents: read
+jobs:
+  tax-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/settings/company_common_tax_page.dart lib/features/settings/company_common_tax_repository.dart lib/features/settings/company_common_tax_pending.dart test/company_common_tax_test.dart test/company_common_tax_repository_test.dart
+      - run: flutter test test/company_common_tax_test.dart test/company_common_tax_repository_test.dart

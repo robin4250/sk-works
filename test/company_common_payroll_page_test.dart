@@ -36,6 +36,9 @@ void main() {
         ),
       ),
     );
+    await tester.tap(find.widgetWithText(OutlinedButton, '日給'));
+    await tester.tap(find.widgetWithText(OutlinedButton, '月単位'));
+    await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey('daily-item-name')),
       '編集保持',
@@ -98,3 +101,4 @@ void main() {
     },
   );
 }
+
