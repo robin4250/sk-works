@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../../data/supabase_backend.dart';
 
 import 'notes_cloud_repository.dart';
 
@@ -21,6 +25,12 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
   List<Map<String, dynamic>> _groups = [];
   List<Map<String, dynamic>> _notes = [];
   String? _selectedGroupId;
+  final _groupGuard = CommunicationLoadGuard();
+  final _contentGuard = CommunicationLoadGuard();
+  StreamSubscription<dynamic>? _authSubscription;
+  String? get _actorId => SupabaseBackend.isInitialized
+      ? SupabaseBackend.client.auth.currentUser?.id
+      : null;
   bool _loading = true;
   bool _loadingNotes = false;
   String? _error;
@@ -28,17 +38,48 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
   @override
   void initState() {
     super.initState();
+    if (SupabaseBackend.isInitialized) {
+      var actor = _actorId;
+      _authSubscription = SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
+        if (actor == _actorId) return;
+        actor = _actorId;
+        _groupGuard.invalidate();
+        _contentGuard.invalidate();
+        if (!mounted) return;
+        setState(() {
+          _groups = [];
+          _notes = [];
+          _selectedGroupId = null;
+          _loadingNotes = false;
+        });
+        _load();
+      });
+    }
     _load();
   }
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
+    _groupGuard.invalidate();
+    _contentGuard.invalidate();
     _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    if (_repository == null) {
+    final actor = _actorId;
+    final preferredGroup = _selectedGroupId ?? preferredGroup;
+    final request = _groupGuard.invalidate();
+    _contentGuard.invalidate();
+    setState(() {
+      _groups = [];
+      _notes = [];
+      _selectedGroupId = null;
+      _loading = true;
+      _error = null;
+    });
+    if (_repository == null || actor == null) {
       setState(() {
         _loading = false;
         _error = 'Supabaseに接続されていません。';
@@ -48,19 +89,23 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
 
     try {
       final groups = await _repository.loadGroups();
-      if (!mounted) return;
+      if (!mounted || !_groupGuard.accepts(request, actor, _actorId)) return;
       setState(() {
         _groups = groups;
         _selectedGroupId = groups.any(
-          (group) => group['id']?.toString() == widget.initialGroupId,
+          (group) => group['id']?.toString() == preferredGroup,
         )
-            ? widget.initialGroupId
-            : (groups.isEmpty ? null : groups.first['id'] as String);
+            ? preferredGroup
+            : (preferredGroup != null || groups.isEmpty
+                ? null : groups.first['id'] as String);
+        if (preferredGroup != null && _selectedGroupId == null) {
+          _error = '指定されたグループを表示できません。参加権限を確認してください。';
+        }
         _loading = false;
       });
       if (_selectedGroupId != null) await _loadNotes();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_groupGuard.accepts(request, actor, _actorId)) return;
       setState(() {
         _loading = false;
         _error = e.toString();
@@ -70,21 +115,27 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
 
   Future<void> _loadNotes() async {
     final groupId = _selectedGroupId;
+    final actor = _actorId;
+    final request = _contentGuard.invalidate();
     if (_repository == null || groupId == null) return;
     setState(() {
+      _notes = [];
       _loadingNotes = true;
       _error = null;
     });
     try {
       final notes = await _repository.loadNotes(groupId);
-      if (!mounted) return;
+      if (!mounted || !_contentGuard.accepts(request, actor, _actorId,
+          requestedGroup: groupId, currentGroup: _selectedGroupId)) return;
       setState(() {
         _notes = notes;
         _loadingNotes = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_contentGuard.accepts(request, actor, _actorId,
+          requestedGroup: groupId, currentGroup: _selectedGroupId)) return;
       setState(() {
+        _notes = [];
         _loadingNotes = false;
         _error = e.toString();
       });
@@ -114,15 +165,15 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : RefreshIndicator(
-                onRefresh: _loadNotes,
+                onRefresh: _load,
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
                   children: [
-                    if (_groups.isEmpty)
-                      const Card(
+                    if (_groups.isEmpty || _selectedGroupId == null)
+                      Card(
                         child: Padding(
-                          padding: EdgeInsets.all(18),
-                          child: Text('ノートを作成するには、先に通信グループを作成してください。'),
+                          padding: const EdgeInsets.all(18),
+                          child: Text(_error ?? '表示できる参加グループがありません。'),
                         ),
                       )
                     else ...[
@@ -172,7 +223,7 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
                       else if (filtered.isEmpty)
                         const Card(
                           child: Padding(
-                            padding: EdgeInsets.all(18),
+                            padding: const EdgeInsets.all(18),
                             child: Text('ノートはまだありません。'),
                           ),
                         )
@@ -383,4 +434,16 @@ class _NoteFormPageState extends State<_NoteFormPage> {
       ),
     );
   }
+}
+
+class CommunicationLoadGuard {
+  int _generation = 0;
+  int invalidate() => ++_generation;
+
+  bool accepts(int generation, String? requestedActor, String? currentActor,
+      {String? requestedGroup, String? currentGroup}) =>
+      generation == _generation &&
+      requestedActor != null &&
+      requestedActor == currentActor &&
+      requestedGroup == currentGroup;
 }
