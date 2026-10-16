@@ -1,3 +1,6 @@
+// SDK transport fixtures use the http version already pinned in pubspec.lock.
+// ignore_for_file: depend_on_referenced_packages
+
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
