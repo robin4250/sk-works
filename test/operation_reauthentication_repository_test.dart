@@ -22,7 +22,12 @@ http.Response jsonResponse(Object value, [int status = 200]) =>
 class Fixture {
   Fixture() {
     client = SupabaseClient('https://fixture.invalid', 'public_fixture',
-      httpClient: MockClient(handle), authOptions: const AuthClientOptions(autoRefreshToken: false));
+      httpClient: MockClient((request) async {
+        final response = await handle(request);
+        // PostgREST 2.9.1 reads response.request for HEAD/content parsing.
+        return http.Response.bytes(response.bodyBytes, response.statusCode,
+          headers: response.headers, request: request, reasonPhrase: response.reasonPhrase);
+      }), authOptions: const AuthClientOptions(autoRefreshToken: false));
     repository = OperationReauthenticationRepository(client);
   }
   late final SupabaseClient client;
@@ -30,6 +35,7 @@ class Fixture {
   String actor = actorA;
   String session = sessionA;
   int capabilityStatus = 200;
+  bool capabilityNetworkFailure = false;
   Object capability = {'protocol': 'sko-reauthentication-v1',
     'secondary_password': true, 'master_feature': false, 'master_security': false};
   Map<String, dynamic>? proofResponse;
@@ -46,6 +52,7 @@ class Fixture {
           'created_at': '2026-10-16T00:00:00Z'}});
     }
     if (request.url.path.endsWith('/reauthentication_capabilities')) {
+      if (capabilityNetworkFailure) throw StateError('synthetic connection failed');
       return jsonResponse(capability, capabilityStatus);
     }
     if (request.url.path == '/functions/v1/reauthenticate-operation') {
@@ -69,7 +76,7 @@ void main() {
     f.capability = {'protocol': 'sko-reauthentication-v1',
       'secondary_password': false, 'master_feature': false, 'master_security': false};
     expect((await f.repository.capabilities()).values.every((v) => !v), true);
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
   test('only missing RPC PGRST202 preserves legacy capability', () async {
     final f = Fixture();addTearDown(f.client.dispose);await f.login();
     f.capabilityStatus = 404;f.capability = {'code': 'PGRST202', 'message': 'synthetic missing RPC'};
@@ -78,7 +85,9 @@ void main() {
     await expectLater(f.repository.capabilities(), throwsA(isA<PostgrestException>()));
     f.capabilityStatus = 200;f.capability = {'protocol': 'sko-reauthentication-v1', 'secondary_password': true};
     await expectLater(f.repository.capabilities(), throwsStateError);
-  });
+    f.capabilityNetworkFailure = true;
+    await expectLater(f.repository.capabilities(), throwsA(anything));
+  }, timeout: const Timeout(Duration(seconds: 30)));
   test('proof request uses original bearer and exact operation target; only nonce returned', () async {
     final f = Fixture();addTearDown(f.client.dispose);await f.login();
     final original = f.client.auth.currentSession!.accessToken;
@@ -86,13 +95,13 @@ void main() {
     expect(f.headers.single, 'Bearer $original');
     expect(f.bodies.single, {'password': 'synthetic-primary',
       'operation': 'secondary_password.replace', 'target': {'user_id': actorA}});
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
   for (final sameActor in [true, false]) {
     test('actor/session switch during proof rejects response ($sameActor)', () async {
       final f = Fixture();addTearDown(f.client.dispose);await f.login();
       f.duringProof = () async {f.actor = sameActor ? actorA : actorB;f.session = sessionB;await f.login();};
       await expectLater(f.proof(), throwsStateError);
-    });
+    }, timeout: const Timeout(Duration(seconds: 30)));
   }
   test('malformed, expired, overlong, other operation and target proofs rejected', () async {
     final f = Fixture();addTearDown(f.client.dispose);await f.login();
@@ -104,5 +113,5 @@ void main() {
       {'expiresAt': DateTime.now().subtract(const Duration(seconds: 1)).toIso8601String()},
       {'expiresAt': DateTime.now().add(const Duration(minutes: 10)).toIso8601String()},
     ]) {f.proofResponse = {...valid, ...change};await expectLater(f.proof(), throwsStateError);}
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }

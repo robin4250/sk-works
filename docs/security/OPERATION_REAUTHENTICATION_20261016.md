@@ -63,4 +63,35 @@ not prove the external Auth service configuration. Dedicated PostgreSQL 17 uses
 pgcrypto and synthetic users/sessions to test real function ACLs, proof reuse,
 expiry, actor/session/target mismatch, revoked session, deleted-account
 restriction, initial setup/replacement, transaction rollback and concurrent
-consumers/rollout. It is not a production HTTP or native biometric test.
+consumers/rollout/session termination. It is not a production HTTP or native biometric test.
+
+Operational limits: proof retention/pruning and per-actor application throttling
+are not installed in this phase; Auth service rate limits still apply. Separate
+Auth-project testing must check single-session settings: password verification
+creates a temporary Auth session and must not invalidate the original one under
+the project settings. Such configuration must fail closed before rollout.
+
+## Protected existing accounts and approval boundary
+
+Phone, Apple and Google Auth identities, company IDs, company membership roles,
+Master grants and sub-administrator roles are not modified by this code. The
+isolated fixture compares all such synthetic rows before install, after operation
+and after restoring exact original function definitions and ACLs. It then runs
+the original password and Master feature RPCs again. This is a restore rehearsal
+of the lane in an isolated PostgreSQL fixture, not a backup or restore of actual
+production accounts, Auth configuration, complete database or a normal-admin UI
+comparison.
+
+Apple/Google or other OAuth-only users without an established primary password
+cannot obtain this password-only server proof. Gates are global per operation
+scope, so keep the affected scope OFF while any affected user lacks a verified
+alternative. Do not replace their legitimate recovery with client booleans, token
+refresh time or a newly assigned role. OFF preserves the existing biometric
+recovery and login code. A trustworthy OAuth/provider reauthentication alternative
+and its full recovery tests are required before universal rollout. No provider
+link, password, ID, role, company, Auth setting or membership is migrated here.
+
+Production changes require the user's explicit approval after a confidential
+backup, isolated restore verification, normal administrator UI comparison and a
+reviewable report. Passing this CI does not satisfy those operational prerequisites
+or grant approval to apply SQL/deploy Edge/enable enforcement.

@@ -85,7 +85,7 @@ class _PlatformMonitorPageState extends State<PlatformMonitorPage> {
             if (snapshot.windows.isEmpty)
               const Text('収集範囲の保存記録がありません。監視が動作した証拠はまだありません。'),
             for (final window in snapshot.windows)
-              ListTile(title: Text('${window['source']}・${window['event_count']}件'), subtitle: Text('${window['window_from']} ～ ${window['window_to']}\n${window['coverage'] == 'capacity_limited' ? '上限超過・記録不足' : '指定範囲の取得（連続収集は未保証）'}')),
+              ListTile(title: Text('${window['source']}・${window['event_count']}件'), subtitle: Text('${window['window_from']} ～ ${window['window_to']}\n${window['coverage'] == 'capacity_limited' ? '件数上限に到達・不足の可能性' : '指定範囲の取得（連続収集は未保証）'}')),
             if (snapshot.events.isEmpty)
               const Text('保存対象の記録はありません。攻撃がなかったことや安全性を証明しません。'),
             for (final event in snapshot.events)

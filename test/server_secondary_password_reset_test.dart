@@ -8,11 +8,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Tests the actual device access class and widget without an Auth service or
 // native biometric prompt. Only the operation transport is replaced.
+class _UnusedClient implements SupabaseClient {
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('The widget fixture must use the injected operation transport');
+}
 class _Transport extends OperationReauthenticationRepository {
-  _Transport() : this._(SupabaseClient('https://fixture.invalid', 'public_fixture',
-      authOptions: const AuthClientOptions(autoRefreshToken: false)));
-  _Transport._(this.client) : super(client);
-  final SupabaseClient client;
+  _Transport() : super(_UnusedClient());
   int requests = 0;
   int replacements = 0;
   int capabilityCalls = 0;
@@ -67,7 +69,7 @@ Future<void> replacement(WidgetTester tester) async {
 }
 void main() {
   testWidgets('enabled device flow requires server primary proof and completes with proof RPC', (tester) async {
-    final transport = _Transport();addTearDown(transport.client.dispose);
+    final transport = _Transport();
     final access = DeviceSecondaryPasswordResetAccess(reauthenticationRepository: transport,
       currentActor: () => 'synthetic-actor');
     await open(tester, access);
@@ -85,7 +87,7 @@ void main() {
     expect(transport.replacements, 1);
   });
   testWidgets('capability failure cannot downgrade to biometric or legacy reset', (tester) async {
-    final transport = _Transport()..failCapability = true;addTearDown(transport.client.dispose);
+    final transport = _Transport()..failCapability = true;
     await open(tester, DeviceSecondaryPasswordResetAccess(reauthenticationRepository: transport,
       currentActor: () => 'synthetic-actor'));
     expect(find.textContaining('本人確認の設定を確認できませんでした'), findsOneWidget);
@@ -97,7 +99,7 @@ void main() {
     expect(transport.replacements, 1);
   });
   testWidgets('denied proof keeps replacement form hidden and sends no save', (tester) async {
-    final transport = _Transport()..failProof = true;addTearDown(transport.client.dispose);
+    final transport = _Transport()..failProof = true;
     await open(tester, DeviceSecondaryPasswordResetAccess(reauthenticationRepository: transport,
       currentActor: () => 'synthetic-actor'));
     await authenticate(tester);
@@ -105,21 +107,24 @@ void main() {
     expect(transport.replacements, 0);
   });
   testWidgets('background during server verification invalidates the late nonce', (tester) async {
-    final transport = _Transport()..pending = Completer<String>();addTearDown(transport.client.dispose);
+    final transport = _Transport()..pending = Completer<String>();
     final access = DeviceSecondaryPasswordResetAccess(reauthenticationRepository: transport,
       currentActor: () => 'synthetic-actor');
     await open(tester, access);
     await tester.enterText(find.byKey(const Key('primary-password')), 'synthetic-primary');
     await tester.tap(find.text('本人確認する')); await tester.pump();
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden,
+        AppLifecycleState.paused, AppLifecycleState.hidden,
+        AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
     transport.pending!.complete('synthetic-single-use-proof'); await tester.pumpAndSettle();
     expect(find.byKey(const Key('reset-password')), findsNothing);
     await expectLater(access.save('synthetic-replay'), throwsStateError);
     expect(transport.replacements, 0);
   });
   testWidgets('ambiguous save clears proof and requires new primary verification', (tester) async {
-    final transport = _Transport()..failSave = true;addTearDown(transport.client.dispose);
+    final transport = _Transport()..failSave = true;
     final access = DeviceSecondaryPasswordResetAccess(reauthenticationRepository: transport,
       currentActor: () => 'synthetic-actor');
     await open(tester, access);await authenticate(tester);await replacement(tester);

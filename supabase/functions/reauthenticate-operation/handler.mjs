@@ -70,7 +70,7 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
    const value=await capabilities.json();
    if(value?.protocol!=='sko-reauthentication-v1'||value[scopes.get(payload.operation)]!==true)return reply(403,{error:'reauthentication_disabled'});
   }catch{return reply(503,{error:'reauthentication_unavailable'});}
-  let temporaryAccess;
+  let temporaryAccess,temporaryActor;
   try {
    // The identifier comes from the authenticated user, never the request body.
    const identity=user.phone?{phone:user.phone}:user.email?{email:user.email}:null;
@@ -79,6 +79,7 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
    if(!result.ok)return reply(result.status===429?429:result.status>=500?503:403,{error:'reauthentication_failed'});
    const verified=await result.json();
    temporaryAccess=typeof verified.access_token==='string'?verified.access_token:null;
+   temporaryActor=verified.user?.id;
    if(!temporaryAccess||verified.user?.id!==user.id)return reply(403,{error:'reauthentication_failed'});
    const tempClaims=claims(temporaryAccess);
    // Never risk logging out the caller's original session.
@@ -97,7 +98,7 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
   finally {
    if(temporaryAccess) {
     // Only the distinct temporary password-verification session is cleaned up.
-    try { const c=claims(temporaryAccess); if(c.sub===user.id&&uuid.test(c.session_id??'')&&c.session_id!==session)await request('/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:publicKey,Authorization:'Bearer '+temporaryAccess}}); }catch{ /* Fail closed without logging credentials. */ }
+    try { const c=claims(temporaryAccess); if(uuid.test(temporaryActor??'')&&c.sub===temporaryActor&&uuid.test(c.session_id??'')&&c.session_id!==session)await request('/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:publicKey,Authorization:'Bearer '+temporaryAccess}}); }catch{ /* Fail closed without logging credentials. */ }
    }
   }
  };

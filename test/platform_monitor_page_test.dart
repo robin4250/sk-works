@@ -94,4 +94,18 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('provider row cap is possible missing coverage rather than proven loss', (tester) async {
+    final snapshot = PlatformMonitorSnapshot.parse(report(windows: [{
+      'source': 'edge_logs', 'window_from': '2026-10-16T10:00:00Z',
+      'window_to': '2026-10-16T10:05:00Z', 'key_epoch': 1,
+      'coverage': 'capacity_limited', 'event_count': 1000,
+    }]));
+    await tester.pumpWidget(MaterialApp(home: PlatformMonitorPage(checkAvailable: () async => true, loadSnapshot: (_) async => snapshot)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'fixture-password');
+    await tester.tap(find.text('再認証して記録を表示')); await tester.pumpAndSettle();
+    expect(find.textContaining('件数上限に到達・不足の可能性'), findsOneWidget);
+    expect(find.textContaining('上限超過・記録不足'), findsNothing);
+  });
+
 }
