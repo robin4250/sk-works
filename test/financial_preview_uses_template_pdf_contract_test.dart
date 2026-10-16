@@ -28,6 +28,8 @@ void main() {
     expect(source, contains('PaymentCertificatePreviewPage'));
     expect(source, contains('PdfPreview.builder('));
     expect(source, contains('PdfPinchPages(pages: pages)'));
+    expect(source, contains('build: _buildPreviewPdf'));
+    expect(source, contains('_pdfBytes.get('));
     expect(source, contains('allowPrinting: true'));
     expect(source, contains('PdfPageFormat.a4'));
     expect(
