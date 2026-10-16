@@ -70,7 +70,8 @@ void main() {
     expect(find.byType(ExpensePersonalPage), findsOneWidget);
     expect(access.sent, hasLength(1));
     access.response!.complete();
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('経費の申請が完了しました'), findsOneWidget);
     expect(find.textContaining('申請先会社への経費申請を登録しました'), findsOneWidget);
     final acknowledge = tester.widget<FilledButton>(
@@ -105,7 +106,8 @@ void main() {
     expect(file.existsSync(), isTrue);
     access.fail = false;
     await tester.tap(find.text('同じ申請を再確認'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(access.sent.last.encoded, original.encoded);
     expect(access.sent, hasLength(2));
     expect(find.text('経費の申請が完了しました'), findsOneWidget);
@@ -119,7 +121,8 @@ void main() {
     final access = _Access()..failRefresh = true;
     await _open(tester, access);
     await tester.tap(find.text('申請する'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('経費の申請が完了しました'), findsOneWidget);
     await tester.tap(find.text('申請履歴を確認'));
     await tester.pumpAndSettle();
