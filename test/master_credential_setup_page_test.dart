@@ -14,6 +14,7 @@ class _Access implements MasterCredentialAccess {
   String? operation, verification, password;
   MasterCredentialPending? journal;
   Completer<void>? commitWait;
+  Completer<void>? rememberWait;
   Completer<MasterCredentialStatus>? loadWait;
   Completer<MasterCredentialChallenge>? beginWait;
   @override Future<MasterCredentialStatus> read(MasterCredentialBinding binding) async { if (denied) throw const MasterCredentialRejected('denied'); if (loadWait != null) return loadWait!.future; return MasterCredentialStatus(configured: configured, version: configured ? 3 : 0); }
@@ -22,7 +23,7 @@ class _Access implements MasterCredentialAccess {
   @override Future<void> commit(MasterCredentialBinding binding, MasterCredentialPending pending, MasterCredentialChallenge challenge, {required String verificationPassword, required String newPassword}) async { commits++; verification = verificationPassword; password = newPassword; if (commitWait != null) await commitWait!.future; if (unknown) throw StateError('synthetic unknown'); }
   @override Future<bool> receipt(MasterCredentialBinding binding, MasterCredentialPending pending) async { receipts++; return found; }
   @override Future<MasterCredentialPending?> pending(MasterCredentialBinding binding) async => journal;
-  @override Future<void> remember(MasterCredentialPending pending) async { journal = pending; }
+  @override Future<void> remember(MasterCredentialPending pending) async { journal = pending; if (rememberWait != null) await rememberWait!.future; }
   @override Future<void> forget(MasterCredentialPending pending) async { if (journal?.requestId == pending.requestId) journal = null; }
 }
 Future<void> _show(WidgetTester t, _Access access, {GlobalKey<NavigatorState>? navigation, bool settle = true}) async {
@@ -101,6 +102,20 @@ void main() {
     access.binding = const MasterCredentialBinding('actor-B', 'session-B', 'token-B', 'synthetic-device-key-longer-than-32'); access.events.add(null);
     access.commitWait!.complete(); await t.pumpAndSettle();
     expect(find.text('Master専用パスワードの保存が完了しました。'), findsNothing); expect(find.byType(TextField), findsNothing);
+  });
+  testWidgets('stale attempt cleanup cannot erase a newer challenge', (t) async {
+    final oldChallenge = Completer<MasterCredentialChallenge>();
+    final access = _Access()..beginWait = oldChallenge; await _show(t, access); await _fill(t);
+    await t.tap(find.text('初回登録して保存')); await t.pump();
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); await t.pump();
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await t.pumpAndSettle();
+    access.beginWait = null;
+    await t.tap(find.text('再読み込み')); await t.pumpAndSettle(); await _fill(t);
+    access.rememberWait = Completer<void>();
+    await t.tap(find.text('初回登録して保存')); for (var i = 0; i < 5; i++) { await t.pump(); }
+    oldChallenge.complete(access.challenge()); for (var i = 0; i < 5; i++) { await t.pump(); }
+    access.rememberWait!.complete(); await t.pumpAndSettle();
+    expect(access.commits, 1); expect(find.text('Master専用パスワードの保存が完了しました。'), findsOneWidget);
   });
   testWidgets('unknown result never resends and not_found receipt remains pending', (t) async {
     final access = _Access()..unknown = true; await _show(t, access); await _fill(t);

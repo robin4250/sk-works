@@ -69,7 +69,8 @@ class _MasterCredentialSetupPageState extends State<MasterCredentialSetupPage> w
       setState(() => _message = '確認用パスワードと、一致する新しいMaster専用パスワードを入力してください。新しいパスワードは8文字以上、UTF-8で72バイト以内です。'); return;
     }
     String existing = _existing.text, password = _password.text;
-    _clearCaptured = () { existing = ''; password = ''; };
+    void clearCaptured() { existing = ''; password = ''; }
+    _clearCaptured = clearCaptured;
     _existing.clear(); _password.clear(); _confirm.clear();
     final generation = ++_generation;
     final pending = MasterCredentialPending(actor: binding.actor, sessionId: binding.sessionId, deviceFingerprint: binding.deviceFingerprint, requestId: newMasterCredentialRequestId(), operation: status.configured ? 'change' : 'setup', version: status.version);
@@ -94,7 +95,9 @@ class _MasterCredentialSetupPageState extends State<MasterCredentialSetupPage> w
     } catch (_) {
       if (_valid(generation, binding)) setState(() { _status = null; _message = submitted ? '保存結果を確認できません。再送せず、結果を照合してください。' : '準備を完了できませんでした。再読み込みしてください。'; });
     } finally {
-      existing = ''; password = ''; _clearCaptured = null; _challenge = null;
+      existing = ''; password = '';
+      if (identical(_clearCaptured, clearCaptured)) _clearCaptured = null;
+      if (generation == _generation) _challenge = null;
       if (!submitted) {
         final cleared = await _forget(pending);
         if (cleared && _pending?.requestId == pending.requestId) _pending = null;
