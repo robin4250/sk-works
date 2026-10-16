@@ -1565,14 +1565,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           homeEligible: true,
           accessLabel: SkoLanguageController.tr('管理者・サブ管理者・一般・閲覧権限'),
         ),
-      if (_lineRelease?.visible == true && _isAdmin &&
-          _moduleEnabled('line_bridge'))
-        _MenuAction(
-          key: 'today_line',
-          label: SkoLanguageController.tr('本日のLINE'),
-          icon: Icons.today_outlined,
-          accessLabel: SkoLanguageController.tr('管理者・サブ管理者（勤怠権限）'),
-        ),
       if (_identity.isManagement)
         _MenuAction(
           key: 'trade_companies',
