@@ -261,6 +261,9 @@ for url_type in url_types:
 if not any("com.skworks.sko" in t.get("CFBundleURLSchemes", []) for t in url_types):
     url_types.append({"CFBundleURLName": "SKO authentication", "CFBundleURLSchemes": ["com.skworks.sko"]})
 data["CFBundleURLTypes"] = url_types
+# supabase_flutter owns the callback through app_links; Flutter 3.27+
+# otherwise also pushes the callback as an application route.
+data["FlutterDeepLinkingEnabled"] = False
 
 # Runtime keeps normal iPhone pages portrait; signature capture may rotate.
 # Keep the iPad-specific orientation key and its existing policy untouched.

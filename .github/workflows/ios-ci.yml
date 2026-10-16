@@ -223,6 +223,7 @@ jobs:
               with Path(path).open("rb") as f:
                   data = plistlib.load(f)
               assert any("com.skworks.sko" in t.get("CFBundleURLSchemes", []) for t in data.get("CFBundleURLTypes", [])), path
+              assert data.get("FlutterDeepLinkingEnabled") is False, path
               if "Runner.app" in path:
                   assert data["CFBundleIdentifier"] == "com.skworks.skWorks"
               print("OAuth callback scheme verified:", path)

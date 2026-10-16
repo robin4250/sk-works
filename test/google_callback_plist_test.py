@@ -18,9 +18,12 @@ class CallbackPlist(unittest.TestCase):
         self.assertEqual(repr(data),snapshot)
         self.assertEqual(data['CFBundleIdentifier'],'com.skworks.skWorks')
         self.assertEqual(data['untouched'],42)
+        self.assertIs(data['FlutterDeepLinkingEnabled'],False)
     def test_existing_callback_preserved(self):
         data={'CFBundleURLTypes':[{'CFBundleURLSchemes':['old','com.skworks.sko'],'extra':True}]}
-        snapshot=repr(data); self.apply(data); self.assertEqual(repr(data),snapshot)
+        snapshot=repr(data['CFBundleURLTypes']); self.apply(data)
+        self.assertEqual(repr(data['CFBundleURLTypes']),snapshot)
+        self.assertIs(data['FlutterDeepLinkingEnabled'],False)
     def test_malformed_refused_without_mutation(self):
         for value in ({},[1],[{'CFBundleURLSchemes':'bad'}],[{'CFBundleURLSchemes':[1]}]):
             data={'CFBundleURLTypes':value}; snapshot=repr(data)
