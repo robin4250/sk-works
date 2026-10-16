@@ -10,6 +10,19 @@ applying it, the suite captures both original policy definitions from the fixtur
 catalog. After testing the fix, it recreates those exact original policies and
 verifies legitimate owner/admin/self access, then reapplies the candidate.
 
+The migration fails closed if the two original policy predicates, roles,
+permissiveness, commands or policy inventory differ from the reviewed catalog,
+if table RLS flags differ, or if the canonical read helper's source, owner,
+execution ACL, security mode, language, return type, volatility or search path
+differ. Role/type names resolve through PostgreSQL catalogs; no environment's
+numeric role IDs are copied. Target tables are locked for the short transaction
+with a five-second lock timeout so concurrent policy edits cannot be overwritten.
+The fixture preserves actual policy roles, including the original PUBLIC scope,
+and the app_role enum needed to preserve the exact policy expressions. Synthetic
+drift cases prove the whole migration aborts without changing the new snapshot.
+Any drift requires a fresh protected snapshot and review, never bypassing the
+guard to force a deployment.
+
 The rehearsal asserts unchanged synthetic business rows and user IDs, provider
 identities, company roles/memberships, master registrations, function definitions,
 schema/table/column/function ACLs, RLS flags and non-SELECT policies. It does not
