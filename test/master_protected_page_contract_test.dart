@@ -6,7 +6,8 @@ void main() {
     final repository = File('lib/features/settings/master_device_repository.dart').readAsStringSync();
     expect(repository, contains("'current_master_device_status'"));
     expect(repository, contains("'bootstrap_first_master_device'"));
-    expect(page, contains('verifySecondaryPassword(password)'));
+    expect(page, contains("client.rpc('verify_secondary_password'"));
+    expect(page, contains("'p_password': password"));
     expect(page, contains('MasterSecondaryEntryPolicy.allows'));
     expect(page, contains('passwordVerified && biometricVerified'));
     expect(page, contains('passwordVerified || biometricEnabled && biometricVerified'));

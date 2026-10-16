@@ -30,7 +30,7 @@ class _Access implements MasterSecondaryAccess {
   @override Future<bool> configured() async => configuredWait == null ? configuredValue : configuredWait!.future;
   @override Future<bool> biometricAvailable() async => true;
   @override Future<bool> biometric() async { biometricCalls++; return biometricWait == null ? bioResult : biometricWait!.future; }
-  @override Future<bool> verify(String password) async { passwords.add(password); return passwordWait == null ? passwordResult : passwordWait!.future; }
+  @override Future<bool> verify(String password, String capturedToken) async { passwords.add(password); return passwordWait == null ? passwordResult : passwordWait!.future; }
   @override Future<void> bootstrap(String key, String name, String type, String platform, String capturedToken) async { bootstrapCalls++; trusted = true; canBootstrap = false; }
 }
 Future<void> _show(WidgetTester tester, _Access access, {bool opted = true, bool settle = true}) async {
@@ -201,6 +201,24 @@ void main() {
       }));
     await bootstrapMasterDeviceWithCapturedSession(client, key: 'synthetic-key', name: 'synthetic-name', type: 'iphone', platform: 'ios', capturedToken: 'synthetic-approved-A');
     expect(calls.length, 1); await client.dispose();
+  });
+
+  test('shared secondary verification uses captured bearer without mutating client headers', () async {
+    final calls = <http.Request>[];
+    final client = SupabaseClient('https://master-secondary-fixture.invalid', 'public_fixture',
+      headers: {'Authorization': 'Bearer synthetic-later-B'},
+      authOptions: AuthClientOptions(autoRefreshToken: false),
+      httpClient: MockClient((r) async {
+        expect(r.url.host, 'master-secondary-fixture.invalid'); calls.add(r);
+        expect(r.url.path, '/rest/v1/rpc/verify_secondary_password');
+        expect(r.headers['Authorization'], 'Bearer synthetic-approved-A');
+        expect(jsonDecode(r.body), {'p_password': 'synthetic-secondary-A'});
+        return http.Response('true', 200, headers: {'content-type': 'application/json'}, request: r);
+      }));
+    final original = Map<String, String>.from(client.headers);
+    expect(await verifyMasterSharedSecondaryWithCapturedSession(client, password: 'synthetic-secondary-A', capturedToken: 'synthetic-approved-A'), isTrue);
+    expect(calls.length, 1); expect(client.headers, original);
+    expect(client.headers['Authorization'], 'Bearer synthetic-later-B'); await client.dispose();
   });
 
 }

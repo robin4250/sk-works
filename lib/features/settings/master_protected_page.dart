@@ -23,7 +23,7 @@ abstract class MasterSecondaryAccess {
   Future<bool> configured();
   Future<bool> biometricAvailable();
   Future<bool> biometric();
-  Future<bool> verify(String password);
+  Future<bool> verify(String password, String capturedToken);
   Future<void> bootstrap(String key, String name, String type, String platform, String capturedToken);
 }
 class _ExistingMasterAccess implements MasterSecondaryAccess {
@@ -37,11 +37,24 @@ class _ExistingMasterAccess implements MasterSecondaryAccess {
   @override Future<bool> configured() async => await _auth?.secondaryPasswordConfigured() ?? false;
   @override Future<bool> biometricAvailable() async => await _local.isDeviceSupported() && await _local.canCheckBiometrics;
   @override Future<bool> biometric() => _local.authenticate(localizedReason: 'Master管理を開くため本人確認します', options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true));
-  @override Future<bool> verify(String password) async => await _auth?.verifySecondaryPassword(password) ?? false;
+  @override Future<bool> verify(String password, String capturedToken) async {
+    if (!SupabaseBackend.isInitialized) return false;
+    return verifyMasterSharedSecondaryWithCapturedSession(SupabaseBackend.client, password: password, capturedToken: capturedToken);
+  }
   @override Future<void> bootstrap(String key, String name, String type, String platform, String capturedToken) async {
     if (!SupabaseBackend.isInitialized) throw StateError('Master認証を利用できません。');
     await bootstrapMasterDeviceWithCapturedSession(SupabaseBackend.client, key: key, name: name, type: type, platform: platform, capturedToken: capturedToken);
   }
+}
+
+/// Same shared secondary credential RPC, with per-request actor binding.
+Future<bool> verifyMasterSharedSecondaryWithCapturedSession(SupabaseClient client, {
+  required String password, required String capturedToken,
+}) async {
+  final result = await client.rpc('verify_secondary_password', params: {
+    'p_password': password,
+  }).setHeader('Authorization', 'Bearer $capturedToken');
+  return result == true;
 }
 
 /// Existing bootstrap RPC, fixed to the session which approved this operation.
@@ -216,7 +229,7 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
         _nativePrompt = false;
       }
       if (!face || bootstrap) {
-        final ok = await _access.verify(password);
+        final ok = await _access.verify(password, token);
         password = '';
         if (!_valid(generation, actor, token)) return;
         if (!ok) throw StateError('第2パスワードが違います。');
@@ -252,10 +265,12 @@ class _MasterProtectedPageState extends State<MasterProtectedPage>
       password = '';
       if (generation == _generation) {
         _nativePrompt = false;
-        if (mounted) setState(() {
+        if (mounted) {
+          setState(() {
           _busy = false;
           if (_access.actor != actor || _access.token != token) _error = 'ログイン状態が変わりました。再読み込みしてください。';
-        });
+          });
+        }
       }
     }
   }
