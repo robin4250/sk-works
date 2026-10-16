@@ -951,7 +951,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final report = _report;
     final actor = repository?.currentActorId;
     if (_saving || _visitReport || repository == null || report == null ||
-        !report.signed || !_approvedEditAvailable || actor == null) return;
+        !report.signed || !_approvedEditAvailable || actor == null) {
+      return;
+    }
     setState(() => _saving = true);
     try {
       final confirmed = await showDialog<bool>(
