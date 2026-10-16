@@ -1,6 +1,7 @@
 name: iOS CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, 'chore/**']
     paths:
@@ -196,3 +197,4 @@ jobs:
 
       - name: Build iOS release without codesigning
         run: flutter build ios --release --no-codesign
+

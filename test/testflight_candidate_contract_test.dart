@@ -33,7 +33,8 @@ void main() {
     expect(finish, contains('bash tool/testflight_candidate.sh'));
     expect(finish, contains('bash tool/testflight_upload.sh'));
     expect(finish, contains('Runner.xcarchive'));
-    expect(finish, contains(r'open "$archive"'));
+    expect(finish, contains('testflight_provenance.py validate'));
+    expect(finish, isNot(contains(r'open "$archive"')));
     expect(preflight, contains('--- Release metadata ---'));
     expect(preflight, contains("grep '^version:' pubspec.yaml"));
     expect(preflight, contains(r'Build: $build_number'));
@@ -44,3 +45,4 @@ void main() {
     expect(script, contains('SKO_TESTFLIGHT_BUILD_NUMBER'));
   });
 }
+
