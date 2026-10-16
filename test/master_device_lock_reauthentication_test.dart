@@ -69,6 +69,7 @@ Future<void> lock(WidgetTester tester) async {
 Future<void> verify(WidgetTester tester) async {
   await tester.enterText(find.byKey(const Key('master-device-lock-password')), 'synthetic-primary');
   await tester.tap(find.text('本人確認して変更'));await tester.pumpAndSettle();
+  await tester.pump();await tester.pumpAndSettle();
 }
 void main() {
   testWidgets('ON requires primary proof, binds exact device/value and completes lock then unlock', (tester) async {
@@ -111,7 +112,9 @@ void main() {
     final devices = _Devices(),proofs = _Proofs();await _open(tester, devices, proofs);
     final callback = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'ロック')).onPressed!;
     callback();callback();await tester.pumpAndSettle();expect(devices.capabilityCalls, 1);
-    await verify(tester);expect(proofs.requests, 1);expect(devices.changes, 1);
+    await verify(tester);expect(proofs.requests, 1);
+    expect(find.byKey(const Key('master-device-lock-password')), findsNothing);
+    expect(devices.changes, 1);
   });
   test('SDK only missing capability downgrades; new proof setter carries exact nonce', () async {
     int status = 200;Object result = {'protocol': 'sko-master-device-lock-v1', 'enabled': true};

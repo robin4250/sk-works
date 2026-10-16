@@ -64,7 +64,7 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
   if(!target||typeof target!=='object'||Array.isArray(target))return reply(400,{error:'invalid_request'});
   if(payload.operation==='secondary_password.replace'&&(Object.keys(target).join(',')!=='user_id'||target.user_id!==user.id))return reply(400,{error:'invalid_request'});
   if(payload.operation==='master.feature.set'&&(Object.keys(target).sort().join(',')!=='enabled,feature_key'||!featureKeys.has(target.feature_key)||typeof target.enabled!=='boolean'))return reply(400,{error:'invalid_request'});
-  if(payload.operation==='master.device.lock'&&(Object.keys(target).sort().join(',')!=='device_id,locked'||!uuid.test(target.device_id??'')||target.device_id!==target.device_id.toLowerCase()||typeof target.locked!=='boolean'))return reply(400,{error:'invalid_request'});
+  if(payload.operation==='master.device.lock'&&(Object.keys(target).sort().join(',')!=='device_id,locked'||typeof target.device_id!=='string'||!uuid.test(target.device_id)||target.device_id!==target.device_id.toLowerCase()||typeof target.locked!=='boolean'))return reply(400,{error:'invalid_request'});
   if(payload.operation==='master.security_incidents.read'&&(Object.keys(target).join(',')!=='scope'||target.scope!=='platform'))return reply(400,{error:'invalid_request'});
   try {
    const deviceOperation=payload.operation==='master.device.lock';

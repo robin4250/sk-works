@@ -27,7 +27,7 @@ for(const enabled of [false,true])test('OFF or unavailable device scope refuses 
  assert.equal(f.paths.some(x=>x.includes('grant_type')),false);assert.equal(f.issued,undefined);
 });
 test('malformed targets/extra booleans cannot substitute a device proof',async()=>{
- for(const target of [{device_id:device,locked:null},{device_id:'bad-id',locked:true},{device_id:device,locked:true,biometricVerified:true}]) {
+ for(const target of [{device_id:device,locked:null},{device_id:'bad-id',locked:true},{device_id:{toString:'invalid'},locked:true},{device_id:device,locked:true,biometricVerified:true}]) {
   const f=fixture();assert.equal((await f.call(target)).status,400);assert.equal(f.paths.some(x=>x.includes('grant_type')),false);
  }
 });
