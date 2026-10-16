@@ -324,7 +324,9 @@ class _SitePageState extends State<SitePage> {
 }
 
 class SiteFormPage extends StatefulWidget {
-  const SiteFormPage({super.key});
+  const SiteFormPage({super.key, this.onSave});
+
+  final Future<SiteRecord> Function(SiteRecord draft)? onSave;
 
   @override
   State<SiteFormPage> createState() => _SiteFormPageState();
@@ -344,6 +346,9 @@ class _SiteFormPageState extends State<SiteFormPage> {
   final _endDate = TextEditingController();
   final _notes = TextEditingController();
   SiteStatus _status = SiteStatus.preparing;
+  bool _saving = false;
+  String? _saveError;
+  String? _draftId;
 
   @override
   void dispose() {
@@ -367,10 +372,14 @@ class _SiteFormPageState extends State<SiteFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: !_saving,
+      child: Scaffold(
       appBar: AppBar(title: const Text('現場 - 新規登録')),
       body: SafeArea(
-        child: Form(
+        child: AbsorbPointer(
+          absorbing: _saving,
+          child: Form(
           key: _formKey,
           child: ListView(
             padding: const EdgeInsets.all(16),
@@ -449,24 +458,35 @@ class _SiteFormPageState extends State<SiteFormPage> {
                 maxLines: 3,
                 decoration: const InputDecoration(labelText: '備考'),
               ),
+              if (_saveError != null) ...[
+                const SizedBox(height: 12),
+                Text(_saveError!,
+                    key: const Key('site-save-error'),
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
               const SizedBox(height: 20),
               FilledButton.icon(
-                onPressed: _submit,
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('登録する'),
+                onPressed: _saving ? null : _submit,
+                icon: _saving
+                    ? const SizedBox(width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.save_outlined),
+                label: Text(_saving ? '保存中…' : '登録する'),
               ),
             ],
           ),
         ),
       ),
+      ),
+      ),
     );
   }
 
-  void _submit() {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    Navigator.of(context).pop(
-      SiteRecord(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
+  Future<void> _submit() async {
+    if (_saving || !(_formKey.currentState?.validate() ?? false)) return;
+    _draftId ??= DateTime.now().microsecondsSinceEpoch.toString();
+    final draft = SiteRecord(
+        id: _draftId!,
         name: _name.text.trim(),
         customerName: _customer.text.trim(),
         status: _status,
@@ -479,7 +499,30 @@ class _SiteFormPageState extends State<SiteFormPage> {
         nearestStation: _nearestStation.text.trim(),
         representativeName: _representativeName.text.trim(),
         representativePhone: _representativePhone.text.trim(),
-      ),
-    );
+      );
+    final onSave = widget.onSave;
+    if (onSave == null) {
+      Navigator.of(context).pop(draft);
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    try {
+      final saved = await onSave(draft);
+      if (!mounted) return;
+      setState(() => _saving = false);
+      // PopScope must rebuild before this intentional successful return.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop(saved);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _saveError = '登録結果を確認できませんでした。入力内容は残っています。重複登録を避けるため、再送前に現場一覧をご確認ください。';
+      });
+    }
   }
 }
