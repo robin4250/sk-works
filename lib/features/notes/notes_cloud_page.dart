@@ -333,7 +333,9 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
                       final next = note['is_pinned'] != true;
                       Navigator.pop(sheetContext);
                       await _repository?.setPinned(note['id'] as String, next);
-                      if (mounted && actor == _actorId && groupId == _selectedGroupId) await _loadNotes();
+                      if (mounted && actor == _actorId && groupId == _selectedGroupId) {
+                        await _loadNotes();
+                      }
                     },
                     icon: Icon(
                       note['is_pinned'] == true
@@ -353,7 +355,9 @@ class _NotesCloudPageState extends State<NotesCloudPage> {
                   if (actor != _actorId || groupId != _selectedGroupId) return;
                   Navigator.pop(sheetContext);
                   await _repository?.deleteNote(note['id'] as String);
-                  await _loadNotes();
+                  if (mounted && actor == _actorId && groupId == _selectedGroupId) {
+                    await _loadNotes();
+                  }
                 },
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('削除'),
