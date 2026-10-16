@@ -85,6 +85,8 @@ try{
  await db.query('update private.storage_session_guard_rollout set enabled=true');
  await allowed(users.owner.token);await allowed(users.own.token);
  await db.query(`update public.member_feature_permissions set can_manage_people=true where user_id=${q(users.manager.id)}`);await allowed(users.manager.token);
+ await db.query(`update public.member_feature_permissions set can_manage_people=false where user_id=${q(users.manager.id)}`);await denied(users.manager.token);
+ await db.query(`update public.member_feature_permissions set can_manage_people=true where user_id=${q(users.manager.id)}`);await allowed(users.manager.token);
  await denied(anon);await denied(users.other.token);
  // Negative metadata uses locally signed fixture-only tokens; normal users above use actual GoTrue-issued JWTs.
  const secret=status.JWT_SECRET??status.jwt_secret;
