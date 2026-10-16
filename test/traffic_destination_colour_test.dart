@@ -33,16 +33,16 @@ void main() {
           if (r > 170 && (r - g).abs() + (g - b).abs() <= 2) silver++;
           palette.add((r << 16) | (g << 8) | b);
           final matches = switch(destination) {
-            TrafficDestination.nearestStation => r > b + 30 && b > g + 30,
-            TrafficDestination.trainTransfer => g > r + 30 && g > b + 20,
-            TrafficDestination.busStop => r > g + 50 && b > g + 50 && (r - b).abs() < 50,
+            TrafficDestination.nearestStation => r > g + 60 && g > b + 10,
+            TrafficDestination.trainTransfer => g > 170 && g > r + 30 && g > b + 20,
+            TrafficDestination.busStop => r > g + 60 && g > b + 60,
           };
           if (enabled && matches) coloured++;
           if (!enabled) expect((r - g).abs() + (g - b).abs(), lessThanOrEqualTo(2));
         }
         expect(opaque, greaterThan(40), reason: 'The sign must actually render at compact size');
         if (enabled) {
-          expect(coloured, greaterThan(20), reason: 'Station burgundy, train green stripe and bus purple remain recognizable');
+          expect(coloured, greaterThan(20), reason: 'Station brick, bright yellow-green train stripe and orange bus remain recognizable');
           if (destination == TrafficDestination.trainTransfer) expect(silver, greaterThan(20), reason: 'The side-view train keeps its silver body');
           expect(palette.length, greaterThan(1), reason: 'Vehicle body and sign details must remain distinguishable');
         } else { expect(coloured, 0); }
