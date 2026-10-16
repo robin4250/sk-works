@@ -766,13 +766,13 @@ class _SecondaryPasswordSetupPageState
                         ),
                         const SizedBox(height: 20),
                         FilledButton.icon(
-                          onPressed: _busy || _googlePending ? null : widget.onContinue,
+                          onPressed: _busy ? null : widget.onContinue,
                           icon: const Icon(Icons.business_outlined),
                           label: const Text('ユーザー・会社情報登録へ'),
                         ),
                         const SizedBox(height: 8),
                         OutlinedButton(
-                          onPressed: _busy || _googlePending ? null : _deferCompanySetup,
+                          onPressed: _busy ? null : _deferCompanySetup,
                           child: const Text('会社情報は後で登録する'),
                         ),
                       ],
@@ -791,7 +791,7 @@ class _SecondaryPasswordSetupPageState
         title: const Text('重要情報用パスワード'),
         actions: [
           TextButton(
-            onPressed: _busy || _googlePending ? null : widget.onSignOut,
+            onPressed: _busy ? null : widget.onSignOut,
             child: const Text('ログアウト'),
           ),
         ],
@@ -862,7 +862,7 @@ class _SecondaryPasswordSetupPageState
                       ],
                       const SizedBox(height: 20),
                       FilledButton.icon(
-                        onPressed: _busy || _googlePending ? null : _save,
+                        onPressed: _busy ? null : _save,
                         icon: const Icon(Icons.lock_reset_outlined),
                         label: const Text('第2パスワードを登録'),
                       ),
@@ -987,7 +987,7 @@ class _CompanyProfileSetupPageState extends State<CompanyProfileSetupPage> {
         title: const Text('ユーザー・会社登録'),
         actions: [
           TextButton(
-            onPressed: _busy || _googlePending ? null : widget.onSignOut,
+            onPressed: _busy ? null : widget.onSignOut,
             child: const Text('ログアウト'),
           ),
         ],
@@ -1158,7 +1158,7 @@ class _CompanyProfileSetupPageState extends State<CompanyProfileSetupPage> {
             ],
             const SizedBox(height: 20),
             FilledButton.icon(
-              onPressed: _busy || _googlePending ? null : _save,
+              onPressed: _busy ? null : _save,
               icon: const Icon(Icons.check_circle_outline),
               label: Text(_busy ? '登録中...' : '会社・本人情報を登録して次へ'),
             ),
