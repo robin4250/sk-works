@@ -1,0 +1,30 @@
+-- REVIEW ONLY. Not a deployable migration; intentionally outside supabase/migrations.
+-- Contract change: former role-only manager read narrowed to feature permission.
+begin;
+set local lock_timeout='5s';
+do $guard$
+declare p record;
+begin
+ select polcmd,polpermissive,polroles,pg_get_expr(polqual,polrelid) q into p from pg_policy
+ where polrelid='storage.objects'::regclass and polname='worker_document_photo_managed_read';
+ if not found or p.polcmd<>'r' or not p.polpermissive
+ or p.polroles<>array['authenticated'::regrole::oid]
+ or p.q is distinct from $original$((bucket_id = 'worker-documents'::text) AND (auth.uid() IS NOT NULL) AND private.account_access_allowed() AND (cardinality(string_to_array(name, '/'::text)) = 5) AND (split_part(name, '/'::text, 5) ~ '^[a-zA-Z0-9_-]+[.](jpg|jpeg|png|pdf|heic|heif)$'::text) AND (EXISTS ( SELECT 1
+   FROM company_members m
+  WHERE ((m.company_id = private.try_uuid(split_part(objects.name, '/'::text, 1))) AND (m.user_id = auth.uid()) AND ((m.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text]))))) AND (EXISTS ( SELECT 1
+   FROM ((worker_document_statuses s
+     JOIN workers w ON (((w.id = s.worker_id) AND (w.company_id = s.company_id))))
+     JOIN document_requirements r ON (((r.id = s.requirement_id) AND (r.company_id = s.company_id))))
+  WHERE ((s.company_id = private.try_uuid(split_part(objects.name, '/'::text, 1))) AND (s.worker_id = private.try_uuid(split_part(objects.name, '/'::text, 2))) AND (s.requirement_id = private.try_uuid(split_part(objects.name, '/'::text, 3))) AND ((s.attachment_path = objects.name) OR (objects.name = ANY (s.attachment_paths)))))))$original$ then
+ raise exception 'Worker document read policy drift; review required' using errcode='55000';
+ end if;
+end $guard$;
+alter policy worker_document_photo_managed_read on storage.objects using (((bucket_id = 'worker-documents'::text) AND (auth.uid() IS NOT NULL) AND private.account_access_allowed() AND (cardinality(string_to_array(name, '/'::text)) = 5) AND (split_part(name, '/'::text, 5) ~ '^[a-zA-Z0-9_-]+[.](jpg|jpeg|png|pdf|heic|heif)$'::text) AND private.has_company_feature(private.try_uuid(split_part(objects.name, '/'::text, 1)), 'can_manage_people'::text) AND (EXISTS ( SELECT 1
+   FROM company_members m
+  WHERE ((m.company_id = private.try_uuid(split_part(objects.name, '/'::text, 1))) AND (m.user_id = auth.uid()) AND ((m.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text]))))) AND (EXISTS ( SELECT 1
+   FROM ((worker_document_statuses s
+     JOIN workers w ON (((w.id = s.worker_id) AND (w.company_id = s.company_id))))
+     JOIN document_requirements r ON (((r.id = s.requirement_id) AND (r.company_id = s.company_id))))
+  WHERE ((s.company_id = private.try_uuid(split_part(objects.name, '/'::text, 1))) AND (s.worker_id = private.try_uuid(split_part(objects.name, '/'::text, 2))) AND (s.requirement_id = private.try_uuid(split_part(objects.name, '/'::text, 3))) AND ((s.attachment_path = objects.name) OR (objects.name = ANY (s.attachment_paths))))))));
+commit;
+
