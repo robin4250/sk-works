@@ -52,7 +52,7 @@ void main() {
             ]};
           }
           return http.Response(jsonEncode(response), 200,
-            headers: {'content-type': 'application/json'});
+            request: request, headers: {'content-type': 'application/json'});
         }));
       final repository = PeopleCloudRepository.forTesting(client, actor: () => 'actor');
       final snapshot = await repository.readPersonnel(expectedCompany: 'company-b');
@@ -71,12 +71,12 @@ void main() {
       httpClient: MockClient((request) async {
         if (request.url.path.endsWith('/company_members')) {
           return http.Response(jsonEncode([{'company_id': 'company-b', 'role': 'manager'}]),
-            200, headers: {'content-type': 'application/json'});
+            200, request: request, headers: {'content-type': 'application/json'});
         }
         expect(request.url.path, '/rest/v1/rpc/employee_personnel_view');
         expect(jsonDecode(request.body), {'p_company': 'company-b'});
         return http.Response(jsonEncode({'code': '42501', 'message': 'denied'}),
-          403, headers: {'content-type': 'application/json'});
+          403, request: request, headers: {'content-type': 'application/json'});
       }));
     final repository = PeopleCloudRepository.forTesting(client, actor: () => 'actor');
     expect(await repository.canManagePeople(companyId: 'company-b'), false);
