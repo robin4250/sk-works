@@ -1,20 +1,35 @@
 // ignore_for_file: prefer_interpolation_to_compose_strings, curly_braces_in_flow_control_structures
 
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../data/supabase_backend.dart';
 
 import 'route_editor_page.dart';
 import 'vehicle_editor_page.dart';
 import 'vehicle_route_repository.dart';
 
 class VehicleRoutePage extends StatefulWidget {
-  const VehicleRoutePage({super.key});
+  const VehicleRoutePage({super.key, this.initialVehicleId,
+    this.repository, this.actorChanges, this.notificationEditorBuilder});
+  final String? initialVehicleId;
+  @visibleForTesting final VehicleRouteRepository? repository;
+  @visibleForTesting final Stream<String?>? actorChanges;
+  @visibleForTesting final Widget Function(Map<String, dynamic>)? notificationEditorBuilder;
 
   @override
   State<VehicleRoutePage> createState() => _VehicleRoutePageState();
 }
 
 class _VehicleRoutePageState extends State<VehicleRoutePage> {
-  final _repository = VehicleRouteRepository.maybeCreate();
+  late final _repository = widget.repository ?? VehicleRouteRepository.maybeCreate();
+  StreamSubscription<String?>? _actorSubscription;
+  Stream<String?>? _actorChanges;
+  String? _notificationActor;
+  bool _notificationInvalidated = false;
+  bool _targetOpened = false;
+  bool _targetOpening = false;
+  Map<String, dynamic>? _targetVehicle;
+  int _targetEpoch = 0;
 
   List<Map<String, dynamic>> _vehicles = const [];
   List<Map<String, dynamic>> _routes = const [];
@@ -29,8 +44,102 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    if (widget.initialVehicleId != null) {
+      _notificationActor = _repository?.selectionActorId;
+      _actorChanges = widget.actorChanges ??
+        (SupabaseBackend.isInitialized
+          ? SupabaseBackend.client.auth.onAuthStateChange.map((event) => event.session?.user.id)
+          : null);
+      _actorSubscription = _actorChanges?.listen((actor) {
+        if (actor != _notificationActor && mounted) {
+          _targetEpoch++;
+          _notificationInvalidated = true;
+          setState(() {
+            _targetVehicle = null; _loading = false;
+            _error = 'ログイン情報が変更されました。通知一覧から開き直してください。';
+          });
+        }
+      });
+      _loadNotificationVehicle();
+    } else {
+      _load();
+    }
   }
+
+  @override
+  void dispose() { _actorSubscription?.cancel(); super.dispose(); }
+
+  bool get _notificationActorValid => !_notificationInvalidated && _notificationActor != null &&
+    _repository?.selectionActorId == _notificationActor;
+
+  Future<void> _loadNotificationVehicle() async {
+    final epoch = ++_targetEpoch;
+    final repository = _repository;
+    try {
+      if (!_notificationActorValid || repository == null) {
+        throw StateError('ログイン情報が変更されました。通知一覧から開き直してください。');
+      }
+      final id = widget.initialVehicleId ?? '';
+      if (!RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(id)) {
+        throw StateError('通知の車両IDが無効です。');
+      }
+      setState(() { _loading = true; _error = null; });
+      final values = await Future.wait([repository.vehicles(), repository.permissions()]);
+      if (!mounted || epoch != _targetEpoch) return;
+      if (!_notificationActorValid) throw StateError('ログイン情報が変更されました。通知一覧から開き直してください。');
+      final permissions = values[1] as Map<String, dynamic>;
+      if (permissions['can_manage_vehicles'] != true) {
+        throw StateError('この車両の書類を編集する権限がありません。');
+      }
+      final matches = (values[0] as List<Map<String, dynamic>>)
+          .where((row) => row['id'] == id).toList(growable: false);
+      if (matches.length != 1) throw StateError('通知の車両が見つかりません。削除済み、または閲覧権限がありません。');
+      setState(() { _targetVehicle = Map<String, dynamic>.from(matches.single); _loading = false; });
+      if (!_targetOpened) {
+        _targetOpened = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && epoch == _targetEpoch && _notificationActorValid) {
+            _openNotificationVehicle();
+          }
+        });
+      }
+    } catch (error) {
+      if (mounted && epoch == _targetEpoch) setState(() {
+        _loading = false; _targetVehicle = null;
+        _error = '通知の車両書類を開けませんでした: $error';
+      });
+    }
+  }
+
+  Future<void> _openNotificationVehicle() async {
+    final vehicle = _targetVehicle;
+    if (_targetOpening || vehicle == null || !_notificationActorValid) return;
+    _targetOpening = true;
+    try {
+      final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) =>
+        _VehicleNotificationActorBoundary(
+          actorChanges: _actorChanges, actorValid: () => _notificationActorValid,
+          child: widget.notificationEditorBuilder?.call(vehicle) ?? VehicleEditorPage(vehicle: vehicle),
+        )));
+      if (mounted && changed == true && _notificationActorValid) {
+        await _loadNotificationVehicle();
+      }
+    } finally {
+      if (mounted) setState(() => _targetOpening = false);
+    }
+  }
+
+  Widget _notificationView() => Scaffold(
+    appBar: AppBar(title: const Text('通知の車両書類')),
+    body: _loading ? const Center(child: CircularProgressIndicator())
+      : _error != null ? _ErrorState(message: _error!, onRetry: _loadNotificationVehicle)
+      : Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_targetVehicle?['display_name']?.toString() ?? '通知の車両'),
+          const Text('この車両の書類を確認してください。'),
+          TextButton(onPressed: _targetOpening ? null : _openNotificationVehicle,
+            child: const Text('車両書類を開く')),
+        ])),
+  );
 
   Future<void> _load() async {
     final repository = _repository;
@@ -76,6 +185,7 @@ class _VehicleRoutePageState extends State<VehicleRoutePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.initialVehicleId != null) return _notificationView();
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -410,4 +520,20 @@ class _ErrorState extends StatelessWidget {
       ),
     );
   }
+}
+
+class _VehicleNotificationActorBoundary extends StatelessWidget {
+  const _VehicleNotificationActorBoundary({
+    required this.actorChanges, required this.actorValid, required this.child});
+  final Stream<String?>? actorChanges;
+  final bool Function() actorValid;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => StreamBuilder<String?>(
+    stream: actorChanges,
+    builder: (context, snapshot) => actorValid() ? child : Scaffold(
+      appBar: AppBar(title: const Text('通知の車両書類')),
+      body: const Center(child: Text('ログイン情報が変更されました。通知一覧から開き直してください。')),
+    ),
+  );
 }
