@@ -33,14 +33,16 @@ Future<void> _show(WidgetTester tester, _Wire w, VoidCallback onAuthenticated) a
   debugPrint('primary fixture: prepare surface');
   await tester.binding.setSurfaceSize(const Size(900, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  addTearDown(() => tester.runAsync(w.client.dispose));
   debugPrint('primary fixture: mount');
   await tester.pumpWidget(MaterialApp(home: SecureAuthPage(repository: w.repository, onAuthenticated: onAuthenticated)));
   debugPrint('primary fixture: mounted');
 }
 void main() {
+  late List<_Wire> wires;
+  setUpAll(() { wires = List.generate(3, (_) => _Wire()); });
+  tearDownAll(() async { for (final w in wires) { await w.client.dispose(); } });
   testWidgets('forgot is unavailable: no SMS, no update, no fake biometric and back clears credentials', (tester) async {
-    final w = _Wire(); var authenticated = 0;
+    final w = wires[0]; var authenticated = 0;
     await _show(tester, w, () => authenticated++);
     await tester.enterText(find.byType(TextField).at(0), '09012345678');
     await tester.enterText(find.byType(TextField).at(1), 'synthetic-password');
@@ -58,7 +60,7 @@ void main() {
     debugPrint('primary fixture: forgot assertions complete');
   }, timeout: const Timeout(Duration(seconds: 30)));
   testWidgets('ordinary phone password login still authenticates through SDK', (tester) async {
-    final w = _Wire(); var authenticated = 0;
+    final w = wires[1]; var authenticated = 0;
     await _show(tester, w, () => authenticated++);
     await tester.enterText(find.byType(TextField).at(0), '09012345678');
     await tester.enterText(find.byType(TextField).at(1), 'synthetic-password');
@@ -71,7 +73,7 @@ void main() {
     expect(w.calls.where((r) => r.url.path == '/auth/v1/otp' || r.url.path == '/auth/v1/user'), isEmpty);
   }, timeout: const Timeout(Duration(seconds: 30)));
   testWidgets('initial registration retains separate SMS verification, QR entry and no recovery reset', (tester) async {
-    final w = _Wire(); var authenticated = 0;
+    final w = wires[2]; var authenticated = 0;
     await _show(tester, w, () => authenticated++);
     expect(find.text('従業員登録QRでログイン'), findsOneWidget);
     await tester.tap(find.text('管理者として初めて登録する')); await tester.pumpAndSettle();
