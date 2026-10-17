@@ -6,6 +6,7 @@ class Composition(unittest.TestCase):
  def test_reviewed_input(self):
   root=Path(__file__).resolve().parents[2]
   s=p.compose(root)
+  self.assertEqual(p.hashlib.sha256(s.encode()).hexdigest(),"500e3aa4620a85ad193bd912f475044d8bf9ed84a8605a7932ce2389a5039fd7")
   self.assertTrue(s.startswith("begin;\n"))
   self.assertTrue(s.endswith("commit;\n"))
   self.assertEqual(s.count("\ncommit;"),1)

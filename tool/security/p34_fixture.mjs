@@ -27,7 +27,7 @@ const snapshot=async()=>({
  definitions:(await db.query("select oid::text,pg_get_functiondef(oid) definition from pg_proc where oid in ('private.employee_personnel_rows()'::regprocedure,'private.can_edit_worker_personnel(uuid)'::regprocedure) order by oid")).rows
 });
 const original=await snapshot();
-const originalPolicies=(await db.query("select * from pg_policies where schemaname='public' and tablename in ('worker_personnel_profiles','worker_family_members') order by policyname")).rows;
+const originalPolicies=(await db.query("select schemaname,tablename,policyname,permissive,to_jsonb(roles) roles,cmd,qual,with_check from pg_policies where schemaname='public' and tablename in ('worker_personnel_profiles','worker_family_members') order by policyname")).rows;
 const late=atomic.slice(0,-'commit;\\n'.length)+"do $$begin raise exception 'synthetic late failure';end$$;\\ncommit;\\n";
 await assert.rejects(db.exec(late),/synthetic late failure/);await db.exec('rollback');
 assert.deepEqual(await snapshot(),original,'late failure rolls all 4 target objects/data/ACL/IDs back');
