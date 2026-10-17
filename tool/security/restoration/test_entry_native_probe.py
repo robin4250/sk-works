@@ -43,6 +43,12 @@ class NativeTests(unittest.TestCase):
         self.assertNotIn('SYNTHETIC-SECRET',str(env))
         self.assertEqual(env['HOME'],'/private/new')
 
+    def test_native_variant_adds_only_sysv_shared_memory(self):
+        original='(deny network*)\n(allow file-write* (subpath fixed))\n'
+        guard=types.SimpleNamespace(profile=lambda inside,endpoint:original)
+        self.assertEqual(native.native_profile(guard,Path('/x'),Path('/x/s')),original+'(allow ipc-sysv-shm)\n')
+        self.assertEqual(guard.profile(None,None),original)
+
     def test_socket_matches_reviewed_profile_boundary(self):
         source=Path(native.__file__).read_text()
         self.assertIn("data=inside/'pgdata';sock=inside",source)
