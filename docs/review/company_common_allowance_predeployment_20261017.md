@@ -8,6 +8,8 @@
 
 rootの新しい読取専用catalog証拠（[Issue #273 comment 6232207390](https://github.com/robin4250/sk-works/issues/273#issuecomment-6232207390)）：2026-10-17 **09:19Z頃／18:19JST**、SELECT直後の時計確認は `09:19:04Z`。project `ztktgquxvcxcjxtluspu` のpg_catalogでpublic関数名の存在countのみを取得し、`read_company_common_allowances_admin`／`save_company_common_allowances`／`read_company_common_allowance_request` の `public_function_overloads` は各 **0**。必要3RPCのpublic定義がこの観測時点で未導入のため、本番追加登録は利用できない。RPC自体の呼出・保存操作・旧full-saveへの迂回・業務行読取・schema/role/data変更は0。署名やREST schema cacheの動作は未検証で、残る依存全体の状態はこの3name集計から推測しない。
 
+追加の読取専用catalog観測では、SELECT直後時計 `2026-10-17T09:22:21Z` に、`company_allowance_identity_private` の `state`／`identities`／`history` と、`company_common_allowance_private` の `state`／`items`／`history`／`unit_aliases`／`requests` の8対象が全て `object_present=false` だった。`object_kind`／`rls_enabled` はNULLであり、存在しない表を「RLS無効」とは扱わない。対象schema自体の存在やその他の依存状態はこの結果だけで推測しない。pg_namespace/pg_classの定義存在だけを照会し、業務行・Auth情報・関数本文の取得、対象表/RPC呼出、変更は0。
+
 clientは `read_company_common_allowances_admin` の会社・contract・version・can_edit確認前に編集を開かない。missing (`PGRST202`)、認可拒否、通信失敗で保存成功を表示せず、旧full-saveへ迂回しない。このfail-closedは既存機能保護であり、本番追加登録の完成ではない。
 
 | 層／既存原本 | 適用する場合に扱うroot／関数 | 今回の判断 |
@@ -47,7 +49,7 @@ main内の#1152 SQL blob `fd0bff09faba5caa2a88379ffff313366b5ba0ec` と#1155 SQL
 
 ## 次担当が揃える具体的な証拠（いずれか未充足なら停止）
 
-1. **採用scopeを固定**：手当のための既存identity依存＋#1152一式を候補とし、#1155・新3tab tax/rates置換は別扱い。exact source/hash、既存body置換1件、trigger、新表・全grantsと想定影響をレビューする。実catalogの前提一致・既存objectとの衝突・必要extension/language/実行依存は、承認された次段階で検証する。今回未照会。
+1. **採用scopeを固定**：手当のための既存identity依存＋#1152一式を候補とし、#1155・新3tab tax/rates置換は別扱い。exact source/hash、既存body置換1件、trigger、新表・全grantsと想定影響をレビューする。上記3RPC・8対象以外の前提一致・既存objectとの衝突・必要extension/language/実行依存は未照合であり、引き続き読取で確認する。DDL変更は残る保護・承認条件を満たすまで行わない。
 2. **保護する現状態のbackup**：実DBのschema/data/roles/ownership/ACL・NULL/default/column ACL/RLS・関数/trigger/sequence/依存を含む保護archive、旧unit関数完全定義、対象会社settingsと既存identity/history、給与/請求/日報/署名とその参照。既存user/company/master/所属/roleの同一性、Auth identities/session/provider/redirect、必要Edge code/config/secretsの復旧先、Storage metadataとbytesも適切な非公開範囲へ。credentials/個人値をGit・chat・CIへ載せない。限定hashやmigration履歴を完全backupに置換しない。
 3. **実archiveの隔離復元と時点差**：既存 `RECOVERY_REHEARSAL_AND_APPROVAL_20261016.md` とP36の実archive禁止条件に従い、外部通信/通知/cron/メール/SMS/providerを遮断した新規隔離環境の実行コード/拡張/role依存を独立レビューする。synthetic成功を許可に読み替えない。実backup復元、backup後の現データ差・更新済みrecovery連絡先を解決し、現ID/会社/role/provider/旧設定と新旧帳票を比較する。今回実施していない。
 4. **その復元先で適用・戻し方を実証**：原本guards/影響/lock timeoutを維持し既存値・ID・owner・ACL・RLS・triggerを前後比較する。元unit関数復元を先に行う依存順と、新schemaを使う保存済items/retired/history/receipt/aliasの保全を決める。新たな合法保存後のDDL削除は復旧ではない。nonemptyデータを捨てるrollbackや本番での演習は不可。具体的な戻し方は未確立。
