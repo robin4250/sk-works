@@ -1,0 +1,43 @@
+-- REVIEW ONLY. Known analysis group moderation boundary; no deploy hook.
+begin;
+set local lock_timeout='5s';set local statement_timeout='30s';
+do $$begin if to_regprocedure('private.r19_group_allowed(uuid)') is null then raise exception 'R19 prerequisite unavailable' using errcode='55000';end if;end$$;
+create function private.r30_content_allowed(k text,i uuid) returns boolean language sql stable security definer set search_path='' as $$
+select coalesce((select private.r19_group_allowed(g) from(
+ select communication_group_id g from public.chat_messages where k='message' and id=i
+ union all select communication_group_id from public.chat_attachments where k='attachment' and id=i
+ union all select group_id from public.communication_notes where k='note' and id=i
+ union all select group_id from public.communication_albums where k='album' and id=i
+ union all select group_id from public.communication_album_items where k='photo' and id=i
+ )s limit 1),false)
+$$;
+revoke all on function private.r30_content_allowed(text,uuid) from public,anon,authenticated,service_role;
+do $patch$
+declare target record;f record;body text;needle text;replacement text;anchor integer;
+begin
+ for target in select * from(values
+ ('private.content_review_payload(text,uuid)','bf93bd3bfe640cefe399f41cc4065e06','payload'),
+ ('private.content_review_queue()','2b17df8ffa9d8de3603e0ca78b3bdd06','queue'),
+ ('private.chat_report_queue()','1ef191604759e87dcd1b096da85cbe3a','reports'),
+ ('private.review_chat_report(uuid,boolean)','731c71b1f178c0828e08ec016fff6c33','review')
+ )t(signature,expected_hash,kind)loop
+ select p.oid,p.prosrc,p.proowner,p.proacl,p.proconfig,p.prosecdef,pg_get_functiondef(p.oid) definition into f from pg_proc p where p.oid=to_regprocedure(target.signature);
+ if not found or md5(f.prosrc)<>target.expected_hash or not f.prosecdef or pg_get_userbyid(f.proowner)<>'postgres' or f.proconfig is distinct from array['search_path=""']::text[] then raise exception 'Target drift' using errcode='55000';end if;
+ body:=f.prosrc;
+ if target.kind='payload' then
+ needle:=E'\nbegin\n';replacement:=needle||E' if private.r30_content_allowed(p_kind,p_id) is distinct from true then return null;end if;\n';
+ elsif target.kind='queue' then
+ needle:='from private.content_reviews r where ';replacement:=needle||'private.r30_content_allowed(r.kind,r.content_id) is true and ';
+ elsif target.kind='reports' then
+ needle:='from private.chat_reports r where ';replacement:=needle||'private.r30_content_allowed(''message'',r.message_id) is true and ';
+ else
+ needle:=' if not found or not exists(select 1 from public.company_members m where';
+ replacement:=' if not found or private.r30_content_allowed(''message'',r.message_id) is distinct from true or not exists(select 1 from public.company_members m where';
+ end if;
+ if(length(body)-length(replace(body,needle,'')))/length(needle)<>1 then raise exception 'Body anchor drift' using errcode='55000';end if;
+ body:=replace(body,needle,replacement);if strpos(f.definition,f.prosrc)=0 then raise exception 'Definition layout drift' using errcode='55000';end if;
+ execute replace(f.definition,f.prosrc,body);
+ if not exists(select 1 from pg_proc p where p.oid=f.oid and p.proowner=f.proowner and p.proacl is not distinct from f.proacl and p.proconfig is not distinct from f.proconfig and p.prosecdef=f.prosecdef)then raise exception 'Metadata changed' using errcode='55000';end if;
+ end loop;
+end $patch$;
+commit;
