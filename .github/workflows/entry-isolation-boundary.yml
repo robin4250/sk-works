@@ -1,0 +1,38 @@
+name: Entry isolation boundary
+on:
+  pull_request:
+    paths:
+      - 'tool/security/restoration/entry_isolation.py'
+      - 'tool/security/restoration/test_entry_isolation.py'
+      - '.github/workflows/entry-isolation-boundary.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-macos-probe:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Source boundary tests without credentials
+        run: python -m unittest discover -s tool/security/restoration -p 'test_entry_isolation.py' -v
+      - name: Native synthetic kernel probe without PostgreSQL or SQL
+        run: |
+          python - <<'PY'
+          import json, pathlib, subprocess, sys, tempfile
+          parent=pathlib.Path(tempfile.mkdtemp(prefix='entry-ci-',dir='/private/tmp'))
+          result=subprocess.run([sys.executable,'tool/security/restoration/entry_isolation.py','--probe','--output-parent',str(parent)],capture_output=True,text=True,timeout=60)
+          print(result.stdout)
+          if result.returncode!=2:
+              for log in parent.glob('entry-isolation-*/private-child-errors.log'):
+                  print('Synthetic CI child diagnostic: '+log.read_text(errors='replace')[:2000])
+          assert result.returncode==2,'native kernel probe did not succeed'
+          reports=list(parent.glob('entry-isolation-*/private-probe.json'))
+          assert len(reports)==1,'native kernel evidence missing'
+          data=json.loads(reports[0].read_text())
+          assert all(data[k] is True for k in ('outside_write_denied','ipv4_outbound_denied','ipv6_outbound_denied','unix_socket_success'))
+          assert data['postgres_started'] is False and data['production_connections']==0
+          PY
