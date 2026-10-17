@@ -1,0 +1,24 @@
+name: Route approval empty list refresh
+on:
+  pull_request:
+    paths:
+      - 'lib/features/route_billing/route_billing_quantity_approvals_page.dart'
+      - 'test/route_billing_quantity_refresh_test.dart'
+      - '.github/workflows/route-approval-refresh.yml'
+permissions:
+  contents: read
+jobs:
+  widget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/route_billing/route_billing_quantity_approvals_page.dart test/route_billing_quantity_refresh_test.dart
+      - run: flutter test test/route_billing_quantity_refresh_test.dart test/route_billing_quantity_confirmation_widgets_test.dart test/route_billing_quantity_approval_http_test.dart test/route_customer_day_quantity_page_test.dart

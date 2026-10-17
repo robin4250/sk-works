@@ -29,13 +29,17 @@ class _RouteBillingQuantityApprovalsPageState
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  Future<void>? _loadFuture;
   @override
   void initState() {
     super.initState();
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load() =>
+      _loadFuture ??= _loadRows().whenComplete(() => _loadFuture = null);
+
+  Future<void> _loadRows() async {
     setState(() {
       _loading = true;
       _error = null;
@@ -65,7 +69,7 @@ class _RouteBillingQuantityApprovalsPageState
   }
 
   Future<void> _open(RouteBillingQuantityRequest item) async {
-    if (_busy || _repository == null) {
+    if (_busy || _loading || _repository == null) {
       return;
     }
     setState(() => _busy = true);
@@ -99,7 +103,14 @@ class _RouteBillingQuantityApprovalsPageState
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('ルート請求数量の承認'),
-      actions: const [SkoNotificationBell()],
+      actions: [
+        IconButton(
+          tooltip: '再読み込み',
+          onPressed: _loading || _busy ? null : _load,
+          icon: const Icon(Icons.refresh),
+        ),
+        const SkoNotificationBell(),
+      ],
     ),
     body: _loading
         ? const Center(child: CircularProgressIndicator())
@@ -113,12 +124,18 @@ class _RouteBillingQuantityApprovalsPageState
               ],
             ),
           )
-        : _items.isEmpty
-        ? const Center(child: Text('承認待ちはありません'))
         : RefreshIndicator(
-            onRefresh: _load,
+            onRefresh: () async {
+              if (!_busy) await _load();
+            },
             child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
+                if (_items.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: Text('承認待ちはありません')),
+                  ),
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text('取引会社ごとに請求数量を承認します。同じ会社の複数訪問はまとめて確認できます。'),
