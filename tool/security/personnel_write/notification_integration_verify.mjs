@@ -11,6 +11,11 @@ let setup=source.slice(0,source.indexOf(boundary));
 const locationBoundary='const here=path.dirname(fileURLToPath(import.meta.url));';
 if(setup.split(locationBoundary).length!==2)throw Error('Existing fixture location boundary drift');
 setup=setup.replace(locationBoundary,'const here='+JSON.stringify(here)+';');
+// The reused write test excludes the helper body while testing its replacement.
+// Here all guards are already installed, so preserve that body too.
+const helperBoundary="case when n.nspname='private' and p.proname='can_edit_worker_personnel' then null else pg_get_functiondef(p.oid) end definition";
+if(setup.split(helperBoundary).length!==2)throw Error('Existing fixture helper snapshot boundary drift');
+setup=setup.replace(helperBoundary,'pg_get_functiondef(p.oid) definition');
 const checks=String.raw`
 await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20261016120458_personnel_write_permission_guard.sql'),'utf8'));
 const before=await capsule();
