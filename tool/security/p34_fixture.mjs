@@ -26,6 +26,9 @@ const snapshot=async()=>({
  capsule:await capsule(),
  definitions:(await db.query("select oid::text,pg_get_functiondef(oid) definition from pg_proc where oid in ('private.employee_personnel_rows()'::regprocedure,'private.can_edit_worker_personnel(uuid)'::regprocedure) order by oid")).rows
 });
+// The reused write setup has an extra untouched target not present in the read HTTP fixture.
+// Remove that synthetic-only setup row before the protected baseline; no production data.
+await db.query('delete from workers where id=$1',[fresh]);
 const original=await snapshot();
 const originalPolicies=(await db.query("select schemaname,tablename,policyname,permissive,to_jsonb(roles) roles,cmd,qual,with_check from pg_policies where schemaname='public' and tablename in ('worker_personnel_profiles','worker_family_members') order by policyname")).rows;
 const late=atomic.slice(0,-'commit;\\n'.length)+"do $$begin raise exception 'synthetic late failure';end$$;\\ncommit;\\n";
