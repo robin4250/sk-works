@@ -121,7 +121,7 @@ def main():
     args=p.parse_args()
     if not args.probe:
         print('NOT RUN: no native startup, credential, database or archive access.');return 2
-    evidence=None
+    evidence=None;stage='platform'
     try:
         if sys.platform!='darwin':raise ValueError("macOS only; no fallback")
         parent=args.output_parent
@@ -129,12 +129,16 @@ def main():
         st=parent.stat()
         if st.st_uid!=os.getuid() or st.st_mode&0o022:raise ValueError("Unsafe parent")
         os.umask(0o077)
+        evidence=Path(tempfile.mkdtemp(prefix='p36-context-',dir=parent));evidence.chmod(0o700)
+        stage='runtime-roots'
         pg_bin=args.pg_bin.resolve(strict=True)
         if not all((pg_bin/n).is_file() for n in ('postgres','psql','initdb','pg_ctl')):raise ValueError("Explicit native tools required")
         pg_root=runtime_root(pg_bin.parent)
         if pg_root.parent.name!='postgresql@17' or pg_root.parent.parent.name!='Cellar':raise ValueError('Explicit Homebrew PostgreSQL17 runtime required')
         roots=(pg_root,runtime_root(sys.base_prefix))
+        stage='runtime-library-closure'
         files=libraries([pg_bin/n for n in ('postgres','psql','initdb','pg_ctl')]+[Path(sys.executable)])
+        stage='reviewed-helper-loading'
         native=load_native(args.sources/'entry_native_probe.py')
         original_load=native.load_guard;original_verify=native.verify_host
         reads=[]
@@ -149,6 +153,7 @@ def main():
         old=sys.argv
         try:
             sys.argv=['p36-native','--probe','--pg-bin',str(args.pg_bin),'--output-parent',str(parent)]
+            stage='read-kernel-native-probes'
             code=native.main()
         finally:sys.argv=old
         if code!=2 or len(reads)!=1:raise ValueError("Native/read proof incomplete")
@@ -163,7 +168,9 @@ def main():
         print('Actual archives, arbitrary runtime isolation and full restoration: NOT verified. Production connections/writes: 0.')
         print('Private evidence: '+str(evidence));return 2
     except Exception as error:
-        print('STOP: P36 read/native boundary incomplete ('+type(error).__name__+'); no archive or production execution.')
+        if evidence is not None:
+            (evidence/'private-p36-error.json').write_text(json.dumps({'stage':stage,'kind':type(error).__name__,'message':str(error)}))
+        print('STOP: P36 read/native boundary incomplete ('+stage+'/'+type(error).__name__+'); no archive or production execution.')
         if evidence is not None:print('Private evidence: '+str(evidence))
         return 1
 
