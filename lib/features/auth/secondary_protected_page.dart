@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../data/supabase_backend.dart';
 
 import 'secure_onboarding_repository.dart';
 import 'secondary_password_reset_page.dart';
@@ -26,6 +29,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   final _localAuth = LocalAuthentication();
 
   bool _configuredLoading = true;
+  bool _configurationKnown = false;
   bool _secondaryConfigured = false;
   bool _unlocked = false;
   bool _busy = false;
@@ -35,6 +39,52 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   bool _biometricAvailable = false;
   bool _enableBiometricOnSetup = false;
   String? _message;
+  int _generation = 0;
+  bool _nativePrompt = false;
+  AppLifecycleState _lifecycle = AppLifecycleState.resumed;
+  Completer<void>? _resumeWaiter;
+
+  bool _sameAttempt(int generation, String actor, String token) {
+    if (!mounted || generation != _generation || !SupabaseBackend.isInitialized) return false;
+    final session = SupabaseBackend.client.auth.currentSession;
+    return session?.user.id == actor && session?.accessToken == token && session?.isExpired == false;
+  }
+
+  bool _acceptAttempt(int generation, String actor, String token) {
+    if (_sameAttempt(generation, actor, token)) return true;
+    // Only the invalidated operation owns this reset. A newer retry's epoch is
+    // never touched by an old completion, including its busy/loading state.
+    if (mounted && generation == _generation) {
+      _generation++;
+      _resumeWaiter?.complete();
+      _resumeWaiter = null;
+      setState(() {
+        _nativePrompt = false;
+        _busy = false;
+        _configuredLoading = false;
+        _configurationKnown = false;
+        _secondaryConfigured = false;
+        _unlocked = false;
+        _biometricEnabled = false;
+        _biometricAvailable = false;
+        _password.clear();
+        _confirm.clear();
+        _message = 'ログイン状態が変わりました。再読み込みしてください。';
+      });
+    }
+    return false;
+  }
+
+  Future<bool> _finishNativePrompt(int generation, String actor, String token) async {
+    if (!_acceptAttempt(generation, actor, token)) return false;
+    if (_lifecycle == AppLifecycleState.inactive) {
+      _resumeWaiter = Completer<void>();
+      await _resumeWaiter!.future;
+    }
+    if (!_acceptAttempt(generation, actor, token) || _lifecycle != AppLifecycleState.resumed) return false;
+    _nativePrompt = false;
+    return true;
+  }
 
   SecureOnboardingRepository? get _repository =>
       SecureOnboardingRepository.maybeCreate();
@@ -42,15 +92,17 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   @override
   void initState() {
     super.initState();
+    _lifecycle = WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _loadState();
   }
 
   Future<void> _loadState() async {
-    if (mounted) setState(() { _configuredLoading = true; _message = null; });
+    if (mounted) setState(() { _configuredLoading = true; _configurationKnown = false; _message = null; });
     final repository = _repository;
     final userId = repository?.currentUser?.id;
-    if (repository == null || userId == null) {
+    final session = SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentSession : null;
+    if (repository == null || userId == null || session == null || session.isExpired) {
       if (!mounted) return;
       setState(() {
         _configuredLoading = false;
@@ -58,24 +110,27 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       });
       return;
     }
-
+    final generation = ++_generation, token = session.accessToken;
     try {
-      final configured = await repository.secondaryPasswordConfigured();
+      final configured = await repository.secondaryPasswordConfigured(accessToken: token);
+      if (!_acceptAttempt(generation, userId, token)) return;
       final prefs = await SharedPreferences.getInstance();
+      if (!_acceptAttempt(generation, userId, token)) return;
       final enabled =
           prefs.getBool('sko_secondary_biometric_enabled_$userId') ?? false;
-      final available =
-          await _localAuth.isDeviceSupported() &&
-          await _localAuth.canCheckBiometrics;
-      if (!mounted) return;
+      final supported = await _localAuth.isDeviceSupported();
+      if (!_acceptAttempt(generation, userId, token)) return;
+      final available = supported && await _localAuth.canCheckBiometrics;
+      if (!_acceptAttempt(generation, userId, token)) return;
       setState(() {
         _secondaryConfigured = configured;
+        _configurationKnown = true;
         _biometricEnabled = enabled;
         _biometricAvailable = available;
         _configuredLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!_acceptAttempt(generation, userId, token)) return;
       setState(() {
         _configuredLoading = false;
         _message = '第2認証の状態を確認できませんでした: $error';
@@ -85,9 +140,23 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycle = state;
+    if (state == AppLifecycleState.resumed) {
+      _resumeWaiter?.complete();
+      _resumeWaiter = null;
+      if (_configuredLoading) _loadState();
+      return;
+    }
+    // A native prompt may make iOS inactive; never expose content until resumed.
+    if (state == AppLifecycleState.inactive && _nativePrompt) return;
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden) {
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _generation++;
+      _resumeWaiter?.complete();
+      _resumeWaiter = null;
+      _nativePrompt = false;
       _password.clear();
       _confirm.clear();
       if (mounted) {
@@ -106,6 +175,9 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
 
   @override
   void dispose() {
+    _generation++;
+    _resumeWaiter?.complete();
+    _resumeWaiter = null;
     WidgetsBinding.instance.removeObserver(this);
     _password.dispose();
     _confirm.dispose();
@@ -115,7 +187,14 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   Future<void> _saveSecondaryPassword() async {
     final repository = _repository;
     final userId = repository?.currentUser?.id;
-    if (repository == null || userId == null) return;
+    final session = SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentSession : null;
+    if (_busy || _lifecycle != AppLifecycleState.resumed || repository == null ||
+        userId == null || session == null || session.isExpired) {
+      return;
+    }
+    final password = _password.text;
+    final enableBiometric = _enableBiometricOnSetup;
+    final generation = ++_generation, token = session.accessToken;
 
     if (_password.text.length < 8) {
       setState(() => _message = '第2パスワードは8文字以上で設定してください。');
@@ -132,7 +211,8 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     });
 
     try {
-      if (_enableBiometricOnSetup) {
+      if (enableBiometric) {
+        _nativePrompt = true;
         final ok = await _localAuth.authenticate(
           localizedReason: '${widget.title}の第2認証にFace ID / Touch IDを使用します',
           options: const AuthenticationOptions(
@@ -140,39 +220,54 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
             stickyAuth: true,
           ),
         );
+        if (!await _finishNativePrompt(generation, userId, token)) return;
         if (!ok) {
           throw StateError('生体認証を確認できませんでした。');
         }
       }
-
-      await repository.setSecondaryPassword(_password.text);
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
+      // The native prompt exception ends before server or preferences work.
+      // Later inactive events must invalidate the pending save normally.
+      _nativePrompt = false;
+      await repository.setSecondaryPassword(password);
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       final prefs = await SharedPreferences.getInstance();
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       await prefs.setBool(
         'sko_secondary_biometric_enabled_$userId',
-        _enableBiometricOnSetup,
+        enableBiometric,
       );
 
-      if (!mounted) return;
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       setState(() {
         _secondaryConfigured = true;
-        _biometricEnabled = _enableBiometricOnSetup;
+        _biometricEnabled = enableBiometric;
         _unlocked = true;
         _busy = false;
         _password.clear();
         _confirm.clear();
       });
     } catch (error) {
-      if (!mounted) return;
+      if (_nativePrompt && !await _finishNativePrompt(generation, userId, token)) return;
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       setState(() {
         _busy = false;
         _message = '第2パスワードを設定できませんでした: $error';
       });
+    } finally {
+      if (mounted && generation == _generation) _nativePrompt = false;
     }
   }
 
   Future<void> _unlockWithPassword() async {
     final repository = _repository;
-    if (repository == null || _password.text.isEmpty) return;
+    final session = SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentSession : null;
+    if (_busy || _lifecycle != AppLifecycleState.resumed || repository == null ||
+        session == null || session.isExpired || _password.text.isEmpty) {
+      return;
+    }
+    final actor = session.user.id, token = session.accessToken;
+    final generation = ++_generation;
 
     setState(() {
       _busy = true;
@@ -180,8 +275,8 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     });
 
     try {
-      final ok = await repository.verifySecondaryPassword(_password.text);
-      if (!mounted) return;
+      final ok = await repository.verifySecondaryPassword(_password.text, accessToken: token);
+      if (!_acceptAttempt(generation, actor, token) || _lifecycle != AppLifecycleState.resumed) return;
       if (!ok) {
         setState(() {
           _busy = false;
@@ -196,7 +291,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         _password.clear();
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!_acceptAttempt(generation, actor, token) || _lifecycle != AppLifecycleState.resumed) return;
       setState(() {
         _busy = false;
         _message = error.toString().contains('temporarily locked')
@@ -209,6 +304,14 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   Future<void> _unlockWithBiometric() async {
     final repository = _repository;
     final userId = repository?.currentUser?.id;
+    final session = SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentSession : null;
+    if (_busy || _lifecycle != AppLifecycleState.resumed || session == null ||
+        session.isExpired || userId == null) {
+      return;
+    }
+    final token = session.accessToken;
+    final generation = ++_generation;
+    _nativePrompt = true;
     setState(() {
       _busy = true;
       _message = null;
@@ -222,14 +325,15 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
           stickyAuth: true,
         ),
       );
-      if (!mounted) return;
+      if (!await _finishNativePrompt(generation, userId, token)) return;
 
-      if (ok && userId != null && !_biometricEnabled) {
+      if (ok && !_biometricEnabled) {
         final prefs = await SharedPreferences.getInstance();
+        if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
         await prefs.setBool('sko_secondary_biometric_enabled_$userId', true);
       }
 
-      if (!mounted) return;
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       setState(() {
         _busy = false;
         _unlocked = ok;
@@ -240,11 +344,14 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         }
       });
     } catch (error) {
-      if (!mounted) return;
+      if (_nativePrompt && !await _finishNativePrompt(generation, userId, token)) return;
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       setState(() {
         _busy = false;
         _message = '生体認証を利用できません: $error';
       });
+    } finally {
+      if (mounted && generation == _generation) _nativePrompt = false;
     }
   }
 
@@ -282,7 +389,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     }
 
     // Never present password setup when authentication state was not loaded.
-    if (_message != null && !_secondaryConfigured) {
+    if (_message != null && !_configurationKnown) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),
         body: Center(
@@ -491,3 +598,4 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     );
   }
 }
+
