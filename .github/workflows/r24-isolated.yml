@@ -1,0 +1,58 @@
+name: R24 selected write SQL and HTTP
+on:
+  pull_request:
+    paths:
+      - 'tool/security/r24_*'
+      - 'tool/security/r23_*'
+      - 'tool/security/r22_*'
+      - 'tool/security/r21_*'
+      - 'tool/security/r20_fixture.mjs'
+      - 'tool/security/r20_candidate.sql.review-only'
+      - 'tool/security/r20_catalog.json'
+      - 'tool/security/r19_fixture.mjs'
+      - 'tool/security/r19_candidate.sql.review-only'
+      - '.github/workflows/r24-isolated.yml'
+permissions:
+  contents: read
+jobs:
+  pglite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/r24_fixture.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+  postgres-http:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_r19_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_r19_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_R19_DB_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_r19_fixture
+      SKO_R19_REST_URL: http://127.0.0.1:3099
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - name: Start disposable PostgREST
+        run: |
+          docker run -d --name sko-r19-rest --network host \
+            -e PGRST_DB_URI=postgresql://postgres:fixture-only@127.0.0.1:5432/sko_r19_fixture \
+            -e PGRST_DB_SCHEMAS=public,storage -e PGRST_DB_ANON_ROLE=anon \
+            -e PGRST_JWT_SECRET=r19-isolated-fixture-signing-key-20261017 \
+            -e PGRST_SERVER_PORT=3099 postgrest/postgrest:v16.4
+      - run: node tool/security/r24_fixture.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" --postgres
+      - if: always()
+        run: docker rm -f sko-r19-rest
