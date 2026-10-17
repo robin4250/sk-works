@@ -76,6 +76,11 @@ void main(){
     await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
     await tester.pump();await tester.pump();await tester.pump();
     await tester.tap(find.text('Private qualification'));await tester.pump();await tester.pump(const Duration(milliseconds:400));await tester.pump();
+    for (var i=0;i<30 && find.byType(Image).evaluate().isEmpty;i++) {
+      await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:5)));
+      await tester.pump(const Duration(milliseconds:10));
+    }
+    expect(f.signStarted.isCompleted,true);
     expect(find.byType(Image),findsOneWidget);
     final button=tester.widget<FilledButton>(find.ancestor(of:find.text('撮り直す'),matching:find.byType(FilledButton)).first);
     final retained=button.onPressed;expect(retained,isNotNull);
