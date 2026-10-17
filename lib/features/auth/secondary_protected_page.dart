@@ -29,6 +29,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   final _localAuth = LocalAuthentication();
 
   bool _configuredLoading = true;
+  bool _configurationKnown = false;
   bool _secondaryConfigured = false;
   bool _unlocked = false;
   bool _busy = false;
@@ -61,6 +62,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         _nativePrompt = false;
         _busy = false;
         _configuredLoading = false;
+        _configurationKnown = false;
         _secondaryConfigured = false;
         _unlocked = false;
         _biometricEnabled = false;
@@ -96,7 +98,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   }
 
   Future<void> _loadState() async {
-    if (mounted) setState(() { _configuredLoading = true; _message = null; });
+    if (mounted) setState(() { _configuredLoading = true; _configurationKnown = false; _message = null; });
     final repository = _repository;
     final userId = repository?.currentUser?.id;
     final session = SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentSession : null;
@@ -122,6 +124,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       if (!_acceptAttempt(generation, userId, token)) return;
       setState(() {
         _secondaryConfigured = configured;
+        _configurationKnown = true;
         _biometricEnabled = enabled;
         _biometricAvailable = available;
         _configuredLoading = false;
@@ -386,7 +389,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     }
 
     // Never present password setup when authentication state was not loaded.
-    if (_message != null && !_secondaryConfigured) {
+    if (_message != null && !_configurationKnown) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),
         body: Center(
