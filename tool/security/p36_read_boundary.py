@@ -201,7 +201,7 @@ def pkglib_directory(pg_bin, runner=subprocess.run):
     for name in names:
         source=canonical/name;alias=expected/name
         if source.is_dir() and name!="pgxs":
-            raise ValueError("Unexpected pkglib directory")
+            raise ValueError("Unexpected pkglib directory: "+json.dumps({"name":name,"canonical":str(source),"alias":str(alias),"alias_target":str(alias.resolve(strict=True)),"samefile":os.path.samefile(source,alias)}))
         inspect(source,alias,name)
     st=expected.stat()
     return expected,{'directory':str(expected),'canonical':str(canonical),'entries':entries,

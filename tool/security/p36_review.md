@@ -47,3 +47,6 @@ Exact ad9495 run 39012515198/job117337854883 stopped in the new pkglib validator
 
 
 Exact 751596 diagnostic run 39012932734/job117339098822 identified `pgxs` as real directories on both sides, with different inodes, consistent with official Homebrew symlink_tree. The validator now accepts only that named directory representation after a bounded (4096 entries/depth16), closed-name recursive metadata comparison whose file leaves resolve to the same package objects and whose owner/modes match. No contents are executed or read by this validator. This correction adds **no sandbox permission**: only the parent pkglib directory literal remains allowed, with no pgxs/descendant literals or subpath. Unknown subtree entries, foreign symlinks, unsafe modes and non-pgxs top-level directories remain rejected. Native success still requires the next real Mac run.
+
+
+Exact768966 Mac39013026678/job117339378525 stopped before native startup at another top-level directory not in the current named pgxs contract. Diagnostic-only follow-up reports its installed-runtime name/target; no new name is accepted and permissions remain unchanged.
