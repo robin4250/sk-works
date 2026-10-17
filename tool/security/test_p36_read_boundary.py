@@ -161,4 +161,26 @@ class ReadBoundary(unittest.TestCase):
    def bad(argv,**kw):return type("Result",(),{"stdout":str(canonical)+"\n"})()
    with self.assertRaises(ValueError):p.pkglib_directory(bin,bad)
 
+
+ def test_pkglib_pgxs_real_directory_closed_metadata_no_child_grants(self):
+  with tempfile.TemporaryDirectory() as d:
+   bin,data,shared,alias,runner=self.timezone_package(d)
+   canonical=bin.parent/"lib/postgresql";(canonical/"pgxs/src").mkdir(parents=True)
+   (canonical/"pgxs/src/Makefile").write_bytes(b"synthetic-never-read")
+   dest=bin.parent.parents[2]/"lib/postgresql@17";(dest/"pgxs/src").mkdir(parents=True)
+   (dest/"pgxs/src/Makefile").symlink_to(canonical/"pgxs/src/Makefile")
+   def config(argv,**kw):return type("Result",(),{"stdout":str(dest)+"\n"})()
+   literal,proof=p.pkglib_directory(bin,config)
+   self.assertEqual(literal,dest)
+   self.assertEqual(len(proof["entries"]),3)
+   policy=p.profile(pathlib.Path("/tmp/inside"),pathlib.Path("/tmp/inside/socket"),[],[literal])
+   self.assertNotIn(str(dest/"pgxs"),policy)
+   (dest/"pgxs/unknown").write_bytes(b"unknown")
+   with self.assertRaises(ValueError):p.pkglib_directory(bin,config)
+   (dest/"pgxs/unknown").unlink()
+   (dest/"pgxs/src/Makefile").unlink()
+   outside=pathlib.Path(d)/"outside";outside.write_bytes(b"synthetic")
+   (dest/"pgxs/src/Makefile").symlink_to(outside)
+   with self.assertRaises(ValueError):p.pkglib_directory(bin,config)
+
 if __name__=="__main__":unittest.main()

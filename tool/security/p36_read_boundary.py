@@ -175,15 +175,34 @@ def pkglib_directory(pg_bin, runner=subprocess.run):
     if len(names)>512 or names!=sorted(x.name for x in expected.iterdir()):
         raise ValueError("Unknown pkglib directory entry")
     entries=[]
+    def inspect(source,alias,relative,depth=0):
+        if depth>16 or len(entries)>=4096:raise ValueError("Pkglib metadata boundary exceeded")
+        target=source.resolve(strict=True)
+        if root not in target.parents:raise ValueError("Foreign canonical pkglib entry")
+        st=target.stat();ast=alias.stat()
+        if any(s.st_uid!=owner or s.st_mode&0o022 for s in (st,ast)):
+            raise ValueError("Unsafe pkglib entry")
+        if target.is_dir():
+            if not alias.is_dir():raise ValueError("Pkglib directory shape mismatch")
+            if alias.is_symlink() and alias.resolve(strict=True)!=target:
+                raise ValueError("Foreign pkglib directory entry")
+            children=sorted(x.name for x in target.iterdir())
+            if children!=sorted(x.name for x in alias.iterdir()):
+                raise ValueError("Unknown pkglib subtree entry")
+            kind="directory"
+        else:
+            if not target.is_file() or not alias.is_file() or not os.path.samefile(target,alias):
+                raise ValueError("Foreign pkglib file entry")
+            children=[];kind="file"
+        entries.append({'name':relative,'kind':kind,'target':str(target),'uid':ast.st_uid,
+                        'mode':ast.st_mode,'device':ast.st_dev,'inode':ast.st_ino,
+                        'link':os.readlink(alias) if alias.is_symlink() else None})
+        for name in children:inspect(target/name,alias/name,relative+'/'+name,depth+1)
     for name in names:
         source=canonical/name;alias=expected/name
-        target=source.resolve(strict=True)
-        if root not in target.parents or not os.path.samefile(source,alias):
-            raise ValueError("Foreign pkglib entry: "+json.dumps({"name":name,"canonical":str(source),"canonical_target":str(target),"alias":str(alias),"alias_target":str(alias.resolve(strict=True)),"source_directory":source.is_dir(),"alias_directory":alias.is_dir(),"samefile":os.path.samefile(source,alias)}))
-        st=target.stat()
-        if st.st_uid!=owner or st.st_mode&0o022:raise ValueError("Unsafe pkglib entry")
-        entries.append({'name':name,'target':str(target),'uid':st.st_uid,'mode':st.st_mode,
-                        'device':st.st_dev,'inode':st.st_ino})
+        if source.is_dir() and name!="pgxs":
+            raise ValueError("Unexpected pkglib directory")
+        inspect(source,alias,name)
     st=expected.stat()
     return expected,{'directory':str(expected),'canonical':str(canonical),'entries':entries,
                     'uid':st.st_uid,'mode':st.st_mode,'device':st.st_dev,'inode':st.st_ino,
