@@ -39,6 +39,15 @@ try {
   assert.ok(data.excluded.includes('MAY contain configuration values'));
   assert.ok(!JSON.stringify(data).includes('synthetic@example.invalid'));
   assert.ok(!JSON.stringify(data).includes('rolpassword'));
+  const roleSql=fs.readFileSync(new URL('./entry_role_map.sql.review-only',import.meta.url),'utf8');
+  const envelope="SELECT pg_catalog.jsonb_build_object('read_only',pg_catalog.current_setting('transaction_read_only')='on','payload',(SELECT pg_catalog.jsonb_build_object('read_only',pg_catalog.current_setting('transaction_read_only')='on','definitions',("+sql.trim().replace(/;$/, '')+"),'role_map',("+roleSql+")))) AS entry_payload;";
+  const combined=(await db.query(envelope)).rows[0].entry_payload;
+  assert.equal(combined.read_only,true);
+  assert.equal(combined.payload.definitions.read_only,true);
+  const mapped=combined.payload.role_map;
+  assert.ok(mapped.some(x=>x.name==='selected_reader'));
+  assert.ok(mapped.every(x=>Object.keys(x).sort().join(',')==='name,oid'));
+  assert.ok(combined.payload.definitions.policies.every(p=>p.roles.every(r=>r===0 || mapped.some(x=>x.oid===r))));
   await db.exec('rollback');
   console.log('PASS: fixed metadata scope, strict read-only evidence, RLS/FK definitions, unrelated function exclusion, email-literal function omission. Synthetic only.');
 } finally { await db.close(); }
