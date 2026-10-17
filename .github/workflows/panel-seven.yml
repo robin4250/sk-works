@@ -5,6 +5,7 @@ on:
       - lib/features/auth/panel_seven_*.dart
       - lib/features/settings/settings_page.dart
       - test/panel_seven_test.dart
+      - test/panel_seven_repository_test.dart
       - .github/workflows/panel-seven.yml
   workflow_dispatch:
 permissions:
@@ -20,5 +21,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter analyze lib/features/auth/panel_seven_repository.dart lib/features/auth/panel_seven_page.dart test/panel_seven_test.dart
-      - run: flutter test test/panel_seven_test.dart --reporter expanded
+      - run: flutter analyze lib/features/auth/panel_seven_repository.dart lib/features/auth/panel_seven_page.dart test/panel_seven_test.dart test/panel_seven_repository_test.dart
+      - run: flutter test test/panel_seven_repository_test.dart test/panel_seven_test.dart --reporter expanded

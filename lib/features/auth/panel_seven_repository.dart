@@ -80,17 +80,18 @@ class PanelSevenRepository {
     bool? biometricEnabled;
     bool? biometricAvailable;
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 5));
       biometricEnabled = prefs.getBool('sko_secondary_biometric_enabled_$actor') ?? false;
     } catch (_) { /* Unknown stays unknown. */ }
     try {
       final availability = biometricAvailability;
       if (availability != null) {
-        biometricAvailable = await availability();
+        biometricAvailable = await availability().timeout(const Duration(seconds: 5));
       } else {
         final local = LocalAuthentication();
-        biometricAvailable = await local.isDeviceSupported() &&
-            await local.canCheckBiometrics;
+        biometricAvailable = await local.isDeviceSupported().timeout(const Duration(seconds: 5)) &&
+            await local.canCheckBiometrics.timeout(const Duration(seconds: 5));
       }
     } catch (_) { /* No hardware verification claim on plugin failure. */ }
     if (!unchanged()) throw StateError('account_session_changed');
