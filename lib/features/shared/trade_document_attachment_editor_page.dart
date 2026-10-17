@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'trade_document_attachment_repository.dart';
+import 'r18_defaults.dart';
 
 /// One explicit monthly save; never writes or approves the source financial document.
 class TradeDocumentAttachmentEditorPage extends StatefulWidget {
@@ -50,6 +51,10 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
         _payload.putIfAbsent('payment_conditions',()=> '工事完了確認後、乙の指定口座に振り込む。');
         _payload.putIfAbsent('notes',()=> '');
       }
+      // Initial defaults remain local before the explicit save.
+      _payload = r18InitialValues(payload: _payload,
+        sourceDefaults: Map<String, dynamic>.from(data['defaults'] as Map),
+        hasSavedAttachment: saved is Map, subjectKind: widget.subjectKind);
       for(final key in ['issue_date','order_date','work_name','work_address','period_start','period_end','payment_conditions','notes','tax_amount_yen','total_amount_yen','intro_text','acceptance_text']){
         _fields[key]=TextEditingController(text:_payload[key]?.toString()??'');
       }
