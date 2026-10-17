@@ -17,7 +17,7 @@ KINDS=('TABLE DATA','TABLE ATTACH','FK CONSTRAINT','DEFAULT ACL','MATERIALIZED V
        'PROCEDURE','CONSTRAINT','TRIGGER','POLICY','INDEX','TABLE','SEQUENCE','SCHEMA','EXTENSION','ACL','DEFAULT')
 
 def classify(text):
-    selected=[];seen={};support=[];extensions=[];unresolved=[];toc_ids=set()
+    selected=[];seen={};support=[];extensions=[];unresolved=[];toc_ids=set();alternates=[]
     for line in text.splitlines():
         if not line.strip() or line.startswith(';'):continue
         match=re.fullmatch(r'(\d+);\s+\d+\s+\d+\s+(.+)',line)
@@ -39,14 +39,19 @@ def classify(text):
             if routine in FUNCTIONS:
                 signature=' '.join(words[1:-1])
                 if not re.fullmatch(r'[a-z_]+\([^;()]*\)',signature):raise ValueError('root function signature required')
-                key=schema+'.'+routine
-                if (routine=='employee_personnel_rows' and schema!='private') or (routine=='can_edit_worker_personnel' and schema!='public'):
-                    raise ValueError('unexpected root function schema; inspect privately')
+                identity=schema+'.'+signature
+                expected={'employee_personnel_rows':'employee_personnel_rows()','can_edit_worker_personnel':'can_edit_worker_personnel(uuid)'}
+                if schema!='private':
+                    alternates.append({'identity':identity,'toc_id':match.group(1),'current_target':False})
+                elif signature!=expected[routine]:
+                    raise ValueError('current private root signature mismatch')
+                else:key=schema+'.'+routine
         if key:
             if key in seen:raise ValueError('ambiguous root overload or duplicate')
             seen[key]=match.group(1);selected.append(line)
-    required={'public.'+x for x in TABLES}|{'private.employee_personnel_rows','public.can_edit_worker_personnel'}
+    required={'public.'+x for x in TABLES}|{'private.employee_personnel_rows','private.can_edit_worker_personnel'}
     return selected,{'root_count':len(seen),'missing_roots':sorted(required-set(seen)),
+        'alternate_function_records':alternates,'current_roots_complete':required<=set(seen),
         'support_table_names_present':sorted(set(support)),'support_table_names_missing':sorted(SUPPORT-set(support)),
         'extension_entry_count':len(extensions),'unrecognized_entry_count':len(unresolved),
         'schema_only_root_selection':True,'excludes_table_data':True,
@@ -79,8 +84,10 @@ def main():
         report['source_toc_sha256']=hashlib.sha256(raw).hexdigest()
         (root/'private-root-map.json').write_text(json.dumps(report,indent=2))
         print('OFFLINE ROOT MAP: '+json.dumps({k:report[k] for k in ('root_count','missing_roots','extension_entry_count','dependencies_complete','sql_executed','production_connections')}))
+        if report['missing_roots']:
+            print('STOP: current private function/table roots missing; no alias or restoration permitted.')
         print('Candidate roots only; not a runnable restore list. No process, archive SQL, DB or network executed.')
-        print('Private evidence: '+str(root));return 2
+        print('Private evidence: '+str(root));return 1 if report['missing_roots'] else 2
     except Exception as error:
         print('STOP: offline root map incomplete ('+type(error).__name__+'). No process or SQL executed.')
         if root:print('Private evidence: '+str(root))
