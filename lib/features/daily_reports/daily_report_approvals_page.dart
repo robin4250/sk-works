@@ -5,9 +5,12 @@ import '../notifications/notification_bell.dart';
 import 'daily_report_repository.dart';
 
 class DailyReportApprovalsPage extends StatefulWidget {
-  const DailyReportApprovalsPage({super.key, this.initialRequestId});
+  const DailyReportApprovalsPage({super.key, this.initialRequestId,
+    this.repositoryForTesting});
 
   final String? initialRequestId;
+  @visibleForTesting
+  final DailyReportRepository? repositoryForTesting;
 
   @override
   State<DailyReportApprovalsPage> createState() =>
@@ -15,10 +18,12 @@ class DailyReportApprovalsPage extends StatefulWidget {
 }
 
 class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
-  final _repository = DailyReportRepository.maybeCreate();
+  late final _repository = widget.repositoryForTesting ?? DailyReportRepository.maybeCreate();
 
   List<Map<String, dynamic>> _items = const [];
   bool _loading = true;
+  bool _deciding = false;
+  int _loadGeneration = 0;
   String? _error;
 
   @override
@@ -27,7 +32,13 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
     _load();
   }
 
+  Future<void> _refresh() async {
+    if (_deciding || _loading) return;
+    await _load();
+  }
+
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     final repository = _repository;
     if (repository == null) {
       setState(() {
@@ -46,13 +57,13 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
       final items = await repository.loadPendingApprovals(
         requestId: widget.initialRequestId,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _items = items;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -62,7 +73,11 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
 
   Future<void> _decide(String id, bool approve) async {
     final repository = _repository;
-    if (repository == null) return;
+    // Claim synchronously: even a retained callback cannot submit a second decision.
+    if (repository == null || _deciding || _loading) return;
+    setState(() => _deciding = true);
+    // A retry's result must not wait behind the previous error message.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     try {
       final result = await repository.decideEdit(
@@ -86,6 +101,8 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('処理できませんでした: $error')),
       );
+    } finally {
+      if (mounted) setState(() => _deciding = false);
     }
   }
 
@@ -113,7 +130,7 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
                           Text(_error!, textAlign: TextAlign.center),
                           const SizedBox(height: 16),
                           FilledButton.icon(
-                            onPressed: _load,
+                            onPressed: _deciding || _loading ? null : _refresh,
                             icon: const Icon(Icons.refresh),
                             label: const Text('再読み込み'),
                           ),
@@ -138,7 +155,7 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: _load,
+                        onRefresh: _refresh,
                         child: ListView.separated(
                           padding: const EdgeInsets.all(12),
                           itemCount: _items.length,
@@ -208,7 +225,7 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
                                       children: [
                                         Expanded(
                                           child: OutlinedButton.icon(
-                                            onPressed: () => _decide(
+                                            onPressed: _deciding ? null : () => _decide(
                                               item['id'].toString(),
                                               false,
                                             ),
@@ -219,7 +236,7 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
                                         const SizedBox(width: 10),
                                         Expanded(
                                           child: FilledButton.icon(
-                                            onPressed: () => _decide(
+                                            onPressed: _deciding ? null : () => _decide(
                                               item['id'].toString(),
                                               true,
                                             ),
