@@ -1,0 +1,23 @@
+name: Expense submission completion
+on:
+  pull_request:
+    paths:
+      - 'lib/features/expenses/expense_personal_page.dart'
+      - 'test/expense_submission_completion_test.dart'
+      - '.github/workflows/expense-submission-completion.yml'
+permissions:
+  contents: read
+jobs:
+  completion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format lib/features/expenses/expense_personal_page.dart test/expense_submission_completion_test.dart
+      - run: flutter analyze lib/features/expenses/expense_personal_page.dart test/expense_submission_completion_test.dart
+      - run: flutter test test/expense_submission_completion_test.dart test/expense_personal_page_test.dart

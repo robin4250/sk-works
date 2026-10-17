@@ -1,0 +1,48 @@
+name: Personnel notification guard integration
+on:
+  pull_request:
+    paths:
+      - 'tool/security/personnel_write/notification_integration_verify.mjs'
+      - 'tool/security/personnel_write/verify.mjs'
+      - 'tool/security/personnel_write/live_function_fixture.json'
+      - 'tool/security/personnel_rls/**'
+      - 'tool/security/fixture_dependencies/package*.json'
+      - 'tool/staged/worker_personnel_completed_notification_target.sql'
+      - 'supabase/migrations/*personnel*permission_guard.sql'
+      - '.github/workflows/personnel-notification-guard-integration.yml'
+permissions:
+  contents: read
+jobs:
+  pglite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/personnel_write/notification_integration_verify.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+  postgres17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_personnel_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_personnel_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_PERSONNEL_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_personnel_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/personnel_write/notification_integration_verify.mjs "$PWD/tool/security/personnel_rls/pg_adapter.mjs"
