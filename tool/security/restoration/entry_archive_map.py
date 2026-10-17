@@ -35,7 +35,7 @@ def classify(text):
         key=None
         if kind=='TABLE' and schema=='public' and name in TABLES:key='public.'+name
         if kind=='FUNCTION' and schema in ('public','private'):
-            routine=name.split('(',1)[0]
+            routine=re.match(r'[a-z_]+',name).group(0) if re.match(r'[a-z_]+',name) else ''
             if routine in FUNCTIONS:
                 signature=' '.join(words[1:-1])
                 if not re.fullmatch(r'[a-z_]+\([^;()]*\)',signature):raise ValueError('root function signature required')
