@@ -1,4 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/operations/vehicle_editor_page.dart';
 import 'package:sk_works/features/operations/vehicle_route_repository.dart';
@@ -8,6 +13,20 @@ class _Repository implements VehicleRouteRepository {
   final notified = <String>[];
   bool failNotice = true;
   bool failBody = false;
+  String? failUploadKind;
+  final uploads = <({String vehicleId, String kind, String filename, String contentType, Uint8List bytes})>[];
+  @override
+  Future<void> uploadVehicleDocument({
+    required String vehicleId,
+    required String kind,
+    required Uint8List bytes,
+    required String filename,
+    required String contentType,
+  }) async {
+    uploads.add((vehicleId: vehicleId, kind: kind, filename: filename, contentType: contentType,
+        bytes: Uint8List.fromList(bytes)));
+    if (kind == failUploadKind) throw StateError('synthetic upload failure');
+  }
   @override
   Future<String> saveVehicle({
     String? id,
@@ -97,4 +116,79 @@ void main() {
       [null, 'saved-exact-vehicle', 'saved-exact-vehicle']);
     expect(find.text('保存完了'), findsOneWidget);
   });
+  testWidgets('upload failure retains exact vehicle and retries only the failed document',
+      (tester) async {
+    final fixture = await tester.runAsync(() async {
+      final directory = await Directory.systemTemp.createTemp('vehicle-upload-test-');
+      final registrationBytes = base64Decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAABv/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AJYA4FH/2Q==');
+      final compulsoryBytes = base64Decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAP/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAABv/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AIABhm//2Q==');
+      final registration = await File('${directory.path}/registration.jpg')
+          .writeAsBytes(registrationBytes);
+      final compulsory = await File('${directory.path}/compulsory.jpg')
+          .writeAsBytes(compulsoryBytes);
+      return (directory, registration, compulsory, registrationBytes, compulsoryBytes);
+    });
+    final (directory, registration, compulsory, registrationBytes, compulsoryBytes) = fixture!;
+    addTearDown(() => tester.runAsync(() => directory.delete(recursive: true)));
+    const channel = MethodChannel('plugins.flutter.io/image_picker');
+    final selectedPaths = <String>[registration.path, compulsory.path];
+    var picks = 0;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      expect(call.method, 'pickImage');
+      expect((call.arguments as Map)['source'], 1); // ImageSource.gallery.
+      return selectedPaths[picks++];
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null));
+    final repository = _Repository()
+      ..failNotice = false
+      ..failUploadKind = 'compulsory';
+    await _open(tester, repository);
+    Future<void> selectPhoto(String title) async {
+      final tile = find.ancestor(of: find.text(title), matching: find.byType(ListTile));
+      final pick = tester.widget<OutlinedButton>(find.descendant(
+          of: tile, matching: find.byType(OutlinedButton))).onPressed!;
+      // Preserve the real asynchronous editor callback through native selection
+      // and actual XFile.readAsBytes; no production picker seam is introduced.
+      await tester.runAsync(() async {
+        final pending = (pick as dynamic)() as Future<void>;
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('写真ライブラリから選ぶ'));
+        await tester.pump();
+        await pending;
+      });
+      await tester.pumpAndSettle();
+    }
+    await selectPhoto('車検証');
+    await selectPhoto('自賠責保険');
+    expect(picks, 2);
+    expect(find.text('今回登録: registration.jpg'), findsOneWidget);
+    expect(find.text('今回登録: compulsory.jpg'), findsOneWidget);
+    await _save(tester);
+    expect(repository.ids, [null]);
+    expect(repository.uploads.map((x) => x.kind), ['registration', 'compulsory']);
+    expect(repository.uploads.every((x) => x.vehicleId == 'saved-exact-vehicle'), true);
+    expect(repository.uploads.every((x) => x.contentType == 'image/jpeg'), true);
+    expect(repository.uploads[0].bytes, registrationBytes);
+    expect(repository.uploads[1].bytes, compulsoryBytes);
+    expect(find.text('今回登録: registration.jpg'), findsNothing);
+    expect(find.text('登録済み'), findsOneWidget);
+    expect(find.text('今回登録: compulsory.jpg'), findsOneWidget);
+    expect(find.textContaining('車両書類の処理を完了できませんでした'), findsWidgets);
+    expect(find.text('保存完了'), findsNothing);
+    expect(repository.notified, isEmpty);
+    repository.failUploadKind = null;
+    await _save(tester);
+    expect(repository.ids, [null, 'saved-exact-vehicle']);
+    expect(repository.uploads.map((x) => x.kind),
+        ['registration', 'compulsory', 'compulsory']);
+    expect(repository.uploads.last.vehicleId, 'saved-exact-vehicle');
+    expect(repository.uploads.last.filename, repository.uploads[1].filename);
+    expect(repository.uploads.last.bytes, repository.uploads[1].bytes);
+    expect(repository.notified, ['saved-exact-vehicle']);
+    expect(find.text('保存完了'), findsOneWidget);
+    expect(picks, 2, reason: 'retry must not require selecting photos again');
+    expect(tester.takeException(), isNull);
+  });
+
 }
