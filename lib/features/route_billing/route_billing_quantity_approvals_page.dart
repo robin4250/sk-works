@@ -36,6 +36,11 @@ class _RouteBillingQuantityApprovalsPageState
     _load();
   }
 
+  Future<void> _refresh() async {
+    if (_busy) return;
+    await _load();
+  }
+
   Future<void> _load() =>
       _loadFuture ??= _loadRows().whenComplete(() => _loadFuture = null);
 
@@ -106,7 +111,7 @@ class _RouteBillingQuantityApprovalsPageState
       actions: [
         IconButton(
           tooltip: '再読み込み',
-          onPressed: _loading || _busy ? null : _load,
+          onPressed: _loading || _busy ? null : _refresh,
           icon: const Icon(Icons.refresh),
         ),
         const SkoNotificationBell(),
@@ -120,14 +125,12 @@ class _RouteBillingQuantityApprovalsPageState
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(_error!),
-                TextButton(onPressed: _load, child: const Text('再読み込み')),
+                TextButton(onPressed: _refresh, child: const Text('再読み込み')),
               ],
             ),
           )
         : RefreshIndicator(
-            onRefresh: () async {
-              if (!_busy) await _load();
-            },
+            onRefresh: _refresh,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [

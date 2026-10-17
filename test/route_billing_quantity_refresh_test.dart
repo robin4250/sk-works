@@ -76,9 +76,11 @@ void main() {
     rows.rows = [rows.item];
     rows.opened = Completer<RouteBillingQuantityRequest>();
     await _show(tester, rows);
+    final retainedRefresh = tester.widget<IconButton>(find.byWidgetPredicate((w) => w is IconButton && w.tooltip == '再読み込み')).onPressed!;
     await tester.tap(find.text('取引会社A'));
     await tester.pump();
     expect(tester.widget<IconButton>(find.byWidgetPredicate((w) => w is IconButton && w.tooltip == '再読み込み')).onPressed, isNull);
+    retainedRefresh();
     await tester.widget<RefreshIndicator>(find.byType(RefreshIndicator)).onRefresh();
     expect(rows.reads, 1);
     rows.opened!.complete(rows.item);
