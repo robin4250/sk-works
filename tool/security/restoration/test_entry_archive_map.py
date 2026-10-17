@@ -7,8 +7,8 @@ mapping=importlib.util.module_from_spec(spec);spec.loader.exec_module(mapping)
 
 ROOTS='''1; 1259 100 TABLE public worker_personnel_profiles postgres
 2; 1259 101 TABLE public worker_family_members postgres
-3; 1255 102 FUNCTION private employee_personnel_rows(uuid) postgres
-4; 1255 103 FUNCTION public can_edit_worker_personnel(uuid) postgres
+3; 1255 102 FUNCTION private employee_personnel_rows() postgres
+4; 1255 103 FUNCTION private can_edit_worker_personnel(uuid) postgres
 '''
 
 class MapTests(unittest.TestCase):
@@ -26,8 +26,20 @@ class MapTests(unittest.TestCase):
     def test_duplicate_or_overloaded_function_is_not_guessed(self):
         with self.assertRaises(ValueError):mapping.classify(ROOTS+'9; 1255 104 FUNCTION private employee_personnel_rows(text) postgres\n')
 
-    def test_wrong_schema_is_not_silently_selected(self):
-        with self.assertRaises(ValueError):mapping.classify(ROOTS.replace('FUNCTION private employee','FUNCTION public employee'))
+    def test_public_legacy_does_not_replace_current_private_root(self):
+        selected,report=mapping.classify(ROOTS.replace('FUNCTION private can_edit','FUNCTION public can_edit'))
+        self.assertEqual(len(selected),3)
+        self.assertIn('private.can_edit_worker_personnel',report['missing_roots'])
+        self.assertFalse(report['current_roots_complete'])
+        self.assertEqual(report['alternate_function_records'][0]['identity'],'public.can_edit_worker_personnel(uuid)')
+
+    def test_both_schemas_are_separate_records(self):
+        selected,report=mapping.classify(ROOTS+'20; 1255 200 FUNCTION public can_edit_worker_personnel(uuid) postgres\n')
+        self.assertEqual(len(selected),4);self.assertTrue(report['current_roots_complete'])
+        self.assertEqual(len(report['alternate_function_records']),1)
+
+    def test_wrong_current_signature_stops(self):
+        with self.assertRaises(ValueError):mapping.classify(ROOTS.replace('can_edit_worker_personnel(uuid)','can_edit_worker_personnel(text)'))
 
     def test_all_toc_ids_must_be_unique(self):
         for line in ('1; 0 0 TABLE DATA public other postgres','3; 0 0 EXTENSION - pgcrypto'):
@@ -35,7 +47,7 @@ class MapTests(unittest.TestCase):
 
     def test_root_function_signature_required(self):
         for malformed in ('employee_personnel_rows','employee_personnel_rows(uuid','employee_personnel_rows)'):
-            with self.assertRaises(ValueError):mapping.classify(ROOTS.replace('employee_personnel_rows(uuid)',malformed))
+            with self.assertRaises(ValueError):mapping.classify(ROOTS.replace('employee_personnel_rows()',malformed))
 
     def test_missing_roots_are_explicit(self):
         _,r=mapping.classify('1; 1259 100 TABLE public worker_personnel_profiles postgres\n')
