@@ -49,6 +49,23 @@ void main() {
     expect(find.text('登録済みのGoogleでログイン'), findsNothing);
     expect(find.text('従業員登録QRでログイン'), findsOneWidget);
   });
+  testWidgets('forgot guidance returns to the existing Google route without SMS or reset', (t) async {
+    final g = FakeGoogle(client); var done = 0;
+    await show(t, g, () => done++);
+    await t.enterText(find.byType(TextField).at(1), 'synthetic-password');
+    await t.tap(find.text('本パスワードを忘れた方')); await t.pumpAndSettle();
+    expect(find.textContaining('Googleで登録した方は'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('本人確認SMSを送信'), findsNothing);
+    expect(g.launches, 0); expect(done, 0);
+    await t.tap(find.text('通常ログインへ戻る')); await t.pumpAndSettle();
+    expect(t.widget<TextField>(find.byType(TextField).at(1)).controller!.text, isEmpty);
+    await t.tap(find.text('登録済みのGoogleでログイン')); await t.pumpAndSettle();
+    expect(g.launches, 1); expect(done, 0);
+    g.signedIn(); await t.pumpAndSettle();
+    expect(done, 1); expect(g.reads, 1);
+    await g.events.close();
+  });
   testWidgets('launch is not success; existing SDK session and membership finish once', (t) async {
     final g=FakeGoogle(client); var done=0;
     await show(t,g,()=>done++);
@@ -129,4 +146,5 @@ void main() {
     await c.dispose();
   });
 }
+
 
