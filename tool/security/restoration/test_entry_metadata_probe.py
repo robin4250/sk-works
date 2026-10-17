@@ -18,6 +18,11 @@ class MetadataTests(unittest.TestCase):
             self.assertEqual(metadata.main(),2)
         load.assert_not_called()
 
+    def test_fixed_query_is_bound_to_repository_bytes(self):
+        import hashlib
+        p=Path(__file__).with_name('entry_definitions.sql.review-only')
+        self.assertEqual(hashlib.sha256(p.read_bytes()).hexdigest(),metadata.DEFINITIONS_SHA)
+
     def test_source_mismatch_before_import_or_credential_access(self):
         with tempfile.TemporaryDirectory() as td:
             base=Path(td);marker=base/'executed'
