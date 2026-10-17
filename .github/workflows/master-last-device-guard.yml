@@ -1,0 +1,46 @@
+name: Master last usable device guard
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/master_device_management_page.dart'
+      - 'test/master*device*test.dart'
+      - 'tool/staged/master_last_usable_device_guard.sql.review-only'
+      - 'tool/security/verify_master_last_device_postgres.mjs'
+      - '.github/workflows/master-last-device-guard.yml'
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_fixture_only
+          POSTGRES_DB: sko_master_device_lock_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/device-guard-deps --no-audit --no-fund pg@8.16.3
+      - run: node tool/security/verify_master_last_device_postgres.mjs /tmp/device-guard-deps/node_modules/pg/lib/index.js
+        env:
+          SKO_REAUTH_FIXTURE_URL: postgres://postgres:synthetic_fixture_only@127.0.0.1:5432/sko_master_device_lock_fixture
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/settings/master_device_management_page.dart test/master_last_usable_device_guard_test.dart test/master_device_lock_reauthentication_test.dart
+      - run: flutter test test/master_last_usable_device_guard_test.dart test/master_device_lock_reauthentication_test.dart test/master_device_ui_contract_test.dart

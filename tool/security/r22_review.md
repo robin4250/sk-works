@@ -1,6 +1,6 @@
 # R22 correction decision boundary (review only)
 
-Stacked on R21/#1191. Five new files; no application, payroll calculation,
+Based on integrated R19/R20/R21. Five new files; no application, payroll calculation,
 existing SQL, migration, production setting, administrator or company mutation.
 Supabase skill and current function-security guidance consulted. Production
 interaction is one catalog-only SELECT (definition/owner/ACL/config); business
@@ -25,7 +25,10 @@ approve a known LINE-linked request, inserting its proposed values into ordinary
 attendance_entries and canceling matching leave. The candidate adds exactly one
 R19 request-visibility check immediately after the existing top-level BEGIN.
 It refuses linked approve **and reject** for non-Masters, before request reads,
-locks, writes or notification generation. Existing assignee, self-approval,
+locks, writes or notification generation. Additionally, any linked decision other than exact reject is refused for every
+actor, including enabled Masters (approve, NULL and invalid values),
+until an explicit export/publication workflow is defined. Master linked reject
+remains subject to the original authorization. Existing assignee, self-approval,
 company, decision and status rules remain unchanged for permitted actors.
 CREATE OR REPLACE preserves OID, owner, ACL, configuration and SECURITY DEFINER;
 these are asserted after replacement. Exact body, owner, configuration and helper
@@ -33,11 +36,10 @@ presence drift fail closed. No grant or role change is included.
 
 ## Scope limits / release blockers
 
-This is not complete lineage confinement. A legitimate Master remains permitted
-by R19, and its approval still publishes the values into ordinary attendance.
-Tests explicitly demonstrate this remaining path; it must not be described as
-fixed. Preventing that publication requires a separate product decision and
-payroll-owner review, not a silent change to the original business calculations.
+This is not complete lineage confinement. Known linked publication through this
+entry is sealed even for a Master. No separate authorized export workflow exists.
+Original business calculations and numeric inputs remain untouched. Data already
+copied to final attendance is not reclassified, removed or repaired by this fix.
 Creation-before-lineage races, unknown provenance, direct correction/item writes,
 company-global set_invoice_approvers, invitation/member mutations, upstream source
 creation, final attendance/payroll visibility and external push remain unresolved.
@@ -47,12 +49,13 @@ R19/R20/R21 themselves remain review-only dependencies, not deployed protections
 
 The fixture reuses unchanged R19/R20/R21 chain and exact original correction body.
 Synthetic tables cover ordinary past-attendance approval/rejection, unchanged
-numeric and allowance inputs, leave cancellation, legitimate Master decisions,
+numeric and allowance inputs, leave cancellation, ordinary Master decisions and legitimate linked Master rejection,
 non-Master/disabled-Master denial, wrong-company assignee denial, full snapshot
 preservation on denial and transaction rollback, original metadata preservation,
 exact definition restoration and changed-body refusal. It does not reproduce
 real payroll/invoice triggers or GoTrue/device authentication. PG17/PostgREST CI
-adds actual signed-JWT HTTP denial; until CI succeeds it is unconfirmed.
+adds actual signed-JWT HTTP denial including Master linked approval, NULL and invalid decision values. Until the
+latest-head CI succeeds it is unconfirmed; old-head results are not reused.
 
 There is no deployment hook. Protected backup, full relevant isolated restore,
 source/ACL/dependency revalidation, existing administrator/UI comparison, impact

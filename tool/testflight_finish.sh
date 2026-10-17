@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# A release reviewer supplies the approved full SHA; never infer approval from latest main.
+: "${SKO_AUDITED_SHA:?Set the reviewed full commit SHA before building or uploading}"
+export SKO_AUDITED_SHA
+
 echo "=== SKO TestFlight fastest path ==="
 echo
 

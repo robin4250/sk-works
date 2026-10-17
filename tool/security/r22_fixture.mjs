@@ -37,11 +37,15 @@ async function r22Verify(db,id){
  await actor22(db,actor,()=>assert.rejects(db.query('select public.decide_attendance_correction_request($1,$2)',[id(21),decision]),e=>e.code==='42501'));checks22++;
  assert.deepEqual(await snapshot22(db),before);checks22++;
  }
+ // Linked publication is sealed even for the legitimate Master.
+ for(const decision of ['approve',null,'invalid']){await actor22(db,id(1),()=>assert.rejects(db.query('select public.decide_attendance_correction_request($1,$2)',[id(21),decision]),e=>e.code==='42501'));checks22++;}
+ assert.deepEqual(await snapshot22(db),before);checks22++;
  // Existing company approval checks still refuse an unrelated company assignee.
  await actor22(db,id(5),()=>assert.rejects(db.query('select public.decide_attendance_correction_request($1,$2)',[id(20),'approve']),/approval assignee permission required/));checks22++;
  // Verify ordinary permitted decisions and Master decisions, each rolled back.
- for(const [actor,request]of [[id(2),id(20)],[id(1),id(21)]])for(const decision of ['approve','reject']){
+ for(const [actor,request]of [[id(2),id(20)],[id(1),id(20)],[id(1),id(21)]])for(const decision of ['approve','reject']){
  await db.exec('begin');try{
+ if(actor===id(1)&&request===id(21)&&decision==='approve')continue;
  if(actor===id(1))await db.query('update public.attendance_correction_requests set requested_by=$1 where id=$2',[id(2),request]);
  const result=await actor22(db,actor,()=>db.query('select public.decide_attendance_correction_request($1,$2) result',[request,decision]));
  assert.equal(result.rows[0].result,decision==='approve'?'approved':'rejected');checks22++;
@@ -58,7 +62,7 @@ async function r22Verify(db,id){
 async function r22Http(db,id,token,origin){
  await db.exec("notify pgrst, 'reload schema'");
  const before=await snapshot22(db);
- for(const actor of [id(2),id(4)])for(const decision of ['approve','reject']){
+ for(const [actor,decision]of [[id(2),'approve'],[id(2),'reject'],[id(4),'approve'],[id(4),'reject'],[id(1),'approve'],[id(1),null],[id(1),'invalid']]){
  const r=await fetch(new URL('/rpc/decide_attendance_correction_request',origin),{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token(actor),'Content-Type':'application/json'},body:JSON.stringify({p_request_id:id(21),p_decision:decision})});assert.equal(r.status,403);checks22++;
  }
  assert.deepEqual(await snapshot22(db),before);checks22++;
@@ -68,7 +72,7 @@ async function r22Restore(db){
  await db.exec(catalog22[0].definition.replace('AS $function$','AS $function$ -- fixture-only drift\n'));
  const drifted=await metadata22(db);await assert.rejects(db.exec(await fs.readFile(new URL('./r22_candidate.sql.review-only',import.meta.url),'utf8')),e=>e.code==='55000');checks22++;await db.exec('rollback');assert.deepEqual(await metadata22(db),drifted);checks22++;
  await db.exec(catalog22[0].definition);assert.deepEqual(await metadata22(db),original22);checks22++;
- console.log(`PASS ${checks22} R22 correction entry guard checks; Master publication and creation-before-lineage remain explicit blockers.`);
+ console.log(`PASS ${checks22} R22 correction entry guard checks; Master linked approval sealed; creation-before-lineage and existing downstream copies remain blockers.`);
 }
 const source22=await fs.readFile(new URL('./r21_fixture.mjs',import.meta.url),'utf8');
 const source19=await fs.readFile(new URL('./r19_fixture.mjs',import.meta.url),'utf8');
