@@ -62,4 +62,15 @@ await db.exec('reset role');await db.exec(atomic);
 assert.deepEqual(await snapshot(),applied,'reapply exact output');
 await db.close();console.log('PASS P34: composition, 4-object late rollback, role matrix, identity/data/ACL preservation, exact original restoration and reapply. Native actual backup restoration NOT proven.');
 `;
+// Reuse the exact existing real HTTP role matrix after the atomic application.
+const readBytes=fs.readFileSync(path.join(root,'tool/security/personnel_rls/verify.mjs'));
+if(crypto.createHash('sha256').update(readBytes).digest('hex')!=='c0ece6637789219ea352367b5649731aa32f4affdc253c753ff08a467068d97e')throw Error('Existing HTTP fixture drift');
+const readText=readBytes.toString();
+const start='if(process.env.SKO_PERSONNEL_POSTGREST_URL){';
+const end='// Emergency restoration rehearsal only.';
+if(readText.split(start).length!==2||readText.split(end).length!==2)throw Error('Existing HTTP matrix anchor drift');
+const http=readText.slice(readText.indexOf(start),readText.indexOf(end));
+const anchor="await db.exec('reset role');\\nconst ident=";
+if(source.split(anchor).length!==2)throw Error('Atomic HTTP insertion anchor drift');
+source=source.replace(anchor,"await db.exec('reset role');\\n"+http+"\\nconst ident=");
 await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
