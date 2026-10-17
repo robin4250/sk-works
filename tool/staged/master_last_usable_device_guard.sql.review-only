@@ -51,7 +51,8 @@ do $$ begin
  returns void language plpgsql security definer set search_path='' as $body$ begin
  perform private.guard_master_device_loss(p_device_id,p_locked);
  perform private.master_proof_lock_before_last_device_guard(p_device_id,p_locked,p_proof);
- end $body$$fn$;
+ end $body$
+ $fn$;
  revoke all on function public.set_master_device_locked_with_proof(uuid,boolean,text) from public,anon;
  grant execute on function public.set_master_device_locked_with_proof(uuid,boolean,text) to authenticated;
  end if;
