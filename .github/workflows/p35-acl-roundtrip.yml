@@ -1,0 +1,44 @@
+name: P35 synthetic ACL representation round-trip
+on:
+  pull_request:
+    paths: ['tool/security/p35*', '.github/workflows/p35-acl-roundtrip.yml']
+  push:
+    branches: [main]
+    paths: ['tool/security/p35*', '.github/workflows/p35-acl-roundtrip.yml']
+permissions:
+  contents: read
+jobs:
+  pglite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/p35_acl_roundtrip.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: p35_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d p35_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      P35_SYNTHETIC: '1'
+      P35_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/p35_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/p35_acl_roundtrip.mjs --pg
