@@ -84,9 +84,12 @@ void main() {
     await client.auth.setInitialSession(session('a'));
     final pending = PanelSevenRepository(client).load();
     final check = expectLater(pending, throwsStateError);
-    await received.future.timeout(const Duration(seconds: 5));
-    await client.auth.setInitialSession(session('b'));
-    release.complete();
+    try {
+      await received.future.timeout(const Duration(seconds: 5));
+      await client.auth.setInitialSession(session('b'));
+    } finally {
+      if (!release.isCompleted) release.complete();
+    }
     await check;
     expect(client.auth.currentUser!.id, 'b');
     expect(paths, ['/auth/v1/user']);
