@@ -1,0 +1,48 @@
+name: macOS Release candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/existing_google_login.dart'
+      - 'tool/prepare_macos.sh'
+      - 'test/existing_google_login_macos_test.dart'
+      - '.github/workflows/macos-release-readiness.yml'
+permissions:
+  contents: read
+jobs:
+  native-candidate:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/auth/existing_google_login.dart test/existing_google_login_macos_test.dart
+      - run: flutter test test/existing_google_login_macos_test.dart
+      - run: flutter test --dart-define=SKO_MACOS_GOOGLE_V1=true test/existing_google_login_macos_test.dart test/existing_google_login_test.dart
+      - name: Generate isolated native project
+        run: |
+          git worktree add --detach ../sko-mac-candidate HEAD
+          cd ../sko-mac-candidate
+          SKO_ISOLATED_MAC_PREPARE=1 bash tool/prepare_macos.sh
+          flutter pub get --enforce-lockfile
+          flutter build macos --release --config-only --dart-define=SKO_MACOS_GOOGLE_V1=true --dart-define=SKO_MASTER_PASSWORD_V1=false
+          xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Release -derivedDataPath build/macos-ci CODE_SIGNING_ALLOWED=NO build
+      - name: Check compiled callback and Release network
+        run: |
+          python3 - <<'PY'
+          import pathlib,plistlib
+          root=pathlib.Path('../sko-mac-candidate')
+          info=list(root.glob('build/macos-ci/Build/Products/Release/*.app/Contents/Info.plist'))
+          assert len(info)==1, 'Expected one compiled Release app'
+          p=plistlib.loads(info[0].read_bytes())
+          assert p['CFBundleIdentifier']=='com.skworks.skWorks'
+          assert p['FlutterDeepLinkingEnabled'] is False
+          assert 'com.skworks.sko' in [s for t in p['CFBundleURLTypes'] for s in t['CFBundleURLSchemes']]
+          e=plistlib.loads((root/'macos/Runner/Release.entitlements').read_bytes())
+          assert e['com.apple.security.network.client'] is True
+          print('Unsigned Release candidate only. Google/Touch ID/trusted enrollment NOT verified.')
+          PY
