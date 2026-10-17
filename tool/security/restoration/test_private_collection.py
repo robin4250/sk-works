@@ -54,7 +54,7 @@ else:
 ''')
                 tool.chmod(0o700)
             result = subprocess.run([sys.executable, str(SOURCE), '--plan', str(plan),
-                                     '--pg-bin', str(root)], capture_output=True, text=True)
+                                     '--pg-bin', str(root), '--output-parent', str(root / 'backups')], capture_output=True, text=True)
             self.assertEqual(result.returncode, 2)
             self.assertNotIn('SYNTHETIC-PRIVATE', result.stdout + result.stderr)
             evidence = Path(result.stdout.split('Private evidence: ')[1].strip())
@@ -63,6 +63,25 @@ else:
             self.assertFalse(manifest['restoration_verified'])
             self.assertFalse(manifest['same_database_snapshot_across_files'])
             self.assertEqual(plan.read_text(), self.plan())
+
+    def test_output_parent_permissions_and_symlink_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            unsafe = root / 'unsafe'
+            unsafe.mkdir(mode=0o777)
+            unsafe.chmod(0o777)
+            with self.assertRaises(ValueError):
+                collector.new_capsule_directory(unsafe)
+            self.assertEqual(unsafe.stat().st_mode & 0o777, 0o777)
+            link = root / 'link'
+            link.symlink_to(unsafe, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                collector.new_capsule_directory(link)
+            parent = root / 'backups'
+            first = collector.new_capsule_directory(parent)
+            second = collector.new_capsule_directory(parent)
+            self.assertNotEqual(first, second)
+            self.assertEqual(first.stat().st_mode & 0o777, 0o700)
 
 
 if __name__ == '__main__':

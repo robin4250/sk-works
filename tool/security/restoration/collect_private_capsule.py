@@ -60,15 +60,31 @@ def transaction(sql):
             + sql + '\nCOMMIT;')
 
 
+def new_capsule_directory(parent):
+    if not parent.is_absolute() or parent.is_symlink():
+        raise ValueError('absolute non-symlink output parent required')
+    if not parent.exists():
+        # Do not create/modify arbitrary ancestor directories or existing modes.
+        parent.mkdir(mode=0o700)
+    st = parent.stat()
+    if not parent.is_dir() or st.st_uid != os.getuid() or st.st_mode & 0o022:
+        raise ValueError('output parent must be owned and not group/world writable')
+    root = Path(tempfile.mkdtemp(prefix='private-capsule-', dir=str(parent)))
+    root.chmod(0o700)
+    return root
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--plan', required=True, type=Path)
     parser.add_argument('--pg-bin', required=True, type=Path)
+    parser.add_argument('--output-parent', type=Path,
+                        default=Path.home() / 'SKO-source-backups')
     args = parser.parse_args()
     os.umask(0o077)
-    root = Path(tempfile.mkdtemp(prefix='sko-private-capsule-'))
-    root.chmod(0o700)
+    root = None
     try:
+        root = new_capsule_directory(args.output_parent)
         catalog_bytes = Path(__file__).with_name('role_dependency_inventory.sql.review-only').read_bytes()
         if hashlib.sha256(catalog_bytes).hexdigest() != CATALOG_SHA256:
             raise ValueError('reviewed catalog query mismatch')
@@ -121,11 +137,13 @@ def main():
         (root / 'private-manifest.json').write_text(json.dumps(manifest, indent=2))
         print('COLLECTED PRIVATELY: read-only catalog/schema and minimal identity/company/role invariants; before/after unchanged. Production writes: 0.')
         print('Restore/apply/provider-login/full-role-ACL recovery: NOT verified. Private values must stay on this Mac.')
-        print('Private evidence: ' + str(root))
+        if root is not None:
+            print('Private evidence: ' + str(root))
         return 2
     except Exception as error:
         print('STOP: private collection incomplete (' + type(error).__name__ + '). No production write or restoration performed.')
-        print('Private evidence: ' + str(root))
+        if root is not None:
+            print('Private evidence: ' + str(root))
         return 1
 
 
