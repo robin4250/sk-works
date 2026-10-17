@@ -130,3 +130,9 @@ The target device ID/key and remaining target columns and all Master rows were c
 | Remaining production authorization | One-row incident approval does not authorize new SQL/RLS/Auth/role/provider changes, broader restore or dedicated-mode enable; existing protection and impact-approval requirements remain |
 
 No secret, raw key/hash, email address, private backup path or account/device identifier is published in this addendum. This documentation branch changes no product source or production state.
+
+### Subsequent user report — 09:58 JST
+
+The user reported registering and saving both recovery email addresses. This updates the earlier unconfirmed-save checkpoint only: message delivery, separate codes to the two addresses, successful verification of both codes and consumption of a full recovery operation remain unconfirmed. No email address or code is recorded here. This documentation update performs no production write.
+
+Do not restore the old archive wholesale to undo the incident unlock: doing so could erase these subsequently saved recovery settings and other legitimate work. Preserve the current state and use separately reviewed, explicitly approved forward repair if further changes are needed. The earlier one-column unlock approval does not expand to other production changes.
