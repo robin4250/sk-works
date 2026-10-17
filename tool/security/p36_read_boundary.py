@@ -35,6 +35,23 @@ def library_reference(text, binary):
     if text.startswith('@') or not text.startswith('/'):raise ValueError("Unresolved runtime library: "+text[:1000])
     return Path(text)
 
+def parse_otool(text,binary):
+    # Apple cctools emits a separate exact filename header for each fat slice.
+    header=re.compile(re.escape(str(binary))+r'(?: \(architecture (arm64|x86_64)\))?:')
+    seen=set();entries=[]
+    for line in text.splitlines():
+        h=header.fullmatch(line)
+        if h:
+            kind=h.group(1) or 'native'
+            if kind in seen:raise ValueError("Duplicate runtime architecture header")
+            seen.add(kind);continue
+        m=re.fullmatch(r'\s+(.+?) \(compatibility version .+\)',line)
+        if not seen or not m:
+            raise ValueError("Unexpected runtime library metadata for "+binary.name+": "+repr(line[:1000]))
+        entries.append(m.group(1))
+    if not seen:raise ValueError("Runtime library header required")
+    return entries
+
 def libraries(binaries):
     pending=[Path(p).resolve(strict=True) for p in binaries];seen=set();allowed=set()
     env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C'}
@@ -45,10 +62,8 @@ def libraries(binaries):
         if len(seen)>128:raise ValueError("Runtime dependency limit")
         r=subprocess.run(['/usr/bin/otool','-L',str(binary)],capture_output=True,text=True,
                          check=True,timeout=10,env=env)
-        for line in r.stdout.splitlines()[1:]:
-            m=re.fullmatch(r'\s+(.+?) \(compatibility version .+\)',line)
-            if not m:raise ValueError("Unexpected runtime library metadata for "+binary.name+": "+repr(line[:1000]))
-            ref=library_reference(m.group(1),binary)
+        for name in parse_otool(r.stdout,binary):
+            ref=library_reference(name,binary)
             if any(ref==Path(p) or Path(p) in ref.parents for p in SYSTEM_ROOTS):
                 continue # macOS shared-cache files need not be present on disk.
             real=ref.resolve(strict=True)

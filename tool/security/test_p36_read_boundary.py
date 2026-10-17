@@ -27,4 +27,16 @@ class ReadBoundary(unittest.TestCase):
  def test_missing_probe_has_no_subprocess(self):
   with patch.object(p.sys,"argv",["p36","--sources","/tmp","--pg-bin","/tmp","--output-parent","/tmp"]),patch.object(p.subprocess,"run",side_effect=AssertionError("unexpected process")):
    self.assertEqual(p.main(),2)
+ def test_actual_universal_header_contract(self):
+  b=pathlib.Path("/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12")
+  sample=str(b)+" (architecture x86_64):\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1345.0.0)\n"+str(b)+" (architecture arm64):\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1345.0.0)\n"
+  self.assertEqual(p.parse_otool(sample,b),["/usr/lib/libSystem.B.dylib"]*2)
+ def test_unknown_or_other_filename_header_is_not_skipped(self):
+  b=pathlib.Path("/opt/runtime/python")
+  for sample in (str(b)+" (architecture unknown):\n", "/other/python (architecture arm64):\n",str(b)+":\nUNKNOWN\n",str(b)+":\n\n"):
+   with self.assertRaises(ValueError):p.parse_otool(sample,b)
+ def test_library_before_header_and_duplicate_header_refused(self):
+  b=pathlib.Path("/opt/runtime/python")
+  for sample in ("\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)\n",str(b)+":\n"+str(b)+":\n"):
+   with self.assertRaises(ValueError):p.parse_otool(sample,b)
 if __name__=="__main__":unittest.main()

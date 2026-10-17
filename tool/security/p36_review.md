@@ -21,3 +21,6 @@ The broader pre-restore gates remain:
 4. Actual isolated backup recovery, saved/current time gap, admin/company/roles/provider/updated recovery emails, normal behavior and explicit concrete production approval remain unresolved until independently verified.
 
 No product source, RLS, existing SQL, payroll, Auth, collector or production changes.
+
+### Exact otool header diagnosis
+Diagnostic head bc9e5768 run39011136674/job117333725343 stopped before PostgreSQL startup. The exact unexpected line was the second universal-Python header ending `(architecture arm64):` for the same resolved Python3.12 executable. Apple cctools [otool/main.c](https://github.com/apple-oss-distributions/cctools/blob/main/otool/main.c) emits that per-architecture header. The parser now accepts only the exact inspected binary path plus arm64/x86_64 header forms; unknown names/architectures/lines and duplicate headers remain refused. This changes no runtime permission roots or dylib policy. MacCI must establish the final result separately.
