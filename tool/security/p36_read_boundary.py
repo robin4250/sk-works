@@ -32,7 +32,7 @@ def runtime_root(path):
 def library_reference(text, binary):
     if text.startswith('@loader_path/'):return binary.parent/text[len('@loader_path/'):]
     if text.startswith('@executable_path/'):return binary.parent/text[len('@executable_path/'):]
-    if text.startswith('@') or not text.startswith('/'):raise ValueError("Unresolved runtime library")
+    if text.startswith('@') or not text.startswith('/'):raise ValueError("Unresolved runtime library: "+text[:1000])
     return Path(text)
 
 def libraries(binaries):
@@ -47,7 +47,7 @@ def libraries(binaries):
                          check=True,timeout=10,env=env)
         for line in r.stdout.splitlines()[1:]:
             m=re.fullmatch(r'\s+(.+?) \(compatibility version .+\)',line)
-            if not m:raise ValueError("Unexpected runtime library metadata")
+            if not m:raise ValueError("Unexpected runtime library metadata for "+binary.name+": "+repr(line[:1000]))
             ref=library_reference(m.group(1),binary)
             if any(ref==Path(p) or Path(p) in ref.parents for p in SYSTEM_ROOTS):
                 continue # macOS shared-cache files need not be present on disk.
