@@ -66,11 +66,13 @@ def main():
                            env=env, stdout=errors, stderr=errors, timeout=120, check=True)
         tables, extensions = inventory((evidence / 'private-toc.txt').read_text())
         missing = REQUIRED - tables
+        digest = hashlib.sha256()
         with archive.open('rb') as source:
-            digest = hashlib.file_digest(source, 'sha256').hexdigest()
+            for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                digest.update(chunk)
         report = {
             'scope': 'offline archive inventory; no database was started or contacted',
-            'archive_sha256': digest, 'table_count': len(tables),
+            'archive_sha256': digest.hexdigest(), 'table_count': len(tables),
             'extensions': sorted(extensions), 'missing_expected_tables': sorted(missing),
             'full_restore_verified': False, 'subset_restore_verified': False,
             'roles_acl_recovery_verified': False, 'candidate_apply_verified': False,
