@@ -4,6 +4,7 @@ on:
     paths:
       - 'tool/security/restoration/entry_native_probe.py'
       - 'tool/security/restoration/test_entry_native_probe.py'
+      - 'tool/security/restoration/entry_native_review.md'
       - '.github/workflows/entry-native-boundary.yml'
   workflow_dispatch:
 permissions:
