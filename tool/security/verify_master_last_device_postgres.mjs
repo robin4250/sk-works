@@ -59,11 +59,9 @@ try {
  const d='40000000-0000-0000-0000-000000000001',d2='40000000-0000-0000-0000-000000000002',foreign='40000000-0000-0000-0000-000000000003',revoked='40000000-0000-0000-0000-000000000004';
  await admin.query('insert into private.master_devices values($1,$5,$6,false,null),($2,$5,$7,false,null),($3,$8,$9,false,null),($4,$5,$10,true,now())',[d,d2,foreign,revoked,a,'synthetic device one','synthetic device two',b,'synthetic other device','synthetic revoked']);
  await admin.query(await fs.readFile(new URL('../../supabase/tests/fixtures/master_device_lock_before.sql',import.meta.url),'utf8'));
- await admin.query(`create function public.revoke_master_device(p_device_id uuid) returns void language plpgsql security definer set search_path='' as $$ begin
- if not public.is_current_user_master_admin() then raise sqlstate '42501'; end if;
- update private.master_devices set is_locked=true,revoked_at=now() where id=p_device_id and master_user_id=auth.uid();
- if not found then raise sqlstate '42501'; end if; end $$;
- revoke all on function public.revoke_master_device(uuid) from public,anon;grant execute on function public.revoke_master_device(uuid) to authenticated;`);
+ await admin.query('alter table private.master_devices add column revoked_by uuid');
+ await admin.query(await fs.readFile(new URL('./master_last_device_revoke_before.sql',import.meta.url),'utf8'));
+ await admin.query('revoke all on function public.revoke_master_device(uuid) from public,anon;grant execute on function public.revoke_master_device(uuid) to authenticated');
  await admin.query('revoke all on function public.set_master_device_locked(uuid,boolean) from public,anon;grant execute on function public.set_master_device_locked(uuid,boolean) to authenticated,service_role');
  const functions=async()=> (await admin.query(`select n.nspname,p.proname,pg_get_functiondef(p.oid) definition,p.proacl::text acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('reauthentication_scope','reauthentication_required')) or (n.nspname='public' and p.proname in ('issue_reauthentication_proof','set_master_device_locked')) order by n.nspname,p.proname`)).rows;
  const originalFunctions=await functions(),beforeIdentity=await identitySnapshot();
@@ -140,7 +138,7 @@ try {
  // Simultaneous distinct target lock/revoke must serialize on the owner row.
  for(const pair of [['lock','lock'],['lock','revoke'],['revoke','revoke']]) {
   await admin.query('update private.master_device_lock_rollout set enabled=false');
-  await admin.query('update private.master_devices set is_locked=false,revoked_at=null where id=any($1::uuid[])',[[d,d2]]);
+  await admin.query('update private.master_devices set is_locked=false,revoked_at=null,revoked_by=null where id=any($1::uuid[])',[[d,d2]]);
   const run=(c,op,id)=>c.query(op==='lock'?'select public.set_master_device_locked($1,true)':'select public.revoke_master_device($1)',[id]);
   const competitor=await connection();await actor(competitor);
   await user.query('begin');await run(user,pair[0],d);
