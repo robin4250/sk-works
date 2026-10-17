@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/auth/first_use_auth_policy.dart';
+import 'package:sk_works/features/auth/first_use_auth_policy.dart';
 
 void main() {
   const a = FirstUseSession(actorId: 'actor-a', sessionId: 'session-a');
