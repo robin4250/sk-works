@@ -1,0 +1,23 @@
+name: Existing panel enrollment status
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/panel_seven_*'
+      - 'test/panel_seven*'
+      - '.github/workflows/r37-panel-status.yml'
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/auth/panel_seven_page.dart lib/features/auth/panel_seven_repository.dart test/panel_seven_test.dart test/panel_seven_repository_test.dart
+      - run: flutter test test/panel_seven_test.dart test/panel_seven_repository_test.dart test/existing_google_login_test.dart
