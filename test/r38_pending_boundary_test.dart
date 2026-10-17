@@ -32,10 +32,12 @@ Future<void> settle(WidgetTester tester) async {
 Future<void> open(WidgetTester tester, {bool setup = false}) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   await tester.runAsync(() => Supabase.instance.client.auth.setInitialSession(session(actorA)));
+  expect(SupabaseBackend.client.auth.currentUser?.id,actorA);
   await tester.pumpWidget(const MaterialApp(home: SecondaryProtectedPage(
     title:'synthetic protected',child:Text('private payload'))));
   await settle(tester);
-  expect(find.text(setup ? '第2パスワードを設定' : '第2認証が必要です'),findsOneWidget);
+  expect(find.text(setup ? '第2パスワードを設定' : '第2認証が必要です'),findsOneWidget,
+    reason:tester.widgetList<Text>(find.byType(Text)).map((t)=>t.data).join('|'));
 }
 Future<void> begin(WidgetTester tester) async {
   pending=Completer<bool>();
@@ -147,5 +149,21 @@ void main() {
     nativePending!.complete(true);await settle(tester);
     expect(requests.where((r)=>r.url.path.endsWith('/set_secondary_password')),isEmpty);
     expect(find.text('private payload'),findsNothing);
+  });
+  testWidgets('setup native inactive waits then submits captured password once on resume',(tester) async {
+    configured=false;await open(tester,setup:true);nativePending=Completer<bool>();
+    await tester.enterText(find.byType(TextField).at(0),'synthetic-new-secondary');
+    await tester.enterText(find.byType(TextField).at(1),'synthetic-new-secondary');
+    await tester.tap(find.byType(SwitchListTile));await tester.pump();
+    await tester.ensureVisible(find.text('設定して開く'));await tester.tap(find.text('設定して開く'));await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    nativePending!.complete(true);await settle(tester);
+    expect(requests.where((r)=>r.url.path.endsWith('/set_secondary_password')),isEmpty);
+    expect(find.text('private payload'),findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await settle(tester);
+    final saves=requests.where((r)=>r.url.path.endsWith('/set_secondary_password')).toList();
+    expect(saves.length,1);
+    expect(jsonDecode(saves.single.body),{'p_password':'synthetic-new-secondary'});
+    expect(find.text('private payload'),findsOneWidget);
   });
 }
