@@ -26,7 +26,7 @@ def classify(text):
         if kind is None:
             unresolved.append(match.group(1));continue
         words=item[len(kind)+1:].split()
-        if len(words)<3:raise ValueError('incomplete archive TOC record')
+        if len(words)<(2 if kind=='EXTENSION' else 3):raise ValueError('incomplete archive TOC record')
         schema,name=words[0],words[1]
         if kind=='EXTENSION':extensions.append(match.group(1))
         if schema=='public' and name in SUPPORT and kind=='TABLE':support.append(name)
