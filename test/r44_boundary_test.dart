@@ -26,12 +26,13 @@ class Fixture {
   final permissionStarted=Completer<void>();
   final mutations=<String>[];
   final calls=<String>[];
+  final requestMethods=<String>[];
   final rows=Completer<void>();
   final signed=Completer<void>();
   final rowStarted=Completer<void>();
   final signStarted=Completer<void>();
   late final SupabaseClient client=SupabaseClient('https://certificate-fixture.invalid','fixture-key',authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((request) async {
-    final path=request.url.path;calls.add(path);
+    final path=request.url.path;calls.add(path);requestMethods.add(request.method);
     if(path.endsWith('/token'))return jsonResponse({'access_token':token(activeActor),'refresh_token':'fixture-refresh','token_type':'bearer','expires_in':3600,'user':{'id':activeActor,'aud':'authenticated','role':'authenticated','email':'fixture@example.invalid','created_at':'2026-01-01T00:00:00Z','app_metadata':{},'user_metadata':{}}},request);
     if(path.endsWith('/logout'))return http.Response('',204,request:request);
     if(path.endsWith('/rpc/current_feature_permissions')){
@@ -200,7 +201,7 @@ void main(){
     await f.storageStarted.future;final checked=expectLater(pending,throwsStateError);
     await f.client.auth.signOut(scope:SignOutScope.local);await f.login();f.storageComplete.complete();await checked;
     expect(f.mutations,['storage']);
-    expect(f.calls.where((path)=>path.contains('delete')),isEmpty);
+    expect(f.requestMethods.where((method)=>method=='DELETE'),isEmpty);
   });
 
 }
