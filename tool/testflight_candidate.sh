@@ -24,6 +24,7 @@ if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]]; then
 fi
 
 python3 tool/testflight_provenance.py source
+export SUPABASE_URL SUPABASE_PUBLISHABLE_KEY
 python3 tool/testflight_provenance.py configuration
 
 echo "[1/5] 最新mainを確認"
