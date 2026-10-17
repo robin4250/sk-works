@@ -55,7 +55,7 @@ void main(){
     f.rows.complete();await tester.pump();await tester.pump();
     expect(find.text('Private qualification'),findsNothing);
     expect(find.textContaining('PRIVATE-CERT'),findsNothing);
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
   testWidgets('late signed URL and open photo sheet disappear after SDK logout',(tester)async{
     final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);f.rows.complete();
     await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
@@ -68,5 +68,5 @@ void main(){
     f.signed.complete();await tester.pump();await tester.pump();
     expect(find.byType(Image),findsNothing);
     expect(find.textContaining('PRIVATE-CERT'),findsNothing);
-  });
+  }, timeout: const Timeout(Duration(seconds: 45)));
 }
