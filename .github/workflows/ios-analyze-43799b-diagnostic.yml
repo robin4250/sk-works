@@ -1,4 +1,4 @@
-name: Bounded iOS Analyze diagnosis (43799b)
+name: Bounded full iOS verification (43799b)
 on:
   pull_request:
     paths: ['.github/workflows/ios-analyze-43799b-diagnostic.yml']
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   diagnose-analyze:
-    timeout-minutes: 20
+    timeout-minutes: 80
     # Explicit Intel pool avoids the arm64 hosted-runner capacity failure.
     # CI Xcode 26.6 is distinct from the user's Xcode 27 device environment.
     runs-on: macos-26-intel
@@ -18,13 +18,16 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
       - name: Checkout
+        timeout-minutes: 3
         uses: actions/checkout@v4
         with:
           ref: 43799b390fc9db3107134be2200fd8b271f055dd
       - name: Verify exact diagnostic source
+        timeout-minutes: 3
         run: test "$(git rev-parse HEAD)" = 43799b390fc9db3107134be2200fd8b271f055dd
 
       - name: Verify and record iOS build environment
+        timeout-minutes: 3
         run: |
           set -euo pipefail
           uname -m
@@ -35,6 +38,7 @@ jobs:
           test "$(xcodebuild -version | head -n 1)" = 'Xcode 26.6'
 
       - name: Validate iOS helper scripts
+        timeout-minutes: 3
         run: |
           bash -n tool/prepare_ios.sh
           bash -n tool/check_ios_readiness.sh
@@ -54,6 +58,7 @@ jobs:
           bash -n tool/testflight_finish.sh
 
       - name: Verify device-day signing diagnostics
+        timeout-minutes: 3
         run: |
           grep -q 'xcodebuild -checkFirstLaunchStatus' tool/ios_install_assistant.sh
           grep -q 'xcodebuild -showsdks' tool/ios_install_assistant.sh
@@ -61,6 +66,7 @@ jobs:
           grep -q 'Detected Team ID candidates' tool/collect_ios_diagnostics.sh
 
       - name: Verify public Supabase client template
+        timeout-minutes: 3
         run: |
           grep -Eq '^export SUPABASE_URL="https://.*\.supabase\.co"$' tool/local_supabase_env.example.sh
           grep -q '^export SUPABASE_PUBLISHABLE_KEY="sb_publishable_' tool/local_supabase_env.example.sh
@@ -68,9 +74,11 @@ jobs:
           grep -Eq '^/?tool/local_supabase_env\.sh$' .gitignore
 
       - name: Scan tracked files for production secrets
+        timeout-minutes: 3
         run: bash tool/check_no_client_secrets.sh
 
       - name: Set up Flutter
+        timeout-minutes: 10
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
@@ -78,21 +86,27 @@ jobs:
           cache: true
 
       - name: Verify pinned Flutter
+        timeout-minutes: 3
         run: flutter --version
 
       - name: Verify dependency pins
+        timeout-minutes: 3
         run: bash tool/check_dependency_pins.sh
 
       - name: Prepare iOS project
+        timeout-minutes: 3
         run: bash tool/prepare_ios.sh
 
       - name: Verify generated iOS project contract
+        timeout-minutes: 3
         run: bash tool/check_ios_generated_contract.sh
 
       - name: Verify lockfile is stable
+        timeout-minutes: 3
         run: git diff --exit-code -- pubspec.lock
 
       - name: Verify prepare preserves existing iOS project
+        timeout-minutes: 3
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -118,9 +132,11 @@ jobs:
           PY
 
       - name: Flutter doctor
+        timeout-minutes: 4
         run: flutter doctor -v
 
       - name: Verify iOS permission descriptions
+        timeout-minutes: 3
         run: |
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Print :NSFaceIDUsageDescription" ios/Runner/Info.plist
@@ -150,6 +166,7 @@ jobs:
           PY
 
       - name: Verify Personal Team bundle identifier
+        timeout-minutes: 3
         run: grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.skworks.skWorks;' ios/Runner.xcodeproj/project.pbxproj
 
       - name: Bounded Analyze with non-sensitive process heartbeat
@@ -192,6 +209,46 @@ jobs:
                       process.wait()
                   sys.exit(124)
               time.sleep(2)
-          print("DIAGNOSTIC Analyze exit=" + str(process.returncode) + "; full iOS checks remain separate.", flush=True)
+          print("DIAGNOSTIC Analyze exit=" + str(process.returncode) + "; continuing exact-source full iOS checks.", flush=True)
           sys.exit(process.returncode)
           PY
+      - name: Test
+        timeout-minutes: 25
+        run: flutter test
+
+      - name: Register the official CocoaPods CDN explicitly
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          pod --version
+          # Automatic URL probing can misclassify the CDN as a Git repository
+          # after an HTTP failure. The official add-cdn command fixes its type;
+          # compatibility checks and subsequent network/build failures remain fatal.
+          pod repo add-cdn trunk https://cdn.cocoapods.org/
+          pod repo list
+
+      - name: Build iOS debug without codesigning
+        timeout-minutes: 15
+        run: flutter build ios --debug --no-codesign --dart-define=SKO_MASTER_PASSWORD_V1=false
+
+      - name: Build iOS release without codesigning
+        timeout-minutes: 20
+        run: flutter build ios --release --no-codesign --dart-define=SKO_MASTER_PASSWORD_V1=false
+
+
+      - name: Verify generated and compiled Release OAuth callback
+        timeout-minutes: 3
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import plistlib
+          for path in ["ios/Runner/Info.plist", "build/ios/iphoneos/Runner.app/Info.plist"]:
+              with Path(path).open("rb") as f:
+                  data = plistlib.load(f)
+              assert any("com.skworks.sko" in t.get("CFBundleURLSchemes", []) for t in data.get("CFBundleURLTypes", [])), path
+              assert data.get("FlutterDeepLinkingEnabled") is False, path
+              if "Runner.app" in path:
+                  assert data["CFBundleIdentifier"] == "com.skworks.skWorks"
+              print("OAuth callback scheme verified:", path)
+          PY
+
