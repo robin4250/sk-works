@@ -16,12 +16,13 @@ http.Response jsonResponse(Object body,http.Request request)=>http.Response(json
 String token()=>['{"alg":"HS256"}',jsonEncode({'sub':actor,'role':'authenticated','exp':DateTime.now().millisecondsSinceEpoch~/1000+3600}),'signature'].map((x)=>base64Url.encode(utf8.encode(x)).replaceAll('=','')).join('.');
 
 class Fixture {
+  final calls=<String>[];
   final rows=Completer<void>();
   final signed=Completer<void>();
   final rowStarted=Completer<void>();
   final signStarted=Completer<void>();
   late final SupabaseClient client=SupabaseClient('https://certificate-fixture.invalid','fixture-key',authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((request) async {
-    final path=request.url.path;
+    final path=request.url.path;calls.add(path);
     if(path.endsWith('/token'))return jsonResponse({'access_token':token(),'refresh_token':'fixture-refresh','token_type':'bearer','expires_in':3600,'user':{'id':actor,'aud':'authenticated','role':'authenticated','email':'fixture@example.invalid','created_at':'2026-01-01T00:00:00Z','app_metadata':{},'user_metadata':{}}},request);
     if(path.endsWith('/logout'))return http.Response('',204,request:request);
     if(path.endsWith('/rpc/current_feature_permissions'))return jsonResponse({'can_manage_people':true},request);
@@ -69,4 +70,34 @@ void main(){
     expect(find.byType(Image),findsNothing);
     expect(find.textContaining('PRIVATE-CERT'),findsNothing);
   }, timeout: const Timeout(Duration(seconds: 45)));
+  testWidgets('already displayed photo is removed and retained button cannot dispatch after logout',(tester)async{
+    final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);f.rows.complete();f.signed.complete();
+    await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
+    await tester.pump();await tester.pump();await tester.pump();
+    await tester.tap(find.text('Private qualification'));await tester.pump();await tester.pump(const Duration(milliseconds:400));await tester.pump();
+    expect(find.byType(Image),findsOneWidget);
+    final button=tester.widget<FilledButton>(find.ancestor(of:find.text('撮り直す'),matching:find.byType(FilledButton)).first);
+    final retained=button.onPressed;expect(retained,isNotNull);
+    await tester.runAsync(()=>f.client.auth.signOut(scope:SignOutScope.local));await tester.pump();
+    expect(find.byType(Image),findsNothing);expect(find.textContaining('PRIVATE-CERT'),findsNothing);
+    final before=f.calls.length;retained!();await tester.pump();
+    expect(f.calls.length,before);expect(tester.takeException(),isNull);
+  },timeout:const Timeout(Duration(seconds:45)));
+
+  testWidgets('same actor reauthentication preserves the legitimate delayed list',(tester)async{
+    final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);
+    await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
+    await tester.pump();await tester.pump();expect(f.rowStarted.isCompleted,true);
+    await tester.runAsync(f.login);await tester.pump();f.rows.complete();await tester.pump();await tester.pump();
+    expect(find.text('Private qualification'),findsOneWidget);
+  },timeout:const Timeout(Duration(seconds:45)));
+
+  test('signed URL result is refused after actual SDK logout',()async{
+    final f=Fixture();addTearDown(f.close);await f.login();
+    final repository=QualificationCertificateRepository.forTesting(f.client);
+    final future=repository.createSignedUrl('$company/$worker/front.jpg');
+    await f.signStarted.future;final checked=expectLater(future,throwsStateError);
+    await f.client.auth.signOut(scope:SignOutScope.local);f.signed.complete();await checked;
+  });
+
 }
