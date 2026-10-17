@@ -1,0 +1,7 @@
+# Fixed metadata collector candidate
+
+Reuses exact entry_snapshot.py from 13995ad8 (SHA256 432171969b657c082230cc170487e9d7bf9126bdf9a4fa5b19e105c6c3e1e37b), existing collector and role-inventory dependencies. The extra fixed query is the unchanged reviewed #1207 SQL, bound by SHA256 10fb932c3d13e77abf59d23b42f2e88b3d7551fbdeae98d114acd2df6b576397. No caller-supplied SQL, project, token, row selector or retry option exists. Source hashes are checked before keychain or network access. It uses the existing fixed project read-only API, HTTPS verification, redirect refusal and response read-only proof.
+
+New private capsule only: existing minimal identity/company/role invariant before, selected definitions, invariant after. Compare equality but do not claim one transaction snapshot or unchanged business data. The query excludes business/Auth row values and role secrets; function definitions can contain static configuration literals (known email/token patterns withheld by existing SQL, no claim of complete secret detection). Private output must not be pasted to chat/GitHub. It is not a pg_dump archive, transitive dependency closure, current-data backup or restoration proof. An old archive may predate current email settings or role/data changes. Never restore it over production.
+
+This candidate has not accessed the operator keychain/API or broadened exported row scope. Operator command requires independent review. Archive extraction/inventory/SQL execution is a separate stage; no archive SQL is executed here.
