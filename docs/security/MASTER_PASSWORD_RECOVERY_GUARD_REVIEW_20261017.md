@@ -98,3 +98,35 @@ Consequently, compromise of a Master JWT plus trusted device key, followed by re
 | Production state changes, apply, enable or enrollment approval | Not granted; the user's six protection conditions still apply |
 
 The earlier SQL9fb/UI9a observations are historical pinned reviews, not certification of later heads. At this update PR1170 has moved to 833733d518c59e02cfb50d974628896217709518, and UI1169 owner reported d7ec23f19383111aeb214b3a92f1fcdd21606097 with dedicated tests successful. Those later changes and CI evidence require their own exact-head review; this documentation update does not substitute for it. No production read/write, enrollment, credential reset, RLS/Auth/SQL/client change or shared-file edit was performed by this reviewer.
+
+## Later incident and source checkpoint — 2026-10-17 JST
+
+This dated addendum supersedes only the earlier point-in-time status tables. It does not rewrite the SQL9fb/UI9a observations above or certify every later implementation. Earlier statements that production reads/writes, backup or enrollment were absent describe the original review and its authoring lane at that time. The following operator action is a separate, explicitly bounded incident recovery. Editing this document itself performs no production operation.
+
+Source checkpoint: main `c75d1099ab085c828edbc21a666df168de1228ef` includes aggregate PR1173 through main `bb78cc0ca39f72ad0b00898041fc536a3458f365` and the subsequent PR1176 journal test/document/workflow addition. Source integration and successful isolated tests do not deploy review-only SQL or enable dedicated Master mode.
+
+### Saved state and actual isolated restoration
+
+The user reported successful native PostgreSQL 17 custom-format backup creation on the operator's Mac and successful archive listing. Backup bytes and connection credentials remained private. The operator then restored only `private.master_admins` and `private.master_devices` definitions/data into a fresh local PostgreSQL 17 cluster, with TCP listening disabled, private local socket, inherited PostgreSQL connection variables removed, preloads/workers disabled, and no post-data functions/triggers/ACL restoration. The original archive was retained.
+
+The real-backup two-table exercise verified the expected single enabled Master and single active locked device, changed only the local device lock bit inside a transaction, compared all other restored device values and all restored Master rows, rolled back, and compared complete before/after snapshots. The user reported success. This is actual protected-data restoration evidence for those two tables, distinct from the earlier synthetic PGlite tests. It is not a full database, Auth/provider, business-data, RLS, ACL, Edge Function, authentication-setting or full administrator UI recovery test.
+
+### Explicitly limited production unlock
+
+After the bounded result and impact were explained, the user explicitly instructed proceeding at 09:53 JST. Root then executed the separately reviewed one-row operator recovery, with enabled-Master row locking, short table/device locks, exact expected registration state and affected-row checks. The only data-changing instruction set the one existing device's `is_locked` from true to false. Checks within that transaction compared the target's remaining JSON fields, all Master rows and all other device rows; the operation aborted on any mismatch. A separate aggregate query subsequently reported one registered device, one usable device and zero locked devices. Root recorded the operation in Issue #273, comment 6227627234; no new database audit record was added by this limited action.
+
+The target device ID/key and remaining target columns and all Master rows were checked unchanged. No statement in that recovery changed Auth identities/providers, company association, company roles, credentials/hashes, RLS, business data or UI. Those unrelated tables were not fully snapshotted and independently compared in the incident transaction, so their preservation must not be represented as a full before/after data comparison. A successful unlock is not proof of successful app re-entry, email delivery or dedicated-password recovery. Do not mechanically re-lock the device as a rollback after the user saves recovery settings; subsequent legitimate state must be preserved.
+
+| Current item at this addendum | Bounded result / remaining work |
+|---|---|
+| Protected database archive | User reported native custom-format backup success and successful archive listing; bytes remain private |
+| Real-backup isolated restore | Two named tables restored and local lock-bit rollback/full snapshot equality passed; full DB/Auth/provider/ACL/settings restoration remains unverified |
+| Incident production change | Specifically approved one-row `is_locked` true-to-false update completed; post-check registered 1 / usable 1 / locked 0 |
+| Master identity / role protection | Target remaining fields and all Master rows compared unchanged; unrelated company/Auth/hash tables had no recovery write instruction, without a claim of full independent snapshot comparison |
+| Last-usable-device prevention | PR1177 is separately owned source/review-only SQL; server guard SQL is not applied to production at this checkpoint |
+| Dedicated Master mode | Still OFF; no dedicated SQL deployment/flag enable is authorized by the incident unlock |
+| Recovery email registration | Saving two addresses, verification delivery and complete recovery exercise remain unconfirmed |
+| Journal lifecycle | PR1176 adds actual pinned-SDK synthetic transport/SharedPreferences boundary tests; cross-session reconciliation, bounded retention and native persistence limits remain as documented there |
+| Remaining production authorization | One-row incident approval does not authorize new SQL/RLS/Auth/role/provider changes, broader restore or dedicated-mode enable; existing protection and impact-approval requirements remain |
+
+No secret, raw key/hash, email address, private backup path or account/device identifier is published in this addendum. This documentation branch changes no product source or production state.
