@@ -133,8 +133,8 @@ void main() {
     final selectedPaths = <String>[registration.path, compulsory.path];
     var picks = 0;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
-      expect(call.method, 'pickImage');
-      expect((call.arguments as Map)['source'], 1); // ImageSource.gallery.
+      expectSync(call.method, 'pickImage');
+      expectSync((call.arguments as Map)['source'], 1); // ImageSource.gallery.
       return selectedPaths[picks++];
     });
     addTearDown(() => tester.binding.defaultBinaryMessenger

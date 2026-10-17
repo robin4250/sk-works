@@ -36,7 +36,7 @@ class _DelayedVehicleRepository implements VehicleRouteRepository {
 void main() {
   testWidgets('global scroll and edge back preserve pending vehicle save and return once',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(650, 800));
+    await tester.binding.setSurfaceSize(const Size(650, 500));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SkoScrollChromeController.visible.value = true;
     addTearDown(() => SkoScrollChromeController.visible.value = true);
@@ -79,7 +79,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Real ScrollNotifications drive the same global controller used by the app.
-    await tester.drag(find.byType(ListView), const Offset(0, -350));
+    await tester.drag(find.byType(ListView), const Offset(0, -120));
     await tester.pumpAndSettle();
     expect(SkoScrollChromeController.visible.value, isFalse);
     await tester.ensureVisible(find.text('確定して保存'));
