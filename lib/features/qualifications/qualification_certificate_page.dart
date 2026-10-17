@@ -517,7 +517,7 @@ class _QualificationCertificatePageState
     try {
       for (final file in files) {
         final bytes = await file.readAsBytes();
-        if (!_scopeActive) return;
+        if (!mounted || !_scopeActive) return;
         final updated = await repository.uploadExtraCertificate(
           qualificationId: row['id'].toString(),
           workerId: row['worker_id'].toString(),
@@ -525,15 +525,15 @@ class _QualificationCertificatePageState
           originalFilename: file.name,
           replacingPath: replacingPath,
         );
-        if (!_scopeActive) return;
+        if (!mounted || !_scopeActive) return;
         _replaceRow(updated);
       }
-      if (_scopeActive) {
+      if (mounted && _scopeActive) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('追加写真を保存しました')));
       }
     } catch (error) {
-      if (_scopeActive) {
+      if (mounted && _scopeActive) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('追加写真の保存を確認できません。再読み込みしてください: $error')),
         );
@@ -557,7 +557,7 @@ class _QualificationCertificatePageState
       );
       if (_scopeActive) _replaceRow(updated);
     } catch (error) {
-      if (_scopeActive) {
+      if (mounted && _scopeActive) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('写真を削除できませんでした: $error')));
       }
@@ -587,7 +587,7 @@ class _QualificationCertificatePageState
     if (_scopeActive) setState(() => _busyId = id);
     try {
       final bytes = await picked.readAsBytes();
-      if (!_scopeActive) return;
+      if (!mounted || !_scopeActive) return;
       final updated = back
           ? await repository.uploadCertificateBack(
               qualificationId: id,
@@ -601,13 +601,13 @@ class _QualificationCertificatePageState
               bytes: bytes,
               originalFilename: picked.name,
             );
-      if (!_scopeActive) return;
+      if (!mounted || !_scopeActive) return;
       _replaceRow(updated);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(back ? '資格証の裏面を保存しました' : '資格証の表面を保存しました')),
       );
     } catch (error) {
-      if (!_scopeActive) return;
+      if (!mounted || !_scopeActive) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('資格証画像を保存できませんでした: $error')));
     } finally {
@@ -634,13 +634,13 @@ class _QualificationCertificatePageState
               qualificationId: id,
               storagePath: path,
             );
-      if (!_scopeActive) return;
+      if (!mounted || !_scopeActive) return;
       _replaceRow(updated);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(back ? '資格証の裏面を削除しました' : '資格証の表面を削除しました')),
       );
     } catch (error) {
-      if (!_scopeActive) return;
+      if (!mounted || !_scopeActive) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('資格証画像を削除できませんでした: $error')));
     } finally {
@@ -649,7 +649,7 @@ class _QualificationCertificatePageState
   }
 
   void _replaceRow(Map<String, dynamic> updated) {
-    if (!_scopeActive) return;
+    if (!mounted || !_scopeActive) return;
     final id = updated['id']?.toString();
     if (id == null) return;
     setState(() {
