@@ -1,0 +1,23 @@
+# Bounded personnel restoration preparation
+
+This candidate is an offline **preflight**, not a restoration verifier or deployment tool. Its only subprocess is explicit PostgreSQL 17 `pg_restore --version`, `--list` or schema extraction with `--file`; no database process, connection, SQL execution, production credentials or migration application is used. Existing archive bytes are read only. Every output directory is new and private (0700/umask 077). Extracted SQL and errors may contain sensitive values and remain local; public output contains only scope/status and the private evidence location.
+
+The existing two-table Master rehearsal is valid evidence for its narrow device/admin exercise only. It does not verify personnel/Auth/company/role/ACL recovery. A pg_dump archive does not by itself contain original cluster-wide CREATE ROLE/ALTER ROLE/role-membership definitions. Do not manufacture permissive roles or helper stubs to pass a test.
+
+## Two separate possible restoration claims
+
+1. **Bounded personnel subgraph:** extract dependency inventory privately, identify exact tables/types/functions/policies/triggers/roles/ACLs needed for canonical/legacy/direct personnel reads and existing save/decide paths. Include actual protected Auth IDs/provider mappings and Master/company membership/role invariants needed for preservation comparison. Retain exact function bodies and security attributes. An unrelated extension outside this subgraph need not block this limited claim. An unavailable extension *inside* the selected subgraph, an unresolved dependency or unknown original role/security attribute must stop it. No filtered reconstruction may be called a full database recovery.
+2. **Full database recovery:** requires all archived dependencies/extensions and separately preserved original roles, plus external Auth/provider/settings/Edge/Storage configuration and appropriate bytes. Native Homebrew PostgreSQL cannot be assumed to support Supabase-only extensions. This broader claim remains unverified and is not demanded merely to inventory a bounded subgraph.
+
+Before any archive execution, independently verify outbound isolation on the actual Mac. The preflight does not assume an undocumented macOS sandbox capability. A Unix socket and disabled TCP *listening* do not block functions/extensions from making outbound connections. Disable scheduled workers/preloads and all outbound mail/SMS/OAuth/notifications, and independently demonstrate the enforced network boundary. Unknown isolation means STOP, not a simulated success.
+
+## Intended later bounded rehearsal (not implemented by this preflight)
+
+- Create a new disposable PG17 cluster and private Unix socket, no TCP listening, scrub inherited PG settings. Do not use Homebrew's default cluster, `brew services`, existing SKO databases or the production connection plan.
+- Restore reviewed exact roles/security metadata and the chosen dependency subgraph. Preserve source owner/ACL/RLS/security-definer/search-path attributes; no `--no-owner`/`--no-privileges` shortcut for the ACL claim. Restore data before triggers/post-data; review side effects before enabling anything.
+- Compare all protected restored rows internally, including administrator IDs/enabled states, company associations/roles and existing Auth/provider maps. Store snapshots locally, never print raw values or individual hashes. Include personnel/family and unrelated selected business data so unauthorized mutation cannot pass unnoticed.
+- With the original baseline saved, run only reviewed `20261016104441`, `20261016113335`, `20261016120458` candidate SQL in a controlled local transaction, respecting original baseline guards. No generic db-push and no unrelated migrations.
+- Use synthetic actors in the isolated restored environment to compare UI contracts/canonical RPC/legacy RPC/direct REST: self/admin/delegated ON legitimate paths; OFF manager/foreign/anonymous/account-restricted denial; separate registered OFF-manager approval authority remains. Real protected rows are not the subjects of exploit demonstrations.
+- Roll back the candidate rehearsal, compare exact original policies/function definitions/owners/ACL/security attributes and protected rows, then reapply in isolation and verify the intended fixed matrix. Restoration of the old baseline knowingly reopens the original leak; never treat it as an automatic safe production rollback.
+
+Preflight exit 2 means inventory completed **with mandatory remaining gates**, not success. Exit 1 means inventory incomplete. Neither authorizes production RLS/roles/Auth/data changes or TestFlight safety approval.
