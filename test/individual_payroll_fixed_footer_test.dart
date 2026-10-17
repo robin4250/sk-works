@@ -38,6 +38,9 @@ class _Units extends PayrollUnitConditionsRepository {
   }
 }
 class _Repository extends IndividualPayrollSettingsRepository {
+  // Both fixtures share this client; the unit adapter needs it before the
+  // explicit named superclass constructor forwards the same instance.
+  // ignore: use_super_parameters
   _Repository(SupabaseClient client, {this.edit = true}) : units = _Units(client, edit: edit), super.forTesting(client);
   final bool edit;
   final _Units units;
