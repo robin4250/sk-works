@@ -1,3 +1,4 @@
+import 'dart:async';
 // ignore_for_file: prefer_interpolation_to_compose_strings
 
 import 'dart:typed_data';
@@ -29,6 +30,7 @@ class QualificationCertificateRepository {
   }
 
   String? get currentUserId => _client.auth.currentUser?.id;
+  Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
 
   Future<void> _requireManagePeople() async {
     if (!await canManageCertificates()) {
@@ -254,8 +256,22 @@ class QualificationCertificateRepository {
     return Map<String, dynamic>.from(updated);
   }
 
-  Future<String> createSignedUrl(String storagePath) {
-    return _client.storage.from(_bucket).createSignedUrl(storagePath, 60 * 10);
+  Future<String> createSignedUrl(String storagePath) async {
+    final actor = currentUserId;
+    if (actor == null) throw StateError('SKOへのログインが必要です。');
+    var revoked = false;
+    final subscription = authChanges.listen((state) {
+      if (state.session?.user.id != actor) revoked = true;
+    }, onError: (Object error) => revoked = true);
+    try {
+      final url = await _client.storage.from(_bucket).createSignedUrl(storagePath, 60 * 10);
+      if (revoked || currentUserId != actor) {
+        throw StateError('ログイン状態が変わりました。');
+      }
+      return url;
+    } finally {
+      await subscription.cancel();
+    }
   }
 
   Future<Map<String, dynamic>> removeCertificate({
