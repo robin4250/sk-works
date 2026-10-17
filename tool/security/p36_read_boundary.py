@@ -96,7 +96,12 @@ def timezone_runtime(pg_bin, runner=subprocess.run):
     canonical=(pg_root/'share/postgresql/timezone').resolve(strict=True)
     alias=shared/'timezone'
     if not canonical.is_dir() or pg_root not in canonical.parents or alias.resolve(strict=True)!=canonical:
-        raise ValueError("Unknown or drifted timezone runtime alias")
+        raise ValueError("Unknown or drifted timezone runtime alias: "+json.dumps({
+            "canonical":str(canonical),"canonical_is_dir":canonical.is_dir(),
+            "canonical_within_package":pg_root in canonical.parents,
+            "alias":str(alias),"alias_resolved":str(alias.resolve(strict=True)),
+            "alias_is_symlink":alias.is_symlink(),"alias_is_dir":alias.is_dir(),
+            "same_target":alias.resolve(strict=True)==canonical}))
     # Runtime owner must match this package's pg_config; never allow data/extension trees.
     owner=real.stat().st_uid
     for directory in (canonical,shared,alias.resolve(strict=True)):
