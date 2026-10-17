@@ -1,0 +1,23 @@
+name: R38 pending boundary
+on:
+  pull_request:
+    paths:
+      - 'test/r38_pending_boundary_test.dart'
+      - 'lib/features/auth/secondary_protected_page.dart'
+      - '.github/workflows/r38-boundary.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze test/r38_pending_boundary_test.dart lib/features/auth/secondary_protected_page.dart
+      - run: flutter test --dart-define=SKO_R38_FIXTURE=true --dart-define=SUPABASE_URL=https://r38-fixture.invalid --dart-define=SUPABASE_PUBLISHABLE_KEY=public_fixture test/r38_pending_boundary_test.dart
