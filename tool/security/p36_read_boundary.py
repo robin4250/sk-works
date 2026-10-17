@@ -179,7 +179,7 @@ def pkglib_directory(pg_bin, runner=subprocess.run):
         source=canonical/name;alias=expected/name
         target=source.resolve(strict=True)
         if root not in target.parents or not os.path.samefile(source,alias):
-            raise ValueError("Foreign pkglib entry")
+            raise ValueError("Foreign pkglib entry: "+json.dumps({"name":name,"canonical":str(source),"canonical_target":str(target),"alias":str(alias),"alias_target":str(alias.resolve(strict=True)),"source_directory":source.is_dir(),"alias_directory":alias.is_dir(),"samefile":os.path.samefile(source,alias)}))
         st=target.stat()
         if st.st_uid!=owner or st.st_mode&0o022:raise ValueError("Unsafe pkglib entry")
         entries.append({'name':name,'target':str(target),'uid':st.st_uid,'mode':st.st_mode,
