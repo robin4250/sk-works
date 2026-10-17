@@ -46,8 +46,14 @@ class NativeTests(unittest.TestCase):
     def test_native_variant_adds_only_sysv_shared_memory(self):
         original='(deny network*)\n(allow file-write* (subpath fixed))\n'
         guard=types.SimpleNamespace(profile=lambda inside,endpoint:original)
-        self.assertEqual(native.native_profile(guard,Path('/x'),Path('/x/s')),original+'(allow ipc-sysv-shm)\n')
+        self.assertEqual(native.native_profile(guard,Path('/x'),Path('/x/s')),original+'(allow ipc-sysv-shm)\n(allow ipc-sysv-sem)\n')
         self.assertEqual(guard.profile(None,None),original)
+
+    def test_shutdown_requires_status_three(self):
+        for code in (0,1,2,4):
+            with self.assertRaises(ValueError):
+                native.require_stopped(lambda *a,**k:types.SimpleNamespace(returncode=code),Path('/new/pg_ctl'),Path('/new/data'))
+        native.require_stopped(lambda *a,**k:types.SimpleNamespace(returncode=3),Path('/new/pg_ctl'),Path('/new/data'))
 
     def test_socket_matches_reviewed_profile_boundary(self):
         source=Path(native.__file__).read_text()
