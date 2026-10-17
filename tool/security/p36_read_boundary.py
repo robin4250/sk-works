@@ -167,7 +167,7 @@ def main():
         native.load_guard=load_guard;native.verify_host=verify_host
         old=sys.argv
         try:
-            sys.argv=['p36-native','--probe','--pg-bin',str(args.pg_bin),'--output-parent',str(parent)]
+            sys.argv=['p36-native','--probe','--pg-bin',str(pg_bin),'--output-parent',str(parent)]
             stage='read-kernel-native-probes'
             code=native.main()
         finally:sys.argv=old
