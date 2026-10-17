@@ -1,0 +1,114 @@
+{
+  "functions": [
+    {
+      "nspname": "private",
+      "proname": "chat_report_queue",
+      "args": "",
+      "body_hash": "1ef191604759e87dcd1b096da85cbe3a",
+      "definition": "CREATE OR REPLACE FUNCTION private.chat_report_queue()\n RETURNS jsonb\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select coalesce(jsonb_agg(jsonb_build_object('id',r.id,'sender_name',r.sender_name,'body',r.body_snapshot,'reason',r.reason,'created_at',r.created_at,'status',r.status) order by r.created_at),'[]') from private.chat_reports r where (private.line_client_access_allowed() or exists(select 1 from public.chat_messages line_source where line_source.id=r.message_id and line_source.origin<>'line')) and exists(select 1 from public.company_members m where m.company_id=r.company_id and m.user_id=auth.uid() and m.role::text in ('owner','admin'))\n$function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "content_review_moderator",
+      "args": "p_kind text, p_id uuid",
+      "body_hash": "730c2ae2a0d51cfd90f385a7e9fae3db",
+      "definition": "CREATE OR REPLACE FUNCTION private.content_review_moderator(p_kind text, p_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select exists(\n  select 1 from private.content_reviews r where r.kind=p_kind and r.content_id=p_id and private.company_content_review_enabled(r.company_id) and r.review_required and private.content_reviewer(r.company_id))\n$function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "content_review_payload",
+      "args": "p_kind text, p_id uuid",
+      "body_hash": "bf93bd3bfe640cefe399f41cc4065e06",
+      "definition": "CREATE OR REPLACE FUNCTION private.content_review_payload(p_kind text, p_id uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare payload jsonb;\nbegin\n if p_kind in ('message','attachment') and not private.line_client_access_allowed() and not exists(select 1 from public.chat_messages line_source where line_source.id=case when p_kind='message' then p_id else (select a.message_id from public.chat_attachments a where a.id=p_id) end and line_source.origin<>'line') then return null; end if;\n\n if not exists(select 1 from private.content_reviews r where kind=p_kind and content_id=p_id\n  and review_required and private.content_reviewer(company_id) and private.chat_sender_visible(author_id)) then return null; end if;\n case p_kind\n  when 'message' then select jsonb_build_object('text',body,'files','[]'::jsonb) into payload from public.chat_messages where id=p_id;\n  when 'attachment' then select jsonb_build_object('text',original_filename,'files',jsonb_build_array(jsonb_build_object('bucket','chat-attachments','path',storage_path,'name',original_filename))) into payload from public.chat_attachments where id=p_id;\n  when 'note' then select jsonb_build_object('text',title||E'\\n'||coalesce(body,''),'files',(select coalesce(jsonb_agg(f||'{\"bucket\":\"communication-notes\"}'::jsonb),'[]'::jsonb) from jsonb_array_elements(attachments) f)) into payload from public.communication_notes where id=p_id;\n  when 'album' then select jsonb_build_object('text',name||E'\\n'||coalesce(description,''),'files','[]'::jsonb) into payload from public.communication_albums where id=p_id;\n  when 'photo' then select jsonb_build_object('text',coalesce(caption,''),'files',jsonb_build_array(jsonb_build_object('bucket','communication-albums','path',storage_path,'name',original_filename))) into payload from public.communication_album_items where id=p_id;\n  else return null;\n end case;\n return payload;\nend $function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "report_chat_message",
+      "args": "p_message uuid, p_reason text",
+      "body_hash": "476766420ae2715fb202fb8c181c6252",
+      "definition": "CREATE OR REPLACE FUNCTION private.report_chat_message(p_message uuid, p_reason text)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare m public.chat_messages%rowtype; rid uuid; begin\n if not private.line_client_access_allowed() and not exists(select 1 from public.chat_messages line_source where line_source.id=p_message and line_source.origin<>'line') then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;\n\n if auth.uid() is null then raise exception 'ログインしてください'; end if;\n if p_reason is null or p_reason not in ('harassment','inappropriate','personal_data','spam','other') then raise exception '通報理由を選んでください'; end if;\n select * into m from public.chat_messages where id=p_message;\n if not found or not private.can_access_communication_group(m.communication_group_id) or not private.chat_message_visible(m.id,m.sender_user_id) then raise exception 'この投稿を確認できません'; end if;\n if m.sender_user_id=auth.uid() then raise exception '自分の投稿は削除操作を利用してください'; end if;\n select id into rid from private.chat_reports where reporter_id=auth.uid() and message_id=p_message;\n if rid is not null then return rid; end if;\n perform pg_advisory_xact_lock(hashtextextended(auth.uid()::text,791));\n if (select count(*) from private.chat_reports where reporter_id=auth.uid() and created_at>now()-interval '1 day')>=20 then raise exception '本日の通報上限です。お問い合わせ窓口を利用してください'; end if;\n insert into private.chat_reports(reporter_id,message_id,company_id,sender_id,sender_name,body_snapshot,reason)\n values(auth.uid(),m.id,m.company_id,m.sender_user_id,m.sender_display_name,left(m.body,20000),p_reason)\n on conflict(reporter_id,message_id) do update set message_id=excluded.message_id returning id into rid;\n return rid;\nend $function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "review_chat_report",
+      "args": "p_report uuid, p_hide boolean",
+      "body_hash": "731c71b1f178c0828e08ec016fff6c33",
+      "definition": "CREATE OR REPLACE FUNCTION private.review_chat_report(p_report uuid, p_hide boolean)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare r private.chat_reports%rowtype; begin\n if not private.line_client_access_allowed() and not exists(select 1 from private.chat_reports line_report join public.chat_messages line_source on line_source.id=line_report.message_id where line_report.id=p_report and line_source.origin<>'line') then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;\n\n select * into r from private.chat_reports where id=p_report for update;\n if not found or not exists(select 1 from public.company_members m where m.company_id=r.company_id and m.user_id=auth.uid() and m.role::text in ('owner','admin')) then raise exception '管理者のみ対応できます'; end if;\n if p_hide then\n   insert into private.chat_hidden_messages(message_id) select id from public.chat_messages where id=r.message_id on conflict do nothing;\n end if;\n update private.chat_reports set status=case when p_hide then 'hidden' else 'dismissed' end,reviewed_by=auth.uid(),reviewed_at=now() where id=r.id;\nend $function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "public",
+      "proname": "chat_report_queue",
+      "args": "",
+      "body_hash": "a8695638e63c8b675e51e632e7317987",
+      "definition": "CREATE OR REPLACE FUNCTION public.chat_report_queue()\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$ select private.chat_report_queue() $function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": false
+    },
+    {
+      "nspname": "public",
+      "proname": "report_chat_message",
+      "args": "p_message uuid, p_reason text",
+      "body_hash": "7c1ad2b6ee3793d6c8493a288e3b6c19",
+      "definition": "CREATE OR REPLACE FUNCTION public.report_chat_message(p_message uuid, p_reason text)\n RETURNS uuid\n LANGUAGE sql\n SET search_path TO ''\nAS $function$ select private.report_chat_message(p_message,p_reason) $function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": false
+    },
+    {
+      "nspname": "public",
+      "proname": "review_chat_report",
+      "args": "p_report uuid, p_hide boolean",
+      "body_hash": "8f57bfd7f2ed77b73208e0c4dbf7e92a",
+      "definition": "CREATE OR REPLACE FUNCTION public.review_chat_report(p_report uuid, p_hide boolean)\n RETURNS void\n LANGUAGE sql\n SET search_path TO ''\nAS $function$ select private.review_chat_report(p_report,p_hide) $function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": false
+    },
+    {
+      "nspname": "private",
+      "proname": "content_review_queue",
+      "args": "",
+      "body_hash": "2b17df8ffa9d8de3603e0ca78b3bdd06",
+      "definition": "CREATE OR REPLACE FUNCTION private.content_review_queue()\n RETURNS jsonb\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select jsonb_build_object('enabled',private.content_review_enabled(),'items',coalesce((select jsonb_agg(item order by changed,id) from (\n  select r.updated_at changed,r.content_id id,\n   jsonb_build_object('kind',r.kind,'id',r.content_id,'revision',r.revision,'state',r.state,'content',private.content_review_payload(r.kind,r.content_id)) item\n  from private.content_reviews r where private.company_content_review_enabled(r.company_id) and r.state='pending' and r.review_required and private.content_reviewer(r.company_id)\n   and private.chat_sender_visible(r.author_id)\n  order by r.updated_at,r.content_id limit 50\n ) items),'[]'::jsonb))\n$function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "public",
+      "proname": "content_review_queue",
+      "args": "",
+      "body_hash": "9d7b66f690a5f2297e2d872d7ec4bf17",
+      "definition": "CREATE OR REPLACE FUNCTION public.content_review_queue()\n RETURNS jsonb\n LANGUAGE sql\n STABLE\n SET search_path TO ''\nAS $function$ select private.content_review_queue() $function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": false
+    }
+  ]
+}
