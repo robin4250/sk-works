@@ -47,22 +47,24 @@ class Fixture {
 void main(){
   TestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('late qualification rows cannot reappear after SDK logout',(tester)async{
-    final f=Fixture();addTearDown(f.close);await f.login();
+    final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);
     await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
     await tester.pump();await tester.pump();expect(f.rowStarted.isCompleted,true);
-    await f.client.auth.signOut(scope:SignOutScope.local);await tester.pump();
+    await tester.runAsync(()=>f.client.auth.signOut(scope:SignOutScope.local));
+    expect(f.client.auth.currentUser,isNull);await tester.pump();
     f.rows.complete();await tester.pump();await tester.pump();
     expect(find.text('Private qualification'),findsNothing);
     expect(find.textContaining('PRIVATE-CERT'),findsNothing);
   });
   testWidgets('late signed URL and open photo sheet disappear after SDK logout',(tester)async{
-    final f=Fixture();addTearDown(f.close);await f.login();f.rows.complete();
+    final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);f.rows.complete();
     await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
     await tester.pump();await tester.pump();await tester.pump();
     expect(find.text('Private qualification'),findsOneWidget);
     await tester.tap(find.text('Private qualification'));await tester.pump();await tester.pump(const Duration(milliseconds:400));
     expect(f.signStarted.isCompleted,true);
-    await f.client.auth.signOut(scope:SignOutScope.local);await tester.pump();
+    await tester.runAsync(()=>f.client.auth.signOut(scope:SignOutScope.local));
+    expect(f.client.auth.currentUser,isNull);await tester.pump();
     f.signed.complete();await tester.pump();await tester.pump();
     expect(find.byType(Image),findsNothing);
     expect(find.textContaining('PRIVATE-CERT'),findsNothing);
