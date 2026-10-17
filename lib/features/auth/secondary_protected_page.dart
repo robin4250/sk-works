@@ -41,7 +41,6 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   int _generation = 0;
   bool _nativePrompt = false;
   AppLifecycleState _lifecycle = AppLifecycleState.resumed;
-  (int, String, String)? _pendingUnlock;
   Completer<void>? _resumeWaiter;
 
   bool _sameAttempt(int generation, String actor, String token) {
@@ -59,7 +58,6 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       _resumeWaiter?.complete();
       _resumeWaiter = null;
       setState(() {
-        _pendingUnlock = null;
         _nativePrompt = false;
         _busy = false;
         _configuredLoading = false;
@@ -73,6 +71,17 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       });
     }
     return false;
+  }
+
+  Future<bool> _finishNativePrompt(int generation, String actor, String token) async {
+    if (!_acceptAttempt(generation, actor, token)) return false;
+    if (_lifecycle == AppLifecycleState.inactive) {
+      _resumeWaiter = Completer<void>();
+      await _resumeWaiter!.future;
+    }
+    if (!_acceptAttempt(generation, actor, token) || _lifecycle != AppLifecycleState.resumed) return false;
+    _nativePrompt = false;
+    return true;
   }
 
   SecureOnboardingRepository? get _repository =>
@@ -132,11 +141,6 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     if (state == AppLifecycleState.resumed) {
       _resumeWaiter?.complete();
       _resumeWaiter = null;
-      final pending = _pendingUnlock;
-      _pendingUnlock = null;
-      if (pending != null && _sameAttempt(pending.$1, pending.$2, pending.$3)) {
-        setState(() => _unlocked = true);
-      }
       if (_configuredLoading) _loadState();
       return;
     }
@@ -149,7 +153,6 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       _generation++;
       _resumeWaiter?.complete();
       _resumeWaiter = null;
-      _pendingUnlock = null;
       _nativePrompt = false;
       _password.clear();
       _confirm.clear();
@@ -172,7 +175,6 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     _generation++;
     _resumeWaiter?.complete();
     _resumeWaiter = null;
-    _pendingUnlock = null;
     WidgetsBinding.instance.removeObserver(this);
     _password.dispose();
     _confirm.dispose();
@@ -219,10 +221,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         if (!ok) {
           throw StateError('生体認証を確認できませんでした。');
         }
-        if (_lifecycle == AppLifecycleState.inactive) {
-          _resumeWaiter = Completer<void>();
-          await _resumeWaiter!.future;
-        }
+        if (!await _finishNativePrompt(generation, userId, token)) return;
       }
       if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       // The native prompt exception ends before server or preferences work.
@@ -323,21 +322,18 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
           stickyAuth: true,
         ),
       );
-      if (!_acceptAttempt(generation, userId, token)) return;
+      if (!await _finishNativePrompt(generation, userId, token)) return;
 
       if (ok && !_biometricEnabled) {
         final prefs = await SharedPreferences.getInstance();
-        if (!_acceptAttempt(generation, userId, token)) return;
+        if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
         await prefs.setBool('sko_secondary_biometric_enabled_$userId', true);
       }
 
-      if (!_acceptAttempt(generation, userId, token)) return;
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       setState(() {
         _busy = false;
-        _unlocked = ok && _lifecycle == AppLifecycleState.resumed;
-        if (ok && _lifecycle == AppLifecycleState.inactive) {
-          _pendingUnlock = (generation, userId, token);
-        }
+        _unlocked = ok;
         if (ok) {
           _biometricEnabled = true;
         } else {
