@@ -127,6 +127,41 @@ def audit_isolated_links(native, dependencies):
                     'generated link escaped isolated native plan')
 
 
+def verify_release_settings(settings):
+    # Flutter 3.47.5 xcode_backend.dart uses CONFIGURATION when the uncommon
+    # FLUTTER_BUILD_MODE setting is absent. An explicit mode never falls back.
+    require(settings.get('CONFIGURATION') == 'Release'
+            and settings.get('FLUTTER_BUILD_MODE', 'release') == 'release'
+            and settings.get('PRODUCT_BUNDLE_IDENTIFIER') == BUNDLE,
+            'not a Release application')
+
+def verify_aot_artifact(runner, app):
+    assets = app / 'Frameworks/App.framework/flutter_assets'
+    require(assets.is_dir() and not (assets / 'kernel_blob.bin').exists(),
+            'debug kernel artifact present or assets missing')
+    binary = app / 'Frameworks/App.framework/App'
+    require(binary.is_file() and not binary.is_symlink(), 'AOT binary missing')
+    symbols = runner.run(['xcrun', 'nm', '-gU', str(binary)], True).decode()
+    names = {line.split()[-1] for line in symbols.splitlines() if line.split()}
+    require({'_kDartVmSnapshotInstructions', '_kDartIsolateSnapshotInstructions'} <= names,
+            'AOT snapshot instructions missing')
+
+def save_dependency_checkpoint(stage, copies):
+    write_private(stage / 'dependencies-before-private.json',
+                  {str(origin): {'destination': str(item['destination'].relative_to(stage)),
+                                 'inventory': item['inventory']}
+                   for origin, item in copies.items()})
+
+def rebase_built_links(source, stage, copies):
+    # A build may regenerate plugin links back to the same package cache.
+    # Re-authorize no new origin: compare every original byte/link first.
+    require(all(inventory(origin) == item['inventory'] for origin, item in copies.items()),
+            'original package dependency changed during build')
+    isolate_native_links(source / 'ios', source / 'ios',
+                         cache_root=Path.home() / '.pub-cache',
+                         dependencies=stage / 'native-dependencies', approved=copies)
+    audit_isolated_links(source / 'ios', stage / 'native-dependencies')
+
 class Runner:
     def __init__(self, cwd, log):
         self.cwd, self.log = Path(cwd), log
@@ -251,6 +286,7 @@ def build(root, sha, backup_root):
         copies = isolate_native_links(root / 'ios', source / 'ios',
                              cache_root=Path.home() / '.pub-cache',
                              dependencies=stage / 'native-dependencies')
+        save_dependency_checkpoint(stage, copies)
         signing = signing_settings(candidate)
         require(signing == signing_settings(original), 'native signing copy incomplete')
         env = root / 'tool/local_supabase_env.sh'
@@ -268,21 +304,20 @@ def build(root, sha, backup_root):
             '-showBuildSettings', '-json'], True))
         runner_settings = [entry['buildSettings'] for entry in settings if entry.get('target') == 'Runner']
         require(len(runner_settings) == 1, 'compiled Release settings missing')
-        require(runner_settings[0].get('CONFIGURATION') == 'Release'
-                and runner_settings[0].get('FLUTTER_BUILD_MODE') == 'release'
-                and runner_settings[0].get('PRODUCT_BUNDLE_IDENTIFIER') == BUNDLE,
-                'not a Release application')
+        verify_release_settings(runner_settings[0])
         verify_clean(candidate, sha)
-        audit_isolated_links(source / 'ios', stage / 'native-dependencies')
+        rebase_built_links(source, stage, copies)
         require(all(inventory(origin) == item['inventory'] for origin, item in copies.items()),
                 'original package dependency changed during build')
         require(signing_settings(candidate) == signing, 'build changed signing')
         app = source / 'build/ios/iphoneos/Runner.app'
+        verify_aot_artifact(candidate, app)
         require(signature(candidate, app) == oldsig, 'new signature changed account storage identity')
         require(source_state(original) == before, 'original source changed; never restoring automatically')
         require(inventory(root / 'ios') == native and digest(oldapp) == olddigest,
                 'original native artifacts changed')
-        write_private(stage / 'built-private.json', {'sha': sha, 'root': str(root), 'source': str(source),
+        write_private(stage / 'built-private.json', {'checkpoint_schema': 2,
+                      'dependency_checkpoint_sha256': hashlib.sha256((stage / 'dependencies-before-private.json').read_bytes()).hexdigest(), 'sha': sha, 'root': str(root), 'source': str(source),
                       'app_digest': digest(app), 'signature': oldsig, 'original_native': native,
                       'original_app_digest': olddigest, 'release_command': ['flutter', 'build', 'ios', '--release', OFF],
                       'owner_only': True, 'testflight_approved': False})
@@ -292,6 +327,10 @@ def install(stage):
     require(stage.is_dir() and not stage.is_symlink(), 'checkpoint missing')
     with (stage / 'install-private.log').open('xb') as log:
         m = json.loads((stage / 'built-private.json').read_text())
+        require(m.get('checkpoint_schema') == 2
+                and (stage / 'dependencies-before-private.json').is_file()
+                and hashlib.sha256((stage / 'dependencies-before-private.json').read_bytes()).hexdigest()
+                    == m.get('dependency_checkpoint_sha256'), 'dependency checkpoint missing or changed')
         require(m.get('release_command') == ['flutter', 'build', 'ios', '--release', OFF]
                 and m.get('owner_only') is True and m.get('testflight_approved') is False,
                 'not an owner Release checkpoint')
@@ -306,6 +345,7 @@ def install(stage):
         require(inventory(root / 'ios') == m['original_native'], 'original iOS changed')
         require(digest(root / 'build/ios/iphoneos/Runner.app') == m['original_app_digest'], 'old app changed')
         app = source / 'build/ios/iphoneos/Runner.app'
+        verify_aot_artifact(runner, app)
         require(digest(app) == m['app_digest'] and signature(runner, app) == m['signature'], 'artifact changed')
         devices = json.loads(runner.run(['flutter', 'devices', '--machine'], True))
         selected = [d for d in devices if d.get('id') == DEVICE and d.get('targetPlatform') == 'ios'

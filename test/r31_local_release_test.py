@@ -211,6 +211,9 @@ class InstallTests(unittest.TestCase):
                     'original_app_digest': m.digest(old),
                     'release_command': ['flutter', 'build', 'ios', '--release', m.OFF],
                     'owner_only': True, 'testflight_approved': False}
+        m.write_private(stage / 'dependencies-before-private.json', {})
+        manifest['checkpoint_schema'] = 2
+        manifest['dependency_checkpoint_sha256'] = m.hashlib.sha256((stage / 'dependencies-before-private.json').read_bytes()).hexdigest()
         m.write_private(stage / 'built-private.json', manifest)
         return stage, app
 
@@ -225,7 +228,8 @@ class InstallTests(unittest.TestCase):
             if args[:2] == ['flutter', 'devices']: return json.dumps(devices).encode()
         with patch.object(m.Runner, 'run', run), patch.object(m, 'tools_ready'), \
              patch.object(m, 'source_state', return_value=state or self.state), \
-             patch.object(m, 'signature', return_value=sig or self.sig):
+             patch.object(m, 'signature', return_value=sig or self.sig), \
+             patch.object(m, 'verify_aot_artifact'):
             m.install(stage)
         return calls
 
@@ -277,3 +281,69 @@ class InstallTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'owner Release checkpoint'): self.execute(stage)
 
 if __name__ == '__main__': unittest.main()
+
+class ReleaseProofTests(unittest.TestCase):
+    def test_release_mode_may_be_absent_as_in_flutter_backend(self):
+        m.verify_release_settings({'CONFIGURATION': 'Release', 'PRODUCT_BUNDLE_IDENTIFIER': m.BUNDLE})
+        m.verify_release_settings({'CONFIGURATION': 'Release', 'FLUTTER_BUILD_MODE': 'release',
+                                   'PRODUCT_BUNDLE_IDENTIFIER': m.BUNDLE})
+
+    def test_explicit_debug_profile_empty_unknown_never_fall_back(self):
+        for mode in ['debug', 'profile', '', None, 'unknown', 'Release']:
+            with self.subTest(mode=mode), self.assertRaises(RuntimeError):
+                m.verify_release_settings({'CONFIGURATION': 'Release', 'FLUTTER_BUILD_MODE': mode,
+                                           'PRODUCT_BUNDLE_IDENTIFIER': m.BUNDLE})
+        for config in ['Debug', 'Profile', None]:
+            with self.subTest(config=config), self.assertRaises(RuntimeError):
+                m.verify_release_settings({'CONFIGURATION': config, 'FLUTTER_BUILD_MODE': 'release',
+                                           'PRODUCT_BUNDLE_IDENTIFIER': m.BUNDLE})
+
+    def test_aot_symbols_and_no_kernel_are_required(self):
+        with tempfile.TemporaryDirectory() as d:
+            app = Path(d); framework = app / 'Frameworks/App.framework'; framework.mkdir(parents=True)
+            assets = framework / 'flutter_assets'; assets.mkdir()
+            (framework / 'App').write_bytes(b'synthetic AOT')
+            class FakeRunner:
+                def run(self, args, capture):
+                    return b'000 T _kDartVmSnapshotInstructions\n001 T _kDartIsolateSnapshotInstructions\n'
+            m.verify_aot_artifact(FakeRunner(), app)
+            (assets / 'kernel_blob.bin').write_bytes(b'debug')
+            with self.assertRaises(RuntimeError): m.verify_aot_artifact(FakeRunner(), app)
+            (assets / 'kernel_blob.bin').unlink()
+            with patch.object(FakeRunner, 'run', return_value=b'000 T _other\n'):
+                with self.assertRaises(RuntimeError): m.verify_aot_artifact(FakeRunner(), app)
+
+    def test_dependency_baseline_is_persisted_privately_before_build(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage = Path(d); origin = stage / 'origin'; origin.mkdir(); (origin / 'x').write_text('kept')
+            dest = stage / 'native-dependencies/dep-0'
+            baseline = m.copy_checked(origin, dest)
+            m.save_dependency_checkpoint(stage, {origin: {'destination': dest, 'inventory': baseline}})
+            f = stage / 'dependencies-before-private.json'
+            self.assertEqual(f.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(json.loads(f.read_text())[str(origin)]['inventory'], baseline)
+
+    def test_postbuild_known_cache_link_is_privately_rebased(self):
+        with tempfile.TemporaryDirectory() as d:
+            home=Path(d); cache=home/'.pub-cache/pkg'; cache.mkdir(parents=True); (cache/'x').write_text('kept')
+            stage=home/'stage'; stage.mkdir(); source=stage/'source'; ios=source/'ios'; (ios/'.symlinks').mkdir(parents=True)
+            link=ios/'.symlinks/plugin'; link.symlink_to(cache)
+            with patch.object(m.Path, 'home', return_value=home):
+                copies=m.isolate_native_links(ios,ios,cache_root=home/'.pub-cache',dependencies=stage/'native-dependencies')
+                link.unlink(); link.symlink_to(cache)
+                m.rebase_built_links(source,stage,copies)
+            self.assertTrue(link.resolve().is_relative_to(stage/'native-dependencies'))
+            self.assertEqual((cache/'x').read_text(),'kept')
+
+    def test_postbuild_unknown_origin_or_modified_cache_stops(self):
+        with tempfile.TemporaryDirectory() as d:
+            home=Path(d); cache=home/'.pub-cache/pkg'; cache.mkdir(parents=True); (cache/'x').write_text('kept')
+            other=home/'.pub-cache/unknown'; other.mkdir(); (other/'x').write_text('other')
+            stage=home/'stage'; stage.mkdir(); source=stage/'source'; ios=source/'ios'; (ios/'.symlinks').mkdir(parents=True)
+            link=ios/'.symlinks/plugin'; link.symlink_to(cache)
+            with patch.object(m.Path,'home',return_value=home):
+                copies=m.isolate_native_links(ios,ios,cache_root=home/'.pub-cache',dependencies=stage/'native-dependencies')
+                link.unlink(); link.symlink_to(other)
+                with self.assertRaises(RuntimeError):m.rebase_built_links(source,stage,copies)
+                link.unlink(); link.symlink_to(cache); (cache/'x').write_text('modified')
+                with self.assertRaisesRegex(RuntimeError,'dependency changed'):m.rebase_built_links(source,stage,copies)
