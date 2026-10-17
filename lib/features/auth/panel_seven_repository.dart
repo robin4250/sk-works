@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class AccountSettingsSnapshot {
-  const AccountSettingsSnapshot({
+class PanelSevenSnapshot {
+  const PanelSevenSnapshot({
     required this.actorId,
     required this.providers,
     required this.email,
@@ -26,20 +26,20 @@ class AccountSettingsSnapshot {
 
 /// Reads only the currently authenticated user's Auth record and secondary
 /// configuration boolean. Never creates, links, confirms or resets identities.
-class AccountSettingsRepository {
-  AccountSettingsRepository(this.client);
+class PanelSevenRepository {
+  PanelSevenRepository(this.client);
   final SupabaseClient client;
 
   Stream<AuthState> get changes => client.auth.onAuthStateChange;
 
-  bool isCurrent(AccountSettingsSnapshot snapshot) {
+  bool isCurrent(PanelSevenSnapshot snapshot) {
     final session = client.auth.currentSession;
     return session?.user.id == snapshot.actorId &&
         session?.accessToken == snapshot._accessToken &&
         session?.isExpired == false;
   }
 
-  Future<AccountSettingsSnapshot> load() async {
+  Future<PanelSevenSnapshot> load() async {
     final session = client.auth.currentSession;
     if (session == null || session.isExpired) {
       throw StateError('account_session_unavailable');
@@ -86,7 +86,7 @@ class AccountSettingsRepository {
     } catch (_) {
       // No guessing from linked providers when session evidence is unavailable.
     }
-    return AccountSettingsSnapshot(
+    return PanelSevenSnapshot(
       actorId: actor,
       providers: List.unmodifiable(providers),
       email: user.email,

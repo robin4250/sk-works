@@ -2,10 +2,10 @@ name: Account settings authentication
 on:
   pull_request:
     paths:
-      - lib/features/auth/account_settings_*.dart
+      - lib/features/auth/panel_seven_*.dart
       - lib/features/settings/settings_page.dart
-      - test/account_settings_test.dart
-      - .github/workflows/account-settings-auth.yml
+      - test/panel_seven_test.dart
+      - .github/workflows/panel-seven.yml
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,5 +20,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter analyze lib/features/auth/account_settings_repository.dart lib/features/auth/account_settings_page.dart test/account_settings_test.dart
-      - run: flutter test test/account_settings_test.dart --reporter expanded
+      - run: flutter analyze lib/features/auth/panel_seven_repository.dart lib/features/auth/panel_seven_page.dart test/panel_seven_test.dart
+      - run: flutter test test/panel_seven_test.dart --reporter expanded

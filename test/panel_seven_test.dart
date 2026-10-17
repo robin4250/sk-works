@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:sk_works/features/auth/account_settings_page.dart';
-import 'package:sk_works/features/auth/account_settings_repository.dart';
+import 'package:sk_works/features/auth/panel_seven_page.dart';
+import 'package:sk_works/features/auth/panel_seven_repository.dart';
 
 Map<String, dynamic> user(String id) => {
   'id': id, 'aud': 'authenticated', 'created_at': '2026-01-01T00:00:00Z',
@@ -26,23 +26,23 @@ String session(String id) => jsonEncode({
   'expires_in': 3600, 'user': user(id),
 });
 
-AccountSettingsSnapshot snapshot() => const AccountSettingsSnapshot(
+PanelSevenSnapshot snapshot() => const PanelSevenSnapshot(
   actorId: 'a', providers: ['google'], email: 'owner@example.test',
   phone: null, emailConfirmed: true, phoneConfirmed: false,
   sessionMethods: ['oauth'], secondaryConfigured: true,
   accessToken: 'synthetic',
 );
 
-class FakeRepository extends AccountSettingsRepository {
+class FakeRepository extends PanelSevenRepository {
   FakeRepository() : super(SupabaseClient('http://127.0.0.1:1', 'synthetic'));
   bool current = true;
   final events = StreamController<AuthState>.broadcast();
   @override
   Stream<AuthState> get changes => events.stream;
   @override
-  bool isCurrent(AccountSettingsSnapshot snapshot) => current;
+  bool isCurrent(PanelSevenSnapshot snapshot) => current;
   @override
-  Future<AccountSettingsSnapshot> load() async {
+  Future<PanelSevenSnapshot> load() async {
     if (!current) throw StateError('changed');
     return snapshot();
   }
@@ -67,7 +67,7 @@ void main() {
     await client.auth.setInitialSession(session('a'));
     final token = client.auth.currentSession!.accessToken;
     final before = client.auth.currentSession;
-    final repository = AccountSettingsRepository(client);
+    final repository = PanelSevenRepository(client);
     final value = await repository.load();
     expect(value.providers, ['google']);
     expect(value.phone, isNull);
@@ -97,7 +97,7 @@ void main() {
     final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic');
     addTearDown(client.dispose);
     await client.auth.setInitialSession(session('a'));
-    final pending = AccountSettingsRepository(client).load();
+    final pending = PanelSevenRepository(client).load();
     final check = expectLater(pending, throwsStateError);
     await received.future;
     await client.auth.setInitialSession(session('b'));
@@ -123,7 +123,7 @@ void main() {
     final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic');
     addTearDown(client.dispose);
     await client.auth.setInitialSession(session('a'));
-    expect((await AccountSettingsRepository(client).load()).secondaryConfigured,
+    expect((await PanelSevenRepository(client).load()).secondaryConfigured,
         isNull);
   });
 
@@ -132,7 +132,7 @@ void main() {
     final repository = FakeRepository();
     addTearDown(repository.events.close);
     addTearDown(repository.client.dispose);
-    await tester.pumpWidget(MaterialApp(home: AccountSettingsPage(
+    await tester.pumpWidget(MaterialApp(home: PanelSevenPage(
         repository: repository)));
     await tester.pumpAndSettle();
     expect(find.text('Google'), findsOneWidget);
@@ -148,7 +148,7 @@ void main() {
     final repository = FakeRepository();
     addTearDown(repository.events.close);
     addTearDown(repository.client.dispose);
-    await tester.pumpWidget(MaterialApp(home: AccountSettingsPage(
+    await tester.pumpWidget(MaterialApp(home: PanelSevenPage(
         repository: repository)));
     await tester.pumpAndSettle();
     repository.current = false;
@@ -163,7 +163,7 @@ void main() {
     final repository = FakeRepository();
     addTearDown(repository.events.close);
     addTearDown(repository.client.dispose);
-    await tester.pumpWidget(MaterialApp(home: AccountSettingsPage(
+    await tester.pumpWidget(MaterialApp(home: PanelSevenPage(
         repository: repository)));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('使い方'));

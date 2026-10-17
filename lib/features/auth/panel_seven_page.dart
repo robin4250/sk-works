@@ -1,20 +1,20 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'account_settings_repository.dart';
+import 'panel_seven_repository.dart';
 
-class AccountSettingsPage extends StatefulWidget {
-  const AccountSettingsPage({super.key, required this.repository});
-  final AccountSettingsRepository repository;
+class PanelSevenPage extends StatefulWidget {
+  const PanelSevenPage({super.key, required this.repository});
+  final PanelSevenRepository repository;
 
   @override
-  State<AccountSettingsPage> createState() => _AccountSettingsPageState();
+  State<PanelSevenPage> createState() => _PanelSevenPageState();
 }
 
-class _AccountSettingsPageState extends State<AccountSettingsPage>
+class _PanelSevenPageState extends State<PanelSevenPage>
     with WidgetsBindingObserver {
   StreamSubscription<AuthState>? _subscription;
-  AccountSettingsSnapshot? _snapshot;
+  PanelSevenSnapshot? _snapshot;
   bool _loading = true;
   bool _failed = false;
   int _generation = 0;

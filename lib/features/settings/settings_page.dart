@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../auth/account_settings_page.dart';
-import '../auth/account_settings_repository.dart';
+import '../auth/panel_seven_page.dart';
+import '../auth/panel_seven_repository.dart';
 
 import '../notifications/notification_bell.dart';
 import '../referrals/app_referral_personal_entry.dart';
@@ -124,8 +124,8 @@ class _SettingsPageState extends State<SettingsPage> {
       subtitle: const Text('ログイン方法・パスワードの設定状況。使い方は右上の？へ'),
       trailing: const Icon(Icons.chevron_right),
       onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => AccountSettingsPage(
-          repository: AccountSettingsRepository(SupabaseBackend.client)),
+        builder: (_) => PanelSevenPage(
+          repository: PanelSevenRepository(SupabaseBackend.client)),
       )),
     ),
   );
