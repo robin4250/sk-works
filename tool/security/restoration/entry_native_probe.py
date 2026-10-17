@@ -14,6 +14,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 GUARD_SHA='6f99985a38ec66f53528d6eb9f37643a442712d6e3509df539318d30357628f9'
 SQL="""
@@ -52,10 +53,11 @@ def native_profile(guard, inside, endpoint):
     return guard.profile(inside, endpoint) + '(allow ipc-sysv-shm)\n(allow ipc-sysv-sem)\n(allow signal (target same-sandbox))\n'
 
 
-def require_stopped(run, pg_ctl, data):
-    run([pg_ctl,'-D',data,'-m','fast','-w','-t','20','stop'])
-    status=run([pg_ctl,'-D',data,'status'],check=False)
-    if status.returncode!=3:raise ValueError('shutdown not established')
+def stop_owned_server(server):
+    # Only the Popen handle created above; never a PID read from a file/user/archive.
+    if server.poll() is None:server.send_signal(signal.SIGINT)
+    code=server.wait(timeout=30)
+    if code!=0:raise ValueError('owned private server did not stop cleanly')
 
 
 def clean_environment(inside, source=os.environ):
@@ -99,7 +101,7 @@ def main():
     if not args.probe:
         print('NOT RUN: no PostgreSQL startup, credentials, API or SQL execution.')
         return 2
-    evidence=None;started=False;attempted=False;shutdown=False;errors=None
+    evidence=None;started=False;attempted=False;shutdown=False;errors=None;server=None;server_log=None
     run=None
     try:
         if sys.platform!='darwin' or not Path('/usr/bin/sandbox-exec').is_file():
@@ -149,10 +151,18 @@ def main():
         options=shlex.join(['-h','','-k',str(sock),'-p','5432','-c','shared_preload_libraries=',
                             '-c','max_worker_processes=0','-c','max_parallel_workers=0','-c','logging_collector=off'])
         attempted=True
-        run([binaries['pg_ctl'],'-D',data,'-l',inside/'server.log','-o',options,'-w','-t','20','start'])
+        server_log=(inside/'server.log').open('wb')
+        server=subprocess.Popen(['/usr/bin/sandbox-exec','-f',str(policy),str(binaries['postgres']),'-D',str(data)]+shlex.split(options),env=env,cwd=str(inside),stdout=server_log,stderr=server_log,start_new_session=True)
         started=True
         base=[binaries['psql'],'-X','-w','-qAt','-v','ON_ERROR_STOP=1','-h',sock,'-p','5432',
               '-U','sko_probe_operator','-d','postgres']
+        deadline=time.monotonic()+20
+        while True:
+            if server.poll() is not None:raise ValueError('private server exited before readiness')
+            ready=run(base+['-c','SELECT 1'],check=False)
+            if ready.returncode==0:break
+            if time.monotonic()>=deadline:raise ValueError('private server readiness timeout')
+            time.sleep(0.1)
         connection=run(base+['-c',"SELECT json_build_object('data',current_setting('data_directory'),'socket',current_setting('unix_socket_directories'),'listen',current_setting('listen_addresses'),'local',inet_server_addr() IS NULL);"])
         actual=json.loads(connection.stdout.strip())
         if actual!={'data':str(data),'socket':str(sock),'listen':'','local':True} or actual['local'] is not True:
@@ -163,7 +173,9 @@ def main():
         parse_flags(result.stdout)
         (inside/'synthetic-proof.json').write_text(result.stdout)
         run(base+['-c','DROP DATABASE sko_probe;'])
-        require_stopped(run,binaries['pg_ctl'],data)
+        stop_owned_server(server)
+        status=run([binaries['pg_ctl'],'-D',data,'status'],check=False)
+        if status.returncode!=3:raise ValueError('shutdown not established')
         shutdown=True;started=False
         report={'postgres_17_same_profile_started':True,'socket_only':True,'synthetic_role_table_rollback':True,
                 'clean_shutdown':True,'production_connections':0,'production_writes':0,
@@ -180,13 +192,11 @@ def main():
         if evidence is not None:print('Private evidence: '+str(evidence))
         return 1
     finally:
-        if attempted and not shutdown and run is not None:
-            try:
-                run([binaries['pg_ctl'],'-D',data,'-m','fast','-w','-t','20','stop'],check=False)
-                status=run([binaries['pg_ctl'],'-D',data,'status'],check=False)
-                if status.returncode!=3:print('STOP: private test cluster shutdown needs local inspection.')
-            except Exception:print('STOP: private test cluster shutdown not verified; inspect private evidence locally.')
+        if server is not None and not shutdown:
+            try:stop_owned_server(server)
+            except Exception:print('STOP: owned private test process shutdown not verified; inspect private evidence locally.')
         if errors is not None:errors.close()
+        if server_log is not None:server_log.close()
 
 
 if __name__=='__main__':raise SystemExit(main())
