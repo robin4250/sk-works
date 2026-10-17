@@ -1,0 +1,51 @@
+name: P36 native synthetic read boundary
+on:
+  pull_request:
+    paths: ['tool/security/p36*', 'tool/security/test_p36*', '.github/workflows/p36-read-boundary.yml']
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s tool/security -p test_p36_read_boundary.py -v
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare exact reviewed helpers in a separate temporary directory
+        run: |
+          mkdir "$RUNNER_TEMP/p36-deps"
+          git fetch --no-tags origin 65d9b8341c28306831e5cae125e4721df2b1eedf
+          git show 65d9b8341c28306831e5cae125e4721df2b1eedf:tool/security/restoration/entry_native_probe.py > "$RUNNER_TEMP/p36-deps/entry_native_probe.py"
+          git fetch --no-tags origin 20a1f59ffe48ed08d46707ef8a4ac11f0985cbbd
+          git show 20a1f59ffe48ed08d46707ef8a4ac11f0985cbbd:tool/security/restoration/entry_isolation.py > "$RUNNER_TEMP/p36-deps/entry_isolation.py"
+      - name: Prepare native PostgreSQL17 on disposable runner only
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: brew list postgresql@17 >/dev/null 2>&1 || brew install postgresql@17
+      - name: Prove read canary and existing kernel/native operations with no real archive
+        run: |
+          python - <<'PY'
+          import json,os,pathlib,subprocess,sys,tempfile
+          parent=pathlib.Path(tempfile.mkdtemp(prefix='p36-ci-',dir='/private/tmp'))
+          pg=subprocess.check_output(['brew','--prefix','postgresql@17'],text=True).strip()+'/bin'
+          r=subprocess.run([sys.executable,'tool/security/p36_read_boundary.py','--probe','--sources',os.environ['RUNNER_TEMP']+'/p36-deps','--pg-bin',pg,'--output-parent',str(parent)],text=True,capture_output=True,timeout=300)
+          print(r.stdout)
+          if r.returncode!=2:
+              print(r.stderr[-4000:])
+              for pattern in ('p36-read-*/private-read-errors.log','entry-*/private-*-errors.log','entry-native-*/inside/server.log'):
+                  for log in parent.glob(pattern):print('Synthetic diagnostic: '+log.read_text(errors='replace')[-5000:])
+          assert r.returncode==2,'P36 synthetic read/native boundary incomplete'
+          reports=list(parent.glob('p36-read-*/private-runtime-inventory.json'))
+          assert len(reports)==1,'read/native evidence missing'
+          data=json.loads(reports[0].read_text())
+          assert data['read_canary_verified'] is True and data['native_kernel_fixture_success'] is True
+          assert data['archived_sql_executed'] is False and data['production_connections']==0
+          PY
