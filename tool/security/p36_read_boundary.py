@@ -151,6 +151,44 @@ def timezone_runtime(pg_bin, runner=subprocess.run):
                   'compiled_sharedir':str(shared),'version':version,'owner_uid':owner,
                   'binary_sha256':hashes}
 
+
+def pkglib_directory(pg_bin, runner=subprocess.run):
+    """Validate startup's directory-open target; grant no module/child read."""
+    pg_bin=Path(pg_bin).resolve(strict=True);root=runtime_root(pg_bin.parent)
+    if root.parent.name!='postgresql@17' or root.parent.parent.name!='Cellar':
+        raise ValueError("PostgreSQL17 Cellar boundary required")
+    config=(pg_bin/'pg_config').resolve(strict=True)
+    if root not in config.parents or not config.is_file():raise ValueError("Foreign pg_config")
+    r=runner([str(config),'--pkglibdir'],capture_output=True,text=True,check=True,timeout=10,
+             env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C'})
+    expected=root.parents[2]/'lib/postgresql@17'
+    if r.stdout!=str(expected)+'\n':raise ValueError("Unknown compiled pkglibdir")
+    canonical=root/'lib/postgresql'
+    owner=config.stat().st_uid
+    for path in (canonical,expected):
+        if not path.is_dir() or path.stat().st_uid!=owner or path.stat().st_mode&0o022:
+            raise ValueError("Unsafe pkglib directory")
+    if expected.is_symlink() and expected.resolve(strict=True)!=canonical.resolve(strict=True):
+        raise ValueError('Foreign pkglib directory alias')
+    if canonical.resolve(strict=True)!=canonical:raise ValueError("Foreign canonical pkglib")
+    names=sorted(x.name for x in canonical.iterdir())
+    if len(names)>512 or names!=sorted(x.name for x in expected.iterdir()):
+        raise ValueError("Unknown pkglib directory entry")
+    entries=[]
+    for name in names:
+        source=canonical/name;alias=expected/name
+        target=source.resolve(strict=True)
+        if root not in target.parents or not os.path.samefile(source,alias):
+            raise ValueError("Foreign pkglib entry")
+        st=target.stat()
+        if st.st_uid!=owner or st.st_mode&0o022:raise ValueError("Unsafe pkglib entry")
+        entries.append({'name':name,'target':str(target),'uid':st.st_uid,'mode':st.st_mode,
+                        'device':st.st_dev,'inode':st.st_ino})
+    st=expected.stat()
+    return expected,{'directory':str(expected),'canonical':str(canonical),'entries':entries,
+                    'uid':st.st_uid,'mode':st.st_mode,'device':st.st_dev,'inode':st.st_ino,
+                    'link':os.readlink(expected) if expected.is_symlink() else None}
+
 def profile(inside, unix, roots, files):
     inside=Path(inside);unix=Path(unix)
     if not inside.is_absolute() or not unix.is_absolute() or unix.parent!=inside:
@@ -232,6 +270,7 @@ def main():
         if pg_root.parent.name!='postgresql@17' or pg_root.parent.parent.name!='Cellar':raise ValueError('Explicit Homebrew PostgreSQL17 runtime required')
         stage='same-package-timezone-alias'
         timezone,package=timezone_runtime(pg_bin)
+        pkglib,pkglib_proof=pkglib_directory(pg_bin)
         roots=(pg_root,runtime_root(sys.base_prefix))
         stage='runtime-library-closure'
         files=libraries([pg_bin/n for n in ('postgres','psql','initdb','pg_ctl')]+[Path(sys.executable)])
@@ -241,7 +280,7 @@ def main():
         reads=[]
         def load_guard(path):
             guard=original_load(path)
-            guard.profile=lambda inside,unix:profile(inside,unix,roots,(*files,*timezone))
+            guard.profile=lambda inside,unix:profile(inside,unix,roots,(*files,*timezone,pkglib))
             return guard
         def verify_host(guard,parent):
             evidence=read_probe(guard,native,parent);reads.append(evidence)
@@ -254,10 +293,11 @@ def main():
             code=native.main()
         finally:sys.argv=old
         if code!=2 or len(reads)!=1:raise ValueError("Native/read proof incomplete")
+        if pkglib_directory(pg_bin)[1]!=pkglib_proof:raise ValueError('Runtime pkglib directory drift during probe')
         if timezone_runtime(pg_bin)[1]!=package:raise ValueError('Runtime package or timezone alias drift during probe')
         evidence=reads[0]
         (evidence/'private-runtime-inventory.json').write_text(json.dumps({
-            'timezone_literal_reads':[str(x) for x in timezone],'postgres_runtime':package,'roots':[str(x) for x in roots],'libraries':[str(x) for x in files],
+            'pkglib_directory_listing_only':pkglib_proof,'timezone_literal_reads':[str(x) for x in timezone],'postgres_runtime':package,'roots':[str(x) for x in roots],'libraries':[str(x) for x in files],
             'read_canary_verified':True,'native_kernel_fixture_success':True,
             'existing_archive_read':False,'archived_sql_executed':False,
             'complete_read_isolation_or_egress_proof':False,

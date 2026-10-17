@@ -125,4 +125,40 @@ class ReadBoundary(unittest.TestCase):
     with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
    with patch.object(p,"MAX_TIMEZONE_BYTES",1):
     with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
+
+ def test_pkglib_listing_only_and_foreign_entries_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   bin,data,shared,alias,runner=self.timezone_package(d)
+   canonical=bin.parent/"lib/postgresql";canonical.mkdir(parents=True)
+   (canonical/"plpgsql.so").write_bytes(b"synthetic-never-loaded")
+   dest=bin.parent.parents[2]/"lib/postgresql@17";dest.mkdir(parents=True)
+   (dest/"plpgsql.so").symlink_to(canonical/"plpgsql.so")
+   def config(argv,**kw):
+    if argv[-1]=="--pkglibdir":return type("Result",(),{"stdout":str(dest)+"\n"})()
+    return runner(argv,**kw)
+   literal,proof=p.pkglib_directory(bin,config)
+   self.assertEqual(literal,dest)
+   policy=p.profile(pathlib.Path("/tmp/inside"),pathlib.Path("/tmp/inside/socket"),[],[literal])
+   self.assertIn('(literal "'+str(dest)+'")',policy)
+   self.assertNotIn('(subpath "'+str(dest)+'")',policy)
+   self.assertNotIn(str(dest/"plpgsql.so"),policy)
+   (dest/"unknown").write_bytes(b"unknown")
+   with self.assertRaises(ValueError):p.pkglib_directory(bin,config)
+   (dest/"unknown").unlink();(dest/"plpgsql.so").unlink()
+   outside=pathlib.Path(d)/"outside.so";outside.write_bytes(b"synthetic")
+   (dest/"plpgsql.so").symlink_to(outside)
+   with self.assertRaises(ValueError):p.pkglib_directory(bin,config)
+ def test_pkglib_unknown_path_and_writable_directory_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   bin,data,shared,alias,runner=self.timezone_package(d)
+   canonical=bin.parent/"lib/postgresql";canonical.mkdir(parents=True)
+   dest=bin.parent.parents[2]/"lib/postgresql@17";dest.mkdir(parents=True)
+   def config(argv,**kw):return type("Result",(),{"stdout":str(dest)+"\n"})()
+   p.pkglib_directory(bin,config)
+   dest.chmod(0o777)
+   with self.assertRaises(ValueError):p.pkglib_directory(bin,config)
+   dest.chmod(0o700)
+   def bad(argv,**kw):return type("Result",(),{"stdout":str(canonical)+"\n"})()
+   with self.assertRaises(ValueError):p.pkglib_directory(bin,bad)
+
 if __name__=="__main__":unittest.main()
