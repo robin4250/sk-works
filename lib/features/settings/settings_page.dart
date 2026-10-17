@@ -14,9 +14,8 @@ import '../../branding/sko_theme.dart';
 import '../../data/supabase_backend.dart';
 import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
-import 'company_rate_settings_page.dart';
 import 'company_payroll_rates_page.dart';
-import 'company_allowance_identity_entry.dart';
+import 'company_common_settings_entry.dart';
 import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
 import 'master_feature_controls_page.dart';
@@ -382,23 +381,9 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Card(
-                            child: ListTile(
-                              leading: const Icon(Icons.currency_yen_outlined),
-                              title: const Text('消費税・会社手当設定'),
-                              subtitle: const Text('消費税率・福利厚生費率・残業・早出・夜勤・休日・任意手当×3'),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const CompanyRateSettingsPage(),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
                         ],
                         if (_canManageCompany && _companyId != null) ...[
-                          CompanyAllowanceIdentityEntry(companyId: _companyId!, canManageCompany: _canManageCompany),
+                          CompanyCommonSettingsEntry(companyId: _companyId!, canManageCompany: _canManageCompany),
                           const SizedBox(height: 16),
                         ],
                         if (_canReadPayrollRates && _companyId != null) ...[
@@ -568,3 +553,4 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+

@@ -1,0 +1,28 @@
+name: Company common settings integration
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/company_common_settings_page.dart'
+      - 'lib/features/settings/company_common_settings_entry.dart'
+      - 'lib/features/settings/settings_page.dart'
+      - 'lib/app_v2.dart'
+      - 'test/company_common_settings_integration_test.dart'
+      - 'test/settings_permission_contract_test.dart'
+      - 'test/company_rate_settings_contract_test.dart'
+      - '.github/workflows/company-common-settings-integration.yml'
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart analyze lib/features/settings/company_common_settings_page.dart lib/features/settings/company_common_settings_entry.dart lib/features/settings/settings_page.dart lib/app_v2.dart test/company_common_settings_integration_test.dart test/settings_permission_contract_test.dart test/company_rate_settings_contract_test.dart
+      - run: timeout 180s flutter test --reporter expanded --timeout 60s test/company_common_settings_integration_test.dart test/settings_permission_contract_test.dart test/company_rate_settings_contract_test.dart

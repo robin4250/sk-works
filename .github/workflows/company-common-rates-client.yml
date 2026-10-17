@@ -1,0 +1,26 @@
+name: Company common rates client
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/company_common_rates_*.dart'
+      - 'lib/features/settings/company_common_settings_page.dart'
+      - 'test/company_common_rates*_test.dart'
+      - 'test/company_common_settings_integration_test.dart'
+      - 'test/fixtures/company_common_rates_sql_response.json'
+      - '.github/workflows/company-common-rates-client.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart analyze lib/features/settings/company_common_rates_page.dart lib/features/settings/company_common_rates_repository.dart lib/features/settings/company_common_rates_pending.dart lib/features/settings/company_common_settings_page.dart test/company_common_rates_test.dart test/company_common_rates_repository_test.dart test/company_common_settings_integration_test.dart
+      - run: timeout 180s flutter test --reporter expanded --timeout 60s test/company_common_rates_test.dart test/company_common_rates_repository_test.dart test/company_common_settings_integration_test.dart

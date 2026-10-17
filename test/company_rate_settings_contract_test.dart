@@ -30,7 +30,9 @@ void main() {
       'lib/features/settings/company_rate_settings_page.dart',
     ).readAsStringSync();
 
-    expect(settings, contains('消費税・会社手当設定'));
+    expect(settings, contains('CompanyCommonSettingsEntry('));
+    final entry = File('lib/features/settings/company_common_settings_entry.dart').readAsStringSync();
+    expect(entry, contains('会社共通設定'));
     expect(settings, contains('if (_canManageCompany)'));
     expect(page, contains('福利厚生費率'));
     expect(page, contains('残業単価'));
@@ -46,3 +48,4 @@ void main() {
     expect(page, contains('_allowance3Unit'));
   });
 }
+

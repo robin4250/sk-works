@@ -1,5 +1,5 @@
 import 'features/auth/authenticated_navigation_boundary.dart';
-import 'features/payroll/company_common_payroll_page.dart';
+import 'features/settings/company_common_settings_page.dart';
 import 'features/chat/line_release_access.dart';
 import 'features/referrals/app_referral_page.dart';
 import 'features/referrals/app_referral_repository.dart';
@@ -1246,7 +1246,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (!_nestedActionKeys.contains('company_common_allowances')) return;
         page = const SecondaryProtectedPage(
           title: '社内共通手当',
-          child: CompanyCommonPayrollPage(),
+          child: CompanyCommonSettingsPage(),
         );
         break;
       case 'company_tax_rates':

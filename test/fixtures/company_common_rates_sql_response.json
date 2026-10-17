@@ -1,0 +1,89 @@
+{
+  "initial": {
+    "rates": {
+      "early_hour_rate_yen": 0,
+      "night_hour_rate_yen": 0,
+      "holiday_day_rate_yen": 0,
+      "overtime_hour_rate_yen": 0
+    },
+    "version": 0,
+    "can_edit": true,
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "contract_version": 1
+  },
+  "result": {
+    "rates": {
+      "early_hour_rate_yen": 4000,
+      "night_hour_rate_yen": 6000,
+      "holiday_day_rate_yen": 32800,
+      "overtime_hour_rate_yen": 5125
+    },
+    "id_map": [],
+    "version": 1,
+    "can_edit": true,
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "request_id": "80000000-0000-4000-8000-000000000001",
+    "contract_version": 1,
+    "committed_version": 1
+  },
+  "receipt": {
+    "found": true,
+    "result": {
+      "rates": {
+        "early_hour_rate_yen": 4000,
+        "night_hour_rate_yen": 6000,
+        "holiday_day_rate_yen": 32800,
+        "overtime_hour_rate_yen": 5125
+      },
+      "id_map": [],
+      "version": 1,
+      "can_edit": true,
+      "company_id": "10000000-0000-0000-0000-000000000001",
+      "request_id": "80000000-0000-4000-8000-000000000001",
+      "contract_version": 1,
+      "committed_version": 1
+    },
+    "actor_id": "20000000-0000-0000-0000-000000000001",
+    "operation": "rates",
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "request_id": "80000000-0000-4000-8000-000000000001",
+    "payroll_type": null,
+    "request_payload": {
+      "rates": {
+        "early_hour_rate_yen": 4000,
+        "night_hour_rate_yen": 6000,
+        "holiday_day_rate_yen": 32800,
+        "overtime_hour_rate_yen": 5125
+      },
+      "operation": "rates",
+      "expected_rates": {
+        "early_hour_rate_yen": 0,
+        "night_hour_rate_yen": 0,
+        "holiday_day_rate_yen": 0,
+        "overtime_hour_rate_yen": 0
+      },
+      "expected_version": 0
+    },
+    "contract_version": 1,
+    "expected_version": 0,
+    "committed_version": 1
+  },
+  "missing": {
+    "found": false,
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "request_id": "80000000-0000-4000-8000-000000000999",
+    "contract_version": 1
+  },
+  "viewer": {
+    "rates": {
+      "early_hour_rate_yen": 234,
+      "night_hour_rate_yen": 345,
+      "holiday_day_rate_yen": 0,
+      "overtime_hour_rate_yen": 123
+    },
+    "version": 4,
+    "can_edit": false,
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "contract_version": 1
+  }
+}
