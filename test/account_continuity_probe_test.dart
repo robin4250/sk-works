@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:sk_works/features/auth/existing_apple_identity_link.dart';
+import 'package:sk_works/features/auth/account_continuity_probe.dart';
 
 const actor = '91000000-0000-4000-8000-000000000001';
 const other = '91000000-0000-4000-8000-000000000002';
@@ -55,24 +55,24 @@ class Fixture {
 }
 void main(){
  test('existing Google identity and company role survive read-only Apple-added verification',()async{
-  final f=Fixture();await f.login();final service=ExistingAppleIdentityLink(f.client);
+  final f=Fixture();await f.login();final service=AccountContinuityProbe(f.client);
   final before=await service.capture();f.apple=true;await service.verifyAdded(before);
   expect(f.calls.where((r)=>r.url.path!='/auth/v1/token').every((r)=>r.method=='GET'),true);
   expect(f.calls.any((r)=>r.url.path.contains('identities/authorize')||r.url.path.endsWith('/signup')),false);
   await f.client.dispose();
  });
  test('browser/no callback and changed role cannot be verified as success',()async{
-  final f=Fixture();await f.login();final service=ExistingAppleIdentityLink(f.client);
+  final f=Fixture();await f.login();final service=AccountContinuityProbe(f.client);
   final before=await service.capture();
-  await expectLater(service.verifyAdded(before),throwsA(isA<AppleIdentityPreservationRejected>()));
+  await expectLater(service.verifyAdded(before),throwsA(isA<ContinuityRejected>()));
   f.apple=true;f.role='viewer';
-  await expectLater(service.verifyAdded(before),throwsA(isA<AppleIdentityPreservationRejected>()));
+  await expectLater(service.verifyAdded(before),throwsA(isA<ContinuityRejected>()));
   await f.client.dispose();
  });
  test('captured getUser does not authorize late actor A after actual SDK switches to B',()async{
-  final f=Fixture();await f.login();final service=ExistingAppleIdentityLink(f.client);
+  final f=Fixture();await f.login();final service=AccountContinuityProbe(f.client);
   f.switchDuringRead=true;
-  await expectLater(service.capture(),throwsA(isA<AppleIdentityPreservationRejected>()));
+  await expectLater(service.capture(),throwsA(isA<ContinuityRejected>()));
   expect(f.client.auth.currentUser!.id,other);
   expect(f.calls.any((r)=>r.url.path=='/rest/v1/company_members'),false);
   await f.client.dispose();
