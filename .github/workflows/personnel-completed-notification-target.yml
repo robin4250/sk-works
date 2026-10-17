@@ -1,0 +1,22 @@
+name: Personnel completed notification target
+on:
+  pull_request:
+    paths:
+      - 'tool/staged/worker_personnel_completed_notification_target.sql'
+      - 'tool/verify_worker_personnel_completed_notification_target.mjs'
+      - 'supabase/migrations/20261011204715_employee_personnel_read_view.sql'
+      - '.github/workflows/personnel-completed-notification-target.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-resolver:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned isolated PostgreSQL engine
+        run: npm install --prefix "$RUNNER_TEMP/personnel-target" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify staged read-only resolver with synthetic fixtures
+        run: node tool/verify_worker_personnel_completed_notification_target.mjs "$RUNNER_TEMP/personnel-target/node_modules/@electric-sql/pglite/dist/index.js"
