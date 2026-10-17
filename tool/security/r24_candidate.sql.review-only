@@ -1,0 +1,25 @@
+-- REVIEW ONLY. Known lineage only; creation-before-lineage is not closed here.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='30s';
+do $patch$
+declare f record; body text; anchor integer;
+begin
+ select p.oid,p.prosrc,p.proowner,p.proacl,p.proconfig,p.prosecdef,
+ pg_get_functiondef(p.oid) definition into f from pg_proc p
+ where p.oid=to_regprocedure('private.ensure_invoice_approval_rows(uuid)');
+ if not found or md5(f.prosrc)<>'b96d072260cb54857a28bb867b508f57'
+ or not f.prosecdef or pg_get_userbyid(f.proowner)<>'postgres'
+ or f.proconfig is distinct from array['search_path=""']::text[]
+ or to_regclass('private.line_invoice_submissions') is null
+ or to_regclass('private.line_historical_invoice_links') is null then
+ raise exception 'Target or prerequisite drift; review required' using errcode='55000';end if;
+ anchor:=strpos(f.prosrc,E'\nbegin\n');
+ if anchor=0 or strpos(f.definition,f.prosrc)=0 then raise exception 'Body layout drift' using errcode='55000';end if;
+ body:=substr(f.prosrc,1,anchor+6)||E'\n if exists(select 1 from private.line_invoice_submissions s where s.invoice_id=p_invoice_id) or exists(select 1 from private.line_historical_invoice_links h where h.invoice_id=p_invoice_id) then return; end if;'||substr(f.prosrc,anchor+7);
+ execute replace(f.definition,f.prosrc,body);
+ if not exists(select 1 from pg_proc p where p.oid=f.oid and p.proowner=f.proowner
+ and p.proacl is not distinct from f.proacl and p.proconfig is not distinct from f.proconfig
+ and p.prosecdef=f.prosecdef) then raise exception 'Target metadata changed' using errcode='55000';end if;
+end $patch$;
+commit;
