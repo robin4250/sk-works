@@ -1,0 +1,24 @@
+name: R32 daily decision action
+on:
+  pull_request:
+    paths:
+      - 'lib/features/daily_reports/daily_report_approvals_page.dart'
+      - 'test/daily_report_approval_action_test.dart'
+      - '.github/workflows/r32-decision.yml'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test test/daily_report_approval_action_test.dart
