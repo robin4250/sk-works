@@ -34,6 +34,27 @@ class MetadataTests(unittest.TestCase):
         p=Path(__file__).with_name('entry_definitions.sql.review-only')
         self.assertEqual(hashlib.sha256(p.read_bytes()).hexdigest(),metadata.DEFINITIONS_SHA)
 
+    def test_fixed_role_query_is_bound_to_repository_bytes(self):
+        import hashlib
+        p=Path(__file__).with_name('entry_role_map.sql.review-only')
+        self.assertEqual(hashlib.sha256(p.read_bytes()).hexdigest(),metadata.ROLE_MAP_SHA)
+
+    def test_each_metadata_source_mismatch_prevents_import(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            source=b'raise RuntimeError(\"must never execute\")'
+            (root/'entry_snapshot.py').write_bytes(source)
+            (root/'entry_definitions.sql.review-only').write_text('SELECT synthetic_definition')
+            (root/'entry_role_map.sql.review-only').write_text('SELECT synthetic_role')
+            with patch.object(metadata,'SNAPSHOT_SHA',hashlib.sha256(source).hexdigest()),patch.object(metadata.importlib.util,'spec_from_file_location') as imported:
+                with self.assertRaises(ValueError):metadata.load_sources(root)
+                imported.assert_not_called()
+                raw=(root/'entry_definitions.sql.review-only').read_bytes()
+                with patch.object(metadata,'DEFINITIONS_SHA',hashlib.sha256(raw).hexdigest()):
+                    with self.assertRaises(ValueError):metadata.load_sources(root)
+                imported.assert_not_called()
+
     def test_source_mismatch_before_import_or_credential_access(self):
         with tempfile.TemporaryDirectory() as td:
             base=Path(td);marker=base/'executed'
