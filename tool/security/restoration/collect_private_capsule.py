@@ -12,6 +12,7 @@ import tempfile
 
 KEYS = {'PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE'}
 PROJECT = 'ztktgquxvcxcjxtluspu'
+CATALOG_SHA256 = '825737cfb37797ee6a384bf07cfad3343cda1c5aa3d7c0751bbd5c2583f66a53'
 INVARIANTS = """
 SELECT jsonb_build_object(
  'masters',(SELECT jsonb_agg(jsonb_build_object('user',to_jsonb(t)->'user_id','enabled',to_jsonb(t)->'enabled') ORDER BY to_jsonb(t)->>'user_id') FROM private.master_admins t),
@@ -68,6 +69,9 @@ def main():
     root = Path(tempfile.mkdtemp(prefix='sko-private-capsule-'))
     root.chmod(0o700)
     try:
+        catalog_bytes = Path(__file__).with_name('role_dependency_inventory.sql.review-only').read_bytes()
+        if hashlib.sha256(catalog_bytes).hexdigest() != CATALOG_SHA256:
+            raise ValueError('reviewed catalog query mismatch')
         if not args.plan.is_absolute() or args.plan.is_symlink() or not args.plan.is_file():
             raise ValueError('private absolute regular plan required')
         st = args.plan.stat()
@@ -98,8 +102,7 @@ def main():
                     raise ValueError('read-only verification missing')
                 return json.loads('\n'.join(lines[1:]))
             before = query(INVARIANTS, root / 'private-before.json')
-            catalog = Path(__file__).with_name('role_dependency_inventory.sql.review-only')
-            query(catalog.read_text(), root / 'private-catalog.json')
+            query(catalog_bytes.decode('utf-8'), root / 'private-catalog.json')
             # Separate read-only schema snapshot; no role globals or data included.
             subprocess.run([str(dump), '--schema-only', '--format=custom', '--role=postgres',
                             '--lock-wait-timeout=5s', '--no-password', '--file', str(root / 'private-schema.dump')],
