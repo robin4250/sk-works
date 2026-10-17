@@ -1,0 +1,9 @@
+# Archived capture recovery: negative HTTP composition
+
+Base: `3aa57d2fb0b9be74187ba4ea9023d70fb5d4d784` (separate from the frozen #1234 head). Test-only addition to the existing loopback HTTP fixture; no product, SQL, Auth, role, RLS, dependency or production changes.
+
+The existing test already checks successful exact archive recovery, mismatched photo path, unavailable lookup, retained pending draft, acknowledged local archive and no INSERT. Its real Supabase SDK transport and synthetic loopback server are reused. Three additional responses represent a different company, a different original creator and an unknown archive contract version. Each is sent through both submitCaptureDraft and acknowledgeArchivedCaptureDraft; each must throw, retain the exact same UUID/encoded pending value, leave the local archive journal absent, and perform zero INSERTs. The original successful acknowledgement still follows these probes, proving the negative responses did not replace the draft or poison subsequent exact recovery.
+
+This does not duplicate the existing pure matchesRow tests. It tests their composition with the SDK, archive response envelope and local pending/journal boundary. The JWT is synthetic for SDK session setup and is accepted only by the disposable loopback server. No real Auth, HTTP endpoint, Storage object, permission assignment or deletion is involved. Existing source retention guards remain unchanged. This is not evidence of actual Storage bytes, service-role/lifecycle behavior, full concurrency or production restoration.
+
+The dedicated push-only workflow runs only this test and its scoped analysis on the named test branch. A result must be tied to its exact checkout; the previous #1234 passes are not this result. Local Flutter SDK is unavailable, so executable verification is pending dedicated CI. Source/diff checks passed.

@@ -38,6 +38,8 @@ void main() {
         'work_date': '2026-10-12',
       };
       var unavailable = false, mismatch = false, inserts = 0;
+      var archiveVersion = 1;
+      var archiveOverrides = <String, dynamic>{};
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       server.listen((request) async {
         Object? response;
@@ -77,11 +79,12 @@ void main() {
             response = {'message': 'offline', 'code': 'fixture'};
           } else {
             response = {
-              'version': 1,
+              'version': archiveVersion,
               'archived': true,
               'verification': {
                 ...snapshot,
                 if (mismatch) 'photo_storage_path': 'different',
+                ...archiveOverrides,
               },
             };
           }
@@ -120,6 +123,31 @@ void main() {
         expect(prefs.getString(key), draft.encoded);
         expect(prefs.getString('$key.archived.${draft.id}'), isNull);
         mismatch = false;
+        // Real SDK HTTP composition: an archive from another scope or an unknown
+        // response contract must neither release the draft nor retry an INSERT.
+        // Pure matchesRow field validation is covered separately; these probes
+        // verify its use through submit/acknowledge and the local journal boundary.
+        for (final scenario in [
+          (name: 'different company', version: 1,
+            overrides: <String, dynamic>{'company_id': 'other-company'}),
+          (name: 'different original actor', version: 1,
+            overrides: <String, dynamic>{'created_by': 'other-actor'}),
+          (name: 'unknown archive contract', version: 2,
+            overrides: <String, dynamic>{}),
+        ]) {
+          archiveVersion = scenario.version;
+          archiveOverrides = scenario.overrides;
+          await expectLater(repo.submitCaptureDraft(draft), throwsStateError,
+            reason: scenario.name);
+          await expectLater(repo.acknowledgeArchivedCaptureDraft(draft),
+            throwsStateError, reason: scenario.name);
+          expect(prefs.getString(key), draft.encoded, reason: scenario.name);
+          expect(prefs.getString('$key.archived.${draft.id}'), isNull,
+            reason: scenario.name);
+          expect(inserts, 0, reason: scenario.name);
+        }
+        archiveVersion = 1;
+        archiveOverrides = {};
         unavailable = true;
         await expectLater(
           repo.acknowledgeArchivedCaptureDraft(draft),
