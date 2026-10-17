@@ -347,3 +347,30 @@ class ReleaseProofTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):m.rebase_built_links(source,stage,copies)
                 link.unlink(); link.symlink_to(cache); (cache/'x').write_text('modified')
                 with self.assertRaisesRegex(RuntimeError,'dependency changed'):m.rebase_built_links(source,stage,copies)
+
+class FailureDiagnosticTests(unittest.TestCase):
+    def tearDown(self):
+        m.phase('startup')
+        m._STAGE = None
+
+    def test_known_failure_has_fixed_safe_category(self):
+        m.phase('tool_preflight')
+        record = m.failure_record(m.CheckedFailure('Xcode mismatch'))
+        self.assertEqual(record, {'phase': 'tool_preflight', 'kind': 'CheckedFailure',
+                                  'category': 'xcode_version'})
+
+    def test_arbitrary_exception_secret_is_not_recorded(self):
+        secret = 'sb_secret_example https://private.invalid signing-team@example'
+        m.phase('release_build')
+        for error in [RuntimeError(secret), m.CheckedFailure(secret),
+                      subprocess.CalledProcessError(1, [secret], output=secret)]:
+            record = m.failure_record(error)
+            self.assertNotIn(secret, json.dumps(record))
+            self.assertEqual(record['phase'], 'release_build')
+
+    def test_diagnostics_do_not_write_or_change_checkpoint(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage = Path(d)
+            m.phase('native_snapshot', stage)
+            m.failure_record(m.CheckedFailure('copy changed'))
+            self.assertEqual(list(stage.iterdir()), [])
