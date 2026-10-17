@@ -1,0 +1,124 @@
+{
+  "issue": 273,
+  "updated_at": "2026-10-17T09:22:58Z",
+  "original_sha256": "6f580729a7dfc22e2469eaf6fff0baa6c0423de9fdf2ff429ea66f28ecc64a12",
+  "clean_sha256": "a80ff64d0026f265aad2d0d7bf915825e198e66ffd2ae25e12045f7fb8e44115",
+  "completed_tasks_removed": 566,
+  "unchecked_original": 593,
+  "unchecked_clean": 593,
+  "unchecked_lines_byte_equal_in_order": true,
+  "unchanged_surviving_lines": true,
+  "removed_line_count": 615,
+  "completed_detail_lines_removed": 25,
+  "empty_headings_removed": [
+    {
+      "line": 474,
+      "heading": "### 完了（ソース統合・検証）"
+    },
+    {
+      "line": 485,
+      "heading": "### 未完了（継続）"
+    },
+    {
+      "line": 583,
+      "heading": "### 完了（ソース保存・隔離検証／実機とは区別）"
+    },
+    {
+      "line": 624,
+      "heading": "### 完了済み"
+    },
+    {
+      "line": 686,
+      "heading": "### 完了済み"
+    },
+    {
+      "line": 748,
+      "heading": "### 完了済み"
+    },
+    {
+      "line": 810,
+      "heading": "### 完了済み"
+    },
+    {
+      "line": 863,
+      "heading": "### 完了済み"
+    },
+    {
+      "line": 920,
+      "heading": "### 担当境界（ユーザー承認済み・最優先）"
+    },
+    {
+      "line": 927,
+      "heading": "### 完了済み（確認できた事実）"
+    },
+    {
+      "line": 976,
+      "heading": "### 完了済み（ソース統合・確認済みCI）"
+    },
+    {
+      "line": 1154,
+      "heading": "### 完了済み・保存済み"
+    },
+    {
+      "line": 1166,
+      "heading": "### 作業中（まだ完了扱いにしない）"
+    },
+    {
+      "line": 1178,
+      "heading": "### 今回の本番反映・検証"
+    },
+    {
+      "line": 1258,
+      "heading": "### 全ページ監査 一次結果"
+    },
+    {
+      "line": 1345,
+      "heading": "### ✅ 完了済み（現在の作業で繰り返さない）"
+    },
+    {
+      "line": 1450,
+      "heading": "## 現在の実装順序"
+    },
+    {
+      "line": 1751,
+      "heading": "### 出勤表 / 勤務修正 UX 完了"
+    },
+    {
+      "line": 1757,
+      "heading": "### 2026-10-05 完了更新：出勤表 / 勤務修正 UX"
+    },
+    {
+      "line": 1775,
+      "heading": "### グループ追放権限の確定"
+    },
+    {
+      "line": 1782,
+      "heading": "### チャット追加安全調整"
+    },
+    {
+      "line": 1902,
+      "heading": "### 2026-10-05 チャットRPC本番権限確認"
+    },
+    {
+      "line": 2082,
+      "heading": "### 2026-10-07 実機不具合：請求書が表示されない"
+    },
+    {
+      "line": 2115,
+      "heading": "### 2026-10-07 現場詳細：1ページ表示・未登録非表示"
+    }
+  ],
+  "credential_literal_counts": {
+    "JWT_3part": 0,
+    "supabase_secret_literal": 0,
+    "private_key_block": 0,
+    "github_token_literal": 0,
+    "openai_secret_literal": 0,
+    "credential_assignment": 0
+  },
+  "remote_updated": false,
+  "original_unicode_codepoints": 132311,
+  "clean_unicode_codepoints": 83861,
+  "original_utf16_code_units": 132323,
+  "clean_utf16_code_units": 83873
+}
