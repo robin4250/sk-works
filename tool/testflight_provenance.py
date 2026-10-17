@@ -76,6 +76,28 @@ def build_context():
                               'SKO_MASTER_PASSWORD_V1': False}}
 
 
+def validate_public_key(value):
+    """Local key-type classification only, not JWT signature/project validation."""
+    require(isinstance(value, str), 'Public client key required')
+    if re.fullmatch(r'sb_publishable_[A-Za-z0-9_-]+', value):
+        return
+    parts = value.split('.')
+    require(len(parts) == 3 and all(re.fullmatch(r'[A-Za-z0-9_-]+', part) for part in parts),
+            'Unknown or privileged client key type')
+    def decode(part):
+        return base64.b64decode(part + '=' * (-len(part) % 4), altchars=b'-_', validate=True)
+    header, payload = json.loads(decode(parts[0])), json.loads(decode(parts[1]))
+    require(isinstance(header, dict) and header.get('alg') == 'HS256'
+            and isinstance(payload, dict) and payload.get('role') == 'anon'
+            and len(decode(parts[2])) == 32, 'Unknown or privileged client key type')
+
+
+def verify_public_configuration():
+    validate_public_key(os.environ.get('SUPABASE_PUBLISHABLE_KEY', ''))
+    require(os.environ.get('SUPABASE_URL') == 'https://ztktgquxvcxcjxtluspu.supabase.co',
+            'Approved public backend configuration required')
+
+
 def verify_generated_flags():
     # Decode locally for comparison only. Never retain values or their digests.
     path = Path('ios/Flutter/Generated.xcconfig')
@@ -93,8 +115,9 @@ def verify_generated_flags():
     require(set(values) == {'SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SKO_MASTER_PASSWORD_V1'},
             'Unexpected compile defines')
     require(values['SKO_MASTER_PASSWORD_V1'] == 'false', 'Dedicated Master mode must remain off')
-    require(values['SUPABASE_URL'] == 'https://ztktgquxvcxcjxtluspu.supabase.co'
-            and bool(values['SUPABASE_PUBLISHABLE_KEY']), 'Approved public backend configuration required')
+    validate_public_key(values['SUPABASE_PUBLISHABLE_KEY'])
+    require(values['SUPABASE_URL'] == 'https://ztktgquxvcxcjxtluspu.supabase.co',
+            'Approved public backend configuration required')
 
 
 def check_ci(sha):
@@ -140,9 +163,13 @@ def inspect_ipa(ipa):
         info = plistlib.loads((app / 'Info.plist').read_bytes())
         require(info.get('CFBundleIdentifier') == BUNDLE, 'Bundle mismatch')
         require(info.get('FlutterDeepLinkingEnabled') is False, 'Native callback handler mismatch')
-        require(any('com.skworks.sko' in row.get('CFBundleURLSchemes', [])
-                    for row in info.get('CFBundleURLTypes', []) if isinstance(row, dict)),
-                'Existing Google callback missing')
+        types = info.get('CFBundleURLTypes')
+        require(isinstance(types, list) and all(isinstance(row, dict) for row in types),
+                'Invalid native callback configuration')
+        schemes = [row.get('CFBundleURLSchemes') for row in types]
+        require(all(isinstance(items, list) and all(isinstance(s, str) for s in items)
+                    for items in schemes), 'Invalid native callback schemes')
+        require(any('com.skworks.sko' in items for items in schemes), 'Existing Google callback missing')
         require((app / 'Frameworks/App.framework/App').is_file(), 'AOT executable missing')
         require(not list(app.rglob('kernel_blob.bin')), 'Debug kernel found')
         ats = info.get('NSAppTransportSecurity', {})
@@ -254,7 +281,7 @@ def stage(manifest, directory):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('operation', choices=['source', 'start', 'create', 'validate', 'stage'])
+    p.add_argument('operation', choices=['source', 'configuration', 'start', 'create', 'validate', 'stage'])
     p.add_argument('--ipa', type=Path)
     p.add_argument('--marker', type=Path)
     p.add_argument('--manifest', type=Path)
@@ -265,6 +292,9 @@ def main():
     try:
         if args.operation == 'source':
             source()
+        elif args.operation == 'configuration':
+            source()
+            verify_public_configuration()
         elif args.operation == 'start':
             sha = source()
             check_ci(sha)

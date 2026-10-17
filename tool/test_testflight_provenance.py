@@ -125,7 +125,7 @@ class ProvenanceTests(unittest.TestCase):
         path = root / 'ios/Flutter/Generated.xcconfig'
         path.parent.mkdir(parents=True)
         flags = {'SUPABASE_URL': 'https://ztktgquxvcxcjxtluspu.supabase.co',
-                 'SUPABASE_PUBLISHABLE_KEY': 'synthetic-public-fixture',
+                 'SUPABASE_PUBLISHABLE_KEY': 'sb_publishable_synthetic_public_fixture',
                  'SKO_MASTER_PASSWORD_V1': 'false'}
         def write(values):
             path.write_text('DART_DEFINES=' + ','.join(base64.b64encode((k+'='+v).encode()).decode() for k,v in values.items()))
@@ -135,12 +135,34 @@ class ProvenanceTests(unittest.TestCase):
             write(flags)
             self.assertIsNone(VERIFY_FLAGS())
             for changed in [{**flags, 'SKO_MASTER_PASSWORD_V1': 'true'},
+                            {**flags, 'SUPABASE_PUBLISHABLE_KEY': 'sb_secret_fixture'},
                             {**flags, 'UNREVIEWED_FLAG': 'true'},
                             {**flags, 'SUPABASE_URL': 'https://example.invalid'}]:
                 write(changed)
                 with self.assertRaises(ValueError): VERIFY_FLAGS()
         finally:
             os.chdir(old)
+
+    def test_public_key_classification_rejects_privileged_and_unknown_values(self):
+        def encoded(value):
+            return base64.urlsafe_b64encode(json.dumps(value).encode()).decode().rstrip('=')
+        def token(role):
+            return encoded({'alg': 'HS256'})+'.'+encoded({'role': role})+'.'+base64.urlsafe_b64encode(b'x'*32).decode().rstrip('=')
+        p.validate_public_key('sb_publishable_synthetic_fixture')
+        p.validate_public_key(token('anon'))
+        for value in ['sb_secret_fixture', token('service_role'), token('authenticated'),
+                      'unknown', '', 'a.b.c', 'sb_publishable_', token(None)]:
+            with self.assertRaises(ValueError): p.validate_public_key(value)
+        with patch.dict(os.environ, {'SUPABASE_URL': 'https://ztktgquxvcxcjxtluspu.supabase.co',
+                                     'SUPABASE_PUBLISHABLE_KEY': 'sb_secret_fixture'}):
+            with self.assertRaises(ValueError): p.verify_public_configuration()
+
+    def test_callback_schemes_require_exact_string_in_a_list(self):
+        for malformed in ['com.skworks.sko.invalid', 'com.skworks.sko',
+                          ['com.skworks.sko.invalid'], [123], None]:
+            self.info['CFBundleURLTypes'] = [{} if malformed is None else {'CFBundleURLSchemes': malformed}]
+            self.write_zip()
+            with self.assertRaises(ValueError): self.inspect()
 
     def test_bundle_debug_ats_rejections(self):
         for key, value in [('CFBundleIdentifier', 'wrong'), ('NSAppTransportSecurity', {'NSAllowsArbitraryLoads': True})]:

@@ -42,3 +42,7 @@ Releaseコマンドは専用Masterフラグfalseを明示します。構築後�
 検査したIPAのcompiled Google callback scheme・FlutterDeepLinkingEnabled=falseを必須とし、署名が返したentitlements全体とembedded.mobileprovisionのdigestをmanifestへ追加します。profile/entitlements本文や認証情報を保存せず、同一IPAの再検査で比較します。Appleログインを有効と認定するものではなく、Apple capabilityが必要な候補は別の実機/サーバー設定検査が必要です。
 
 schema 1の旧manifestや旧markerは互換通過させません。元IPAを削除せず保管し、新しい承認SHAと固定Release経路で新候補を作る必要があります。本番RLS・LINE非公開・実機認証の安全条件は引き続き別途必須です。
+
+### 公開キー型・callback構造の誤設定拒否
+
+構築引数へ渡す前の configuration 検査と生成設定検査の両方で、sb_publishable_形式またはlegacy HS256 JWTのrole=anonというローカル型分類だけを許可します。sb_secret_・service_role・unknown/malformedは拒否し、値/hashは出力保存しません。このJWT分類は署名検証やproject正当性証明ではありません。callback schemesはlist[str]を必須とし、com.skworks.skoとの完全一致のみ許可します。文字列への部分一致は使いません。
