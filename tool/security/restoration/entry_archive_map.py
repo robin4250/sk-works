@@ -12,6 +12,7 @@ TABLES={'worker_personnel_profiles','worker_family_members'}
 SUPPORT={'workers','companies','company_members','member_feature_permissions','worker_personnel_approvers',
          'worker_personnel_change_requests','worker_personnel_change_approvals'}
 FUNCTIONS={'employee_personnel_rows','can_edit_worker_personnel'}
+SIMPLE_OWNER=r'[A-Za-z_][A-Za-z0-9_$]*'
 KINDS=('TABLE DATA','TABLE ATTACH','FK CONSTRAINT','DEFAULT ACL','MATERIALIZED VIEW DATA',
        'SEQUENCE SET','SEQUENCE OWNED BY','MATERIALIZED VIEW','PUBLICATION TABLE','FUNCTION',
        'PROCEDURE','CONSTRAINT','TRIGGER','POLICY','INDEX','TABLE','SEQUENCE','SCHEMA','EXTENSION','ACL','DEFAULT')
@@ -33,12 +34,19 @@ def classify(text):
         if kind=='EXTENSION':extensions.append(match.group(1))
         if schema=='public' and name in SUPPORT and kind=='TABLE':support.append(name)
         key=None
-        if kind=='TABLE' and schema=='public' and name in TABLES:key='public.'+name
+        if kind=='TABLE' and schema=='public' and name in TABLES:
+            # TOC fields are unquoted: split() must not erase a tag suffix or
+            # whitespace that belongs to a schema/tag/owner. Refuse ambiguity.
+            if not re.fullmatch('TABLE public '+re.escape(name)+' '+SIMPLE_OWNER,item):
+                raise ValueError('ambiguous root table record')
+            key='public.'+name
         if kind=='FUNCTION' and schema in ('public','private'):
             routine=re.match(r'[a-z_]+',name).group(0) if re.match(r'[a-z_]+',name) else ''
             if routine in FUNCTIONS:
                 signature=' '.join(words[1:-1])
                 if not re.fullmatch(r'[a-z_]+\([^;()]*\)',signature):raise ValueError('root function signature required')
+                if not re.fullmatch('FUNCTION '+re.escape(schema)+' '+re.escape(signature)+' '+SIMPLE_OWNER,item):
+                    raise ValueError('ambiguous root function record')
                 identity=schema+'.'+signature
                 expected={'employee_personnel_rows':'employee_personnel_rows()','can_edit_worker_personnel':'can_edit_worker_personnel(uuid)'}
                 if schema!='private':
@@ -52,6 +60,7 @@ def classify(text):
     required={'public.'+x for x in TABLES}|{'private.employee_personnel_rows','private.can_edit_worker_personnel'}
     return selected,{'root_count':len(seen),'missing_roots':sorted(required-set(seen)),
         'alternate_function_records':alternates,'current_roots_complete':required<=set(seen),
+        'root_identities_verified':False,
         'support_table_names_present':sorted(set(support)),'support_table_names_missing':sorted(SUPPORT-set(support)),
         'extension_entry_count':len(extensions),'unrecognized_entry_count':len(unresolved),
         'schema_only_root_selection':True,'excludes_table_data':True,

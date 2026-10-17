@@ -67,6 +67,29 @@ class MapTests(unittest.TestCase):
         _,r=mapping.classify('1; 1259 100 TABLE public worker_personnel_profiles postgres\n')
         self.assertEqual(len(r['missing_roots']),3)
 
+    def test_ambiguous_table_root_records_stop(self):
+        for tag in ('worker_personnel_profiles backup',
+                    'worker_personnel_profiles ', 'worker_personnel_profiles\t'):
+            with self.subTest(tag=tag), self.assertRaises(ValueError):
+                mapping.classify(ROOTS.replace('worker_personnel_profiles postgres',tag+' postgres'))
+
+    def test_ambiguous_root_owner_records_stop(self):
+        for line in ('TABLE public worker_personnel_profiles',
+                     'FUNCTION private employee_personnel_rows()'):
+            for owner in ('role with spaces', ' postgres', '"quoted_owner"'):
+                with self.subTest(line=line,owner=owner), self.assertRaises(ValueError):
+                    mapping.classify(ROOTS.replace(line+' postgres',line+' '+owner))
+
+    def test_function_spacing_is_not_normalized_into_a_root(self):
+        for signature in ('employee_personnel_rows() ', 'employee_personnel_rows( )'):
+            with self.subTest(signature=signature), self.assertRaises(ValueError):
+                mapping.classify(ROOTS.replace('employee_personnel_rows()',signature))
+
+    def test_toc_root_candidates_are_not_verified_identities(self):
+        _,report=mapping.classify(ROOTS)
+        self.assertTrue(report['current_roots_complete'])
+        self.assertFalse(report['root_identities_verified'])
+
     def test_unknown_toc_type_requires_further_review(self):
         _,r=mapping.classify(ROOTS+'10; 0 0 SOMETHING NEW public object postgres\n')
         self.assertEqual(r['unrecognized_entry_count'],1)
