@@ -35,7 +35,7 @@ begin
  end if;
  if (length(body)-length(replace(body,anchor,'')))/length(anchor)<>1 then raise exception 'Creation anchor drift' using errcode='55000';end if;
  body:=replace(body,anchor,replacement);
- body:=replace(body,E'\nbegin\n',E'\nbegin\n if not private.r19_master() then raise exception ''protected creation unavailable'' using errcode=''42501'';end if;\n');
+ body:=replace(body,E'\nbegin\n',E'\nbegin\n if private.r19_master() is distinct from true then raise exception ''protected creation unavailable'' using errcode=''42501'';end if;\n');
  if target.kind='current' then
  body:=replace(body,'  values(cid,','  values(iid,cid,');
  anchor:='  insert into private.line_invoice_submissions values(cid,(quote->>''customer_id'')::uuid,draft.work_month,draft.id,draft.revision,iid);';
