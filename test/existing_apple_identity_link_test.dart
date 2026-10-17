@@ -25,7 +25,7 @@ Map<String,dynamic> session(String id) => {
 class Fixture {
  Fixture() {
   client=SupabaseClient('https://apple-preservation-fixture.invalid','public_fixture',
-   authOptions:const AuthClientOptions(autoRefreshToken:false),
+   authOptions: AuthClientOptions(autoRefreshToken:false),
    httpClient:MockClient((r) async {
     expect(r.url.host,'apple-preservation-fixture.invalid'); calls.add(r);
     Object result;
@@ -51,7 +51,7 @@ class Fixture {
  bool apple=false, switchDuringRead=false;
  String role='owner';
  final calls=<http.Request>[];
- Future<void> login()=>client.auth.signInWithPassword(email:'fixture@example.invalid',password:'synthetic');
+ Future<void> login() async { await client.auth.signInWithPassword(email:'fixture@example.invalid',password:'synthetic'); }
 }
 void main(){
  test('existing Google identity and company role survive read-only Apple-added verification',()async{
