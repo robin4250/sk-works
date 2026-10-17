@@ -225,6 +225,9 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         }
       }
       if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
+      // The native prompt exception ends before server or preferences work.
+      // Later inactive events must invalidate the pending save normally.
+      _nativePrompt = false;
       await repository.setSecondaryPassword(password);
       if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       final prefs = await SharedPreferences.getInstance();
