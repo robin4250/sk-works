@@ -1,0 +1,36 @@
+-- REVIEW ONLY. Known linked invoices excluded from this bulk synchronization.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='30s';
+do $patch$
+declare f record; body text; target record; predicate text; occurrences integer;
+begin
+ select p.oid,p.prosrc,p.proowner,p.proacl,p.proconfig,p.prosecdef,
+ pg_get_functiondef(p.oid) definition into f from pg_proc p
+ where p.oid=to_regprocedure('public.set_invoice_approvers(uuid[])');
+ if not found or md5(f.prosrc)<>'9d59bbf09f2620f3fe9a58dfca6ae9a9'
+ or not f.prosecdef or pg_get_userbyid(f.proowner)<>'postgres'
+ or f.proconfig is distinct from array['search_path=""']::text[]
+ or to_regclass('private.line_invoice_submissions') is null
+ or to_regclass('private.line_historical_invoice_links') is null then
+ raise exception 'Target or prerequisite drift; review required' using errcode='55000'; end if;
+ if strpos(f.definition,f.prosrc)=0 then raise exception 'Body layout drift' using errcode='55000'; end if;
+ body:=f.prosrc;
+ for target in select * from (values
+ ('perform 1 from public.invoices where company_id=v_company_id order by id for update;',1,'perform 1 from public.invoices where company_id=v_company_id',' order by id for update;','public.invoices.id'),
+ ('where company_id=v_company_id and status=''draft'';',2,'where company_id=v_company_id and status=''draft''',';','public.invoices.id'),
+ ('and i.status=''draft'';',1,'and i.status=''draft''',';','i.id'),
+ (E'where i.company_id=v_company_id and i.status=''draft''\n',1,'where i.company_id=v_company_id and i.status=''draft''',E'\n','i.id')
+ )t(anchor,expected,prefix,suffix,identity) loop
+ occurrences:=(length(body)-length(replace(body,target.anchor,'')))/length(target.anchor);
+ if occurrences<>target.expected then raise exception 'Body anchor drift' using errcode='55000';end if;
+ predicate:=format(' and not exists(select 1 from private.line_invoice_submissions s where s.invoice_id=%s) and not exists(select 1 from private.line_historical_invoice_links h where h.invoice_id=%s)',target.identity,target.identity);
+ body:=replace(body,target.anchor,target.prefix||predicate||target.suffix);
+ end loop;
+ execute replace(f.definition,f.prosrc,body);
+ if not exists(select 1 from pg_proc p where p.oid=f.oid and p.proowner=f.proowner
+ and p.proacl is not distinct from f.proacl and p.proconfig is not distinct from f.proconfig
+ and p.prosecdef=f.prosecdef) then
+ raise exception 'Target metadata changed' using errcode='55000'; end if;
+end $patch$;
+commit;
