@@ -53,3 +53,8 @@ Exact768966 Mac39013026678/job117339378525 stopped before native startup at anot
 
 
 Diagnostic follow-up records the complete bounded immediate runtime-directory inventory on rejection to avoid repeated permission-neutral CI diagnosis. The existing 512-entry limit applies before recording; no unknown entry is accepted.
+
+
+Bounded complete inventory from exact b3d Mac39013131529/job117339686665 showed only two immediate real directory mirrors: `pgxs` and `pkgconfig`; all file aliases were same-package samefile. PostgreSQL17 `src/Makefile.global.in` defines pgxsdir=$(pkglibdir)/pgxs; `src/Makefile.shlib` defines pkgconfigdir=$(libdir)/pkgconfig and installs lib*.pc there. Official Homebrew installs libdir into Cellar/lib/postgresql then symlink_tree mirrors the directory structure to compiled lib/postgresql@17. The fixed metadata-only directory contract now names those two package directories; closed recursive same-package checks remain and no directory child read allowance is added. Next native Mac run remains required.
+
+Primary: https://github.com/postgres/postgres/blob/REL_17_STABLE/src/Makefile.global.in ; https://github.com/postgres/postgres/blob/REL_17_STABLE/src/Makefile.shlib .
