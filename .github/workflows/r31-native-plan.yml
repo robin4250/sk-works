@@ -1,0 +1,17 @@
+name: R31 isolated native copy plan
+on:
+  pull_request:
+    paths:
+      - 'tool/r31_local_release.py'
+      - 'test/r31_local_release_test.py'
+      - '.github/workflows/r31-native-plan.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - run: python3 -m unittest discover -s test -p 'r31_local_release_test.py' -v

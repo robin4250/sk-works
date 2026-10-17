@@ -72,7 +72,128 @@ class SnapshotTests(unittest.TestCase):
         self.assertIn('flutter build ios --release', c[2])
         self.assertNotIn('--debug', c[2]); self.assertNotIn('flutter run', c[2])
         self.assertIn(m.OFF, c[2])
+        self.assertIn('--no-pub', c[2])
         self.assertNotIn('pbcopy', c[2])
+
+class NativeDependencyPlanTests(unittest.TestCase):
+    def setup_plan(self, d):
+        p = Path(d); original = p / 'ios'; original.mkdir()
+        generated = original / '.symlinks/plugins'; generated.mkdir(parents=True)
+        cache = p / '.pub-cache'; cache.mkdir()
+        package = cache / 'hosted/pub.dev/plugin-one'; package.mkdir(parents=True)
+        (package / 'native.m').write_text('original native source')
+        (original / 'Runner.entitlements').write_text('keep native signing')
+        (generated / 'one').symlink_to(package, target_is_directory=True)
+        return p, original, cache, package
+
+    def test_observed_24_cache_and_two_internal_links_are_isolated_and_deduplicated(self):
+        with tempfile.TemporaryDirectory() as d:
+            p, original, cache, package = self.setup_plan(d)
+            for i in range(23):
+                (original / '.symlinks/plugins' / ('extra-' + str(i))).symlink_to(package)
+            (original / 'internal-a').symlink_to(original / 'internal-b')
+            (original / 'internal-b').symlink_to(original / 'internal-a')
+            before = m.inventory(original); cache_before = m.inventory(cache)
+            candidate = p / 'candidate'; m.copy_checked(original, candidate)
+            deps = p / 'dependencies'
+            m.isolate_native_links(original, candidate, cache_root=cache, dependencies=deps)
+            self.assertEqual(len(list(deps.iterdir())), 1)
+            self.assertEqual((candidate / 'Runner.entitlements').read_text(), 'keep native signing')
+            self.assertEqual(len(m.inventory(candidate)), len(before))
+            self.assertEqual((candidate / '.symlinks/plugins/one/native.m').read_text(), 'original native source')
+            (candidate / '.symlinks/plugins/one/native.m').write_text('isolated build changes')
+            self.assertEqual(m.inventory(original), before)
+            self.assertEqual(m.inventory(cache), cache_before)
+            self.assertEqual((package / 'native.m').read_text(), 'original native source')
+
+    def test_lexical_cache_escape_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            p, original, cache, package = self.setup_plan(d)
+            (original / '.symlinks/plugins/one').unlink()
+            (original / '.symlinks/plugins/one').symlink_to(cache / '../outside')
+            candidate = p / 'candidate'; m.copy_checked(original, candidate)
+            with self.assertRaisesRegex(RuntimeError, 'outside package cache'):
+                m.isolate_native_links(original, candidate, cache_root=cache, dependencies=p / 'deps')
+
+    def test_canonical_cache_symlink_escape_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            p, original, cache, package = self.setup_plan(d)
+            outside = p / 'outside'; outside.mkdir()
+            (cache / 'alias').symlink_to(outside)
+            (original / '.symlinks/plugins/one').unlink()
+            (original / '.symlinks/plugins/one').symlink_to(cache / 'alias')
+            candidate = p / 'candidate'; m.copy_checked(original, candidate)
+            with self.assertRaisesRegex(RuntimeError, 'outside canonical cache'):
+                m.isolate_native_links(original, candidate, cache_root=cache, dependencies=p / 'deps')
+
+    def test_custom_native_link_is_not_authorized_by_cache_location(self):
+        with tempfile.TemporaryDirectory() as d:
+            p, original, cache, package = self.setup_plan(d)
+            (original / 'custom-native').symlink_to(package)
+            candidate = p / 'candidate'; m.copy_checked(original, candidate)
+            with self.assertRaisesRegex(RuntimeError, 'custom native external'):
+                m.isolate_native_links(original, candidate, cache_root=cache, dependencies=p / 'deps')
+
+    def test_missing_and_looping_external_targets_are_rejected(self):
+        for loop in [False, True]:
+            with self.subTest(loop=loop), tempfile.TemporaryDirectory() as d:
+                p, original, cache, package = self.setup_plan(d)
+                target = cache / 'missing-or-loop'
+                if loop: target.symlink_to(target)
+                (original / '.symlinks/plugins/one').unlink()
+                (original / '.symlinks/plugins/one').symlink_to(target)
+                candidate = p / 'candidate'; m.copy_checked(original, candidate)
+                with self.assertRaises((FileNotFoundError, RuntimeError, OSError)):
+                    m.isolate_native_links(original, candidate, cache_root=cache, dependencies=p / 'deps')
+
+    def test_prepare_relinks_only_previously_reviewed_cache_targets_and_final_audit_stops_new_escape(self):
+        with tempfile.TemporaryDirectory() as d:
+            p, original, cache, package = self.setup_plan(d)
+            candidate = p / 'candidate'; m.copy_checked(original, candidate)
+            deps = p / 'deps'
+            approved = m.isolate_native_links(original, candidate, cache_root=cache, dependencies=deps)
+            generated = candidate / '.symlinks/plugins/one'
+            generated.unlink(); generated.symlink_to(package)
+            m.isolate_native_links(candidate, candidate, cache_root=cache, dependencies=deps, approved=approved)
+            m.audit_isolated_links(candidate, deps)
+            self.assertEqual(len(list(deps.iterdir())), 1)
+            generated.unlink(); generated.symlink_to(package)
+            with self.assertRaisesRegex(RuntimeError, 'escaped isolated native plan'):
+                m.audit_isolated_links(candidate, deps)
+            new = cache / 'new'; new.mkdir()
+            generated.unlink(); generated.symlink_to(new)
+            with self.assertRaisesRegex(RuntimeError, 'unreviewed cache dependency'):
+                m.isolate_native_links(candidate, candidate, cache_root=cache, dependencies=deps, approved=approved)
+
+    def test_cache_path_redirect_during_copy_stops_and_never_writes_external_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            p, original, cache, package = self.setup_plan(d)
+            candidate = p / 'candidate'; m.copy_checked(original, candidate)
+            outside = p / 'outside'; outside.mkdir(); (outside / 'native.m').write_text('do not touch')
+            real = m.copy_checked
+            def redirected(source, destination):
+                before = real(source, destination)
+                if Path(source) == package:
+                    package.rename(package.with_name('saved-package'))
+                    package.symlink_to(outside)
+                return before
+            with patch.object(m, 'copy_checked', side_effect=redirected):
+                with self.assertRaisesRegex(RuntimeError, 'cache path changed'):
+                    m.isolate_native_links(original, candidate, cache_root=cache, dependencies=p / 'deps')
+            self.assertEqual((outside / 'native.m').read_text(), 'do not touch')
+            self.assertEqual((original / 'Runner.entitlements').read_text(), 'keep native signing')
+
+    def test_nested_dependency_escape_stops_without_modifying_cache_or_native(self):
+        with tempfile.TemporaryDirectory() as d:
+            p, original, cache, package = self.setup_plan(d)
+            (package / 'outside').symlink_to(p / 'secret-outside')
+            before, cache_before = m.inventory(original), m.inventory(cache)
+            candidate = p / 'candidate'; m.copy_checked(original, candidate)
+            with self.assertRaisesRegex(RuntimeError, 'explicit reviewed copy plan'):
+                m.isolate_native_links(original, candidate, cache_root=cache, dependencies=p / 'deps')
+            self.assertEqual(m.inventory(original), before)
+            self.assertEqual(m.inventory(cache), cache_before)
+
 
 class InstallTests(unittest.TestCase):
     def make_checkpoint(self, d):
