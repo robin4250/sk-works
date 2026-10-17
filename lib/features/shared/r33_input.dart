@@ -1,7 +1,7 @@
 /// Optional initial text from the exact preview the user opened.
 /// This is not authorization; workspace permissions and save validation still apply.
-class R32Input {
-  const R32Input({required this.actorId, required this.companyId,
+class R33Input {
+  const R33Input({required this.actorId, required this.companyId,
     required this.subjectId, required this.sourceRevision, required this.text});
   final String actorId, companyId, subjectId, sourceRevision, text;
 

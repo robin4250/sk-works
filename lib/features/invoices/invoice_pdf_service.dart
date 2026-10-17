@@ -24,7 +24,7 @@ import 'invoice_preview_failure.dart';
 import 'invoice_native_pdf_view.dart';
 import 'invoice_stamp_surname_dialog.dart';
 import 'invoice_settings_repository.dart';
-import '../shared/r32_input.dart';
+import '../shared/r33_input.dart';
 
 class InvoicePdfService {
   const InvoicePdfService._();
@@ -1188,7 +1188,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                     builder: (_) => TradeDocumentAttachmentEditorPage(
                       subjectKind: 'invoice', subjectId: invoice.invoiceId,
                       sourceRevision: revision,
-                      initialInput: actor == null ? null : R32Input(
+                      initialInput: actor == null ? null : R33Input(
                         actorId: actor, companyId: invoice.companySealSnapshot.companyId ?? '',
                         subjectId: invoice.invoiceId, sourceRevision: revision,
                         text: data.settings?.invoiceSubject ?? '')),

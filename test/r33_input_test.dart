@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sk_works/features/shared/r32_input.dart';
+import 'package:sk_works/features/shared/r33_input.dart';
 
 void main() {
-  const input = R32Input(actorId: 'actor', companyId: 'company', subjectId: 'invoice',
+  const input = R33Input(actorId: 'actor', companyId: 'company', subjectId: 'invoice',
     sourceRevision: '2026-10-17T00:00:00Z', text: '鳶工・安全設備・足場組み立て解体作業');
   const workspace = <String, dynamic>{'company_id': 'company',
     'source_revision': '2026-10-17T09:00:00+09:00', 'attachment': null};
@@ -41,9 +41,9 @@ void main() {
   });
   test('legacy company identity and blank or oversized text require manual confirmation', () {
     for (final value in [
-      const R32Input(actorId: 'actor', companyId: '', subjectId: 'invoice', sourceRevision: '2026-10-17T00:00:00Z', text: 'subject'),
-      const R32Input(actorId: 'actor', companyId: 'company', subjectId: 'invoice', sourceRevision: '2026-10-17T00:00:00Z', text: ' '),
-      R32Input(actorId: 'actor', companyId: 'company', subjectId: 'invoice', sourceRevision: '2026-10-17T00:00:00Z', text: List.filled(241, '工').join()),
+      const R33Input(actorId: 'actor', companyId: '', subjectId: 'invoice', sourceRevision: '2026-10-17T00:00:00Z', text: 'subject'),
+      const R33Input(actorId: 'actor', companyId: 'company', subjectId: 'invoice', sourceRevision: '2026-10-17T00:00:00Z', text: ' '),
+      R33Input(actorId: 'actor', companyId: 'company', subjectId: 'invoice', sourceRevision: '2026-10-17T00:00:00Z', text: List.filled(241, '工').join()),
     ]) {
       expect(value.apply(payload: {}, workspace: workspace, actor: 'actor', subjectKind: 'invoice',
         subject: 'invoice', revision: '2026-10-17T00:00:00Z'), isEmpty);

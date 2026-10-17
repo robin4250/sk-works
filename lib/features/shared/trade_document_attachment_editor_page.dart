@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'trade_document_attachment_repository.dart';
 import 'r18_defaults.dart';
-import 'r32_input.dart';
+import 'r33_input.dart';
 
 /// One explicit monthly save; never writes or approves the source financial document.
 class TradeDocumentAttachmentEditorPage extends StatefulWidget {
   const TradeDocumentAttachmentEditorPage({super.key,required this.subjectKind,
     required this.subjectId,required this.sourceRevision,this.initialInput});
   final String subjectKind,subjectId,sourceRevision;
-  final R32Input? initialInput;
+  final R33Input? initialInput;
   @override State<TradeDocumentAttachmentEditorPage> createState()=>_EditorState();
 }
 class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
