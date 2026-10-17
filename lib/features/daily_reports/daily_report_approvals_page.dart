@@ -5,9 +5,9 @@ import '../notifications/notification_bell.dart';
 import 'daily_report_repository.dart';
 
 class DailyReportApprovalsPage extends StatefulWidget {
-  const DailyReportApprovalsPage({super.key, this.initialRequestId});
+  const DailyReportApprovalsPage({super.key, this.initialRequestId,\n    @visibleForTesting this.repositoryForTesting});
 
-  final String? initialRequestId;
+  final String? initialRequestId;\n  final DailyReportRepository? repositoryForTesting;
 
   @override
   State<DailyReportApprovalsPage> createState() =>
@@ -15,10 +15,10 @@ class DailyReportApprovalsPage extends StatefulWidget {
 }
 
 class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
-  final _repository = DailyReportRepository.maybeCreate();
+  late final _repository = widget.repositoryForTesting ?? DailyReportRepository.maybeCreate();
 
   List<Map<String, dynamic>> _items = const [];
-  bool _loading = true;
+  bool _loading = true;\n  bool _deciding = false;
   String? _error;
 
   @override
@@ -208,7 +208,7 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
                                       children: [
                                         Expanded(
                                           child: OutlinedButton.icon(
-                                            onPressed: () => _decide(
+                                            onPressed: _deciding ? null : () => _decide(
                                               item['id'].toString(),
                                               false,
                                             ),
