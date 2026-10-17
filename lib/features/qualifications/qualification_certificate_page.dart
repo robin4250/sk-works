@@ -57,6 +57,8 @@ class _QualificationCertificatePageState
       _workers = [];
       _qualifications = [];
       _canManage = false;
+      _extraPhotosAvailable = false;
+      _loading = false;
       _busyId = null;
       _error = null;
       _query = '';
