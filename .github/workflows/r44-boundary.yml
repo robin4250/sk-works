@@ -5,6 +5,7 @@ on:
       - 'lib/features/qualifications/qualification_certificate_page.dart'
       - 'lib/features/qualifications/qualification_certificate_repository.dart'
       - 'test/r44_boundary_test.dart'
+      - 'tool/r44_review.md'
       - '.github/workflows/r44-boundary.yml'
 permissions:
   contents: read
