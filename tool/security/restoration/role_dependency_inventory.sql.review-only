@@ -1,0 +1,77 @@
+-- REVIEW ONLY. Catalog SELECTs, no rows/passwords/function bodies/settings values.
+-- Output belongs in the operator's protected local capsule, not chat/Git logs.
+-- Run only under an independently established read-only connection/transaction.
+-- pg_depend cannot prove dependencies inside string-bodied dynamic SQL/functions.
+WITH RECURSIVE
+roots(classid,objid,objsubid) AS (
+ SELECT 'pg_class'::regclass::oid,c.oid,0 FROM pg_class c
+ JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE (n.nspname='public' AND c.relname IN (
+  'worker_personnel_profiles','worker_family_members','workers','companies',
+  'company_members','member_feature_permissions','worker_personnel_approvers',
+  'worker_personnel_change_requests','worker_personnel_change_approvals','app_notifications'))
+ OR (n.nspname='auth' AND c.relname IN ('users','identities','sessions'))
+ OR (n.nspname='private' AND c.relname IN ('master_admins','account_deletion_access_restrictions'))
+ UNION
+ SELECT 'pg_proc'::regclass::oid,p.oid,0 FROM pg_proc p
+ JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname IN ('public','private') AND p.proname IN (
+  'employee_personnel_rows','employee_personnel_view','personnel_view_allowed',
+  'can_edit_worker_personnel','worker_personnel_payload','apply_worker_personnel_payload',
+  'is_worker_personnel_approver','save_worker_personnel_profile',
+  'decide_worker_personnel_change','check_account_access','account_deletion_barrier_key')
+),
+graph(classid,objid,objsubid) AS (
+ SELECT * FROM roots
+ UNION
+ SELECT edge.classid,edge.objid,edge.objsubid FROM graph g
+ CROSS JOIN LATERAL (
+  SELECT d.refclassid classid,d.refobjid objid,d.refobjsubid objsubid FROM pg_depend d
+  WHERE d.classid=g.classid AND d.objid=g.objid AND (g.objsubid=0 OR g.objsubid=d.objsubid)
+  UNION
+  SELECT d.classid,d.objid,d.objsubid FROM pg_depend d
+  WHERE d.refclassid=g.classid AND d.refobjid=g.objid
+   AND d.classid IN ('pg_trigger'::regclass,'pg_policy'::regclass,
+    'pg_constraint'::regclass,'pg_attrdef'::regclass,'pg_rewrite'::regclass)
+ ) edge
+),
+inventory AS (
+ SELECT g.classid::regclass::text catalog,i.type,i.schema,i.name,i.identity,
+ g.classid,g.objid,g.objsubid
+ FROM graph g CROSS JOIN LATERAL pg_identify_object(g.classid,g.objid,g.objsubid) i
+),
+acls AS (
+ SELECT 'table' kind,n.nspname schema,c.relname name,c.relowner owner,c.relacl acl
+ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE EXISTS(SELECT 1 FROM graph g WHERE g.classid='pg_class'::regclass AND g.objid=c.oid)
+ UNION ALL
+ SELECT 'function',n.nspname,p.proname,p.proowner,p.proacl
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE EXISTS(SELECT 1 FROM graph g WHERE g.classid='pg_proc'::regclass AND g.objid=p.oid)
+ UNION ALL
+ SELECT 'type',n.nspname,t.typname,t.typowner,t.typacl
+ FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+ WHERE EXISTS(SELECT 1 FROM graph g WHERE g.classid='pg_type'::regclass AND g.objid=t.oid)
+ UNION ALL
+ SELECT 'schema',n.nspname,n.nspname,n.nspowner,n.nspacl FROM pg_namespace n
+ WHERE EXISTS(SELECT 1 FROM inventory i WHERE i.schema=n.nspname)
+),
+role_seeds(oid) AS (
+ SELECT owner FROM acls
+ UNION SELECT x.grantee FROM acls CROSS JOIN LATERAL aclexplode(acl) x WHERE x.grantee<>0
+ UNION SELECT x.grantor FROM acls CROSS JOIN LATERAL aclexplode(acl) x
+),
+role_closure(oid) AS (
+ SELECT oid FROM role_seeds
+ UNION SELECT m.roleid FROM pg_auth_members m JOIN role_closure r ON m.member=r.oid
+)
+SELECT jsonb_build_object(
+ 'scope','catalog dependency edges and selected role attributes; NOT complete restore proof',
+ 'string_body_dependency_review_required',true,
+ 'objects',(SELECT jsonb_agg(jsonb_build_object('catalog',catalog,'type',type,'schema',schema,'name',name,'identity',identity) ORDER BY catalog,identity) FROM inventory),
+ 'owner_acl',(SELECT jsonb_agg(jsonb_build_object('kind',kind,'schema',schema,'name',name,'owner',(SELECT rolname FROM pg_roles WHERE oid=owner),'acl',acl::text) ORDER BY kind,schema,name) FROM acls),
+ 'roles',(SELECT jsonb_agg(jsonb_build_object('name',r.rolname,'superuser',r.rolsuper,'inherit',r.rolinherit,'create_role',r.rolcreaterole,'create_db',r.rolcreatedb,'login',r.rolcanlogin,'replication',r.rolreplication,'connection_limit',r.rolconnlimit,'bypass_rls',r.rolbypassrls) ORDER BY r.rolname) FROM pg_roles r JOIN role_closure c ON c.oid=r.oid),
+ 'memberships',(SELECT jsonb_agg(jsonb_build_object('role',rr.rolname,'member',mr.rolname,'grantor',gr.rolname,'admin_option',m.admin_option,'inherit_option',m.inherit_option,'set_option',m.set_option) ORDER BY rr.rolname,mr.rolname) FROM pg_auth_members m JOIN role_closure a ON a.oid=m.member JOIN role_closure b ON b.oid=m.roleid JOIN pg_roles rr ON rr.oid=m.roleid JOIN pg_roles mr ON mr.oid=m.member JOIN pg_roles gr ON gr.oid=m.grantor),
+ 'excluded','passwords, role settings values, login credentials, business/Auth rows, function bodies, provider values',
+ 'not_verified','dynamic/string-body dependencies, actual restore, outbound isolation, administrator/provider login'
+) AS protected_catalog_capsule;
