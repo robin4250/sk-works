@@ -1,0 +1,24 @@
+name: Archived capture SDK HTTP negative responses
+on:
+  push:
+    branches: [test/archived-capture-http-negative-20261017]
+permissions:
+  contents: read
+jobs:
+  negative-archive-response:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze test/archived_attendance_capture_http_test.dart
+      - run: flutter test test/archived_attendance_capture_http_test.dart --reporter expanded
+      - run: git diff --exit-code
