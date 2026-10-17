@@ -64,7 +64,7 @@ void main() {
     final b = indicator.onRefresh();
     await tester.pump();
     expect(rows.reads, 2);
-    final button = tester.widget<IconButton>(find.byTooltip('再読み込み'));
+    final button = tester.widget<IconButton>(find.byWidgetPredicate((w) => w is IconButton && w.tooltip == '再読み込み'));
     expect(button.onPressed, isNull);
     rows.next!.complete([rows.item]);
     await Future.wait([a,b]);
@@ -78,7 +78,7 @@ void main() {
     await _show(tester, rows);
     await tester.tap(find.text('取引会社A'));
     await tester.pump();
-    expect(tester.widget<IconButton>(find.byTooltip('再読み込み')).onPressed, isNull);
+    expect(tester.widget<IconButton>(find.byWidgetPredicate((w) => w is IconButton && w.tooltip == '再読み込み')).onPressed, isNull);
     await tester.widget<RefreshIndicator>(find.byType(RefreshIndicator)).onRefresh();
     expect(rows.reads, 1);
     rows.opened!.complete(rows.item);
