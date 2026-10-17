@@ -1,0 +1,52 @@
+-- REVIEW ONLY: depends on the R19 helpers. No automatic migrations/deployment.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='30s';
+create function private.r20_linked_notice(k text,i uuid) returns boolean
+language sql stable security definer set search_path='' as $$
+select case k when 'invoice_approval' then
+exists(select 1 from private.line_invoice_submissions where invoice_id=i)
+or exists(select 1 from private.line_historical_invoice_links where invoice_id=i)
+when 'attendance_correction_request' then
+exists(select 1 from private.line_attendance_submissions where request_id=i)
+else false end$$;
+revoke all on function private.r20_linked_notice(text,uuid) from public,anon,authenticated;
+do $patch$
+declare target record; f record; body text; anchor integer; patched text;
+begin
+  if to_regprocedure('private.r19_invoice_allowed(uuid)') is null then
+    raise exception 'R19 dependency unavailable' using errcode='55000';
+  end if;
+  for target in select * from (values
+    ('public.invoice_approval_history(uuid)','0781e1902a1eb8d6e5b36f644091a9eb',
+     $g$if not private.r19_invoice_allowed(p_invoice_id) then raise exception 'protected artifact unavailable' using errcode='42501'; end if;$g$),
+    ('public.invoice_approval_status_rows(uuid)','1e2db926b510083956617e41ff4e9b52',
+     $g$if not private.r19_invoice_allowed(p_invoice_id) then raise exception 'protected artifact unavailable' using errcode='42501'; end if;$g$),
+    ('public.invoice_approval_status_rows_v2(uuid)','b28a4dff38c401d5374e2930d9028540',
+     $g$if not private.r19_invoice_allowed(p_invoice_id) then raise exception 'protected artifact unavailable' using errcode='42501'; end if;$g$),
+    ('private.trade_document_source(text,uuid,text)','3c5a2d13cb243f8c9dc7f7ea82e5b428',
+     $g$if p_kind='invoice' and not private.r19_invoice_allowed(p_subject) then raise exception 'protected artifact unavailable' using errcode='42501'; end if;$g$),
+    ('private.enqueue_notification(uuid,uuid,text,text,text,text,uuid)','260ef8dc60ec1917cc0c8dc85ea52872',
+     $g$if private.r20_linked_notice(p_action_key,p_action_id) and not exists(select 1 from private.master_admins where user_id=p_recipient_user_id and enabled) then return null; end if;$g$)
+  ) t(signature,expected_hash,guard_sql) loop
+    select p.oid,p.prosrc,p.prosecdef,p.proowner,p.proacl,p.proconfig,
+      pg_get_functiondef(p.oid) definition into f from pg_proc p
+      where p.oid=to_regprocedure(target.signature);
+    if not found or md5(f.prosrc)<>target.expected_hash or not f.prosecdef
+      or pg_get_userbyid(f.proowner)<>'postgres' then
+      raise exception 'Target definition/owner drift; review required' using errcode='55000';
+    end if;
+    anchor:=strpos(f.prosrc,E'\nbegin\n');
+    if anchor=0 then raise exception 'Target body anchor drift' using errcode='55000'; end if;
+    body:=substr(f.prosrc,1,anchor+6)||E'\n '||target.guard_sql||substr(f.prosrc,anchor+7);
+    if strpos(f.definition,f.prosrc)=0 then raise exception 'Target definition layout drift' using errcode='55000';end if;
+    patched:=replace(f.definition,f.prosrc,body);
+    execute patched;
+    if not exists(select 1 from pg_proc p where p.oid=f.oid and p.proowner=f.proowner
+      and p.proacl is not distinct from f.proacl and p.proconfig is not distinct from f.proconfig
+      and p.prosecdef=f.prosecdef) then
+      raise exception 'Target metadata changed' using errcode='55000';
+    end if;
+  end loop;
+end $patch$;
+commit;
