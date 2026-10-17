@@ -14,6 +14,7 @@ const actorA = '20000000-0000-0000-0000-000000000001';
 const actorB = '20000000-0000-0000-0000-000000000002';
 Completer<bool>? pending;
 Completer<bool>? nativePending;
+bool configured = true;
 final requests = <http.Request>[];
 String session(String actor) {
   String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value)));
@@ -28,13 +29,13 @@ Future<void> settle(WidgetTester tester) async {
   }
   await tester.pumpAndSettle();
 }
-Future<void> open(WidgetTester tester) async {
+Future<void> open(WidgetTester tester, {bool setup = false}) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   await tester.runAsync(() => Supabase.instance.client.auth.setInitialSession(session(actorA)));
   await tester.pumpWidget(const MaterialApp(home: SecondaryProtectedPage(
     title:'synthetic protected',child:Text('private payload'))));
   await settle(tester);
-  expect(find.text('第2認証が必要です'),findsOneWidget);
+  expect(find.text(setup ? '第2パスワードを設定' : '第2認証が必要です'),findsOneWidget);
 }
 Future<void> begin(WidgetTester tester) async {
   pending=Completer<bool>();
@@ -56,7 +57,8 @@ void main() {
       debug:false,authOptions:const FlutterAuthClientOptions(autoRefreshToken:false,detectSessionInUri:false),
       httpClient:MockClient((request) async {
         expect(request.url.host,'r38-fixture.invalid');requests.add(request);
-        if(request.url.path.endsWith('/secondary_password_configured')) return http.Response('true',200,headers:{'content-type':'application/json'});
+        if(request.url.path.endsWith('/secondary_password_configured')) return http.Response(jsonEncode(configured),200,headers:{'content-type':'application/json'});
+        if(request.url.path.endsWith('/set_secondary_password')) return http.Response('null',200,headers:{'content-type':'application/json'});
         if(request.url.path.endsWith('/verify_secondary_password')) {
           expect(jsonDecode(request.body),{'p_password':'synthetic-secondary'});
           return http.Response(jsonEncode(await pending!.future),200,headers:{'content-type':'application/json'});
@@ -67,7 +69,7 @@ void main() {
   });
   tearDownAll(() async {await Supabase.instance.dispose();});
   setUp(() {
-    requests.clear();pending=null;nativePending=null;
+    requests.clear();pending=null;nativePending=null;configured=true;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('plugins.flutter.io/local_auth'),(call) async {
         if(call.method=='isDeviceSupported'||call.method=='deviceSupportsBiometrics')return true;
@@ -130,6 +132,20 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     nativePending!.complete(true);await settle(tester);
+    expect(find.text('private payload'),findsNothing);
+  });
+  testWidgets('setup native callback after background never submits cleared password',(tester) async {
+    configured=false;await open(tester,setup:true);nativePending=Completer<bool>();
+    await tester.enterText(find.byType(TextField).at(0),'synthetic-new-secondary');
+    await tester.enterText(find.byType(TextField).at(1),'synthetic-new-secondary');
+    await tester.tap(find.byType(SwitchListTile));await tester.pump();
+    await tester.ensureVisible(find.text('設定して開く'));await tester.tap(find.text('設定して開く'));await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    nativePending!.complete(true);await settle(tester);
+    expect(requests.where((r)=>r.url.path.endsWith('/set_secondary_password')),isEmpty);
     expect(find.text('private payload'),findsNothing);
   });
 }
