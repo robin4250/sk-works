@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:local_auth/local_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PanelSevenSnapshot {
@@ -11,6 +13,8 @@ class PanelSevenSnapshot {
     required this.phoneConfirmed,
     required this.sessionMethods,
     required this.secondaryConfigured,
+    this.biometricEnabled,
+    this.biometricAvailable,
     required String accessToken,
   }) : _accessToken = accessToken;
   final String actorId;
@@ -21,13 +25,16 @@ class PanelSevenSnapshot {
   final bool phoneConfirmed;
   final List<String> sessionMethods;
   final bool? secondaryConfigured;
+  final bool? biometricEnabled;
+  final bool? biometricAvailable;
   final String _accessToken;
 }
 
 /// Reads only the currently authenticated user's Auth record and secondary
 /// configuration boolean. Never creates, links, confirms or resets identities.
 class PanelSevenRepository {
-  PanelSevenRepository(this.client);
+  PanelSevenRepository(this.client, {this.biometricAvailability});
+  final Future<bool> Function()? biometricAvailability;
   final SupabaseClient client;
 
   Stream<AuthState> get changes => client.auth.onAuthStateChange;
@@ -63,10 +70,29 @@ class PanelSevenRepository {
       final raw = await client.rpc('secondary_password_configured')
           .setHeader('Authorization', 'Bearer $token')
           .timeout(const Duration(seconds: 10));
-      if (raw is bool) secondary = raw;
+      if (raw is bool) {
+        secondary = raw;
+      }
     } catch (_) {
       // Unknown stays unknown. Do not expose upstream errors or assume false.
     }
+    if (!unchanged()) throw StateError('account_session_changed');
+    bool? biometricEnabled;
+    bool? biometricAvailable;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      biometricEnabled = prefs.getBool('sko_secondary_biometric_enabled_$actor') ?? false;
+    } catch (_) { /* Unknown stays unknown. */ }
+    try {
+      final availability = biometricAvailability;
+      if (availability != null) {
+        biometricAvailable = await availability();
+      } else {
+        final local = LocalAuthentication();
+        biometricAvailable = await local.isDeviceSupported() &&
+            await local.canCheckBiometrics;
+      }
+    } catch (_) { /* No hardware verification claim on plugin failure. */ }
     if (!unchanged()) throw StateError('account_session_changed');
     final providers = (user.identities ?? <UserIdentity>[])
         .map((identity) => identity.provider).toSet().toList()..sort();
@@ -80,7 +106,9 @@ class PanelSevenRepository {
           if (value is Map && value['method'] is String) {
             final method = value['method'] as String;
             if (const {'password', 'oauth', 'otp', 'totp', 'sso/saml'}
-                .contains(method)) methods.add(method);
+                .contains(method)) {
+              methods.add(method);
+            }
           }
         }
       }
@@ -96,6 +124,8 @@ class PanelSevenRepository {
       phoneConfirmed: json['phone_confirmed_at'] != null,
       sessionMethods: List.unmodifiable(methods.toList()..sort()),
       secondaryConfigured: secondary,
+      biometricEnabled: biometricEnabled,
+      biometricAvailable: biometricAvailable,
       accessToken: token,
     );
   }

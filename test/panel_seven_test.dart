@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/auth/panel_seven_page.dart';
@@ -36,6 +37,8 @@ PanelSevenSnapshot snapshot() => const PanelSevenSnapshot(
 class FakeRepository extends PanelSevenRepository {
   FakeRepository() : super(SupabaseClient('http://127.0.0.1:1', 'synthetic'));
   bool current = true;
+  int loads = 0;
+  Future<PanelSevenSnapshot>? nextLoad;
   final events = StreamController<AuthState>.broadcast();
   @override
   Stream<AuthState> get changes => events.stream;
@@ -43,12 +46,20 @@ class FakeRepository extends PanelSevenRepository {
   bool isCurrent(PanelSevenSnapshot snapshot) => current;
   @override
   Future<PanelSevenSnapshot> load() async {
+    loads++;
+    final pending = nextLoad;
+    nextLoad = null;
+    if (pending != null) return pending;
     if (!current) throw StateError('changed');
     return snapshot();
   }
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({
+    'sko_secondary_biometric_enabled_a': true,
+    'sko_secondary_biometric_enabled_b': false,
+  }));
   test('reads original JWT and own providers without mutation or signup', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
@@ -67,9 +78,12 @@ void main() {
     await client.auth.setInitialSession(session('a'));
     final token = client.auth.currentSession!.accessToken;
     final before = client.auth.currentSession;
-    final repository = PanelSevenRepository(client);
+    final repository = PanelSevenRepository(client,
+        biometricAvailability: () async => true);
     final value = await repository.load();
     expect(value.providers, ['google']);
+    expect(value.biometricEnabled, isTrue);
+    expect(value.biometricAvailable, isTrue);
     expect(value.phone, isNull);
     expect(value.secondaryConfigured, isTrue);
     expect(value.sessionMethods, ['oauth']);
@@ -171,4 +185,28 @@ void main() {
     expect(find.text('アカウント設定について'), findsOneWidget);
     expect(find.textContaining('端末内の本人確認'), findsWidgets);
   });
+  testWidgets('background events and late pending reads cannot restore personal data',
+      (tester) async {
+    final repository = FakeRepository();
+    addTearDown(repository.events.close);
+    addTearDown(repository.client.dispose);
+    final pending = Completer<PanelSevenSnapshot>();
+    repository.nextLoad = pending.future;
+    await tester.pumpWidget(MaterialApp(home: PanelSevenPage(
+        repository: repository)));
+    expect(repository.loads, 1);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    repository.events.add(const AuthState(AuthChangeEvent.tokenRefreshed, null));
+    pending.complete(snapshot());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(repository.loads, 1);
+    expect(find.text('Google'), findsNothing);
+    expect(find.textContaining('owner@example.test'), findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(repository.loads, 2);
+    expect(find.text('Google'), findsOneWidget);
+  });
+
 }

@@ -37,3 +37,9 @@ The page has its own ? help; shared manual_content is not modified.
 Validation uses synthetic loopback SDK HTTP tests and widget tests. Real
 provider linking, physical device biometric checks and phone enrollment are not
 included or claimed complete.
+
+Existing per-UID biometric preference and device capability are read-only status
+indicators, not a new enrollment or server factor. Missing plugin/preference
+reads remain unknown. No local_auth authenticate call is made. Background
+(including inactive) clears the snapshot, suppresses auth-event reloads and
+rejects in-flight reads until foreground resume.

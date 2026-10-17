@@ -18,6 +18,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
   bool _loading = true;
   bool _failed = false;
   int _generation = 0;
+  bool _foreground = true;
 
   @override
   void initState() {
@@ -26,7 +27,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     _subscription = widget.repository.changes.listen((_) {
       final snapshot = _snapshot;
       // Never use the event's session: a delayed logout event may carry B.
-      if (snapshot == null || !widget.repository.isCurrent(snapshot)) {
+      if (_foreground && (snapshot == null || !widget.repository.isCurrent(snapshot))) {
         _load();
       }
     });
@@ -34,6 +35,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
   }
 
   Future<void> _load() async {
+    if (!_foreground || !mounted) return;
     final generation = ++_generation;
     setState(() {
       _snapshot = null;
@@ -42,7 +44,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     });
     try {
       final snapshot = await widget.repository.load();
-      if (!mounted || generation != _generation) return;
+      if (!mounted || !_foreground || generation != _generation) return;
       if (!widget.repository.isCurrent(snapshot)) {
         throw StateError('session_changed');
       }
@@ -51,19 +53,22 @@ class _PanelSevenPageState extends State<PanelSevenPage>
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || generation != _generation) return;
+      if (!mounted || !_foreground || generation != _generation) return;
       setState(() { _failed = true; _loading = false; });
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
+      _foreground = false;
       _generation++;
       setState(() { _snapshot = null; _loading = true; });
     } else if (state == AppLifecycleState.resumed) {
+      _foreground = true;
       _load();
     }
   }
@@ -144,15 +149,18 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                       keyName: 'account-secondary-password'),
                   _item('メールアドレス',
                       snapshot.email?.isNotEmpty == true
-                          ? '${snapshot.email}\n${snapshot.emailConfirmed ? "Authサーバーで確認済み" : "未確認"}'
+                          ? '${snapshot.email}\n${snapshot.emailConfirmed ? "登録確認済み" : "未確認"}'
                           : '未登録'),
                   _item('電話番号',
                       snapshot.phone?.isNotEmpty == true
-                          ? '${snapshot.phone}\n${snapshot.phoneConfirmed ? "Authサーバーで確認済み（今回の番号所有確認ではありません）" : "未確認"}'
+                          ? '${snapshot.phone}\n${snapshot.phoneConfirmed ? "登録確認済み（今回の番号所有確認ではありません）" : "未確認"}'
                           : '未登録',
                       keyName: 'account-phone'),
-                  _item('Face ID / Touch ID', '端末内の本人確認です。'
-                      'ログイン方法の連携・サーバーの二要素認証とは別です。'),
+                  _item('Face ID / Touch ID',
+                      'このアカウントの端末内設定：${snapshot.biometricEnabled == null ? "確認できません" : snapshot.biometricEnabled! ? "有効" : "未設定"}\n'
+                      'この端末での利用：${snapshot.biometricAvailable == null ? "確認できません" : snapshot.biometricAvailable! ? "利用可能" : "利用できません"}\n'
+                      '端末内の本人確認です。ログイン方法の連携や番号所有確認とは別です。',
+                      keyName: 'panel-seven-biometric'),
                   const SizedBox(height: 12),
                   const Text('ログイン方法の追加', style: TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold)),
