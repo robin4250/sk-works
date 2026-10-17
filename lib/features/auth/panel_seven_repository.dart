@@ -99,8 +99,14 @@ class PanelSevenRepository implements PanelSevenSource {
         biometricAvailable = await availability().timeout(const Duration(seconds: 5));
       } else {
         final local = LocalAuthentication();
-        biometricAvailable = await local.isDeviceSupported().timeout(const Duration(seconds: 5)) &&
+        // Hardware support alone does not establish enrolled Face ID / Touch ID.
+        // Read capability and enrollment only; never invoke authentication here.
+        final supported = await local.isDeviceSupported()
+            .timeout(const Duration(seconds: 5)) &&
             await local.canCheckBiometrics.timeout(const Duration(seconds: 5));
+        biometricAvailable = supported &&
+            (await local.getAvailableBiometrics()
+                .timeout(const Duration(seconds: 5))).isNotEmpty;
       }
     } catch (_) { /* No hardware verification claim on plugin failure. */ }
     if (!unchanged()) throw StateError('account_session_changed');
@@ -140,3 +146,4 @@ class PanelSevenRepository implements PanelSevenSource {
     );
   }
 }
+

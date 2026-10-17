@@ -88,7 +88,9 @@ class _PanelSevenPageState extends State<PanelSevenPage>
         '登録済みのログイン方法と本人の認証設定を確認します。'
         '連携済みの方法と、今回のログインに使った方法は別です。'
         '第一パスワードの有無は安全に確認できるAPIがないため推測しません。'
-        '第二パスワードは重要情報用です。Face ID / Touch IDは端末内の本人確認で、'
+        '第二パスワードは重要情報用で、ログイン用とは別です。'
+        '第二パスワードの設定済み表示は、マスター管理の権限や専用パスワードの設定状況を示しません。'
+        'Face ID / Touch IDは端末内の本人確認で、'
         'Apple / Googleとの連携や電話番号の所有確認とは異なります。'
         'この画面からアカウント・会社・権限・パスワードは変更しません。'
         'マスター専用設定は従来のマスター本人確認の中で管理します。')),
@@ -140,10 +142,10 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                               _ => '組織アカウント認証',
                             }).join('・'),
                     keyName: 'account-session-methods'),
-                  _item('第一パスワード', '設定状況は確認できません。'
+                  _item('第一パスワード（ログイン用）', '設定状況は確認できません。'
                       'Google / Appleとの連携だけでは設定済みと判断しません。',
                       keyName: 'account-primary-password'),
-                  _item('第二パスワード',
+                  _item('第二パスワード（重要情報用）',
                       snapshot.secondaryConfigured == null ? '確認できません'
                           : snapshot.secondaryConfigured! ? '設定済み' : '未設定',
                       keyName: 'account-secondary-password'),
@@ -157,8 +159,8 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                           : '未登録',
                       keyName: 'account-phone'),
                   _item('Face ID / Touch ID',
-                      'このアカウントの端末内設定：${snapshot.biometricEnabled == null ? "確認できません" : snapshot.biometricEnabled! ? "有効" : "未設定"}\n'
-                      'この端末での利用：${snapshot.biometricAvailable == null ? "確認できません" : snapshot.biometricAvailable! ? "利用可能" : "利用できません"}\n'
+                      '重要情報用の端末内設定：${snapshot.biometricEnabled == null ? "確認できません" : snapshot.biometricEnabled! ? "有効" : "未設定"}\n'
+                      'この端末での利用：${snapshot.biometricAvailable == null ? "確認できません" : snapshot.biometricAvailable! ? "生体認証の登録あり（本人確認は未実施）" : "生体認証の未登録または利用不可"}\n'
                       '端末内の本人確認です。ログイン方法の連携や番号所有確認とは別です。',
                       keyName: 'panel-seven-biometric'),
                   const SizedBox(height: 12),
@@ -178,3 +180,4 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     );
   }
 }
+
