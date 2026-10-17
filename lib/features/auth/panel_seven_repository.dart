@@ -32,13 +32,21 @@ class PanelSevenSnapshot {
 
 /// Reads only the currently authenticated user's Auth record and secondary
 /// configuration boolean. Never creates, links, confirms or resets identities.
-class PanelSevenRepository {
+abstract interface class PanelSevenSource {
+  Stream<AuthState> get changes;
+  bool isCurrent(PanelSevenSnapshot snapshot);
+  Future<PanelSevenSnapshot> load();
+}
+
+class PanelSevenRepository implements PanelSevenSource {
   PanelSevenRepository(this.client, {this.biometricAvailability});
   final Future<bool> Function()? biometricAvailability;
   final SupabaseClient client;
 
+  @override
   Stream<AuthState> get changes => client.auth.onAuthStateChange;
 
+  @override
   bool isCurrent(PanelSevenSnapshot snapshot) {
     final session = client.auth.currentSession;
     return session?.user.id == snapshot.actorId &&
@@ -46,6 +54,7 @@ class PanelSevenRepository {
         session?.isExpired == false;
   }
 
+  @override
   Future<PanelSevenSnapshot> load() async {
     final session = client.auth.currentSession;
     if (session == null || session.isExpired) {

@@ -44,7 +44,8 @@ void main() {
           ? jsonEncode(user('a')) : 'true');
       await request.response.close();
     });
-    final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic');
+    final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic',
+        authOptions: const AuthClientOptions(autoRefreshToken: false));
     addTearDown(client.dispose);
     await client.auth.setInitialSession(session('a'));
     final token = client.auth.currentSession!.accessToken;
@@ -79,7 +80,8 @@ void main() {
       request.response.write(jsonEncode(user('a')));
       await request.response.close();
     });
-    final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic');
+    final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic',
+        authOptions: const AuthClientOptions(autoRefreshToken: false));
     addTearDown(client.dispose);
     await client.auth.setInitialSession(session('a'));
     final pending = PanelSevenRepository(client).load();
@@ -108,7 +110,8 @@ void main() {
       }
       await request.response.close();
     });
-    final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic');
+    final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic',
+        authOptions: const AuthClientOptions(autoRefreshToken: false));
     addTearDown(client.dispose);
     await client.auth.setInitialSession(session('a'));
     expect((await PanelSevenRepository(client).load()).secondaryConfigured,

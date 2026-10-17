@@ -12,8 +12,7 @@ PanelSevenSnapshot snapshot() => const PanelSevenSnapshot(
   accessToken: 'synthetic',
 );
 
-class FakeRepository extends PanelSevenRepository {
-  FakeRepository() : super(SupabaseClient('http://127.0.0.1:1', 'synthetic'));
+class FakeRepository implements PanelSevenSource {
   bool current = true;
   int loads = 0;
   Future<PanelSevenSnapshot>? nextLoad;
@@ -37,8 +36,10 @@ void main() {
   testWidgets('shows linked Google separately from actual session method and passwords',
       (tester) async {
     final repository = FakeRepository();
-    addTearDown(repository.events.close);
-    addTearDown(repository.client.dispose);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.events.close();
+    });
     await tester.pumpWidget(MaterialApp(home: PanelSevenPage(
         repository: repository)));
     await tester.pumpAndSettle();
@@ -53,8 +54,10 @@ void main() {
   testWidgets('actor change removes old personal details and shows retry',
       (tester) async {
     final repository = FakeRepository();
-    addTearDown(repository.events.close);
-    addTearDown(repository.client.dispose);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.events.close();
+    });
     await tester.pumpWidget(MaterialApp(home: PanelSevenPage(
         repository: repository)));
     await tester.pumpAndSettle();
@@ -68,8 +71,10 @@ void main() {
   testWidgets('help explains local biometrics without claiming server MFA',
       (tester) async {
     final repository = FakeRepository();
-    addTearDown(repository.events.close);
-    addTearDown(repository.client.dispose);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.events.close();
+    });
     await tester.pumpWidget(MaterialApp(home: PanelSevenPage(
         repository: repository)));
     await tester.pumpAndSettle();
@@ -81,8 +86,10 @@ void main() {
   testWidgets('background events and late pending reads cannot restore personal data',
       (tester) async {
     final repository = FakeRepository();
-    addTearDown(repository.events.close);
-    addTearDown(repository.client.dispose);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.events.close();
+    });
     final pending = Completer<PanelSevenSnapshot>();
     repository.nextLoad = pending.future;
     await tester.pumpWidget(MaterialApp(home: PanelSevenPage(

@@ -5,7 +5,7 @@ import 'panel_seven_repository.dart';
 
 class PanelSevenPage extends StatefulWidget {
   const PanelSevenPage({super.key, required this.repository});
-  final PanelSevenRepository repository;
+  final PanelSevenSource repository;
 
   @override
   State<PanelSevenPage> createState() => _PanelSevenPageState();
