@@ -197,8 +197,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   String? _tutorialCompanyId;
   String? _tutorialUserId;
   int _selectedIndex = 0;
-  bool _chromeVisible = true;
-  VoidCallback? _chromeListener;
   String _payrollAdjustmentLabel = '給与調整';
   RequiredDocumentAttention _requiredDocumentAttention =
       const RequiredDocumentAttention(
@@ -302,21 +300,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _lineRelease?.addListener(_lineReleaseChanged);
     _loadHomeData();
-    _chromeListener = () {
-      if (!mounted) return;
-      final next = SkoScrollChromeController.visible.value;
-      if (_chromeVisible != next) setState(() => _chromeVisible = next);
-    };
-    SkoScrollChromeController.visible.addListener(_chromeListener!);
     GpsAutoAttendanceService.instance.startIfConfigured();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (_chromeListener != null) {
-      SkoScrollChromeController.visible.removeListener(_chromeListener!);
-    }
     _lineRelease?.removeListener(_lineReleaseChanged);
     _weatherViewState.dispose();
     GpsAutoAttendanceService.instance.stop();
@@ -1768,7 +1757,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return items;
   }
 
-  Widget _homeDashboard() {
+  Widget _homeDashboard() => Builder(builder: _buildHomeDashboard);
+
+  Widget _buildHomeDashboard(BuildContext context) {
     FloatingHelpController.setContext(
       featureKey: 'home',
       currentRole: ManualContent.fromMembershipRole(_identity.role),
@@ -1794,11 +1785,60 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               fit: BoxFit.cover,
             ),
           ),
-        Scaffold(
+        ValueListenableBuilder<bool>(
+          valueListenable: SkoScrollChromeController.visible,
+          child: FriendlyHomeContent(
+          identity: _identity,
+          requiredDocumentAttention: _requiredDocumentAttention,
+          weatherCard: _weatherHomeCard(),
+          trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope),
+          showTrafficGuidance: !_hiddenHomeActionKeys.contains('traffic_guidance'),
+          showWeatherForecast: !_hiddenHomeActionKeys.contains('weather_forecast'),
+          tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null
+              ? TutorialHomeCard(userId: _tutorialUserId!, companyId: _tutorialCompanyId!,
+                  availableActionKeys: _availableActionKeys,
+                  onOpenAction: _openHomeAction, refreshToken: _tutorialRefreshToken)
+              : null,
+          moduleEnabled: _moduleEnabled,
+          gridColumns: _homeGridColumns,
+          actionOrder: _homeActionOrder,
+          visibleHomeKeys: {
+            for (final item in _menuItems)
+              if (!_homeActionHidden(item.key)) item.key,
+          },
+          shortcuts: [
+            for (final item in _homeLayoutItems)
+              HomeShortcut(
+                item.key,
+                item.label,
+                item.icon,
+                twoLineLabel: _homeLabelOverrides[item.key],
+                access: item.access,
+              ),
+          ],
+          showAttendanceReport:
+              !_hiddenHomeActionKeys.contains('attendance_verify'),
+          showTodayAttendance:
+              !_hiddenHomeActionKeys.contains('attendance_today'),
+          attendanceStatus: _homeAttendanceStatus,
+          attendanceUpdateCount: _attendanceBadgeCount,
+          attendanceUpdateUnavailable: _attendanceBadgeUnavailable,
+          optionalClockInAllowed: _homeOptionalClockInAllowed,
+          routeActionState: _homeRouteActionState,
+          hasPendingRouteRecord: _homePendingRouteSourceIds.isNotEmpty,
+          hasPendingRouteReports: _homeHasPendingRouteReports,
+          appearance: bodyAppearance,
+          // Keep scroll geometry stable when the overlay header hides or returns.
+          contentTopInset: MediaQuery.paddingOf(context).top + 72,
+          onOpen: _openHomeAction,
+          onRefresh: _loadHomeData,
+          onReorderAction: _reorderHomeActionByKey,
+        ),
+          builder: (context, chromeVisible, child) => Scaffold(
           extendBodyBehindAppBar: true,
           backgroundColor: Colors.transparent,
           appBar: PreferredSize(
-            preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0),
+            preferredSize: Size.fromHeight(chromeVisible ? 64 : 0),
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -1812,7 +1852,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                   ),
                 ),
                 AppBar(
-                  toolbarHeight: _chromeVisible ? 64 : 0,
+                  toolbarHeight: chromeVisible ? 64 : 0,
                   backgroundColor: Colors.transparent,
                   forceMaterialTransparency: true,
                   surfaceTintColor: Colors.transparent,
@@ -1861,53 +1901,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               ],
             ),
           ),
-          body: FriendlyHomeContent(
-          identity: _identity,
-          requiredDocumentAttention: _requiredDocumentAttention,
-          weatherCard: _weatherHomeCard(),
-          trafficCard: TrafficHomeCard(key: const ValueKey('home-traffic-card'), availability: _homeTrafficAvailability, shortcutScope: _trafficShortcutScope),
-          showTrafficGuidance: !_hiddenHomeActionKeys.contains('traffic_guidance'),
-          showWeatherForecast: !_hiddenHomeActionKeys.contains('weather_forecast'),
-          tutorialCard: _tutorialUserId != null && _tutorialCompanyId != null
-              ? TutorialHomeCard(userId: _tutorialUserId!, companyId: _tutorialCompanyId!,
-                  availableActionKeys: _availableActionKeys,
-                  onOpenAction: _openHomeAction, refreshToken: _tutorialRefreshToken)
-              : null,
-          moduleEnabled: _moduleEnabled,
-          gridColumns: _homeGridColumns,
-          actionOrder: _homeActionOrder,
-          visibleHomeKeys: {
-            for (final item in _menuItems)
-              if (!_homeActionHidden(item.key)) item.key,
-          },
-          shortcuts: [
-            for (final item in _homeLayoutItems)
-              HomeShortcut(
-                item.key,
-                item.label,
-                item.icon,
-                twoLineLabel: _homeLabelOverrides[item.key],
-                access: item.access,
-              ),
-          ],
-          showAttendanceReport:
-              !_hiddenHomeActionKeys.contains('attendance_verify'),
-          showTodayAttendance:
-              !_hiddenHomeActionKeys.contains('attendance_today'),
-          attendanceStatus: _homeAttendanceStatus,
-          attendanceUpdateCount: _attendanceBadgeCount,
-          attendanceUpdateUnavailable: _attendanceBadgeUnavailable,
-          optionalClockInAllowed: _homeOptionalClockInAllowed,
-          routeActionState: _homeRouteActionState,
-          hasPendingRouteRecord: _homePendingRouteSourceIds.isNotEmpty,
-          hasPendingRouteReports: _homeHasPendingRouteReports,
-          appearance: bodyAppearance,
-          // Keep scroll geometry stable when the overlay header hides or returns.
-          contentTopInset: MediaQuery.paddingOf(context).top + 72,
-          onOpen: _openHomeAction,
-          onRefresh: _loadHomeData,
-          onReorderAction: _reorderHomeActionByKey,
-        ),
+          body: child,
+
+      ),
       ),
       ],
     );
@@ -1981,24 +1977,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Widget _menuPage() {
     final items = _menuItems;
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: Size.fromHeight(_chromeVisible ? kToolbarHeight : 0),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          height: _chromeVisible ? kToolbarHeight : 0,
-          child: _chromeVisible
-              ? AppBar(
-                  title: Text(
-                    SkoLanguageController.tr('メニュー'),
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  actions: const [SkoNotificationBell()],
-                )
-              : const SizedBox.shrink(),
-        ),
-      ),
-      body: SafeArea(
+    return ValueListenableBuilder<bool>(
+      valueListenable: SkoScrollChromeController.visible,
+      child: SafeArea(
         child: ReorderableListView.builder(
           padding: const EdgeInsets.all(12),
           buildDefaultDragHandles: true,
@@ -2123,6 +2104,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           },
         ),
       ),
+      builder: (context, chromeVisible, child) => Scaffold(
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(chromeVisible ? kToolbarHeight : 0),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: chromeVisible ? kToolbarHeight : 0,
+          child: chromeVisible
+              ? AppBar(
+                  title: Text(
+                    SkoLanguageController.tr('メニュー'),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  actions: const [SkoNotificationBell()],
+                )
+              : const SizedBox.shrink(),
+        ),
+      ),
+      body: child,
+
+      ),
     );
   }
 
@@ -2154,10 +2155,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ),
         ],
       ),
-      bottomNavigationBar: AnimatedContainer(
+      bottomNavigationBar: ValueListenableBuilder<bool>(
+        valueListenable: SkoScrollChromeController.visible,
+        builder: (context, chromeVisible, _) => AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        height: _chromeVisible ? 88 : 0,
-        child: _chromeVisible
+        height: chromeVisible ? 88 : 0,
+        child: chromeVisible
             ? Builder(
                 builder: (context) {
                   final pageIndexes = <int>[
@@ -2222,6 +2225,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 },
               )
             : const SizedBox.shrink(),
+      ),
       ),
     );
   }

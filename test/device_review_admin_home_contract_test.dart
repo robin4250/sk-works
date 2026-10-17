@@ -45,8 +45,8 @@ void main() {
     expect(homeEnd, greaterThan(homeStart));
     final homeDashboard = app.substring(homeStart, homeEnd);
     expect(homeDashboard, contains('extendBodyBehindAppBar: true'));
-    expect(homeDashboard, contains('preferredSize: Size.fromHeight(_chromeVisible ? 64 : 0)'));
-    expect(homeDashboard, contains('toolbarHeight: _chromeVisible ? 64 : 0'));
+    expect(homeDashboard, contains('preferredSize: Size.fromHeight(chromeVisible ? 64 : 0)'));
+    expect(homeDashboard, contains('toolbarHeight: chromeVisible ? 64 : 0'));
     expect(homeDashboard, contains('MediaQuery.paddingOf(context).top + 72'));
     expect(homeDashboard, contains('Stack('));
     expect(homeDashboard, contains('Colors.white.withAlpha('));
@@ -58,7 +58,7 @@ void main() {
     expect(homeDashboard, contains('backgroundColor: Colors.transparent'));
     expect(homeDashboard, contains('forceMaterialTransparency: true'));
     expect(homeDashboard, contains('_homeAppearance.wallpaperOpacity'));
-    expect(homeDashboard, contains('_chromeVisible'));
+    expect(homeDashboard, contains('chromeVisible'));
     expect(homeDashboard, isNot(contains('AnimatedContainer(')));
   });
 }
