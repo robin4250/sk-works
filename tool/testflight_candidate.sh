@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# A release reviewer supplies the approved full SHA; never infer approval from latest main.
+: "${SKO_AUDITED_SHA:?Set the reviewed full commit SHA before building or uploading}"
+export SKO_AUDITED_SHA
+
 echo "=== SKO TestFlight candidate builder ==="
 echo
 
@@ -62,6 +66,7 @@ python3 tool/testflight_provenance.py start --marker "$provenance_marker"
 flutter build ipa \
   --release \
   --export-method app-store \
+  --dart-define=SKO_MASTER_PASSWORD_V1=false \
   --build-name="$build_name" \
   --build-number="$build_number" \
   --dart-define="SUPABASE_URL=$SUPABASE_URL" \
