@@ -19,6 +19,10 @@ class MapTests(unittest.TestCase):
         self.assertEqual(report['extension_entry_count'],1)
         self.assertFalse(report['dependencies_complete']);self.assertFalse(report['restoration_verified'])
 
+    def test_extension_without_owner_is_catalogued_not_selected(self):
+        selected,r=mapping.classify(ROOTS+'6; 3079 16384 EXTENSION - pgcrypto\n')
+        self.assertEqual(len(selected),4);self.assertEqual(r['extension_entry_count'],1)
+
     def test_duplicate_or_overloaded_function_is_not_guessed(self):
         with self.assertRaises(ValueError):mapping.classify(ROOTS+'9; 1255 104 FUNCTION private employee_personnel_rows(text) postgres\n')
 
