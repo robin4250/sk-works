@@ -30,3 +30,19 @@ gh workflow run ios-ci.yml --ref main
 `python3 tool/test_testflight_provenance.py` は実ZIP/合成plist・擬似署名ツール・一時Gitの実行試験です。Macの実署名証明書・Apple側のprofile・アーカイブ・アップロード・本番認証・データ・通知は使用しません。Linuxで署名確認を省略するオプションはありません。
 
 配布前には実Macで署名済みIPAの通過と、改変/古い候補/未保存変更の停止を確認します。プライバシーmanifest、署名済みentitlements、実SDK、権限拒否・ログアウト・actor変更・他社拒否、LINE非公開の確認は引き続き必要です。ゲートを通すための本番RLS弱化やフラグ変更は行いません。
+
+## 2026-10-17: 監査SHAとローカル構築文脈の固定
+
+`SKO_AUDITED_SHA` に配布審査した40桁SHAを明示してください。start/source/create/validate/stageはすべてHEAD・origin/main・この値の一致を必須とし、未指定やmain前進では停止します。これは自己申告の審査対象固定であり、配布安全承認自体を自動発行しません。最終統合SHAは未確定のため、今はビルド・uploadを実行しません。
+
+manifest schema 2 は構築開始時と検査時の Flutter 3.47.5/revision/engine/Dart と Xcode version/build、および厳格allowlistのnative source digestを照合します。対象は ios/Runner/Info.plist、ios/Runner.xcodeproj/project.pbxproj、共有Runner.xcscheme、Runner直下の*.entitlementsのみ。symlinkのファイル/祖先は拒否します。秘密鍵・env・Generated.xcconfig・資格情報・ログをhash対象にせず、値を保存しません。独自追加xcconfig等をこれで網羅したとは扱いません。
+
+Releaseコマンドは専用Masterフラグfalseを明示します。構築後のGenerated.xcconfigはローカル比較だけに使い、固定プロジェクトの公開URL・publishable key非空・Masterフラグfalseの3定義だけを許可します。定義値や鍵のhashは保存しません。これは固定コマンド/生成設定の一致であり、IPA内から全Dart定数を逆検証した証明ではありません。
+
+検査したIPAのcompiled Google callback scheme・FlutterDeepLinkingEnabled=falseを必須とし、署名が返したentitlements全体とembedded.mobileprovisionのdigestをmanifestへ追加します。profile/entitlements本文や認証情報を保存せず、同一IPAの再検査で比較します。Appleログインを有効と認定するものではなく、Apple capabilityが必要な候補は別の実機/サーバー設定検査が必要です。
+
+schema 1の旧manifestや旧markerは互換通過させません。元IPAを削除せず保管し、新しい承認SHAと固定Release経路で新候補を作る必要があります。本番RLS・LINE非公開・実機認証の安全条件は引き続き別途必須です。
+
+### 公開キー型・callback構造の誤設定拒否
+
+構築引数へ渡す前の configuration 検査と生成設定検査の両方で、sb_publishable_形式またはlegacy HS256 JWTのrole=anonというローカル型分類だけを許可します。sb_secret_・service_role・unknown/malformedは拒否し、値/hashは出力保存しません。このJWT分類は署名検証やproject正当性証明ではありません。callback schemesはlist[str]を必須とし、com.skworks.skoとの完全一致のみ許可します。文字列への部分一致は使いません。
