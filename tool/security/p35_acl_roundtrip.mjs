@@ -7,7 +7,7 @@ let db;
 if(pgMode){
  if(process.env.P35_SYNTHETIC!=='1')throw Error('Explicit disposable fixture flag required');
  const u=new URL(process.env.P35_FIXTURE_URL);
- if(!['127.0.0.1','localhost','[::1]'].includes(u.hostname)||u.pathname!=='/p35_fixture')throw Error('Disposable loopback database only');
+ if(!['postgres:','postgresql:'].includes(u.protocol)||!['127.0.0.1','localhost','[::1]'].includes(u.hostname)||u.port!=='5432'||u.pathname!=='/p35_fixture'||u.search||u.hash||u.username!=='postgres'||u.password!=='fixture-only')throw Error('Fixed disposable loopback database only');
  const {default:pg}=await import('./fixture_dependencies/node_modules/pg/lib/index.js');
  db=new pg.Client({connectionString:u.href});await db.connect();
  const n=Number((await db.query("select current_setting('server_version_num') n")).rows[0].n);
