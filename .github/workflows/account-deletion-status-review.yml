@@ -1,0 +1,23 @@
+name: Account deletion status read-only candidate
+on:
+  push:
+    branches: [test/account-status-current-main-20261017]
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/account_deletion lib/features/profile/profile_page.dart lib/features/help/manual_content.dart lib/features/help/menu_help_catalog.dart lib/international/languages/en/english_language_pack.dart test/account_deletion_page_test.dart test/account_deletion_status_test.dart
+      - run: flutter test test/account_deletion_page_test.dart test/account_deletion_status_test.dart --reporter expanded

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../auth/auth_error_message.dart';
+import '../account_deletion/account_deletion_page.dart';
 import '../help/manual_content.dart';
 import '../help/manual_library_page.dart';
 import '../notifications/notification_bell.dart';
@@ -923,6 +924,18 @@ class _ProfilePageState extends State<ProfilePage> {
                               builder: (_) => ManualLibraryPage(role: widget.role),
                             ),
                           ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.person_remove_outlined),
+                          title: Text(SkoLanguageController.tr('アカウント削除の案内')),
+                          subtitle: Text(SkoLanguageController.tr('受付状況と業務記録の保護について')),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const AccountDeletionPage(),
+                          )),
                         ),
                       ),
                       const SizedBox(height: 16),
