@@ -1,6 +1,7 @@
--- REVIEW ONLY: fixed personnel metadata. No business/Auth rows, role passwords, settings values or email values.
+-- REVIEW ONLY: explicit personnel/support metadata allowlist, not transitive closure.
+-- No business/Auth rows or role password/settings fields. Function definitions may contain configuration/static literals.
 -- Store results only inside an operator-private capsule. Never execute emitted SQL automatically.
-WITH RECURSIVE
+WITH
 roots(classid,objid,objsubid) AS (
  SELECT 'pg_catalog.pg_class'::regclass::oid,c.oid,0 FROM pg_catalog.pg_class c
  JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
@@ -21,26 +22,11 @@ roots(classid,objid,objsubid) AS (
 ),
 graph(classid,objid,objsubid) AS (
  SELECT * FROM roots
- UNION
- SELECT edge.classid,edge.objid,edge.objsubid FROM graph g
- CROSS JOIN LATERAL (
-  SELECT d.refclassid classid,d.refobjid objid,d.refobjsubid objsubid FROM pg_catalog.pg_depend d
-  WHERE d.classid=g.classid AND d.objid=g.objid AND (g.objsubid=0 OR g.objsubid=d.objsubid)
-  UNION
-  SELECT d.classid,d.objid,d.objsubid FROM pg_catalog.pg_depend d
-  WHERE d.refclassid=g.classid AND d.refobjid=g.objid
-   AND d.classid IN ('pg_trigger'::regclass,'pg_catalog.pg_policy'::regclass,
-    'pg_constraint'::regclass,'pg_attrdef'::regclass,'pg_rewrite'::regclass)
- ) edge
-),
-inventory AS (
- SELECT g.classid::regclass::text catalog,i.type,i.schema,i.name,i.identity,
- g.classid,g.objid,g.objsubid
- FROM graph g CROSS JOIN LATERAL pg_catalog.pg_identify_object(g.classid,g.objid,g.objsubid) i
 )
 SELECT pg_catalog.jsonb_build_object(
  'read_only',pg_catalog.current_setting('transaction_read_only')='on',
- 'scope','personnel authorization metadata only; NOT data backup or complete recovery proof',
+ 'scope','explicit allowlisted personnel/support relations and functions only; NO transitive dependency closure; NOT complete recovery proof',
+ 'additional_dependency_review_required',true,
  'relations',(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
    'schema',n.nspname,'name',c.relname,'owner',pg_catalog.pg_get_userbyid(c.relowner),
    'kind',c.relkind,'rls',c.relrowsecurity,'forced_rls',c.relforcerowsecurity,'acl',c.relacl::text
@@ -73,6 +59,7 @@ SELECT pg_catalog.jsonb_build_object(
    'language',l.lanname,'volatility',p.provolatile,
    'configuration_keys',(SELECT pg_catalog.jsonb_agg(pg_catalog.split_part(x,'=',1)) FROM pg_catalog.unnest(p.proconfig) x),
    'definition_sha256_not_collected',true,
+   'configuration_values_may_be_in_definition',true,
    'definition',CASE WHEN pg_catalog.pg_get_functiondef(p.oid) ~* '(sbp_[a-z0-9_]+|eyJ[A-Za-z0-9_-]{20,}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,})'
      THEN NULL ELSE pg_catalog.pg_get_functiondef(p.oid) END,
    'literal_review_required',pg_catalog.pg_get_functiondef(p.oid) ~* '(sbp_[a-z0-9_]+|eyJ[A-Za-z0-9_-]{20,}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,})'
@@ -106,6 +93,6 @@ SELECT pg_catalog.jsonb_build_object(
  JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
  WHERE NOT t.tgisinternal AND n.nspname IN ('public','private','auth') AND EXISTS(SELECT 1 FROM graph g
  WHERE g.classid='pg_catalog.pg_class'::regclass AND g.objid=c.oid)),
- 'excluded','Auth/business row values, passwords, role settings values, function configuration values',
+ 'excluded','Auth/business row values and role passwords/settings values; selected function definitions MAY contain configuration values and static literals',
  'not_verified','function literal safety completeness, dynamic dependencies, archive equality, data-time gap, role authentication, outbound isolation and actual restore'
 ) AS entry_definition_payload;
