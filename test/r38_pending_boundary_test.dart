@@ -13,6 +13,7 @@ import 'package:sk_works/features/auth/secondary_protected_page.dart';
 const actorA = '20000000-0000-0000-0000-000000000001';
 const actorB = '20000000-0000-0000-0000-000000000002';
 Completer<bool>? pending;
+Completer<bool>? nativePending;
 final requests = <http.Request>[];
 String session(String actor) {
   String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value)));
@@ -55,10 +56,10 @@ void main() {
       debug:false,authOptions:const FlutterAuthClientOptions(autoRefreshToken:false,detectSessionInUri:false),
       httpClient:MockClient((request) async {
         expect(request.url.host,'r38-fixture.invalid');requests.add(request);
-        if(request.url.path.endsWith('/secondary_password_configured')) return http.Response('true',200);
+        if(request.url.path.endsWith('/secondary_password_configured')) return http.Response('true',200,headers:{'content-type':'application/json'});
         if(request.url.path.endsWith('/verify_secondary_password')) {
           expect(jsonDecode(request.body),{'p_password':'synthetic-secondary'});
-          return http.Response(jsonEncode(await pending!.future),200);
+          return http.Response(jsonEncode(await pending!.future),200,headers:{'content-type':'application/json'});
         }
         throw StateError('Unexpected synthetic endpoint');
       }));
@@ -66,11 +67,12 @@ void main() {
   });
   tearDownAll(() async {await Supabase.instance.dispose();});
   setUp(() {
-    requests.clear();pending=null;
+    requests.clear();pending=null;nativePending=null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('plugins.flutter.io/local_auth'),(call) async {
         if(call.method=='isDeviceSupported'||call.method=='deviceSupportsBiometrics')return true;
         if(call.method=='getAvailableBiometrics')return ['face'];
+        if(call.method=='authenticate')return await nativePending!.future;
         throw StateError('No native authentication permitted in password fixture');
       });
   });
@@ -97,5 +99,37 @@ void main() {
     expect(find.text('private payload'),findsNothing);
     expect(Supabase.instance.client.auth.currentUser!.id,actorB);
     expect(requests.every((r)=>r.url.path.endsWith('/secondary_password_configured')||r.url.path.endsWith('/verify_secondary_password')),true);
+  });
+  testWidgets('native inactive completion waits for resumed before revealing content',(tester) async {
+    await open(tester);nativePending=Completer<bool>();
+    await tester.tap(find.text('Face ID / Touch IDで開く'));await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    nativePending!.complete(true);await settle(tester);
+    expect(find.text('private payload'),findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await settle(tester);
+    expect(find.text('private payload'),findsOneWidget);
+  });
+  testWidgets('old resumed completion cannot release busy state owned by a fresh retry',(tester) async {
+    await open(tester);await begin(tester);final old=pending!;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await settle(tester);
+    await begin(tester);final fresh=pending!;
+    old.complete(true);await settle(tester);
+    expect(find.text('private payload'),findsNothing);
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,isNull);
+    fresh.complete(true);await settle(tester);
+    expect(find.text('private payload'),findsOneWidget);
+  });
+  testWidgets('native real background rejects delayed success after resume',(tester) async {
+    await open(tester);nativePending=Completer<bool>();
+    await tester.tap(find.text('Face ID / Touch IDで開く'));await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    nativePending!.complete(true);await settle(tester);
+    expect(find.text('private payload'),findsNothing);
   });
 }
