@@ -55,7 +55,7 @@ void main() {
         File('lib/widgets/sko_scroll_chrome.dart').readAsStringSync();
 
     expect(app, contains('SkoGlobalScrollChrome'));
-    expect(app, contains('valueListenable: SkoScrollChromeController.visible'));
+    expect(app, contains('valueListenable: _homeChromeVisible'));
     expect(app, isNot(contains('_chromeListener')));
     expect(app, contains("height: chromeVisible ? 88 : 0"));
 

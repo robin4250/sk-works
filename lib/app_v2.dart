@@ -197,6 +197,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   String? _tutorialCompanyId;
   String? _tutorialUserId;
   int _selectedIndex = 0;
+  // A newly created Home starts with usable navigation, then follows every
+  // global scroll update without rebuilding the page shell.
+  final _homeChromeVisible = ValueNotifier<bool>(true);
+  void _syncHomeChrome() {
+    _homeChromeVisible.value = SkoScrollChromeController.visible.value;
+  }
   String _payrollAdjustmentLabel = '給与調整';
   RequiredDocumentAttention _requiredDocumentAttention =
       const RequiredDocumentAttention(
@@ -300,12 +306,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _lineRelease?.addListener(_lineReleaseChanged);
     _loadHomeData();
+    SkoScrollChromeController.visible.addListener(_syncHomeChrome);
+    // The old route may have hidden global chrome. Restore a fresh Home after
+    // its first build, so ancestor Theme listeners are never changed in init.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) SkoScrollChromeController.visible.value = true;
+    });
     GpsAutoAttendanceService.instance.startIfConfigured();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    SkoScrollChromeController.visible.removeListener(_syncHomeChrome);
+    _homeChromeVisible.dispose();
     _lineRelease?.removeListener(_lineReleaseChanged);
     _weatherViewState.dispose();
     GpsAutoAttendanceService.instance.stop();
@@ -1786,7 +1800,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             ),
           ),
         ValueListenableBuilder<bool>(
-          valueListenable: SkoScrollChromeController.visible,
+          valueListenable: _homeChromeVisible,
           child: FriendlyHomeContent(
           identity: _identity,
           requiredDocumentAttention: _requiredDocumentAttention,
@@ -1978,7 +1992,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Widget _menuPage() {
     final items = _menuItems;
     return ValueListenableBuilder<bool>(
-      valueListenable: SkoScrollChromeController.visible,
+      valueListenable: _homeChromeVisible,
       child: SafeArea(
         child: ReorderableListView.builder(
           padding: const EdgeInsets.all(12),
@@ -2156,7 +2170,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ],
       ),
       bottomNavigationBar: ValueListenableBuilder<bool>(
-        valueListenable: SkoScrollChromeController.visible,
+        valueListenable: _homeChromeVisible,
         builder: (context, chromeVisible, _) => AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         height: chromeVisible ? 88 : 0,

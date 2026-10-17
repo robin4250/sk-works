@@ -71,4 +71,31 @@ void main() {
     expect(tester.widget<FriendlyHomeContent>(content).showWeatherForecast, false);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('fresh Home restores navigation after a hidden previous route',
+      (tester) async {
+    await tester.pumpWidget(const SkWorksApp(allowLocalFallback: true));
+    await settleStartup(tester);
+    SkoScrollChromeController.visible.value = false;
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(NavigationBar), findsNothing);
+    // Recreating the app Navigator/Home also models identity-boundary teardown.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(SkoScrollChromeController.visible.value, false);
+    await tester.pumpWidget(const SkWorksApp(allowLocalFallback: true));
+    await settleStartup(tester);
+    expect(find.byType(HomePage), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.text('ホーム'), findsOneWidget);
+    expect(SkoScrollChromeController.visible.value, true);
+    // Restoration is only for entry: later scroll hides and restores normally.
+    SkoScrollChromeController.visible.value = false;
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(NavigationBar), findsNothing);
+    SkoScrollChromeController.visible.value = true;
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
 }

@@ -33,6 +33,6 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: flutter test test/home_scroll_rebuild_scope_test.dart --reporter expanded
+      - run: flutter test test/home_scroll_rebuild_scope_test.dart test/navigation_test.dart --reporter expanded
       - run: flutter test test/device_ui_review_20261002_contract_test.dart test/sko_scroll_chrome_direction_test.dart test/sko_scroll_chrome_widget_test.dart test/home_footer_and_scroll_ui_test.dart test/home_button_reorder_geometry_test.dart test/weather_home_card_geometry_test.dart test/traffic_home_card_test.dart test/route_billing_notification_entry_test.dart --reporter expanded
       - run: flutter analyze
