@@ -1,0 +1,101 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sk_works/data/supabase_backend.dart';
+import 'package:sk_works/features/auth/secondary_protected_page.dart';
+
+const actorA = '20000000-0000-0000-0000-000000000001';
+const actorB = '20000000-0000-0000-0000-000000000002';
+Completer<bool>? pending;
+final requests = <http.Request>[];
+String session(String actor) {
+  String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value)));
+  return jsonEncode({'access_token': '${part({'alg':'HS256'})}.${part({'sub':actor,'exp':4102444800})}.synthetic',
+    'refresh_token':'synthetic-only', 'token_type':'bearer', 'expires_in':3600,
+    'user':{'id':actor,'aud':'authenticated','created_at':'2026-10-17T00:00:00Z'}});
+}
+Future<void> settle(WidgetTester tester) async {
+  for (var i=0;i<5;i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds:10)));
+    await tester.pump(const Duration(milliseconds:20));
+  }
+  await tester.pumpAndSettle();
+}
+Future<void> open(WidgetTester tester) async {
+  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  await tester.runAsync(() => Supabase.instance.client.auth.setInitialSession(session(actorA)));
+  await tester.pumpWidget(const MaterialApp(home: SecondaryProtectedPage(
+    title:'synthetic protected',child:Text('private payload'))));
+  await settle(tester);
+  expect(find.text('第2認証が必要です'),findsOneWidget);
+}
+Future<void> begin(WidgetTester tester) async {
+  pending=Completer<bool>();
+  await tester.enterText(find.byType(TextField).first,'synthetic-secondary');
+  await tester.tap(find.text('第2パスワードで開く'));
+  await tester.pump();
+}
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  if (!const bool.fromEnvironment('SKO_R38_FIXTURE')) {
+    test('dedicated synthetic configuration required',(){},skip:'Use R38 workflow.');
+    return;
+  }
+  setUpAll(() async {
+    expect(SupabaseBackendConfig.url,'https://r38-fixture.invalid');
+    expect(SupabaseBackendConfig.publishableKey,'public_fixture');
+    SharedPreferences.setMockInitialValues({'sko_secondary_biometric_enabled_$actorA':true});
+    await Supabase.initialize(url:SupabaseBackendConfig.url,publishableKey:SupabaseBackendConfig.publishableKey,
+      debug:false,authOptions:const FlutterAuthClientOptions(autoRefreshToken:false,detectSessionInUri:false),
+      httpClient:MockClient((request) async {
+        expect(request.url.host,'r38-fixture.invalid');requests.add(request);
+        if(request.url.path.endsWith('/secondary_password_configured')) return http.Response('true',200);
+        if(request.url.path.endsWith('/verify_secondary_password')) {
+          expect(jsonDecode(request.body),{'p_password':'synthetic-secondary'});
+          return http.Response(jsonEncode(await pending!.future),200);
+        }
+        throw StateError('Unexpected synthetic endpoint');
+      }));
+    await SupabaseBackend.initializeIfConfigured();
+  });
+  tearDownAll(() async {await Supabase.instance.dispose();});
+  setUp(() {
+    requests.clear();pending=null;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/local_auth'),(call) async {
+        if(call.method=='isDeviceSupported'||call.method=='deviceSupportsBiometrics')return true;
+        if(call.method=='getAvailableBiometrics')return ['face'];
+        throw StateError('No native authentication permitted in password fixture');
+      });
+  });
+  tearDown(() {TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+    const MethodChannel('plugins.flutter.io/local_auth'),null);});
+  testWidgets('background rejects delayed password success; fresh foreground retry still works',(tester) async {
+    await open(tester);await begin(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    pending!.complete(true);await settle(tester);
+    expect(find.text('private payload'),findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await settle(tester);
+    expect(find.text('private payload'),findsNothing);
+    await begin(tester);pending!.complete(true);await settle(tester);
+    expect(find.text('private payload'),findsOneWidget);
+    expect((await SharedPreferences.getInstance()).getBool('sko_secondary_biometric_enabled_$actorA'),true);
+    expect(requests.where((r)=>r.url.path.endsWith('/verify_secondary_password')).length,2);
+  });
+  testWidgets('actor switch rejects delayed success without identity or password mutation',(tester) async {
+    await open(tester);await begin(tester);
+    await tester.runAsync(() => Supabase.instance.client.auth.setInitialSession(session(actorB)));
+    pending!.complete(true);await settle(tester);
+    expect(find.text('private payload'),findsNothing);
+    expect(Supabase.instance.client.auth.currentUser!.id,actorB);
+    expect(requests.every((r)=>r.url.path.endsWith('/secondary_password_configured')||r.url.path.endsWith('/verify_secondary_password')),true);
+  });
+}
