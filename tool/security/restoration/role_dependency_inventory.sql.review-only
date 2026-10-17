@@ -45,7 +45,7 @@ acls AS (
  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
  WHERE EXISTS(SELECT 1 FROM graph g WHERE g.classid='pg_class'::regclass AND g.objid=c.oid)
  UNION ALL
- SELECT 'function',n.nspname,p.proname,p.proowner,p.proacl
+ SELECT 'function',n.nspname,p.proname||'('||pg_get_function_identity_arguments(p.oid)||')',p.proowner,p.proacl
  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE EXISTS(SELECT 1 FROM graph g WHERE g.classid='pg_proc'::regclass AND g.objid=p.oid)
  UNION ALL
@@ -60,10 +60,17 @@ role_seeds(oid) AS (
  SELECT owner FROM acls
  UNION SELECT x.grantee FROM acls CROSS JOIN LATERAL aclexplode(acl) x WHERE x.grantee<>0
  UNION SELECT x.grantor FROM acls CROSS JOIN LATERAL aclexplode(acl) x
+ UNION SELECT role_oid FROM pg_policy p CROSS JOIN LATERAL unnest(p.polroles) role_oid
+ WHERE role_oid<>0 AND EXISTS(SELECT 1 FROM graph g
+  WHERE g.classid='pg_class'::regclass AND g.objid=p.polrelid)
 ),
 role_closure(oid) AS (
  SELECT oid FROM role_seeds
- UNION SELECT m.roleid FROM pg_auth_members m JOIN role_closure r ON m.member=r.oid
+ UNION SELECT related.oid FROM role_closure r
+ CROSS JOIN LATERAL (
+  SELECT m.roleid oid FROM pg_auth_members m WHERE m.member=r.oid
+  UNION SELECT m.grantor FROM pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid
+ ) related
 )
 SELECT jsonb_build_object(
  'scope','catalog dependency edges and selected role attributes; NOT complete restore proof',
@@ -73,5 +80,5 @@ SELECT jsonb_build_object(
  'roles',(SELECT jsonb_agg(jsonb_build_object('name',r.rolname,'superuser',r.rolsuper,'inherit',r.rolinherit,'create_role',r.rolcreaterole,'create_db',r.rolcreatedb,'login',r.rolcanlogin,'replication',r.rolreplication,'connection_limit',r.rolconnlimit,'bypass_rls',r.rolbypassrls) ORDER BY r.rolname) FROM pg_roles r JOIN role_closure c ON c.oid=r.oid),
  'memberships',(SELECT jsonb_agg(jsonb_build_object('role',rr.rolname,'member',mr.rolname,'grantor',gr.rolname,'admin_option',m.admin_option,'inherit_option',m.inherit_option,'set_option',m.set_option) ORDER BY rr.rolname,mr.rolname) FROM pg_auth_members m JOIN role_closure a ON a.oid=m.member JOIN role_closure b ON b.oid=m.roleid JOIN pg_roles rr ON rr.oid=m.roleid JOIN pg_roles mr ON mr.oid=m.member JOIN pg_roles gr ON gr.oid=m.grantor),
  'excluded','passwords, role settings values, login credentials, business/Auth rows, function bodies, provider values',
- 'not_verified','dynamic/string-body dependencies, actual restore, outbound isolation, administrator/provider login'
+ 'not_verified','dynamic/string-body dependencies, column ACL, pg_default_acl, sequence ownership completeness, role settings/expiry/password recovery, actual restore, outbound isolation, administrator/provider login'
 ) AS protected_catalog_capsule;
