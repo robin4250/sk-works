@@ -46,7 +46,8 @@ class _Devices implements MasterDeviceRepository {
   @override
   Future<List<MasterDeviceRecord>> loadDevices() async => [MasterDeviceRecord(
     id: deviceId, deviceName: 'synthetic device', deviceType: 'iphone',
-    registeredAt: DateTime(2026, 10, 16), isLocked: locked)];
+    registeredAt: DateTime(2026, 10, 16), isLocked: locked),
+    MasterDeviceRecord(id: '40000000-0000-0000-0000-000000000002', deviceName: 'backup device', deviceType: 'mac', registeredAt: DateTime(2026, 10, 16), isLocked: false)];
   @override
   Future<bool> lockReauthenticationRequired() async {
     capabilityCalls++;if (failCapability) throw StateError('synthetic permission error');return required;
@@ -68,7 +69,8 @@ Future<void> _open(WidgetTester tester, _Devices devices, _Proofs proofs) async 
   await tester.pumpAndSettle();
 }
 Future<void> lock(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(OutlinedButton, 'ロック'));await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(OutlinedButton, 'ロック').first);await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(FilledButton, 'ロック'));await tester.pumpAndSettle();
 }
 Future<void> verify(WidgetTester tester) async {
   await tester.enterText(find.byKey(const Key('master-device-lock-password')), 'synthetic-primary');
@@ -188,3 +190,4 @@ void main() {
     expect(calls.last.url.path.endsWith('/set_master_device_locked'), true);
   }, timeout: const Timeout(Duration(seconds: 30)));
 }
+

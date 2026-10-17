@@ -1,0 +1,59 @@
+-- REVIEW ONLY: no production apply. Protects last usable device; does not unlock.
+begin;
+do $$ begin
+ if to_regprocedure('public.set_master_device_locked(uuid,boolean)') is null
+ or to_regprocedure('public.revoke_master_device(uuid)') is null then
+ raise exception 'master device prerequisites missing'; end if;
+end $$;
+create function private.guard_master_device_loss(p_device_id uuid,p_losing boolean)
+returns void language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid(); target private.master_devices%rowtype;
+begin
+ if actor is null or p_device_id is null or p_losing is null then
+ raise sqlstate '42501' using message='master_device_unavailable'; end if;
+ -- Every guarded lock/revoke takes the same owner row before any device row.
+ perform 1 from private.master_admins where user_id=actor and enabled for update;
+ if not found then raise sqlstate '42501' using message='master_device_unavailable'; end if;
+ select * into target from private.master_devices where id=p_device_id and master_user_id=actor for update;
+ if not found then raise sqlstate '42501' using message='master_device_unavailable'; end if;
+ if p_losing and target.revoked_at is null and not target.is_locked and not exists(
+ select 1 from private.master_devices where master_user_id=actor and id<>p_device_id
+ and revoked_at is null and not is_locked) then
+ raise sqlstate '42501' using message='last_usable_master_device_required'; end if;
+end $$;
+revoke all on function private.guard_master_device_loss(uuid,boolean) from public,anon,authenticated;
+-- Retain exact deployed implementations, including proof consumption and audit.
+alter function public.set_master_device_locked(uuid,boolean) set schema private;
+alter function private.set_master_device_locked(uuid,boolean) rename to master_lock_before_last_device_guard;
+revoke all on function private.master_lock_before_last_device_guard(uuid,boolean) from public,anon,authenticated;
+alter function public.revoke_master_device(uuid) set schema private;
+alter function private.revoke_master_device(uuid) rename to master_revoke_before_last_device_guard;
+revoke all on function private.master_revoke_before_last_device_guard(uuid) from public,anon,authenticated;
+create function public.set_master_device_locked(p_device_id uuid,p_locked boolean)
+returns void language plpgsql security definer set search_path='' as $$ begin
+ perform private.guard_master_device_loss(p_device_id,p_locked);
+ perform private.master_lock_before_last_device_guard(p_device_id,p_locked);
+end $$;
+create function public.revoke_master_device(p_device_id uuid)
+returns void language plpgsql security definer set search_path='' as $$ begin
+ perform private.guard_master_device_loss(p_device_id,true);
+ perform private.master_revoke_before_last_device_guard(p_device_id);
+end $$;
+revoke all on function public.set_master_device_locked(uuid,boolean),public.revoke_master_device(uuid) from public,anon;
+grant execute on function public.set_master_device_locked(uuid,boolean),public.revoke_master_device(uuid) to authenticated;
+-- Install after the optional staged proof layer if present. No proof bypass.
+do $$ begin
+ if to_regprocedure('public.set_master_device_locked_with_proof(uuid,boolean,text)') is not null then
+ alter function public.set_master_device_locked_with_proof(uuid,boolean,text) set schema private;
+ alter function private.set_master_device_locked_with_proof(uuid,boolean,text) rename to master_proof_lock_before_last_device_guard;
+ revoke all on function private.master_proof_lock_before_last_device_guard(uuid,boolean,text) from public,anon,authenticated;
+ execute $fn$create function public.set_master_device_locked_with_proof(p_device_id uuid,p_locked boolean,p_proof text)
+ returns void language plpgsql security definer set search_path='' as $body$ begin
+ perform private.guard_master_device_loss(p_device_id,p_locked);
+ perform private.master_proof_lock_before_last_device_guard(p_device_id,p_locked,p_proof);
+ end $body$$fn$;
+ revoke all on function public.set_master_device_locked_with_proof(uuid,boolean,text) from public,anon;
+ grant execute on function public.set_master_device_locked_with_proof(uuid,boolean,text) to authenticated;
+ end if;
+end $$;
+commit;
