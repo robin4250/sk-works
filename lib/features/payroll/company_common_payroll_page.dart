@@ -302,7 +302,7 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
         Expanded(child: FilledButton.icon(
           onPressed: editable && controller.canRegister ? controller.register : null,
           icon: const Icon(Icons.save_outlined),
-          label: Text(_saving || controller.saving ? '保存中…' : '登録'))),
+          label: Text(_saving || controller.saving ? '登録中' : '登録'))),
       ])),
     );
   }
@@ -475,4 +475,3 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
         : scaffold;
   }
 }
-
