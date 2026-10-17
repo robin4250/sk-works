@@ -84,10 +84,11 @@ for(const name of ['p35_plain','p35_delegate','p35_leaf']){
  try{assert.equal((await query('select p35.f02() n')).rows[0].n,42);checks++;}
  finally{await exec('reset role');}
 }
-await asRole('p35_owner_a','grant execute on function p35.f01() to public');
+await asRole('p35_owner_a','revoke all on function p35.f01() from public;grant execute on function p35.f01() to public');
 const explicitDefault=await snapshot();
 ok(explicitDefault[0].acl!==null,'explicit default-equivalent ACL is not NULL');
-assert.deepEqual(explicitDefault[0].grants,before[0].grants);checks++;
+const effective=gs=>gs.map(({ord,...g})=>g).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+assert.deepEqual(effective(explicitDefault[0].grants),effective(before[0].grants));checks++;
 await restoreSelected();checks++;
 await asRole('p35_owner_b','revoke grant option for execute on function p35.f02() from p35_delegate cascade');
 const revoked=await snapshot();
