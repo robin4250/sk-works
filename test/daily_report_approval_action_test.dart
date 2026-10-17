@@ -9,10 +9,14 @@ class _Repository implements DailyReportRepository {
   final queries = <String?>[];
   Completer<String> response = Completer<String>();
   bool pending = true;
+  Completer<List<Map<String, dynamic>>>? nextRead;
 
   @override
   Future<List<Map<String, dynamic>>> loadPendingApprovals({String? requestId}) async {
     queries.add(requestId);
+    final delayed = nextRead;
+    nextRead = null;
+    if (delayed != null) return delayed.future;
     return pending ? [{
       'id': 'request-one', 'reason': '修正', 'status': 'pending',
       'daily_reports': {'report_date': '2026-10-17', 'sites': {'name': '確認現場'}},
@@ -82,6 +86,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('承認しました。必要な承認が完了するまでお待ちください'), findsOneWidget);
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '承認')).onPressed, isNotNull);
+  });
+
+  testWidgets('retained refresh during approval cannot resurrect a pending row', (tester) async {
+    final repository = _Repository();
+    await _open(tester, repository);
+    final refresh = tester.widget<RefreshIndicator>(find.byType(RefreshIndicator)).onRefresh;
+    await tester.tap(find.widgetWithText(FilledButton, '承認'));
+    await refresh();
+    expect(repository.queries, ['request-one']);
+    repository.response.complete('approved');
+    await tester.pumpAndSettle();
+    expect(repository.queries, ['request-one', 'request-one']);
+    expect(find.text('承認'), findsNothing);
+    expect(find.text('確認現場'), findsNothing);
+  });
+
+  testWidgets('delayed refresh rejects stale approval and coalesces further UI refreshes', (tester) async {
+    final repository = _Repository();
+    await _open(tester, repository);
+    final approve = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '承認')).onPressed!;
+    final refresh = tester.widget<RefreshIndicator>(find.byType(RefreshIndicator)).onRefresh;
+    final delayed = Completer<List<Map<String, dynamic>>>();
+    repository.nextRead = delayed;
+    final reading = refresh();
+    approve();
+    await refresh();
+    await tester.pump();
+    expect(repository.decisions, isEmpty);
+    expect(repository.queries, ['request-one', 'request-one']);
+    delayed.complete([{'id': 'request-one', 'status': 'pending'}]);
+    await reading;
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '承認'));
+    await refresh();
+    expect(repository.decisions, [('request-one', true)]);
+    expect(repository.queries.length, 2);
+    repository.response.complete('approved');
+    await tester.pumpAndSettle();
+    expect(repository.queries.length, 3);
+    expect(find.text('承認'), findsNothing);
   });
 
   testWidgets('closing page during decision does not setState after disposal', (tester) async {
