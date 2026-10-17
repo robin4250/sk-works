@@ -1,0 +1,46 @@
+-- REVIEW ONLY. Never applied by app/release migrations. No data/role changes.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='30s';
+do $preflight$ declare target text; begin
+  foreach target in array array['public.invoices','public.communication_groups',
+    'public.communication_notes','public.communication_albums','public.communication_album_items',
+    'public.attendance_correction_requests','public.attendance_correction_items',
+    'public.app_notifications','storage.objects'] loop
+    if not coalesce((select relrowsecurity from pg_class where oid=to_regclass(target)),false) then
+      raise exception 'Existing RLS boundary unavailable; review required' using errcode='55000';
+    end if;
+  end loop;
+end $preflight$;
+create function private.r19_master() returns boolean language sql stable security definer
+set search_path='' as $$select auth.uid() is not null and private.account_access_allowed()
+and exists(select 1 from private.master_admins where user_id=auth.uid() and enabled)$$;
+create function private.r19_group_allowed(g uuid) returns boolean language sql stable security definer
+set search_path='' as $$select not exists(select 1 from private.line_history_analysis_groups where group_id=g)
+or private.r19_master()$$;
+create function private.r19_invoice_allowed(i uuid) returns boolean language sql stable security definer
+set search_path='' as $$select (not exists(select 1 from private.line_invoice_submissions where invoice_id=i)
+and not exists(select 1 from private.line_historical_invoice_links where invoice_id=i)) or private.r19_master()$$;
+create function private.r19_request_allowed(r uuid) returns boolean language sql stable security definer
+set search_path='' as $$select not exists(select 1 from private.line_attendance_submissions where request_id=r)
+or private.r19_master()$$;
+create function private.r19_notice_allowed(k text,i uuid) returns boolean language sql stable security definer
+set search_path='' as $$select case k when 'invoice_approval' then private.r19_invoice_allowed(i)
+when 'attendance_correction_request' then private.r19_request_allowed(i) else true end$$;
+create function private.r19_file_allowed(b text,p text) returns boolean language sql stable security definer
+set search_path='' as $$select case when b in ('communication-notes','communication-albums')
+then private.r19_group_allowed(private.try_uuid(split_part(p,'/',2))) else true end$$;
+revoke all on function private.r19_master(),private.r19_group_allowed(uuid),private.r19_invoice_allowed(uuid),
+private.r19_request_allowed(uuid),private.r19_notice_allowed(text,uuid),private.r19_file_allowed(text,text) from public,anon;
+grant execute on function private.r19_master(),private.r19_group_allowed(uuid),private.r19_invoice_allowed(uuid),
+private.r19_request_allowed(uuid),private.r19_notice_allowed(text,uuid),private.r19_file_allowed(text,text) to authenticated;
+create policy r19_boundary on public.invoices as restrictive for select to authenticated using(private.r19_invoice_allowed(id));
+create policy r19_boundary on public.communication_groups as restrictive for select to authenticated using(private.r19_group_allowed(id));
+create policy r19_boundary on public.communication_notes as restrictive for select to authenticated using(private.r19_group_allowed(group_id));
+create policy r19_boundary on public.communication_albums as restrictive for select to authenticated using(private.r19_group_allowed(group_id));
+create policy r19_boundary on public.communication_album_items as restrictive for select to authenticated using(private.r19_group_allowed(group_id));
+create policy r19_boundary on public.attendance_correction_requests as restrictive for select to authenticated using(private.r19_request_allowed(id));
+create policy r19_boundary on public.attendance_correction_items as restrictive for select to authenticated using(private.r19_request_allowed(request_id));
+create policy r19_boundary on public.app_notifications as restrictive for select to authenticated using(private.r19_notice_allowed(action_key,action_id));
+create policy r19_boundary on storage.objects as restrictive for select to authenticated using(private.r19_file_allowed(bucket_id,name));
+commit;
