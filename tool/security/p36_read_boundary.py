@@ -1,0 +1,334 @@
+#!/usr/bin/env python3
+"""P36 synthetic read-boundary/native probe. No archive or production input."""
+import argparse
+import errno
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+NATIVE_SHA="e080889f7d849cf4d632181f2d4d9a79e6dcacd36f390855acd572ab9d4ae950"
+SYSTEM_ROOTS=("/System","/usr/lib","/usr/share","/usr/bin","/usr/sbin","/bin","/sbin","/Library/Apple")
+SYSTEM_FILES=("/dev/null","/dev/urandom","/dev/random","/dev/zero","/private/etc/localtime","/private/etc/locale.alias")
+
+def quote(path):
+    text=str(path)
+    if any(ord(c)<32 for c in text):raise ValueError("Control character in profile path")
+    return '"'+text.replace('\\','\\\\').replace('"','\\"')+'"'
+
+def runtime_root(path):
+    resolved=Path(path).resolve(strict=True)
+    forbidden={Path('/'),Path('/usr'),Path('/usr/local'),Path('/opt'),Path('/opt/homebrew'),
+               Path('/opt/homebrew/Cellar'),Path('/Library'),Path('/Users'),Path.home()}
+    if not resolved.is_dir() or resolved in forbidden or resolved in Path.home().parents:
+        raise ValueError("Overbroad runtime root")
+    return resolved
+
+def library_reference(text, binary):
+    if text.startswith('@loader_path/'):return binary.parent/text[len('@loader_path/'):]
+    if text.startswith('@executable_path/'):return binary.parent/text[len('@executable_path/'):]
+    if text.startswith('@') or not text.startswith('/'):raise ValueError("Unresolved runtime library: "+text[:1000])
+    return Path(text)
+
+def parse_otool(text,binary):
+    # Apple cctools emits a separate exact filename header for each fat slice.
+    header=re.compile(re.escape(str(binary))+r'(?: \(architecture (arm64|x86_64)\))?:')
+    seen=set();entries=[]
+    for line in text.splitlines():
+        h=header.fullmatch(line)
+        if h:
+            kind=h.group(1) or 'native'
+            if kind in seen:raise ValueError("Duplicate runtime architecture header")
+            seen.add(kind);continue
+        m=re.fullmatch(r'\s+(.+?) \(compatibility version .+\)',line)
+        if not seen or not m:
+            raise ValueError("Unexpected runtime library metadata for "+binary.name+": "+repr(line[:1000]))
+        entries.append(m.group(1))
+    if not seen:raise ValueError("Runtime library header required")
+    return entries
+
+def libraries(binaries):
+    pending=[Path(p).resolve(strict=True) for p in binaries];seen=set();allowed=set()
+    env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C'}
+    while pending:
+        binary=pending.pop()
+        if binary in seen:continue
+        seen.add(binary)
+        if len(seen)>128:raise ValueError("Runtime dependency limit")
+        r=subprocess.run(['/usr/bin/otool','-L',str(binary)],capture_output=True,text=True,
+                         check=True,timeout=10,env=env)
+        for name in parse_otool(r.stdout,binary):
+            ref=library_reference(name,binary)
+            if any(ref==Path(p) or Path(p) in ref.parents for p in SYSTEM_ROOTS):
+                continue # macOS shared-cache files need not be present on disk.
+            real=ref.resolve(strict=True)
+            if not real.is_file():raise ValueError("Runtime library not regular")
+            allowed.add(real);pending.append(real)
+    return tuple(sorted(allowed))
+
+MAX_TIMEZONE_ENTRIES=4096
+MAX_TIMEZONE_BYTES=32*1024*1024
+
+def timezone_closure(canonical,alias,owner):
+    """Accept only a closed, same-package tree; return exact alias read literals."""
+    canonical=Path(canonical).resolve(strict=True);alias=Path(alias)
+    literals=[];records=[];total=0
+    def visit(source,destination,relative,depth,ancestors):
+        nonlocal total
+        if depth>16 or len(records)>=MAX_TIMEZONE_ENTRIES:raise ValueError("Timezone tree boundary exceeded")
+        target=source.resolve(strict=True)
+        if target!=canonical and canonical not in target.parents:raise ValueError("Source timezone target outside package")
+        source_stat=target.stat();dest_stat=destination.stat()
+        if any(s.st_uid!=owner or s.st_mode&0o022 for s in (source_stat,dest_stat)):
+            raise ValueError("Unsafe timezone entry owner or mode")
+        is_dir=target.is_dir()
+        if is_dir:
+            if not destination.is_dir():raise ValueError("Timezone directory shape mismatch")
+            if destination.is_symlink() and destination.resolve(strict=True)!=target:
+                raise ValueError("Timezone directory link outside same target")
+            identity=(source_stat.st_dev,source_stat.st_ino)
+            if identity in ancestors:raise ValueError("Timezone directory cycle")
+            expected=sorted(x.name for x in target.iterdir())
+            actual=sorted(x.name for x in destination.iterdir())
+            if expected!=actual:raise ValueError("Unknown or missing timezone entry")
+            record={'relative':relative,'kind':'directory','target':str(target)}
+        else:
+            if not target.is_file() or not destination.is_file() or not os.path.samefile(destination,target):
+                raise ValueError("Timezone file is not the same package object")
+            total+=source_stat.st_size
+            if source_stat.st_size>1024*1024 or total>MAX_TIMEZONE_BYTES:
+                raise ValueError("Timezone data size boundary exceeded")
+            record={'relative':relative,'kind':'file','target':str(target),
+                    'sha256':hashlib.sha256(target.read_bytes()).hexdigest()}
+        record.update({'uid':dest_stat.st_uid,'mode':dest_stat.st_mode,
+                       'device':dest_stat.st_dev,'inode':dest_stat.st_ino,
+                       'link':os.readlink(destination) if destination.is_symlink() else None})
+        literals.append(destination);records.append(record)
+        if is_dir:
+            for name in expected:visit(target/name,destination/name,relative+'/'+name,depth+1,ancestors|{identity})
+    visit(canonical,alias,'.',0,set())
+    return tuple(literals),records
+
+def timezone_runtime(pg_bin, runner=subprocess.run):
+    pg_bin=Path(pg_bin).resolve(strict=True);pg_root=runtime_root(pg_bin.parent)
+    if pg_root.parent.name!='postgresql@17' or pg_root.parent.parent.name!='Cellar':
+        raise ValueError("PostgreSQL17 Cellar boundary required")
+    config=pg_bin/'pg_config';real=config.resolve(strict=True)
+    if not real.is_file() or pg_root not in real.parents:
+        raise ValueError("pg_config outside same runtime")
+    env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C'}
+    def setting(flag):
+        r=runner([str(config),flag],capture_output=True,text=True,check=True,timeout=10,env=env)
+        value=r.stdout.rstrip('\n')
+        if '\n' in value or '\r' in value or not value:raise ValueError("Unexpected pg_config output")
+        return value
+    version=setting('--version')
+    match=re.fullmatch(r'PostgreSQL (17\.\d+(?:\.\d+)?)(?: \([^)]*\))?',version)
+    if not match or match.group(1)!=pg_root.name.split('_',1)[0]:
+        raise ValueError("Different pg_config runtime version")
+    if Path(setting('--bindir')).resolve(strict=True)!=pg_bin:
+        raise ValueError("Different pg_config bindir")
+    shared=pg_root.parents[2]/'share/postgresql@17'
+    if Path(setting('--sharedir'))!=shared:
+        raise ValueError("Unexpected compiled sharedir")
+    canonical=(pg_root/'share/postgresql/timezone').resolve(strict=True)
+    alias=shared/'timezone'
+    if not canonical.is_dir() or pg_root not in canonical.parents or not alias.is_dir():
+        raise ValueError("Unknown or drifted timezone runtime root")
+    owner=real.stat().st_uid
+    st=shared.stat()
+    if not shared.is_dir() or st.st_uid!=owner or st.st_mode&0o022:
+        raise ValueError("Unsafe runtime data owner or mode")
+    literals,entries=timezone_closure(canonical,alias,owner)
+    hashes={name:hashlib.sha256((pg_bin/name).read_bytes()).hexdigest() for name in
+            ('postgres','psql','initdb','pg_ctl','pg_config')}
+    return literals,{'timezone_entries':entries,'timezone_entry_count':len(entries),'timezone_canonical':str(canonical),'timezone_alias':str(alias),
+                  'compiled_sharedir':str(shared),'version':version,'owner_uid':owner,
+                  'binary_sha256':hashes}
+
+
+def pkglib_directory(pg_bin, runner=subprocess.run):
+    """Validate startup's directory-open target; grant no module/child read."""
+    pg_bin=Path(pg_bin).resolve(strict=True);root=runtime_root(pg_bin.parent)
+    if root.parent.name!='postgresql@17' or root.parent.parent.name!='Cellar':
+        raise ValueError("PostgreSQL17 Cellar boundary required")
+    config=(pg_bin/'pg_config').resolve(strict=True)
+    if root not in config.parents or not config.is_file():raise ValueError("Foreign pg_config")
+    r=runner([str(config),'--pkglibdir'],capture_output=True,text=True,check=True,timeout=10,
+             env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C'})
+    expected=root.parents[2]/'lib/postgresql@17'
+    if r.stdout!=str(expected)+'\n':raise ValueError("Unknown compiled pkglibdir")
+    canonical=root/'lib/postgresql'
+    owner=config.stat().st_uid
+    for path in (canonical,expected):
+        if not path.is_dir() or path.stat().st_uid!=owner or path.stat().st_mode&0o022:
+            raise ValueError("Unsafe pkglib directory")
+    if expected.is_symlink() and expected.resolve(strict=True)!=canonical.resolve(strict=True):
+        raise ValueError('Foreign pkglib directory alias')
+    if canonical.resolve(strict=True)!=canonical:raise ValueError("Foreign canonical pkglib")
+    names=sorted(x.name for x in canonical.iterdir())
+    if len(names)>512 or names!=sorted(x.name for x in expected.iterdir()):
+        raise ValueError("Unknown pkglib directory entry")
+    entries=[]
+    def inspect(source,alias,relative,depth=0):
+        if depth>16 or len(entries)>=4096:raise ValueError("Pkglib metadata boundary exceeded")
+        target=source.resolve(strict=True)
+        if root not in target.parents:raise ValueError("Foreign canonical pkglib entry")
+        st=target.stat();ast=alias.stat()
+        if any(s.st_uid!=owner or s.st_mode&0o022 for s in (st,ast)):
+            raise ValueError("Unsafe pkglib entry")
+        if target.is_dir():
+            if not alias.is_dir():raise ValueError("Pkglib directory shape mismatch")
+            if alias.is_symlink() and alias.resolve(strict=True)!=target:
+                raise ValueError("Foreign pkglib directory entry")
+            children=sorted(x.name for x in target.iterdir())
+            if children!=sorted(x.name for x in alias.iterdir()):
+                raise ValueError("Unknown pkglib subtree entry")
+            kind="directory"
+        else:
+            if not target.is_file() or not alias.is_file() or not os.path.samefile(target,alias):
+                raise ValueError("Foreign pkglib file entry")
+            children=[];kind="file"
+        entries.append({'name':relative,'kind':kind,'target':str(target),'uid':ast.st_uid,
+                        'mode':ast.st_mode,'device':ast.st_dev,'inode':ast.st_ino,
+                        'link':os.readlink(alias) if alias.is_symlink() else None})
+        for name in children:inspect(target/name,alias/name,relative+'/'+name,depth+1)
+    for name in names:
+        source=canonical/name;alias=expected/name
+        if source.is_dir() and name not in ("pgxs","pkgconfig"):
+            raise ValueError("Unexpected pkglib directory; bounded immediate inventory: "+json.dumps([{"name":n,"source_directory":(canonical/n).is_dir(),"alias_directory":(expected/n).is_dir(),"canonical_target":str((canonical/n).resolve(strict=True)),"alias_target":str((expected/n).resolve(strict=True)),"samefile":os.path.samefile(canonical/n,expected/n)} for n in names]))
+        inspect(source,alias,name)
+    st=expected.stat()
+    return expected,{'directory':str(expected),'canonical':str(canonical),'entries':entries,
+                    'uid':st.st_uid,'mode':st.st_mode,'device':st.st_dev,'inode':st.st_ino,
+                    'link':os.readlink(expected) if expected.is_symlink() else None}
+
+def profile(inside, unix, roots, files):
+    inside=Path(inside);unix=Path(unix)
+    if not inside.is_absolute() or not unix.is_absolute() or unix.parent!=inside:
+        raise ValueError("Fixed private socket required")
+    lines=['(version 1)','(deny default)','(import "system.sb")',
+           '(allow file-read-metadata)','(allow process*)','(deny network*)']
+    for root in [inside,*map(Path,SYSTEM_ROOTS),*roots]:
+        lines.append('(allow file-read-data (subpath '+quote(root)+'))')
+    for file in [*map(Path,SYSTEM_FILES),*files]:
+        lines.append('(allow file-read-data (literal '+quote(file)+'))')
+    lines+=['(allow file-write* (subpath '+quote(inside)+'))',
+            '(allow network-outbound (remote unix-socket (literal '+quote(unix)+')))',
+            '(allow network-inbound (local unix-socket (literal '+quote(unix)+')))']
+    return '\n'.join(lines)+'\n'
+
+CHILD=r"""
+import errno,json,pathlib,sys
+inside,outside=sys.argv[1:]
+result={}
+result['inside_read']=pathlib.Path(inside,'inside.txt').read_text()=='synthetic-inside'
+for name,path in [('outside_read_denied',pathlib.Path(outside)),('symlink_read_denied',pathlib.Path(inside,'outside-link'))]:
+ try:
+  path.read_bytes()
+  result[name]=False
+ except OSError as e:
+  result[name]=e.errno in (errno.EACCES,errno.EPERM)
+print(json.dumps(result))
+"""
+
+def read_probe(guard,native,parent):
+    evidence=Path(tempfile.mkdtemp(prefix='p36-read-',dir=parent));evidence.chmod(0o700)
+    inside=evidence/'inside';inside.mkdir(mode=0o700)
+    print('Read-boundary evidence: '+str(evidence))
+    outside=evidence/'private-canary.txt';outside.write_text('synthetic-outside-no-private-data')
+    (inside/'inside.txt').write_text('synthetic-inside')
+    (inside/'outside-link').symlink_to(outside)
+    policy=inside/'profile.sb'
+    policy.write_text(guard.profile(inside,inside/'.s.PGSQL.5432'))
+    with (evidence/'private-read-errors.log').open('wb') as errors:
+        r=subprocess.run(['/usr/bin/sandbox-exec','-f',str(policy),str(Path(sys.executable).resolve()),
+                          '-c',CHILD,str(inside),str(outside)],stdout=subprocess.PIPE,stderr=errors,
+                         text=True,env=native.clean_environment(inside),cwd=inside,timeout=30,check=True)
+    result=json.loads(r.stdout)
+    expected={'inside_read':True,'outside_read_denied':True,'symlink_read_denied':True}
+    if result!=expected or any(x is not True for x in result.values()):
+        raise ValueError("Host read boundary not established")
+    (evidence/'private-read-report.json').write_text(json.dumps(result,indent=2))
+    return evidence
+
+def load_native(path):
+    if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest()!=NATIVE_SHA:
+        raise ValueError("Reviewed native source mismatch")
+    spec=importlib.util.spec_from_file_location('_p36_native',path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    return module
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--probe',action='store_true')
+    p.add_argument('--sources',required=True,type=Path)
+    p.add_argument('--pg-bin',required=True,type=Path)
+    p.add_argument('--output-parent',required=True,type=Path)
+    args=p.parse_args()
+    if not args.probe:
+        print('NOT RUN: no native startup, credential, database or archive access.');return 2
+    evidence=None;stage='platform'
+    try:
+        if sys.platform!='darwin':raise ValueError("macOS only; no fallback")
+        parent=args.output_parent
+        if not parent.is_absolute() or parent.is_symlink() or not parent.is_dir():raise ValueError("Private parent required")
+        st=parent.stat()
+        if st.st_uid!=os.getuid() or st.st_mode&0o022:raise ValueError("Unsafe parent")
+        os.umask(0o077)
+        evidence=Path(tempfile.mkdtemp(prefix='p36-context-',dir=parent));evidence.chmod(0o700)
+        stage='runtime-roots'
+        pg_bin=args.pg_bin.resolve(strict=True)
+        if not all((pg_bin/n).is_file() for n in ('postgres','psql','initdb','pg_ctl')):raise ValueError("Explicit native tools required")
+        pg_root=runtime_root(pg_bin.parent)
+        if pg_root.parent.name!='postgresql@17' or pg_root.parent.parent.name!='Cellar':raise ValueError('Explicit Homebrew PostgreSQL17 runtime required')
+        stage='same-package-timezone-alias'
+        timezone,package=timezone_runtime(pg_bin)
+        pkglib,pkglib_proof=pkglib_directory(pg_bin)
+        roots=(pg_root,runtime_root(sys.base_prefix))
+        stage='runtime-library-closure'
+        files=libraries([pg_bin/n for n in ('postgres','psql','initdb','pg_ctl')]+[Path(sys.executable)])
+        stage='reviewed-helper-loading'
+        native=load_native(args.sources/'entry_native_probe.py')
+        original_load=native.load_guard;original_verify=native.verify_host
+        reads=[]
+        def load_guard(path):
+            guard=original_load(path)
+            guard.profile=lambda inside,unix:profile(inside,unix,roots,(*files,*timezone,pkglib))
+            return guard
+        def verify_host(guard,parent):
+            evidence=read_probe(guard,native,parent);reads.append(evidence)
+            return original_verify(guard,parent)
+        native.load_guard=load_guard;native.verify_host=verify_host
+        old=sys.argv
+        try:
+            sys.argv=['p36-native','--probe','--pg-bin',str(pg_bin),'--output-parent',str(parent)]
+            stage='read-kernel-native-probes'
+            code=native.main()
+        finally:sys.argv=old
+        if code!=2 or len(reads)!=1:raise ValueError("Native/read proof incomplete")
+        if pkglib_directory(pg_bin)[1]!=pkglib_proof:raise ValueError('Runtime pkglib directory drift during probe')
+        if timezone_runtime(pg_bin)[1]!=package:raise ValueError('Runtime package or timezone alias drift during probe')
+        evidence=reads[0]
+        (evidence/'private-runtime-inventory.json').write_text(json.dumps({
+            'pkglib_directory_listing_only':pkglib_proof,'timezone_literal_reads':[str(x) for x in timezone],'postgres_runtime':package,'roots':[str(x) for x in roots],'libraries':[str(x) for x in files],
+            'read_canary_verified':True,'native_kernel_fixture_success':True,
+            'existing_archive_read':False,'archived_sql_executed':False,
+            'complete_read_isolation_or_egress_proof':False,
+            'production_connections':0,'production_writes':0},indent=2))
+        print('PASS P36: outside and symlink canary reads denied; inside read, fixed UNIX, IPv4/v6/outside-write checks and native synthetic PostgreSQL succeeded.')
+        print('Actual archives, arbitrary runtime isolation and full restoration: NOT verified. Production connections/writes: 0.')
+        print('Private evidence: '+str(evidence));return 2
+    except Exception as error:
+        if evidence is not None:
+            (evidence/'private-p36-error.json').write_text(json.dumps({'stage':stage,'kind':type(error).__name__,'message':str(error)}))
+        print('STOP: P36 read/native boundary incomplete ('+stage+'/'+type(error).__name__+'); no archive or production execution.')
+        if evidence is not None:print('Private evidence: '+str(evidence))
+        return 1
+
+if __name__=='__main__':raise SystemExit(main())
