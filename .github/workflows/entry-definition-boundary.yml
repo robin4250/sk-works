@@ -6,6 +6,7 @@ on:
       - 'tool/security/restoration/verify_entry_definitions.mjs'
       - 'tool/security/restoration/entry_metadata_probe.py'
       - 'tool/security/restoration/test_entry_metadata_probe.py'
+      - 'tool/security/restoration/entry_metadata_review.md'
       - '.github/workflows/entry-definition-boundary.yml'
   workflow_dispatch:
 permissions:
