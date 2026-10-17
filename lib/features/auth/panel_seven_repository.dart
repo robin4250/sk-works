@@ -49,7 +49,7 @@ class PanelSevenRepository {
     bool unchanged() => client.auth.currentSession?.user.id == actor &&
         client.auth.currentSession?.accessToken == token &&
         client.auth.currentSession?.isExpired == false;
-    final response = await client.auth.getUser(token);
+    final response = await client.auth.getUser(token).timeout(const Duration(seconds: 10));
     final user = response.user;
     if (user == null || user.id != actor || !unchanged()) {
       throw StateError('account_session_changed');
@@ -61,7 +61,8 @@ class PanelSevenRepository {
     bool? secondary;
     try {
       final raw = await client.rpc('secondary_password_configured')
-          .setHeader('Authorization', 'Bearer $token');
+          .setHeader('Authorization', 'Bearer $token')
+          .timeout(const Duration(seconds: 10));
       if (raw is bool) secondary = raw;
     } catch (_) {
       // Unknown stays unknown. Do not expose upstream errors or assume false.

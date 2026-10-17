@@ -42,8 +42,10 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     });
     try {
       final snapshot = await widget.repository.load();
-      if (!mounted || generation != _generation ||
-          !widget.repository.isCurrent(snapshot)) return;
+      if (!mounted || generation != _generation) return;
+      if (!widget.repository.isCurrent(snapshot)) {
+        throw StateError('session_changed');
+      }
       setState(() {
         _snapshot = snapshot;
         _loading = false;
