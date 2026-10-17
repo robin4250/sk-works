@@ -54,11 +54,16 @@ class NativeTests(unittest.TestCase):
         self.assertIn("['sko_probe','-f',sql_file]",source)
         self.assertNotIn("['sko_probe','-c',SQL]",source)
 
-    def test_shutdown_requires_status_three(self):
-        for code in (0,1,2,4):
-            with self.assertRaises(ValueError):
-                native.require_stopped(lambda *a,**k:types.SimpleNamespace(returncode=code),Path('/new/pg_ctl'),Path('/new/data'))
-        native.require_stopped(lambda *a,**k:types.SimpleNamespace(returncode=3),Path('/new/pg_ctl'),Path('/new/data'))
+    def test_shutdown_only_targets_owned_process_handle(self):
+        from unittest.mock import Mock
+        child=Mock();child.poll.return_value=None;child.wait.return_value=0
+        native.stop_owned_server(child)
+        child.send_signal.assert_called_once_with(native.signal.SIGINT)
+        child.wait.assert_called_once_with(timeout=30)
+        child=Mock();child.poll.return_value=0;child.wait.return_value=0
+        native.stop_owned_server(child);child.send_signal.assert_not_called()
+        child.wait.return_value=1
+        with self.assertRaises(ValueError):native.stop_owned_server(child)
 
     def test_socket_matches_reviewed_profile_boundary(self):
         source=Path(native.__file__).read_text()
