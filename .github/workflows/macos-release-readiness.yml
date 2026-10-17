@@ -30,13 +30,13 @@ jobs:
           SKO_ISOLATED_MAC_PREPARE=1 bash tool/prepare_macos.sh
           flutter pub get --enforce-lockfile
           flutter build macos --release --config-only --dart-define=SKO_MACOS_GOOGLE_V1=true --dart-define=SKO_MASTER_PASSWORD_V1=false
-          xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Release CODE_SIGNING_ALLOWED=NO build
+          xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner -configuration Release -derivedDataPath build/macos-ci CODE_SIGNING_ALLOWED=NO build
       - name: Check compiled callback and Release network
         run: |
           python3 - <<'PY'
           import pathlib,plistlib
           root=pathlib.Path('../sko-mac-candidate')
-          info=list(root.glob('build/macos/**/Release/*.app/Contents/Info.plist'))
+          info=list(root.glob('build/macos-ci/Build/Products/Release/*.app/Contents/Info.plist'))
           assert len(info)==1, 'Expected one compiled Release app'
           p=plistlib.loads(info[0].read_bytes())
           assert p['CFBundleIdentifier']=='com.skworks.skWorks'
