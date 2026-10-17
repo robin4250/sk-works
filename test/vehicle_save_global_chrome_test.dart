@@ -83,7 +83,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(SkoScrollChromeController.visible.value, isFalse);
     await tester.scrollUntilVisible(
-      find.text('確定して保存'), 100, scrollable: find.byType(Scrollable));
+      find.text('確定して保存'), 100, scrollable: find.descendant(of: find.byType(ListView),
+        matching: find.byType(Scrollable)).first);
     await tester.tap(find.text('確定して保存'));
     await tester.pumpAndSettle();
     await tester.tap(find.descendant(of: find.byType(AlertDialog),
