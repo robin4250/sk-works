@@ -43,6 +43,11 @@ class NativeTests(unittest.TestCase):
         self.assertNotIn('SYNTHETIC-SECRET',str(env))
         self.assertEqual(env['HOME'],'/private/new')
 
+    def test_socket_matches_reviewed_profile_boundary(self):
+        source=Path(native.__file__).read_text()
+        self.assertIn("data=inside/'pgdata';sock=inside",source)
+        self.assertNotIn("sock=inside/'s'",source)
+
     def test_strict_sql_evidence(self):
         native.parse_flags('{"reader_access":true}\n{"rollback_preserved":true}\n{"synthetic_cleanup":true}\n')
         for value in ('false','1','"true"','null'):
