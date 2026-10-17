@@ -106,7 +106,7 @@ def main():
         os.umask(0o077)
         evidence=Path(tempfile.mkdtemp(prefix='entry-native-',dir=str(parent))).resolve();evidence.chmod(0o700)
         inside=evidence/'inside';inside.mkdir(mode=0o700)
-        data=inside/'pgdata';sock=inside/'s';sock.mkdir(mode=0o700)
+        data=inside/'pgdata';sock=inside
         endpoint=sock/'.s.PGSQL.5432'
         if len(str(endpoint).encode())>=104:raise ValueError('private socket path too long')
         policy=inside/'profile.sb';policy.write_text(guard.profile(inside,endpoint))
