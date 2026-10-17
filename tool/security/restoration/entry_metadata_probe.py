@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 SNAPSHOT_SHA='432171969b657c082230cc170487e9d7bf9126bdf9a4fa5b19e105c6c3e1e37b'
-DEFINITIONS_SHA='6ea78d66f80d6eb9eb7c3d00c45c60b664340acc6ba2540c6340c8a8d1236d7b'
+DEFINITIONS_SHA='10fb932c3d13e77abf59d23b42f2e88b3d7551fbdeae98d114acd2df6b576397'
 
 def load_sources(base):
     source=base/'entry_snapshot.py'
