@@ -14,11 +14,15 @@ class PayrollUnitConditionsPage extends StatefulWidget {
     this.section,
     this.unit,
     this.onValidationSelection,
+    this.editorController,
+    this.externalFooter = false,
   });
   final PayrollUnitConditionsRepository repository;
   final String companyId;
   final String workerId;
   final bool embedded;
+  final PayrollUnitEditorController? editorController;
+  final bool externalFooter;
   final PayrollItemSection? section;
   final PayrollItemUnit? unit;
   final void Function(PayrollItemSection, PayrollItemUnit)? onValidationSelection;
@@ -75,6 +79,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
   }
 
   Future<void> _load() async {
+    widget.editorController?.invalidate();
     final generation = ++_generation;
     setState(() {
       _loading = true;
@@ -153,11 +158,13 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                   fit: widget.embedded ? FlexFit.loose : FlexFit.tight,
                   child: PayrollUnitItemEditor(
                     embedded: widget.embedded,
+                    controller: widget.editorController,
+                    showFooter: !widget.externalFooter,
                     section: widget.section,
                     unit: widget.unit,
                     onValidationSelection: widget.onValidationSelection,
                     key: ValueKey(
-                      '${widget.workerId}/${_value!.month}/${_value!.version}',
+                      '${widget.companyId}/${widget.workerId}/${_value!.month}/${_value!.version}',
                     ),
                     initialItems: _value!.items,
                     canEdit: _value!.canEdit,

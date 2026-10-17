@@ -70,6 +70,8 @@ class _IndividualPayrollSettingsPageState
   PayrollItemUnit _earningUnit = PayrollItemUnit.month;
   PayrollItemUnit _deductionUnit = PayrollItemUnit.month;
   final _unitPanelKey = GlobalKey();
+  final _unitFooter = PayrollUnitEditorController();
+  bool get _busy => _saving || _unitFooter.saving;
   final _scrollController = ScrollController();
   final _addedItemKey = GlobalKey();
   bool _paidLeaveWagesAvailable = false;
@@ -97,6 +99,7 @@ class _IndividualPayrollSettingsPageState
 
   @override
   void dispose() {
+    _unitFooter.dispose();
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -182,6 +185,7 @@ class _IndividualPayrollSettingsPageState
   });
 
   Future<void> _loadWorker(String workerId) async {
+    _unitFooter.invalidate();
     if (!mounted) return;
     final generation = ++_loadGeneration;
     final repository = _repository;
@@ -433,12 +437,16 @@ class _IndividualPayrollSettingsPageState
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _unitFooter, builder: (context, _) => _buildSettings(context));
+
+  Widget _buildSettings(BuildContext context) {
     SkoLanguageController.watch(context);
     final workspace = _workspace;
     final companyId = _settingValues['company_id'] is String
         ? _settingValues['company_id'] as String
         : workspace?.companyId;
+    final monthly = (_showDeductions ? _deductionUnit : _earningUnit) == PayrollItemUnit.month;
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -465,10 +473,10 @@ class _IndividualPayrollSettingsPageState
               ),
       ),
       bottomNavigationBar:
-          _loading || _error != null || workspace?.canView != true ||
-              (_showDeductions ? _deductionUnit : _earningUnit) != PayrollItemUnit.month
+          _loading || _error != null || workspace?.canView != true
           ? null
           : SafeArea(
+              key: const ValueKey('individual-payroll-fixed-footer'),
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
@@ -477,12 +485,13 @@ class _IndividualPayrollSettingsPageState
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed:
-                            workspace?.canEdit == true && !_saving && _workerId != null
-                            ? () => _addCustomMoney(
+                            workspace?.canEdit == true && !_busy && _workerId != null &&
+                                (monthly || _unitFooter.canAdd)
+                            ? monthly ? () => _addCustomMoney(
                                 _showDeductions
                                     ? _customDeductions
                                     : _customEarnings,
-                              )
+                              ) : _unitFooter.add
                             : null,
                         icon: const Icon(Icons.add),
                         label: Text(SkoLanguageController.tr('追加')),
@@ -492,12 +501,13 @@ class _IndividualPayrollSettingsPageState
                     Expanded(
                       child: FilledButton.icon(
                         onPressed:
-                            workspace?.canEdit == true && !_saving && _workerId != null
-                            ? _save
+                            workspace?.canEdit == true && !_busy && _workerId != null &&
+                                (monthly || _unitFooter.canRegister)
+                            ? monthly ? _save : _unitFooter.register
                             : null,
                         icon: const Icon(Icons.save_outlined),
                         label: Text(
-                          _saving
+                          _busy
                               ? SkoLanguageController.tr('保存中…')
                               : SkoLanguageController.tr('登録'),
                         ),
@@ -559,7 +569,7 @@ class _IndividualPayrollSettingsPageState
                           child: Text(worker.name),
                         ),
                     ],
-                    onChanged: (value) {
+                    onChanged: _busy ? null : (value) {
                       if (value != null) _loadWorker(value);
                     },
                   ),
@@ -633,7 +643,7 @@ class _IndividualPayrollSettingsPageState
                             : null,
                       ),
                     ),
-                    onSelectionChanged: (values) =>
+                    onSelectionChanged: _busy ? null : (values) =>
                         setState(() => _showDeductions = values.first),
                   ),
                   const SizedBox(height: 12),
@@ -1060,6 +1070,8 @@ class _IndividualPayrollSettingsPageState
       return PayrollUnitConditionsPage(
         key: _unitPanelKey,
         embedded: true,
+        editorController: _unitFooter,
+        externalFooter: (title == '支給' ? _earningUnit : _deductionUnit) != PayrollItemUnit.month,
         repository: _repository.unitConditions,
         companyId: company, workerId: worker,
         section: title == '支給' ? PayrollItemSection.earning : PayrollItemSection.deduction,
@@ -1114,7 +1126,7 @@ class _IndividualPayrollSettingsPageState
                     ? Colors.blue.shade700 : null,
                   foregroundColor: (title == '支給' ? _earningUnit : _deductionUnit) == unit
                     ? Colors.white : null),
-                onPressed: _saving ? null : () => setState(() {
+                onPressed: _busy ? null : () => setState(() {
                   if (title == '支給') { _earningUnit = unit; }
                   else { _deductionUnit = unit; }
                 }),
