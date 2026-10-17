@@ -153,7 +153,8 @@ def verify_clean(runner, sha):
 def release_command():
     # Source only the original local public-client environment; never copy it or print it.
     return ['bash', '-c', 'set -euo pipefail; set +x; source "$1" >/dev/null 2>&1; set +x; '
-            'test -n "${SUPABASE_URL:-}"; test -n "${SUPABASE_PUBLISHABLE_KEY:-}"; '
+            'test "${SUPABASE_URL:-}" = https://ztktgquxvcxcjxtluspu.supabase.co; '
+            'case "${SUPABASE_PUBLISHABLE_KEY:-}" in sb_publishable_*) ;; *) exit 1;; esac; '
             'flutter build ios --release --dart-define=SKO_MASTER_PASSWORD_V1=false '
             '--dart-define="SUPABASE_URL=$SUPABASE_URL" '
             '--dart-define="SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY"', 'r31']
@@ -189,7 +190,7 @@ def build(root, sha, backup_root):
         # A new detached worktree only: no checkout, merge, reset, stash or clean of root.
         original.run(['git', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', sha])
         source = stage / 'source'
-        original.run(['git', 'worktree', 'add', '--detach', str(source), sha])
+        original.run(['git', '-c', 'core.hooksPath=/dev/null', 'worktree', 'add', '--detach', str(source), sha])
         candidate = Runner(source, log)
         verify_clean(candidate, sha)
         copy_checked(stage / 'original-ios', source / 'ios')
