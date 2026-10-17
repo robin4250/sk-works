@@ -59,11 +59,11 @@ void main() {
       debug:false,authOptions:const FlutterAuthClientOptions(autoRefreshToken:false,detectSessionInUri:false),
       httpClient:MockClient((request) async {
         expect(request.url.host,'r38-fixture.invalid');requests.add(request);
-        if(request.url.path.endsWith('/secondary_password_configured')) return http.Response(jsonEncode(configured),200,headers:{'content-type':'application/json'});
-        if(request.url.path.endsWith('/set_secondary_password')) return http.Response('null',200,headers:{'content-type':'application/json'});
+        if(request.url.path.endsWith('/secondary_password_configured')) return http.Response(jsonEncode(configured),200,headers:{'content-type':'application/json'},request:request);
+        if(request.url.path.endsWith('/set_secondary_password')) return http.Response('null',200,headers:{'content-type':'application/json'},request:request);
         if(request.url.path.endsWith('/verify_secondary_password')) {
           expect(jsonDecode(request.body),{'p_password':'synthetic-secondary'});
-          return http.Response(jsonEncode(await pending!.future),200,headers:{'content-type':'application/json'});
+          return http.Response(jsonEncode(await pending!.future),200,headers:{'content-type':'application/json'},request:request);
         }
         throw StateError('Unexpected synthetic endpoint');
       }));
@@ -140,7 +140,7 @@ void main() {
     configured=false;await open(tester,setup:true);nativePending=Completer<bool>();
     await tester.enterText(find.byType(TextField).at(0),'synthetic-new-secondary');
     await tester.enterText(find.byType(TextField).at(1),'synthetic-new-secondary');
-    await tester.tap(find.byType(SwitchListTile));await tester.pump();
+    await tester.ensureVisible(find.byType(SwitchListTile));await tester.tap(find.byType(SwitchListTile));await tester.pump();
     await tester.ensureVisible(find.text('設定して開く'));await tester.tap(find.text('設定して開く'));await tester.pump();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -154,7 +154,7 @@ void main() {
     configured=false;await open(tester,setup:true);nativePending=Completer<bool>();
     await tester.enterText(find.byType(TextField).at(0),'synthetic-new-secondary');
     await tester.enterText(find.byType(TextField).at(1),'synthetic-new-secondary');
-    await tester.tap(find.byType(SwitchListTile));await tester.pump();
+    await tester.ensureVisible(find.byType(SwitchListTile));await tester.tap(find.byType(SwitchListTile));await tester.pump();
     await tester.ensureVisible(find.text('設定して開く'));await tester.tap(find.text('設定して開く'));await tester.pump();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     nativePending!.complete(true);await settle(tester);
