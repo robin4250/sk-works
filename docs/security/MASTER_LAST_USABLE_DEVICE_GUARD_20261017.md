@@ -44,3 +44,9 @@ concurrent migrations replacing wrapped RPCs. The original function names and
 OIDs can be restored in isolation; never rollback by overwriting all current
 production device state. The separate incident restoration procedure is reviewed
 by the recovery lane and requires its own protected snapshot and exact approval.
+
+Supported transaction isolation is READ COMMITTED. The guard rejects REPEATABLE
+READ and SERIALIZABLE with a generic denial before reads/mutations, because the
+other-device count must use a fresh snapshot after obtaining the owner row lock.
+The isolated fixture verifies all three entry points fail closed at both rejected
+isolation levels, while retaining the separate-connection READ COMMITTED races.

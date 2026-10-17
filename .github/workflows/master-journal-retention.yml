@@ -1,0 +1,24 @@
+name: Master credential journal logout retention
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/master_credential_repository.dart'
+      - 'test/master_credential_journal_logout_test.dart'
+      - 'docs/security/MASTER_JOURNAL_LOGOUT_RETENTION_20261017.md'
+      - '.github/workflows/master-journal-retention.yml'
+permissions:
+  contents: read
+jobs:
+  journal-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze test/master_credential_journal_logout_test.dart
+      - run: flutter test test/master_credential_journal_logout_test.dart

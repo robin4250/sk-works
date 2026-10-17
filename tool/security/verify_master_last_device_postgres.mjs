@@ -137,6 +137,19 @@ try {
  await lock(user,proofD,true,d);await deny(lock(user,proofD2,true,d2));
  await deny(lock(other,proofD2,true,d2));
  await lock(user,await issue(d,false),false,d);
+ // Non-READ-COMMITTED snapshots are denied even for otherwise valid unlocks.
+ const isolationProof=await issue(d,false);
+ for(const isolation of ['repeatable read','serializable']) {
+  await user.query('begin isolation level '+isolation);
+  await deny(user.query('select public.set_master_device_locked($1,false)',[d]));
+  await user.query('rollback');
+  await user.query('begin isolation level '+isolation);
+  await deny(user.query('select public.revoke_master_device($1)',[d]));
+  await user.query('rollback');
+  await user.query('begin isolation level '+isolation);
+  await assert.rejects(lock(user,isolationProof,false,d),e=>e.code==='42501' && e.message==='master_device_unavailable');
+  await user.query('rollback');
+ }
  // Simultaneous distinct target lock/revoke must serialize on the owner row.
  for(const pair of [['lock','lock'],['lock','revoke'],['revoke','revoke']]) {
   await admin.query('update private.master_device_lock_rollout set enabled=false');
@@ -169,5 +182,5 @@ try {
  drop function private.guard_master_device_loss(uuid,boolean);commit;`);
  assert.deepEqual(await identitySnapshot(),beforeIdentity);
  assert.deepEqual(await guardDefinitions(),originalGuardDefinitions,'exact original definitions and execution ACL restored');
- console.log('PASS PostgreSQL 17: last usable lock/revoke/proof rejection; existing unlock/proof semantics; cross-target lock/lock, lock/revoke and revoke/revoke concurrent connections; role/private bypass denial; unchanged identity/provider/company/roles; isolated definition restoration. Synthetic fixture only.');
+ console.log('PASS PostgreSQL 17: last usable lock/revoke/proof rejection; non-READ-COMMITTED fail-closed rejection; existing unlock/proof semantics; cross-target lock/lock, lock/revoke and revoke/revoke concurrent connections; role/private bypass denial; unchanged identity/provider/company/roles; isolated definition restoration. Synthetic fixture only.');
 } finally {await Promise.all(connections.map(c=>c.end()));}

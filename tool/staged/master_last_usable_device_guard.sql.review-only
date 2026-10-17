@@ -9,6 +9,10 @@ create function private.guard_master_device_loss(p_device_id uuid,p_losing boole
 returns void language plpgsql security definer set search_path='' as $$
 declare actor uuid:=auth.uid(); target private.master_devices%rowtype;
 begin
+ -- Counting after the owner-row lock requires fresh READ COMMITTED snapshots.
+ -- A caller-selected repeatable snapshot must never weaken last-device checks.
+ if current_setting('transaction_isolation') <> 'read committed' then
+ raise sqlstate '42501' using message='master_device_unavailable'; end if;
  if actor is null or p_device_id is null or p_losing is null then
  raise sqlstate '42501' using message='master_device_unavailable'; end if;
  -- Every guarded lock/revoke takes the same owner row before any device row.
