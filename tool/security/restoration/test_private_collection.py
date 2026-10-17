@@ -26,6 +26,23 @@ class ReadOnlyCollectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             collector.parse_plan(self.plan().replace('ztktgquxvcxcjxtluspu', 'other'))
 
+    def test_libpq_database_expansion_and_unreviewed_users_denied(self):
+        for database in ('postgresql://user@attacker/db', 'host=attacker dbname=postgres',
+                         'postgres sslmode=disable', ' postgres', 'postgres\t'):
+            with self.subTest(database=database):
+                plan = self.plan().replace('PGDATABASE=postgres', 'PGDATABASE=' + repr(database))
+                with self.assertRaises(ValueError):
+                    collector.parse_plan(plan)
+        for user in ('other', 'postgres.admin', 'postgres host=attacker', 'cli_login_arbitrary'):
+            with self.subTest(user=user), self.assertRaises(ValueError):
+                collector.parse_plan(self.plan().replace('PGUSER=postgres', 'PGUSER=' + repr(user)))
+        pool = self.plan().replace('db.ztktgquxvcxcjxtluspu.supabase.co',
+                                   'aws-0-ap-northeast-1.pooler.supabase.com')
+        for user in ('postgres.ztktgquxvcxcjxtluspu', 'cli_login_postgres.ztktgquxvcxcjxtluspu'):
+            self.assertEqual(collector.parse_plan(pool.replace('PGUSER=postgres', 'PGUSER=' + user))['PGUSER'], user)
+        with self.assertRaises(ValueError):
+            collector.parse_plan(pool.replace('PGUSER=postgres', 'PGUSER=evil.ztktgquxvcxcjxtluspu'))
+
     def test_read_only_and_no_public_private_values(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

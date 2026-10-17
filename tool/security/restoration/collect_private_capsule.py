@@ -12,6 +12,7 @@ import tempfile
 
 KEYS = {'PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE'}
 PROJECT = 'ztktgquxvcxcjxtluspu'
+LOGIN_ROLES = {'postgres', 'cli_login_postgres'}
 CATALOG_SHA256 = '825737cfb37797ee6a384bf07cfad3343cda1c5aa3d7c0751bbd5c2583f66a53'
 INVARIANTS = """
 SELECT jsonb_build_object(
@@ -43,9 +44,14 @@ def parse_plan(text):
             result[name] = value
     if set(result) != KEYS or not all(result.values()):
         raise ValueError('five static connection items required')
+    # libpq expands a dbname URI or key=value string as connection parameters.
+    # Keep it a literal known database, so it cannot override the host/SSL guard.
+    if result['PGDATABASE'] != 'postgres':
+        raise ValueError('literal reviewed database required')
     direct = result['PGHOST'] == 'db.' + PROJECT + '.supabase.co'
+    direct = direct and result['PGUSER'] in LOGIN_ROLES
     pool = (re.fullmatch(r'aws-\d+-[a-z0-9-]+\.pooler\.supabase\.com', result['PGHOST'])
-            and result['PGUSER'].endswith('.' + PROJECT))
+            and result['PGUSER'] in {role + '.' + PROJECT for role in LOGIN_ROLES})
     if not (direct or pool):
         raise ValueError('project binding not established')
     if not result['PGPORT'].isdigit() or not 1 <= int(result['PGPORT']) <= 65535:
