@@ -253,50 +253,28 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
   }
 
   Future<void> _edit() async {
-    final result = await Navigator.of(context).push<Map<String, String>>(
+    final submitted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => _SiteEditRequestPage(site: widget.site),
+        builder: (_) => SiteEditRequestPage(site: widget.site),
       ),
     );
-    if (result == null || !mounted) return;
-    final repository = _repository;
-    if (repository == null) return;
-
-    if (!mounted) return;
-    final confirmed = await showDialog<bool>(
+    if (!mounted || submitted != true) return;
+    await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(_tr('現場情報の変更を申請しますか？', 'Request changes to site information?')),
-        content: Text(_tr('登録済みの現場情報は承認後に反映されます。', 'Changes to registered site information are applied after approval.')),
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_tr('申請の送信が完了しました', 'Request submitted')),
+        content: Text(_tr(
+          '承認担当者に申請を送りました。現場情報は承認後に反映されます。',
+          'Your request was sent to the approver. Site information changes take effect after approval.',
+        )),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(_tr('戻る', 'Back')),
-          ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(_tr('確定して申請', 'Confirm and Submit')),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(_tr('現場詳細へ', 'Back to site details')),
           ),
         ],
       ),
     );
-    if (confirmed != true) return;
-
-    try {
-      await repository.submitInformationChange(
-        siteId: widget.site.id,
-        values: result,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_tr('変更申請を送信しました', 'Change request sent'))),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_tr('変更申請を送信できませんでした', 'Could not send change request')}: $error')),
-      );
-    }
   }
 
   Future<void> _showPhotoPreview(
@@ -776,15 +754,24 @@ class _SiteDetailPageState extends State<SiteDetailPage> {
 
 }
 
-class _SiteEditRequestPage extends StatefulWidget {
-  const _SiteEditRequestPage({required this.site});
+class SiteEditRequestPage extends StatefulWidget {
+  const SiteEditRequestPage({
+    super.key,
+    required this.site,
+    this.onSubmit,
+    this.loadTradeCompanies,
+    this.loadManagers,
+  });
+  final Future<void> Function(Map<String, String> values)? onSubmit;
+  final Future<List<SiteTradeCompanyOption>> Function()? loadTradeCompanies;
+  final Future<List<SiteManagerOption>> Function()? loadManagers;
   final SiteRecord site;
 
   @override
-  State<_SiteEditRequestPage> createState() => _SiteEditRequestPageState();
+  State<SiteEditRequestPage> createState() => _SiteEditRequestPageState();
 }
 
-class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
+class _SiteEditRequestPageState extends State<SiteEditRequestPage> {
   final _repository = SiteCloudRepository.maybeCreate();
 
   String _tr(String ja, String en) =>
@@ -807,6 +794,9 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
   late SiteStatus _status;
   bool _loadingOptions = true;
   String? _optionError;
+  bool _submitting = false;
+  bool _returning = false;
+  String? _submitError;
 
   @override
   void initState() {
@@ -830,7 +820,8 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
 
   Future<void> _loadOptions() async {
     final repository = _repository;
-    if (repository == null) {
+    if (repository == null &&
+        (widget.loadTradeCompanies == null || widget.loadManagers == null)) {
       if (!mounted) return;
       setState(() {
         _loadingOptions = false;
@@ -842,8 +833,10 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
       return;
     }
     try {
-      final tradeCompanies = await repository.loadCustomerTradeCompanies();
-      final managers = await repository.loadSiteManagers();
+      final tradeCompanies = await (widget.loadTradeCompanies?.call() ??
+          repository!.loadCustomerTradeCompanies());
+      final managers = await (widget.loadManagers?.call() ??
+          repository!.loadSiteManagers());
 
       final customerItems = <SiteTradeCompanyOption>[...tradeCompanies];
       if (_customerId != null &&
@@ -910,7 +903,9 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: !_submitting,
+      child: Scaffold(
       appBar: AppBar(title: Text(_tr('現場 編集／登録', 'Edit / Register Site'))),
       body: _loadingOptions
           ? const Center(child: CircularProgressIndicator())
@@ -938,7 +933,8 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
                         child: Text(item.name),
                       ),
                   ],
-                  onChanged: (value) => setState(() => _customerId = value),
+                  onChanged: _submitting || _returning ? null
+                      : (value) => setState(() => _customerId = value),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<SiteStatus>(
@@ -954,7 +950,7 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
                         child: Text(value.label),
                       ),
                   ],
-                  onChanged: (value) =>
+                  onChanged: _submitting || _returning ? null : (value) =>
                       setState(() => _status = value ?? _status),
                 ),
                 const SizedBox(height: 12),
@@ -976,7 +972,7 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
                         child: Text(item.name),
                       ),
                   ],
-                  onChanged: (value) => setState(
+                  onChanged: _submitting || _returning ? null : (value) => setState(
                     () => _managerWorkerId =
                         (value == null || value.isEmpty) ? null : value,
                   ),
@@ -996,18 +992,27 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
                 _field(_startDate, _tr('開始日', 'Start Date')),
                 _field(_endDate, _tr('終了日', 'End Date')),
                 _field(_notes, _tr('備考', 'Notes'), maxLines: 3),
+                if (_submitError != null) ...[
+                  Text(_submitError!, key: const Key('site-edit-submit-error'),
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  const SizedBox(height: 12),
+                ],
                 const SizedBox(height: 6),
                 FilledButton.icon(
-                  onPressed: _submit,
+                  onPressed: _submitting || _returning ? null : _submit,
                   icon: const Icon(Icons.check),
-                  label: Text(_tr('変更内容を確認', 'Review Changes')),
+                  label: Text(_submitting
+                      ? _tr('送信中…', 'Sending…')
+                      : _tr('変更内容を確認', 'Review Changes')),
                 ),
               ],
             ),
+      ),
     );
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_submitting || _returning) return;
     if (_name.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_tr('現場名を入力してください', 'Enter a site name'))),
@@ -1027,7 +1032,7 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
       );
       return;
     }
-    Navigator.of(context).pop({
+    final values = <String, String>{
       'name': _name.text.trim(),
       'customer_id': _customerId!,
       'status': _dbStatus(_status),
@@ -1040,7 +1045,69 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
       'starts_at': _startDate.text.trim(),
       'ends_at': _endDate.text.trim(),
       'notes': _notes.text.trim(),
+    };
+    setState(() {
+      _submitting = true;
+      _submitError = null;
     });
+    try {
+      var decisionMade = false;
+      void decide(BuildContext dialogContext, bool approved) {
+        if (decisionMade) return;
+        decisionMade = true;
+        Navigator.pop(dialogContext, approved);
+      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(_tr('現場情報の変更を申請しますか？', 'Request changes to site information?')),
+          content: Text(_tr('登録済みの現場情報は承認後に反映されます。', 'Changes to registered site information are applied after approval.')),
+          actions: [
+            TextButton(
+              onPressed: () => decide(dialogContext, false),
+              child: Text(_tr('戻る', 'Back')),
+            ),
+            FilledButton(
+              onPressed: () => decide(dialogContext, true),
+              child: Text(_tr('確定して申請', 'Confirm and Submit')),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      final onSubmit = widget.onSubmit;
+      if (onSubmit != null) {
+        await onSubmit(values);
+      } else {
+        final repository = _repository;
+        if (repository == null) {
+          throw StateError('接続を確認してください。');
+        }
+        await repository.submitInformationChange(
+          siteId: widget.site.id,
+          values: values,
+        );
+      }
+      if (!mounted) return;
+      setState(() => _returning = true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _submitError = _tr(
+          '申請結果を確認できませんでした。入力内容は残っています。重複送信を避けるため、再送前に申請状況をご確認ください。',
+          'The result could not be confirmed. Your input is retained. Check the request status before retrying to avoid duplicate submissions.',
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+        if (_returning) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) Navigator.of(context).pop(true);
+          });
+        }
+      }
+    }
   }
 
   Widget _field(
@@ -1052,6 +1119,7 @@ class _SiteEditRequestPageState extends State<_SiteEditRequestPage> {
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: TextField(
+          enabled: !_submitting && !_returning,
           controller: controller,
           maxLines: maxLines,
           keyboardType: keyboardType,

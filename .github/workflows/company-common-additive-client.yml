@@ -1,0 +1,30 @@
+name: Company common additive client
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/company_common_payroll_page.dart'
+      - 'lib/features/payroll/company_common_allowance_repository.dart'
+      - 'lib/features/payroll/company_common_allowance_pending_store.dart'
+      - 'test/company_common_allowance_connected_test.dart'
+      - 'test/company_common_payroll_page_test.dart'
+      - 'lib/features/payroll/company_common_allowance_entry_page.dart'
+      - 'test/company_common_allowance_entry_test.dart'
+      - 'lib/app_v2.dart'
+      - 'test/fixtures/company_common_allowance_sql_response.json'
+      - '.github/workflows/company-common-additive-client.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart analyze lib/features/payroll/company_common_payroll_page.dart lib/features/payroll/company_common_allowance_entry_page.dart lib/features/payroll/company_common_allowance_repository.dart lib/features/payroll/company_common_allowance_pending_store.dart test/company_common_allowance_entry_test.dart test/company_common_allowance_connected_test.dart test/company_common_payroll_page_test.dart
+      - run: timeout 180s flutter test --reporter expanded --timeout 60s test/company_common_allowance_entry_test.dart test/company_common_allowance_connected_test.dart test/company_common_payroll_page_test.dart

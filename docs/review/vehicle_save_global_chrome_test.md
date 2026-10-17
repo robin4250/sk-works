@@ -1,0 +1,9 @@
+# Vehicle save with global scroll chrome: representative integration test
+
+The existing combined UI candidate tree is `340b7f4a924964f73d8be150e2f6210400e15f23`. This adds test-only coverage; no product files, APIs, SQL, dependencies or production data are changed.
+
+SiteFormPage supports a delayed save fixture, but its parent SiteCloudPage owns the completion dialog and lacks repository injection. The existing VehicleEditorPage repository seam allows the actual product save flow, actual completion dialog and returned boolean to be exercised without adding a product seam. The new test uses the real global navigator key and SkoGlobalScrollChrome wrapper. A real vertical drag hides chrome. During a delayed save, a real left-edge pointer gesture invokes the global navigator.maybePop path and must leave the editor present. Completing the fake repository response must produce the actual completion dialog; another edge gesture must not dismiss it. Acknowledgment returns once to the parent fixture and updates its displayed list counter exactly once.
+
+The parent list counter is a test harness, not an actual cloud repository reload. This does not prove site/expense flows, network idempotency, document upload partial effects, actor switching, actual notifications or iPhone gesture behavior. Existing isolated save tests and combined full CI remain separate evidence. The dedicated workflow runs only on push to `test/ui-save-interactions-20261017`. It runs the representative interaction test and its analysis; a separately prepared upload regression may share this targeted job. This test branch avoids the existing full Flutter `fix/**` and iOS `chore/**` push triggers. No existing PR is updated to start another full combined suite.
+
+Local Flutter SDK is unavailable. Source/diff checks only; executable result is pending the dedicated workflow. Do not label this interaction verified until its exact-head test passes.

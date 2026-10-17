@@ -31,6 +31,37 @@ class PayrollUnitItemDraft {
   final String quantity;
 }
 
+/// Routes a host footer to the mounted editor; never owns payroll data or saves.
+class PayrollUnitEditorController extends ChangeNotifier {
+  _PayrollUnitItemEditorState? _editor;
+  bool _disposed = false;
+  bool _scheduled = false;
+  bool get canAdd => _editor?.mounted == true && _editor!._editable;
+  bool get canRegister => canAdd && _editor!.widget.onRegister != null;
+  bool get saving => _editor?._saving ?? false;
+  void add() { if (canAdd) _editor!._add(); }
+  Future<void> register() async { if (canRegister) await _editor!._register(); }
+  void invalidate() { _editor = null; _changed(); }
+  void _attach(_PayrollUnitItemEditorState editor) {
+    if (identical(_editor, editor)) return;
+    _editor = editor; _changed();
+  }
+  void _detach(_PayrollUnitItemEditorState editor) {
+    if (identical(_editor, editor)) invalidate();
+  }
+  void _changed() {
+    if (_disposed || _scheduled) return;
+    _scheduled = true;
+    // Child lifecycle/build updates must not mark the parent footer dirty in build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduled = false;
+      if (!_disposed) notifyListeners();
+    });
+  }
+  @override
+  void dispose() { _disposed = true; _editor = null; super.dispose(); }
+}
+
 /// Unit-aware editor used by the saved payroll conditions page.
 class PayrollUnitItemEditor extends StatefulWidget {
   const PayrollUnitItemEditor({
@@ -44,11 +75,15 @@ class PayrollUnitItemEditor extends StatefulWidget {
     this.section,
     this.unit,
     this.onValidationSelection,
+    this.controller,
+    this.showFooter = true,
   });
 
   final List<PayrollUnitItemDraft> initialItems;
   final bool canEdit;
   final bool embedded;
+  final PayrollUnitEditorController? controller;
+  final bool showFooter;
   final PayrollItemSection? section;
   final PayrollItemUnit? unit;
   final void Function(PayrollItemSection, PayrollItemUnit)? onValidationSelection;
@@ -82,17 +117,22 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
     _section = widget.section ?? _section;
     _unit = widget.unit ?? _unit;
     _rows = widget.initialItems.map(_RowDraft.new).toList();
+    widget.controller?._attach(this);
   }
 
   @override
   void didUpdateWidget(covariant PayrollUnitItemEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) oldWidget.controller?._detach(this);
+    widget.controller?._attach(this);
+    if (oldWidget.canEdit != widget.canEdit) widget.controller?._changed();
     _section = widget.section ?? _section;
     _unit = widget.unit ?? _unit;
   }
 
   @override
   void dispose() {
+    widget.controller?._detach(this);
     for (final row in [..._rows, ..._retired]) {
       row.dispose();
     }
@@ -101,6 +141,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
   }
 
   void _add() {
+    if (!_editable) return;
     String id;
     do {
       id = 'new-unit-item-${_nextId++}';
@@ -111,7 +152,12 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
     setState(() => _rows.add(row));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_rows.contains(row)) return;
-      _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      final rowContext = row.key.currentContext;
+      if (widget.embedded && rowContext != null) {
+        Scrollable.ensureVisible(rowContext, alignment: .15);
+      } else if (_scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
       row.focus.requestFocus();
     });
   }
@@ -158,6 +204,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
       _saving = true;
       _error = null;
     });
+    widget.controller?._changed();
     try {
       await widget.onRegister!(
         List.unmodifiable(_rows.map((row) => row.snapshot())),
@@ -166,6 +213,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
       if (mounted) setState(() => _error = '登録できませんでした。入力内容を保持しています');
     } finally {
       if (mounted) setState(() => _saving = false);
+      widget.controller?._changed();
     }
   }
 
@@ -359,7 +407,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
             ],
           ),
         ),
-        SafeArea(
+        if (widget.showFooter) SafeArea(
           top: false,
           child: Padding(
             padding: const EdgeInsets.all(12),

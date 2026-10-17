@@ -30,7 +30,9 @@ void main() {
       'lib/features/settings/company_rate_settings_page.dart',
     ).readAsStringSync();
 
-    expect(settings, contains('消費税・会社手当設定'));
+    expect(settings, contains('消費税・福利厚生費・旧単価'));
+    expect(settings, contains('関連設定'));
+    expect(settings, contains('builder: (_) => const CompanyRateSettingsPage()'));
     expect(settings, contains('if (_canManageCompany)'));
     expect(page, contains('福利厚生費率'));
     expect(page, contains('残業単価'));

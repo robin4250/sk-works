@@ -14,9 +14,11 @@ void main() {
     expect(
       source,
       contains(
-        'CompanyAllowanceIdentityEntry(companyId: _companyId!, canManageCompany: _canManageCompany)',
+        'if (_canManageCompany && _companyId != null && _companyId!.trim().isNotEmpty)',
       ),
     );
+    expect(source, contains('CompanyAllowanceIdentityPage('));
+    expect(source, contains('CompanyCommonAllowanceEntryPage('));
     expect(source, isNot(contains(".from('companies').update(")));
     expect(source, isNot(contains('settings_company_name')));
     expect(source, isNot(contains('settings_invoice_detail_mode')));
