@@ -5,9 +5,11 @@ import '../notifications/notification_bell.dart';
 import 'daily_report_repository.dart';
 
 class DailyReportApprovalsPage extends StatefulWidget {
-  const DailyReportApprovalsPage({super.key, this.initialRequestId,\n    @visibleForTesting this.repositoryForTesting});
+  const DailyReportApprovalsPage({super.key, this.initialRequestId,
+    @visibleForTesting this.repositoryForTesting});
 
-  final String? initialRequestId;\n  final DailyReportRepository? repositoryForTesting;
+  final String? initialRequestId;
+  final DailyReportRepository? repositoryForTesting;
 
   @override
   State<DailyReportApprovalsPage> createState() =>
@@ -18,7 +20,8 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
   late final _repository = widget.repositoryForTesting ?? DailyReportRepository.maybeCreate();
 
   List<Map<String, dynamic>> _items = const [];
-  bool _loading = true;\n  bool _deciding = false;
+  bool _loading = true;
+  bool _deciding = false;
   String? _error;
 
   @override
@@ -62,7 +65,9 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
 
   Future<void> _decide(String id, bool approve) async {
     final repository = _repository;
-    if (repository == null) return;
+    // Claim synchronously: even a retained callback cannot submit a second decision.
+    if (repository == null || _deciding) return;
+    setState(() => _deciding = true);
 
     try {
       final result = await repository.decideEdit(
@@ -86,6 +91,8 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('処理できませんでした: $error')),
       );
+    } finally {
+      if (mounted) setState(() => _deciding = false);
     }
   }
 
@@ -219,7 +226,7 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
                                         const SizedBox(width: 10),
                                         Expanded(
                                           child: FilledButton.icon(
-                                            onPressed: () => _decide(
+                                            onPressed: _deciding ? null : () => _decide(
                                               item['id'].toString(),
                                               true,
                                             ),
