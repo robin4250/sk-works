@@ -18,6 +18,7 @@ void main() {
       'payload': {
         'version': 1, 'kind': 'acceptance', 'month': '2026-10',
         'order_date': '2026-10-15', 'issue_date': date,
+        if (long) 'work_name': List.filled(20, '鳶工・安全設備・足場工事').join(),
         if (long) 'acceptance_text': '乙は、貴殿から受領した2026年10月15日付の注文書記載の条件通り、本工事を請け負うことを承諾いたします。${List.filled(30, '追加条件を確認します。').join()}',
         'issuer': {
           'name': long ? List.filled(20, '株式会社受注').join() : '株式会社受注',
@@ -79,3 +80,4 @@ void main() {
       throwsStateError);
   });
 }
+
