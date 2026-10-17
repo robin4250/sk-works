@@ -50,3 +50,6 @@ Exact 751596 diagnostic run 39012932734/job117339098822 identified `pgxs` as rea
 
 
 Exact768966 Mac39013026678/job117339378525 stopped before native startup at another top-level directory not in the current named pgxs contract. Diagnostic-only follow-up reports its installed-runtime name/target; no new name is accepted and permissions remain unchanged.
+
+
+Diagnostic follow-up records the complete bounded immediate runtime-directory inventory on rejection to avoid repeated permission-neutral CI diagnosis. The existing 512-entry limit applies before recording; no unknown entry is accepted.
