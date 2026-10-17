@@ -160,9 +160,12 @@ void main() {
   });
   testWidgets('stale duplicate lock callback cannot open duplicate proof requests', (tester) async {
     final devices = _Devices(),proofs = _Proofs();await _open(tester, devices, proofs);
-    final callback = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'ロック')).onPressed!;
+    final callback = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'ロック').first).onPressed!;
     final pendingChange = (callback as dynamic)() as Future<void>;
-    callback();await tester.pumpAndSettle();expect(devices.capabilityCalls, 1);
+    callback();await tester.pumpAndSettle();expect(devices.capabilityCalls, 0);
+    expect(find.text('端末をロックしますか？'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'ロック'));await tester.pumpAndSettle();
+    expect(devices.capabilityCalls, 1);
     await verify(tester);expect(proofs.requests, 1);
     expect(find.byKey(const Key('master-device-lock-password')), findsNothing);
     await pendingChange;

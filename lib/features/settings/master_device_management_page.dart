@@ -28,6 +28,7 @@ class _MasterDeviceManagementPageState
   bool _loading = true;
   String? _error;
   String? _busyDeviceId;
+  bool _confirmingLoss = false;
 
   @override
   void initState() {
@@ -70,6 +71,9 @@ class _MasterDeviceManagementPageState
   }
 
   Future<bool> _confirmLoss(MasterDeviceRecord device, String operation) async {
+    if (_confirmingLoss) return false;
+    _confirmingLoss = true;
+    try {
     if (removesLastUsableMasterDevice(_devices, device)) {
       await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
         title: const Text('最後の信頼済み端末は停止できません'),
@@ -84,6 +88,7 @@ class _MasterDeviceManagementPageState
       actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('戻る')),
         FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(operation))],
     )) == true;
+    } finally { _confirmingLoss = false; }
   }
 
   Future<void> _setLocked(MasterDeviceRecord device, bool locked) async {
@@ -130,29 +135,6 @@ class _MasterDeviceManagementPageState
     if (repository == null || device.isRevoked || _busyDeviceId != null) return;
     if (!await _confirmLoss(device, '登録解除')) return;
     if (!mounted) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('端末登録を解除'),
-        content: Text(
-          '「${device.deviceName}」のマスターデバイス登録を解除します。'
-          '解除後はこの端末を信頼済み端末として利用できません。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('キャンセル'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('登録解除'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
 
     setState(() => _busyDeviceId = device.id);
     try {
