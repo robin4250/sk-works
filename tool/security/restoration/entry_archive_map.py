@@ -17,11 +17,13 @@ KINDS=('TABLE DATA','TABLE ATTACH','FK CONSTRAINT','DEFAULT ACL','MATERIALIZED V
        'PROCEDURE','CONSTRAINT','TRIGGER','POLICY','INDEX','TABLE','SEQUENCE','SCHEMA','EXTENSION','ACL','DEFAULT')
 
 def classify(text):
-    selected=[];seen={};support=[];extensions=[];unresolved=[]
+    selected=[];seen={};support=[];extensions=[];unresolved=[];toc_ids=set()
     for line in text.splitlines():
         if not line.strip() or line.startswith(';'):continue
         match=re.fullmatch(r'(\d+);\s+\d+\s+\d+\s+(.+)',line)
         if not match:raise ValueError('unrecognized archive TOC record')
+        if match.group(1) in toc_ids:raise ValueError('duplicate archive TOC ID')
+        toc_ids.add(match.group(1))
         item=match.group(2);kind=next((k for k in KINDS if item.startswith(k+' ')),None)
         if kind is None:
             unresolved.append(match.group(1));continue
@@ -35,6 +37,8 @@ def classify(text):
         if kind=='FUNCTION' and schema in ('public','private'):
             routine=name.split('(',1)[0]
             if routine in FUNCTIONS:
+                signature=' '.join(words[1:-1])
+                if not re.fullmatch(r'[a-z_]+\([^;()]*\)',signature):raise ValueError('root function signature required')
                 key=schema+'.'+routine
                 if (routine=='employee_personnel_rows' and schema!='private') or (routine=='can_edit_worker_personnel' and schema!='public'):
                     raise ValueError('unexpected root function schema; inspect privately')
@@ -71,7 +75,7 @@ def main():
         st=parent.stat()
         if st.st_uid!=os.getuid() or st.st_mode&0o022:raise ValueError('unsafe parent')
         root=Path(tempfile.mkdtemp(prefix='entry-map-',dir=str(parent)))
-        (root/'private-root-candidates.list').write_text('\n'.join(selected)+'\n')
+        (root/'private-root-candidates.review-only').write_text('\n'.join(selected)+'\n')
         report['source_toc_sha256']=hashlib.sha256(raw).hexdigest()
         (root/'private-root-map.json').write_text(json.dumps(report,indent=2))
         print('OFFLINE ROOT MAP: '+json.dumps({k:report[k] for k in ('root_count','missing_roots','extension_entry_count','dependencies_complete','sql_executed','production_connections')}))
