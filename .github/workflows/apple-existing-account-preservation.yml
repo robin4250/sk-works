@@ -1,0 +1,24 @@
+name: Apple existing account preservation
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/existing_apple_identity_link.dart'
+      - 'test/existing_apple_identity_link_test.dart'
+      - 'docs/security/APPLE_EXISTING_ACCOUNT_PRESERVATION_20261017.md'
+      - '.github/workflows/apple-existing-account-preservation.yml'
+permissions:
+  contents: read
+jobs:
+  preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/auth/existing_apple_identity_link.dart test/existing_apple_identity_link_test.dart
+      - run: flutter test test/existing_apple_identity_link_test.dart test/identity_link_sdk_contract_test.dart
