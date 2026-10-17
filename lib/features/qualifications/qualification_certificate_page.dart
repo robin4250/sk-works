@@ -4,7 +4,9 @@ import 'package:image_picker/image_picker.dart';
 import 'qualification_certificate_repository.dart';
 
 class QualificationCertificatePage extends StatefulWidget {
-  const QualificationCertificatePage({super.key, this.initialQualificationId});
+  const QualificationCertificatePage({super.key, this.initialQualificationId, this.repository});
+  @visibleForTesting
+  final QualificationCertificateRepository? repository;
   final String? initialQualificationId;
 
   @override
@@ -14,7 +16,7 @@ class QualificationCertificatePage extends StatefulWidget {
 
 class _QualificationCertificatePageState
     extends State<QualificationCertificatePage> {
-  final _repository = QualificationCertificateRepository.maybeCreate();
+  late final QualificationCertificateRepository? _repository;
   final _picker = ImagePicker();
   final _queryController = TextEditingController();
 
@@ -31,6 +33,7 @@ class _QualificationCertificatePageState
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? QualificationCertificateRepository.maybeCreate();
     _load();
   }
 
