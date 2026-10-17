@@ -174,16 +174,14 @@ def verify_release_settings(settings):
             and settings.get('PRODUCT_BUNDLE_IDENTIFIER') == BUNDLE,
             'not a Release application')
 
-def verify_aot_artifact(runner, app):
+def verify_release_payload(app):
+    # This is a structural/debug-kernel rejection, not an nm/AOT-symbol proof.
+    # Stripped snapshot symbol names are not a stable positive Release contract.
     assets = app / 'Frameworks/App.framework/flutter_assets'
     require(assets.is_dir() and not (assets / 'kernel_blob.bin').exists(),
             'debug kernel artifact present or assets missing')
     binary = app / 'Frameworks/App.framework/App'
-    require(binary.is_file() and not binary.is_symlink(), 'AOT binary missing')
-    symbols = runner.run(['xcrun', 'nm', '-gU', str(binary)], True).decode()
-    names = {line.split()[-1] for line in symbols.splitlines() if line.split()}
-    require({'_kDartVmSnapshotInstructions', '_kDartIsolateSnapshotInstructions'} <= names,
-            'AOT snapshot instructions missing')
+    require(binary.is_file() and not binary.is_symlink(), 'compiled payload missing')
 
 def save_dependency_checkpoint(stage, copies):
     write_private(stage / 'dependencies-before-private.json',
@@ -366,8 +364,8 @@ def build(root, sha, backup_root):
                 'original package dependency changed during build')
         require(signing_settings(candidate) == signing, 'build changed signing')
         app = source / 'build/ios/iphoneos/Runner.app'
-        phase('aot_artifact')
-        verify_aot_artifact(candidate, app)
+        phase('release_payload')
+        verify_release_payload(app)
         phase('new_signature')
         require(signature(candidate, app) == oldsig, 'new signature changed account storage identity')
         phase('preservation_verification')
@@ -375,6 +373,11 @@ def build(root, sha, backup_root):
         require(inventory(root / 'ios') == native and digest(oldapp) == olddigest,
                 'original native artifacts changed')
         write_private(stage / 'built-private.json', {'checkpoint_schema': 2,
+                      'release_settings_proof': {
+                          'CONFIGURATION': runner_settings[0]['CONFIGURATION'],
+                          'PRODUCT_BUNDLE_IDENTIFIER': runner_settings[0]['PRODUCT_BUNDLE_IDENTIFIER'],
+                          **({'FLUTTER_BUILD_MODE': runner_settings[0]['FLUTTER_BUILD_MODE']}
+                             if 'FLUTTER_BUILD_MODE' in runner_settings[0] else {})},
                       'dependency_checkpoint_sha256': hashlib.sha256((stage / 'dependencies-before-private.json').read_bytes()).hexdigest(), 'sha': sha, 'root': str(root), 'source': str(source),
                       'app_digest': digest(app), 'signature': oldsig, 'original_native': native,
                       'original_app_digest': olddigest, 'release_command': ['flutter', 'build', 'ios', '--release', OFF],
@@ -390,6 +393,7 @@ def install(stage):
                 and (stage / 'dependencies-before-private.json').is_file()
                 and hashlib.sha256((stage / 'dependencies-before-private.json').read_bytes()).hexdigest()
                     == m.get('dependency_checkpoint_sha256'), 'dependency checkpoint missing or changed')
+        verify_release_settings(m.get('release_settings_proof', {}))
         require(m.get('release_command') == ['flutter', 'build', 'ios', '--release', OFF]
                 and m.get('owner_only') is True and m.get('testflight_approved') is False,
                 'not an owner Release checkpoint')
@@ -404,7 +408,7 @@ def install(stage):
         require(inventory(root / 'ios') == m['original_native'], 'original iOS changed')
         require(digest(root / 'build/ios/iphoneos/Runner.app') == m['original_app_digest'], 'old app changed')
         app = source / 'build/ios/iphoneos/Runner.app'
-        verify_aot_artifact(runner, app)
+        verify_release_payload(app)
         require(digest(app) == m['app_digest'] and signature(runner, app) == m['signature'], 'artifact changed')
         devices = json.loads(runner.run(['flutter', 'devices', '--machine'], True))
         selected = [d for d in devices if d.get('id') == DEVICE and d.get('targetPlatform') == 'ios'

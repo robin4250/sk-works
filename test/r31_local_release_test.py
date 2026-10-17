@@ -213,6 +213,7 @@ class InstallTests(unittest.TestCase):
                     'owner_only': True, 'testflight_approved': False}
         m.write_private(stage / 'dependencies-before-private.json', {})
         manifest['checkpoint_schema'] = 2
+        manifest['release_settings_proof'] = {'CONFIGURATION': 'Release', 'PRODUCT_BUNDLE_IDENTIFIER': m.BUNDLE}
         manifest['dependency_checkpoint_sha256'] = m.hashlib.sha256((stage / 'dependencies-before-private.json').read_bytes()).hexdigest()
         m.write_private(stage / 'built-private.json', manifest)
         return stage, app
@@ -229,7 +230,7 @@ class InstallTests(unittest.TestCase):
         with patch.object(m.Runner, 'run', run), patch.object(m, 'tools_ready'), \
              patch.object(m, 'source_state', return_value=state or self.state), \
              patch.object(m, 'signature', return_value=sig or self.sig), \
-             patch.object(m, 'verify_aot_artifact'):
+             patch.object(m, 'verify_release_payload'):
             m.install(stage)
         return calls
 
@@ -280,7 +281,6 @@ class InstallTests(unittest.TestCase):
             data['release_command'][3] = '--debug'; p.write_text(json.dumps(data))
             with self.assertRaisesRegex(RuntimeError, 'owner Release checkpoint'): self.execute(stage)
 
-if __name__ == '__main__': unittest.main()
 
 class ReleaseProofTests(unittest.TestCase):
     def test_release_mode_may_be_absent_as_in_flutter_backend(self):
@@ -298,20 +298,17 @@ class ReleaseProofTests(unittest.TestCase):
                 m.verify_release_settings({'CONFIGURATION': config, 'FLUTTER_BUILD_MODE': 'release',
                                            'PRODUCT_BUNDLE_IDENTIFIER': m.BUNDLE})
 
-    def test_aot_symbols_and_no_kernel_are_required(self):
+    def test_release_payload_rejects_debug_kernel_without_assuming_export_symbols(self):
         with tempfile.TemporaryDirectory() as d:
             app = Path(d); framework = app / 'Frameworks/App.framework'; framework.mkdir(parents=True)
             assets = framework / 'flutter_assets'; assets.mkdir()
-            (framework / 'App').write_bytes(b'synthetic AOT')
-            class FakeRunner:
-                def run(self, args, capture):
-                    return b'000 T _kDartVmSnapshotInstructions\n001 T _kDartIsolateSnapshotInstructions\n'
-            m.verify_aot_artifact(FakeRunner(), app)
+            (framework / 'App').write_bytes(b'synthetic compiled payload')
+            m.verify_release_payload(app)
             (assets / 'kernel_blob.bin').write_bytes(b'debug')
-            with self.assertRaises(RuntimeError): m.verify_aot_artifact(FakeRunner(), app)
+            with self.assertRaises(RuntimeError): m.verify_release_payload(app)
             (assets / 'kernel_blob.bin').unlink()
-            with patch.object(FakeRunner, 'run', return_value=b'000 T _other\n'):
-                with self.assertRaises(RuntimeError): m.verify_aot_artifact(FakeRunner(), app)
+            (framework / 'App').unlink()
+            with self.assertRaises(RuntimeError): m.verify_release_payload(app)
 
     def test_dependency_baseline_is_persisted_privately_before_build(self):
         with tempfile.TemporaryDirectory() as d:
@@ -374,3 +371,6 @@ class FailureDiagnosticTests(unittest.TestCase):
             m.phase('native_snapshot', stage)
             m.failure_record(m.CheckedFailure('copy changed'))
             self.assertEqual(list(stage.iterdir()), [])
+
+if __name__ == '__main__':
+    unittest.main()
