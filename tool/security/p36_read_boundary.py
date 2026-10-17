@@ -71,6 +71,49 @@ def libraries(binaries):
             allowed.add(real);pending.append(real)
     return tuple(sorted(allowed))
 
+MAX_TIMEZONE_ENTRIES=4096
+MAX_TIMEZONE_BYTES=32*1024*1024
+
+def timezone_closure(canonical,alias,owner):
+    """Accept only a closed, same-package tree; return exact alias read literals."""
+    canonical=Path(canonical).resolve(strict=True);alias=Path(alias)
+    literals=[];records=[];total=0
+    def visit(source,destination,relative,depth,ancestors):
+        nonlocal total
+        if depth>16 or len(records)>=MAX_TIMEZONE_ENTRIES:raise ValueError("Timezone tree boundary exceeded")
+        target=source.resolve(strict=True)
+        if target!=canonical and canonical not in target.parents:raise ValueError("Source timezone target outside package")
+        source_stat=target.stat();dest_stat=destination.stat()
+        if any(s.st_uid!=owner or s.st_mode&0o022 for s in (source_stat,dest_stat)):
+            raise ValueError("Unsafe timezone entry owner or mode")
+        is_dir=target.is_dir()
+        if is_dir:
+            if not destination.is_dir():raise ValueError("Timezone directory shape mismatch")
+            if destination.is_symlink() and destination.resolve(strict=True)!=target:
+                raise ValueError("Timezone directory link outside same target")
+            identity=(source_stat.st_dev,source_stat.st_ino)
+            if identity in ancestors:raise ValueError("Timezone directory cycle")
+            expected=sorted(x.name for x in target.iterdir())
+            actual=sorted(x.name for x in destination.iterdir())
+            if expected!=actual:raise ValueError("Unknown or missing timezone entry")
+            record={'relative':relative,'kind':'directory','target':str(target)}
+        else:
+            if not target.is_file() or not destination.is_file() or not os.path.samefile(destination,target):
+                raise ValueError("Timezone file is not the same package object")
+            total+=source_stat.st_size
+            if source_stat.st_size>1024*1024 or total>MAX_TIMEZONE_BYTES:
+                raise ValueError("Timezone data size boundary exceeded")
+            record={'relative':relative,'kind':'file','target':str(target),
+                    'sha256':hashlib.sha256(target.read_bytes()).hexdigest()}
+        record.update({'uid':dest_stat.st_uid,'mode':dest_stat.st_mode,
+                       'device':dest_stat.st_dev,'inode':dest_stat.st_ino,
+                       'link':os.readlink(destination) if destination.is_symlink() else None})
+        literals.append(destination);records.append(record)
+        if is_dir:
+            for name in expected:visit(target/name,destination/name,relative+'/'+name,depth+1,ancestors|{identity})
+    visit(canonical,alias,'.',0,set())
+    return tuple(literals),records
+
 def timezone_runtime(pg_bin, runner=subprocess.run):
     pg_bin=Path(pg_bin).resolve(strict=True);pg_root=runtime_root(pg_bin.parent)
     if pg_root.parent.name!='postgresql@17' or pg_root.parent.parent.name!='Cellar':
@@ -95,22 +138,16 @@ def timezone_runtime(pg_bin, runner=subprocess.run):
         raise ValueError("Unexpected compiled sharedir")
     canonical=(pg_root/'share/postgresql/timezone').resolve(strict=True)
     alias=shared/'timezone'
-    if not canonical.is_dir() or pg_root not in canonical.parents or alias.resolve(strict=True)!=canonical:
-        raise ValueError("Unknown or drifted timezone runtime alias: "+json.dumps({
-            "canonical":str(canonical),"canonical_is_dir":canonical.is_dir(),
-            "canonical_within_package":pg_root in canonical.parents,
-            "alias":str(alias),"alias_resolved":str(alias.resolve(strict=True)),
-            "alias_is_symlink":alias.is_symlink(),"alias_is_dir":alias.is_dir(),
-            "same_target":alias.resolve(strict=True)==canonical}))
-    # Runtime owner must match this package's pg_config; never allow data/extension trees.
+    if not canonical.is_dir() or pg_root not in canonical.parents or not alias.is_dir():
+        raise ValueError("Unknown or drifted timezone runtime root")
     owner=real.stat().st_uid
-    for directory in (canonical,shared,alias.resolve(strict=True)):
-        st=directory.stat()
-        if not directory.is_dir() or st.st_uid!=owner or st.st_mode&0o022:
-            raise ValueError("Unsafe runtime data owner or mode")
+    st=shared.stat()
+    if not shared.is_dir() or st.st_uid!=owner or st.st_mode&0o022:
+        raise ValueError("Unsafe runtime data owner or mode")
+    literals,entries=timezone_closure(canonical,alias,owner)
     hashes={name:hashlib.sha256((pg_bin/name).read_bytes()).hexdigest() for name in
             ('postgres','psql','initdb','pg_ctl','pg_config')}
-    return alias,{'timezone_canonical':str(canonical),'timezone_alias':str(alias),
+    return literals,{'timezone_entries':entries,'timezone_entry_count':len(entries),'timezone_canonical':str(canonical),'timezone_alias':str(alias),
                   'compiled_sharedir':str(shared),'version':version,'owner_uid':owner,
                   'binary_sha256':hashes}
 
@@ -195,7 +232,7 @@ def main():
         if pg_root.parent.name!='postgresql@17' or pg_root.parent.parent.name!='Cellar':raise ValueError('Explicit Homebrew PostgreSQL17 runtime required')
         stage='same-package-timezone-alias'
         timezone,package=timezone_runtime(pg_bin)
-        roots=(pg_root,runtime_root(sys.base_prefix),timezone)
+        roots=(pg_root,runtime_root(sys.base_prefix))
         stage='runtime-library-closure'
         files=libraries([pg_bin/n for n in ('postgres','psql','initdb','pg_ctl')]+[Path(sys.executable)])
         stage='reviewed-helper-loading'
@@ -204,7 +241,7 @@ def main():
         reads=[]
         def load_guard(path):
             guard=original_load(path)
-            guard.profile=lambda inside,unix:profile(inside,unix,roots,files)
+            guard.profile=lambda inside,unix:profile(inside,unix,roots,(*files,*timezone))
             return guard
         def verify_host(guard,parent):
             evidence=read_probe(guard,native,parent);reads.append(evidence)
@@ -220,7 +257,7 @@ def main():
         if timezone_runtime(pg_bin)[1]!=package:raise ValueError('Runtime package or timezone alias drift during probe')
         evidence=reads[0]
         (evidence/'private-runtime-inventory.json').write_text(json.dumps({
-            'postgres_runtime':package,'roots':[str(x) for x in roots],'libraries':[str(x) for x in files],
+            'timezone_literal_reads':[str(x) for x in timezone],'postgres_runtime':package,'roots':[str(x) for x in roots],'libraries':[str(x) for x in files],
             'read_canary_verified':True,'native_kernel_fixture_success':True,
             'existing_archive_read':False,'archived_sql_executed':False,
             'complete_read_isolation_or_egress_proof':False,

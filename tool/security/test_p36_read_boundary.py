@@ -53,10 +53,10 @@ class ReadBoundary(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    bin,data,shared,alias,runner=self.timezone_package(d)
    allowed,proof=p.timezone_runtime(bin,runner)
-   self.assertEqual(allowed,alias);self.assertEqual(proof["timezone_canonical"],str(data))
+   self.assertEqual(allowed,(alias,));self.assertEqual(proof["timezone_canonical"],str(data))
    self.assertEqual(set(proof["binary_sha256"]),{"postgres","psql","initdb","pg_ctl","pg_config"})
-   profile=p.profile(pathlib.Path("/tmp/inside"),pathlib.Path("/tmp/inside/socket"),[allowed],[])
-   self.assertIn('(subpath "'+str(alias)+'")',profile)
+   profile=p.profile(pathlib.Path("/tmp/inside"),pathlib.Path("/tmp/inside/socket"),[],allowed)
+   self.assertIn('(literal "'+str(alias)+'")',profile)
    self.assertNotIn('(subpath "'+str(shared)+'")',profile)
  def test_timezone_alias_drift_external_config_and_writable_mode_refused(self):
   with tempfile.TemporaryDirectory() as d:
@@ -87,5 +87,42 @@ class ReadBoundary(unittest.TestCase):
      return p.os.stat_result(values)
     return info
    with patch.object(pathlib.Path,"stat",changed):
+    with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
+ def real_timezone_tree(self,d):
+  bin,data,shared,alias,runner=self.timezone_package(d)
+  (data/"UTC").write_bytes(b"synthetic-zone")
+  (data/"Zone").mkdir();(data/"Zone/Demo").write_bytes(b"synthetic-other-zone")
+  alias.unlink();alias.mkdir()
+  (alias/"UTC").symlink_to(data/"UTC")
+  (alias/"Zone").mkdir();(alias/"Zone/Demo").symlink_to(data/"Zone/Demo")
+  return bin,data,shared,alias,runner
+ def test_closed_real_directory_tree_uses_only_exact_literals(self):
+  with tempfile.TemporaryDirectory() as d:
+   bin,data,shared,alias,runner=self.real_timezone_tree(d)
+   literals,proof=p.timezone_runtime(bin,runner)
+   self.assertEqual(set(literals),{alias,alias/"UTC",alias/"Zone",alias/"Zone/Demo"})
+   self.assertEqual(proof["timezone_entry_count"],4)
+   profile=p.profile(pathlib.Path("/tmp/inside"),pathlib.Path("/tmp/inside/socket"),[],literals)
+   self.assertNotIn('(subpath "'+str(alias)+'")',profile)
+   prior=proof;(data/"UTC").write_bytes(b"synthetic-new-zone")
+   self.assertNotEqual(p.timezone_runtime(bin,runner)[1],prior,"content drift changes comparison snapshot")
+ def test_unknown_entry_or_outside_file_and_directory_link_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   bin,data,shared,alias,runner=self.real_timezone_tree(d)
+   (alias/"unknown").write_bytes(b"must-not-be-granted")
+   with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
+   (alias/"unknown").unlink()
+   outside=pathlib.Path(d)/"outside";outside.mkdir();(outside/"secret").write_bytes(b"synthetic-private")
+   (alias/"UTC").unlink();(alias/"UTC").symlink_to(outside/"secret")
+   with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
+   (alias/"UTC").unlink();(alias/"UTC").symlink_to(data/"UTC")
+   (alias/"Zone/Demo").unlink();(alias/"Zone").rmdir();(alias/"Zone").symlink_to(outside,target_is_directory=True)
+   with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
+ def test_timezone_tree_count_and_size_bounds(self):
+  with tempfile.TemporaryDirectory() as d:
+   bin,data,shared,alias,runner=self.real_timezone_tree(d)
+   with patch.object(p,"MAX_TIMEZONE_ENTRIES",2):
+    with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
+   with patch.object(p,"MAX_TIMEZONE_BYTES",1):
     with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
 if __name__=="__main__":unittest.main()
