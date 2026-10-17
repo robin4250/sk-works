@@ -2,10 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:http/io_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/auth/panel_seven_repository.dart';
+
+// Preserve actual loopback HTTP after native-channel test binding is initialized.
+// The default test binding otherwise replaces every HttpClient with HTTP 400.
+class _LoopbackHttpOverrides extends HttpOverrides {}
 
 Map<String, dynamic> user(String id) => {
   'id': id, 'aud': 'authenticated', 'created_at': '2026-01-01T00:00:00Z',
@@ -47,7 +52,8 @@ void main() {
       await request.response.close();
     });
     final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic',
-        authOptions: const AuthClientOptions(autoRefreshToken: false));
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+        httpClient: IOClient(_LoopbackHttpOverrides().createHttpClient(null)));
     addTearDown(client.dispose);
     await client.auth.setInitialSession(session('a'));
     final token = client.auth.currentSession!.accessToken;
@@ -83,7 +89,8 @@ void main() {
       await request.response.close();
     });
     final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic',
-        authOptions: const AuthClientOptions(autoRefreshToken: false));
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+        httpClient: IOClient(_LoopbackHttpOverrides().createHttpClient(null)));
     addTearDown(client.dispose);
     await client.auth.setInitialSession(session('a'));
     final pending = PanelSevenRepository(client).load();
@@ -113,7 +120,8 @@ void main() {
       await request.response.close();
     });
     final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic',
-        authOptions: const AuthClientOptions(autoRefreshToken: false));
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+        httpClient: IOClient(_LoopbackHttpOverrides().createHttpClient(null)));
     addTearDown(client.dispose);
     await client.auth.setInitialSession(session('a'));
     expect((await PanelSevenRepository(client).load()).secondaryConfigured,
@@ -151,7 +159,8 @@ void main() {
         await request.response.close();
       });
       final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic',
-          authOptions: const AuthClientOptions(autoRefreshToken: false));
+          authOptions: const AuthClientOptions(autoRefreshToken: false),
+        httpClient: IOClient(_LoopbackHttpOverrides().createHttpClient(null)));
       addTearDown(client.dispose);
       await client.auth.setInitialSession(session('a'));
       final value = await PanelSevenRepository(client).load();
