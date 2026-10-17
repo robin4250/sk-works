@@ -1178,7 +1178,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                   final invoice = _singleInvoice!;
                   final pending = _previewData;
                   final data = await pending;
-                  if (!mounted) return;
+                  if (!context.mounted) return;
                   _actorLease.verify();
                   if (!identical(pending, _previewData)) return;
                   final actor = SupabaseBackend.isInitialized
@@ -1202,8 +1202,10 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                     });
                   }
                 } catch (_) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('請求書を再読み込みしてから注文請書を開いてください。')));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('請求書を再読み込みしてから注文請書を開いてください。')));
+                  }
                 }
               },
               child: const Text('注文請書'),

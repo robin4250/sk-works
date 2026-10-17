@@ -14,11 +14,15 @@ class R33Input {
         actor == null || actor.isEmpty || actor != actorId ||
         companyId.isEmpty || workspace['company_id'] != companyId ||
         subjectId != subject || sourceRevision != revision ||
-        text.trim().isEmpty || text.length > 240) return result;
+        text.trim().isEmpty || text.length > 240) {
+      return result;
+    }
     final serverRevision = DateTime.tryParse(workspace['source_revision']?.toString() ?? '');
     final previewRevision = DateTime.tryParse(sourceRevision);
     if (serverRevision == null || previewRevision == null ||
-        !serverRevision.isAtSameMomentAs(previewRevision)) return result;
+        !serverRevision.isAtSameMomentAs(previewRevision)) {
+      return result;
+    }
     final current = result['work_name'];
     if (current == null || (current is String && current.trim().isEmpty)) {
       result['work_name'] = text;
