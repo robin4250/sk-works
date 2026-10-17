@@ -39,4 +39,53 @@ class ReadBoundary(unittest.TestCase):
   b=pathlib.Path("/opt/runtime/python")
   for sample in ("\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)\n",str(b)+":\n"+str(b)+":\n"):
    with self.assertRaises(ValueError):p.parse_otool(sample,b)
+ def timezone_package(self,d):
+  root=pathlib.Path(d)/"brew/Cellar/postgresql@17/17.7";bin=root/"bin";bin.mkdir(parents=True)
+  data=root/"share/postgresql/timezone";data.mkdir(parents=True)
+  for name in ("postgres","psql","initdb","pg_ctl","pg_config"):(bin/name).write_bytes(b"synthetic-runtime")
+  shared=pathlib.Path(d)/"brew/share/postgresql@17";shared.mkdir(parents=True)
+  alias=shared/"timezone";alias.symlink_to(data,target_is_directory=True)
+  def runner(argv,**kw):
+   values={"--version":"PostgreSQL 17.7","--bindir":str(bin),"--sharedir":str(shared)}
+   return type("Result",(),{"stdout":values[argv[-1]]+"\n"})()
+  return bin,data,shared,alias,runner
+ def test_exact_timezone_alias_only(self):
+  with tempfile.TemporaryDirectory() as d:
+   bin,data,shared,alias,runner=self.timezone_package(d)
+   allowed,proof=p.timezone_runtime(bin,runner)
+   self.assertEqual(allowed,alias);self.assertEqual(proof["timezone_canonical"],str(data))
+   self.assertEqual(set(proof["binary_sha256"]),{"postgres","psql","initdb","pg_ctl","pg_config"})
+   profile=p.profile(pathlib.Path("/tmp/inside"),pathlib.Path("/tmp/inside/socket"),[allowed],[])
+   self.assertIn('(subpath "'+str(alias)+'")',profile)
+   self.assertNotIn('(subpath "'+str(shared)+'")',profile)
+ def test_timezone_alias_drift_external_config_and_writable_mode_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   bin,data,shared,alias,runner=self.timezone_package(d)
+   other=pathlib.Path(d)/"other";other.mkdir()
+   alias.unlink();alias.symlink_to(other,target_is_directory=True)
+   with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
+   alias.unlink();alias.symlink_to(data,target_is_directory=True)
+   data.chmod(0o777)
+   with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
+   data.chmod(0o700);config=bin/"pg_config";config.unlink();external=other/"pg_config";external.write_bytes(b"other");config.symlink_to(external)
+   with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
+ def test_unknown_sharedir_version_bindir_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   bin,data,shared,alias,runner=self.timezone_package(d)
+   for flag,value in (("--sharedir",str(pathlib.Path(d))),("--version","PostgreSQL 18.0"),("--bindir",str(pathlib.Path(d)))):
+    def bad(argv,**kw):
+     if argv[-1]==flag:return type("Result",(),{"stdout":value+"\n"})()
+     return runner(argv,**kw)
+    with self.assertRaises(ValueError):p.timezone_runtime(bin,bad)
+ def test_runtime_directory_wrong_owner_refused(self):
+  with tempfile.TemporaryDirectory() as d:
+   bin,data,shared,alias,runner=self.timezone_package(d);original=pathlib.Path.stat
+   def changed(path,*args,**kwargs):
+    info=original(path,*args,**kwargs)
+    if path==shared:
+     values=list(info);values[4]=info.st_uid+1
+     return p.os.stat_result(values)
+    return info
+   with patch.object(pathlib.Path,"stat",changed):
+    with self.assertRaises(ValueError):p.timezone_runtime(bin,runner)
 if __name__=="__main__":unittest.main()

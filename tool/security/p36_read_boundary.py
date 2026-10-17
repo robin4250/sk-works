@@ -71,6 +71,44 @@ def libraries(binaries):
             allowed.add(real);pending.append(real)
     return tuple(sorted(allowed))
 
+def timezone_runtime(pg_bin, runner=subprocess.run):
+    pg_bin=Path(pg_bin).resolve(strict=True);pg_root=runtime_root(pg_bin.parent)
+    if pg_root.parent.name!='postgresql@17' or pg_root.parent.parent.name!='Cellar':
+        raise ValueError("PostgreSQL17 Cellar boundary required")
+    config=pg_bin/'pg_config';real=config.resolve(strict=True)
+    if not real.is_file() or pg_root not in real.parents:
+        raise ValueError("pg_config outside same runtime")
+    env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C'}
+    def setting(flag):
+        r=runner([str(config),flag],capture_output=True,text=True,check=True,timeout=10,env=env)
+        value=r.stdout.rstrip('\n')
+        if '\n' in value or '\r' in value or not value:raise ValueError("Unexpected pg_config output")
+        return value
+    version=setting('--version')
+    match=re.fullmatch(r'PostgreSQL (17\.\d+(?:\.\d+)?)(?: \([^)]*\))?',version)
+    if not match or match.group(1)!=pg_root.name.split('_',1)[0]:
+        raise ValueError("Different pg_config runtime version")
+    if Path(setting('--bindir')).resolve(strict=True)!=pg_bin:
+        raise ValueError("Different pg_config bindir")
+    shared=pg_root.parents[2]/'share/postgresql@17'
+    if Path(setting('--sharedir'))!=shared:
+        raise ValueError("Unexpected compiled sharedir")
+    canonical=(pg_root/'share/postgresql/timezone').resolve(strict=True)
+    alias=shared/'timezone'
+    if not canonical.is_dir() or pg_root not in canonical.parents or alias.resolve(strict=True)!=canonical:
+        raise ValueError("Unknown or drifted timezone runtime alias")
+    # Runtime owner must match this package's pg_config; never allow data/extension trees.
+    owner=real.stat().st_uid
+    for directory in (canonical,shared,alias.resolve(strict=True)):
+        st=directory.stat()
+        if not directory.is_dir() or st.st_uid!=owner or st.st_mode&0o022:
+            raise ValueError("Unsafe runtime data owner or mode")
+    hashes={name:hashlib.sha256((pg_bin/name).read_bytes()).hexdigest() for name in
+            ('postgres','psql','initdb','pg_ctl','pg_config')}
+    return alias,{'timezone_canonical':str(canonical),'timezone_alias':str(alias),
+                  'compiled_sharedir':str(shared),'version':version,'owner_uid':owner,
+                  'binary_sha256':hashes}
+
 def profile(inside, unix, roots, files):
     inside=Path(inside);unix=Path(unix)
     if not inside.is_absolute() or not unix.is_absolute() or unix.parent!=inside:
@@ -150,7 +188,9 @@ def main():
         if not all((pg_bin/n).is_file() for n in ('postgres','psql','initdb','pg_ctl')):raise ValueError("Explicit native tools required")
         pg_root=runtime_root(pg_bin.parent)
         if pg_root.parent.name!='postgresql@17' or pg_root.parent.parent.name!='Cellar':raise ValueError('Explicit Homebrew PostgreSQL17 runtime required')
-        roots=(pg_root,runtime_root(sys.base_prefix))
+        stage='same-package-timezone-alias'
+        timezone,package=timezone_runtime(pg_bin)
+        roots=(pg_root,runtime_root(sys.base_prefix),timezone)
         stage='runtime-library-closure'
         files=libraries([pg_bin/n for n in ('postgres','psql','initdb','pg_ctl')]+[Path(sys.executable)])
         stage='reviewed-helper-loading'
@@ -172,9 +212,10 @@ def main():
             code=native.main()
         finally:sys.argv=old
         if code!=2 or len(reads)!=1:raise ValueError("Native/read proof incomplete")
+        if timezone_runtime(pg_bin)[1]!=package:raise ValueError('Runtime package or timezone alias drift during probe')
         evidence=reads[0]
         (evidence/'private-runtime-inventory.json').write_text(json.dumps({
-            'roots':[str(x) for x in roots],'libraries':[str(x) for x in files],
+            'postgres_runtime':package,'roots':[str(x) for x in roots],'libraries':[str(x) for x in files],
             'read_canary_verified':True,'native_kernel_fixture_success':True,
             'existing_archive_read':False,'archived_sql_executed':False,
             'complete_read_isolation_or_egress_proof':False,
