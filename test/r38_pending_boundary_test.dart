@@ -16,7 +16,14 @@ Completer<bool>? pending;
 Completer<bool>? nativePending;
 bool configured = true;
 Completer<bool>? pendingConfigured;
+Completer<void>? pendingSave;
 final requests = <http.Request>[];
+void restoreForeground() {
+  final binding=TestWidgetsFlutterBinding.instance;
+  if(binding.lifecycleState==AppLifecycleState.paused) binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+  if(binding.lifecycleState==AppLifecycleState.hidden) binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+  if(binding.lifecycleState!=AppLifecycleState.resumed) binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+}
 String session(String actor, {int epoch = 0}) {
   String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value)));
   return jsonEncode({'access_token': '${part({'alg':'HS256'})}.${part({'sub':actor,'exp':4102444800,'fixture_epoch':epoch})}.synthetic',
@@ -31,7 +38,7 @@ Future<void> settle(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 Future<void> open(WidgetTester tester, {bool setup = false, bool loading = false}) async {
-  tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  restoreForeground();
   await tester.runAsync(() => Supabase.instance.client.auth.setInitialSession(session(actorA)));
   expect(SupabaseBackend.client.auth.currentUser?.id,actorA);
   await tester.pumpWidget(const MaterialApp(home: SecondaryProtectedPage(
@@ -62,7 +69,10 @@ void main() {
       httpClient:MockClient((request) async {
         expect(request.url.host,'r38-fixture.invalid');requests.add(request);
         if(request.url.path.endsWith('/secondary_password_configured')) return http.Response(jsonEncode(pendingConfigured == null ? configured : await pendingConfigured!.future),200,headers:{'content-type':'application/json'},request:request);
-        if(request.url.path.endsWith('/set_secondary_password')) return http.Response('null',200,headers:{'content-type':'application/json'},request:request);
+        if(request.url.path.endsWith('/set_secondary_password')) {
+          await pendingSave?.future;
+          return http.Response('null',200,headers:{'content-type':'application/json'},request:request);
+        }
         if(request.url.path.endsWith('/verify_secondary_password')) {
           expect(jsonDecode(request.body),{'p_password':'synthetic-secondary'});
           return http.Response(jsonEncode(await pending!.future),200,headers:{'content-type':'application/json'},request:request);
@@ -73,7 +83,8 @@ void main() {
   });
   tearDownAll(() async {await Supabase.instance.dispose();});
   setUp(() {
-    requests.clear();pending=null;nativePending=null;pendingConfigured=null;configured=true;
+    restoreForeground();
+    requests.clear();pending=null;nativePending=null;pendingConfigured=null;pendingSave=null;configured=true;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('plugins.flutter.io/local_auth'),(call) async {
         if(call.method=='isDeviceSupported'||call.method=='deviceSupportsBiometrics')return true;
@@ -82,8 +93,15 @@ void main() {
         throw StateError('No native authentication permitted in password fixture');
       });
   });
-  tearDown(() {TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-    const MethodChannel('plugins.flutter.io/local_auth'),null);});
+  tearDown(() {
+    restoreForeground();
+    for(final p in [pending,nativePending,pendingConfigured]) {
+      if(p!=null&&!p.isCompleted)p.complete(false);
+    }
+    if(pendingSave!=null&&!pendingSave!.isCompleted)pendingSave!.complete();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/local_auth'),null);
+  });
   testWidgets('background rejects delayed password success; fresh foreground retry still works',(tester) async {
     await open(tester);await begin(tester);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
@@ -194,5 +212,21 @@ void main() {
     expect(find.text('private payload'),findsNothing);
     await tester.tap(find.text('再読み込み'));await settle(tester);
     expect(find.text('第2認証が必要です'),findsOneWidget);
+  });
+  testWidgets('setup native exception ends before a delayed server save becomes inactive',(tester) async {
+    configured=false;await open(tester,setup:true);nativePending=Completer<bool>();pendingSave=Completer<void>();
+    await tester.enterText(find.byType(TextField).at(0),'synthetic-new-secondary');
+    await tester.enterText(find.byType(TextField).at(1),'synthetic-new-secondary');
+    await tester.ensureVisible(find.byType(SwitchListTile));await tester.tap(find.byType(SwitchListTile));await tester.pump();
+    await tester.ensureVisible(find.text('設定して開く'));await tester.tap(find.text('設定して開く'));await tester.pump();
+    nativePending!.complete(true);await tester.pump();
+    await tester.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:20));});
+    expect(requests.where((r)=>r.url.path.endsWith('/set_secondary_password')).length,1);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    pendingSave!.complete();await settle(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await settle(tester);
+    expect(find.text('private payload'),findsNothing);
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,isNotNull);
+    expect(requests.where((r)=>r.url.path.endsWith('/set_secondary_password')).length,1);
   });
 }
