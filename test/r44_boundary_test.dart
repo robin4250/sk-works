@@ -13,9 +13,10 @@ const actor='00000000-0000-0000-0000-000000000001';
 const worker='00000000-0000-0000-0000-000000000002';
 const company='00000000-0000-0000-0000-000000000003';
 http.Response jsonResponse(Object body,http.Request request)=>http.Response(jsonEncode(body),200,request:request,headers:{'content-type':'application/json'});
-String token()=>['{"alg":"HS256"}',jsonEncode({'sub':actor,'role':'authenticated','exp':DateTime.now().millisecondsSinceEpoch~/1000+3600}),'signature'].map((x)=>base64Url.encode(utf8.encode(x)).replaceAll('=','')).join('.');
+String token([String userId=actor])=>['{"alg":"HS256"}',jsonEncode({'sub':userId,'role':'authenticated','exp':DateTime.now().millisecondsSinceEpoch~/1000+3600}),'signature'].map((x)=>base64Url.encode(utf8.encode(x)).replaceAll('=','')).join('.');
 
 class Fixture {
+  String activeActor=actor;
   final calls=<String>[];
   final rows=Completer<void>();
   final signed=Completer<void>();
@@ -23,7 +24,7 @@ class Fixture {
   final signStarted=Completer<void>();
   late final SupabaseClient client=SupabaseClient('https://certificate-fixture.invalid','fixture-key',authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((request) async {
     final path=request.url.path;calls.add(path);
-    if(path.endsWith('/token'))return jsonResponse({'access_token':token(),'refresh_token':'fixture-refresh','token_type':'bearer','expires_in':3600,'user':{'id':actor,'aud':'authenticated','role':'authenticated','email':'fixture@example.invalid','created_at':'2026-01-01T00:00:00Z','app_metadata':{},'user_metadata':{}}},request);
+    if(path.endsWith('/token'))return jsonResponse({'access_token':token(activeActor),'refresh_token':'fixture-refresh','token_type':'bearer','expires_in':3600,'user':{'id':activeActor,'aud':'authenticated','role':'authenticated','email':'fixture@example.invalid','created_at':'2026-01-01T00:00:00Z','app_metadata':{},'user_metadata':{}}},request);
     if(path.endsWith('/logout'))return http.Response('',204,request:request);
     if(path.endsWith('/rpc/current_feature_permissions'))return jsonResponse({'can_manage_people':true},request);
     if(path.endsWith('/company_members'))return jsonResponse([{'company_id':company}],request);
@@ -98,6 +99,24 @@ void main(){
     final future=repository.createSignedUrl('$company/$worker/front.jpg');
     await f.signStarted.future;final checked=expectLater(future,throwsStateError);
     await f.client.auth.signOut(scope:SignOutScope.local);f.signed.complete();await checked;
+  });
+
+  testWidgets('actor replacement discards delayed qualification rows',(tester)async{
+    final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);
+    await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
+    await tester.pump();await tester.pump();expect(f.rowStarted.isCompleted,true);
+    f.activeActor='00000000-0000-0000-0000-000000000004';
+    await tester.runAsync(f.login);await tester.pump();f.rows.complete();await tester.pump();await tester.pump();
+    expect(f.client.auth.currentUser?.id,f.activeActor);
+    expect(find.text('Private qualification'),findsNothing);
+  },timeout:const Timeout(Duration(seconds:45)));
+
+  test('logout and same-actor return does not revive an old pending URL',()async{
+    final f=Fixture();addTearDown(f.close);await f.login();
+    final future=QualificationCertificateRepository.forTesting(f.client).createSignedUrl('$company/$worker/front.jpg');
+    await f.signStarted.future;final checked=expectLater(future,throwsStateError);
+    await f.client.auth.signOut(scope:SignOutScope.local);await f.login();
+    f.signed.complete();await checked;
   });
 
 }
