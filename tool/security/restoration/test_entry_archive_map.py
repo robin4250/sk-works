@@ -1,6 +1,11 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
+import io
+import contextlib
+import sys
+from unittest.mock import patch
 
 spec=importlib.util.spec_from_file_location('mapping',Path(__file__).with_name('entry_archive_map.py'))
 mapping=importlib.util.module_from_spec(spec);spec.loader.exec_module(mapping)
@@ -37,6 +42,15 @@ class MapTests(unittest.TestCase):
         selected,report=mapping.classify(ROOTS+'20; 1255 200 FUNCTION public can_edit_worker_personnel(uuid) postgres\n')
         self.assertEqual(len(selected),4);self.assertTrue(report['current_roots_complete'])
         self.assertEqual(len(report['alternate_function_records']),1)
+
+    def test_missing_current_root_cli_stops(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);root.chmod(0o700)
+            toc=root/'toc';toc.write_text(ROOTS.replace('FUNCTION private can_edit','FUNCTION public can_edit'));toc.chmod(0o600)
+            output=io.StringIO()
+            with patch.object(sys,'argv',['map','--toc',str(toc),'--output-parent',str(root)]),contextlib.redirect_stdout(output):
+                self.assertEqual(mapping.main(),1)
+            self.assertIn('STOP: current private',output.getvalue())
 
     def test_wrong_current_signature_stops(self):
         with self.assertRaises(ValueError):mapping.classify(ROOTS.replace('can_edit_worker_personnel(uuid)','can_edit_worker_personnel(text)'))
