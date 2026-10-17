@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 SNAPSHOT_SHA='432171969b657c082230cc170487e9d7bf9126bdf9a4fa5b19e105c6c3e1e37b'
+ROLE_MAP_SHA='f392a6896d20e73b5f2bdb224314867a64c794374e2047a5af819ea563d79f25'
 DEFINITIONS_SHA='10fb932c3d13e77abf59d23b42f2e88b3d7551fbdeae98d114acd2df6b576397'
 
 def load_sources(base):
@@ -17,13 +18,32 @@ def load_sources(base):
     if hashlib.sha256(source.read_bytes()).hexdigest()!=SNAPSHOT_SHA:raise ValueError('snapshot source mismatch')
     raw=sql.read_bytes()
     if hashlib.sha256(raw).hexdigest()!=DEFINITIONS_SHA:raise ValueError('fixed metadata source mismatch')
+    roles_path=base/'entry_role_map.sql.review-only'
+    if roles_path.is_symlink():raise ValueError('role source boundary')
+    roles=roles_path.read_bytes()
+    if hashlib.sha256(roles).hexdigest()!=ROLE_MAP_SHA:raise ValueError('fixed role map source mismatch')
     spec=importlib.util.spec_from_file_location('_entry_reviewed_snapshot',source)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     collector,invariants,_=module.reviewed_queries(base)
     query=("SELECT pg_catalog.jsonb_build_object('read_only', "
            "pg_catalog.current_setting('transaction_read_only')='on', 'payload', ("+
-           raw.decode().strip().rstrip(';')+")) AS entry_payload;")
+           "SELECT pg_catalog.jsonb_build_object('read_only', pg_catalog.current_setting('transaction_read_only')='on', 'definitions', ("+
+           raw.decode().strip().rstrip(';')+"), 'role_map', ("+roles.decode()+")))) AS entry_payload;")
     return module,collector,invariants,query
+
+def validate_map(payload):
+    roles=payload.get('role_map');definitions=payload.get('definitions')
+    if not isinstance(roles,list) or not isinstance(definitions,dict) or definitions.get('read_only') is not True:raise ValueError('same-statement role map required')
+    ids=set();names=set()
+    for role in roles:
+        if not isinstance(role,dict) or set(role)!={'oid','name'} or type(role['oid']) is not int or not isinstance(role['name'],str):raise ValueError('role map shape')
+        if role['oid'] in ids or role['name'] in names:raise ValueError('ambiguous role map')
+        ids.add(role['oid']);names.add(role['name'])
+    for policy in definitions.get('policies') or []:
+        if any(role not in ids|{0} for role in policy['roles']):raise ValueError('policy role map incomplete')
+    for function in definitions.get('functions') or []:
+        if function['owner'] not in names:raise ValueError('function owner map incomplete')
+
 
 def collect(module,collector,invariants,query,parent):
     root=collector.new_capsule_directory(parent)
@@ -34,12 +54,14 @@ def collect(module,collector,invariants,query,parent):
         (root/'private-before.json').write_text(json.dumps(before))
         metadata=module.read_query(opener,token,query)
         if metadata['payload'].get('read_only') is not True:raise ValueError('metadata read-only proof missing')
+        validate_map(metadata['payload'])
         (root/'private-definitions.json').write_text(json.dumps(metadata))
         after=module.read_query(opener,token,invariants)
         (root/'private-after.json').write_text(json.dumps(after))
         if before!=after:raise ValueError('identity membership drift')
         (root/'private-manifest.json').write_text(json.dumps({
-            'fixed_metadata_sql_sha256':DEFINITIONS_SHA,'read_only_proven':True,
+            'fixed_metadata_sql_sha256':DEFINITIONS_SHA,'fixed_role_map_sql_sha256':ROLE_MAP_SHA,
+            'definitions_and_role_map_same_statement':True,'read_only_proven':True,
             'before_after_invariants_equal':True,'production_writes':0,
             'business_auth_row_export':False,'schema_archive':False,
             'transitive_dependency_closure':False,'data_time_gap_closed':False,

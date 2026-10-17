@@ -1,0 +1,2 @@
+SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('oid',r.oid,'name',r.rolname) ORDER BY r.oid)
+FROM pg_catalog.pg_roles r

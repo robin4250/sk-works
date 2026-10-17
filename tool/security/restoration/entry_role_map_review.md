@@ -1,0 +1,5 @@
+# Same-statement role OID/name map candidate
+
+Stacked on #1207; original 7d25 definition SQL is unchanged. New fixed query selects exactly oid and rolname from pg_catalog.pg_roles. No password hash, role configuration, Auth row or business row is selected. Definitions and role map are nested within one fixed SELECT, rather than joining old capsules. Hash mismatch fails before credential access. Missing policy role OID (except PUBLIC sentinel 0), missing function owner name, duplicate role OID/name or unexpected role attributes fails collection; no synthetic role substitution.
+
+Scope remains metadata only. Role membership/attributes, ACL null defaults, grant options and exact ownership reconstruction remain unverified. Do not generate or execute complete rollback from this bundle until they are proven. Existing recovery emails and database are untouched. Native/operator collection waits for owner Release result and independent review; no real API request has been made by this candidate. PGlite checks same-statement SQL and the exact oid/name field shape; Python checks fail-closed role references.
