@@ -1,0 +1,30 @@
+name: Account settings authentication
+on:
+  pull_request:
+    paths:
+      - lib/features/auth/panel_seven_*.dart
+      - lib/features/settings/settings_page.dart
+      - test/panel_seven_test.dart
+      - test/panel_seven_repository_test.dart
+      - .github/workflows/panel-seven.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  account:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/auth/panel_seven_repository.dart lib/features/auth/panel_seven_page.dart test/panel_seven_test.dart test/panel_seven_repository_test.dart
+      - name: SDK HTTP behavior (bounded)
+        run: timeout 90s flutter test test/panel_seven_repository_test.dart --reporter expanded --timeout 25s
+      - name: Widget behavior (bounded)
+        if: always()
+        run: timeout 90s flutter test test/panel_seven_test.dart --reporter expanded --timeout 25s
