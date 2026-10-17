@@ -46,6 +46,12 @@ def load_guard(path):
     return module
 
 
+def native_profile(guard, inside, endpoint):
+    # macOS PostgreSQL retains a small SysV header even with mmap shared memory.
+    # This synthetic-only variant leaves every network and filesystem rule intact.
+    return guard.profile(inside, endpoint) + '(allow ipc-sysv-shm)\n'
+
+
 def clean_environment(inside, source=os.environ):
     # Intentionally do not inherit any credential, service, preload or user rc configuration.
     return {'PATH':'/usr/bin:/bin','HOME':str(inside),'TMPDIR':str(inside),
@@ -102,14 +108,17 @@ def main():
         binaries={n:args.pg_bin/n for n in ('initdb','pg_ctl','postgres','psql')}
         if not all(p.is_absolute() and p.is_file() for p in binaries.values()):
             raise ValueError('explicit native PostgreSQL tools required')
-        kernel_evidence=verify_host(guard,parent)
+        base_profile=guard.profile
+        guard.profile=lambda inside,endpoint: base_profile(inside,endpoint)+'(allow ipc-sysv-shm)\n'
+        try:kernel_evidence=verify_host(guard,parent)
+        finally:guard.profile=base_profile
         os.umask(0o077)
         evidence=Path(tempfile.mkdtemp(prefix='entry-native-',dir=str(parent))).resolve();evidence.chmod(0o700)
         inside=evidence/'inside';inside.mkdir(mode=0o700)
         data=inside/'pgdata';sock=inside
         endpoint=sock/'.s.PGSQL.5432'
         if len(str(endpoint).encode())>=104:raise ValueError('private socket path too long')
-        policy=inside/'profile.sb';policy.write_text(guard.profile(inside,endpoint))
+        policy=inside/'profile.sb';policy.write_text(native_profile(guard,inside,endpoint))
         env=clean_environment(inside)
         errors=(evidence/'private-native-errors.log').open('wb')
         def run(command,timeout=30,check=True):
