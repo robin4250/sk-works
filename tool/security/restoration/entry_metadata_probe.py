@@ -31,6 +31,20 @@ def load_sources(base):
            raw.decode().strip().rstrip(';')+"), 'role_map', ("+roles.decode()+")))) AS entry_payload;")
     return module,collector,invariants,query
 
+def validate_map(payload):
+    roles=payload.get('role_map');definitions=payload.get('definitions')
+    if not isinstance(roles,list) or not isinstance(definitions,dict) or definitions.get('read_only') is not True:raise ValueError('same-statement role map required')
+    ids=set();names=set()
+    for role in roles:
+        if not isinstance(role,dict) or set(role)!={'oid','name'} or type(role['oid']) is not int or not isinstance(role['name'],str):raise ValueError('role map shape')
+        if role['oid'] in ids or role['name'] in names:raise ValueError('ambiguous role map')
+        ids.add(role['oid']);names.add(role['name'])
+    for policy in definitions.get('policies') or []:
+        if any(role not in ids|{0} for role in policy['roles']):raise ValueError('policy role map incomplete')
+    for function in definitions.get('functions') or []:
+        if function['owner'] not in names:raise ValueError('function owner map incomplete')
+
+
 def collect(module,collector,invariants,query,parent):
     root=collector.new_capsule_directory(parent)
     try:
@@ -40,6 +54,7 @@ def collect(module,collector,invariants,query,parent):
         (root/'private-before.json').write_text(json.dumps(before))
         metadata=module.read_query(opener,token,query)
         if metadata['payload'].get('read_only') is not True:raise ValueError('metadata read-only proof missing')
+        validate_map(metadata['payload'])
         (root/'private-definitions.json').write_text(json.dumps(metadata))
         after=module.read_query(opener,token,invariants)
         (root/'private-after.json').write_text(json.dumps(after))
