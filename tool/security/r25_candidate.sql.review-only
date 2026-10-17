@@ -1,0 +1,56 @@
+-- REVIEW ONLY. A private per-invoice staging boundary; no production hook.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='30s';
+create table private.r25_registry(invoice_id uuid primary key,company_id uuid not null,actor_id uuid not null);
+alter table private.r25_registry enable row level security;
+revoke all on table private.r25_registry from public,anon,authenticated,service_role;
+do $patch$
+declare target record;f record;body text;anchor text;replacement text;
+begin
+ for target in select * from(values
+ ('private.r19_invoice_allowed(uuid)','7e98e74b6a104faefd11394d1206fc4b','classifier'),
+ ('private.r20_linked_notice(text,uuid)','c760c9af3c9ed5e41ff64c4815e7d0ab','notice'),
+ ('private.ensure_invoice_approval_rows(uuid)','f05a5d4193861009502ac3f5e381e301','ensure'),
+ ('private.create_line_invoices(uuid,uuid,integer,text)','6f9b4f55a8fcd713dccc7ca885e852aa','current'),
+ ('private.create_line_historical_invoices(uuid,uuid,text,jsonb,integer,boolean,text,boolean)','b2d4a977eea090d619127be2535e5856','historical')
+ )t(signature,expected_hash,kind)loop
+ select p.oid,p.prosrc,p.proowner,p.proacl,p.proconfig,p.prosecdef,pg_get_functiondef(p.oid) definition into f from pg_proc p where p.oid=to_regprocedure(target.signature);
+ if not found or md5(f.prosrc)<>target.expected_hash or not f.prosecdef or pg_get_userbyid(f.proowner)<>'postgres' or f.proconfig is distinct from array['search_path=""']::text[] then
+ raise exception 'Target or prerequisite drift; review required' using errcode='55000';end if;
+ body:=f.prosrc;
+ if target.kind='classifier' then
+ body:=replace(body,'select (not exists','select (not exists(select 1 from private.r25_registry where invoice_id=i) and not exists');
+ elsif target.kind='notice' then
+ body:=replace(body,E'when ''invoice_approval'' then\n',E'when ''invoice_approval'' then\nexists(select 1 from private.r25_registry where invoice_id=i) or ');
+ elsif target.kind='ensure' then
+ body:=replace(body,' if exists(select 1 from private.line_invoice_submissions',' if exists(select 1 from private.r25_registry where invoice_id=p_invoice_id) or exists(select 1 from private.line_invoice_submissions');
+ else
+ if target.kind='current' then
+ anchor:=E'  insert into public.invoices(company_id,';
+ replacement:=E'  iid:=gen_random_uuid();\n  insert into private.r25_registry(invoice_id,company_id,actor_id) values(iid,cid,auth.uid());\n  insert into public.invoices(id,company_id,';
+ else
+ anchor:=E'  insert into public.invoices(company_id,';
+ replacement:=E'  iid:=gen_random_uuid();\n  insert into private.r25_registry(invoice_id,company_id,actor_id) values(iid,q.company_id,auth.uid());\n  insert into public.invoices(id,company_id,';
+ end if;
+ if (length(body)-length(replace(body,anchor,'')))/length(anchor)<>1 then raise exception 'Creation anchor drift' using errcode='55000';end if;
+ body:=replace(body,anchor,replacement);
+ body:=replace(body,E'\nbegin\n',E'\nbegin\n if not private.r19_master() then raise exception ''protected creation unavailable'' using errcode=''42501'';end if;\n');
+ if target.kind='current' then
+ body:=replace(body,'  values(cid,','  values(iid,cid,');
+ anchor:='  insert into private.line_invoice_submissions values(cid,(quote->>''customer_id'')::uuid,draft.work_month,draft.id,draft.revision,iid);';
+ replacement:=anchor||E'\n  delete from private.r25_registry where invoice_id=iid and company_id=cid and actor_id=auth.uid();';
+ else
+ body:=replace(body,'  values(q.company_id,','  values(iid,q.company_id,');
+ anchor:='from jsonb_array_elements(results) r;';
+ replacement:=anchor||E'\n delete from private.r25_registry p using jsonb_array_elements(results) r where p.invoice_id=(r->>''invoice_id'')::uuid and p.company_id=q.company_id and p.actor_id=auth.uid();';
+ end if;
+ if (length(body)-length(replace(body,anchor,'')))/length(anchor)<>1 then raise exception 'Lineage anchor drift' using errcode='55000';end if;
+ body:=replace(body,anchor,replacement);
+ end if;
+ if body=f.prosrc or strpos(f.definition,f.prosrc)=0 then raise exception 'Body patch unavailable' using errcode='55000';end if;
+ execute replace(f.definition,f.prosrc,body);
+ if not exists(select 1 from pg_proc p where p.oid=f.oid and p.proowner=f.proowner and p.proacl is not distinct from f.proacl and p.proconfig is not distinct from f.proconfig and p.prosecdef=f.prosecdef)then raise exception 'Target metadata changed' using errcode='55000';end if;
+ end loop;
+end $patch$;
+commit;
