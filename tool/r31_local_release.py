@@ -20,9 +20,48 @@ BUNDLE = 'com.skworks.skWorks'
 DEVICE = '00008110-00120536010A801E'
 OFF = '--dart-define=SKO_MASTER_PASSWORD_V1=false'
 
+_PHASE = 'startup'
+_STAGE = None
+SAFE_FAILURES = {
+    'Mac required': 'mac_required',
+    'Flutter mismatch': 'flutter_version',
+    'Xcode mismatch': 'xcode_version',
+    'wrong bundle': 'bundle_mismatch',
+    'callback handling changed': 'callback_configuration',
+    'callback scheme missing': 'callback_configuration',
+    'signed team missing': 'signature_identity',
+    'signed identity mismatch': 'signature_identity',
+    'invalid keychain groups': 'signature_identity',
+    'local environment unavailable': 'local_environment_missing',
+    'copy changed': 'copy_verification',
+    'source SHA changed': 'source_changed',
+    'build source changed': 'source_changed',
+    'new signature changed account storage identity': 'signature_identity',
+    'original source changed; never restoring automatically': 'original_changed',
+    'original native artifacts changed': 'original_changed',
+    'expected physical supported device missing': 'owner_device_missing',
+}
+
+class CheckedFailure(RuntimeError):
+    pass
+
+def phase(name, stage=None):
+    global _PHASE, _STAGE
+    _PHASE = name
+    if stage is not None:
+        _STAGE = stage
+
+def failure_record(error):
+    kinds = {'RuntimeError', 'CalledProcessError', 'FileNotFoundError', 'PermissionError',
+             'TimeoutExpired', 'ValueError', 'KeyError', 'OSError', 'CheckedFailure'}
+    kind = type(error).__name__
+    return {'phase': _PHASE, 'kind': kind if kind in kinds else 'OtherError',
+            'category': SAFE_FAILURES.get(str(error), 'check_failed')
+                        if isinstance(error, CheckedFailure) else 'operation_failed'}
+
 def require(value, message):
     if not value:
-        raise RuntimeError(message)
+        raise CheckedFailure(message)
 
 def inventory(root):
     """Never traverse a symlink, including generated plugin directory loops."""
@@ -127,6 +166,39 @@ def audit_isolated_links(native, dependencies):
                     'generated link escaped isolated native plan')
 
 
+def verify_release_settings(settings):
+    # Flutter 3.47.5 xcode_backend.dart uses CONFIGURATION when the uncommon
+    # FLUTTER_BUILD_MODE setting is absent. An explicit mode never falls back.
+    require(settings.get('CONFIGURATION') == 'Release'
+            and settings.get('FLUTTER_BUILD_MODE', 'release') == 'release'
+            and settings.get('PRODUCT_BUNDLE_IDENTIFIER') == BUNDLE,
+            'not a Release application')
+
+def verify_release_payload(app):
+    # This is a structural/debug-kernel rejection, not an nm/AOT-symbol proof.
+    # Stripped snapshot symbol names are not a stable positive Release contract.
+    assets = app / 'Frameworks/App.framework/flutter_assets'
+    require(assets.is_dir() and not (assets / 'kernel_blob.bin').exists(),
+            'debug kernel artifact present or assets missing')
+    binary = app / 'Frameworks/App.framework/App'
+    require(binary.is_file() and not binary.is_symlink(), 'compiled payload missing')
+
+def save_dependency_checkpoint(stage, copies):
+    write_private(stage / 'dependencies-before-private.json',
+                  {str(origin): {'destination': str(item['destination'].relative_to(stage)),
+                                 'inventory': item['inventory']}
+                   for origin, item in copies.items()})
+
+def rebase_built_links(source, stage, copies):
+    # A build may regenerate plugin links back to the same package cache.
+    # Re-authorize no new origin: compare every original byte/link first.
+    require(all(inventory(origin) == item['inventory'] for origin, item in copies.items()),
+            'original package dependency changed during build')
+    isolate_native_links(source / 'ios', source / 'ios',
+                         cache_root=Path.home() / '.pub-cache',
+                         dependencies=stage / 'native-dependencies', approved=copies)
+    audit_isolated_links(source / 'ios', stage / 'native-dependencies')
+
 class Runner:
     def __init__(self, cwd, log):
         self.cwd, self.log = Path(cwd), log
@@ -222,7 +294,9 @@ def build(root, sha, backup_root):
     print('Private checkpoint: ' + str(stage), flush=True)
     with (stage / 'private.log').open('xb') as log:
         original = Runner(root, log)
+        phase('tool_preflight', stage)
         tools_ready(original)
+        phase('source_snapshot')
         before = source_state(original)
         write_private(stage / 'original-private.json', before)
         # Original untracked files are backed up privately, never added to Git.
@@ -234,55 +308,77 @@ def build(root, sha, backup_root):
                 target.symlink_to(os.readlink(origin))
             else:
                 shutil.copy2(origin, target)
+        phase('native_snapshot')
         native = copy_checked(root / 'ios', stage / 'original-ios')
         oldapp = root / 'build/ios/iphoneos/Runner.app'
+        phase('previous_signature')
         oldsig = signature(original, oldapp)
         olddigest = digest(oldapp)
         copy_checked(oldapp, stage / 'previous-local.app')
+        phase('git_backup')
         original.git('bundle', 'create', str(stage / 'source-before.bundle'), 'HEAD')
         original.git('bundle', 'verify', str(stage / 'source-before.bundle'))
         # A new detached worktree only: no checkout, merge, reset, stash or clean of root.
+        phase('isolated_checkout')
         original.run(['git', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', sha])
         source = stage / 'source'
         original.run(['git', '-c', 'core.hooksPath=/dev/null', 'worktree', 'add', '--detach', str(source), sha])
         candidate = Runner(source, log)
         verify_clean(candidate, sha)
         copy_checked(stage / 'original-ios', source / 'ios')
+        phase('native_link_plan')
         copies = isolate_native_links(root / 'ios', source / 'ios',
                              cache_root=Path.home() / '.pub-cache',
                              dependencies=stage / 'native-dependencies')
+        phase('dependency_checkpoint')
+        save_dependency_checkpoint(stage, copies)
+        phase('native_signing_copy')
         signing = signing_settings(candidate)
         require(signing == signing_settings(original), 'native signing copy incomplete')
+        phase('local_environment')
         env = root / 'tool/local_supabase_env.sh'
         require(env.is_file() and not env.is_symlink(), 'local environment unavailable')
+        phase('prepare_native')
         candidate.run(['bash', 'tool/prepare_ios.sh'])
+        phase('prepared_link_plan')
         isolate_native_links(source / 'ios', source / 'ios',
                              cache_root=Path.home() / '.pub-cache',
                              dependencies=stage / 'native-dependencies', approved=copies)
         audit_isolated_links(source / 'ios', stage / 'native-dependencies')
         require(signing_settings(candidate) == signing, 'prepare changed signing')
+        phase('native_contract')
         candidate.run(['bash', 'tool/check_ios_generated_contract.sh'])
+        phase('release_build')
         candidate.run(release_command() + [str(env)])
+        phase('compiled_settings')
         settings = json.loads(candidate.run(['xcodebuild', '-workspace', 'ios/Runner.xcworkspace',
             '-scheme', 'Runner', '-configuration', 'Release', '-sdk', 'iphoneos',
             '-showBuildSettings', '-json'], True))
         runner_settings = [entry['buildSettings'] for entry in settings if entry.get('target') == 'Runner']
         require(len(runner_settings) == 1, 'compiled Release settings missing')
-        require(runner_settings[0].get('CONFIGURATION') == 'Release'
-                and runner_settings[0].get('FLUTTER_BUILD_MODE') == 'release'
-                and runner_settings[0].get('PRODUCT_BUNDLE_IDENTIFIER') == BUNDLE,
-                'not a Release application')
+        verify_release_settings(runner_settings[0])
         verify_clean(candidate, sha)
-        audit_isolated_links(source / 'ios', stage / 'native-dependencies')
+        phase('built_link_plan')
+        rebase_built_links(source, stage, copies)
         require(all(inventory(origin) == item['inventory'] for origin, item in copies.items()),
                 'original package dependency changed during build')
         require(signing_settings(candidate) == signing, 'build changed signing')
         app = source / 'build/ios/iphoneos/Runner.app'
+        phase('release_payload')
+        verify_release_payload(app)
+        phase('new_signature')
         require(signature(candidate, app) == oldsig, 'new signature changed account storage identity')
+        phase('preservation_verification')
         require(source_state(original) == before, 'original source changed; never restoring automatically')
         require(inventory(root / 'ios') == native and digest(oldapp) == olddigest,
                 'original native artifacts changed')
-        write_private(stage / 'built-private.json', {'sha': sha, 'root': str(root), 'source': str(source),
+        write_private(stage / 'built-private.json', {'checkpoint_schema': 2,
+                      'release_settings_proof': {
+                          'CONFIGURATION': runner_settings[0]['CONFIGURATION'],
+                          'PRODUCT_BUNDLE_IDENTIFIER': runner_settings[0]['PRODUCT_BUNDLE_IDENTIFIER'],
+                          **({'FLUTTER_BUILD_MODE': runner_settings[0]['FLUTTER_BUILD_MODE']}
+                             if 'FLUTTER_BUILD_MODE' in runner_settings[0] else {})},
+                      'dependency_checkpoint_sha256': hashlib.sha256((stage / 'dependencies-before-private.json').read_bytes()).hexdigest(), 'sha': sha, 'root': str(root), 'source': str(source),
                       'app_digest': digest(app), 'signature': oldsig, 'original_native': native,
                       'original_app_digest': olddigest, 'release_command': ['flutter', 'build', 'ios', '--release', OFF],
                       'owner_only': True, 'testflight_approved': False})
@@ -291,7 +387,13 @@ def build(root, sha, backup_root):
 def install(stage):
     require(stage.is_dir() and not stage.is_symlink(), 'checkpoint missing')
     with (stage / 'install-private.log').open('xb') as log:
+        phase('install_preflight', stage)
         m = json.loads((stage / 'built-private.json').read_text())
+        require(m.get('checkpoint_schema') == 2
+                and (stage / 'dependencies-before-private.json').is_file()
+                and hashlib.sha256((stage / 'dependencies-before-private.json').read_bytes()).hexdigest()
+                    == m.get('dependency_checkpoint_sha256'), 'dependency checkpoint missing or changed')
+        verify_release_settings(m.get('release_settings_proof', {}))
         require(m.get('release_command') == ['flutter', 'build', 'ios', '--release', OFF]
                 and m.get('owner_only') is True and m.get('testflight_approved') is False,
                 'not an owner Release checkpoint')
@@ -306,11 +408,13 @@ def install(stage):
         require(inventory(root / 'ios') == m['original_native'], 'original iOS changed')
         require(digest(root / 'build/ios/iphoneos/Runner.app') == m['original_app_digest'], 'old app changed')
         app = source / 'build/ios/iphoneos/Runner.app'
+        verify_release_payload(app)
         require(digest(app) == m['app_digest'] and signature(runner, app) == m['signature'], 'artifact changed')
         devices = json.loads(runner.run(['flutter', 'devices', '--machine'], True))
         selected = [d for d in devices if d.get('id') == DEVICE and d.get('targetPlatform') == 'ios'
                     and d.get('emulator') is False and d.get('isSupported') is True]
         require(len(selected) == 1, 'expected physical supported device missing')
+        phase('owner_install')
         runner.run(['xcrun', 'devicectl', 'device', 'install', 'app', '--device', DEVICE, str(app)])
         runner.run(['xcrun', 'devicectl', 'device', 'process', 'launch', '--device', DEVICE, BUNDLE])
         require(source_state(original) == before, 'original source changed during install')
@@ -324,6 +428,7 @@ def main():
     parser.add_argument('--backup-root', type=Path, default=Path('/Users/ryuichi/SKO-source-backups'))
     args = parser.parse_args()
     os.umask(0o077)
+    phase('startup')
     try:
         if args.reviewed_sha:
             stage = build(args.root, args.reviewed_sha, args.backup_root)
@@ -332,7 +437,13 @@ def main():
             install(args.install_checkpoint)
             print('Owner Release overwrite install/launch complete; actual login/data/roles remain to test. NOT TestFlight approval.')
     except Exception as error:
-        print('STOP: ' + type(error).__name__ + '; private checkpoints retained; no reset/deletion/automatic restoration.')
+        record = failure_record(error)
+        if _STAGE is not None:
+            try:
+                write_private(_STAGE / 'failure-private.json', record)
+            except Exception:
+                pass  # Failure reporting never replaces the primary failure.
+        print('STOP: ' + json.dumps(record, sort_keys=True) + '; private checkpoints retained; no reset/deletion/automatic restoration.')
         return 1
     return 0
 
