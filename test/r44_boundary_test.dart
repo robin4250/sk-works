@@ -1,6 +1,7 @@
 // ignore_for_file: depend_on_referenced_packages
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -17,6 +18,10 @@ String token([String userId=actor])=>['{"alg":"HS256"}',jsonEncode({'sub':userId
 
 class Fixture {
   String activeActor=actor;
+  bool waitForPermission=false;
+  final permission=Completer<void>();
+  final permissionStarted=Completer<void>();
+  final mutations=<String>[];
   final calls=<String>[];
   final rows=Completer<void>();
   final signed=Completer<void>();
@@ -26,10 +31,20 @@ class Fixture {
     final path=request.url.path;calls.add(path);
     if(path.endsWith('/token'))return jsonResponse({'access_token':token(activeActor),'refresh_token':'fixture-refresh','token_type':'bearer','expires_in':3600,'user':{'id':activeActor,'aud':'authenticated','role':'authenticated','email':'fixture@example.invalid','created_at':'2026-01-01T00:00:00Z','app_metadata':{},'user_metadata':{}}},request);
     if(path.endsWith('/logout'))return http.Response('',204,request:request);
-    if(path.endsWith('/rpc/current_feature_permissions'))return jsonResponse({'can_manage_people':true},request);
+    if(path.endsWith('/rpc/current_feature_permissions')){
+      if(!permissionStarted.isCompleted)permissionStarted.complete();
+      if(waitForPermission)await permission.future;
+      return jsonResponse({'can_manage_people':true},request);
+    }
     if(path.endsWith('/company_members'))return jsonResponse([{'company_id':company}],request);
     if(path.endsWith('/qualification_master'))return jsonResponse([{'id':'master','name':'Private qualification'}],request);
     if(path.endsWith('/workers'))return jsonResponse([{'id':worker,'name':'Private worker'}],request);
+    if(path.endsWith('/worker_qualifications') && request.method=='PATCH'){
+      mutations.add('database');return jsonResponse({'id':'qualification','worker_id':worker,...(jsonDecode(request.body) as Map<String,dynamic>)},request);
+    }
+    if(path.contains('/storage/v1/object/') && !path.contains('/object/sign/')){
+      mutations.add('storage');return jsonResponse({'Key':'qualification-certificates/synthetic-only.jpg'},request);
+    }
     if(path.endsWith('/worker_qualifications')){
       if(!rowStarted.isCompleted)rowStarted.complete();
       await rows.future;
@@ -43,7 +58,7 @@ class Fixture {
     throw StateError('Unexpected synthetic request: $path');
   }));
   Future<void> login()=>client.auth.signInWithPassword(email:'fixture@example.invalid',password:'synthetic-only').then((_){});
-  Future<void> close()async{if(!rows.isCompleted)rows.complete();if(!signed.isCompleted)signed.complete();await client.dispose();}
+  Future<void> close()async{if(!permission.isCompleted)permission.complete();if(!rows.isCompleted)rows.complete();if(!signed.isCompleted)signed.complete();await client.dispose();}
 }
 
 void main(){
@@ -136,5 +151,28 @@ void main(){
     await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(key:const ValueKey('fresh'),repository:repository)));
     await tester.pump();await tester.pump();expect(find.text('Private qualification'),findsOneWidget);
   },timeout:const Timeout(Duration(seconds:45)));
+
+  test('permission response after actor replacement cannot dispatch old upload',()async{
+    final f=Fixture();addTearDown(f.close);await f.login();f.rows.complete();f.waitForPermission=true;
+    Object? failure;
+    final pending=QualificationCertificateRepository.forTesting(f.client).uploadCertificate(qualificationId:'qualification',workerId:worker,bytes:Uint8List.fromList([1,2]),originalFilename:'synthetic.jpg').catchError((Object error){failure=error;return <String,dynamic>{};});
+    await f.permissionStarted.future;
+    f.activeActor='00000000-0000-0000-0000-000000000004';await f.login();
+    f.permission.complete();await pending;
+    expect(f.mutations,isEmpty);expect(failure,isStateError);
+  });
+  test('logout and same actor return cannot resume an old removal permission check',()async{
+    final f=Fixture();addTearDown(f.close);await f.login();f.rows.complete();f.waitForPermission=true;
+    Object? failure;
+    final pending=QualificationCertificateRepository.forTesting(f.client).removeCertificate(qualificationId:'qualification',storagePath:'synthetic.jpg').catchError((Object error){failure=error;return <String,dynamic>{};});
+    await f.permissionStarted.future;
+    await f.client.auth.signOut(scope:SignOutScope.local);await f.login();f.permission.complete();await pending;
+    expect(f.mutations,isEmpty);expect(failure,isStateError);
+  });
+  test('legitimate active actor upload dispatches once and updates once',()async{
+    final f=Fixture();addTearDown(f.close);await f.login();f.rows.complete();
+    await QualificationCertificateRepository.forTesting(f.client).uploadCertificate(qualificationId:'qualification',workerId:worker,bytes:Uint8List.fromList([1,2]),originalFilename:'synthetic.jpg');
+    expect(f.mutations,['storage','database']);
+  });
 
 }
