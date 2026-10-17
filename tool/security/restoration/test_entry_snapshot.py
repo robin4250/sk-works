@@ -27,6 +27,21 @@ class Response:
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_keychain_timeout_is_classified_before_api_without_fallback(self):
+        calls = []
+        def run(args, **kwargs):
+            calls.append(args)
+            self.assertEqual(kwargs['timeout'], 120)
+            raise subprocess.TimeoutExpired(args, 120, output=TOKEN, stderr=TOKEN)
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as td, contextlib.redirect_stdout(out):
+            with self.assertRaises(snapshot.Stop) as caught:
+                snapshot.token_from_store({}, run, Path(td))
+        self.assertEqual(caught.exception.category, 'credential_store_timeout_before_api')
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn(TOKEN, out.getvalue() + str(caught.exception))
+        self.assertIn('120', out.getvalue())
+
     def test_reviewed_fixed_sql_read_only_evidence_and_schema_qualification(self):
         module, invariants, catalog = snapshot.reviewed_queries(Path(__file__).parent)
         for sql in (invariants, catalog):

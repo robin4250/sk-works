@@ -66,10 +66,14 @@ def token_from_store(env, run=subprocess.run, home=None):
     if 'SUPABASE_ACCESS_TOKEN' in env:
         return normalize(env['SUPABASE_ACCESS_TOKEN'])
     if env.get('SUPABASE_NO_KEYRING') != '1':
+        print('Macのキーチェーン確認待ちです。macOSの確認画面が出ていないか確認してください（各照会は最大120秒、再試行なし）。', flush=True)
         for account in ('supabase', 'access-token'):
-            result = run(['/usr/bin/security', 'find-generic-password', '-s', 'Supabase CLI',
-                          '-a', account, '-w'], capture_output=True, text=True, timeout=30,
-                         env={'PATH': '/usr/bin:/bin', 'HOME': str(home)})
+            try:
+                result = run(['/usr/bin/security', 'find-generic-password', '-s', 'Supabase CLI',
+                              '-a', account, '-w'], capture_output=True, text=True, timeout=120,
+                             env={'PATH': '/usr/bin:/bin', 'HOME': str(home)})
+            except subprocess.TimeoutExpired:
+                raise Stop('credential_store_timeout_before_api') from None
             if result.returncode == 0:
                 return normalize(result.stdout.strip())
             if result.returncode != 44:  # errSecItemNotFound; do not retry access denial.
