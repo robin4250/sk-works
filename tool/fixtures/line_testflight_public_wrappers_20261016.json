@@ -1,0 +1,90 @@
+[
+  {
+    "schema": "public",
+    "name": "create_line_historical_invoices",
+    "args": "p_command_id uuid, p_quote_id uuid, p_quote_fingerprint text, p_site_terms jsonb, p_tax_rate_bps integer, p_terms_confirmed boolean, p_preview_fingerprint text, p_preview_confirmed boolean",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.create_line_historical_invoices(p_command_id uuid, p_quote_id uuid, p_quote_fingerprint text, p_site_terms jsonb, p_tax_rate_bps integer, p_terms_confirmed boolean, p_preview_fingerprint text, p_preview_confirmed boolean)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$select private.create_line_historical_invoices(p_command_id,p_quote_id,p_quote_fingerprint,p_site_terms,p_tax_rate_bps,p_terms_confirmed,p_preview_fingerprint,p_preview_confirmed)$function$\n"
+  },
+  {
+    "schema": "public",
+    "name": "create_line_invoices",
+    "args": "p_command_id uuid, p_draft_id uuid, p_revision integer, p_expected_fingerprint text",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.create_line_invoices(p_command_id uuid, p_draft_id uuid, p_revision integer, p_expected_fingerprint text)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$select private.create_line_invoices(p_command_id,p_draft_id,p_revision,p_expected_fingerprint)$function$\n"
+  },
+  {
+    "schema": "public",
+    "name": "line_chat_sender_preferences",
+    "args": "p_group_id uuid, p_mode text, p_nickname text",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.line_chat_sender_preferences(p_group_id uuid, p_mode text DEFAULT NULL::text, p_nickname text DEFAULT NULL::text)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$ select private.line_chat_sender_preferences(p_group_id,p_mode,p_nickname) $function$\n"
+  },
+  {
+    "schema": "public",
+    "name": "line_historical_invoice_expense_preview",
+    "args": "p_quote_id uuid, p_invoice_id uuid",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.line_historical_invoice_expense_preview(p_quote_id uuid, p_invoice_id uuid)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$select private.line_historical_invoice_expenses(p_quote_id,p_invoice_id)$function$\n"
+  },
+  {
+    "schema": "public",
+    "name": "line_historical_invoice_preview",
+    "args": "p_quote_id uuid, p_quote_fingerprint text, p_site_terms jsonb, p_tax_rate_bps integer, p_terms_confirmed boolean",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.line_historical_invoice_preview(p_quote_id uuid, p_quote_fingerprint text, p_site_terms jsonb, p_tax_rate_bps integer, p_terms_confirmed boolean)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$select private.line_historical_invoice_preview(p_quote_id,p_quote_fingerprint,p_site_terms,p_tax_rate_bps,p_terms_confirmed)$function$\n"
+  },
+  {
+    "schema": "public",
+    "name": "line_historical_invoice_workspace",
+    "args": "p_quote_id uuid",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.line_historical_invoice_workspace(p_quote_id uuid)\n RETURNS jsonb\n LANGUAGE sql\n STABLE\n SET search_path TO ''\nAS $function$select private.line_historical_invoice_workspace(p_quote_id)$function$\n"
+  },
+  {
+    "schema": "public",
+    "name": "line_invoice_preview",
+    "args": "p_draft_id uuid, p_revision integer",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.line_invoice_preview(p_draft_id uuid, p_revision integer)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$select private.line_invoice_preview(p_draft_id,p_revision)$function$\n"
+  },
+  {
+    "schema": "public",
+    "name": "link_line_source_to_chat",
+    "args": "p_group_id uuid, p_directory_id uuid",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.link_line_source_to_chat(p_group_id uuid, p_directory_id uuid)\n RETURNS void\n LANGUAGE sql\n SET search_path TO ''\nAS $function$ select private.link_line_source_to_chat(p_group_id,p_directory_id) $function$\n"
+  },
+  {
+    "schema": "public",
+    "name": "prepare_line_chat_dispatch",
+    "args": "p_message_id uuid",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.prepare_line_chat_dispatch(p_message_id uuid)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$ select private.prepare_line_chat_dispatch(p_message_id) $function$\n"
+  },
+  {
+    "schema": "public",
+    "name": "refresh_line_historical_invoice_expenses",
+    "args": "p_quote_id uuid, p_invoice_id uuid, p_preview_fingerprint text, p_confirmed boolean",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.refresh_line_historical_invoice_expenses(p_quote_id uuid, p_invoice_id uuid, p_preview_fingerprint text, p_confirmed boolean)\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$select private.line_historical_invoice_expenses(p_quote_id,p_invoice_id,p_preview_fingerprint,p_confirmed)$function$\n"
+  },
+  {
+    "schema": "public",
+    "name": "submit_line_attendance",
+    "args": "p_command_id uuid, p_draft_id uuid, p_revision integer, p_signer_name text, p_signature_json jsonb, p_worker_ids uuid[]",
+    "security_definer": false,
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "definition": "CREATE OR REPLACE FUNCTION public.submit_line_attendance(p_command_id uuid, p_draft_id uuid, p_revision integer, p_signer_name text, p_signature_json jsonb, p_worker_ids uuid[])\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$select private.submit_line_attendance(p_command_id,p_draft_id,p_revision,p_signer_name,p_signature_json,p_worker_ids)$function$\n"
+  }
+]

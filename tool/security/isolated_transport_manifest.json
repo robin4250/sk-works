@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "purpose": "disposable_loopback_fixture",
+  "deployment_ready": false,
+  "bind_address": "127.0.0.1",
+  "port": "ephemeral",
+  "production_routes": [],
+  "environment_credentials_consumed": [],
+  "outbound_application_clients": [],
+  "persisted_data": [],
+  "operator_token": "ephemeral caller supplied 32 random bytes; never production credentials",
+  "required_external_controls_before_any_hosting": [
+    "separate credential-free environment with no production network route",
+    "host-level outbound deny rule verified independently",
+    "ingress connection and byte limits outside Node process",
+    "operator key rotation and protected delivery",
+    "durable sanitized monitoring and dropped-event alert",
+    "independent isolation and recovery review"
+  ],
+  "limitations": [
+    "loopback is not a trusted user identity boundary",
+    "process has no OS-level network isolation guarantee",
+    "global fixture rate limit is not actor/IP based production protection",
+    "in-memory metadata and counters reset when process stops",
+    "existing DecoyLab history capacity drops are separate from transport counters"
+  ]
+}

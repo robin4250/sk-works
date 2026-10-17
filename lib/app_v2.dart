@@ -1,3 +1,4 @@
+import 'features/auth/authenticated_navigation_boundary.dart';
 import 'features/payroll/company_common_payroll_page.dart';
 import 'features/chat/line_release_access.dart';
 import 'features/referrals/app_referral_page.dart';
@@ -117,7 +118,7 @@ class SkWorksApp extends StatelessWidget {
         return ValueListenableBuilder<SkoPalette>(
           valueListenable: SkoThemeController.palette,
           builder: (context, palette, _) {
-            return MaterialApp(
+            return AuthenticatedNavigationBoundary(child: MaterialApp(
               navigatorKey: SkoScrollChromeController.navigatorKey,
               debugShowCheckedModeBanner: false,
               title: ProductBrand.displayName,
@@ -141,7 +142,7 @@ class SkWorksApp extends StatelessWidget {
                   : allowLocalFallback
                       ? const HomePage()
                       : const _BackendUnavailableScreen(),
-            );
+            ));
           },
         );
       },

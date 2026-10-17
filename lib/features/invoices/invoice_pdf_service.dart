@@ -24,6 +24,7 @@ import 'invoice_preview_failure.dart';
 import 'invoice_native_pdf_view.dart';
 import 'invoice_stamp_surname_dialog.dart';
 import 'invoice_settings_repository.dart';
+import '../shared/r33_input.dart';
 
 class InvoicePdfService {
   const InvoicePdfService._();
@@ -1172,17 +1173,39 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
               _singleInvoice?.documentUpdatedAt != null)
             TextButton(
               onPressed: () async {
-                final invoice = _singleInvoice!;
-                final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
-                  builder: (_) => TradeDocumentAttachmentEditorPage(
-                    subjectKind: 'invoice', subjectId: invoice.invoiceId,
-                    sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String()),
-                ));
-                if (saved == true && mounted) {
-                  setState(() {
-                    _previewRevision++;
-                    _previewData = _buildPreviewData();
-                  });
+                try {
+                  _actorLease.verify();
+                  final invoice = _singleInvoice!;
+                  final pending = _previewData;
+                  final data = await pending;
+                  if (!context.mounted) return;
+                  _actorLease.verify();
+                  if (!identical(pending, _previewData)) return;
+                  final actor = SupabaseBackend.isInitialized
+                      ? SupabaseBackend.client.auth.currentUser?.id : null;
+                  final revision = DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String();
+                  final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
+                    builder: (_) => TradeDocumentAttachmentEditorPage(
+                      subjectKind: 'invoice', subjectId: invoice.invoiceId,
+                      sourceRevision: revision,
+                      initialInput: actor == null ? null : R33Input(
+                        actorId: actor, companyId: invoice.companySealSnapshot.companyId ?? '',
+                        subjectId: invoice.invoiceId, sourceRevision: revision,
+                        text: data.settings?.invoiceSubject ?? '')),
+                  ));
+                  if (!mounted) return;
+                  _actorLease.verify();
+                  if (saved == true) {
+                    setState(() {
+                      _previewRevision++;
+                      _previewData = _buildPreviewData();
+                    });
+                  }
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('請求書を再読み込みしてから注文請書を開いてください。')));
+                  }
                 }
               },
               child: const Text('注文請書'),
@@ -2050,3 +2073,4 @@ class _ScreenApprovals extends StatelessWidget {
     ],
   );
 }
+

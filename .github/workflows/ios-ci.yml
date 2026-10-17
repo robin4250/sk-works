@@ -1,6 +1,7 @@
 name: iOS CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, 'chore/**']
     paths:
@@ -136,9 +137,24 @@ jobs:
           from pathlib import Path
           p = Path("ios/Runner.xcodeproj/project.pbxproj")
           p.write_text("// SKO_SIGNING_SENTINEL\n" + p.read_text())
+          import json, plistlib
+          info = Path("ios/Runner/Info.plist")
+          with info.open("rb") as f:
+              data = plistlib.load(f)
+          data["CFBundleURLTypes"].append({"CFBundleURLName": "CI existing", "CFBundleURLSchemes": ["ci-existing-one", "ci-existing-two"], "preserve": True})
+          Path("/tmp/sko-url-types-before.json").write_text(json.dumps(data["CFBundleURLTypes"]))
+          with info.open("wb") as f:
+              plistlib.dump(data, f)
           PY
           bash tool/prepare_ios.sh
           grep -q 'SKO_SIGNING_SENTINEL' ios/Runner.xcodeproj/project.pbxproj
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, plistlib
+          with Path("ios/Runner/Info.plist").open("rb") as f:
+              data = plistlib.load(f)
+          assert data["CFBundleURLTypes"] == json.loads(Path("/tmp/sko-url-types-before.json").read_text())
+          PY
 
       - name: Flutter doctor
         run: flutter doctor -v
@@ -196,3 +212,20 @@ jobs:
 
       - name: Build iOS release without codesigning
         run: flutter build ios --release --no-codesign
+
+
+      - name: Verify generated and compiled Release OAuth callback
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import plistlib
+          for path in ["ios/Runner/Info.plist", "build/ios/iphoneos/Runner.app/Info.plist"]:
+              with Path(path).open("rb") as f:
+                  data = plistlib.load(f)
+              assert any("com.skworks.sko" in t.get("CFBundleURLSchemes", []) for t in data.get("CFBundleURLTypes", [])), path
+              assert data.get("FlutterDeepLinkingEnabled") is False, path
+              if "Runner.app" in path:
+                  assert data["CFBundleIdentifier"] == "com.skworks.skWorks"
+              print("OAuth callback scheme verified:", path)
+          PY
+

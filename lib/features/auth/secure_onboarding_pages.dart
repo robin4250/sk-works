@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,17 +9,133 @@ import '../../branding/product_brand.dart';
 import 'auth_error_message.dart';
 import 'employee_invite_scanner_page.dart';
 import 'secure_onboarding_repository.dart';
+import 'existing_google_login.dart';
 
 class SecureAuthPage extends StatefulWidget {
-  const SecureAuthPage({super.key, required this.onAuthenticated});
+  const SecureAuthPage({super.key, required this.onAuthenticated, this.repository, this.googleLogin});
 
   final VoidCallback onAuthenticated;
+  final SecureOnboardingRepository? repository;
+  final ExistingGoogleLogin? googleLogin;
 
   @override
   State<SecureAuthPage> createState() => _SecureAuthPageState();
 }
 
-class _SecureAuthPageState extends State<SecureAuthPage> {
+class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObserver {
+  ExistingGoogleLogin? _google;
+  StreamSubscription<AuthState>? _googleSubscription;
+  int _googleGeneration = 0;
+  bool _googlePending = false;
+  bool _googleChecking = false;
+  Session? _googleResult;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Observe this route, without adding a global auth/navigation listener.
+    // A route can become current again without an OS lifecycle transition.
+    final isCurrent = ModalRoute.of(context)?.isCurrent == true;
+    if (isCurrent && _googlePending) {
+      final generation = _googleGeneration;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && generation == _googleGeneration) _completeGoogle();
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _completeGoogle();
+  }
+
+  void _cancelGoogle() {
+    _googleGeneration++;
+    _googleSubscription?.cancel();
+    _googleSubscription = null;
+    _googleResult = null;
+    _googleChecking = false;
+    _googlePending = false;
+  }
+
+  Future<void> _startGoogle() async {
+    if (_busy || _googlePending) return;
+    final google = widget.googleLogin ?? ExistingGoogleLogin.maybeCreate();
+    if (google == null) return;
+    if (google.currentSession != null) {
+      setState(() => _message = 'ログイン状態が残っています。会社登録を確認できない場合は、新規登録をせずサポートへ確認してください。');
+      return;
+    }
+    _google = google;
+    final generation = ++_googleGeneration;
+    _password.clear();
+    _passwordConfirm.clear();
+    _otp.clear();
+    setState(() { _googlePending = true; _message = null; });
+    _googleSubscription = google.changes.listen((event) {
+      if (!mounted || generation != _googleGeneration || !_googlePending) return;
+      if (event.event == AuthChangeEvent.signedOut) {
+        setState(_cancelGoogle);
+        return;
+      }
+      if (event.event != AuthChangeEvent.signedIn || event.session == null) return;
+      _googleResult = event.session;
+      _completeGoogle();
+    }, onError: (Object _) {
+      if (!mounted || generation != _googleGeneration) return;
+      setState(() { _cancelGoogle(); _message = 'Googleログインを完了できませんでした。もう一度お試しください。'; });
+    });
+    try {
+      final launched = await google.launch();
+      if (!mounted || generation != _googleGeneration) return;
+      if (!launched) {
+        setState(() { _cancelGoogle(); _message = 'Googleログインを開けませんでした。'; });
+      }
+      // Browser launch is not authentication. Only the SDK signedIn event may complete.
+    } catch (_) {
+      if (!mounted || generation != _googleGeneration) return;
+      setState(() { _cancelGoogle(); _message = 'Googleログインを開けませんでした。'; });
+    }
+  }
+
+  Future<void> _completeGoogle() async {
+    final google = _google;
+    final session = _googleResult;
+    if (!mounted || !_googlePending || _googleChecking || google == null || session == null) return;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    if (ModalRoute.of(context)?.isCurrent != true) return;
+    final generation = _googleGeneration;
+    _googleChecking = true;
+    try {
+      final permitted = await google.hasExistingMembership(session);
+      if (!mounted || generation != _googleGeneration || !_googlePending) return;
+      final current = google.currentSession;
+      if (current?.user.id != session.user.id || current?.accessToken != session.accessToken) {
+        setState(() { _cancelGoogle(); _message = 'ログイン状態が変わりました。もう一度確認してください。'; });
+        return;
+      }
+      if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed || ModalRoute.of(context)?.isCurrent != true) {
+        _googleChecking = false;
+        return;
+      }
+      if (!permitted) {
+        setState(() { _cancelGoogle(); _message = 'このアカウントの既存の会社登録を確認できません。登録済みのGoogleアカウントか確認してください。'; });
+        return;
+      }
+      _cancelGoogle();
+      widget.onAuthenticated();
+    } catch (_) {
+      if (!mounted || generation != _googleGeneration) return;
+      setState(() { _cancelGoogle(); _message = '既存の会社登録を確認できませんでした。ログイン状態は残る場合があります。新規登録をせず、サポートへ確認してください。'; });
+    }
+  }
   final _phone = TextEditingController();
   final _password = TextEditingController();
   final _passwordConfirm = TextEditingController();
@@ -32,10 +150,12 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
   String? _message;
 
   SecureOnboardingRepository? get _repository =>
-      SecureOnboardingRepository.maybeCreate();
+      widget.repository ?? SecureOnboardingRepository.maybeCreate();
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cancelGoogle();
     _phone.dispose();
     _password.dispose();
     _passwordConfirm.dispose();
@@ -44,8 +164,9 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
   }
 
   Future<void> _submit() async {
+    if (_passwordResetMode) return;
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null || _googlePending) return;
 
     if (_awaitingSms) {
       final code = _otp.text.replaceAll(RegExp(r'\D'), '');
@@ -54,46 +175,8 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
         return;
       }
       await _run(() async {
-        if (_passwordResetMode) {
-          await repository.verifyPasswordResetSms(
-            phone: _phone.text,
-            code: code,
-          );
-          try {
-            await repository.updatePrimaryPassword(_password.text);
-          } catch (_) {
-            await repository.signOut();
-            rethrow;
-          }
-          widget.onAuthenticated();
-        } else {
-          await repository.verifySmsCode(phone: _phone.text, code: code);
-          widget.onAuthenticated();
-        }
-      });
-      return;
-    }
-
-    if (_passwordResetMode) {
-      if (!SecureOnboardingRepository.isSupportedJapaneseMobileValue(_phone.text)) {
-        setState(() => _message = '070 / 080 / 090から始まる携帯電話番号を入力してください。');
-        return;
-      }
-      if (_password.text.length < 8) {
-        setState(() => _message = '8文字以上の新しい本パスワードを入力してください。');
-        return;
-      }
-      if (_password.text != _passwordConfirm.text) {
-        setState(() => _message = '確認用パスワードが一致していません。');
-        return;
-      }
-      await _run(() async {
-        await repository.requestPasswordResetSms(phone: _phone.text);
-        if (!mounted) return;
-        setState(() {
-          _awaitingSms = true;
-          _message = 'SMSで本人確認コードを送信しました。';
-        });
+        await repository.verifySmsCode(phone: _phone.text, code: code);
+        widget.onAuthenticated();
       });
       return;
     }
@@ -158,15 +241,12 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
   }
 
   Future<void> _resendSms() async {
+    if (_passwordResetMode) return;
     final repository = _repository;
     if (repository == null) return;
 
     await _run(() async {
-      if (_passwordResetMode) {
-        await repository.requestPasswordResetSms(phone: _phone.text);
-      } else {
-        await repository.resendSmsCode(phone: _phone.text);
-      }
+      await repository.resendSmsCode(phone: _phone.text);
       if (!mounted) return;
       setState(() => _message = 'SMSを再送しました。最新の6桁コードを入力してください。');
     });
@@ -227,9 +307,9 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                     children: [
                       Text(
                         _awaitingSms
-                            ? (_passwordResetMode ? '本人確認コード' : '承認コード')
+                            ? '承認コード'
                             : _passwordResetMode
-                                ? '本パスワード再設定'
+                                ? 'ログイン用パスワードを忘れた場合'
                                 : _registerMode
                                     ? '管理者の初回登録'
                                     : 'ログイン',
@@ -243,7 +323,11 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                         _awaitingSms
                             ? 'SMSで届いた6桁のコードを入力してください。'
                             : _passwordResetMode
-                                ? '新しい本パスワードを設定し、登録済み携帯電話番号へのSMS確認後に更新します。'
+                                ? '本パスワードはログイン用で、第2パスワードとは別です。\n'
+                                  'Face IDによる第2パスワードの再設定では、本パスワードは変わりません。\n'
+                                  'Googleで登録した方は「通常ログインへ戻る」から、登録済みのGoogleでログインしてください。\n'
+                                  '電話番号と本パスワードを登録済みの方は、端末に保存したログイン用パスワードを確認してください。\n'
+                                  'この画面からの再設定・SMS復旧は利用できません。'
                                 : _registerMode
                                     ? '携帯電話番号をIDとして登録します。'
                                     : '登録した携帯電話番号とパスワードでログインします。',
@@ -252,198 +336,208 @@ class _SecureAuthPageState extends State<SecureAuthPage> {
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
+                      if ((widget.googleLogin != null || ExistingGoogleLogin.supportedPlatform) &&
+                          !_registerMode && !_awaitingSms && !_passwordResetMode) ...[
+                        const SizedBox(height: 16),
+                        OutlinedButton(
+                          onPressed: _busy || _googlePending ? null : _startGoogle,
+                          child: const Text('登録済みのGoogleでログイン'),
+                        ),
+                        const Text('SKOで使用していたGoogleアカウントを選んでください。別のアカウントを選ぶと新規登録される場合があります。'),
+                      ],
+                      if (_googlePending) ...[
+                        const Text('Googleでの認証完了を待っています。'),
+                        TextButton(onPressed: () => setState(() { _cancelGoogle(); _message = '画面での待機を中止しました。開いているGoogle認証画面も閉じてください。'; }), child: const Text('Googleログインを中止')),
+                      ],
                       const SizedBox(height: 24),
-                      if (_awaitingSms) ...[
-                        TextField(
-                          controller: _otp,
-                          keyboardType: TextInputType.number,
-                          autofocus: true,
-                          maxLength: 6,
-                          decoration: const InputDecoration(
-                            labelText: '承認コード',
-                            prefixIcon: Icon(Icons.sms_outlined),
-                          ),
-                          onSubmitted: (_) => _busy ? null : _submit(),
-                        ),
-                      ] else ...[
-                        TextField(
-                          controller: _phone,
-                          keyboardType: TextInputType.phone,
-                          autofillHints: const [AutofillHints.telephoneNumber],
-                          decoration: const InputDecoration(
-                            labelText: '携帯電話番号（ID）',
-                            hintText: '09012345678',
-                            prefixIcon: Icon(Icons.phone_iphone_outlined),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        _PasswordField(
-                          controller: _password,
-                          label: _passwordResetMode
-                              ? '新しい本パスワード'
-                              : (_registerMode ? '本パスワード' : 'パスワード'),
-                          obscure: _obscurePassword,
-                          onToggle: () =>
-                              setState(() => _obscurePassword = !_obscurePassword),
-                          onSubmitted: (_) =>
-                              _registerMode || _passwordResetMode || _busy
-                                  ? null
-                                  : _submit(),
-                        ),
-                        if (_registerMode || _passwordResetMode) ...[
-                          const SizedBox(height: 14),
-                          _PasswordField(
-                            controller: _passwordConfirm,
-                            label: _passwordResetMode
-                                ? '新しい本パスワード（確認）'
-                                : '本パスワード（確認）',
-                            obscure: _obscureConfirm,
-                            onToggle: () =>
-                                setState(() => _obscureConfirm = !_obscureConfirm),
-                            onSubmitted: (_) => _busy ? null : _submit(),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            _passwordResetMode
-                                ? 'SMS本人確認に成功した直後、この新しい本パスワードへ更新します。'
-                                : '8文字以上で設定してください。',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
+                      if (!_passwordResetMode) ...[
+                          if (_awaitingSms) ...[
+                            TextField(
+                              controller: _otp,
+                              keyboardType: TextInputType.number,
+                              autofocus: true,
+                              maxLength: 6,
+                              decoration: const InputDecoration(
+                                labelText: '承認コード',
+                                prefixIcon: Icon(Icons.sms_outlined),
+                              ),
+                              onSubmitted: (_) => _busy || _googlePending ? null : _submit(),
                             ),
-                          ),
-                        ],
-                      ],
-                      if (_message != null) ...[
-                        const SizedBox(height: 14),
-                        Text(
-                          _message!,
-                          style: TextStyle(
-                            color: _awaitingSms
-                                ? scheme.primary
-                                : scheme.error,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        height: 54,
-                        child: FilledButton.icon(
-                          onPressed: _busy ? null : _submit,
-                          icon: _busy
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : Icon(
-                                  _awaitingSms
-                                      ? Icons.verified_outlined
-                                      : _registerMode
-                                          ? Icons.person_add_alt_1
-                                          : Icons.login,
-                                ),
-                          label: Text(
-                            _awaitingSms
-                                ? '承認する'
-                                : _passwordResetMode
-                                    ? '本人確認SMSを送信'
-                                    : _registerMode
-                                        ? '登録してSMS認証へ'
-                                        : 'ログイン',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (!_awaitingSms && !_passwordResetMode) ...[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 50,
-                          child: OutlinedButton.icon(
-                            onPressed: _busy
-                                ? null
-                                : () => setState(() {
-                                      _registerMode = !_registerMode;
-                                      _message = null;
-                                    }),
-                            icon: Icon(
-                              _registerMode
-                                  ? Icons.login
-                                  : Icons.person_add_alt_1,
-                            ),
-                            label: Text(
-                              _registerMode
-                                  ? 'ログインへ戻る'
-                                  : '管理者として初めて登録する',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
+                          ] else ...[
+                            TextField(
+                              controller: _phone,
+                              keyboardType: TextInputType.phone,
+                              autofillHints: const [AutofillHints.telephoneNumber],
+                              decoration: const InputDecoration(
+                                labelText: '携帯電話番号（ID）',
+                                hintText: '09012345678',
+                                prefixIcon: Icon(Icons.phone_iphone_outlined),
                               ),
                             ),
-                          ),
-                        ),
-                      ],
-                      if (!_awaitingSms &&
-                          !_registerMode &&
-                          !_passwordResetMode) ...[
-                        const SizedBox(height: 18),
-                        Row(
-                          children: [
-                            const Expanded(child: Divider()),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              child: Text(
-                                'または',
+                            const SizedBox(height: 14),
+                            _PasswordField(
+                              controller: _password,
+                              label: _registerMode
+                                  ? '本パスワード'
+                                  : '本パスワード（ログイン用）',
+                              obscure: _obscurePassword,
+                              onToggle: () =>
+                                  setState(() => _obscurePassword = !_obscurePassword),
+                              onSubmitted: (_) =>
+                                  _registerMode || _busy
+                                      ? null
+                                      : _submit(),
+                            ),
+                            if (_registerMode) ...[
+                              const SizedBox(height: 14),
+                              _PasswordField(
+                                controller: _passwordConfirm,
+                                label: '本パスワード（確認）',
+                                obscure: _obscureConfirm,
+                                onToggle: () =>
+                                    setState(() => _obscureConfirm = !_obscureConfirm),
+                                onSubmitted: (_) => _busy || _googlePending ? null : _submit(),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '8文字以上で設定してください。',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: scheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ],
+                          if (_message != null) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              _message!,
+                              style: TextStyle(
+                                color: _awaitingSms
+                                    ? scheme.primary
+                                    : scheme.error,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            height: 54,
+                            child: FilledButton.icon(
+                              onPressed: _busy || _googlePending ? null : _submit,
+                              icon: _busy
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : Icon(
+                                      _awaitingSms
+                                          ? Icons.verified_outlined
+                                          : _registerMode
+                                              ? Icons.person_add_alt_1
+                                              : Icons.login,
+                                    ),
+                              label: Text(
+                                _awaitingSms
+                                    ? '承認する'
+                                    : _registerMode
+                                            ? '登録してSMS認証へ'
+                                            : 'ログイン',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ),
-                            const Expanded(child: Divider()),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          height: 52,
-                          child: OutlinedButton.icon(
-                            onPressed: _busy ? null : _scanEmployeeInvite,
-                            icon: const Icon(Icons.qr_code_scanner),
-                            label: const Text(
-                              '従業員登録QRでログイン',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                          ),
+                          if (!_awaitingSms && !_passwordResetMode) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              height: 50,
+                              child: OutlinedButton.icon(
+                                onPressed: _busy || _googlePending
+                                    ? null
+                                    : () => setState(() {
+                                          _registerMode = !_registerMode;
+                                          _message = null;
+                                        }),
+                                icon: Icon(
+                                  _registerMode
+                                      ? Icons.login
+                                      : Icons.person_add_alt_1,
+                                ),
+                                label: Text(
+                                  _registerMode
+                                      ? 'ログインへ戻る'
+                                      : '管理者として初めて登録する',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
+                          ],
+                          if (!_awaitingSms &&
+                              !_registerMode &&
+                              !_passwordResetMode) ...[
+                            const SizedBox(height: 18),
+                            Row(
+                              children: [
+                                const Expanded(child: Divider()),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  child: Text(
+                                    'または',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                const Expanded(child: Divider()),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              height: 52,
+                              child: OutlinedButton.icon(
+                                onPressed: _busy || _googlePending ? null : _scanEmployeeInvite,
+                                icon: const Icon(Icons.qr_code_scanner),
+                                label: const Text(
+                                  '従業員登録QRでログイン',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (_awaitingSms) ...[
+                            const SizedBox(height: 10),
+                            TextButton.icon(
+                              onPressed: _busy || _googlePending ? null : _resendSms,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('SMSを再送'),
+                            ),
+                            TextButton(
+                              onPressed: _busy || _googlePending
+                                  ? null
+                                  : () => setState(() {
+                                        _awaitingSms = false;
+                                        _message = null;
+                                      }),
+                              child: const Text('電話番号を修正'),
+                            ),
+                          ],
                       ],
-                      if (_awaitingSms) ...[
-                        const SizedBox(height: 10),
-                        TextButton.icon(
-                          onPressed: _busy ? null : _resendSms,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('SMSを再送'),
-                        ),
-                        TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => setState(() {
-                                    _awaitingSms = false;
-                                    _message = null;
-                                  }),
-                          child: const Text('電話番号を修正'),
-                        ),
-                      ] else ...[
+                      if (!_awaitingSms) ...[
                         const SizedBox(height: 12),
 
                         if (!_registerMode)
                           TextButton(
-                            onPressed: _busy
+                            onPressed: _busy || _googlePending
                                 ? null
                                 : () async {
                                     if (!mounted) return;
@@ -1202,3 +1296,6 @@ class _InfoTile extends StatelessWidget {
     );
   }
 }
+
+
+

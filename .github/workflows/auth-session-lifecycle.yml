@@ -1,0 +1,30 @@
+name: Reused local GoTrue session lifecycle
+on:
+  pull_request:
+    paths:
+      - 'tool/security/auth_session_lifecycle*'
+      - '.github/workflows/auth-session-lifecycle.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: local-auth-lifecycle-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  actual-local-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - name: Verify exact reuse and fail-closed instrumentation
+        run: node --test tool/security/auth_session_lifecycle_runner_test.mjs
+      - name: Check new helper syntax
+        run: node --check tool/security/auth_session_lifecycle_check.mjs
+      - name: Actual local refresh and logout plus unchanged existing Edge suite
+        run: node tool/security/auth_session_lifecycle_runner.mjs

@@ -1,0 +1,79 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {createReauthenticationHandler} from '../../supabase/functions/reauthenticate-operation/handler.mjs';
+const actor='10000000-0000-0000-0000-000000000001';
+const session='20000000-0000-0000-0000-000000000001';
+const temporary='20000000-0000-0000-0000-000000000002';
+const jwt=(sub=actor,sid=session)=>'fixture.'+btoa(JSON.stringify({sub,session_id:sid,role:'authenticated',exp:Math.floor(Date.now()/1000)+600}))+'.synthetic';
+const target={user_id:actor};
+function fixture(overrides={}) {
+ const calls=[]; let issued;
+ const fetcher=async(url,options={})=>{
+  const path=new URL(url).pathname+new URL(url).search; calls.push({path,options});
+  if(overrides.throwAt===path)throw Error('synthetic sensitive upstream details');
+  if(path==='/auth/v1/user')return Response.json(overrides.user??{id:actor,phone:'synthetic-phone'},{status:overrides.authStatus??200});
+  if(path==='/rest/v1/rpc/reauthentication_capabilities')return Response.json({protocol:'sko-reauthentication-v1',secondary_password:overrides.enabled??true,master_feature:true,master_security:true},{status:overrides.capStatus??200});
+  if(path==='/auth/v1/token?grant_type=password')return Response.json({user:{id:overrides.verifiedActor??actor},access_token:jwt(overrides.verifiedActor??actor,overrides.tempSession??temporary),refresh_token:'NEVER_RETURN_THIS'},{status:overrides.passwordStatus??200});
+  if(path==='/auth/v1/logout?scope=local')return new Response(null,{status:overrides.logoutStatus??204});
+  if(path==='/rest/v1/rpc/issue_reauthentication_proof') {issued=JSON.parse(options.body);return Response.json(new Date(Date.now()+120000).toISOString(),{status:overrides.issueStatus??200});}
+  throw Error('Unexpected endpoint '+path);
+ };
+ const handler=createReauthenticationHandler({baseUrl:'https://fixture.invalid',publicKey:'public_fixture',serviceKey:'sb_'+'secret_'+'fixture-key',fetcher});
+ return {calls,get issued(){return issued;},async invoke(body={operation:'secondary_password.replace',password:'synthetic-password',target},token=jwt()) {
+  return handler(new Request('https://function.invalid',{method:'POST',headers:{Authorization:'Bearer '+token},body:JSON.stringify(body)}));
+ }, handler};
+}
+test('verified credentials issue bound nonce only after distinct session logout; no returned auth credentials',async()=>{
+ const f=fixture(); const r=await f.invoke(); assert.equal(r.status,200); const v=await r.json();
+ assert.match(v.proof,/^[0-9a-f]{64}$/);assert.equal(v.operation,'secondary_password.replace');assert.deepEqual(v.target,target);
+ assert.deepEqual(Object.keys(v).sort(),['expiresAt','operation','proof','protocol','target']);
+ assert.equal(f.issued.p_actor,actor);assert.equal(f.issued.p_session,session);assert.notEqual(f.issued.p_proof_hash,v.proof);
+ const passwordCall=f.calls.find(x=>x.path.includes('grant_type=password'));assert.equal(JSON.parse(passwordCall.options.body).phone,'synthetic-phone');
+ const logout=f.calls.find(x=>x.path.includes('logout'));assert.equal(logout.options.headers.Authorization,'Bearer '+jwt(actor,temporary));
+ assert.ok(f.calls.findIndex(x=>x.path.includes('logout'))<f.calls.findIndex(x=>x.path.includes('issue_reauthentication')));
+ const issue=f.calls.find(x=>x.path.includes('issue_reauthentication'));assert.equal(issue.options.headers.Authorization,undefined,'opaque key must not be JWT');
+ assert.equal(JSON.stringify(v).includes('synthetic-password'),false);
+});
+for(const [label,changes,status] of [
+ ['wrong password',{passwordStatus:400},403],['rate limit',{passwordStatus:429},429],['Auth unavailable',{authStatus:500},503],
+ ['auth denied',{authStatus:401},401],['capability error',{capStatus:403},503],['rollout disabled',{enabled:false},403],
+ ['different verified actor',{verifiedActor:'10000000-0000-0000-0000-000000000002'},403],
+ ['temporary logout unconfirmed',{logoutStatus:500},503],['same session',{tempSession:session},503],['issuer error',{issueStatus:403},403],
+ ['network error',{throwAt:'/auth/v1/token?grant_type=password'},503],
+])test(label+' fails closed without proof',async()=>{
+ const f=fixture(changes); const r=await f.invoke();assert.equal(r.status,status);assert.equal((await r.json()).proof,undefined);
+ if(!changes.issueStatus)assert.equal(f.issued,undefined);
+ if(changes.tempSession===session)assert.equal(f.calls.some(x=>x.path.includes('logout')),false);
+});
+test('client actor, target change, unknown operation, claimed biometric and refresh boolean rejected before password API',async()=>{
+ for(const body of [
+  {operation:'secondary_password.replace',password:'synthetic-password',target:{user_id:'10000000-0000-0000-0000-000000000002'}},
+  {operation:'master.feature.set',password:'synthetic-password',target:{feature_key:'route_assignment',enabled:true,extra:true}},
+  {operation:'unknown',password:'synthetic-password',target},
+  {operation:'secondary_password.replace',password:'synthetic-password',target,biometricVerified:true},
+  {operation:'secondary_password.replace',password:'synthetic-password',target,refreshed:true},
+ ]) {const f=fixture();assert.equal((await f.invoke(body)).status,400);assert.equal(f.calls.some(x=>x.path.includes('grant_type')),false);}
+});
+test('Master feature value and monitoring target passed unchanged to service issuer',async()=>{
+ for(const [operation,t] of [['master.feature.set',{feature_key:'route_assignment',enabled:false}],['master.security_incidents.read',{scope:'platform'}]]) {
+  const f=fixture();assert.equal((await f.invoke({operation,password:'synthetic-password',target:t})).status,200);assert.deepEqual(f.issued.p_target,t);
+ }
+});
+test('JWT claims cannot replace Auth server identity',async()=>{
+ const f=fixture();assert.equal((await f.invoke(undefined,jwt('10000000-0000-0000-0000-000000000002'))).status,401);assert.equal(f.issued,undefined);
+});
+test('chunked body without content length is cancelled at the byte limit before password verification',async()=>{
+ const f=fixture();let cancelled=false;
+ const body=new ReadableStream({pull(controller){controller.enqueue(new Uint8Array(1024).fill(65));},cancel(){cancelled=true;}});
+ const r=await f.handler(new Request('https://function.invalid',{method:'POST',headers:{Authorization:'Bearer '+jwt()},body,duplex:'half'}));
+ assert.equal(r.status,400);assert.equal(cancelled,true);assert.equal(f.calls.some(x=>x.path.includes('grant_type')),false);
+});
+test('UTF-8 byte limit rejects oversized multibyte JSON',async()=>{
+ const f=fixture();const r=await f.invoke({operation:'secondary_password.replace',password:'あ'.repeat(1600),target});
+ assert.equal(r.status,400);assert.equal(f.calls.some(x=>x.path.includes('grant_type')),false);
+});
+test('OAuth-only account without a password cannot be silently converted or issued proof',async()=>{
+ const f=fixture({user:{id:actor,email:'synthetic@example.invalid'},passwordStatus:400});
+ const r=await f.invoke();assert.equal(r.status,403);assert.equal(f.issued,undefined);
+ assert.equal(f.calls.some(x=>x.path.includes('/admin/')||x.path.includes('issue_reauthentication')),false);
+});

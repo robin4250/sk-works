@@ -2,9 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'master_device_repository.dart';
+import '../auth/operation_reauthentication_repository.dart';
+import 'master_device_lock_proof_dialog.dart';
+
+@visibleForTesting
+bool removesLastUsableMasterDevice(List<MasterDeviceRecord> devices, MasterDeviceRecord target) =>
+    !target.isRevoked && !target.isLocked &&
+    !devices.any((d) => d.id != target.id && !d.isRevoked && !d.isLocked);
 
 class MasterDeviceManagementPage extends StatefulWidget {
-  const MasterDeviceManagementPage({super.key});
+  const MasterDeviceManagementPage({super.key, this.repository, this.reauthentication});
+  @visibleForTesting final MasterDeviceRepository? repository;
+  @visibleForTesting final OperationReauthenticationRepository? reauthentication;
 
   @override
   State<MasterDeviceManagementPage> createState() =>
@@ -13,12 +22,13 @@ class MasterDeviceManagementPage extends StatefulWidget {
 
 class _MasterDeviceManagementPageState
     extends State<MasterDeviceManagementPage> {
-  final _repository = MasterDeviceRepository.maybeCreate();
+  late final _repository = widget.repository ?? MasterDeviceRepository.maybeCreate();
 
   List<MasterDeviceRecord> _devices = const [];
   bool _loading = true;
   String? _error;
   String? _busyDeviceId;
+  bool _confirmingLoss = false;
 
   @override
   void initState() {
@@ -60,13 +70,51 @@ class _MasterDeviceManagementPageState
     }
   }
 
+  Future<bool> _confirmLoss(MasterDeviceRecord device, String operation) async {
+    if (_confirmingLoss) return false;
+    _confirmingLoss = true;
+    try {
+    if (removesLastUsableMasterDevice(_devices, device)) {
+      await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+        title: const Text('最後の信頼済み端末は停止できません'),
+        content: const Text('この端末を停止するとマスター管理に入れなくなります。別の信頼済み端末を準備してください。復旧用メール2件の設定も確認してください。'),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('閉じる'))],
+      ));
+      return false;
+    }
+    return await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: Text('端末を$operationしますか？'),
+      content: Text('「${device.deviceName}」はマスター管理に使えなくなります。通常の画面ロックとは異なります。別の信頼済み端末からの操作または登録済み復旧メール2件での復旧が必要です。'),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('戻る')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(operation))],
+    )) == true;
+    } finally { _confirmingLoss = false; }
+  }
+
   Future<void> _setLocked(MasterDeviceRecord device, bool locked) async {
     final repository = _repository;
-    if (repository == null || device.isRevoked) return;
-
+    if (repository == null || device.isRevoked || _busyDeviceId != null) return;
+    if (locked && !await _confirmLoss(device, 'ロック')) return;
+    if (!mounted) return;
+    final actor = repository.currentUserId;
+    if (actor == null) return;
     setState(() => _busyDeviceId = device.id);
     try {
-      await repository.setLocked(deviceId: device.id, locked: locked);
+      final required = await repository.lockReauthenticationRequired();
+      if (!mounted || repository.currentUserId != actor) return;
+      String? proof;
+      if (required) {
+        final verifier = widget.reauthentication ?? OperationReauthenticationRepository.maybeCreate();
+        if (verifier == null) throw StateError('本人確認を利用できません。');
+        proof = await showDialog<String>(context: context, barrierDismissible: false,
+          builder: (_) => MasterDeviceLockProofDialog(expectedActor: actor,
+            currentActor: () => repository.currentUserId, deviceName: device.deviceName, locked: locked,
+            requestProof: (password) => verifier.requestProof(password: password,
+              operation: 'master.device.lock', target: {'device_id': device.id, 'locked': locked})));
+        if (proof == null) return;
+      }
+      if (!mounted || repository.currentUserId != actor) return;
+      await repository.setLocked(deviceId: device.id, locked: locked, proof: proof);
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -84,30 +132,9 @@ class _MasterDeviceManagementPageState
 
   Future<void> _revoke(MasterDeviceRecord device) async {
     final repository = _repository;
-    if (repository == null || device.isRevoked) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('端末登録を解除'),
-        content: Text(
-          '「${device.deviceName}」のマスターデバイス登録を解除します。'
-          '解除後はこの端末を信頼済み端末として利用できません。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('キャンセル'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('登録解除'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
+    if (repository == null || device.isRevoked || _busyDeviceId != null) return;
+    if (!await _confirmLoss(device, '登録解除')) return;
+    if (!mounted) return;
 
     setState(() => _busyDeviceId = device.id);
     try {
@@ -136,7 +163,7 @@ class _MasterDeviceManagementPageState
           const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
-            onPressed: _loading ? null : _load,
+            onPressed: _loading || _busyDeviceId != null ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -157,7 +184,7 @@ class _MasterDeviceManagementPageState
                               const SizedBox(height: 10),
                           itemBuilder: (context, index) {
                             final device = _devices[index];
-                            final busy = _busyDeviceId == device.id;
+                            final busy = _busyDeviceId != null;
                             return _DeviceCard(
                               device: device,
                               busy: busy,
@@ -225,6 +252,7 @@ class _DeviceCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
+            const Text('この端末かどうかは現在の情報だけでは判定できません。端末名を確認してください。'),
             Text('登録日時: ${_dateTime(device.registeredAt)}'),
             Text(
               '最終利用: ${device.lastUsedAt == null ? '未記録' : _dateTime(device.lastUsedAt!)}',
@@ -329,3 +357,5 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+
+

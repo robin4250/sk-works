@@ -1,0 +1,142 @@
+{
+  "functions": [
+    {
+      "nspname": "private",
+      "proname": "guard_line_enrolled_attendance_day",
+      "args": "",
+      "body_hash": "7f325eee9297c9336283e9da3ac8ec92",
+      "definition": "CREATE OR REPLACE FUNCTION private.guard_line_enrolled_attendance_day()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare cid uuid;wid uuid;day date;request public.attendance_correction_requests;\nbegin\n if tg_table_name='attendance_correction_items' then\n  select * into request from public.attendance_correction_requests where id=new.request_id;\n  if request.request_kind<>'past_attendance' then return new;end if;\n  cid:=request.company_id;wid:=nullif(new.proposed_snapshot->>'workerId','')::uuid;day:=replace(new.proposed_snapshot->>'date','/','-')::date;\n  if exists(select 1 from private.line_attendance_submissions sub join public.attendance_correction_requests req on req.id=sub.request_id\n   where sub.company_id=cid and sub.worker_id=wid and sub.work_date=day and sub.active and req.status in ('submitted','approved') and sub.request_id<>request.id) then\n   raise exception 'LINEから同日の出勤を申請済みです。既存の申請または勤務修正を確認してください。' using errcode='22023';\n  end if;\n  return new;\n end if;\n cid:=new.company_id;wid:=new.worker_id;day:=new.work_date;\n if tg_op='UPDATE' and (new.company_id,new.worker_id,new.work_date) is not distinct from (old.company_id,old.worker_id,old.work_date) then return new;end if;\n if not exists(select 1 from private.line_attendance_submissions sub join public.attendance_correction_requests req on req.id=sub.request_id\n   where sub.company_id=cid and sub.worker_id=wid and sub.work_date=day and sub.active and req.status in ('submitted','approved')) then return new;end if;\n if not pg_try_advisory_xact_lock(hashtextextended('line-attendance-day:'||cid::text||wid::text||day::text,0)) then raise exception '同日の出勤登録を処理中です。再確認してください。' using errcode='40001';end if;\n if exists(select 1 from public.attendance_entries where company_id=cid and worker_id=wid and work_date=day and id is distinct from new.id) then\n  raise exception 'LINE取込日の出勤は登録済みです。勤務修正から確認してください。' using errcode='22023';\n end if;\n return new;\nend $function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "submit_line_attendance",
+      "args": "p_command_id uuid, p_draft_id uuid, p_revision integer, p_signer_name text, p_signature_json jsonb, p_worker_ids uuid[]",
+      "body_hash": "fbfe8412eae55abb32a95777ec5b5e1d",
+      "definition": "CREATE OR REPLACE FUNCTION private.submit_line_attendance(p_command_id uuid, p_draft_id uuid, p_revision integer, p_signer_name text, p_signature_json jsonb, p_worker_ids uuid[])\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare draft private.line_import_drafts; cid uuid; payload jsonb; receipt private.line_import_commands; r jsonb; items jsonb:='[]'; request_id uuid; result jsonb;\nbegin\n select company_id into cid from private.line_import_drafts where id=p_draft_id;\n if cid is null or p_command_id is null then raise exception 'LINE出勤データがありません。' using errcode='22023';end if;\n perform private.line_import_access((select group_id from private.line_import_drafts where id=p_draft_id),'attendance');\n payload:=jsonb_build_object('action','attendance','draft',p_draft_id,'revision',p_revision,'signer',p_signer_name,'signature',p_signature_json,'workers',to_jsonb(p_worker_ids));\n perform pg_advisory_xact_lock(hashtextextended('line-import-command:'||cid::text||auth.uid()::text||p_command_id::text,0));\n select * into receipt from private.line_import_commands where company_id=cid and actor_id=auth.uid() and command_id=p_command_id;\n if found then if receipt.payload is distinct from payload then raise exception 'command reused with different content' using errcode='22023';end if;return receipt.result;end if;\n draft:=private.require_current_line_import_draft(p_draft_id,p_revision,'attendance');\n if p_worker_ids is not null and (cardinality(p_worker_ids)=0 or exists(select 1 from unnest(p_worker_ids) wid where wid is null or not exists(select 1 from jsonb_array_elements(draft.candidate_rows) rr where rr->>'worker_id'=wid::text and coalesce(rr->>'excluded','false')<>'true'))) then raise exception '申請する作業員を確認してください。' using errcode='22023';end if;\n if nullif(trim(p_signer_name),'') is null or p_signature_json is null then raise exception '申請の署名を入力してください。' using errcode='22023';end if;\n -- Existing manual submissions do not take a LINE lock; table locks close the\n -- gap while this wrapper checks duplicates and creates its ordinary request.\n begin lock table public.attendance_correction_requests,public.attendance_entries in share row exclusive mode nowait;\n exception when lock_not_available then raise exception '別の出勤処理中です。再確認してお試しください。' using errcode='40001';end;\n for r in select value from jsonb_array_elements(draft.candidate_rows) where coalesce(value->>'excluded','false')<>'true' and (p_worker_ids is null or (value->>'worker_id')::uuid=any(p_worker_ids)) order by value->>'worker_id',value->>'work_date' loop\n  if (r->>'work_date')::date >= (now() at time zone 'Asia/Tokyo')::date then raise exception '過去の日付だけをまとめて申請できます。' using errcode='22023';end if;\n  update private.line_attendance_submissions sub set active=false where sub.company_id=cid and sub.worker_id=(r->>'worker_id')::uuid and sub.work_date=(r->>'work_date')::date and sub.active\n   and exists(select 1 from public.attendance_correction_requests req where req.id=sub.request_id and req.status='rejected');\n  if exists(select 1 from public.attendance_entries where company_id=cid and worker_id=(r->>'worker_id')::uuid and work_date=(r->>'work_date')::date)\n   or exists(select 1 from private.line_attendance_submissions where company_id=cid and worker_id=(r->>'worker_id')::uuid and work_date=(r->>'work_date')::date and active)\n   or exists(select 1 from public.attendance_correction_items i join public.attendance_correction_requests req on req.id=i.request_id\n    where req.company_id=cid and req.request_kind='past_attendance' and req.status in ('draft','submitted') and (i.proposed_snapshot->>'workerId')=(r->>'worker_id') and replace(i.proposed_snapshot->>'date','/','-')=r->>'work_date') then raise exception '同日の出勤または申請があります。勤務修正から確認してください。' using errcode='22023';end if;\n  if r->>'steel_allowance'='true' and jsonb_array_length(coalesce(r->'allowance_names','[]'))=0 then raise exception 'PC・鉄骨手当の登録名称を確認してください。' using errcode='22023';end if;\n  items:=items||jsonb_build_array(jsonb_build_object('date',r->>'work_date','workerName',r->>'worker_name','siteName',r->>'site_name','manDays',r->'man_days','overtimeHours',r->'overtime_hours','earlyHours',r->'early_hours',\n   'workCategory',coalesce(r->>'work_category',case when r->>'night_work'='true' then 'night' else 'day' end),'nightHours',0,'allowanceYen',0,'allowanceNames',coalesce(r->'allowance_names','[]'),\n   'notes','LINE確認取込 '||draft.id::text||' / v'||draft.revision::text||' / '||(r->>'source_message_id')));\n end loop;\n if jsonb_array_length(items)<1 or jsonb_array_length(items)>100 then raise exception '1～100件をまとめて申請してください。' using errcode='22023';end if;\n request_id:=public.submit_past_attendance_request(items,p_signer_name,p_signature_json);\n insert into private.line_attendance_submissions(company_id,worker_id,work_date,draft_id,revision,request_id)\n select cid,(item.value->>'worker_id')::uuid,(item.value->>'work_date')::date,draft.id,draft.revision,request_id from jsonb_array_elements(draft.candidate_rows) item where coalesce(item.value->>'excluded','false')<>'true' and (p_worker_ids is null or (item.value->>'worker_id')::uuid=any(p_worker_ids));\n result:=jsonb_build_object('request_id',request_id,'status','submitted','item_count',jsonb_array_length(items));\n insert into private.line_import_commands values(cid,auth.uid(),p_command_id,payload,result);\n return result;\nend $function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "public",
+      "proname": "submit_past_attendance_request",
+      "args": "p_items jsonb, p_signer_name text, p_signature_json jsonb",
+      "body_hash": "3b8a6b1d701c110910f8f6c0cc6bd0db",
+      "definition": "CREATE OR REPLACE FUNCTION public.submit_past_attendance_request(p_items jsonb, p_signer_name text, p_signature_json jsonb)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'private', 'pg_temp'\nAS $function$\ndeclare\n  v_actor uuid := auth.uid();\n  v_company_id uuid;\n  v_request_id uuid;\n  v_item jsonb;\n  v_worker_id uuid;\n  v_site_id uuid;\n  v_work_date date;\n  v_today date := (now() at time zone 'Asia/Tokyo')::date;\n  v_assignee_count integer;\n  v_assignee record;\nbegin\n  if v_actor is null then raise exception 'authentication required'; end if;\n  if p_items is null or jsonb_typeof(p_items) <> 'array'\n     or jsonb_array_length(p_items) < 1 then\n    raise exception 'at least one attendance item is required';\n  end if;\n  if jsonb_array_length(p_items) > 100 then\n    raise exception 'too many attendance items';\n  end if;\n  if trim(coalesce(p_signer_name,'')) = '' or p_signature_json is null then\n    raise exception 'signature is required';\n  end if;\n\n  select cm.company_id into v_company_id\n  from public.company_members cm\n  where cm.user_id=v_actor limit 1;\n\n  if v_company_id is null\n     or not public.can_manage_attendance_corrections(v_company_id) then\n    raise exception 'attendance management permission required';\n  end if;\n\n  select count(*) into v_assignee_count\n  from public.company_approval_assignees\n  where company_id=v_company_id;\n  if v_assignee_count < 1 or v_assignee_count > 3 then\n    raise exception 'company approval assignee configuration is invalid';\n  end if;\n\n  insert into public.attendance_correction_requests(\n    company_id, requested_by, status, request_kind,\n    signer_name, signature_json, signed_at, submitted_at\n  ) values (\n    v_company_id, v_actor, 'submitted', 'past_attendance',\n    trim(p_signer_name), p_signature_json, now(), now()\n  ) returning id into v_request_id;\n\n  for v_item in select value from jsonb_array_elements(p_items)\n  loop\n    v_work_date := replace(coalesce(v_item->>'date',''),'/','-')::date;\n    if v_work_date >= v_today then\n      raise exception 'past attendance date must be before today';\n    end if;\n\n    select w.id into v_worker_id\n    from public.workers w\n    where w.company_id=v_company_id\n      and w.name=trim(coalesce(v_item->>'workerName',''))\n      and w.status='active'\n    limit 2;\n    if v_worker_id is null then raise exception 'worker not found'; end if;\n    if (\n      select count(*) from public.workers w\n      where w.company_id=v_company_id\n        and w.name=trim(coalesce(v_item->>'workerName',''))\n        and w.status='active'\n    ) > 1 then\n      raise exception 'duplicate worker name';\n    end if;\n\n    select s.id into v_site_id\n    from public.sites s\n    where s.company_id=v_company_id\n      and s.name=trim(coalesce(v_item->>'siteName',''))\n    limit 2;\n    if v_site_id is null then raise exception 'site not found'; end if;\n    if (\n      select count(*) from public.sites s\n      where s.company_id=v_company_id\n        and s.name=trim(coalesce(v_item->>'siteName',''))\n    ) > 1 then\n      raise exception 'duplicate site name';\n    end if;\n\n    insert into public.attendance_correction_items(\n      request_id, company_id, attendance_entry_id,\n      original_snapshot, proposed_snapshot, change_summary\n    ) values (\n      v_request_id, v_company_id, null,\n      jsonb_build_object(\n        'date',v_item->>'date',\n        'workerName',v_item->>'workerName'\n      ),\n      v_item || jsonb_build_object(\n        'workerId',v_worker_id,\n        'siteId',v_site_id\n      ),\n      '過去出勤を新規登録'\n    );\n  end loop;\n\n  for v_assignee in\n    select caa.user_id from public.company_approval_assignees caa\n    where caa.company_id=v_company_id\n  loop\n    perform private.enqueue_notification(\n      v_company_id,v_assignee.user_id,'approval',\n      '過去のまとめて出勤申請',\n      '過去の出勤をまとめて登録する申請があります。',\n      'attendance_correction_request',v_request_id\n    );\n  end loop;\n\n  return v_request_id;\nexception\n  when others then\n    if v_request_id is not null then\n      delete from public.attendance_correction_requests where id=v_request_id;\n    end if;\n    raise;\nend;\n$function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "config": "{\"search_path=public, private, pg_temp\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "public",
+      "proname": "can_manage_attendance_corrections",
+      "args": "p_company_id uuid",
+      "body_hash": "a56730770ffa62a049e63d2a87718693",
+      "definition": "CREATE OR REPLACE FUNCTION public.can_manage_attendance_corrections(p_company_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\n  select exists (\n    select 1\n    from public.company_members cm\n    where cm.company_id = p_company_id\n      and cm.user_id = auth.uid()\n      and (\n        cm.role::text in ('owner','admin')\n        or (\n          cm.role::text = 'manager'\n          and coalesce(\n            (\n              select (public.current_feature_permissions()\n                ->> 'can_manage_attendance')::boolean\n            ),\n            false\n          )\n        )\n      )\n  );\n$function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "config": "{\"search_path=public, pg_temp\"}",
+      "prosecdef": true
+    }
+  ],
+  "policies": [
+    {
+      "schemaname": "public",
+      "tablename": "attendance_correction_items",
+      "policyname": "attendance managers create correction items",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "INSERT",
+      "qual": null,
+      "with_check": "(can_manage_attendance_corrections(company_id) AND (EXISTS ( SELECT 1\n   FROM attendance_correction_requests r\n  WHERE ((r.id = attendance_correction_items.request_id) AND (r.company_id = attendance_correction_items.company_id) AND (r.requested_by = auth.uid()) AND (r.status = 'draft'::text)))))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "attendance_correction_items",
+      "policyname": "attendance managers delete correction items",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "DELETE",
+      "qual": "(can_manage_attendance_corrections(company_id) AND (EXISTS ( SELECT 1\n   FROM attendance_correction_requests r\n  WHERE ((r.id = attendance_correction_items.request_id) AND (r.requested_by = auth.uid()) AND (r.status = 'draft'::text)))))",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "attendance_correction_items",
+      "policyname": "attendance managers read correction items",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "can_manage_attendance_corrections(company_id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "attendance_correction_items",
+      "policyname": "attendance managers update correction items",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "UPDATE",
+      "qual": "(can_manage_attendance_corrections(company_id) AND (EXISTS ( SELECT 1\n   FROM attendance_correction_requests r\n  WHERE ((r.id = attendance_correction_items.request_id) AND (r.requested_by = auth.uid()) AND (r.status = 'draft'::text)))))",
+      "with_check": "(can_manage_attendance_corrections(company_id) AND (EXISTS ( SELECT 1\n   FROM attendance_correction_requests r\n  WHERE ((r.id = attendance_correction_items.request_id) AND (r.requested_by = auth.uid()) AND (r.status = 'draft'::text)))))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "attendance_correction_requests",
+      "policyname": "attendance managers create correction requests",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "INSERT",
+      "qual": null,
+      "with_check": "((requested_by = auth.uid()) AND can_manage_attendance_corrections(company_id))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "attendance_correction_requests",
+      "policyname": "attendance managers read correction requests",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "can_manage_attendance_corrections(company_id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "attendance_correction_requests",
+      "policyname": "attendance managers update own draft correction requests",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "UPDATE",
+      "qual": "((requested_by = auth.uid()) AND (status = 'draft'::text) AND can_manage_attendance_corrections(company_id))",
+      "with_check": "((requested_by = auth.uid()) AND (status = ANY (ARRAY['draft'::text, 'submitted'::text, 'cancelled'::text])) AND can_manage_attendance_corrections(company_id))"
+    }
+  ],
+  "triggers": [
+    {
+      "nspname": "public",
+      "relname": "attendance_correction_items",
+      "tgname": "line_enrolled_past_request_guard",
+      "definition": "CREATE TRIGGER line_enrolled_past_request_guard BEFORE INSERT ON public.attendance_correction_items FOR EACH ROW EXECUTE FUNCTION private.guard_line_enrolled_attendance_day()"
+    }
+  ],
+  "foreignKeys": [
+    {
+      "conname": "line_attendance_submissions_draft_id_fkey",
+      "definition": "FOREIGN KEY (draft_id) REFERENCES private.line_import_drafts(id)",
+      "condeferrable": false,
+      "condeferred": false
+    },
+    {
+      "conname": "line_attendance_submissions_request_id_fkey",
+      "definition": "FOREIGN KEY (request_id) REFERENCES attendance_correction_requests(id)",
+      "condeferrable": false,
+      "condeferred": false
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+-- REVIEW ONLY. Apply only after separately reviewed TestFlight actor lock.
+-- Early public invoker guards: no private financial/attendance/calculation code changes.
+begin;
+set local lock_timeout='5s';
+do $guard$ begin
+ if (select md5(prosrc) from pg_proc where oid='public.create_line_historical_invoices(uuid,uuid,text,jsonb,integer,boolean,text,boolean)'::regprocedure) is distinct from '8a792f98ac2a571b7e6c783f40ae6b40' then raise exception 'LINE wrapper changed: create_line_historical_invoices'; end if;
+ if (select md5(prosrc) from pg_proc where oid='public.create_line_invoices(uuid,uuid,integer,text)'::regprocedure) is distinct from '9aa98c0cae61f9fa75095897f7d55955' then raise exception 'LINE wrapper changed: create_line_invoices'; end if;
+ if (select md5(prosrc) from pg_proc where oid='public.line_chat_sender_preferences(uuid,text,text)'::regprocedure) is distinct from '38a60efb3ed00ee38eaad75d8de529c3' then raise exception 'LINE wrapper changed: line_chat_sender_preferences'; end if;
+ if (select md5(prosrc) from pg_proc where oid='public.line_historical_invoice_expense_preview(uuid,uuid)'::regprocedure) is distinct from '44fbfb47cde32b62e410524525804903' then raise exception 'LINE wrapper changed: line_historical_invoice_expense_preview'; end if;
+ if (select md5(prosrc) from pg_proc where oid='public.line_historical_invoice_preview(uuid,text,jsonb,integer,boolean)'::regprocedure) is distinct from '22e0b82f4889df0c7bdde7141ff07b93' then raise exception 'LINE wrapper changed: line_historical_invoice_preview'; end if;
+ if (select md5(prosrc) from pg_proc where oid='public.line_historical_invoice_workspace(uuid)'::regprocedure) is distinct from 'dbcaf94ff703419bb724b68bc531b4e3' then raise exception 'LINE wrapper changed: line_historical_invoice_workspace'; end if;
+ if (select md5(prosrc) from pg_proc where oid='public.line_invoice_preview(uuid,integer)'::regprocedure) is distinct from 'e11d8d14685a53c4778360d2a805ea98' then raise exception 'LINE wrapper changed: line_invoice_preview'; end if;
+ if (select md5(prosrc) from pg_proc where oid='public.link_line_source_to_chat(uuid,uuid)'::regprocedure) is distinct from 'b6dd6438844f688849d7335380059645' then raise exception 'LINE wrapper changed: link_line_source_to_chat'; end if;
+ if (select md5(prosrc) from pg_proc where oid='public.prepare_line_chat_dispatch(uuid)'::regprocedure) is distinct from 'ec700e0725999715bb2313ddac25f2cd' then raise exception 'LINE wrapper changed: prepare_line_chat_dispatch'; end if;
+ if (select md5(prosrc) from pg_proc where oid='public.refresh_line_historical_invoice_expenses(uuid,uuid,text,boolean)'::regprocedure) is distinct from '79aec387d79f7e4a5778152bba6fd659' then raise exception 'LINE wrapper changed: refresh_line_historical_invoice_expenses'; end if;
+ if (select md5(prosrc) from pg_proc where oid='public.submit_line_attendance(uuid,uuid,integer,text,jsonb,uuid[])'::regprocedure) is distinct from '09da038946a80e6c58eb8b884ea9897e' then raise exception 'LINE wrapper changed: submit_line_attendance'; end if;
+end $guard$;
+CREATE OR REPLACE FUNCTION public.create_line_historical_invoices(p_command_id uuid, p_quote_id uuid, p_quote_fingerprint text, p_site_terms jsonb, p_tax_rate_bps integer, p_terms_confirmed boolean, p_preview_fingerprint text, p_preview_confirmed boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ return private.create_line_historical_invoices(p_command_id,p_quote_id,p_quote_fingerprint,p_site_terms,p_tax_rate_bps,p_terms_confirmed,p_preview_fingerprint,p_preview_confirmed);
+end
+$function$;
+CREATE OR REPLACE FUNCTION public.create_line_invoices(p_command_id uuid, p_draft_id uuid, p_revision integer, p_expected_fingerprint text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ return private.create_line_invoices(p_command_id,p_draft_id,p_revision,p_expected_fingerprint);
+end
+$function$;
+CREATE OR REPLACE FUNCTION public.line_chat_sender_preferences(p_group_id uuid, p_mode text DEFAULT NULL::text, p_nickname text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ return private.line_chat_sender_preferences(p_group_id,p_mode,p_nickname);
+end
+$function$;
+CREATE OR REPLACE FUNCTION public.line_historical_invoice_expense_preview(p_quote_id uuid, p_invoice_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ return private.line_historical_invoice_expenses(p_quote_id,p_invoice_id);
+end
+$function$;
+CREATE OR REPLACE FUNCTION public.line_historical_invoice_preview(p_quote_id uuid, p_quote_fingerprint text, p_site_terms jsonb, p_tax_rate_bps integer, p_terms_confirmed boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ return private.line_historical_invoice_preview(p_quote_id,p_quote_fingerprint,p_site_terms,p_tax_rate_bps,p_terms_confirmed);
+end
+$function$;
+CREATE OR REPLACE FUNCTION public.line_historical_invoice_workspace(p_quote_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ return private.line_historical_invoice_workspace(p_quote_id);
+end
+$function$;
+CREATE OR REPLACE FUNCTION public.line_invoice_preview(p_draft_id uuid, p_revision integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ return private.line_invoice_preview(p_draft_id,p_revision);
+end
+$function$;
+CREATE OR REPLACE FUNCTION public.link_line_source_to_chat(p_group_id uuid, p_directory_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ perform private.link_line_source_to_chat(p_group_id,p_directory_id);
+ return;
+end
+$function$;
+CREATE OR REPLACE FUNCTION public.prepare_line_chat_dispatch(p_message_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ return private.prepare_line_chat_dispatch(p_message_id);
+end
+$function$;
+CREATE OR REPLACE FUNCTION public.refresh_line_historical_invoice_expenses(p_quote_id uuid, p_invoice_id uuid, p_preview_fingerprint text, p_confirmed boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ return private.line_historical_invoice_expenses(p_quote_id,p_invoice_id,p_preview_fingerprint,p_confirmed);
+end
+$function$;
+CREATE OR REPLACE FUNCTION public.submit_line_attendance(p_command_id uuid, p_draft_id uuid, p_revision integer, p_signer_name text, p_signature_json jsonb, p_worker_ids uuid[])
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+begin
+ if not private.line_client_access_allowed() then raise exception 'LINE is unavailable for this account' using errcode='42501'; end if;
+ return private.submit_line_attendance(p_command_id,p_draft_id,p_revision,p_signer_name,p_signature_json,p_worker_ids);
+end
+$function$;
+commit;
+

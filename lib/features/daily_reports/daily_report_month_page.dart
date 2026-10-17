@@ -243,12 +243,15 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
 
   Future<void> _openCalendarEntry(DailyReportMonthEntry entry) async {
     final repository = _repository, actor = _actor;
-    if (repository == null || actor == null || _loading || _exporting) return;
+    if (repository == null || actor == null || _loading || _exporting || _openingEntryId != null) return;
+    // Claim before navigation: retained calendar callbacks must not stack previews.
+    final entries = List<DailyReportMonthEntry>.of(_visibleEntries);
+    setState(() => _openingEntryId = entry.id);
     try {
       repository.checkActor(actor);
       await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
         DailyReportSavedPreviewPager(repository: repository, actor: actor,
-          entries: _visibleEntries, initialEntryId: entry.id,
+          entries: entries, initialEntryId: entry.id,
           previewBuilderForTesting: widget.previewBuilderForTesting)));
       repository.checkActor(actor);
       if (mounted) await _load();
@@ -256,6 +259,10 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(SkoLanguageController.tr('選んだ日報を取得できませんでした。一覧を再読み込みしてください。'))));
+      }
+    } finally {
+      if (mounted && _openingEntryId == entry.id) {
+        setState(() => _openingEntryId = null);
       }
     }
   }

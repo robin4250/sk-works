@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# A release reviewer supplies the approved full SHA; never infer approval from latest main.
+: "${SKO_AUDITED_SHA:?Set the reviewed full commit SHA before building or uploading}"
+export SKO_AUDITED_SHA
+
 echo "=== SKO TestFlight candidate builder ==="
 echo
 
@@ -18,6 +22,10 @@ if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]]; then
   echo "  tool/local_supabase_env.sh を確認してください。"
   exit 1
 fi
+
+python3 tool/testflight_provenance.py source
+export SUPABASE_URL SUPABASE_PUBLISHABLE_KEY
+python3 tool/testflight_provenance.py configuration
 
 echo "[1/5] 最新mainを確認"
 branch="$(git branch --show-current 2>/dev/null || true)"
@@ -53,9 +61,14 @@ fi
 echo "✓ Version: $build_name"
 echo "✓ Build: $build_number"
 
+provenance_marker="build/ios/sko-testflight-build-start.json"
+provenance_manifest="build/ios/sko-testflight-provenance.json"
+python3 tool/testflight_provenance.py start --marker "$provenance_marker"
+
 flutter build ipa \
   --release \
   --export-method app-store \
+  --dart-define=SKO_MASTER_PASSWORD_V1=false \
   --build-name="$build_name" \
   --build-number="$build_number" \
   --dart-define="SUPABASE_URL=$SUPABASE_URL" \
@@ -86,17 +99,21 @@ fi
 
 echo
 echo "[5/5] 候補確認"
-ipa=""
+ipas=()
 for candidate in build/ios/ipa/*.ipa; do
-  if [[ -f "$candidate" ]]; then
-    ipa="$candidate"
-    break
-  fi
+  [[ ! -f "$candidate" ]] || ipas+=("$candidate")
 done
+if [[ "${#ipas[@]}" -ne 1 ]]; then
+  echo "✗ IPAは今回生成した1個に限定してください。既存成果物は退避して保護してください。"
+  exit 1
+fi
+ipa="${ipas[0]}"
 if [[ -z "$ipa" ]]; then
   echo "✗ IPAが生成されていません。"
   exit 1
 fi
+
+python3 tool/testflight_provenance.py create --ipa "$ipa" --marker "$provenance_marker" --manifest "$provenance_manifest" --version "$build_name" --build "$build_number"
 
 echo "✓ TestFlight候補IPA: $ipa"
 echo "✓ Bundle Identifier: $built_bundle_id"
@@ -107,3 +124,4 @@ if command -v shasum >/dev/null 2>&1; then
 fi
 echo
 echo "次は bash tool/testflight_upload.sh でApp Store Connectへアップロードできます。"
+

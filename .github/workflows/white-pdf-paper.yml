@@ -1,0 +1,23 @@
+name: White PDF paper
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/pdf_pinch_pages.dart'
+      - 'lib/features/daily_reports/daily_report_zoom_pages.dart'
+      - 'test/pdf_paper_background_test.dart'
+      - '.github/workflows/white-pdf-paper.yml'
+permissions:
+  contents: read
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/shared/pdf_pinch_pages.dart lib/features/daily_reports/daily_report_zoom_pages.dart test/pdf_paper_background_test.dart
+      - run: flutter test test/pdf_paper_background_test.dart test/pdf_pinch_pages_test.dart

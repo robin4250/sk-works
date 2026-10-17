@@ -1,0 +1,32 @@
+name: Personnel client privacy session
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/people_cloud_repository.dart'
+      - 'lib/features/people/people_cloud_page.dart'
+      - 'lib/features/people/employee_personnel_detail_page.dart'
+      - 'lib/features/people/employee_personnel_print_page.dart'
+      - 'lib/features/people/employee_personnel_edit_page.dart'
+      - 'lib/features/people/personnel_bundle_send_page.dart'
+      - 'lib/features/people/company_transfer_send_page.dart'
+      - 'lib/features/people/company_document_exchange_repository.dart'
+      - 'test/personnel_privacy_session_test.dart'
+      - 'test/employee_management_access_contract_test.dart'
+      - 'test/employee_personnel_detail_restore_contract_test.dart'
+      - '.github/workflows/personnel-privacy-session.yml'
+permissions:
+  contents: read
+jobs:
+  privacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart analyze lib/features/people/people_cloud_repository.dart lib/features/people/people_cloud_page.dart lib/features/people/employee_personnel_detail_page.dart lib/features/people/employee_personnel_print_page.dart lib/features/people/employee_personnel_edit_page.dart lib/features/people/personnel_bundle_send_page.dart lib/features/people/company_transfer_send_page.dart lib/features/people/company_document_exchange_repository.dart test/personnel_privacy_session_test.dart test/employee_management_access_contract_test.dart test/employee_personnel_detail_restore_contract_test.dart
+      - run: timeout 180s flutter test --reporter expanded --timeout 60s test/personnel_privacy_session_test.dart test/employee_management_access_contract_test.dart test/employee_personnel_detail_restore_contract_test.dart

@@ -1,0 +1,24 @@
+name: R33 preview initial text
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/r33_input.dart'
+      - 'lib/features/shared/trade_document_attachment_editor_page.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'lib/features/invoices/invoice_order_acceptance_pdf.dart'
+      - 'test/r33_input_test.dart'
+      - 'test/invoice_order_acceptance_pdf_test.dart'
+      - '.github/workflows/r32-input.yml'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test test/r33_input_test.dart test/r18_defaults_test.dart test/r18_editor_defaults_contract_test.dart test/trade_document_actor_boundary_test.dart test/invoice_order_acceptance_pdf_test.dart test/payment_order_pdf_test.dart

@@ -1,0 +1,25 @@
+name: Authenticated navigation reset
+on:
+  pull_request:
+    paths:
+      - 'lib/app_v2.dart'
+      - 'lib/features/auth/auth_gate.dart'
+      - 'lib/features/auth/authenticated_navigation_boundary.dart'
+      - 'test/authenticated_navigation_boundary_test.dart'
+      - '.github/workflows/authenticated-navigation-reset.yml'
+permissions:
+  contents: read
+jobs:
+  navigation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/app_v2.dart lib/features/auth/auth_gate.dart lib/features/auth/authenticated_navigation_boundary.dart test/authenticated_navigation_boundary_test.dart
+      - run: flutter test test/authenticated_navigation_boundary_test.dart test/secondary_password_reset_page_test.dart test/security_actor_boundary_test.dart

@@ -34,8 +34,14 @@ else
 fi
 
 echo
+if python3 tool/testflight_provenance.py source; then
+  ok "変更のない最新main"
+else
+  fail "未保存変更・mainの一致を確認してください。変更は削除しないでください"
+fi
+
 echo "--- Toolchain ---"
-for cmd in flutter xcodebuild xcrun pod security; do
+for cmd in flutter xcodebuild xcrun pod security python3 gh; do
   if command -v "$cmd" >/dev/null 2>&1; then
     ok "$cmd"
   else
@@ -132,3 +138,4 @@ if [[ "$warnings" -gt 0 ]]; then
 fi
 echo "TestFlight候補を作成できるコード/署名準備です。"
 echo "次工程ではApp Store Connect用のArchive/Uploadを行います。"
+

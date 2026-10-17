@@ -37,6 +37,8 @@ class MasterDeviceRecord {
 class MasterDeviceRepository {
   MasterDeviceRepository._(this._client);
 
+  MasterDeviceRepository.forTesting(this._client);
+
   final SupabaseClient _client;
 
   String? get currentUserId => _client.auth.currentUser?.id;
@@ -48,8 +50,10 @@ class MasterDeviceRepository {
     return MasterDeviceRepository._(client);
   }
 
-  Future<bool> isMasterAdmin() async {
-    final raw = await _client.rpc('current_master_admin_status');
+  Future<bool> isMasterAdmin({String? accessToken}) async {
+    if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
+    final request = _client.rpc('current_master_admin_status');
+    final raw = await (accessToken == null ? request : request.setHeader('Authorization', 'Bearer $accessToken'));
     if (raw is Map) {
       return raw['is_master_admin'] == true;
     }
@@ -64,15 +68,31 @@ class MasterDeviceRepository {
     ];
   }
 
+  Future<bool> lockReauthenticationRequired() async {
+    dynamic raw;
+    try {
+      raw = await _client.rpc('master_device_lock_capability');
+    } on PostgrestException catch (error) {
+      if (error.code == 'PGRST202') return false;
+      rethrow;
+    }
+    if (raw is! Map || raw['protocol'] != 'sko-master-device-lock-v1' || raw['enabled'] is! bool) {
+      throw StateError('端末変更の本人確認設定を確認できませんでした。');
+    }
+    return raw['enabled'] == true;
+  }
+
   Future<void> setLocked({
     required String deviceId,
     required bool locked,
+    String? proof,
   }) async {
     await _client.rpc(
-      'set_master_device_locked',
+      proof == null ? 'set_master_device_locked' : 'set_master_device_locked_with_proof',
       params: {
         'p_device_id': deviceId,
         'p_locked': locked,
+        if (proof != null) 'p_proof': proof,
       },
     );
   }
@@ -93,11 +113,13 @@ class MasterDeviceRepository {
     return value;
   }
 
-  Future<Map<String, dynamic>> currentDeviceStatus(String deviceKey) async {
-    final raw = await _client.rpc(
+  Future<Map<String, dynamic>> currentDeviceStatus(String deviceKey, {String? accessToken}) async {
+    if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
+    final request = _client.rpc(
       'current_master_device_status',
       params: {'p_device_key': deviceKey},
     );
+    final raw = await (accessToken == null ? request : request.setHeader('Authorization', 'Bearer $accessToken'));
     return raw is Map ? Map<String, dynamic>.from(raw) : const {};
   }
 
@@ -106,8 +128,10 @@ class MasterDeviceRepository {
     required String deviceName,
     required String deviceType,
     String? platform,
+    String? accessToken,
   }) async {
-    await _client.rpc(
+    if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
+    final request = _client.rpc(
       'bootstrap_first_master_device',
       params: {
         'p_device_key': deviceKey,
@@ -116,6 +140,7 @@ class MasterDeviceRepository {
         'p_platform': platform,
       },
     );
+    await (accessToken == null ? request : request.setHeader('Authorization', 'Bearer $accessToken'));
   }
 
   MasterDeviceRecord _fromRow(Map<String, dynamic> row) {

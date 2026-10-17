@@ -1,0 +1,78 @@
+import importlib.util
+from pathlib import Path
+import unittest
+import tempfile
+import io
+import contextlib
+import sys
+from unittest.mock import patch
+
+spec=importlib.util.spec_from_file_location('mapping',Path(__file__).with_name('entry_archive_map.py'))
+mapping=importlib.util.module_from_spec(spec);spec.loader.exec_module(mapping)
+
+ROOTS='''1; 1259 100 TABLE public worker_personnel_profiles postgres
+2; 1259 101 TABLE public worker_family_members postgres
+3; 1255 102 FUNCTION private employee_personnel_rows() postgres
+4; 1255 103 FUNCTION private can_edit_worker_personnel(uuid) postgres
+'''
+
+class MapTests(unittest.TestCase):
+    def test_data_and_other_objects_never_selected(self):
+        text=ROOTS+'5; 0 100 TABLE DATA public worker_personnel_profiles postgres\n6; 0 0 EXTENSION - pgcrypto postgres\n7; 0 0 TRIGGER public worker_personnel_profiles dangerous postgres\n8; 0 0 TABLE auth users postgres\n'
+        selected,report=mapping.classify(text)
+        self.assertEqual(len(selected),4);self.assertEqual(report['missing_roots'],[])
+        self.assertEqual(report['extension_entry_count'],1)
+        self.assertFalse(report['dependencies_complete']);self.assertFalse(report['restoration_verified'])
+
+    def test_extension_without_owner_is_catalogued_not_selected(self):
+        selected,r=mapping.classify(ROOTS+'6; 3079 16384 EXTENSION - pgcrypto\n')
+        self.assertEqual(len(selected),4);self.assertEqual(r['extension_entry_count'],1)
+
+    def test_duplicate_or_overloaded_function_is_not_guessed(self):
+        with self.assertRaises(ValueError):mapping.classify(ROOTS+'9; 1255 104 FUNCTION private employee_personnel_rows(text) postgres\n')
+
+    def test_public_legacy_does_not_replace_current_private_root(self):
+        selected,report=mapping.classify(ROOTS.replace('FUNCTION private can_edit','FUNCTION public can_edit'))
+        self.assertEqual(len(selected),3)
+        self.assertIn('private.can_edit_worker_personnel',report['missing_roots'])
+        self.assertFalse(report['current_roots_complete'])
+        self.assertEqual(report['alternate_function_records'][0]['identity'],'public.can_edit_worker_personnel(uuid)')
+
+    def test_both_schemas_are_separate_records(self):
+        selected,report=mapping.classify(ROOTS+'20; 1255 200 FUNCTION public can_edit_worker_personnel(uuid) postgres\n')
+        self.assertEqual(len(selected),4);self.assertTrue(report['current_roots_complete'])
+        self.assertEqual(len(report['alternate_function_records']),1)
+
+    def test_missing_current_root_cli_stops(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);root.chmod(0o700)
+            toc=root/'toc';toc.write_text(ROOTS.replace('FUNCTION private can_edit','FUNCTION public can_edit'));toc.chmod(0o600)
+            output=io.StringIO()
+            with patch.object(sys,'argv',['map','--toc',str(toc),'--output-parent',str(root)]),contextlib.redirect_stdout(output):
+                self.assertEqual(mapping.main(),1)
+            self.assertIn('STOP: current private',output.getvalue())
+
+    def test_wrong_current_signature_stops(self):
+        with self.assertRaises(ValueError):mapping.classify(ROOTS.replace('can_edit_worker_personnel(uuid)','can_edit_worker_personnel(text)'))
+
+    def test_all_toc_ids_must_be_unique(self):
+        for line in ('1; 0 0 TABLE DATA public other postgres','3; 0 0 EXTENSION - pgcrypto'):
+            with self.assertRaises(ValueError):mapping.classify(ROOTS+line+'\n')
+
+    def test_root_function_signature_required(self):
+        for malformed in ('employee_personnel_rows','employee_personnel_rows(uuid','employee_personnel_rows)'):
+            with self.assertRaises(ValueError):mapping.classify(ROOTS.replace('employee_personnel_rows()',malformed))
+
+    def test_missing_roots_are_explicit(self):
+        _,r=mapping.classify('1; 1259 100 TABLE public worker_personnel_profiles postgres\n')
+        self.assertEqual(len(r['missing_roots']),3)
+
+    def test_unknown_toc_type_requires_further_review(self):
+        _,r=mapping.classify(ROOTS+'10; 0 0 SOMETHING NEW public object postgres\n')
+        self.assertEqual(r['unrecognized_entry_count'],1)
+
+    def test_malformed_toc_is_rejected(self):
+        for text in ['not a toc','1; x y TABLE public x postgres','1; 0 0 TABLE public']:
+            with self.assertRaises(ValueError):mapping.classify(text)
+
+if __name__=='__main__':unittest.main()

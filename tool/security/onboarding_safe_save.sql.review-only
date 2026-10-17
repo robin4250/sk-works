@@ -1,0 +1,40 @@
+-- REVIEW ONLY. No production apply, UI change, or existing function replacement.
+-- Atomic omission API: never call the legacy NULL-photo RPC from a client fallback.
+begin;
+set local lock_timeout='5s';
+create function private.save_employee_onboarding_profile_without_photos(p_address text, p_blood_type text, p_family_composition text, p_emergency_relation text, p_emergency_name text, p_emergency_phone text, p_emergency_address text)
+returns void language plpgsql volatile security definer set search_path='' as $safe$
+declare subject uuid:=auth.uid(); before_row record; after_row record;
+begin
+ if subject is null or private.account_access_allowed() is not true then
+  raise exception 'onboarding submission unavailable' using errcode='42501';
+ end if;
+ -- STRICT rejects ambiguous eligible invitations before any write. No client ID input.
+ begin
+  select i.id,i.company_id,i.auth_user_id,i.portrait_path,i.my_number_front_path,i.my_number_back_path
+  into strict before_row from public.employee_registration_invites i
+  where i.auth_user_id=subject
+   and (i.password_changed_at is not null or i.identity_verified_at is not null)
+   and i.status in ('profile_pending','approval_pending') for update;
+ exception when no_data_found or too_many_rows then
+  raise exception 'onboarding submission unavailable' using errcode='42501';
+ end;
+ perform public.save_employee_onboarding_profile(p_address, p_blood_type, p_family_composition, p_emergency_relation, p_emergency_name, p_emergency_phone, p_emergency_address,null::text,null::text,null::text);
+ select i.id,i.company_id,i.auth_user_id,i.portrait_path,i.my_number_front_path,i.my_number_back_path
+ into after_row from public.employee_registration_invites i where i.id=before_row.id;
+ if not found or row(after_row.id,after_row.company_id,after_row.auth_user_id,
+  after_row.portrait_path,after_row.my_number_front_path,after_row.my_number_back_path)
+  is distinct from row(before_row.id,before_row.company_id,before_row.auth_user_id,
+  before_row.portrait_path,before_row.my_number_front_path,before_row.my_number_back_path) then
+  -- Never include paths/IDs or payload in exception diagnostics.
+  raise exception 'onboarding photo preservation contract failed' using errcode='55000';
+ end if;
+end $safe$;
+create function public.save_employee_onboarding_profile_without_photos(p_address text, p_blood_type text, p_family_composition text, p_emergency_relation text, p_emergency_name text, p_emergency_phone text, p_emergency_address text)
+returns void language sql volatile security invoker set search_path=''
+as $$select private.save_employee_onboarding_profile_without_photos(p_address, p_blood_type, p_family_composition, p_emergency_relation, p_emergency_name, p_emergency_phone, p_emergency_address)$$;
+revoke all on function private.save_employee_onboarding_profile_without_photos(text,text,text,text,text,text,text),public.save_employee_onboarding_profile_without_photos(text,text,text,text,text,text,text)
+ from public,anon,authenticated,service_role;
+grant execute on function private.save_employee_onboarding_profile_without_photos(text,text,text,text,text,text,text),public.save_employee_onboarding_profile_without_photos(text,text,text,text,text,text,text)
+ to authenticated;
+commit;

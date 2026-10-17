@@ -1,0 +1,412 @@
+{
+  "project": "ztktgquxvcxcjxtluspu",
+  "captured_at": "2026-10-16",
+  "scope": "catalog only; no business rows",
+  "functions": [
+    {
+      "nspname": "private",
+      "proname": "account_access_allowed",
+      "definition": "CREATE OR REPLACE FUNCTION private.account_access_allowed()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and not exists(\n  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())\n$function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "document_submission_access",
+      "definition": "CREATE OR REPLACE FUNCTION private.document_submission_access(p_path text, p_upload boolean)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and exists(select 1 from private.document_submissions r where ((p_upload and r.upload_path=p_path) or (not p_upload and (r.attachment_path=p_path or r.previous->>'attachment_path'=p_path))) and ((p_upload and r.status='draft' and r.requested_by=auth.uid() and exists(select 1 from public.workers w where w.id=r.worker_id and w.company_id=r.company_id and w.user_id=auth.uid())) or (not p_upload and (r.requested_by=auth.uid() or exists(select 1 from public.company_members m where m.company_id=r.company_id and m.user_id=auth.uid() and m.role::text in ('owner','admin')) or exists(select 1 from public.company_approval_assignees a where a.company_id=r.company_id and a.user_id=auth.uid())))))\n$function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "has_company_feature",
+      "definition": "CREATE OR REPLACE FUNCTION private.has_company_feature(p_company_id uuid, p_feature text)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'private', 'pg_temp'\nAS $function$\ndeclare\n  v_user_id uuid := auth.uid();\n  v_role text;\n  v_perm public.member_feature_permissions%rowtype;\nbegin\n  if v_user_id is null or p_company_id is null then\n    return false;\n  end if;\n\n  select cm.role::text\n  into v_role\n  from public.company_members cm\n  where cm.company_id = p_company_id\n    and cm.user_id = v_user_id\n  limit 1;\n\n  if v_role is null then\n    return false;\n  end if;\n\n  if v_role in ('owner', 'admin') then\n    return true;\n  end if;\n\n  select *\n  into v_perm\n  from public.member_feature_permissions\n  where company_id = p_company_id\n    and user_id = v_user_id;\n\n  if not found then\n    return case\n      when v_role = 'manager'\n       and p_feature in (\n         'can_manage_attendance',\n         'can_approve_daily_report_edits'\n       )\n      then true\n      else false\n    end;\n  end if;\n\n  return case p_feature\n    when 'can_view_invoices' then\n      v_perm.can_view_invoices or v_perm.can_manage_invoices\n    when 'can_manage_invoices' then\n      v_perm.can_manage_invoices\n    when 'can_view_admin_site_data' then\n      false\n    when 'can_manage_admin_site_data' then\n      false\n    when 'can_manage_payroll' then\n      v_perm.can_manage_payroll\n    when 'can_manage_people' then\n      v_perm.can_manage_people\n    when 'can_manage_attendance' then\n      v_perm.can_manage_attendance\n    when 'can_approve_daily_report_edits' then\n      v_perm.can_approve_daily_report_edits\n    when 'can_manage_partner_chat' then\n      v_perm.can_manage_partner_chat\n    else false\n  end;\nend;\n$function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "personnel_portrait_path",
+      "definition": "CREATE OR REPLACE FUNCTION private.personnel_portrait_path(p_company uuid, p_worker uuid)\n RETURNS text\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n if not private.personnel_view_allowed(p_company) then return null; end if;\n return (select s.attachment_path from public.worker_document_statuses s\n join public.document_requirements r on r.id=s.requirement_id and r.company_id=s.company_id\n join public.workers w on w.id=s.worker_id and w.company_id=s.company_id\n where s.company_id=p_company and s.worker_id=p_worker and r.is_active\n and regexp_replace(r.name,'[[:space:]　]+','','g') in ('顔写真','証明写真','身分証明写真')\n and s.status in ('submitted','verified')\n and s.attachment_path ~ '[.](jpg|jpeg|png|heic|heif)$'\n order by case when r.scope in ('internal','both') then 0 else 1 end,r.sort_order,r.id\n limit 1);\nend $function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "personnel_view_allowed",
+      "definition": "CREATE OR REPLACE FUNCTION private.personnel_view_allowed(p_company uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and private.account_access_allowed()\n and exists(select 1 from public.company_members m\n where m.company_id=p_company and m.user_id=auth.uid()\n and (m.role::text in ('owner','admin','viewer')\n or (m.role::text='manager' and private.has_company_feature(p_company,'can_manage_people'))));\n$function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "try_uuid",
+      "definition": "CREATE OR REPLACE FUNCTION private.try_uuid(p_value text)\n RETURNS uuid\n LANGUAGE plpgsql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\nbegin\n  return p_value::uuid;\nexception\n  when invalid_text_representation then\n    return null;\nend;\n$function$\n"
+    }
+  ],
+  "storage_read_policy_inventory": [
+    {
+      "policyname": "account_deletion_access_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "policyname": "album_pending_cleanup_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'communication-albums'::text) AND private.can_cleanup_album_path(name))"
+    },
+    {
+      "policyname": "attendance_evidence_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'attendance-evidence'::text) AND (EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = private.try_uuid(split_part(objects.name, '/'::text, 4))) AND (w.company_id = private.try_uuid(split_part(objects.name, '/'::text, 1))) AND ((w.user_id = auth.uid()) OR private.has_company_feature(w.company_id, 'can_manage_attendance'::text))))))"
+    },
+    {
+      "policyname": "chat safety attachment storage",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id <> 'chat-attachments'::text) OR (EXISTS ( SELECT 1\n   FROM chat_attachments a\n  WHERE (a.storage_path = objects.name))))"
+    },
+    {
+      "policyname": "chat_attachments_storage_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'chat-attachments'::text) AND private.can_access_communication_group(private.try_uuid(split_part(name, '/'::text, 2))))"
+    },
+    {
+      "policyname": "communication_albums_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'communication-albums'::text) AND private.can_access_communication_group(private.try_uuid(split_part(name, '/'::text, 2))))"
+    },
+    {
+      "policyname": "company_document_files_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'company-required-documents'::text) AND (EXISTS ( SELECT 1\n   FROM (company_required_documents d\n     JOIN company_members m ON ((m.company_id = d.company_id)))\n  WHERE ((d.attachment_path = objects.name) AND (m.user_id = ( SELECT auth.uid() AS uid)) AND ((m.role)::text = ANY (ARRAY['owner'::text, 'admin'::text]))))))"
+    },
+    {
+      "policyname": "company_document_photo_files_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'company-required-documents'::text) AND (EXISTS ( SELECT 1\n   FROM (company_required_documents d\n     JOIN company_members m ON ((m.company_id = d.company_id)))\n  WHERE ((objects.name = ANY (d.attachment_paths)) AND (m.user_id = ( SELECT auth.uid() AS uid)) AND ((m.role)::text = ANY (ARRAY['owner'::text, 'admin'::text]))))))"
+    },
+    {
+      "policyname": "custom_chat_photo_no_anon",
+      "permissive": "RESTRICTIVE",
+      "roles": "{anon}",
+      "cmd": "ALL",
+      "qual": "(bucket_id <> 'custom-chat-photos'::text)"
+    },
+    {
+      "policyname": "custom_chat_photo_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'custom-chat-photos'::text) AND (EXISTS ( SELECT 1\n   FROM communication_groups g\n  WHERE (((g.id)::text = split_part(objects.name, '/'::text, 1)) AND private.can_access_communication_group(g.id)))))"
+    },
+    {
+      "policyname": "custom_chat_photo_read_boundary",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id <> 'custom-chat-photos'::text) OR (EXISTS ( SELECT 1\n   FROM communication_groups g\n  WHERE (((g.id)::text = split_part(objects.name, '/'::text, 1)) AND private.can_access_communication_group(g.id)))))"
+    },
+    {
+      "policyname": "delivered_company_files_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = ANY (ARRAY['company-required-documents'::text, 'partner-archive-documents'::text])) AND private.can_read_delivered_file(bucket_id, name))"
+    },
+    {
+      "policyname": "document_submission_review_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'worker-documents'::text) AND private.document_submission_access(name, false))"
+    },
+    {
+      "policyname": "employee_onboarding_documents_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'employee-onboarding-documents'::text) AND (((storage.foldername(name))[1] = (auth.uid())::text) OR private.can_review_employee_onboarding_user(((storage.foldername(name))[1])::uuid)))"
+    },
+    {
+      "policyname": "employee_personnel_portrait_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'worker-documents'::text) AND (cardinality(string_to_array(name, '/'::text)) = 5) AND private.personnel_view_allowed(private.try_uuid(split_part(name, '/'::text, 1))) AND (name = private.personnel_portrait_path(private.try_uuid(split_part(name, '/'::text, 1)), private.try_uuid(split_part(name, '/'::text, 2)))))"
+    },
+    {
+      "policyname": "entrance_photo_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'site-entrance-photos'::text) AND (EXISTS ( SELECT 1\n   FROM (site_entrance_photos p\n     JOIN company_members m ON ((m.company_id = p.company_id)))\n  WHERE ((p.storage_path = objects.name) AND (m.user_id = ( SELECT auth.uid() AS uid))))))"
+    },
+    {
+      "policyname": "expense_receipt_select",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'expense-receipts'::text) AND expense_receipt_access(name, false))"
+    },
+    {
+      "policyname": "expense_receipt_select_boundary",
+      "permissive": "RESTRICTIVE",
+      "roles": "{public}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id <> 'expense-receipts'::text) OR expense_receipt_access(name, false))"
+    },
+    {
+      "policyname": "income_tax_pdf_no_anon",
+      "permissive": "RESTRICTIVE",
+      "roles": "{anon}",
+      "cmd": "ALL",
+      "qual": "(bucket_id <> 'company-income-tax-tables'::text)"
+    },
+    {
+      "policyname": "income_tax_pdf_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'company-income-tax-tables'::text) AND income_tax_private.pdf_object_read_access(name) AND storage.allow_any_operation(ARRAY['object.get_authenticated'::text, 'object.get_authenticated_info'::text, 'object.head_authenticated_info'::text, 'object.sign'::text]))"
+    },
+    {
+      "policyname": "income_tax_pdf_read_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id <> 'company-income-tax-tables'::text) OR (income_tax_private.pdf_object_read_access(name) AND storage.allow_any_operation(ARRAY['object.get_authenticated'::text, 'object.get_authenticated_info'::text, 'object.head_authenticated_info'::text, 'object.sign'::text])))"
+    },
+    {
+      "policyname": "note_files_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'communication-notes'::text) AND private.can_access_communication_group(private.try_uuid(split_part(name, '/'::text, 2))))"
+    },
+    {
+      "policyname": "partner_document_files_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'partner-archive-documents'::text) AND (EXISTS ( SELECT 1\n   FROM (partner_archive_documents d\n     JOIN company_members m ON ((m.company_id = d.company_id)))\n  WHERE ((d.attachment_path = objects.name) AND (m.user_id = ( SELECT auth.uid() AS uid)) AND ((m.role)::text = ANY (ARRAY['owner'::text, 'admin'::text]))))))"
+    },
+    {
+      "policyname": "profile_photos_approved_friend_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'profile-photos'::text) AND (EXISTS ( SELECT 1\n   FROM sko_friend_public_profiles() data(data),\n    LATERAL jsonb_array_elements(data.data) profile(value)\n  WHERE ((profile.value ->> 'avatar_storage_path'::text) = objects.name))))"
+    },
+    {
+      "policyname": "profile_photos_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'profile-photos'::text) AND ((split_part(name, '/'::text, 1) = (auth.uid())::text) OR (EXISTS ( SELECT 1\n   FROM (company_members me\n     JOIN company_members other ON ((other.company_id = me.company_id)))\n  WHERE ((me.user_id = auth.uid()) AND ((other.user_id)::text = split_part(objects.name, '/'::text, 1)))))))"
+    },
+    {
+      "policyname": "qualification_certificates_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'qualification-certificates'::text) AND (EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = private.try_uuid(split_part(objects.name, '/'::text, 2))) AND (w.company_id = private.try_uuid(split_part(objects.name, '/'::text, 1))) AND ((w.user_id = auth.uid()) OR private.has_company_feature(w.company_id, 'can_manage_people'::text))))))"
+    },
+    {
+      "policyname": "qualification_submission_review_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'qualification-certificates'::text) AND private.qualification_submission_access(name, false))"
+    },
+    {
+      "policyname": "review moderator files",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "private.content_file_moderator(bucket_id, name)"
+    },
+    {
+      "policyname": "review visible files",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id <> ALL (ARRAY['chat-attachments'::text, 'communication-notes'::text, 'communication-albums'::text])) OR private.content_file_visible(bucket_id, name, COALESCE(owner_id, (owner)::text)) OR ((bucket_id = 'communication-albums'::text) AND private.can_cleanup_album_path(name)))"
+    },
+    {
+      "policyname": "route_journey_photo_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'attendance-route-evidence'::text) AND private.account_access_allowed() AND (EXISTS ( SELECT 1\n   FROM (workers w\n     JOIN company_members cm ON (((cm.company_id = w.company_id) AND (cm.user_id = auth.uid()))))\n  WHERE (((w.id)::text = split_part(objects.name, '/'::text, 4)) AND ((w.company_id)::text = split_part(objects.name, '/'::text, 1)) AND ((w.user_id = auth.uid()) OR private.has_company_feature(w.company_id, 'can_manage_attendance'::text))))))"
+    },
+    {
+      "policyname": "safety communication files",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id <> ALL (ARRAY['communication-notes'::text, 'communication-albums'::text])) OR ((bucket_id = 'communication-albums'::text) AND private.can_cleanup_album_path(name)) OR (private.chat_sender_visible(owner) AND private.chat_sender_visible(private.try_uuid(owner_id)) AND private.communication_file_visible(bucket_id, name)))"
+    },
+    {
+      "policyname": "site_photo_request_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'site-entrance-photos'::text) AND private.can_access_site_photo_request(name, false))"
+    },
+    {
+      "policyname": "vehicle documents read",
+      "permissive": "PERMISSIVE",
+      "roles": "{public}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'vehicle-documents'::text) AND private.can_manage_vehicle_routes(private.try_uuid(split_part(name, '/'::text, 1)), 'vehicle'::text))"
+    },
+    {
+      "policyname": "worker_document_photo_managed_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'worker-documents'::text) AND (auth.uid() IS NOT NULL) AND private.account_access_allowed() AND (cardinality(string_to_array(name, '/'::text)) = 5) AND (split_part(name, '/'::text, 5) ~ '^[a-zA-Z0-9_-]+[.](jpg|jpeg|png|pdf|heic|heif)$'::text) AND (EXISTS ( SELECT 1\n   FROM company_members m\n  WHERE ((m.company_id = private.try_uuid(split_part(objects.name, '/'::text, 1))) AND (m.user_id = auth.uid()) AND ((m.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text]))))) AND (EXISTS ( SELECT 1\n   FROM ((worker_document_statuses s\n     JOIN workers w ON (((w.id = s.worker_id) AND (w.company_id = s.company_id))))\n     JOIN document_requirements r ON (((r.id = s.requirement_id) AND (r.company_id = s.company_id))))\n  WHERE ((s.company_id = private.try_uuid(split_part(objects.name, '/'::text, 1))) AND (s.worker_id = private.try_uuid(split_part(objects.name, '/'::text, 2))) AND (s.requirement_id = private.try_uuid(split_part(objects.name, '/'::text, 3))) AND ((s.attachment_path = objects.name) OR (objects.name = ANY (s.attachment_paths)))))))"
+    },
+    {
+      "policyname": "worker_documents_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'worker-documents'::text) AND (EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = private.try_uuid(split_part(objects.name, '/'::text, 2))) AND (w.company_id = private.try_uuid(split_part(objects.name, '/'::text, 1))) AND ((w.user_id = auth.uid()) OR private.has_company_feature(w.company_id, 'can_manage_people'::text))))))"
+    }
+  ],
+  "business_read_policy_inventory": [
+    {
+      "schemaname": "public",
+      "tablename": "company_members",
+      "policyname": "account_deletion_access_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "company_members",
+      "policyname": "company_members_owner_manage",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "private.has_company_role(company_id, ARRAY['owner'::app_role])"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "company_members",
+      "policyname": "company_members_self_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "(user_id = ( SELECT auth.uid() AS uid))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "document_requirements",
+      "policyname": "account_deletion_access_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "document_requirements",
+      "policyname": "company members can read document requirements",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = document_requirements.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)))))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "document_requirements",
+      "policyname": "managers can manage document requirements",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = document_requirements.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text])))))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "document_requirements",
+      "policyname": "owners and admins can manage document requirements",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = document_requirements.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text])))))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "worker_document_statuses",
+      "policyname": "account_deletion_access_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "worker_document_statuses",
+      "policyname": "managers can manage worker document statuses",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = worker_document_statuses.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY['owner'::text, 'admin'::text, 'manager'::text])))))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "worker_document_statuses",
+      "policyname": "people managers can manage worker document statuses",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "private.has_company_feature(company_id, 'can_manage_people'::text)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "worker_document_statuses",
+      "policyname": "worker or people manager can read document statuses",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = worker_document_statuses.worker_id) AND (w.company_id = worker_document_statuses.company_id) AND (w.user_id = ( SELECT auth.uid() AS uid))))) OR private.has_company_feature(company_id, 'can_manage_people'::text))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "workers",
+      "policyname": "account_deletion_access_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "workers",
+      "policyname": "company members can read workers",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "(EXISTS ( SELECT 1\n   FROM company_members cm\n  WHERE ((cm.company_id = workers.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)))))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "workers",
+      "policyname": "people managers can manage workers",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "private.has_company_feature(company_id, 'can_manage_people'::text)"
+    }
+  ]
+}

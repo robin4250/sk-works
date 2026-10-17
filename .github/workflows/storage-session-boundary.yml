@@ -1,0 +1,48 @@
+name: Worker storage session boundary review
+on:
+  pull_request:
+    paths:
+      - 'tool/security/storage_session_*'
+      - '.github/workflows/storage-session-boundary.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  selected-storage-rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_storage_session_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_storage_session_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node tool/security/storage_session_boundary_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/security/storage_session_boundary_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" --pg17
+        env:
+          SKO_STORAGE_SESSION_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_storage_session_fixture
+  existing-worker-photo-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test test/worker_document_managed_photo_draft_test.dart test/worker_document_managed_save_http_test.dart test/worker_document_own_save_http_test.dart

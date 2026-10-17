@@ -1,0 +1,118 @@
+{
+  "project": "ztktgquxvcxcjxtluspu",
+  "captured_at": "2026-10-16",
+  "scope": "catalog definitions and grants only, no production rows/URLs/tokens",
+  "functions": [
+    {
+      "nspname": "private",
+      "proname": "account_access_allowed",
+      "definition": "CREATE OR REPLACE FUNCTION private.account_access_allowed()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and not exists(\n  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())\n$function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "can_review_employee_onboarding_user",
+      "definition": "CREATE OR REPLACE FUNCTION private.can_review_employee_onboarding_user(p_subject_user_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\n  select exists (\n    select 1\n    from public.employee_registration_invites eri\n    join public.company_members cm\n      on cm.company_id = eri.company_id\n     and cm.user_id = auth.uid()\n    left join public.company_approval_assignees caa\n      on caa.company_id = eri.company_id\n     and caa.user_id = auth.uid()\n    where eri.auth_user_id = p_subject_user_id\n      and (\n        cm.role::text in ('owner','admin')\n        or caa.user_id is not null\n      )\n  );\n$function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "can_upload_onboarding_document",
+      "definition": "CREATE OR REPLACE FUNCTION private.can_upload_onboarding_document()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and exists(select 1 from public.employee_registration_invites where auth_user_id=auth.uid() and status in ('invited','password_changed','profile_pending','approval_pending'))\n$function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "check_account_access",
+      "definition": "CREATE OR REPLACE FUNCTION private.check_account_access()\n RETURNS void\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\ndeclare subject uuid:=auth.uid();\nbegin\n if subject is not null then\n  -- A fresh snapshot after acquiring the lock is essential. A transaction with\n  -- a fixed snapshot could miss a restriction committed while it was starting.\n  if current_setting('transaction_isolation') not in ('read committed','read uncommitted') then\n   raise sqlstate '42501' using message='account_access_isolation_unsupported';\n  end if;\n  if not pg_catalog.pg_try_advisory_xact_lock_shared(private.account_deletion_barrier_key(subject)) then\n   raise sqlstate '42501' using message='account_access_transition';\n  end if;\n  -- This is a separate command inside a VOLATILE function, hence a fresh\n  -- READ COMMITTED snapshot. The shared lock lasts through the entire request.\n  if not private.account_access_allowed() then\n   raise sqlstate '42501' using message='account_access_restricted';\n  end if;\n end if;\n perform set_config('sko.account_access_hook_ran','true',true);\n perform set_config('sko.account_access_barrier_ran','data-api-v1',true);\nend $function$\n"
+    },
+    {
+      "nspname": "private",
+      "proname": "account_deletion_barrier_key",
+      "definition": "CREATE OR REPLACE FUNCTION private.account_deletion_barrier_key(p_user uuid)\n RETURNS bigint\n LANGUAGE sql\n IMMUTABLE PARALLEL SAFE STRICT\n SET search_path TO ''\nAS $function$\n select pg_catalog.hashtextextended('sko:account-deletion:data-api:'||p_user::text,0)\n$function$\n"
+    }
+  ],
+  "rpcs": [
+    {
+      "nspname": "public",
+      "proname": "employee_onboarding_state",
+      "args": "",
+      "anon_exec": false,
+      "auth_exec": true,
+      "definition": "CREATE OR REPLACE FUNCTION public.employee_onboarding_state()\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\ndeclare\n  v_user_id uuid := auth.uid();\n  v_row public.employee_registration_invites%rowtype;\nbegin\n  if v_user_id is null then\n    return null;\n  end if;\n\n  select *\n  into v_row\n  from public.employee_registration_invites\n  where auth_user_id = v_user_id\n  order by created_at desc\n  limit 1;\n\n  if not found then\n    return null;\n  end if;\n\n  if v_row.status = 'invited'\n     and v_row.expires_at < now() then\n    update public.employee_registration_invites\n    set status = 'cancelled'\n    where id = v_row.id;\n    v_row.status := 'cancelled';\n  end if;\n\n  return jsonb_build_object(\n    'invite_id', v_row.id,\n    'company_id', v_row.company_id,\n    'worker_id', v_row.worker_id,\n    'name', v_row.name,\n    'phone', v_row.phone_e164,\n    'status', v_row.status,\n    'expires_at', v_row.expires_at,\n    'password_changed_at', v_row.password_changed_at\n  );\nend;\n$function$\n"
+    },
+    {
+      "nspname": "public",
+      "proname": "save_employee_onboarding_profile",
+      "args": "p_address text, p_blood_type text, p_family_composition text, p_emergency_relation text, p_emergency_name text, p_emergency_phone text, p_emergency_address text, p_portrait_path text, p_my_number_front_path text, p_my_number_back_path text",
+      "anon_exec": false,
+      "auth_exec": true,
+      "definition": "CREATE OR REPLACE FUNCTION public.save_employee_onboarding_profile(p_address text, p_blood_type text, p_family_composition text, p_emergency_relation text, p_emergency_name text, p_emergency_phone text, p_emergency_address text, p_portrait_path text, p_my_number_front_path text, p_my_number_back_path text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'private', 'pg_temp'\nAS $function$\ndeclare\n  v_user_id uuid := auth.uid();\n  v_company_id uuid;\n  v_invite_id uuid;\n  v_reviewer record;\nbegin\n  if v_user_id is null then\n    raise exception 'authentication required';\n  end if;\n\n  if nullif(trim(coalesce(p_address, '')), '') is null\n     or nullif(trim(coalesce(p_blood_type, '')), '') is null\n     or nullif(trim(coalesce(p_family_composition, '')), '') is null\n     or nullif(trim(coalesce(p_emergency_relation, '')), '') is null\n     or nullif(trim(coalesce(p_emergency_name, '')), '') is null\n     or nullif(trim(coalesce(p_emergency_phone, '')), '') is null\n     or nullif(trim(coalesce(p_emergency_address, '')), '') is null\n then\n    raise exception 'required onboarding field missing';\n  end if;\n\n  if nullif(trim(coalesce(p_portrait_path,'')),'') is not null\n     or nullif(trim(coalesce(p_my_number_front_path,'')),'') is not null\n     or nullif(trim(coalesce(p_my_number_back_path,'')),'') is not null then\n    raise exception 'official_document_uploads_paused_for_initial_beta';\n  end if;\n\n  update public.employee_registration_invites eri\n  set address = trim(p_address),\n      blood_type = trim(p_blood_type),\n      family_composition = trim(p_family_composition),\n      emergency_relation = trim(p_emergency_relation),\n      emergency_name = trim(p_emergency_name),\n      emergency_phone = trim(p_emergency_phone),\n      emergency_address = trim(p_emergency_address),\n      portrait_path = null,\n      my_number_front_path = null,\n      my_number_back_path = null,\n      status = 'approval_pending',\n      submitted_at = now()\n  where eri.auth_user_id = v_user_id\n    and (eri.password_changed_at is not null or eri.identity_verified_at is not null)\n    and eri.status in ('profile_pending','approval_pending')\n  returning eri.id, eri.company_id into v_invite_id, v_company_id;\n\n  if v_invite_id is null then\n    raise exception 'employee onboarding is not ready for profile submission';\n  end if;\n\n  for v_reviewer in\n    select distinct cm.user_id\n    from public.company_members cm\n    left join public.company_approval_assignees caa\n      on caa.company_id = cm.company_id\n     and caa.user_id = cm.user_id\n    where cm.company_id = v_company_id\n      and (\n        cm.role::text in ('owner','admin')\n        or caa.user_id is not null\n      )\n  loop\n    perform private.enqueue_notification(\n      v_company_id,\n      v_reviewer.user_id,\n      'approval',\n      '従業員の本登録申請',\n      '本人情報の登録が完了しました。本登録を確認してください。',\n      'employee_onboarding_approval',\n      v_invite_id\n    );\n  end loop;\nend;\n$function$\n"
+    }
+  ],
+  "policies": [
+    {
+      "policyname": "account_deletion_access_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "policyname": "employee_onboarding_documents_delete",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "DELETE",
+      "qual": "((bucket_id = 'employee-onboarding-documents'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text))",
+      "with_check": null
+    },
+    {
+      "policyname": "employee_onboarding_documents_insert",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "INSERT",
+      "qual": null,
+      "with_check": "((bucket_id = 'employee-onboarding-documents'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text) AND private.can_upload_onboarding_document())"
+    },
+    {
+      "policyname": "employee_onboarding_documents_read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((bucket_id = 'employee-onboarding-documents'::text) AND (((storage.foldername(name))[1] = (auth.uid())::text) OR private.can_review_employee_onboarding_user(((storage.foldername(name))[1])::uuid)))",
+      "with_check": null
+    },
+    {
+      "policyname": "employee_onboarding_documents_update",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "UPDATE",
+      "qual": "((bucket_id = 'employee-onboarding-documents'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text))",
+      "with_check": "((bucket_id = 'employee-onboarding-documents'::text) AND ((storage.foldername(name))[1] = (auth.uid())::text))"
+    },
+    {
+      "policyname": "initial_beta_official_documents_insert_pause",
+      "permissive": "RESTRICTIVE",
+      "roles": "{public}",
+      "cmd": "INSERT",
+      "qual": null,
+      "with_check": "((bucket_id <> ALL (ARRAY['worker-documents'::text, 'qualification-certificates'::text, 'employee-onboarding-documents'::text])) OR (CURRENT_USER = 'authenticated'::name))"
+    },
+    {
+      "policyname": "initial_beta_official_documents_update_pause",
+      "permissive": "RESTRICTIVE",
+      "roles": "{public}",
+      "cmd": "UPDATE",
+      "qual": "(bucket_id <> ALL (ARRAY['worker-documents'::text, 'qualification-certificates'::text, 'employee-onboarding-documents'::text]))",
+      "with_check": "(bucket_id <> ALL (ARRAY['worker-documents'::text, 'qualification-certificates'::text, 'employee-onboarding-documents'::text]))"
+    },
+    {
+      "policyname": "license_document_pilot_insert_scope",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "INSERT",
+      "qual": null,
+      "with_check": "((bucket_id <> ALL (ARRAY['worker-documents'::text, 'qualification-certificates'::text, 'employee-onboarding-documents'::text])) OR ((bucket_id = 'worker-documents'::text) AND (auth.uid() IS NOT NULL) AND private.license_document_upload_allowed(name)) OR ((bucket_id = 'qualification-certificates'::text) AND private.qualification_photo_draft_upload_allowed(name)) OR ((bucket_id = 'worker-documents'::text) AND private.worker_document_photo_upload_allowed(name)))"
+    }
+  ],
+  "data_api_pre_request": "private.check_account_access",
+  "notification_sink": "fixture adapter only; real notification delivery not tested"
+}

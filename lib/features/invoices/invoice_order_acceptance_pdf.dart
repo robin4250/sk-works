@@ -27,8 +27,9 @@ class InvoiceOrderAcceptancePdf {
     final acceptanceText = payload['acceptance_text']?.toString().trim().isNotEmpty == true
         ? payload['acceptance_text'].toString()
         : '乙は、貴殿から受領した$orderDate付の注文書記載の条件通り、本工事を請け負うことを承諾いたします。';
+    final workName = payload['work_name']?.toString().trim() ?? '';
     final notes = payload['notes']?.toString().trim() ?? '';
-    final compact = notes.isNotEmpty || acceptanceText.length > 180 || issuer['address'].toString().length > 120 ||
+    final compact = workName.length > 80 || notes.isNotEmpty || acceptanceText.length > 180 || issuer['address'].toString().length > 120 ||
         issuer['name'].toString().length > 60 || customer['name'].toString().length > 60;
     final gap = compact ? 8.0 : 40.0;
     final seal = CompanySealSnapshot.fromJson(payload['company_seal_snapshot']);
@@ -52,6 +53,10 @@ class InvoiceOrderAcceptancePdf {
           pw.Text('${customer['name']}　御中', style: pw.TextStyle(
             font: boldFont, fontSize: compact ? 9 : 16)),
           pw.SizedBox(height: gap),
+          if (workName.isNotEmpty) ...[
+            _field('工事名', workName, compact: compact),
+            pw.SizedBox(height: 8),
+          ],
           pw.Text(
             acceptanceText,
             style: pw.TextStyle(fontSize: compact ? 8 : 13, lineSpacing: compact ? 1 : 9),
@@ -101,3 +106,4 @@ class InvoiceOrderAcceptancePdf {
     return '${parsed.year}年${parsed.month}月${parsed.day}日';
   }
 }
+

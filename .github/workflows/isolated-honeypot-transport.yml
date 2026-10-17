@@ -1,0 +1,27 @@
+name: Isolated honeypot loopback transport
+on:
+  pull_request:
+    paths:
+      - 'tool/security/isolated_transport*'
+      - 'tool/security/decoy_lab*'
+      - 'tool/security/review_sink*'
+      - '.github/workflows/isolated-honeypot-transport.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/security/isolated_transport*'
+      - 'tool/security/decoy_lab*'
+      - 'tool/security/review_sink*'
+      - '.github/workflows/isolated-honeypot-transport.yml'
+permissions:
+  contents: read
+jobs:
+  disposable-loopback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tool/security/decoy_lab_test.mjs tool/security/review_sink_test.mjs tool/security/incident_collector_test.mjs tool/security/isolated_transport_test.mjs

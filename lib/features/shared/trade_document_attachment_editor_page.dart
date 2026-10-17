@@ -2,12 +2,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'trade_document_attachment_repository.dart';
+import 'r18_defaults.dart';
+import 'r33_input.dart';
 
 /// One explicit monthly save; never writes or approves the source financial document.
 class TradeDocumentAttachmentEditorPage extends StatefulWidget {
   const TradeDocumentAttachmentEditorPage({super.key,required this.subjectKind,
-    required this.subjectId,required this.sourceRevision});
+    required this.subjectId,required this.sourceRevision,this.initialInput});
   final String subjectKind,subjectId,sourceRevision;
+  final R33Input? initialInput;
   @override State<TradeDocumentAttachmentEditorPage> createState()=>_EditorState();
 }
 class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
@@ -50,6 +53,13 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
         _payload.putIfAbsent('payment_conditions',()=> '工事完了確認後、乙の指定口座に振り込む。');
         _payload.putIfAbsent('notes',()=> '');
       }
+      // Initial defaults remain local before the explicit save.
+      _payload = r18InitialValues(payload: _payload,
+        sourceDefaults: Map<String, dynamic>.from(data['defaults'] as Map),
+        hasSavedAttachment: saved is Map, subjectKind: widget.subjectKind);
+      _payload = widget.initialInput?.apply(payload: _payload, workspace: data,
+        actor: _actor, subjectKind: widget.subjectKind, subject: widget.subjectId,
+        revision: widget.sourceRevision) ?? _payload;
       for(final key in ['issue_date','order_date','work_name','work_address','period_start','period_end','payment_conditions','notes','tax_amount_yen','total_amount_yen','intro_text','acceptance_text']){
         _fields[key]=TextEditingController(text:_payload[key]?.toString()??'');
       }
@@ -107,7 +117,10 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
         _input('total_amount_yen','当月の請負代金（税込・円）',max:10,readOnly:true),
         _input('tax_amount_yen','うち消費税等（円・要確認）',max:10),
         _input('payment_conditions','支払条件（期限も入力）',max:400,lines:4),
-      ]else _input('acceptance_text','承諾文（{order_date} は注文書日に置換）',max:400,lines:4),
+      ]else ...[
+        _input('work_name','工事名（請求書の件名）'),
+        _input('acceptance_text','承諾文（{order_date} は注文書日に置換）',max:400,lines:4),
+      ],
       if(_order)OutlinedButton.icon(onPressed:_canEdit&&!_saving?(){
         _fields['notes']!.text='・本工事は建設業許可を必要としない軽微な工事である。\n・乙は、工事中の事故等について一切の責任を負う。';
       }:null,icon:const Icon(Icons.edit_note),label:const Text('見本の特記事項を入れる')),
@@ -125,3 +138,4 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       const SizedBox(height:16),FilledButton(onPressed:_canEdit&&!_saving?_save:null,child:Text(_saving?'保存中…':'保存して添付')),
     ]));
 }
+

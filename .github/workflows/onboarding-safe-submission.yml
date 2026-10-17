@@ -1,0 +1,27 @@
+name: Onboarding safe photo submission
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/employee_onboarding_repository.dart'
+      - 'lib/features/auth/employee_onboarding_pages.dart'
+      - 'test/employee_onboarding_safe_submission_test.dart'
+      - '.github/workflows/onboarding-safe-submission.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/auth/employee_onboarding_repository.dart lib/features/auth/employee_onboarding_pages.dart test/employee_onboarding_safe_submission_test.dart
+      - run: flutter test test/employee_onboarding_safe_submission_test.dart test/employee_onboarding_contract_test.dart test/onboarding_help_localization_contract_test.dart

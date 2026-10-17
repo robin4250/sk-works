@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# A release reviewer supplies the approved full SHA; never infer approval from latest main.
+: "${SKO_AUDITED_SHA:?Set the reviewed full commit SHA before building or uploading}"
+export SKO_AUDITED_SHA
+
 echo "=== SKO TestFlight fastest path ==="
 echo
 
@@ -36,6 +40,9 @@ fi
 echo
 echo "App Store Connect APIキーが未設定なので、Xcode Organizerで続行します。"
 echo "Archive: $archive"
-open "$archive"
+python3 tool/testflight_provenance.py validate --manifest build/ios/sko-testflight-provenance.json >/dev/null
+echo "検証済みIPAをTransporterで選択してください。Archiveからの再出力は別候補として再検査が必要です。"
+exit 1
 echo
 echo "Xcodeで Distribute App → App Store Connect → Upload を選択してください。"
+

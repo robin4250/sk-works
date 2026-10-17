@@ -1,4 +1,4 @@
-import 'package:sk_works/features/attendance/today_attendance_page.dart';
+import 'package:sk_works/features/attendance/attendance_notification_page.dart';
 import 'dart:io';
 
 import 'package:sk_works/features/attendance/attendance_correction_approvals_page.dart';
@@ -65,8 +65,8 @@ void main() {
     });
   }
 
-  test('saved attendance notice opens the existing permissioned attendance page', () {
-    expect(notificationDestination(notice('attendance_today')), isA<TodayAttendancePage>());
+  test('saved attendance notice preserves the exact verification target', () {
+    expect(notificationDestination(notice('attendance_today')), isA<AttendanceNotificationPage>().having((page) => page.verificationId, 'verification ID', targetId));
   });
 
   test('payroll notice resolves its older month and retains secondary protection', () async {

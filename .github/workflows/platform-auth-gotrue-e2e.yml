@@ -1,0 +1,36 @@
+name: Local GoTrue platform proof end to end
+on:
+  pull_request:
+    paths:
+      - 'tool/security/platform_auth_*'
+      - 'supabase/functions/reauthenticate-operation/**'
+      - 'tool/staged/reauthentication_proofs.sql'
+      - 'supabase/migrations/*platform_security_monitor.sql'
+      - '.github/workflows/platform-auth-gotrue-e2e.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/security/platform_auth_*'
+      - 'supabase/functions/reauthenticate-operation/**'
+      - 'tool/staged/reauthentication_proofs.sql'
+      - 'supabase/migrations/*platform_security_monitor.sql'
+      - '.github/workflows/platform-auth-gotrue-e2e.yml'
+permissions:
+  contents: read
+concurrency:
+  group: local-gotrue-platform-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  real-local-auth-edge-platform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - name: Check integration script syntax
+        run: node --check tool/security/platform_auth_gotrue_e2e.mjs
+      - name: Real local GoTrue and Edge proof flow
+        run: node tool/security/platform_auth_gotrue_e2e.mjs

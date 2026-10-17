@@ -1,0 +1,42 @@
+name: Additive company allowance contract
+on:
+  pull_request:
+    paths:
+      - 'tool/staged_company_common_allowances*'
+      - '.github/workflows/company-common-allowance-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sql-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic_fixture_only
+          POSTGRES_DB: sko_common_allowance_fixture
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - name: PGlite isolated SQL and restore checks
+        run: node tool/staged_company_common_allowances_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: PostgreSQL 17 same SQL contract and real two-session races
+        env:
+          SKO_COMMON_ALLOWANCE_FIXTURE_URL: postgresql://postgres:synthetic_fixture_only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/sko_common_allowance_fixture
+        run: |
+          node tool/staged_company_common_allowances_check.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" --pg17
+          node tool/staged_company_common_allowances_race.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

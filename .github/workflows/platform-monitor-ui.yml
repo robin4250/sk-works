@@ -1,0 +1,32 @@
+name: Platform monitor UI
+on:
+  pull_request:
+    paths:
+      - 'lib/features/security/platform_monitor*'
+      - 'lib/features/security/security_incident_page.dart'
+      - 'lib/features/auth/operation_reauthentication_repository.dart'
+      - 'test/platform_monitor_page_test.dart'
+      - '.github/workflows/platform-monitor-ui.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/features/security/platform_monitor*'
+      - 'lib/features/security/security_incident_page.dart'
+      - 'test/platform_monitor_page_test.dart'
+      - '.github/workflows/platform-monitor-ui.yml'
+permissions:
+  contents: read
+jobs:
+  monitor-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/security/platform_monitor_repository.dart lib/features/security/platform_monitor_page.dart lib/features/security/security_incident_page.dart test/platform_monitor_page_test.dart
+      - run: flutter test test/platform_monitor_page_test.dart test/security_incident_test.dart test/security_actor_boundary_test.dart test/security_export_guard_test.dart test/security_pdf_preview_test.dart

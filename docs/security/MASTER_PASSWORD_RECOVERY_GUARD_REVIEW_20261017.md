@@ -1,0 +1,138 @@
+# Master-password recovery and preservation review — 2026-10-17
+
+Independent read-only review of PR1170 exact `9fb2cab01fff6e1de34587214297d176bec2000f`, specifically `tool/staged/master_password_credentials.sql.review-only` and its separate contract. This document owns no authentication implementation. No production SELECT, real account/device/provider values, secret or hash values, credentials, role changes or SQL execution were used for this review. Source-review findings are not runtime proof.
+
+## Preservation findings
+
+| Existing state | Candidate behavior | Protection still required |
+|---|---|---|
+| private.master_admins IDs/enabled state | Existing actor row is checked/locked, not inserted, changed or deleted. New tables reference it; credentials do not grant Master role. | Preserve actual original IDs/enabled state and compare in protected isolation. Do not recreate or delete the Master row to repair password setup. |
+| company_members and company association | No writes in this candidate | Compare protected company membership/roles after restoration and before/after rollout. |
+| Auth users/sessions/provider/primary password | Existing user/session checked and share-locked; no Auth update/reset/provider migration | Preserve Apple/Google and primary login; native/device test remains separate. |
+| Shared-secondary password hash | Not copied, moved or updated by the candidate. Setup invokes existing server verifier. | The existing verifier's normal success/failure counters and timestamps can change; verify actual hash and unrelated actors stay unchanged. Do not pretend setup has zero secondary-state side effects. |
+| Master devices | Existing own trusted, unlocked, unrevoked device checked/locked; no registration/recovery changes | Preserve bootstrap/dual-email device recovery; neither is a dedicated-password reset authorization channel. |
+| Existing operation proofs | Unchanged; new verified reply is one operation's receipt, not a transferable proof | Future gate must not replace existing server action proofs with a local boolean or this receipt. |
+| Existing routes/gates | Candidate does not wire routes or edit the old gate | Current source compatibility is separate from the pending dedicated gate implementation. |
+
+New state is limited to five private tables: settings, credentials, attempts, challenges, requests, plus new functions. Credential is independent salted bcrypt cost12, bound to existing Master ID/version. Challenge is 120 seconds, single-use, tied to actor/session/device/operation/version/request. Completion rechecks time/context after crypt work, invalidates remaining challenges after setup/change and records nonsecret success metadata atomically. These are source observations; the PG17/REST/concurrency owner must establish their runtime behavior.
+
+## OFF, ON failure, and recovery must remain different
+
+- Initial enabled=false; no public setter. Reapplying the candidate does not reset an existing flag. The flag is operator-controlled state, not a recovery button.
+- Explicit authenticated capability OFF can retain the previously approved old gate. Missing RPC, denied access, unknown response, timeout or transport error is not explicit OFF and must not cause fallback when ON.
+- The existing gate remains unchanged until a separately reviewed Stage2. The intended ON gate is native Face AND dedicated Master password, without shared-secondary OR fallback. Source-only setup does not establish this gate.
+- No dedicated forgot/reset recovery exists. Before ON, approve and isolate-test a recovery policy that does not trust a local biometric success, device recovery alone, an arbitrary company admin, or a client-provided verification flag to reset this credential.
+- Approved operator OFF may be an emergency compatibility action, with a documented security tradeoff. It is not an automatic client response to an error. Test that OFF does not delete credentials, lower versions or alter existing Master identity, company or secondary data.
+- Existing account login recovery and user-confirmed access do not prove dedicated-password recovery.
+
+## Rollback hazards and safe boundaries
+
+Dropping the new tables or restoring an older credential snapshot can remove configured state, revive an old dedicated password, lower versions, allow setup again, or mismatch receipts/challenges. Do not call this a harmless rollback. New credential state must be retained when withdrawing only an unconnected UI/source candidate.
+
+A source rollback is also distinct from a database rollback: removing functions while ON and leaving a wired client causes fail-closed lockout. Removing new functions or downgrading the API must therefore be excluded from an ON rollout until an approved coordinated operator/client recovery sequence has been tested. Prefer forward repair with preserved state over ad-hoc table deletion; no automated rollback SQL is supplied or authorized here.
+
+Restoring new challenge/request tables must not revive usable pre-restoration nonces. Establish a tested invalidation/epoch or equivalent policy before rollout; do not invent it during an incident. Original operation-proof and session state must be evaluated consistently. Restoring an old hash/version while leaving newer receipts or cached successful UI state is unsafe.
+
+Foreign keys use ON DELETE CASCADE from the existing Master ID to new state. That does not modify the old ID, but deleting/recreating an existing Master registration would destroy the new credential/recovery history. Such deletion is forbidden as a repair step.
+
+## Required protected backup and isolation evidence
+
+| Item | Status at review | Requirement |
+|---|---|---|
+| Exact candidate SQL/contract and this review | Source saved | Pin SHA; later edits need re-review |
+| New credential/challenge runtime and race/REST tests | Separate owner in progress | Review exact successful head; do not infer success from source |
+| Existing protected production backup | Not obtained in this lane | Original full DDL/ACL/security metadata, original Auth/provider/master/device/company/role settings and required business data, privately stored |
+| New credential/attempt/challenge/request/settings backup | Not obtained; production candidate not applied | Treat bcrypt hashes and nonce digests as secrets; never Git, chat logs, screenshots or per-account public checksums |
+| Restoration from protected real backup | Not verified | Disposable isolated environment, outbound mail/SMS/provider/notifications disabled; internal identity/role/company/provider comparisons without exposing values |
+| New forgotten-password recovery / approved OFF operation | Not implemented/approved here | Policy, authorization/audit, failure and recovery test before ON |
+| Production gateway/SQL-bind request-body logging | Not verified | Secret-bearing calls must not persist request bodies/passwords/nonces/device keys |
+| Existing administrator/UI/native provider comparison | Not verified here | Compare working old gate and normal settings plus intended new path on actual release/device |
+| Production change/enable approval | Not obtained | User's existing six protection conditions remain mandatory |
+
+An anonymous fixture with sentinel identities is useful but cannot establish restoration of actual production administrator accounts. Metadata hashes alone are not restorable definitions or a full backup. A complete restored account/provider state is not safe to publish; compare it only inside the protected operator workflow.
+
+## Concrete independent acceptance checks
+
+1. Prove old gate/normal settings unchanged with flag OFF, no new RPC, and no route connected; separately reject ON missing/permission/network failures without shared fallback.
+2. Rehearse setup/change/unlock failure rollback at each write boundary. Preserve old Master ID, roles, company, Auth providers and secondary hash; allow only documented secondary-verification counter changes.
+3. Prove one setup winner, version-CAS race, post-lock and post-bcrypt expiry, session/device/Master revocation, nonce replay and cross-actor request collisions. Failures must not expose SQL internals or secrets.
+4. Resolve unknown commit only by same-context receipt; not_found is unresolved. Never resend passwords/nonces. Restart-safe nonsecret journaling is being added separately; memory-only initial UI head fe03a6c is insufficient evidence for restart retention.
+5. Prove background/route/actor/session/device changes erase secrets and reject late UI success. Nonsecret unresolved metadata must not be overwritten, misattributed or cleared by another actor; exact committed success may clear only its own request.
+6. Before ON, demonstrate dedicated-password loss recovery, protected restore, operator OFF, re-enable and API downgrade/withdrawal sequence without losing existing Master administration. No production enable until this passes and impact approval is obtained.
+
+No production apply/enable, backup, reset, restore or deployment authorization is granted by this document. The candidate remains default OFF/review-only; Stage2 gate, real recovery policy, production backup/restore and real-device validation are not complete.
+
+## Additional OFF / UI boundary notes
+
+At SQL head9fb2cab the enabled flag is read without a shared row lock, and completion's final post-bcrypt recheck covers nonce/context, not a fresh enabled read. Operator OFF must not be treated as cancellation of a completion already in flight. Any future OFF-to-API-removal or state-restoration sequence needs quiescence/transaction coordination and an isolated race test. No active-operation cancellation guarantee is established by this source.
+
+UI candidate PR1169 head9a8873ee91873138c6cdc2c3f3f1740e5418552b adds only new unconnected files, with explicit server capability/status before form, exact applied-result parsing and same-context receipt reads. Its journal stores nonsecret actor/session/device fingerprint/request/op/version, not passwords, nonce, token or raw device key. Keys are request-specific and conflicting/corrupt/device-mismatched pending state fails closed. The candidate explicitly retains old-session metadata rather than resolving another session's result. This source review does not establish native SharedPreferences crash durability, concurrent-process behavior, or successful latest CI/runtime. Those remain separate evidence requirements; no existing gate is wired.
+
+## Updated rollout preconditions — root aggregate checkpoint
+
+This section updates the rollout decision, not the earlier pinned source reviews. Root reported a production read-only aggregate of one existing Master registration, zero trusted devices, and one existing shared-secondary credential associated with the Master. Root did not retrieve or disclose IDs, device keys, password hashes or provider values. This reviewer did not query production. Counts are a point-in-time precondition, not a protected backup or proof of successful authentication.
+
+The trusted-device-only new setup cannot be the first operational step while there is no trusted device. The existing primary account has been recovered separately; that does not create a trusted Master device or authorize changing its security state. Root/auth is preparing a separate old-gate Face-AND-password, input/lifecycle and captured-Bearer correction. This document neither implements nor certifies that correction.
+
+A normal UI action that registers the first Master device still adds production security state. Before executing it, describe the exact affected state and rollback/retention implications, preserve the required protected pre-change state, verify the legitimate actor and existing enrollment conditions, and obtain the required impact approval. Do not auto-register a device, fabricate a trusted key, enable the new flag, replace the existing Master ID, alter company roles, or skip existing enrollment/recovery conditions to make the new setup reachable. A code commit or passing CI is not this approval.
+
+### Shared-secondary initialization dependency
+
+The candidate's atomic server-side setup verification is meaningful, but its security also depends on how that shared-secondary secret was established. Auth/root identified a current legacy `public.set_secondary_password` path that can replace the shared-secondary password with a signed-in session alone when the separately staged proof gate is not enabled. No modification to that setter is included in this review.
+
+Consequently, compromise of a Master JWT plus trusted device key, followed by replacement through that legacy setter, is not addressed by the new dedicated setup verifier alone. Correct execution of Dart-to-PostgreSQL setup does not demonstrate resolution of that threat. Before ON, evaluate and harden the legitimate shared-secondary setup/recovery server-proof boundary, including a supported fresh-identity path for a Google-only Master, while preserving existing provider login, original Master identity, company membership and current shared hash. That hardening is a separately owned, separately reviewed change; do not reset an existing credential or grant a role as a workaround.
+
+### Remaining release gates, separated from source evidence
+
+| Gate | Current bounded status |
+|---|---|
+| Primary account login restoration | User/root confirmed separately; does not prove dedicated Master enrollment or recovery |
+| First trusted-device enrollment prerequisite | Zero devices in root's aggregate; no enrollment performed or approved by this document |
+| Dedicated init proof and legacy setter boundary | Unresolved ON-before evaluation/hardening condition |
+| Dedicated-password forgotten/reset policy | Still a separate unimplemented/unverified rollout requirement |
+| Protected backup and real isolated restoration | Not obtained/verified by this reviewer; actual administrator/company/provider comparisons remain required |
+| Private production request/SQL-bind logging configuration | Not verified; never log password, nonce, JWT, raw device key or stored hash |
+| Journal namespace retention and cleanup | Initial nonsecret journaling is not lifecycle cleanup proof. Define and test owner/session-scoped retention/cleanup without deleting unresolved requests or exposing another actor's metadata; do not resolve or resend another session's request |
+| Dedicated gate and old-gate compatibility | Separate source work in progress; explicit OFF compatibility, ON unknown failure and operator rollback/quiescence must be tested independently |
+| Real release/native biometric/provider/device behavior | Not established by source or synthetic tests |
+| Production state changes, apply, enable or enrollment approval | Not granted; the user's six protection conditions still apply |
+
+The earlier SQL9fb/UI9a observations are historical pinned reviews, not certification of later heads. At this update PR1170 has moved to 833733d518c59e02cfb50d974628896217709518, and UI1169 owner reported d7ec23f19383111aeb214b3a92f1fcdd21606097 with dedicated tests successful. Those later changes and CI evidence require their own exact-head review; this documentation update does not substitute for it. No production read/write, enrollment, credential reset, RLS/Auth/SQL/client change or shared-file edit was performed by this reviewer.
+
+## Later incident and source checkpoint — 2026-10-17 JST
+
+This dated addendum supersedes only the earlier point-in-time status tables. It does not rewrite the SQL9fb/UI9a observations above or certify every later implementation. Earlier statements that production reads/writes, backup or enrollment were absent describe the original review and its authoring lane at that time. The following operator action is a separate, explicitly bounded incident recovery. Editing this document itself performs no production operation.
+
+Source checkpoint: main `c75d1099ab085c828edbc21a666df168de1228ef` includes aggregate PR1173 through main `bb78cc0ca39f72ad0b00898041fc536a3458f365` and the subsequent PR1176 journal test/document/workflow addition. Source integration and successful isolated tests do not deploy review-only SQL or enable dedicated Master mode.
+
+### Saved state and actual isolated restoration
+
+The user reported successful native PostgreSQL 17 custom-format backup creation on the operator's Mac and successful archive listing. Backup bytes and connection credentials remained private. The operator then restored only `private.master_admins` and `private.master_devices` definitions/data into a fresh local PostgreSQL 17 cluster, with TCP listening disabled, private local socket, inherited PostgreSQL connection variables removed, preloads/workers disabled, and no post-data functions/triggers/ACL restoration. The original archive was retained.
+
+The real-backup two-table exercise verified the expected single enabled Master and single active locked device, changed only the local device lock bit inside a transaction, compared all other restored device values and all restored Master rows, rolled back, and compared complete before/after snapshots. The user reported success. This is actual protected-data restoration evidence for those two tables, distinct from the earlier synthetic PGlite tests. It is not a full database, Auth/provider, business-data, RLS, ACL, Edge Function, authentication-setting or full administrator UI recovery test.
+
+### Explicitly limited production unlock
+
+After the bounded result and impact were explained, the user explicitly instructed proceeding at 09:53 JST. Root then executed the separately reviewed one-row operator recovery, with enabled-Master row locking, short table/device locks, exact expected registration state and affected-row checks. The only data-changing instruction set the one existing device's `is_locked` from true to false. Checks within that transaction compared the target's remaining JSON fields, all Master rows and all other device rows; the operation aborted on any mismatch. A separate aggregate query subsequently reported one registered device, one usable device and zero locked devices. Root recorded the operation in Issue #273, comment 6227627234; no new database audit record was added by this limited action.
+
+The target device ID/key and remaining target columns and all Master rows were checked unchanged. No statement in that recovery changed Auth identities/providers, company association, company roles, credentials/hashes, RLS, business data or UI. Those unrelated tables were not fully snapshotted and independently compared in the incident transaction, so their preservation must not be represented as a full before/after data comparison. A successful unlock is not proof of successful app re-entry, email delivery or dedicated-password recovery. Do not mechanically re-lock the device as a rollback after the user saves recovery settings; subsequent legitimate state must be preserved.
+
+| Current item at this addendum | Bounded result / remaining work |
+|---|---|
+| Protected database archive | User reported native custom-format backup success and successful archive listing; bytes remain private |
+| Real-backup isolated restore | Two named tables restored and local lock-bit rollback/full snapshot equality passed; full DB/Auth/provider/ACL/settings restoration remains unverified |
+| Incident production change | Specifically approved one-row `is_locked` true-to-false update completed; post-check registered 1 / usable 1 / locked 0 |
+| Master identity / role protection | Target remaining fields and all Master rows compared unchanged; unrelated company/Auth/hash tables had no recovery write instruction, without a claim of full independent snapshot comparison |
+| Last-usable-device prevention | PR1177 is separately owned source/review-only SQL; server guard SQL is not applied to production at this checkpoint |
+| Dedicated Master mode | Still OFF; no dedicated SQL deployment/flag enable is authorized by the incident unlock |
+| Recovery email registration | Saving two addresses, verification delivery and complete recovery exercise remain unconfirmed |
+| Journal lifecycle | PR1176 adds actual pinned-SDK synthetic transport/SharedPreferences boundary tests; cross-session reconciliation, bounded retention and native persistence limits remain as documented there |
+| Remaining production authorization | One-row incident approval does not authorize new SQL/RLS/Auth/role/provider changes, broader restore or dedicated-mode enable; existing protection and impact-approval requirements remain |
+
+No secret, raw key/hash, email address, private backup path or account/device identifier is published in this addendum. This documentation branch changes no product source or production state.
+
+### Subsequent user report — 09:58 JST
+
+The user reported registering and saving both recovery email addresses. This updates the earlier unconfirmed-save checkpoint only: message delivery, separate codes to the two addresses, successful verification of both codes and consumption of a full recovery operation remain unconfirmed. No email address or code is recorded here. This documentation update performs no production write.
+
+Do not restore the old archive wholesale to undo the incident unlock: doing so could erase these subsequently saved recovery settings and other legitimate work. Preserve the current state and use separately reviewed, explicitly approved forward repair if further changes are needed. The earlier one-column unlock approval does not expand to other production changes.

@@ -31,6 +31,8 @@ class EmployeeOnboardingState {
 class SecureOnboardingRepository {
   SecureOnboardingRepository._(this._client);
 
+  SecureOnboardingRepository.forClient(this._client);
+
   final SupabaseClient _client;
 
   static SecureOnboardingRepository? maybeCreate() {
@@ -93,25 +95,6 @@ class SecureOnboardingRepository {
     );
   }
 
-  Future<void> requestPasswordResetSms({required String phone}) async {
-    await _client.auth.signInWithOtp(
-      phone: normalizeJapanesePhone(phone),
-      shouldCreateUser: false,
-      channel: OtpChannel.sms,
-    );
-  }
-
-  Future<void> verifyPasswordResetSms({
-    required String phone,
-    required String code,
-  }) async {
-    await _client.auth.verifyOTP(
-      type: OtpType.sms,
-      phone: normalizeJapanesePhone(phone),
-      token: code.trim(),
-    );
-  }
-
   Future<void> updatePrimaryPassword(String password) async {
     if (password.length < 8) {
       throw StateError('password must be at least 8 characters');
@@ -144,9 +127,11 @@ class SecureOnboardingRepository {
     await _client.rpc('mark_employee_initial_password_changed');
   }
 
-  Future<bool> secondaryPasswordConfigured() async {
+  Future<bool> secondaryPasswordConfigured({String? accessToken}) async {
     if (_client.auth.currentUser == null) return false;
-    final value = await _client.rpc('secondary_password_configured');
+    if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
+    final request = _client.rpc('secondary_password_configured');
+    final value = await (accessToken == null ? request : request.setHeader('Authorization', 'Bearer $accessToken'));
     return value == true;
   }
 
@@ -157,11 +142,13 @@ class SecureOnboardingRepository {
     );
   }
 
-  Future<bool> verifySecondaryPassword(String password) async {
-    final value = await _client.rpc(
+  Future<bool> verifySecondaryPassword(String password, {String? accessToken}) async {
+    if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
+    final request = _client.rpc(
       'verify_secondary_password',
       params: {'p_password': password},
     );
+    final value = await (accessToken == null ? request : request.setHeader('Authorization', 'Bearer $accessToken'));
     return value == true;
   }
 
@@ -228,3 +215,4 @@ class SecureOnboardingRepository {
     return text.isEmpty ? null : text;
   }
 }
+
