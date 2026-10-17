@@ -58,20 +58,74 @@ def copy_checked(source, target):
     require(inventory(target) == before == inventory(source), 'copy changed')
     return before
 
-def isolate_native_links(original_ios, isolated_ios):
-    """Rebase only links inside the saved native tree; unknown external links stop."""
+def isolate_native_links(original_ios, isolated_ios, *, cache_root=None, dependencies=None, approved=None):
+    """Copy approved generated cache dependencies; never build through original links.
+
+    Native-internal cycles remain lexical links and are never traversed. Unknown
+    external, custom cache links and nested dependency escapes fail closed.
+    """
     original_ios, isolated_ios = Path(original_ios).absolute(), Path(isolated_ios).absolute()
     links = [(name, value[1]) for name, value in inventory(isolated_ios).items() if value[0] == 'link']
+    replacements = []
+    copied = {} if approved is None else dict(approved)
+    canonical_cache = None
     for name, target in links:
         source_link = original_ios / name
-        # Lexical normalization intentionally does not follow cyclic symlinks.
         absolute = Path(os.path.abspath(os.path.join(source_link.parent, target)))
-        require(absolute.is_relative_to(original_ios),
-                'external native symlink requires explicit reviewed copy plan')
-        relative = absolute.relative_to(original_ios)
-        link = isolated_ios / name
+        if absolute.is_relative_to(original_ios):
+            replacement = isolated_ios / absolute.relative_to(original_ios)
+        elif dependencies is not None and absolute.is_relative_to(dependencies):
+            canonical = absolute.resolve(strict=True)
+            require(canonical in [item['destination'] for item in copied.values()],
+                    'unreviewed isolated dependency link')
+            replacement = canonical
+        else:
+            require(cache_root is not None and dependencies is not None,
+                    'external native symlink requires explicit reviewed copy plan')
+            cache = Path(cache_root).absolute()
+            require(cache.is_dir() and not cache.is_symlink(), 'unsafe package cache root')
+            if canonical_cache is None:
+                canonical_cache = cache.resolve(strict=True)
+                require(canonical_cache == cache, 'package cache root redirects outside expected path')
+            require(name.startswith(('Flutter/ephemeral/', '.symlinks/', 'Pods/')),
+                    'custom native external link is not a generated dependency')
+            require(absolute.is_relative_to(cache), 'native external target outside package cache')
+            # strict resolution detects missing targets, indirect escapes and loops.
+            canonical = absolute.resolve(strict=True)
+            require(canonical.is_relative_to(canonical_cache) and canonical != canonical_cache
+                    and canonical.is_dir(), 'package dependency outside canonical cache')
+            require(not dependencies.is_symlink(), 'unsafe dependency destination')
+            if canonical not in copied:
+                require(approved is None, 'prepare introduced an unreviewed cache dependency')
+                dependencies.mkdir(mode=0o700, parents=True, exist_ok=True)
+                destination = dependencies / ('dep-' + str(len(copied)))
+                before = copy_checked(canonical, destination)
+                require(canonical.resolve(strict=True) == canonical, 'cache path changed while copying')
+                # Nested links must stay within that dependency. Do not recursively
+                # authorize more cache/external paths from an unreviewed package.
+                isolate_native_links(canonical, destination)
+                copied[canonical] = {'destination': destination, 'inventory': before}
+            replacement = copied[canonical]['destination']
+        replacements.append((isolated_ios / name, replacement))
+    # Do not alter even candidate links until the entire native plan validates.
+    for link, replacement in replacements:
         link.unlink()
-        link.symlink_to(os.path.relpath(isolated_ios / relative, link.parent))
+        link.symlink_to(os.path.relpath(replacement, link.parent))
+    return copied
+
+
+def audit_isolated_links(native, dependencies):
+    # Final generated-tree audit: every link must lexically remain in private
+    # native/dependency trees. Cycles remain links and are not followed.
+    roots = [Path(native).absolute()]
+    if Path(dependencies).exists(): roots.append(Path(dependencies).absolute())
+    for root in roots:
+        for name, value in inventory(root).items():
+            if value[0] != 'link': continue
+            target = Path(os.path.abspath(os.path.join((root / name).parent, value[1])))
+            require(any(target.is_relative_to(allowed) for allowed in roots),
+                    'generated link escaped isolated native plan')
+
 
 class Runner:
     def __init__(self, cwd, log):
@@ -155,7 +209,7 @@ def release_command():
     return ['bash', '-c', 'set -euo pipefail; set +x; source "$1" >/dev/null 2>&1; set +x; '
             'test "${SUPABASE_URL:-}" = https://ztktgquxvcxcjxtluspu.supabase.co; '
             'case "${SUPABASE_PUBLISHABLE_KEY:-}" in sb_publishable_*) ;; *) exit 1;; esac; '
-            'flutter build ios --release --dart-define=SKO_MASTER_PASSWORD_V1=false '
+            'flutter build ios --release --no-pub --dart-define=SKO_MASTER_PASSWORD_V1=false '
             '--dart-define="SUPABASE_URL=$SUPABASE_URL" '
             '--dart-define="SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY"', 'r31']
 
@@ -194,12 +248,18 @@ def build(root, sha, backup_root):
         candidate = Runner(source, log)
         verify_clean(candidate, sha)
         copy_checked(stage / 'original-ios', source / 'ios')
-        isolate_native_links(root / 'ios', source / 'ios')
+        copies = isolate_native_links(root / 'ios', source / 'ios',
+                             cache_root=Path.home() / '.pub-cache',
+                             dependencies=stage / 'native-dependencies')
         signing = signing_settings(candidate)
         require(signing == signing_settings(original), 'native signing copy incomplete')
         env = root / 'tool/local_supabase_env.sh'
         require(env.is_file() and not env.is_symlink(), 'local environment unavailable')
         candidate.run(['bash', 'tool/prepare_ios.sh'])
+        isolate_native_links(source / 'ios', source / 'ios',
+                             cache_root=Path.home() / '.pub-cache',
+                             dependencies=stage / 'native-dependencies', approved=copies)
+        audit_isolated_links(source / 'ios', stage / 'native-dependencies')
         require(signing_settings(candidate) == signing, 'prepare changed signing')
         candidate.run(['bash', 'tool/check_ios_generated_contract.sh'])
         candidate.run(release_command() + [str(env)])
@@ -213,6 +273,9 @@ def build(root, sha, backup_root):
                 and runner_settings[0].get('PRODUCT_BUNDLE_IDENTIFIER') == BUNDLE,
                 'not a Release application')
         verify_clean(candidate, sha)
+        audit_isolated_links(source / 'ios', stage / 'native-dependencies')
+        require(all(inventory(origin) == item['inventory'] for origin, item in copies.items()),
+                'original package dependency changed during build')
         require(signing_settings(candidate) == signing, 'build changed signing')
         app = source / 'build/ios/iphoneos/Runner.app'
         require(signature(candidate, app) == oldsig, 'new signature changed account storage identity')
