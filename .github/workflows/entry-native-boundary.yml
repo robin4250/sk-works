@@ -1,0 +1,51 @@
+name: Entry native PostgreSQL boundary
+on:
+  pull_request:
+    paths:
+      - 'tool/security/restoration/entry_native_probe.py'
+      - 'tool/security/restoration/test_entry_native_probe.py'
+      - 'tool/security/restoration/entry_native_review.md'
+      - '.github/workflows/entry-native-boundary.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-synthetic-only:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Source boundary tests
+        run: python -m unittest discover -s tool/security/restoration -p 'test_entry_native_probe.py' -v
+      - name: Prepare exact reviewed isolation dependency when not yet on main
+        run: |
+          if ! test -f tool/security/restoration/entry_isolation.py; then
+            git fetch --no-tags origin 20a1f59ffe48ed08d46707ef8a4ac11f0985cbbd
+            git show 20a1f59ffe48ed08d46707ef8a4ac11f0985cbbd:tool/security/restoration/entry_isolation.py > tool/security/restoration/entry_isolation.py
+          fi
+      - name: Prepare native PostgreSQL 17 on disposable CI runner
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: brew list postgresql@17 >/dev/null 2>&1 || brew install postgresql@17
+      - name: Native sandboxed PostgreSQL probe without real archives or credentials
+        run: |
+          python - <<'PY'
+          import json, pathlib, subprocess, sys, tempfile
+          parent=pathlib.Path(tempfile.mkdtemp(prefix='entry-pg-ci-',dir='/private/tmp'))
+          prefix=subprocess.check_output(['brew','--prefix','postgresql@17'],text=True).strip()
+          result=subprocess.run([sys.executable,'tool/security/restoration/entry_native_probe.py','--probe','--pg-bin',prefix+'/bin','--output-parent',str(parent)],capture_output=True,text=True,timeout=240)
+          print(result.stdout)
+          if result.returncode!=2:
+              for pattern in ('entry-native-*/private-native-errors.log','entry-native-*/inside/server.log'):
+                  for log in parent.glob(pattern):print('Synthetic CI diagnostic: '+log.read_text(errors='replace')[-5000:])
+          assert result.returncode==2,'native synthetic PostgreSQL probe incomplete'
+          reports=list(parent.glob('entry-native-*/private-native-report.json'))
+          assert len(reports)==1,'native report missing'
+          report=json.loads(reports[0].read_text())
+          assert report['clean_shutdown'] is True and report['synthetic_role_table_rollback'] is True
+          assert report['archived_sql_executed'] is False and report['production_connections']==0
+          PY
