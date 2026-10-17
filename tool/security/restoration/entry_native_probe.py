@@ -49,7 +49,7 @@ def load_guard(path):
 def native_profile(guard, inside, endpoint):
     # macOS PostgreSQL retains a small SysV header even with mmap shared memory.
     # This synthetic-only variant leaves every network and filesystem rule intact.
-    return guard.profile(inside, endpoint) + '(allow ipc-sysv-shm)\n(allow ipc-sysv-sem)\n'
+    return guard.profile(inside, endpoint) + '(allow ipc-sysv-shm)\n(allow ipc-sysv-sem)\n(allow signal (target same-sandbox))\n'
 
 
 def require_stopped(run, pg_ctl, data):
@@ -115,7 +115,7 @@ def main():
         if not all(p.is_absolute() and p.is_file() for p in binaries.values()):
             raise ValueError('explicit native PostgreSQL tools required')
         base_profile=guard.profile
-        guard.profile=lambda inside,endpoint: base_profile(inside,endpoint)+'(allow ipc-sysv-shm)\n(allow ipc-sysv-sem)\n'
+        guard.profile=lambda inside,endpoint: base_profile(inside,endpoint)+'(allow ipc-sysv-shm)\n(allow ipc-sysv-sem)\n(allow signal (target same-sandbox))\n'
         try:kernel_evidence=verify_host(guard,parent)
         finally:guard.profile=base_profile
         os.umask(0o077)
@@ -158,7 +158,8 @@ def main():
         if actual!={'data':str(data),'socket':str(sock),'listen':'','local':True} or actual['local'] is not True:
             raise ValueError('new private socket cluster identity mismatch')
         run(base+['-c','CREATE DATABASE sko_probe;'])
-        result=run(base[:-1]+['sko_probe','-c',SQL])
+        sql_file=inside/'synthetic.sql';sql_file.write_text(SQL)
+        result=run(base[:-1]+['sko_probe','-f',sql_file])
         parse_flags(result.stdout)
         (inside/'synthetic-proof.json').write_text(result.stdout)
         run(base+['-c','DROP DATABASE sko_probe;'])
