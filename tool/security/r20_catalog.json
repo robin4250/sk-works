@@ -1,0 +1,62 @@
+[
+  {
+    "nspname": "private",
+    "proname": "enqueue_notification",
+    "args": "p_company_id uuid, p_recipient_user_id uuid, p_kind text, p_title text, p_body text, p_action_key text, p_action_id uuid",
+    "body_md5": "260ef8dc60ec1917cc0c8dc85ea52872",
+    "definition": "CREATE OR REPLACE FUNCTION private.enqueue_notification(p_company_id uuid, p_recipient_user_id uuid, p_kind text, p_title text, p_body text DEFAULT NULL::text, p_action_key text DEFAULT NULL::text, p_action_id uuid DEFAULT NULL::uuid)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'private', 'pg_temp'\nAS $function$\ndeclare\n  v_id uuid;\nbegin\n  insert into public.app_notifications(\n    company_id,\n    recipient_user_id,\n    kind,\n    title,\n    body,\n    action_key,\n    action_id\n  )\n  values(\n    p_company_id,\n    p_recipient_user_id,\n    coalesce(nullif(trim(p_kind), ''), 'info'),\n    p_title,\n    p_body,\n    p_action_key,\n    p_action_id\n  )\n  returning id into v_id;\n\n  return v_id;\nend;\n$function$\n",
+    "owner": "postgres",
+    "acl": "{postgres=X/postgres}",
+    "proconfig": [
+      "search_path=public, private, pg_temp"
+    ]
+  },
+  {
+    "nspname": "public",
+    "proname": "invoice_approval_history",
+    "args": "p_invoice_id uuid",
+    "body_md5": "0781e1902a1eb8d6e5b36f644091a9eb",
+    "definition": "CREATE OR REPLACE FUNCTION public.invoice_approval_history(p_invoice_id uuid)\n RETURNS TABLE(actor_name text, action text, created_at timestamp with time zone)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\nbegin\n if auth.uid() is null then raise exception 'authentication required'; end if;\n if not exists(select 1 from public.invoices i join public.company_members cm\n on cm.company_id=i.company_id and cm.user_id=auth.uid() where i.id=p_invoice_id) then raise exception 'invoice not found'; end if;\n return query select case when a.actor_user_id is null then 'システム' else coalesce(nullif(up.display_name,''),'SKOユーザー') end::text,a.action,a.created_at\n from public.invoice_approval_audit a left join public.user_profiles up on up.user_id=a.actor_user_id\n where a.invoice_id=p_invoice_id order by a.created_at desc,a.id;\nend; $function$\n",
+    "owner": "postgres",
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "proconfig": [
+      "search_path=\"\""
+    ]
+  },
+  {
+    "nspname": "public",
+    "proname": "invoice_approval_status_rows",
+    "args": "p_invoice_id uuid",
+    "body_md5": "1e2db926b510083956617e41ff4e9b52",
+    "definition": "CREATE OR REPLACE FUNCTION public.invoice_approval_status_rows(p_invoice_id uuid)\n RETURNS TABLE(approver_user_id uuid, approver_name text, \"position\" integer, status text, approved_at timestamp with time zone, can_current_user_approve boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_uid uuid := auth.uid();\n  v_company_id uuid;\nbegin\n  if v_uid is null then raise exception 'authentication required'; end if;\n\n  select i.company_id into v_company_id\n  from public.invoices i\n  join public.company_members cm\n    on cm.company_id=i.company_id and cm.user_id=v_uid\n  where i.id=p_invoice_id;\n\n  if v_company_id is null then raise exception 'invoice not found'; end if;\n\n  perform private.ensure_invoice_approval_rows(p_invoice_id);\n\n  return query\n  select\n    a.approver_user_id,\n    coalesce(nullif(up.display_name,''),'SKOユーザー')::text,\n    a.position::integer,\n    a.status,\n    a.approved_at,\n    (a.approver_user_id=v_uid and a.status='pending')\n  from public.invoice_approvals a\n  left join public.user_profiles up on up.user_id=a.approver_user_id\n  where a.invoice_id=p_invoice_id\n  order by a.position;\nend;\n$function$\n",
+    "owner": "postgres",
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "proconfig": [
+      "search_path=\"\""
+    ]
+  },
+  {
+    "nspname": "public",
+    "proname": "invoice_approval_status_rows_v2",
+    "args": "p_invoice_id uuid",
+    "body_md5": "b28a4dff38c401d5374e2930d9028540",
+    "definition": "CREATE OR REPLACE FUNCTION public.invoice_approval_status_rows_v2(p_invoice_id uuid)\n RETURNS TABLE(approver_user_id uuid, approver_name text, \"position\" integer, status text, approved_at timestamp with time zone, can_current_user_approve boolean, stamp_role text, display_date date, display_date_mode text, display_date_override date, can_current_user_cancel boolean, can_current_user_edit_display_date boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare cid uuid;\nbegin\n if auth.uid() is null then raise exception 'authentication required'; end if;\n select i.company_id into cid from public.invoices i join public.company_members cm\n on cm.company_id=i.company_id and cm.user_id=auth.uid() where i.id=p_invoice_id;\n if cid is null then raise exception 'invoice not found'; end if;\n return query select a.approver_user_id,coalesce(nullif(up.display_name,''),'SKOユーザー')::text,\n a.position::integer,a.status,a.approved_at,a.approver_user_id=auth.uid() and a.status='pending',\n case when a.position=1 and (select count(*) from public.invoice_approvals b where b.invoice_id=a.invoice_id)>1\n then 'confirmation' else 'approval' end,\n case when a.status<>'approved' then null\n when a.display_date_override is not null then a.display_date_override\n when c.invoice_stamp_date_mode='none' then null\n when c.invoice_stamp_date_mode='closing' then i.billing_period_end\n else (a.approved_at at time zone 'Asia/Tokyo')::date end,\n c.invoice_stamp_date_mode,a.display_date_override,\n a.approver_user_id=auth.uid() and a.status='approved',\n a.status='approved' and (a.approver_user_id=auth.uid() or private.has_company_feature(cid,'can_manage_invoices'))\n from public.invoice_approvals a join public.invoices i on i.id=a.invoice_id\n join public.companies c on c.id=i.company_id left join public.user_profiles up on up.user_id=a.approver_user_id\n where a.invoice_id=p_invoice_id order by a.position;\nend; $function$\n",
+    "owner": "postgres",
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "proconfig": [
+      "search_path=\"\""
+    ]
+  },
+  {
+    "nspname": "private",
+    "proname": "trade_document_source",
+    "args": "p_kind text, p_subject uuid, p_source_revision text",
+    "body_md5": "3c5a2d13cb243f8c9dc7f7ea82e5b428",
+    "definition": "CREATE OR REPLACE FUNCTION private.trade_document_source(p_kind text, p_subject uuid, p_source_revision text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare cid uuid; counter_id uuid; start_day date; end_day date; rev text; st text;\n final_at timestamptz; is_blocked boolean; extra_locked boolean:=false; total bigint; tax bigint; source_snapshot jsonb; counter jsonb;\n company public.companies; role_name text; can_read boolean; can_manage boolean; result jsonb;\nbegin\n if auth.uid() is null or not private.account_access_allowed() then\n  raise exception 'ログインが必要です。' using errcode='42501'; end if;\n if p_kind='payment_certificate' then\n  select company_id,partner_company_id,period_start,period_end,revision::text,status,finalized_at,gross_amount,snapshot,calculation_blocked\n  into cid,counter_id,start_day,end_day,rev,st,final_at,total,source_snapshot,is_blocked\n  from public.payment_certificates where id=p_subject for share;\n elsif p_kind='invoice' then\n  select company_id,customer_id,billing_period_start,billing_period_end,updated_at::text,status,finalized_at,grand_total,invoices.tax,snapshot,calculation_blocked,(approval_finalized_at is not null or invoice_seal_frozen)\n  into cid,counter_id,start_day,end_day,rev,st,final_at,total,tax,source_snapshot,is_blocked,extra_locked\n  from public.invoices where id=p_subject for share;\n else raise exception '書類の種類を確認してください。' using errcode='22023'; end if;\n select role::text into role_name from public.company_members where company_id=cid and user_id=auth.uid();\n if p_kind='invoice' then\n  can_read:=coalesce(private.has_company_feature(cid,'can_view_invoices'),false);\n  can_manage:=coalesce(private.has_company_feature(cid,'can_manage_invoices'),false);\n else\n  can_read:=coalesce(role_name in ('owner','admin','manager'),false);\n  can_manage:=coalesce(role_name in ('owner','admin'),false);\n end if;\n if cid is null or role_name is null or not can_read then\n  raise exception '書類の閲覧権限がありません。' using errcode='42501'; end if;\n if (p_kind='invoice' and rev::timestamptz is distinct from p_source_revision::timestamptz)\n or (p_kind='payment_certificate' and rev is distinct from p_source_revision) then\n  raise exception '元の帳票が更新されています。開き直してください。' using errcode='40001'; end if;\n if start_day is null or end_day is null or date_trunc('month',start_day)<>date_trunc('month',end_day) then\n  raise exception '同じ対象月の帳票が必要です。' using errcode='22023'; end if;\n select * into company from public.companies where id=cid for share;\n if p_kind='payment_certificate' then\n  select jsonb_build_object('name',name,'address',coalesce(address,''),'corporate_number','',\n    'representative_name',coalesce(president_name,'')) into counter\n  from public.partner_companies where id=counter_id and company_id=cid;\n  if jsonb_typeof(source_snapshot->'tax')='number' then tax:=(source_snapshot->>'tax')::bigint; end if;\n else\n  select jsonb_build_object('name',coalesce(nullif(billing_name,''),name),'address',coalesce(billing_address,''),\n    'corporate_number','','representative_name','') into counter\n  from public.customers where id=counter_id and company_id=cid;\n end if;\n if counter is null then raise exception '相手先の会社を確認できません。' using errcode='22023'; end if;\n result:=jsonb_build_object('company_id',cid,'source_revision',rev,\n  'source_fingerprint',md5(jsonb_build_object('company',cid,'counterparty',counter_id,'start',start_day,'end',end_day,'total',total,'tax',tax,'snapshot',case when p_kind='invoice' then source_snapshot-'company_seal_snapshot' else source_snapshot end)::text),'month',to_char(start_day,'YYYY-MM'),\n  'can_manage',can_manage,'template_can_view',case when p_kind='invoice' then can_manage else can_read end,'source_blocked',coalesce(is_blocked,false),'source_locked',st<>'draft' or final_at is not null or coalesce(extra_locked,false),\n  'defaults',jsonb_build_object('version',1,'kind',case when p_kind='invoice' then 'acceptance' else 'order' end,\n   'month',to_char(start_day,'YYYY-MM'),'period_start',date_trunc('month',start_day)::date,\n   'period_end',(date_trunc('month',start_day)+interval '1 month - 1 day')::date,\n   'total_amount_yen',total,'tax_amount_yen',tax,\n   'issuer',jsonb_build_object('name',company.name,'address',coalesce(company.address,''),\n     'corporate_number',coalesce(company.corporate_number,''),'representative_name',''),\n   'counterparty',counter,'company_seal_snapshot',private.document_company_seal_snapshot(null,cid,true)->'company_seal_snapshot',\n   'company_seal_enabled',company.company_seal_enabled));\n return result;\nend $function$\n",
+    "owner": "postgres",
+    "acl": "{postgres=X/postgres}",
+    "proconfig": [
+      "search_path=\"\""
+    ]
+  }
+]
