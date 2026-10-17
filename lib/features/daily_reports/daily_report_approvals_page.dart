@@ -6,9 +6,10 @@ import 'daily_report_repository.dart';
 
 class DailyReportApprovalsPage extends StatefulWidget {
   const DailyReportApprovalsPage({super.key, this.initialRequestId,
-    @visibleForTesting this.repositoryForTesting});
+    this.repositoryForTesting});
 
   final String? initialRequestId;
+  @visibleForTesting
   final DailyReportRepository? repositoryForTesting;
 
   @override
