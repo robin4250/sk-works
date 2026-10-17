@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../auth/account_settings_page.dart';
+import '../auth/account_settings_repository.dart';
 
 import '../notifications/notification_bell.dart';
 import '../referrals/app_referral_personal_entry.dart';
@@ -115,6 +117,19 @@ class _SettingsPageState extends State<SettingsPage> {
     _languageCode = SkoLanguageController.languageCode;
   }
 
+  Widget _accountEntry() => Card(
+    child: ListTile(
+      leading: const Icon(Icons.manage_accounts_outlined),
+      title: const Text('アカウント設定'),
+      subtitle: const Text('ログイン方法・パスワードの設定状況。使い方は右上の？へ'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => AccountSettingsPage(
+          repository: AccountSettingsRepository(SupabaseBackend.client)),
+      )),
+    ),
+  );
+
   Future<void> _setLanguage(String code) async {
     if (_languageCode == code) return;
     setState(() => _languageCode = code);
@@ -155,6 +170,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           const Icon(Icons.cloud_off_outlined, size: 48),
                           const SizedBox(height: 12),
                           Text(_loadError!, textAlign: TextAlign.center),
+                          if (_usesCloud) _accountEntry(),
                           const SizedBox(height: 16),
                           FilledButton(
                             onPressed: _load,
@@ -167,6 +183,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      if (_usesCloud) _accountEntry(),
                       if (_usesCloud)
                         AppReferralPersonalEntry(
                           repository: AppReferralRepository(SupabaseBackend.client),

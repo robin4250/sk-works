@@ -1,0 +1,24 @@
+name: Account settings authentication
+on:
+  pull_request:
+    paths:
+      - lib/features/auth/account_settings_*.dart
+      - lib/features/settings/settings_page.dart
+      - test/account_settings_test.dart
+      - .github/workflows/account-settings-auth.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  account:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/auth/account_settings_repository.dart lib/features/auth/account_settings_page.dart test/account_settings_test.dart
+      - run: flutter test test/account_settings_test.dart --reporter expanded
