@@ -75,9 +75,38 @@ try{
  console.log(`OBSERVED prior signed URL after feature revocation: ${beforeExpiry.status===200?'still usable before expiry (remaining bearer-URL exposure)':'origin refused'}`);
  await new Promise(resolve=>setTimeout(resolve,5000));
  const expired=await signedDownload();assert.ok([400,401,403,404].includes(expired.status),'Actual origin rejects expired signed URL');checks++;
+ // Observe the same issued bearer URL across actual logout; no new session semantics.
+ const issued=await request('/storage/v1/object/sign/worker-documents/'+object,{token:users.own.token,method:'POST',json:{expiresIn:15}});
+ assert.equal(issued.status,200,'Pre-logout signed URL issuance');
+ const value=await issued.json(),logoutRelative=value.signedURL??value.signedUrl;
+ assert.equal(typeof logoutRelative,'string');
+ assert.ok(logoutRelative.startsWith('/object/sign/')||logoutRelative.startsWith('/storage/v1/object/sign/'));
+ const url=new URL(origin+(logoutRelative.startsWith('/storage/v1/')?'':'/storage/v1')+logoutRelative);
+ assert.equal(url.origin,new URL(origin).origin);assert.equal(url.hostname,'127.0.0.1');
+ const jwt=url.searchParams.get('token');assert.equal(typeof jwt,'string');
+ const signedClaims=JSON.parse(Buffer.from(jwt.split('.')[1],'base64url').toString());
+ assert.ok(Number.isSafeInteger(signedClaims.exp)&&signedClaims.exp*1000>Date.now()&&signedClaims.exp*1000<Date.now()+20000,'Short real Storage token expiry');
+ const fetchBytes=async()=>{
+  // No Authorization, apikey, cookies or redirect to another origin.
+  const response=await fetch(url,{cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000)});
+  const body=Buffer.from(await response.arrayBuffer());return {status:response.status,body};
+ };
+ const signedBaseline=await fetchBytes();assert.equal(signedBaseline.status,200,'Issued URL returns bytes before logout');assert.deepEqual(signedBaseline.body,bytes);
+
  const claims=JSON.parse(Buffer.from(users.own.token.split('.')[1],'base64url').toString());assert.ok(typeof claims.session_id==='string');
  r=await request('/auth/v1/logout?scope=local',{token:users.own.token,method:'POST'});assert.ok([200,204].includes(r.status),'Real GoTrue logout');
  assert.equal((await db.query('select count(*)::int n from auth.sessions where id=$1',[claims.session_id])).rows[0].n,0,'Session actually removed');
+ assert.ok(Date.now()+1000<signedClaims.exp*1000,'Post-logout probe must precede expiry');
+ const immediate=await fetchBytes();
+ assert.ok(Date.now()<signedClaims.exp*1000,'Post-logout response must precede expiry');
+ assert.ok([200,400,401,403,404].includes(immediate.status),'Explicit origin result required');
+ if(immediate.status===200){assert.deepEqual(immediate.body,bytes);console.log('LIMITATION issued signed URL after actual logout/session removal: HTTP 200 with exact fixture bytes before expiry; bearer URL remains usable.');}
+ else {assert.notDeepEqual(immediate.body,bytes,'Refused response cannot return protected bytes');console.log('OBSERVED issued signed URL after actual logout/session removal: origin refused before expiry, status='+immediate.status+'; no production revocation guarantee.');}
+ const delay=signedClaims.exp*1000-Date.now()+2500;assert.ok(delay>0&&delay<20000);
+ await new Promise(resolve=>setTimeout(resolve,delay));
+ const logoutExpired=await fetchBytes();assert.ok([400,401,403,404].includes(logoutExpired.status),'Same issued URL must be refused after signed expiry');
+ assert.notDeepEqual(logoutExpired.body,bytes,'Expired response cannot return protected bytes');
+ console.log('PASS actual Storage HTTP: identical issued URL tested before logout, after verified local logout/session removal before expiry, and after expiry; no credentials/URLs logged. LIMITATION: local origin only, no hosted CDN/cache purge or production equivalence.');
  const oldJwtResponse=await download(users.own.token);assert.ok([200,400,401,403,404].includes(oldJwtResponse.status));await oldJwtResponse.arrayBuffer();
  console.log(`OBSERVED old access JWT after actual logout/session removal: ${oldJwtResponse.status===200?'still permits Storage until JWT expiry/current guard allows (remaining gap)':'Storage refused'}`);
  r=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',json:{refresh_token:users.own.refresh}});assert.ok([400,401,403].includes(r.status),'Logged-out refresh token denied');checks++;
