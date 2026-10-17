@@ -77,6 +77,23 @@ try{
   };
   assert.equal((await read('public.invoices',id(2))).length,2);count++;
   await db.exec(await fs.readFile(new URL('./r19_candidate.sql.review-only',import.meta.url),'utf8'));
+  const helpers=(await db.query(`select p.proname,p.prosecdef,p.proconfig::text,
+    pg_get_userbyid(p.proowner) owner,
+    has_function_privilege('anon',p.oid,'EXECUTE') anon_exec,
+    has_function_privilege('authenticated',p.oid,'EXECUTE') auth_exec
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='private' and p.proname in
+    ('r19_master','r19_group_allowed','r19_invoice_allowed','r19_request_allowed','r19_notice_allowed','r19_file_allowed')
+    order by p.proname`)).rows;
+  assert.equal(helpers.length,6);count++;
+  for(const helper of helpers){
+    assert.equal(helper.prosecdef,true);assert.equal(helper.anon_exec,false);
+    assert.equal(helper.auth_exec,true);assert.equal(helper.owner,'postgres');
+    assert.match(helper.proconfig,/search_path=/);count++;
+  }
+  await db.exec('set role authenticated');
+  try{await assert.rejects(db.query('select * from private.line_invoice_submissions'));count++;}
+  finally{await db.exec('reset role');}
   for(const actor of [id(2),id(4)])for(const table of tables){
     const rows=await read(table,actor);assert.ok(!rows.some(r=>[id(21),id(31)].includes(r.id)));count++;
     assert.ok(rows.some(r=>r.id===id(20)));count++;
