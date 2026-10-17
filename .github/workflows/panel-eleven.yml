@@ -1,0 +1,31 @@
+name: Panel eleven isolated contract
+on:
+  pull_request:
+    paths:
+      - 'tool/staged/panel_eleven.sql.review-only'
+      - 'tool/security/panel_eleven_check.mjs'
+      - '.github/workflows/panel-eleven.yml'
+permissions:
+  contents: read
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic_fixture_only
+          POSTGRES_DB: sko_panel_eleven_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/panel-eleven-deps --no-audit --no-fund pg@8.16.3
+      - run: node tool/security/panel_eleven_check.mjs /tmp/panel-eleven-deps/node_modules/pg/lib/index.js
+        env:
+          SKO_PANEL_FIXTURE_URL: postgres://postgres:synthetic_fixture_only@127.0.0.1:5432/sko_panel_eleven_fixture
