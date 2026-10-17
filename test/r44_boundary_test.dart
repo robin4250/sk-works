@@ -19,6 +19,9 @@ String token([String userId=actor])=>['{"alg":"HS256"}',jsonEncode({'sub':userId
 class Fixture {
   String activeActor=actor;
   bool waitForPermission=false;
+  bool waitForStorage=false;
+  final storageStarted=Completer<void>();
+  final storageComplete=Completer<void>();
   final permission=Completer<void>();
   final permissionStarted=Completer<void>();
   final mutations=<String>[];
@@ -43,7 +46,10 @@ class Fixture {
       mutations.add('database');return jsonResponse({'id':'qualification','worker_id':worker,...(jsonDecode(request.body) as Map<String,dynamic>)},request);
     }
     if(path.contains('/storage/v1/object/') && !path.contains('/object/sign/')){
-      mutations.add('storage');return jsonResponse({'Key':'qualification-certificates/synthetic-only.jpg'},request);
+      mutations.add('storage');
+      if(!storageStarted.isCompleted)storageStarted.complete();
+      if(waitForStorage)await storageComplete.future;
+      return jsonResponse({'Key':'qualification-certificates/synthetic-only.jpg'},request);
     }
     if(path.endsWith('/worker_qualifications')){
       if(!rowStarted.isCompleted)rowStarted.complete();
@@ -58,7 +64,7 @@ class Fixture {
     throw StateError('Unexpected synthetic request: $path');
   }));
   Future<void> login()=>client.auth.signInWithPassword(email:'fixture@example.invalid',password:'synthetic-only').then((_){});
-  Future<void> close()async{if(!permission.isCompleted)permission.complete();if(!rows.isCompleted)rows.complete();if(!signed.isCompleted)signed.complete();await client.dispose();}
+  Future<void> close()async{if(!storageComplete.isCompleted)storageComplete.complete();if(!permission.isCompleted)permission.complete();if(!rows.isCompleted)rows.complete();if(!signed.isCompleted)signed.complete();await client.dispose();}
 }
 
 void main(){
@@ -173,6 +179,28 @@ void main(){
     final f=Fixture();addTearDown(f.close);await f.login();f.rows.complete();
     await QualificationCertificateRepository.forTesting(f.client).uploadCertificate(qualificationId:'qualification',workerId:worker,bytes:Uint8List.fromList([1,2]),originalFilename:'synthetic.jpg');
     expect(f.mutations,['storage','database']);
+  });
+
+  test('permission response after logout cannot dispatch a removal',()async{
+    final f=Fixture();addTearDown(f.close);await f.login();f.waitForPermission=true;
+    final pending=QualificationCertificateRepository.forTesting(f.client).removeCertificate(qualificationId:'qualification',storagePath:'synthetic.jpg');
+    await f.permissionStarted.future;final checked=expectLater(pending,throwsStateError);
+    await f.client.auth.signOut(scope:SignOutScope.local);f.permission.complete();await checked;
+    expect(f.mutations,isEmpty);
+  });
+  test('same actor token refresh preserves a pending legitimate upload',()async{
+    final f=Fixture();addTearDown(f.close);await f.login();f.rows.complete();f.waitForPermission=true;
+    final pending=QualificationCertificateRepository.forTesting(f.client).uploadCertificate(qualificationId:'qualification',workerId:worker,bytes:Uint8List.fromList([1,2]),originalFilename:'synthetic.jpg');
+    await f.permissionStarted.future;await f.client.auth.refreshSession();f.permission.complete();await pending;
+    expect(f.mutations,['storage','database']);
+  });
+  test('logout after Storage dispatch suppresses later DB update without cleanup',()async{
+    final f=Fixture();addTearDown(f.close);await f.login();f.rows.complete();f.waitForStorage=true;
+    final pending=QualificationCertificateRepository.forTesting(f.client).uploadCertificate(qualificationId:'qualification',workerId:worker,bytes:Uint8List.fromList([1,2]),originalFilename:'synthetic.jpg');
+    await f.storageStarted.future;final checked=expectLater(pending,throwsStateError);
+    await f.client.auth.signOut(scope:SignOutScope.local);await f.login();f.storageComplete.complete();await checked;
+    expect(f.mutations,['storage']);
+    expect(f.calls.where((path)=>path.contains('delete')),isEmpty);
   });
 
 }
