@@ -1,0 +1,58 @@
+-- REVIEW ONLY. Ordinary submission source/calculations remain unchanged.
+begin;
+set local lock_timeout='5s';set local statement_timeout='30s';
+do $preflight$begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.submit_past_attendance_request(jsonb,text,jsonb)') and md5(prosrc)='3b8a6b1d701c110910f8f6c0cc6bd0db' and prosecdef and pg_get_userbyid(proowner)='postgres' and proconfig=array['search_path=public, private, pg_temp']) then raise exception 'Ordinary submission prerequisite drift' using errcode='55000';end if;
+ if exists(select 1 from(values('public.attendance_correction_requests'),('public.attendance_correction_items'))t(n) where not coalesce((select relrowsecurity from pg_class where oid=to_regclass(n)),false))then raise exception 'Existing RLS unavailable' using errcode='55000';end if;
+end $preflight$;
+create table private.r28_context(xact_id bigint not null,backend_id integer not null,actor_id uuid not null,company_id uuid not null,request_id uuid unique,primary key(xact_id,backend_id));
+alter table private.r28_context enable row level security;
+revoke all on table private.r28_context from public,anon,authenticated,service_role;
+create function private.r28_capture() returns trigger language plpgsql security definer set search_path='' as $$
+declare ctx private.r28_context;
+begin
+ select * into ctx from private.r28_context where xact_id=txid_current() and backend_id=pg_backend_pid() for update;
+ if not found then return new;end if;
+ if private.r19_master() is distinct from true or ctx.actor_id is distinct from auth.uid()
+ or ctx.company_id is distinct from new.company_id or new.requested_by is distinct from ctx.actor_id
+ or new.request_kind is distinct from 'past_attendance' or new.status is distinct from 'submitted'
+ or new.id is null or ctx.request_id is not null then raise exception 'Protected request context mismatch' using errcode='42501';end if;
+ update private.r28_context c set request_id=new.id where c.xact_id=ctx.xact_id and c.backend_id=ctx.backend_id;
+ return new;
+end$$;
+revoke all on function private.r28_capture() from public,anon,authenticated,service_role;
+create trigger r28_capture_before_request before insert on public.attendance_correction_requests for each row execute function private.r28_capture();
+create policy r28_boundary on public.attendance_correction_requests as restrictive for all to authenticated using(private.r19_request_allowed(id)) with check(private.r19_request_allowed(id));
+create policy r28_boundary on public.attendance_correction_items as restrictive for all to authenticated using(private.r19_request_allowed(request_id)) with check(private.r19_request_allowed(request_id));
+do $patch$
+declare target record;f record;body text;anchor integer;needle text;
+begin
+ for target in select * from(values
+ ('private.r19_request_allowed(uuid)','2b852954120155743ff51c2f35566c7d','request'),
+ ('private.r20_linked_notice(text,uuid)','95f865e5795dd138d2d80a8b9d03e1b3','notice'),
+ ('private.submit_line_attendance(uuid,uuid,integer,text,jsonb,uuid[])','fbfe8412eae55abb32a95777ec5b5e1d','source')
+ )t(signature,expected_hash,kind)loop
+ select p.oid,p.prosrc,p.proowner,p.proacl,p.proconfig,p.prosecdef,pg_get_functiondef(p.oid) definition into f from pg_proc p where p.oid=to_regprocedure(target.signature);
+ if not found or md5(f.prosrc)<>target.expected_hash or not f.prosecdef or pg_get_userbyid(f.proowner)<>'postgres' or f.proconfig is distinct from array['search_path=""']::text[] then raise exception 'Target definition drift' using errcode='55000';end if;
+ body:=f.prosrc;
+ if target.kind='request' then
+ body:=replace(body,'select not exists','select (not exists(select 1 from private.r28_context where request_id=r and xact_id=txid_current() and backend_id=pg_backend_pid()) and not exists');
+ body:=replace(body,E'\nor private.r19_master()',E')\nor private.r19_master()');
+ elsif target.kind='notice' then
+ body:=replace(body,E'when ''attendance_correction_request'' then\n',E'when ''attendance_correction_request'' then\nexists(select 1 from private.r28_context where request_id=i and xact_id=txid_current() and backend_id=pg_backend_pid()) or ');
+ else
+ anchor:=strpos(body,E'\nbegin\n');if anchor=0 then raise exception 'Entry layout drift' using errcode='55000';end if;
+ body:=substr(body,1,anchor+6)||E'\n if private.r19_master() is distinct from true then raise exception ''protected creation unavailable'' using errcode=''42501'';end if;'||substr(body,anchor+7);
+ needle:=' request_id:=public.submit_past_attendance_request(items,p_signer_name,p_signature_json);';
+ if (length(body)-length(replace(body,needle,'')))/length(needle)<>1 then raise exception 'Invocation layout drift' using errcode='55000';end if;
+ body:=replace(body,needle,E' insert into private.r28_context(xact_id,backend_id,actor_id,company_id) values(txid_current(),pg_backend_pid(),auth.uid(),cid);\n'||needle);
+ needle:=' result:=jsonb_build_object(''request_id'',request_id,''status'',''submitted'',''item_count'',jsonb_array_length(items));';
+ if (length(body)-length(replace(body,needle,'')))/length(needle)<>1 then raise exception 'Completion layout drift' using errcode='55000';end if;
+ body:=replace(body,needle,E' if not exists(select 1 from private.r28_context c join private.line_attendance_submissions s on s.request_id=c.request_id and s.company_id=c.company_id where c.xact_id=txid_current() and c.backend_id=pg_backend_pid() and c.actor_id=auth.uid() and c.company_id=cid) then raise exception ''Protected lineage completion unavailable'' using errcode=''55000'';end if;\n delete from private.r28_context where xact_id=txid_current() and backend_id=pg_backend_pid() and actor_id=auth.uid() and company_id=cid;\n'||needle);
+ end if;
+ if body=f.prosrc or strpos(f.definition,f.prosrc)=0 then raise exception 'Body patch unavailable' using errcode='55000';end if;
+ execute replace(f.definition,f.prosrc,body);
+ if not exists(select 1 from pg_proc p where p.oid=f.oid and p.proowner=f.proowner and p.proacl is not distinct from f.proacl and p.proconfig is not distinct from f.proconfig and p.prosecdef=f.prosecdef)then raise exception 'Target metadata changed' using errcode='55000';end if;
+ end loop;
+end $patch$;
+commit;
