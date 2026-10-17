@@ -1,0 +1,38 @@
+[
+  {
+    "nspname": "public",
+    "proname": "approve_invoice",
+    "args": "p_invoice_id uuid",
+    "body_md5": "5bc1e283ca727de24f5cf12fac15884c",
+    "definition": "CREATE OR REPLACE FUNCTION public.approve_invoice(p_invoice_id uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare uid uuid:=auth.uid(); cid uuid; final boolean;\nbegin\n if uid is null then raise exception 'authentication required'; end if;\n select i.company_id into cid from public.invoices i join public.company_members cm\n on cm.company_id=i.company_id and cm.user_id=uid where i.id=p_invoice_id;\n if cid is null then raise exception 'invoice not found'; end if;\n perform 1 from public.companies where id=cid for update;\n perform 1 from public.invoices where id=p_invoice_id and company_id=cid for update;\n if not found then raise exception 'invoice not found'; end if;\n perform private.ensure_invoice_approval_rows(p_invoice_id);\n if not exists(select 1 from public.invoice_approvals where invoice_id=p_invoice_id and approver_user_id=uid) then\n raise exception 'invoice approver permission required'; end if;\n update public.invoice_approvals set status='approved',approved_at=clock_timestamp()\n where invoice_id=p_invoice_id and approver_user_id=uid and status='pending';\n if found then\n insert into public.invoice_approval_audit(invoice_id,company_id,actor_user_id,action)\n values(p_invoice_id,cid,uid,'approved'); end if;\n select count(*)>0 and bool_and(status='approved') into final from public.invoice_approvals where invoice_id=p_invoice_id;\n if final then update public.invoices set approval_finalized_at=coalesce(approval_finalized_at,clock_timestamp()) where id=p_invoice_id; end if;\n return coalesce(final,false);\nend; $function$\n",
+    "owner": "postgres",
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "proconfig": [
+      "search_path=\"\""
+    ]
+  },
+  {
+    "nspname": "public",
+    "proname": "cancel_invoice_approval",
+    "args": "p_invoice_id uuid",
+    "body_md5": "230e478080979e8efc2719a5f639b6b5",
+    "definition": "CREATE OR REPLACE FUNCTION public.cancel_invoice_approval(p_invoice_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare cid uuid;\nbegin\n if auth.uid() is null then raise exception 'authentication required'; end if;\n select i.company_id into cid from public.invoices i join public.company_members cm\n on cm.company_id=i.company_id and cm.user_id=auth.uid() where i.id=p_invoice_id;\n if cid is null then raise exception 'invoice not found'; end if;\n perform 1 from public.companies where id=cid for update;\n perform 1 from public.invoices where id=p_invoice_id and company_id=cid for update;\n if not found then raise exception 'invoice not found'; end if;\n if not exists(select 1 from public.invoice_approvals where invoice_id=p_invoice_id and approver_user_id=auth.uid()) then\n raise exception 'invoice approver permission required'; end if;\n update public.invoice_approvals set status='pending',approved_at=null,display_date_override=null\n where invoice_id=p_invoice_id and approver_user_id=auth.uid() and status='approved';\n if found then\n update public.invoices set approval_finalized_at=null where id=p_invoice_id;\n insert into public.invoice_approval_audit(invoice_id,company_id,actor_user_id,action)\n values(p_invoice_id,cid,auth.uid(),'cancelled'); end if;\nend; $function$\n",
+    "owner": "postgres",
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "proconfig": [
+      "search_path=\"\""
+    ]
+  },
+  {
+    "nspname": "public",
+    "proname": "set_invoice_stamp_display_date",
+    "args": "p_invoice_id uuid, p_approver_user_id uuid, p_display_date date",
+    "body_md5": "1602e388c83dce224ac7ca5ebce4f6a6",
+    "definition": "CREATE OR REPLACE FUNCTION public.set_invoice_stamp_display_date(p_invoice_id uuid, p_approver_user_id uuid, p_display_date date)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare cid uuid;\nbegin\n if auth.uid() is null then raise exception 'authentication required'; end if;\n select i.company_id into cid from public.invoices i join public.company_members cm\n on cm.company_id=i.company_id and cm.user_id=auth.uid() where i.id=p_invoice_id;\n if cid is null then raise exception 'invoice not found'; end if;\n perform 1 from public.companies where id=cid for update;\n perform 1 from public.invoices where id=p_invoice_id and company_id=cid for update;\n if not found then raise exception 'invoice not found'; end if;\n if p_approver_user_id<>auth.uid() and not private.has_company_feature(cid,'can_manage_invoices') then\n raise exception 'invoice stamp permission required'; end if;\n update public.invoice_approvals set display_date_override=p_display_date\n where invoice_id=p_invoice_id and approver_user_id=p_approver_user_id and status='approved'\n and display_date_override is distinct from p_display_date;\n if found then insert into public.invoice_approval_audit(invoice_id,company_id,actor_user_id,action)\n values(p_invoice_id,cid,auth.uid(),'display_date_changed'); end if;\nend; $function$\n",
+    "owner": "postgres",
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "proconfig": [
+      "search_path=\"\""
+    ]
+  }
+]
