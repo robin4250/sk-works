@@ -41,7 +41,7 @@ jobs:
           if r.returncode!=2:
               print(r.stderr[-4000:])
               for pattern in ('p36-context-*/private-p36-error.json','p36-read-*/private-read-errors.log','entry-*/private-*-errors.log','entry-native-*/inside/server.log'):
-                  for log in parent.glob(pattern):print('Synthetic diagnostic: '+log.read_text(errors='replace')[-5000:])
+                  for log in parent.glob(pattern):print('Synthetic diagnostic: '+log.read_text(errors='replace')[-131072 if log.name=='private-p36-error.json' else -5000:])
           assert r.returncode==2,'P36 synthetic read/native boundary incomplete'
           reports=list(parent.glob('p36-read-*/private-runtime-inventory.json'))
           assert len(reports)==1,'read/native evidence missing'
