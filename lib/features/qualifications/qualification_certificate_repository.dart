@@ -33,6 +33,28 @@ class QualificationCertificateRepository {
   String? get currentUserId => _client.auth.currentUser?.id;
   Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
 
+  Future<T> _withActor<T>(Future<T> Function(void Function()) action) async {
+    final actor = currentUserId;
+    if (actor == null) throw StateError('SKOへのログインが必要です。');
+    var revoked = false;
+    final subscription = authChanges.listen((state) {
+      if (state.session?.user.id != actor) revoked = true;
+    }, onError: (Object error) => revoked = true);
+    void check() {
+      if (revoked || currentUserId != actor) {
+        throw StateError('ログイン状態が変わりました。');
+      }
+    }
+    try {
+      check();
+      final result = await action(check);
+      check();
+      return result;
+    } finally {
+      await subscription.cancel();
+    }
+  }
+
   Future<void> _requireManagePeople() async {
     if (!await canManageCertificates()) {
       throw StateError('資格証を変更する権限がありません。');
@@ -131,9 +153,11 @@ class QualificationCertificateRepository {
     required String workerId,
     required Uint8List bytes,
     required String originalFilename,
-  }) async {
+  }) => _withActor((check) async {
     await _requireManagePeople();
+    check();
     final companyId = await _companyId();
+    check();
     final existingRows = await _client
         .from('worker_qualifications')
         .select('attachment_path')
@@ -141,6 +165,7 @@ class QualificationCertificateRepository {
         .eq('id', qualificationId)
         .eq('worker_id', workerId)
         .limit(1);
+    check();
     if (existingRows.isEmpty) {
       throw StateError('資格情報が見つかりません。');
     }
@@ -157,6 +182,7 @@ class QualificationCertificateRepository {
           bytes,
           fileOptions: const FileOptions(upsert: false),
         );
+    check();
 
     try {
       final updated = await _client
@@ -172,6 +198,7 @@ class QualificationCertificateRepository {
           )
           .select()
           .single();
+    check();
 
       // Old objects can be referenced by company exchange snapshots.
       // Retain them until a server-side global reference check proves unused.
@@ -180,16 +207,18 @@ class QualificationCertificateRepository {
       // A timeout may follow a committed update. Never delete this object.
       rethrow;
     }
-  }
+  });
 
   Future<Map<String, dynamic>> uploadCertificateBack({
     required String qualificationId,
     required String workerId,
     required Uint8List bytes,
     required String originalFilename,
-  }) async {
+  }) => _withActor((check) async {
     await _requireManagePeople();
+    check();
     final companyId = await _companyId();
+    check();
     final existingRows = await _client
         .from('worker_qualifications')
         .select('attachment_back_path')
@@ -197,6 +226,7 @@ class QualificationCertificateRepository {
         .eq('id', qualificationId)
         .eq('worker_id', workerId)
         .limit(1);
+    check();
     if (existingRows.isEmpty) {
       throw StateError('資格情報が見つかりません。');
     }
@@ -215,6 +245,7 @@ class QualificationCertificateRepository {
           bytes,
           fileOptions: const FileOptions(upsert: false),
         );
+    check();
 
     try {
       final updated = await _client
@@ -230,6 +261,7 @@ class QualificationCertificateRepository {
           )
           .select()
           .single();
+    check();
 
       // Old objects can be referenced by company exchange snapshots.
       // Retain them until a server-side global reference check proves unused.
@@ -238,14 +270,16 @@ class QualificationCertificateRepository {
       // A timeout may follow a committed update. Never delete this object.
       rethrow;
     }
-  }
+  });
 
   Future<Map<String, dynamic>> removeCertificateBack({
     required String qualificationId,
     required String storagePath,
-  }) async {
+  }) => _withActor((check) async {
     await _requireManagePeople();
+    check();
     final companyId = await _companyId();
+    check();
     final updated = await _client
         .from('worker_qualifications')
         .update({'attachment_back_path': null})
@@ -254,8 +288,9 @@ class QualificationCertificateRepository {
         .eq('attachment_back_path', storagePath)
         .select()
         .single();
+    check();
     return Map<String, dynamic>.from(updated);
-  }
+  });
 
   Future<String> createSignedUrl(String storagePath) async {
     final actor = currentUserId;
@@ -278,9 +313,11 @@ class QualificationCertificateRepository {
   Future<Map<String, dynamic>> removeCertificate({
     required String qualificationId,
     required String storagePath,
-  }) async {
+  }) => _withActor((check) async {
     await _requireManagePeople();
+    check();
     final companyId = await _companyId();
+    check();
     final updated = await _client
         .from('worker_qualifications')
         .update({'attachment_path': null})
@@ -289,8 +326,9 @@ class QualificationCertificateRepository {
         .eq('attachment_path', storagePath)
         .select()
         .single();
+    check();
     return Map<String, dynamic>.from(updated);
-  }
+  });
 
   static List<String> extraPaths(Map<String, dynamic> row) =>
       (row['attachment_extra_paths'] as List? ?? const [])
@@ -304,9 +342,11 @@ class QualificationCertificateRepository {
     required Uint8List bytes,
     required String originalFilename,
     String? replacingPath,
-  }) async {
+  }) => _withActor((check) async {
     await _requireManagePeople();
+    check();
     final companyId = await _companyId();
+    check();
     final existing = await _client
         .from('worker_qualifications')
         .select()
@@ -314,6 +354,7 @@ class QualificationCertificateRepository {
         .eq('worker_id', workerId)
         .eq('id', qualificationId)
         .single();
+    check();
     if (!existing.containsKey('attachment_extra_paths')) {
       throw StateError('追加写真の保存は準備中です。表面・裏面は引き続き確認できます。');
     }
@@ -331,6 +372,7 @@ class QualificationCertificateRepository {
           bytes,
           fileOptions: const FileOptions(upsert: false),
         );
+    check();
     if (replacingPath == null) {
       paths.add(path);
     } else {
@@ -346,22 +388,26 @@ class QualificationCertificateRepository {
         .eq('attachment_extra_paths', existing['attachment_extra_paths'] ?? [])
         .select()
         .single();
+    check();
     // Preserve old objects referenced by shared qualification snapshots.
     return Map<String, dynamic>.from(updated);
-  }
+  });
 
   Future<Map<String, dynamic>> removeExtraCertificate({
     required String qualificationId,
     required String storagePath,
-  }) async {
+  }) => _withActor((check) async {
     await _requireManagePeople();
+    check();
     final companyId = await _companyId();
+    check();
     final existing = await _client
         .from('worker_qualifications')
         .select()
         .eq('company_id', companyId)
         .eq('id', qualificationId)
         .single();
+    check();
     final paths = extraPaths(existing);
     if (!paths.remove(storagePath)) {
       throw StateError('写真が更新されています。再読み込みしてください。');
@@ -374,8 +420,9 @@ class QualificationCertificateRepository {
         .eq('attachment_extra_paths', existing['attachment_extra_paths'] ?? [])
         .select()
         .single();
+    check();
     return Map<String, dynamic>.from(updated);
-  }
+  });
 
   String _extensionOf(String filename) {
     final lastDot = filename.lastIndexOf('.');
