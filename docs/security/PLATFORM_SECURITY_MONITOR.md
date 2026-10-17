@@ -42,3 +42,23 @@ The auth `master_security` scope gate is global, not per-company or per-user. Ex
 Read-only aggregate evidence from 2026-10-16 found UUID identifiers and DateTime64(9) timestamps for all three platform sources. A timestamp-only serializer sample had six fractional digits, T separator and no Z; the existing adapter already accepted that sample. This change is compatibility hardening, not evidence that current production collection fails. No raw event, actor, ID, URL or credential was obtained for these fixtures.
 
 The adapter now accepts one through nine fractional digits in UTC output. Occurrence timestamps are normalized to milliseconds for the existing storage/UI contract; nanosecond precision is not retained. Distinct source IDs remain distinct HMAC event identities even within one millisecond. SQL performs exact half-open filtering before normalization. A real disposable ClickHouse UUID/DateTime64(9) fixture verifies records one nanosecond before start/end, exact endpoints and source projections. Management API authorization/serialization is still fixture transport; this does not enable or deploy production collection.
+
+## Read-only field metadata evidence — 2026-10-17
+
+The owner/root lane supplied the following `query_logs` results for project `ztktgquxvcxcjxtluspu`. Only column types and fixed-key existence aggregates were returned; no log ID, timestamp value, path, status value, SQLSTATE value, message, IP, identity, credential or request/response body was retrieved for this check. This documentation change makes no further live query and changes no collector, schema, RLS, Auth, permission or rollout control.
+
+The observed top-level types were `id UUID`, `timestamp DateTime64(9)`, `source String`, and `log_attributes Map(String,String)`. The type observation does not establish the serializer's timestamp text format, timezone behavior or actual field values.
+
+The fixed `countIf(mapContains(...))` aggregates used the same UTC window as the earlier source-presence evidence in [Issue #273 comment 6230901669](https://github.com/robin4250/sk-works/issues/273#issuecomment-6230901669): `2026-10-16T06:46:30Z` to `2026-10-17T06:46:30Z`.
+
+| Source | `response.status_code` key present | `request.path` key present | `parsed.sql_state_code` key present |
+| --- | ---: | ---: | ---: |
+| `edge_logs` | 14169 | 14169 | 0 |
+| `postgres_logs` | 0 | 0 | 188 |
+| `auth_audit_logs` | 0 | 0 | 0 |
+
+These counts confirm the three existing adapter keys occurred in that historical window. Key presence does not prove a nonempty, parseable or trustworthy value, establish the total source row count or all-row coverage, or classify an attack. The zero counts are window-specific; they do not prove those keys can never occur in those sources. Auth audit remains `unknown` with no inferred actor or outcome.
+
+A separate aggregate for `2026-10-17T08:20:00Z` to `2026-10-17T08:35:00Z` returned no source rows for these three sources. The earlier historical observation therefore does not establish continuing source availability. An empty bounded result is not evidence of a running collector, uninterrupted coverage or absence of attacks.
+
+The earlier attribute-discovery query's backend error remains a recorded failure; these narrower fixed-key aggregates resolve only the stated key-presence question. Live adapter value/serialization compatibility, scheduled collection, ingestion, retention, trusted source attribution, UI connection, notifications and operational continuity remain unverified. No monitoring was enabled, no external email was sent, and operator/Mac execution remains subject to the existing Release-result and approval gates.
