@@ -49,7 +49,13 @@ def load_guard(path):
 def native_profile(guard, inside, endpoint):
     # macOS PostgreSQL retains a small SysV header even with mmap shared memory.
     # This synthetic-only variant leaves every network and filesystem rule intact.
-    return guard.profile(inside, endpoint) + '(allow ipc-sysv-shm)\n'
+    return guard.profile(inside, endpoint) + '(allow ipc-sysv-shm)\n(allow ipc-sysv-sem)\n'
+
+
+def require_stopped(run, pg_ctl, data):
+    run([pg_ctl,'-D',data,'-m','fast','-w','-t','20','stop'])
+    status=run([pg_ctl,'-D',data,'status'],check=False)
+    if status.returncode!=3:raise ValueError('shutdown not established')
 
 
 def clean_environment(inside, source=os.environ):
@@ -109,7 +115,7 @@ def main():
         if not all(p.is_absolute() and p.is_file() for p in binaries.values()):
             raise ValueError('explicit native PostgreSQL tools required')
         base_profile=guard.profile
-        guard.profile=lambda inside,endpoint: base_profile(inside,endpoint)+'(allow ipc-sysv-shm)\n'
+        guard.profile=lambda inside,endpoint: base_profile(inside,endpoint)+'(allow ipc-sysv-shm)\n(allow ipc-sysv-sem)\n'
         try:kernel_evidence=verify_host(guard,parent)
         finally:guard.profile=base_profile
         os.umask(0o077)
@@ -156,10 +162,8 @@ def main():
         parse_flags(result.stdout)
         (inside/'synthetic-proof.json').write_text(result.stdout)
         run(base+['-c','DROP DATABASE sko_probe;'])
-        run([binaries['pg_ctl'],'-D',data,'-m','fast','-w','-t','20','stop'])
+        require_stopped(run,binaries['pg_ctl'],data)
         shutdown=True;started=False
-        status=run([binaries['pg_ctl'],'-D',data,'status'],check=False)
-        if status.returncode!=3:raise ValueError('shutdown not established')
         report={'postgres_17_same_profile_started':True,'socket_only':True,'synthetic_role_table_rollback':True,
                 'clean_shutdown':True,'production_connections':0,'production_writes':0,
                 'existing_archive_read':False,'archived_sql_executed':False,'full_restoration_verified':False,
