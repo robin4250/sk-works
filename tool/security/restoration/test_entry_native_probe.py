@@ -4,6 +4,7 @@ import io
 from pathlib import Path
 import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import patch
 
@@ -12,6 +13,12 @@ native=importlib.util.module_from_spec(spec);spec.loader.exec_module(native)
 
 
 class NativeTests(unittest.TestCase):
+    def test_failed_kernel_probe_blocks_native_work_and_restores_arguments(self):
+        original=sys.argv
+        guard=types.SimpleNamespace(main=lambda:1)
+        with self.assertRaises(ValueError):native.verify_host(guard,Path('/private/example'))
+        self.assertIs(sys.argv,original)
+
     def test_no_probe_is_inert(self):
         with patch.object(sys,'argv',['native','--pg-bin','/unused']),patch.object(native.subprocess,'Popen') as run,contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(native.main(),2)

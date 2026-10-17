@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Synthetic PostgreSQL 17 sandbox probe. No existing archive or DB is read."""
 import argparse
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -57,6 +59,25 @@ def parse_flags(text):
         raise ValueError('native synthetic proof incomplete')
 
 
+def verify_host(guard,parent):
+    previous=sys.argv
+    output=io.StringIO()
+    try:
+        sys.argv=['entry-isolation','--probe','--output-parent',str(parent)]
+        with contextlib.redirect_stdout(output):code=guard.main()
+    finally:sys.argv=previous
+    if code!=2:raise ValueError('same-host kernel probe failed')
+    lines=output.getvalue().splitlines()
+    matches=[line[len('Private evidence: '):] for line in lines if line.startswith('Private evidence: ')]
+    if len(matches)!=1:raise ValueError('same-host kernel evidence missing')
+    evidence=Path(matches[0])
+    if evidence.parent!=parent.resolve():raise ValueError('same-host evidence boundary mismatch')
+    report=json.loads((evidence/'private-probe.json').read_text())
+    keys=('inside_write','outside_write_denied','ipv4_outbound_denied','ipv6_outbound_denied','unix_socket_success')
+    if any(report.get(k) is not True for k in keys):raise ValueError('same-host kernel proof incomplete')
+    return evidence
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--probe',action='store_true')
@@ -81,6 +102,7 @@ def main():
         binaries={n:args.pg_bin/n for n in ('initdb','pg_ctl','postgres','psql')}
         if not all(p.is_absolute() and p.is_file() for p in binaries.values()):
             raise ValueError('explicit native PostgreSQL tools required')
+        kernel_evidence=verify_host(guard,parent)
         os.umask(0o077)
         evidence=Path(tempfile.mkdtemp(prefix='entry-native-',dir=str(parent))).resolve();evidence.chmod(0o700)
         inside=evidence/'inside';inside.mkdir(mode=0o700)
@@ -132,7 +154,8 @@ def main():
         report={'postgres_17_same_profile_started':True,'socket_only':True,'synthetic_role_table_rollback':True,
                 'clean_shutdown':True,'production_connections':0,'production_writes':0,
                 'existing_archive_read':False,'archived_sql_executed':False,'full_restoration_verified':False,
-                'kernel_probe_on_this_host_required':True,'complete_egress_proof':False}
+                'same_host_kernel_probe_verified':True,'kernel_evidence':str(kernel_evidence),
+                'complete_egress_proof':False}
         (evidence/'private-native-report.json').write_text(json.dumps(report,indent=2))
         print('PASS: native PostgreSQL 17 under fixed sandbox; new socket-only cluster; synthetic role/table access and rollback; clean shutdown.')
         print('Existing archives/data untouched. Archived SQL/full restoration: NOT verified. Production connections/writes: 0.')
