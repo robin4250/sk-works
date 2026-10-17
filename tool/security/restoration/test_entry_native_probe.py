@@ -46,8 +46,13 @@ class NativeTests(unittest.TestCase):
     def test_native_variant_adds_only_sysv_shared_memory(self):
         original='(deny network*)\n(allow file-write* (subpath fixed))\n'
         guard=types.SimpleNamespace(profile=lambda inside,endpoint:original)
-        self.assertEqual(native.native_profile(guard,Path('/x'),Path('/x/s')),original+'(allow ipc-sysv-shm)\n(allow ipc-sysv-sem)\n')
+        self.assertEqual(native.native_profile(guard,Path('/x'),Path('/x/s')),original+'(allow ipc-sysv-shm)\n(allow ipc-sysv-sem)\n(allow signal (target same-sandbox))\n')
         self.assertEqual(guard.profile(None,None),original)
+
+    def test_sql_file_uses_psql_statement_transactions(self):
+        source=Path(native.__file__).read_text()
+        self.assertIn("['sko_probe','-f',sql_file]",source)
+        self.assertNotIn("['sko_probe','-c',SQL]",source)
 
     def test_shutdown_requires_status_three(self):
         for code in (0,1,2,4):
