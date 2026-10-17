@@ -15,10 +15,11 @@ const actorB = '20000000-0000-0000-0000-000000000002';
 Completer<bool>? pending;
 Completer<bool>? nativePending;
 bool configured = true;
+Completer<bool>? pendingConfigured;
 final requests = <http.Request>[];
-String session(String actor) {
+String session(String actor, {int epoch = 0}) {
   String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value)));
-  return jsonEncode({'access_token': '${part({'alg':'HS256'})}.${part({'sub':actor,'exp':4102444800})}.synthetic',
+  return jsonEncode({'access_token': '${part({'alg':'HS256'})}.${part({'sub':actor,'exp':4102444800,'fixture_epoch':epoch})}.synthetic',
     'refresh_token':'synthetic-only', 'token_type':'bearer', 'expires_in':3600,
     'user':{'id':actor,'aud':'authenticated','created_at':'2026-10-17T00:00:00Z'}});
 }
@@ -29,12 +30,13 @@ Future<void> settle(WidgetTester tester) async {
   }
   await tester.pumpAndSettle();
 }
-Future<void> open(WidgetTester tester, {bool setup = false}) async {
+Future<void> open(WidgetTester tester, {bool setup = false, bool loading = false}) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   await tester.runAsync(() => Supabase.instance.client.auth.setInitialSession(session(actorA)));
   expect(SupabaseBackend.client.auth.currentUser?.id,actorA);
   await tester.pumpWidget(const MaterialApp(home: SecondaryProtectedPage(
     title:'synthetic protected',child:Text('private payload'))));
+  if (loading) {await tester.pump();return;}
   await settle(tester);
   expect(find.text(setup ? '第2パスワードを設定' : '第2認証が必要です'),findsOneWidget,
     reason:tester.widgetList<Text>(find.byType(Text)).map((t)=>t.data).join('|'));
@@ -59,7 +61,7 @@ void main() {
       debug:false,authOptions:const FlutterAuthClientOptions(autoRefreshToken:false,detectSessionInUri:false),
       httpClient:MockClient((request) async {
         expect(request.url.host,'r38-fixture.invalid');requests.add(request);
-        if(request.url.path.endsWith('/secondary_password_configured')) return http.Response(jsonEncode(configured),200,headers:{'content-type':'application/json'},request:request);
+        if(request.url.path.endsWith('/secondary_password_configured')) return http.Response(jsonEncode(pendingConfigured == null ? configured : await pendingConfigured!.future),200,headers:{'content-type':'application/json'},request:request);
         if(request.url.path.endsWith('/set_secondary_password')) return http.Response('null',200,headers:{'content-type':'application/json'},request:request);
         if(request.url.path.endsWith('/verify_secondary_password')) {
           expect(jsonDecode(request.body),{'p_password':'synthetic-secondary'});
@@ -71,7 +73,7 @@ void main() {
   });
   tearDownAll(() async {await Supabase.instance.dispose();});
   setUp(() {
-    requests.clear();pending=null;nativePending=null;configured=true;
+    requests.clear();pending=null;nativePending=null;pendingConfigured=null;configured=true;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('plugins.flutter.io/local_auth'),(call) async {
         if(call.method=='isDeviceSupported'||call.method=='deviceSupportsBiometrics')return true;
@@ -165,5 +167,24 @@ void main() {
     expect(saves.length,1);
     expect(jsonDecode(saves.single.body),{'p_password':'synthetic-new-secondary'});
     expect(find.text('private payload'),findsOneWidget);
+  });
+  testWidgets('token refresh during verification rejects old proof and permits reload and retry',(tester) async {
+    await open(tester);await begin(tester);
+    await tester.runAsync(() => Supabase.instance.client.auth.setInitialSession(session(actorA,epoch:1)));
+    pending!.complete(true);await settle(tester);
+    expect(find.text('private payload'),findsNothing);
+    await tester.tap(find.text('再読み込み'));await settle(tester);
+    await begin(tester);pending!.complete(true);await settle(tester);
+    expect(find.text('private payload'),findsOneWidget);
+  });
+  testWidgets('token refresh during initial status load does not leave an endless spinner',(tester) async {
+    pendingConfigured=Completer<bool>();await open(tester,loading:true);
+    await tester.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:20));});
+    await tester.runAsync(() => Supabase.instance.client.auth.setInitialSession(session(actorA,epoch:2)));
+    pendingConfigured!.complete(true);await settle(tester);pendingConfigured=null;
+    expect(find.byType(CircularProgressIndicator),findsNothing);
+    expect(find.text('private payload'),findsNothing);
+    await tester.tap(find.text('再読み込み'));await settle(tester);
+    expect(find.text('第2認証が必要です'),findsOneWidget);
   });
 }
