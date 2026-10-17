@@ -1,0 +1,27 @@
+-- REVIEW ONLY: R19 helper required. No deployment/migration hook.
+-- Retains the original business body; linked publication is sealed before it runs.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='30s';
+do $patch$
+declare f record; body text; anchor integer;
+begin
+ select p.oid,p.prosrc,p.proowner,p.proacl,p.proconfig,p.prosecdef,
+ pg_get_functiondef(p.oid) definition into f from pg_proc p
+ where p.oid=to_regprocedure('public.decide_attendance_correction_request(uuid,text,text)');
+ if not found or md5(f.prosrc)<>'87b46c1df058ad8b455bcd843cf7f851'
+ or not f.prosecdef or pg_get_userbyid(f.proowner)<>'postgres'
+ or f.proconfig is distinct from array['search_path=public, private, pg_temp']::text[]
+ or to_regprocedure('private.r19_request_allowed(uuid)') is null then
+ raise exception 'Target or prerequisite drift; review required' using errcode='55000'; end if;
+ anchor:=strpos(f.prosrc,E'\nbegin\n');
+ if anchor=0 or strpos(f.definition,f.prosrc)=0 then
+ raise exception 'Body layout drift' using errcode='55000'; end if;
+ body:=substr(f.prosrc,1,anchor+6)||E'\n if not private.r19_request_allowed(p_request_id) then raise exception ''protected artifact unavailable'' using errcode=''42501''; end if;\n if p_decision is distinct from ''reject'' and exists(select 1 from private.line_attendance_submissions where request_id=p_request_id) then raise exception ''protected publication unavailable'' using errcode=''42501''; end if;'||substr(f.prosrc,anchor+7);
+ execute replace(f.definition,f.prosrc,body);
+ if not exists(select 1 from pg_proc p where p.oid=f.oid and p.proowner=f.proowner
+ and p.proacl is not distinct from f.proacl and p.proconfig is not distinct from f.proconfig
+ and p.prosecdef=f.prosecdef) then
+ raise exception 'Target metadata changed' using errcode='55000'; end if;
+end $patch$;
+commit;
