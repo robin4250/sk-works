@@ -69,6 +69,8 @@ class _DailyReportApprovalsPageState extends State<DailyReportApprovalsPage> {
     // Claim synchronously: even a retained callback cannot submit a second decision.
     if (repository == null || _deciding) return;
     setState(() => _deciding = true);
+    // A retry's result must not wait behind the previous error message.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     try {
       final result = await repository.decideEdit(
