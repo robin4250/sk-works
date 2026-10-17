@@ -1,0 +1,47 @@
+-- REVIEW ONLY. Known analysis groups only; no existing policy/role replacement.
+begin;
+set local lock_timeout='5s';set local statement_timeout='30s';
+do $preflight$begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('private.account_access_allowed()') and md5(prosrc)='aeca25db212c043c472334026bd98724' and prosecdef and pg_get_userbyid(proowner)='postgres') or to_regclass('private.account_deletion_access_restrictions') is null then raise exception 'Account prerequisite drift' using errcode='55000';end if;
+ if exists(select 1 from(values('public.chat_messages'),('public.chat_attachments'),('public.communication_group_members'))t(n) where not coalesce((select relrowsecurity from pg_class where oid=to_regclass(n)),false))then raise exception 'Existing RLS unavailable' using errcode='55000';end if;
+end $preflight$;
+create policy r26_boundary on public.chat_messages as restrictive for all to authenticated using(private.r19_group_allowed(communication_group_id)) with check(private.r19_group_allowed(communication_group_id));
+create policy r26_boundary on public.chat_attachments as restrictive for all to authenticated using(private.r19_group_allowed(communication_group_id)) with check(private.r19_group_allowed(communication_group_id));
+create policy r26_boundary on public.communication_group_members as restrictive for all to authenticated using(private.r19_group_allowed(group_id)) with check(private.r19_group_allowed(group_id));
+do $patch$
+declare target record;f record;body text;anchor integer;guard_sql text;
+begin
+ for target in select * from(values
+ ('private.can_access_communication_group(uuid)','d7925cd147e613bb3af5b0a1c5f63e74','access'),
+ ('private.custom_chat_group_members(uuid)','b88da36e838b2bafe61d3a6c746ef5c4','group'),
+ ('private.invite_friend_to_chat_group(uuid,uuid)','8cfa7c930e0cf639bb2c6c095c04e91a','invite'),
+ ('private.leave_custom_chat_group(uuid)','aabf4310b38a9fefcde4a00c0282eb02','group'),
+ ('private.remove_custom_chat_group_member(uuid,uuid)','e397e665f289e490b9450014a9b252ac','group'),
+ ('private.respond_chat_group_invite(uuid,boolean)','36db509c4b4b5ec035735e0485f26e21','respond'),
+ ('private.my_chat_group_invites()','80151ae94deea07ca59b7737e7f3968d','list'),
+ ('private.r19_notice_allowed(text,uuid)','56cbb16af16e11325b18c9a0062c9e21','notice')
+ )t(signature,expected_hash,kind)loop
+ select p.oid,p.prosrc,p.proowner,p.proacl,p.proconfig,p.prosecdef,pg_get_functiondef(p.oid) definition into f from pg_proc p where p.oid=to_regprocedure(target.signature);
+ if not found or md5(f.prosrc)<>target.expected_hash or not f.prosecdef or pg_get_userbyid(f.proowner)<>'postgres' or f.proconfig is distinct from array['search_path=""']::text[] then raise exception 'Target definition drift' using errcode='55000';end if;
+ body:=f.prosrc;
+ if target.kind in ('access','group','invite')then
+ guard_sql:=case target.kind
+ when 'access' then 'if private.r19_group_allowed(p_group_id) is distinct from true then return false;end if;'
+ when 'group' then 'if private.r19_group_allowed(p_group_id) is distinct from true then raise exception ''protected group unavailable'' using errcode=''42501'';end if;'
+ else 'if exists(select 1 from private.line_history_analysis_groups where group_id=p_group_id) and (private.r19_master() is distinct from true or not exists(select 1 from private.master_admins m where m.user_id=p_friend_user_id and m.enabled and not exists(select 1 from private.account_deletion_access_restrictions r where r.user_id=m.user_id))) then raise exception ''protected invitation unavailable'' using errcode=''42501'';end if;' end;
+ anchor:=strpos(body,E'\nbegin\n');if anchor=0 then raise exception 'Entry layout drift' using errcode='55000';end if;
+ body:=substr(body,1,anchor+6)||E'\n '||guard_sql||substr(body,anchor+7);
+ elsif target.kind='respond' then
+ if strpos(body,E'  if p_accept then\n')=0 then raise exception 'Resolver layout drift' using errcode='55000';end if;
+ body:=replace(body,E'  if p_accept then\n',E'  if private.r19_group_allowed(v_invite.group_id) is distinct from true then raise exception ''protected invitation unavailable'' using errcode=''42501'';end if;\n  if p_accept then\n');
+ elsif target.kind='list' then
+ body:=replace(body,'where i.invitee_user_id=v_user and i.status=''pending'';','where i.invitee_user_id=v_user and i.status=''pending'' and private.r19_group_allowed(i.group_id) is true;');
+ else
+ body:=replace(body,' else true end',' when ''chat_group_invite'' then not exists(select 1 from private.chat_group_invites v join private.line_history_analysis_groups g on g.group_id=v.group_id where v.id=i) or private.r19_master() else true end');
+ end if;
+ if body=f.prosrc or strpos(f.definition,f.prosrc)=0 then raise exception 'Body patch unavailable' using errcode='55000';end if;
+ execute replace(f.definition,f.prosrc,body);
+ if not exists(select 1 from pg_proc p where p.oid=f.oid and p.proowner=f.proowner and p.proacl is not distinct from f.proacl and p.proconfig is not distinct from f.proconfig and p.prosecdef=f.prosecdef)then raise exception 'Target metadata changed' using errcode='55000';end if;
+ end loop;
+end $patch$;
+commit;

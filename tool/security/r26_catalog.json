@@ -1,0 +1,346 @@
+{
+  "functions": [
+    {
+      "nspname": "private",
+      "proname": "can_access_communication_group",
+      "args": "p_group_id uuid",
+      "body_hash": "d7925cd147e613bb3af5b0a1c5f63e74",
+      "definition": "CREATE OR REPLACE FUNCTION private.can_access_communication_group(p_group_id uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_user_id uuid := auth.uid();\n  v_company_id uuid;\n  v_group_type text;\n  v_role text;\n  v_participants_only boolean;\nbegin\n  if v_user_id is null or p_group_id is null then return false; end if;\n\n  select cg.company_id,cg.group_type,cg.participants_only\n  into v_company_id,v_group_type,v_participants_only\n  from public.communication_groups cg\n  where cg.id=p_group_id;\n\n  if v_company_id is null then return false; end if;\n\n  if v_group_type='direct'\n     or (v_group_type='company' and v_participants_only) then\n    return exists(\n      select 1\n      from public.communication_group_members cgm\n      where cgm.group_id=p_group_id\n        and cgm.user_id=v_user_id\n    );\n  end if;\n\n  select cm.role::text into v_role\n  from public.company_members cm\n  where cm.company_id=v_company_id and cm.user_id=v_user_id\n  limit 1;\n\n  if v_role is null then return false; end if;\n\n  if v_group_type='site' and v_role in ('owner','admin','manager') then\n    return true;\n  end if;\n\n  if v_group_type='partner' then\n    if v_role in ('owner','admin') then return true; end if;\n    return exists(\n      select 1\n      from public.member_feature_permissions mfp\n      where mfp.company_id=v_company_id\n        and mfp.user_id=v_user_id\n        and mfp.can_manage_partner_chat=true\n    );\n  end if;\n\n  return v_group_type='company';\nend\n$function$\n",
+      "owner": "postgres",
+      "acl": "{=X/postgres,postgres=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "chat_can_send",
+      "args": "p_group uuid",
+      "body_hash": "320a7a9aaa4051ddf6c41ad8c1b820ca",
+      "definition": "CREATE OR REPLACE FUNCTION private.chat_can_send(p_group uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n  select auth.uid() is not null\n    and private.can_access_communication_group(p_group)\n    and exists(\n      select 1 from public.communication_groups g\n      where g.id=p_group and g.archived_at is null\n    )\n    and not exists(\n      select 1\n      from public.communication_groups g\n      join public.communication_group_members m on m.group_id=g.id\n      where g.id=p_group\n        and g.group_type='direct'\n        and not private.chat_sender_visible(m.user_id)\n    )\n$function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "custom_chat_group_members",
+      "args": "p_group_id uuid",
+      "body_hash": "b88da36e838b2bafe61d3a6c746ef5c4",
+      "definition": "CREATE OR REPLACE FUNCTION private.custom_chat_group_members(p_group_id uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_user uuid := auth.uid();\n  v_result jsonb;\nbegin\n  if v_user is null then raise exception 'ログインが必要です'; end if;\n  if not private.can_access_communication_group(p_group_id) then\n    raise exception 'このグループを確認できません';\n  end if;\n\n  select coalesce(jsonb_agg(jsonb_build_object(\n    'user_id',gm.user_id,\n    'display_name',coalesce(nullif(up.display_name,''),'SKOユーザー'),\n    'joined_at',gm.joined_at,\n    'is_creator',(g.created_by=gm.user_id)\n  ) order by (g.created_by=gm.user_id) desc, up.display_name),'[]'::jsonb)\n  into v_result\n  from public.communication_group_members gm\n  join public.communication_groups g on g.id=gm.group_id\n  left join public.user_profiles up on up.user_id=gm.user_id\n  where gm.group_id=p_group_id;\n\n  return v_result;\nend\n$function$\n",
+      "owner": "postgres",
+      "acl": null,
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "invite_friend_to_chat_group",
+      "args": "p_group_id uuid, p_friend_user_id uuid",
+      "body_hash": "8cfa7c930e0cf639bb2c6c095c04e91a",
+      "definition": "CREATE OR REPLACE FUNCTION private.invite_friend_to_chat_group(p_group_id uuid, p_friend_user_id uuid)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_user uuid := auth.uid();\n  v_company uuid;\n  v_invite uuid;\n  v_group_name text;\n  v_sender_name text;\nbegin\n  if v_user is null then raise exception 'ログインが必要です'; end if;\n  if p_group_id is null or p_friend_user_id is null then raise exception '招待先を確認してください'; end if;\n  if p_friend_user_id = v_user then raise exception '自分自身は招待できません'; end if;\n\n  select cg.company_id,cg.name into v_company,v_group_name\n  from public.communication_groups cg\n  where cg.id=p_group_id\n    and cg.participants_only=true\n    and exists (\n      select 1 from public.communication_group_members gm\n      where gm.group_id=cg.id and gm.user_id=v_user\n    );\n  if v_company is null then raise exception 'このグループへ招待できません'; end if;\n\n  if not exists (\n    select 1 from private.sko_friends f\n    where (f.user_a=v_user and f.user_b=p_friend_user_id)\n       or (f.user_b=v_user and f.user_a=p_friend_user_id)\n  ) then\n    raise exception '友達だけを招待できます';\n  end if;\n\n  if exists (\n    select 1 from public.communication_group_members gm\n    where gm.group_id=p_group_id and gm.user_id=p_friend_user_id\n  ) then\n    raise exception 'すでに参加しています';\n  end if;\n\n  update private.chat_group_invites\n  set status='cancelled', responded_at=now()\n  where group_id=p_group_id and invitee_user_id=p_friend_user_id and status='pending';\n\n  insert into private.chat_group_invites(\n    group_id,company_id,inviter_user_id,invitee_user_id\n  ) values (\n    p_group_id,v_company,v_user,p_friend_user_id\n  )\n  returning id into v_invite;\n\n  select coalesce(nullif(up.display_name,''),'SKOユーザー') into v_sender_name\n  from public.user_profiles up where up.user_id=v_user;\n\n  insert into public.app_notifications(\n    company_id,recipient_user_id,kind,title,body,action_key,action_id\n  ) values (\n    v_company,p_friend_user_id,'chat_group_invite','グループチャット招待',\n    coalesce(v_sender_name,'SKOユーザー') || 'さんから「' || coalesce(v_group_name,'グループ') || '」へ招待されました',\n    'chat_group_invite',v_invite\n  );\n\n  return v_invite;\nend\n$function$\n",
+      "owner": "postgres",
+      "acl": null,
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "leave_custom_chat_group",
+      "args": "p_group_id uuid",
+      "body_hash": "aabf4310b38a9fefcde4a00c0282eb02",
+      "definition": "CREATE OR REPLACE FUNCTION private.leave_custom_chat_group(p_group_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_user uuid := auth.uid();\n  v_remaining integer;\nbegin\n  if v_user is null then raise exception 'ログインが必要です'; end if;\n  if not exists(\n    select 1 from public.communication_groups g\n    join public.communication_group_members gm on gm.group_id=g.id\n    where g.id=p_group_id and g.participants_only=true and gm.user_id=v_user\n  ) then raise exception '参加中のグループではありません'; end if;\n\n  delete from public.communication_group_members\n  where group_id=p_group_id and user_id=v_user;\n\n  select count(*) into v_remaining\n  from public.communication_group_members\n  where group_id=p_group_id;\n\n  if v_remaining=0 then\n    delete from public.communication_groups where id=p_group_id;\n  end if;\nend\n$function$\n",
+      "owner": "postgres",
+      "acl": null,
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "remove_custom_chat_group_member",
+      "args": "p_group_id uuid, p_user_id uuid",
+      "body_hash": "e397e665f289e490b9450014a9b252ac",
+      "definition": "CREATE OR REPLACE FUNCTION private.remove_custom_chat_group_member(p_group_id uuid, p_user_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_user uuid := auth.uid();\nbegin\n  if v_user is null then raise exception 'ログインが必要です'; end if;\n  if p_group_id is null or p_user_id is null then\n    raise exception '対象メンバーを確認してください';\n  end if;\n  if p_user_id=v_user then\n    raise exception '自分の脱退は脱退ボタンを使用してください';\n  end if;\n\n  if not exists(\n    select 1\n    from public.communication_groups g\n    join public.communication_group_members me\n      on me.group_id=g.id and me.user_id=v_user\n    where g.id=p_group_id\n      and g.participants_only=true\n  ) then\n    raise exception 'このグループのメンバーではありません';\n  end if;\n\n  if not exists(\n    select 1\n    from public.communication_group_members target\n    where target.group_id=p_group_id\n      and target.user_id=p_user_id\n  ) then\n    raise exception '対象メンバーが見つかりません';\n  end if;\n\n  delete from public.communication_group_members\n  where group_id=p_group_id\n    and user_id=p_user_id;\nend\n$function$\n",
+      "owner": "postgres",
+      "acl": null,
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "respond_chat_group_invite",
+      "args": "p_invite_id uuid, p_accept boolean",
+      "body_hash": "36db509c4b4b5ec035735e0485f26e21",
+      "definition": "CREATE OR REPLACE FUNCTION private.respond_chat_group_invite(p_invite_id uuid, p_accept boolean)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_user uuid := auth.uid();\n  v_invite private.chat_group_invites%rowtype;\nbegin\n  if v_user is null then raise exception 'ログインが必要です'; end if;\n\n  select * into v_invite\n  from private.chat_group_invites\n  where id=p_invite_id and invitee_user_id=v_user and status='pending'\n  for update;\n  if v_invite.id is null then raise exception '招待が見つかりません'; end if;\n\n  if p_accept then\n    insert into public.communication_group_members(group_id,company_id,user_id)\n    values(v_invite.group_id,v_invite.company_id,v_user)\n    on conflict do nothing;\n    update private.chat_group_invites\n    set status='accepted',responded_at=now()\n    where id=p_invite_id;\n  else\n    update private.chat_group_invites\n    set status='declined',responded_at=now()\n    where id=p_invite_id;\n  end if;\n\n  return v_invite.group_id;\nend\n$function$\n",
+      "owner": "postgres",
+      "acl": null,
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "private",
+      "proname": "my_chat_group_invites",
+      "args": "",
+      "body_hash": "80151ae94deea07ca59b7737e7f3968d",
+      "definition": "CREATE OR REPLACE FUNCTION private.my_chat_group_invites()\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare\n  v_user uuid := auth.uid();\n  v_result jsonb;\nbegin\n  if v_user is null then raise exception 'ログインが必要です'; end if;\n\n  select coalesce(jsonb_agg(jsonb_build_object(\n    'id',i.id,\n    'group_id',i.group_id,\n    'group_name',g.name,\n    'inviter_user_id',i.inviter_user_id,\n    'inviter_name',coalesce(nullif(p.display_name,''),'SKOユーザー'),\n    'created_at',i.created_at\n  ) order by i.created_at desc),'[]'::jsonb)\n  into v_result\n  from private.chat_group_invites i\n  join public.communication_groups g on g.id=i.group_id\n  left join public.user_profiles p on p.user_id=i.inviter_user_id\n  where i.invitee_user_id=v_user and i.status='pending';\n\n  return v_result;\nend\n$function$\n",
+      "owner": "postgres",
+      "acl": null,
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    },
+    {
+      "nspname": "public",
+      "proname": "my_chat_group_invites",
+      "args": "",
+      "body_hash": "409bcfb207110ec084b575896e9497b7",
+      "definition": "CREATE OR REPLACE FUNCTION public.my_chat_group_invites()\n RETURNS jsonb\n LANGUAGE sql\n SET search_path TO ''\nAS $function$ select private.my_chat_group_invites() $function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": false
+    },
+    {
+      "nspname": "private",
+      "proname": "account_access_allowed",
+      "args": "",
+      "body_hash": "aeca25db212c043c472334026bd98724",
+      "definition": "CREATE OR REPLACE FUNCTION private.account_access_allowed()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and not exists(\n  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())\n$function$\n",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "config": "{\"search_path=\\\"\\\"\"}",
+      "prosecdef": true
+    }
+  ],
+  "policies": [
+    {
+      "schemaname": "public",
+      "tablename": "app_notifications",
+      "policyname": "account_deletion_access_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "app_notifications",
+      "policyname": "users can mark own notifications read",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "UPDATE",
+      "qual": "(recipient_user_id = ( SELECT auth.uid() AS uid))",
+      "with_check": "(recipient_user_id = ( SELECT auth.uid() AS uid))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "app_notifications",
+      "policyname": "users can read own notifications",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "(recipient_user_id = ( SELECT auth.uid() AS uid))",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_attachments",
+      "policyname": "accessible members can insert chat attachments",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "INSERT",
+      "qual": null,
+      "with_check": "((uploaded_by = ( SELECT auth.uid() AS uid)) AND private.can_access_communication_group(communication_group_id))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_attachments",
+      "policyname": "accessible members can read chat attachments",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "private.can_access_communication_group(communication_group_id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_attachments",
+      "policyname": "account_deletion_access_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_attachments",
+      "policyname": "authors can delete own chat attachments",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "DELETE",
+      "qual": "((uploaded_by = ( SELECT auth.uid() AS uid)) AND private.can_access_communication_group(communication_group_id))",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_attachments",
+      "policyname": "chat safety visible attachments",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "(private.chat_sender_visible(uploaded_by) AND (EXISTS ( SELECT 1\n   FROM chat_messages m\n  WHERE (m.id = chat_attachments.message_id))))",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_attachments",
+      "policyname": "review moderator attachment",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "private.content_review_moderator('attachment'::text, id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_attachments",
+      "policyname": "review visible attachment",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "private.content_review_visible('attachment'::text, id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "accessible members can read chat messages",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "private.can_access_communication_group(communication_group_id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "accessible members can send sko chat messages",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "INSERT",
+      "qual": null,
+      "with_check": "((origin = 'sk_works'::text) AND (sender_user_id = ( SELECT auth.uid() AS uid)) AND private.can_access_communication_group(communication_group_id))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "account_deletion_access_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "authors can delete own accessible chat messages",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "DELETE",
+      "qual": "((origin = 'sk_works'::text) AND (sender_user_id = ( SELECT auth.uid() AS uid)) AND private.can_access_communication_group(communication_group_id))",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "authors can update own accessible chat messages",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "UPDATE",
+      "qual": "((origin = 'sk_works'::text) AND (sender_user_id = ( SELECT auth.uid() AS uid)) AND private.can_access_communication_group(communication_group_id))",
+      "with_check": "((origin = 'sk_works'::text) AND (sender_user_id = ( SELECT auth.uid() AS uid)) AND private.can_access_communication_group(communication_group_id))"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "chat safety editing",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "UPDATE",
+      "qual": "private.chat_message_visible(id, sender_user_id)",
+      "with_check": "private.chat_can_send(communication_group_id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "chat safety sending",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "INSERT",
+      "qual": null,
+      "with_check": "private.chat_can_send(communication_group_id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "chat safety visible messages",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "private.chat_message_visible(id, sender_user_id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "line_general_release_read",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "((origin <> 'line'::text) OR private.line_client_access_allowed())",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "review moderator message",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "private.content_review_moderator('message'::text, id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "chat_messages",
+      "policyname": "review visible message",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "private.content_review_visible('message'::text, id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "communication_group_members",
+      "policyname": "accessible members can read communication group members",
+      "permissive": "PERMISSIVE",
+      "roles": "{authenticated}",
+      "cmd": "SELECT",
+      "qual": "private.can_access_communication_group(group_id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "communication_group_members",
+      "policyname": "account_deletion_access_guard",
+      "permissive": "RESTRICTIVE",
+      "roles": "{authenticated}",
+      "cmd": "ALL",
+      "qual": "( SELECT private.account_access_allowed() AS account_access_allowed)",
+      "with_check": "( SELECT private.account_access_allowed() AS account_access_allowed)"
+    }
+  ]
+}
