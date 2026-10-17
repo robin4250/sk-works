@@ -117,6 +117,19 @@ void main(){
     await f.signStarted.future;final checked=expectLater(future,throwsStateError);
     await f.client.auth.signOut(scope:SignOutScope.local);await f.login();
     f.signed.complete();await checked;
+    final fresh=await QualificationCertificateRepository.forTesting(f.client).createSignedUrl('$company/$worker/front.jpg');
+    expect(fresh,contains('synthetic-only'));
   });
+
+  testWidgets('a fresh route works after same-actor logout and relogin',(tester)async{
+    final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);f.rows.complete();
+    final repository=QualificationCertificateRepository.forTesting(f.client);
+    await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(key:const ValueKey('old'),repository:repository)));
+    await tester.pump();await tester.pump();expect(find.text('Private qualification'),findsOneWidget);
+    await tester.runAsync(()=>f.client.auth.signOut(scope:SignOutScope.local));await tester.pump();
+    await tester.runAsync(f.login);await tester.pump();expect(find.text('Private qualification'),findsNothing);
+    await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(key:const ValueKey('fresh'),repository:repository)));
+    await tester.pump();await tester.pump();expect(find.text('Private qualification'),findsOneWidget);
+  },timeout:const Timeout(Duration(seconds:45)));
 
 }
