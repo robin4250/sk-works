@@ -51,7 +51,7 @@ try {
   'members',(select jsonb_agg(to_jsonb(m) order by company_id,user_id) from public.company_members m),
   'masters',(select jsonb_agg(to_jsonb(m) order by user_id) from private.master_admins m)) snapshot`)).rows[0].snapshot;
  const originalIdentity=await identitySnapshot();
- const legacyDefinitions=(await admin.query(`select p.proname,pg_get_functiondef(p.oid) definition,p.proacl::text acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('set_secondary_password','set_master_feature_enabled') order by p.proname`)).rows;
+ const legacyDefinitions=(await admin.query(`select p.proname,pg_get_functiondef(p.oid) definition,(select array_agg(x::text order by x::text) from unnest(p.proacl) x) acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('set_secondary_password','set_master_feature_enabled') order by p.proname`)).rows;
  await admin.query(await fs.readFile(new URL('../staged/reauthentication_proofs.sql',import.meta.url),'utf8'));
  assert.deepEqual(await identitySnapshot(),originalIdentity,'install cannot change auth IDs/providers/company/member/master records');
  await admin.query(`create table private.master_devices(id uuid primary key,master_user_id uuid not null,device_name text not null,is_locked boolean not null default false,revoked_at timestamptz);
@@ -63,7 +63,7 @@ try {
  await admin.query(await fs.readFile(new URL('./master_last_device_revoke_before.sql',import.meta.url),'utf8'));
  await admin.query('revoke all on function public.revoke_master_device(uuid) from public,anon;grant execute on function public.revoke_master_device(uuid) to authenticated');
  await admin.query('revoke all on function public.set_master_device_locked(uuid,boolean) from public,anon;grant execute on function public.set_master_device_locked(uuid,boolean) to authenticated,service_role');
- const functions=async()=> (await admin.query(`select n.nspname,p.proname,pg_get_functiondef(p.oid) definition,p.proacl::text acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('reauthentication_scope','reauthentication_required')) or (n.nspname='public' and p.proname in ('issue_reauthentication_proof','set_master_device_locked')) order by n.nspname,p.proname`)).rows;
+ const functions=async()=> (await admin.query(`select n.nspname,p.proname,pg_get_functiondef(p.oid) definition,(select array_agg(x::text order by x::text) from unnest(p.proacl) x) acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('reauthentication_scope','reauthentication_required')) or (n.nspname='public' and p.proname in ('issue_reauthentication_proof','set_master_device_locked')) order by n.nspname,p.proname`)).rows;
  const originalFunctions=await functions(),beforeIdentity=await identitySnapshot();
  const devices=async()=> (await admin.query('select * from private.master_devices order by id')).rows;
  const originalDevices=await devices();
@@ -120,6 +120,8 @@ try {
  assert.deepEqual(await identitySnapshot(),beforeIdentity,'IDs/providers/company/member/master roles unchanged');
  assert.equal((await admin.query("select has_function_privilege('anon','public.set_master_device_locked_with_proof(uuid,boolean,text)','EXECUTE') allowed")).rows[0].allowed,false);
  // Install candidate without changing an existing device or identity.
+ const guardDefinitions=async()=> (await admin.query(`select p.proname,pg_get_functiondef(p.oid) definition,(select array_agg(x::text order by x::text) from unnest(p.proacl) x) acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('set_master_device_locked','set_master_device_locked_with_proof','revoke_master_device') order by p.proname`)).rows;
+ const originalGuardDefinitions=await guardDefinitions();
  const beforeGuard=await devices();
  await admin.query(await fs.readFile(new URL('../staged/master_last_usable_device_guard.sql.review-only',import.meta.url),'utf8'));
  assert.deepEqual(await devices(),beforeGuard);assert.deepEqual(await identitySnapshot(),beforeIdentity);
@@ -166,5 +168,6 @@ try {
  grant execute on function public.set_master_device_locked(uuid,boolean),public.revoke_master_device(uuid),public.set_master_device_locked_with_proof(uuid,boolean,text) to authenticated;
  drop function private.guard_master_device_loss(uuid,boolean);commit;`);
  assert.deepEqual(await identitySnapshot(),beforeIdentity);
+ assert.deepEqual(await guardDefinitions(),originalGuardDefinitions,'exact original definitions and execution ACL restored');
  console.log('PASS PostgreSQL 17: last usable lock/revoke/proof rejection; existing unlock/proof semantics; cross-target lock/lock, lock/revoke and revoke/revoke concurrent connections; role/private bypass denial; unchanged identity/provider/company/roles; isolated definition restoration. Synthetic fixture only.');
 } finally {await Promise.all(connections.map(c=>c.end()));}
