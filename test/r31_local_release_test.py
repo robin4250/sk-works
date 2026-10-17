@@ -282,6 +282,23 @@ class InstallTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'owner Release checkpoint'): self.execute(stage)
 
 
+    def test_install_rejects_missing_legacy_dependency_schema(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage, app = self.make_checkpoint(d)
+            f = stage / 'built-private.json'; manifest = json.loads(f.read_text())
+            manifest.pop('checkpoint_schema'); f.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(RuntimeError, 'dependency checkpoint'):
+                self.execute(stage)
+
+    def test_install_rejects_explicit_debug_proof_despite_release_command(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage, app = self.make_checkpoint(d)
+            f = stage / 'built-private.json'; manifest = json.loads(f.read_text())
+            manifest['release_settings_proof']['FLUTTER_BUILD_MODE'] = 'debug'
+            f.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(RuntimeError, 'not a Release'):
+                self.execute(stage)
+
 class ReleaseProofTests(unittest.TestCase):
     def test_release_mode_may_be_absent_as_in_flutter_backend(self):
         m.verify_release_settings({'CONFIGURATION': 'Release', 'PRODUCT_BUNDLE_IDENTIFIER': m.BUNDLE})
