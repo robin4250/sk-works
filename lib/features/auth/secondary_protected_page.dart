@@ -217,11 +217,10 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
             stickyAuth: true,
           ),
         );
-        if (!_acceptAttempt(generation, userId, token)) return;
+        if (!await _finishNativePrompt(generation, userId, token)) return;
         if (!ok) {
           throw StateError('生体認証を確認できませんでした。');
         }
-        if (!await _finishNativePrompt(generation, userId, token)) return;
       }
       if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       // The native prompt exception ends before server or preferences work.
@@ -246,6 +245,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         _confirm.clear();
       });
     } catch (error) {
+      if (_nativePrompt && !await _finishNativePrompt(generation, userId, token)) return;
       if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       setState(() {
         _busy = false;
@@ -341,7 +341,8 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         }
       });
     } catch (error) {
-      if (!_acceptAttempt(generation, userId, token)) return;
+      if (_nativePrompt && !await _finishNativePrompt(generation, userId, token)) return;
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       setState(() {
         _busy = false;
         _message = '生体認証を利用できません: $error';

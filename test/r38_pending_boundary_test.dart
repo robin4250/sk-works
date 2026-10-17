@@ -229,4 +229,33 @@ void main() {
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,isNotNull);
     expect(requests.where((r)=>r.url.path.endsWith('/set_secondary_password')).length,1);
   });
+  for(final setup in [false,true]) {
+    for(final error in [false,true]) {
+      testWidgets('native inactive ${error ? "error" : "cancel"} setup=$setup permits resumed retry',(tester) async {
+        configured=!setup;await open(tester,setup:setup);nativePending=Completer<bool>();
+        if(setup) {
+          await tester.enterText(find.byType(TextField).at(0),'synthetic-new-secondary');
+          await tester.enterText(find.byType(TextField).at(1),'synthetic-new-secondary');
+          await tester.ensureVisible(find.byType(SwitchListTile));await tester.tap(find.byType(SwitchListTile));await tester.pump();
+        }
+        final button=find.text(setup ? '設定して開く' : 'Face ID / Touch IDで開く');
+        await tester.ensureVisible(button);await tester.tap(button);await tester.pump();
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        if(error) {
+          nativePending!.completeError(PlatformException(code:'synthetic_native_error'));
+        } else {
+          nativePending!.complete(false);
+        }
+        await settle(tester);
+        expect(find.text('private payload'),findsNothing);
+        expect(requests.where((r)=>r.url.path.endsWith('/set_secondary_password')),isEmpty);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);await settle(tester);
+        nativePending=Completer<bool>();
+        await tester.ensureVisible(button);await tester.tap(button);await tester.pump();
+        nativePending!.complete(true);await settle(tester);
+        expect(find.text('private payload'),findsOneWidget);
+        expect(requests.where((r)=>r.url.path.endsWith('/set_secondary_password')).length,setup?1:0);
+      });
+    }
+  }
 }
