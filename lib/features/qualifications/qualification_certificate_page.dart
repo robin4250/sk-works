@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'qualification_certificate_repository.dart';
 
 class QualificationCertificatePage extends StatefulWidget {
-  const QualificationCertificatePage({super.key, this.initialQualificationId});
+  const QualificationCertificatePage({super.key, this.initialQualificationId, this.repository});
+  @visibleForTesting
+  final QualificationCertificateRepository? repository;
   final String? initialQualificationId;
 
   @override
@@ -14,7 +18,11 @@ class QualificationCertificatePage extends StatefulWidget {
 
 class _QualificationCertificatePageState
     extends State<QualificationCertificatePage> {
-  final _repository = QualificationCertificateRepository.maybeCreate();
+  late final QualificationCertificateRepository? _repository;
+  StreamSubscription<AuthState>? _authSubscription;
+  late final String? _actor;
+  bool _revoked = false;
+  int _generation = 0;
   final _picker = ImagePicker();
   final _queryController = TextEditingController();
 
@@ -31,17 +39,47 @@ class _QualificationCertificatePageState
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? QualificationCertificateRepository.maybeCreate();
+    _actor = _repository?.currentUserId;
+    _revoked = _actor == null;
+    _authSubscription = _repository?.authChanges.listen((state) {
+      if (state.session?.user.id != _actor) _revoke();
+    }, onError: (Object error) => _revoke());
     _load();
   }
 
+  void _revoke() {
+    if (!mounted || _revoked) return;
+    setState(() {
+      _revoked = true;
+      _generation++;
+      _masters = [];
+      _workers = [];
+      _qualifications = [];
+      _canManage = false;
+      _extraPhotosAvailable = false;
+      _loading = false;
+      _busyId = null;
+      _error = null;
+      _query = '';
+      _queryController.clear();
+    });
+  }
+
+  bool get _scopeActive => mounted && !_revoked &&
+      _actor != null && _repository?.currentUserId == _actor;
+
   @override
   void dispose() {
+    _authSubscription?.cancel();
     _queryController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
+    final generation = ++_generation;
     final repository = _repository;
+    if (_revoked) return;
     if (repository == null) {
       if (!mounted) return;
       setState(() {
@@ -57,7 +95,7 @@ class _QualificationCertificatePageState
         repository.canManageCertificates(),
       ]);
       final data = values[0] as Map<String, dynamic>;
-      if (!mounted) return;
+      if (!_scopeActive || generation != _generation) return;
       setState(() {
         _canManage = values[1] as bool;
         _extraPhotosAvailable = data['supports_extra_photos'] == true;
@@ -70,7 +108,7 @@ class _QualificationCertificatePageState
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!_scopeActive || generation != _generation) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -80,6 +118,12 @@ class _QualificationCertificatePageState
 
   @override
   Widget build(BuildContext context) {
+    if (_revoked) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('資格証写真')),
+        body: const Center(child: Text('ログイン状態が変わりました。画面を閉じて開き直してください。')),
+      );
+    }
     final masterById = {
       for (final row in _masters) row['id']?.toString() ?? '': row,
     };
@@ -217,7 +261,9 @@ class _QualificationCertificatePageState
     String workerName,
   ) async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null || !_scopeActive) return;
+    final actor = _actor;
+    var sheetRevoked = false;
     final front = row['attachment_path']?.toString() ?? '';
     final back = row['attachment_back_path']?.toString() ?? '';
 
@@ -225,7 +271,20 @@ class _QualificationCertificatePageState
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (sheetContext) => SafeArea(
+      builder: (sheetContext) => StreamBuilder<AuthState>(
+        stream: repository.authChanges,
+        builder: (context, snapshot) {
+          if (!_scopeActive || repository.currentUserId != actor || snapshot.hasError ||
+              (snapshot.hasData && snapshot.data?.session?.user.id != actor)) {
+            sheetRevoked = true;
+          }
+          if (sheetRevoked) {
+            return const SafeArea(child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('ログイン状態が変わりました。画面を閉じて開き直してください。'),
+            ));
+          }
+          return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
           child: SingleChildScrollView(
@@ -360,6 +419,8 @@ class _QualificationCertificatePageState
             ),
           ),
         ),
+          );
+        },
       ),
     );
   }
@@ -447,36 +508,38 @@ class _QualificationCertificatePageState
     bool multiple = false,
   }) async {
     final repository = _repository;
-    if (repository == null || _busyId != null || !_extraPhotosAvailable) return;
+    if (repository == null || !_scopeActive || !_canManage || _busyId != null || !_extraPhotosAvailable) return;
     final files = multiple
         ? await _picker.pickMultiImage(imageQuality: 88, maxWidth: 2400)
         : [if (await _pickExtra(source) case final XFile file) file];
-    if (files.isEmpty || !mounted) return;
+    if (files.isEmpty || !_scopeActive) return;
     setState(() => _busyId = row['id'].toString());
     try {
       for (final file in files) {
+        final bytes = await file.readAsBytes();
+        if (!mounted || !_scopeActive) return;
         final updated = await repository.uploadExtraCertificate(
           qualificationId: row['id'].toString(),
           workerId: row['worker_id'].toString(),
-          bytes: await file.readAsBytes(),
+          bytes: bytes,
           originalFilename: file.name,
           replacingPath: replacingPath,
         );
-        if (!mounted) return;
+        if (!mounted || !_scopeActive) return;
         _replaceRow(updated);
       }
-      if (mounted) {
+      if (mounted && _scopeActive) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('追加写真を保存しました')));
       }
     } catch (error) {
-      if (mounted) {
+      if (mounted && _scopeActive) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('追加写真の保存を確認できません。再読み込みしてください: $error')),
         );
       }
     } finally {
-      if (mounted) setState(() => _busyId = null);
+      if (_scopeActive) setState(() => _busyId = null);
     }
   }
 
@@ -485,21 +548,21 @@ class _QualificationCertificatePageState
 
   Future<void> _removeExtra(Map<String, dynamic> row, String path) async {
     final repository = _repository;
-    if (repository == null || _busyId != null || !_extraPhotosAvailable) return;
+    if (repository == null || !_scopeActive || !_canManage || _busyId != null || !_extraPhotosAvailable) return;
     setState(() => _busyId = row['id'].toString());
     try {
       final updated = await repository.removeExtraCertificate(
         qualificationId: row['id'].toString(),
         storagePath: path,
       );
-      if (mounted) _replaceRow(updated);
+      if (_scopeActive) _replaceRow(updated);
     } catch (error) {
-      if (mounted) {
+      if (mounted && _scopeActive) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('写真を削除できませんでした: $error')));
       }
     } finally {
-      if (mounted) setState(() => _busyId = null);
+      if (_scopeActive) setState(() => _busyId = null);
     }
   }
 
@@ -509,7 +572,7 @@ class _QualificationCertificatePageState
     required bool back,
   }) async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null || !_scopeActive || !_canManage) return;
     final id = row['id']?.toString();
     final workerId = row['worker_id']?.toString();
     if (id == null || workerId == null) return;
@@ -519,46 +582,48 @@ class _QualificationCertificatePageState
       imageQuality: 88,
       maxWidth: 2400,
     );
-    if (picked == null) return;
+    if (picked == null || !_scopeActive) return;
 
-    if (mounted) setState(() => _busyId = id);
+    if (_scopeActive) setState(() => _busyId = id);
     try {
+      final bytes = await picked.readAsBytes();
+      if (!mounted || !_scopeActive) return;
       final updated = back
           ? await repository.uploadCertificateBack(
               qualificationId: id,
               workerId: workerId,
-              bytes: await picked.readAsBytes(),
+              bytes: bytes,
               originalFilename: picked.name,
             )
           : await repository.uploadCertificate(
               qualificationId: id,
               workerId: workerId,
-              bytes: await picked.readAsBytes(),
+              bytes: bytes,
               originalFilename: picked.name,
             );
-      if (!mounted) return;
+      if (!mounted || !_scopeActive) return;
       _replaceRow(updated);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(back ? '資格証の裏面を保存しました' : '資格証の表面を保存しました')),
       );
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_scopeActive) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('資格証画像を保存できませんでした: $error')));
     } finally {
-      if (mounted) setState(() => _busyId = null);
+      if (_scopeActive) setState(() => _busyId = null);
     }
   }
 
   Future<void> _remove(Map<String, dynamic> row, {required bool back}) async {
     final repository = _repository;
-    if (repository == null) return;
+    if (repository == null || !_scopeActive || !_canManage) return;
     final id = row['id']?.toString();
     final path = row[back ? 'attachment_back_path' : 'attachment_path']
         ?.toString();
     if (id == null || path == null || path.isEmpty) return;
 
-    if (mounted) setState(() => _busyId = id);
+    if (_scopeActive) setState(() => _busyId = id);
     try {
       final updated = back
           ? await repository.removeCertificateBack(
@@ -569,21 +634,22 @@ class _QualificationCertificatePageState
               qualificationId: id,
               storagePath: path,
             );
-      if (!mounted) return;
+      if (!mounted || !_scopeActive) return;
       _replaceRow(updated);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(back ? '資格証の裏面を削除しました' : '資格証の表面を削除しました')),
       );
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_scopeActive) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('資格証画像を削除できませんでした: $error')));
     } finally {
-      if (mounted) setState(() => _busyId = null);
+      if (_scopeActive) setState(() => _busyId = null);
     }
   }
 
   void _replaceRow(Map<String, dynamic> updated) {
+    if (!mounted || !_scopeActive) return;
     final id = updated['id']?.toString();
     if (id == null) return;
     setState(() {
