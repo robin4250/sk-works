@@ -29,6 +29,14 @@ class MapTests(unittest.TestCase):
     def test_wrong_schema_is_not_silently_selected(self):
         with self.assertRaises(ValueError):mapping.classify(ROOTS.replace('FUNCTION private employee','FUNCTION public employee'))
 
+    def test_all_toc_ids_must_be_unique(self):
+        for line in ('1; 0 0 TABLE DATA public other postgres','3; 0 0 EXTENSION - pgcrypto'):
+            with self.assertRaises(ValueError):mapping.classify(ROOTS+line+'\n')
+
+    def test_root_function_signature_required(self):
+        for malformed in ('employee_personnel_rows','employee_personnel_rows(uuid','employee_personnel_rows)'):
+            with self.assertRaises(ValueError):mapping.classify(ROOTS.replace('employee_personnel_rows(uuid)',malformed))
+
     def test_missing_roots_are_explicit(self):
         _,r=mapping.classify('1; 1259 100 TABLE public worker_personnel_profiles postgres\n')
         self.assertEqual(len(r['missing_roots']),3)
