@@ -223,25 +223,35 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
   }
 
   Future<void> _add() async {
-    final draft = await Navigator.of(context).push<SiteRecord>(
-      MaterialPageRoute(builder: (_) => const SiteFormPage()),
-    );
     final repository = _repository;
-    if (draft == null || repository == null) return;
-    try {
-      final row = await repository.insert(draft.toJson());
-      final saved = SiteRecord.fromJson(row);
-      if (!mounted) return;
-      setState(() => _sites.insert(0, saved));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.tr('現場をクラウドに登録しました'))),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: $error')),
-      );
-    }
+    if (repository == null) return;
+    final saved = await Navigator.of(context).push<SiteRecord>(
+      MaterialPageRoute(
+        builder: (_) => SiteFormPage(
+          onSave: (draft) async {
+            final row = await repository.insert(draft.toJson());
+            final result = SiteRecord.fromJson(row);
+            if (result.id.isEmpty) throw StateError('保存結果を確認できません。');
+            return result;
+          },
+        ),
+      ),
+    );
+    if (!mounted || saved == null) return;
+    setState(() => _sites.insert(0, saved));
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('現場の登録が完了しました'),
+        content: Text('「${saved.name}」を登録しました。現場一覧から詳細・写真を確認できます。'),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('現場一覧へ'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _complete(SiteRecord site) async {
