@@ -1,0 +1,111 @@
+-- REVIEW ONLY: fixed personnel metadata. No business/Auth rows, role passwords, settings values or email values.
+-- Store results only inside an operator-private capsule. Never execute emitted SQL automatically.
+WITH RECURSIVE
+roots(classid,objid,objsubid) AS (
+ SELECT 'pg_catalog.pg_class'::regclass::oid,c.oid,0 FROM pg_catalog.pg_class c
+ JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+ WHERE (n.nspname='public' AND c.relname IN (
+  'worker_personnel_profiles','worker_family_members','workers','companies',
+  'company_members','member_feature_permissions','worker_personnel_approvers',
+  'worker_personnel_change_requests','worker_personnel_change_approvals','app_notifications'))
+ OR (n.nspname='auth' AND c.relname IN ('users','identities','sessions'))
+ OR (n.nspname='private' AND c.relname IN ('master_admins','account_deletion_access_restrictions'))
+ UNION
+ SELECT 'pg_catalog.pg_proc'::regclass::oid,p.oid,0 FROM pg_catalog.pg_proc p
+ JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname IN ('public','private') AND p.proname IN (
+  'employee_personnel_rows','employee_personnel_view','personnel_view_allowed',
+  'can_edit_worker_personnel','worker_personnel_payload','apply_worker_personnel_payload',
+  'is_worker_personnel_approver','save_worker_personnel_profile',
+  'decide_worker_personnel_change','check_account_access','account_deletion_barrier_key')
+),
+graph(classid,objid,objsubid) AS (
+ SELECT * FROM roots
+ UNION
+ SELECT edge.classid,edge.objid,edge.objsubid FROM graph g
+ CROSS JOIN LATERAL (
+  SELECT d.refclassid classid,d.refobjid objid,d.refobjsubid objsubid FROM pg_catalog.pg_depend d
+  WHERE d.classid=g.classid AND d.objid=g.objid AND (g.objsubid=0 OR g.objsubid=d.objsubid)
+  UNION
+  SELECT d.classid,d.objid,d.objsubid FROM pg_catalog.pg_depend d
+  WHERE d.refclassid=g.classid AND d.refobjid=g.objid
+   AND d.classid IN ('pg_trigger'::regclass,'pg_catalog.pg_policy'::regclass,
+    'pg_constraint'::regclass,'pg_attrdef'::regclass,'pg_rewrite'::regclass)
+ ) edge
+),
+inventory AS (
+ SELECT g.classid::regclass::text catalog,i.type,i.schema,i.name,i.identity,
+ g.classid,g.objid,g.objsubid
+ FROM graph g CROSS JOIN LATERAL pg_catalog.pg_identify_object(g.classid,g.objid,g.objsubid) i
+)
+SELECT pg_catalog.jsonb_build_object(
+ 'read_only',pg_catalog.current_setting('transaction_read_only')='on',
+ 'scope','personnel authorization metadata only; NOT data backup or complete recovery proof',
+ 'relations',(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+   'schema',n.nspname,'name',c.relname,'owner',pg_catalog.pg_get_userbyid(c.relowner),
+   'kind',c.relkind,'rls',c.relrowsecurity,'forced_rls',c.relforcerowsecurity,'acl',c.relacl::text
+ ) ORDER BY n.nspname,c.relname) FROM pg_catalog.pg_class c
+ JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname IN ('public','private','auth') AND EXISTS(SELECT 1 FROM graph g
+   WHERE g.classid='pg_catalog.pg_class'::regclass AND g.objid=c.oid)),
+ 'policies',(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+   'schema',n.nspname,'table',c.relname,'name',p.polname,'permissive',p.polpermissive,
+   'command',p.polcmd,'roles',p.polroles,
+   'using',pg_catalog.pg_get_expr(p.polqual,p.polrelid),
+   'with_check',pg_catalog.pg_get_expr(p.polwithcheck,p.polrelid)
+ ) ORDER BY n.nspname,c.relname,p.polname)
+ FROM pg_catalog.pg_policy p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid
+ JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname IN ('public','private') AND EXISTS(SELECT 1 FROM graph g
+   WHERE g.classid='pg_catalog.pg_class'::regclass AND g.objid=c.oid)),
+ 'columns',(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+   'schema',n.nspname,'table',c.relname,'name',a.attname,'position',a.attnum,
+   'type',pg_catalog.format_type(a.atttypid,a.atttypmod),'not_null',a.attnotnull,
+   'identity',a.attidentity,'generated',a.attgenerated,'acl',a.attacl::text
+ ) ORDER BY n.nspname,c.relname,a.attnum)
+ FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
+ JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname IN ('public','private','auth') AND a.attnum>0 AND NOT a.attisdropped
+ AND EXISTS(SELECT 1 FROM graph g WHERE g.classid='pg_catalog.pg_class'::regclass AND g.objid=c.oid)),
+ 'functions',(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+   'schema',n.nspname,'name',p.proname,'identity',pg_catalog.pg_get_function_identity_arguments(p.oid),
+   'owner',pg_catalog.pg_get_userbyid(p.proowner),'acl',p.proacl::text,'security_definer',p.prosecdef,
+   'language',l.lanname,'volatility',p.provolatile,
+   'configuration_keys',(SELECT pg_catalog.jsonb_agg(pg_catalog.split_part(x,'=',1)) FROM pg_catalog.unnest(p.proconfig) x),
+   'definition_sha256_not_collected',true,
+   'definition',CASE WHEN pg_catalog.pg_get_functiondef(p.oid) ~* '(sbp_[a-z0-9_]+|eyJ[A-Za-z0-9_-]{20,}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,})'
+     THEN NULL ELSE pg_catalog.pg_get_functiondef(p.oid) END,
+   'literal_review_required',pg_catalog.pg_get_functiondef(p.oid) ~* '(sbp_[a-z0-9_]+|eyJ[A-Za-z0-9_-]{20,}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,})'
+ ) ORDER BY n.nspname,p.proname,pg_catalog.pg_get_function_identity_arguments(p.oid))
+ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+ JOIN pg_catalog.pg_language l ON l.oid=p.prolang
+ WHERE n.nspname IN ('public','private') AND p.prokind IN ('f','p')
+ AND EXISTS(SELECT 1 FROM graph g WHERE g.classid='pg_catalog.pg_proc'::regclass AND g.objid=p.oid)),
+ 'default_acl',(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+   'owner',pg_catalog.pg_get_userbyid(d.defaclrole),'schema',n.nspname,'object_type',d.defaclobjtype,'acl',d.defaclacl::text
+ ) ORDER BY d.defaclrole,n.nspname,d.defaclobjtype)
+ FROM pg_catalog.pg_default_acl d LEFT JOIN pg_catalog.pg_namespace n ON n.oid=d.defaclnamespace
+ WHERE (d.defaclnamespace=0 OR n.nspname IN ('public','private','auth')) AND d.defaclrole IN (
+   SELECT c.relowner FROM pg_catalog.pg_class c WHERE EXISTS(SELECT 1 FROM graph g
+     WHERE g.classid='pg_catalog.pg_class'::regclass AND g.objid=c.oid)
+   UNION SELECT p.proowner FROM pg_catalog.pg_proc p WHERE EXISTS(SELECT 1 FROM graph g
+     WHERE g.classid='pg_catalog.pg_proc'::regclass AND g.objid=p.oid))),
+ 'constraints',(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+   'schema',n.nspname,'table',c.relname,'name',d.conname,'definition',pg_catalog.pg_get_constraintdef(d.oid,true),
+   'type',d.contype,'validated',d.convalidated
+ ) ORDER BY n.nspname,c.relname,d.conname)
+ FROM pg_catalog.pg_constraint d JOIN pg_catalog.pg_class c ON c.oid=d.conrelid
+ JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname IN ('public','private','auth') AND EXISTS(SELECT 1 FROM graph g
+ WHERE g.classid='pg_catalog.pg_class'::regclass AND g.objid=c.oid)),
+ 'triggers',(SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+   'schema',n.nspname,'table',c.relname,'name',t.tgname,'enabled',t.tgenabled,
+   'definition',pg_catalog.pg_get_triggerdef(t.oid,true)
+ ) ORDER BY n.nspname,c.relname,t.tgname)
+ FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid
+ JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+ WHERE NOT t.tgisinternal AND n.nspname IN ('public','private','auth') AND EXISTS(SELECT 1 FROM graph g
+ WHERE g.classid='pg_catalog.pg_class'::regclass AND g.objid=c.oid)),
+ 'excluded','Auth/business row values, passwords, role settings values, function configuration values',
+ 'not_verified','function literal safety completeness, dynamic dependencies, archive equality, data-time gap, role authentication, outbound isolation and actual restore'
+) AS entry_definition_payload;
