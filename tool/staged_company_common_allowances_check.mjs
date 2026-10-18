@@ -103,8 +103,22 @@ try{
  // stay exact. Legacy/tax values changed ONLY by explicit tested operations.
  const finalOld=await snapshot();for(const k of ['payroll','daily','members','sessions'])assert.deepEqual(finalOld[k],original[k]);equalProtected({...original,functions:finalOld.functions},original);
  const rollback=`drop function public.read_company_common_allowances_admin(uuid);drop function public.save_company_common_allowances(uuid,text,bigint,jsonb,uuid,jsonb,jsonb,boolean);drop function public.save_company_common_tax_settings(uuid,bigint,jsonb,numeric,numeric,uuid);drop function public.read_company_common_allowance_request(uuid,uuid);drop function public.read_company_common_allowances_history(uuid,bigint,integer);drop schema company_common_allowance_private cascade;`;
- const backup={};for(const t of ['state','items','history','requests','unit_aliases'])backup[t]=(await db.query(`select coalesce(jsonb_agg(to_jsonb(x)),'[]'::jsonb) v from company_common_allowance_private.${t} x`)).rows[0].v;
- await db.exec(originalUnitDef);await db.exec(rollback);equalProtected(await snapshot(),finalOld);await db.exec(candidate);for(const t of ['state','items','history','requests','unit_aliases'])await db.query(`insert into company_common_allowance_private.${t} select * from jsonb_populate_recordset(null::company_common_allowance_private.${t},$1::jsonb)`,[JSON.stringify(backup[t])]);await actor();assert.deepEqual((await receipt(rid)).result,saved);assert.equal((await state()).version,s.version);equalProtected(await snapshot(),finalOld);
+ // Compare every synthetic saved row, including retired items, old history,
+ // receipt payload/results and price-free alias observations. A current version
+ // and one receipt alone cannot detect partial restoration of those rows.
+ const protectedTables=['state','items','history','requests','unit_aliases'];
+ const catalogRows=async()=>{
+  await db.exec('reset role');const rows={};
+  for(const t of protectedTables)rows[t]=(await db.query(`select coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text),'[]'::jsonb) v from company_common_allowance_private.${t} x`)).rows[0].v;
+  return rows;
+ };
+ const backup=await catalogRows();
+ for(const t of protectedTables)assert.ok(backup[t].length>0,`restore coverage needs nonempty ${t}`);
+ await db.exec(originalUnitDef);await db.exec(rollback);equalProtected(await snapshot(),finalOld);await db.exec(candidate);for(const t of ['state','items','history','requests','unit_aliases'])await db.query(`insert into company_common_allowance_private.${t} select * from jsonb_populate_recordset(null::company_common_allowance_private.${t},$1::jsonb)`,[JSON.stringify(backup[t])]);assert.deepEqual(await catalogRows(),backup,'every restored catalog row must exactly equal the saved synthetic row');
+ await actor();assert.deepEqual((await receipt(rid)).result,saved);assert.equal((await state()).version,s.version);
+ assert.deepEqual(await catalogRows(),backup,'read and receipt verification must not mutate restored rows');
+ equalProtected(await snapshot(),finalOld);
+ console.log('PASS exact synthetic restored rowsets: state/items/history/requests/unit_aliases, including retained history and read-only invariance; not an archive/full recovery test');
  await actor(admin,'service_role');assert.equal((await unitMap())['変更後'],'組','original service-role reader grant remains callable');
  console.log('PASS combined common allowance: existing random-ID adoption/rename/retirement, all/day/earning legacy refs with zero copies, extras, source/CAS, tax-only two columns, exact receipts, strict limits, role/session denials, old writer +2 detection, audit rollback and isolated source/data restore. Tax UPDATE spy confirms common=0/tax=1/old-saver event retained; live-shape service reader ACL/OID preserved. Old unit RPC name/unit baseline aliases preserved, ambiguous unit changes rejected for old/new writers; payroll/daily/admin/other-function/ACL snapshots unchanged. Synthetic JWT claims only.');
 }catch(e){console.error(e.stack);process.exitCode=1;}finally{await db.close();}
