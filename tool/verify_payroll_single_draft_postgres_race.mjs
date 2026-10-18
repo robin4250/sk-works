@@ -33,12 +33,12 @@ try{
  }
  await o.query(originalHelper);
  await o.query('drop trigger zzzz_synthetic_draft_race_gate on public.payroll_statements;drop function public.synthetic_draft_race_gate()');
- // Existing settings UPDATE/refresh commits before the waiting draft CAS can run.
+ // Existing public unit-conditions API/refresh commits before the waiting draft CAS can run.
  const ps=await draft(),source=(await o.query('select private.payroll_draft_source_fingerprint($1,$2,$3) h',[cid,wid,'2026-09-01'])).rows[0].h;
  await b.query('begin');await b.query('select 1 from public.workers where id=$1 for update',[wid]);
  await begin(a);const stale=caught(a.query('select public.recalculate_one_payroll_draft($1,$2,$3,$4,$5,true,$6)',[ps.id,ps.revision,cid,wid,'2026-09-01',source]));await blocked(pidA,pidB);
  await b.query("select set_config('request.jwt.claim.sub',$1,true)",[actor]);await b.query('set local role authenticated');
- await b.query('update public.worker_payroll_settings set day_daily=day_daily+1 where worker_id=$1 and company_id=$2',[wid,cid]);await b.query('commit');const rejected=await stale;assert.equal(rejected.error?.code,'40001');assert.match(rejected.error.message,/revision or scope changed/);await a.query('rollback');const current=await draft();assert.ok(current.revision>ps.revision);
+ await b.query("select public.save_payroll_unit_conditions($1,$2,'2026-09-01',0,$3::jsonb)",[cid,wid,JSON.stringify([{section:'earning',unit:'month',name:'Synthetic CAS source',rate_yen:1}])]);await b.query('commit');const rejected=await stale;assert.equal(rejected.error?.code,'40001');assert.match(rejected.error.message,/revision or scope changed/);await a.query('rollback');const current=await draft();assert.ok(current.revision>ps.revision);
  await begin(a,'repeatable read');const repeatable=await caught(a.query('select public.recalculate_one_payroll_draft($1,$2,$3,$4,$5,true,$6)',[ps.id,current.revision,cid,wid,'2026-09-01',source]));assert.equal(repeatable.error?.code,'22023');assert.match(repeatable.error.message,/read committed/);await a.query('rollback');
  console.log('PASS native observed worker-lock wait, committed revision CAS rejection, repeatable-read refusal; synthetic PG17 only');
 } catch(error){console.error(error.message);process.exitCode=1;}finally{for(const c of[a,b])try{await c.query('rollback');}catch{}await Promise.allSettled([a.end(),b.end(),o.end()]);}
