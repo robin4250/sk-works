@@ -32,7 +32,7 @@ jobs:
     services:
       postgres:
         # Docker Official Images public distribution; no registry secret required.
-        image: public.ecr.aws/docker/library/postgres:17
+        image: postgres:17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: fixture-only-password
