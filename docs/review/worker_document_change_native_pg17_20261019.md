@@ -1,0 +1,17 @@
+# 書類変更承認候補のnative PostgreSQL17検証
+
+基準main bedac66af938989a9e9d314ee2d96cd01b831a01。登録済み書類の変更申請UI・固定command・承認一覧・backend候補を再実装せず、既存candidateをそのまま検査する。候補SQL、製品migration、UI、Auth/RLS/Storage設定、本番は変更しない。
+
+既存PGlite verifierの合成foundationだけをshared setupへ抽出し、10境界組のassertは保持した。抽出後のPGlite0.3.14実行は10境界組成功。新native adapterは同じverifierをPostgreSQL17で実行する。timestampは文字列のまま保持し、CASのDB小数秒精度をJavaScript Dateへ丸めない。
+
+新しい2接続race verifierは、pg_stat_activityのLock待ちを実際に確認してから保持transactionをcommitする。単なる遅延や順次実行を並列成功と扱わない。
+
+1. 同じ申請を別の承認者が同時承認し、片方のcommitを待った後は同じ承認済み状態となる。正式row更新・history追加は1回、適用ticketは残らない。
+2. 同じ旧snapshotから作った別申請が同じ正式rowへ競合する場合、一方だけが適用され、後続は40001で拒否される。後続申請はpending、正式履歴は1回のまま。
+3. 管理者の状態・原本確認のみの更新が正式rowを保持している間に承認を開始し、更新commit後の古いsnapshot承認を40001で拒否する。状態・原本確認と元の内容を保持し、申請はpending。
+
+接続はloopback localhost/127.0.0.1・5432・sko_document_change_fixture・fixture専用認証・query/hashなしに限定する。接続後もPG17かつ空DBを要求する。不正URL8種の拒否をローカルで確認済み。公開先も合成ソースだけで、既存の私的checkpointや実データを含めない。
+
+専用workflowはPRと対象main pushでnative境界/racesを別の空service DBへ実行する。pg8.16.3、postgres17を使用し、各15分。手動dispatch、FlutterSDK、Mac/iOS build、本番接続は使わない。ローカルnative PGがないためnative実行はremote CIの結果で別記する。
+
+この検証は合成のcompany/member/account/Storage objectsを用いる。実JWT・実production schema全体・本番RLS全積層・実Storage bytes・全lock順序を保証しない。特に旧履歴不足placeholderの互換方針、DELETE/FK cascade/maintenance影響、prepareとapproveをまたぐ全競合、利用条件の承認、新写真upload、本番バックアップ・隔離復元・本番適用・実機での申請/承認は残る。CI成功でも書類編集ボタンが本番で有効になったとは扱わない。

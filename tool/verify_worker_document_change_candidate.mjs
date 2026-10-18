@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
+import {setupWorkerDocumentChangeFixture} from './worker_document_change_fixture_setup.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 assert.ok(path.isAbsolute(process.argv[2]??''),'First argument: absolute PGlite index path');
 const {PGlite}=await import(pathToFileURL(process.argv[2]).href);
@@ -19,31 +20,7 @@ const denied=async(sql,code='42501')=>assert.rejects(db.exec(sql),e=>e.code===co
 const denyRpc=async(a,d,code='42501')=>assert.rejects(rpc(a,d),e=>e.code===code);
 const official=async()=>(await db.query('select * from public.worker_document_statuses where id=$1',[target])).rows[0];
 try {
- await db.exec(`create schema auth;create schema private;create schema storage;
- create role anon;create role authenticated;create role service_role;
- create table auth.users(id uuid primary key);
- create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('fixture.uid',true),'')::uuid$$;
- create function private.account_access_allowed() returns boolean language sql stable as $$select coalesce(current_setting('fixture.blocked',true),'')<>'yes'$$;
- create table public.companies(id uuid primary key);
- create table public.company_members(company_id uuid,user_id uuid,role text);
- create table public.company_approval_assignees(company_id uuid,user_id uuid);
- create table public.workers(id uuid primary key,company_id uuid,user_id uuid);
- create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);
- alter table storage.objects enable row level security;
- create policy fixture_read on storage.objects for select to authenticated using(true);
- create policy fixture_delete on storage.objects for delete to authenticated using(true);
- create policy fixture_update on storage.objects for update to authenticated using(true) with check(true);
- grant usage on schema auth,private,storage to authenticated;
- grant select,update,delete on storage.objects to authenticated;
- insert into public.companies values('${company}');
- insert into auth.users values('${owner}'),('${reviewer}'),('${outsider}');
- insert into public.company_members values('${company}','${owner}','member'),('${company}','${reviewer}','admin');
- insert into public.workers values('${worker}','${company}','${owner}');`);
- for(const migration of ['20260918133000_add_worker_document_checklist.sql','20260918144500_add_worker_document_status_history.sql','20260919023500_harden_worker_document_rls.sql','20261003121632_allow_self_document_registration.sql','20261010222524_worker_document_multiple_photos.sql']) await db.exec(source(`supabase/migrations/${migration}`));
- await db.exec(`grant select on public.companies,public.company_members,public.workers,public.document_requirements,public.worker_document_status_history to authenticated;
- grant select,insert,update,delete on public.worker_document_statuses to authenticated;
- insert into public.document_requirements(id,company_id,name) values('${requirement}','${company}','Synthetic document');`);
- await db.exec(source('docs/candidates/worker_document_change_20261019.sql.review-only'));
+ await setupWorkerDocumentChangeFixture(db);
  await actor(owner);
  assert.deepEqual(await rpc('capability'),{version:1,change_requests_available:true,new_upload_available:false,max_photos:20,self_approval_allowed:false});
  await db.exec(`insert into public.worker_document_statuses(id,company_id,worker_id,requirement_id,updated_by) values('${target}','${company}','${worker}','${requirement}','${owner}')`);
@@ -117,5 +94,5 @@ try {
  pass('unproven legacy placeholder fails closed; caller cannot forge positive INSERT history');
  await db.exec("select set_config('fixture.blocked','yes',false)");await denyRpc('detail',{request_id:uid(25)});
  pass('saved attachment retention policy and current account gate preserved');
- console.log(`PASS: ${groups} boundary groups; native PostgreSQL/JWT/production not exercised`);
+ console.log(`PASS: ${groups} boundary groups; ${process.argv[3]==='postgres'?'native PostgreSQL17 synthetic fixture':'PGlite synthetic fixture'}; real JWT/production not exercised`);
 } finally {await db.close()}

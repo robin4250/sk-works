@@ -1,0 +1,61 @@
+name: Worker document change native PostgreSQL17
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/worker_document_change_20261019*'
+      - 'tool/verify_worker_document_change_candidate.mjs'
+      - 'tool/worker_document_change_*'
+      - 'tool/verify_worker_document_change_pg17_race.mjs'
+      - 'supabase/migrations/*worker_document*.sql'
+      - 'supabase/migrations/*self_document*.sql'
+      - '.github/workflows/worker-document-change-native.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/candidates/worker_document_change_20261019*'
+      - 'tool/verify_worker_document_change_candidate.mjs'
+      - 'tool/worker_document_change_*'
+      - 'tool/verify_worker_document_change_pg17_race.mjs'
+      - 'supabase/migrations/*worker_document*.sql'
+      - 'supabase/migrations/*self_document*.sql'
+      - '.github/workflows/worker-document-change-native.yml'
+permissions:
+  contents: read
+jobs:
+  native:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [boundaries, races]
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_change_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SKO_DOCUMENT_CHANGE_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_change_fixture
+      SKO_DOCUMENT_PG_MODULE: /tmp/sko-document-native/node_modules/pg/lib/index.js
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/sko-document-native --no-save --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - run: node --test tool/worker_document_change_pg17_guard.test.mjs
+      - if: matrix.mode == 'boundaries'
+        run: node tool/verify_worker_document_change_candidate.mjs "$GITHUB_WORKSPACE/tool/worker_document_change_native_pg17_runtime.mjs" postgres
+      - if: matrix.mode == 'races'
+        run: node tool/verify_worker_document_change_pg17_race.mjs
