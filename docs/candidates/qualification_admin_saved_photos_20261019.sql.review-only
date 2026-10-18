@@ -1,0 +1,197 @@
+-- REVIEW ONLY. Existing queue extension; no new upload, rollout or product migration.
+begin;
+do $$begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('private.personal_qualification_submission(text,jsonb)') and md5(prosrc)='ed2f102b6b86342b657d659e039d5066')
+ or not exists(select 1 from pg_proc where oid=to_regprocedure('private.personal_qualification_photo_submission(text,jsonb)') and md5(prosrc) in ('7c79fa3388e9cba9408f8f5f3f097bd4','b31a93002c1877cad114273859fa65da'))
+ or to_regprocedure('private.account_access_allowed()') is null
+ or to_regprocedure('private.has_company_feature(uuid,text)') is null
+ or to_regprocedure('public.account_server_access_allowed(uuid)') is null then
+ raise exception 'qualification source/permission drift; review required' using errcode='55000';end if;
+ perform status from public.workers limit 0;
+end$$;
+alter table private.qualification_submissions add column admin_saved_photos boolean not null default false;
+-- Transaction-local, single-use authorization, NOT another submission queue.
+create table private.qualification_approved_write_permits(
+ transaction_id bigint not null, target_id uuid not null, actor_id uuid not null,
+ request_id uuid not null references private.qualification_submissions(id),
+ old_snapshot jsonb not null, expected_snapshot jsonb not null,
+ primary key(transaction_id,target_id));
+alter table private.qualification_approved_write_permits enable row level security;
+revoke all on private.qualification_approved_write_permits from public,anon,authenticated,service_role;
+create function private.permit_qualification_approved_update(r private.qualification_submissions)
+returns void language plpgsql security definer set search_path='' as $$
+declare changes jsonb;
+begin
+ if auth.uid() is null or r.requested_by is not distinct from auth.uid()
+ or r.status<>'pending' or r.previous is null or not private.account_access_allowed()
+ then raise exception 'qualified independent approval required' using errcode='42501';end if;
+ if r.photo_contract_version=1 then
+ changes:=jsonb_build_object('attachment_path',r.photo_paths[1],'attachment_back_path',r.photo_paths[2],
+ 'attachment_extra_paths',to_jsonb(coalesce(r.photo_paths[3:cardinality(r.photo_paths)],'{}'::text[])));
+ else
+ changes:=jsonb_build_object('certificate_number',r.certificate_number,'issuer',r.issuer,
+ 'issued_at',r.issued_at,'expires_at',r.expires_at,'attachment_path',r.attachment_path,'notes',r.notes);
+ end if;
+ insert into private.qualification_approved_write_permits values(txid_current(),r.target_id,auth.uid(),r.id,r.previous,r.previous||changes);
+end$$;
+revoke all on function private.permit_qualification_approved_update(private.qualification_submissions) from public,anon,authenticated,service_role;
+create function private.guard_qualification_registered_update()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare permitted integer;
+begin
+ if tg_op='DELETE' then raise exception 'registered qualification deletion requires separate review' using errcode='42501';end if;
+ delete from private.qualification_approved_write_permits p
+ where p.transaction_id=txid_current() and p.target_id=old.id and p.actor_id=auth.uid()
+ and exists(select 1 from private.qualification_submissions r where r.id=p.request_id and r.target_id=old.id
+ and r.company_id=old.company_id and r.worker_id=old.worker_id and r.qualification_master_id=old.qualification_master_id
+ and r.status='pending' and r.requested_by is distinct from auth.uid() and r.previous=p.old_snapshot)
+ and p.old_snapshot=to_jsonb(old)
+ and (p.expected_snapshot-'updated_at')=(to_jsonb(new)-'updated_at');
+ get diagnostics permitted=row_count;
+ if permitted=0 and (to_jsonb(new)-'updated_at')=(to_jsonb(old)-'updated_at') then return new;end if;
+ if permitted<>1 then raise exception 'registered qualification edits require approval' using errcode='42501';end if;
+ return new;
+end$$;
+revoke all on function private.guard_qualification_registered_update() from public,anon,authenticated,service_role;
+create trigger qualification_registered_update_approval_guard before update or delete on public.worker_qualifications
+for each row execute function private.guard_qualification_registered_update();
+
+create function private.admin_qualification_saved_photos(p_action text,p_data jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare uid uuid:=auth.uid(); cid uuid; req private.qualification_submissions%rowtype;
+ oldrow public.worker_qualifications%rowtype; target uuid; request_id uuid; slots jsonb;
+ slot jsonb; paths text[]:='{}'; oldpaths text[]; snapshot jsonb; can_review boolean;
+begin
+ if uid is null or private.account_access_allowed() is not true then raise exception 'account unavailable' using errcode='42501';end if;
+ -- Separate action preserves the personal photo_capability response verbatim.
+ if p_action='admin_saved_photo_capability' then
+ cid:=(p_data->>'company_id')::uuid;
+ if cid is null then raise exception 'exact company required' using errcode='22023';end if;
+ return jsonb_build_object('version',1,'contract','qualification_admin_saved_photos',
+ 'company_id',cid,'actor_id',uid,
+ 'photo_submission_available',exists(select 1 from public.company_members where company_id=cid and user_id=uid and role::text in ('owner','admin'))
+  and coalesce(private.has_company_feature(cid,'can_manage_people'),false),
+ 'photo_upload_allowed',false,'max_photos',20,'self_approval_allowed',false);
+ end if;
+ if p_action='prepare_admin_saved_photos' then
+ cid:=(p_data->>'company_id')::uuid;target:=(p_data->>'target_id')::uuid;
+ request_id:=(p_data->>'request_id')::uuid;slots:=p_data->'photo_slots';
+ if cid is null or target is null or request_id is null
+ or jsonb_typeof(slots) is distinct from 'array' or jsonb_array_length(slots)>20
+ then raise exception 'exact qualification/photo request required';end if;
+ if not exists(select 1 from public.company_members where company_id=cid and user_id=uid and role::text in ('owner','admin'))
+ or not private.has_company_feature(cid,'can_manage_people') then raise exception 'current people permission required' using errcode='42501';end if;
+ select q.* into oldrow from public.worker_qualifications q
+ join public.workers w on w.id=q.worker_id and w.company_id=q.company_id and w.status::text='active'
+ join public.qualification_master m on m.id=q.qualification_master_id and m.company_id=q.company_id
+ where q.id=target and q.company_id=cid;
+ if not found then raise exception 'exact qualification not found' using errcode='42501';end if;
+ -- Match the existing personal-photo contract: acquire an existing request
+ -- before the qualification advisory/row locks. Missing rows are rechecked below.
+ select * into req from private.qualification_submissions where id=request_id for update;
+ perform pg_advisory_xact_lock(hashtextextended(oldrow.worker_id::text||oldrow.qualification_master_id::text,0));
+ select q.* into oldrow from public.worker_qualifications q
+ join public.workers w on w.id=q.worker_id and w.company_id=q.company_id and w.status::text='active'
+ join public.qualification_master m on m.id=q.qualification_master_id and m.company_id=q.company_id
+ where q.id=target and q.company_id=cid and q.worker_id=oldrow.worker_id
+ and q.qualification_master_id=oldrow.qualification_master_id for update of q;
+ if not found then raise exception 'qualification identity changed' using errcode='40001';end if;
+ -- Do not wait on an approver request-row lock while holding qualification locks.
+ select * into req from private.qualification_submissions where id=request_id;
+ if found then
+ if req.company_id is distinct from cid or req.target_id is distinct from target or req.requested_by is distinct from uid
+ or not req.admin_saved_photos or req.photo_slots is distinct from slots then raise exception 'request ID conflict' using errcode='23505';end if;
+ return private.qualification_photo_submission_result(req);end if;
+ oldpaths:=array_remove(array[oldrow.attachment_path,oldrow.attachment_back_path]||oldrow.attachment_extra_paths,null);
+ for slot in select value from jsonb_array_elements(slots) loop
+ if jsonb_typeof(slot) is distinct from 'object' or not slot ? 'existing_path'
+ or (select count(*) from jsonb_object_keys(slot))<>1
+ or jsonb_typeof(slot->'existing_path') is distinct from 'string'
+ or not coalesce((slot->>'existing_path')=any(oldpaths),false)
+ or (slot->>'existing_path')=any(paths) then raise exception 'saved photos only; new upload disabled';end if;
+ paths:=array_append(paths,slot->>'existing_path');end loop;
+ insert into private.qualification_submissions(id,company_id,worker_id,qualification_master_id,target_id,
+ certificate_number,issuer,issued_at,expires_at,notes,requested_by,previous,attachment_path,
+ photo_contract_version,photo_slots,photo_paths,photo_upload_paths,admin_saved_photos)
+ values(request_id,cid,oldrow.worker_id,oldrow.qualification_master_id,target,
+ oldrow.certificate_number,oldrow.issuer,oldrow.issued_at,oldrow.expires_at,oldrow.notes,uid,to_jsonb(oldrow),paths[1],1,slots,paths,'{}',true)
+ returning * into req;
+ return private.qualification_photo_submission_result(req);
+ end if;
+ select * into req from private.qualification_submissions where id=(p_data->>'id')::uuid and admin_saved_photos for update;
+ if not found then raise exception 'admin photo request not found';end if;cid:=req.company_id;
+ if not exists(select 1 from public.company_members where company_id=cid and user_id=uid) then raise exception 'current company membership required' using errcode='42501';end if;
+ select exists(select 1 from public.company_members where company_id=cid and user_id=uid and role::text in ('owner','admin'))
+ or exists(select 1 from public.company_approval_assignees where company_id=cid and user_id=uid) into can_review;
+ if p_action='get_photos' then
+ if req.requested_by is distinct from uid and not(can_review and (req.status='pending' or req.reviewed_by=uid)) then raise exception 'review permission required' using errcode='42501';end if;
+ return private.qualification_photo_submission_result(req);end if;
+ if p_action in ('submit','cancel_photos') then
+ if req.requested_by is distinct from uid
+ or not exists(select 1 from public.company_members where company_id=cid and user_id=uid and role::text in ('owner','admin'))
+ or not private.has_company_feature(cid,'can_manage_people') then raise exception 'current requester permission required' using errcode='42501';end if;
+ if p_action='submit' and req.status in ('pending','approved') then return private.qualification_photo_submission_result(req);end if;
+ if req.status<>'draft' then raise exception 'draft required';end if;
+ if p_action='cancel_photos' then
+ update private.qualification_submissions set status='rejected',photo_cancelled=true,reason='管理側の未送信写真申請を取消' where id=req.id returning * into req;
+ return private.qualification_photo_submission_result(req);end if;
+ elsif p_action in ('approve','reject') then
+ if not can_review or not private.has_company_feature(cid,'can_manage_people')
+ or req.requested_by is not distinct from uid or req.status<>'pending' then raise exception 'independent current reviewer required' using errcode='42501';end if;
+ if not exists(select 1 from public.company_members where company_id=cid and user_id=req.requested_by and role::text in ('owner','admin'))
+ or not public.account_server_access_allowed(req.requested_by) then
+ raise exception 'requester permission revoked' using errcode='42501';end if;
+ if p_action='reject' then
+ if nullif(trim(p_data->>'reason'),'') is null then raise exception 'reason required';end if;
+ update private.qualification_submissions set status='rejected',reason=p_data->>'reason',reviewed_by=uid,reviewed_at=now() where id=req.id returning * into req;
+ return private.qualification_photo_submission_result(req);end if;
+ else raise exception 'unsupported admin photo action';end if;
+ perform pg_advisory_xact_lock(hashtextextended(req.worker_id::text||req.qualification_master_id::text,0));
+ select to_jsonb(q) into snapshot from public.worker_qualifications q
+ join public.workers w on w.id=q.worker_id and w.company_id=q.company_id and w.status::text='active'
+ join public.qualification_master m on m.id=q.qualification_master_id and m.company_id=q.company_id
+ where q.id=req.target_id and q.company_id=cid and q.worker_id=req.worker_id
+ and q.qualification_master_id=req.qualification_master_id for update of q;
+ if snapshot is distinct from req.previous then raise exception 'qualification snapshot changed' using errcode='40001';end if;
+ if exists(select 1 from unnest(req.photo_paths) p where not exists(select 1 from storage.objects o where o.bucket_id='qualification-certificates' and o.name=p)) then raise exception 'saved photo missing';end if;
+ if p_action='submit' then update private.qualification_submissions set status='pending' where id=req.id returning * into req;
+ else
+ perform private.permit_qualification_approved_update(req);
+ update public.worker_qualifications set attachment_path=req.photo_paths[1],attachment_back_path=req.photo_paths[2],
+ attachment_extra_paths=coalesce(req.photo_paths[3:cardinality(req.photo_paths)],'{}'::text[]),updated_at=now() where id=req.target_id and company_id=cid;
+ update private.qualification_submissions set status='approved',reviewed_by=uid,reviewed_at=now() where id=req.id returning * into req;
+ end if;
+ return private.qualification_photo_submission_result(req);
+end$$;
+revoke all on function private.admin_qualification_saved_photos(text,jsonb) from public,anon,authenticated,service_role;
+-- Apply only anchored deltas to exact source bodies; preserve existing attributes.
+do $patch$
+declare body text; patched text; definition text;
+begin
+ select prosrc,pg_get_functiondef(oid) into body,definition from pg_proc
+ where oid='private.personal_qualification_submission(text,jsonb)'::regprocedure;
+ patched:=replace(body,$a$ if p_action in ('photo_capability','prepare_photos','get_photos','cancel_photos') then$a$,
+ $b$ if not private.account_access_allowed() then raise exception 'account unavailable' using errcode='42501';end if;
+ if p_action in ('prepare_admin_saved_photos','admin_saved_photo_capability') or (p_action in ('submit','approve','reject','get_photos','cancel_photos')
+ and exists(select 1 from private.qualification_submissions where id=(p_data->>'id')::uuid and admin_saved_photos)) then
+ return private.admin_qualification_saved_photos(p_action,p_data);end if;
+ if p_action in ('photo_capability','prepare_photos','get_photos','cancel_photos') then$b$);
+ if patched=body then raise exception 'admin dispatch anchor missing';end if;body:=patched;
+ patched:=replace(body,$a$ if not can_review or req.status<>'pending' then$a$,
+ $b$ if req.requested_by is not distinct from uid then raise exception 'self approval forbidden' using errcode='42501';end if;
+ if not can_review or req.status<>'pending' then$b$);
+ if patched=body then raise exception 'independent review anchor missing';end if;body:=patched;
+ patched:=replace(body,$a$  update public.worker_qualifications set certificate_number=req.certificate_number$a$,
+ $b$  perform private.permit_qualification_approved_update(req);
+  update public.worker_qualifications set certificate_number=req.certificate_number$b$);
+ if patched=body then raise exception 'legacy approved write anchor missing';end if;
+ execute replace(definition,(select prosrc from pg_proc where oid='private.personal_qualification_submission(text,jsonb)'::regprocedure),patched);
+ select prosrc,pg_get_functiondef(oid) into body,definition from pg_proc
+ where oid='private.personal_qualification_photo_submission(text,jsonb)'::regprocedure;
+ patched:=replace(body,$a$  update public.worker_qualifications set attachment_path=req.photo_paths[1]$a$,
+ $b$  perform private.permit_qualification_approved_update(req);
+  update public.worker_qualifications set attachment_path=req.photo_paths[1]$b$);
+ if patched=body then raise exception 'photo approved write anchor missing';end if;
+ execute replace(definition,body,patched);
+end $patch$;
+commit;
