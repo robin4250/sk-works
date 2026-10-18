@@ -20,13 +20,15 @@ void main() {
     expect(cloud, contains("hintText: '資格種類・証明書番号で検索'"));
   });
 
-  test('qualification certificate flow supports camera and gallery evidence', () {
+  test('registered certificate photos are readable while manager changes await approval', () {
     final source =
         File('lib/features/qualifications/qualification_certificate_page.dart')
             .readAsStringSync();
 
-    expect(source, contains('ImageSource.camera'));
-    expect(source, contains('ImageSource.gallery'));
+    // New photo uploads would directly PATCH an already registered row.
+    expect(source, isNot(contains('ImageSource.camera')));
+    expect(source, isNot(contains('ImageSource.gallery')));
+    expect(source, contains('registeredQualificationChangeNotice'));
     expect(source, contains('createSignedUrl('));
   });
 }

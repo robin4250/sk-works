@@ -93,10 +93,12 @@ void main(){
     expect(find.byType(Image),findsNothing);
     expect(find.textContaining('PRIVATE-CERT'),findsNothing);
   }, timeout: const Timeout(Duration(seconds: 45)));
-  testWidgets('already displayed photo is removed and retained button cannot dispatch after logout',(tester)async{
+  testWidgets('already displayed photo is removed and retained list callback cannot reopen after logout',(tester)async{
     final f=Fixture();addTearDown(f.close);await tester.runAsync(f.login);f.rows.complete();f.signed.complete();
     await tester.pumpWidget(MaterialApp(home:QualificationCertificatePage(repository:QualificationCertificateRepository.forTesting(f.client))));
     await tester.pump();await tester.pump();await tester.pump();
+    final tile=tester.widget<ListTile>(find.ancestor(of:find.text('Private qualification'),matching:find.byType(ListTile)).first);
+    final retained=tile.onTap;expect(retained,isNotNull);
     await tester.tap(find.text('Private qualification'));await tester.pump();await tester.pump(const Duration(milliseconds:400));await tester.pump();
     for (var i=0;i<30 && find.byType(Image).evaluate().isEmpty;i++) {
       await tester.runAsync(()=>Future<void>.delayed(const Duration(milliseconds:5)));
@@ -104,8 +106,9 @@ void main(){
     }
     expect(f.signStarted.isCompleted,true);
     expect(find.byType(Image),findsOneWidget);
-    final button=tester.widget<FilledButton>(find.ancestor(of:find.text('撮り直す'),matching:find.byType(FilledButton)).first);
-    final retained=button.onPressed;expect(retained,isNotNull);
+    // Saved-photo edit callbacks are removed while approval requests are unavailable.
+    expect(find.text('撮り直す'),findsNothing);
+    expect(f.mutations,isEmpty);
     await tester.runAsync(()=>f.client.auth.signOut(scope:SignOutScope.local));await tester.pump();
     expect(find.byType(Image),findsNothing);expect(find.textContaining('PRIVATE-CERT'),findsNothing);
     final before=f.calls.length;retained!();await tester.pump();

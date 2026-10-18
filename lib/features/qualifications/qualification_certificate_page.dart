@@ -1,12 +1,20 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../international/language_controller.dart';
 import 'qualification_certificate_repository.dart';
 
+const registeredQualificationChangeNotice =
+    '登録後の変更には承認が必要です。変更申請の準備が整うまで編集できません。';
+
 class QualificationCertificatePage extends StatefulWidget {
-  const QualificationCertificatePage({super.key, this.initialQualificationId, this.repository});
+  const QualificationCertificatePage({
+    super.key,
+    this.initialQualificationId,
+    this.repository,
+  });
   @visibleForTesting
   final QualificationCertificateRepository? repository;
   final String? initialQualificationId;
@@ -23,7 +31,6 @@ class _QualificationCertificatePageState
   late final String? _actor;
   bool _revoked = false;
   int _generation = 0;
-  final _picker = ImagePicker();
   final _queryController = TextEditingController();
 
   List<Map<String, dynamic>> _masters = [];
@@ -31,7 +38,6 @@ class _QualificationCertificatePageState
   List<Map<String, dynamic>> _qualifications = [];
   bool _loading = true;
   bool _canManage = false;
-  bool _extraPhotosAvailable = false;
   String _query = '';
   String? _busyId;
   String? _error;
@@ -39,7 +45,8 @@ class _QualificationCertificatePageState
   @override
   void initState() {
     super.initState();
-    _repository = widget.repository ?? QualificationCertificateRepository.maybeCreate();
+    _repository =
+        widget.repository ?? QualificationCertificateRepository.maybeCreate();
     _actor = _repository?.currentUserId;
     _revoked = _actor == null;
     _authSubscription = _repository?.authChanges.listen((state) {
@@ -57,7 +64,6 @@ class _QualificationCertificatePageState
       _workers = [];
       _qualifications = [];
       _canManage = false;
-      _extraPhotosAvailable = false;
       _loading = false;
       _busyId = null;
       _error = null;
@@ -66,8 +72,11 @@ class _QualificationCertificatePageState
     });
   }
 
-  bool get _scopeActive => mounted && !_revoked &&
-      _actor != null && _repository?.currentUserId == _actor;
+  bool get _scopeActive =>
+      mounted &&
+      !_revoked &&
+      _actor != null &&
+      _repository?.currentUserId == _actor;
 
   @override
   void dispose() {
@@ -98,7 +107,6 @@ class _QualificationCertificatePageState
       if (!_scopeActive || generation != _generation) return;
       setState(() {
         _canManage = values[1] as bool;
-        _extraPhotosAvailable = data['supports_extra_photos'] == true;
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
         _workers = List<Map<String, dynamic>>.from(data['workers'] as List);
         _qualifications = List<Map<String, dynamic>>.from(
@@ -118,6 +126,7 @@ class _QualificationCertificatePageState
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     if (_revoked) {
       return Scaffold(
         appBar: AppBar(title: const Text('資格証写真')),
@@ -134,7 +143,9 @@ class _QualificationCertificatePageState
     final filtered = _qualifications
         .where((row) {
           if (widget.initialQualificationId != null &&
-              row['id']?.toString() != widget.initialQualificationId) { return false; }
+              row['id']?.toString() != widget.initialQualificationId) {
+            return false;
+          }
           final master =
               masterById[row['qualification_master_id']?.toString() ?? ''];
           final worker = workerById[row['worker_id']?.toString() ?? ''];
@@ -264,9 +275,6 @@ class _QualificationCertificatePageState
     if (repository == null || !_scopeActive) return;
     final actor = _actor;
     var sheetRevoked = false;
-    final front = row['attachment_path']?.toString() ?? '';
-    final back = row['attachment_back_path']?.toString() ?? '';
-
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -274,151 +282,76 @@ class _QualificationCertificatePageState
       builder: (sheetContext) => StreamBuilder<AuthState>(
         stream: repository.authChanges,
         builder: (context, snapshot) {
-          if (!_scopeActive || repository.currentUserId != actor || snapshot.hasError ||
+          SkoLanguageController.watch(context);
+          if (!_scopeActive ||
+              repository.currentUserId != actor ||
+              snapshot.hasError ||
               (snapshot.hasData && snapshot.data?.session?.user.id != actor)) {
             sheetRevoked = true;
           }
           if (sheetRevoked) {
-            return const SafeArea(child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('ログイン状態が変わりました。画面を閉じて開き直してください。'),
-            ));
+            return const SafeArea(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('ログイン状態が変わりました。画面を閉じて開き直してください。'),
+              ),
+            );
           }
           return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  qualificationName,
-                  style: Theme.of(context).textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w800),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      qualificationName,
+                      style: Theme.of(context).textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    Text(workerName),
+                    if ((row['certificate_number']?.toString() ?? '')
+                        .isNotEmpty)
+                      Text('証明書番号: ${row['certificate_number']}'),
+                    if ((row['expires_at']?.toString() ?? '').isNotEmpty)
+                      Text('有効期限: ${row['expires_at']}'),
+                    if (_canManage) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        SkoLanguageController.tr(
+                          registeredQualificationChangeNotice,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    _sideSection(
+                      title: '表面',
+                      path: row['attachment_path']?.toString() ?? '',
+                      repository: repository,
+                    ),
+                    const SizedBox(height: 18),
+                    _sideSection(
+                      title: '裏面（ない場合は登録不要）',
+                      path: row['attachment_back_path']?.toString() ?? '',
+                      repository: repository,
+                    ),
+                    for (final path
+                        in QualificationCertificateRepository.extraPaths(
+                          row,
+                        )) ...[
+                      const SizedBox(height: 18),
+                      _sideSection(
+                        title:
+                            '追加写真 ${QualificationCertificateRepository.extraPaths(row).indexOf(path) + 3}',
+                        path: path,
+                        repository: repository,
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(workerName),
-                if ((row['certificate_number']?.toString() ?? '')
-                    .isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text('証明書番号: ${row['certificate_number']}'),
-                ],
-                if ((row['expires_at']?.toString() ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text('有効期限: ${row['expires_at']}'),
-                ],
-                const SizedBox(height: 18),
-                _sideSection(
-                  title: '表面',
-                  path: front,
-                  repository: repository,
-                  onCamera: _canManage
-                      ? () {
-                          Navigator.pop(sheetContext);
-                          _pickAndUpload(row, ImageSource.camera, back: false);
-                        }
-                      : null,
-                  onGallery: _canManage
-                      ? () {
-                          Navigator.pop(sheetContext);
-                          _pickAndUpload(row, ImageSource.gallery, back: false);
-                        }
-                      : null,
-                  onRemove: _canManage && front.isNotEmpty
-                      ? () {
-                          Navigator.pop(sheetContext);
-                          _remove(row, back: false);
-                        }
-                      : null,
-                ),
-                const SizedBox(height: 18),
-                _sideSection(
-                  title: '裏面（ない場合は登録不要）',
-                  path: back,
-                  repository: repository,
-                  onCamera: _canManage
-                      ? () {
-                          Navigator.pop(sheetContext);
-                          _pickAndUpload(row, ImageSource.camera, back: true);
-                        }
-                      : null,
-                  onGallery: _canManage
-                      ? () {
-                          Navigator.pop(sheetContext);
-                          _pickAndUpload(row, ImageSource.gallery, back: true);
-                        }
-                      : null,
-                  onRemove: _canManage && back.isNotEmpty
-                      ? () {
-                          Navigator.pop(sheetContext);
-                          _remove(row, back: true);
-                        }
-                      : null,
-                ),
-                for (final path
-                    in QualificationCertificateRepository.extraPaths(row)) ...[
-                  const SizedBox(height: 18),
-                  _sideSection(
-                    title:
-                        '追加写真 ${QualificationCertificateRepository.extraPaths(row).indexOf(path) + 3}',
-                    path: path,
-                    repository: repository,
-                    onCamera: _canManage
-                        ? () {
-                            Navigator.pop(sheetContext);
-                            _uploadExtra(
-                              row,
-                              ImageSource.camera,
-                              replacingPath: path,
-                            );
-                          }
-                        : null,
-                    onGallery: _canManage
-                        ? () {
-                            Navigator.pop(sheetContext);
-                            _uploadExtra(
-                              row,
-                              ImageSource.gallery,
-                              replacingPath: path,
-                            );
-                          }
-                        : null,
-                    onRemove: _canManage
-                        ? () {
-                            Navigator.pop(sheetContext);
-                            _removeExtra(row, path);
-                          }
-                        : null,
-                  ),
-                ],
-                if (!_extraPhotosAvailable) ...[
-                  const SizedBox(height: 18),
-                  const Text('追加写真の保存は準備中です。表面・裏面は引き続き確認できます。'),
-                ],
-                if (_canManage && _extraPhotosAvailable) ...[
-                  const SizedBox(height: 18),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(sheetContext);
-                      _uploadExtra(row, ImageSource.gallery, multiple: true);
-                    },
-                    icon: const Icon(Icons.add_photo_alternate_outlined),
-                    label: const Text('追加写真を選ぶ（複数可）'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(sheetContext);
-                      _uploadExtra(row, ImageSource.camera);
-                    },
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: const Text('追加写真を撮影'),
-                  ),
-                ],
-              ],
+              ),
             ),
-          ),
-        ),
           );
         },
       ),
@@ -429,9 +362,6 @@ class _QualificationCertificatePageState
     required String title,
     required String path,
     required QualificationCertificateRepository repository,
-    required VoidCallback? onCamera,
-    required VoidCallback? onGallery,
-    required VoidCallback? onRemove,
   }) {
     return Card(
       child: Padding(
@@ -475,189 +405,10 @@ class _QualificationCertificatePageState
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Text('資格証写真はまだ登録されていません。'),
               ),
-            if (_canManage) ...[
-              const SizedBox(height: 10),
-              FilledButton.icon(
-                onPressed: onCamera,
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: Text(path.isEmpty ? 'カメラで撮影' : '撮り直す'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: onGallery,
-                icon: const Icon(Icons.photo_library_outlined),
-                label: Text(path.isEmpty ? '写真から選ぶ' : '写真から差し替える'),
-              ),
-            ],
-            if (onRemove != null)
-              TextButton.icon(
-                onPressed: onRemove,
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('この面の画像を削除'),
-              ),
           ],
         ),
       ),
     );
-  }
-
-  Future<void> _uploadExtra(
-    Map<String, dynamic> row,
-    ImageSource source, {
-    String? replacingPath,
-    bool multiple = false,
-  }) async {
-    final repository = _repository;
-    if (repository == null || !_scopeActive || !_canManage || _busyId != null || !_extraPhotosAvailable) return;
-    final files = multiple
-        ? await _picker.pickMultiImage(imageQuality: 88, maxWidth: 2400)
-        : [if (await _pickExtra(source) case final XFile file) file];
-    if (files.isEmpty || !_scopeActive) return;
-    setState(() => _busyId = row['id'].toString());
-    try {
-      for (final file in files) {
-        final bytes = await file.readAsBytes();
-        if (!mounted || !_scopeActive) return;
-        final updated = await repository.uploadExtraCertificate(
-          qualificationId: row['id'].toString(),
-          workerId: row['worker_id'].toString(),
-          bytes: bytes,
-          originalFilename: file.name,
-          replacingPath: replacingPath,
-        );
-        if (!mounted || !_scopeActive) return;
-        _replaceRow(updated);
-      }
-      if (mounted && _scopeActive) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('追加写真を保存しました')));
-      }
-    } catch (error) {
-      if (mounted && _scopeActive) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('追加写真の保存を確認できません。再読み込みしてください: $error')),
-        );
-      }
-    } finally {
-      if (_scopeActive) setState(() => _busyId = null);
-    }
-  }
-
-  Future<XFile?> _pickExtra(ImageSource source) =>
-      _picker.pickImage(source: source, imageQuality: 88, maxWidth: 2400);
-
-  Future<void> _removeExtra(Map<String, dynamic> row, String path) async {
-    final repository = _repository;
-    if (repository == null || !_scopeActive || !_canManage || _busyId != null || !_extraPhotosAvailable) return;
-    setState(() => _busyId = row['id'].toString());
-    try {
-      final updated = await repository.removeExtraCertificate(
-        qualificationId: row['id'].toString(),
-        storagePath: path,
-      );
-      if (_scopeActive) _replaceRow(updated);
-    } catch (error) {
-      if (mounted && _scopeActive) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('写真を削除できませんでした: $error')));
-      }
-    } finally {
-      if (_scopeActive) setState(() => _busyId = null);
-    }
-  }
-
-  Future<void> _pickAndUpload(
-    Map<String, dynamic> row,
-    ImageSource source, {
-    required bool back,
-  }) async {
-    final repository = _repository;
-    if (repository == null || !_scopeActive || !_canManage) return;
-    final id = row['id']?.toString();
-    final workerId = row['worker_id']?.toString();
-    if (id == null || workerId == null) return;
-
-    final picked = await _picker.pickImage(
-      source: source,
-      imageQuality: 88,
-      maxWidth: 2400,
-    );
-    if (picked == null || !_scopeActive) return;
-
-    if (_scopeActive) setState(() => _busyId = id);
-    try {
-      final bytes = await picked.readAsBytes();
-      if (!mounted || !_scopeActive) return;
-      final updated = back
-          ? await repository.uploadCertificateBack(
-              qualificationId: id,
-              workerId: workerId,
-              bytes: bytes,
-              originalFilename: picked.name,
-            )
-          : await repository.uploadCertificate(
-              qualificationId: id,
-              workerId: workerId,
-              bytes: bytes,
-              originalFilename: picked.name,
-            );
-      if (!mounted || !_scopeActive) return;
-      _replaceRow(updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(back ? '資格証の裏面を保存しました' : '資格証の表面を保存しました')),
-      );
-    } catch (error) {
-      if (!mounted || !_scopeActive) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('資格証画像を保存できませんでした: $error')));
-    } finally {
-      if (_scopeActive) setState(() => _busyId = null);
-    }
-  }
-
-  Future<void> _remove(Map<String, dynamic> row, {required bool back}) async {
-    final repository = _repository;
-    if (repository == null || !_scopeActive || !_canManage) return;
-    final id = row['id']?.toString();
-    final path = row[back ? 'attachment_back_path' : 'attachment_path']
-        ?.toString();
-    if (id == null || path == null || path.isEmpty) return;
-
-    if (_scopeActive) setState(() => _busyId = id);
-    try {
-      final updated = back
-          ? await repository.removeCertificateBack(
-              qualificationId: id,
-              storagePath: path,
-            )
-          : await repository.removeCertificate(
-              qualificationId: id,
-              storagePath: path,
-            );
-      if (!mounted || !_scopeActive) return;
-      _replaceRow(updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(back ? '資格証の裏面を削除しました' : '資格証の表面を削除しました')),
-      );
-    } catch (error) {
-      if (!mounted || !_scopeActive) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('資格証画像を削除できませんでした: $error')));
-    } finally {
-      if (_scopeActive) setState(() => _busyId = null);
-    }
-  }
-
-  void _replaceRow(Map<String, dynamic> updated) {
-    if (!mounted || !_scopeActive) return;
-    final id = updated['id']?.toString();
-    if (id == null) return;
-    setState(() {
-      final index = _qualifications.indexWhere(
-        (row) => row['id']?.toString() == id,
-      );
-      if (index >= 0) _qualifications[index] = updated;
-    });
   }
 }
 
@@ -703,4 +454,3 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
-
