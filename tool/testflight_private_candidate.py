@@ -41,17 +41,16 @@ def reject_previous(backups,sha,number):
         r31.require((record.get('sha'),record.get('build_number'))!=(sha,number),'candidate already attempted; inspect existing checkpoint')
 
 
-def candidate_command(env_file,stage,sha,number,icon,version):
+def candidate_command(env_file,stage,sha,number,icon,version,*,preflight=False):
     # Existing preflight + provenance stay intact; only the one fixed IPA build is new.
     return ['bash','-c','set -euo pipefail; set +x; source "$1" >/dev/null 2>&1; set +x; '
       'export SUPABASE_URL SUPABASE_PUBLISHABLE_KEY; '
       'export SKO_AUDITED_SHA="$3" SKO_APP_ICON_SOURCE="$5"; unset CI; '
-      'python3 tool/testflight_provenance.py configuration; '
-      'bash tool/testflight_preflight.sh; '
+      + ('python3 tool/testflight_provenance.py configuration; bash tool/testflight_preflight.sh' if preflight else
       'python3 tool/testflight_provenance.py start --marker build/ios/sko-testflight-build-start.json; '
       'flutter build ipa --release --no-pub --export-method app-store '
       '--dart-define=SKO_MASTER_PASSWORD_V1=false --build-number="$4" --build-name="$6" '
-      '--dart-define="SUPABASE_URL=$SUPABASE_URL" --dart-define="SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY"',
+      '--dart-define="SUPABASE_URL=$SUPABASE_URL" --dart-define="SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY"'),
       'tf-private',str(env_file),str(stage),sha,number,str(icon),version]
 
 
@@ -110,6 +109,14 @@ def build(root,sha,number,backups):
                 version_match=re.search(r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+[0-9]+\s*$',(source/'pubspec.yaml').read_text(),re.M)
                 r31.require(version_match is not None,'version unavailable')
                 version=version_match.group(1)
+                phase='candidate_preflight'
+                runner.run(candidate_command(env_file,stage,sha,number,icon,version,preflight=True))
+                # Preflight invokes pub get: its regenerated plugin links must be
+                # isolated again before any IPA build or provenance start.
+                r31.isolate_native_links(source/'ios',source/'ios',cache_root=Path.home()/'.pub-cache',dependencies=stage/'native-dependencies',approved=copies)
+                r31.audit_isolated_links(source/'ios',stage/'native-dependencies')
+                r31.verify_clean(runner,sha)
+                phase='candidate_build'
                 runner.run(candidate_command(env_file,stage,sha,number,icon,version))
                 ipas=list((source/'build/ios/ipa').glob('*.ipa'))
                 r31.require(len(ipas)==1,'exactly one new IPA required')

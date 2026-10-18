@@ -6,7 +6,7 @@
 
 R31の `source_state`、private JSON、bundle、native inventory/copy、symlink依存隔離、Flutter3.47.5/Xcode27.1検査、clean確認を再利用する。既TestFlight provenanceのsource/exact-main CI/configuration/start/create/validateをそのまま呼ぶ。既testflight_preflightも呼ぶ。候補のBundle ID、App Store profile/署名、version/build、Release構築記録、IPAのSHA、Google callback、master=false等は既provenanceの検査に委ね、省略しない。
 
-既candidate.shは内部prepare/pubgetを再実行するので、R31隔離後にそのまま呼ぶとplugin linkが共有cacheへ戻り得る。mainに新skip分岐を追加する案を採用せず、独立wrapperから既prepare_iosを一度実行→R31 isolate/audit→既preflight/provenance→同じ固定 `flutter build ipa --release --no-pub --export-method app-store` を実行する。build-nameはselected sourceのpubspec、build-numberはApp Store Connectで未使用と確認した引数を必須とする。既candidate/prepare/provenance/R31の製品sourceは変更しない。
+既candidate.shは内部prepare/pubgetを再実行するので、R31隔離後にそのまま呼ぶとplugin linkが共有cacheへ戻り得る。mainに新skip分岐を追加する案を採用せず、独立wrapperから既prepare_iosを一度実行→R31 isolate/audit→既preflight（内部pub getあり）→R31 isolate/auditとclean再確認→provenance start→同じ固定 `flutter build ipa --release --no-pub --export-method app-store` を実行する。build-nameはselected sourceのpubspec、build-numberはApp Store Connectで未使用と確認した引数を必須とする。既candidate/prepare/provenance/R31の製品sourceは変更しない。
 
 ## 保護・停止条件
 
@@ -21,7 +21,7 @@ R31の `source_state`、private JSON、bundle、native inventory/copy、symlink�
 
 ## 検証範囲・未完
 
-合成Gitで3テスト：durable unknown/同key拒否、固定IPA commandにupload/installなし、dirty staged/unstaged/untracked不変と旧Archive保持・env非コピー。SDK/network/署名/buildをfake runnerへ置き換えた制御試験であり、実Macのarchive成功ではない。実testflight provenanceの既署名検査自体をmock成功で認定しない。
+合成Gitで3テスト：durable unknown/同key拒否、固定IPA commandにupload/installなし、dirty staged/unstaged/untracked不変と旧Archive保持・env非コピー。合成preflightが共有cacheへのplugin symlinkを再生成するケースを実行し、実R31 isolate/auditが再隔離した後でだけfake buildへ進むことを確認する。SDK/network/署名/buildをfake runnerへ置き換えた制御試験であり、実Macのarchive成功ではない。実testflight provenanceの既署名検査自体をmock成功で認定しない。
 
 このwrapperだけではLINE本番非開放、実帳票・役割境界、Apple配布署名/Team、ASC未使用番号、実Macの権限・依存コピー、審査、外部テスター招待を完了にしない。現在はsource準備。実行案内は選定SHAのCIと既承認条件が揃った後にrootが一行へまとめる。TF build/upload中の旧成果を重複生成・送信する指示は出さない。
 
