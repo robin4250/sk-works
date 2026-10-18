@@ -300,6 +300,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                                   key: ValueKey('managed-qualification:$actor:${row['worker_id']}:${row['id'] ?? row['qualification_master_id']}'),
                                   title: master?['name']?.toString() ?? '資格', icon: Icons.badge_outlined,
                                   registered: !unregistered,
+                                  registeredActionLabel: '詳細を確認',
                                   dateLabel: (row['issued_at']?.toString() ?? '').isEmpty ? '' : '取得日 ${row['issued_at']}',
                                   detailLabel: worker?['name']?.toString() ?? '', attachments: attachments,
                                   onAction: unregistered ? _canManageWorkerQualifications

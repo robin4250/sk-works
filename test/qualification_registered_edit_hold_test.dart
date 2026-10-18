@@ -168,7 +168,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('確認・編集').first);
+      expect(find.text('確認・編集'), findsNothing);
+      await tester.tap(find.text('詳細を確認').first);
       await tester.pumpAndSettle();
       expect(find.text('資格証を確認'), findsOneWidget);
       expect(find.text('資格登録を削除'), findsNothing);
