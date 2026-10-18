@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../notifications/notification_preview_route_scope.dart';
 import '../../domain/invoice_engine.dart';
 import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
@@ -548,8 +549,13 @@ class _PeriodHeader extends StatelessWidget {
 }
 
 class InvoicePreviewPage extends StatefulWidget {
-  const InvoicePreviewPage({super.key, required this.invoice});
+  const InvoicePreviewPage({
+    super.key,
+    required this.invoice,
+    this.allowLegacyApprovalInitialization = true,
+  });
   final InvoiceCalculationResult invoice;
+  final bool allowLegacyApprovalInitialization;
 
   @override
   State<InvoicePreviewPage> createState() => _InvoicePreviewPageState();
@@ -572,7 +578,10 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
     if (repository == null || _busy) return;
     setState(() => _busy = true);
     try {
-      final rows = await repository.loadForInvoice(widget.invoice.invoiceId);
+      final rows = await repository.loadForInvoice(
+        widget.invoice.invoiceId,
+        allowLegacyInitialization: widget.allowLegacyApprovalInitialization,
+      );
       if (!mounted) return;
       final cancellationRequested = await showModalBottomSheet<bool>(
         context: context,
@@ -654,7 +663,10 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
       await repository.cancel(widget.invoice.invoiceId);
       if (!mounted) return;
       // Re-read server approval state before rebuilding the generated PDF.
-      await repository.loadForInvoice(widget.invoice.invoiceId);
+      await repository.loadForInvoice(
+        widget.invoice.invoiceId,
+        allowLegacyInitialization: widget.allowLegacyApprovalInitialization,
+      );
       if (!mounted) return;
       setState(() => _revision++);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -670,6 +682,7 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
   Future<void> _editDisplayDate(InvoiceApprovalRecord row) async {
     final mode = await showDialog<String>(
       context: context,
+      useRootNavigator: !NotificationPreviewRouteScope.isScoped(context),
       builder: (context) => SimpleDialog(
         title: const Text('印影の表示日付'),
         children: [
@@ -691,6 +704,7 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
           row.displayDateOverride ?? row.stampDisplayDate ?? DateTime.now();
       date = await showDatePicker(
         context: context,
+        useRootNavigator: !NotificationPreviewRouteScope.isScoped(context),
         initialDate: initial,
         firstDate: DateTime(1900),
         lastDate: DateTime(2200),
@@ -715,6 +729,7 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
       if (!mounted) return;
       await showDialog<void>(
         context: context,
+        useRootNavigator: !NotificationPreviewRouteScope.isScoped(context),
         builder: (context) => AlertDialog(
           title: const Text('実際の承認履歴'),
           content: SizedBox(
@@ -771,6 +786,7 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
     body: InvoicePdfPreviewPage(
       key: ValueKey(_revision),
       invoices: [widget.invoice],
+      allowLegacyApprovalInitialization: widget.allowLegacyApprovalInitialization,
       title: SkoLanguageController.isEnglish ? 'Invoice Preview' : '請求書プレビュー',
     ),
     bottomNavigationBar: _approvals == null || widget.invoice.invoiceId.isEmpty
@@ -840,6 +856,7 @@ Future<bool> showInvoiceApprovalCancellationConfirmation(
 ) async =>
     await showDialog<bool>(
       context: context,
+      useRootNavigator: !NotificationPreviewRouteScope.isScoped(context),
       builder: (dialogContext) => AlertDialog(
         title: const Text('承認を解除しますか？'),
         content: const Text(

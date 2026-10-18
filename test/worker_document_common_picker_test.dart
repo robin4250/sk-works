@@ -9,6 +9,11 @@ class _Repository extends WorkerDocumentRepository {
   @override
   String? get actorId => 'actor';
   final row = <String, dynamic>{'id': 'original-id', 'name': '履歴書', 'scope': 'upstream', 'is_required': false, 'expiry_required': true};
+  bool includedHidden = false;
+  @override
+  Future<void> setRequirementVisible(String id, bool visible) async {
+    row['is_active'] = visible;
+  }
   Map<String, dynamic>? update;
   var inserts = 0;
   @override
@@ -16,7 +21,10 @@ class _Repository extends WorkerDocumentRepository {
   @override
   Future<bool> canManageStatuses() async => true;
   @override
-  Future<Map<String, List<Map<String, dynamic>>>> loadAll() async => {'requirements': [Map.of(row)], 'workers': [], 'statuses': []};
+  Future<Map<String, List<Map<String, dynamic>>>> loadAll({bool includeHiddenRequirements = false}) async {
+    includedHidden = includeHiddenRequirements;
+    return {'requirements': [Map.of(row)], 'workers': [], 'statuses': []};
+  }
   @override
   Future<void> addRequirement({required String name, required String scope, required bool isRequired, required bool expiryRequired}) async { inserts++; }
   @override
@@ -40,6 +48,23 @@ void main() {
     await tester.tap(find.text('必要書類を追加'));
     await tester.pumpAndSettle();
   }
+  testWidgets('hidden requirement remains in settings and can be shown again', (tester) async {
+    repository.row['scope'] = 'internal';
+    repository.row['is_active'] = false;
+    await tester.pumpWidget(MaterialApp(home: WorkerDocumentPage(view: WorkerDocumentView.settings, repositoryOverride: repository)));
+    await tester.pumpAndSettle();
+    expect(repository.includedHidden, isTrue);
+    expect(find.text('非表示'), findsOneWidget);
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('表示'));
+    await tester.pumpAndSettle();
+    expect(repository.row['is_active'], isFalse);
+    await tester.tap(find.widgetWithText(FilledButton, '表示'));
+    await tester.pumpAndSettle();
+    expect(repository.row['is_active'], isTrue);
+    expect(find.text('履歴書'), findsOneWidget);
+  });
   testWidgets('existing other-purpose document shares original ID and flags without insert', (tester) async {
     await open(tester);
     await tester.tap(find.text('履歴書'));

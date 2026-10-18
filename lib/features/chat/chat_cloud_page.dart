@@ -33,6 +33,7 @@ class ChatCloudPage extends StatefulWidget {
     this.createGroupInitially = false,
     this.initialLineDirectoryId,
     this.initialGroupId,
+    this.initialInviteId,
     this.repository,
     this.actorChanges,
     this.lineReleaseAccess,
@@ -45,6 +46,9 @@ class ChatCloudPage extends StatefulWidget {
   final bool createGroupInitially;
   final String? initialLineDirectoryId;
   final String? initialGroupId;
+
+  /// Exact pending invitation UUID, not the group UUID. Null keeps the normal list.
+  final String? initialInviteId;
   @visibleForTesting
   final ChatCloudRepository? repository;
   @visibleForTesting
@@ -96,6 +100,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _friends = [];
   List<Map<String, dynamic>> _pendingGroupInvites = [];
+  final Map<String, Object> _respondingInvites = {};
   List<String> _prioritizedSiteGroupIds = const [];
   Set<String> _pinnedGroupIds = <String>{};
   Set<String> _hiddenGroupIds = <String>{};
@@ -162,7 +167,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         widget.actorChanges ??
         (widget.repository == null ? _repository?.watchActorChanges() : null);
     _actorSubscription = actorChanges?.listen(_actorChanged);
-    if (widget.showGroupsInitially) {
+    if (widget.showGroupsInitially || widget.initialInviteId != null) {
       _tab = _ChatTab.groups;
     }
     _load();
@@ -171,6 +176,13 @@ class _ChatCloudPageState extends State<ChatCloudPage>
   @override
   void didUpdateWidget(covariant ChatCloudPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.initialInviteId != oldWidget.initialInviteId) {
+      _dispatchEpoch++;
+      _pendingGroupInvites = [];
+      _respondingInvites.clear();
+      if (widget.initialInviteId != null) _tab = _ChatTab.groups;
+      unawaited(_load());
+    }
     if (widget.friendsRequest == oldWidget.friendsRequest ||
         widget.friendsRequest == 0) {
       return;
@@ -260,6 +272,8 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       _groups = [];
       _messages = [];
       _friends = [];
+      _pendingGroupInvites = [];
+      _respondingInvites.clear();
       _pinnedGroupIds = {};
       _hiddenGroupIds = {};
       _mutedGroupIds = {};
@@ -362,7 +376,18 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         _groups = groups;
         _retainLinkedDispatches(groups);
         _friends = friends;
-        _pendingGroupInvites = pendingGroupInvites;
+        final target = widget.initialInviteId;
+        final validTarget = target != null &&
+            RegExp(
+              r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$',
+            ).hasMatch(target);
+        _pendingGroupInvites = target == null
+            ? pendingGroupInvites
+            : validTarget
+            ? pendingGroupInvites
+                  .where((invite) => invite['id'] == target)
+                  .toList(growable: false)
+            : [];
         _prioritizedSiteGroupIds = priorities;
         _blockedUserIds = blockedUserIds;
         _selectedGroupId = next;
@@ -390,7 +415,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         await _createCustomGroup();
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || _dispatchEpoch != lineEpoch) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -1774,23 +1799,60 @@ class _ChatCloudPageState extends State<ChatCloudPage>
 
   Future<void> _respondGroupInvite(
     Map<String, dynamic> invite,
-    bool accept,
-  ) async {
+    bool accept, {
+    required String? actor,
+    required int epoch,
+  }) async {
     final repository = _repository;
     final inviteId = invite['id']?.toString() ?? '';
-    if (repository == null || inviteId.isEmpty) return;
+    if (!mounted ||
+        repository == null ||
+        actor == null ||
+        repository.currentUserId != actor ||
+        _dispatchEpoch != epoch ||
+        inviteId.isEmpty ||
+        !_pendingGroupInvites.contains(invite) ||
+        _respondingInvites.containsKey(inviteId)) {
+      return;
+    }
+    final operation = Object();
+    setState(() => _respondingInvites[inviteId] = operation);
     try {
       final groupId = await repository.respondGroupInvite(
         inviteId: inviteId,
         accept: accept,
       );
+      if (!mounted ||
+          repository.currentUserId != actor ||
+          _dispatchEpoch != epoch) {
+        return;
+      }
       await _load();
-      if (!mounted || !accept || groupId.isEmpty) return;
+      if (!mounted ||
+          repository.currentUserId != actor ||
+          _dispatchEpoch != epoch ||
+          !accept ||
+          groupId.isEmpty) {
+        return;
+      }
       await _selectGroup(groupId);
     } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('グループ招待を処理できませんでした: $error')));
+      if (!mounted ||
+          repository.currentUserId != actor ||
+          _dispatchEpoch != epoch) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('グループ招待を処理できませんでした: $error')));
+    } finally {
+      if (identical(_respondingInvites[inviteId], operation)) {
+        if (mounted) {
+          setState(() => _respondingInvites.remove(inviteId));
+        } else {
+          _respondingInvites.remove(inviteId);
+        }
+      }
     }
   }
 
@@ -2717,6 +2779,8 @@ class _ChatCloudPageState extends State<ChatCloudPage>
       group['participants_only'] == true;
 
   Widget _groupWorkspace() {
+    final actor = _repository?.currentUserId;
+    final epoch = _dispatchEpoch;
     return Column(
       children: [
         Padding(
@@ -2733,6 +2797,14 @@ class _ChatCloudPageState extends State<ChatCloudPage>
             ),
           ),
         ),
+        if (widget.initialInviteId != null &&
+            !_loading &&
+            _pendingGroupInvites.isEmpty)
+          ListTile(
+            title: Text(SkoLanguageController.tr(
+              '対象の招待は完了済み、または閲覧できません。',
+            )),
+          ),
         if (_pendingGroupInvites.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
@@ -2757,12 +2829,26 @@ class _ChatCloudPageState extends State<ChatCloudPage>
                         children: [
                           IconButton(
                             tooltip: '拒否',
-                            onPressed: () => _respondGroupInvite(invite, false),
+                            onPressed: _respondingInvites.containsKey(invite['id'])
+                                ? null
+                                : () => _respondGroupInvite(
+                                    invite,
+                                    false,
+                                    actor: actor,
+                                    epoch: epoch,
+                                  ),
                             icon: const Icon(Icons.close),
                           ),
                           IconButton(
                             tooltip: '承認',
-                            onPressed: () => _respondGroupInvite(invite, true),
+                            onPressed: _respondingInvites.containsKey(invite['id'])
+                                ? null
+                                : () => _respondGroupInvite(
+                                    invite,
+                                    true,
+                                    actor: actor,
+                                    epoch: epoch,
+                                  ),
                             icon: const Icon(Icons.check_circle_outline),
                           ),
                         ],

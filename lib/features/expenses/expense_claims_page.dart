@@ -413,7 +413,11 @@ class _ExpenseClaimsPageState extends State<ExpenseClaimsPage> {
         ? widget.claims
         : widget.claims.forApplicant(widget.applicantId!);
     final entries = scope.forList(_list);
-    final visible = entries.where(_matches).toList();
+    final visible = entries.where(_matches).toList()
+      ..sort((a, b) {
+        final latest = b.submittedAt.compareTo(a.submittedAt);
+        return latest != 0 ? latest : a.id.compareTo(b.id);
+      });
     final approved = entries
         .where((c) => !c.withdrawn && c.approval == ExpenseApproval.approved)
         .toList();

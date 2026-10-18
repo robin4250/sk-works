@@ -30,6 +30,7 @@ class AppNotificationRecord {
   bool get hasBusinessTarget => const {
     'payroll_review', 'invoice_approval', 'daily_report_edit_request',
     'paid_leave_request', 'worker_personnel_change', 'attendance_correction_request',
+    'expense_review_request',
   }.contains(actionKey);
 
   AppNotificationRecord withBusinessStatus(NotificationBusinessStatus status) =>
@@ -111,6 +112,21 @@ class AppNotificationRepository {
     final id = item.actionId?.trim() ?? '';
     if (!RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(id)) {
       return const NotificationBusinessStatus();
+    }
+    if (item.actionKey == 'expense_review_request') {
+      final actor = _client.auth.currentUser?.id;
+      if (actor == null) return const NotificationBusinessStatus();
+      try {
+        final value = await _client.rpc('expense_notification_target',
+            params: {'p_notification_id': item.id});
+        if (_client.auth.currentUser?.id != actor) {
+          return const NotificationBusinessStatus();
+        }
+        return expenseNotificationBusinessStatus(
+            notificationId: item.id, claimId: item.actionId!, value: value);
+      } catch (_) {
+        return const NotificationBusinessStatus();
+      }
     }
     final source = switch (item.actionKey) {
       'paid_leave_request' => ('paid_leave_requests', 'batch_id', 'status,leave_date,workers(name)'),

@@ -81,6 +81,13 @@ void main() {
       expect(writes.single.uri.queryParameters['id'], 'eq.$requirement');
       expect(writes.single.uri.queryParameters['is_active'], 'eq.true');
       requests.clear();
+      await repo.setRequirementVisible(requirement, true);
+      final restore = requests.singleWhere((r) => r.method == 'PATCH');
+      expect(restore.body, {'is_active': true});
+      expect(restore.uri.queryParameters['is_active'], 'eq.false');
+      expect(restore.uri.queryParameters['company_id'], 'eq.$company');
+      expect(restore.uri.queryParameters['id'], 'eq.$requirement');
+      requests.clear();
       role = 'employee';
       await expectLater(
         repo.deactivateRequirement(requirement),

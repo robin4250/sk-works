@@ -1,0 +1,149 @@
+-- REVIEW ONLY. Not a migration and never applied to an application database.
+-- Adds transactional in-app notices and an exact, recipient-bound summary reader.
+-- Existing claim/confirmation, enqueue, receipt, calculation and RLS bodies stay intact.
+begin;
+do $guard$
+begin
+ if to_regclass('private.expense_claims') is null
+  or to_regclass('private.expense_review_confirmations') is null
+  or to_regclass('public.app_notifications') is null
+  or to_regprocedure('private.enqueue_notification(uuid,uuid,text,text,text,text,uuid)') is null
+  or to_regprocedure('private.expense_review_access(uuid)') is null
+  or to_regprocedure('private.account_access_allowed()') is null then
+  raise exception 'Expense notification prerequisites are unavailable';
+ end if;
+ if to_regprocedure('private.expense_claim_notice_insert()') is not null
+  or to_regprocedure('private.expense_confirmation_notice_insert()') is not null
+  or to_regprocedure('private.expense_notification_target(uuid)') is not null
+  or to_regprocedure('public.expense_notification_target(uuid)') is not null
+  or exists(select 1 from pg_trigger where not tgisinternal and tgname in
+   ('expense_claim_notice_insert','expense_confirmation_notice_insert')) then
+  raise exception 'Expense notification candidate already exists; inspect instead of replacing';
+ end if;
+end $guard$;
+
+create function private.expense_claim_notice_insert() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare recipient uuid;
+begin
+ if auth.uid() is null or new.created_by is distinct from auth.uid()
+  or not coalesce(private.account_access_allowed(),false) then
+  raise exception 'expense notification actor mismatch' using errcode='42501';
+ end if;
+ -- Matches existing can_configure / can_review roles without impersonating recipients.
+ -- Owners/admins may configure; a manager/viewer requires explicit expense assignment.
+ for recipient in
+  select distinct m.user_id from public.company_members m
+  join public.companies c on c.id=m.company_id
+  join auth.users u on u.id=m.user_id
+  left join private.expense_approval_settings s on s.company_id=m.company_id
+  where m.company_id=new.company_id and
+   (m.role::text in ('owner','admin') or
+    (m.role::text in ('manager','viewer') and m.user_id=any(coalesce(s.approver_ids,'{}'::uuid[]))))
+ loop
+  perform private.enqueue_notification(new.company_id,recipient,'approval',
+   '経費申請があります','新しい経費申請があります。内容を確認してください。',
+   'expense_review_request',new.id);
+ end loop;
+ return new;
+end $$;
+revoke all on function private.expense_claim_notice_insert() from public,anon,authenticated;
+create trigger expense_claim_notice_insert after insert on private.expense_claims
+for each row execute function private.expense_claim_notice_insert();
+
+create function private.expense_confirmation_notice_insert() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare claim private.expense_claims%rowtype;
+begin
+ if new.command->>'action' is distinct from 'approve' then return new;end if;
+ select * into claim from private.expense_claims where id=new.claim_id;
+ if auth.uid() is null or new.actor_id is distinct from auth.uid()
+  or not coalesce(private.account_access_allowed(),false)
+  or claim.company_id is distinct from new.company_id
+  or claim.approval is distinct from 'approved'
+  or new.result->>'review_action' is distinct from 'approve'
+  or new.result->>'id' is distinct from claim.id::text
+  or new.result->>'company_id' is distinct from claim.company_id::text
+  or new.result->>'created_by' is distinct from claim.created_by::text
+  or new.result->>'revision' is distinct from claim.revision::text then
+  raise exception 'expense confirmation notification mismatch' using errcode='42501';
+ end if;
+ -- created_by is the applicant's Auth user; applicant_id is a worker UUID.
+ if exists(select 1 from public.company_members m join auth.users u on u.id=m.user_id
+   where m.company_id=claim.company_id and m.user_id=claim.created_by) then
+  perform private.enqueue_notification(claim.company_id,claim.created_by,'info',
+   '経費の振り分けが完了しました','経費の確認・振り分け結果を確認できます。',
+   'expense_review_completed',new.command_id);
+ end if;
+ return new;
+end $$;
+revoke all on function private.expense_confirmation_notice_insert() from public,anon,authenticated;
+create trigger expense_confirmation_notice_insert after insert on private.expense_review_confirmations
+for each row execute function private.expense_confirmation_notice_insert();
+
+create function private.expense_notification_target(p_notification_id uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare notice public.app_notifications%rowtype; claim private.expense_claims%rowtype;
+ confirmation private.expense_review_confirmations%rowtype; data jsonb; access jsonb;
+begin
+ if auth.uid() is null or not coalesce(private.account_access_allowed(),false) then
+  raise exception 'expense notification unavailable' using errcode='42501';end if;
+ select * into notice from public.app_notifications where id=p_notification_id
+  and recipient_user_id=auth.uid()
+  and action_key in ('expense_review_request','expense_review_completed');
+ if not found or notice.action_id is null or not exists(
+  select 1 from public.company_members m join public.companies c on c.id=m.company_id
+  where m.company_id=notice.company_id and m.user_id=auth.uid()) then
+  raise exception 'expense notification unavailable' using errcode='42501';end if;
+ if notice.action_key='expense_review_request' then
+  select * into claim from private.expense_claims where id=notice.action_id and company_id=notice.company_id
+   and not withdrawn;
+  if not found then raise exception 'expense notification unavailable' using errcode='42501';end if;
+  access:=private.expense_review_access(notice.company_id);
+  if not coalesce((access->>'can_review')::boolean,false) and
+   not coalesce((access->>'can_configure')::boolean,false) then
+   raise exception 'expense notification unavailable' using errcode='42501';end if;
+  data:=to_jsonb(claim);
+  select * into confirmation from private.expense_review_confirmations
+   where claim_id=claim.id and company_id=claim.company_id
+    and result->>'revision'=claim.revision::text
+   order by created_at desc,command_id desc limit 1;
+  if found then
+   data:=data||jsonb_build_object('reviewed_at',confirmation.result->'reviewed_at',
+    'review_memo',confirmation.result->'review_memo');
+  end if;
+  data:=data||coalesce((select jsonb_build_object('settlement_method',s.method,'settlement_month',s.settlement_month)
+   from private.expense_settlement_choices s where s.claim_id=claim.id and s.company_id=claim.company_id
+    and s.revision=claim.revision and s.approval_current),'{}'::jsonb);
+ else
+  select * into confirmation from private.expense_review_confirmations
+   where command_id=notice.action_id and company_id=notice.company_id
+    and command->>'action'='approve' and result->>'review_action'='approve'
+    and result->>'approval'='approved';
+  if not found then raise exception 'expense notification unavailable' using errcode='42501';end if;
+  select * into claim from private.expense_claims where id=confirmation.claim_id
+   and company_id=notice.company_id and created_by=auth.uid();
+  if not found or confirmation.result->>'id' is distinct from claim.id::text
+   or confirmation.result->>'company_id' is distinct from claim.company_id::text
+   or confirmation.result->>'created_by' is distinct from auth.uid()::text then
+   raise exception 'expense notification unavailable' using errcode='42501';end if;
+  data:=confirmation.result;
+ end if;
+ -- Deliberate whitelist: no actor/worker IDs, receipt paths, history commands or signatures.
+ return jsonb_build_object('notification_id',notice.id,'action_key',notice.action_key,
+  'action_id',notice.action_id,'company_id',notice.company_id,'claim_id',claim.id,
+  'claim',jsonb_build_object('id',claim.id,'company_id',notice.company_id,
+   'applicant_name',data->'applicant_name','incurred_on',data->'incurred_on',
+   'submitted_at',data->'submitted_at','description',data->'description','amount_yen',data->'amount_yen',
+   'approval',data->'approval','allocation',data->'allocation','counterparty_name',data->'counterparty_name',
+   'settlement_method',data->'settlement_method','settlement_month',data->'settlement_month',
+   'reviewed_at',data->'reviewed_at','review_memo',data->'review_memo','revision',data->'revision'));
+end $$;
+revoke all on function private.expense_notification_target(uuid) from public,anon,authenticated;
+grant execute on function private.expense_notification_target(uuid) to authenticated;
+create function public.expense_notification_target(p_notification_id uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$
+ select private.expense_notification_target(p_notification_id) $$;
+revoke all on function public.expense_notification_target(uuid) from public,anon;
+grant execute on function public.expense_notification_target(uuid) to authenticated;
+commit;

@@ -1,6 +1,7 @@
 """Read actual synthetic Dart-generated PDFs; never connect to production."""
 from pathlib import Path
 import sys
+import re
 from pypdf import PdfReader
 import fitz
 
@@ -13,14 +14,25 @@ for kind in ('invoice', 'payment'):
         details = reader.pages[1].extract_text()
         assert '別途経費（原額）' in first, (kind, mode)
         assert amount in first, (kind, mode, first)
+        total_label = 'ご請求金額（税込）' if kind == 'invoice' else '支払金額'
+        assert re.search(re.escape(total_label) + r'\s*¥' + re.escape(amount), first), (kind, mode)
         assert '別途経費合計：1234円' in details, (kind, mode)
-        assert 'charged' in details and '検証交通費' in details, (kind, mode)
+        # The fixture claim ID is internal; retain the human-readable audit row.
+        assert 'charged' not in first + details and '申請ID' not in details, (kind, mode)
+        assert '2026/10/1' in details and '試験 太郎' in details, (kind, mode)
+        assert '検証交通費' in details and '承認済み' in details, (kind, mode)
+        assert ('取引先' if kind == 'invoice' else '下請け・協力会社') in details, (kind, mode)
+        assert details.count('1234円') == 2, (kind, mode)  # detail row + declared total
         assert '税・福利厚生費の加算対象外' in details, (kind, mode)
         if mode == 'only':
             body = first.replace('工事代金支払明細書', '')
             assert '工事代金' not in body and '通常作業' not in body, (kind, mode)
-        elif kind == 'invoice':
-            assert '21,600' in first and '2,160' in first, (kind, mode)
+        else:
+            assert '通常作業' in first and '20,000' in first, (kind, mode)
+            # The adopted layout lists expense in subtotal and welfare separately.
+            tax_label = '消費税（10%）' if kind == 'invoice' else '消費税'
+            for label, value in (('小計', '21,234'), ('福利厚生費', '1,600'), (tax_label, '2,160')):
+                assert re.search(re.escape(label) + r'\s+' + re.escape(value), first), (kind, mode, label)
         print(f'PASS {kind}/{mode}: original expense in total and page-two charged detail')
         with fitz.open(root / f'{kind}_{mode}.pdf') as document:
             for index, page in enumerate(document):

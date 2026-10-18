@@ -46,7 +46,7 @@ void main() {
     expect(entries, hasLength(1));
     expect(entries.single.key, 'expense_claims');
     expect(entries.single.details, contains('最後の「確定」でまとめて保存'));
-    expect(entries.single.details, contains('支払済み（対象外）・現金精算・給与精算・立替精算'));
+    expect(entries.single.details, contains('給与精算・現金精算・支払済み（対象外）の3択'));
     expect(entries.single.details, contains('精算対象月は申請月'));
     expect(entries.single.details, contains('「内容を修正」「履歴を確認」「一覧に戻る」'));
   });

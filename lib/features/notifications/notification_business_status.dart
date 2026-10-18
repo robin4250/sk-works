@@ -1,3 +1,5 @@
+import '../expenses/expense_notification_target.dart';
+
 /// Business completion is independent of a notification's read_at timestamp.
 enum NotificationBusinessState { pending, completed, rejected, cancelled, unknown }
 
@@ -74,4 +76,28 @@ NotificationBusinessState payrollNotificationState({
   return value['confirmed'] == true
       ? NotificationBusinessState.completed
       : NotificationBusinessState.unknown;
+}
+
+/// Only the exact authorized current request can contribute a pending count.
+/// Missing readers, malformed responses and unavailable targets stay unknown.
+NotificationBusinessStatus expenseNotificationBusinessStatus({
+  required String notificationId,
+  required String claimId,
+  required Object? value,
+}) {
+  try {
+    final claim = parseExpenseNotificationTarget(
+      value is Map ? Map<String, dynamic>.from(value) : null,
+      notificationId: notificationId, actionKey: 'expense_review_request', actionId: claimId,
+    );
+    return NotificationBusinessStatus(state: switch (claim['approval']) {
+      'pending' => NotificationBusinessState.pending,
+      'approved' => claim['allocation'] == 'unallocated' || claim['settlement_method'] == null
+          ? NotificationBusinessState.pending : NotificationBusinessState.completed,
+      'rejected' => NotificationBusinessState.rejected,
+      _ => NotificationBusinessState.unknown,
+    });
+  } catch (_) {
+    return const NotificationBusinessStatus();
+  }
 }

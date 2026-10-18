@@ -1,0 +1,47 @@
+name: Worker document change approval candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/worker_document_change_20261019*'
+      - 'docs/review/document_edit_approval_followup_20261019.md'
+      - 'tool/verify_worker_document_change_candidate.mjs'
+      - 'supabase/migrations/*worker_document*.sql'
+      - 'supabase/migrations/*self_document*.sql'
+      - 'supabase/migrations/*subadmin_document*.sql'
+      - 'lib/features/people/worker_document*.dart'
+      - 'lib/features/people/own_document_registration_page.dart'
+      - 'test/worker_document_change*_test.dart'
+      - 'test/worker_document_requirement_edit_http_test.dart'
+      - 'test/worker_document_common_picker_test.dart'
+      - 'test/own_document_registration_save_test.dart'
+      - 'test/ui_organization_navigation_test.dart'
+      - '.github/workflows/worker-document-change-candidate.yml'
+permissions:
+  contents: read
+jobs:
+  sql-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix "$RUNNER_TEMP/document-change-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - run: node tool/verify_worker_document_change_candidate.mjs "$RUNNER_TEMP/document-change-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter test test/worker_document_change_flow_test.dart test/worker_document_change_review_page_test.dart test/worker_document_change_repository_test.dart test/worker_document_requirement_edit_http_test.dart test/worker_document_common_picker_test.dart test/worker_document_registration_actions_test.dart test/worker_document_own_save_http_test.dart test/worker_document_managed_save_http_test.dart test/own_document_registration_save_test.dart test/ui_organization_navigation_test.dart

@@ -10,11 +10,13 @@ Future<List<WorkerDocumentPhoto>?> editWorkerDocumentPhotos(
   required List<String> paths,
   required Future<String> Function(String) signedUrl,
   bool canEdit = true,
+  bool useRootNavigator = true,
   bool allowNewPhotos = true,
   String? uploadNotice,
   List<WorkerDocumentPhoto>? initialPhotos,
 }) => showDialog<List<WorkerDocumentPhoto>>(
   context: context,
+  useRootNavigator: useRootNavigator,
   builder: (_) => _PhotoEditor(
     paths: paths,
     signedUrl: signedUrl,

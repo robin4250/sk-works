@@ -82,7 +82,9 @@ class Fixture {
             ...jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>,
             'id': statusId,
           };
-          response = saved;
+          response = request.uri.queryParameters['select'] == 'id'
+              ? [saved]
+              : saved;
         }
       } else if (request.uri.path.startsWith(
         '/storage/v1/object/worker-documents/',
@@ -144,6 +146,88 @@ class Fixture {
 }
 
 void main() {
+  test(
+    'verification updates only metadata with exact identity and old timestamp CAS',
+    () async {
+      final f = Fixture();
+      await f.start();
+      try {
+        final row = {
+          'id': statusId,
+          'worker_id': worker,
+          'requirement_id': requirement,
+          'updated_at': '2026-10-11T00:00:00Z',
+        };
+        await WorkerDocumentRepository.forTesting(
+          f.client,
+        ).confirmDocumentStatus(
+          row,
+          status: 'verified',
+          originalVerified: true,
+        );
+        final writes = f.mutations;
+        expect(writes, hasLength(1));
+        expect(writes.single.method, 'PATCH');
+        final body = jsonDecode(utf8.decode(writes.single.bytes)) as Map;
+        expect(body.keys.toSet(), {
+          'status',
+          'original_verified',
+          'updated_at',
+          'updated_by',
+        });
+        expect(body['updated_by'], actor);
+        expect(writes.single.uri.queryParameters['company_id'], 'eq.$company');
+        expect(writes.single.uri.queryParameters['worker_id'], 'eq.$worker');
+        expect(
+          writes.single.uri.queryParameters['requirement_id'],
+          'eq.$requirement',
+        );
+        expect(writes.single.uri.queryParameters['id'], 'eq.$statusId');
+        expect(
+          writes.single.uri.queryParameters['updated_at'],
+          'eq.2026-10-11T00:00:00Z',
+        );
+      } finally {
+        await f.close();
+      }
+    },
+  );
+  for (final scenario in ['viewer', 'conflict']) {
+    test(
+      'verification $scenario never reports success or writes content',
+      () async {
+        final f = Fixture()
+          ..role = scenario == 'viewer' ? 'viewer' : 'admin'
+          ..casConflict = scenario == 'conflict';
+        await f.start();
+        try {
+          await expectLater(
+            WorkerDocumentRepository.forTesting(f.client).confirmDocumentStatus(
+              {
+                'id': statusId,
+                'worker_id': worker,
+                'requirement_id': requirement,
+                'updated_at': '2026-10-11T00:00:00Z',
+              },
+              status: 'verified',
+              originalVerified: true,
+            ),
+            throwsA(anything),
+          );
+          if (scenario == 'viewer') expect(f.mutations, isEmpty);
+          for (final write in f.mutations) {
+            expect(
+              (jsonDecode(utf8.decode(write.bytes)) as Map).keys,
+              isNot(contains('notes')),
+            );
+          }
+        } finally {
+          await f.close();
+        }
+      },
+    );
+  }
+
   test('status-only actor change during read prevents writes', () async {
     final f = Fixture()..switchActorDuringStatusRead = true;
     await f.start();

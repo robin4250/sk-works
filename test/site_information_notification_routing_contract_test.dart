@@ -28,7 +28,7 @@ void main() {
 
     expect(approvals, contains('this.initialRequestId'));
     expect(approvals, contains("status == 'pending'"));
-    expect(approvals, contains("id == targetId"));
+    expect(approvals, contains("selectNotificationRequestRows<Map<String, dynamic>>"));
     expect(approvals, contains("status == 'approved'"));
     expect(approvals, contains("status == 'rejected'"));
   });

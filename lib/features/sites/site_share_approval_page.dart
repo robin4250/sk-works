@@ -1,12 +1,27 @@
 import 'package:flutter/material.dart';
 
 import '../../international/language_controller.dart';
+import '../notifications/notification_request_selection.dart';
 import 'site_cloud_repository.dart';
 
 class SiteShareApprovalPage extends StatefulWidget {
-  const SiteShareApprovalPage({super.key, this.initialRequestId});
+  const SiteShareApprovalPage({
+    super.key,
+    this.initialRequestId,
+    this.loadInbox,
+    this.respond,
+  });
 
   final String? initialRequestId;
+
+  @visibleForTesting
+  final Future<List<Map<String, dynamic>>> Function()? loadInbox;
+  @visibleForTesting
+  final Future<String?> Function({
+    required String dataItemId,
+    required bool accept,
+  })?
+  respond;
 
   @override
   State<SiteShareApprovalPage> createState() => _SiteShareApprovalPageState();
@@ -18,6 +33,8 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
   List<Map<String, dynamic>> _items = const [];
   bool _loading = true;
   String? _error;
+  int _generation = 0;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -25,9 +42,21 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant SiteShareApprovalPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialRequestId != widget.initialRequestId) _load();
+  }
+
   Future<void> _load() async {
-    final repository = _repository;
-    if (repository == null) {
+    final generation = ++_generation;
+    final load = widget.loadInbox ?? _repository?.loadSiteShareInbox;
+    setState(() {
+      _items = const [];
+      _loading = true;
+      _error = null;
+    });
+    if (load == null) {
       setState(() {
         _loading = false;
         _error = '現場共有の承認画面を利用できません。';
@@ -35,19 +64,20 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
       return;
     }
     try {
-      final inbox = await repository.loadSiteShareInbox();
-      final target = widget.initialRequestId;
-      final items = target == null ? inbox : inbox.where(
-        (item) => item['data_item_id']?.toString() == target,
-      ).toList(growable: false);
-      if (!mounted) return;
+      final inbox = await load();
+      if (!mounted || generation != _generation) return;
+      final items = selectNotificationRequestRows<Map<String, dynamic>>(
+        inbox,
+        requestId: widget.initialRequestId,
+        id: (item) => item['data_item_id']?.toString() ?? '',
+      );
       setState(() {
         _items = items;
         _loading = false;
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -55,12 +85,15 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
     }
   }
 
-  Future<void> _respond(
-    Map<String, dynamic> item,
-    bool accept,
-  ) async {
-    final repository = _repository;
-    if (repository == null || item['status'] != 'pending') return;
+  Future<void> _respond(Map<String, dynamic> item, bool accept) async {
+    final respond = widget.respond ?? _repository?.respondSiteShare;
+    final generation = _generation;
+    if (_busy ||
+        respond == null ||
+        item['status'] != 'pending' ||
+        !_items.contains(item)) {
+      return;
+    }
     final id = item['data_item_id']?.toString() ?? '';
     if (id.isEmpty) return;
 
@@ -69,48 +102,46 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
         : const <String, dynamic>{};
     final name = payload['name']?.toString() ?? '現場';
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(accept ? '現場データを承認しますか？' : '現場データを拒否しますか？'),
-        content: Text(
-          accept
-              ? '「$name」を自社の現場データへ追加します。'
-              : '「$name」は自社の現場データへ追加されません。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('戻る'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(accept ? '承認して追加' : '拒否する'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
+    setState(() => _busy = true);
     try {
-      await repository.respondSiteShare(
-        dataItemId: id,
-        accept: accept,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(accept ? '現場データを承認しますか？' : '現場データを拒否しますか？'),
           content: Text(
-            accept ? '現場データを追加しました' : '現場データを拒否しました',
+            accept ? '「$name」を自社の現場データへ追加します。' : '「$name」は自社の現場データへ追加されません。',
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('戻る'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(accept ? '承認して追加' : '拒否する'),
+            ),
+          ],
         ),
+      );
+      if (confirmed != true ||
+          !mounted ||
+          generation != _generation ||
+          !_items.contains(item)) {
+        return;
+      }
+
+      await respond(dataItemId: id, accept: accept);
+      if (!mounted || generation != _generation) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(accept ? '現場データを追加しました' : '現場データを拒否しました')),
       );
       await _load();
     } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('処理できませんでした: $error')),
-      );
+      if (!mounted || generation != _generation) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('処理できませんでした: $error')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -216,7 +247,7 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
                                       children: [
                                         Expanded(
                                           child: OutlinedButton.icon(
-                                            onPressed: () =>
+                                            onPressed: _busy ? null : () =>
                                                 _respond(item, false),
                                             icon: const Icon(Icons.close),
                                             label: const Text('拒否'),
@@ -225,7 +256,7 @@ class _SiteShareApprovalPageState extends State<SiteShareApprovalPage> {
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: FilledButton.icon(
-                                            onPressed: () =>
+                                            onPressed: _busy ? null : () =>
                                                 _respond(item, true),
                                             icon: const Icon(
                                               Icons.check_circle_outline,

@@ -28,7 +28,10 @@ void main() {
     expect(notifications, contains('PeopleCloudPage'));
 
     expect(approvals, contains('this.initialRequestId'));
-    expect(approvals, contains("a['id']?.toString() == targetId"));
+    // Exact selection replaces the old target-first sort; widget regression
+    // tests verify that unrelated requests cannot remain visible.
+    expect(approvals, contains('selectNotificationRequestRows<Map<String, dynamic>>'));
+    expect(approvals, contains('requestId: widget.initialRequestId'));
     expect(approvals, contains("'承認 \$approvalCount/\$required 名'"));
 
     expect(migration, contains("'worker_personnel_change'"));

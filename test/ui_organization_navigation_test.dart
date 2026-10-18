@@ -24,7 +24,7 @@ class DocumentFixture extends WorkerDocumentRepository {
   @override
   Future<bool> canManageStatuses() async => true;
   @override
-  Future<Map<String, List<Map<String, dynamic>>>> loadAll() async => {
+  Future<Map<String, List<Map<String, dynamic>>>> loadAll({bool includeHiddenRequirements = false}) async => {
     'workers': [
       {'id': 'worker', 'name': '社員A'},
     ],
@@ -43,7 +43,7 @@ class DocumentFixture extends WorkerDocumentRepository {
     ],
   };
   @override
-  Future<void> deactivateRequirement(String id) async {
+  Future<void> setRequirementVisible(String id, bool visible) async {
     removed.add(id);
   }
 }
@@ -121,16 +121,16 @@ void main() {
       expect(find.text('取引先書類'), findsOneWidget);
       await tester.tap(find.byType(PopupMenuButton<String>));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('削除'));
+      await tester.tap(find.text('非表示'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('キャンセル'));
       await tester.pumpAndSettle();
       expect(repo.removed, isEmpty);
       await tester.tap(find.byType(PopupMenuButton<String>));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('削除'));
+      await tester.tap(find.text('非表示'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('削除'));
+      await tester.tap(find.text('非表示'));
       await tester.pumpAndSettle();
       expect(repo.removed, ['upstream']);
       expect(find.text('取引先書類'), findsNothing);
