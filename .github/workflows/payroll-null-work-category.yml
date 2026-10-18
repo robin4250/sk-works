@@ -1,0 +1,58 @@
+name: Payroll NULL work category
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261018215043_fix_payroll_null_work_category.sql'
+      - 'docs/candidates/payroll_null_work_category_20261019.sql.review-only'
+      - 'tool/verify_payroll_null_work_category.mjs'
+      - 'tool/payroll_scope_fixture_setup.mjs'
+      - 'supabase/tests/payroll*'
+      - '.github/workflows/payroll-null-work-category.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/20261018215043_fix_payroll_null_work_category.sql'
+      - 'docs/candidates/payroll_null_work_category_20261019.sql.review-only'
+      - 'tool/verify_payroll_null_work_category.mjs'
+      - 'tool/payroll_scope_fixture_setup.mjs'
+      - 'supabase/tests/payroll*'
+      - '.github/workflows/payroll-null-work-category.yml' 
+permissions:
+  contents: read
+jobs:
+  sql:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/sko-null-category-sql --no-save --ignore-scripts @electric-sql/pglite@0.3.14
+      - run: node tool/verify_payroll_null_work_category.mjs /tmp/sko-null-category-sql/node_modules/@electric-sql/pglite/dist/index.js
+  postgres:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_unit_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/sko-null-category-pg --no-save --ignore-scripts pg@8.16.3
+      - run: node tool/verify_payroll_null_work_category.mjs /tmp/sko-null-category-pg/node_modules/pg/lib/index.js postgres
+        env:
+          SKO_UNIT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_unit_fixture
