@@ -41,6 +41,10 @@ try {
  await db.exec(`set test.uid='${id(99)}'`);await rejected(request(original),/actor denied/);await db.exec(`set test.uid='${actor}'`);
  await db.exec(`begin;update payment_certificates set automatic_calculation=false where id='${original.id}'`);
  try{await assert.rejects(convert(request(await row('07'))),/automatic draft/);}finally{await db.exec('rollback');}
+ for(const blocked of ['true','null']) {
+ await db.exec(`begin;update payment_certificates set calculation_blocked=${blocked} where id='${original.id}'`);
+ try{await assert.rejects(convert(request(await row('07'))),/automatic draft/);}finally{await db.exec('rollback');}
+ }
  await db.exec(`begin;insert into private.expense_amount_consumptions(claim_id,purpose,company_id,document_kind,document_id,document_revision,claim_revision,amount_yen,snapshot)
  values('${id(10)}','cost_recovery','${company}','paymentCertificate','${original.id}',1,2,1000,'{}')`);
  try{await assert.rejects(convert(request(original)),/consumed/);}finally{await db.exec('rollback');}

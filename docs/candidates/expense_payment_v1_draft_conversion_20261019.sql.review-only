@@ -59,7 +59,7 @@ begin
  return audit.after_row;
  end if;
  if old_row.status is distinct from 'draft' or old_row.automatic_calculation is not true
- or old_row.calculation_blocked is true or old_row.revision is distinct from expected_revision
+ or old_row.calculation_blocked is distinct from false or old_row.revision is distinct from expected_revision
  or to_jsonb(old_row) is distinct from expected_source or md5(to_jsonb(old_row)::text) is distinct from expected_hash
  then raise exception 'conversion requires exact unchanged automatic draft';end if;
  if old_row.snapshot?'expense_cost_direction_v2' or old_row.snapshot?'expense_cost_basis'
