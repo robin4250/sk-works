@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../domain/company_data_transfer.dart';
 import '../common/data_date_labels.dart';
 import '../people/personnel_export_page.dart';
+import '../../international/language_controller.dart';
 import 'qualification_cloud_repository.dart';
 import 'qualification_send_page.dart';
 import 'qualification_certificate_page.dart';
@@ -10,14 +13,18 @@ import 'qualification_certificate_repository.dart';
 import '../shared/resource_registration_card.dart';
 
 class QualificationCloudPage extends StatefulWidget {
-  const QualificationCloudPage({super.key});
+  const QualificationCloudPage({super.key, this.repository, this.certificateRepository});
+  @visibleForTesting
+  final QualificationCloudRepository? repository;
+  @visibleForTesting
+  final QualificationCertificateRepository? certificateRepository;
 
   @override
   State<QualificationCloudPage> createState() => _QualificationCloudPageState();
 }
 
 class _QualificationCloudPageState extends State<QualificationCloudPage> {
-  final _repository = QualificationCloudRepository.maybeCreate();
+  late final QualificationCloudRepository? _repository;
   final _workerQueryController = TextEditingController();
   final _qualificationQueryController = TextEditingController();
 
@@ -29,7 +36,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   bool _canManageWorkerQualifications = false;
   bool _showExpiringOnly = false;
   bool _canEditCertificates = false;
-  final _certificateRepository = QualificationCertificateRepository.maybeCreate();
+  late final QualificationCertificateRepository? _certificateRepository;
   String _workerQuery = '';
   String _qualificationQuery = '';
   String? _selectedWorkerId;
@@ -38,6 +45,8 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   @override
   void initState() {
     super.initState();
+    _repository = widget.repository ?? QualificationCloudRepository.maybeCreate();
+    _certificateRepository = widget.certificateRepository ?? QualificationCertificateRepository.maybeCreate();
     _load();
   }
 
@@ -89,6 +98,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
 
   @override
   Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     final now = DateTime.now();
     final masterById = {
       for (final row in _masters) row['id']?.toString() ?? '': row,
@@ -290,6 +300,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                                   key: ValueKey('managed-qualification:$actor:${row['worker_id']}:${row['id'] ?? row['qualification_master_id']}'),
                                   title: master?['name']?.toString() ?? '資格', icon: Icons.badge_outlined,
                                   registered: !unregistered,
+                                  registeredActionLabel: '詳細を確認',
                                   dateLabel: (row['issued_at']?.toString() ?? '').isEmpty ? '' : '取得日 ${row['issued_at']}',
                                   detailLabel: worker?['name']?.toString() ?? '', attachments: attachments,
                                   onAction: unregistered ? _canManageWorkerQualifications
@@ -443,108 +454,116 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     final repository = _repository;
     if (repository == null) return;
     if (_masters.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('先に資格マスターを追加してください')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('先に資格マスターを追加してください')));
       return;
     }
     if (_workers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('先に社員・作業員を登録してください')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('先に社員・作業員を登録してください')));
       return;
     }
 
     var workerId = _selectedWorkerId ?? _workers.first['id']?.toString();
     var masterId = _masters.any((m) => m['id']?.toString() == initialMasterId)
-        ? initialMasterId : _masters.first['id']?.toString();
+        ? initialMasterId
+        : _masters.first['id']?.toString();
     final certificateController = TextEditingController();
     final issuerController = TextEditingController();
     final notesController = TextEditingController();
     DateTime? issuedAt;
     DateTime? expiresAt;
 
+    Future<dynamic>? dialogCompleted;
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('資格登録'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  initialValue: workerId,
-                  decoration: const InputDecoration(labelText: '保有者'),
-                  items: _workers
-                      .map(
-                        (row) => DropdownMenuItem<String>(
-                          value: row['id']?.toString(),
-                          child: Text(row['name']?.toString() ?? ''),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) => setDialogState(() => workerId = value),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: masterId,
-                  decoration: const InputDecoration(labelText: '資格・免許・講習'),
-                  items: _masters
-                      .map(
-                        (row) => DropdownMenuItem<String>(
-                          value: row['id']?.toString(),
-                          child: Text(row['name']?.toString() ?? ''),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) => setDialogState(() => masterId = value),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: certificateController,
-                  decoration: const InputDecoration(labelText: '証明書番号'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: issuerController,
-                  decoration: const InputDecoration(labelText: '発行元'),
-                ),
-                const SizedBox(height: 12),
-                _DateRow(
-                  label: '取得日',
-                  value: issuedAt,
-                  onTap: () async {
-                    final picked = await _pickDate(dialogContext, issuedAt);
-                    if (picked != null) setDialogState(() => issuedAt = picked);
-                  },
-                ),
-                _DateRow(
-                  label: '有効期限',
-                  value: expiresAt,
-                  onTap: () async {
-                    final picked = await _pickDate(dialogContext, expiresAt);
-                    if (picked != null) setDialogState(() => expiresAt = picked);
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: notesController,
-                  decoration: const InputDecoration(labelText: '備考'),
-                  maxLines: 2,
-                ),
-              ],
+      builder: (dialogContext) {
+        dialogCompleted ??= ModalRoute.of(dialogContext)?.completed;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('資格登録'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: workerId,
+                    decoration: const InputDecoration(labelText: '保有者'),
+                    items: _workers
+                        .map(
+                          (row) => DropdownMenuItem<String>(
+                            value: row['id']?.toString(),
+                            child: Text(row['name']?.toString() ?? ''),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setDialogState(() => workerId = value),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: masterId,
+                    decoration: const InputDecoration(labelText: '資格・免許・講習'),
+                    items: _masters
+                        .map(
+                          (row) => DropdownMenuItem<String>(
+                            value: row['id']?.toString(),
+                            child: Text(row['name']?.toString() ?? ''),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setDialogState(() => masterId = value),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: certificateController,
+                    decoration: const InputDecoration(labelText: '証明書番号'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: issuerController,
+                    decoration: const InputDecoration(labelText: '発行元'),
+                  ),
+                  const SizedBox(height: 12),
+                  _DateRow(
+                    label: '取得日',
+                    value: issuedAt,
+                    onTap: () async {
+                      final picked = await _pickDate(dialogContext, issuedAt);
+                      if (picked != null) {
+                        setDialogState(() => issuedAt = picked);
+                      }
+                    },
+                  ),
+                  _DateRow(
+                    label: '有効期限',
+                    value: expiresAt,
+                    onTap: () async {
+                      final picked = await _pickDate(dialogContext, expiresAt);
+                      if (picked != null) {
+                        setDialogState(() => expiresAt = picked);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: notesController,
+                    decoration: const InputDecoration(labelText: '備考'),
+                    maxLines: 2,
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('キャンセル'),
-            ),
-            FilledButton(
-              onPressed: workerId == null || masterId == null
-                  ? null
-                  : () => Navigator.pop(dialogContext, {
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('キャンセル'),
+              ),
+              FilledButton(
+                onPressed: workerId == null || masterId == null
+                    ? null
+                    : () => Navigator.pop(dialogContext, {
                         'workerId': workerId,
                         'masterId': masterId,
                         'certificateNumber': certificateController.text.trim(),
@@ -553,16 +572,28 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                         'expiresAt': expiresAt,
                         'notes': notesController.text.trim(),
                       }),
-              child: const Text('登録'),
-            ),
-          ],
-        ),
-      ),
+                child: const Text('登録'),
+              ),
+            ],
+          ),
+        );
+      },
     );
 
-    certificateController.dispose();
-    issuerController.dispose();
-    notesController.dispose();
+    void disposeDraft() {
+      certificateController.dispose();
+      issuerController.dispose();
+      notesController.dispose();
+    }
+
+    // Dialog results precede the reverse animation. Keep its controllers alive
+    // until the actual route subtree has finished using them.
+    final completed = dialogCompleted;
+    if (completed == null) {
+      disposeDraft();
+    } else {
+      unawaited(completed.then((_) => disposeDraft()));
+    }
     if (draft == null) return;
 
     try {
@@ -577,14 +608,12 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       );
       if (!mounted) return;
       setState(() => _qualifications.insert(0, inserted));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('資格をクラウドに登録しました')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('資格をクラウドに登録しました')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('登録できませんでした: $error')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('登録できませんでした: $error')));
     }
   }
 
@@ -651,10 +680,10 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                   onPressed: () async {
                     Navigator.pop(sheetContext);
                     await Navigator.push<void>(context, MaterialPageRoute(builder: (_) =>
-                      QualificationCertificatePage(initialQualificationId: row['id']?.toString())));
+                      QualificationCertificatePage(initialQualificationId: row['id']?.toString(), repository: _certificateRepository)));
                     if (mounted) await _load();
                   },
-                  icon: const Icon(Icons.edit_outlined), label: const Text('資格証を確認・編集')),
+                  icon: const Icon(Icons.edit_outlined), label: Text(SkoLanguageController.tr('資格証を確認'))),
               if (QualificationCloudRepository.ownPhotoAttachments(row).isNotEmpty)
                 TextButton(onPressed: () => showResourceAttachments(context,
                   title: master?['name']?.toString() ?? '資格', attachments: [
@@ -668,8 +697,8 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                     Navigator.pop(sheetContext);
                     await _delete(row['id']?.toString() ?? '');
                   },
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('資格登録を削除'),
+                  icon: const Icon(Icons.info_outline),
+                  label: Text(SkoLanguageController.tr('登録後の変更について')),
                 ),
             ],
           ),
@@ -679,20 +708,12 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   }
 
   Future<void> _delete(String id) async {
-    if (id.isEmpty || _repository == null) return;
-    try {
-      await _repository.deleteWorkerQualification(id);
-      if (!mounted) return;
-      setState(() => _qualifications.removeWhere((row) => row['id']?.toString() == id));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('資格登録を削除しました')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('削除できませんでした: $error')),
-      );
-    }
+    // No manager change-approval contract is available. Keep even a captured
+    // legacy delete callback from reaching the direct repository delete path.
+    if (!mounted || id.isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(SkoLanguageController.tr(registeredQualificationChangeNotice)),
+    ));
   }
 
   DateTime? _parseDate(Object? value) {

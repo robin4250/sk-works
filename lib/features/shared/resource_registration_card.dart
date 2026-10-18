@@ -64,6 +64,7 @@ class ResourceRegistrationCard extends StatelessWidget {
     required this.onAction,
     this.dateLabel = '',
     this.statusLabel,
+    this.registeredActionLabel = '確認・編集',
     this.detailLabel = '',
     this.onOpenDetail,
     this.rasterizeFirstPage,
@@ -73,6 +74,7 @@ class ResourceRegistrationCard extends StatelessWidget {
   final IconData icon;
   final bool registered;
   final String? statusLabel;
+  final String registeredActionLabel;
   final List<ResourceAttachment> attachments;
   final VoidCallback? onAction, onOpenDetail;
   final Future<Uint8List> Function(Uint8List)? rasterizeFirstPage;
@@ -141,7 +143,7 @@ class ResourceRegistrationCard extends StatelessWidget {
                     style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8),
                       foregroundColor: colors.primary, side: BorderSide(color: colors.primary),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                    child: Text(SkoLanguageController.tr('確認・編集'), maxLines: 1, overflow: TextOverflow.ellipsis,
+                    child: Text(SkoLanguageController.tr(registeredActionLabel), maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)))
                 : FilledButton(onPressed: onAction,
                     style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8),

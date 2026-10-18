@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'vehicle_route_repository.dart';
+import '../../international/language_controller.dart';
 
 class RouteEditorPage extends StatefulWidget {
   const RouteEditorPage({
@@ -13,6 +14,7 @@ class RouteEditorPage extends StatefulWidget {
     required this.partners,
     required this.vehicles,
     this.route,
+    this.repository,
   });
 
   final List<Map<String, dynamic>> sites;
@@ -20,13 +22,15 @@ class RouteEditorPage extends StatefulWidget {
   final List<Map<String, dynamic>> partners;
   final List<Map<String, dynamic>> vehicles;
   final Map<String, dynamic>? route;
+  final VehicleRouteRepository? repository;
 
   @override
   State<RouteEditorPage> createState() => _RouteEditorPageState();
 }
 
 class _RouteEditorPageState extends State<RouteEditorPage> {
-  final _repository = VehicleRouteRepository.maybeCreate();
+  late final _repository =
+      widget.repository ?? VehicleRouteRepository.maybeCreate();
   late final TextEditingController _name;
   late final TextEditingController _notes;
   late final TextEditingController _responsibleName;
@@ -172,23 +176,19 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     }
 
     if (_name.text.trim().isEmpty || stops.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('ルート名と地点を1件以上登録してください'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('ルート名と地点を1件以上登録してください')));
       return;
     }
 
+    setState(() => _saving = true);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(widget.route == null ? 'ルートを登録しますか？' : 'ルートを更新しますか？'),
         content: Text(
-          _name.text.trim() +
-              ' / 地点 ' +
-              stops.length.toString() +
-              '件',
+          _name.text.trim() + ' / 地点 ' + stops.length.toString() + '件',
         ),
         actions: [
           TextButton(
@@ -202,9 +202,11 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
-
-    setState(() => _saving = true);
+    if (!mounted) return;
+    if (confirmed != true) {
+      setState(() => _saving = false);
+      return;
+    }
     try {
       await repository.saveRoute(
         id: widget.route?['id']?.toString(),
@@ -213,6 +215,30 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
         responsibleName: _responsibleName.text,
         responsiblePhone: _responsiblePhone.text,
         stops: stops,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: Text(SkoLanguageController.tr('保存完了')),
+            content: Text(
+              SkoLanguageController.tr(
+                widget.route == null
+                    ? 'ルートを登録しました。ルート一覧で確認できます。'
+                    : 'ルートを更新しました。ルート一覧で確認できます。',
+              ),
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(SkoLanguageController.tr('ルート一覧へ')),
+              ),
+            ],
+          ),
+        ),
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);

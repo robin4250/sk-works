@@ -13,6 +13,25 @@ ResourceRegistrationCard card(List<ResourceAttachment> attachments, {String titl
     registered: registered, attachments: attachments, onAction: () {});
 
 void main() {
+  testWidgets('registered action defaults to edit label and supports view-only label', (tester) async {
+    for (final label in [null, '詳細を確認']) {
+      var presses = 0;
+      void onAction() => presses++;
+      final widget = label == null
+        ? ResourceRegistrationCard(title: '資格', icon: Icons.badge_outlined,
+            registered: true, attachments: const [], onAction: onAction)
+        : ResourceRegistrationCard(title: '資格', icon: Icons.badge_outlined,
+            registered: true, attachments: const [], onAction: onAction,
+            registeredActionLabel: label);
+      await tester.pumpWidget(host(widget));
+      final action = find.widgetWithText(OutlinedButton, label ?? '確認・編集');
+      expect(action, findsOneWidget);
+      await tester.tap(action);
+      expect(presses, 1);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   testWidgets('full saved qualification metadata stays accessible without resizing the card', (tester) async {
     final row = <String, dynamic>{
       'expires_at': '2027-12-31',

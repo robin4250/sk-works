@@ -12,8 +12,11 @@ void main() {
     expect(page, contains("'attachment_back_path'"));
     expect(page, contains("title: '表面'"));
     expect(page, contains("title: '裏面（ない場合は登録不要）'"));
-    expect(page, contains('uploadCertificateBack'));
-    expect(page, contains('removeCertificateBack'));
+    // Saved photos stay viewable; manager edits require the unavailable approval path.
+    expect(page, contains('registeredQualificationChangeNotice'));
+    expect(page, isNot(contains('repository.uploadCertificateBack(')));
+    expect(page, isNot(contains('repository.removeCertificateBack(')));
+    expect(page, contains('repository.createSignedUrl(path)'));
     expect(page, contains('表面未登録'));
     expect(page, contains('裏面なし'));
   });
