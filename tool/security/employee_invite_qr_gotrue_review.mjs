@@ -40,11 +40,23 @@ try{
  for(const signature of ['employee_onboarding_state()','mark_employee_initial_password_changed()'])await db.query(`revoke all on function public.${signature} from public,anon;grant execute on function public.${signature} to authenticated`);
  await db.query("notify pgrst,'reload schema'");
  const password=`Fixture-${randomBytes(24).toString('hex')}!A1`,phone='+819000000001';
- phase='create-synthetic-phone-user';let r=await request('/auth/v1/admin/users',{admin:true,body:{phone,password,phone_confirm:true,app_metadata:{sko_registration_type:'employee_invite'}}});expectStatus(r,200);const user=await r.json();assert.ok(user.id);
+ phase='create-synthetic-phone-user';let r=await request('/auth/v1/admin/users',{admin:true,body:{phone,password,phone_confirm:true,app_metadata:{sko_registration_type:'employee_invite'}}});expectStatus(r,200);let user=await r.json();assert.ok(user.id);
  const id=randomUUID(),company=randomUUID(),worker=randomUUID();
  await db.query("insert into public.employee_registration_invites values($1,$2,$3,$4,'Synthetic employee',$5,'invited',now(),now()-interval '1 hour',null)",[id,company,worker,user.id,phone]);
- const login=()=>request('/auth/v1/token?grant_type=password',{body:{phone,password}});
- phase='expired-temporary-password-login';r=await login();expectStatus(r,200);const first=await r.json();assert.ok(first.access_token);
+ let credentials={phone,password},phoneGrant='not_observed',mechanism='phone';
+ const login=()=>request('/auth/v1/token?grant_type=password',{body:credentials});
+ phase='expired-temporary-password-login';r=await login();
+ if(r.status===422){
+  const failure=await r.json();assert.equal(failure.error_code,'phone_provider_disabled');
+  phoneGrant='blocked_by_isolated_cli_phone_provider_disabled';mechanism='email_proxy_NOT_phone_QR_proof';
+  // Reuse existing real email/password fixture method; do not enable SMS,
+  // invent provider credentials, or repeat the already failed phone experiment.
+  const email=`invite-proxy-${randomUUID()}@example.invalid`;
+  r=await request('/auth/v1/admin/users',{admin:true,body:{email,password,email_confirm:true,app_metadata:{sko_registration_type:'employee_invite'}}});expectStatus(r,200);user=await r.json();assert.ok(user.id);
+  await db.query('update public.employee_registration_invites set auth_user_id=$1,phone_e164=null where id=$2',[user.id,id]);
+  credentials={email,password};r=await login();
+ }else{phoneGrant='actual_phone_login_issued_token';}
+ expectStatus(r,200);const first=await r.json();assert.ok(first.access_token);
  // Poll schema only through an own-state read would cancel the invite; marker
  // must first reject without invoking that state-read path.
  phase='expired-marker-without-state-read';let markerSeen=false;
@@ -61,11 +73,11 @@ try{
  await db.query("update public.employee_registration_invites set expires_at=now()-interval '1 hour' where id=$1",[id]);
  r=await rpc('mark_employee_initial_password_changed',second.access_token);await markerDenied(r);
  phase='old-password-after-password-change';r=await login();assert.ok([400,422].includes(r.status));
- phase='replacement-password-after-expired-marker';r=await request('/auth/v1/token?grant_type=password',{body:{phone,password:replacement}});expectStatus(r,200);
+ phase='replacement-password-after-expired-marker';r=await request('/auth/v1/token?grant_type=password',{body:{...credentials,password:replacement}});expectStatus(r,200);
  phase='prechange-jwt-observation';r=await request('/auth/v1/user',{token:first.access_token,method:'GET'});const oldJwtUserStatus=r.status;assert.ok([200,401,403].includes(oldJwtUserStatus));
  r=await rpc('employee_onboarding_state',first.access_token);const oldJwtRpcStatus=r.status;assert.ok([200,401,403].includes(oldJwtRpcStatus));
  if(r.status===200)assert.equal((await r.json()).status,'cancelled');
  // Readable synthetic status only, never JWT/phone/password/body/keys/IDs.
- console.log(JSON.stringify({result:'BASELINE OBSERVED; NOT A FIX',expired_login_issued_token:true,expired_marker_denied:true,cancelled_qr_login_issued_token:true,valid_qr_repeat_before_password_change:true,old_password_denied_after_change:true,replacement_login_after_marker_denial:true,old_jwt_auth_status:oldJwtUserStatus,old_jwt_rpc_status:oldJwtRpcStatus,production_equivalence:false}));
+ console.log(JSON.stringify({result:'BASELINE OBSERVED; NOT A FIX',phone_grant:phoneGrant,credential_mechanism:mechanism,expired_login_issued_token:true,expired_marker_denied:true,cancelled_qr_login_issued_token:true,valid_qr_repeat_before_password_change:true,old_password_denied_after_change:true,replacement_login_after_marker_denial:true,old_jwt_auth_status:oldJwtUserStatus,old_jwt_rpc_status:oldJwtRpcStatus,production_equivalence:false}));
 }catch{console.error(`Employee invite isolated review failed at ${phase}; private response and connection details omitted.`);process.exitCode=1;}
 finally{await db.end().catch(()=>{});}

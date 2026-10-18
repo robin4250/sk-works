@@ -123,3 +123,28 @@ disposable workdir project, removes its local status/keys on success and fails
 the job if cleanup fails. No artifact upload or private log printing is added.
 CI success means the **current behavior was measured**, not that replay or
 expired-token issuance is secure. Owner-only TestFlight work continues separately.
+
+## Phone transport limitation reconciled with existing work
+
+Before adding any provider setup, review of
+`tool/security/auth_session_lifecycle_review.md` found the existing three
+CLI 2.121.0 phone experiments and protected branch
+`experiment/auth-phone-provider-disabled-79a668`. This is existing evidence:
+with every SMS transport disabled, this CLI disables the phone provider itself.
+Do not repeat those provider-enable attempts or add fake SMS credentials.
+
+The dedicated observation now first creates the exact synthetic phone user and
+attempts its password grant. If and only if GoTrue returns HTTP 422 with the
+specific `phone_provider_disabled` code, it records that limitation and creates a
+**separate email/password synthetic identity**, following the already working
+platform Auth fixture method. It binds the same synthetic invite only to that
+identity, then measures state/marker/password-update/old JWT ordering. The final
+output identifies `email_proxy_NOT_phone_QR_proof`; email mechanism results are
+not phone QR success, hosted parity, SMS success or proof of company-data access.
+An unexpected phone failure still fails the observation rather than being skipped.
+No provider, hook, product function or transport is enabled or changed.
+
+Initial CI 39175893229 failed before requests because of pg CommonJS import;
+that fixture-only import was corrected. Second CI 39176045057 reached the phone
+login phase but did not complete the behavioral observation. These failures
+remain failures, not verified invitation security.
