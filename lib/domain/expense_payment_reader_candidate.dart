@@ -13,16 +13,19 @@ class ExpensePaymentBasisCandidate {
   final int grossBeforeExpenseYen, otherDeductionsYen;
 }
 
-/// Read-only payment consumer boundary, currently disconnected from production.
+/// Read-only payment consumer boundary for opt-in and verified v2 capability.
 class ExpensePaymentReadCandidate {
   ExpensePaymentReadCandidate._({
     required this.grossYen,
+    required this.periodStart,
+    required this.periodEnd,
     required this.deductionsYen,
     required this.netYen,
     required this.legacyCost,
     required this.directionalCost,
   });
   final int grossYen, deductionsYen, netYen;
+  final String periodStart, periodEnd;
   final ExpenseCostSnapshot? legacyCost;
   final ExpenseCostDirectionV2Candidate? directionalCost;
   bool get usesV2 => directionalCost != null;
@@ -107,6 +110,7 @@ class ExpensePaymentReadCandidate {
       legacy.verifyDetails(legacyDetails);
       return ExpensePaymentReadCandidate._(
         grossYen: gross,
+        periodStart: expectedPeriodStart, periodEnd: expectedPeriodEnd,
         deductionsYen: deductions,
         netYen: net,
         legacyCost: legacy,
@@ -133,6 +137,7 @@ class ExpensePaymentReadCandidate {
     );
     return ExpensePaymentReadCandidate._(
       grossYen: gross,
+        periodStart: expectedPeriodStart, periodEnd: expectedPeriodEnd,
       deductionsYen: deductions,
       netYen: net,
       legacyCost: null,

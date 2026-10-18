@@ -27,8 +27,20 @@ class PaymentCertificatePdfService {
   }) async {
     final actorLease=TradeDocumentActorLease();
     try {
+    record.verifyDirectionalExpense();
     final expenses = expenseDetails ?? (record.isAgreementSnapshot || record.isPreview ? null : await ExpenseDocumentRepository.load(ExpenseDocument.paymentCertificate, record.id, record.periodStart, revision:record.revision));
-    if (record.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != record.expenseExtraAmountYen) {
+    if (record.hasDirectionalExpense) {
+      if (expenses?.directionalCost == null || expenses!.kind != ExpenseDocument.paymentCertificate ||
+          expenses.documentId != record.id || expenses.subjectId != record.partnerCompanyId ||
+          expenses.claims.companyId != record.directionalExpenseRead!.directionalCost!.context.companyId) {
+        throw StateError('方向付き経費の同版明細を確認できません。');
+      }
+      record.directionalExpenseRead!.directionalCost!.verifyDetails({...expenses.directionalCost!.fields, 'claims': expenses.claims.entries.map((claim) => {
+        'id': claim.id, 'revision': claim.revision, 'amount_yen': claim.amountYen,
+      }).toList()});
+    }
+    if (!record.hasDirectionalExpense && expenses?.directionalCost != null) throw StateError('経費の方向版が変更されました。再読み込みしてください。');
+    if ((record.expenseCost.isCurrent || record.hasDirectionalExpense) && expenses?.costRecoveryAmountYen != record.expenseExtraAmountYen) {
       throw StateError('別途経費の内訳と支払証明書金額が一致しません。再読み込みしてください。');
     }
     if (expenses != null) {
@@ -69,7 +81,7 @@ class PaymentCertificatePdfService {
       await PaymentOrderPdf.append(document,savedOrder,regularFont:regular,boldFont:bold);
     }
     if (expenses != null) {
-      ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.paymentCertificate, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold, costRecoveryAmountYen:expenses.costRecoveryAmountYen);
+      ExpenseDetailPdf.append(document, claims:expenses.claims, kind:ExpenseDocument.paymentCertificate, subjectId:expenses.subjectId, regularFont:regular, boldFont:bold, costRecoveryAmountYen:expenses.costRecoveryAmountYen, costRecoveryIsDeduction:record.hasDirectionalExpense);
     }
     final bytes=await document.save();
     actorLease.verify();
@@ -94,11 +106,11 @@ class PaymentCertificatePdfService {
         .fold<int>(0, (sum, line) => sum + line.amountYen);
     final tax = record.lines.where((line) => isDocumentTaxLabel(line.workContent))
         .fold<int>(0, (sum, line) => sum + line.amountYen);
-    final display = DocumentDisplayTotals(workSubtotal: record.grossAmount - welfare - tax,
+    final display = DocumentDisplayTotals(workSubtotal: record.grossAmount - welfare - tax + (record.hasDirectionalExpense ? record.expenseLineDeltaYen : 0),
       welfare: welfare, tax: tax, total: record.netAmount);
-    final baseAmount = display.workSubtotal - record.expenseExtraAmountYen;
+    final baseAmount = display.workSubtotal - record.expenseLineDeltaYen;
     final lines = [
-      if (record.lines.isEmpty && (!record.expenseCost.isCurrent || baseAmount != 0))
+      if (record.lines.isEmpty && (!(record.expenseCost.isCurrent || record.hasDirectionalExpense) || baseAmount != 0))
             PaymentCertificateLine(
               siteName: '工事代金',
               workContent: '',
@@ -109,9 +121,9 @@ class PaymentCertificatePdfService {
       ...record.lines.where((line) => !isDocumentWelfareLabel(line.workContent) && !isDocumentTaxLabel(line.workContent)),
       if (record.expenseExtraAmountYen != 0)
         PaymentCertificateLine(
-          siteName: '経費', workContent: '別途経費（原額）', quantityLabel: '一式',
-          unitPriceYen: record.expenseExtraAmountYen,
-          amountYen: record.expenseExtraAmountYen,
+          siteName: '経費', workContent: record.hasDirectionalExpense ? '経費差引（原額）' : '別途経費（原額）', quantityLabel: '一式',
+          unitPriceYen: record.expenseLineDeltaYen,
+          amountYen: record.expenseLineDeltaYen,
         ),
     ];
 

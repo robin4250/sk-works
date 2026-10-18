@@ -31,11 +31,13 @@ try {
  const invoiceSource=(await db.query("select md5(prosrc) hash from pg_proc where oid='private.refresh_automatic_invoice(uuid,uuid,date)'::regprocedure")).rows[0].hash;
  await db.exec(fs.readFileSync(candidate,'utf8'));
  assert.equal((await db.query("select private.expense_cost_direction_v2_enabled('"+company+"') value")).rows[0].value,false);
+ const capOff=(await db.query(`select public.expense_payment_direction_capability('${company}') value`)).rows[0].value;assert.equal(capOff.read_enabled,false);assert.equal(capOff.actor_id,actor);
  await approve(11,'08');assert.equal((await row('08')).net_amount,1000,'OFF retains v1');
  await db.exec(`create or replace function private.expense_cost_direction_v2_enabled(cid uuid) returns boolean language sql stable security invoker set search_path='' as $$select cid='${company}'::uuid$$`);
  const draftsBefore=(await db.query('select count(*)::int n from payment_certificates')).rows[0].n;
  await db.exec(`select private.refresh_automatic_payment_certificate('${company}','${id(999)}','2026-10-01')`);
  assert.equal((await db.query('select count(*)::int n from payment_certificates')).rows[0].n,draftsBefore,'no empty unrelated document');
+ const capOn=(await db.query(`select public.expense_payment_direction_capability('${company}') value`)).rows[0].value;assert.equal(capOn.read_enabled,true);assert.equal(capOn.company_id,company);
  const payrollReceipt=await approve(12,'10','payroll');let value=await row('10');
  assert.equal(value.gross_amount,0);assert.equal(value.deductions,1000);assert.equal(value.net_amount,-1000);
  assert.equal(value.snapshot.expense_extra_source_version,undefined);
@@ -96,5 +98,6 @@ try {
  assert.equal((await db.query(`select count(*)::int n from private.expense_amount_consumptions where claim_id='${id(13)}'`)).rows[0].n,0);
  await db.exec(`set test.uid='${id(99)}'`);
  await assert.rejects(details(),/access denied/);
+ await assert.rejects(db.exec(`select public.expense_payment_direction_capability('${company}')`),/access denied/);
  console.log('PASS v2 real generator expense-only -1000, OFF/v1 immutable, idempotent revision, scoped live/frozen read, one consumption/freeze, cash/payroll/paid independence, unchanged invoice addition and rejected amount/scope/revision/unauthorized read');
 } finally {await db.close();}

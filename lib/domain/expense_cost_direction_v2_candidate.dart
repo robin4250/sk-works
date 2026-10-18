@@ -1,6 +1,6 @@
 import 'expense_cost_snapshot.dart';
 
-/// Review-only contract. No production reader, generator or renderer uses it.
+/// Explicit v2 contract; product readers require opt-in and verified capability.
 enum ExpenseCostDocumentKind { invoice, paymentCertificate }
 
 enum ExpenseCostDirection { addition, deduction }

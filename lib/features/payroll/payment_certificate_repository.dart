@@ -1,3 +1,8 @@
+import '../../domain/expense_cost_direction_v2_candidate.dart';
+import '../../domain/expense_payment_reader_candidate.dart';
+import '../expenses/expense_document_repository.dart';
+import '../expenses/expense_detail_pdf.dart';
+import 'dart:async';
 import '../../domain/company_seal_snapshot.dart';
 import '../../domain/expense_cost_snapshot.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -43,6 +48,7 @@ class PaymentCertificateRecord {
     this.partnerCompanyId = '',
     this.lines = const [],
     this.expenseCost = const ExpenseCostSnapshot.none(),
+    this.directionalExpenseRead,
   });
 
   final String id;
@@ -66,7 +72,25 @@ class PaymentCertificateRecord {
   final String partnerCompanyId;
   final List<PaymentCertificateLine> lines;
   final ExpenseCostSnapshot expenseCost;
-  int get expenseExtraAmountYen => expenseCost.amountYen;
+  final ExpensePaymentReadCandidate? directionalExpenseRead;
+  bool get hasDirectionalExpense => directionalExpenseRead?.usesV2 == true;
+  int get expenseExtraAmountYen => directionalExpenseRead?.directionalCost?.amountYen ?? expenseCost.amountYen;
+  int get expenseLineDeltaYen => directionalExpenseRead?.expenseLineDeltaYen ?? expenseCost.amountYen;
+
+  void verifyDirectionalExpense() {
+    final read = directionalExpenseRead;
+    if (read == null) return;
+    final scope = read.directionalCost?.context;
+    if (!read.usesV2 || expenseCost.isCurrent || scope == null ||
+        scope.documentId != id || scope.subjectId != partnerCompanyId ||
+        scope.documentRevision != revision ||
+        scope.month != '${periodStart.year}-${periodStart.month.toString().padLeft(2, '0')}' ||
+        read.periodStart != '${periodStart.year}-${periodStart.month.toString().padLeft(2, '0')}-${periodStart.day.toString().padLeft(2, '0')}' ||
+        read.periodEnd != '${periodEnd.year}-${periodEnd.month.toString().padLeft(2, '0')}-${periodEnd.day.toString().padLeft(2, '0')}' ||
+        read.grossYen != grossAmount || read.deductionsYen != deductions || read.netYen != netAmount) {
+      throw StateError('方向付き経費と支払証明書が一致しません。');
+    }
+  }
 
   String get monthLabel => '${periodStart.year}年${periodStart.month}月';
   bool get isPreview => status == 'preview';
@@ -149,17 +173,19 @@ class PaymentAllowanceSetting {
 }
 
 class PaymentCertificateRepository {
-  PaymentCertificateRepository._(this._client);
+  PaymentCertificateRepository._(this._client, {this.enableExpenseDirectionV2 = false});
+  PaymentCertificateRepository.forTesting(this._client, {this.enableExpenseDirectionV2 = false});
+  final bool enableExpenseDirectionV2;
 
   final SupabaseClient _client;
   String? _loadedCompanyId;
   String? get loadedCompanyId => _loadedCompanyId;
 
-  static PaymentCertificateRepository? maybeCreate() {
+  static PaymentCertificateRepository? maybeCreate({bool enableExpenseDirectionV2 = false}) {
     if (!SupabaseBackend.isInitialized) return null;
     final client = SupabaseBackend.client;
     if (client.auth.currentUser == null) return null;
-    return PaymentCertificateRepository._(client);
+    return PaymentCertificateRepository._(client, enableExpenseDirectionV2: enableExpenseDirectionV2);
   }
 
   Future<String> _companyId() async {
@@ -177,12 +203,39 @@ class PaymentCertificateRepository {
   Future<List<PaymentCertificateRecord>> loadCertificates({
     bool includeRegisteredPreviews = false,
   }) async {
+    final lease = enableExpenseDirectionV2 ? _PaymentDirectionActorLease(_client) : null;
+    try {
+      final rows = await _loadCertificates(includeRegisteredPreviews: includeRegisteredPreviews);
+      lease?.verify();
+      return rows;
+    } finally { lease?.dispose(); }
+  }
+
+  Future<bool> _directionCapability(String companyId) async {
+    if (!enableExpenseDirectionV2) return false;
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) return false;
+    final Object? raw;
+    try {
+      raw = await _client.rpc('expense_payment_direction_capability', params: {'p_company': companyId});
+    } on PostgrestException { return false; }
+    const keys = {'version','contract','company_id','actor_id','document_kind','max_source_version','read_enabled'};
+    return _client.auth.currentUser?.id == actor && raw is Map && raw.length == keys.length &&
+      raw.keys.every(keys.contains) && raw['version'] is int && raw['version'] == 1 &&
+      raw['contract'] == 'expense_payment_direction_v2' && raw['company_id'] == companyId && raw['actor_id'] == actor &&
+      raw['document_kind'] == 'paymentCertificate' && raw['max_source_version'] is int && raw['max_source_version'] == 2 && raw['read_enabled'] == true;
+  }
+
+  Future<List<PaymentCertificateRecord>> _loadCertificates({
+    bool includeRegisteredPreviews = false,
+  }) async {
     _loadedCompanyId = null;
     final companyId = await _companyId();
+    final directionEnabled = await _directionCapability(companyId);
     final rows = await _client
         .from('payment_certificates')
         .select(
-          'id,partner_company_id,period_start,period_end,gross_amount,deductions,net_amount,status,revision,snapshot,partner_companies(name)',
+          'id,company_id,partner_company_id,period_start,period_end,gross_amount,deductions,net_amount,status,revision,snapshot,partner_companies(name)',
         )
         .eq('company_id', companyId)
         .order('period_start', ascending: false);
@@ -220,6 +273,38 @@ class PaymentCertificateRepository {
         }
       }
 
+      ExpensePaymentReadCandidate? directionRead;
+      final snapshot = raw['snapshot'] is Map ? Map<String, dynamic>.from(raw['snapshot']) : <String,dynamic>{};
+      if (snapshot.containsKey('expense_cost_direction_v2')) {
+        if (!directionEnabled) throw StateError('方向付き経費の利用準備が整っていません。');
+        final start = raw['period_start'];
+        final end = raw['period_end'];
+        if (start is! String || end is! String || start.length != 10 || raw['revision'] is! int) {
+          throw StateError('支払証明書の対象期間・版を確認できません。');
+        }
+        final scope = ExpenseCostContext(kind: ExpenseCostDocumentKind.paymentCertificate,
+          companyId: companyId, documentId: id, subjectId: raw['partner_company_id']?.toString() ?? '',
+          month: start.substring(0,7), documentRevision: raw['revision'] as int);
+        final detail = await _client.rpc('read_expense_document', params: {'p_kind':'paymentCertificate','p_document':id});
+        if (detail is! Map || detail['expense_cost_basis'] is! Map) throw StateError('経費の同版基礎金額を確認できません。');
+        ExpenseDocumentDetails.parse(Map<String,dynamic>.from(detail), ExpenseDocument.paymentCertificate,
+          id, DateTime.parse(start), revision: scope.documentRevision);
+        final basis = detail['expense_cost_basis'] as Map;
+        const basisKeys = {'company_id','document_id','subject_id','month','document_revision','gross_before_expense_yen','other_deductions_yen'};
+        if (basis.length != basisKeys.length || !basis.keys.every(basisKeys.contains) ||
+            basis['company_id'] != companyId || basis['document_id'] != id || basis['subject_id'] != scope.subjectId ||
+            basis['month'] != scope.month || basis['document_revision'] is! int || basis['document_revision'] != scope.documentRevision ||
+            basis['gross_before_expense_yen'] is! int || basis['other_deductions_yen'] is! int ||
+            snapshot['expense_cost_basis'] is! Map ||
+            (snapshot['expense_cost_basis'] as Map).length != basisKeys.length ||
+            !basisKeys.every((key) => (snapshot['expense_cost_basis'] as Map)[key].runtimeType == basis[key].runtimeType && (snapshot['expense_cost_basis'] as Map)[key] == basis[key])) {
+          throw StateError('経費の対象と基礎金額が一致しません。');
+        }
+        directionRead = ExpensePaymentReadCandidate.read(row: Map<String,dynamic>.from(raw), expected: scope,
+          expectedPeriodStart: start, expectedPeriodEnd: end, legacyDetails: const [], v2ContractVerified: directionEnabled,
+          v2Basis: ExpensePaymentBasisCandidate(context: scope, grossBeforeExpenseYen: basis['gross_before_expense_yen'] as int,
+            otherDeductionsYen: basis['other_deductions_yen'] as int), v2ScopedDetails: detail['expense_cost_direction_v2']);
+      }
       result.add(
         PaymentCertificateRecord(
           id: id,
@@ -248,8 +333,8 @@ class PaymentCertificateRepository {
           payerPhone: company['phone']?.toString() ?? '',
           payerFax: company['fax']?.toString() ?? '',
           lines: List.unmodifiable(lines),
-          expenseCost: ExpenseCostSnapshot.parse(raw['snapshot'] is Map
-              ? Map<String, dynamic>.from(raw['snapshot']) : const {}),
+          expenseCost: directionRead == null ? ExpenseCostSnapshot.parse(snapshot) : const ExpenseCostSnapshot.none(),
+          directionalExpenseRead: directionRead,
         ),
       );
     }
@@ -598,4 +683,23 @@ class PaymentCertificateRepository {
           ),
     ];
   }
+}
+
+class _PaymentDirectionActorLease {
+  _PaymentDirectionActorLease(this.client) : actor = client.auth.currentUser?.id {
+    revoked = actor == null;
+    subscription = client.auth.onAuthStateChange.listen((state) {
+      if (state.session?.user.id != actor) revoked = true;
+    }, onError: (Object error) { revoked = true; });
+  }
+  final SupabaseClient client;
+  final String? actor;
+  late bool revoked;
+  StreamSubscription<AuthState>? subscription;
+  void verify() {
+    if (revoked || client.auth.currentUser?.id != actor) {
+      throw StateError('ログイン情報が変わりました。支払証明書を開き直してください。');
+    }
+  }
+  void dispose() { subscription?.cancel(); }
 }

@@ -265,3 +265,19 @@ begin
  $body$);
  execute definition;
 end $patch_reader$;
+
+-- Read-only capability for a client explicitly opting into source version 2.
+-- The generator gate above remains OFF; this adds no rollout or write action.
+create function private.expense_payment_direction_capability(cid uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+begin
+ if auth.uid() is null or private.account_access_allowed() is not true
+ or not exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid() and role::text in ('owner','admin','manager'))
+ then raise exception 'payment direction access denied' using errcode='42501';end if;
+ return jsonb_build_object('version',1,'contract','expense_payment_direction_v2','company_id',cid,'actor_id',auth.uid(),
+ 'document_kind','paymentCertificate','max_source_version',2,'read_enabled',private.expense_cost_direction_v2_enabled(cid));
+end $$;
+create function public.expense_payment_direction_capability(p_company uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select private.expense_payment_direction_capability(p_company)$$;
+revoke all on function private.expense_payment_direction_capability(uuid),public.expense_payment_direction_capability(uuid) from public,anon;
+grant execute on function private.expense_payment_direction_capability(uuid),public.expense_payment_direction_capability(uuid) to authenticated;
