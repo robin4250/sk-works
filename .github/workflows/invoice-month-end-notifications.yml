@@ -1,0 +1,19 @@
+name: Invoice month-end notification isolation
+on:
+  pull_request:
+    paths:
+      - 'tool/staged/invoice_month_end_approval_notifications.sql'
+      - 'tool/test_invoice_month_end_notifications.mjs'
+      - '.github/workflows/invoice-month-end-notifications.yml'
+  push:
+    branches: ['fix/invoice-month-end-notifications-20261016']
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/invoice-month-end-sql --save-exact @electric-sql/pglite@0.3.14
+      - run: node tool/test_invoice_month_end_notifications.mjs /tmp/invoice-month-end-sql/node_modules/@electric-sql/pglite/dist/index.js
