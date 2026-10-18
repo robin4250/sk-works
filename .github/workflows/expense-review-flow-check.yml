@@ -29,7 +29,7 @@ jobs:
         mode: [flow, receipts]
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:17
+        image: postgres:17
         env:
           POSTGRES_PASSWORD: expense-review-fixture
           POSTGRES_DB: sko_expense_review_flow_fixture
