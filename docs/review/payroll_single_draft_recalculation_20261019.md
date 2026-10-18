@@ -37,3 +37,11 @@ commit前の想定外変化はtransaction rollback。commit後のコードrollba
 別scheduleでは既public unit-conditions APIによるrefreshのrevision更新がcommitする間、候補をworker lockへ待機させ、古いexpected revisionが40001になることを確認する。fixture-onlyの異常注入trigger/関数はその使い捨てDBだけで除去する。専用workflowはreview用support branchのpush限定、PGliteとPG17のみ。PR/Flutter/iOS/本番への自動deployを追加しない。native成功が得られるまでは未実行として扱う。
 
 初回native実行ではPGlite/PG17単独検証、旧STABLE・修正版VOLATILE両方の実source待機/commit後drift拒否が成功。CAS用の直接settings UPDATEは既fixtureのauthenticated table権限で拒否されたため、権限を増やさず既 `public.save_payroll_unit_conditions` に置き換えた。これは合成fixture内の明示条件変更で、本番で再計算だけのため条件を保存する案ではない。
+
+## 実行済み結果（2026-10-19 JST）
+
+source `92a26e089755326b9f5cebefcc6d6dcbd38a05c7`／tree `a149f6e425f75f609951e3417bace85a08cd84f4` の専用run [39171521335](https://github.com/robin4250/sk-works/actions/runs/39171521335)、job `117805394792` は成功。PGliteと同一fixtureのnative PG17正常/拒否検証が両方成功し、二接続の実statement lock待機後の別接続source commit→40001全draft rollbackをSTABLE controlとVOLATILEの両方で確認した。このPLpgSQL statement境界ではSTABLEもcommitを検知したため、「旧STABLEがこのscheduleで失敗した」とは報告しない。保守的にVOLATILE＋READ COMMITTED限定を保持する。
+
+実worker lock待機→既public unit条件APIの保存/refresh/revision commit→古いrevision CAS拒否、REPEATABLE READ拒否も成功。Secret Scan `39171521338` 成功。初回run `39171416468` はCAS fixture writerのtable権限で失敗しており成功に読み替えない。
+
+上記で「native未実行」は解消したが、すべての既settings/rates/contract/finalizationとの順序組合せ・待機中role取消、実JWT/DataAPI、productionの実before・最新helper完全一致・経費snapshot全副作用、public preview/APIクライアント接続は未達。限定source/APIレビュー段階であり、導入要求・本番適用・実明細修復完了ではない。
