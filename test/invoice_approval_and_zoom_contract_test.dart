@@ -44,19 +44,14 @@ void main() {
     expect(sql, contains("'月末の請求書を確認して承認してください。'"));
   });
 
-  test('notification opens the target invoice directly', () {
+  test('notification uses a dedicated target entry and keeps the existing preview', () {
     final notifications = read(
       'lib/features/notifications/notifications_page.dart',
     );
-    final invoicePage = read('lib/features/invoices/invoice_cloud_page.dart');
-
-    expect(notifications, contains("'invoice_approval' =>"));
-    expect(notifications, contains('initialInvoiceId: item.actionId'));
-    expect(invoicePage, contains('this.initialInvoiceId'));
-    expect(
-      invoicePage,
-      contains('invoice.invoiceId == widget.initialInvoiceId'),
-    );
+    final notice = read('lib/features/invoices/invoice_notification_page.dart');
+    expect(notifications, contains("'invoice_approval' => InvoiceNotificationPage("));
+    expect(notifications, contains("invoiceId: item.actionId ?? ''"));
+    expect(notice, contains('InvoicePreviewPage('));
   });
 
   test('invoice PDF keeps adopted v8 recipient panel and A4 geometry', () {

@@ -131,6 +131,12 @@ class _ExpenseManagementPageState extends State<ExpenseManagementPage> {
         return;
       }
     }
+    // The legacy settlement RPC supports cash/payroll only. Do not persist a
+    // command it cannot accept or silently switch it to another method.
+    if (choice?.method == ExpenseSettlementMethod.paid) {
+      setState(() => _error = '支払済みの設定には承認・振り分け機能の更新が必要です。管理者へ確認してください。');
+      return;
+    }
     final command = ExpenseReviewCommand.create(
       _actor!,
       _company!,

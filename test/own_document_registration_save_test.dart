@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sk_works/features/people/own_document_registration_page.dart';
 import 'package:sk_works/features/people/worker_document_photos.dart';
+import 'package:sk_works/features/people/worker_document_change_repository.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sk_works/features/common/data_date_labels.dart';
 import 'package:sk_works/features/shared/resource_registration_card.dart';
 
@@ -30,7 +32,12 @@ class _UnreadablePhoto extends XFile {
 }
 
 class _Gateway implements OwnDocumentRegistrationGateway {
-  _Gateway({this.statuses = const [], this.scope = 'internal'});
+  _Gateway({
+    this.statuses = const [],
+    this.scope = 'internal',
+    this.visible = true,
+  });
+  final bool visible;
   final String scope;
   final List<Map<String, dynamic>> statuses;
   final calls = <({String requirement, Uint8List? bytes, String? filename})>[];
@@ -42,7 +49,7 @@ class _Gateway implements OwnDocumentRegistrationGateway {
       {'id': 'worker', 'name': '本人'},
     ],
     'requirements': [
-      {'id': 'license', 'name': '運転免許証', 'scope': scope},
+      {'id': 'license', 'name': '運転免許証', 'scope': scope, 'is_active': visible},
     ],
     'statuses': statuses,
   };
@@ -131,7 +138,133 @@ Future<void> _selectPhoto(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+String _changeId(int n) =>
+    '10000000-0000-0000-0000-${n.toString().padLeft(12, '0')}';
+
+class _ChangeGateway extends _PhotosGateway
+    implements OwnDocumentChangeGateway {
+  _ChangeGateway(this.rpc);
+  final Future<Object?> Function(String, Map<String, dynamic>) rpc;
+  final events = StreamController<void>.broadcast(sync: true);
+  String actor = _changeId(6);
+  Future<String> Function()? companyLoad;
+  @override
+  String? get actorId => actor;
+  @override
+  bool get isCurrentActor => true;
+  @override
+  Future<String> changeCompanyId() =>
+      companyLoad?.call() ?? Future.value(_changeId(3));
+  @override
+  WorkerDocumentChangeRepository createChangeRepository() =>
+      WorkerDocumentChangeRepository.forTesting(
+        actor: () => actor,
+        changes: events.stream,
+        rpc: rpc,
+      );
+  @override
+  Future<Map<String, List<Map<String, dynamic>>>> loadAll() async => {
+    'workers': [
+      {'id': _changeId(4), 'name': '本人'},
+    ],
+    'requirements': [
+      {
+        'id': _changeId(5),
+        'name': '運転免許証',
+        'scope': 'internal',
+        'is_active': true,
+      },
+    ],
+    'statuses': [
+      {
+        'id': _changeId(2),
+        'worker_id': _changeId(4),
+        'requirement_id': _changeId(5),
+        'status': 'submitted',
+        'notes': 'existing',
+        'updated_at': '2026-10-18T00:00:00Z',
+      },
+    ],
+  };
+}
+
 void main() {
+  testWidgets(
+    'registered own entry opens approval flow; unavailable API never calls old save',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final actions = <String>[];
+      final gateway = _ChangeGateway((action, data) async {
+        actions.add(action);
+        return {
+          'version': 1,
+          'change_requests_available': false,
+          'new_upload_available': false,
+          'max_photos': 20,
+          'self_approval_allowed': false,
+        };
+      });
+      await tester.pumpWidget(
+        MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(OutlinedButton, '確認・編集'));
+      await tester.pumpAndSettle();
+      expect(find.text('書類の変更申請'), findsOneWidget);
+      expect(find.textContaining('準備中です。正式な書類は変更していません'), findsOneWidget);
+      expect(actions, ['capability']);
+      expect(gateway.calls, isEmpty);
+      expect(gateway.edits, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      await tester.runAsync(() => gateway.events.close());
+    },
+  );
+  testWidgets('actor ABA during membership lookup cannot enter change flow', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final pending = Completer<String>();
+    final actions = <String>[];
+    final gateway = _ChangeGateway((action, data) async {
+      actions.add(action);
+      throw StateError('must not run');
+    })..companyLoad = () => pending.future;
+    await tester.pumpWidget(
+      MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, '確認・編集'));
+    await tester.pump();
+    gateway.actor = _changeId(9);
+    gateway.events.add(null);
+    gateway.actor = _changeId(6);
+    gateway.events.add(null);
+    pending.complete(_changeId(3));
+    await tester.pumpAndSettle();
+    expect(find.text('書類の変更申請'), findsNothing);
+    expect(actions, isEmpty);
+    expect(gateway.calls, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() => gateway.events.close());
+  });
+
+  testWidgets(
+    'hidden requirements never appear in own registration or picker',
+    (tester) async {
+      final gateway = _Gateway(visible: false);
+      await tester.pumpWidget(
+        MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('運転免許証'), findsNothing);
+      expect(gateway.calls, isEmpty);
+      final action = tester.widget<FilledButton>(
+        find.byType(FilledButton).first,
+      );
+      expect(action.onPressed, isNull);
+    },
+  );
+
   testWidgets(
     'shared document has one registration and saves the same requirement once',
     (tester) async {
@@ -208,27 +341,26 @@ void main() {
     },
   );
 
-  testWidgets(
-    'saved multi-photo list opens editor and cancellation makes no write',
-    (tester) async {
-      final gateway = _PhotosGateway();
-      await tester.pumpWidget(
-        MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('登録済み'), findsOneWidget);
-      expect(find.textContaining('添付 3件（詳細で確認）'), findsOneWidget);
-      await tester.tap(find.widgetWithText(OutlinedButton, '確認・編集'));
-      await tester.pumpAndSettle();
-      expect(find.text('登録写真 3枚'), findsOneWidget);
-      await tester.tap(find.text('キャンセル'));
-      await tester.pumpAndSettle();
-      expect(gateway.edits, isEmpty);
-    },
-  );
+  testWidgets('saved multi-photo list without approval API stays read only', (
+    tester,
+  ) async {
+    final gateway = _PhotosGateway();
+    await tester.pumpWidget(
+      MaterialApp(home: OwnDocumentRegistrationPage(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('登録済み'), findsOneWidget);
+    expect(find.textContaining('添付 3件（詳細で確認）'), findsOneWidget);
+    await tester.tap(find.widgetWithText(OutlinedButton, '確認・編集'));
+    await tester.pumpAndSettle();
+    expect(find.text('登録写真 3枚'), findsOneWidget);
+    await tester.tap(find.text('閉じる'));
+    await tester.pumpAndSettle();
+    expect(gateway.edits, isEmpty);
+  });
 
   testWidgets(
-    'removing one saved photo submits the remaining ordered draft once',
+    'registered photo changes never use the legacy direct edit gateway',
     (tester) async {
       final gateway = _PhotosGateway();
       await tester.pumpWidget(
@@ -237,16 +369,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(OutlinedButton, '確認・編集'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('写真を一覧から削除').at(1));
-      await tester.pumpAndSettle();
-      expect(find.text('登録写真 2枚'), findsOneWidget);
-      await tester.tap(find.text('写真を確定'));
-      await tester.pumpAndSettle();
-      expect(gateway.edits, hasLength(1));
-      expect(gateway.edits.single.map((photo) => photo.path), [
-        'front.pdf',
-        'extra.pdf',
-      ]);
+      for (final button in tester.widgetList<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.delete_outline),
+      )) {
+        expect(button.onPressed, isNull);
+      }
+      expect(find.text('写真を確定'), findsNothing);
+      expect(gateway.edits, isEmpty);
       expect(gateway.calls, isEmpty);
     },
   );
@@ -273,7 +402,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('登録済み'), findsOneWidget);
       expect(find.text('登録なし'), findsOneWidget);
-      expect(find.text(DataDateLabels.labels(createdAt: '2026-10-01T12:00:00Z').first), findsOneWidget);
+      expect(
+        find.text(
+          DataDateLabels.labels(createdAt: '2026-10-01T12:00:00Z').first,
+        ),
+        findsOneWidget,
+      );
       expect(find.textContaining('期限 2026-11-30'), findsOneWidget);
       expect(find.text('未登録'), findsNothing);
       expect(gateway.calls, isEmpty);
@@ -392,7 +526,9 @@ void main() {
       expect(find.text('自分の書類を登録しました'), findsNothing);
       expect(
         tester
-            .widget<ResourceRegistrationFooter>(find.byType(ResourceRegistrationFooter))
+            .widget<ResourceRegistrationFooter>(
+              find.byType(ResourceRegistrationFooter),
+            )
             .onPressed,
         isNull,
       );
@@ -416,4 +552,3 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
-

@@ -1,0 +1,30 @@
+name: Offline protected inventory regression
+on:
+  pull_request:
+    paths:
+      - 'tool/security/restoration/verify_local_capsule.py'
+      - 'tool/security/restoration/test_local_capsule.py'
+      - 'tool/security/restoration/entry_archive_map.py'
+      - 'tool/security/restoration/test_entry_archive_map.py'
+      - '.github/workflows/offline-protected-inventory.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/security/restoration/verify_local_capsule.py'
+      - 'tool/security/restoration/test_local_capsule.py'
+      - 'tool/security/restoration/entry_archive_map.py'
+      - 'tool/security/restoration/test_entry_archive_map.py'
+      - '.github/workflows/offline-protected-inventory.yml'
+permissions:
+  contents: read
+jobs:
+  mocked-python-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      - working-directory: tool/security/restoration
+        run: python -m unittest test_local_capsule test_entry_archive_map

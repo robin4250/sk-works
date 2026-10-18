@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import 'worker_document_photos.dart';
+import 'worker_document_change_repository.dart';
 
 class WorkerDocumentRepository {
   WorkerDocumentRepository._(this._client);
@@ -13,6 +14,7 @@ class WorkerDocumentRepository {
   WorkerDocumentRepository.forTesting(this._client);
 
   final SupabaseClient _client;
+  WorkerDocumentChangeRepository createChangeRepository() => WorkerDocumentChangeRepository(_client);
   String? get actorId => _client.auth.currentUser?.id;
   static const _bucket = 'worker-documents';
 
@@ -124,7 +126,7 @@ class WorkerDocumentRepository {
     }
   }
 
-  Future<Map<String, List<Map<String, dynamic>>>> loadAll() async {
+  Future<Map<String, List<Map<String, dynamic>>>> loadAll({bool includeHiddenRequirements = false}) async {
     final companyId = await _companyId();
     final canManage = await canManageStatuses();
 
@@ -134,15 +136,16 @@ class WorkerDocumentRepository {
       ownWorkerId = value?.toString();
     }
 
-    final requirements = await _client
+    var requirementsQuery = _client
         .from('document_requirements')
         .select(
           'id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at',
         )
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .order('sort_order')
-        .order('name');
+        .eq('company_id', companyId);
+    if (!includeHiddenRequirements || !canManage) {
+      requirementsQuery = requirementsQuery.eq('is_active', true);
+    }
+    final requirements = await requirementsQuery.order('sort_order').order('name');
 
     if (!canManage && (ownWorkerId == null || ownWorkerId.isEmpty)) {
       return {
@@ -285,10 +288,14 @@ class WorkerDocumentRepository {
   Future<void> deactivateRequirement(String id) =>
       _changeRequirement(id, {'is_active': false});
 
+  Future<void> setRequirementVisible(String id, bool visible) =>
+      _changeRequirement(id, {'is_active': visible}, expectedActive: !visible);
+
   Future<void> _changeRequirement(
     String id,
-    Map<String, dynamic> values,
-  ) async {
+    Map<String, dynamic> values, {
+    bool expectedActive = true,
+  }) async {
     final actor = actorId;
     await _requireManagePeople();
     final companyId = await _companyId();
@@ -300,12 +307,34 @@ class WorkerDocumentRepository {
         .update(values)
         .eq('company_id', companyId)
         .eq('id', id)
-        .eq('is_active', true)
+        .eq('is_active', expectedActive)
         .select('id');
     if (actorId != actor) throw StateError('ログイン情報が変更されました。再読み込みしてください。');
     if (rows.length != 1 || rows.single['id'] != id) {
       throw StateError('書類項目を更新できませんでした。再読み込みしてください。');
     }
+  }
+
+  /// Verification metadata only; never sends attachment/expiry/notes content.
+  Future<void> confirmDocumentStatus(Map<String, dynamic> row, {
+    required String status, required bool originalVerified,
+  }) async {
+    if (!['not_submitted','submitted','verified','missing','expired'].contains(status)) {
+      throw const FormatException('Invalid status');
+    }
+    final actor = actorId;
+    final boundary = createChangeRepository();
+    try {
+    await _requireManagePeople();
+    final companyId = await _companyId();
+    if (!boundary.isCurrentActor || actor == null || actor != actorId || row['updated_at'] == null) throw StateError('書類を再読み込みしてください。');
+    final rows = await _client.from('worker_document_statuses').update({
+      'status': status, 'original_verified': originalVerified,
+      'updated_at': DateTime.now().toUtc().toIso8601String(), 'updated_by': actor,
+    }).eq('company_id',companyId).eq('id',row['id']).eq('worker_id',row['worker_id'])
+      .eq('requirement_id',row['requirement_id']).eq('updated_at',row['updated_at']).select('id');
+    if (actor != actorId || rows.length != 1 || rows.single['id'] != row['id']) throw StateError('書類を更新できません。再読み込みしてください。');
+    } finally { await boundary.dispose(); }
   }
 
   Future<Map<String, dynamic>> uploadAttachment({

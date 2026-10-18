@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../../international/language_controller.dart';
+import '../notifications/notification_request_selection.dart';
 import 'site_cloud_repository.dart';
 
 class SiteInformationApprovalsPage extends StatefulWidget {
   const SiteInformationApprovalsPage({
     super.key,
     this.initialRequestId,
+    this.loadRequests,
   });
 
   final String? initialRequestId;
+  @visibleForTesting
+  final Future<List<Map<String, dynamic>>> Function()? loadRequests;
 
   @override
   State<SiteInformationApprovalsPage> createState() =>
@@ -22,6 +27,7 @@ class _SiteInformationApprovalsPageState
   List<Map<String, dynamic>> _items = const [];
   bool _loading = true;
   String? _error;
+  int _generation = 0;
 
   @override
   void initState() {
@@ -29,39 +35,49 @@ class _SiteInformationApprovalsPageState
     _load();
   }
 
-  Future<void> _load() async {
-    final repository = _repository;
-    if (repository == null) {
-      setState(() {
-        _loading = false;
-        _error = '現場変更の承認画面を利用できません。';
-      });
-      return;
+  @override
+  void didUpdateWidget(covariant SiteInformationApprovalsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialRequestId != widget.initialRequestId ||
+        oldWidget.loadRequests != widget.loadRequests) {
+      _load();
     }
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final generation = ++_generation;
+    final requestId = widget.initialRequestId;
+    setState(() {
+      _items = const [];
+      _loading = true;
+      _error = null;
+    });
     try {
-      final items = await repository.loadInformationRequests();
-      if (!mounted) return;
-      final targetId = widget.initialRequestId?.trim() ?? '';
-      final visible = items.where((item) {
-        final id = item['id']?.toString() ?? '';
-        final status = item['status']?.toString() ?? '';
-        return status == 'pending' || (targetId.isNotEmpty && id == targetId);
-      }).toList(growable: true);
-      if (targetId.isNotEmpty) {
-        visible.sort((a, b) {
-          final aTarget = a['id']?.toString() == targetId;
-          final bTarget = b['id']?.toString() == targetId;
-          if (aTarget == bTarget) return 0;
-          return aTarget ? -1 : 1;
-        });
+      final loader = widget.loadRequests ?? _repository?.loadInformationRequests;
+      if (loader == null) {
+        throw StateError('現場変更の承認画面を利用できません。');
       }
+      final items = await loader();
+      if (!mounted || generation != _generation) return;
+      final visible = selectNotificationRequestRows<Map<String, dynamic>>(
+        items,
+        requestId: requestId,
+        id: (item) => item['id']?.toString() ?? '',
+        includeInInbox: (item) => item['status'] == 'pending',
+      );
       setState(() {
         _items = List<Map<String, dynamic>>.unmodifiable(visible);
         _loading = false;
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -71,6 +87,8 @@ class _SiteInformationApprovalsPageState
 
   Future<void> _review(Map<String, dynamic> item, bool approve) async {
     final repository = _repository;
+    final generation = _generation;
+    if (!_items.contains(item)) return;
     if (repository == null) return;
     final id = item['id']?.toString() ?? '';
     if (id.isEmpty) return;
@@ -130,19 +148,21 @@ class _SiteInformationApprovalsPageState
       if (confirmed != true) return;
     }
 
+    if (!mounted || generation != _generation || !_items.contains(item)) return;
+
     try {
       await repository.reviewInformationRequest(
         requestId: id,
         approve: approve,
         reason: reason,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(approve ? '現場変更を承認しました' : '現場変更を差し戻しました')),
       );
       await _load();
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('処理できませんでした: $error')),
       );
@@ -186,7 +206,9 @@ class _SiteInformationApprovalsPageState
                     ),
                   )
                 : _items.isEmpty
-                    ? const Center(child: Text('承認待ちの現場変更申請はありません'))
+                    ? Center(child: Text(widget.initialRequestId == null
+                        ? '承認待ちの現場変更申請はありません'
+                        : SkoLanguageController.tr('対象の申請は完了済み、または閲覧できません。')))
                     : RefreshIndicator(
                         onRefresh: _load,
                         child: ListView.separated(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../notifications/notification_preview_route_scope.dart';
 import '../../international/language_controller.dart';
 import 'invoice_approval_repository.dart';
 
@@ -16,6 +17,7 @@ Future<bool> editInvoiceStampSurname(
   try {
     return await showDialog<bool>(
       context: context,
+      useRootNavigator: !NotificationPreviewRouteScope.isScoped(context),
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
           title: Text(SkoLanguageController.isEnglish

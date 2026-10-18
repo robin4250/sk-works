@@ -96,7 +96,7 @@ void main() {
       }, child: const Text('開く'))))));
     await tester.tap(find.text('開く')); await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '承認して保存')).onPressed, isNull);
-    await tester.tap(find.text('給料精算')); await tester.pumpAndSettle();
+    await tester.tap(find.text('給与精算')); await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '承認して保存')).onPressed, isNotNull);
     expect(find.byType(DropdownButtonFormField<int>), findsNothing);
     expect(find.text('精算対象月（申請月）'), findsOneWidget);

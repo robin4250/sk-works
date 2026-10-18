@@ -155,7 +155,10 @@ class InvoiceApprovalRepository {
     await _client.rpc('set_invoice_approvers', params: {'p_user_ids': userIds});
   }
 
-  Future<List<InvoiceApprovalRecord>> loadForInvoice(String invoiceId) async {
+  Future<List<InvoiceApprovalRecord>> loadForInvoice(
+    String invoiceId, {
+    bool allowLegacyInitialization = true,
+  }) async {
     if (invoiceId.isEmpty) return const [];
     dynamic raw;
     var legacy = false;
@@ -166,6 +169,7 @@ class InvoiceApprovalRepository {
       );
     } on PostgrestException catch (error) {
       if (error.code != 'PGRST202' && error.code != '42883') rethrow;
+      if (!allowLegacyInitialization) rethrow;
       legacy = true;
       raw = await _client.rpc(
         'invoice_approval_status_rows',

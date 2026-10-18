@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
+import 'worker_document_change_flow.dart';
+import 'worker_document_change_repository.dart';
 import '../shared/resource_registration_card.dart';
 import '../common/data_date_labels.dart';
 
@@ -41,11 +43,27 @@ abstract interface class OwnDocumentPhotoGateway
   );
 }
 
+abstract interface class OwnDocumentChangeGateway implements OwnDocumentRegistrationGateway {
+  String? get actorId;
+  bool get isCurrentActor;
+  Future<String> changeCompanyId();
+  WorkerDocumentChangeRepository createChangeRepository();
+  Future<String> signedUrl(String path);
+}
+
 class _OwnDocumentRepositoryGateway
-    implements OwnDocumentRegistrationGateway, OwnDocumentPhotoGateway {
+    implements OwnDocumentRegistrationGateway, OwnDocumentPhotoGateway, OwnDocumentChangeGateway {
   _OwnDocumentRepositoryGateway(this.repository) : actorId = repository.actorId;
   final WorkerDocumentRepository repository;
+  @override
   final String? actorId;
+
+  @override
+  bool get isCurrentActor => actorId != null && actorId == repository.actorId;
+  @override
+  Future<String> changeCompanyId() async => (await repository.membership()).companyId;
+  @override
+  WorkerDocumentChangeRepository createChangeRepository() => repository.createChangeRepository();
 
   @override
   bool get photoEditingAvailable => repository.photoEditingAvailable;
@@ -162,7 +180,9 @@ class _OwnDocumentRegistrationPageState
       if (!mounted) return;
       setState(() {
         _worker = workers.isEmpty ? null : workers.first;
-        _requirements = data['requirements'] ?? const <Map<String, dynamic>>[];
+        _requirements = (data['requirements'] ?? const <Map<String, dynamic>>[])
+            .where((row) => row['is_active'] != false)
+            .toList(growable: false);
         _statuses = data['statuses'] ?? const <Map<String, dynamic>>[];
         _loading = false;
       });
@@ -182,9 +202,40 @@ class _OwnDocumentRegistrationPageState
     return null;
   }
 
+  Future<bool> _changeRegistered(Map<String, dynamic>? row) async {
+    if (!workerDocumentHasRegisteredContent(row)) return false;
+    try {
+    final gateway = _repository;
+    if (gateway is! OwnDocumentChangeGateway) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('書類変更申請は準備中です。')));
+      return true;
+    }
+    final actor = gateway.actorId;
+    if (actor == null || !gateway.isCurrentActor) return true;
+    final changes = gateway.createChangeRepository();
+    try {
+      final companyId = await gateway.changeCompanyId();
+      if (!mounted || !changes.isCurrentActor || !gateway.isCurrentActor) return true;
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerDocumentChangePage(
+        repository: changes, actor: actor, companyId: companyId, row: row!,
+        signedUrl: gateway.signedUrl,
+        isCurrent: () => mounted && gateway.isCurrentActor,
+      )));
+    } finally { await changes.dispose(); }
+    if (mounted) await _load();
+    return true;
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('変更申請を開けません。接続とログイン状態を確認してください。')));
+      return true;
+    }
+  }
+
   Future<void> _registerDocument({String? initialRequirementId}) async {
     final repository = _repository;
     if (repository == null || _requirements.isEmpty || _saving) return;
+
+    if (initialRequirementId != null && await _changeRegistered(_statusFor(initialRequirementId))) return;
+    if (!mounted) return;
 
     final needle = _query.trim().toLowerCase();
     final candidates = _requirements
@@ -320,6 +371,8 @@ class _OwnDocumentRegistrationPageState
     if (draft == null || !mounted) return;
 
     final requirement = draft['requirementId'] as String;
+    if (await _changeRegistered(_statusFor(requirement))) return;
+    if (!mounted) return;
     setState(() => _saving = true);
     try {
       if (repository is OwnDocumentPhotoGateway &&
@@ -413,12 +466,15 @@ class _OwnDocumentRegistrationPageState
 
   Future<void> _editPhotos(Map<String, dynamic> row) async {
     final gateway = _repository;
+    if (gateway is OwnDocumentChangeGateway && await _changeRegistered(row)) return;
+    if (!mounted) return;
     if (gateway is! OwnDocumentPhotoGateway || _saving) return;
     final photos = await editWorkerDocumentPhotos(
       context,
       paths: workerDocumentPaths(row),
       signedUrl: gateway.signedUrl,
-      canEdit: gateway.photoEditingAvailable,
+      canEdit: gateway.photoEditingAvailable && !workerDocumentHasRegisteredContent(row),
+      allowNewPhotos: !workerDocumentHasRegisteredContent(row),
       uploadNotice: [resourceDocumentReviewLabel(row['status']),
         if ((row['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${row['expires_at']}',
       ].join('\n'),

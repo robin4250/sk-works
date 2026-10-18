@@ -13,7 +13,7 @@ import 'package:sk_works/features/people/worker_personnel_change_approvals_page.
 import 'package:sk_works/features/settings/settings_page.dart';
 import 'package:sk_works/features/sites/admin_site_financial_page.dart';
 import 'package:sk_works/features/sites/site_information_approvals_page.dart';
-import 'package:sk_works/features/sites/site_map_page.dart';
+import 'package:sk_works/features/sites/site_map_notification_page.dart';
 import 'package:sk_works/features/sites/site_share_approval_page.dart';
 
 
@@ -24,17 +24,17 @@ import 'package:sk_works/features/approvals/approvals_hub_page.dart';
 import 'package:sk_works/international/language_controller.dart';
 import 'package:sk_works/international/language_pack_registry.dart';
 import 'package:sk_works/features/auth/secondary_protected_page.dart';
-import 'package:sk_works/features/invoices/invoice_cloud_page.dart';
+import 'package:sk_works/features/invoices/invoice_notification_page.dart';
 import 'package:sk_works/features/notifications/app_notification_repository.dart';
 import 'package:sk_works/features/notifications/notifications_page.dart';
 import 'package:sk_works/features/payroll/payroll_review_page.dart';
 import 'package:sk_works/features/payroll/payroll_review_repository.dart';
 
 const targetId = '12345678-1234-1234-1234-123456789abc';
-AppNotificationRecord notice(String? action) => AppNotificationRecord(
+AppNotificationRecord notice(String? action, {String? actionId = targetId}) => AppNotificationRecord(
   id: 'notice', kind: 'approval', title: '登録された氏名', body: '原文',
   createdAt: DateTime(2026, 10, 8), read: false,
-  actionKey: action, actionId: targetId,
+  actionKey: action, actionId: actionId,
 );
 
 void main() {
@@ -93,16 +93,48 @@ void main() {
   });
 
   test('existing invoice target IDs and unsupported-action distinction remain', () {
-    final route = notificationDestination(notice('invoice_approval')) as InvoiceCloudPage;
-    expect(route.initialInvoiceId, targetId);
+    final route = notificationDestination(notice('invoice_approval')) as InvoiceNotificationPage;
+    expect(route.invoiceId, targetId);
     expect(notificationDestination(notice('unknown_future_action')), isNull);
     expect(notificationDestination(notice(null)), isNull);
   });
 
+  test('request notifications reject missing or malformed targets before routing', () {
+    const actions = [
+      'site_share_approval', 'paid_leave_request',
+      'route_billing_quantity_request', 'daily_report_edit_request',
+      'site_information_request', 'site_information_request_result',
+      'attendance_correction_request', 'worker_personnel_change', 'invoice_approval',
+    ];
+    for (final action in actions) {
+      for (final id in <String?>[null, '', ' ', 'not-a-uuid', '$targetId ', 'x$targetId']) {
+        expect(notificationDestination(notice(action, actionId: id)), isNull,
+          reason: '$action must not open another request list for $id');
+      }
+      expect(notificationDestination(notice(action)), isNotNull);
+    }
+  });
+
+  test('target-free menu notices retain their existing destinations', () {
+    for (final action in ['document_register', 'settings', 'admin_sites',
+        'payment_certificate_settings', 'payroll_settings', 'site_payment_agreement']) {
+      expect(notificationDestination(notice(action, actionId: null)), isNotNull,
+        reason: '$action does not use actionId as a saved request target');
+    }
+  });
+
+  test('missing map and invite target never opens a general list', () {
+    expect(notificationDestination(notice('chat_group_invite', actionId: null)),
+      isA<ChatCloudPage>().having((page) => page.initialInviteId, 'missing invite target', ''));
+    expect(notificationDestination(notice('site_map', actionId: null)),
+      isA<SiteMapNotificationPage>().having((page) => page.verificationId, 'missing map target', ''));
+  });
+
   test('all known notification routes retain page types and request IDs', () {
     expect(notificationDestination(notice('chat_group_invite')),
-      isA<ChatCloudPage>().having((page) => page.showGroupsInitially, 'group tab', true));
-    expect(notificationDestination(notice('site_map')), isA<GeneralSiteMapPage>());
+      isA<ChatCloudPage>().having((page) => page.showGroupsInitially, 'group tab', true)
+        .having((page) => page.initialInviteId, 'invitation ID', targetId));
+    expect(notificationDestination(notice('site_map')), isA<SiteMapNotificationPage>().having((page) => page.verificationId, 'verification ID', targetId));
     expect(notificationDestination(notice('site_share_approval')), isA<SiteShareApprovalPage>()
       .having((page) => page.initialRequestId, 'target request', targetId));
     expect(notificationDestination(notice('vehicle_documents')), isA<VehicleRoutePage>());
@@ -147,6 +179,9 @@ void main() {
     final readMutation = source.indexOf('await _notifications?.markRead(id)');
     expect(resolution, greaterThanOrEqualTo(0));
     expect(readMutation, greaterThan(resolution));
+    final targetValidation = source.indexOf('notificationTargetIsValid(target.actionKey, target.actionId)');
+    expect(targetValidation, greaterThanOrEqualTo(0));
+    expect(readMutation, greaterThan(targetValidation));
     final opening = source.substring(source.indexOf('Future<void> _open('),
       source.indexOf('Widget build(BuildContext context)'));
     final failureHandler = opening.substring(opening.indexOf('catch (error)'));

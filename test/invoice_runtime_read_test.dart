@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/invoices/invoice_cloud_repository.dart';
+import 'package:sk_works/features/invoices/invoice_notification_page.dart';
 import 'package:sk_works/features/invoices/invoice_pdf_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -121,6 +122,33 @@ void main() {
   late _Fixture fixture;
   setUp(() async { fixture = _Fixture(); await fixture.start(); });
   tearDown(() async { await fixture.close(); });
+
+  test('notification adapter reads saved invoices without refresh or approval initialization', () async {
+    fixture.signedCheckoutContract = true;
+    final source = SupabaseInvoiceNoticeSource(
+      fixture.client, InvoiceCloudRepository.forTesting(fixture.client),
+    );
+    expect(source.actor, _actor);
+    final rows = await source.load();
+    expect(rows.single.invoiceId, _invoice);
+    expect(rows.single.grandTotalYen, 44000);
+    const readRpcs = {
+      '/rest/v1/rpc/invoice_document_settings',
+      '/rest/v1/rpc/trade_company_workspace',
+    };
+    for (final request in fixture.requests) {
+      if (request.uri.path.contains('/rpc/')) {
+        expect(readRpcs, contains(request.uri.path),
+          reason: 'notification entry must not refresh or initialize approvals');
+      } else {
+        expect(request.method, 'GET', reason: request.uri.path);
+      }
+    }
+    expect(fixture.requests.where((r) => r.uri.path.contains('refresh_signed_checkout') ||
+      r.uri.path.contains('invoice_approval_status') ||
+      r.uri.path.contains('route_checkout_billing_contract') ||
+      r.uri.path.contains('current_feature_permissions')), isEmpty);
+  });
 
   test('legacy saved invoice remains readable when optional permission RPC fails', () async {
     fixture.denyPermissions = true;

@@ -34,11 +34,44 @@ class _ExpenseReviewFlowDialogState extends State<ExpenseReviewFlowDialog> {
   final _memo = TextEditingController();
   @override
   void dispose() { _memo.dispose(); super.dispose(); }
+  bool get _external => _category == ExpenseCategory.subcontractor ||
+      _category == ExpenseCategory.customer;
+
+  Future<void> _chooseCategory(ExpenseCategory category) async {
+    setState(() {
+      _category = category;
+      _destination = category == ExpenseCategory.ownCompany || category == ExpenseCategory.other
+          ? ExpenseAllocation(category) : null;
+      _method = null;
+    });
+    if (!_external) return;
+    final companies = widget.destinations.where((company) =>
+        company.category == category &&
+        company.counterpartyId?.trim().isNotEmpty == true).toList();
+    final selected = await showDialog<ExpenseAllocation>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text('${expenseBurdenLabel(category)}を選択'),
+        children: [
+          if (companies.isEmpty)
+            const Padding(padding: EdgeInsets.all(16), child: Text('登録済みの会社がありません。戻って負担先を選び直してください。')),
+          for (final company in companies)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, company),
+              child: Text(company.counterpartyName ?? '登録会社'),
+            ),
+          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext), child: const Text('戻る')),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _destination = selected);
+  }
+
   @override
   Widget build(BuildContext context) {
     final month = ExpenseSettlementChoice.applicationMonth(widget.claim.submittedAt);
     final ready = switch (_step) { 1 => _destination != null, 2 => _method != null, _ => true };
-    final companies = widget.destinations.where((v) => v.category == _category && v.counterpartyId != null).toList();
     final colors = Theme.of(context).colorScheme;
     IconData choiceIcon(String label) {
       if (label.startsWith('承認')) return Icons.check_circle_outline;
@@ -86,21 +119,12 @@ class _ExpenseReviewFlowDialogState extends State<ExpenseReviewFlowDialog> {
           ],
           if (_step == 1) ...[
             for (final category in [ExpenseCategory.ownCompany, ExpenseCategory.subcontractor, ExpenseCategory.customer, ExpenseCategory.other])
-              choose(expenseBurdenLabel(category), _category == category, () => setState(() {
-                _category = category;
-                _destination = category == ExpenseCategory.ownCompany || category == ExpenseCategory.other
-                  ? ExpenseAllocation(category) : null;
-              })),
-            if (_category == ExpenseCategory.subcontractor || _category == ExpenseCategory.customer) ...[
-              const Text('会社を選択してください'),
-              if (companies.isEmpty) const Text('登録済みの会社がありません。戻って負担先を選び直してください。'),
-              for (final company in companies)
-                choose(company.counterpartyName ?? '登録会社', _destination?.counterpartyId == company.counterpartyId,
-                  () => setState(() => _destination = company)),
-            ],
+              choose(expenseBurdenLabel(category), _category == category, () => _chooseCategory(category)),
+            if (_external)
+              Text(_destination?.counterpartyName ?? '会社を選択してください'),
           ],
           if (_step == 2) ...[
-            for (final method in [ExpenseSettlementMethod.paid, ExpenseSettlementMethod.cash, ExpenseSettlementMethod.payroll, ExpenseSettlementMethod.advance])
+            for (final method in [ExpenseSettlementMethod.payroll, ExpenseSettlementMethod.cash, ExpenseSettlementMethod.paid])
               choose(ExpenseSettlementChoice(method, month).label, _method == method, () => setState(() => _method = method)),
             Text('精算対象月（申請月）：${month.year}年${month.month}月'),
           ],

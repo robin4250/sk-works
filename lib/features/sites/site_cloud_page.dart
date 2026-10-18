@@ -6,6 +6,7 @@ import 'site_cloud_repository.dart';
 import 'site_detail_page.dart';
 import 'site_map_page.dart';
 import 'site_page.dart';
+import 'registered_site_search.dart';
 
 class SiteCloudPage extends StatefulWidget {
   const SiteCloudPage({super.key});
@@ -69,21 +70,7 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
 
   @override
   Widget build(BuildContext context) {
-    final needle = _query.trim().toLowerCase();
-    final filtered = _sites.where((site) {
-      final matchesStatus = _filter == null || site.status == _filter;
-      final haystack = [
-        site.name,
-        site.customerName,
-        site.address,
-        site.managerName,
-        site.nearestStation,
-        site.formalName,
-        site.representativeName,
-        site.notes,
-      ].join(' ').toLowerCase();
-      return matchesStatus && (needle.isEmpty || haystack.contains(needle));
-    }).toList();
+    final filtered = filterRegisteredSites(_sites, query: _query, status: _filter);
 
     return Scaffold(
       appBar: AppBar(
@@ -144,6 +131,9 @@ class _SiteCloudPageState extends State<SiteCloudPage> {
               child: TextField(
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
+                  helperText: SkoLanguageController.tr(
+                    '登録済み現場ID・正式名でも検索できます',
+                  ),
                   hintText: SkoLanguageController.tr(
                     '現場名・取引先・担当者・住所・最寄駅で検索',
                   ),

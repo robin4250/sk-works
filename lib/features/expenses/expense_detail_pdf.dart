@@ -48,7 +48,7 @@ class ExpenseDetailPdf {
         repeat: true,
         decoration: const pw.BoxDecoration(color: PdfColors.grey200),
         children: [
-          for (final title in ['日付・申請ID', '申請者・内容', '承認・振り分け', '申請額'])
+          for (final title in ['日付', '申請者・内容', '承認・振り分け', '申請額'])
             cell(title, header: true),
         ],
       ),
@@ -56,7 +56,7 @@ class ExpenseDetailPdf {
     for (final claim in selected.entries) {
       final columns = [
         _chunks(
-          '${claim.incurredOn.year}/${claim.incurredOn.month}/${claim.incurredOn.day}\n${claim.id}',
+          '${claim.incurredOn.year}/${claim.incurredOn.month}/${claim.incurredOn.day}',
           28,
         ),
         _chunks('${claim.applicantName}\n${claim.description}', 90),

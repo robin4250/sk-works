@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../../international/language_controller.dart';
+import '../notifications/notification_request_selection.dart';
 import 'people_cloud_repository.dart';
 import 'worker_personnel_approver_settings_page.dart';
 
 class WorkerPersonnelChangeApprovalsPage extends StatefulWidget {
-  const WorkerPersonnelChangeApprovalsPage({super.key, this.initialRequestId});
+  const WorkerPersonnelChangeApprovalsPage({
+    super.key,
+    this.initialRequestId,
+    this.loadRequests,
+  });
 
   final String? initialRequestId;
+
+  @visibleForTesting
+  final Future<List<Map<String, dynamic>>> Function()? loadRequests;
 
   @override
   State<WorkerPersonnelChangeApprovalsPage> createState() =>
@@ -19,6 +28,7 @@ class _WorkerPersonnelChangeApprovalsPageState
   List<Map<String, dynamic>> _rows = const [];
   bool _loading = true;
   String? _error;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -26,9 +36,24 @@ class _WorkerPersonnelChangeApprovalsPageState
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant WorkerPersonnelChangeApprovalsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialRequestId != widget.initialRequestId) {
+      _load();
+    }
+  }
+
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     final repository = _repository;
-    if (repository == null) {
+    final load = widget.loadRequests ?? repository?.loadPendingPersonnelChanges;
+    setState(() {
+      _rows = const [];
+      _loading = true;
+      _error = null;
+    });
+    if (load == null) {
       setState(() {
         _loading = false;
         _error = '社員個人情報の変更承認を利用できません。';
@@ -36,25 +61,24 @@ class _WorkerPersonnelChangeApprovalsPageState
       return;
     }
     try {
-      final rows = await repository.loadPendingPersonnelChanges();
-      if (!mounted) return;
-      final targetId = widget.initialRequestId?.trim() ?? '';
-      final ordered = rows.toList(growable: true);
-      if (targetId.isNotEmpty) {
-        ordered.sort((a, b) {
-          final aTarget = a['id']?.toString() == targetId;
-          final bTarget = b['id']?.toString() == targetId;
-          if (aTarget == bTarget) return 0;
-          return aTarget ? -1 : 1;
-        });
+      final rows = await load();
+      if (!mounted || generation != _loadGeneration) {
+        return;
       }
+      final selected = selectNotificationRequestRows<Map<String, dynamic>>(
+        rows,
+        requestId: widget.initialRequestId,
+        id: (row) => row['id']?.toString() ?? '',
+      );
       setState(() {
-        _rows = List<Map<String, dynamic>>.unmodifiable(ordered);
+        _rows = List<Map<String, dynamic>>.unmodifiable(selected);
         _loading = false;
         _error = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) {
+        return;
+      }
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -64,6 +88,8 @@ class _WorkerPersonnelChangeApprovalsPageState
 
   Future<void> _decide(Map<String, dynamic> row, bool approve) async {
     final repository = _repository;
+    final generation = _loadGeneration;
+    if (!_rows.contains(row)) return;
     final id = row['id']?.toString() ?? '';
     if (repository == null || id.isEmpty) return;
 
@@ -90,14 +116,17 @@ class _WorkerPersonnelChangeApprovalsPageState
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted || generation != _loadGeneration ||
+        !_rows.contains(row)) {
+      return;
+    }
 
     try {
       final result = await repository.decidePersonnelChange(
         requestId: id,
         approve: approve,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       final status = result['status']?.toString() ?? '';
       final approvalCount =
           (result['approval_count'] as num?)?.toInt() ?? count;
@@ -116,7 +145,7 @@ class _WorkerPersonnelChangeApprovalsPageState
       );
       await _load();
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -162,10 +191,14 @@ class _WorkerPersonnelChangeApprovalsPageState
             : _error != null
             ? Center(child: Text(_error!, textAlign: TextAlign.center))
             : _rows.isEmpty
-            ? const Center(
+            ? Center(
                 child: Text(
-                  '変更承認待ちはありません',
-                  style: TextStyle(fontWeight: FontWeight.w800),
+                  widget.initialRequestId == null
+                      ? '変更承認待ちはありません'
+                      : SkoLanguageController.tr(
+                          '対象の申請は完了済み、または閲覧できません。',
+                        ),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
               )
             : ListView.separated(

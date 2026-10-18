@@ -26,20 +26,22 @@ class _ExpenseSettlementDialogState extends State<ExpenseSettlementDialog> {
           Text(claim.description),
           const SizedBox(height: 16),
           const Text('精算方法'),
-          for (final method in [ExpenseSettlementMethod.cash, ExpenseSettlementMethod.payroll])
+          for (final method in [ExpenseSettlementMethod.payroll, ExpenseSettlementMethod.cash, ExpenseSettlementMethod.paid])
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(_method == method ? Icons.radio_button_checked : Icons.radio_button_unchecked,
                 color: _method == method ? Theme.of(context).colorScheme.primary : null),
-              title: Text(method == ExpenseSettlementMethod.cash ? '現金精算' : '給料精算'),
-              onTap: () => setState(() => _method = method),
+              title: Text(ExpenseSettlementChoice(method, month).label),
+              subtitle: method == ExpenseSettlementMethod.paid
+                  ? const Text('承認・振り分け機能の更新後に利用できます。') : null,
+              onTap: method == ExpenseSettlementMethod.paid ? null : () => setState(() => _method = method),
             ),
           const SizedBox(height: 12),
           const Text('精算対象月（申請月）'),
           Text('${month.year}年${month.month}月',
             style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 12),
-          const Text('現金精算・給料精算とも、申請した月に精算予定として保存します。費用の負担先は承認後に振り分けます。'),
+          const Text('給与精算・現金精算・支払済み（対象外）から選択します。費用の負担先と精算方法は別に設定します。'),
         ],
       )),
       actions: [

@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../notifications/notification_request_selection.dart';
+import '../../international/language_controller.dart';
 import 'attendance_correction_approval_repository.dart';
 
 class AttendanceCorrectionApprovalsPage extends StatefulWidget {
   const AttendanceCorrectionApprovalsPage({
     super.key,
     this.initialRequestId,
+    this.loadRequests,
+    this.loadRequestItems,
   });
 
   final String? initialRequestId;
+  @visibleForTesting
+  final Future<List<AttendanceCorrectionApprovalRequest>> Function()? loadRequests;
+  @visibleForTesting
+  final Future<List<AttendanceCorrectionApprovalItem>> Function(String)? loadRequestItems;
 
   @override
   State<AttendanceCorrectionApprovalsPage> createState() =>
@@ -25,6 +33,7 @@ class _AttendanceCorrectionApprovalsPageState
   bool _busy = false;
   String? _error;
   bool _openedInitialRequest = false;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -32,9 +41,26 @@ class _AttendanceCorrectionApprovalsPageState
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant AttendanceCorrectionApprovalsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialRequestId != widget.initialRequestId ||
+        oldWidget.loadRequests != widget.loadRequests) {
+      _openedInitialRequest = false;
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _loadGeneration++;
+    super.dispose();
+  }
+
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     final repository = _repository;
-    if (repository == null) {
+    if (repository == null && widget.loadRequests == null) {
       setState(() {
         _loading = false;
         _error = '過去勤怠の修正承認を利用できません。';
@@ -44,32 +70,36 @@ class _AttendanceCorrectionApprovalsPageState
 
     setState(() {
       _loading = true;
+      _items = const [];
       _error = null;
     });
 
     try {
-      final items = await repository.loadPending();
-      if (!mounted) return;
+      final items = await (widget.loadRequests?.call() ?? repository!.loadPending());
+      if (!mounted || generation != _loadGeneration) return;
+      final visible = selectNotificationRequestRows(
+        items, requestId: widget.initialRequestId, id: (item) => item.id,
+      );
       setState(() {
-        _items = items;
+        _items = visible;
         _loading = false;
       });
       final initialRequestId = widget.initialRequestId;
       if (!_openedInitialRequest &&
           initialRequestId != null &&
           initialRequestId.isNotEmpty) {
-        for (final item in items) {
+        for (final item in visible) {
           if (item.id == initialRequestId) {
             _openedInitialRequest = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _openRequest(item);
+              if (mounted && generation == _loadGeneration) _openRequest(item);
             });
             break;
           }
         }
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -93,18 +123,20 @@ class _AttendanceCorrectionApprovalsPageState
             : _error != null
                 ? _ErrorState(message: _error!, onRetry: _load)
                 : _items.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Padding(
-                          padding: EdgeInsets.all(28),
+                          padding: const EdgeInsets.all(28),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.task_alt_outlined, size: 56),
-                              SizedBox(height: 12),
+                              const Icon(Icons.task_alt_outlined, size: 56),
+                              const SizedBox(height: 12),
                               Text(
-                                '承認待ちの過去勤怠修正はありません',
+                                widget.initialRequestId == null
+                                    ? '承認待ちの過去勤怠修正はありません'
+                                    : SkoLanguageController.tr('対象の申請は完了済み、または閲覧できません。'),
                                 textAlign: TextAlign.center,
-                                style: TextStyle(fontWeight: FontWeight.w900),
+                                style: const TextStyle(fontWeight: FontWeight.w900),
                               ),
                             ],
                           ),
@@ -157,17 +189,19 @@ class _AttendanceCorrectionApprovalsPageState
     AttendanceCorrectionApprovalRequest request,
   ) async {
     final repository = _repository;
-    if (repository == null) return;
+    final generation = _loadGeneration;
+    final loadItems = widget.loadRequestItems ?? repository?.loadItems;
+    if (loadItems == null || !_items.contains(request)) return;
 
     List<AttendanceCorrectionApprovalItem> details;
     try {
-      details = await repository.loadItems(request.id);
+      details = await loadItems(request.id);
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       _show('修正内容を読み込めませんでした: $error');
       return;
     }
-    if (!mounted) return;
+    if (!mounted || generation != _loadGeneration) return;
 
     final note = TextEditingController();
     final decision = await showDialog<bool?>(
@@ -249,7 +283,10 @@ class _AttendanceCorrectionApprovalsPageState
     final noteText = note.text;
     note.dispose();
 
-    if (decision == null) return;
+    if (decision == null || !mounted || generation != _loadGeneration ||
+        repository == null || !_items.contains(request)) {
+      return;
+    }
 
     setState(() => _busy = true);
     try {
@@ -258,7 +295,7 @@ class _AttendanceCorrectionApprovalsPageState
         approve: decision,
         note: noteText,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       _show(
         status == 'approved'
             ? '過去勤怠の修正を承認し、勤怠へ反映しました'
@@ -266,7 +303,7 @@ class _AttendanceCorrectionApprovalsPageState
       );
       await _load();
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       _show('承認処理に失敗しました: $error');
     } finally {
       if (mounted) setState(() => _busy = false);

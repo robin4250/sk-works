@@ -5,7 +5,15 @@ on:
       - 'supabase/migrations/*expense_atomic_review_flow.sql'
       - 'supabase/migrations/*expense_receipt_camera_attachments.sql'
       - 'lib/features/expenses/**'
+      - 'lib/features/notifications/**'
+      - 'test/expense_notification_target_test.dart'
+      - 'test/notification_open_session_test.dart'
+      - 'docs/candidates/expense_notifications_20261019*'
+      - 'tool/verify_expense_notification_candidate.mjs'
       - 'test/expense_review_flow_test.dart'
+      - 'test/expense_review_followup_test.dart'
+      - 'test/invoice_preview_guidance_test.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
       - 'test/expense_camera_submission_test.dart'
       - 'tool/verify_expense_review_flow*.mjs'
       - 'tool/verify_expense_receipt_attachments.mjs'
@@ -43,6 +51,8 @@ jobs:
           node-version: '24'
       - run: npm install --prefix "$RUNNER_TEMP/expense-review-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14 pg@8.16.3
       - run: node tool/verify_expense_review_flow_postgres.mjs "$RUNNER_TEMP/expense-review-runtime/node_modules/pg/lib/index.js" "${{ matrix.mode }}"
+      - if: matrix.mode == 'flow'
+        run: node tool/verify_expense_notification_candidate.mjs "$RUNNER_TEMP/expense-review-runtime/node_modules/@electric-sql/pglite/dist/index.js"
   widgets:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -56,4 +66,4 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter test test/expense_review_flow_test.dart test/expense_camera_submission_test.dart test/expense_settlement_choice_test.dart test/expense_personal_page_test.dart test/expense_claims_page_test.dart
+      - run: flutter test test/notification_open_session_test.dart test/notification_explanation_page_test.dart test/expense_notification_target_test.dart test/expense_review_followup_test.dart test/invoice_preview_guidance_test.dart test/expense_review_flow_test.dart test/expense_camera_submission_test.dart test/expense_settlement_choice_test.dart test/expense_personal_page_test.dart test/expense_claims_page_test.dart

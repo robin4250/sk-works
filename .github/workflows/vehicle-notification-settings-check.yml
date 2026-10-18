@@ -6,6 +6,7 @@ on:
       - 'supabase/migrations/20261008201729_vehicle_notification_settings_read.sql'
       - 'supabase/migrations/20261008204054_source_notification_active_recipients.sql'
       - 'tool/verify_vehicle_notification_settings.mjs'
+      - 'test/vehicle_notification_settings_http_test.dart'
       - '.github/workflows/vehicle-notification-settings-check.yml'
   push:
     branches: [main, 'feat/vehicle-notification-assignees-*']
@@ -13,12 +14,14 @@ on:
       - 'supabase/migrations/20261008201729_vehicle_notification_settings_read.sql'
       - 'supabase/migrations/20261008204054_source_notification_active_recipients.sql'
       - 'tool/verify_vehicle_notification_settings.mjs'
+      - 'test/vehicle_notification_settings_http_test.dart'
       - '.github/workflows/vehicle-notification-settings-check.yml'
 permissions:
   contents: read
 jobs:
   settings-contract:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,3 +33,20 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/vehicle-settings-runtime" --no-save --ignore-scripts @electric-sql/pglite@0.3.14
       - name: Verify vehicle administrator settings read contract
         run: node tool/verify_vehicle_notification_settings.mjs "$RUNNER_TEMP/vehicle-settings-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze test/vehicle_notification_settings_http_test.dart
+      - name: Verify vehicle settings SDK HTTP save boundary
+        run: >-
+          flutter test
+          --dart-define=SKO_VEHICLE_NOTICE_FIXTURE=true
+          --dart-define=SUPABASE_URL=https://vehicle-notice-fixture.invalid
+          --dart-define=SUPABASE_PUBLISHABLE_KEY=public_fixture
+          test/vehicle_notification_settings_http_test.dart
+          test/vehicle_notification_settings_test.dart
+          --reporter expanded

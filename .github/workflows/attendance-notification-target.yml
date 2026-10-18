@@ -1,16 +1,50 @@
-name: Attendance notification target
+name: Notification target regressions
 on:
   pull_request:
     paths:
       - 'lib/features/attendance/attendance_notification_page.dart'
       - 'lib/features/notifications/notifications_page.dart'
+      - 'lib/features/notifications/notification_target_policy.dart'
       - 'test/attendance_notification_target_test.dart'
+      - 'lib/features/sites/site_map_notification_page.dart'
+      - 'lib/features/chat/chat_cloud_page.dart'
+      - 'test/site_map_notification_page_test.dart'
+      - 'test/site_map_notification_http_test.dart'
+      - 'test/chat_invite_notification_target_test.dart'
+      - 'test/notification_payroll_routing_test.dart'
+      - 'lib/features/notifications/notification_request_selection.dart'
+      - 'lib/features/sites/site_information_approvals_page.dart'
+      - 'lib/features/people/worker_personnel_change_approvals_page.dart'
+      - 'lib/features/attendance/attendance_correction_approvals_page.dart'
+      - 'test/notification_request_selection_test.dart'
+      - 'test/site_information_notification_target_test.dart'
+      - 'test/personnel_notification_target_test.dart'
+      - 'test/attendance_correction_notification_target_test.dart'
+      - 'test/site_information_notification_routing_contract_test.dart'
+      - 'test/personnel_change_approval_routing_contract_test.dart'
+      - 'lib/features/invoices/invoice_notification_page.dart'
+      - 'test/invoice_notification_target_test.dart'
+      - 'test/invoice_approval_and_zoom_contract_test.dart'
+      - 'test/invoice_runtime_read_test.dart'
+      - 'lib/features/invoices/invoice_approval_repository.dart'
+      - 'lib/features/invoices/invoice_cloud_page.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'test/invoice_approval_actor_http_test.dart'
+      - 'test/invoice_strict_pdf_approval_read_test.dart'
+      - 'lib/features/notifications/notification_preview_route_scope.dart'
+      - 'lib/features/invoices/invoice_stamp_surname_dialog.dart'
+      - 'test/invoice_notification_route_scope_test.dart'
+      - 'lib/features/sites/site_share_approval_page.dart'
+      - 'test/site_share_notification_target_test.dart'
       - '.github/workflows/attendance-notification-target.yml'
 permissions:
   contents: read
 jobs:
   target:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -18,6 +52,12 @@ jobs:
           flutter-version: '3.47.5'
           channel: stable
           cache: true
-      - run: flutter pub get
-      - run: flutter analyze lib/features/attendance/attendance_notification_page.dart test/attendance_notification_target_test.dart
-      - run: flutter test test/attendance_notification_target_test.dart
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
+      - run: python tool/prepare_pdf_fixture_font.py
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/sites/site_share_approval_page.dart test/site_share_notification_target_test.dart lib/features/notifications/notification_preview_route_scope.dart lib/features/invoices/invoice_stamp_surname_dialog.dart test/invoice_notification_route_scope_test.dart lib/features/invoices/invoice_approval_repository.dart lib/features/invoices/invoice_cloud_page.dart lib/features/invoices/invoice_pdf_service.dart test/invoice_approval_actor_http_test.dart test/invoice_strict_pdf_approval_read_test.dart test/invoice_runtime_read_test.dart lib/features/invoices/invoice_notification_page.dart test/invoice_notification_target_test.dart test/invoice_approval_and_zoom_contract_test.dart lib/features/notifications/notification_request_selection.dart lib/features/sites/site_information_approvals_page.dart lib/features/people/worker_personnel_change_approvals_page.dart lib/features/attendance/attendance_correction_approvals_page.dart test/notification_request_selection_test.dart test/site_information_notification_target_test.dart test/personnel_notification_target_test.dart test/attendance_correction_notification_target_test.dart test/site_information_notification_routing_contract_test.dart test/personnel_change_approval_routing_contract_test.dart lib/features/notifications/notification_target_policy.dart lib/features/attendance/attendance_notification_page.dart lib/features/sites/site_map_notification_page.dart lib/features/chat/chat_cloud_page.dart lib/features/notifications/notifications_page.dart test/attendance_notification_target_test.dart test/site_map_notification_page_test.dart test/site_map_notification_http_test.dart test/chat_invite_notification_target_test.dart test/notification_payroll_routing_test.dart
+      - run: flutter test test/site_share_notification_target_test.dart test/invoice_notification_route_scope_test.dart test/invoice_approval_actor_http_test.dart test/invoice_strict_pdf_approval_read_test.dart test/invoice_runtime_read_test.dart test/invoice_notification_target_test.dart test/invoice_approval_and_zoom_contract_test.dart test/notification_request_selection_test.dart test/site_information_notification_target_test.dart test/personnel_notification_target_test.dart test/attendance_correction_notification_target_test.dart test/site_information_notification_routing_contract_test.dart test/personnel_change_approval_routing_contract_test.dart test/attendance_notification_target_test.dart test/site_map_notification_page_test.dart test/site_map_notification_http_test.dart test/chat_invite_notification_target_test.dart test/notification_payroll_routing_test.dart --reporter expanded

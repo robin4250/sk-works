@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'notification_open_session.dart';
+import 'notification_explanation_page.dart';
+import 'notification_target_policy.dart';
 import '../../international/language_controller.dart';
 
 import 'package:flutter/material.dart';
 
+import '../expenses/expense_notification_page.dart';
 import 'app_notification_repository.dart';
 import 'source_notification_target.dart';
 import 'source_notification_target_page.dart';
@@ -14,7 +19,7 @@ import '../companies/company_link_page.dart';
 import '../companies/trade_company_repository.dart';
 import '../people/own_document_registration_page.dart';
 import '../auth/secondary_protected_page.dart';
-import '../invoices/invoice_cloud_page.dart';
+import '../invoices/invoice_notification_page.dart';
 import '../chat/chat_cloud_page.dart';
 import '../payroll/individual_payroll_settings_page.dart';
 import '../payroll/payroll_review_page.dart';
@@ -31,7 +36,7 @@ import '../attendance/paid_leave_approvals_page.dart';
 import '../daily_reports/daily_report_approvals_page.dart';
 import '../daily_reports/daily_report_page.dart';
 import '../attendance/attendance_correction_approvals_page.dart';
-import '../sites/site_map_page.dart';
+import '../sites/site_map_notification_page.dart';
 import '../sites/site_share_approval_page.dart';
 import '../sites/site_information_approvals_page.dart';
 import '../operations/vehicle_route_page.dart';
@@ -49,6 +54,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
   final _repository = AttentionCenterRepository.maybeCreate();
   final _notifications = AppNotificationRepository.maybeCreate();
   AttentionCenterData? _data;
+  NotificationOpenSession? _session;
+  StreamSubscription<void>? _sessionChanges;
   bool _loading = true;
   bool _opening = false;
   bool _pendingOnly = false;
@@ -57,7 +64,22 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   void initState() {
     super.initState();
+    if (SupabaseBackend.isInitialized) {
+      final client = SupabaseBackend.client;
+      _session = NotificationOpenSession(actor: () => client.auth.currentUser?.id,
+        changes: client.auth.onAuthStateChange.map((event) => event.session?.user.id));
+      _sessionChanges = _session!.invalidations.listen((_) {
+        if (mounted) setState(() { _data = null; _loading = false; _error = '通知一覧を開き直してください。'; });
+      });
+    }
     _load();
+  }
+
+  @override
+  void dispose() {
+    _sessionChanges?.cancel();
+    _session?.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -76,7 +98,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
       _error = null;
     });
     try {
+      _session?.requireCurrent();
       final data = await repository.load();
+      _session?.requireCurrent();
       if (!mounted) {
         return;
       }
@@ -90,14 +114,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
       }
       setState(() {
         _loading = false;
-        _error = error.toString();
+        _error = '通知を取得できません。再読み込みしてください。';
       });
     }
   }
 
   Future<void> _markAll() async {
     try {
+      _session?.requireCurrent();
       await _notifications?.markAllRead();
+      _session?.requireCurrent();
       await _load();
     } catch (error) {
       _showError(error);
@@ -111,34 +137,86 @@ class _NotificationsPageState extends State<NotificationsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          SkoLanguageController.trParams('通知を開けませんでした: {error}', {
-            'error': error,
-          }),
+          SkoLanguageController.tr('操作結果を確認できません。通知の内容を確認し、もう一度お試しください。'),
         ),
       ),
     );
   }
 
   Future<void> _open(AttentionCenterItem item) async {
-    try {
-      await _openTarget(item, context);
-    } catch (_) {
-      // _openTarget already displays the failure and preserves unread state
-      // when the target cannot be resolved.
+    if (_opening) {
+      return;
     }
-    if (mounted) await _load();
+    if (!mounted) return;
+    final session = _session;
+    if (session == null || !session.isCurrent) return;
+    final snapshot = _data;
+    setState(() => _opening = true);
+    try {
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
+        NotificationExplanationPage(item: item,
+          isCurrent: () => session.isCurrent,
+          invalidations: session.invalidations,
+          onInvalidate: session.invalidate,
+          onShown: () => _markBodyRead(item, snapshot),
+          canOpenTarget: () async {
+            session.requireCurrent();
+            final ids = snapshot?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[];
+            final record = ids.isEmpty ? null : snapshot?.notificationsById[ids.first];
+            final key = record?.actionKey ?? item.actionKey;
+            final id = record?.actionId ?? item.actionId;
+            if (!notificationTargetIsValid(key, id)) return false;
+            if (SourceNotificationTarget.supports(key)) return true;
+            final supported = notificationDestination(record ?? AppNotificationRecord(id: '', kind: item.source,
+              title: item.title, body: item.body, createdAt: item.createdAt ?? DateTime(1970),
+              read: true, actionKey: key, actionId: id)) != null;
+            if (!supported) return false;
+            if (key == 'company_link_request' && !await companyLinkNotificationAvailable()) return false;
+            session.requireCurrent();
+            if (key == 'company_profile_review' && !await companyProfileNotificationAvailable()) return false;
+            session.requireCurrent();
+            final module = notificationModule(key);
+            if (module != null) {
+              final settings = CompanyModuleSettingsRepository.maybeCreate();
+              if (settings == null) return false;
+              final states = await settings.loadOptionalModuleStates();
+              session.requireCurrent();
+              if (states[module] != true) return false;
+            }
+            return true;
+          },
+          openTarget: (pageContext) => _openTarget(item, pageContext, snapshot),
+        )));
+    } finally {
+      if (mounted) {
+        setState(() => _opening = false);
+      }
+    }
+    if (mounted && session.isCurrent) await _load();
+  }
+
+  Future<void> _markBodyRead(AttentionCenterItem item, AttentionCenterData? snapshot) async {
+    final ids = snapshot?.notificationIdsByItemKey[item.deduplicationKey] ?? const <String>[];
+    for (final id in ids) {
+      final record = snapshot?.notificationsById[id];
+      // Link failures stay unread. Only an ordinary notice is read by its body.
+      if (record == null || record.read || (record.actionKey?.isNotEmpty ?? false)) continue;
+      _session?.requireCurrent();
+      final repository = _notifications;
+      if (repository == null) throw StateError('Notifications unavailable');
+      await repository.markRead(id);
+      _session?.requireCurrent();
+    }
   }
 
   Future<void> _openTarget(
     AttentionCenterItem item,
     BuildContext pageContext,
+    AttentionCenterData? snapshot,
   ) async {
-    if (_opening) {
-      return;
-    }
-    setState(() => _opening = true);
+    _session?.requireCurrent();
     try {
-      final data = _data;
+      final data = snapshot;
       final ids =
           data?.notificationIdsByItemKey[item.deduplicationKey] ??
           const <String>[];
@@ -155,6 +233,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
             actionKey: item.actionKey,
             actionId: item.actionId,
           );
+      if (!notificationTargetIsValid(target.actionKey, target.actionId)) {
+        throw StateError(SkoLanguageController.tr(
+          '通知の対象を確認できません。通知一覧を更新して、もう一度お試しください。',
+        ));
+      }
       if (target.actionKey == 'company_link_request' &&
           !await companyLinkNotificationAvailable()) {
         throw StateError('会社検索・連携申請は現在停止中です');
@@ -226,8 +309,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
         );
         return;
       }
+      _session?.requireCurrent();
       // System tasks have no notification id and never write a synthetic read state.
       for (final id in ids) {
+        _session?.requireCurrent();
         if (data?.notificationsById[id]?.read == false) {
           await _notifications?.markRead(id);
         }
@@ -235,6 +320,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
       if (!mounted) {
         return;
       }
+      _session?.requireCurrent();
       final page = destination;
       if (page != null) {
         if (!pageContext.mounted) return;
@@ -251,10 +337,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
     } catch (error) {
       _showError(error);
       rethrow;
-    } finally {
-      if (mounted) {
-        setState(() => _opening = false);
-      }
     }
   }
 
@@ -438,7 +520,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
 Widget? notificationDestination(
   AppNotificationRecord item, {
   DateTime? payrollMonth,
-}) => switch (item.actionKey) {
+}) {
+  if (!notificationTargetIsValid(item.actionKey, item.actionId)) return null;
+  return switch (item.actionKey) {
   'site_payment_agreement' => SiteContractNotificationPage(notificationId: item.id),
   'company_link_request' => companyLinkNotificationDestination(item.actionId),
   'company_profile_review' => item.actionId == null || item.actionId!.isEmpty
@@ -449,8 +533,11 @@ Widget? notificationDestination(
   ),
   'attendance_today' => AttendanceNotificationPage(verificationId: item.actionId ?? ''),
   'document_register' => const OwnDocumentRegistrationPage(),
-  'chat_group_invite' => const ChatCloudPage(showGroupsInitially: true),
-  'site_map' => const GeneralSiteMapPage(),
+  'chat_group_invite' => ChatCloudPage(
+    showGroupsInitially: true,
+    initialInviteId: item.actionId ?? '',
+  ),
+  'site_map' => SiteMapNotificationPage(verificationId: item.actionId ?? ''),
   'site_share_approval' => SiteShareApprovalPage(
     initialRequestId: item.actionId,
   ),
@@ -482,7 +569,7 @@ Widget? notificationDestination(
     title: SkoLanguageController.tr('管理者用現場データ'),
     child: const AdminSiteFinancialPage(),
   ),
-  'invoice_approval' => InvoiceCloudPage(initialInvoiceId: item.actionId),
+  'invoice_approval' => InvoiceNotificationPage(invoiceId: item.actionId ?? ''),
   'payment_certificate_settings' => SecondaryProtectedPage(
     title: SkoLanguageController.tr('支払証明書設定'),
     child: const PartnerPaymentSettingsPage(),
@@ -493,9 +580,13 @@ Widget? notificationDestination(
       child: SecurityIncidentPage(incidentId: item.actionId),
     ),
   ),
+  'expense_review_request' || 'expense_review_completed' => ExpenseNotificationPage(
+    notificationId: item.id, actionKey: item.actionKey!, actionId: item.actionId!,
+  ),
   'settings' => const SettingsPage(),
   _ => null,
-};
+  };
+}
 
 /// Recheck optional modules when following a historical notice, not only on home.
 String? notificationModule(String? actionKey) => switch (actionKey) {

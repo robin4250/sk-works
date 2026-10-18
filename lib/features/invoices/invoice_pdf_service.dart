@@ -49,6 +49,7 @@ class InvoicePdfService {
     pw.Font? regularFont,
     pw.Font? boldFont,
     Map<String, List<InvoiceApprovalRecord>>? approvalsByInvoice,
+    bool allowLegacyApprovalInitialization = true,
   }) async {
     final lease = TradeDocumentActorLease();
     try {
@@ -60,6 +61,14 @@ class InvoicePdfService {
         throw StateError(invoice.outputReadinessError!);
       }
     }
+    final approvalRepository = InvoiceApprovalRepository.maybeCreate();
+    if (!allowLegacyApprovalInitialization && approvalRepository == null &&
+        invoices.any((invoice) => invoice.invoiceId.isNotEmpty &&
+            approvalsByInvoice?.containsKey(invoice.invoiceId) != true)) {
+      throw StateError(SkoLanguageController.tr(
+        '承認情報を確認できません。請求書を再読み込みしてください。',
+      ));
+    }
     final effectiveSettings = settings ?? await _loadSettings();
 
     final regular = regularFont ?? await loadBodyFont(PdfGoogleFonts.notoSansJPRegular);
@@ -67,7 +76,6 @@ class InvoicePdfService {
     final document = pw.Document(
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
-    final approvalRepository = InvoiceApprovalRepository.maybeCreate();
     for (final invoice in invoices) {
       final attachmentRepository = TradeDocumentAttachmentRepository.maybeCreate();
       final acceptance = acceptanceByInvoice?.containsKey(invoice.invoiceId) == true
@@ -99,10 +107,12 @@ class InvoicePdfService {
         try {
           approvals = await approvalRepository.loadForInvoice(
             invoice.invoiceId,
+            allowLegacyInitialization: allowLegacyApprovalInitialization,
           );
         } on InvoiceStampSurnameReadException {
           rethrow;
         } catch (_) {
+          if (!allowLegacyApprovalInitialization) rethrow;
           approvals = const [];
         }
       }
@@ -962,10 +972,16 @@ class _InvoiceFormRow {
 }
 
 class InvoicePdfPreviewPage extends StatefulWidget {
-  const InvoicePdfPreviewPage({super.key, required this.invoices, this.title});
+  const InvoicePdfPreviewPage({
+    super.key,
+    required this.invoices,
+    this.title,
+    this.allowLegacyApprovalInitialization = true,
+  });
 
   final List<InvoiceCalculationResult> invoices;
   final String? title;
+  final bool allowLegacyApprovalInitialization;
 
   @override
   State<InvoicePdfPreviewPage> createState() => _InvoicePdfPreviewPageState();
@@ -1012,6 +1028,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       widget.invoices,
       title: widget.title,
       settings: settings,
+      allowLegacyApprovalInitialization: widget.allowLegacyApprovalInitialization,
     );
     if (pdfBytes.isEmpty) {
       throw StateError('PDFデータが空です。');
@@ -1027,14 +1044,22 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   Future<List<InvoiceApprovalRecord>> _loadApprovals() async {
     final invoice = _singleInvoice;
     final repository = _approvalRepository;
-    if (invoice == null || repository == null || invoice.invoiceId.isEmpty) {
+    if (invoice == null || invoice.invoiceId.isEmpty) return const [];
+    if (repository == null) {
+      if (!widget.allowLegacyApprovalInitialization) {
+        throw StateError(SkoLanguageController.tr(
+          '承認情報を確認できません。請求書を再読み込みしてください。',
+        ));
+      }
       return const [];
     }
     try {
-      return await repository.loadForInvoice(invoice.invoiceId);
+      return await repository.loadForInvoice(invoice.invoiceId,
+        allowLegacyInitialization: widget.allowLegacyApprovalInitialization);
     } on InvoiceStampSurnameReadException {
       rethrow;
     } catch (_) {
+      if (!widget.allowLegacyApprovalInitialization) rethrow;
       return const [];
     }
   }
@@ -1058,7 +1083,8 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     setState(() => _approving = true);
     try {
       checkActor();
-      final rows = await repository.loadForInvoice(invoice.invoiceId);
+      final rows = await repository.loadForInvoice(invoice.invoiceId,
+        allowLegacyInitialization: widget.allowLegacyApprovalInitialization);
       checkActor();
       final editable = rows.where((row) => row.canCurrentUserSetStampSurname).toList();
       if (!mounted) return;
@@ -1109,7 +1135,8 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     setState(() => _approving = true);
     try {
       checkActor();
-      final rows = await repository.loadForInvoice(invoice.invoiceId);
+      final rows = await repository.loadForInvoice(invoice.invoiceId,
+        allowLegacyInitialization: widget.allowLegacyApprovalInitialization);
       checkActor();
       if (!mounted) return;
       final ownPending = rows.where((row) => row.canCurrentUserApprove).toList();
@@ -1277,19 +1304,8 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         ],
                       ),
                     ),
-                  if (approvals.any((row) => row.stampSurname == null))
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      child: Text(SkoLanguageController.isEnglish
-                          ? 'Approval-seal surname unconfigured or unconfirmed: existing seals are retained. Set your surname before a new approval when available.'
-                          : '承認印の名字未設定・未確認：既存の印影を保持しています。設定が利用可能な場合は、新しい承認前に本人の名字を入力してください。'),
-                    ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 6),
-                    child: Text(
-                      'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                  InvoicePreviewGuidance(
+                    needsStampSurname: approvals.any((row) => row.stampSurname == null),
                   ),
                   Expanded(
                     child: Container(
@@ -1309,8 +1325,6 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(SkoLanguageController.tr('iPhoneでは共有メニューの「ファイルに保存」でPDFを保存できます。')),
-                          const SizedBox(height: 6),
                           Row(children: [
                           Expanded(
                             child: OutlinedButton.icon(
@@ -1352,6 +1366,48 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
         },
       ),
     ));
+  }
+}
+
+/// Optional preview instructions stay collapsed so the document has priority.
+class InvoicePreviewGuidance extends StatelessWidget {
+  const InvoicePreviewGuidance({super.key, this.needsStampSurname = false});
+  final bool needsStampSurname;
+
+  @override
+  Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
+    final english = SkoLanguageController.isEnglish;
+    return ExpansionTile(
+      dense: true,
+      tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+      title: Text(english ? 'Display and save help' : '表示・保存の案内'),
+      leading: Icon(needsStampSurname ? Icons.info_outline : Icons.help_outline),
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 160),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (needsStampSurname) ...[
+                  Text(english
+                      ? 'Approval-seal surname unconfigured or unconfirmed: existing seals are retained. Set your surname before a new approval when available.'
+                      : '承認印の名字未設定・未確認：既存の印影を保持しています。設定が利用可能な場合は、新しい承認前に本人の名字を入力してください。'),
+                  const SizedBox(height: 8),
+                ],
+                Text(english
+                    ? 'The A4 page fits the screen width. Pinch the preview to zoom in or out.'
+                    : 'A4を画面幅に合わせて表示します。プレビュー上で拡大・縮小できます。'),
+                const SizedBox(height: 8),
+                Text(SkoLanguageController.tr('iPhoneでは共有メニューの「ファイルに保存」でPDFを保存できます。')),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
