@@ -17,7 +17,11 @@ class ExpenseDetailPdf {
     required pw.Font regularFont,
     required pw.Font boldFont,
     int? costRecoveryAmountYen,
+    bool costRecoveryIsDeduction = false,
   }) {
+    if (costRecoveryIsDeduction && (kind != ExpenseDocument.paymentCertificate || costRecoveryAmountYen == null)) {
+      throw StateError('経費差引の帳票対象・原額を確認できません。');
+    }
     final selected = switch (kind) {
       ExpenseDocument.payroll => claims.forApplicant(subjectId),
       ExpenseDocument.invoice => claims.forCounterparty(
@@ -97,13 +101,13 @@ class ExpenseDetailPdf {
               pw.Text(
                 costRecoveryAmountYen == null
                     ? '承認・未承認・却下の履歴を表示。却下は精算対象外です。'
-                    : '帳票に加算した別途経費の内訳です。税・福利厚生費の加算対象外です。',
+                    : costRecoveryIsDeduction ? '帳票から差し引いた経費の原額内訳です。税・福利厚生費の加算対象外です。' : '帳票に加算した別途経費の内訳です。税・福利厚生費の加算対象外です。',
                 style: const pw.TextStyle(fontSize: 9),
               ),
               pw.Text(
                 costRecoveryAmountYen == null
                     ? '申請額の一覧です。支給・請求・支払額は表紙をご確認ください。'
-                    : '別途経費合計：$costRecoveryAmountYen円。表紙の合計に含まれています。',
+                    : costRecoveryIsDeduction ? '経費差引（原額）：$costRecoveryAmountYen円。表紙の支払金額から差し引いています。' : '別途経費合計：$costRecoveryAmountYen円。表紙の合計に含まれています。',
                 style: const pw.TextStyle(fontSize: 9),
               ),
             ],

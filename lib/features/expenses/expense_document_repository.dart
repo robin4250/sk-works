@@ -1,3 +1,4 @@
+import '../../domain/expense_cost_direction_v2_candidate.dart';
 import '../../data/supabase_backend.dart';
 import 'expense_claim.dart';
 import 'expense_detail_pdf.dart';
@@ -10,12 +11,14 @@ class ExpenseDocumentDetails {
     required this.month,
     required this.claims,
     this.costRecoveryAmountYen,
+    this.directionalCost,
   });
   final ExpenseDocument kind;
   final String documentId, subjectId;
   final DateTime month;
   final ExpenseClaims claims;
   final int? costRecoveryAmountYen;
+  final ExpenseCostDirectionV2Candidate? directionalCost;
   factory ExpenseDocumentDetails.parse(
     Map<String, dynamic> v,
     ExpenseDocument kind,
@@ -77,6 +80,19 @@ class ExpenseDocumentDetails {
         costAmount is! int || costAmount < 0)) {
       throw StateError('別途経費の帳票金額を確認できません。');
     }
+    ExpenseCostDirectionV2Candidate? directional;
+    if (v.containsKey('expense_cost_direction_v2')) {
+      if (kind != ExpenseDocument.paymentCertificate || v['revision'] is! int || v['document_id'] != documentId) {
+        throw StateError('方向付き経費の帳票対象を確認できません。');
+      }
+      directional = ExpenseCostDirectionV2Candidate.parse(v['expense_cost_direction_v2'], expected: ExpenseCostContext(
+        kind: ExpenseCostDocumentKind.paymentCertificate, companyId: company, documentId: documentId,
+        subjectId: subject, month: '${date.year}-${date.month.toString().padLeft(2, '0')}', documentRevision: v['revision'] as int));
+      directional.verifyDetails({...directional.fields, 'claims': entries.map((claim) => {
+        'id': claim.id, 'revision': claim.revision, 'amount_yen': claim.amountYen,
+      }).toList()});
+      if (costAmount != directional.amountYen) throw StateError('方向付き経費の原額が一致しません。');
+    }
     return ExpenseDocumentDetails(
       kind: kind,
       documentId: documentId,
@@ -84,6 +100,7 @@ class ExpenseDocumentDetails {
       month: date,
       claims: ExpenseClaims(companyId: company, claims: entries),
       costRecoveryAmountYen: costAmount as int?,
+      directionalCost: directional,
     );
   }
 }
