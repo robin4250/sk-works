@@ -11,7 +11,8 @@ if(!process.env.CI || Object.keys(process.env).some(k=>/^SUPABASE_(ACCESS_TOKEN|
 const status=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const api=new URL(status.API_URL),database=new URL(status.DB_URL);
 assert.equal(api.protocol,'http:');assert.equal(api.hostname,'127.0.0.1');assert.equal(database.hostname,'127.0.0.1');assert.equal(database.pathname,'/postgres');
-const {Client}=await import(pathToFileURL(path.resolve(process.argv[3])).href);
+const pg=await import(pathToFileURL(path.resolve(process.argv[3])).href);
+const Client=pg.Client??pg.default.Client;
 const db=new Client({connectionString:database.href});
 const anon=status.ANON_KEY,service=status.SERVICE_ROLE_KEY;
 assert.equal(typeof anon,'string');assert.equal(typeof service,'string');
