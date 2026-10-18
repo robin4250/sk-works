@@ -1,0 +1,102 @@
+-- REVIEW ONLY. New API/permission surface: production deployment requires approval.
+-- No refresh function replacement, backfill, settings/attendance edits or finalization.
+BEGIN;
+DO $guard$ BEGIN
+ IF to_regprocedure('private.recalculate_one_payroll_draft(uuid,integer,uuid,uuid,date,boolean,text)') IS NOT NULL
+ OR to_regprocedure('private.payroll_draft_source_fingerprint(uuid,uuid,date)') IS NOT NULL
+ OR to_regprocedure('public.recalculate_one_payroll_draft(uuid,integer,uuid,uuid,date,boolean,text)') IS NOT NULL THEN
+ RAISE EXCEPTION 'draft recalculation API already exists; review instead of replacing'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid=to_regprocedure('private.refresh_automatic_payroll_internal(uuid,uuid,date)') AND md5(prosrc)='b86d2c64609024b1f3f0342daefac690')
+ OR to_regprocedure('private.payroll_settings_allowed(uuid,uuid,text)') IS NULL
+ OR to_regprocedure('private.sync_payroll_attendance_detail(uuid,uuid,date)') IS NULL
+ OR to_regclass('payroll_final_private.documents') IS NULL THEN
+ RAISE EXCEPTION 'draft recalculation prerequisites differ'; END IF;
+END $guard$;
+-- Internal read-only source digest. No raw source rows are returned to callers.
+CREATE FUNCTION private.payroll_draft_source_fingerprint(cid uuid,wid uuid,month date)
+RETURNS text LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path='' AS $source$
+ SELECT md5(jsonb_build_object(
+ 'company',(select to_jsonb(c) from public.companies c where id=cid),
+ 'worker',(select to_jsonb(w) from public.workers w where id=wid and company_id=cid),
+ 'settings',(select to_jsonb(s) from public.worker_payroll_settings s where company_id=cid and worker_id=wid),
+ 'attendance',(select jsonb_agg(to_jsonb(a) order by a.id) from public.attendance_entries a where company_id=cid and worker_id=wid and work_date>=month and work_date<(month+interval '1 month')::date),
+ 'leave',(select jsonb_agg(to_jsonb(a) order by to_jsonb(a)::text) from public.paid_leave_requests a where company_id=cid and worker_id=wid and leave_date>=month and leave_date<(month+interval '1 month')::date),
+ 'adjustments',(select jsonb_agg(to_jsonb(a) order by a.id) from public.payroll_adjustments a where company_id=cid and worker_id=wid and effective_date>=month and effective_date<(month+interval '1 month')::date),
+ 'unit_conditions',(select jsonb_agg(to_jsonb(a) order by a.starts_on) from payroll_unit_private.conditions a where company_id=cid and worker_id=wid),
+ 'unit_quantities',(select jsonb_agg(to_jsonb(a) order by a.item_id) from payroll_unit_private.quantities a where company_id=cid and worker_id=wid and a.month=$3),
+ 'resident',resident_tax_private.resolve(cid,wid,month),
+ 'tax_conditions',(select jsonb_agg(to_jsonb(a) order by a.starts_on) from payroll_tax_private.worker_conditions a where company_id=cid and worker_id=wid),
+ 'rate_history',(select jsonb_agg(to_jsonb(a) order by to_jsonb(a)::text) from payroll_rate_private.history a where company_id=cid),
+ 'income_table',(select jsonb_agg(to_jsonb(a) order by a.calendar_year,a.lower_yen) from payroll_tax_private.monthly_income_rows a),
+ 'site_preferences',(select jsonb_agg(to_jsonb(a) order by a.site_id) from public.site_calculation_source_preferences a where company_id=cid and output_type='payroll'),
+ 'trade_companies',(select jsonb_agg(to_jsonb(a) order by a.id) from public.trade_companies a where company_id=cid),
+ 'trade_contracts',(select jsonb_agg(to_jsonb(a) order by a.trade_company_id) from public.trade_company_contracts a where company_id=cid)
+ )::text)
+$source$;
+REVOKE ALL ON FUNCTION private.payroll_draft_source_fingerprint(uuid,uuid,date) FROM PUBLIC,anon,authenticated;
+CREATE FUNCTION private.recalculate_one_payroll_draft(
+ p_statement_id uuid,p_expected_revision integer,p_company_id uuid,p_worker_id uuid,
+ p_period_start date,p_confirmed boolean,p_expected_source text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $function$
+DECLARE initial public.payroll_statements%rowtype; current_row public.payroll_statements%rowtype;
+ actor uuid:=auth.uid(); before_value jsonb; source_before text;
+BEGIN
+ IF current_setting('transaction_isolation') <> 'read committed' THEN RAISE EXCEPTION 'read committed isolation required' USING ERRCODE='22023'; END IF;
+ IF actor IS NULL OR NOT coalesce(private.account_access_allowed(),false) THEN
+ RAISE EXCEPTION 'payroll access denied' USING ERRCODE='42501'; END IF;
+ IF p_confirmed IS DISTINCT FROM true OR p_expected_revision IS NULL OR p_expected_revision<1
+ OR p_company_id IS NULL OR p_worker_id IS NULL OR p_period_start IS NULL
+ OR p_expected_source IS NULL OR p_expected_source !~ '^[0-9a-f]{32}$'
+ OR p_period_start<>date_trunc('month',p_period_start)::date THEN
+ RAISE EXCEPTION 'explicit exact draft scope required' USING ERRCODE='22023'; END IF;
+ SELECT * INTO initial FROM public.payroll_statements WHERE id=p_statement_id;
+ IF NOT FOUND OR (initial.company_id,initial.worker_id,initial.period_start) IS DISTINCT FROM
+ (p_company_id,p_worker_id,p_period_start)
+ OR NOT coalesce(private.payroll_settings_allowed(initial.company_id,initial.worker_id,'edit'),false) THEN
+ RAISE EXCEPTION 'payroll access denied' USING ERRCODE='42501'; END IF;
+ -- Existing parent -> worker -> scope locks, with registry lock before month lock.
+ PERFORM 1 FROM public.companies WHERE id=p_company_id FOR KEY SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'payroll scope changed' USING ERRCODE='40001'; END IF;
+ PERFORM 1 FROM public.workers WHERE id=p_worker_id AND company_id=p_company_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'payroll scope changed' USING ERRCODE='40001'; END IF;
+ PERFORM pg_advisory_xact_lock_shared(hashtextextended(p_company_id::text||':payroll-rate-registry',0));
+ PERFORM payroll_scope_private.lock_scopes(jsonb_build_array(jsonb_build_object('cid',p_company_id,'wid',p_worker_id,'day',p_period_start)),false);
+ SELECT * INTO current_row FROM public.payroll_statements WHERE id=p_statement_id FOR UPDATE;
+ IF NOT FOUND OR (current_row.company_id,current_row.worker_id,current_row.period_start,current_row.period_end)
+ IS DISTINCT FROM (p_company_id,p_worker_id,p_period_start,(p_period_start+interval '1 month - 1 day')::date)
+ OR current_row.revision IS DISTINCT FROM p_expected_revision THEN
+ RAISE EXCEPTION 'payroll revision or scope changed' USING ERRCODE='40001'; END IF;
+ IF current_row.automatic_calculation IS DISTINCT FROM true OR current_row.workflow_state IS DISTINCT FROM 'draft'
+ OR current_row.finalized_at IS NOT NULL
+ OR EXISTS(SELECT 1 FROM payroll_final_private.documents WHERE statement_id=p_statement_id) THEN
+ RAISE EXCEPTION 'only unfinalized automatic draft can be recalculated' USING ERRCODE='55000'; END IF;
+ IF auth.uid() IS DISTINCT FROM actor OR NOT coalesce(private.account_access_allowed(),false)
+ OR NOT coalesce(private.payroll_settings_allowed(p_company_id,p_worker_id,'edit'),false) THEN
+ RAISE EXCEPTION 'payroll access denied' USING ERRCODE='42501'; END IF;
+ source_before:=private.payroll_draft_source_fingerprint(p_company_id,p_worker_id,p_period_start);
+ IF source_before IS DISTINCT FROM p_expected_source THEN RAISE EXCEPTION 'payroll source changed' USING ERRCODE='40001'; END IF;
+ before_value:=to_jsonb(current_row);
+ PERFORM private.refresh_automatic_payroll_internal(p_company_id,p_worker_id,p_period_start);
+ PERFORM private.sync_payroll_attendance_detail(p_company_id,p_worker_id,p_period_start);
+ SELECT * INTO current_row FROM public.payroll_statements WHERE id=p_statement_id;
+ IF NOT FOUND OR (current_row.company_id,current_row.worker_id,current_row.period_start,current_row.period_end)
+ IS DISTINCT FROM (p_company_id,p_worker_id,p_period_start,(p_period_start+interval '1 month - 1 day')::date)
+ OR current_row.workflow_state IS DISTINCT FROM 'draft' OR current_row.automatic_calculation IS DISTINCT FROM true
+ OR current_row.finalized_at IS NOT NULL OR current_row.calculation_blocked IS DISTINCT FROM false
+ OR EXISTS(SELECT 1 FROM payroll_final_private.documents WHERE statement_id=p_statement_id) THEN
+ RAISE EXCEPTION 'recalculated draft failed postcondition' USING ERRCODE='55000'; END IF;
+ IF auth.uid() IS DISTINCT FROM actor OR NOT coalesce(private.account_access_allowed(),false) OR NOT coalesce(private.payroll_settings_allowed(p_company_id,p_worker_id,'edit'),false) THEN RAISE EXCEPTION 'payroll access denied' USING ERRCODE='42501'; END IF;
+ IF private.payroll_draft_source_fingerprint(p_company_id,p_worker_id,p_period_start) IS DISTINCT FROM source_before THEN RAISE EXCEPTION 'payroll source changed' USING ERRCODE='40001'; END IF;
+ RETURN jsonb_build_object('contract_version',1,'statement_id',p_statement_id,'revision',current_row.revision,
+ 'changed',(to_jsonb(current_row)-'updated_at') IS DISTINCT FROM (before_value-'updated_at'),'workflow_state','draft','finalized',false);
+END $function$;
+REVOKE ALL ON FUNCTION private.recalculate_one_payroll_draft(uuid,integer,uuid,uuid,date,boolean,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION private.recalculate_one_payroll_draft(uuid,integer,uuid,uuid,date,boolean,text) TO authenticated;
+CREATE FUNCTION public.recalculate_one_payroll_draft(
+ p_statement_id uuid,p_expected_revision integer,p_company_id uuid,p_worker_id uuid,p_period_start date,p_confirmed boolean,p_expected_source text
+) RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path='' AS $function$
+ SELECT private.recalculate_one_payroll_draft(p_statement_id,p_expected_revision,p_company_id,p_worker_id,p_period_start,p_confirmed,p_expected_source)
+$function$;
+REVOKE ALL ON FUNCTION public.recalculate_one_payroll_draft(uuid,integer,uuid,uuid,date,boolean,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.recalculate_one_payroll_draft(uuid,integer,uuid,uuid,date,boolean,text) TO authenticated;
+COMMIT;
