@@ -7,7 +7,7 @@ export const uid=n=>`10000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 export const [company,worker,requirement,owner,reviewer,outsider,target]=[1,2,3,4,5,6,7].map(uid);
 export const photo=`${company}/${worker}/${requirement}/own-upload/front.jpg`;
 const source=name=>fs.readFileSync(path.join(root,name),'utf8');
-export async function setupWorkerDocumentChangeFixture(db) {
+export async function setupWorkerDocumentChangeFixture(db,{applyCandidate=true}={}) {
  await db.exec(`create schema auth;create schema private;create schema storage;
  create role anon;create role authenticated;create role service_role;
  create table auth.users(id uuid primary key);
@@ -32,5 +32,5 @@ export async function setupWorkerDocumentChangeFixture(db) {
  await db.exec(`grant select on public.companies,public.company_members,public.workers,public.document_requirements,public.worker_document_status_history to authenticated;
  grant select,insert,update,delete on public.worker_document_statuses to authenticated;
  insert into public.document_requirements(id,company_id,name) values('${requirement}','${company}','Synthetic document');`);
- await db.exec(source('docs/candidates/worker_document_change_20261019.sql.review-only'));
+ if(applyCandidate)await db.exec(source('docs/candidates/worker_document_change_20261019.sql.review-only'));
 }
