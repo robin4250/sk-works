@@ -1,0 +1,70 @@
+-- REVIEW ONLY: additive exact-scope read endpoint, not a migration or deploy command.
+-- This previews the CURRENT draft and obtains the existing apply API's source digest.
+-- It never simulates a recalculation and never claims to predict new insurance amounts.
+BEGIN;
+DO $guard$ BEGIN
+ IF to_regprocedure('private.preview_one_payroll_draft(uuid,integer,uuid,uuid,date)') IS NOT NULL
+ OR to_regprocedure('public.preview_one_payroll_draft(uuid,integer,uuid,uuid,date)') IS NOT NULL THEN
+ RAISE EXCEPTION 'draft preview exists; review instead of replacing'; END IF;
+ IF to_regprocedure('private.recalculate_one_payroll_draft(uuid,integer,uuid,uuid,date,boolean,text)') IS NULL THEN
+ RAISE EXCEPTION 'reviewed draft recalculation candidate required'; END IF;
+ IF EXISTS (
+ SELECT 1 FROM (VALUES
+ ('private.payroll_draft_source_fingerprint(uuid,uuid,date)','4d3cec3a36fd3075b8b0ede1e14672b1'),
+ ('private.recalculate_one_payroll_draft(uuid,integer,uuid,uuid,date,boolean,text)','44569c0e3d2f6819f92a7865164f8d24')
+ ) AS expected(signature,body_md5)
+ WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
+ WHERE p.oid=to_regprocedure(expected.signature) AND md5(p.prosrc)=expected.body_md5
+ AND p.prosecdef AND p.provolatile='v')) THEN
+ RAISE EXCEPTION 'reviewed draft dependency differs'; END IF;
+END $guard$;
+CREATE FUNCTION private.preview_one_payroll_draft(
+ p_statement_id uuid,p_expected_revision integer,p_company_id uuid,p_worker_id uuid,p_period_start date
+) RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path='' AS $preview$
+DECLARE initial public.payroll_statements%rowtype; current_row public.payroll_statements%rowtype;
+ actor uuid:=auth.uid(); source_before text;
+BEGIN
+ IF current_setting('transaction_isolation') <> 'read committed' THEN RAISE EXCEPTION 'read committed isolation required' USING ERRCODE='22023'; END IF;
+ IF actor IS NULL OR NOT coalesce(private.account_access_allowed(),false) THEN
+ RAISE EXCEPTION 'payroll access denied' USING ERRCODE='42501'; END IF;
+ IF p_expected_revision IS NULL OR p_expected_revision<1
+ OR p_company_id IS NULL OR p_worker_id IS NULL OR p_period_start IS NULL
+ OR p_period_start<>date_trunc('month',p_period_start)::date THEN
+ RAISE EXCEPTION 'explicit exact draft scope required' USING ERRCODE='22023'; END IF;
+ SELECT * INTO initial FROM public.payroll_statements WHERE id=p_statement_id;
+ IF NOT FOUND OR (initial.company_id,initial.worker_id,initial.period_start) IS DISTINCT FROM
+ (p_company_id,p_worker_id,p_period_start)
+ OR NOT coalesce(private.payroll_settings_allowed(initial.company_id,initial.worker_id,'edit'),false) THEN
+ RAISE EXCEPTION 'payroll access denied' USING ERRCODE='42501'; END IF;
+
+ IF initial.revision IS DISTINCT FROM p_expected_revision THEN RAISE EXCEPTION 'payroll revision changed' USING ERRCODE='40001'; END IF;
+ IF initial.period_end IS DISTINCT FROM (p_period_start+interval '1 month - 1 day')::date
+ OR initial.automatic_calculation IS DISTINCT FROM true OR initial.workflow_state IS DISTINCT FROM 'draft'
+ OR initial.finalized_at IS NOT NULL
+ OR EXISTS(SELECT 1 FROM payroll_final_private.documents WHERE statement_id=p_statement_id) THEN
+ RAISE EXCEPTION 'only unfinalized automatic draft can be previewed' USING ERRCODE='55000'; END IF;
+ source_before:=private.payroll_draft_source_fingerprint(p_company_id,p_worker_id,p_period_start);
+ SELECT * INTO current_row FROM public.payroll_statements WHERE id=p_statement_id;
+ IF NOT FOUND OR to_jsonb(current_row) IS DISTINCT FROM to_jsonb(initial)
+ OR EXISTS(SELECT 1 FROM payroll_final_private.documents WHERE statement_id=p_statement_id)
+ OR private.payroll_draft_source_fingerprint(p_company_id,p_worker_id,p_period_start) IS DISTINCT FROM source_before THEN
+ RAISE EXCEPTION 'payroll preview changed; obtain a new preview' USING ERRCODE='40001'; END IF;
+ IF auth.uid() IS DISTINCT FROM actor OR NOT coalesce(private.account_access_allowed(),false)
+ OR NOT coalesce(private.payroll_settings_allowed(p_company_id,p_worker_id,'edit'),false) THEN
+ RAISE EXCEPTION 'payroll access denied' USING ERRCODE='42501'; END IF;
+ RETURN jsonb_build_object('contract_version',1,'preview_kind','current_draft_only',
+ 'statement_id',p_statement_id,'company_id',p_company_id,'worker_id',p_worker_id,
+ 'period_start',p_period_start,'period_end',initial.period_end,'expected_revision',initial.revision,
+ 'expected_source',source_before,'before_value',to_jsonb(initial),'before_digest',md5(to_jsonb(initial)::text),
+ 'backup_required',true,'apply_confirmed',false,'projected_calculation',null);
+END $preview$;
+REVOKE ALL ON FUNCTION private.preview_one_payroll_draft(uuid,integer,uuid,uuid,date) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION private.preview_one_payroll_draft(uuid,integer,uuid,uuid,date) TO authenticated;
+CREATE FUNCTION public.preview_one_payroll_draft(
+ p_statement_id uuid,p_expected_revision integer,p_company_id uuid,p_worker_id uuid,p_period_start date
+) RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path='' AS $preview$
+ SELECT private.preview_one_payroll_draft(p_statement_id,p_expected_revision,p_company_id,p_worker_id,p_period_start)
+$preview$;
+REVOKE ALL ON FUNCTION public.preview_one_payroll_draft(uuid,integer,uuid,uuid,date) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.preview_one_payroll_draft(uuid,integer,uuid,uuid,date) TO authenticated;
+COMMIT;
