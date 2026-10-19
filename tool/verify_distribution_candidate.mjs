@@ -63,6 +63,16 @@ try{
  await db.exec("set test.allowed='false'");await deny(snapshot,[false]);await deny(prepare,['Fixture','09012345678','public','friend']);
  await as(owner,true);snap=await scalar(snapshot,[true]);eq(snap.invitations.length,3);eq(snap.attribution_connected,false);
  eq(snap.invitations.find(r=>r.id===tfInvite.id).distribution_label,'TestFlight版');
+ // Legacy callers cannot bypass the new public-only friend path or leak an
+ // internal TestFlight URL through the old generic invitation method.
+ await deny("select public.app_referral_prepare('Fixture','09012345678','friend_add')");
+ await deny("select private.app_referral_dispatch('prepare','{\"name\":\"Fixture\",\"phone\":\"09012345678\",\"source\":\"friend_add\"}'::jsonb)");
+ await as(other);await deny("select public.app_referral_prepare('Fixture','09012345678','app_invite')");
+ await as(owner,true);
+ await db.exec('begin');
+ const legacy=await scalar("select public.app_referral_prepare('Fixture','09012345678','app_invite')");
+ eq(legacy.message.includes('https://testflight.apple.com/join/NEWEST'),true);
+ await db.exec('rollback');
  await q(save,['','','']);snap=await scalar(snapshot,[true]);eq(snap.distribution_channels.every(c=>c.ready===false),true);
  eq(snap.distribution_url_ready,false);
  await q(flags,[false,false,true]);
@@ -70,5 +80,8 @@ try{
  await db.exec('reset role;set role service_role');await deny(prepare,['Fixture','09012345678','public','friend']);
  await db.exec('reset role');eq(await scalar('select count(*)::integer from private.app_referral_invitations'),3);
  eq(await scalar('select not enabled and not public_enabled from private.app_referral_settings where id'),true);
+ await assert.rejects(()=>db.exec(candidate),/legacy referral dispatcher drift/);assertions++;
+ await db.exec('rollback');
+ eq(await scalar('select count(*)::integer from private.app_referral_invitations'),3);
  console.log(JSON.stringify({pass:true,assertions,production_changed:false,messages_sent:0,proof_of_real_delivery:false}));
 }finally{await db.close();}

@@ -38,7 +38,7 @@ before writes/preparation. No share-to-update lock upgrade is used. Native
 PostgreSQL concurrent setting changes and production dependency equivalence still
 need verification; PGlite assertions alone do not establish those guarantees.
 
-Validation: 51 assertions in isolated PGlite 0.3.14 using the existing original
+Validation: 57 assertions in isolated PGlite 0.3.14 using the existing original
 referral migration and synthetic actors/URLs. They cover OFF gates, empty links,
 private tables, Master settings, sender isolation, public channel restrictions,
 internal link restrictions, malformed/forged URL hosts, phone normalization,
@@ -52,3 +52,42 @@ reviewed server deployment, the actual intended Apple distribution route and
 URL (without broadening owner-only testing), explicit scoped enablement, and
 iPhone invitation/composer/recipient onboarding checks. Registration attribution,
 points and registration-completion notifications remain separate unfinished work.
+
+## Legacy bypass closure and deployment conditions
+
+The candidate also makes the smallest guarded change to the original private
+referral dispatcher: legacy friend preparation must use the public channel API,
+and general users cannot prepare legacy TestFlight invitations. Owner/admin and
+Master legacy administrative invitations remain compatible. It preserves all
+other settings/history logic, function identity, ownership and existing grants.
+It does not rename or expose the old function. Direct private-dispatch calls are
+tested alongside the public wrapper so the old RPC cannot bypass the friend
+restriction. An already copied URL or already opened external composer cannot be
+recalled by this database change.
+
+The original dispatcher body hash `3ccced6e2d9a82d715e07c6b3f25b490`,
+SECURITY DEFINER and empty search_path are checked before any object creation.
+The hash matches the checked-in original migration and read-only current
+production metadata. Different/newer definitions fail without replacement. The
+whole candidate is transactional. A second/stale application is rejected by the
+definition guard. This is not a substitute for a backup or current dependency
+audit.
+
+Before any production application save the exact dispatcher definition, owner,
+ACL/config, referral settings, existing invitation rows, constraints/dependencies
+and intended new-object absence. Verify that invitation/public flags are OFF and
+both URL configurations contain no invented values. Replay the exact before
+checkpoint and a failed deployment in native PostgreSQL. Rollback must restore
+the saved definition and settings, preserve existing/history/channel rows and
+not unconditionally delete invitations created after deployment. Restoring the
+old definition reopens its known legacy friend/beta path; gate OFF and re-review
+are required. Do not apply the original migration to a live existing database.
+
+Existing app flows remain separate: employee initial registration issues its
+existing one-use credentials/QR through create-employee-invite, not this referral
+API. Employee additional URL sending and company recipient picking already open
+the referral page with existing contact information. New APIs only choose/store
+the distribution channel in that existing page; they do not reissue credentials,
+add company membership, approve company links or establish friendships. Those
+unchanged entry points and actual recipient onboarding still need iPhone and
+current-server verification; source reuse is not an end-to-end completion claim.
