@@ -4,12 +4,14 @@ import 'resident_tax_repository.dart';
 
 class ResidentTaxSection extends StatefulWidget {
   const ResidentTaxSection({super.key, required this.workerId, required this.canEdit,
-    required this.legacyAmount, this.companyId, this.repository, this.month});
+    required this.legacyAmount, this.companyId, this.repository, this.month,
+    this.onEditingChanged});
   final String workerId;
   final String? companyId;
   final bool canEdit;
   final num legacyAmount;
   final String? month;
+  final ValueChanged<bool>? onEditingChanged;
   final ResidentTaxRepository? repository;
   @override
   State<ResidentTaxSection> createState() => _ResidentTaxSectionState();
@@ -21,6 +23,7 @@ class _ResidentTaxSectionState extends State<ResidentTaxSection> {
   final _start = TextEditingController();
   ResidentTaxData? _data;
   ResidentTaxState? _pendingSave;
+  bool _dirty = false;
   bool _busy = false;
   bool _loading = false;
   int _generation = 0;
@@ -50,9 +53,25 @@ class _ResidentTaxSectionState extends State<ResidentTaxSection> {
   @override
   void dispose() { _amount.dispose(); _start.dispose(); super.dispose(); }
 
+  void _notifyEditing() {
+    if (widget.onEditingChanged == null) return;
+    // Loading can begin while the parent is building a new month.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.onEditingChanged?.call(_dirty || _busy || _pendingSave != null);
+      }
+    });
+  }
+
+  void _markEdited(String _) {
+    _dirty = true;
+    _notifyEditing();
+  }
+
   Future<void> _load() async {
     final generation = ++_generation;
     setState(() { _busy = true; _loading = true; _error = null; });
+    _notifyEditing();
     try {
       final data = await _repository.read(widget.workerId, _month, companyId: widget.companyId);
       if (!mounted || generation != _generation) {
@@ -62,6 +81,7 @@ class _ResidentTaxSectionState extends State<ResidentTaxSection> {
       _start.text = _month.substring(0, 7);
       setState(() {
         _data = data;
+        _dirty = false;
         if (_pendingSave != null && residentTaxStateMatches(data.state, _pendingSave!)) {
           _pendingSave = null; _result = '住民税の保存を確認しました';
         }
@@ -74,6 +94,7 @@ class _ResidentTaxSectionState extends State<ResidentTaxSection> {
     } finally {
       if (mounted && generation == _generation) {
         setState(() { _busy = false; _loading = false; });
+        _notifyEditing();
       }
     }
   }
@@ -102,6 +123,7 @@ class _ResidentTaxSectionState extends State<ResidentTaxSection> {
     }
     final cutover = restoreLegacy ? null : entries.first.month;
     setState(() { _busy = true; _error = null; _result = null; });
+    _notifyEditing();
     try {
       final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
         title: Text(restoreLegacy ? '従来の固定額に戻す' : '住民税を保存'),
@@ -133,6 +155,7 @@ class _ResidentTaxSectionState extends State<ResidentTaxSection> {
     } finally {
       if (mounted && generation == _generation) {
         setState(() { _busy = false; _loading = false; });
+        _notifyEditing();
       }
     }
   }
@@ -147,9 +170,9 @@ class _ResidentTaxSectionState extends State<ResidentTaxSection> {
       Text('${_month.substring(0, 7)}の住民税：${_data!.amount}円', style: Theme.of(context).textTheme.titleMedium),
       Text(_data!.mode == 'legacy' ? '従来の固定額を適用中' : '${_data!.effectiveMonth!.substring(0, 7)}からの月額を適用中'),
       const SizedBox(height: 8),
-      Row(children: [Expanded(child: TextField(key: const ValueKey('resident-amount'), controller: _amount,
+      Row(children: [Expanded(child: TextField(key: const ValueKey('resident-amount'), controller: _amount, onChanged: _markEdited,
         enabled: widget.canEdit && !_busy && _pendingSave == null, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '月額（円）'))),
-        const SizedBox(width: 12), Expanded(child: TextField(key: const ValueKey('resident-start'), controller: _start,
+        const SizedBox(width: 12), Expanded(child: TextField(key: const ValueKey('resident-start'), controller: _start, onChanged: _markEdited,
           enabled: widget.canEdit && !_busy && _pendingSave == null, decoration: const InputDecoration(labelText: '開始年月（YYYY-MM）')))]),
       const SizedBox(height: 8),
       FilledButton(onPressed: widget.canEdit && !_busy && _pendingSave == null ? () => _save() : null, child: const Text('住民税だけ保存')),
