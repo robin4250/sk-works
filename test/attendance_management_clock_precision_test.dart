@@ -46,7 +46,15 @@ void main() {
           await tester.enterText(field('出勤時刻'), '02:45');
         }
         final save = find.widgetWithText(FilledButton, '登録・編集を直接反映');
-        await tester.ensureVisible(save);
+        await tester.scrollUntilVisible(
+          save,
+          300,
+          scrollable: find.byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          ).first,
+        );
         await tester.tap(save);
         await tester.pumpAndSettle();
         final request = f.calls.singleWhere(
