@@ -70,9 +70,9 @@ class _ResidentTaxAnnualUpdatePageState extends State<ResidentTaxAnnualUpdatePag
   void _closeConfirmation() {
     final route = _confirmationRoute, navigator = _confirmationNavigator;
     _confirmationRoute = null; _confirmationNavigator = null;
-    if (route != null && navigator != null) WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (route != null && navigator != null) { WidgetsBinding.instance.addPostFrameCallback((_) {
       if (navigator.mounted && route.isActive) navigator.removeRoute(route);
-    });
+    }); }
   }
   void _invalidateSession() {
     _sessionEpoch++; _generation++; _invalidated = true; _closeConfirmation();
@@ -141,12 +141,12 @@ class _ResidentTaxAnnualUpdatePageState extends State<ResidentTaxAnnualUpdatePag
       for (final old in _drafts.values) { if (!next.values.contains(old)) old.dispose(); }
       _drafts..clear()..addAll(next);
       setState(() { _data = data; _pendingRequest = null; _savingWorkers = {}; _sourceConflict = conflict;
-        if (conflict) _error = '別の更新と重なった未保存入力を保持しています。再読み込みで登録済みの金額を確認してください。';
-        if (request != null) _message = observed.receipt?['undone'] == true ? '住民税を元に戻しました。' :
-          data.complete ? '全員分の住民税を更新しました。' : '住民税を更新しました。'; });
-    } catch (_) { if (mounted && generation == _generation) setState(() { _data = null;
+        if (conflict) { _error = '別の更新と重なった未保存入力を保持しています。再読み込みで登録済みの金額を確認してください。'; }
+        if (request != null) { _message = observed.receipt?['undone'] == true ? '住民税を元に戻しました。' :
+          data.complete ? '全員分の住民税を更新しました。' : '住民税を更新しました。'; } });
+    } catch (_) { if (mounted && generation == _generation) { setState(() { _data = null;
       _error = request == null ? '住民税の一覧を取得できません。接続・利用権限・サーバーの準備状況を確認してください。'
-        : '保存結果を確認できません。再読み込みで確認してください。'; });
+        : '保存結果を確認できません。再読み込みで確認してください。'; }); }
     } finally { if (mounted && generation == _generation) setState(() => _busy = false); }
   }
   Future<void> _reload() async {
@@ -219,12 +219,12 @@ class _ResidentTaxAnnualUpdatePageState extends State<ResidentTaxAnnualUpdatePag
       else { await _repository.save(data, [entry!], request); }
       if (!mounted || generation != _generation) return; await _load();
     } on ResidentTaxAnnualReloadRequired {
-      if (mounted && generation == _generation) setState(() {
+      if (mounted && generation == _generation) { setState(() {
         _data = null; _busy = false; _pendingRequest = null; _savingWorkers = {};
         _error = '登録内容・権限が変わりました。再読み込みして確認してください。';
-      });
-    } catch (_) { if (mounted && generation == _generation) setState(() {
-      _data = null; _busy = false; _error = '保存結果を確認できません。再読み込みで確認してください。'; }); }
+      }); }
+    } catch (_) { if (mounted && generation == _generation) { setState(() {
+      _data = null; _busy = false; _error = '保存結果を確認できません。再読み込みで確認してください。'; }); } }
   }
   Future<void> _save(_AnnualDraft d) async {
     if (!_editable || !_owns(d)) return;
