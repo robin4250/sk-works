@@ -21,6 +21,17 @@ Map<String, dynamic> response({num? quantity}) => {
     'source': {'starts_on': '2026-10-01', 'pay_type': 'monthly', 'items': [item(quantity: quantity)]}},
 };
 void main() {
+  test('missing effective history stays explicit even without common rows', () {
+    final value = response();
+    value['company_common'] = {'contract_version': 1, 'items': [], 'source': {}, 'history_missing': true};
+    final parsed = PayrollUnitConditions.fromJson(value);
+    expect(parsed.companyCommonHistoryMissing, isTrue);
+    expect(parsed.companyCommonItems, isEmpty);
+    value['company_common']['frozen'] = true;
+    value['company_common']['history_missing'] = false;
+    expect(PayrollUnitConditions.fromJson(value).companyCommonFrozen, isTrue);
+  });
+
   test('legacy response remains compatible; mismatched common month fails closed', () {
     expect(PayrollUnitConditions.fromJson({'version': 0, 'month': '2026-10-01', 'can_edit': true, 'items': []}).companyCommonItems, isEmpty);
     final bad = response();

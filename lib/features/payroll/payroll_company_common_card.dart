@@ -6,10 +6,11 @@ import 'payroll_unit_item_editor.dart';
 class PayrollCompanyCommonCard extends StatefulWidget {
   const PayrollCompanyCommonCard({
     super.key, required this.items, required this.canEdit,
-    required this.onSave, required this.onReload, this.section, this.unit,
+    required this.onSave, required this.onReload, this.section, this.unit, this.frozen = false,
   });
   final List<Map<String, dynamic>> items;
   final bool canEdit;
+  final bool frozen;
   final PayrollItemSection? section;
   final PayrollItemUnit? unit;
   final Future<void> Function(Map<String, String>) onSave;
@@ -65,7 +66,7 @@ class _PayrollCompanyCommonCardState extends State<PayrollCompanyCommonCard> {
     return Card(
       child: ExpansionTile(
         title: Text(tr('社内共通手当')),
-        subtitle: Text(tr('会社の設定を給与へ自動反映')),
+        subtitle: Text(tr(widget.frozen ? '保存済み給与の共通手当' : '会社の設定を給与へ自動反映')),
         children: [ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 260),
           child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [

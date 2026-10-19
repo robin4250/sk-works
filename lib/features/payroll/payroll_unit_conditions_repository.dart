@@ -13,6 +13,8 @@ class PayrollUnitConditions {
     required this.items,
     this.companyCommonItems = const [],
     this.companyCommonSourceJson,
+    this.companyCommonHistoryMissing = false,
+    this.companyCommonFrozen = false,
   });
   final int version;
   final String month;
@@ -20,6 +22,8 @@ class PayrollUnitConditions {
   final List<PayrollUnitItemDraft> items;
   final List<Map<String, dynamic>> companyCommonItems;
   final String? companyCommonSourceJson;
+  final bool companyCommonHistoryMissing;
+  final bool companyCommonFrozen;
   factory PayrollUnitConditions.fromJson(Object? raw) {
     if (raw is! Map ||
         raw['version'] is! int ||
@@ -68,7 +72,9 @@ class PayrollUnitConditions {
     String? commonSource;
     if (common != null) {
       if (common is! Map || common['contract_version'] != 1 ||
-          common['source'] is! Map || common['items'] is! List) {
+          common['source'] is! Map || common['items'] is! List ||
+          common['history_missing'] != null && common['history_missing'] is! bool ||
+          common['frozen'] != null && common['frozen'] is! bool) {
         throw StateError('Company common response unavailable');
       }
       final ids = <String>{};
@@ -96,6 +102,8 @@ class PayrollUnitConditions {
       items: List.unmodifiable(items),
       companyCommonItems: List.unmodifiable(commonItems),
       companyCommonSourceJson: commonSource,
+      companyCommonHistoryMissing: common is Map && common['history_missing'] == true,
+      companyCommonFrozen: common is Map && common['frozen'] == true,
     );
   }
 }
