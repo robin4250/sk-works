@@ -51,7 +51,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
     final confirmed = await showDialog<bool>(context: context,
       builder: (context) => AlertDialog(
         title: const Text('このアカウントにAppleを追加'),
-        content: const Text('登録済みのGoogleで直近5分以内にログインしている必要があります。'
+        content: const Text('登録済みのGoogleとの連携と、直近5分以内の外部アカウント認証を確認します。'
           'Appleの本人確認後も同じSKOアカウントと会社を使います。'
           '別アカウントの新規登録は行いません。'),
         actions: [TextButton(onPressed: () => Navigator.pop(context, false),

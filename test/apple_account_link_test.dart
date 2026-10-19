@@ -35,12 +35,13 @@ void main() {
   late List<String> paths;
   late bool enabled, apple, google;
   late int launches;
+  String role = 'owner';
   String responseActor = actor;
   String authorizeUrl = 'https://appleid.apple.com/auth/authorize?synthetic=true';
   Completer<void>? holdAuthorize;
   Completer<void>? gotAuthorize;
   setUp(() async {
-    paths=[]; enabled=true; apple=false; google=true; launches=0;
+    paths=[]; enabled=true; apple=false; google=true; launches=0; role='owner';
     responseActor=actor; holdAuthorize=null; gotAuthorize=null;
     authorizeUrl='https://appleid.apple.com/auth/authorize?synthetic=true';
     network=MockClient((request) async {
@@ -57,7 +58,7 @@ void main() {
         return http.Response(jsonEncode(user(responseActor,apple:apple,google:google)),200);
       }
       if (request.url.path.endsWith('/company_members')) {
-        return http.Response('[{"company_id":"synthetic-company","role":"owner"}]',200);
+        return http.Response(jsonEncode([{'company_id':'synthetic-company','role':role}]),200);
       }
       throw StateError('Unexpected HTTP request');
     });
@@ -124,6 +125,28 @@ void main() {
   test('Google identity disappearing cannot report completion',() async {
     await source.begin(); apple=true; google=false;
     await expectLater(source.verifyCompletion(),throwsStateError);
+  });
+  test('company role change after Apple consent cannot report completion',() async {
+    await source.begin(); apple=true; role='worker';
+    await expectLater(source.verifyCompletion(),throwsStateError);
+  });
+  test('logout after browser launch stops completion instead of waiting forever',() async {
+    await source.begin();
+    client.auth.notifyAllSubscribers(AuthChangeEvent.signedOut);
+    await Future<void>.delayed(Duration.zero);
+    await expectLater(source.verifyCompletion(),throwsStateError);
+  });
+  test('canceled old URL cannot revive when a new operation starts',() async {
+    holdAuthorize=Completer<void>(); gotAuthorize=Completer<void>();
+    final first=source.begin(); final rejected=expectLater(first,throwsStateError);
+    await gotAuthorize!.future;
+    final oldHold=holdAuthorize!;
+    await source.cancel();
+    holdAuthorize=null; gotAuthorize=null;
+    await source.begin();
+    expect(launches,1);
+    oldHold.complete(); await rejected;
+    expect(launches,1); expect(source.pending,true);
   });
   testWidgets('disabled provider retains preparation text without active button',(t) async {
     enabled=false;

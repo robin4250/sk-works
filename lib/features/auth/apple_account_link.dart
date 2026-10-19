@@ -155,6 +155,7 @@ class AppleAccountLink {
   }
 
   Future<bool> verifyCompletion() async {
+    if (_pending && _revoked) throw StateError('apple_link_session_changed');
     if (!pending) return false;
     final generation = _generation;
     final user = await _verifiedUser(generation);
