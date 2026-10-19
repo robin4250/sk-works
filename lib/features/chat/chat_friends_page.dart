@@ -49,7 +49,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
   Map<String, dynamic>? _searchResult;
   int _workspaceLoadEpoch = 0;
   bool _loading = true;
-  bool _actorInvalidated = false;
+  bool _sessionInvalidated = false;
   bool _busy = false;
   String? _error;
 
@@ -115,7 +115,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
     final repository = _repository;
     // A screen invalidated by an account change must be opened again; do not
     // revive another account's rows through resume or the refresh button.
-    if (!mounted || repository == null || _actorInvalidated ||
+    if (!mounted || repository == null || _sessionInvalidated ||
         repository.currentUserId != _actor || _loading || _busy) return;
     setState(() => _loading = true);
     await _load();
