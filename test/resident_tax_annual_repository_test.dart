@@ -30,7 +30,7 @@ void main() {
     (row['workers'] as List).single['current_amounts'] = [5000];
     expect(() => ResidentTaxAnnualData.fromJson(row, company, 2030), throwsFormatException);
   });
-  for (final mode in ['valid', 'same_token_aba', 'conflict', 'wrong_receipt']) {
+  for (final mode in ['valid', 'same_token_aba', 'conflict', 'wrong_receipt', 'undo_valid', 'undo_aba', 'undo_wrong_receipt']) {
     test('real SDK annual read/subset save uses pinned actor and exact snapshot: $mode', () async {
       const uid = '00000000-0000-0000-0000-000000000001';
       final user = {'id': uid, 'aud': 'authenticated', 'role': 'authenticated', 'email': 'fixture@example.invalid',
@@ -57,6 +57,15 @@ void main() {
               headers: {'content-type': 'application/json'}, request: req);
             body = {'request_id': mode == 'wrong_receipt' ? 'other' : requestId,
               'company_id': company, 'fiscal_year': 2030, 'snapshot': annualResponse()['snapshot']};
+          } else if (req.url.path == '/rest/v1/rpc/undo_company_resident_tax_annual') {
+            expect(req.headers['Authorization'], 'Bearer $token'); calls.add(Map<String, dynamic>.from(jsonDecode(req.body) as Map));
+            if (mode == 'undo_aba') {
+              await client.auth.signOut(scope: SignOutScope.local);
+              await client.auth.signInWithPassword(email: 'fixture@example.invalid', password: 'fixture');
+            }
+            body = {'request_id': mode == 'undo_wrong_receipt' ? 'other' : '80000000-0000-0000-0000-000000000002',
+              'company_id': company, 'fiscal_year': 2030, 'worker_id': worker, 'undone': true,
+              'undo_request_id': requestId, 'snapshot': annualResponse()['snapshot']};
           } else { throw StateError('unexpected request'); }
           return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'}, request: req);
         }));
@@ -64,13 +73,19 @@ void main() {
       await client.auth.signInWithPassword(email: 'fixture@example.invalid', password: 'fixture');
       final repo = SupabaseResidentTaxAnnualRepository(client: client);
       final current = await repo.read(company, 2030);
-      final result = repo.save(current, [ResidentTaxAnnualInput(workerId: worker, amounts: List.filled(12, 0), excluded: false)], requestId);
-      if (mode == 'valid') { await result; }
+      final result = mode.startsWith('undo_')
+        ? repo.undo(current, current.workers.single, '80000000-0000-0000-0000-000000000002')
+        : repo.save(current, [ResidentTaxAnnualInput(workerId: worker, amounts: List.filled(12, 0), excluded: false)], requestId);
+      if (mode == 'valid' || mode == 'undo_valid') { await result; }
       else if (mode == 'conflict') { await expectLater(result, throwsA(isA<ResidentTaxAnnualReloadRequired>())); }
       else { await expectLater(result, throwsStateError); }
       expect(calls.single['p_expected_snapshot'], annualResponse()['snapshot']);
-      expect((calls.single['p_entries'] as List).single, {'worker_id': worker, 'amounts': List.filled(12, 0),
-        'confirmed': true, 'excluded': false, 'reason': null});
+      if (mode.startsWith('undo_')) {
+        expect(calls.single['p_worker_id'], worker); expect(calls.single['p_undo_request_id'], requestId);
+      } else {
+        expect((calls.single['p_entries'] as List).single, {'worker_id': worker, 'amounts': List.filled(12, 0),
+          'confirmed': true, 'excluded': false, 'reason': null});
+      }
     });
   }
 }

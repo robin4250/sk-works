@@ -1,14 +1,18 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../data/supabase_backend.dart';
 import 'resident_tax_annual_repository.dart';
 
 class ResidentTaxAnnualUpdatePage extends StatefulWidget {
   const ResidentTaxAnnualUpdatePage({super.key, required this.companyId,
-    required this.fiscalYear, this.repository, this.reminderPanel});
+    required this.fiscalYear, this.repository, this.reminderPanel, this.authClient});
   final String companyId;
   final int fiscalYear;
   final ResidentTaxAnnualRepository? repository;
   final Widget? reminderPanel;
+  final SupabaseClient? authClient;
   @override
   State<ResidentTaxAnnualUpdatePage> createState() => _ResidentTaxAnnualUpdatePageState();
 }
@@ -28,42 +32,104 @@ class _AnnualDraft {
   void dispose() => input.dispose();
 }
 
-class _ResidentTaxAnnualUpdatePageState extends State<ResidentTaxAnnualUpdatePage> {
+class _ResidentTaxAnnualUpdatePageState extends State<ResidentTaxAnnualUpdatePage> with WidgetsBindingObserver {
   late ResidentTaxAnnualRepository _repository;
   int _generation = 0;
   ResidentTaxAnnualData? _data;
   final _drafts = <String, _AnnualDraft>{};
   Set<String> _savingWorkers = {};
-  bool _busy = false, _sourceConflict = false;
+  bool _busy = false, _sourceConflict = false, _confirming = false;
+  bool _invalidated = true, _foreground = true;
+  int _sessionEpoch = 0, _authBinding = 0;
+  String? _actor, _token;
+  SupabaseClient? _authClient;
+  StreamSubscription<AuthState>? _authSubscription;
+  DialogRoute<bool>? _confirmationRoute;
+  NavigatorState? _confirmationNavigator;
   String? _pendingRequest, _error, _message;
-  bool get _editable => _data?.canEdit == true && !_busy && _pendingRequest == null && !_sourceConflict;
+  bool get _sessionValid => !_invalidated && _foreground && _actor != null && _token != null &&
+    _authClient?.auth.currentUser?.id == _actor && _authClient?.auth.currentSession?.accessToken == _token;
+  bool get _editable => _sessionValid && _data?.canEdit == true && !_busy && !_confirming && _pendingRequest == null && !_sourceConflict;
   bool get _dirty => _drafts.values.any((d) => d.dirty);
+  bool _owns(_AnnualDraft draft) => identical(_drafts[draft.worker.id], draft);
   @override
-  void initState() { super.initState(); _repository = widget.repository ?? SupabaseResidentTaxAnnualRepository(); _load(); }
+  void initState() { super.initState(); WidgetsBinding.instance.addObserver(this);
+    _foreground = WidgetsBinding.instance.lifecycleState == null || WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    _repository = widget.repository ?? SupabaseResidentTaxAnnualRepository(); _bindSession(); _load(); }
+  void _bindSession() {
+    unawaited(_authSubscription?.cancel()); final binding = ++_authBinding;
+    _authClient = widget.authClient ?? (SupabaseBackend.isInitialized ? SupabaseBackend.client : null);
+    _actor = _authClient?.auth.currentUser?.id; _token = _authClient?.auth.currentSession?.accessToken;
+    _sessionEpoch++; _invalidated = _actor == null || _token == null;
+    _authSubscription = _authClient?.auth.onAuthStateChange.listen((event) {
+      if (binding == _authBinding && (event.session?.user.id != _actor || event.session?.accessToken != _token)) _invalidateSession();
+    }, onError: (Object _) { if (binding == _authBinding) _invalidateSession(); });
+  }
+  bool _sameSession(int epoch, String? actor, String? token) => _sessionValid &&
+    epoch == _sessionEpoch && actor == _actor && token == _token;
+  void _closeConfirmation() {
+    final route = _confirmationRoute, navigator = _confirmationNavigator;
+    _confirmationRoute = null; _confirmationNavigator = null;
+    if (route != null && navigator != null) WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (navigator.mounted && route.isActive) navigator.removeRoute(route);
+    });
+  }
+  void _invalidateSession() {
+    _sessionEpoch++; _generation++; _invalidated = true; _closeConfirmation();
+    if (!mounted) return;
+    setState(() { _data = null; _busy = false; _confirming = false; _pendingRequest = null; _savingWorkers = {};
+      _message = null; _error = 'ログイン・アプリの状態が変わりました。再読み込みして確認してください。'; });
+    _clearDrafts();
+  }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground) _invalidateSession();
+  }
+  Future<bool> _showConfirmation(WidgetBuilder builder) async {
+    if (!_sessionValid || _busy || _confirming) return false;
+    final epoch = _sessionEpoch, actor = _actor, token = _token;
+    setState(() => _confirming = true);
+    final navigator = Navigator.of(context);
+    final route = DialogRoute<bool>(context: context, builder: builder);
+    _confirmationRoute = route; _confirmationNavigator = navigator;
+    try { final approved = await navigator.push(route);
+      return approved == true && mounted && _sameSession(epoch, actor, token);
+    } finally {
+      if (identical(_confirmationRoute, route)) {
+        _confirmationRoute = null; _confirmationNavigator = null;
+        if (mounted) setState(() => _confirming = false);
+      }
+    }
+  }
   @override
   void didUpdateWidget(covariant ResidentTaxAnnualUpdatePage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.companyId != widget.companyId || oldWidget.fiscalYear != widget.fiscalYear || oldWidget.repository != widget.repository) {
+    if (oldWidget.companyId != widget.companyId || oldWidget.fiscalYear != widget.fiscalYear || oldWidget.repository != widget.repository || oldWidget.authClient != widget.authClient) {
+      _invalidateSession(); _bindSession();
       _repository = widget.repository ?? SupabaseResidentTaxAnnualRepository();
       _data = null; _pendingRequest = null; _savingWorkers = {}; _clearDrafts(); _load();
     }
   }
   void _clearDrafts() { for (final d in _drafts.values) { d.dispose(); } _drafts.clear(); }
   @override
-  void dispose() { _generation++; _clearDrafts(); super.dispose(); }
+  void dispose() { _generation++; _sessionEpoch++; _authBinding++; _closeConfirmation();
+    WidgetsBinding.instance.removeObserver(this); unawaited(_authSubscription?.cancel()); _clearDrafts(); super.dispose(); }
   Future<void> _load() async {
+    if (!_sessionValid) { setState(() { _data = null; _busy = false; _error = 'ログイン状態を確認して再読み込みしてください。'; }); return; }
     final generation = ++_generation, year = widget.fiscalYear;
+    final epoch = _sessionEpoch, actor = _actor, token = _token;
     final company = widget.companyId, request = _pendingRequest;
     setState(() { _busy = true; _error = null; _data = null; });
     try {
       final observed = await _repository.read(company, year, requestId: request);
-      if (!mounted || generation != _generation) return;
+      if (!mounted || generation != _generation || !_sameSession(epoch, actor, token)) return;
       if (request != null && observed.receipt?['request_id'] != request) {
         setState(() => _error = '保存結果はまだ確認できません。時間をおいて再読み込みしてください。'); return;
       }
       // Receipts prove a past operation, never the current amounts or completion.
       final data = request == null ? observed : await _repository.read(company, year);
-      if (!mounted || generation != _generation) return;
+      if (!mounted || generation != _generation || !_sameSession(epoch, actor, token)) return;
       final next = <String, _AnnualDraft>{}; var conflict = false;
       for (final worker in data.workers) {
         final old = _drafts[worker.id];
@@ -84,9 +150,10 @@ class _ResidentTaxAnnualUpdatePageState extends State<ResidentTaxAnnualUpdatePag
     } finally { if (mounted && generation == _generation) setState(() => _busy = false); }
   }
   Future<void> _reload() async {
-    if (_busy) return;
+    if (_busy || _confirming || !_foreground) return;
+    if (!_sessionValid) { _bindSession(); if (!_sessionValid) return; }
     if (_pendingRequest == null && _dirty) {
-      final discard = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      final discard = await _showConfirmation((c) => AlertDialog(
         title: const Text('未保存の入力があります'), content: const Text('入力を破棄して再読み込みしますか？'),
         actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('戻る')),
           TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('入力を破棄'))]));
@@ -131,19 +198,20 @@ class _ResidentTaxAnnualUpdatePageState extends State<ResidentTaxAnnualUpdatePag
     return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}'; }
   Future<void> _apply(_AnnualDraft d, {required bool undo, ResidentTaxAnnualInput? entry}) async {
     final data = _data;
-    if (!_editable || data == null) return;
+    if (!_editable || data == null || !_owns(d)) return;
     final target = undo ? d.worker.undoAmounts! : entry!.amounts;
     final changes = [for (var i = 0; i < 12; i++) if (target[i] != d.worker.amounts[i])
       '${_month(i)}：${d.worker.amounts[i]} → ${target[i]}円'];
     final generation = _generation;
-    final approved = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+    final epoch = _sessionEpoch, actor = _actor, token = _token;
+    final approved = await _showConfirmation((c) => AlertDialog(
       title: Text('${d.worker.name}の住民税${undo ? 'を元に戻す' : 'を更新'}'),
       content: SingleChildScrollView(child: Text('${widget.fiscalYear}年度（6月〜翌5月）。\n'
         '${changes.isEmpty ? '金額変更なし・通知書の確認状態を更新します。' : changes.join('\n')}\n\n'
         '${undo ? '直前の自分の更新前へ戻します。別の変更があれば上書きせず停止します。' : '適用開始は6月分です。この従業員だけを保存します。'}\n確定給与・年度外の登録額は変更しません。')),
       actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('戻る')),
         FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(undo ? '確認して元に戻す' : '確認して更新'))]));
-    if (!mounted || approved != true || generation != _generation || !_editable) return;
+    if (!mounted || approved != true || generation != _generation || !_editable || !_owns(d) || !_sameSession(epoch, actor, token)) return;
     final request = _requestId();
     setState(() { _busy = true; _pendingRequest = request; _savingWorkers = {d.worker.id}; _error = null; _message = null; });
     try {
@@ -159,6 +227,7 @@ class _ResidentTaxAnnualUpdatePageState extends State<ResidentTaxAnnualUpdatePag
       _data = null; _busy = false; _error = '保存結果を確認できません。再読み込みで確認してください。'; }); }
   }
   Future<void> _save(_AnnualDraft d) async {
+    if (!_editable || !_owns(d)) return;
     try {
       final text = d.input.text.trim();
       var values = List<int>.of(d.worker.amounts);
@@ -175,6 +244,7 @@ class _ResidentTaxAnnualUpdatePageState extends State<ResidentTaxAnnualUpdatePag
     } on FormatException catch (e) { if (mounted) setState(() => _error = e.message); }
   }
   Future<void> _undo(_AnnualDraft d) async {
+    if (!_editable || !_owns(d)) return;
     if (d.dirty) {
       final values = d.worker.currentAmounts;
       setState(() { d.input.text = values.every((v) => v != null) && values.toSet().length == 1 ? '${values.first}' : ''; d.dirty = false; _error = null; });

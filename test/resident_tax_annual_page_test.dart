@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/payroll/resident_tax_annual_page.dart';
 import 'package:sk_works/features/payroll/resident_tax_annual_repository.dart';
 
@@ -7,8 +11,8 @@ const a = '40000000-0000-0000-0000-000000000001';
 const b = '40000000-0000-0000-0000-000000000002';
 
 class AnnualFixture implements ResidentTaxAnnualRepository {
-  bool canEdit = true, scopeComplete = true, loseReply = false, reject = false;
-  int saves = 0, undos = 0;
+  bool canEdit = true, scopeComplete = true, loseReply = false, reject = false, interfereOnReceipt = false;
+  int saves = 0, undos = 0, reads = 0;
   String? lastRequest;
   Map<String, dynamic>? receipt;
   List<ResidentTaxAnnualInput> sent = [];
@@ -28,12 +32,21 @@ class AnnualFixture implements ResidentTaxAnnualRepository {
     for (final row in rows) {'worker_id': row['worker_id'], 'source': row['source']},
   ]};
   @override
-  Future<ResidentTaxAnnualData> read(String companyId, int fiscalYear, {String? requestId}) async => ResidentTaxAnnualData.fromJson({
+  Future<ResidentTaxAnnualData> read(String companyId, int fiscalYear, {String? requestId}) async {
+    reads++;
+    final data = ResidentTaxAnnualData.fromJson({
     'company_id': companyId, 'fiscal_year': fiscalYear, 'previous_fiscal_year': fiscalYear - 1,
     'current_fiscal_year': fiscalYear, 'can_edit': canEdit, 'scope_complete': scopeComplete,
     'complete': rows.every((r) => r['confirmed'] == true), 'snapshot': snapshot,
     'workers': rows, 'receipt': requestId == lastRequest ? receipt : null,
-  }, companyId, fiscalYear);
+    }, companyId, fiscalYear);
+    if (requestId != null && requestId == lastRequest && interfereOnReceipt) {
+      interfereOnReceipt = false; rows[0]['amounts'] = List.filled(12, 7777);
+      rows[0]['current_amounts'] = List.filled(12, 7777); rows[0]['confirmed'] = false;
+      rows[0]['source'] = {'version': 99};
+    }
+    return data;
+  }
   @override
   Future<void> save(ResidentTaxAnnualData current, List<ResidentTaxAnnualInput> entries, String requestId) async {
     if (reject) throw const ResidentTaxAnnualReloadRequired();
@@ -63,9 +76,29 @@ class AnnualFixture implements ResidentTaxAnnualRepository {
   }
 }
 
-Future<void> openAnnual(WidgetTester t, AnnualFixture repository, {double scale = 1}) async {
+Future<SupabaseClient> annualAuth(WidgetTester t) async {
+  final expires = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
+  final client = SupabaseClient('https://fixture.invalid', 'fixture-public',
+    authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: MockClient((req) async {
+      if (req.url.path == '/auth/v1/logout') return http.Response('', 204, request: req);
+      if (req.url.path != '/auth/v1/token') throw StateError('unexpected auth request');
+      final login = jsonDecode(req.body) as Map;
+      final uid = login['email'] == 'b@example.invalid' ? b : a;
+      String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+      final token = '${part({'alg': 'HS256'})}.${part({'sub': uid, 'exp': expires})}.fixture';
+      return http.Response(jsonEncode({'access_token': token, 'refresh_token': 'fixture', 'token_type': 'bearer', 'expires_in': 3600,
+        'user': {'id': uid, 'aud': 'authenticated', 'role': 'authenticated', 'email': login['email'],
+          'created_at': '2026-01-01T00:00:00Z', 'app_metadata': {}, 'user_metadata': {}}}), 200,
+        headers: {'content-type': 'application/json'}, request: req);
+    }));
+  addTearDown(client.dispose);
+  await client.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture'); return client;
+}
+Future<void> openAnnual(WidgetTester t, AnnualFixture repository, {double scale = 1, SupabaseClient? client}) async {
+  t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  final auth = client ?? await annualAuth(t);
   await t.pumpWidget(MaterialApp(home: MediaQuery(data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-    child: ResidentTaxAnnualUpdatePage(companyId: 'company', fiscalYear: 2030, repository: repository))));
+    child: ResidentTaxAnnualUpdatePage(companyId: 'company', fiscalYear: 2030, repository: repository, authClient: auth))));
   await t.pumpAndSettle();
 }
 Finder field(String id) => find.byKey(ValueKey('annual-input-$id'));
@@ -116,6 +149,13 @@ void main() {
     final f = AnnualFixture(); await openAnnual(t, f); await t.enterText(field(b), '2222'); await confirmUpdate(t, a);
     expect(t.widget<TextField>(field(b)).controller!.text, '2222'); expect(f.rows[1]['amounts'], List.filled(12, 2000));
   });
+  testWidgets('past receipt never replaces current amounts or completion after another update', (t) async {
+    final f = AnnualFixture()..interfereOnReceipt = true; f.rows[1]['confirmed'] = true;
+    await openAnnual(t, f); await confirmUpdate(t, a);
+    expect(find.text('7777円'), findsOneWidget);
+    expect(find.text('この年度は全員更新済みです。'), findsNothing);
+    expect(find.text('確認済み 1 / 2名'), findsOneWidget);
+  });
   testWidgets('lost reply stops repeat updates until matching receipt is read', (t) async {
     final f = AnnualFixture()..loseReply = true; await openAnnual(t, f); await confirmUpdate(t, a);
     expect(find.textContaining('保存結果を確認できません'), findsOneWidget); expect(update(a), findsNothing); expect(f.saves, 1);
@@ -124,6 +164,7 @@ void main() {
   });
   testWidgets('local undo never writes; saved undo confirms before server mutation and refreshes timestamp', (t) async {
     final f = AnnualFixture(); await openAnnual(t, f); await t.enterText(field(a), '6000');
+    await t.pumpAndSettle();
     await t.ensureVisible(undo(a)); await t.tap(undo(a)); await t.pumpAndSettle();
     expect(t.widget<TextField>(field(a)).controller!.text, '5000'); expect(f.saves, 0); expect(f.undos, 0);
     await t.enterText(field(a), '6000'); await confirmUpdate(t, a);
@@ -146,5 +187,57 @@ void main() {
     await openAnnual(t, AnnualFixture(), scale: 1.3);
     expect(find.text('社員A'), findsOneWidget); expect(field(a), findsOneWidget); expect(update(a), findsOneWidget);
     expect(t.takeException(), isNull);
+  });
+  for (final mode in ['other_uid', 'same_uid_aba', 'background']) {
+    testWidgets('actual update dialog is invalidated before write: $mode', (t) async {
+      final f = AnnualFixture(); final auth = await annualAuth(t); await openAnnual(t, f, client: auth);
+      await t.ensureVisible(update(a)); await t.tap(update(a)); await t.pumpAndSettle();
+      expect(find.text('確認して更新'), findsOneWidget);
+      if (mode == 'other_uid') {
+        await auth.auth.signInWithPassword(email: 'b@example.invalid', password: 'fixture');
+      } else if (mode == 'same_uid_aba') {
+        await auth.auth.signOut(scope: SignOutScope.local);
+        await auth.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture');
+      } else {
+        t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      }
+      await t.pumpAndSettle();
+      expect(find.text('確認して更新'), findsNothing); expect(find.text('社員A'), findsNothing);
+      expect(f.saves, 0); expect(f.undos, 0);
+    });
+  }
+  testWidgets('undo dialog and repeated update callbacks cannot cross session boundaries', (t) async {
+    final f = AnnualFixture(); final auth = await annualAuth(t); await openAnnual(t, f, client: auth);
+    final action = t.widget<TextButton>(update(a)).onPressed!;
+    action(); action(); await t.pumpAndSettle(); expect(find.text('確認して更新'), findsOneWidget);
+    await t.tap(find.text('確認して更新')); await t.pumpAndSettle(); expect(f.saves, 1);
+    await t.ensureVisible(undo(a)); await t.tap(undo(a)); await t.pumpAndSettle();
+    expect(find.text('確認して元に戻す'), findsOneWidget);
+    await auth.auth.signOut(scope: SignOutScope.local);
+    await auth.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture');
+    await t.pumpAndSettle(); expect(find.text('確認して元に戻す'), findsNothing); expect(f.undos, 0);
+  });
+  for (final mode in ['other_uid', 'background']) {
+    testWidgets('actual undo dialog stops after $mode', (t) async {
+      final f = AnnualFixture(); final auth = await annualAuth(t); await openAnnual(t, f, client: auth);
+      await confirmUpdate(t, a); await t.ensureVisible(undo(a)); await t.tap(undo(a)); await t.pumpAndSettle();
+      if (mode == 'other_uid') {
+        await auth.auth.signInWithPassword(email: 'b@example.invalid', password: 'fixture');
+      } else {
+        t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      }
+      await t.pumpAndSettle(); expect(find.text('確認して元に戻す'), findsNothing); expect(f.undos, 0); expect(f.saves, 1);
+    });
+  }
+  testWidgets('reload discard dialog is canceled on same-token ABA without another read', (t) async {
+    final f = AnnualFixture(); final auth = await annualAuth(t); await openAnnual(t, f, client: auth);
+    await t.enterText(field(a), '6000'); await t.pumpAndSettle();
+    await t.ensureVisible(find.text('住民税の一覧を再読み込み')); await t.tap(find.text('住民税の一覧を再読み込み')); await t.pumpAndSettle();
+    expect(find.text('入力を破棄'), findsOneWidget);
+    await auth.auth.signOut(scope: SignOutScope.local);
+    await auth.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture');
+    await t.pumpAndSettle(); expect(find.text('入力を破棄'), findsNothing); expect(f.reads, 1); expect(f.saves, 0);
   });
 }
