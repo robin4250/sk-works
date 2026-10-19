@@ -3,6 +3,12 @@ import 'package:sk_works/features/auth/auth_error_message.dart';
 
 void main() {
   group('friendlyAuthErrorMessage', () {
+    test('email login guidance does not request a phone number or SMS', () {
+      expect(friendlyAuthErrorMessage('Invalid login credentials', emailLogin: true), contains('メールアドレス'));
+      expect(friendlyAuthErrorMessage('over request rate limit', emailLogin: true), isNot(contains('SMS')));
+      expect(friendlyAuthErrorMessage('Email not confirmed', emailLogin: true), contains('確認メール'));
+      expect(friendlyAuthErrorMessage('Invalid login credentials'), contains('携帯電話番号'));
+    });
     test('maps rate limit errors', () {
       expect(
         friendlyAuthErrorMessage('over request rate limit'),

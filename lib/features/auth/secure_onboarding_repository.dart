@@ -85,6 +85,24 @@ class SecureOnboardingRepository {
     );
   }
 
+  /// Existing email/password accounts only: never creates or links an identity.
+  Future<void> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    final normalized = email.trim();
+    if (!isSupportedEmailValue(normalized)) {
+      throw ArgumentError('invalid email');
+    }
+    await _client.auth.signInWithPassword(
+      email: normalized,
+      password: password,
+    );
+  }
+
+  static bool isSupportedEmailValue(String raw) =>
+      RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(raw.trim());
+
   Future<void> signInWithPhone({
     required String phone,
     required String password,

@@ -142,6 +142,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
   final _otp = TextEditingController();
 
   bool _registerMode = false;
+  bool _emailLogin = false;
   bool _passwordResetMode = false;
   bool _awaitingSms = false;
   bool _busy = false;
@@ -181,7 +182,11 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
       return;
     }
 
-    if (!SecureOnboardingRepository.isSupportedJapaneseMobileValue(_phone.text)) {
+    if (_emailLogin && !SecureOnboardingRepository.isSupportedEmailValue(_phone.text)) {
+      setState(() => _message = '登録済みのメールアドレスを入力してください。');
+      return;
+    }
+    if (!_emailLogin && !SecureOnboardingRepository.isSupportedJapaneseMobileValue(_phone.text)) {
       setState(() => _message = '070 / 080 / 090から始まる携帯電話番号を入力してください。');
       return;
     }
@@ -211,6 +216,13 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
             _message = 'SMSで承認コードを送信しました。';
           });
         }
+      } else if (_emailLogin) {
+        await repository.signInWithEmail(
+          email: _phone.text,
+          password: _password.text,
+        );
+        if (!mounted) return;
+        widget.onAuthenticated();
       } else {
         await repository.signInWithPhone(
           phone: _phone.text,
@@ -231,6 +243,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
 
     setState(() {
       _registerMode = false;
+      _emailLogin = false;
       _passwordResetMode = false;
       _awaitingSms = false;
       _phone.text = credentials.phone;
@@ -261,7 +274,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
       await action();
     } on AuthException catch (error) {
       if (!mounted) return;
-      setState(() => _message = friendlyAuthErrorMessage(error.message));
+      setState(() => _message = friendlyAuthErrorMessage(error.message, emailLogin: _emailLogin));
     } catch (error) {
       if (!mounted) return;
       setState(() => _message = '処理に失敗しました: $error');
@@ -351,7 +364,20 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                       ],
                       const SizedBox(height: 24),
                       if (!_registerMode && !_awaitingSms && !_passwordResetMode) ...[
-                        Text('電話番号でログイン', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                        Text(_emailLogin ? 'メールアドレスでログイン' : '電話番号でログイン', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                        TextButton(
+                          onPressed: _busy || _googlePending ? null : () => setState(() {
+                            _emailLogin = !_emailLogin;
+                            _phone.clear();
+                            _password.clear();
+                            _passwordConfirm.clear();
+                            _otp.clear();
+                            _message = null;
+                          }),
+                          child: Text(_emailLogin ? '電話番号でログインする' : '登録済みのメールでログインする'),
+                        ),
+                        if (_emailLogin)
+                          const Text('SKOにメールアドレスと本パスワードを登録済みの方が利用できます。Googleで登録した方は、登録済みのGoogleでログインしてください。'),
                         const SizedBox(height: 10),
                       ],
                       if (!_passwordResetMode) ...[
@@ -370,12 +396,13 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                           ] else ...[
                             TextField(
                               controller: _phone,
-                              keyboardType: TextInputType.phone,
-                              autofillHints: const [AutofillHints.telephoneNumber],
-                              decoration: const InputDecoration(
-                                labelText: '携帯電話番号（ID）',
-                                hintText: '09012345678',
-                                prefixIcon: Icon(Icons.phone_iphone_outlined),
+                              keyboardType: _emailLogin ? TextInputType.emailAddress : TextInputType.phone,
+                              autofillHints: _emailLogin ? const [AutofillHints.email] : const [AutofillHints.telephoneNumber],
+                              autocorrect: false,
+                              decoration: InputDecoration(
+                                labelText: _emailLogin ? '登録済みメールアドレス' : '携帯電話番号（ID）',
+                                hintText: _emailLogin ? 'name@example.com' : '09012345678',
+                                prefixIcon: Icon(_emailLogin ? Icons.email_outlined : Icons.phone_iphone_outlined),
                               ),
                             ),
                             const SizedBox(height: 14),
@@ -468,6 +495,10 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                                     ? null
                                     : () => setState(() {
                                           _registerMode = !_registerMode;
+                                          _emailLogin = false;
+                                          _phone.clear();
+                                          _password.clear();
+                                          _passwordConfirm.clear();
                                           _message = null;
                                         }),
                                 icon: Icon(

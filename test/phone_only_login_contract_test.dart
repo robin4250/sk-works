@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('production auth UI exposes phone ID only', () {
+  test('phone and QR stay available alongside existing-account email login', () {
     final pages =
         File('lib/features/auth/secure_onboarding_pages.dart').readAsStringSync();
     final repository =
@@ -11,9 +11,9 @@ void main() {
             .readAsStringSync();
 
     expect(pages, contains('携帯電話番号（ID）'));
-    expect(pages, isNot(contains('既存のメールアカウントでログイン')));
-    expect(pages, isNot(contains('_existingEmailLogin')));
-    expect(repository, isNot(contains('signInWithEmail')));
+    expect(pages, contains('従業員登録QRでログイン'));
+    expect(pages, contains('登録済みのメールでログインする'));
+    expect(repository, contains('signInWithEmail'));
     expect(repository, contains('signInWithPhone'));
   });
 }
