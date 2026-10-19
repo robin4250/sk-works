@@ -60,6 +60,21 @@ void main(){
   final now=DateTime.now().toUtc().add(const Duration(hours:9));final next=DateTime(now.year,now.month+1);
   expect(repository.requests.single.startsOn,'${next.year}-${next.month.toString().padLeft(2,'0')}-01');
  });
+ testWidgets('same frame apply calls open one real dialog and publish one request',(tester) async {
+  final repository=FakePublicationRepository();addTearDown(repository.changes.close);
+  await tester.pumpWidget(MaterialApp(home:Scaffold(body:CompanyCommonPayrollPublicationPanel(companyId:'company',repository:repository))));await tester.pumpAndSettle();
+  await tester.tap(find.text('給与への適用月'));await tester.pumpAndSettle();
+  final action=tester.widget<TextButton>(find.byKey(const ValueKey('common-publication-apply'))).onPressed!;
+  action();action();await tester.pumpAndSettle();
+  expect(find.byType(AlertDialog),findsOneWidget);expect(repository.requests,isEmpty);
+  await tester.tap(find.text('適用する'));await tester.pumpAndSettle();expect(repository.requests.length,1);
+ });
+ testWidgets('company switch closes an old confirmation without publishing',(tester) async {
+  final repository=FakePublicationRepository();addTearDown(repository.changes.close);
+  Widget page(String company)=>MaterialApp(home:Scaffold(body:CompanyCommonPayrollPublicationPanel(key:const ValueKey('scope'),companyId:company,repository:repository)));
+  await tester.pumpWidget(page('company-a'));await tester.pumpAndSettle();await tester.tap(find.text('給与への適用月'));await tester.pumpAndSettle();await tester.tap(find.byKey(const ValueKey('common-publication-apply')));await tester.pumpAndSettle();expect(find.byType(AlertDialog),findsOneWidget);
+  await tester.pumpWidget(page('company-b'));await tester.pumpAndSettle();expect(find.byType(AlertDialog),findsNothing);expect(repository.requests,isEmpty);
+ });
  testWidgets('unknown outcome reuses same request for result confirmation',(tester) async {
   final repository=FakePublicationRepository()..failOnce=true;addTearDown(repository.changes.close);
   await tester.pumpWidget(MaterialApp(home:Scaffold(body:CompanyCommonPayrollPublicationPanel(companyId:'company',repository:repository))));await tester.pumpAndSettle();

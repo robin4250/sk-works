@@ -15,7 +15,7 @@ class CommonPayrollPublicationState {
     bool version(Object? x) => x is int && x >= 0 && x <= 9007199254740991;
     if (raw is! Map || raw['contract_version'] != 1 || raw['company_id'] != companyId ||
         raw['can_edit'] is! bool || !version(raw['timeline_version']) || !version(raw['common_version']) ||
-        raw['common_source'] is! Map || raw['entries'] is! List) throw StateError('Payroll publication response unavailable');
+        raw['common_source'] is! Map || raw['entries'] is! List) { throw StateError('Payroll publication response unavailable'); }
     final entries = <Map<String, dynamic>>[];
     for (final entry in raw['entries'] as List) {
       if (entry is! Map || !version(entry['version']) ||
@@ -69,11 +69,11 @@ class SupabaseCommonPayrollPublicationRepository implements CommonPayrollPublica
     await _call('read_company_common_payroll_publications',{'p_company_id':companyId}),companyId);
   @override Future<CommonPayrollPublicationState> publish(CommonPayrollPublicationRequest request) async {
     if(!request.state.canEdit || !['daily','hourly','monthly'].contains(request.payrollType) ||
-        !RegExp(r'^\d{4}-(0[1-9]|1[0-2])-01$').hasMatch(request.startsOn)) throw StateError('Payroll publication unavailable');
+        !RegExp(r'^\d{4}-(0[1-9]|1[0-2])-01$').hasMatch(request.startsOn)) { throw StateError('Payroll publication unavailable'); }
     final raw=await _call('publish_company_common_payroll',request.params);
     if(raw is! Map || raw['contract_version']!=1 || raw['company_id']!=request.state.companyId ||
         raw['request_id']!=request.requestId || raw['payroll_type']!=request.payrollType || raw['starts_on']!=request.startsOn ||
-        raw['publication_version']!=request.state.timelineVersion+1) throw StateError('Payroll publication receipt unavailable');
+        raw['publication_version']!=request.state.timelineVersion+1) { throw StateError('Payroll publication receipt unavailable'); }
     final result=CommonPayrollPublicationState.parse(raw['timeline'],request.state.companyId);
     if(result.timelineVersion!=raw['publication_version']) throw StateError('Payroll publication receipt differs');
     return result;

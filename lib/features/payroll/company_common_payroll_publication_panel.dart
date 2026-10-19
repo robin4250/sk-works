@@ -21,7 +21,7 @@ class _CompanyCommonPayrollPublicationPanelState extends State<CompanyCommonPayr
   CommonPayrollPublicationState? _state;
   CommonPayrollPublicationRequest? _pending;
   String? _error;
-  bool _busy=false,_revoked=false,_active=true;
+  bool _busy=false,_confirming=false,_revoked=false,_active=true;
   int _generation=0;
   String _type='hourly';
   late DateTime _month;
@@ -32,9 +32,10 @@ class _CompanyCommonPayrollPublicationPanelState extends State<CompanyCommonPayr
   @override void initState(){super.initState();_month=_currentMonth;_type=['daily','hourly','monthly'].contains(widget.initialPayrollType)?widget.initialPayrollType:'hourly';_repository=widget.repository??SupabaseCommonPayrollPublicationRepository.maybeCreate();_session=_repository?.sessionKey;
     _subscription=_repository?.sessionChanges.listen((key){if(key!=_session)_revoke();},onError:(Object _)=>_revoke());
     WidgetsBinding.instance.addObserver(this);_active=WidgetsBinding.instance.lifecycleState==null||WidgetsBinding.instance.lifecycleState==AppLifecycleState.resumed;unawaited(_load());}
-  @override void didUpdateWidget(covariant CompanyCommonPayrollPublicationPanel old){super.didUpdateWidget(old);if(old.companyId!=widget.companyId){_generation++;_state=null;_pending=null;_error=null;_month=_currentMonth;unawaited(_load());}}
-  void _revoke(){if(!mounted)return;_generation++;setState((){_revoked=true;_state=null;_error='ログイン状態が変わりました。この画面を開き直してください。';});widget.onBusyChanged?.call(true);final dialog=_dialog;if(dialog!=null)WidgetsBinding.instance.addPostFrameCallback((_){if(dialog.mounted&&ModalRoute.of(dialog)?.isCurrent==true)Navigator.of(dialog).pop(false);});}
-  @override void didChangeAppLifecycleState(AppLifecycleState state){_active=state==AppLifecycleState.resumed;if(!_active){_generation++;if(mounted)setState(()=>_state=null);}else if(!_revoked){unawaited(_load());}}
+  @override void didUpdateWidget(covariant CompanyCommonPayrollPublicationPanel old){super.didUpdateWidget(old);if(old.companyId!=widget.companyId){_generation++;_closeDialog();_state=null;_pending=null;_error=null;_month=_currentMonth;unawaited(_load());}}
+  void _closeDialog(){final dialog=_dialog;_dialog=null;if(dialog!=null)WidgetsBinding.instance.addPostFrameCallback((_){if(dialog.mounted&&ModalRoute.of(dialog)?.isCurrent==true)Navigator.of(dialog).pop(false);});}
+  void _revoke(){if(!mounted)return;_generation++;setState((){_revoked=true;_state=null;_error='ログイン状態が変わりました。この画面を開き直してください。';});widget.onBusyChanged?.call(true);_closeDialog();}
+  @override void didChangeAppLifecycleState(AppLifecycleState state){_active=state==AppLifecycleState.resumed;if(!_active){_generation++;_closeDialog();if(mounted)setState(()=>_state=null);}else if(!_revoked){unawaited(_load());}}
   Future<void> _load() async {
     final repository=_repository;if(repository==null||_revoked||!_active)return;final generation=++_generation;
     setState(()=>_busy=true);
@@ -43,12 +44,16 @@ class _CompanyCommonPayrollPublicationPanelState extends State<CompanyCommonPayr
     finally{if(mounted&&generation==_generation)setState(()=>_busy=false);}
   }
   Future<void> _start() async {
-    final state=_state;final generation=_generation;if(state==null||!state.canEdit||!widget.enabled||_busy||_pending!=null||!_active||_revoked)return;
-    final accepted=await showDialog<bool>(context:context,builder:(context){_dialog=context;return AlertDialog(
+    final state=_state;final generation=_generation;if(state==null||!state.canEdit||!widget.enabled||_busy||_confirming||_pending!=null||!_valid(generation))return;
+    setState(()=>_confirming=true);widget.onBusyChanged?.call(true);
+    bool? accepted;
+    try {
+    accepted=await showDialog<bool>(context:context,builder:(context){_dialog=context;return AlertDialog(
       title:const Text('保存済み共通手当を給与へ適用'),
       content:Text('${_typeLabel(_type)}の保存済み共通手当を${_month.year}年${_month.month}月から適用し、自動下書きを再計算します。未保存の編集は含みません。確定済み・手入力の給与は保持します。'),
       actions:[TextButton(onPressed:()=>Navigator.pop(context,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(context,true),child:const Text('適用する'))],);});
-    _dialog=null;if(!mounted||generation!=_generation||widget.companyId!=state.companyId||accepted!=true||_revoked||!_active||!widget.enabled)return;
+    } finally { _dialog=null; if(mounted){setState(()=>_confirming=false);widget.onBusyChanged?.call(_pending!=null||_revoked);} }
+    if(!_valid(generation)||widget.companyId!=state.companyId||accepted!=true||!widget.enabled)return;
     _pending=CommonPayrollPublicationRequest(state,_type,_monthKey);await _applyPending();
   }
   Future<void> _applyPending() async {
@@ -63,7 +68,7 @@ class _CompanyCommonPayrollPublicationPanelState extends State<CompanyCommonPayr
   @override Widget build(BuildContext context){
     if(_repository==null)return const SizedBox.shrink();
     if(_revoked)return Padding(padding:const EdgeInsets.all(12),child:Text(_error!));
-    final editable=widget.enabled&&!_busy&&_pending==null&&_state?.canEdit==true&&_active;
+    final editable=widget.enabled&&!_busy&&!_confirming&&_pending==null&&_state?.canEdit==true&&_active;
     return Card(child:ExpansionTile(title:const Text('給与への適用月'),subtitle:const Text('保存済みの追加手当を給与へ反映'),children:[ConstrainedBox(constraints:const BoxConstraints(maxHeight:120),child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
       if(_error!=null)Padding(padding:const EdgeInsets.all(12),child:Text(_error!)),
       Row(children:[if(_state!=null)Expanded(child:Padding(padding:const EdgeInsets.only(left:12),child:DropdownButton<String>(key:const ValueKey('common-publication-type'),value:_type,isExpanded:true,items:[for(final type in ['daily','hourly','monthly'])DropdownMenuItem(value:type,child:Text(_typeLabel(type)))],onChanged:editable?(value)=>setState(()=>_type=value!):null))),IconButton(key:const ValueKey('common-publication-previous'),onPressed:editable&&_month.isAfter(_currentMonth)?()=>setState(()=>_month=DateTime(_month.year,_month.month-1)):null,icon:const Icon(Icons.chevron_left)),Text('${_month.year}/${_month.month}'),IconButton(key:const ValueKey('common-publication-next'),onPressed:editable?()=>setState(()=>_month=DateTime(_month.year,_month.month+1)):null,icon:const Icon(Icons.chevron_right))]),
