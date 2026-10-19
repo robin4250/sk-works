@@ -51,8 +51,11 @@ class ProvenanceTests(unittest.TestCase):
     def command(self, args):
         if args[0] == '/usr/bin/security':
             return plistlib.dumps(self.profile)
-        if '--extract-certificates' in args:
-            Path(args[args.index('--extract-certificates') + 1] + '0').write_bytes(b'fixture-cert')
+        extraction = [arg for arg in args if arg.startswith('--extract-certificates=')]
+        if extraction:
+            self.assertEqual(len(args), 4)
+            self.assertEqual(len(extraction), 1)
+            Path(extraction[0].split('=', 1)[1] + '0').write_bytes(b'fixture-cert')
             return b''
         if '--entitlements' in args:
             return plistlib.dumps(self.ent)
@@ -68,6 +71,18 @@ class ProvenanceTests(unittest.TestCase):
         result = self.inspect()
         self.assertEqual(result['build'], '42')
         self.assertFalse(result['get_task_allow'])
+
+    def test_certificate_prefix_attached_to_optional_long_argument(self):
+        commands = []
+        def checked(args):
+            commands.append(args)
+            return self.command(args)
+        with patch.object(p.sys, 'platform', 'darwin'), patch.object(p, 'run', side_effect=checked):
+            p.inspect_ipa(self.ipa)
+        extraction = [args for args in commands if any(a.startswith('--extract-certificates=') for a in args)]
+        self.assertEqual(len(extraction), 1)
+        self.assertNotIn('--extract-certificates', extraction[0])
+        self.assertEqual(len(extraction[0]), 4)
 
     def test_callback_and_full_entitlement_digest(self):
         first = self.inspect()

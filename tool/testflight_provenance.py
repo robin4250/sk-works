@@ -215,7 +215,8 @@ def inspect_ipa(ipa):
                 'App Store distribution profile required')
         require(pent.get('beta-reports-active') is True, 'TestFlight distribution profile required')
         certificate_prefix = root / 'signer'
-        run(['/usr/bin/codesign', '-d', '--extract-certificates', str(certificate_prefix), str(app)])
+        # An optional long-option argument must be attached to the option.
+        run(['/usr/bin/codesign', '-d', '--extract-certificates=' + str(certificate_prefix), str(app)])
         leaf = Path(str(certificate_prefix) + '0')
         require(leaf.is_file() and leaf.read_bytes() in profile.get('DeveloperCertificates', []),
                 'Signer certificate is not authorized by the profile')
