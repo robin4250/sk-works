@@ -107,6 +107,9 @@ begin
   enabled_recipients:=enabled_recipients+1;
   if private.resident_tax_reminder_year_complete(r.company_id,year) then continue;end if;
   if not p_deliver then continue;end if;
+  -- Match settings-save order before module/membership locks and receipt FKs.
+  perform 1 from public.companies where id=r.company_id for key share;
+  if not found then continue;end if;
   perform pg_advisory_xact_lock(hashtextextended('resident-tax-reminder:'||r.company_id::text||':'||year::text||':'||phase_key,0));
   perform 1 from public.company_module_settings where company_id=r.company_id and module_key='resident_tax_reminders' and is_enabled for share;
   if not found then continue;end if;
