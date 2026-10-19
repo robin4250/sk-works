@@ -1,0 +1,35 @@
+name: Expense direction code restore preparation
+on:
+  push:
+    branches: [support/expense-direction-code-restore-20261019]
+    paths:
+      - 'tool/expense_direction_code_checkpoint.mjs'
+      - 'tool/verify_expense_direction_code_restore.mjs'
+      - '.github/workflows/expense-direction-code-restore.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_payroll_scope_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_PAYROLL_SCOPE_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_payroll_scope_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node tool/verify_expense_direction_code_restore.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_expense_direction_code_restore.mjs "file://$PWD/tool/payroll_scope_native_pg17_runtime.mjs" "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
