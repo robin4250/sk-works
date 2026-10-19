@@ -41,6 +41,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
   String _friendQuery = '';
   Set<String> _pinnedFriends = {};
   String? _actor;
+  bool _sessionInvalidated = false;
   final _profileActorEpoch = ValueNotifier<int>(0);
   StreamSubscription<String?>? _actorSubscription;
 
@@ -64,19 +65,32 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
   void initState() {
     super.initState();
     _actor = _repository?.currentUserId;
-      _actorSubscription = _repository?.watchActorChanges().listen((actor) {
-        if (!mounted || actor == _actor) return;
-        _actor = actor;
-        _profileActorEpoch.value++;
-        _workspaceLoadEpoch++;
-        setState(() {
-          _workspace = const {};
-          _pinnedFriends = {};
-          _error = 'ログイン情報が変わりました。友達一覧を開き直してください。';
-          _loading = false;
-        });
-      });
+    _actorSubscription = _repository?.watchActorChanges().listen((actor) {
+      if (!mounted || actor == _actor) return;
+      _invalidateActor(actor);
+    }, onError: (Object _) => _invalidateActor(null));
     _load();
+  }
+
+  bool _isCurrent(String? actor, int epoch) => mounted && !_sessionInvalidated &&
+      actor != null && actor == _actor && actor == _repository?.currentUserId &&
+      epoch == _profileActorEpoch.value;
+
+  void _invalidateActor(String? actor) {
+    if (!mounted) return;
+    _actor = actor;
+    _sessionInvalidated = true;
+    _profileActorEpoch.value++;
+    _workspaceLoadEpoch++;
+    _search.clear();
+    setState(() {
+      _workspace = const {};
+      _searchResult = null;
+      _pinnedFriends = {};
+      _busy = false;
+      _loading = false;
+      _error = 'ログイン情報が変わりました。友達一覧を開き直してください。';
+    });
   }
 
   @override
@@ -98,24 +112,23 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     }
 
     final actor = repository.currentUserId;
+    if (actor == null) { _invalidateActor(null); return; }
     final epoch = _profileActorEpoch.value;
+    if (!_isCurrent(actor, epoch)) return;
     final loadEpoch = ++_workspaceLoadEpoch;
     try {
       final workspace = await repository.loadFriendWorkspace();
       final prefs = widget.selectForChat ? await SharedPreferences.getInstance() : null;
-      if (!mounted || (actor != repository.currentUserId || epoch != _profileActorEpoch.value || loadEpoch != _workspaceLoadEpoch)) return;
+      if (!_isCurrent(actor, epoch) || loadEpoch != _workspaceLoadEpoch) return;
       setState(() {
         _actor = actor;
-        _pinnedFriends = actor == null
-            ? {}
-            : prefs?.getStringList('sko_chat_friend_pinned_$actor')?.toSet() ??
-                  {};
+        _pinnedFriends = prefs?.getStringList('sko_chat_friend_pinned_$actor')?.toSet() ?? {};
         _workspace = workspace;
         _loading = false;
         _error = null;
       });
     } catch (error) {
-      if (!mounted || actor != repository.currentUserId || epoch != _profileActorEpoch.value || loadEpoch != _workspaceLoadEpoch) return;
+      if (!_isCurrent(actor, epoch) || loadEpoch != _workspaceLoadEpoch) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -126,11 +139,12 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
   Future<bool> _pinFriend(Map<String, dynamic> friend) async {
     final actor = _actor;
     final id = friend['user_id']?.toString() ?? '';
-    if (actor == null || id.isEmpty || actor != _repository?.currentUserId) {
+    final epoch = _profileActorEpoch.value;
+    if (id.isEmpty || !_isCurrent(actor, epoch)) {
       return false;
     }
     final prefs = await SharedPreferences.getInstance();
-    if (!mounted || actor != _repository?.currentUserId) return false;
+    if (!_isCurrent(actor, epoch)) return false;
     setState(() {
       if (!_pinnedFriends.remove(id)) _pinnedFriends.add(id);
     });
@@ -143,6 +157,9 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
 
   Future<void> _find() async {
     final repository = _repository;
+    final actor = _actor;
+    final epoch = _profileActorEpoch.value;
+    if (!_isCurrent(actor, epoch)) return;
     final value = _search.text.trim();
     if (repository == null || value.isEmpty || _busy) return;
 
@@ -153,7 +170,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
 
     try {
       final result = await repository.searchFriendBySkoId(value);
-      if (!mounted) return;
+      if (!_isCurrent(actor, epoch)) return;
       setState(() => _searchResult = result);
       if (result == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -161,7 +178,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         );
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!_isCurrent(actor, epoch)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -170,21 +187,26 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_isCurrent(actor, epoch)) setState(() => _busy = false);
     }
   }
 
   Future<void> _sendRequest() async {
     final repository = _repository;
+    final actor = _actor;
+    final epoch = _profileActorEpoch.value;
+    if (!_isCurrent(actor, epoch)) return;
     final result = _searchResult;
     if (repository == null || result == null || _busy) return;
 
     final name = result['display_name']?.toString();
+    setState(() => _busy = true);
+    try {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         SkoLanguageController.watch(context);
-        return AlertDialog(
+        return ChatActorGuard(epoch: _profileActorEpoch, initialEpoch: epoch, child: AlertDialog(
           title: Text(ChatFriendsStrings.tr('友達申請を送りますか？')),
           content: Text(
             ChatFriendsStrings.format('{name} さんへ友達申請を送信します。', {
@@ -201,23 +223,21 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
               child: Text(ChatFriendsStrings.tr('申請する')),
             ),
           ],
-        );
+        ));
       },
     );
-    if (!mounted || confirmed != true) return;
-
-    setState(() => _busy = true);
-    try {
+    if (!_isCurrent(actor, epoch) || confirmed != true) return;
       await repository.sendFriendRequest(result['sko_id']?.toString() ?? '');
+      if (!_isCurrent(actor, epoch)) return;
       _search.clear();
       _searchResult = null;
       await _load();
-      if (!mounted) return;
+      if (!_isCurrent(actor, epoch)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(ChatFriendsStrings.tr('友達申請を送信しました'))),
       );
     } catch (error) {
-      if (!mounted) return;
+      if (!_isCurrent(actor, epoch)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -228,21 +248,26 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_isCurrent(actor, epoch)) setState(() => _busy = false);
     }
   }
 
   Future<void> _respond(Map<String, dynamic> request, bool accept) async {
     final repository = _repository;
+    final actor = _actor;
+    final epoch = _profileActorEpoch.value;
+    if (!_isCurrent(actor, epoch)) return;
     if (repository == null || _busy) return;
     final id = request['id']?.toString() ?? '';
     if (id.isEmpty) return;
 
+    setState(() => _busy = true);
+    try {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         SkoLanguageController.watch(context);
-        return AlertDialog(
+        return ChatActorGuard(epoch: _profileActorEpoch, initialEpoch: epoch, child: AlertDialog(
           title: Text(
             accept
                 ? ChatFriendsStrings.tr('友達申請を承認しますか？')
@@ -266,17 +291,15 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
               ),
             ),
           ],
-        );
+        ));
       },
     );
-    if (!mounted || confirmed != true) return;
-
-    setState(() => _busy = true);
-    try {
+    if (!_isCurrent(actor, epoch) || confirmed != true) return;
       await repository.respondFriendRequest(requestId: id, accept: accept);
+      if (!_isCurrent(actor, epoch)) return;
       await _load();
     } catch (error) {
-      if (!mounted) return;
+      if (!_isCurrent(actor, epoch)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -287,21 +310,26 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_isCurrent(actor, epoch)) setState(() => _busy = false);
     }
   }
 
   Future<void> _removeFriend(Map<String, dynamic> friend) async {
     final repository = _repository;
+    final actor = _actor;
+    final epoch = _profileActorEpoch.value;
+    if (!_isCurrent(actor, epoch)) return;
     if (repository == null || _busy) return;
     final userId = friend['user_id']?.toString() ?? '';
     if (userId.isEmpty) return;
 
+    setState(() => _busy = true);
+    try {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         SkoLanguageController.watch(context);
-        return AlertDialog(
+        return ChatActorGuard(epoch: _profileActorEpoch, initialEpoch: epoch, child: AlertDialog(
           title: Text(ChatFriendsStrings.tr('友達から削除しますか？')),
           content: Text(
             friend['display_name']?.toString() ??
@@ -317,17 +345,15 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
               child: Text(ChatFriendsStrings.tr('削除する')),
             ),
           ],
-        );
+        ));
       },
     );
-    if (!mounted || confirmed != true) return;
-
-    setState(() => _busy = true);
-    try {
+    if (!_isCurrent(actor, epoch) || confirmed != true) return;
       await repository.removeFriend(userId);
+      if (!_isCurrent(actor, epoch)) return;
       await _load();
     } catch (error) {
-      if (!mounted) return;
+      if (!_isCurrent(actor, epoch)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -338,13 +364,13 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_isCurrent(actor, epoch)) setState(() => _busy = false);
     }
   }
 
   Future<void> _openFriend(Map<String, dynamic> friend) async {
     final actor = _actor;
-    if (actor == null || actor != _repository?.currentUserId) return;
+    if (_sessionInvalidated || actor == null || actor != _repository?.currentUserId) return;
     final epoch = _profileActorEpoch.value;
     final startChat = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => ChatActorGuard(epoch: _profileActorEpoch, initialEpoch: epoch, child: ChatFriendProfilePage(friend: friend))),
@@ -354,9 +380,14 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
   }
 
   Future<void> _openAdd() async {
+    final actor = _actor;
+    final epoch = _profileActorEpoch.value;
+    if (!_isCurrent(actor, epoch) || _busy) return;
+    setState(() => _busy = true);
+    try {
     final method = await showModalBottomSheet<String>(
       context: context,
-      builder: (context) => SafeArea(
+      builder: (context) => ChatActorGuard(epoch: _profileActorEpoch, initialEpoch: epoch, child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -373,9 +404,9 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
             ),
           ],
         ),
-      ),
+      )),
     );
-    if (!mounted || method == null) return;
+    if (!_isCurrent(actor, epoch) || method == null) return;
     if (method == 'phone') {
       final open = widget.onPhoneInvitation;
       if (open != null) {
@@ -394,7 +425,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
           const SnackBar(content: Text('ログイン情報を確認できません。友達一覧を開き直してください。')),
         );
       }
-      if (mounted) await _load();
+      if (_isCurrent(actor, epoch)) await _load();
       return;
     }
     await Navigator.of(context).push<void>(
@@ -402,7 +433,10 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         builder: (_) => ChatFriendsPage(repository: _repository),
       ),
     );
-    if (mounted) await _load();
+    if (_isCurrent(actor, epoch)) await _load();
+    } finally {
+      if (_isCurrent(actor, epoch)) setState(() => _busy = false);
+    }
   }
 
   void _showHelp() {
@@ -410,12 +444,12 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('友達一覧の使い方'),
-        content: const SingleChildScrollView(child: Text(
+        content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text(
           '登録済み友達の氏名・公開会社名・SKO IDを検索できます。検索を消すと一覧へ戻ります。\n\n'
           '友達を押すと公開名とSKO IDを確認し、「チャットを始める」で既存の個別チャットを開きます。写真・所属会社は承認済み友達の公開情報だけを表示します。写真は短時間の閲覧URLを使用し、取得できない場合は標準アイコンになります。\n\n'
           '左から右へスワイプするとピン留め／解除できます。この端末のログイン中ユーザーごとに保存し、友達や会話は削除しません。並びはピン留め、既存の個別チャット相手、その他の登録順です。登録日時が無い行は取得順を保ちます。\n\n'
           '下の「追加」→「ID検索」で申請・承認を管理します。「電話番号通知」で名前・電話番号を入力する招待画面を開きます。招待機能ONと利用権限が必要です。正式な配布URL未登録ではSMSを作成できません。送信を押すとSMS作成画面が開き、実際の送信はそこで行います。トーク本文や全履歴の検索はこの画面では行いません。',
-        )),
+        ), const SizedBox(height: 12), Text(ChatFriendsStrings.tr('ログイン状態が変わった場合は、検索結果と確認中の操作を破棄します。友達一覧を開き直してください。'))])),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
       ),
     );
