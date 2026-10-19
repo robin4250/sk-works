@@ -4,7 +4,7 @@
 
 ## 実sourceの接続
 
-- PaymentCertificateRepositoryは`enableExpenseDirectionV2=false`が既定。既存callerはそのままOFFで、能力RPCや新明細RPCを追加発行しない。opt-inの場合のみ`expense_payment_direction_capability`の7keys、会社/現在actor/marker/version/支払種別/対応source版/read_enabledを厳密確認する。
+- PaymentCertificateRepositoryは`enableExpenseDirectionV2=false`が既定。既存callerは初期導入時OFFで、能力RPCや新明細RPCを追加発行しなかった。下記の画面接続工程で月次一覧だけを明示opt-inする。opt-inの場合のみ`expense_payment_direction_capability`の7keys、会社/現在actor/marker/version/支払種別/対応source版/read_enabledを厳密確認する。
 - v2保存rowが来て能力を確認できない場合はlegacy扱いにせず読み取りを止める。会社・帳票・相手・完全期間・revision、独立基礎額、同版detail、gross/deductions/signed netを既adapterで照合する。ログイン切替は途中で元に戻るABAも結果を返さない。
 - Recordは既v1expenseCostを残し、v2の検証済みreadを別memberへ保持する。PDF生成前にRecordとreadのid/相手/完全期間/revision/保存金額を再確認し、v1/v2混在を拒否する。
 - 実PaymentCertificatePdfService.buildPdfでv2経費行−原額、小計にも同じ差引、保存netを使用する。工事なしなら架空工事行を作らない。原額明細ページも「加算」ではなく「差引」と説明し、申請原額は正数のまま表示する。
@@ -25,3 +25,9 @@ SQL verifierも新能力OFF/ON・本人会社スコープ・非所属拒否を�
 ## 有効化前の残条件
 
 本番helper/schema同等性・native二接続競合、既バックアップ/復元/承認条件、旧clientへのv2誤配信防止を満たすまでgateをONにしない。旧v1/既確定/手編集を自動反転しない。実ユーザーの既v1draftを差引へ変更する処理は別の明示工程であり、今回のsourceで書換えない。精算3択や給与consumerには変更ゼロ。
+
+## 月次画面からの接続（2026-10-19）
+
+PaymentCertificatesPageのrepository作成だけを明示trueにし、月次一覧から渡される同じRecordを既プレビュー/PDF/印刷/共有へ流す。repositoryの既定false、設定プレビュー（経費を含めないサンプル）、SQL・本番の両gateは変更しない。能力RPC不存在・不許可・不正応答では既v1保存額を維持し、v2をv1と偽って表示しない。通信エラーは読取停止。旧draft変換や保険条件/精算方法の書換えは行わない。
+
+実SDKの追加検証で、opt-in時の能力404/明示OFFでv1原額と保存合計を保持し新明細RPCを発行しないこと、能力照会のnetwork failureで帳票取得前に停止することを検査する。既v2/金額改ざん/actor ABA/実PDF出力の検証を再利用し、専用CIで実行する。ローカルFlutter SDK実行ファイルが不在のため新headの成功は遠隔CI結果を確認して記録する。本番有効化・実機配布・既実帳票の差引修復完了とは扱わない。

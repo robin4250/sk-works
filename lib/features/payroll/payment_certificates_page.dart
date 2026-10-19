@@ -27,7 +27,9 @@ class PaymentCertificatesPage extends StatefulWidget {
 }
 
 class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
-  final _repository = PaymentCertificateRepository.maybeCreate();
+  final _repository = PaymentCertificateRepository.maybeCreate(
+    enableExpenseDirectionV2: true,
+  );
   List<PaymentCertificateRecord> _items = const [];
   final _siteRepository = SitePaymentCertificatesRepository.maybeCreate();
   List<ConfirmedSitePayment> _siteItems = const [];

@@ -47,6 +47,8 @@ class _Fixture {
   final int gross;
   final calls = <http.Request>[];
   Map<String, dynamic>? capOverride;
+  bool capabilityMissing = false;
+  bool capabilityNetworkFailure = false;
   void Function(Map<String, dynamic>)? changeRow;
   void Function(Map<String, dynamic>)? changeDetails;
   late SupabaseClient client;
@@ -175,6 +177,11 @@ class _Fixture {
                 ];
         } else if (path ==
             '/rest/v1/rpc/expense_payment_direction_capability') {
+          if (capabilityNetworkFailure) throw http.ClientException('synthetic offline');
+          if (capabilityMissing) {
+            return http.Response(jsonEncode({'code': 'PGRST202', 'message': 'function unavailable'}), 404,
+              headers: {'content-type': 'application/json'}, request: request);
+          }
           body = capability();
         } else if (path == '/rest/v1/rpc/read_expense_document') {
           body = details();
@@ -283,6 +290,29 @@ void main() {
       }
     },
   );
+  test('opted-in screen reader preserves legacy amounts when capability is absent or disabled', () async {
+    for (final missing in [true, false]) {
+      final fixture = _Fixture(v2: false);
+      fixture.capabilityMissing = missing;
+      if (!missing) fixture.capOverride = fixture.capability()..['read_enabled'] = false;
+      await fixture.start();
+      try {
+        final record = await fixture.load();
+        expect(record.expenseLineDeltaYen, 1000);
+        expect(record.netAmount, 1000);
+        expect(fixture.calls.where((r) => r.url.path.endsWith('/expense_payment_direction_capability')), hasLength(1));
+        expect(fixture.calls.where((r) => r.url.path.endsWith('/read_expense_document')), isEmpty);
+        expect(fixture.calls.where((r) => !r.url.path.contains('/rpc/')).every((r) => r.method == 'GET'), isTrue);
+      } finally { await fixture.client.dispose(); }
+    }
+  });
+  test('capability network failure stops the opted-in reader before returning legacy data', () async {
+    final fixture = _Fixture(v2: false)..capabilityNetworkFailure = true;
+    await fixture.start();
+    addTearDown(fixture.client.dispose);
+    await expectLater(fixture.load(), throwsA(isA<http.ClientException>()));
+    expect(fixture.calls.where((r) => r.url.path.endsWith('/payment_certificates')), isEmpty);
+  });
   test('default OFF refuses v2 rather than treating it as legacy', () async {
     final fixture = _Fixture();
     await fixture.start();

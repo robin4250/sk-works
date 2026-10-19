@@ -1,0 +1,38 @@
+name: Payment direction screen consumer
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payment_certificate*.dart'
+      - 'lib/features/expenses/expense_detail_pdf.dart'
+      - 'test/payment_expense_direction_consumer_test.dart'
+      - 'tool/verify_payment_expense_direction_consumer_pdfs.py'
+      - '.github/workflows/payment-direction-consumer.yml'
+permissions:
+  contents: read
+jobs:
+  consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/payroll/payment_certificates_page.dart test/payment_expense_direction_consumer_test.dart
+      - run: flutter test test/payment_expense_direction_consumer_test.dart test/expense_cost_document_test.dart
+      - name: Inspect actual shared-pipeline PDFs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y poppler-utils
+          python3 tool/verify_payment_expense_direction_consumer_pdfs.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: payment-direction-consumer-proof
+          path: build/payment-direction-consumer-proof/*
+          if-no-files-found: ignore
