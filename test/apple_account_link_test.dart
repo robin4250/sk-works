@@ -60,20 +60,20 @@ void main() {
     authorizeUrl='https://appleid.apple.com/auth/authorize?synthetic=true';
     network=MockClient((request) async {
       paths.add('${request.method} ${request.url.path}');
-      if (request.url.path.endsWith('/logout')) return http.Response('{}',200,headers:{'content-type':'application/json'});
+      if (request.url.path.endsWith('/logout')) return http.Response('{}',200,headers:{'content-type':'application/json'},request:request);
       if (request.url.path.endsWith('/settings')) {
-        return http.Response(jsonEncode({'external':{'apple':enabled}}),200,headers:{'content-type':'application/json'});
+        return http.Response(jsonEncode({'external':{'apple':enabled}}),200,headers:{'content-type':'application/json'},request:request);
       }
       if (request.url.path.endsWith('/user/identities/authorize')) {
         gotAuthorize?.complete();
         await holdAuthorize?.future;
-        return http.Response(jsonEncode({'url':authorizeUrl}),200,headers:{'content-type':'application/json'});
+        return http.Response(jsonEncode({'url':authorizeUrl}),200,headers:{'content-type':'application/json'},request:request);
       }
       if (request.url.path.endsWith('/user')) {
-        return http.Response(jsonEncode(user(responseActor,apple:apple,google:google)),200,headers:{'content-type':'application/json'});
+        return http.Response(jsonEncode(user(responseActor,apple:apple,google:google)),200,headers:{'content-type':'application/json'},request:request);
       }
       if (request.url.path.endsWith('/company_members')) {
-        return http.Response(jsonEncode([{'company_id':'synthetic-company','role':role}]),200,headers:{'content-type':'application/json'});
+        return http.Response(jsonEncode([{'company_id':'synthetic-company','role':role}]),200,headers:{'content-type':'application/json'},request:request);
       }
       throw StateError('Unexpected HTTP request');
     });
