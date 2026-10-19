@@ -54,10 +54,12 @@ class _ResidentTaxSectionState extends State<ResidentTaxSection> {
   void dispose() { _amount.dispose(); _start.dispose(); super.dispose(); }
 
   void _notifyEditing() {
+    if (widget.onEditingChanged == null) return;
     // Loading can begin while the parent is building a new month.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.onEditingChanged?.call(
-        _dirty || _busy || _pendingSave != null);
+      if (mounted) {
+        widget.onEditingChanged?.call(_dirty || _busy || _pendingSave != null);
+      }
     });
   }
 
