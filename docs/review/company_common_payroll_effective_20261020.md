@@ -1,0 +1,23 @@
+# 共通手当の適用月履歴と限定再計算
+
+依存する前段は PR #1276 head `09d463369fe8ce372279d3b68c48f3f16e58eade` の給与計算接続・共通時間入力。前段を置換せず、次の review-only SQL 部品を追加する。本番適用・activation 登録・実従業員への一括更新は行わない。
+
+会社の共通手当編集値を給与が常時直接参照すると、以前の給与下書きも現在の単価に変わってしまう。本候補は給与形態と適用開始月を指定して、現在の stable ID・名称・支給/控除・単位・単価を immutable publication へ保存する。通常の共通手当編集だけでは、既に適用月を登録した給与条件は変わらない。従来3枠や個別単価の別マスターは作らない。
+
+`read_company_common_payroll_publications` は現在の共通設定version/source、timeline version、直近100件の適用月メタデータを返す。`publish_company_common_payroll` は既存の会社共通設定の認可・session確認・writer lockを再利用し、共通設定とtimelineの両方をCAS照合する。request IDはactorと完全payloadに束縛し、再送時は保存済receiptを返す。publicationとreceiptのUPDATE/DELETEは拒否する。
+
+再計算対象は、適用開始月以降から次の適用開始月より前までにある、該当給与形態の自動下書き。現在月を新規適用するときは、対象個別設定を持つ従業員の現在月も正規生成経路へ渡す。会社→従業員→月の既存scope lockを使い、`refresh_automatic_payroll` と `sync_payroll_attendance_detail` を実行する。確定済み・手入力給与は除外する。新規の過去月適用は拒否する。過去データの訂正をこのAPIへ迂回させない。
+
+適用対象会社でその給与形態の該当月履歴がない場合、計算をblockedにして画面で明示する。履歴のない給与へ現在単価を推定適用しない。時間数は前段と同じ明示数量を使い、未入力はblocked。確定済み・手入力明細については共通項目の表示も保存済み明細内訳から読み、新しい会社条件へすり替えない。
+
+## 変更面
+
+新表2件（publicationとreceipt）、index、RLSと直接clientアクセス禁止、immutable trigger2件、private helper3件、公開invoker RPC2件。前段のresolver/augmentation/common_stateの3関数をguard付きで置換する。既存の認証設定・所属・role・provider・税率・個別給料設定・旧共通枠は更新しない。helperの依存全体が本番と一致することや、本番backup/restoreが完了したことをこのsource guardだけで証明しない。
+
+## 検証と限界
+
+原本identity lifecycle・共通設定保存候補を実給与fixtureへ組み合わせて検証する。合成データに対し、既存共通保存API→適用月登録→複数従業員の実給与再計算、翌月境界の保持、同request再送時のrevision不変、共通設定だけを編集しても過去の公開条件が変わらないこと、source conflict・viewer拒否、確定後の金額/表示保持、immutable履歴、末尾receipt失敗時の履歴と再計算の全rollbackを確認する。
+
+PostgreSQL 17の検証には実company rowロック待機中に旧共通保存APIが設定versionを進め、待機後のpublisherがsource conflictとなって履歴を追加しない競合試験を含める。Auth/JWTは合成で、本番の実Auth・実バックアップ復元・実機利用・PDF描画の証明ではない。
+
+本番では既存の共通/identity基盤も未導入。保護・復元・互換性条件と適用開始月のレビューは引き続き必要。本候補には共通編集画面で適用月を選んで登録するUIはまだ含めない。個別金額override、過去月の承認付き訂正、保存済みpublicationを含めた復旧手順は後続工程。新履歴を捨てるDROP/CASCADEによる「巻戻し」は行わない。

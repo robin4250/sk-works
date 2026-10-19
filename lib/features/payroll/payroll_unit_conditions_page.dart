@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 import 'payroll_unit_conditions_repository.dart';
 import 'payroll_unit_item_editor.dart';
+import 'payroll_company_common_card.dart';
 
 class PayrollUnitConditionsPage extends StatefulWidget {
   const PayrollUnitConditionsPage({
@@ -154,6 +155,35 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                     ],
                   ),
                 ),
+                if (_value!.companyCommonHistoryMissing)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(tr('社内共通手当の適用月が未登録のため、給与計算を保留しています。社内共通手当の適用月を確認してください。')),
+                  ),
+                if (_value!.companyCommonItems.isNotEmpty)
+                  PayrollCompanyCommonCard(
+                    key: ValueKey('${widget.companyId}/${widget.workerId}/${_value!.month}/${_value!.companyCommonSourceJson}'),
+                    items: _value!.companyCommonItems,
+                    frozen: _value!.companyCommonFrozen,
+                    canEdit: _value!.canEdit && !_saving,
+                    section: widget.section, unit: widget.unit,
+                    onReload: _load,
+                    onSave: (hours) async {
+                      final generation = _generation;
+                      final company = widget.companyId;
+                      final worker = widget.workerId;
+                      final current = _value!;
+                      setState(() => _saving = true);
+                      try {
+                        final saved = await widget.repository.saveCommonHours(company, worker, current, hours);
+                        if (!mounted || !context.mounted || generation != _generation || widget.companyId != company || widget.workerId != worker) return;
+                        setState(() => _value = saved);
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('共通手当の時間数を保存し、対象月の給与を再計算しました'))));
+                      } finally {
+                        if (mounted && generation == _generation) setState(() => _saving = false);
+                      }
+                    },
+                  ),
                 Flexible(
                   fit: widget.embedded ? FlexFit.loose : FlexFit.tight,
                   child: PayrollUnitItemEditor(
@@ -167,7 +197,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                       '${widget.companyId}/${widget.workerId}/${_value!.month}/${_value!.version}',
                     ),
                     initialItems: _value!.items,
-                    canEdit: _value!.canEdit,
+                    canEdit: _value!.canEdit && !_saving,
                     enableQuantitySources: true,
                     showDailyReportOption: false,
                     onRegister: (items) async {
@@ -208,7 +238,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
           item.section == widget.section && item.unit == PayrollItemUnit.month) ?? false;
       return Offstage(
         offstage: widget.unit == PayrollItemUnit.month && !_loading &&
-            _error == null && !hasMonthlyItems,
+            _error == null && _value?.companyCommonHistoryMissing != true && !hasMonthlyItems && !(_value?.companyCommonItems.any((item) => item['unit'] == 'month' && item['section'] == widget.section?.name) ?? false),
         child: body,
       );
     }
@@ -225,7 +255,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                 content: SingleChildScrollView(
                   child: Text(
                     tr(
-                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。選択した月から条件が有効になり、従来の直接金額は別に保持されます。未入力の時間数は計算保留になります。確定済み給与は変更しません。',
+                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。選択した月から条件が有効になり、従来の直接金額は別に保持されます。未入力の時間数は計算保留になります。確定済み給与は変更しません。社内共通手当は会社の設定を自動参照します。共通の時間単位手当は対象月の時間数を入力して保存すると給与を再計算します。会社で適用開始月を設定する前は共通項目を給与に加えません。適用対象の会社で適用月の履歴が未登録の場合は給与計算を保留します。会社の編集値と、適用月を登録した給与用の条件は別に管理されます。',
                     ),
                   ),
                 ),
@@ -244,3 +274,4 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
     );
   }
 }
+

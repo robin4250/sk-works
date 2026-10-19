@@ -1,0 +1,63 @@
+name: Company common payroll bridge
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/company_common_payroll_bridge_20261020.sql.review-only'
+      - 'tool/verify_company_common_payroll_bridge.mjs'
+      - 'tool/payroll_scope_fixture_setup.mjs'
+      - 'tool/staged_company_common_allowances.sql.review-only'
+      - 'supabase/migrations/20261013175452_payroll_unit_conditions.sql'
+      - 'lib/features/payroll/payroll_company_common_card.dart'
+      - 'lib/features/payroll/payroll_unit_conditions_repository.dart'
+      - 'lib/features/payroll/payroll_unit_conditions_page.dart'
+      - 'test/payroll_company_common_test.dart'
+      - '.github/workflows/company-common-payroll-bridge.yml'
+permissions:
+  contents: read
+jobs:
+  sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        runtime: [pglite, postgres]
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_common_bridge_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/sko-common-bridge --no-save --ignore-scripts @electric-sql/pglite@0.3.14 pg@8.16.3
+      - if: matrix.runtime == 'pglite'
+        run: node tool/verify_company_common_payroll_bridge.mjs /tmp/sko-common-bridge/node_modules/@electric-sql/pglite/dist/index.js
+      - if: matrix.runtime == 'postgres'
+        run: node tool/verify_company_common_payroll_bridge.mjs /tmp/sko-common-bridge/node_modules/pg/lib/index.js postgres
+        env:
+          SKO_COMMON_BRIDGE_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_common_bridge_fixture
+
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: timeout 240s flutter test --reporter expanded --timeout 60s test/payroll_company_common_test.dart test/payroll_unit_conditions_repository_test.dart test/payroll_unit_conditions_editor_test.dart test/individual_payroll_fixed_footer_test.dart
