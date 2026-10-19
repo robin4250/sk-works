@@ -49,7 +49,6 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
   Map<String, dynamic>? _searchResult;
   int _workspaceLoadEpoch = 0;
   bool _loading = true;
-  bool _sessionInvalidated = false;
   bool _busy = false;
   String? _error;
 
