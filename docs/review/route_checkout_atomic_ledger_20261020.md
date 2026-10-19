@@ -42,3 +42,15 @@ Existing historical delayed captures stay blocked without a reviewed receipt.
 Do not infer or mass-backfill receipt origin from IDs, times, shifts or this
 candidate. No production deployment, attendance quantity, invoice recalculation,
 feature gate, Auth change or existing signature modification is performed here.
+
+## Creation-default and service-role protection
+
+The candidate explicitly revokes table/function privileges from `service_role` as
+well as PUBLIC, anon and authenticated. A final ACL guard rejects every non-owner
+grantee on the ledger, new append-only trigger function, reader and checkout
+trigger function; unknown creation-default grants abort the entire transaction.
+The verifier seeds table/function default grants for service_role and separately
+for an unexpected role. Unknown table and unknown function grants each cause a
+clean rollback. With only known service defaults seeded, installation succeeds,
+service_role retains BYPASSRLS but has no INSERT privilege, and a direct VALUES
+INSERT is denied at the table privilege boundary. PostgreSQL 17 runs this test.

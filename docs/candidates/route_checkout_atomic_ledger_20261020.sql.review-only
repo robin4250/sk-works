@@ -16,12 +16,12 @@ create table private.route_checkout_atomic_finishes(
  recorded_at timestamptz not null default clock_timestamp(),
  check(checkout_id=end_capture_id),check(attempted_at<=confirmed_at));
 alter table private.route_checkout_atomic_finishes enable row level security;
-revoke all on private.route_checkout_atomic_finishes from public,anon,authenticated;
+revoke all on private.route_checkout_atomic_finishes from public,anon,authenticated,service_role;
 -- No FK cascade: original receipts remain audit evidence after managed deletion.
 create function private.reject_atomic_finish_receipt_change() returns trigger
  language plpgsql security invoker set search_path='' as $fn$
 begin raise exception 'Atomic finish receipt is append-only' using errcode='42501';end $fn$;
-revoke all on function private.reject_atomic_finish_receipt_change() from public,anon,authenticated;
+revoke all on function private.reject_atomic_finish_receipt_change() from public,anon,authenticated,service_role;
 create trigger atomic_finish_receipt_immutable before update or delete
  on private.route_checkout_atomic_finishes for each row execute function private.reject_atomic_finish_receipt_change();
 
@@ -85,6 +85,8 @@ begin
  end if;
  return new;
 end $function$;
+
+revoke all on function private.route_journey_visit_before_clock_out() from public,anon,authenticated,service_role;
 
 create or replace function private.route_signed_checkout_sources(
   p_company uuid, p_first date, p_last date
@@ -211,4 +213,20 @@ revoke all on function private.route_signed_checkout_sources(uuid,date,date)
 
 
 
+-- Creation defaults must not silently grant another role direct access.
+do $acl_guard$
+declare obj record;
+begin
+ for obj in select c.oid,c.relowner owner,c.relacl acl,'r'::"char" kind
+  from pg_class c where c.oid='private.route_checkout_atomic_finishes'::regclass
+  union all select p.oid,p.proowner,p.proacl,'f'::"char" from pg_proc p
+  where p.oid in('private.reject_atomic_finish_receipt_change()'::regprocedure,
+    'private.route_signed_checkout_sources(uuid,date,date)'::regprocedure,
+    'private.route_journey_visit_before_clock_out()'::regprocedure)
+ loop
+  if exists(select 1 from aclexplode(coalesce(obj.acl,acldefault(obj.kind,obj.owner))) x where x.grantee<>obj.owner) then
+   raise exception 'Unexpected non-owner ACL on atomic receipt object %; inspect creation defaults and grants',obj.oid;
+  end if;
+ end loop;
+end $acl_guard$;
 commit;
