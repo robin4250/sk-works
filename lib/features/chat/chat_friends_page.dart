@@ -34,7 +34,7 @@ class ChatFriendsPage extends StatefulWidget {
   State<ChatFriendsPage> createState() => _ChatFriendsPageState();
 }
 
-class _ChatFriendsPageState extends State<ChatFriendsPage> {
+class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingObserver {
   late final _repository =
       widget.repository ?? ChatCloudRepository.maybeCreate();
   final _search = TextEditingController();
@@ -64,6 +64,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _actor = _repository?.currentUserId;
     _actorSubscription = _repository?.watchActorChanges().listen((actor) {
       if (!mounted || actor == _actor) return;
@@ -95,10 +96,30 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _actorSubscription?.cancel();
     _profileActorEpoch.dispose();
     _search.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_busy) {
+      _refresh();
+    }
+  }
+
+  Future<void> _refresh() async {
+    final repository = _repository;
+    // A screen invalidated by an account change must be opened again; do not
+    // revive another account's rows through resume or the refresh button.
+    if (!mounted || repository == null || _sessionInvalidated ||
+        repository.currentUserId != _actor || _loading || _busy) {
+      return;
+    }
+    setState(() => _loading = true);
+    await _load();
   }
 
   Future<void> _load() async {
@@ -445,6 +466,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       builder: (context) => AlertDialog(
         title: const Text('友達一覧の使い方'),
         content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text(
+          '右上の更新ボタンで申請・承認の最新状態を取得できます。アプリへ戻った時も自動更新します。\n\n'
           '登録済み友達の氏名・公開会社名・SKO IDを検索できます。検索を消すと一覧へ戻ります。\n\n'
           '友達を押すと公開名とSKO IDを確認し、「チャットを始める」で既存の個別チャットを開きます。写真・所属会社は承認済み友達の公開情報だけを表示します。写真は短時間の閲覧URLを使用し、取得できない場合は標準アイコンになります。\n\n'
           '左から右へスワイプするとピン留め／解除できます。この端末のログイン中ユーザーごとに保存し、友達や会話は削除しません。並びはピン留め、既存の個別チャット相手、その他の登録順です。登録日時が無い行は取得順を保ちます。\n\n'
@@ -491,7 +513,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
             )
           : null,
       appBar: AppBar(
-        actions: [IconButton(tooltip: '使い方', onPressed: _showHelp, icon: const Icon(Icons.help_outline))],
+        actions: [IconButton(tooltip: '友達一覧を更新', onPressed: _loading || _busy ? null : _refresh, icon: const Icon(Icons.refresh)), IconButton(tooltip: '使い方', onPressed: _showHelp, icon: const Icon(Icons.help_outline))],
         title: Text(
           widget.selectForChat
               ? ChatFriendsStrings.tr('友達一覧')
