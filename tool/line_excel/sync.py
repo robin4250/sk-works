@@ -37,14 +37,17 @@ class Client:
         if self.transport:
             return self.transport(path, params, body)
         url = self.base + path + ('?' + urllib.parse.urlencode(params) if params else '')
-        req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
-                                     headers={'apikey': self.key, 'Authorization': 'Bearer ' + self.token,
-                                              'Content-Type': 'application/json'})
+        headers = {'apikey': self.key, 'Content-Type': 'application/json'}
+        if path != '/auth/v1/token':
+            headers['Authorization'] = 'Bearer ' + self.token
+        req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=headers)
         # Redirects must never forward credentials to a different endpoint.
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, *args, **kwargs):
                 return None
         with urllib.request.build_opener(NoRedirect).open(req, timeout=30) as response:
+            if response.status == 204:
+                return None
             return json.load(response)
 
     def actor(self):
@@ -94,8 +97,23 @@ def main():
     parser.add_argument('--from-date', default='2026-10-16')
     parser.add_argument('--to-date', default=dt.datetime.now(dt.timezone(dt.timedelta(hours=9))).date().isoformat())
     parser.add_argument('--output', default='原文')
+    parser.add_argument('--login', action='store_true', help='この端末で本人ログイン（認証情報は保存しない）')
     args = parser.parse_args()
-    client = Client(args.url, os.getenv('SKO_ANON_KEY'), os.getenv('SKO_ACCESS_TOKEN'))
+    session = None
+    if args.login:
+        from auth import interactive_login
+        session = interactive_login(args.url, os.getenv('SKO_ANON_KEY'))
+        client = session.client()
+    else:
+        client = Client(args.url, os.getenv('SKO_ANON_KEY'), os.getenv('SKO_ACCESS_TOKEN'))
+    try:
+        return perform_sync(client, args)
+    finally:
+        if session is not None:
+            session.close()
+
+
+def perform_sync(client, args):
     # A selected ID can have a different SKO display name from its LINE source.
     # Still resolve it through the user-scoped RPC, never through an admin read.
     groups = client.groups('' if args.group_id else args.group)

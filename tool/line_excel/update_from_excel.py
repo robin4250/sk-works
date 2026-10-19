@@ -1,5 +1,7 @@
 """Read xlsx controls with stdlib; fetch originals only, never edit the xlsx."""
 import datetime as dt
+import json
+import os
 from pathlib import Path
 import posixpath
 import subprocess
@@ -60,7 +62,13 @@ def main():
                '--output', str(root / '原文')]
     if values.get('B7', '').strip():
         command += ['--group-id', values['B7'].strip()]
-    return subprocess.call(command, cwd=root)
+    environment = dict(os.environ)
+    config_path = root / '接続設定.json'
+    if not environment.get('SKO_ANON_KEY') and config_path.exists():
+        environment['SKO_ANON_KEY'] = json.loads(config_path.read_text(encoding='utf-8'))['publishable_key']
+    if not environment.get('SKO_ACCESS_TOKEN'):
+        command.append('--login')
+    return subprocess.call(command, cwd=root, env=environment)
 
 
 if __name__ == '__main__':
