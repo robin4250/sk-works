@@ -76,7 +76,7 @@ class AnnualFixture implements ResidentTaxAnnualRepository {
   }
 }
 
-Future<SupabaseClient> annualAuth(WidgetTester t) async {
+Future<SupabaseClient> annualAuth(WidgetTester t) async => (await t.runAsync(() async {
   final expires = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
   final client = SupabaseClient('https://fixture.invalid', 'fixture-public',
     authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: MockClient((req) async {
@@ -93,9 +93,9 @@ Future<SupabaseClient> annualAuth(WidgetTester t) async {
     }));
   addTearDown(() => t.runAsync(client.dispose));
   debugPrint('annual auth: initial sign-in starting');
-  await t.runAsync(() => client.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture'));
+  await client.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture');
   debugPrint('annual auth: initial sign-in ready'); return client;
-}
+}))!;
 Future<void> openAnnual(WidgetTester t, AnnualFixture repository, {double scale = 1, SupabaseClient? client}) async {
   t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   final auth = client ?? await annualAuth(t);
