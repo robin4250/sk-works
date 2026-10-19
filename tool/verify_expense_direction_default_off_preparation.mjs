@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {setupExpenseCostFixture} from './fixtures/expense_cost_fixture.mjs';
 import {captureCodeCheckpoint,buildCodeRestore} from './expense_direction_code_checkpoint.mjs';
-import {buildDefaultOffDeployment,defaultOffBusinessHashSql} from './expense_direction_default_off_preparation.mjs';
+import {buildDefaultOffDeployment,buildDefaultOffAtomicDeployment,defaultOffBusinessHashSql} from './expense_direction_default_off_preparation.mjs';
 import {validatePayrollScopeFixtureUrl} from './payroll_scope_pg17_database_guard.mjs';
 const {PGlite}=await import(process.argv[2]);const db=new PGlite();
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
@@ -27,17 +27,20 @@ try {
  const original=await business();assert.equal(original.payments.length,2);assert.equal(original.consumptions.length,1);
  assert.throws(()=>buildDefaultOffDeployment(before,candidate+'\n'),/independently reviewed/);
  assert.throws(()=>buildDefaultOffDeployment(before,candidate),/business checkpoint hash required/);
- const sql=buildDefaultOffDeployment(before,candidate,expectedBusinessHash);
+ for(const atomic of [false,true]){
+ const build=atomic?buildDefaultOffAtomicDeployment:buildDefaultOffDeployment;
+ const sql=build(before,candidate,expectedBusinessHash);
+ if(atomic){assert.match(sql,/DO \$sko_atomic_deployment\$/);assert.doesNotMatch(sql,/^\s*(BEGIN|COMMIT|ROLLBACK)\s*;/im);}
  const ensureOriginal=async()=>{assert.deepEqual(await captureCodeCheckpoint(db),before);assert.deepEqual(await business(),original);assert.deepEqual(await defaults(),originalDefaults);assert.equal((await db.query("select to_regclass('pg_temp.sko_expense_off_before') value")).rows[0].value,null);};
  // The old candidate leaked public-schema default service_role EXECUTE.
  const missingServiceRevoke=sql.replace('from public,anon,service_role;','from public,anon;');
  assert.notEqual(missingServiceRevoke,sql);
- await assert.rejects(db.exec(missingServiceRevoke),/privilege\/config/);await db.exec('ROLLBACK');await ensureOriginal();
+ await assert.rejects(db.exec(missingServiceRevoke),/privilege\/config/);if(!atomic)await db.exec('ROLLBACK');await ensureOriginal();
  async function rejectInjected(injection,stage,pattern){
-  const boundary=stage==='pre'?'DO $sko_preflight$':'DO $sko_postflight$';
+  const boundary=stage==='pre'?'DO $sko_preflight$':stage==='limits'?'DO $sko_limits$':'DO $sko_postflight$';
   const injected=sql.replace(boundary,()=>injection+';\n'+boundary);assert.notEqual(injected,sql);
   let failure;try{await db.exec(injected);}catch(error){failure=error;}
-  await db.exec('ROLLBACK');
+  if(!atomic)await db.exec('ROLLBACK');
   assert(failure&&pattern.test(failure.message),'expected '+pattern+'; got '+failure?.message);await ensureOriginal();
  }
  await rejectInjected("update payment_certificates set snapshot=snapshot||'{\"expense_cost_basis\":{}}'::jsonb where period_start='2026-07-01'",'pre',/existing v2\/basis/);
@@ -60,12 +63,14 @@ try {
   await peer.connect();let failure;
   try{await peer.query('BEGIN;LOCK TABLE private.expense_claims IN ROW EXCLUSIVE MODE');
    try{await db.exec(sql);}catch(error){failure=error;}
-   await db.exec('ROLLBACK');assert.equal(failure?.code,'55P03','NOWAIT refuses an active writer without deadlock');
+   if(!atomic)await db.exec('ROLLBACK');assert.equal(failure?.code,'55P03','NOWAIT refuses an active writer without deadlock');
   }finally{await peer.query('ROLLBACK');await peer.end();}
   await ensureOriginal();console.log('PASS PG17 second connection: NOWAIT active-writer refusal leaves original code and data');
  }
  await rejectInjected('alter default privileges in schema public grant execute on functions to unexpected_expense_grantee','pre',/privilege\/config/);
- await assert.rejects(db.exec(buildDefaultOffDeployment(before,candidate,'0'.repeat(32))),/business checkpoint drift/);await db.exec('ROLLBACK');await ensureOriginal();
+ await assert.rejects(db.exec(build(before,candidate,'0'.repeat(32))),/business checkpoint drift/);if(!atomic)await db.exec('ROLLBACK');await ensureOriginal();
+ await rejectInjected(`insert into private.expense_document_snapshots(kind,document_id,revision,company_id,subject_id,month,claims) select 'paymentCertificate',gen_random_uuid(),1,'${id(1)}','${id(5)}','2026-06-01','[]'::jsonb from generate_series(1,10001)`,'limits',/row limit exceeded/);
+ await rejectInjected(`insert into private.expense_document_snapshots(kind,document_id,revision,company_id,subject_id,month,claims) values('paymentCertificate',gen_random_uuid(),1,'${id(1)}','${id(5)}','2026-06-01',jsonb_build_array(jsonb_build_object('description',repeat('x',16777217))))`,'limits',/byte limit exceeded/);
  await db.exec(sql);const after=await captureCodeCheckpoint(db);
  assert.equal(after.functions.length,8);assert.equal(after.triggers.length,before.triggers.length+1);assert.deepEqual(await business(),original);
  assert.equal((await db.query("select private.expense_cost_direction_v2_enabled('"+id(1)+"') value")).rows[0].value,false);
@@ -73,7 +78,8 @@ try {
  await db.exec("select private.refresh_automatic_payment_certificate('"+id(1)+"','"+id(5)+"','2026-07-01')");assert.deepEqual(await business(),original);
  const restore=buildCodeRestore(before,after);await db.exec(restore);await ensureOriginal();
  await db.exec('alter function private.read_expense_document(text,uuid) volatile');const drift=await captureCodeCheckpoint(db);
- await assert.rejects(db.exec(sql),/expense checkpoint drift/);await db.exec('ROLLBACK');assert.deepEqual(await captureCodeCheckpoint(db),drift);assert.deepEqual(await business(),original);
+ await assert.rejects(db.exec(sql),/expense checkpoint drift/);if(!atomic)await db.exec('ROLLBACK');assert.deepEqual(await captureCodeCheckpoint(db),drift);assert.deepEqual(await business(),original);
  await db.exec(before.functions.find(f=>f.signature==='private.read_expense_document(text,uuid)').definition);await ensureOriginal();
- console.log('PASS default-OFF preparation: fixed candidate SHA, complete metadata, exact new ACLs, no financial data changes, v1 nonzero deduction preservation, injected pre/postflight rollback and code-only restore');
+ console.log('PASS '+(atomic?'single DO atomic':'BEGIN/COMMIT')+' default-OFF preparation: fixed candidate SHA, complete metadata, exact new ACLs, no financial data changes, v1 nonzero deduction preservation, injected pre/postflight rollback and code-only restore');
+ }
 } finally {await db.close();}

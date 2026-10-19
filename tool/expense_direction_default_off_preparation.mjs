@@ -18,6 +18,9 @@ const quote=(text,tag)=>{
   assert(!text.includes(`$${tag}$`),'SQL delimiter collision');
   return `$${tag}$${text}$${tag}$`;
 };
+const businessTables=['public.payment_certificates','private.expense_claims','private.expense_settlement_choices','private.expense_amount_consumptions','private.expense_document_snapshots'];
+const boundedRowCounts=businessTables.map(t=>`select count(*) n from (select 1 from ${t} limit 10001) limited`).join(' union all\n');
+const businessByteCounts=businessTables.map(t=>`select coalesce(sum(octet_length(to_jsonb(x)::text)),0) n from ${t} x`).join(' union all\n');
 // Hash values stay in the database; generated SQL never embeds business rows.
 export const defaultOffBusinessHashSql=`select md5(jsonb_build_object(
  'payments',(select coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text),'[]') from public.payment_certificates x),
@@ -27,7 +30,7 @@ export const defaultOffBusinessHashSql=`select md5(jsonb_build_object(
  'snapshots',(select coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text),'[]') from private.expense_document_snapshots x)
 )::text) value`;
 
-export function buildDefaultOffDeployment(before,candidate,expectedBusinessHash){
+function buildDefaultOffCore(before,candidate,expectedBusinessHash){
   assert.equal(createHash('sha256').update(candidate).digest('hex'),reviewedSha256,'candidate is not the independently reviewed OFF-compatible source');
   assert.equal(typeof expectedBusinessHash,'string','business checkpoint hash required');
   assert.match(expectedBusinessHash,/^[a-f0-9]{32}$/,'invalid business checkpoint hash');
@@ -37,12 +40,19 @@ export function buildDefaultOffDeployment(before,candidate,expectedBusinessHash)
   const existingSignatures=quote(JSON.stringify(oldFunctions),'sko_expense_old');
   const newSignatures=quote(JSON.stringify(newFunctions),'sko_expense_new');
   const expectedSources=quote(JSON.stringify(reviewedSourceMd5),'sko_expense_sources');
-  return `-- REVIEW ONLY. Requires a dedicated connection: ROLLBACK on any error.
--- OFF preserves the generator path; it does not prohibit all direct DB writes.
-BEGIN;
-SET LOCAL lock_timeout='3s';
-SET LOCAL statement_timeout='30s';
-LOCK TABLE public.payment_certificates,private.expense_claims,private.expense_settlement_choices,private.expense_amount_consumptions,private.expense_document_snapshots IN SHARE ROW EXCLUSIVE MODE NOWAIT;
+  return `LOCK TABLE public.payment_certificates,private.expense_claims,private.expense_settlement_choices,private.expense_amount_consumptions,private.expense_document_snapshots IN SHARE ROW EXCLUSIVE MODE NOWAIT;
+DO $sko_limits$
+DECLARE rows_count bigint; bytes_count bigint;
+BEGIN
+ SELECT sum(n) INTO rows_count FROM (
+ ${boundedRowCounts}
+ ) bounded;
+ IF rows_count>10000 THEN RAISE EXCEPTION 'expense preparation row limit exceeded'; END IF;
+ SELECT sum(n) INTO bytes_count FROM (
+ ${businessByteCounts}
+ ) bounded;
+ IF bytes_count>16777216 THEN RAISE EXCEPTION 'expense preparation byte limit exceeded'; END IF;
+END $sko_limits$;
 CREATE TEMP TABLE sko_expense_off_before ON COMMIT DROP AS
  SELECT (SELECT value FROM (${catalogSql}) catalog) checkpoint,
  (${defaultOffBusinessHashSql}) business_hash;
@@ -100,6 +110,19 @@ BEGIN
   WHERE (SELECT value->>'source_md5' FROM jsonb_array_elements(actual->'functions') WHERE value->>'signature'=expected.key) IS DISTINCT FROM expected.value)
   THEN RAISE EXCEPTION 'deployed function source differs from reviewed candidate'; END IF;
  IF (SELECT business_hash FROM sko_expense_off_before) IS DISTINCT FROM (${defaultOffBusinessHashSql}) THEN RAISE EXCEPTION 'business data changed'; END IF;
-END $sko_postflight$;
-COMMIT;`;
+END $sko_postflight$;`;
+}
+
+// Retained transaction form: requires the same connection to ROLLBACK on error.
+export function buildDefaultOffDeployment(...args){
+ const core=buildDefaultOffCore(...args);
+ return `-- REVIEW ONLY. Dedicated connection required.\nBEGIN;\nSET LOCAL lock_timeout='3s';\nSET LOCAL statement_timeout='30s';\n${core}\nCOMMIT;`;
+}
+
+// One top-level statement; PostgreSQL rolls back failed DDL and data atomically.
+export function buildDefaultOffAtomicDeployment(...args){
+ const core=buildDefaultOffCore(...args);
+ assert(!/^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|START TRANSACTION)\s*;/im.test(core),'transaction control is forbidden inside atomic payload');
+ const payload=quote(core,'sko_atomic_payload');
+ return `-- REVIEW ONLY. A caller-side statement timeout is still required.\nDO $sko_atomic_deployment$\nBEGIN\n PERFORM set_config('lock_timeout','3s',true);\n EXECUTE ${payload};\nEND $sko_atomic_deployment$;`;
 }
