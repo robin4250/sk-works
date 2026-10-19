@@ -1,0 +1,131 @@
+-- Review-only annual confirmation. No seed, activation or production application.
+do $$begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('resident_tax_private.save_state(uuid,uuid,bigint,text,text,jsonb,boolean)') and md5(prosrc)='0607111ec8cc09f32e6173df60ec4324' and prosecdef and proconfig=array['search_path=""']) or
+ not exists(select 1 from pg_proc where oid=to_regprocedure('resident_tax_private.resolve(uuid,uuid,date)') and md5(prosrc)='9eee6842f1749d3133e5d6306de37f27' and prosecdef and proconfig=array['search_path=""']) or
+ not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_scope_private.lock_scopes(jsonb,boolean)') and md5(prosrc)='1bce36e2e59eeb8e0144c5743b8ea800' and prosecdef and proconfig=array['search_path=""']) then
+ raise exception 'annual resident tax prerequisite differs';end if;
+end$$;
+create schema resident_tax_annual_private;
+revoke all on schema resident_tax_annual_private from public,anon,authenticated,service_role;
+grant usage on schema resident_tax_annual_private to authenticated;
+create table resident_tax_annual_private.confirmations(
+ company_id uuid not null references public.companies(id) on delete cascade,
+ fiscal_year integer not null check(fiscal_year between 1900 and 9998),
+ worker_id uuid not null references public.workers(id) on delete cascade,
+ source jsonb not null,cohort_hash text not null,excluded boolean not null,reason text,actor_id uuid not null,request_id uuid not null,confirmed_at timestamptz not null,
+ primary key(company_id,fiscal_year,worker_id),check(not excluded or nullif(trim(reason),'') is not null)
+);
+create table resident_tax_annual_private.batches(
+ company_id uuid not null references public.companies(id) on delete cascade,
+ fiscal_year integer not null check(fiscal_year between 1900 and 9998),request_id uuid not null,actor_id uuid not null,
+ payload jsonb not null,result jsonb not null,cohort_hash text not null,saved_at timestamptz not null,
+ primary key(company_id,fiscal_year,request_id)
+);
+alter table resident_tax_annual_private.confirmations enable row level security;
+alter table resident_tax_annual_private.batches enable row level security;
+revoke all on all tables in schema resident_tax_annual_private from public,anon,authenticated,service_role;
+create function resident_tax_annual_private.validate_year(y integer) returns void language plpgsql immutable set search_path='' as $$begin
+ if y is null or y not between 1900 and 9998 then raise exception 'invalid resident tax fiscal year' using errcode='22023';end if;
+end$$;
+create function resident_tax_annual_private.cohort(cid uuid) returns text language sql stable security definer set search_path='' as $$
+ select md5(coalesce(jsonb_agg(jsonb_build_object('id',w.id,'status',w.status,'affiliation',w.affiliation) order by w.id)::text,'[]')) from public.workers w where w.company_id=cid
+$$;
+create function resident_tax_annual_private.source(cid uuid,wid uuid) returns jsonb language sql stable security definer set search_path='' as $$
+ select jsonb_build_object('state',resident_tax_private.state_value(cid,wid),'legacy_amount_yen',
+ coalesce((select round(coalesce(s.resident_tax_monthly,0))::integer from public.worker_payroll_settings s where s.company_id=cid and s.worker_id=wid),0))
+$$;
+create function resident_tax_annual_private.amounts(cid uuid,wid uuid,y integer) returns jsonb language sql stable security definer set search_path='' as $$
+ select jsonb_agg((resident_tax_private.resolve(cid,wid,(make_date(y,6,1)+n*interval '1 month')::date)->>'amount_yen')::integer order by n) from generate_series(0,11)n
+$$;
+-- Internal helper for notification definer functions. No client EXECUTE grant.
+create function resident_tax_annual_private.year_complete(cid uuid,p_tax_year integer) returns boolean language plpgsql stable security definer set search_path='' as $$
+declare v_cohort_hash text;
+begin
+ perform resident_tax_annual_private.validate_year(p_tax_year);
+ select b.cohort_hash into v_cohort_hash from resident_tax_annual_private.batches b where b.company_id=cid and b.fiscal_year=p_tax_year order by b.saved_at desc,b.request_id desc limit 1;
+ if v_cohort_hash is distinct from resident_tax_annual_private.cohort(cid) then return false;end if;
+ return not exists(select 1 from public.workers w where w.company_id=cid and w.status::text='active' and w.affiliation::text='employee' and not exists(
+ select 1 from resident_tax_annual_private.confirmations c where c.company_id=cid and c.fiscal_year=p_tax_year and c.worker_id=w.id and c.source=resident_tax_annual_private.source(cid,w.id) and c.cohort_hash=v_cohort_hash));
+end$$;
+create function resident_tax_annual_private.read_state(cid uuid,y integer,rid uuid) returns jsonb language plpgsql security definer set search_path='' as $$
+declare workers jsonb; snapshot jsonb; scope_complete boolean; can_edit boolean; receipt jsonb; today_month date:=date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date;
+begin
+ perform resident_tax_annual_private.validate_year(y);
+ if auth.uid() is null or private.account_access_allowed() is distinct from true or private.payroll_allowed(cid,'view') is distinct from true then raise exception 'annual resident tax access denied' using errcode='42501';end if;
+ select not exists(select 1 from public.workers w where w.company_id=cid and w.status::text='active' and w.affiliation::text='employee' and private.payroll_settings_allowed(cid,w.id,'view') is distinct from true) into scope_complete;
+ select scope_complete and private.payroll_allowed(cid,'edit') and not exists(select 1 from public.workers w where w.company_id=cid and w.status::text='active' and w.affiliation::text='employee' and private.payroll_settings_allowed(cid,w.id,'edit') is distinct from true) into can_edit;
+ select coalesce(jsonb_agg(jsonb_build_object('worker_id',w.id,'name',w.name,'amounts',resident_tax_annual_private.amounts(cid,w.id,y),'current_amount_yen',(resident_tax_private.resolve(cid,w.id,today_month)->>'amount_yen')::integer,
+ 'source',resident_tax_annual_private.source(cid,w.id),'confirmed',coalesce(c.source=resident_tax_annual_private.source(cid,w.id) and c.cohort_hash=resident_tax_annual_private.cohort(cid),false),'confirmed_at',case when c.source=resident_tax_annual_private.source(cid,w.id) and c.cohort_hash=resident_tax_annual_private.cohort(cid) then c.confirmed_at end,'last_confirmed_at',c.confirmed_at,'schedule_updated_at',coalesce(resident_tax_private.state_value(cid,w.id)->>'updated_at',(select to_jsonb(s)->>'updated_at' from public.worker_payroll_settings s where s.company_id=cid and s.worker_id=w.id)),'excluded',coalesce(c.excluded,false),'reason',c.reason) order by w.id),'[]') into workers
+ from public.workers w left join resident_tax_annual_private.confirmations c on c.company_id=cid and c.fiscal_year=y and c.worker_id=w.id
+ where w.company_id=cid and w.status::text='active' and w.affiliation::text='employee' and private.payroll_settings_allowed(cid,w.id,'view');
+ snapshot:=jsonb_build_object('cohort_hash',resident_tax_annual_private.cohort(cid),'workers',coalesce((select jsonb_agg(jsonb_build_object('worker_id',v->'worker_id','source',v->'source') order by v->>'worker_id') from jsonb_array_elements(workers)v),'[]'));
+ if rid is not null then select b.result into receipt from resident_tax_annual_private.batches b where b.company_id=cid and b.fiscal_year=y and b.request_id=rid and b.actor_id=auth.uid() and not exists(select 1 from jsonb_array_elements(b.result->'snapshot'->'workers')e where private.payroll_settings_allowed(cid,(e->>'worker_id')::uuid,'view') is distinct from true);end if;
+ return jsonb_build_object('company_id',cid,'fiscal_year',y,'current_month',today_month,'can_edit',coalesce(can_edit,false),'scope_complete',scope_complete,'workers',workers,'snapshot',snapshot,'complete',scope_complete and resident_tax_annual_private.year_complete(cid,y),'receipt',receipt);
+end$$;
+create function resident_tax_annual_private.save_state(cid uuid,y integer,expected jsonb,items jsonb,rid uuid) returns jsonb language plpgsql security definer set search_path='' as $$
+declare r record; entry jsonb; amount jsonb; before_state jsonb; current_state jsonb; schedule jsonb; old_boundary integer; start_month date; next_year date; cutover date; snapshot jsonb; response jsonb; request_payload jsonb; receipt resident_tax_annual_private.batches%rowtype; saved_at timestamptz; scopes jsonb;
+begin
+ perform resident_tax_annual_private.validate_year(y);
+ if auth.uid() is null or private.account_access_allowed() is distinct from true or private.payroll_allowed(cid,'edit') is distinct from true then raise exception 'annual resident tax edit denied' using errcode='42501';end if;
+ if rid is null or expected is null or jsonb_typeof(expected)<>'object' or octet_length(expected::text)>1048576 or items is null or jsonb_typeof(items)<>'array' or jsonb_array_length(items) not between 1 and 1000 or octet_length(items::text)>1048576 then raise exception 'invalid annual resident tax request' using errcode='22023';end if;
+ -- Company FOR UPDATE blocks concurrent worker insertion/reassignment via FK; lock
+ -- all existing worker rows in deterministic order before any financial work.
+ perform 1 from public.companies where id=cid for update;if not found then raise exception 'annual company unavailable' using errcode='42501';end if;
+ perform 1 from public.workers where company_id=cid order by id for update;
+ if private.account_access_allowed() is distinct from true or private.payroll_allowed(cid,'edit') is distinct from true then raise exception 'annual resident tax edit denied' using errcode='42501';end if;
+ request_payload:=jsonb_build_object('snapshot',expected,'entries',items);
+ select * into receipt from resident_tax_annual_private.batches b where b.company_id=cid and b.fiscal_year=y and b.request_id=rid;
+ if found then
+ if receipt.actor_id<>auth.uid() or receipt.payload<>request_payload then raise exception 'annual resident tax request conflict' using errcode='40001';end if;
+ -- Recheck current per-worker visibility even for a receipt retry.
+ if exists(select 1 from jsonb_array_elements(items)e where private.payroll_settings_allowed(cid,(e->>'worker_id')::uuid,'view') is distinct from true or private.payroll_settings_allowed(cid,(e->>'worker_id')::uuid,'edit') is distinct from true) then raise exception 'annual resident tax edit denied' using errcode='42501';end if;
+ return receipt.result;end if;
+ response:=resident_tax_annual_private.read_state(cid,y,null);snapshot:=response->'snapshot';
+ if response->>'can_edit'<>'true' or response->>'scope_complete'<>'true' then raise exception 'annual resident tax full scope required' using errcode='42501';end if;
+ if snapshot<>expected then raise exception 'annual resident tax snapshot changed' using errcode='40001';end if;
+ if (select count(distinct e->>'worker_id') from jsonb_array_elements(items)e)<>jsonb_array_length(items) then raise exception 'annual resident tax duplicate employee' using errcode='22023';end if;
+ start_month:=make_date(y,6,1);next_year:=make_date(y+1,6,1);
+ -- Validate every row before the first save. A later financial failure still
+ -- rolls all state/history/receipts/payroll changes back in this transaction.
+ for entry in select value from jsonb_array_elements(items) loop
+ if jsonb_typeof(entry)<>'object' or entry-array['worker_id','amounts','confirmed','excluded','reason']<>'{}' or
+ jsonb_typeof(entry->'worker_id') is distinct from 'string' or entry->'confirmed' is distinct from 'true'::jsonb or jsonb_typeof(entry->'excluded') is distinct from 'boolean' or
+ jsonb_typeof(entry->'amounts') is distinct from 'array' or jsonb_array_length(entry->'amounts')<>12 or
+ not exists(select 1 from jsonb_array_elements(snapshot->'workers')w where w->'worker_id'=entry->'worker_id') then raise exception 'invalid annual resident tax employee confirmation' using errcode='22023';end if;
+ if entry->>'excluded'='true' and (jsonb_typeof(entry->'reason') is distinct from 'string' or length(trim(entry->>'reason')) not between 1 and 500 or entry->'amounts'<>resident_tax_annual_private.amounts(cid,(entry->>'worker_id')::uuid,y)) then raise exception 'excluded employee requires reason and unchanged amounts' using errcode='22023';end if;
+ if entry->>'excluded'='false' and entry->'reason' is distinct from 'null'::jsonb then raise exception 'nonexcluded reason must be null' using errcode='22023';end if;
+ for amount in select value from jsonb_array_elements(entry->'amounts') loop
+ if jsonb_typeof(amount) is distinct from 'number' or amount::text !~ '^[0-9]{1,10}$' or (amount::text)::bigint>2147483647 then raise exception 'invalid annual resident tax monthly amount' using errcode='22023';end if;
+ end loop;end loop;
+ select coalesce(jsonb_agg(jsonb_build_object('cid',cid,'wid',w.id,'day',s.scope_day) order by w.id,s.scope_day),'[]') into scopes
+ from public.workers w cross join lateral (select (start_month+n*interval '1 month')::date as scope_day from generate_series(0,11)n union select ps.period_start from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=w.id and ps.automatic_calculation and ps.workflow_state='draft')s
+ where w.company_id=cid and w.status::text='active' and w.affiliation::text='employee';
+ perform payroll_scope_private.lock_scopes(scopes);
+ for entry in select value from jsonb_array_elements(items) order by value->>'worker_id' loop
+ if entry->>'excluded'='false' and entry->'amounts'<>resident_tax_annual_private.amounts(cid,(entry->>'worker_id')::uuid,y) then
+ before_state:=resident_tax_private.state_value(cid,(entry->>'worker_id')::uuid);
+ old_boundary:=(resident_tax_private.resolve(cid,(entry->>'worker_id')::uuid,next_year)->>'amount_yen')::integer;
+ cutover:=least(coalesce((before_state->>'cutover_month')::date,start_month),start_month);
+ select jsonb_agg(v order by v->>'effective_month') into schedule from(
+ select value v from jsonb_array_elements(coalesce(before_state->'entries','[]')) where (value->>'effective_month')::date<start_month or (value->>'effective_month')::date>=next_year
+ union all select jsonb_build_object('effective_month',(start_month+(n-1)*interval '1 month')::date,'amount_yen',entry->'amounts'->(n-1)) from generate_series(1,12)n
+ union all select jsonb_build_object('effective_month',next_year,'amount_yen',old_boundary) where not exists(select 1 from jsonb_array_elements(coalesce(before_state->'entries','[]'))e where (e->>'effective_month')::date=next_year)
+ )a;
+ perform resident_tax_private.save_state(cid,(entry->>'worker_id')::uuid,coalesce((before_state->>'version')::bigint,0),'timeline',cutover::text,schedule,true);
+ end if;
+ current_state:=resident_tax_annual_private.source(cid,(entry->>'worker_id')::uuid);
+ insert into resident_tax_annual_private.confirmations(company_id,fiscal_year,worker_id,source,cohort_hash,excluded,reason,actor_id,request_id,confirmed_at)
+ values(cid,y,(entry->>'worker_id')::uuid,current_state,snapshot->>'cohort_hash',(entry->>'excluded')::boolean,entry->>'reason',auth.uid(),rid,clock_timestamp())
+ on conflict(company_id,fiscal_year,worker_id)do update set source=excluded.source,cohort_hash=excluded.cohort_hash,excluded=excluded.excluded,reason=excluded.reason,actor_id=excluded.actor_id,request_id=excluded.request_id,confirmed_at=excluded.confirmed_at;
+ end loop;
+ snapshot:=(resident_tax_annual_private.read_state(cid,y,null))->'snapshot';saved_at:=clock_timestamp();
+ response:=jsonb_build_object('request_id',rid,'company_id',cid,'fiscal_year',y,'confirmed_count',jsonb_array_length(items),'snapshot',snapshot);
+ insert into resident_tax_annual_private.batches values(cid,y,rid,auth.uid(),request_payload,response,snapshot->>'cohort_hash',saved_at);
+ return response;
+end$$;
+revoke all on all functions in schema resident_tax_annual_private from public,anon,authenticated,service_role;
+grant execute on function resident_tax_annual_private.read_state(uuid,integer,uuid),resident_tax_annual_private.save_state(uuid,integer,jsonb,jsonb,uuid) to authenticated;
+create function public.read_company_resident_tax_annual(p_company_id uuid,p_fiscal_year integer,p_request_id uuid default null) returns jsonb language sql security invoker set search_path='' as $$select resident_tax_annual_private.read_state(p_company_id,p_fiscal_year,p_request_id)$$;
+create function public.save_company_resident_tax_annual(p_company_id uuid,p_fiscal_year integer,p_expected_snapshot jsonb,p_entries jsonb,p_request_id uuid) returns jsonb language sql security invoker set search_path='' as $$select resident_tax_annual_private.save_state(p_company_id,p_fiscal_year,p_expected_snapshot,p_entries,p_request_id)$$;
+revoke all on function public.read_company_resident_tax_annual(uuid,integer,uuid),public.save_company_resident_tax_annual(uuid,integer,jsonb,jsonb,uuid) from public,anon,service_role;
+grant execute on function public.read_company_resident_tax_annual(uuid,integer,uuid),public.save_company_resident_tax_annual(uuid,integer,jsonb,jsonb,uuid) to authenticated;

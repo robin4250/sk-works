@@ -1,0 +1,44 @@
+name: Resident tax annual confirmation
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/resident_tax_annual_20261020.sql.review-only'
+      - 'tool/verify_resident_tax_annual.mjs'
+      - 'tool/payroll_scope_fixture_setup.mjs'
+      - '.github/workflows/resident-tax-annual.yml'
+permissions:
+  contents: read
+jobs:
+  sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [pglite, postgres]
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_resident_annual_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/sko-resident-annual --no-save --ignore-scripts @electric-sql/pglite@0.3.14 pg@8.16.3
+      - if: matrix.runtime == 'pglite'
+        run: node tool/verify_resident_tax_annual.mjs /tmp/sko-resident-annual/node_modules/@electric-sql/pglite/dist/index.js
+      - if: matrix.runtime == 'postgres'
+        run: node tool/verify_resident_tax_annual.mjs /tmp/sko-resident-annual/node_modules/pg/lib/index.js postgres
+        env:
+          SKO_RESIDENT_ANNUAL_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_resident_annual_fixture
