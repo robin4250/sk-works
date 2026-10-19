@@ -115,7 +115,9 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
     // A screen invalidated by an account change must be opened again; do not
     // revive another account's rows through resume or the refresh button.
     if (!mounted || repository == null || _sessionInvalidated ||
-        repository.currentUserId != _actor || _loading || _busy) return;
+        repository.currentUserId != _actor || _loading || _busy) {
+      return;
+    }
     setState(() => _loading = true);
     await _load();
   }
