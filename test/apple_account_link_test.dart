@@ -46,6 +46,7 @@ void main() {
     authorizeUrl='https://appleid.apple.com/auth/authorize?synthetic=true';
     network=MockClient((request) async {
       paths.add('${request.method} ${request.url.path}');
+      if (request.url.path.endsWith('/logout')) return http.Response('{}',200);
       if (request.url.path.endsWith('/settings')) {
         return http.Response(jsonEncode({'external':{'apple':enabled}}),200);
       }
@@ -112,8 +113,7 @@ void main() {
     final operation=source.begin();
     final rejected=expectLater(operation,throwsStateError);
     await gotAuthorize!.future;
-    // Notification mirrors the real SDK's logout boundary without a live POST.
-    client.auth.notifyAllSubscribers(AuthChangeEvent.signedOut);
+    await client.auth.signOut(scope: SignOutScope.local);
     await Future<void>.delayed(Duration.zero);
     await client.auth.setInitialSession(session(actor));
     holdAuthorize!.complete(); await rejected; expect(launches,0);
@@ -132,7 +132,7 @@ void main() {
   });
   test('logout after browser launch stops completion instead of waiting forever',() async {
     await source.begin();
-    client.auth.notifyAllSubscribers(AuthChangeEvent.signedOut);
+    await client.auth.signOut(scope: SignOutScope.local);
     await Future<void>.delayed(Duration.zero);
     await expectLater(source.verifyCompletion(),throwsStateError);
   });

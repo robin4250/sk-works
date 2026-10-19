@@ -18,6 +18,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
   AppleAccountLink? _source;
   StreamSubscription<dynamic>? _events;
   bool _enabled = false, _busy = false, _pending = false, _checking = false;
+  bool _complete = false;
   bool _foreground = true;
   int _generation = 0, _actionGeneration = 0;
   String? _message;
@@ -34,7 +35,10 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
           settingsUrl: Uri.parse('${SupabaseBackendConfig.url}/auth/v1/settings'),
           publicKey: SupabaseBackendConfig.publishableKey);
     }
-    _events = _source?.changes.listen((_) { _verify(); });
+    _events = _source?.changes.listen((_) {
+      if (!_pending && mounted) setState(() { _message = null; _complete = false; });
+      _verify();
+    });
     _load();
   }
 
@@ -81,8 +85,10 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
     try {
       final complete = await _source!.verifyCompletion();
       if (!mounted || action != _actionGeneration) return;
-      if (complete) setState(() { _pending = false;
-        _message = '同じSKOアカウントへのApple連携を確認しました。'; });
+      if (complete) {
+        setState(() { _pending = false; _complete = true;
+          _message = '同じSKOアカウントへのApple連携を確認しました。'; });
+      }
     } catch (_) {
       if (action != _actionGeneration) return;
       await _source?.cancel();
@@ -104,8 +110,11 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
     _actionGeneration++;
     WidgetsBinding.instance.removeObserver(this);
     _events?.cancel();
-    if (widget.source == null) _source?.dispose();
-    else _source?.cancel();
+    if (widget.source == null) {
+      _source?.dispose();
+    } else {
+      _source?.cancel();
+    }
     super.dispose();
   }
 
@@ -117,7 +126,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
       if (!_enabled) const Text('既存アカウントへのApple連携は準備中です。'
         'Apple側・サーバー側の設定と本人再認証の確認が必要です。'
         '今は登録済みの方法でログインしてください。'),
-      if (_enabled && !_pending) TextButton(onPressed: _busy ? null : _start,
+      if (_enabled && !_pending && !_complete) TextButton(onPressed: _busy ? null : _start,
         child: const Text('このアカウントにAppleを追加')),
       if (_pending) const Text('Appleの本人確認と同じアカウントへの連携を確認しています。'),
       if (_pending) TextButton(onPressed: () async {
