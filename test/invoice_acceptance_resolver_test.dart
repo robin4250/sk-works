@@ -33,7 +33,10 @@ void main() {
     'unsaved draft uses authorized source and prose without mutating input',
     () {
       final data = workspace();
-      final result = InvoiceAcceptanceResolver.resolve(data, issueDate: date)!;
+      var reported = 0;
+      final result = InvoiceAcceptanceResolver.resolve(data, issueDate: date,
+        onMissingLockedAcceptance: () { reported++; })!;
+      expect(reported, 0);
       expect(result.payload['order_date'], '2025-12-15');
       expect(result.payload['issue_date'], '2026-02-05');
       expect(result.payload['acceptance_text'], '2025-12-15の注文を承諾');
@@ -48,13 +51,20 @@ void main() {
     final saved = InvoiceAcceptanceResolver.resolve(data, issueDate: date)!;
     data['attachment'] = {'version': 7, 'payload': saved.payload};
     data['source_locked'] = true;
-    final result = InvoiceAcceptanceResolver.resolve(data, issueDate: null)!;
+    var reported = 0;
+    final result = InvoiceAcceptanceResolver.resolve(data, issueDate: null,
+      onMissingLockedAcceptance: () { reported++; })!;
+    expect(reported, 0);
     expect(result.version, 7);
     expect(result.payload, saved.payload);
   });
-  test('historical missing appendix remains absent', () {
+  test('historical missing appendix is reported without changing output', () {
     final data = workspace()..['source_locked'] = true;
-    expect(InvoiceAcceptanceResolver.resolve(data, issueDate: null), isNull);
+    var reported = 0;
+    expect(InvoiceAcceptanceResolver.resolve(data, issueDate: null,
+      onMissingLockedAcceptance: () { reported++; }), isNull);
+    expect(reported, 1);
+    expect(data['attachment'], isNull);
   });
   test('changed source and unknown readiness cannot silently generate', () {
     for (final key in ['source_changed', 'source_blocked']) {

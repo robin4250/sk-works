@@ -44,6 +44,7 @@ class InvoicePdfService {
     List<InvoiceCalculationResult> invoices, {
     Map<String, ExpenseDocumentDetails>? expenseDetailsByInvoice,
     Map<String, TradeDocumentAttachment?>? acceptanceByInvoice,
+    VoidCallback? onMissingLockedAcceptance,
     String? title,
     InvoiceSettingsData? settings,
     PdfPageFormat format = PdfPageFormat.a4,
@@ -89,6 +90,7 @@ class InvoicePdfService {
                 subjectKind: 'invoice', subjectId: invoice.invoiceId,
                 sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String()),
               issueDate: invoice.issueDate,
+              onMissingLockedAcceptance: onMissingLockedAcceptance,
             );
       final expenses = expenseDetailsByInvoice?[invoice.invoiceId] ?? (invoice.periodStart == null ? null : await ExpenseDocumentRepository.load(ExpenseDocument.invoice, invoice.invoiceId, invoice.periodStart!, updatedAt:invoice.documentUpdatedAt));
       if (invoice.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != invoice.expenseExtraAmountYen) {
@@ -1028,11 +1030,13 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       throw StateError('表示する請求書がありません。');
     }
     final settings = await _loadSettings();
+    var missingAcceptanceCount = 0;
     final pdfBytes = await InvoicePdfService.buildPdf(
       widget.invoices,
       title: widget.title,
       settings: settings,
       allowLegacyApprovalInitialization: widget.allowLegacyApprovalInitialization,
+      onMissingLockedAcceptance: () { missingAcceptanceCount++; },
     );
     if (pdfBytes.isEmpty) {
       throw StateError('PDFデータが空です。');
@@ -1042,6 +1046,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       pdfBytes: pdfBytes,
       settings: settings,
       approvals: approvals,
+      missingAcceptanceCount: missingAcceptanceCount,
     );
   }
 
@@ -1272,6 +1277,17 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
               );
               return Column(
                 children: [
+                  if (previewData.missingAcceptanceCount > 0)
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(SkoLanguageController.isEnglish
+                          ? (_singleInvoice != null
+                              ? 'The locked invoice has no order acceptance. An administrator can open “注文請書” above to review and attach it. The original invoice is preserved.'
+                              : '${previewData.missingAcceptanceCount} locked invoices have no order acceptance. An administrator can open each invoice separately to review and attach it.')
+                          : (_singleInvoice != null
+                              ? 'このロック済み請求書には注文請書が未添付です。管理者が上部の「注文請書」で内容を確認し、保存して添付できます。元の請求書は保持されます。'
+                              : 'ロック済み請求書${previewData.missingAcceptanceCount}件に注文請書が未添付です。管理者が各請求書を個別に開き、内容を確認して添付してください。')),
+                    ),
                   if (approvals.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
@@ -1579,7 +1595,9 @@ class _InvoicePreviewData {
     required this.pdfBytes,
     required this.settings,
     required this.approvals,
+    this.missingAcceptanceCount = 0,
   });
+  final int missingAcceptanceCount;
   final Uint8List pdfBytes;
   final InvoiceSettingsData? settings;
   final List<InvoiceApprovalRecord> approvals;
