@@ -739,7 +739,7 @@ class _IndividualPayrollSettingsPageState
                                           CompanyPayrollRatesPage(companyId: companyId)),
                                       );
                                     },
-                              residentTax: Column(
+                              residentTaxBuilder: (month, onEditingChanged) => Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                           if (_residentTaxCapability ==
@@ -762,6 +762,8 @@ class _IndividualPayrollSettingsPageState
                           ] else if (_workerId != null)
                             ResidentTaxSection(
                               key: ValueKey('resident-tax-$_workerId'),
+                              month: month,
+                              onEditingChanged: onEditingChanged,
                               workerId: _workerId!,
                               companyId: _settingValues['company_id'] is String
                                   ? _settingValues['company_id'] as String

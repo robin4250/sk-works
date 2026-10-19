@@ -18,7 +18,8 @@ const fixedPayrollDeductions = <(String, String, String)>[
 class PayrollFixedDeductions extends StatefulWidget {
   const PayrollFixedDeductions({
     super.key, required this.companyId, required this.workerId,
-    required this.readStatement, required this.residentTax,
+    required this.readStatement, this.residentTax = const SizedBox.shrink(),
+    this.residentTaxBuilder,
     this.openConditions, this.openRates, this.rpc, this.month,
     this.refreshRevision = 0, this.canEdit = false,
     this.legacySocialAmount = 0,
@@ -30,6 +31,7 @@ class PayrollFixedDeductions extends StatefulWidget {
   final num legacySocialAmount;
   final PayrollDeductionStatementReader readStatement;
   final Widget residentTax;
+  final Widget Function(String month, ValueChanged<bool> onEditingChanged)? residentTaxBuilder;
   final Future<void> Function(String month)? openConditions;
   final Future<void> Function()? openRates;
   final PayrollTaxRpc? rpc;
@@ -45,6 +47,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   final _automatic = <String, int?>{};
   Map<String, dynamic>? _profile;
   int _version = 0, _generation = 0;
+  bool _residentEditing = false;
   bool _busy = true, _allowed = false, _dirty = false, _uncertain = false;
   String? _error, _actor;
   late String _month;
@@ -80,9 +83,24 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   }
 
   void _setMonth() {
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc().add(const Duration(hours: 9));
     _month = widget.month ??
         '${now.year}-${now.month.toString().padLeft(2, '0')}-01';
+  }
+
+  Future<void> _moveMonth(int offset) async {
+    if (widget.month != null || _busy || _dirty || _uncertain || _residentEditing) return;
+    final current = DateTime.parse(_month);
+    final next = DateTime(current.year, current.month + offset);
+    setState(() {
+      _month = '${next.year.toString().padLeft(4, '0')}-'
+          '${next.month.toString().padLeft(2, '0')}-01';
+      _profile = null;
+      _manual.clear();
+      _automatic.clear();
+      for (final controller in _controllers.values) { controller.clear(); }
+    });
+    await _load();
   }
 
   @override
@@ -300,7 +318,21 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Text('${_month.substring(0, 7)}分・給料明細と連動'),
+      Row(children: [
+        if (widget.month == null)
+          IconButton(key: const ValueKey('deductions-previous-month'),
+            tooltip: '前月', onPressed: _busy || _dirty || _uncertain || _residentEditing
+                ? null : () => _moveMonth(-1),
+            icon: const Icon(Icons.chevron_left)),
+        Expanded(child: Text('${_month.substring(0, 7)}分・給料明細と連動')),
+        if (widget.month == null)
+          IconButton(key: const ValueKey('deductions-next-month'),
+            tooltip: '翌月', onPressed: _busy || _dirty || _uncertain || _residentEditing
+                ? null : () => _moveMonth(1),
+            icon: const Icon(Icons.chevron_right)),
+      ]),
+      if (_dirty || _residentEditing)
+        const Text('月を切り替える前に修正額の保存・読込の完了を確認してください。'),
       if (_busy) const LinearProgressIndicator(),
       if (_error != null) Text(_error!),
       for (final item in fixedPayrollDeductions)
@@ -350,7 +382,11 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
             Text('住民税', style: Theme.of(context).textTheme.titleMedium),
             TextButton(onPressed: () => _formula('resident_tax', '住民税'),
               child: const Text('計算式・設定')),
-            widget.residentTax,
+            widget.residentTaxBuilder?.call(_month, (editing) {
+              if (mounted && _residentEditing != editing) {
+                setState(() => _residentEditing = editing);
+              }
+            }) ?? widget.residentTax,
           ],
         )),
       ),
