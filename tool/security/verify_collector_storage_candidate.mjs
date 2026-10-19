@@ -41,6 +41,14 @@ try {
  await db.exec('create role fixture_danger bypassrls;grant fixture_danger to sko_security_collector_ingest');
  await assert.rejects(()=>db.exec(sql));assertions++;
  await db.exec('rollback;revoke fixture_danger from sko_security_collector_ingest');
+ // Unknown default grantees must roll the entire candidate back.
+ await db.exec('create role fixture_extra;grant usage on schema private to fixture_extra');
+ for (const kind of ['tables','sequences','functions']) {
+  await db.exec(`alter default privileges in schema private grant all on ${kind} to fixture_extra`);
+  await assert.rejects(()=>db.exec(sql),/Unexpected collector/);assertions++;
+  await db.exec(`rollback;alter default privileges in schema private revoke all on ${kind} from fixture_extra`);
+  checked(await scalar("select to_regclass('private.security_collector_events') is null")===true,'unexpected default grants leave no collector tables');
+ }
  await db.exec(sql);
  const actor='00000000-0000-0000-0000-000000000001';
  const event={event_id:'00000000-0000-0000-0000-000000000010',collector_id:'00000000-0000-0000-0000-000000000020',

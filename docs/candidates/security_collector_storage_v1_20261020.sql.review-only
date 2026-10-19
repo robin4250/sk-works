@@ -133,4 +133,25 @@ revoke all on function private.read_security_collector_events(text)
  from public,anon,authenticated,service_role,sko_security_collector_ingest;
 grant execute on function private.read_security_collector_events(text) to authenticated;
 -- No public RPC or UI adapter in this slice. Both gates remain OFF.
+-- Custom default privileges must never create another writer/reader.
+do $collector_acl$
+begin
+ if exists (
+  select 1 from pg_class c
+  cross join lateral aclexplode(coalesce(c.relacl,acldefault(case when c.relkind='S' then 'S'::"char" else 'r'::"char" end,c.relowner))) a
+  where c.oid in ('private.security_collector_control'::regclass,
+    'private.security_collector_events'::regclass,'private.security_collector_read_audit'::regclass,
+    'private.security_collector_read_audit_audit_id_seq'::regclass)
+   and a.grantee<>c.relowner
+ ) then raise exception 'Unexpected collector relation privileges'; end if;
+ if exists (
+  select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  where p.oid in ('private.ingest_security_collector_event(jsonb)'::regprocedure,
+    'private.read_security_collector_events(text)'::regprocedure)
+   and a.grantee<>p.proowner
+   and not (a.privilege_type='EXECUTE' and not a.is_grantable and
+    ((p.oid='private.ingest_security_collector_event(jsonb)'::regprocedure and a.grantee='sko_security_collector_ingest'::regrole)
+      or (p.oid='private.read_security_collector_events(text)'::regprocedure and a.grantee='authenticated'::regrole)))
+ ) then raise exception 'Unexpected collector function privileges'; end if;
+end $collector_acl$;
 commit;
