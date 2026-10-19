@@ -130,6 +130,51 @@ void main() {
     });
   }
 
+  testWidgets('saved named insurance stays visible and read-only without conditions', (t) async {
+    final b = _Backend()..hasConditions = false;
+    final detail = <String, dynamic>{
+      '所得税': 1500, '雇用保険料': 123, '健康保険料': 5000,
+      '厚生年金保険': 9000, '介護保険料': 0, '社会保険': 24000,
+    };
+    await _mount(t, b, reader: (_, _, _) async =>
+        {'calculation_blocked': false, 'detail': detail});
+    for (final item in fixedPayrollDeductions) {
+      final field = t.widget<TextFormField>(amount(item.$1));
+      expect(field.controller!.text, '${detail[item.$3]}');
+      expect(field.enabled, isFalse);
+      expect(helper(t, item.$1), '保存済み明細（自動計算条件未設定）');
+    }
+    expect(find.text('自動計算に戻す'), findsNothing);
+    expect(b.writes, 0);
+    expect(detail['社会保険'], 24000);
+    expect(detail.containsKey('tax_calculation'), isFalse);
+  });
+
+  testWidgets('blocked and malformed named insurance are never substituted from aggregate', (t) async {
+    for (final bad in [null, -1, '123', 1.5, 2147483648]) {
+      final b = _Backend()..hasConditions = false;
+      await _mount(t, b, reader: (_, _, _) async => {
+        'calculation_blocked': false,
+        'detail': {'雇用保険料': bad, '健康保険料': bad,
+          '厚生年金保険': bad, '介護保険料': bad, '社会保険': 24000},
+      });
+      for (final item in fixedPayrollDeductions.skip(1)) {
+        expect(t.widget<TextFormField>(amount(item.$1)).controller!.text, isEmpty);
+      }
+      await t.pumpWidget(const SizedBox.shrink());
+    }
+    final b = _Backend()..hasConditions = false;
+    await _mount(t, b, reader: (_, _, _) async => {
+      'calculation_blocked': true,
+      'detail': {'雇用保険料': 123, '健康保険料': 5000,
+        '厚生年金保険': 9000, '介護保険料': 0},
+    });
+    for (final item in fixedPayrollDeductions.skip(1)) {
+      expect(t.widget<TextFormField>(amount(item.$1)).controller!.text, isEmpty);
+    }
+    expect(b.writes, 0);
+  });
+
   testWidgets('future conditions do not hide an earlier saved legacy tax', (t) async {
     final b = _Backend();
     await _mount(t, b, selectedMonth: '2026-09-01', reader: (_, _, period) async {
