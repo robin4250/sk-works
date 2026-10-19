@@ -6,6 +6,8 @@ class AppReferralRepository {
   const AppReferralRepository(this.client);
   final SupabaseClient client;
   String? get currentActorId => client.auth.currentUser?.id;
+  Stream<String?> watchActorChanges() => client.auth.onAuthStateChange
+      .map((state) => state.session?.user.id).distinct();
 
   Future<Map<String, dynamic>> load({bool master = false}) async {
     dynamic raw;

@@ -1,3 +1,4 @@
+import 'app_referral_actor_scope.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -38,11 +39,21 @@ class _AppReferralPageState extends State<AppReferralPage> {
   String? _error;
   bool _busy = false;
   late final AppReferralComposer _composer;
+  late final AppReferralActorScope _actorScope;
+  int _loadGeneration = 0;
   @override
   void initState() {
     super.initState();
+    _actorScope = AppReferralActorScope(widget.repository, onInvalidated: () {
+      if (!mounted) return;
+      _loadGeneration++;
+      _name.clear(); _phone.clear(); _url.clear();
+      _testflight.clear(); _web.clear(); _guide.clear();
+      setState(() { _snapshot = null; _busy = false;
+        _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+    });
     _composer = AppReferralComposer(
-      actorId: () => widget.repository.client.auth.currentUser?.id,
+      actorId: () => _actorScope.check() ? _actorScope.actor : null,
       prepare: (name, phone, friendInvite) => _usesDistribution
           ? widget.repository.prepareDistribution(name, phone, _channel,
               friendInvite ? 'friend' : widget.invitationKind)
@@ -57,6 +68,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
 
   @override
   void dispose() {
+    _actorScope.dispose();
     _name.dispose();
     _phone.dispose();
     _url.dispose();
@@ -64,10 +76,25 @@ class _AppReferralPageState extends State<AppReferralPage> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant AppReferralPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository != widget.repository || oldWidget.master != widget.master ||
+        oldWidget.friendInvite != widget.friendInvite || oldWidget.invitationKind != widget.invitationKind) {
+      _actorScope.invalidate();
+    }
+  }
+
   Future<void> _load() async {
+    if (!_actorScope.check()) {
+      if (mounted) setState(() { _snapshot = null;
+        _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+      return;
+    }
+    final generation = ++_loadGeneration;
     try {
       final data = await widget.repository.load(master: widget.master);
-      if (!mounted) return;
+      if (!mounted || !_actorScope.check() || generation != _loadGeneration) return;
       setState(() {
         _snapshot = data;
         final links = data['distribution_links'];
@@ -87,14 +114,14 @@ class _AppReferralPageState extends State<AppReferralPage> {
         _error = null;
       });
     } catch (_) {
-      if (mounted) {
+      if (mounted && _actorScope.check() && generation == _loadGeneration) {
         setState(() => _error = '招待機能を読み込めません。サーバー設定・利用権限を確認してください。');
       }
     }
   }
 
   Future<void> _send() async {
-    if (_busy || (widget.friendInvite && !_usesDistribution)) {
+    if (!_actorScope.check() || _busy || (widget.friendInvite && !_usesDistribution)) {
       return;
     }
     setState(() => _busy = true);
@@ -105,7 +132,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
         friendInvite: widget.friendInvite,
         distributionKey: _usesDistribution ? '$_channel:${widget.invitationKind}' : '',
       );
-      if (!mounted) {
+      if (!mounted || !_actorScope.check()) {
         return;
       }
       final message = switch (outcome) {
@@ -124,32 +151,33 @@ class _AppReferralPageState extends State<AppReferralPage> {
       }
     } finally {
       // Preparation may have saved a history row even if the local composer failed.
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         await _load();
       }
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         setState(() => _busy = false);
       }
     }
   }
 
   Future<void> _saveLinks() async {
-    if (_busy) return;
+    if (!_actorScope.check() || _busy) return;
     setState(() => _busy = true);
     try {
       await widget.repository.saveDistributionLinks(_testflight.text, _web.text, _guide.text);
       await _load();
     } catch (_) {
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('配布先URLを保存できませんでした。URL・利用権限を確認してください。')));
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && _actorScope.check()) setState(() => _busy = false);
     }
   }
 
   Future<void> _save() async {
+    if (!_actorScope.check() || _busy || _snapshot == null) return;
     setState(() => _busy = true);
     try {
       final enabled = _snapshot!['enabled'] == true;
@@ -167,12 +195,12 @@ class _AppReferralPageState extends State<AppReferralPage> {
       }
       await _load();
     } catch (_) {
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('設定を保存できませんでした。既存の配布URL・利用権限を確認し、再読み込みしてください。')));
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && _actorScope.check()) setState(() => _busy = false);
     }
   }
 
@@ -203,7 +231,7 @@ class _AppReferralPageState extends State<AppReferralPage> {
               builder: (context) => AlertDialog(
                 title: const Text('SKOアプリ招待の使い方'),
                 content: const Text(
-                  '配布先の種類を選び、後からWEB版URLだけ追加送信できます。公開前の友達招待は送れません。URL追加送信ではログイン情報を再発行しません。ホーム・メニューの「SKO招待」から名前・電話番号を入力できます。取引会社登録・協力会社登録の一覧上部の「招待」では登録会社を選ぶか電話番号を直接入力します。代表者の電話番号を引き継ぎ、送信前に変更できます。招待の送信だけで社員所属・友達承認・会社連携が成立することはありません。本人の招待と紹介履歴は「設定」→「SKOアプリ招待・自分の紹介履歴」から開きます。会社owner/adminは招待機能ON、一般利用者は一般公開もONの場合に利用できます。OFFや権限不足は入口に表示し、開く直前にも利用状態を再確認します。配布URL未登録でも自分の履歴は確認できますが、SMS作成はできません。Masterは「設定」→「Master 機能設定」→「SKOアプリ招待・紹介管理」から設定・全体履歴を確認できます。機能と一般公開は初期OFFです。正式な配布URLを登録し、機能ONでMasterの招待入口が表示されます。名前・電話番号を入力して送信を押すとSMS作成画面が開きます。送信・配達は確認できません。社員の初回登録とは別の紹介機能です。紹介元確定とポイント付与はまだ接続されていません。SMS起動失敗は同じ入力で再試行でき、起動後の記録失敗は「履歴を更新」で記録だけを再試行します。画面を閉じると再試行状態は引き継ぎません。ポイント数・使い道は未定です。履歴はこの画面で確認できます。',
+                  '配布先の種類を選び、後からWEB版URLだけ追加送信できます。公開前の友達招待は送れません。URL追加送信ではログイン情報を再発行しません。ホーム・メニューの「SKO招待」から名前・電話番号を入力できます。取引会社登録・協力会社登録の一覧上部の「招待」では登録会社を選ぶか電話番号を直接入力します。代表者の電話番号を引き継ぎ、送信前に変更できます。招待の送信だけで社員所属・友達承認・会社連携が成立することはありません。本人の招待と紹介履歴は「設定」→「SKOアプリ招待・自分の紹介履歴」から開きます。会社owner/adminは招待機能ON、一般利用者は一般公開もONの場合に利用できます。OFFや権限不足は入口に表示し、開く直前にも利用状態を再確認します。配布URL未登録でも自分の履歴は確認できますが、SMS作成はできません。Masterは「設定」→「Master 機能設定」→「SKOアプリ招待・紹介管理」から設定・全体履歴を確認できます。機能と一般公開は初期OFFです。正式な配布URLを登録し、機能ONでMasterの招待入口が表示されます。名前・電話番号を入力して送信を押すとSMS作成画面が開きます。送信・配達は確認できません。社員の初回登録とは別の紹介機能です。紹介元確定とポイント付与はまだ接続されていません。SMS起動失敗は同じ入力で再試行でき、起動後の記録失敗は「履歴を更新」で記録だけを再試行します。画面を閉じると再試行状態は引き継ぎません。ポイント数・使い道は未定です。履歴はこの画面で確認できます。ログイン状態が変わった場合は履歴と入力を消し、SMS準備や設定保存を停止します。画面を開き直してください。',
                 ),
                 actions: [
                   TextButton(

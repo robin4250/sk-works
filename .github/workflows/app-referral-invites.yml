@@ -20,8 +20,8 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: flutter analyze lib/features/referrals test/app_referral_master_entry_test.dart test/app_referral_personal_entry_test.dart test/app_referral_composer_test.dart
-      - run: flutter test test/app_referral_master_entry_test.dart test/app_referral_personal_entry_test.dart test/app_referral_composer_test.dart --reporter expanded
+      - run: flutter analyze lib/features/referrals test/app_referral_master_entry_test.dart test/app_referral_personal_entry_test.dart test/app_referral_composer_test.dart test/app_referral_actor_scope_test.dart test/app_referral_distribution_test.dart
+      - run: flutter test test/app_referral_master_entry_test.dart test/app_referral_personal_entry_test.dart test/app_referral_composer_test.dart test/app_referral_actor_scope_test.dart test/app_referral_distribution_test.dart --reporter expanded
   postgres-boundaries:
     runs-on: ubuntu-latest
     steps:

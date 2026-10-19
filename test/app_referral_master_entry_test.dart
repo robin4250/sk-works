@@ -6,6 +6,8 @@ import 'package:sk_works/features/referrals/app_referral_repository.dart';
 import 'package:sk_works/features/settings/master_protected_page.dart';
 
 class FakeReferralRepository implements AppReferralRepository {
+  @override
+  Stream<String?> watchActorChanges() => const Stream.empty();
   // These navigation fixtures only read snapshots; constructing an unused SDK
   // client would introduce token timers and asynchronous network disposal.
   @override

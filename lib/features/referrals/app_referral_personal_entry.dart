@@ -1,3 +1,4 @@
+import 'app_referral_actor_scope.dart';
 import 'package:flutter/material.dart';
 
 import 'app_referral_page.dart';
@@ -13,6 +14,7 @@ class AppReferralPersonalEntry extends StatefulWidget {
 }
 
 class _AppReferralPersonalEntryState extends State<AppReferralPersonalEntry> {
+  late final AppReferralActorScope _actorScope;
   Map<String, dynamic>? _snapshot;
   bool _loading = true;
   bool _opening = false;
@@ -21,17 +23,36 @@ class _AppReferralPersonalEntryState extends State<AppReferralPersonalEntry> {
   @override
   void initState() {
     super.initState();
+    _actorScope = AppReferralActorScope(widget.repository, onInvalidated: () {
+      if (!mounted) return;
+      setState(() { _snapshot = null; _loading = false; _opening = false;
+        _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+    });
     _load();
   }
 
+  @override
+  void dispose() { _actorScope.dispose(); super.dispose(); }
+
+  @override
+  void didUpdateWidget(covariant AppReferralPersonalEntry oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository != widget.repository) _actorScope.invalidate();
+  }
+
   Future<bool> _load() async {
+    if (!_actorScope.check()) {
+      if (mounted) setState(() { _snapshot = null; _loading = false;
+        _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+      return false;
+    }
     final actor = widget.repository.currentActorId;
     try {
       if (actor == null) {
         throw StateError('login required');
       }
       final data = await widget.repository.load();
-      if (!mounted) {
+      if (!mounted || !_actorScope.check()) {
         return false;
       }
       if (widget.repository.currentActorId != actor) {
@@ -40,7 +61,7 @@ class _AppReferralPersonalEntryState extends State<AppReferralPersonalEntry> {
       setState(() { _snapshot = data; _error = null; });
       return data['enabled'] == true && data['can_invite'] == true;
     } catch (_) {
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         setState(() {
           _snapshot = null;
           _error = '招待の利用権限・ログイン情報・接続状態を確認できません。';
@@ -48,29 +69,29 @@ class _AppReferralPersonalEntryState extends State<AppReferralPersonalEntry> {
       }
       return false;
     } finally {
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         setState(() => _loading = false);
       }
     }
   }
 
   Future<void> _open() async {
-    if (_opening || _loading) {
+    if (!_actorScope.check() || _opening || _loading) {
       return;
     }
     setState(() => _opening = true);
     try {
-      if (!await _load() || !mounted) {
+      if (!await _load() || !mounted || !_actorScope.check()) {
         return;
       }
       await Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) => AppReferralPage(repository: widget.repository),
       ));
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         await _load();
       }
     } finally {
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         setState(() => _opening = false);
       }
     }

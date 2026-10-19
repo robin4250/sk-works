@@ -5,6 +5,8 @@ import 'package:sk_works/features/referrals/app_referral_page.dart';
 import 'package:sk_works/features/referrals/app_referral_repository.dart';
 
 class PersonalReferralRepository implements AppReferralRepository {
+  @override
+  Stream<String?> watchActorChanges() => const Stream.empty();
   // No SDK client is needed for snapshot and navigation-only tests.
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
