@@ -1,0 +1,87 @@
+name: Resident tax reminder candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/resident_tax_reminder*.sql.review-only'
+      - 'docs/review/resident_tax_reminders_20261020.md'
+      - 'tool/verify_resident_tax_reminders.mjs'
+      - 'tool/security/resident_reminder_*'
+      - 'lib/features/payroll/resident_tax_reminder*'
+      - 'test/resident_tax_reminder*'
+      - 'tool/security/fixture_dependencies/**'
+      - '.github/workflows/resident-tax-reminders.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/candidates/resident_tax_reminder*.sql.review-only'
+      - 'tool/verify_resident_tax_reminders.mjs'
+      - 'tool/security/resident_reminder_*'
+      - 'lib/features/payroll/resident_tax_reminder*'
+      - 'test/resident_tax_reminder*'
+      - 'tool/security/fixture_dependencies/**'
+      - '.github/workflows/resident-tax-reminders.yml'
+permissions:
+  contents: read
+jobs:
+  channel-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node tool/verify_resident_tax_reminders.mjs
+        env:
+          REMINDER_SQL: docs/candidates/resident_tax_reminders_20261020.sql.review-only
+          REMINDER_MODULE_POLICIES: tool/security/resident_reminder_module_policies.sql
+          REMINDER_PERMISSION_BASELINE: tool/security/resident_reminder_permission_baseline.sql
+          REMINDER_SCHEDULER: docs/candidates/resident_tax_reminder_scheduler_20261020.sql.review-only
+          REMINDER_RESTORE: docs/candidates/resident_tax_reminder_scheduler_restore_20261020.sql.review-only
+          PGLITE_PACKAGE: ${{ github.workspace }}/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js
+  native-channel-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_resident_reminder_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_resident_reminder_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node tool/security/resident_reminder_fixture_guard_test.mjs
+      - run: node tool/verify_resident_tax_reminders.mjs
+        env:
+          REMINDER_SQL: docs/candidates/resident_tax_reminders_20261020.sql.review-only
+          REMINDER_MODULE_POLICIES: tool/security/resident_reminder_module_policies.sql
+          REMINDER_PERMISSION_BASELINE: tool/security/resident_reminder_permission_baseline.sql
+          REMINDER_SCHEDULER: docs/candidates/resident_tax_reminder_scheduler_20261020.sql.review-only
+          REMINDER_RESTORE: docs/candidates/resident_tax_reminder_scheduler_restore_20261020.sql.review-only
+          PGLITE_PACKAGE: ${{ github.workspace }}/tool/security/resident_reminder_pg_adapter.mjs
+          SKO_RESIDENT_REMINDER_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_resident_reminder_fixture
+
+  reminder-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/payroll/resident_tax_reminder_repository.dart lib/features/payroll/resident_tax_reminder_panel.dart test/resident_tax_reminder_repository_test.dart test/resident_tax_reminder_panel_test.dart
+      - run: flutter test test/resident_tax_reminder_repository_test.dart test/resident_tax_reminder_panel_test.dart
