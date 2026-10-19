@@ -26,6 +26,7 @@ class AppleAccountLink {
   bool _pending = false;
   int _generation = 0;
   String? _membershipBefore;
+  String? _googleIdentityBefore;
 
   static const redirect = 'com.skworks.sko://login-callback/';
   Stream<AuthState> get changes => client.auth.onAuthStateChange;
@@ -76,6 +77,15 @@ class AppleAccountLink {
 
   bool _has(User user, String provider) =>
       user.identities?.any((value) => value.provider == provider) == true;
+
+  String _googleIdentity(User user) {
+    final identities = (user.identities ?? <UserIdentity>[])
+        .where((value) => value.provider == 'google')
+        .map((value) => jsonEncode({'id': value.id,
+          'identity_id': value.identityId, 'user_id': value.userId}))
+        .toList()..sort();
+    return jsonEncode(identities);
+  }
 
   Future<String> _memberships(int generation) async {
     _checkActor(generation);
@@ -132,6 +142,7 @@ class AppleAccountLink {
       if (!_recentOAuth(client.auth.currentSession!.accessToken)) {
         throw StateError('apple_link_recent_google_required');
       }
+      _googleIdentityBefore = _googleIdentity(user);
       _membershipBefore = await _memberships(generation);
       if (!await providerEnabled()) throw StateError('apple_link_not_configured');
       _checkActor(generation);
@@ -160,7 +171,9 @@ class AppleAccountLink {
     final generation = _generation;
     final user = await _verifiedUser(generation);
     if (!_has(user, 'apple')) return false;
-    if (!_has(user, 'google')) throw StateError('apple_link_google_missing');
+    if (!_has(user, 'google') || _googleIdentity(user) != _googleIdentityBefore) {
+      throw StateError('apple_link_google_missing');
+    }
     if (await _memberships(generation) != _membershipBefore) {
       throw StateError('apple_link_membership_changed');
     }
