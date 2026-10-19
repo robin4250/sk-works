@@ -279,5 +279,5 @@ begin
 end $$;
 create function public.expense_payment_direction_capability(p_company uuid) returns jsonb
 language sql stable security invoker set search_path='' as $$select private.expense_payment_direction_capability(p_company)$$;
-revoke all on function private.expense_payment_direction_capability(uuid),public.expense_payment_direction_capability(uuid) from public,anon;
+revoke all on function private.expense_payment_direction_capability(uuid),public.expense_payment_direction_capability(uuid) from public,anon,service_role;
 grant execute on function private.expense_payment_direction_capability(uuid),public.expense_payment_direction_capability(uuid) to authenticated;

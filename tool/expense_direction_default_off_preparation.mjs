@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {catalogSql,oldFunctions,newFunctions} from './expense_direction_code_checkpoint.mjs';
 
-const reviewedSha256='36b64b32aff558aa99e264aea6439a747d7de9b3166dc55fe24adc241963f987';
+const reviewedSha256='770728fa45176d7bbeb77ebd0610f936659624e4b1287d63bd83e0dd9264fe5a';
 const reviewedSourceMd5={
  'private.expense_cost_direction_v2_enabled(uuid)':'9f038cd8f856dc2fad5b866160f26637',
  'private.expense_cost_finalize()':'22ff4377666ec56ccc4b261cf380e9c0',
@@ -19,16 +19,18 @@ const quote=(text,tag)=>{
   return `$${tag}$${text}$${tag}$`;
 };
 // Hash values stay in the database; generated SQL never embeds business rows.
-const businessHashSql=`select md5(jsonb_build_object(
+export const defaultOffBusinessHashSql=`select md5(jsonb_build_object(
  'payments',(select coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text),'[]') from public.payment_certificates x),
  'claims',(select coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text),'[]') from private.expense_claims x),
  'choices',(select coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text),'[]') from private.expense_settlement_choices x),
  'consumptions',(select coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text),'[]') from private.expense_amount_consumptions x),
  'snapshots',(select coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text),'[]') from private.expense_document_snapshots x)
-)::text)`;
+)::text) value`;
 
-export function buildDefaultOffDeployment(before,candidate){
+export function buildDefaultOffDeployment(before,candidate,expectedBusinessHash){
   assert.equal(createHash('sha256').update(candidate).digest('hex'),reviewedSha256,'candidate is not the independently reviewed OFF-compatible source');
+  assert.equal(typeof expectedBusinessHash,'string','business checkpoint hash required');
+  assert.match(expectedBusinessHash,/^[a-f0-9]{32}$/,'invalid business checkpoint hash');
   assert.deepEqual(before.functions.map(x=>x.signature).sort(),[...oldFunctions].sort(),'existing function scope differs');
   assert(Array.isArray(before.triggers)&&Array.isArray(before.event_triggers),'complete trigger checkpoint required');
   const expected=quote(JSON.stringify(before),'sko_expense_before');
@@ -43,12 +45,13 @@ SET LOCAL statement_timeout='30s';
 LOCK TABLE public.payment_certificates,private.expense_claims,private.expense_settlement_choices,private.expense_amount_consumptions,private.expense_document_snapshots IN SHARE ROW EXCLUSIVE MODE NOWAIT;
 CREATE TEMP TABLE sko_expense_off_before ON COMMIT DROP AS
  SELECT (SELECT value FROM (${catalogSql}) catalog) checkpoint,
- (${businessHashSql}) business_hash;
+ (${defaultOffBusinessHashSql}) business_hash;
 DO $sko_preflight$
 BEGIN
  IF (SELECT checkpoint FROM sko_expense_off_before) IS DISTINCT FROM ${expected}::jsonb THEN RAISE EXCEPTION 'expense checkpoint drift'; END IF;
  IF EXISTS(SELECT 1 FROM public.payment_certificates WHERE snapshot?'expense_cost_direction_v2' OR snapshot?'expense_cost_basis') THEN RAISE EXCEPTION 'existing v2/basis rows need separate review'; END IF;
  IF to_regclass('private.expense_payment_direction_conversions') IS NOT NULL OR to_regprocedure('private.convert_payment_expense_v1_draft(uuid,uuid,uuid,date,integer,jsonb,text,text,text)') IS NOT NULL OR to_regprocedure('private.expense_direction_v2_client_rollout_verified(uuid)') IS NOT NULL THEN RAISE EXCEPTION 'conversion or rollout installation outside code-only recovery scope'; END IF;
+ IF (SELECT business_hash FROM sko_expense_off_before) IS DISTINCT FROM '${expectedBusinessHash}' THEN RAISE EXCEPTION 'expense business checkpoint drift'; END IF;
 END $sko_preflight$;
 ${candidate}
 DO $sko_postflight$
@@ -96,7 +99,7 @@ BEGIN
  IF EXISTS(SELECT 1 FROM jsonb_each_text(${expectedSources}::jsonb) expected
   WHERE (SELECT value->>'source_md5' FROM jsonb_array_elements(actual->'functions') WHERE value->>'signature'=expected.key) IS DISTINCT FROM expected.value)
   THEN RAISE EXCEPTION 'deployed function source differs from reviewed candidate'; END IF;
- IF (SELECT business_hash FROM sko_expense_off_before) IS DISTINCT FROM (${businessHashSql}) THEN RAISE EXCEPTION 'business data changed'; END IF;
+ IF (SELECT business_hash FROM sko_expense_off_before) IS DISTINCT FROM (${defaultOffBusinessHashSql}) THEN RAISE EXCEPTION 'business data changed'; END IF;
 END $sko_postflight$;
 COMMIT;`;
 }

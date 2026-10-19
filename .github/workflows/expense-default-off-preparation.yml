@@ -5,6 +5,7 @@ on:
       - 'tool/expense_direction_default_off_preparation.mjs'
       - 'tool/verify_expense_direction_default_off_preparation.mjs'
       - 'tool/expense_direction_code_checkpoint.mjs'
+      - 'tool/fixtures/expense_cost_fixture.mjs'
       - 'docs/candidates/expense_payment_direction_v2_20261019.sql.review-only'
       - '.github/workflows/expense-default-off-preparation.yml'
 permissions:
