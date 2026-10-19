@@ -85,6 +85,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     showDialog<void>(context: context, builder: (context) => AlertDialog(
       title: const Text('アカウント設定について'),
       content: const SingleChildScrollView(child: Text(
+        'ログインと連絡先、重要情報を開く本人確認、ログイン方法の追加を分けて表示します。'
         '登録済みのログイン方法と本人の認証設定を確認します。'
         '連携済みの方法と、今回のログインに使った方法は別です。'
         '第一パスワードの有無は安全に確認できるAPIがないため推測しません。'
@@ -127,6 +128,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                   TextButton(onPressed: _load, child: const Text('再読み込み')),
                 ]))
               : ListView(padding: const EdgeInsets.all(16), children: [
+                  const Text('ログインと連絡先', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   _item('連携済みのログイン方法',
                     snapshot.providers.isEmpty ? '確認できません'
                         : snapshot.providers.map(_provider).join('・'),
@@ -145,10 +147,6 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                   _item('第一パスワード（ログイン用）', '設定状況は確認できません。'
                       'Google / Appleとの連携だけでは設定済みと判断しません。',
                       keyName: 'account-primary-password'),
-                  _item('第二パスワード（重要情報用）',
-                      snapshot.secondaryConfigured == null ? '確認できません'
-                          : snapshot.secondaryConfigured! ? '設定済み' : '未設定',
-                      keyName: 'account-secondary-password'),
                   _item('メールアドレス',
                       snapshot.email?.isNotEmpty == true
                           ? '${snapshot.email}\n${snapshot.emailConfirmed ? "登録確認済み" : "未確認"}'
@@ -158,6 +156,12 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                           ? '${snapshot.phone}\n${snapshot.phoneConfirmed ? "登録確認済み（今回の番号所有確認ではありません）" : "未確認"}'
                           : '未登録',
                       keyName: 'account-phone'),
+                  const SizedBox(height: 12),
+                  const Text('重要情報を開く本人確認', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  _item('第二パスワード（重要情報用）',
+                      snapshot.secondaryConfigured == null ? '確認できません'
+                          : snapshot.secondaryConfigured! ? '設定済み' : '未設定',
+                      keyName: 'account-secondary-password'),
                   _item('Face ID / Touch ID',
                       '重要情報用の端末内設定：${snapshot.biometricEnabled == null ? "確認できません" : snapshot.biometricEnabled! ? "有効" : "未設定"}\n'
                       'この端末での利用：${snapshot.biometricAvailable == null ? "確認できません" : snapshot.biometricAvailable! ? "生体認証の登録あり（本人確認は未実施）" : "生体認証の未登録または利用不可"}\n'
