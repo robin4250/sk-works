@@ -45,10 +45,10 @@ class _ResidentTaxReminderPanelState extends State<ResidentTaxReminderPanel> {
       final result = await repository.read(company);
       if (_current(generation, company, actor)) setState(() {_settings = result;_error = null;_unavailable = false;});
     } catch (error) {
-      if (_current(generation, company, actor)) setState(() {
+      if (_current(generation, company, actor)) {setState(() {
         _unavailable = error is PostgrestException && error.code == 'PGRST202';
         _error = _unavailable ? null : '通知設定を確認できません。再読み込みしてください。';
-      });
+      });}
     } finally {if (_current(generation, company, actor)) setState(() {_busy = false;});}
   }
   Future<void> _save(bool value) async {
