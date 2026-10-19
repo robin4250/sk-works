@@ -201,8 +201,10 @@ void main() {
         await t.runAsync(() => auth.auth.signOut(scope: SignOutScope.local));
         await t.runAsync(() => auth.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture'));
       } else {
-        t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-        t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused,
+          AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+          t.binding.handleAppLifecycleStateChanged(state);
+        }
       }
       await t.pumpAndSettle();
       expect(find.text('確認して更新'), findsNothing); expect(find.text('社員A'), findsNothing);
@@ -227,8 +229,10 @@ void main() {
       if (mode == 'other_uid') {
         await t.runAsync(() => auth.auth.signInWithPassword(email: 'b@example.invalid', password: 'fixture'));
       } else {
-        t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-        t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused,
+          AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+          t.binding.handleAppLifecycleStateChanged(state);
+        }
       }
       await t.pumpAndSettle(); expect(find.text('確認して元に戻す'), findsNothing); expect(f.undos, 0); expect(f.saves, 1);
     });
