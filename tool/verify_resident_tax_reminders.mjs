@@ -41,6 +41,11 @@ for(const [grant,revoke] of [
  await db.exec(grant);await assert.rejects(()=>db.exec(sql),/unexpected reminder/);assertions++;await db.exec('rollback');
  eq(await scalar("select to_regclass('private.resident_tax_reminder_receipts') is null"),true);await db.exec(revoke);
 }
+await db.exec(`begin;alter table company_module_settings drop constraint company_module_settings_module_key_check;alter table company_module_settings add constraint company_module_settings_module_key_check check(module_key<>'unknown')`);
+await assert.rejects(()=>db.exec(sql),/CHECK drift/);assertions++;await db.exec('rollback');
+await db.exec("create or replace function private.payroll_allowed(cid uuid,capability text) returns boolean language sql as $$select true$$");
+await assert.rejects(()=>db.exec(sql),/permission source drift/);assertions++;await db.exec('rollback');
+await db.exec(await readFile(process.env.REMINDER_PERMISSION_BASELINE||new URL('permission_baseline.sql',import.meta.url),'utf8'));
 await db.exec('alter default privileges in schema public grant execute on functions to anon,authenticated,service_role');
 await db.exec(sql);
 eq(await scalar("select jsonb_build_array(relacl::text,(select pg_get_expr(polqual,polrelid) from pg_policy where polname='fixture_module_policy')) from pg_class where oid='company_module_settings'::regclass"),before);
@@ -76,6 +81,9 @@ let notification=await scalar('select id from app_notifications where recipient_
 await as(owner);let target=await scalar('select public.resident_tax_reminder_target($1)',[notification]);eq(target.complete,false);eq(target.tax_year,2026);
 await as(viewer);await deny('select public.resident_tax_reminder_target($1)',[notification]);
 await db.exec('reset role');await db.exec(`create schema resident_tax_annual_private;create table resident_tax_annual_private.fixture_complete(company_id uuid,year int,complete boolean);create function resident_tax_annual_private.year_complete(cid uuid,p_tax_year integer) returns boolean language sql security definer set search_path='' as $$select coalesce((select complete from resident_tax_annual_private.fixture_complete where company_id=cid and year=p_tax_year),false)$$;revoke all on function resident_tax_annual_private.year_complete(uuid,integer) from public;`);
+await db.exec('alter function resident_tax_annual_private.year_complete(uuid,integer) set search_path=public');
+await as(owner);await deny('select public.resident_tax_reminder_target($1)',[notification]);
+await db.exec("reset role;alter function resident_tax_annual_private.year_complete(uuid,integer) set search_path=''");
 await q('insert into resident_tax_annual_private.fixture_complete values($1,2026,true)',[company]);
 await as(owner);eq((await scalar('select public.resident_tax_reminder_target($1)',[notification])).complete,true);
 await db.exec('reset role');eq((await scalar(dispatch,['2026-05-25T00:00:00Z',true])).delivered,0);
@@ -108,5 +116,8 @@ await db.exec("update cron.job set command='select private.ensure_monthly_payrol
 await db.exec(scheduler);
 await db.exec(`create or replace function private.enqueue_resident_tax_cutover_reminders(p_now timestamptz default clock_timestamp(),p_deliver boolean default false) returns jsonb language plpgsql as $$begin insert into public.fixture_payroll_runs values(3);raise exception 'fixture failure';end$$;`);
 await db.exec(await scalar('select command from cron.job'));eq((await q('select n from public.fixture_payroll_runs order by n')).map(x=>x.n),[1,2]);
+for(const role of ['anon','authenticated','service_role']){
+ await db.exec('set role '+role);await deny('select * from private.resident_tax_reminder_receipts');await db.exec('reset role');
+}
 console.log(`resident-tax reminder candidate: ${assertions} assertions PASS (no production delivery)`);
 }finally{await db.close();}

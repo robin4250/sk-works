@@ -49,6 +49,9 @@ language plpgsql stable security definer set search_path='' as $$
 declare result boolean;
 begin
  if to_regprocedure('resident_tax_annual_private.year_complete(uuid,integer)') is null then return false;end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('resident_tax_annual_private.year_complete(uuid,integer)')
+  and p.prorettype='boolean'::regtype and p.prosecdef and p.proconfig=array['search_path=""']::text[]) then
+  raise exception 'annual completion helper contract changed';end if;
  execute 'select resident_tax_annual_private.year_complete($1,$2)' into result using cid,p_tax_year;
  return result is true;
 end $$;
