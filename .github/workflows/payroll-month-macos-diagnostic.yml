@@ -1,0 +1,26 @@
+name: Payroll deduction month macOS diagnostic
+on:
+  push:
+    branches: [support/payroll-month-macos-diagnostic-20261020]
+permissions:
+  contents: read
+jobs:
+  deductions:
+    runs-on: macos-26-intel
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c6ade7d134929caeb8fc9c11538ec8d64ac515a9
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Verify changed deduction and resident tax widgets
+        timeout-minutes: 4
+        run: flutter test test/payroll_fixed_deductions_test.dart test/features/payroll/resident_tax_section_test.dart --reporter expanded
