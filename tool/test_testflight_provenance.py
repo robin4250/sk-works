@@ -143,6 +143,46 @@ class ProvenanceTests(unittest.TestCase):
         finally:
             os.chdir(old)
 
+    def test_flutter_347_generated_metadata_is_exact_and_bound_to_sdk_and_build(self):
+        root = self.root / 'sdk-flags'
+        path = root / 'ios/Flutter/Generated.xcconfig'
+        path.parent.mkdir(parents=True)
+        machine = {'frameworkVersion': '3.47.5', 'channel': 'stable',
+                   'repositoryUrl': 'https://github.com/flutter/flutter.git',
+                   'frameworkRevision': '1234567890abcdef', 'engineRevision': 'abcdef0123456789',
+                   'dartSdkVersion': '3.13.0'}
+        flags = {'SUPABASE_URL': 'https://ztktgquxvcxcjxtluspu.supabase.co',
+                 'SUPABASE_PUBLISHABLE_KEY': 'sb_publishable_synthetic_public_fixture',
+                 'SKO_MASTER_PASSWORD_V1': 'false', 'FLUTTER_VERSION': '3.47.5',
+                 'FLUTTER_CHANNEL': 'stable', 'FLUTTER_GIT_URL': machine['repositoryUrl'],
+                 'FLUTTER_FRAMEWORK_REVISION': '1234567890', 'FLUTTER_ENGINE_REVISION': 'abcdef0123',
+                 'FLUTTER_DART_VERSION': '3.13.0', 'FLUTTER_BUILD_NAME': '0.2.0',
+                 'FLUTTER_BUILD_NUMBER': '4'}
+        def write(values):
+            path.write_text('DART_DEFINES=' + ','.join(base64.b64encode((k+'='+v).encode()).decode() for k,v in values.items()))
+        old = Path.cwd()
+        try:
+            os.chdir(root)
+            with patch.object(p, 'run', return_value=json.dumps(machine).encode()):
+                write(flags)
+                self.assertIsNone(VERIFY_FLAGS('0.2.0', '4', require_sdk_metadata=True))
+                with self.assertRaises(ValueError): VERIFY_FLAGS('0.2.0', '5', require_sdk_metadata=True)
+                for key in flags:
+                    changed = {**flags, key: 'unexpected'}
+                    write(changed)
+                    with self.assertRaises(ValueError, msg=key):
+                        VERIFY_FLAGS('0.2.0', '4', require_sdk_metadata=True)
+                for changed in [{k:v for k,v in flags.items() if k != 'FLUTTER_VERSION'},
+                                {**flags, 'UNKNOWN_FLAG': 'false'},
+                                {k:v for k,v in flags.items() if not k.startswith('FLUTTER_')}]:
+                    write(changed)
+                    with self.assertRaises(ValueError): VERIFY_FLAGS('0.2.0', '4', require_sdk_metadata=True)
+                write(flags)
+                path.write_text(path.read_text()+','+base64.b64encode(b'FLUTTER_BUILD_NUMBER=4').decode())
+                with self.assertRaises(ValueError): VERIFY_FLAGS('0.2.0', '4', require_sdk_metadata=True)
+        finally:
+            os.chdir(old)
+
     def test_public_key_classification_rejects_privileged_and_unknown_values(self):
         def encoded(value):
             return base64.urlsafe_b64encode(json.dumps(value).encode()).decode().rstrip('=')

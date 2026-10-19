@@ -16,7 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Executable ZIP, signing-tool and dirty-source regressions
-        run: python3 tool/test_testflight_provenance.py
+        run: |
+          python3 tool/test_testflight_provenance.py
+          python3 tool/test_testflight_recheck_existing.py
       - name: Shell syntax
         run: |
           bash -n tool/testflight_candidate.sh
