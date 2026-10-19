@@ -55,3 +55,7 @@ PGliteで実行成功。NULL区分の給与下書き修復、再実行、権限/
 専用support branchで既native PG17 workflowを自動実行する。新headのnative結果は別途記録し、先行headの成功で代替しない。製品SQL/API/アプリ導線の変更・本番照会/再計算・デプロイは行わない。全本番helper一致、実JWT、待機中権限取消、完全before保護と復元可能性、他の本番副作用の確認は引き続き必要。
 
 Supabase changelogとtriggerの公式説明を確認。今回の合成試験はTLS/ltree/pgcrypto/btree_gist/custom operatorを導入しない。
+
+## 待機中の権限取消を検証する追加schedule
+
+native二接続テストへworker lock待機中と給与UPDATE内のadvisory待機中の2経路を追加。事前に認可されていた合成editorの会社membershipを別接続で削除してcommitし、待機解除後の42501拒否と給与行・audit・経費snapshotの完全rollbackを検査する。合成membershipは検証後に復元する。実JWT/session失効、全本番認可helperの証明とは区別する。この追加headの結果は専用CIで確認する。
