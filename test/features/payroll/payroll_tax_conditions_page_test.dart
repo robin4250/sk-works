@@ -57,6 +57,74 @@ void main() {
     await t.pumpAndSettle();
   }
 
+  testWidgets('target month opens its effective profile before a future profile', (t) async {
+    final calls = <String>[];
+    await t.pumpWidget(MaterialApp(home: PayrollTaxConditionsPage(
+      companyId: 'company', workerId: 'worker', month: DateTime(2026, 10),
+      rpc: (name, params) async {
+        calls.add(name);
+        return state(items: [
+          {'starts_on': '2026-12-01', 'version': 2,
+            'value': {...value, 'dependents': 4}},
+          {'starts_on': '2026-04-01', 'version': 3,
+            'value': {...value, 'dependents': 2}},
+        ]);
+      },
+    )));
+    await t.pumpAndSettle();
+    final selector = t.widget<DropdownButtonFormField<String>>(
+      find.byType(DropdownButtonFormField<String>).first);
+    expect(selector.initialValue, '2026-04-01');
+    expect(find.text('2026-04'), findsWidgets);
+    expect(calls, ['read_worker_payroll_tax_conditions']);
+  });
+
+  testWidgets('changing inspected month reloads the matching saved profile', (t) async {
+    final calls = <String>[];
+    Future<dynamic> rpc(String name, Map<String, dynamic> params) async {
+      calls.add(name);
+      // The result need not be ordered by the transport.
+      return state(items: [
+        {'starts_on': '2026-04-01', 'version': 3, 'value': value},
+        {'starts_on': '2026-12-01', 'version': 2, 'value': value},
+      ]);
+    }
+    Future<void> showMonth(int month) async {
+      await t.pumpWidget(MaterialApp(home: PayrollTaxConditionsPage(
+        companyId: 'company', workerId: 'worker', month: DateTime(2026, month),
+        rpc: rpc,
+      )));
+      await t.pumpAndSettle();
+    }
+    await showMonth(10);
+    expect(t.widget<DropdownButtonFormField<String>>(
+      find.byType(DropdownButtonFormField<String>).first).initialValue, '2026-04-01');
+    await showMonth(12);
+    expect(t.widget<DropdownButtonFormField<String>>(
+      find.byType(DropdownButtonFormField<String>).first).initialValue, '2026-12-01');
+    expect(find.text('2026-12'), findsWidgets);
+    expect(calls, ['read_worker_payroll_tax_conditions', 'read_worker_payroll_tax_conditions']);
+  });
+
+  testWidgets('future-only settings are identified without creating current conditions', (t) async {
+    final calls = <String>[];
+    await t.pumpWidget(MaterialApp(home: PayrollTaxConditionsPage(
+      companyId: 'company', workerId: 'worker', month: DateTime(2026, 10),
+      rpc: (name, params) async {
+        calls.add(name);
+        return state(items: [
+          {'starts_on': '2026-12-01', 'version': 2, 'value': value},
+        ]);
+      },
+    )));
+    await t.pumpAndSettle();
+    expect(find.text('2026-10分に適用される税計算条件は未登録です。表示中の登録済み条件は将来分です。'), findsOneWidget);
+    expect(t.widget<DropdownButtonFormField<String>>(
+      find.byType(DropdownButtonFormField<String>).first).initialValue, '2026-12-01');
+    expect(find.text('はじめての自動計算設定'), findsNothing);
+    expect(calls, ['read_worker_payroll_tax_conditions']);
+  });
+
   testWidgets('initial setup selects automatic modes without writing payroll', (
     t,
   ) async {

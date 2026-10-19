@@ -722,12 +722,13 @@ class _IndividualPayrollSettingsPageState
                               ) ?? 0,
                               readStatement: _repository!.loadMonthlyDeductionStatement,
                               openConditions: companyId == null || companyId.isEmpty
-                                  ? null : () async {
+                                  ? null : (month) async {
                                       await Navigator.of(context).push(
                                         MaterialPageRoute<void>(builder: (_) =>
                                           PayrollTaxConditionsPage(
                                             companyId: companyId,
                                             workerId: _workerId!,
+                                            month: DateTime.parse(month),
                                           )),
                                       );
                                     },

@@ -12,10 +12,13 @@ class PayrollTaxConditionsPage extends StatefulWidget {
     required this.companyId,
     required this.workerId,
     this.rpc,
+    this.month,
   });
   final String companyId;
   final String workerId;
   final PayrollTaxRpc? rpc;
+  /// Month being inspected, rather than the month of the newest saved profile.
+  final DateTime? month;
   @override
   State<PayrollTaxConditionsPage> createState() =>
       _PayrollTaxConditionsPageState();
@@ -60,6 +63,11 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   int _generation = 0;
   String? _actor;
 
+  String get _targetMonth {
+    final date = widget.month ?? DateTime.now();
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}';
+  }
+
   Future<dynamic> _rpc(String name, Map<String, dynamic> params) {
     if (widget.rpc != null) return widget.rpc!(name, params);
     if (SupabaseBackend.client.auth.currentUser?.id != _actor ||
@@ -80,8 +88,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     if (widget.rpc == null && SupabaseBackend.isInitialized) {
       _actor = SupabaseBackend.client.auth.currentUser?.id;
     }
-    final today = DateTime.now();
-    _month.text = '${today.year}-${today.month.toString().padLeft(2, '0')}';
+    _month.text = _targetMonth;
     _load();
   }
 
@@ -89,7 +96,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   void didUpdateWidget(covariant PayrollTaxConditionsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.companyId != widget.companyId ||
-        oldWidget.workerId != widget.workerId) {
+        oldWidget.workerId != widget.workerId ||
+        oldWidget.month != widget.month) {
       _items = [];
       _message = null;
       _load();
@@ -136,6 +144,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       }
       items.add(Map<String, dynamic>.from(row));
     }
+    items.sort((a, b) =>
+        (b['starts_on'] as String).compareTo(a['starts_on'] as String));
     _items = items;
     _canEdit = raw['can_edit'] == true;
   }
@@ -157,8 +167,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   }
 
   void _resetInitialConditions() {
-    final today = DateTime.now();
-    _month.text = '${today.year}-${today.month.toString().padLeft(2, '0')}';
+    _month.text = _targetMonth;
     _deductionOverrides = {};
     _insurance = 'rates';
     _income = 'koh';
@@ -196,7 +205,12 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       if (!mounted || generation != _generation) return;
       _accept(raw);
       if (_items.isNotEmpty) {
-        _fill(_items.first);
+        final month = '$_targetMonth-01';
+        // Calculation uses the latest profile effective on the target month.
+        // Future profiles remain available for deliberate editing.
+        _fill(_items.where((e) =>
+            (e['starts_on'] as String).compareTo(month) <= 0).firstOrNull ??
+            _items.first);
       } else {
         _resetInitialConditions();
       }
@@ -357,6 +371,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 const Text('月払い給与の所得税と保険料を設定します。住民税は個別の月額設定を使います。'),
+                if (_items.isNotEmpty && !_items.any((e) =>
+                    (e['starts_on'] as String).compareTo('$_targetMonth-01') <= 0))
+                  Text('$_targetMonth分に適用される税計算条件は未登録です。表示中の登録済み条件は将来分です。'),
                 if (_deductionOverrides.isNotEmpty)
                   const Text('個別給与設定で保存した手入力修正を保持します。解除は控除の月単位で「自動計算に戻す」を選んでください。'),
                 if (_error != null)
@@ -396,7 +413,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                   ),
                 if (_items.isNotEmpty)
                   DropdownButtonFormField<String>(
-                    initialValue: _items.first['starts_on'] as String,
+                    key: ValueKey('${widget.companyId}/${widget.workerId}/${_month.text}'),
+                    initialValue: _items.any((e) => e['starts_on'] == '${_month.text}-01')
+                        ? '${_month.text}-01' : null,
                     decoration: const InputDecoration(labelText: '登録済みの適用月'),
                     items: [
                       for (final item in _items)
