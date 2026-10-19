@@ -1,0 +1,27 @@
+name: Attendance clock precision
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/attendance_management_page.dart'
+      - 'test/attendance_management_clock_precision_test.dart'
+      - 'test/attendance_unrecorded_punches_test.dart'
+      - '.github/workflows/attendance-clock-precision.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  precision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Verify actual attendance save payloads
+        run: flutter test test/attendance_management_clock_precision_test.dart test/attendance_unrecorded_punches_test.dart --reporter expanded
