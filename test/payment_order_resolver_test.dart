@@ -5,7 +5,7 @@ void main() {
   Map<String, dynamic> workspace() => {
     'source_locked': false, 'source_blocked': false, 'source_changed': false,
     'attachment': null,
-    'defaults': {
+    'defaults': <String, dynamic>{
       'version': 1, 'kind': 'order', 'month': '2026-01',
       'issuer': {'name': '発注会社'}, 'counterparty': {'name': '受注会社'},
       'company_seal_snapshot': {'version': 1, 'style': 'legacy', 'name': '発注会社'},
