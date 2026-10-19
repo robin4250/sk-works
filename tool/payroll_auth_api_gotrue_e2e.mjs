@@ -71,7 +71,8 @@ try {
  },query:(sql,values=[])=>db.query(replace(sql),values.map(params))};
  phase='unchanged-payroll-fixture';await setupPayrollScopeFixture(fixture);
  assert.equal(adapted,true);
- for(const name of ['20261009171504_payroll_refresh_scope_order.sql','20261009151946_company_payroll_rate_registry.sql','20261010030208_connect_payroll_tax_calculation.sql','20261013175452_payroll_unit_conditions.sql','20261014033249_payroll_fixed_deduction_overrides.sql'])await fixture.exec(await read('supabase/migrations/'+name));
+ for(const name of ['20261009171504_payroll_refresh_scope_order.sql','20261009151946_company_payroll_rate_registry.sql','20261010030208_connect_payroll_tax_calculation.sql','20261013175452_payroll_unit_conditions.sql','20261014033249_payroll_fixed_deduction_overrides.sql']) {phase='migration-'+name;await fixture.exec(await read('supabase/migrations/'+name));}
+ phase='predicate-fixture-tables';
  await db.query('reset role');
  await db.query("select set_config('request.jwt.claim.sub','',false)");
  await db.query(`create table private.account_deletion_access_restrictions(user_id uuid primary key);
@@ -82,18 +83,21 @@ try {
  assert.equal(predicates.format,'sko-payroll-auth-fixture-v1');assert.equal(predicates.functions.length,5);
  for(const f of predicates.functions)await db.query('alter function '+f.signature+' rename to synthetic_old_'+f.signature.split('.')[1].split('(')[0]);
  for(const f of predicates.functions) {
+  phase='predicate-'+f.signature;
   await db.query(f.definition);
   await db.query('revoke all on function '+f.signature+' from public,anon;grant execute on function '+f.signature+' to authenticated');
   const actual=(await db.query('select md5(prosrc) body_md5,prosecdef,provolatile,proconfig from pg_proc where oid=to_regprocedure($1)',[f.signature])).rows[0];
-  for(const key of ['body_md5','prosecdef','provolatile','proconfig'])assert.deepEqual(actual[key],f[key]);
+  for(const key of ['body_md5','prosecdef','provolatile','proconfig'])assert.deepEqual(actual[key],f[key],'Predicate attribute '+key);
  }
  const cid='10000000-0000-0000-0000-000000000001',wid='40000000-0000-0000-0000-000000000001';
  await db.query('insert into public.company_members values($1,$2,\'manager\')',[cid,users.manager.id]);
+ phase='stale-draft-fixture';
  await db.query(`delete from public.attendance_entries;delete from public.payroll_statements;delete from public.payroll_adjustments;delete from public.paid_leave_requests;
  update public.worker_payroll_settings set pay_type='daily',day_daily=20000,custom_earnings='[]',custom_deductions='[]',family_monthly=0,transport_monthly=0,income_tax_monthly=0,social_insurance_monthly=0,resident_tax_monthly=0,other_deduction_monthly=0 where worker_id='${wid}';`);
  await db.query("insert into public.attendance_entries(id,company_id,worker_id,site_id,work_date,work_category,base_man_days) values(gen_random_uuid(),$1,$2,'20000000-0000-0000-0000-000000000001','2026-09-12',null,1)",[cid,wid]);
  const row=async()=>(await db.query("select * from public.payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-09-01'",[cid,wid])).rows[0];
- const original=await row();assert.ok(original);assert.equal(original.gross_pay,0);
+ const original=await row();assert.ok(original,'Expected synthetic draft');assert.equal(original.gross_pay,0,'Expected stale NULL-category draft');
+ phase='reviewed-candidates';
  await db.query(await read('supabase/migrations/20261018215043_fix_payroll_null_work_category.sql'));
  for(const file of ['payroll_single_draft_recalculation_20261019.sql.review-only','payroll_single_draft_preview_20261019.sql.review-only'])await db.query(await read('docs/candidates/'+file));
  const protectedBusiness=async()=>(await db.query(`select jsonb_build_object('salary',(select jsonb_agg(to_jsonb(x) order by id) from public.payroll_statements x),'audit',(select jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text) from public.payroll_audit x),'attendance',(select jsonb_agg(to_jsonb(x) order by id) from public.attendance_entries x),'settings',(select jsonb_agg(to_jsonb(x) order by worker_id) from public.worker_payroll_settings x)) value`)).rows[0].value;
@@ -134,7 +138,11 @@ try {
  console.log('PASS five frozen production-matching access predicate bodies/security attributes; successful synthetic recalculation remains draft and records the real isolated Auth actor');
  console.log('LIMIT: synthetic application tables and fixture grants; not production JWT/RLS/config/owner/ACL, OAuth/device testing, or a production deployment/recalculation');
 } catch(error) {
- console.error('FAIL isolated payroll Auth phase='+phase+' code='+(typeof error?.code==='string'?error.code:'E2E_ASSERTION'));if(lastHttp)console.error(JSON.stringify(lastHttp));process.exitCode=1;
+ console.error('FAIL isolated payroll Auth phase='+phase+' code='+(typeof error?.code==='string'?error.code:'E2E_ASSERTION'));
+ if(typeof error?.actual==='number'&&typeof error?.expected==='number')console.error(JSON.stringify({actual:error.actual,expected:error.expected}));
+ const structural=Object.fromEntries(['schema','table','column','constraint','routine'].filter(k=>typeof error?.[k]==='string'&&/^[a-zA-Z_][a-zA-Z0-9_]{0,100}$/.test(error[k])).map(k=>[k,error[k]]));
+ if(Object.keys(structural).length)console.error(JSON.stringify(structural));
+ if(lastHttp)console.error(JSON.stringify(lastHttp));process.exitCode=1;
 } finally {
  if(db)await db.end().catch(()=>{});
  if(started)await cli(['stop','--no-backup']).catch(()=>{console.error('Owned local fixture cleanup failed');process.exitCode=1;});
