@@ -42,9 +42,15 @@ class AppleAccountLink {
       request.headers.set('apikey', publicKey);
       final response = await request.close().timeout(const Duration(seconds: 10));
       if (response.statusCode != 200 || response.contentLength > 65536) return false;
-      final body = await utf8.decoder.bind(response).join()
-          .timeout(const Duration(seconds: 10));
-      if (body.length > 65536) return false;
+      final bytes = await response.timeout(const Duration(seconds: 10))
+          .fold<List<int>>(<int>[], (bytes, chunk) {
+        if (bytes.length + chunk.length > 65536) {
+          throw StateError('apple_settings_too_large');
+        }
+        bytes.addAll(chunk);
+        return bytes;
+      });
+      final body = utf8.decode(bytes);
       final json = jsonDecode(body);
       return json is Map && json['external'] is Map &&
           json['external']['apple'] == true;

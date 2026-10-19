@@ -18,10 +18,11 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
   AppleAccountLink? _source;
   StreamSubscription<dynamic>? _events;
   bool _enabled = false, _busy = false, _pending = false, _checking = false;
-  bool _complete = false;
+  bool _complete = false, _confirming = false;
   bool _foreground = true;
   int _generation = 0, _actionGeneration = 0;
   String? _message;
+  BuildContext? _confirmationContext;
 
   @override
   void initState() {
@@ -36,7 +37,16 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
           publicKey: SupabaseBackendConfig.publishableKey);
     }
     _events = _source?.changes.listen((_) {
-      if (!_pending && mounted) setState(() { _message = null; _complete = false; });
+      if (!_pending && mounted) {
+        _actionGeneration++;
+        final dialog = _confirmationContext;
+        _confirmationContext = null;
+        if (dialog != null && dialog.mounted &&
+            ModalRoute.of(dialog)?.isCurrent == true) {
+          Navigator.of(dialog).pop(false);
+        }
+        setState(() { _message = null; _complete = false; });
+      }
       _verify();
     });
     _load();
@@ -51,9 +61,15 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
 
   Future<void> _start() async {
     final source = _source;
-    if (source == null || !_enabled || _busy || _pending) return;
+    if (source == null || !_enabled || _busy || _pending || _confirming) return;
+    final original = source.client.auth.currentSession;
+    if (original == null || original.isExpired) return;
+    final confirmationGeneration = _actionGeneration;
+    _confirming = true;
     final confirmed = await showDialog<bool>(context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) {
+        _confirmationContext = context;
+        return AlertDialog(
         title: const Text('このアカウントにAppleを追加'),
         content: const Text('登録済みのGoogleとの連携と、直近5分以内の外部アカウント認証を確認します。'
           'Appleの本人確認後も同じSKOアカウントと会社を使います。'
@@ -61,8 +77,16 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
         actions: [TextButton(onPressed: () => Navigator.pop(context, false),
           child: const Text('戻る')),
           TextButton(onPressed: () => Navigator.pop(context, true),
-            child: const Text('Appleの本人確認へ'))]));
-    if (!mounted || confirmed != true) return;
+            child: const Text('Appleの本人確認へ'))]);
+      });
+    _confirmationContext = null;
+    _confirming = false;
+    if (!mounted || confirmed != true ||
+        confirmationGeneration != _actionGeneration ||
+        source.client.auth.currentSession?.user.id != original.user.id ||
+        source.client.auth.currentSession?.accessToken != original.accessToken) {
+      return;
+    }
     final action = ++_actionGeneration;
     setState(() { _busy = true; _pending = true; _message = null; });
     try {

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -26,6 +27,8 @@ String session(String id, {int age = 0}) {
     'refresh_token':'synthetic', 'token_type':'bearer', 'expires_in':3600,
     'user':user(id)});
 }
+
+class RealHttpOverrides extends HttpOverrides {}
 
 class MemoryPKCE extends GotrueAsyncStorage {
   final values = <String, String>{};
@@ -89,6 +92,28 @@ void main() {
   });
   tearDown(() async { await source.dispose(); await client.dispose(); });
 
+  test('actual settings HTTP accepts enabled JSON and rejects oversized chunked body',() async {
+    var oversized=false;
+    final server=await HttpServer.bind(InternetAddress.loopbackIPv4,0);
+    addTearDown(() => server.close(force:true));
+    server.listen((request) async {
+      try {
+        request.response.headers.chunkedTransferEncoding=true;
+        request.response.write('{"external":{"apple":true}}');
+        if (oversized) request.response.add(List<int>.filled(65537,32));
+        await request.response.close();
+      } catch (_) { /* Client deliberately aborts an oversized stream. */ }
+    });
+    final liveSettings=AppleAccountLink(client,
+      settingsUrl:Uri.parse('http://127.0.0.1:${server.port}/settings'),publicKey:'public-synthetic');
+    addTearDown(liveSettings.dispose);
+    Future<bool> read() => HttpOverrides.runZoned(liveSettings.providerEnabled,
+      createHttpClient:(context)=>RealHttpOverrides().createHttpClient(context));
+    expect(await read(),true);
+    oversized=true;
+    expect(await read(),false);
+    expect(launches,0);
+  });
   test('provider disabled prevents authorize or browser launch',() async {
     enabled=false;
     await expectLater(source.begin(),throwsStateError);
@@ -172,6 +197,31 @@ void main() {
     expect(launches,1);
     oldHold.complete(); await rejected;
     expect(launches,1); expect(source.pending,true);
+  });
+  testWidgets('dialog for A closes when another UID signs in without linking B',(t) async {
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:AppleAccountLinkCard(source:source))));
+    await t.pumpAndSettle();
+    await t.tap(find.text('このアカウントにAppleを追加'));
+    await t.pumpAndSettle();
+    expect(find.text('Appleの本人確認へ'),findsOneWidget);
+    await client.auth.setInitialSession(session(other));
+    await t.pumpAndSettle();
+    expect(find.text('Appleの本人確認へ'),findsNothing);
+    expect(launches,0);
+    expect(paths, isNot(contains('GET /auth/v1/user/identities/authorize')));
+  });
+  testWidgets('dialog for A cannot survive same-UID logout and login ABA',(t) async {
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:AppleAccountLinkCard(source:source))));
+    await t.pumpAndSettle();
+    await t.tap(find.text('このアカウントにAppleを追加'));
+    await t.pumpAndSettle();
+    expect(find.text('Appleの本人確認へ'),findsOneWidget);
+    await client.auth.signOut(scope:SignOutScope.local);
+    await client.auth.setInitialSession(session(actor));
+    await t.pumpAndSettle();
+    expect(find.text('Appleの本人確認へ'),findsNothing);
+    expect(launches,0);
+    expect(paths, isNot(contains('GET /auth/v1/user/identities/authorize')));
   });
   testWidgets('disabled provider retains preparation text without active button',(t) async {
     enabled=false;
