@@ -1,0 +1,13 @@
+# Payroll draft API Auth boundary review
+
+The existing preview/apply candidates were tested through SQL role settings. This additional isolated test uses GoTrue-issued sessions and PostgREST HTTP requests to exercise their actual API grants and actor attribution. It reuses the existing payroll setup, NULL-category fix and both review-only candidates; no calculator or production API is replaced.
+
+The local CLI is pinned to the same `supabase@2.121.0` used by the platform Auth test. The runner requires CI and a private temporary directory, rejects hosted credential variables and verifies loopback-only generated endpoints. It starts a fresh, owned local stack with no product seeds and uses only synthetic users and business rows. Local keys and passwords remain in memory and are not logged. Cleanup stops only its owned project.
+
+The original payroll fixture's five Auth prerequisites are removed by exact assertions: two roles, the Auth schema, the stub `auth.uid()`, the miniature Auth users table and its seed insert. Existing synthetic actor references are mapped to the IDs created by GoTrue. No fixture inserts or updates GoTrue tables. The native `auth.uid()` definition and original users, identities and session IDs must remain unchanged after payroll requests.
+
+Five access predicate definitions are frozen separately from the read-only helper checkpoint. Their bodies, security flags, volatility and search paths match the limited production catalog check on 2026-10-19. Extra prerequisite tables and execution grants are fixture-only; their ACLs and the complete application schema do not model all production RLS. Existing RLS dependencies can retain old fixture function OIDs after renames, so this specifically verifies the new guarded RPC path, not every direct table/REST policy.
+
+The matrix covers owner/editor preview; denied viewer, unrelated-company owner, ungranted manager and anonymous requests; removal of an editor grant; account restriction; explicit confirmation and stale revision rejection; and a successful synthetic draft recalculation whose audit actor is the real local Auth user. Preview and every refused request must preserve the salary, audit, attendance and settings rows. The current-draft preview must not advertise a projected calculation.
+
+Local syntax, outside-CI refusal and hosted-credential refusal can run without Docker. The end-to-end result must come from the exact new CI head. No live JWT, hosted Auth/RLS/config, production data, OAuth, device installation or rollout is tested. The production preview/apply APIs remain absent and the SQL files stay review-only. A successful fixture is not production deployment approval or proof that missing attendance/insurance conditions can be inferred.
