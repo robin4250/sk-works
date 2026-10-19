@@ -148,7 +148,15 @@ class SecureOnboardingRepository {
     // This check reduces stale-screen updates; Auth and the marker remain
     // separate operations. It is not an atomic server-side expiry guarantee.
     await updatePrimaryPassword(password);
-    await _client.rpc('mark_employee_initial_password_changed');
+    if (_client.auth.currentSession?.accessToken != accessToken) {
+      throw StateError('ログイン状態が変わりました。初回登録を開き直してください。');
+    }
+    await _client
+        .rpc('mark_employee_initial_password_changed')
+        .setHeader('Authorization', 'Bearer $accessToken');
+    if (_client.auth.currentSession?.accessToken != accessToken) {
+      throw StateError('ログイン状態が変わりました。初回登録を開き直してください。');
+    }
   }
 
   Future<bool> secondaryPasswordConfigured({String? accessToken}) async {
