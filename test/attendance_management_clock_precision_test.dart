@@ -45,6 +45,8 @@ void main() {
           await tester.ensureVisible(field('出勤時刻'));
           await tester.enterText(field('出勤時刻'), '02:45');
         }
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
         final save = find.widgetWithText(FilledButton, '登録・編集を直接反映');
         await tester.scrollUntilVisible(
           save,
@@ -55,6 +57,10 @@ void main() {
                 widget.axisDirection == AxisDirection.down,
           ).first,
         );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(save);
+        await tester.pumpAndSettle();
+        expect(save.hitTestable(), findsOneWidget);
         await tester.tap(save);
         await tester.pumpAndSettle();
         final request = f.calls.singleWhere(
