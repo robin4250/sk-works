@@ -2,6 +2,16 @@
 begin;
 do $guard$
 begin
+ if current_user<>'postgres' then raise exception 'Atomic receipt candidate requires reviewed postgres installer';end if;
+ if exists(select 1 from pg_proc p where p.oid in(
+   'private.route_journey_visit_before_clock_out()'::regprocedure,
+   'private.route_signed_checkout_sources(uuid,date,date)'::regprocedure)
+  and (pg_get_userbyid(p.proowner)<>'postgres' or not p.prosecdef
+    or p.proconfig is distinct from array['search_path=""']
+    or p.proacl is distinct from array['postgres=X/postgres']::aclitem[]
+    or p.provolatile is distinct from case when p.oid='private.route_signed_checkout_sources(uuid,date,date)'::regprocedure then 's'::"char" else 'v'::"char" end)) then
+  raise exception 'Atomic source function security metadata drift; inspect owner/ACL/config/security mode/volatility';
+ end if;
  if (select md5(prosrc) from pg_proc where oid='private.route_journey_visit_before_clock_out()'::regprocedure)
    is distinct from '7d52106e169225a400e5fef63841e7a8' then raise exception 'Checkout write guard changed; inspect before applying';end if;
  if (select md5(prosrc) from pg_proc where oid='private.route_signed_checkout_sources(uuid,date,date)'::regprocedure)
@@ -225,7 +235,7 @@ begin
     'private.route_journey_visit_before_clock_out()'::regprocedure)
  loop
   if exists(select 1 from aclexplode(coalesce(obj.acl,acldefault(obj.kind,obj.owner))) x where x.grantee<>obj.owner) then
-   raise exception 'Unexpected non-owner ACL on atomic receipt object %; inspect creation defaults and grants',obj.oid;
+   raise exception 'Unexpected non-owner ACL on atomic receipt object %; inspect creation defaults and grants',case when obj.kind='f' then obj.oid::regprocedure::text else obj.oid::regclass::text end;
   end if;
  end loop;
 end $acl_guard$;
