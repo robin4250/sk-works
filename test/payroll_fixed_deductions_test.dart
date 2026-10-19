@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/payroll/payroll_fixed_deductions.dart';
+import 'package:sk_works/features/payroll/resident_tax_section.dart';
+import 'features/payroll/resident_tax_section_test.dart' as resident;
 
 const month = '2026-10-01';
 final initialProfile = <String, dynamic>{
@@ -64,12 +66,15 @@ String? helper(WidgetTester t, String key) => t.widget<TextField>(
 
 Future<void> _mount(WidgetTester t, _Backend b, {
   PayrollDeductionStatementReader? reader,
+  String? selectedMonth = month,
+  Widget Function(String, ValueChanged<bool>)? residentBuilder,
   Future<void> Function()? rates,
   Future<void> Function(String month)? conditions,
 }) async {
   await t.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
     child: PayrollFixedDeductions(
-      companyId: 'company', workerId: 'worker', month: month,
+      companyId: 'company', workerId: 'worker', month: selectedMonth,
+      residentTaxBuilder: residentBuilder,
       canEdit: b.edit, readStatement: reader ?? b.statement,
       rpc: b.rpc, openRates: rates, openConditions: conditions,
       legacySocialAmount: 12345,
@@ -93,6 +98,49 @@ Future<void> save(WidgetTester t) async {
 }
 
 void main() {
+  testWidgets('month navigation keeps all deductions aligned and protects resident edits', (t) async {
+    final b = _Backend()..hasConditions = false;
+    final residentRepository = resident.FakeResidentTaxRepository();
+    final readMonths = <String>[];
+    await _mount(t, b, selectedMonth: null,
+      reader: (_, _, period) async { readMonths.add(period); return null; },
+      residentBuilder: (period, onEditingChanged) => ResidentTaxSection(
+        workerId: 'worker', companyId: 'company', month: period,
+        canEdit: true, legacyAmount: 4000, repository: residentRepository,
+        onEditingChanged: onEditingChanged,
+      ));
+    final initial = DateTime.parse(readMonths.single);
+    final next = DateTime(initial.year, initial.month + 1);
+    final nextMonth = '${next.year.toString().padLeft(4, '0')}-'
+        '${next.month.toString().padLeft(2, '0')}-01';
+    final arrow = find.byKey(const ValueKey('deductions-next-month'));
+    await t.ensureVisible(arrow);
+    await t.pumpAndSettle();
+    await t.tap(arrow);
+    await t.pumpAndSettle();
+    expect(readMonths.last, nextMonth);
+    expect(find.text('${nextMonth.substring(0, 7)}の住民税：4000円'), findsOneWidget);
+    final residentAmount = find.byKey(const ValueKey('resident-amount'));
+    await t.ensureVisible(residentAmount);
+    await t.enterText(residentAmount, '5000');
+    await t.pumpAndSettle();
+    expect(t.widget<IconButton>(arrow).onPressed, isNull);
+    expect(readMonths.length, 2);
+    final saveResident = find.text('住民税だけ保存');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.ensureVisible(saveResident);
+    await t.pumpAndSettle();
+    await t.tap(saveResident);
+    await t.pumpAndSettle();
+    expect(t.widget<IconButton>(arrow).onPressed, isNull);
+    await t.tap(find.text('確認して保存'));
+    await t.pumpAndSettle();
+    expect(residentRepository.saves, 1);
+    expect(t.widget<IconButton>(arrow).onPressed, isNotNull);
+    expect(b.writes, 0);
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('disposed deduction panel stops before fetching conditions', (t) async {
     final contract = Completer<dynamic>();
     final calls = <String>[];
