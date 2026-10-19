@@ -1,0 +1,29 @@
+name: Invitation distribution candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/app_distribution_channels_20261020.sql.review-only'
+      - 'docs/review/app_distribution_channels_20261020.md'
+      - 'tool/verify_distribution_candidate.mjs'
+      - '.github/workflows/distribution-candidate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/candidates/app_distribution_channels_20261020.sql.review-only'
+      - 'tool/verify_distribution_candidate.mjs'
+      - '.github/workflows/distribution-candidate.yml'
+permissions:
+  contents: read
+jobs:
+  channel-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node tool/verify_distribution_candidate.mjs
+        env:
+          PGLITE_PACKAGE: ${{ github.workspace }}/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js

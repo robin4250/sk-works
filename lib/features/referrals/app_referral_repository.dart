@@ -52,26 +52,18 @@ class AppReferralRepository {
       'p_public_url': guide.trim(),
     });
 
-  /// New channel settings must not write the invisible legacy URL controller.
-  /// The legacy RPC still requires a URL, so read its current value immediately
-  /// before saving flags. An atomic flags-only RPC remains a server follow-up.
+  /// Flags and channel links are separate server writes. The atomic RPC never
+  /// sends or rewrites the legacy distribution URL. A partial backend rollout
+  /// fails closed; do not fall back to a read-then-write of a stale URL.
   Future<void> saveSettingsPreservingDistributionUrl({
     required bool enabled,
     required bool publicEnabled,
     required bool notifyMaster,
-  }) async {
-    final current = await load(master: true);
-    final currentUrl = current['distribution_url'];
-    if (!current.containsKey('distribution_url') || currentUrl is! String) {
-      throw StateError('既存の配布URLを取得できません。再読み込みしてから保存してください。');
-    }
-    await saveSettings(
-      enabled: enabled,
-      publicEnabled: publicEnabled,
-      notifyMaster: notifyMaster,
-      url: currentUrl,
-    );
-  }
+  }) => client.rpc('app_referral_save_flags', params: {
+    'p_enabled': enabled,
+    'p_public_enabled': publicEnabled,
+    'p_notify_master': notifyMaster,
+  });
 
   Future<void> recordComposerOpened(String id) => client.rpc(
     'app_referral_composer_opened',
@@ -100,3 +92,4 @@ String referralJapanTime(String value) {
   String two(int value) => value.toString().padLeft(2, '0');
   return '${date.year}/${two(date.month)}/${two(date.day)} ${two(date.hour)}:${two(date.minute)} JST';
 }
+
