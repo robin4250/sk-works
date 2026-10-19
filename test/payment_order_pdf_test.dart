@@ -7,6 +7,7 @@ import 'package:sk_works/features/shared/company_seal_pdf.dart';
 import 'package:sk_works/features/shared/trade_document_attachment.dart';
 import 'package:sk_works/features/payroll/payment_certificate_pdf_service.dart';
 import 'package:sk_works/features/payroll/payment_certificate_repository.dart';
+import 'package:sk_works/features/payroll/payment_order_resolver.dart';
 
 void main(){
  TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +22,7 @@ void main(){
   'counterparty':{'name':long?List.filled(30,'株式会社').join():'株式会社下請','address':long?List.filled(120,'住所').join():'神奈川県2-2-2','corporate_number':'9876543210987','representative_name':long?List.filled(40,'代表').join():'下請 次郎'},
   'company_seal_enabled':true,'company_seal_snapshot':{'version':1,'style':'legacy','name':'株式会社発注'},
  }});
- test('monthly appendix is opt-in and preserves the adopted first page and amounts',()async{
+ test('saved and automatically generated appendices preserve first page and amounts',()async{
   final font=await CompanySealPdf.loadFont();
   final record=PaymentCertificateRecord(id:'fixture',partnerCompanyName:'株式会社下請',payerCompanyName:'株式会社発注',
    periodStart:DateTime(2026,10,1),periodEnd:DateTime(2026,10,31),grossAmount:110000,deductions:0,netAmount:110000,status:'draft',revision:1,payerCompanySealEnabled:false);
@@ -30,9 +31,13 @@ void main(){
     claims:ExpenseClaims(companyId:'company',claims:[ExpenseClaim(id:'expense',companyId:'company',applicantId:'worker',applicantName:'検証者',
       incurredOn:DateTime(2026,10,1),submittedAt:DateTime(2026,10,1),description:'経費の実頁順検証',amountYen:500,
       approval:ExpenseApproval.approved,allocation:ExpenseAllocation(ExpenseCategory.subcontractor,counterpartyId:'partner',counterpartyName:'株式会社下請'))]));
-  for(final variant in ['legacy','order','long','expenses']){
+  for(final variant in ['legacy','order','automatic','long','expenses']){
    final bytes=await PaymentCertificatePdfService.buildPdf(record,regularFont:font,boldFont:font,
-     orderAttachment:variant=='legacy'?null:order(long:variant=='long'),expenseDetails:variant=='expenses'?expenses:null);
+     orderAttachment:variant=='legacy'?null:variant=='automatic'?PaymentOrderResolver.resolve({
+       'source_locked':false,'source_blocked':false,'source_changed':false,
+       'attachment':null,'defaults':{...order().payload}..remove('issue_date'),
+       'template':{'notes':'自動生成の注文書'},
+     }):order(long:variant=='long'),expenseDetails:variant=='expenses'?expenses:null);
    expect(bytes.length,greaterThan(1000));
    if(output!=null){Directory(output).createSync(recursive:true);File('$output/payment-$variant.pdf').writeAsBytesSync(bytes);}
   }
