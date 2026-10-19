@@ -330,7 +330,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                                   'この画面からの再設定・SMS復旧は利用できません。'
                                 : _registerMode
                                     ? '携帯電話番号をIDとして登録します。'
-                                    : '登録した携帯電話番号とパスワードでログインします。',
+                                    : '登録済みの方法でログインしてください。初めて使う方は下の初回登録へ進んでください。',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           height: 1.5,
                           color: scheme.onSurfaceVariant,
@@ -350,6 +350,10 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                         TextButton(onPressed: () => setState(() { _cancelGoogle(); _message = '画面での待機を中止しました。開いているGoogle認証画面も閉じてください。'; }), child: const Text('Googleログインを中止')),
                       ],
                       const SizedBox(height: 24),
+                      if (!_registerMode && !_awaitingSms && !_passwordResetMode) ...[
+                        Text('電話番号でログイン', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 10),
+                      ],
                       if (!_passwordResetMode) ...[
                           if (_awaitingSms) ...[
                             TextField(
@@ -450,6 +454,12 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                             ),
                           ),
                           if (!_awaitingSms && !_passwordResetMode) ...[
+                            if (!_registerMode) ...[
+                              const SizedBox(height: 24),
+                              Text('初めて使う方', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 6),
+                              const Text('管理者は初回登録、従業員は会社から届いた登録QRを使います。'),
+                            ],
                             const SizedBox(height: 12),
                             SizedBox(
                               height: 50,
@@ -486,7 +496,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 12),
                                   child: Text(
-                                    'または',
+                                    '従業員の初回登録',
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: scheme.onSurfaceVariant,
                                       fontWeight: FontWeight.w600,
