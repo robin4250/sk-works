@@ -98,6 +98,63 @@ Future<void> save(WidgetTester t) async {
 }
 
 void main() {
+  for (final saved in [1500, 0]) {
+    testWidgets('legacy saved income tax stays visible without invented insurance ($saved)', (t) async {
+      final b = _Backend()..hasConditions = false;
+      var failRead = false;
+      final snapshot = <String, dynamic>{
+        'calculation_blocked': false,
+        'detail': {'所得税': saved, '社会保険': 24000},
+      };
+      await _mount(t, b, reader: (company, worker, period) async {
+        expect([company, worker, period], ['company', 'worker', month]);
+        if (failRead) throw StateError('offline');
+        return snapshot;
+      });
+      expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '$saved');
+      expect(helper(t, 'income_tax'), '保存済み明細（自動計算条件未設定）');
+      expect(t.widget<TextFormField>(amount('income_tax')).enabled, isFalse);
+      for (final item in fixedPayrollDeductions.skip(1)) {
+        expect(t.widget<TextFormField>(amount(item.$1)).controller!.text, isEmpty);
+      }
+      expect((snapshot['detail'] as Map).containsKey('tax_calculation'), isFalse);
+      failRead = true;
+      final reload = find.widgetWithText(TextButton, '税・保険料を再読み込み');
+      await t.ensureVisible(reload);
+      await t.pumpAndSettle();
+      await t.tap(reload);
+      await t.pumpAndSettle();
+      expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, isEmpty);
+      expect(helper(t, 'income_tax'), '計算結果未確認');
+      expect(b.writes, 0);
+    });
+  }
+
+  testWidgets('future conditions do not hide an earlier saved legacy tax', (t) async {
+    final b = _Backend();
+    await _mount(t, b, selectedMonth: '2026-09-01', reader: (_, _, period) async {
+      expect(period, '2026-09-01');
+      return {'calculation_blocked': false, 'detail': {'所得税': 1800}};
+    });
+    expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1800');
+    expect(helper(t, 'income_tax'), '保存済み明細（自動計算条件未設定）');
+    expect(b.writes, 0);
+  });
+
+  testWidgets('blocked or malformed legacy tax never becomes a displayed amount', (t) async {
+    final b = _Backend()..hasConditions = false;
+    for (final snapshot in <Map<String, dynamic>>[
+      {'calculation_blocked': true, 'detail': {'所得税': 1500}},
+      {'calculation_blocked': false, 'detail': {'所得税': -1}},
+      {'calculation_blocked': false, 'detail': {'所得税': '1500'}},
+    ]) {
+      await t.pumpWidget(const SizedBox.shrink());
+      await _mount(t, b, reader: (_, _, _) async => snapshot);
+      expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, isEmpty);
+      expect(b.writes, 0);
+    }
+  });
+
   for (final lostReply in [false, true]) {
   testWidgets('month navigation protects resident edits and uncertain save ($lostReply)', (t) async {
     final b = _Backend()..hasConditions = false;
