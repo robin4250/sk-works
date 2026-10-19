@@ -91,6 +91,20 @@ Future<void> save(WidgetTester t) async {
 }
 
 void main() {
+  testWidgets('returning from initial conditions reloads generated deductions', (t) async {
+    final b = _Backend()..hasConditions = false;
+    await _mount(t, b, conditions: (_) async { b.hasConditions = true; });
+    final setup = find.widgetWithText(TextButton, '税・保険料の自動計算を設定');
+    await t.ensureVisible(setup);
+    await t.pumpAndSettle();
+    await t.tap(setup);
+    await t.pumpAndSettle();
+    expect(setup, findsNothing);
+    expect(helper(t, 'income_tax'), '自動計算');
+    expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1000');
+    expect(b.writes, 0);
+  });
+
   testWidgets('condition setup receives the same month as the deduction statement', (t) async {
     final b = _Backend()..hasConditions = false;
     String? inspected;

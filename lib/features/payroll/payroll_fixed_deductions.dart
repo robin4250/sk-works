@@ -250,6 +250,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   }
 
   Future<void> _formula(String key, String title) async {
+    final generation = _generation;
     final formula = switch (key) {
       'income_tax' => '支給額から非課税額・社会保険料等を差し引き、適用する所得税月額表・甲欄／乙欄・扶養人数で計算します。',
       'employment_insurance' => '雇用保険の対象支給額 × 会社に登録した本人負担料率',
@@ -270,10 +271,19 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
           TextButton(onPressed: () => Navigator.pop(context, 'rates'), child: const Text('会社の料率')),
       ],
     ));
-    if (!mounted) return;
-    if (action == 'conditions') await widget.openConditions?.call(_month);
+    if (!mounted || generation != _generation) return;
+    if (action == 'conditions') {
+      await _openConditions();
+      return;
+    }
     if (action == 'rates') await widget.openRates?.call();
-    if (mounted && action != null && !_dirty) await _load();
+    if (mounted && generation == _generation && action != null && !_dirty) await _load();
+  }
+
+  Future<void> _openConditions() async {
+    final generation = _generation;
+    await widget.openConditions?.call(_month);
+    if (mounted && generation == _generation && !_dirty) await _load();
   }
 
   @override
@@ -317,7 +327,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       if (_profile?['insurance_mode'] != 'rates' && widget.legacySocialAmount > 0)
         Text('保険料の個別計算条件を設定してください。以前の一括設定${widget.legacySocialAmount.toStringAsFixed(0)}円は保持されています。'),
       if (_profile == null && widget.openConditions != null)
-        TextButton(onPressed: _busy ? null : () => widget.openConditions!(_month),
+        TextButton(onPressed: _busy ? null : _openConditions,
           child: const Text('税・保険料の自動計算を設定')),
       FilledButton(onPressed: widget.canEdit && _allowed && _dirty && !_busy && !_uncertain ? _save : null,
         child: const Text('税・保険料を登録')),
