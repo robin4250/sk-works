@@ -1,0 +1,37 @@
+name: Atomic final checkout ledger candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/route_checkout_atomic_ledger_20261020.sql.review-only'
+      - 'tool/verify_route_atomic_ledger_candidate.mjs'
+      - '.github/workflows/route-atomic-ledger-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ledger-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17
+        env:
+          POSTGRES_PASSWORD: isolated-ledger-fixture
+          POSTGRES_DB: sko_route_atomic_ledger_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_route_atomic_ledger_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_ATOMIC_LEDGER_DATABASE_URL: postgres://postgres:isolated-ledger-fixture@127.0.0.1:5432/sko_route_atomic_ledger_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned PostgreSQL client
+        run: npm install --prefix "$RUNNER_TEMP/atomic-ledger" --no-audit --no-fund --ignore-scripts pg@8.16.3
+      - name: Verify receipt origin, attack rejection and rollback
+        run: node tool/verify_route_atomic_ledger_candidate.mjs "$RUNNER_TEMP/atomic-ledger/node_modules/pg/lib/index.js"

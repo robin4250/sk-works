@@ -1,0 +1,214 @@
+-- Review-only future-write candidate. No deployment or historical backfill.
+begin;
+do $guard$
+begin
+ if (select md5(prosrc) from pg_proc where oid='private.route_journey_visit_before_clock_out()'::regprocedure)
+   is distinct from '7d52106e169225a400e5fef63841e7a8' then raise exception 'Checkout write guard changed; inspect before applying';end if;
+ if (select md5(prosrc) from pg_proc where oid='private.route_signed_checkout_sources(uuid,date,date)'::regprocedure)
+   is distinct from '657a3e0a3511f600e440e23026d8a73d' then raise exception 'Signed checkout reader changed; inspect before applying';end if;
+ if to_regclass('private.route_checkout_atomic_finishes') is not null then raise exception 'Atomic receipt table already exists; inspect before applying';end if;
+end $guard$;
+create table private.route_checkout_atomic_finishes(
+ checkout_id uuid primary key,source_clock_in_id uuid not null,end_capture_id uuid not null unique,
+ start_capture_id uuid not null,company_id uuid not null,worker_id uuid not null,
+ route_assignment_id uuid not null,route_stop_id uuid not null,work_date date not null,
+ attempted_at timestamptz not null,confirmed_at timestamptz not null,capture_recorded_at timestamptz not null,
+ recorded_at timestamptz not null default clock_timestamp(),
+ check(checkout_id=end_capture_id),check(attempted_at<=confirmed_at));
+alter table private.route_checkout_atomic_finishes enable row level security;
+revoke all on private.route_checkout_atomic_finishes from public,anon,authenticated;
+-- No FK cascade: original receipts remain audit evidence after managed deletion.
+create function private.reject_atomic_finish_receipt_change() returns trigger
+ language plpgsql security invoker set search_path='' as $fn$
+begin raise exception 'Atomic finish receipt is append-only' using errcode='42501';end $fn$;
+revoke all on function private.reject_atomic_finish_receipt_change() from public,anon,authenticated;
+create trigger atomic_finish_receipt_immutable before update or delete
+ on private.route_checkout_atomic_finishes for each row execute function private.reject_atomic_finish_receipt_change();
+
+CREATE OR REPLACE FUNCTION private.route_journey_visit_before_clock_out()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare source public.attendance_verifications%rowtype;
+ active private.route_journey_visit_events%rowtype; origin text; payload jsonb;
+ ended timestamptz; started timestamptz;
+begin
+ if new.event_type='clock_out' and new.source_clock_in_id is not null then
+  select * into source from public.attendance_verifications where id=new.source_clock_in_id;
+  if source.route_assignment_id is null then return new; end if;
+  if source.company_id is distinct from new.company_id or source.worker_id is distinct from new.worker_id or
+     auth.uid() is null or not private.account_access_allowed() or
+     not exists(select 1 from public.company_members where company_id=source.company_id and user_id=auth.uid()) or
+     not (exists(select 1 from public.workers where id=source.worker_id and company_id=source.company_id and user_id=auth.uid()) or private.has_company_feature(source.company_id,'can_manage_attendance')) then
+   raise exception 'route clock-out source not permitted' using errcode='42501';
+  end if;
+  perform 1 from public.companies where id=source.company_id for key share;
+  select * into source from public.attendance_verifications where id=new.source_clock_in_id for update;
+  if current_setting('transaction_isolation') <> 'read committed' then
+   raise exception 'visit clock-out guard requires read committed';
+  end if;
+  select s.* into active from private.route_journey_visit_events s
+   where s.source_clock_in_id=source.id and s.kind='start'
+   and not exists(select 1 from private.route_journey_visit_events e where e.start_capture_id=s.capture_id and e.kind='end');
+  if found then
+   -- Intermediate visits still require explicit movement. The last visit ends
+   -- atomically with clock-out; an insert failure rolls both records back.
+   if exists(select 1 from public.route_stops rs where rs.route_assignment_id=source.route_assignment_id
+    and not exists(select 1 from private.route_journey_visit_events v
+     where v.source_clock_in_id=source.id and v.route_stop_id=rs.id and v.kind='start')) then
+    raise exception 'finish current visit before clock-out';
+   end if;
+   select c.origin_kind, (c.payload->>'attempted_at')::timestamptz into origin,started
+    from private.route_journey_captures c where c.id=active.capture_id;
+   ended:=coalesce((to_jsonb(new)->>'attempted_at')::timestamptz,
+                  (to_jsonb(new)->>'confirmed_at')::timestamptz,clock_timestamp());
+   if not isfinite(ended) or ended<started then raise exception 'clock-out precedes final arrival'; end if;
+   payload:=jsonb_build_object('capture_contract_version',1,'gps_capture_status','missing',
+    'photo_capture_status','missing','gps_captured_at',null,'photo_captured_at',null,
+    'photo_observed_at',null,'captured_address',null,'latitude',null,'longitude',null,
+    'accuracy_m',null,'photo_storage_path',null,'attempted_at',ended);
+   perform private.save_route_journey_visit(new.id,source.id,active.route_stop_id,origin,payload,'end',active.capture_id);
+   -- Receipt exists only when this trigger itself ended the final visit. It is
+   -- written before checkout INSERT completes; any later failure rolls all back.
+   insert into private.route_checkout_atomic_finishes(
+    checkout_id,source_clock_in_id,end_capture_id,start_capture_id,company_id,
+    worker_id,route_assignment_id,route_stop_id,work_date,attempted_at,confirmed_at,
+    capture_recorded_at)
+   select new.id,source.id,new.id,active.capture_id,source.company_id,
+    source.worker_id,source.route_assignment_id,active.route_stop_id,source.work_date,
+    ended,new.confirmed_at,c.recorded_at
+   from private.route_journey_captures c where c.id=new.id;
+   if not found then raise exception 'Atomic final capture receipt source missing'; end if;
+  end if;
+ end if;
+ return new;
+end $function$;
+
+create or replace function private.route_signed_checkout_sources(
+  p_company uuid, p_first date, p_last date
+) returns table(
+  report_id uuid, worker_id uuid, work_date date, customer_id uuid,
+  source_clock_in_id uuid, source_quantity numeric, quantity numeric,
+  site_ids uuid[], site_names text[], visit_ids uuid[], visit_started_ats timestamptz[], visit_count bigint,
+  work_category text, overtime_hours numeric, early_hours numeric,
+  allowance_names text[], source_ready boolean, source_issue text
+)
+language sql stable security definer set search_path='' as $$
+  with signed_entries as (
+    select e.*, d.id checkout_report_id, d.route_assignment_id checkout_route,
+      d.report_date checkout_date,
+      count(*) over(partition by d.id,e.worker_id) entry_count
+    from public.daily_reports d
+    join public.attendance_entries e on e.source_report_id=d.id
+      and e.company_id=d.company_id and e.route_assignment_id=d.route_assignment_id
+      and e.work_date=d.report_date and e.site_id is null
+    where d.company_id=p_company and d.route_assignment_id is not null
+      and d.site_id is null and d.status='signed' and d.signed_at is not null
+      and d.signature_json is not null and d.signature_json <> '[]'::jsonb
+      and d.report_date between p_first and p_last
+      and exists(select 1 from public.daily_report_workers rw
+        where rw.report_id=d.id and rw.worker_id=e.worker_id)
+  ), sources as (
+    select e.*, s.id start_id, s.confirmed_at start_at, o.confirmed_at end_at, o.id checkout_id,
+      coalesce((to_jsonb(o)->>'attempted_at')::timestamptz,o.confirmed_at) checkout_attempted_at,
+      (select count(*) from public.attendance_verifications a
+        where a.daily_report_id=e.checkout_report_id and a.worker_id=e.worker_id
+          and a.company_id=p_company and a.route_assignment_id=e.checkout_route
+          and a.work_date=e.checkout_date and a.event_type='clock_in') start_count,
+      (select count(*) from public.attendance_verifications a
+        where a.source_clock_in_id=s.id and a.event_type='clock_out') end_count
+    from signed_entries e
+    join public.attendance_verifications s on s.daily_report_id=e.checkout_report_id
+      and s.company_id=e.company_id and s.worker_id=e.worker_id
+      and s.route_assignment_id=e.checkout_route and s.site_id is null
+      and s.work_date=e.checkout_date and s.event_type='clock_in'
+    join public.attendance_verifications o on o.source_clock_in_id=s.id
+      and o.company_id=s.company_id and o.worker_id=s.worker_id
+      and o.route_assignment_id=s.route_assignment_id and o.site_id is null
+      and o.work_date=s.work_date and o.daily_report_id=e.checkout_report_id
+      and o.event_type='clock_out' and o.confirmed_at>=s.confirmed_at
+  ), visits as (
+    select e.*, c.id visit_id, c.recorded_at visited_at,
+      st.id actual_site_id, st.customer_id actual_customer_id,
+      coalesce(nullif(st.formal_name,''),st.name) actual_site_name,
+      ec.id finish_capture_id, ec.recorded_at finished_at,
+      (ec.payload->>'attempted_at')::timestamptz finish_attempted_at,
+      ec.company_id end_company, ec.source_clock_in_id end_source,
+      ec.route_assignment_id end_route, ec.route_stop_id end_stop,
+      ec.worker_id end_worker, c.route_stop_id start_stop,
+      ec.work_date end_work_date,
+      count(*) over(partition by e.checkout_report_id,e.worker_id,c.id) visit_duplicates
+    from sources e
+    join private.route_journey_visit_events v on v.source_clock_in_id=e.start_id
+      and v.kind='start' and v.capture_id=v.start_capture_id
+    join private.route_journey_captures c on c.id=v.capture_id
+      and c.company_id=e.company_id and c.source_clock_in_id=e.start_id
+      and c.route_assignment_id=e.checkout_route and c.work_date=e.checkout_date
+      and c.worker_id=e.worker_id
+      and c.route_stop_id=v.route_stop_id
+    left join private.route_journey_visit_events ve on ve.start_capture_id=c.id
+      and ve.kind='end' and ve.source_clock_in_id=e.start_id
+      and ve.route_stop_id=c.route_stop_id
+    left join private.route_journey_captures ec on ec.id=ve.capture_id
+    left join public.route_stops stop on stop.id=c.route_stop_id
+      and stop.route_assignment_id=e.checkout_route
+    left join public.sites st on st.id=stop.site_id and st.company_id=e.company_id
+  ), partitioned as (
+    select checkout_report_id, worker_id, checkout_date, actual_customer_id,
+      start_id, min(base_man_days) source_quantity,
+      array_agg(actual_site_id order by visited_at,visit_id) site_ids,
+      array_agg(actual_site_name order by visited_at,visit_id) site_names,
+      array_agg(visit_id order by visited_at,visit_id) visit_ids,
+      array_agg(visited_at order by visited_at,visit_id) visit_started_ats,
+      count(*) visit_count, min(coalesce(work_category,'day')) work_category,
+      min(coalesce(overtime_hours,0)) overtime_hours,
+      min(coalesce(early_hours,0)) early_hours,
+      allowance_names,
+      bool_and(entry_count=1 and start_count=1 and end_count=1
+        and base_man_days>0 and actual_site_id is not null
+        and actual_customer_id is not null and actual_site_name is not null
+        and finish_capture_id is not null and visit_duplicates=1
+        and end_company=p_company and end_source=visits.start_id
+        and end_route=checkout_route and end_work_date=visits.checkout_date
+        and end_stop=start_stop and end_worker=visits.worker_id
+        and finished_at>=visited_at and visited_at>=start_at
+        and (finished_at<=end_at or (
+          -- The final-visit BEFORE INSERT trigger saves the capture after the
+          -- checkout timestamp. Only that exact atomic event can use its attempt.
+          finish_capture_id=visits.checkout_id
+          and finish_attempted_at=checkout_attempted_at
+          and finish_attempted_at>=visited_at and finish_attempted_at<=visits.end_at
+          and exists(select 1 from private.route_checkout_atomic_finishes receipt
+            where receipt.checkout_id=visits.checkout_id
+              and receipt.source_clock_in_id=visits.start_id
+              and receipt.end_capture_id=visits.finish_capture_id
+              and receipt.start_capture_id=visits.visit_id
+              and receipt.company_id=p_company and receipt.worker_id=visits.worker_id
+              and receipt.route_assignment_id=visits.checkout_route
+              and receipt.route_stop_id=visits.start_stop
+              and receipt.work_date=visits.checkout_date
+              and receipt.attempted_at=visits.finish_attempted_at
+              and receipt.confirmed_at=visits.end_at
+              and receipt.capture_recorded_at=visits.finished_at)
+        )))
+        source_ready
+    from visits
+    group by checkout_report_id,worker_id,checkout_date,actual_customer_id,start_id,allowance_names
+  )
+  select checkout_report_id,worker_id,checkout_date,actual_customer_id,start_id,
+    source_quantity,
+    -- Explicit user contract: one man-day per worker/day/customer, not per visit.
+    1::numeric,
+    site_ids,site_names,visit_ids,visit_started_ats,visit_count,work_category,overtime_hours,early_hours,
+    coalesce(allowance_names,'{}'::text[]),coalesce(source_ready,false),
+    case when coalesce(source_ready,false) then null else 'checkout_visit_source_unconfirmed' end
+  from partitioned
+$$;
+revoke all on function private.route_signed_checkout_sources(uuid,date,date)
+  from public, anon, authenticated;
+
+
+
+commit;
