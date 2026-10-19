@@ -98,7 +98,7 @@ def verify_public_configuration():
             'Approved public backend configuration required')
 
 
-def verify_generated_flags():
+def verify_generated_flags(version=None, build=None, require_sdk_metadata=False):
     # Decode locally for comparison only. Never retain values or their digests.
     path = Path('ios/Flutter/Generated.xcconfig')
     require(path.is_file() and not path.is_symlink()
@@ -112,12 +112,35 @@ def verify_generated_flags():
         key, separator, value = decoded.partition('=')
         require(separator and key not in values, 'Duplicate or invalid compile define')
         values[key] = value
-    require(set(values) == {'SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SKO_MASTER_PASSWORD_V1'},
+    app_keys = {'SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SKO_MASTER_PASSWORD_V1'}
+    sdk_keys = {'FLUTTER_VERSION', 'FLUTTER_CHANNEL', 'FLUTTER_GIT_URL',
+                'FLUTTER_FRAMEWORK_REVISION', 'FLUTTER_ENGINE_REVISION', 'FLUTTER_DART_VERSION',
+                'FLUTTER_BUILD_NAME', 'FLUTTER_BUILD_NUMBER'}
+    require(set(values) in (app_keys, app_keys | sdk_keys),
             'Unexpected compile defines')
+    require(not require_sdk_metadata or set(values) == app_keys | sdk_keys,
+            'Flutter SDK build metadata missing')
     require(values['SKO_MASTER_PASSWORD_V1'] == 'false', 'Dedicated Master mode must remain off')
     validate_public_key(values['SUPABASE_PUBLISHABLE_KEY'])
     require(values['SUPABASE_URL'] == 'https://ztktgquxvcxcjxtluspu.supabase.co',
             'Approved public backend configuration required')
+    if sdk_keys <= values.keys():
+        flutter = json.loads(run(['flutter', '--version', '--machine']))
+        expected = {'FLUTTER_VERSION': flutter.get('frameworkVersion'),
+                    'FLUTTER_CHANNEL': flutter.get('channel'),
+                    'FLUTTER_GIT_URL': flutter.get('repositoryUrl'),
+                    'FLUTTER_FRAMEWORK_REVISION': str(flutter.get('frameworkRevision', ''))[:10],
+                    'FLUTTER_ENGINE_REVISION': str(flutter.get('engineRevision', ''))[:10],
+                    'FLUTTER_DART_VERSION': flutter.get('dartSdkVersion')}
+        require(flutter.get('frameworkVersion') == '3.47.5'
+                and all(isinstance(v, str) and v and values[k] == v for k, v in expected.items()),
+                'Flutter SDK compile metadata differs')
+        require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', values['FLUTTER_BUILD_NAME'])
+                and re.fullmatch(r'[1-9][0-9]*', values['FLUTTER_BUILD_NUMBER']),
+                'Invalid Flutter build metadata')
+        require((version is None or values['FLUTTER_BUILD_NAME'] == version)
+                and (build is None or values['FLUTTER_BUILD_NUMBER'] == build),
+                'Flutter version/build metadata differs')
 
 
 def check_ci(sha):
@@ -192,7 +215,8 @@ def inspect_ipa(ipa):
                 'App Store distribution profile required')
         require(pent.get('beta-reports-active') is True, 'TestFlight distribution profile required')
         certificate_prefix = root / 'signer'
-        run(['/usr/bin/codesign', '-d', '--extract-certificates', str(certificate_prefix), str(app)])
+        # An optional long-option argument must be attached to the option.
+        run(['/usr/bin/codesign', '-d', '--extract-certificates=' + str(certificate_prefix), str(app)])
         leaf = Path(str(certificate_prefix) + '0')
         require(leaf.is_file() and leaf.read_bytes() in profile.get('DeveloperCertificates', []),
                 'Signer certificate is not authorized by the profile')
@@ -215,7 +239,7 @@ def create(ipa, marker, output, version, build):
     require(start.get('commit') == sha and start.get('branch') == 'main', 'Build source changed')
     context = build_context()
     require(start.get('build_context') == context, 'Build tools/native settings changed')
-    verify_generated_flags()
+    verify_generated_flags(version, build, require_sdk_metadata=True)
     require(ipa.is_file() and ipa.stat().st_mtime_ns >= start['started_ns'], 'IPA predates this build')
     before = digest(ipa)
     details = inspect_ipa(ipa)
@@ -241,7 +265,7 @@ def validate(manifest):
             and data.get('build_mode') == 'release', 'Stale or invalid candidate manifest')
     context = build_context()
     require(data.get('build_context') == context, 'Candidate build context changed')
-    verify_generated_flags()
+    verify_generated_flags(data.get('version'), data.get('build'), require_sdk_metadata=True)
     ipa = Path(data['ipa'])
     require(ipa.is_absolute() and ipa.is_file(), 'IPA missing')
     before = digest(ipa)
