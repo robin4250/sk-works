@@ -4,6 +4,7 @@ import '../shared/trade_document_attachment.dart';
 import '../shared/trade_document_attachment_repository.dart';
 import '../shared/trade_document_attachment_editor_page.dart';
 import 'invoice_order_acceptance_pdf.dart';
+import 'invoice_acceptance_resolver.dart';
 import '../expenses/expense_document_repository.dart';
 import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
@@ -83,9 +84,12 @@ class InvoicePdfService {
           : invoice.invoiceId.isEmpty || invoice.documentUpdatedAt == null ||
               attachmentRepository == null
           ? null
-          : await attachmentRepository.load(
-              subjectKind: 'invoice', subjectId: invoice.invoiceId,
-              sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String());
+          : InvoiceAcceptanceResolver.resolve(
+              await attachmentRepository.loadWorkspace(
+                subjectKind: 'invoice', subjectId: invoice.invoiceId,
+                sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String()),
+              issueDate: invoice.issueDate,
+            );
       final expenses = expenseDetailsByInvoice?[invoice.invoiceId] ?? (invoice.periodStart == null ? null : await ExpenseDocumentRepository.load(ExpenseDocument.invoice, invoice.invoiceId, invoice.periodStart!, updatedAt:invoice.documentUpdatedAt));
       if (invoice.expenseCost.isCurrent && expenses?.costRecoveryAmountYen != invoice.expenseExtraAmountYen) {
         throw StateError('別途経費の内訳と請求書金額が一致しません。再読み込みしてください。');

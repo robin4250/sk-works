@@ -51,23 +51,32 @@ void main() {
                 ).readAsString(),
               )
               as Map<String, dynamic>;
-      final font = pw.Font.ttf(
-        ByteData.sublistView(await File(fontPath!).readAsBytes()),
-      );
-      final bytes = await PayrollPdfService.buildPdf(
-        record(row),
-        regularFont: font,
-        boldFont: font,
-      );
-      final dir =
-          Platform.environment['SKO_PDF_OUTPUT_DIR'] ??
-          (await Directory.systemTemp.createTemp('sko-tax-pdf-')).path;
-      await Directory(dir).create(recursive: true);
-      final file = File('$dir/payroll_automatic_tax.pdf');
-      await file.writeAsBytes(bytes);
-      final result = await Process.run('python', [
-        '-c',
-        r'''
+      for (final mode in ['automatic', 'saved_named', 'manual_corrected']) {
+        final variant = jsonDecode(jsonEncode(row)) as Map<String, dynamic>;
+        final detail = variant['detail'] as Map<String, dynamic>;
+        if (mode != 'automatic') detail.remove('tax_calculation');
+        if (mode == 'manual_corrected') {
+          detail['雇用保険料'] = 1234;
+          variant['deductions'] = (variant['deductions'] as int) - 266;
+          variant['net_pay'] = (variant['net_pay'] as int) + 266;
+        }
+        final font = pw.Font.ttf(
+          ByteData.sublistView(await File(fontPath!).readAsBytes()),
+        );
+        final bytes = await PayrollPdfService.buildPdf(
+          record(variant),
+          regularFont: font,
+          boldFont: font,
+        );
+        final dir =
+            Platform.environment['SKO_PDF_OUTPUT_DIR'] ??
+            (await Directory.systemTemp.createTemp('sko-tax-pdf-')).path;
+        await Directory(dir).create(recursive: true);
+        final file = File('$dir/payroll_${mode}_tax.pdf');
+        await file.writeAsBytes(bytes);
+        final result = await Process.run('python', [
+          '-c',
+          r'''
 import fitz,json,re,sys
 pdf=fitz.open(sys.argv[1]);p=pdf[0]
 s=[s for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]
@@ -77,27 +86,28 @@ earnings=sum(int(v['text'].replace(',','')) for v in rows if 240<=v['bbox'][0] a
 print(json.dumps({'earnings':earnings,'total':n,'text':p.get_text(),'pages':len(pdf)},ensure_ascii=False))
 p.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(sys.argv[1]+'.png')
 ''',
-        file.path,
-      ]);
-      expect(result.exitCode, 0, reason: result.stderr.toString());
-      final report = jsonDecode(result.stdout.toString()) as Map;
-      expect(
-        report['earnings'],
-        row['gross_pay'],
-        reason: 'Insurance deductions must never become earnings',
-      );
-      expect(report['total'], row['deductions']);
-      expect(report['pages'], 1);
-      for (final label in [
-        '健康保険料',
-        '介護保険料',
-        '厚生年金保険',
-        '雇用保険料',
-        '子ども・子育て支援金',
-        '所得税',
-        '住民税',
-      ]) {
-        expect(report['text'], contains(label));
+          file.path,
+        ]);
+        expect(result.exitCode, 0, reason: result.stderr.toString());
+        final report = jsonDecode(result.stdout.toString()) as Map;
+        expect(
+          report['earnings'],
+          variant['gross_pay'],
+          reason: 'Insurance deductions must never become earnings',
+        );
+        expect(report['total'], variant['deductions']);
+        expect(report['pages'], 1);
+        for (final label in [
+          '健康保険料',
+          '介護保険料',
+          '厚生年金保険',
+          '雇用保険料',
+          '子ども・子育て支援金',
+          '所得税',
+          '住民税',
+        ]) {
+          expect(report['text'], contains(label), reason: mode);
+        }
       }
     },
     skip: fontPath == null

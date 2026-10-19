@@ -83,10 +83,9 @@ class PayrollPdfService {
         '健康保険料',
         deductions['健康保険料'] ?? deductions['社会保険'],
       ),
-      if (detail['tax_calculation'] is Map &&
-          (detail['tax_calculation'] as Map)['premiums'] is Map)
-        for (final name in const ['介護保険料', '厚生年金保険', '雇用保険料', '子ども・子育て支援金'])
-          MapEntry<String, Object?>(name, deductions[name]),
+      // Named saved deductions stay deductions even without tax metadata.
+      for (final name in const ['介護保険料', '厚生年金保険', '雇用保険料', '子ども・子育て支援金'])
+        MapEntry<String, Object?>(name, deductions[name]),
       MapEntry<String, Object?>('所得税', deductions['所得税']),
       MapEntry<String, Object?>('住民税', deductions['住民税']),
       MapEntry<String, Object?>('道具代', deductions['道具代']),
@@ -1227,6 +1226,10 @@ class PayrollPdfService {
     '交通費',
     '出勤に基づく支給額',
     '健康保険料',
+    '介護保険料',
+    '厚生年金保険',
+    '雇用保険料',
+    '子ども・子育て支援金',
     '所得税',
     '住民税',
     '道具代',
