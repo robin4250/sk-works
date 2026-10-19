@@ -1,0 +1,23 @@
+name: Payroll pending attendance diagnostic
+on:
+  push:
+    branches: [support/payroll-pending-diagnostic-20261019]
+permissions:
+  contents: read
+jobs:
+  exact-six-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 3ede993cd262b953f439e593073c3b8f93db4460
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Exact PR source, time bounded new tests
+        run: timeout --signal=TERM 180s flutter test test/payroll_pending_attendance_test.dart test/payroll_pending_attendance_panel_test.dart --reporter expanded
