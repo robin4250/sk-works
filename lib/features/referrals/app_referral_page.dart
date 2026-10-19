@@ -108,8 +108,12 @@ class _AppReferralPageState extends State<AppReferralPage> {
         if (!_channelInitialized && data['distribution_channels'] is List) {
           _channel = widget.friendInvite ? 'public' : 'testflight';
           final channels = data['distribution_channels'] as List;
-          if (!widget.friendInvite && !channels.any((c) => c is Map && c['key'] == _channel && c['ready'] == true) &&
-              channels.any((c) => c is Map && c['key'] == 'web' && c['ready'] == true)) { _channel = 'web'; }
+          if (!widget.friendInvite && !channels.any((c) => c is Map && c['key'] == _channel && c['ready'] == true)) {
+            final ready = channels.whereType<Map>().where((c) => c['ready'] == true);
+            if (ready.isNotEmpty) {
+              _channel = ready.first['key'].toString();
+            }
+          }
           _channelInitialized = true;
         }
         _url.text = data['distribution_url']?.toString() ?? '';
@@ -367,3 +371,4 @@ class _AppReferralPageState extends State<AppReferralPage> {
     );
   }
 }
+

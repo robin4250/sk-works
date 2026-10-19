@@ -32,7 +32,27 @@ class ChannelRepository implements AppReferralRepository {
   };
 }
 
+class PublicOnlyChannelRepository extends ChannelRepository {
+  @override
+  Future<Map<String,dynamic>> load({bool master=false}) async => {
+    'enabled': true, 'can_invite': true, 'distribution_url_ready': true,
+    'distribution_channels': [
+      {'key': 'testflight', 'label': 'TestFlight版', 'ready': false},
+      {'key': 'web', 'label': 'WEB版', 'ready': false},
+      {'key': 'public', 'label': '公開版の案内', 'ready': true},
+    ],
+    'invitations': <Object>[],
+  };
+}
+
 void main() {
+  testWidgets('available public channel is selected when internal channels are unavailable', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: AppReferralPage(repository: PublicOnlyChannelRepository())));
+    await tester.pumpAndSettle();
+    expect(find.text('公開版の案内'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '送信')).onPressed, isNotNull);
+  });
+
   testWidgets('missing channel RPC disables friend send but retains company legacy send',
       (tester) async {
     await tester.pumpWidget(MaterialApp(home:AppReferralPage(
@@ -94,3 +114,4 @@ void main() {
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton,'送信')).onPressed,isNull);
   });
 }
+

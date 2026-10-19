@@ -1,0 +1,219 @@
+-- REVIEW ONLY. Reuses existing referral settings/history; does not activate
+-- invitations, publish channels, send messages, issue login credentials or award points.
+begin;
+-- Refuse to overwrite a changed legacy dispatcher. This body hash matches the
+-- current read-only production metadata and the checked-in original migration.
+do $$begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('private.app_referral_dispatch(text,jsonb)')
+  and md5(prosrc)='3ccced6e2d9a82d715e07c6b3f25b490' and prosecdef
+  and proconfig=array['search_path=""']::text[]) then
+  raise exception 'legacy referral dispatcher drift: checkpoint and review required';
+ end if;
+end $$;
+create or replace function private.app_referral_dispatch(p_action text,p_args jsonb default '{}'::jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare
+ u uuid:=auth.uid(); c uuid; admin boolean; master boolean;
+ s private.app_referral_settings%rowtype; r private.app_referral_invitations%rowtype;
+ phone text; url text; rows jsonb; ranks jsonb;
+begin
+ if u is null or not private.account_access_allowed() then raise exception 'access denied' using errcode='42501'; end if;
+ master:=public.is_current_user_master_admin();
+ select cm.company_id,cm.role::text in ('owner','admin') into c,admin
+ from public.company_members cm where cm.user_id=u order by cm.company_id limit 1;
+ if c is null and not master then raise exception 'company membership required' using errcode='42501'; end if;
+ select * into s from private.app_referral_settings where id;
+ if p_action='settings' then
+   if not master then raise exception 'master administrator required' using errcode='42501'; end if;
+   url:=trim(coalesce(p_args->>'url',''));
+   if url<>'' and url !~ '^https://(testflight\.apple\.com/join/[A-Za-z0-9]+|apps\.apple\.com/[^[:space:]]+)$' then raise exception 'invalid distribution URL'; end if;
+   update private.app_referral_settings set enabled=(p_args->>'enabled')::boolean,
+   public_enabled=(p_args->>'public_enabled')::boolean,notify_master=(p_args->>'notify_master')::boolean,
+   distribution_url=url,updated_at=clock_timestamp() where id;
+   return '{}'::jsonb;
+ end if;
+ if p_action='prepare' then
+   -- Friend invitations require the channel API, which enforces public release.
+   -- Keep administrative legacy TestFlight invitations compatible.
+   if coalesce(p_args->>'source','app_invite')='friend_add' then
+     raise exception 'friend invitation requires public channel API' using errcode='42501';
+   end if;
+   if s.distribution_url ~ '^https://testflight[.]apple[.]com/join/' and not (coalesce(admin,false) or master) then
+     raise exception 'internal distribution requires company administrator' using errcode='42501';
+   end if;
+   if not s.enabled or not (coalesce(admin,false) or master or s.public_enabled) then raise exception 'invitation disabled' using errcode='42501'; end if;
+   if s.distribution_url='' then raise exception 'distribution URL not configured'; end if;
+   phone:=regexp_replace(coalesce(p_args->>'phone',''),'[[:space:]()-]','','g');
+   if phone like '+81%' then phone:='0'||substr(phone,4); end if;
+   if phone !~ '^0[0-9]{9,10}$' or length(trim(coalesce(p_args->>'name',''))) not between 1 and 100 then raise exception 'invalid name or phone'; end if;
+   if c is null then raise exception 'company membership required'; end if;
+   -- Do not infer existing registration from an unverified profile phone.
+   insert into private.app_referral_invitations(inviter_id,company_id,recipient_name,recipient_phone,source)
+   values(u,c,trim(p_args->>'name'),phone,coalesce(p_args->>'source','app_invite')) returning * into r;
+   return jsonb_build_object('id',r.id,'phone',phone,'message',r.recipient_name||' 様'||E'\n'||case when r.source='friend_add' then 'SKOアプリからの友達追加です' else 'SKOアプリへのご招待です。' end||E'\n'||s.distribution_url||E'\n招待番号: '||r.id::text);
+ end if;
+ if p_action='opened' then
+   if not s.enabled or not (coalesce(admin,false) or master or s.public_enabled) then raise exception 'invitation disabled' using errcode='42501'; end if;
+   update private.app_referral_invitations set composer_opened_at=coalesce(composer_opened_at,clock_timestamp())
+   where id=(p_args->>'id')::uuid and inviter_id=u;
+   if not found then raise exception 'invitation unavailable' using errcode='42501'; end if;
+   return '{}'::jsonb;
+ end if;
+ if p_action not in ('snapshot','master') then raise exception 'unsupported action'; end if;
+ if p_action='master' and not master then raise exception 'master administrator required' using errcode='42501'; end if;
+ select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc),'[]'::jsonb) into rows from (
+   select i.id,i.inviter_id,i.company_id,coalesce(p.display_name,'名前未登録') inviter_name,
+   coalesce(cmp.name,'会社名未登録') company_name,i.recipient_name,i.recipient_phone,i.created_at,i.registered_user_id,i.registered_at,i.points,i.source,
+   case when i.source='friend_add' and i.registered_at is not null then '友達追加経由で新規登録'
+        when i.source='friend_add' then '友達追加経由' else 'SKOアプリ招待' end source_label,
+   case when i.registered_at is not null then '登録確認済み' when i.composer_opened_at is not null then 'SMS作成画面を開いた（送信・配達未確認）' else '招待を準備（未送信）' end state_label
+   from private.app_referral_invitations i left join public.user_profiles p on p.user_id=i.inviter_id
+   left join public.companies cmp on cmp.id=i.company_id
+   where (p_action='master' or i.inviter_id=u) order by i.created_at desc limit 500
+ ) x;
+ if p_action='master' then
+   select coalesce(jsonb_agg(to_jsonb(x) order by x.registration_count desc,x.name),'[]'::jsonb) into ranks from (
+     select i.inviter_id,coalesce(p.display_name,'名前未登録') name,coalesce(cmp.name,'会社名未登録') company_name,
+     count(i.registered_user_id) registration_count,sum(i.points) points
+     from private.app_referral_invitations i left join public.user_profiles p on p.user_id=i.inviter_id
+     left join public.companies cmp on cmp.id=i.company_id group by i.inviter_id,p.display_name,cmp.name
+   ) x;
+ end if;
+ return jsonb_build_object('enabled',s.enabled,'public_enabled',s.public_enabled,'notify_master',s.notify_master,
+ 'can_invite',s.enabled and (coalesce(admin,false) or master or s.public_enabled),
+ 'distribution_url_ready',s.distribution_url<>'','distribution_url',case when master then s.distribution_url else '' end,
+ 'invitations',rows,'rankings',coalesce(ranks,'[]'::jsonb),'attribution_connected',false);
+end $$;
+create table private.app_distribution_links (
+ singleton boolean primary key default true check(singleton),
+ testflight_url text not null default '',web_url text not null default '',
+ public_url text not null default '',updated_at timestamptz not null default clock_timestamp()
+);
+insert into private.app_distribution_links(singleton,testflight_url,public_url)
+ select true,
+ case when distribution_url ~ '^https://testflight[.]apple[.]com/join/[A-Za-z0-9]+$' then distribution_url else '' end,
+ case when distribution_url ~ '^https://apps[.]apple[.]com/[^[:space:]]+$' then distribution_url else '' end
+ from private.app_referral_settings where id;
+create table private.app_distribution_invitation_channels (
+ invitation_id uuid primary key references private.app_referral_invitations(id) on delete cascade,
+ channel text not null check(channel in ('testflight','web','public')),
+ kind text not null check(kind in ('app','employee','company','friend'))
+);
+alter table private.app_distribution_links enable row level security;
+alter table private.app_distribution_invitation_channels enable row level security;
+revoke all on private.app_distribution_links,private.app_distribution_invitation_channels from public,anon,authenticated,service_role;
+
+create function private.app_distribution_dispatch(p_action text,p_args jsonb default '{}'::jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare u uuid:=auth.uid();master boolean;company uuid;admin boolean;
+ settings private.app_referral_settings%rowtype;links private.app_distribution_links%rowtype;
+ snapshot jsonb;base_snapshot jsonb;url text;tf text;web text;guide text;channel text;kind text;
+ phone text;recipient text;invitation private.app_referral_invitations%rowtype;
+begin
+ if u is null or private.account_access_allowed() is not true then raise exception 'access denied' using errcode='42501';end if;
+ master:=public.is_current_user_master_admin() is true;
+ select cm.company_id,cm.role::text in ('owner','admin') into company,admin
+ from public.company_members cm where cm.user_id=u order by cm.company_id limit 1;
+ if company is null and not master then raise exception 'company membership required' using errcode='42501';end if;
+ -- Consistent lock order for flags, links, prepare and snapshot.
+ select * into strict settings from private.app_referral_settings where id for update;
+ select * into strict links from private.app_distribution_links where singleton for update;
+ if p_action='save_flags' then
+  if not master then raise exception 'master administrator required' using errcode='42501';end if;
+  if p_args is null or (select array_agg(k order by k) from jsonb_object_keys(p_args) k)
+   is distinct from array['enabled','notify_master','public_enabled']::text[] or
+   exists(select 1 from jsonb_each(p_args) where jsonb_typeof(value)<>'boolean') then raise exception 'invalid flags';end if;
+  update private.app_referral_settings set enabled=(p_args->>'enabled')::boolean,
+   public_enabled=(p_args->>'public_enabled')::boolean,notify_master=(p_args->>'notify_master')::boolean,
+   updated_at=clock_timestamp() where id;
+  -- distribution_url and all channel URLs are deliberately absent from UPDATE.
+  return '{}'::jsonb;
+ end if;
+ if p_action='save_links' then
+  if not master then raise exception 'master administrator required' using errcode='42501';end if;
+  tf:=trim(coalesce(p_args->>'testflight',''));web:=trim(coalesce(p_args->>'web',''));guide:=trim(coalesce(p_args->>'public',''));
+  if length(tf)>2048 or length(web)>2048 or length(guide)>2048 or
+   (tf<>'' and tf !~ '^https://testflight[.]apple[.]com/join/[A-Za-z0-9]+$') or
+   (web<>'' and web !~ '^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?[.][A-Za-z]{2,}(/[^[:space:]@#]*)?$') or
+   (guide<>'' and guide !~ '^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?[.][A-Za-z]{2,}(/[^[:space:]@#]*)?$') then
+    raise exception 'invalid distribution URL';
+  end if;
+  update private.app_distribution_links set testflight_url=tf,web_url=web,public_url=guide,updated_at=clock_timestamp() where singleton;
+  return '{}'::jsonb;
+ end if;
+ if p_action='prepare' then
+  channel:=p_args->>'channel';kind:=p_args->>'kind';
+  if channel is null or channel not in ('testflight','web','public') or kind is null or kind not in ('app','employee','company','friend') then raise exception 'invalid invitation channel';end if;
+  if settings.enabled is not true or not (coalesce(admin,false) or master or settings.public_enabled) then
+   raise exception 'invitation disabled' using errcode='42501';end if;
+  if kind='friend' and channel<>'public' then raise exception 'friend invitation requires public channel' using errcode='42501';end if;
+  if channel in ('testflight','web') and not (coalesce(admin,false) or master) then
+   raise exception 'internal distribution requires company administrator' using errcode='42501';end if;
+  if channel='public' and settings.public_enabled is not true then raise exception 'public invitation disabled' using errcode='42501';end if;
+  url:=case channel when 'testflight' then links.testflight_url when 'web' then links.web_url else links.public_url end;
+  if url='' then raise exception 'distribution URL not configured';end if;
+  if company is null then raise exception 'company membership required' using errcode='42501';end if;
+  recipient:=trim(coalesce(p_args->>'name',''));
+  phone:=regexp_replace(coalesce(p_args->>'phone',''),'[[:space:]()-]','','g');
+  if phone like '+81%' then phone:='0'||substr(phone,4);end if;
+  if phone !~ '^0[0-9]{9,10}$' or length(recipient) not between 1 and 100 then raise exception 'invalid name or phone';end if;
+  insert into private.app_referral_invitations(inviter_id,company_id,recipient_name,recipient_phone,source)
+   values(u,company,recipient,phone,case when kind='friend' then 'friend_add' else 'app_invite' end) returning * into invitation;
+  insert into private.app_distribution_invitation_channels(invitation_id,channel,kind) values(invitation.id,channel,kind);
+  return jsonb_build_object('id',invitation.id,'phone',phone,'message',recipient||' 様'||E'\n'||
+   case when kind='friend' then 'SKOアプリからの友達追加です。' else 'SKOアプリへのご招待です。' end||E'\n'||url||E'\n招待番号: '||invitation.id::text);
+ end if;
+ if p_action not in ('snapshot','master') then raise exception 'unsupported distribution action';end if;
+ snapshot:=private.app_referral_dispatch(p_action);
+ base_snapshot:=snapshot;
+ select jsonb_agg(item||case when metadata.channel is null then '{}'::jsonb else
+  jsonb_build_object('distribution_label',case metadata.channel when 'testflight' then 'TestFlight版' when 'web' then 'WEB版' else '公開版の案内' end) end)
+  into snapshot from jsonb_array_elements(snapshot->'invitations') item
+  left join private.app_distribution_invitation_channels metadata on metadata.invitation_id=(item->>'id')::uuid;
+ -- Enrich only the base function's already scoped history.
+ return base_snapshot||jsonb_build_object(
+  'invitations',coalesce(snapshot,'[]'::jsonb),
+  'distribution_url_ready',((coalesce(admin,false) or master) and (links.testflight_url<>'' or links.web_url<>'')) or (settings.public_enabled and links.public_url<>''),
+  'distribution_links',case when master then jsonb_build_object('testflight',links.testflight_url,'web',links.web_url,'public',links.public_url) else '{}'::jsonb end,
+  'distribution_channels',jsonb_build_array(
+   jsonb_build_object('key','testflight','label','TestFlight版','ready',(coalesce(admin,false) or master) and links.testflight_url<>''),
+   jsonb_build_object('key','web','label','WEB版','ready',(coalesce(admin,false) or master) and links.web_url<>''),
+   jsonb_build_object('key','public','label','公開版の案内','ready',settings.public_enabled and links.public_url<>'')));
+end $$;
+revoke all on function private.app_distribution_dispatch(text,jsonb) from public,anon,authenticated,service_role;
+-- Public wrappers are invoker-only and the private dispatcher rechecks role/actor.
+grant execute on function private.app_distribution_dispatch(text,jsonb) to authenticated;
+create function public.app_distribution_snapshot(p_master boolean default false) returns jsonb language sql security invoker set search_path='' as $$
+ select private.app_distribution_dispatch(case when p_master then 'master' else 'snapshot' end)$$;
+create function public.app_distribution_prepare(p_name text,p_phone text,p_channel text,p_kind text)
+returns jsonb language sql security invoker set search_path='' as $$select private.app_distribution_dispatch('prepare',jsonb_build_object('name',p_name,'phone',p_phone,'channel',p_channel,'kind',p_kind))$$;
+create function public.app_distribution_save_links(p_testflight_url text,p_web_url text,p_public_url text)
+returns jsonb language sql security invoker set search_path='' as $$select private.app_distribution_dispatch('save_links',jsonb_build_object('testflight',p_testflight_url,'web',p_web_url,'public',p_public_url))$$;
+create function public.app_referral_save_flags(p_enabled boolean,p_public_enabled boolean,p_notify_master boolean)
+returns jsonb language sql security invoker set search_path='' as $$select private.app_distribution_dispatch('save_flags',jsonb_build_object('enabled',p_enabled,'public_enabled',p_public_enabled,'notify_master',p_notify_master))$$;
+revoke all on function public.app_distribution_snapshot(boolean),public.app_distribution_prepare(text,text,text,text),
+ public.app_distribution_save_links(text,text,text),public.app_referral_save_flags(boolean,boolean,boolean) from public,anon,authenticated,service_role;
+grant execute on function public.app_distribution_snapshot(boolean),public.app_distribution_prepare(text,text,text,text),
+ public.app_distribution_save_links(text,text,text),public.app_referral_save_flags(boolean,boolean,boolean) to authenticated;
+-- Reject any unknown default-privilege grantee. Revoking the known API roles
+-- alone is insufficient when an installation has additional default ACLs.
+do $$begin
+ if exists(select 1 from pg_class c cross join lateral
+  aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
+  where c.oid in ('private.app_distribution_links'::regclass,'private.app_distribution_invitation_channels'::regclass)
+   and a.grantee<>c.relowner) then
+  raise exception 'unexpected distribution table ACL';
+ end if;
+ if exists(select 1 from pg_proc p cross join lateral
+  aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  where p.oid in ('private.app_distribution_dispatch(text,jsonb)'::regprocedure,
+   'public.app_distribution_snapshot(boolean)'::regprocedure,
+   'public.app_distribution_prepare(text,text,text,text)'::regprocedure,
+   'public.app_distribution_save_links(text,text,text)'::regprocedure,
+   'public.app_referral_save_flags(boolean,boolean,boolean)'::regprocedure)
+  and (a.grantee not in (p.proowner,'authenticated'::regrole) or
+   (a.grantee='authenticated'::regrole and (a.privilege_type<>'EXECUTE' or a.is_grantable)))) then
+  raise exception 'unexpected distribution function ACL';
+ end if;
+end $$;
+commit;

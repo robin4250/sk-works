@@ -9,41 +9,38 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/referrals/app_referral_repository.dart';
 
 void main() {
-  for (final snapshot in <Map<String,dynamic>>[
-    {}, {'distribution_url':null}, {'distribution_url':123},
-  ]) {
-    test('unavailable legacy URL refuses save: ${snapshot.toString()}', () async {
-      final calls=<String>[];
-      final client=SupabaseClient('https://fixture.example.com','fixture-key',
-        httpClient:MockClient((request) async {
+  test('channel flags use one atomic call without a legacy URL', () async {
+    final calls = <String>[];
+    Map<String,dynamic>? saved;
+    final client = SupabaseClient('https://fixture.example.com', 'fixture-key',
+      httpClient: MockClient((request) async {
+        calls.add(request.url.path);
+        saved = jsonDecode(request.body) as Map<String,dynamic>;
+        return http.Response('{}', 200, request: request,
+          headers: {'content-type': 'application/json'});
+      }));
+    await AppReferralRepository(client).saveSettingsPreservingDistributionUrl(
+      enabled: true, publicEnabled: false, notifyMaster: false);
+    expect(calls, ['/rest/v1/rpc/app_referral_save_flags']);
+    expect(saved, {'p_enabled': true, 'p_public_enabled': false, 'p_notify_master': false});
+    await client.dispose();
+  });
+  for (final code in ['PGRST202', '42501', 'PGRST301']) {
+    test('atomic flag $code failure never rewrites the legacy URL', () async {
+      final calls = <String>[];
+      final client = SupabaseClient('https://fixture.example.com', 'fixture-key',
+        httpClient: MockClient((request) async {
           calls.add(request.url.path);
-          return http.Response(jsonEncode(snapshot),200,
-            request:request,headers:{'content-type':'application/json'});
+          return http.Response(jsonEncode({'code': code, 'message': 'unavailable'}), 403,
+            request: request, headers: {'content-type': 'application/json'});
         }));
       await expectLater(AppReferralRepository(client).saveSettingsPreservingDistributionUrl(
-        enabled:true,publicEnabled:false,notifyMaster:false),
-        throwsA(isA<StateError>()));
-      expect(calls,['/rest/v1/rpc/app_distribution_snapshot']);
+        enabled: true, publicEnabled: false, notifyMaster: false),
+        throwsA(isA<PostgrestException>()));
+      expect(calls, ['/rest/v1/rpc/app_referral_save_flags']);
       await client.dispose();
     });
   }
-  test('explicit empty legacy URL remains an intentional empty setting', () async {
-    Map<String,dynamic>? saved;
-    final client=SupabaseClient('https://fixture.example.com','fixture-key',
-      httpClient:MockClient((request) async {
-        if(request.url.path.endsWith('app_distribution_snapshot')) {
-          return http.Response('{"distribution_url":""}',200,
-            request:request,headers:{'content-type':'application/json'});
-        }
-        saved=jsonDecode(request.body) as Map<String,dynamic>;
-        return http.Response('{}',200,request:request,headers:{'content-type':'application/json'});
-      }));
-    await AppReferralRepository(client).saveSettingsPreservingDistributionUrl(
-      enabled:true,publicEnabled:false,notifyMaster:false);
-    expect(saved?['p_distribution_url'],'');
-    await client.dispose();
-  });
-
   for (final code in ['42501','PGRST301','PGRST000']) {
     test('distribution $code failure does not fall back', () async {
       final calls=<String>[];
@@ -74,22 +71,5 @@ void main() {
     expect(calls,['/rest/v1/rpc/app_distribution_snapshot','/rest/v1/rpc/app_referral_snapshot']);
     await client.dispose();
   });
-  test('new channel flag save retains freshly read server legacy URL', () async {
-    Map<String,dynamic>? saved;
-    final client=SupabaseClient('https://fixture.example.com','fixture-key',
-      httpClient:MockClient((request) async {
-        if(request.url.path.endsWith('app_distribution_snapshot')) {
-          return http.Response(jsonEncode({
-            'distribution_channels':[], 'distribution_url':'https://testflight.apple.com/join/CURRENT',
-          }),200,request:request,headers:{'content-type':'application/json'});
-        }
-        saved=jsonDecode(request.body) as Map<String,dynamic>;
-        return http.Response('{}',200,request:request,headers:{'content-type':'application/json'});
-      }));
-    await AppReferralRepository(client).saveSettingsPreservingDistributionUrl(
-      enabled:true,publicEnabled:false,notifyMaster:false);
-    expect(saved?['p_distribution_url'],'https://testflight.apple.com/join/CURRENT');
-    expect(saved?['p_public_enabled'],false);
-    await client.dispose();
-  });
 }
+
