@@ -66,6 +66,12 @@ void main(){
    await client.auth.signOut(scope:SignOutScope.local);await client.auth.setInitialSession(session(next));await Future<void>.delayed(Duration.zero);release.complete();await expectation;
   });
  }
+ test('settings rejects combined or reordered reminder dates and foreign company',(){
+  for(final dates in [['05-01,05-25'],['05-25','05-01'],['05-01','05-25','05-25']]){
+   expect(()=>ResidentTaxReminderSettings.parse({...settings(),'dates':dates},company),throwsFormatException);
+  }
+  expect(()=>ResidentTaxReminderSettings.parse(settings(cid:other),company),throwsFormatException);
+ });
  test('malformed completion never counts as pending or complete',(){
   for(final value in [null,'yes',1]){expect(()=>ResidentTaxReminderTarget.parse({...target(),'complete':value},company),throwsFormatException);}
  });

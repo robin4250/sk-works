@@ -15,7 +15,7 @@ class ResidentTaxReminderSettings {
     if (!_uuid(companyId) || raw is! Map || raw['version'] != 1 || raw['company_id'] != companyId ||
         raw['enabled'] is! bool || raw['can_edit'] is! bool ||
         raw['updated_at'] != null && (raw['updated_at'] is! String || DateTime.tryParse(raw['updated_at'] as String) == null) ||
-        raw['timezone'] != 'Asia/Tokyo' || raw['dates'] is! List || (raw['dates'] as List).join(',') != '05-01,05-25') {
+        raw['timezone'] != 'Asia/Tokyo' || raw['dates'] is! List || (raw['dates'] as List).length != 2 || (raw['dates'] as List)[0] != '05-01' || (raw['dates'] as List)[1] != '05-25') {
       throw const FormatException('住民税の通知設定を確認できません');
     }
     return ResidentTaxReminderSettings(companyId: companyId, enabled: raw['enabled'] as bool,
