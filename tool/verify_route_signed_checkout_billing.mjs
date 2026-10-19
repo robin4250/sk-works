@@ -48,7 +48,11 @@ for(let i=0;i<3;i++) {
 await db.exec(section('route_signed_checkout_sources','route_signed_site_rates'));
 const rows=async()=> (await db.query(`select * from private.route_signed_checkout_sources($1,'2026-10-12','2026-10-12') order by customer_id`,[company])).rows;
 await db.exec(`alter table attendance_verifications add column attempted_at timestamptz;alter table private.route_journey_captures add column payload jsonb default '{}'::jsonb`);
+const functionMetadata=async()=>(await db.query(`select oid,pg_get_functiondef(oid) definition,md5(prosrc) body_md5,proowner,proacl,proconfig,prosecdef,provolatile from pg_proc where oid='private.route_signed_checkout_sources(uuid,date,date)'::regprocedure`)).rows[0];
+const originalHelper=await functionMetadata();
 await db.exec(atomicFinish);
+const changedHelper=await functionMetadata();
+for(const key of ['oid','proowner','proacl','proconfig','prosecdef','provolatile']) assert.deepEqual(changedHelper[key],originalHelper[key],key+' must be preserved');
 let result=await rows();
 assert.equal(result.length,2);assert.ok(result.every(x=>x.quantity==='1'&&x.source_ready));
 assert.deepEqual(result[0].site_names,['第一現場','第二現場']);assert.equal(Number(result[0].visit_count),2);
@@ -57,6 +61,11 @@ await db.query(`update attendance_verifications set attempted_at=confirmed_at wh
 await db.query(`update private.route_journey_captures set id=$1,recorded_at='2026-10-12T09:00:00.031379Z',payload='{"attempted_at":"2026-10-12T09:00:00+00:00"}' where id=$2`,[out,id(52)]);
 await db.query(`update private.route_journey_visit_events set capture_id=$1 where capture_id=$2`,[out,id(52)]);
 assert.ok((await rows()).every(x=>x.source_ready),'Exact atomic final visit remains billable');
+await db.exec(originalHelper.definition);
+assert.deepEqual(await functionMetadata(),originalHelper,'Original full definition, owner, ACL and metadata restore exactly');
+assert.equal((await rows())[1].source_ready,false,'Restoring the original definition reproduces the atomic timing defect');
+await db.exec(atomicFinish);
+assert.ok((await rows()).every(x=>x.source_ready),'Reapplying candidate restores exact atomic eligibility');
 await db.query(`update private.route_journey_captures set payload='{"attempted_at":"2026-10-12T09:00:01Z"}' where id=$1`,[out]);
 assert.equal((await rows())[1].source_ready,false,'A changed attempt cannot bypass checkout chronology');
 await db.query(`update private.route_journey_captures set payload='{"attempted_at":"2026-10-12T09:00:00+00:00"}',id=$1 where id=$2`,[id(52),out]);

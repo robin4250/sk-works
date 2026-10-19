@@ -22,13 +22,16 @@ in its disposable fixture and covers a 31.379 millisecond persistence delay,
 mismatched attempt rejection, unrelated ID rejection, actual one-per-customer
 invoice totals, unchanged source quantities and approvals, denied actors,
 unsigned/missing source guards, and finalized invoice preservation.
-PGlite 0.3.14 passes locally. The existing CI runs the same verifier against
+The original full function definition is restored exactly in the fixture, including
+OID, owner, ACL, configuration, security mode and volatility; the old defect is
+reproduced after restore and repaired after reapplication. PGlite 0.3.14 passes locally. The existing CI runs the same verifier against
 PostgreSQL 17, including concurrent refresh/finalization protection.
 
 ## Deployment boundaries
 
 This file is a review candidate, not an applied migration. Production reads found
-an editable automatic October invoice with source-pending state. A successful
+an editable automatic October invoice. Its saved source-pending flag is false,
+although the current source helper rejects the atomic final capture. A successful
 reader repair alone does not recalculate that saved draft. Registered financial
 rates, all remaining source issues, actor authorization and the exact saved draft
 must be reviewed before using the existing refresh RPC.
