@@ -42,6 +42,10 @@ class PasswordSession:
         self.clear()
         payload = {**identifier_payload(identifier), 'password': password}
         try:
+            providers = self.endpoint.request('/auth/v1/settings').get('external', {})
+            kind = 'email' if 'email' in payload else 'phone'
+            if providers.get(kind) is not True:
+                raise ValueError('指定したログイン方法はこの接続先で無効です')
             result = self.endpoint.request('/auth/v1/token', params={'grant_type': 'password'}, body=payload)
             self._accept(result)
             # Validate the user against the live Auth endpoint before use.
@@ -105,9 +109,18 @@ class PasswordSession:
 def interactive_login(base, key):
     if not sys.stdin.isatty() or not sys.stderr.isatty():
         raise ValueError('本人の端末のターミナルで起動してください')
-    identifier = input('SKOの電話番号またはメールアドレス: ')
-    password = getpass.getpass('SKOのパスワード（表示・保存しません）: ')
     session = PasswordSession(base, key)
+    providers = session.endpoint.request('/auth/v1/settings').get('external', {})
+    if providers.get('phone') is True and providers.get('email') is True:
+        label = '電話番号またはメールアドレス'
+    elif providers.get('email') is True:
+        label = '登録済みメールアドレス'
+    elif providers.get('phone') is True:
+        label = '登録済み電話番号'
+    else:
+        raise ValueError('この接続先のパスワードログインを利用できません')
+    identifier = input('SKOの' + label + ': ')
+    password = getpass.getpass('SKOのパスワード（表示・保存しません）: ')
     try:
         session.login(identifier, password)
     finally:

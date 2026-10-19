@@ -38,7 +38,7 @@ class Client:
             return self.transport(path, params, body)
         url = self.base + path + ('?' + urllib.parse.urlencode(params) if params else '')
         headers = {'apikey': self.key, 'Content-Type': 'application/json'}
-        if path != '/auth/v1/token':
+        if path not in ('/auth/v1/token', '/auth/v1/settings'):
             headers['Authorization'] = 'Bearer ' + self.token
         req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=headers)
         # Redirects must never forward credentials to a different endpoint.

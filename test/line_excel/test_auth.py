@@ -21,6 +21,8 @@ class AuthTest(unittest.TestCase):
         state = {'actor': ACTOR, 'refresh_actor': ACTOR}
         def transport(path, params, body):
             calls.append((path, params, json.loads(json.dumps(body))))
+            if path.endswith('/settings'):
+                return {'external': {'phone': True, 'email': True}}
             if path.endswith('/token'):
                 refreshed = params['grant_type'] == 'refresh_token'
                 return {'user': {'id': state['refresh_actor'] if refreshed else ACTOR}, 'access_token': 'new-token' if refreshed else 'first-token', 'refresh_token': 'new-refresh' if refreshed else 'first-refresh', 'expires_in': 3600}
@@ -41,8 +43,8 @@ class AuthTest(unittest.TestCase):
         session, now, calls, state = self.fixture()
         session.login('09012345678', 'private-password')
         self.assertEqual(session.access_token(), 'first-token')
-        self.assertEqual(calls[0][2], {'phone': '+819012345678', 'password': 'private-password'})
-        self.assertEqual(calls[1][0], '/auth/v1/user')
+        self.assertEqual(calls[1][2], {'phone': '+819012345678', 'password': 'private-password'})
+        self.assertEqual(calls[2][0], '/auth/v1/user')
         now[0] += 3580
         self.assertEqual(session.access_token(), 'new-token')
         refresh = [c for c in calls if c[1] == {'grant_type': 'refresh_token'}]
@@ -88,6 +90,17 @@ class AuthTest(unittest.TestCase):
                 interactive_login('https://example.supabase.co', 'public')
             password.assert_not_called()
 
+    def test_disabled_phone_never_sends_password(self):
+        calls = []
+        def transport(path, params, body):
+            calls.append((path, body))
+            return {'external': {'email': True, 'phone': False}}
+        session = PasswordSession('https://example.supabase.co', 'public', transport=transport)
+        with self.assertRaises(ValueError):
+            session.login('09012345678', 'private-password')
+        self.assertEqual(calls, [('/auth/v1/settings', None)])
+        self.assertIsNone(session._access)
+
     def test_http_204_and_no_auth_header_for_password_exchange(self):
         captured = []
         class Response:
@@ -102,9 +115,11 @@ class AuthTest(unittest.TestCase):
             client = Client('https://example.supabase.co', 'public', 'token')
             self.assertIsNone(client.request('/auth/v1/logout', params={'scope': 'local'}, body={}))
             client.request('/auth/v1/token', params={'grant_type': 'password'}, body={'email': 'test@example.com', 'password': 'password'})
+            client.request('/auth/v1/settings')
         self.assertEqual(captured[0].get_header('Authorization'), 'Bearer token')
         self.assertIsNone(captured[1].get_header('Authorization'))
         self.assertEqual(captured[1].get_header('Apikey'), 'public')
+        self.assertIsNone(captured[2].get_header('Authorization'))
 
 
 if __name__ == '__main__':

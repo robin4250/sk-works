@@ -28,6 +28,8 @@ The Excel launcher loads a public key from local `接続設定.json` when necess
 and selects this interactive login if no externally supplied JWT is present.
 Phone normalization matches `JapanPhoneRules`; OAuth-only and MFA flows remain
 unsupported. Real password login must still be verified by the user locally.
+The launcher checks enabled Auth providers before prompting and refuses a
+disabled login method before sending a password. It does not enable providers.
 
 Run offline checks: `python3 -m unittest discover -s test/line_excel -v`.
 
