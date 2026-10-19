@@ -35,7 +35,16 @@ try{
   eq(await scalar("select md5(prosrc) from pg_proc where oid='private.app_referral_dispatch(text,jsonb)'::regprocedure"),'3ccced6e2d9a82d715e07c6b3f25b490');
   await db.exec(revoke);
  }
+ // Supabase's production-like public function defaults: explicitly revoke
+ // anon/service_role while retaining only authenticated EXECUTE after install.
+ await db.exec('alter default privileges in schema public grant execute on functions to anon,authenticated,service_role');
  await db.exec(candidate);
+ const publicFunctions=['public.app_distribution_snapshot(boolean)','public.app_distribution_prepare(text,text,text,text)',
+  'public.app_distribution_save_links(text,text,text)','public.app_referral_save_flags(boolean,boolean,boolean)'];
+ for(const [apiRole,expected] of [['anon',false],['service_role',false],['authenticated',true]]) {
+  const privileges=await Promise.all(publicFunctions.map(signature=>scalar('select has_function_privilege($1::text,$2::text,\'EXECUTE\')',[apiRole,signature])));
+  eq(privileges.every(value=>value===expected),true);
+ }
  await db.exec(`insert into auth.users values('${owner}'),('${other}');insert into companies values('${company}','Fixture company');
  insert into company_members values('${owner}','${company}','owner'),('${other}','${company}','employee');`);
  const snapshot='select public.app_distribution_snapshot($1::boolean)';
