@@ -466,7 +466,7 @@ class ManualContent {
   static const pamphlet = <ManualSection>[
     ManualSection(title: 'SKOとは', summary: '現場と会社をつなぐ業務アプリです。', buttonLabel: 'SKO', steps: ['出勤', '日報', 'チャット', '書類・請求を一元化'], support: 'ベータ版として実機検証を続けます。'),
     ManualSection(title: '3つの利用者区分', summary: '一般ユーザー、サブ管理者、管理者で必要な機能だけを表示します。', buttonLabel: '役割', steps: ['一般ユーザー', 'サブ管理者', '管理者'], support: '本人の出退勤は全役割で利用できます。'),
-    ManualSection(title: '電話番号ID', summary: 'ログインIDは携帯電話番号です。', buttonLabel: 'ログイン', steps: ['電話番号', '本パスワード', '必要時SMS'], support: '旧メールログインは使用しません。'),
+    ManualSection(title: '登録済みアカウントでログイン', summary: '登録済みのGoogle、電話番号、メールアドレスから利用していた方法を選びます。', buttonLabel: 'ログイン', steps: ['Googleで利用していた方は「登録済みのGoogleでログイン」', 'メールと本パスワードを登録済みの方は「登録済みのメールでログインする」', '電話番号で利用していた方は電話番号と本パスワード', '従業員の初回ログインは会社から届いた登録QR'], support: 'Googleだけで登録した方はメール用パスワードがあるとは限りません。別アカウントを新規登録せず、登録済みのGoogleを使ってください。Face IDは対応端末で重要情報を開く第2パスワードの認証に利用します。Apple・電話番号認証はサーバーの提供設定も必要です。'),
     ManualSection(title: '従業員招待', summary: '名前と電話番号だけで初期登録を開始できます。', buttonLabel: '従業員登録', steps: ['初期パスワード', '共有', 'QR'], support: '会社メンバーなら従業員登録を作れます。'),
     ManualSection(title: '本登録', summary: '本人情報を登録し、管理者/承認担当者1人の承認で利用開始します。', buttonLabel: '本登録', steps: ['本人情報', '本人写真', 'マイナンバー表裏'], support: '承認完了後に通常ホームへ進みます。'),
     ManualSection(title: '出勤・退勤', summary: '手動の打刻と本人が有効にするGPS自動出勤を使い分けます。', buttonLabel: '本日の出勤', steps: ['現場確認', 'GPS', '必要なら写真'], support: 'GPS自動出勤を有効にした場合は設定条件で背景でも位置情報を使います。本人が停止できます。'),
