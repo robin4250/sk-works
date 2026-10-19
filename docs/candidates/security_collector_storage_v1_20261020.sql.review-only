@@ -1,0 +1,157 @@
+-- REVIEW ONLY. No transport, credentials, public routes, grants to service_role,
+-- role provisioning, gate activation, or changes to the synthetic incident API.
+-- Dependency: a separately provisioned NOLOGIN bridge role with no privileged
+-- attributes, plus the reviewed reauthentication operation/scope registration.
+begin;
+do $$
+begin
+ if not exists(select 1 from pg_roles where rolname='sko_security_collector_ingest'
+  and not rolcanlogin and not rolsuper and not rolbypassrls and not rolcreatedb
+  and not rolcreaterole and not rolreplication and not rolinherit) then
+  raise exception 'collector bridge role prerequisite missing';
+ end if;
+ if pg_has_role('anon','sko_security_collector_ingest','MEMBER') or
+ pg_has_role('authenticated','sko_security_collector_ingest','MEMBER') or
+ pg_has_role('service_role','sko_security_collector_ingest','MEMBER') then
+  raise exception 'collector bridge exposed to API role';
+ end if;
+ if exists(select 1 from pg_auth_members where member='sko_security_collector_ingest'::regrole) then
+  raise exception 'collector bridge must not inherit or assume other roles';
+ end if;
+ if to_regprocedure('private.consume_reauthentication_proof(text,jsonb,text)') is null then
+  raise exception 'reauthentication prerequisite missing';
+ end if;
+end $$;
+create table private.security_collector_control(
+ singleton boolean primary key default true check(singleton),
+ ingest_enabled boolean not null default false,
+ read_enabled boolean not null default false
+);
+insert into private.security_collector_control(singleton) values(true);
+create table private.security_collector_events(
+ event_id uuid primary key,
+ collector_id uuid not null,
+ occurred_at timestamptz not null check(isfinite(occurred_at)),
+ received_at timestamptz not null default clock_timestamp(),
+ event_kind text not null check(event_kind in ('current_lure_touched','retired_lure_touched')),
+ generation integer not null check(generation between 1 and 1000000),
+ correlation_key text not null check(correlation_key ~ '^[0-9a-f]{64}$'),
+ key_epoch date not null,
+ source_provenance text not null default 'trusted_collector_observation'
+  check(source_provenance='trusted_collector_observation')
+);
+create index security_collector_received on private.security_collector_events(received_at desc,event_id);
+create table private.security_collector_read_audit(
+ audit_id bigint generated always as identity primary key,
+ actor_id uuid not null,
+ read_at timestamptz not null default clock_timestamp(),
+ result_count integer not null check(result_count between 0 and 100)
+);
+alter table private.security_collector_control enable row level security;
+alter table private.security_collector_events enable row level security;
+alter table private.security_collector_read_audit enable row level security;
+revoke all on private.security_collector_control,private.security_collector_events,
+ private.security_collector_read_audit from public,anon,authenticated,service_role,sko_security_collector_ingest;
+revoke all on sequence private.security_collector_read_audit_audit_id_seq
+ from public,anon,authenticated,service_role,sko_security_collector_ingest;
+
+create function private.ingest_security_collector_event(p_event jsonb)
+returns uuid language plpgsql security definer set search_path='' as $$
+declare eid uuid; cid uuid; at_time timestamptz; gen integer; epoch date;
+ existing private.security_collector_events%rowtype;
+begin
+ perform 1 from private.security_collector_control where singleton and ingest_enabled for share;
+ if not found then raise exception 'collector disabled' using errcode='55000';end if;
+ if p_event is null or jsonb_typeof(p_event)<>'object' or octet_length(p_event::text)>1024 or
+ (select array_agg(k order by k) from jsonb_object_keys(p_event) k) is distinct from
+ array['collector_id','correlation_key','event_id','event_kind','generation','key_epoch','occurred_at']::text[] then
+  raise exception 'invalid collector metadata' using errcode='22023';
+ end if;
+ if exists(select 1 from jsonb_each(p_event) where value='null'::jsonb) or
+ exists(select 1 from jsonb_each(p_event) where key<>'generation' and jsonb_typeof(value)<>'string') or
+ jsonb_typeof(p_event->'generation')<>'number' or p_event->>'generation' !~ '^[1-9][0-9]{0,6}$' or
+ p_event->>'event_id' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' or
+ p_event->>'collector_id' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' or
+ p_event->>'event_kind' not in ('current_lure_touched','retired_lure_touched') or
+ p_event->>'correlation_key' !~ '^[0-9a-f]{64}$' or
+ p_event->>'occurred_at' !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$' or
+ p_event->>'key_epoch' !~ '^\d{4}-\d{2}-\d{2}$' then
+  raise exception 'invalid collector metadata' using errcode='22023';
+ end if;
+ eid:=(p_event->>'event_id')::uuid;cid:=(p_event->>'collector_id')::uuid;
+ at_time:=(p_event->>'occurred_at')::timestamptz;gen:=(p_event->>'generation')::integer;
+ epoch:=(p_event->>'key_epoch')::date;
+ if not isfinite(at_time) or at_time>clock_timestamp()+interval '30 seconds' or
+ at_time<clock_timestamp()-interval '10 minutes' or gen>1000000 or
+ epoch<>(at_time at time zone 'UTC')::date then
+  raise exception 'invalid collector time or generation' using errcode='22023';
+ end if;
+ -- Serializes duplicate IDs only; no client-selected advisory-lock namespace.
+ insert into private.security_collector_events(event_id,collector_id,occurred_at,event_kind,generation,correlation_key,key_epoch)
+ values(eid,cid,at_time,p_event->>'event_kind',gen,p_event->>'correlation_key',epoch)
+ on conflict(event_id) do nothing;
+ select * into strict existing from private.security_collector_events where event_id=eid;
+ if existing.collector_id is distinct from cid or existing.occurred_at is distinct from at_time or
+ existing.event_kind is distinct from p_event->>'event_kind' or existing.generation is distinct from gen or
+ existing.correlation_key is distinct from p_event->>'correlation_key' or existing.key_epoch is distinct from epoch then
+  raise exception 'collector event conflict' using errcode='23505';
+ end if;
+ return eid;
+exception when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
+ raise exception 'invalid collector metadata' using errcode='22023';
+end $$;
+revoke all on function private.ingest_security_collector_event(jsonb)
+ from public,anon,authenticated,service_role,sko_security_collector_ingest;
+grant usage on schema private to sko_security_collector_ingest;
+grant execute on function private.ingest_security_collector_event(jsonb) to sko_security_collector_ingest;
+
+create function private.read_security_collector_events(p_proof text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare result jsonb; actor uuid:=auth.uid();
+begin
+ if actor is null or private.account_access_allowed() is not true or
+ public.is_current_user_master_admin() is not true then
+  raise exception 'collector records unavailable' using errcode='42501';
+ end if;
+ perform 1 from private.security_collector_control where singleton and read_enabled for share;
+ if not found then raise exception 'collector reading disabled' using errcode='55000';end if;
+ -- A distinct operation/scope must first be supported by the existing issuer.
+ perform private.consume_reauthentication_proof('master.security_collector.read',
+  '{"scope":"decoy_collector"}'::jsonb,p_proof);
+ select coalesce(jsonb_agg(x),'[]'::jsonb) into result from (
+  select event_id,collector_id,occurred_at,received_at,event_kind,generation,
+   correlation_key,key_epoch,source_provenance
+  from private.security_collector_events
+  where received_at>=clock_timestamp()-interval '7 days'
+  order by received_at desc,event_id limit 100
+ ) x;
+ insert into private.security_collector_read_audit(actor_id,result_count) values(actor,jsonb_array_length(result));
+ return jsonb_build_object('version',1,'source_provenance','trusted_collector_observation',
+  'coverage','collector_observations_only','attack_confirmed',false,'events',result);
+end $$;
+revoke all on function private.read_security_collector_events(text)
+ from public,anon,authenticated,service_role,sko_security_collector_ingest;
+grant execute on function private.read_security_collector_events(text) to authenticated;
+-- No public RPC or UI adapter in this slice. Both gates remain OFF.
+-- Custom default privileges must never create another writer/reader.
+do $collector_acl$
+begin
+ if exists (
+  select 1 from pg_class c
+  cross join lateral aclexplode(coalesce(c.relacl,acldefault(case when c.relkind='S' then 'S'::"char" else 'r'::"char" end,c.relowner))) a
+  where c.oid in ('private.security_collector_control'::regclass,
+    'private.security_collector_events'::regclass,'private.security_collector_read_audit'::regclass,
+    'private.security_collector_read_audit_audit_id_seq'::regclass)
+   and a.grantee<>c.relowner
+ ) then raise exception 'Unexpected collector relation privileges'; end if;
+ if exists (
+  select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  where p.oid in ('private.ingest_security_collector_event(jsonb)'::regprocedure,
+    'private.read_security_collector_events(text)'::regprocedure)
+   and a.grantee<>p.proowner
+   and not (a.privilege_type='EXECUTE' and not a.is_grantable and
+    ((p.oid='private.ingest_security_collector_event(jsonb)'::regprocedure and a.grantee='sko_security_collector_ingest'::regrole)
+      or (p.oid='private.read_security_collector_events(text)'::regprocedure and a.grantee='authenticated'::regrole)))
+ ) then raise exception 'Unexpected collector function privileges'; end if;
+end $collector_acl$;
+commit;
