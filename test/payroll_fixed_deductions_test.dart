@@ -63,12 +63,13 @@ String? helper(WidgetTester t, String key) => t.widget<TextField>(
 Future<void> _mount(WidgetTester t, _Backend b, {
   PayrollDeductionStatementReader? reader,
   Future<void> Function()? rates,
+  Future<void> Function(String month)? conditions,
 }) async {
   await t.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
     child: PayrollFixedDeductions(
       companyId: 'company', workerId: 'worker', month: month,
       canEdit: b.edit, readStatement: reader ?? b.statement,
-      rpc: b.rpc, openRates: rates,
+      rpc: b.rpc, openRates: rates, openConditions: conditions,
       legacySocialAmount: 12345,
       residentTax: const Text('登録済みの住民税'),
     ),
@@ -90,6 +91,19 @@ Future<void> save(WidgetTester t) async {
 }
 
 void main() {
+  testWidgets('condition setup receives the same month as the deduction statement', (t) async {
+    final b = _Backend()..hasConditions = false;
+    String? inspected;
+    await _mount(t, b, conditions: (month) async { inspected = month; });
+    final setup = find.widgetWithText(TextButton, '税・保険料の自動計算を設定');
+    await t.ensureVisible(setup);
+    await t.pumpAndSettle();
+    await t.tap(setup);
+    await t.pumpAndSettle();
+    expect(inspected, month);
+    expect(b.writes, 0);
+  });
+
   testWidgets('unset conditions are not described as waiting automatic calculation', (t) async {
     final b = _Backend()..hasConditions = false;
     await _mount(t, b);

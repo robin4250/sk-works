@@ -30,7 +30,8 @@ class PayrollFixedDeductions extends StatefulWidget {
   final num legacySocialAmount;
   final PayrollDeductionStatementReader readStatement;
   final Widget residentTax;
-  final Future<void> Function()? openConditions, openRates;
+  final Future<void> Function(String month)? openConditions;
+  final Future<void> Function()? openRates;
   final PayrollTaxRpc? rpc;
   @override
   State<PayrollFixedDeductions> createState() => _PayrollFixedDeductionsState();
@@ -270,7 +271,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       ],
     ));
     if (!mounted) return;
-    if (action == 'conditions') await widget.openConditions?.call();
+    if (action == 'conditions') await widget.openConditions?.call(_month);
     if (action == 'rates') await widget.openRates?.call();
     if (mounted && action != null && !_dirty) await _load();
   }
@@ -316,7 +317,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       if (_profile?['insurance_mode'] != 'rates' && widget.legacySocialAmount > 0)
         Text('保険料の個別計算条件を設定してください。以前の一括設定${widget.legacySocialAmount.toStringAsFixed(0)}円は保持されています。'),
       if (_profile == null && widget.openConditions != null)
-        TextButton(onPressed: _busy ? null : widget.openConditions,
+        TextButton(onPressed: _busy ? null : () => widget.openConditions!(_month),
           child: const Text('税・保険料の自動計算を設定')),
       FilledButton(onPressed: widget.canEdit && _allowed && _dirty && !_busy && !_uncertain ? _save : null,
         child: const Text('税・保険料を登録')),
