@@ -8,6 +8,7 @@ class InvoiceAcceptanceResolver {
   static TradeDocumentAttachment? resolve(
     Map<String, dynamic> workspace, {
     required DateTime? issueDate,
+    void Function()? onMissingLockedAcceptance,
   }) {
     if (workspace['source_changed'] == true) {
       throw StateError('元帳票が更新されています。注文請書を確認して保存し直してください。');
@@ -19,7 +20,10 @@ class InvoiceAcceptanceResolver {
       );
     }
     // Historical documents without an appendix keep their original output.
-    if (workspace['source_locked'] == true) return null;
+    if (workspace['source_locked'] == true) {
+      onMissingLockedAcceptance?.call();
+      return null;
+    }
     if (workspace['source_locked'] != false ||
         workspace['source_blocked'] != false) {
       throw StateError('注文請書の元帳票を確認できません。');
