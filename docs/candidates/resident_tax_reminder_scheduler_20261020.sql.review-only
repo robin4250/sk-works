@@ -1,0 +1,17 @@
+-- REVIEW ONLY: separate operator decision after backend, preview and backup review.
+-- Existing payroll tasks/schedule are preserved; only a failure-isolated suffix is appended.
+begin;
+do $install$
+declare job record;original text:='select private.ensure_monthly_payroll_drafts(); select private.enqueue_payroll_confirmation_notifications();';
+ suffix text:=$command$ DO $resident_reminder$ BEGIN PERFORM private.enqueue_resident_tax_cutover_reminders(clock_timestamp(),true); EXCEPTION WHEN OTHERS THEN RAISE WARNING 'Resident tax reminder failed; reminder transaction rolled back'; END $resident_reminder$;$command$;
+begin
+ if to_regprocedure('private.enqueue_resident_tax_cutover_reminders(timestamp with time zone,boolean)') is null then raise exception 'reminder backend missing';end if;
+ if (select count(*) from cron.job where jobname='payroll-confirmation-daily-jst')<>1 then raise exception 'payroll daily scheduler count changed';end if;
+ select * into job from cron.job where jobname='payroll-confirmation-daily-jst' for update;
+ if job.schedule<>'0 15 * * *' or job.active is not true then raise exception 'payroll daily scheduler state changed';end if;
+ if job.command=original||suffix then return;end if;
+ if md5(job.command)<>'0c29cad612ce5304210faafb8a46ba26' or job.command<>original then raise exception 'payroll scheduler command changed';end if;
+ if exists(select 1 from public.company_module_settings where module_key='resident_tax_reminders' and is_enabled) then raise exception 'reminder first installation requires all companies OFF';end if;
+ perform cron.alter_job(job.jobid,command=>original||suffix);
+end $install$;
+commit;

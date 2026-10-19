@@ -1,4 +1,5 @@
 import '../payroll/resident_tax_annual_page.dart';
+import '../payroll/resident_tax_reminder_panel.dart';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -548,9 +549,10 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
         OutlinedButton.icon(
           key: const ValueKey('resident-tax-annual-entry'),
           onPressed: _busy ? null : () {
-            final now = DateTime.now().toUtc().add(const Duration(hours: 9));
+            final fiscalYear = residentTaxAnnualInitialYear(DateTime.now());
             Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
-              ResidentTaxAnnualUpdatePage(companyId: widget.companyId, fiscalYear: now.year)));
+              ResidentTaxAnnualUpdatePage(companyId: widget.companyId, fiscalYear: fiscalYear,
+                reminderPanel: ResidentTaxReminderPanel(companyId: widget.companyId))));
           },
           icon: const Icon(Icons.people_outline), label: const Text('全員の住民税を更新'),
         ),
@@ -926,3 +928,10 @@ class _OfficialRateMonthsDialogState extends State<_OfficialRateMonthsDialog> {
   );
 }
 
+
+/// January-April belong to the current June-start year. May opens preparation
+/// for the coming June cutover; notification links instead use the saved year.
+int residentTaxAnnualInitialYear(DateTime instant) {
+  final jst = instant.toUtc().add(const Duration(hours: 9));
+  return jst.month >= 5 ? jst.year : jst.year - 1;
+}

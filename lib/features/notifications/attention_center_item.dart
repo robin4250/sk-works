@@ -47,6 +47,14 @@ class AttentionCenterItem {
 
   String get deduplicationKey {
     String part(String value) => '${value.length}:$value';
+    if (metadata['resident_tax_reminder'] == true && actionKey == 'payroll_settings') {
+      final year = metadata['tax_year'];
+      // Never merge different years, or guess a year from untrusted body text.
+      if (year is int && year >= 2000 && year <= 9999 && (actionId?.isNotEmpty ?? false)) {
+        return 'resident-tax:${part(actionId!)}:$year';
+      }
+      return 'source:${part(source)}:${part(id)}';
+    }
     if (actionKey == 'payroll_review' &&
         (payrollReviewerId?.isNotEmpty ?? false) &&
         RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(payrollMonth ?? '')) {
