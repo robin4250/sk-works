@@ -23,3 +23,9 @@ The MD5 fingerprints are optimistic-concurrency comparisons, not secret tokens, 
 Native PostgreSQL concurrency, live role-revocation/JWT HTTP behavior, full deployed helper/version comparison, actual before-backup/restore, app UI, user confirmation flow and production deployment are **not** claimed complete. Native PG17 evidence for the older apply API remains separate and is not relabeled as preview evidence. No new build, CI rerun, merge, or TestFlight upload is required by this source-only candidate.
 
 Supabase docs checked 2026-10-19: database functions/security-definer/default EXECUTE and changelog PostgreSQL 15.19/17.11 notice. No ltree, legacy encryption, btree_gist or custom operator usage is introduced here.
+
+## Additional dependency guard and native verification
+
+The installation candidate now requires the exact saved fingerprint and single-draft apply function bodies, both VOLATILE security definers. A name/signature alone is insufficient. Each deliberately drifted dependency is rejected before a preview endpoint is created, followed by restoration of the synthetic original. Other production helper definitions, owners, ACLs, policies and runtime JWT behavior still require the separate live prerequisite review; these two guards do not certify the entire dependency closure.
+
+The earlier preview head `9456aedf3e0ed9f014ee9c8b995be97eb8eedce8` passed native PostgreSQL 17 verification in run `39178754678`, job `117826837384`, as well as its PGlite fixture. This establishes native read-only invocation and the isolated refusal/preservation matrix, not native concurrent preview/writer behavior or live JWT access. The added body guards pass locally in PGlite; their new source head must receive its own automatic native result before being recorded as native-verified.

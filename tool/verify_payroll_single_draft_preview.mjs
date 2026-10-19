@@ -21,6 +21,16 @@ try {
  const sources=await originalSources();
  const fix=process.argv[4]??process.argv[3];if(!fix)throw Error('Provide saved reviewed NULL-category migration path; do not inline another calculator');await db.exec(read(fix));
  await db.exec(read('docs/candidates/payroll_single_draft_recalculation_20261019.sql.review-only'));
+ // Refuse an unexpected saved dependency before adding any preview endpoint.
+ for(const signature of ['private.payroll_draft_source_fingerprint(uuid,uuid,date)','private.recalculate_one_payroll_draft(uuid,integer,uuid,uuid,date,boolean,text)']) {
+  const saved=(await db.query('select pg_get_functiondef(oid) definition,prosrc body from pg_proc where oid=to_regprocedure($1)',[signature])).rows[0];
+  assert.ok(saved?.body);
+  await db.exec(saved.definition.replace(saved.body,()=>saved.body+'\n-- synthetic definition drift\n'));
+  await assert.rejects(db.exec(read('docs/candidates/payroll_single_draft_preview_20261019.sql.review-only')),/reviewed draft dependency differs/);
+  await db.exec('rollback');
+  assert.equal((await db.query("select to_regprocedure('public.preview_one_payroll_draft(uuid,integer,uuid,uuid,date)') p")).rows[0].p,null);
+  await db.exec(saved.definition);
+ }
  await db.exec(read('docs/candidates/payroll_single_draft_preview_20261019.sql.review-only'));
  const preview=async(overrides={})=>(await db.query('select public.preview_one_payroll_draft($1,$2,$3,$4,$5) result',[overrides.id??original.id,overrides.revision??original.revision,overrides.company??cid,overrides.worker??wid,overrides.month??'2026-09-01'])).rows[0].result;
  const previewAuditBefore=(await db.query('select count(*)::int n from public.payroll_audit')).rows[0].n;
