@@ -1,0 +1,55 @@
+name: Single payroll draft recalculation review fixture
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/payroll_single_draft_recalculation_20261019.sql.review-only'
+      - 'tool/verify_payroll_single_draft*.mjs'
+      - 'tool/payroll_scope*.mjs'
+      - 'tool/security/fixture_dependencies/package*.json'
+      - 'supabase/tests/payroll*.sql'
+      - 'supabase/tests/invoice_stamp_approval_workflow.sql'
+      - 'supabase/migrations/**'
+      - '.github/workflows/payroll-single-draft-recalculation-review.yml'
+  push:
+    branches: [main, support/payroll-single-draft-recalculation-20261019, support/payroll-draft-expense-preservation-20261019]
+    paths:
+      - 'docs/candidates/payroll_single_draft_recalculation_20261019.sql.review-only'
+      - 'tool/verify_payroll_single_draft_recalculation.mjs'
+      - 'tool/verify_payroll_single_draft_postgres_race.mjs'
+      - 'tool/payroll_scope*.mjs'
+      - 'tool/security/fixture_dependencies/package*.json'
+      - 'supabase/tests/payroll*.sql'
+      - 'supabase/tests/invoice_stamp_approval_workflow.sql'
+      - 'supabase/migrations/**'
+      - '.github/workflows/payroll-single-draft-recalculation-review.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_payroll_scope_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_PAYROLL_SCOPE_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_payroll_scope_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - name: Existing PGlite fixture plus reviewed correction
+        run: node tool/verify_payroll_single_draft_recalculation.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js" supabase/migrations/20261018215043_fix_payroll_null_work_category.sql
+      - name: Same fixture through existing native PostgreSQL 17 adapter
+        run: node tool/verify_payroll_single_draft_recalculation.mjs "file://$PWD/tool/payroll_scope_native_pg17_runtime.mjs" "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" supabase/migrations/20261018215043_fix_payroll_null_work_category.sql
+      - name: Real two-connection source drift and revision waits
+        run: node tool/verify_payroll_single_draft_postgres_race.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
