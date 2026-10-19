@@ -1,0 +1,44 @@
+name: Expense v2 OFF compatibility
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/expense_payment_direction_v2_20261019.sql.review-only'
+      - 'tool/verify_expense_payment_direction_v2_candidate.mjs'
+      - 'tool/verify_expense_direction_code_restore.mjs'
+      - 'tool/expense_direction_code_checkpoint.mjs'
+      - '.github/workflows/expense-v2-off-compatibility.yml'
+permissions:
+  contents: read
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - verify_expense_payment_direction_v2_candidate.mjs
+          - verify_expense_direction_code_restore.mjs
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_payroll_scope_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_PAYROLL_SCOPE_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_payroll_scope_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - name: PGlite compatibility and recovery
+        run: node "tool/${{ matrix.suite }}" "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Native PostgreSQL 17 compatibility and recovery
+        run: node "tool/${{ matrix.suite }}" "file://$PWD/tool/payroll_scope_native_pg17_runtime.mjs" "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
