@@ -43,9 +43,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('承認後の友達'), findsOneWidget);
     final before = repo.loads;
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
     repo.peerName = '復帰後の友達';
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    for (final state in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
     await tester.pumpAndSettle();
     expect(repo.loads, greaterThan(before));
     expect(find.text('復帰後の友達'), findsOneWidget);
