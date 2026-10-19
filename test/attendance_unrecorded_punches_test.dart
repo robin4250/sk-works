@@ -72,6 +72,8 @@ class Fixture {
             body = [
               {'id': site, 'name': '検証現場'},
             ];
+          case '/rest/v1/rpc/force_manage_attendance':
+            body = 1;
           case '/rest/v1/attendance_entries':
             body = recorded
                 ? [

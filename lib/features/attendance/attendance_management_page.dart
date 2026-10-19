@@ -456,6 +456,8 @@ class _ManagementFormState {
   final night = TextEditingController(text: '0');
   final clockIn = TextEditingController(text: '08:00');
   final clockOut = TextEditingController(text: '17:00');
+  DateTime? _loadedClockIn;
+  DateTime? _loadedClockOut;
   final notes = TextEditingController();
   final workDescription = TextEditingController();
   final List<TextEditingController> allowances = [];
@@ -468,6 +470,8 @@ class _ManagementFormState {
     overtime.text = _num(cell.overtimeHours);
     early.text = _num(cell.earlyHours);
     night.text = _num(cell.nightHours);
+    _loadedClockIn = cell.clockIn;
+    _loadedClockOut = cell.clockOut;
     clockIn.text = cell.clockIn == null ? '' : _time(cell.clockIn!);
     clockOut.text = cell.clockOut == null ? '' : _time(cell.clockOut!);
     notes.text = cell.notes;
@@ -503,9 +507,20 @@ class _ManagementFormState {
       mode: mode, siteId: siteId, manDays: parsedManDays, overtimeHours: parsedOvertime, earlyHours: parsedEarly, nightHours: parsedNight,
       allowanceNames: [for (final c in allowances) if (c.text.trim().isNotEmpty) c.text.trim()],
       notes: notes.text.trim(), workDescription: workDescription.text.trim(),
-      clockIn: clockIn.text.trim().isEmpty ? null : clockIn.text.trim(),
-      clockOut: clockOut.text.trim().isEmpty ? null : clockOut.text.trim(),
+      clockIn: _submittedTime(clockIn.text, _loadedClockIn),
+      clockOut: _submittedTime(clockOut.text, _loadedClockOut),
     );
+  }
+
+  // Display remains HH:mm; an untouched field retains the original evidence.
+  static String? _submittedTime(String value, DateTime? loaded) {
+    final text = value.trim();
+    if (text.isEmpty) return null;
+    if (loaded == null || text != _time(loaded)) return text;
+    final seconds = loaded.second.toString().padLeft(2, '0');
+    final fraction = (loaded.millisecond * 1000 + loaded.microsecond)
+        .toString().padLeft(6, '0');
+    return '${_time(loaded)}:$seconds.$fraction';
   }
 
   static bool _validTime(String value) {
