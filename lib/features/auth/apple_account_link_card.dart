@@ -121,6 +121,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
   @override
   Widget build(BuildContext context) => Card(child: Padding(
     padding: const EdgeInsets.all(16), child: Column(
+    mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Appleを追加'),
       if (!_enabled) const Text('既存アカウントへのApple連携は準備中です。'

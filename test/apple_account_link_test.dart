@@ -27,12 +27,26 @@ String session(String id, {int age = 0}) {
     'user':user(id)});
 }
 
+class MemoryPKCE extends GotrueAsyncStorage {
+  final values = <String, String>{};
+  Completer<void>? hold;
+  Completer<void>? reached;
+  @override Future<String?> getItem({required String key}) async => values[key];
+  @override Future<void> setItem({required String key, required String value}) async {
+    values[key] = value;
+    reached?.complete();
+    await hold?.future;
+  }
+  @override Future<void> removeItem({required String key}) async { values.remove(key); }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late SupabaseClient client;
   late AppleAccountLink source;
   late MockClient network;
   late List<String> paths;
+  late MemoryPKCE pkce;
   late bool enabled, apple, google;
   late int launches;
   String role = 'owner';
@@ -46,25 +60,27 @@ void main() {
     authorizeUrl='https://appleid.apple.com/auth/authorize?synthetic=true';
     network=MockClient((request) async {
       paths.add('${request.method} ${request.url.path}');
-      if (request.url.path.endsWith('/logout')) return http.Response('{}',200);
+      if (request.url.path.endsWith('/logout')) return http.Response('{}',200,headers:{'content-type':'application/json'});
       if (request.url.path.endsWith('/settings')) {
-        return http.Response(jsonEncode({'external':{'apple':enabled}}),200);
+        return http.Response(jsonEncode({'external':{'apple':enabled}}),200,headers:{'content-type':'application/json'});
       }
       if (request.url.path.endsWith('/user/identities/authorize')) {
         gotAuthorize?.complete();
         await holdAuthorize?.future;
-        return http.Response(jsonEncode({'url':authorizeUrl}),200);
+        return http.Response(jsonEncode({'url':authorizeUrl}),200,headers:{'content-type':'application/json'});
       }
       if (request.url.path.endsWith('/user')) {
-        return http.Response(jsonEncode(user(responseActor,apple:apple,google:google)),200);
+        return http.Response(jsonEncode(user(responseActor,apple:apple,google:google)),200,headers:{'content-type':'application/json'});
       }
       if (request.url.path.endsWith('/company_members')) {
-        return http.Response(jsonEncode([{'company_id':'synthetic-company','role':role}]),200);
+        return http.Response(jsonEncode([{'company_id':'synthetic-company','role':role}]),200,headers:{'content-type':'application/json'});
       }
       throw StateError('Unexpected HTTP request');
     });
+    pkce=MemoryPKCE();
     client=SupabaseClient('https://apple-link.invalid','public-synthetic',
-      authOptions:const AuthClientOptions(autoRefreshToken:false), httpClient:network);
+      authOptions:AuthClientOptions(autoRefreshToken:false,
+        authFlowType:AuthFlowType.pkce,pkceAsyncStorage:pkce), httpClient:network);
     await client.auth.setInitialSession(session(actor));
     source=AppleAccountLink(client,
       settingsUrl:Uri.parse('https://apple-link.invalid/auth/v1/settings'),
@@ -107,6 +123,15 @@ void main() {
     await gotAuthorize!.future;
     await client.auth.setInitialSession(session(other));
     holdAuthorize!.complete(); await rejected; expect(launches,0);
+  });
+  test('UID changes during SDK PKCE storage cannot open a different account URL',() async {
+    pkce.hold=Completer<void>(); pkce.reached=Completer<void>();
+    final operation=source.begin();
+    final rejected=expectLater(operation,throwsStateError);
+    await pkce.reached!.future;
+    await client.auth.setInitialSession(session(other));
+    pkce.hold!.complete(); await rejected;
+    expect(launches,0);
   });
   test('same-UID logout then login never resurrects old authorize URL',() async {
     holdAuthorize=Completer<void>(); gotAuthorize=Completer<void>();
