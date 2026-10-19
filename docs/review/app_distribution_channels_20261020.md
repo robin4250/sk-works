@@ -46,7 +46,7 @@ history metadata, unchanged legacy URL, flags, account restrictions and no
 client-attributed registration/points. An SDK transport test covers atomic flag
 payload and missing/denied API behavior. No real communication is performed.
 
-Remaining before real use: native PostgreSQL role/concurrency tests, checkpoint
+Remaining before real use: native PostgreSQL role/concurrency verification, checkpoint
 and restore rehearsal, current-production function/constraint compatibility,
 reviewed server deployment, the actual intended Apple distribution route and
 URL (without broadening owner-only testing), explicit scoped enablement, and
@@ -82,6 +82,16 @@ The normal successful installation also seeds the current-production-style
 public-function defaults for anon/authenticated/service_role, then verifies all
 four new public wrappers deny anon/service_role EXECUTE and permit only
 authenticated EXECUTE. The candidate's explicit REVOKE includes service_role.
+
+The same unchanged fixture is also wired to an isolated PostgreSQL 17 CI service
+through a minimal `pg` adapter using the existing pinned fixture dependencies.
+Before connecting it permits only loopback, fixed disposable database name
+`sko_distribution_fixture` and fixture credentials, with no URL query/fragment.
+After connecting it requires version 17 and no user schema/relation/routine.
+The independent guard test checks valid loopbacks and ten invalid destinations
+without connecting to a database. Native results are pending; no production URL
+or credential is accepted by this adapter. Parallel database sessions, backup /
+restore and actual Auth/RLS dependency equivalence are not claimed by this test.
 
 Before any production application save the exact dispatcher definition, owner,
 ACL/config, referral settings, existing invitation rows, constraints/dependencies
