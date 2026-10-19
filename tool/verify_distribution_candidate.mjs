@@ -19,7 +19,23 @@ try{
  create function private.account_access_allowed() returns boolean language sql as $$select current_setting('test.allowed',true)='true'$$;
  create function public.is_current_user_master_admin() returns boolean language sql as $$select current_setting('test.master',true)='true'$$;
  grant usage on schema private,auth to authenticated;`);
- await db.exec(oldSql);await db.exec(candidate);
+ await db.exec(oldSql);
+ await db.exec('create role fixture_default_grantee');
+ for (const [grant,revoke,error] of [
+  ['alter default privileges in schema private grant select on tables to fixture_default_grantee',
+   'alter default privileges in schema private revoke select on tables from fixture_default_grantee',/unexpected distribution table ACL/],
+  ['alter default privileges in schema private grant execute on functions to fixture_default_grantee',
+   'alter default privileges in schema private revoke execute on functions from fixture_default_grantee',/unexpected distribution function ACL/],
+  ['alter default privileges in schema public grant execute on functions to fixture_default_grantee',
+   'alter default privileges in schema public revoke execute on functions from fixture_default_grantee',/unexpected distribution function ACL/],
+ ]) {
+  await db.exec(grant);await assert.rejects(()=>db.exec(candidate),error);assertions++;
+  await db.exec('rollback');
+  eq(await scalar("select to_regclass('private.app_distribution_links') is null"),true);
+  eq(await scalar("select md5(prosrc) from pg_proc where oid='private.app_referral_dispatch(text,jsonb)'::regprocedure"),'3ccced6e2d9a82d715e07c6b3f25b490');
+  await db.exec(revoke);
+ }
+ await db.exec(candidate);
  await db.exec(`insert into auth.users values('${owner}'),('${other}');insert into companies values('${company}','Fixture company');
  insert into company_members values('${owner}','${company}','owner'),('${other}','${company}','employee');`);
  const snapshot='select public.app_distribution_snapshot($1::boolean)';

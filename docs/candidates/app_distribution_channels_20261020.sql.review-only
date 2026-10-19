@@ -195,4 +195,25 @@ revoke all on function public.app_distribution_snapshot(boolean),public.app_dist
  public.app_distribution_save_links(text,text,text),public.app_referral_save_flags(boolean,boolean,boolean) from public,anon,authenticated,service_role;
 grant execute on function public.app_distribution_snapshot(boolean),public.app_distribution_prepare(text,text,text,text),
  public.app_distribution_save_links(text,text,text),public.app_referral_save_flags(boolean,boolean,boolean) to authenticated;
+-- Reject any unknown default-privilege grantee. Revoking the known API roles
+-- alone is insufficient when an installation has additional default ACLs.
+do $$begin
+ if exists(select 1 from pg_class c cross join lateral
+  aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
+  where c.oid in ('private.app_distribution_links'::regclass,'private.app_distribution_invitation_channels'::regclass)
+   and a.grantee<>c.relowner) then
+  raise exception 'unexpected distribution table ACL';
+ end if;
+ if exists(select 1 from pg_proc p cross join lateral
+  aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  where p.oid in ('private.app_distribution_dispatch(text,jsonb)'::regprocedure,
+   'public.app_distribution_snapshot(boolean)'::regprocedure,
+   'public.app_distribution_prepare(text,text,text,text)'::regprocedure,
+   'public.app_distribution_save_links(text,text,text)'::regprocedure,
+   'public.app_referral_save_flags(boolean,boolean,boolean)'::regprocedure)
+  and (a.grantee not in (p.proowner,'authenticated'::regrole) or
+   (a.grantee='authenticated'::regrole and (a.privilege_type<>'EXECUTE' or a.is_grantable)))) then
+  raise exception 'unexpected distribution function ACL';
+ end if;
+end $$;
 commit;

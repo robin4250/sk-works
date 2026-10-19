@@ -38,7 +38,7 @@ before writes/preparation. No share-to-update lock upgrade is used. Native
 PostgreSQL concurrent setting changes and production dependency equivalence still
 need verification; PGlite assertions alone do not establish those guarantees.
 
-Validation: 57 assertions in isolated PGlite 0.3.14 using the existing original
+Validation: 66 assertions in isolated PGlite 0.3.14 using the existing original
 referral migration and synthetic actors/URLs. They cover OFF gates, empty links,
 private tables, Master settings, sender isolation, public channel restrictions,
 internal link restrictions, malformed/forged URL hosts, phone normalization,
@@ -72,6 +72,12 @@ production metadata. Different/newer definitions fail without replacement. The
 whole candidate is transactional. A second/stale application is rejected by the
 definition guard. This is not a substitute for a backup or current dependency
 audit.
+
+Final ACL checks allow only each new table's owner and, for each new function,
+its owner plus authenticated EXECUTE without grant option. Additional default
+grantees abort the entire candidate. Private-table, private-function and public-
+function default-grant fixtures verify rollback, new-table absence and original
+legacy-dispatcher preservation. Existing legacy dispatcher ACLs are preserved.
 
 Before any production application save the exact dispatcher definition, owner,
 ACL/config, referral settings, existing invitation rows, constraints/dependencies
