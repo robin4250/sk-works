@@ -51,6 +51,12 @@ void main() {
     expect(data['attachment'], isNull);
   });
 
+  test('missing source tax cannot be replaced with an assumed zero', () {
+    final data = workspace();
+    (data['defaults'] as Map)['tax_amount_yen'] = null;
+    expect(() => PaymentOrderResolver.resolve(data), throwsStateError);
+  });
+
   test('changed blocked unknown readiness and wrong kind cannot generate', () {
     for (final key in ['source_changed', 'source_blocked']) {
       expect(() => PaymentOrderResolver.resolve(workspace()..[key] = true), throwsStateError);

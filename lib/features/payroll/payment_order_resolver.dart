@@ -26,6 +26,12 @@ class PaymentOrderResolver {
       throw StateError('注文書の元帳票を確認できません。');
     }
     final defaults = Map<String, dynamic>.from(workspace['defaults'] as Map);
+    for (final key in ['total_amount_yen', 'tax_amount_yen']) {
+      final amount = defaults[key];
+      if (amount is! int || amount < 0) {
+        throw StateError('注文書の請負代金・消費税額を元帳票から確認できません。計算内訳を確認してください。');
+      }
+    }
     final payload = Map<String, dynamic>.from(defaults);
     final template = workspace['template'];
     if (template is Map) {
