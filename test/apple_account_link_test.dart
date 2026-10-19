@@ -1,0 +1,136 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sk_works/features/auth/apple_account_link.dart';
+import 'package:sk_works/features/auth/apple_account_link_card.dart';
+
+const actor = '20000000-0000-0000-0000-000000000001';
+const other = '20000000-0000-0000-0000-000000000002';
+Map<String, dynamic> user(String id, {bool apple = false, bool google = true}) => {
+  'id': id, 'aud': 'authenticated', 'created_at': '2026-01-01T00:00:00Z',
+  'app_metadata': {'provider': 'google'},
+  'identities': [for (final p in [if (google) 'google', if (apple) 'apple'])
+    {'id': '$id-$p', 'identity_id': id, 'user_id': id, 'provider': p,
+      'identity_data': {'sub': id}, 'created_at': '2026-01-01T00:00:00Z',
+      'updated_at': '2026-01-01T00:00:00Z'}],
+};
+String session(String id, {int age = 0}) {
+  String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value)));
+  final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+  return jsonEncode({'access_token': '${part({})}.${part({'sub':id,'exp':now+3600,
+      'amr':[{'method':'oauth','timestamp':now-age}]})}.synthetic',
+    'refresh_token':'synthetic', 'token_type':'bearer', 'expires_in':3600,
+    'user':user(id)});
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late SupabaseClient client;
+  late AppleAccountLink source;
+  late MockClient network;
+  late List<String> paths;
+  late bool enabled, apple, google;
+  late int launches;
+  String responseActor = actor;
+  String authorizeUrl = 'https://appleid.apple.com/auth/authorize?synthetic=true';
+  Completer<void>? holdAuthorize;
+  Completer<void>? gotAuthorize;
+  setUp(() async {
+    paths=[]; enabled=true; apple=false; google=true; launches=0;
+    responseActor=actor; holdAuthorize=null; gotAuthorize=null;
+    authorizeUrl='https://appleid.apple.com/auth/authorize?synthetic=true';
+    network=MockClient((request) async {
+      paths.add('${request.method} ${request.url.path}');
+      if (request.url.path.endsWith('/settings')) {
+        return http.Response(jsonEncode({'external':{'apple':enabled}}),200);
+      }
+      if (request.url.path.endsWith('/user/identities/authorize')) {
+        gotAuthorize?.complete();
+        await holdAuthorize?.future;
+        return http.Response(jsonEncode({'url':authorizeUrl}),200);
+      }
+      if (request.url.path.endsWith('/user')) {
+        return http.Response(jsonEncode(user(responseActor,apple:apple,google:google)),200);
+      }
+      if (request.url.path.endsWith('/company_members')) {
+        return http.Response('[{"company_id":"synthetic-company","role":"owner"}]',200);
+      }
+      throw StateError('Unexpected HTTP request');
+    });
+    client=SupabaseClient('https://apple-link.invalid','public-synthetic',
+      authOptions:const AuthClientOptions(autoRefreshToken:false), httpClient:network);
+    await client.auth.setInitialSession(session(actor));
+    source=AppleAccountLink(client,
+      settingsUrl:Uri.parse('https://apple-link.invalid/auth/v1/settings'),
+      publicKey:'public-synthetic',providerCheck:() async => enabled,
+      launch:(uri) async { launches++; return true; });
+  });
+  tearDown(() async { await source.dispose(); await client.dispose(); });
+
+  test('provider disabled prevents authorize or browser launch',() async {
+    enabled=false;
+    await expectLater(source.begin(),throwsStateError);
+    expect(launches,0);
+    expect(paths, isNot(contains('GET /auth/v1/user/identities/authorize')));
+  });
+  test('same UID adds Apple, preserves Google, verifies existing membership',() async {
+    await source.begin();
+    expect(launches,1); expect(source.pending,true);
+    expect(await source.verifyCompletion(),false);
+    apple=true;
+    expect(await source.verifyCompletion(),true);
+    expect(client.auth.currentUser!.id,actor);
+    expect(paths,contains('GET /auth/v1/user/identities/authorize'));
+    expect(paths.any((p)=>p.contains('/signup')||p.contains('/token')||
+      p=='GET /auth/v1/authorize'||p.startsWith('POST')),false);
+  });
+  test('stale OAuth requires recent login without starting Apple',() async {
+    await client.auth.setInitialSession(session(actor,age:301));
+    await expectLater(source.begin(),throwsStateError); expect(launches,0);
+  });
+  test('another server user or missing Google cannot start linking',() async {
+    responseActor=other;
+    await expectLater(source.begin(),throwsStateError); expect(launches,0);
+    responseActor=actor; google=false;
+    await expectLater(source.begin(),throwsStateError); expect(launches,0);
+  });
+  test('changed UID while SDK authorize awaits never launches response',() async {
+    holdAuthorize=Completer<void>(); gotAuthorize=Completer<void>();
+    final operation=source.begin();
+    final rejected=expectLater(operation,throwsStateError);
+    await gotAuthorize!.future;
+    await client.auth.setInitialSession(session(other));
+    holdAuthorize!.complete(); await rejected; expect(launches,0);
+  });
+  test('same-UID logout then login never resurrects old authorize URL',() async {
+    holdAuthorize=Completer<void>(); gotAuthorize=Completer<void>();
+    final operation=source.begin();
+    final rejected=expectLater(operation,throwsStateError);
+    await gotAuthorize!.future;
+    // Notification mirrors the real SDK's logout boundary without a live POST.
+    client.auth.notifyAllSubscribers(AuthChangeEvent.signedOut);
+    await Future<void>.delayed(Duration.zero);
+    await client.auth.setInitialSession(session(actor));
+    holdAuthorize!.complete(); await rejected; expect(launches,0);
+  });
+  test('untrusted authorization host cannot receive a browser launch',() async {
+    authorizeUrl='https://example.invalid/steal';
+    await expectLater(source.begin(),throwsStateError); expect(launches,0);
+  });
+  test('Google identity disappearing cannot report completion',() async {
+    await source.begin(); apple=true; google=false;
+    await expectLater(source.verifyCompletion(),throwsStateError);
+  });
+  testWidgets('disabled provider retains preparation text without active button',(t) async {
+    enabled=false;
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:AppleAccountLinkCard(source:source))));
+    await t.pumpAndSettle();
+    expect(find.textContaining('Apple連携は準備中'),findsOneWidget);
+    expect(find.text('このアカウントにAppleを追加'),findsNothing);
+    expect(launches,0);
+  });
+}
