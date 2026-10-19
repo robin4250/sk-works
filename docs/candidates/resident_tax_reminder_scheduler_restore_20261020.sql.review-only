@@ -1,0 +1,13 @@
+-- REVIEW ONLY. Restore just our exact appended command; do not overwrite later changes.
+begin;
+do $restore$
+declare job record;original text:='select private.ensure_monthly_payroll_drafts(); select private.enqueue_payroll_confirmation_notifications();';
+ suffix text:=$command$ DO $resident_reminder$ BEGIN PERFORM private.enqueue_resident_tax_cutover_reminders(clock_timestamp(),true); EXCEPTION WHEN OTHERS THEN RAISE WARNING 'Resident tax reminder failed; reminder transaction rolled back'; END $resident_reminder$;$command$;
+begin
+ if (select count(*) from cron.job where jobname='payroll-confirmation-daily-jst')<>1 then raise exception 'payroll daily scheduler count changed';end if;
+ select * into job from cron.job where jobname='payroll-confirmation-daily-jst' for update;
+ if job.command=original then return;end if;
+ if job.command<>original||suffix or job.schedule<>'0 15 * * *' or job.active is not true then raise exception 'scheduler changed: do not overwrite';end if;
+ perform cron.alter_job(job.jobid,command=>original);
+end $restore$;
+commit;

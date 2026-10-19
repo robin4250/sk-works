@@ -1,0 +1,157 @@
+-- REVIEW ONLY. No cron change, delivery, enablement or personal tax values.
+begin;
+do $$begin
+ if not exists(select 1 from pg_constraint where conrelid='public.company_module_settings'::regclass
+  and conname='company_module_settings_module_key_check' and md5(pg_get_constraintdef(oid))='7ecc05d1fbddecb5564b3183346098d2') then
+  raise exception 'company module CHECK drift: review required';end if;
+ if (select md5(prosrc) from pg_proc where oid='private.payroll_allowed(uuid,text)'::regprocedure) is distinct from 'e211b84587de4c7edbc8dc39273eb27d'
+ or (select md5(prosrc) from pg_proc where oid='private.has_company_feature(uuid,text)'::regprocedure) is distinct from 'ead168c7ebccdaf04657a66f1afd5d82'
+ or (select md5(prosrc) from pg_proc where oid='private.payroll_approver_ids(uuid)'::regprocedure) is distinct from 'b0968801024f935790407ee274752714' then
+ raise exception 'payroll permission source drift: review required';end if;
+end $$;
+alter table public.company_module_settings drop constraint company_module_settings_module_key_check;
+alter table public.company_module_settings add constraint company_module_settings_module_key_check check(module_key in
+ ('qualifications','documents','attendance','sites','chat','notes','albums','invoices','line_bridge','vehicle_routes','resident_tax_reminders'));
+-- Reuse existing module rows; absence is OFF. Do not seed or rewrite settings.
+create table private.resident_tax_reminder_receipts (
+ company_id uuid not null references public.companies(id) on delete cascade,
+ recipient_user_id uuid not null references auth.users(id) on delete cascade,
+ tax_year integer not null check(tax_year between 2000 and 9999),
+ phase text not null check(phase in ('month_before','week_before')),
+ membership_created_at timestamptz not null,
+ notification_id uuid unique,
+ created_at timestamptz not null default clock_timestamp(),
+ primary key(company_id,recipient_user_id,tax_year,phase)
+);
+alter table private.resident_tax_reminder_receipts enable row level security;
+revoke all on private.resident_tax_reminder_receipts from public,anon,authenticated,service_role;
+
+create function private.resident_tax_reminder_recipient(cid uuid,uid uuid) returns boolean
+language sql stable security definer set search_path='' as $$
+ select exists(select 1 from public.company_members m join auth.users u on u.id=m.user_id
+ where m.company_id=cid and m.user_id=uid and m.role::text in ('owner','admin','manager','viewer')
+ and u.deleted_at is null and (u.banned_until is null or u.banned_until<=clock_timestamp())
+ and not exists(select 1 from private.account_deletion_access_restrictions r where r.user_id=uid)
+ and (not exists(select 1 from public.workers w where w.company_id=cid and w.user_id=uid)
+  or exists(select 1 from public.workers w where w.company_id=cid and w.user_id=uid and w.status::text='active'))
+ and (m.role::text in ('owner','admin')
+  or exists(select 1 from public.member_feature_permissions p where p.company_id=cid and p.user_id=uid and p.can_manage_payroll)
+  or uid=any(private.payroll_approver_ids(cid))
+  or exists(select 1 from public.payroll_access a where a.company_id=cid and a.user_id=uid and (a.can_view or a.can_edit))
+  or exists(select 1 from private.professional_invites i where i.company_id=cid and i.claimed_by=uid and i.status='approved' and i.payroll_access<>'none')))
+$$;
+revoke all on function private.resident_tax_reminder_recipient(uuid,uuid) from public,anon,authenticated,service_role;
+
+-- The annual receipt source is optional during staged deployment. Missing is incomplete.
+-- No caller-selected function/schema or client-provided completion value is accepted.
+create function private.resident_tax_reminder_year_complete(cid uuid,p_tax_year integer) returns boolean
+language plpgsql stable security definer set search_path='' as $$
+declare result boolean;
+begin
+ if to_regprocedure('resident_tax_annual_private.year_complete(uuid,integer)') is null then return false;end if;
+ execute 'select resident_tax_annual_private.year_complete($1,$2)' into result using cid,p_tax_year;
+ return result is true;
+end $$;
+revoke all on function private.resident_tax_reminder_year_complete(uuid,integer) from public,anon,authenticated,service_role;
+
+create function private.resident_tax_reminder_settings(cid uuid,p_save boolean default false,p_enabled boolean default null,p_expected_updated_at timestamptz default null)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();administrator boolean;setting public.company_module_settings%rowtype;
+begin
+ if actor is null or private.account_access_allowed() is not true or private.resident_tax_reminder_recipient(cid,actor) is not true then
+  raise exception 'resident tax reminder settings unavailable' using errcode='42501';end if;
+ select role::text in ('owner','admin') into administrator from public.company_members where company_id=cid and user_id=actor;
+ if p_save is true then
+  if administrator is not true then raise exception 'company administrator required' using errcode='42501';end if;
+  if p_enabled is null then raise exception 'explicit enabled flag required' using errcode='22023';end if;
+  perform 1 from public.companies where id=cid for update;
+  perform 1 from public.company_members where company_id=cid and user_id=actor and role::text in ('owner','admin') for share;
+  if not found or private.resident_tax_reminder_recipient(cid,actor) is not true or private.account_access_allowed() is not true then raise exception 'company access changed' using errcode='42501';end if;
+  select * into setting from public.company_module_settings where company_id=cid and module_key='resident_tax_reminders' for update;
+  if setting.updated_at is distinct from p_expected_updated_at then raise exception 'reminder setting changed: reload required' using errcode='40001';end if;
+  insert into public.company_module_settings(company_id,module_key,is_enabled,updated_by,updated_at)
+   values(cid,'resident_tax_reminders',p_enabled,actor,clock_timestamp())
+   on conflict(company_id,module_key) do update set is_enabled=excluded.is_enabled,updated_by=excluded.updated_by,updated_at=excluded.updated_at;
+ end if;
+ select * into setting from public.company_module_settings where company_id=cid and module_key='resident_tax_reminders';
+ return jsonb_build_object('version',1,'company_id',cid,'enabled',coalesce(setting.is_enabled,false),
+  'can_edit',administrator,'updated_at',setting.updated_at,'dates',jsonb_build_array('05-01','05-25'),'timezone','Asia/Tokyo');
+end $$;
+revoke all on function private.resident_tax_reminder_settings(uuid,boolean,boolean,timestamptz) from public,anon,authenticated,service_role;
+grant execute on function private.resident_tax_reminder_settings(uuid,boolean,boolean,timestamptz) to authenticated;
+create function public.read_resident_tax_reminder_settings(p_company_id uuid) returns jsonb language sql security invoker set search_path='' as $$
+ select private.resident_tax_reminder_settings(p_company_id)$$;
+create function public.save_resident_tax_reminder_settings(p_company_id uuid,p_enabled boolean,p_expected_updated_at timestamptz default null)
+returns jsonb language sql security invoker set search_path='' as $$
+ select private.resident_tax_reminder_settings(p_company_id,true,p_enabled,p_expected_updated_at)$$;
+
+-- Private scheduler operator only. Default preview is read-only, including when OFF.
+create function private.enqueue_resident_tax_cutover_reminders(p_now timestamptz default clock_timestamp(),p_deliver boolean default false)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare day date;phase_key text;year integer;r record;receipt_inserted boolean;n uuid;eligible integer:=0;enabled_recipients integer:=0;delivered integer:=0;
+begin
+ if p_now is null or not isfinite(p_now) or p_deliver is null then raise exception 'explicit valid scheduler time required';end if;
+ day:=(p_now at time zone 'Asia/Tokyo')::date;year:=extract(year from day)::integer;
+ phase_key:=case to_char(day,'MM-DD') when '05-01' then 'month_before' when '05-25' then 'week_before' end;
+ if phase_key is null then return jsonb_build_object('due',false,'eligible',0,'enabled_recipients',0,'delivered',0);end if;
+ for r in select m.company_id,m.user_id,m.created_at from public.company_members m
+  where private.resident_tax_reminder_recipient(m.company_id,m.user_id) order by m.company_id,m.user_id
+ loop
+  eligible:=eligible+1;
+  if not exists(select 1 from public.company_module_settings s where s.company_id=r.company_id and s.module_key='resident_tax_reminders' and s.is_enabled) then continue;end if;
+  enabled_recipients:=enabled_recipients+1;
+  if private.resident_tax_reminder_year_complete(r.company_id,year) then continue;end if;
+  if not p_deliver then continue;end if;
+  perform pg_advisory_xact_lock(hashtextextended('resident-tax-reminder:'||r.company_id::text||':'||year::text||':'||phase_key,0));
+  perform 1 from public.company_module_settings where company_id=r.company_id and module_key='resident_tax_reminders' and is_enabled for share;
+  if not found then continue;end if;
+  perform 1 from public.company_members where company_id=r.company_id and user_id=r.user_id and created_at=r.created_at for share;
+  if not found or private.resident_tax_reminder_recipient(r.company_id,r.user_id) is not true then continue;end if;
+  if private.resident_tax_reminder_year_complete(r.company_id,year) then continue;end if;
+  insert into private.resident_tax_reminder_receipts(company_id,recipient_user_id,tax_year,phase,membership_created_at)
+   values(r.company_id,r.user_id,year,phase_key,r.created_at) on conflict do nothing returning true into receipt_inserted;
+  if receipt_inserted is not true then continue;end if;
+  n:=private.enqueue_notification(r.company_id,r.user_id,'resident_tax_reminder',
+   case phase_key when 'month_before' then '住民税の切替準備（1か月前）' else '住民税の切替準備（1週間前）' end,
+   year::text||'年6月の切替に向け、'||case phase_key when 'month_before'
+    then '自治体の通知書が届いたら、税率設定の住民税一括更新で、全員の住民税を確認・登録してください。'
+    else '通知書が届いている場合は、税率設定の住民税一括更新で、全員の住民税を確認してください。未着の場合は届いてから登録してください。' end||' 通知書が未着でもエラーではありません。',
+   'payroll_settings',r.company_id);
+  update private.resident_tax_reminder_receipts set notification_id=n where company_id=r.company_id and recipient_user_id=r.user_id and tax_year=year and phase=phase_key;
+  delivered:=delivered+1;
+ end loop;
+ return jsonb_build_object('due',true,'phase',phase_key,'tax_year',year,'eligible',eligible,'enabled_recipients',enabled_recipients,'delivered',delivered);
+end $$;
+revoke all on function private.enqueue_resident_tax_cutover_reminders(timestamptz,boolean) from public,anon,authenticated,service_role;
+
+create function private.resident_tax_reminder_target(p_notification_id uuid) returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();receipt private.resident_tax_reminder_receipts%rowtype;
+begin
+ if actor is null or private.account_access_allowed() is not true then raise exception 'notification unavailable' using errcode='42501';end if;
+ select r.* into receipt from private.resident_tax_reminder_receipts r join public.app_notifications n on n.id=r.notification_id
+ where r.notification_id=p_notification_id and r.recipient_user_id=actor and n.recipient_user_id=actor
+ and n.company_id=r.company_id and n.kind='resident_tax_reminder' and n.action_key='payroll_settings' and n.action_id=r.company_id;
+ if not found or private.resident_tax_reminder_recipient(receipt.company_id,actor) is not true or not exists(
+  select 1 from public.company_members where company_id=receipt.company_id and user_id=actor and created_at=receipt.membership_created_at) then
+  raise exception 'notification company or access changed' using errcode='42501';end if;
+ return jsonb_build_object('version',1,'company_id',receipt.company_id,'tax_year',receipt.tax_year,'phase',receipt.phase,'complete',private.resident_tax_reminder_year_complete(receipt.company_id,receipt.tax_year));
+end $$;
+revoke all on function private.resident_tax_reminder_target(uuid) from public,anon,authenticated,service_role;
+grant execute on function private.resident_tax_reminder_target(uuid) to authenticated;
+create function public.resident_tax_reminder_target(p_notification_id uuid) returns jsonb language sql security invoker set search_path='' as $$
+ select private.resident_tax_reminder_target(p_notification_id)$$;
+revoke all on function public.read_resident_tax_reminder_settings(uuid),public.save_resident_tax_reminder_settings(uuid,boolean,timestamptz),public.resident_tax_reminder_target(uuid) from public,anon,authenticated,service_role;
+grant execute on function public.read_resident_tax_reminder_settings(uuid),public.save_resident_tax_reminder_settings(uuid,boolean,timestamptz),public.resident_tax_reminder_target(uuid) to authenticated;
+do $$begin
+ if exists(select 1 from pg_class c cross join lateral aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
+ where c.oid='private.resident_tax_reminder_receipts'::regclass and a.grantee<>c.relowner) then raise exception 'unexpected reminder table ACL';end if;
+ if exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+ where p.oid in ('private.resident_tax_reminder_recipient(uuid,uuid)'::regprocedure,'private.resident_tax_reminder_year_complete(uuid,integer)'::regprocedure,'private.enqueue_resident_tax_cutover_reminders(timestamptz,boolean)'::regprocedure)
+ and a.grantee<>p.proowner) then raise exception 'unexpected reminder operator ACL';end if;
+ if exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+ where p.oid in ('private.resident_tax_reminder_settings(uuid,boolean,boolean,timestamptz)'::regprocedure,
+ 'private.resident_tax_reminder_target(uuid)'::regprocedure,'public.read_resident_tax_reminder_settings(uuid)'::regprocedure,
+ 'public.save_resident_tax_reminder_settings(uuid,boolean,timestamptz)'::regprocedure,'public.resident_tax_reminder_target(uuid)'::regprocedure)
+ and (a.grantee not in (p.proowner,'authenticated'::regrole) or (a.grantee='authenticated'::regrole and (a.privilege_type<>'EXECUTE' or a.is_grantable)))) then raise exception 'unexpected reminder API ACL';end if;
+end $$;
+commit;
