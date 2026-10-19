@@ -8,6 +8,7 @@ function section(name,next) {
  const end=migration.indexOf('create or replace function private.'+next+'(',start+1);
  assert.ok(start>=0 && end>start);return migration.slice(start,end);
 }
+const atomicFinish=await fs.readFile(new URL('../docs/candidates/route_checkout_atomic_finish_20261020.sql.review-only',import.meta.url),'utf8');
 const realDatabase=process.env.SKO_SIGNED_BILLING_DATABASE_URL;
 const PgClient=runtime.Client ?? runtime.default?.Client;
 if (realDatabase) {
@@ -36,7 +37,7 @@ await db.query(`insert into daily_reports values($1,$2,null,$3,'2026-10-12','sig
 `,[report,company,route]);
 await db.query(`insert into attendance_entries values($1,$2,$3,null,$4,$5,'2026-10-12',1,'day',0,0,'{}')`,[entry,company,worker,route,report]);
 await db.query(`insert into daily_report_workers values($1,$2)`,[report,worker]);
-await db.query(`insert into attendance_verifications values($1,$2,$3,null,$4,'2026-10-12','clock_in',null,$5,'2026-10-12T00:00Z'),($6,$2,$3,null,$4,'2026-10-12','clock_out',$1,$5,'2026-10-12T09:00Z')`,[start,company,worker,route,report,out]);
+await db.query(`insert into attendance_verifications(id,company_id,worker_id,site_id,route_assignment_id,work_date,event_type,source_clock_in_id,daily_report_id,confirmed_at) values($1,$2,$3,null,$4,'2026-10-12','clock_in',null,$5,'2026-10-12T00:00Z'),($6,$2,$3,null,$4,'2026-10-12','clock_out',$1,$5,'2026-10-12T09:00Z')`,[start,company,worker,route,report,out]);
 for(let i=0;i<3;i++) {
   const site=id(20+i),stop=id(30+i),c=id(40+i),end=id(50+i);
   await db.query(`insert into sites values($1,$2,$3,$4,null)`,[site,company,i===2?b:a,['第一現場','第二現場','第三現場'][i]]);
@@ -46,13 +47,28 @@ for(let i=0;i<3;i++) {
 }
 await db.exec(section('route_signed_checkout_sources','route_signed_site_rates'));
 const rows=async()=> (await db.query(`select * from private.route_signed_checkout_sources($1,'2026-10-12','2026-10-12') order by customer_id`,[company])).rows;
+await db.exec(`alter table attendance_verifications add column attempted_at timestamptz;alter table private.route_journey_captures add column payload jsonb default '{}'::jsonb`);
+await db.exec(atomicFinish);
 let result=await rows();
 assert.equal(result.length,2);assert.ok(result.every(x=>x.quantity==='1'&&x.source_ready));
 assert.deepEqual(result[0].site_names,['第一現場','第二現場']);assert.equal(Number(result[0].visit_count),2);
+// Atomic final-visit capture is persisted milliseconds after checkout confirmation.
+await db.query(`update attendance_verifications set attempted_at=confirmed_at where id=$1`,[out]);
+await db.query(`update private.route_journey_captures set id=$1,recorded_at='2026-10-12T09:00:00.031379Z',payload='{"attempted_at":"2026-10-12T09:00:00+00:00"}' where id=$2`,[out,id(52)]);
+await db.query(`update private.route_journey_visit_events set capture_id=$1 where capture_id=$2`,[out,id(52)]);
+assert.ok((await rows()).every(x=>x.source_ready),'Exact atomic final visit remains billable');
+await db.query(`update private.route_journey_captures set payload='{"attempted_at":"2026-10-12T09:00:01Z"}' where id=$1`,[out]);
+assert.equal((await rows())[1].source_ready,false,'A changed attempt cannot bypass checkout chronology');
+await db.query(`update private.route_journey_captures set payload='{"attempted_at":"2026-10-12T09:00:00+00:00"}',id=$1 where id=$2`,[id(52),out]);
+await db.query(`update private.route_journey_visit_events set capture_id=$1 where capture_id=$2`,[id(52),out]);
+assert.equal((await rows())[1].source_ready,false,'An unrelated late capture is still rejected');
+await db.query(`update private.route_journey_captures set recorded_at='2026-10-12T06:00Z',payload='{}' where id=$1`,[id(52)]);
+assert.ok((await rows()).every(x=>x.source_ready));
+console.log('Exact final checkout identity/attempt permits atomic 31ms persistence delay; mismatched identity/attempt remain blocked');
 await db.query(`update daily_reports set status='draft'`);assert.equal((await rows()).length,0);
 await db.exec(`update daily_reports set status='signed'`);
 await db.query(`delete from attendance_verifications where id=$1`,[out]);assert.equal((await rows()).length,0);
-await db.query(`insert into attendance_verifications values($1,$2,$3,null,$4,'2026-10-12','clock_out',$5,$6,'2026-10-12T09:00Z')`,[out,company,worker,route,start,report]);
+await db.query(`insert into attendance_verifications(id,company_id,worker_id,site_id,route_assignment_id,work_date,event_type,source_clock_in_id,daily_report_id,confirmed_at) values($1,$2,$3,null,$4,'2026-10-12','clock_out',$5,$6,'2026-10-12T09:00Z')`,[out,company,worker,route,start,report]);
 await db.query(`delete from private.route_journey_visit_events where capture_id=$1`,[id(50)]);
 result=await rows();assert.equal(result[0].source_ready,false);assert.equal(result[1].source_ready,true);
 console.log('signed checkout, actual customer partitions, one-per-customer quantity and unsigned/unfinished guards passed');
@@ -114,7 +130,10 @@ await db.exec(await fs.readFile(new URL('./fixtures/route_signed_checkout/automa
 await db.query(`select private.refresh_automatic_invoice($1,$2,'2026-10-12')`,[company,a]);
 let saved=(await db.query('select * from invoices')).rows;
 assert.equal(saved.length,1);assert.equal(saved[0].grand_total,0);assert.equal(saved[0].calculation_blocked,true);
-await db.exec(migration);
+// Exercise the real invoice generator with a delayed atomic final capture too.
+await db.query(`update private.route_journey_captures set id=$1,recorded_at='2026-10-12T09:00:00.031379Z',payload='{"attempted_at":"2026-10-12T09:00:00+00:00"}' where id=$2`,[out,id(52)]);
+await db.query(`update private.route_journey_visit_events set capture_id=$1 where capture_id=$2`,[out,id(52)]);
+await db.exec(migration);await db.exec(atomicFinish);
 await db.exec(`create function public.pending_route_billing_quantity_rows() returns jsonb language sql as $$select private.pending_route_billing_quantity_rows()$$`);
 await db.query(`select public.refresh_signed_checkout_invoices($1)`,[company]);
 saved=(await db.query('select * from invoices')).rows;
@@ -126,7 +145,7 @@ assert.equal((await db.query('select status,reviewed_by from private.route_billi
 assert.equal((await db.query('select reviewed_by from private.route_billing_quantity_requests')).rows[0].reviewed_by,null);
 assert.equal((await db.query('select count(*)::integer n from private.route_billing_quantity_audit')).rows[0].n,0);
 assert.equal((await db.query('select public.pending_route_billing_quantity_rows()')).rows.length,1);
-await db.exec(migration);await db.query(`select public.refresh_signed_checkout_invoices($1)`,[company]);
+await db.exec(migration);await db.exec(atomicFinish);await db.query(`select public.refresh_signed_checkout_invoices($1)`,[company]);
 assert.equal((await db.query('select count(*)::integer n from invoices')).rows[0].n,1);
 assert.equal((await db.query('select base_man_days from attendance_entries')).rows[0].base_man_days,'1');
 

@@ -4,6 +4,7 @@ on:
     paths:
       - 'supabase/migrations/20261013181708_route_signed_checkout_customer_billing.sql'
       - 'tool/verify_route_signed_checkout_billing.mjs'
+      - 'docs/candidates/route_checkout_atomic_finish_20261020.sql.review-only'
       - 'tool/fixtures/route_signed_checkout/**'
       - '.github/workflows/route-signed-checkout-billing.yml'
   push:
@@ -11,6 +12,7 @@ on:
     paths:
       - 'supabase/migrations/20261013181708_route_signed_checkout_customer_billing.sql'
       - 'tool/verify_route_signed_checkout_billing.mjs'
+      - 'docs/candidates/route_checkout_atomic_finish_20261020.sql.review-only'
       - 'tool/fixtures/route_signed_checkout/**'
       - '.github/workflows/route-signed-checkout-billing.yml'
   workflow_dispatch:
