@@ -19,7 +19,7 @@ void main(){
  });
  test('completion removes pending count but retains unread history',(){
   final item=mapAttentionNotification(notice('a',2026,complete:true));
-  final snapshot=AttentionCenterSnapshot([item],now:DateTime(2026,5,25));expect(snapshot.unresolvedCount,0);expect(snapshot.items,singleElement);
+  final snapshot=AttentionCenterSnapshot([item],now:DateTime(2026,5,25));expect(snapshot.unresolvedCount,0);expect(snapshot.items,hasLength(1));
   expect(item.title,contains('更新確認済み'));expect(item.read,false);
  });
  test('company-year task groups phases but preserves different years',(){
