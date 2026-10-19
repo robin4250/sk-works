@@ -1,0 +1,80 @@
+-- REVIEW ONLY. Install after the existing common-allowance and payroll-unit candidates.
+-- No activation/backfill/recalculation is performed. No client grants are added.
+-- Explicit company cutover prevents current common rates changing earlier drafts.
+begin;
+do $$ begin
+ if to_regclass('company_common_allowance_private.items') is null then
+  raise exception 'company common allowance storage is not installed';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)')
+   and md5(prosrc)='5c51172a6169beb90a7ddbb6ae443cd6' and prosecdef and proconfig=ARRAY['search_path=""']) then
+  raise exception 'payroll common bridge prerequisite differs';end if;
+end $$;
+create table company_common_allowance_private.payroll_activation(
+ company_id uuid primary key references public.companies(id),
+ starts_on date not null check(starts_on=date_trunc('month',starts_on)::date)
+);
+alter table company_common_allowance_private.payroll_activation enable row level security;
+revoke all on company_common_allowance_private.payroll_activation from public,anon,authenticated,service_role;
+
+create function payroll_unit_private.resolve_company_common(cid uuid,wid uuid,p_start date,p_end date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare item record; typ text; quantity numeric; amount numeric;
+ rows jsonb:='[]'; earnings jsonb:='[]'; deductions jsonb:='[]'; blocked boolean:=false;
+begin
+ if p_start is null or p_end is null or p_start<>date_trunc('month',p_start)::date
+ or p_end<>(p_start+interval '1 month - 1 day')::date then
+  raise exception 'canonical payroll month required' using errcode='22023';end if;
+ if not exists(select 1 from company_common_allowance_private.payroll_activation a
+   where a.company_id=cid and a.starts_on<=p_start) then
+  return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',false);end if;
+ select s.pay_type into typ from public.worker_payroll_settings s
+  join public.workers w on w.id=s.worker_id and w.company_id=s.company_id
+  where s.company_id=cid and s.worker_id=wid;
+ for item in select i.* from company_common_allowance_private.items i
+  where i.company_id=cid and i.payroll_type=typ and i.retired_at is null order by i.position,i.id loop
+  quantity:=null;amount:=null;
+  if item.unit='month' then quantity:=1;
+  elsif item.unit='day' then
+   select count(distinct ae.work_date) into quantity from public.attendance_entries ae
+    where ae.company_id=cid and ae.worker_id=wid and ae.work_date between p_start and p_end
+    and ae.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date and ae.base_man_days>0;
+  elsif item.unit='hour' then
+   -- Exact entered monthly hours, keyed by the stable common item ID. Never infer days*8.
+   select q.hours into quantity from payroll_unit_private.quantities q
+    where q.company_id=cid and q.worker_id=wid and q.item_id=item.id and q.month=p_start;
+  end if;
+  if quantity is null then blocked:=true;
+  else
+   amount:=round(item.amount_yen::numeric*quantity);
+   if amount>2147483647 then raise exception 'company common amount exceeds range' using errcode='22023';end if;
+   if item.section='earning' then
+    earnings:=earnings||jsonb_build_array(jsonb_build_object('name',item.name,'amount_yen',amount));
+   else deductions:=deductions||jsonb_build_array(jsonb_build_object('name',item.name,'amount_yen',amount));end if;
+  end if;
+  rows:=rows||jsonb_build_array(jsonb_build_object('id',item.id,'origin','company_common',
+   'payroll_type',item.payroll_type,'section',item.section,'unit',item.unit,'name',item.name,
+   'rate_yen',item.amount_yen,'quantity',quantity,'quantity_month',p_start,'amount_yen',amount));
+ end loop;
+ return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',blocked);
+end $$;
+revoke all on function payroll_unit_private.resolve_company_common(uuid,uuid,date,date) from public,anon,authenticated,service_role;
+
+-- Keep the existing function identity/owner/ACL, and preserve individual conditions.
+create or replace function payroll_unit_private.augment_settings(cid uuid,wid uuid,p_start date,p_end date,settings jsonb)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare resolved jsonb; common_items jsonb;
+begin
+ resolved:=payroll_unit_private.resolve(cid,wid,p_start,p_end);
+ common_items:=payroll_unit_private.resolve_company_common(cid,wid,p_start,p_end);
+ resolved:=resolved||jsonb_build_object(
+  'items',(resolved->'items')||(common_items->'items'),
+  'earnings',(resolved->'earnings')||(common_items->'earnings'),
+  'deductions',(resolved->'deductions')||(common_items->'deductions'),
+  'blocked',(resolved->>'blocked')::boolean or (common_items->>'blocked')::boolean);
+ if resolved->'items'='[]'::jsonb then return settings;end if;
+ return coalesce(settings,'{}')||jsonb_build_object(
+ 'custom_earnings',coalesce(settings->'custom_earnings','[]')||(resolved->'earnings'),
+ 'custom_deductions',coalesce(settings->'custom_deductions','[]')||(resolved->'deductions'),
+ '_unit_resolution',resolved);
+end $$;
+commit;
