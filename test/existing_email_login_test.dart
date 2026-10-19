@@ -94,6 +94,7 @@ void main() {
       headers: {'content-type': 'application/json'}));
     await tester.pumpAndSettle();
     expect(authenticated, 0);
+    expect(find.text('登録済みのメールアドレスまたは本パスワードを確認してください。'), findsOneWidget);
     expect(find.text('メールアドレスでログイン'), findsOneWidget);
     expect(tester.widget<TextButton>(find.widgetWithText(TextButton, '電話番号でログインする')).onPressed, isNotNull);
   });

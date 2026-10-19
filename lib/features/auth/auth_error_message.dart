@@ -1,11 +1,13 @@
-String friendlyAuthErrorMessage(String raw) {
+String friendlyAuthErrorMessage(String raw, {bool emailLogin = false}) {
   final message = raw.trim();
   final lower = message.toLowerCase();
 
   if (lower.contains('rate limit') ||
       lower.contains('too many requests') ||
       lower.contains('over request rate limit')) {
-    return 'SMSの送信回数が多いため、少し待ってから再度お試しください。';
+    return emailLogin
+        ? 'ログインの試行回数が多いため、少し待ってから再度お試しください。'
+        : 'SMSの送信回数が多いため、少し待ってから再度お試しください。';
   }
 
   if ((lower.contains('otp') || lower.contains('token')) &&
@@ -28,7 +30,13 @@ String friendlyAuthErrorMessage(String raw) {
   }
 
   if (lower.contains('invalid login credentials')) {
-    return '携帯電話番号またはパスワードを確認してください。';
+    return emailLogin
+        ? '登録済みのメールアドレスまたは本パスワードを確認してください。'
+        : '携帯電話番号またはパスワードを確認してください。';
+  }
+
+  if (emailLogin && lower.contains('email not confirmed')) {
+    return 'メールアドレスの確認が完了していません。登録時の確認メールをご確認ください。';
   }
 
   return message.isEmpty ? '認証処理に失敗しました。' : message;

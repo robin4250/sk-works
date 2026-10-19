@@ -7,6 +7,8 @@ on:
       - 'lib/features/auth/secure_onboarding_repository.dart'
       - 'lib/features/help/manual_content.dart'
       - 'test/existing_email_login_test.dart'
+      - 'lib/features/auth/auth_error_message.dart'
+      - 'test/auth_error_message_test.dart'
       - '.github/workflows/existing-email-login.yml'
 permissions:
   contents: read
@@ -24,6 +26,6 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
       - name: Analyze login and help
-        run: dart analyze lib/features/auth/secure_onboarding_pages.dart lib/features/auth/secure_onboarding_repository.dart lib/features/help/manual_content.dart test/existing_email_login_test.dart
+        run: dart analyze lib/features/auth/secure_onboarding_pages.dart lib/features/auth/secure_onboarding_repository.dart lib/features/help/manual_content.dart lib/features/auth/auth_error_message.dart test/existing_email_login_test.dart test/auth_error_message_test.dart
       - name: Verify email and existing Google flows
-        run: flutter test test/existing_email_login_test.dart test/existing_google_login_test.dart test/employee_password_preflight_test.dart test/primary_password_recovery_widget_test.dart --reporter expanded
+        run: flutter test test/auth_error_message_test.dart test/existing_email_login_test.dart test/existing_google_login_test.dart test/employee_password_preflight_test.dart test/primary_password_recovery_widget_test.dart --reporter expanded

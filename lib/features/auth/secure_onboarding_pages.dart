@@ -274,7 +274,7 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
       await action();
     } on AuthException catch (error) {
       if (!mounted) return;
-      setState(() => _message = friendlyAuthErrorMessage(error.message));
+      setState(() => _message = friendlyAuthErrorMessage(error.message, emailLogin: _emailLogin));
     } catch (error) {
       if (!mounted) return;
       setState(() => _message = '処理に失敗しました: $error');
