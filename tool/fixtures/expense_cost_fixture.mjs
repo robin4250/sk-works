@@ -7,6 +7,7 @@ export async function setupExpenseCostFixture(db) {
   const fixture = source.match(/await db\.exec\(`([\s\S]*?)`\);/)[1];
   assert.ok(!fixture.includes('${'));
   await db.exec(fixture);
+  await db.exec(`do $$begin if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role;end if;end $$;`);
   await db.exec(`
     alter table companies add column name text default '検証会社', add column company_seal_style text default 'legacy';
     alter table workers add primary key(id), add column user_id uuid, add column status text default 'active', add column partner_company_id uuid;
