@@ -3,6 +3,7 @@ import '../shared/document_display_totals.dart';
 import '../shared/trade_document_attachment.dart';
 import '../shared/trade_document_attachment_repository.dart';
 import 'payment_order_pdf.dart';
+import 'payment_order_resolver.dart';
 import '../expenses/expense_document_repository.dart';
 import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
@@ -72,8 +73,7 @@ class PaymentCertificatePdfService {
 
     final savedOrder = orderAttachment ?? (record.isPreview || record.isAgreementSnapshot ||
         !RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id) ? null :
-        await TradeDocumentAttachmentRepository.maybeCreate()?.load(subjectKind:'payment_certificate',
-          subjectId:record.id,sourceRevision:record.revision.toString()));
+        await _resolveOrder(record));
     if(savedOrder!=null){
       if(savedOrder.payload['month']!='${record.periodStart.year}-${record.periodStart.month.toString().padLeft(2,'0')}') {
         throw StateError('注文書の対象月が一致しません。');
@@ -87,6 +87,15 @@ class PaymentCertificatePdfService {
     actorLease.verify();
     return bytes;
     }finally{actorLease.dispose();}
+  }
+
+  static Future<TradeDocumentAttachment?> _resolveOrder(PaymentCertificateRecord record) async {
+    final repository = TradeDocumentAttachmentRepository.maybeCreate();
+    if (repository == null) return null;
+    return PaymentOrderResolver.resolve(await repository.loadWorkspace(
+      subjectKind: 'payment_certificate', subjectId: record.id,
+      sourceRevision: record.revision.toString(),
+    ));
   }
 
   static Future<bool> printCertificate(PaymentCertificateRecord record) {
