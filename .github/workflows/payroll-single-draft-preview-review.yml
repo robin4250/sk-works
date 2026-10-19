@@ -4,7 +4,7 @@ on:
     paths:
       - 'docs/candidates/payroll_single_draft_preview_20261019.sql.review-only'
       - 'docs/candidates/payroll_single_draft_recalculation_20261019.sql.review-only'
-      - 'tool/verify_payroll_single_draft_preview.mjs'
+      - 'tool/verify_payroll_single_draft_preview*.mjs'
       - 'tool/payroll_scope*.mjs'
       - 'tool/security/fixture_dependencies/package*.json'
       - 'supabase/tests/payroll*.sql'
@@ -16,7 +16,7 @@ on:
     paths:
       - 'docs/candidates/payroll_single_draft_preview_20261019.sql.review-only'
       - 'docs/candidates/payroll_single_draft_recalculation_20261019.sql.review-only'
-      - 'tool/verify_payroll_single_draft_preview.mjs'
+      - 'tool/verify_payroll_single_draft_preview*.mjs'
       - 'tool/payroll_scope*.mjs'
       - 'tool/security/fixture_dependencies/package*.json'
       - 'supabase/tests/payroll*.sql'
@@ -52,3 +52,5 @@ jobs:
         run: node tool/verify_payroll_single_draft_preview.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js" supabase/migrations/20261018215043_fix_payroll_null_work_category.sql
       - name: Native PostgreSQL 17 read-only preview and dependency guards
         run: node tool/verify_payroll_single_draft_preview.mjs "file://$PWD/tool/payroll_scope_native_pg17_runtime.mjs" "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" supabase/migrations/20261018215043_fix_payroll_null_work_category.sql
+      - name: Native two-connection preview source and membership changes
+        run: node tool/verify_payroll_single_draft_preview_postgres_race.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
