@@ -80,7 +80,7 @@ class PayrollPdfService {
 
     final legacyDeductions = <MapEntry<String, Object?>>[
       MapEntry<String, Object?>(
-        '健康保険料',
+        deductions['健康保険料'] == null ? '社会保険' : '健康保険料',
         deductions['健康保険料'] ?? deductions['社会保険'],
       ),
       // Named saved deductions stay deductions even without tax metadata.

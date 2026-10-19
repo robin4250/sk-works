@@ -42,6 +42,47 @@ void main() {
   );
   final fontPath = Platform.environment['SKO_PDF_FONT_PATH'];
   test(
+    'legacy aggregate insurance keeps its saved label and deduction total',
+    () async {
+      final font = pw.Font.ttf(
+        ByteData.sublistView(await File(fontPath!).readAsBytes()),
+      );
+      final bytes = await PayrollPdfService.buildPdf(
+        record({
+          'gross_pay': 100000, 'deductions': 25500, 'net_pay': 74500,
+          'detail': {'基本給': 100000, '社会保険': 24000, '所得税': 1500},
+        }),
+        regularFont: font, boldFont: font,
+      );
+      final dir = Platform.environment['SKO_PDF_OUTPUT_DIR'] ??
+          (await Directory.systemTemp.createTemp('sko-legacy-tax-pdf-')).path;
+      await Directory(dir).create(recursive: true);
+      final file = File('$dir/payroll_legacy_aggregate_tax.pdf');
+      await file.writeAsBytes(bytes);
+      final result = await Process.run('python', [
+        '-c',
+        r'''
+import fitz,json,re,sys
+pdf=fitz.open(sys.argv[1]);p=pdf[0]
+s=[s for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]
+rows=[v for v in s if 321<=v['bbox'][1]<541]
+n=sum(int(v['text'].replace(',','')) for v in rows if 490<=v['bbox'][0] and v['bbox'][2]<=558 and re.fullmatch(r'[0-9,]+',v['text']))
+print(json.dumps({'total':n,'text':p.get_text()},ensure_ascii=False))
+p.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(sys.argv[1]+'.png')
+''', file.path,
+      ]);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+      final report = jsonDecode(result.stdout.toString()) as Map;
+      expect(report['total'], 25500);
+      expect(report['text'], contains('社会保険'));
+      expect(report['text'], isNot(contains('健康保険料')));
+      expect(report['text'], contains('74,500'));
+    },
+    skip: fontPath == null
+        ? 'Set SKO_PDF_FONT_PATH and Python with PyMuPDF for PDF verification.'
+        : false,
+  );
+  test(
     'persisted automatic taxes reconcile with actual PDF rows',
     () async {
       final row =
