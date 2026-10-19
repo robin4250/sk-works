@@ -147,23 +147,22 @@ class IndividualPayrollSettingsRepository {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('ログインが必要です');
 
-    final memberships = await _client
-        .from('company_members')
-        .select('company_id')
-        .eq('user_id', user.id)
-        .limit(1);
-    if (memberships.isEmpty) throw StateError('会社への所属が必要です');
-
-    final companyId = memberships.first['company_id']?.toString();
+    final actor = user.id;
+    final worker = await _client.from('workers').select('company_id')
+        .eq('id', workerId).maybeSingle();
+    if (_client.auth.currentUser?.id != actor) {
+      throw StateError('ログイン状態が変わりました。画面を開き直してください');
+    }
+    final companyId = worker?['company_id'] as String?;
     if (companyId == null || companyId.isEmpty) {
       throw StateError('会社情報を確認できません');
     }
 
     await _client.from('worker_payroll_settings').upsert(
       {
+        ...values,
         'worker_id': workerId,
         'company_id': companyId,
-        ...values,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       onConflict: 'worker_id',

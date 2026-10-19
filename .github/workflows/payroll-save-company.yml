@@ -1,0 +1,32 @@
+name: Payroll save company scope
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/individual_payroll_settings_repository.dart'
+      - 'test/payroll_save_company_test.dart'
+      - 'test/individual_payroll_company_scope_test.dart'
+      - '.github/workflows/payroll-save-company.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/features/payroll/individual_payroll_settings_repository.dart'
+      - 'test/payroll_save_company_test.dart'
+      - 'test/individual_payroll_company_scope_test.dart'
+      - '.github/workflows/payroll-save-company.yml'
+permissions:
+  contents: read
+jobs:
+  company-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter test test/payroll_save_company_test.dart test/individual_payroll_company_scope_test.dart --reporter expanded
+      - run: flutter analyze
