@@ -87,8 +87,10 @@ class _AppReferralPageState extends State<AppReferralPage> {
 
   Future<void> _load() async {
     if (!_actorScope.check()) {
-      if (mounted) setState(() { _snapshot = null;
-        _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+      if (mounted) {
+        setState(() { _snapshot = null;
+          _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+      }
       return;
     }
     final generation = ++_loadGeneration;

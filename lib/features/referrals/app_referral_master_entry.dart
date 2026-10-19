@@ -43,8 +43,10 @@ class _AppReferralMasterEntryState extends State<AppReferralMasterEntry> {
 
   Future<void> _load() async {
     if (!_actorScope.check()) {
-      if (mounted) setState(() { _snapshot = null; _loading = false;
-        _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+      if (mounted) {
+        setState(() { _snapshot = null; _loading = false;
+          _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+      }
       return;
     }
     setState(() { _loading = true; _snapshot = null; _error = null; });

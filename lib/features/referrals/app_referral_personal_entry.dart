@@ -42,8 +42,10 @@ class _AppReferralPersonalEntryState extends State<AppReferralPersonalEntry> {
 
   Future<bool> _load() async {
     if (!_actorScope.check()) {
-      if (mounted) setState(() { _snapshot = null; _loading = false;
-        _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+      if (mounted) {
+        setState(() { _snapshot = null; _loading = false;
+          _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+      }
       return false;
     }
     final actor = widget.repository.currentActorId;
