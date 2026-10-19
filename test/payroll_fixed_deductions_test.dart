@@ -147,6 +147,14 @@ void main() {
       expect(find.text('住民税の保存を確認しました'), findsOneWidget);
     }
     expect(t.widget<IconButton>(arrow).onPressed, isNotNull);
+    final previous = find.byKey(const ValueKey('deductions-previous-month'));
+    await t.ensureVisible(previous);
+    await t.pumpAndSettle();
+    await t.tap(previous);
+    await t.pumpAndSettle();
+    expect(readMonths.last, readMonths.first);
+    expect(find.text('${readMonths.first.substring(0, 7)}の住民税：4000円'), findsOneWidget);
+    expect(residentRepository.saves, 1);
     expect(b.writes, 0);
     expect(t.takeException(), isNull);
   });
