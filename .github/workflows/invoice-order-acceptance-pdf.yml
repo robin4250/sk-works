@@ -5,6 +5,7 @@ on:
       - 'lib/features/invoices/**'
       - 'lib/features/shared/trade_document*'
       - 'test/invoice_order_acceptance_pdf_test.dart'
+      - 'test/invoice_acceptance_resolver_test.dart'
       - '.github/workflows/invoice-order-acceptance-pdf.yml'
   push:
     branches: [main, 'feat/invoice-order-*', 'feat/payment-order-*']
@@ -12,6 +13,7 @@ on:
       - 'lib/features/invoices/**'
       - 'lib/features/shared/trade_document*'
       - 'test/invoice_order_acceptance_pdf_test.dart'
+      - 'test/invoice_acceptance_resolver_test.dart'
       - '.github/workflows/invoice-order-acceptance-pdf.yml'
 jobs:
   proof:
@@ -24,7 +26,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter test test/invoice_order_acceptance_pdf_test.dart
+      - run: flutter test test/invoice_order_acceptance_pdf_test.dart test/invoice_acceptance_resolver_test.dart
         env:
           SKO_PDF_OUTPUT_DIR: build/invoice-acceptance-proof
       - run: python -m pip install PyMuPDF==1.26.6
@@ -34,14 +36,15 @@ jobs:
           import fitz
           from pathlib import Path
           paths = list(Path('build/invoice-acceptance-proof').glob('*.pdf'))
-          assert len(paths) == 3, paths
+          assert len(paths) == 4, paths
           for path in paths:
               with fitz.open(path) as doc:
-                  expected = 2 if path.stem == 'invoice-with-acceptance' else 1
+                  expected = 2 if path.stem.startswith('invoice-with-') else 1
                   assert len(doc) == expected, (path, len(doc))
                   page = doc[-1]
                   text = ''.join(page.get_text().split())
-                  assert '注文請書' in text and '2026年10月15日' in text and '2026年10月16日' in text, (path, text)
+                  order_date = '2026-09-15' if 'automatic' in path.stem else '2026年10月15日'
+                  assert '注文請書' in text and order_date in text and '2026年10月16日' in text, (path, text)
                   assert '株式会社発注' in text and '株式会社受注' in text
                   assert '9876543210987' in text and '御中' in text
                   assert '2026-10月分' in text and '代表者名' in text

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:sk_works/features/invoices/invoice_order_acceptance_pdf.dart';
+import 'package:sk_works/features/invoices/invoice_acceptance_resolver.dart';
 import 'package:sk_works/features/invoices/invoice_pdf_service.dart';
 import 'package:sk_works/domain/invoice_engine.dart';
 import 'package:sk_works/features/invoices/invoice_settings_repository.dart';
@@ -65,11 +66,23 @@ void main() {
       regularFont: font, boldFont: font,
       approvalsByInvoice: const {'fixture-invoice': []},
       acceptanceByInvoice: {'fixture-invoice': attachment()});
+    final defaults = Map<String, dynamic>.from(attachment().payload)
+      ..remove('order_date')..remove('issue_date');
+    final automatic = InvoiceAcceptanceResolver.resolve({
+      'attachment': null, 'source_locked': false, 'source_blocked': false,
+      'source_changed': false, 'defaults': defaults,
+      'template': {'acceptance_text': '{order_date}付の注文書を承諾します。'},
+    }, issueDate: DateTime(2026, 10, 16))!;
+    final automaticBytes = await InvoicePdfService.buildPdf([invoice], settings: settings,
+      regularFont: font, boldFont: font,
+      approvalsByInvoice: const {'fixture-invoice': []},
+      acceptanceByInvoice: {'fixture-invoice': automatic});
     expect(invoice.grandTotalYen, 110000);
     final directory = Platform.environment['SKO_PDF_OUTPUT_DIR'];
     if (directory != null) {
       Directory(directory).createSync(recursive: true);
       File('$directory/invoice-with-acceptance.pdf').writeAsBytesSync(bytes);
+      File('$directory/invoice-with-automatic-acceptance.pdf').writeAsBytesSync(automaticBytes);
     }
   });
 
