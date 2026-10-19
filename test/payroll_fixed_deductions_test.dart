@@ -98,9 +98,10 @@ Future<void> save(WidgetTester t) async {
 }
 
 void main() {
-  testWidgets('month navigation keeps all deductions aligned and protects resident edits', (t) async {
+  for (final lostReply in [false, true]) {
+  testWidgets('month navigation protects resident edits and uncertain save ($lostReply)', (t) async {
     final b = _Backend()..hasConditions = false;
-    final residentRepository = resident.FakeResidentTaxRepository();
+    final residentRepository = resident.FakeResidentTaxRepository()..loseReply = lostReply;
     final readMonths = <String>[];
     await _mount(t, b, selectedMonth: null,
       reader: (_, _, period) async { readMonths.add(period); return null; },
@@ -136,10 +137,21 @@ void main() {
     await t.tap(find.text('確認して保存'));
     await t.pumpAndSettle();
     expect(residentRepository.saves, 1);
+    if (lostReply) {
+      expect(t.widget<IconButton>(arrow).onPressed, isNull);
+      final reload = find.text('住民税を再読み込み');
+      await t.ensureVisible(reload);
+      await t.pumpAndSettle();
+      await t.tap(reload);
+      await t.pumpAndSettle();
+      expect(find.text('住民税の保存を確認しました'), findsOneWidget);
+    }
     expect(t.widget<IconButton>(arrow).onPressed, isNotNull);
     expect(b.writes, 0);
     expect(t.takeException(), isNull);
   });
+
+  }
 
   testWidgets('disposed deduction panel stops before fetching conditions', (t) async {
     final contract = Completer<dynamic>();
