@@ -78,6 +78,43 @@ void main() {
     await expectLater(repository.save(companyId: 'company', workerId: 'worker', expectedVersion: 0, mode: 'timeline', cutover: '2030-06-01',
       entries: [const ResidentTaxEntry(month: '2030-06-01', amount: 5000)]), throwsFormatException);
   });
+  testWidgets('notice guidance highlights input without changing saved June and July amounts', (tester) async {
+    final repository = FakeResidentTaxRepository()..state = const ResidentTaxState(
+      version: 1, mode: 'timeline', cutover: '2030-06-01',
+      entries: [ResidentTaxEntry(month: '2030-06-01', amount: 5100),
+        ResidentTaxEntry(month: '2030-07-01', amount: 5000)],
+      updatedBy: 'editor', updatedAt: '2030-05-01');
+    await open(tester, repository);
+    expect(find.byKey(const ValueKey('resident-tax-notice-input')), findsOneWidget);
+    expect(find.text('住民税の通知額を入力'), findsOneWidget);
+    expect(find.textContaining('原則、毎年6月の給与'), findsOneWidget);
+    expect(find.textContaining('6月と7月以降で金額が違う場合'), findsOneWidget);
+    expect(find.text('登録した月額は、次の変更開始月まで継続します。'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('resident-start'))).controller!.text, '2030-05');
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('resident-amount'))).controller!.text, '4000');
+    expect((await repository.read('worker', '2030-06-01')).amount, 5100);
+    expect((await repository.read('worker', '2031-05-01')).amount, 5000);
+    expect(repository.saves, 0);
+  });
+
+  testWidgets('notice input remains readable at narrow width and enlarged text', (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(home: MediaQuery(
+      data: const MediaQueryData(textScaler: TextScaler.linear(1.4)),
+      child: Scaffold(body: SingleChildScrollView(child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: ResidentTaxSection(workerId: 'worker', legacyAmount: 4000,
+          canEdit: true, month: '2030-05-01', repository: FakeResidentTaxRepository()),
+      ))),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('住民税の通知額を入力'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('cancel writes nothing and future registration leaves current resolved amount unchanged', (tester) async {
     final repository = FakeResidentTaxRepository();
     await open(tester, repository);
