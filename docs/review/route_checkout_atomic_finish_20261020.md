@@ -1,5 +1,8 @@
 # Atomic final visit and invoice chronology
 
+**BLOCKED: origin ambiguity remains unresolved. Do not deploy this candidate.**
+
+
 A final visit ends inside the clock-out BEFORE INSERT trigger. Its `recorded_at`
 uses the database clock after the checkout's `confirmed_at` has been assigned.
 The signed-checkout source reader previously rejected this valid final visit.
@@ -40,3 +43,33 @@ The separate day with punches but no confirmed attendance quantity remains
 unresolved. This change must never fabricate a workday or connect an unrelated
 report. Current original function metadata and full definition must be saved,
 then exact owner/ACL/definition restoration rehearsed before production use.
+
+## Unresolved counterexample and smallest safe direction
+
+`tool/verify_route_atomic_identity_counterexample.mjs` loads the existing real
+visit/capture/clockout functions in a disposable fixture. An authorized worker
+first saves a visit-end command with a UUID chosen for a future checkout, sets
+its attempt to the arrival's server-recorded time, then inserts that checkout
+with the same UUID and claimed attempt/confirmation time. No final visit remains
+open when the checkout trigger runs, so it did not create this end capture.
+Nevertheless, the proposed identity/attempt predicate accepts the pair. The
+reproducer explicitly prints UNRESOLVED; its success means the counterexample
+was reproduced, not that the candidate is safe. The fixture uses its existing
+simplified authorization schema, while live read-only inspection separately
+confirmed authenticated INSERT on attendance verifications, no trigger assigning
+server confirmation time, and no direct capture/event table writes.
+
+Capture/event authenticated INSERT/UPDATE/DELETE are denied in production,
+post-checkout new saves are rejected under the common shift lock, and raw capture
+updates other than report linking are forbidden. Those controls prevent late
+insertion but do not prove trigger origin for preseeded IDs.
+
+A safe future implementation should record final-checkout origin in a private,
+append-only server-only ledger from inside the existing final-visit trigger. The
+ledger must bind checkout, shift, capture, worker, company and immutable attempt
+values in the same transaction, with no authenticated insert RPC/grant. The reader
+can then recognize only a ledger-backed exact pair. Distinct-ID capture writes,
+rollback, retry, source-lock races and direct ledger-write denial need tests.
+Historical events must not be automatically backfilled from matching IDs/times;
+they require separately reviewed evidence. This broader write-path change is not
+included here and requires coordination with the production owner.

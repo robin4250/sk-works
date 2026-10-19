@@ -1,3 +1,4 @@
+-- BLOCKED: preseeded ID/time counterexample unresolved. DO NOT DEPLOY.
 -- Review only. No deployment, source-row changes, or automatic invoice refresh.
 -- Keep every original source/scope/signature/rate guard. Recognize only an exact
 -- final visit generated atomically by route_journey_visit_before_clock_out.

@@ -4,6 +4,7 @@ on:
     paths:
       - 'supabase/migrations/20261013181708_route_signed_checkout_customer_billing.sql'
       - 'tool/verify_route_signed_checkout_billing.mjs'
+      - 'tool/verify_route_atomic_identity_counterexample.mjs'
       - 'docs/candidates/route_checkout_atomic_finish_20261020.sql.review-only'
       - 'tool/fixtures/route_signed_checkout/**'
       - '.github/workflows/route-signed-checkout-billing.yml'
@@ -12,6 +13,7 @@ on:
     paths:
       - 'supabase/migrations/20261013181708_route_signed_checkout_customer_billing.sql'
       - 'tool/verify_route_signed_checkout_billing.mjs'
+      - 'tool/verify_route_atomic_identity_counterexample.mjs'
       - 'docs/candidates/route_checkout_atomic_finish_20261020.sql.review-only'
       - 'tool/fixtures/route_signed_checkout/**'
       - '.github/workflows/route-signed-checkout-billing.yml'
@@ -33,6 +35,8 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/signed-billing-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
       - name: Verify actual signed checkout and invoice SQL
         run: node tool/verify_route_signed_checkout_billing.mjs "$RUNNER_TEMP/signed-billing-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Reproduce unresolved atomic origin ambiguity (review only)
+        run: node tool/verify_route_atomic_identity_counterexample.mjs "$RUNNER_TEMP/signed-billing-runtime/node_modules/@electric-sql/pglite/dist/index.js"
   signed-checkout-postgres-races:
     runs-on: ubuntu-latest
     timeout-minutes: 10
