@@ -39,9 +39,10 @@ account edits. It cannot make the honeypot or moving target defense operational.
 
 ## Verification
 
-`tool/security/verify_collector_storage_candidate.mjs` passes 59 assertions in
+`tool/security/verify_collector_storage_candidate.mjs` passes 60 assertions in
 PGlite 0.3.14 with synthetic roles, auth and a one-use proof fixture. It checks
-direct/transitive bridge membership and privileged-role rejection, default-OFF gates, anon/authenticated/service_role ingest denial, lack of table
+direct/transitive bridge membership, upstream role membership and privileged-role rejection, default-OFF
+gates, anon/authenticated/service_role ingest denial, lack of table
 permissions, writer isolation, metadata allowlist, malformed/stale/forged data,
 idempotence/conflict, master/account restrictions, proof reuse and audit failure
 rollback. It returns both fixture gates OFF.

@@ -15,6 +15,9 @@ begin
  pg_has_role('service_role','sko_security_collector_ingest','MEMBER') then
   raise exception 'collector bridge exposed to API role';
  end if;
+ if exists(select 1 from pg_auth_members where member='sko_security_collector_ingest'::regrole) then
+  raise exception 'collector bridge must not inherit or assume other roles';
+ end if;
  if to_regprocedure('private.consume_reauthentication_proof(text,jsonb,text)') is null then
   raise exception 'reauthentication prerequisite missing';
  end if;

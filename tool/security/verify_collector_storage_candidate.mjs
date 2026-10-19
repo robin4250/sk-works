@@ -38,6 +38,9 @@ try {
  await db.exec('alter role sko_security_collector_ingest bypassrls');
  await assert.rejects(()=>db.exec(sql));assertions++;
  await db.exec('rollback;alter role sko_security_collector_ingest nobypassrls');
+ await db.exec('create role fixture_danger bypassrls;grant fixture_danger to sko_security_collector_ingest');
+ await assert.rejects(()=>db.exec(sql));assertions++;
+ await db.exec('rollback;revoke fixture_danger from sko_security_collector_ingest');
  await db.exec(sql);
  const actor='00000000-0000-0000-0000-000000000001';
  const event={event_id:'00000000-0000-0000-0000-000000000010',collector_id:'00000000-0000-0000-0000-000000000020',
