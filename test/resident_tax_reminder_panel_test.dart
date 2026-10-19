@@ -42,6 +42,11 @@ void main(){
   fake.pending.remove(company);await show(tester,fake,cid:other);await show(tester,fake);first.complete(fake.value(company,enabled:true));await tester.pumpAndSettle();await expand(tester);
   expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,false);
  });
+ testWidgets('actor change is rejected before the stream notification arrives',(tester)async{
+  final fake=FakeReminder();addTearDown(fake.changes.close);await show(tester,fake);await expand(tester);
+  fake.actor='different';await tester.tap(find.byType(Switch));await tester.pumpAndSettle();
+  expect(fake.saves,0);expect(find.textContaining('画面を開き直してください'),findsOneWidget);
+ });
  testWidgets('logout same actor ABA permanently closes old panel',(tester)async{
   final fake=FakeReminder();addTearDown(fake.changes.close);await show(tester,fake);await expand(tester);
   fake.actor=null;fake.changes.add(null);fake.actor='actor';fake.changes.add('actor');await tester.pumpAndSettle();

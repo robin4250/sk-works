@@ -53,6 +53,10 @@ class _ResidentTaxReminderPanelState extends State<ResidentTaxReminderPanel> {
   }
   Future<void> _save(bool value) async {
     final repository = _repository, settings = _settings;
+    if (repository != null && repository.actorId != _actor) {
+      setState(() {_invalid = true;_settings = null;_generation++;_busy = false;});
+      return;
+    }
     if (_busy || _invalid || repository == null || settings == null || !settings.canEdit) return;
     final generation = ++_generation, company = widget.companyId, actor = _actor;
     setState(() {_busy = true;_error = null;});
