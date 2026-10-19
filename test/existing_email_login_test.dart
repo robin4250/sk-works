@@ -86,7 +86,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).at(0), 'user@example.com');
     await tester.enterText(find.byType(TextField).at(1), 'email-password');
-    await tester.tap(find.text('ログイン'));
+    await tester.tap(find.text('ログイン').last);
     await tester.pump();
     expect(tester.widget<TextButton>(find.widgetWithText(TextButton, '電話番号でログインする')).onPressed, isNull);
     expect(requests, hasLength(1));
@@ -108,7 +108,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).at(0), 'user@example.com');
     await tester.enterText(find.byType(TextField).at(1), 'email-password');
-    await tester.tap(find.text('ログイン'));
+    await tester.tap(find.text('ログイン').last);
     await tester.pump();
     response.complete(http.Response(jsonEncode({
       'access_token': token, 'refresh_token': 'synthetic', 'token_type': 'bearer', 'expires_in': 3600,
