@@ -5,12 +5,16 @@ on:
       - 'docs/candidates/app_distribution_channels_20261020.sql.review-only'
       - 'docs/review/app_distribution_channels_20261020.md'
       - 'tool/verify_distribution_candidate.mjs'
+      - 'supabase/migrations/*app_referral_invites.sql'
+      - 'tool/security/fixture_dependencies/**'
       - '.github/workflows/distribution-candidate.yml'
   push:
     branches: [main]
     paths:
       - 'docs/candidates/app_distribution_channels_20261020.sql.review-only'
       - 'tool/verify_distribution_candidate.mjs'
+      - 'supabase/migrations/*app_referral_invites.sql'
+      - 'tool/security/fixture_dependencies/**'
       - '.github/workflows/distribution-candidate.yml'
 permissions:
   contents: read

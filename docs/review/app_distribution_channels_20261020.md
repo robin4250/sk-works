@@ -38,7 +38,7 @@ before writes/preparation. No share-to-update lock upgrade is used. Native
 PostgreSQL concurrent setting changes and production dependency equivalence still
 need verification; PGlite assertions alone do not establish those guarantees.
 
-Validation: 50 assertions in isolated PGlite 0.3.14 using the existing original
+Validation: 51 assertions in isolated PGlite 0.3.14 using the existing original
 referral migration and synthetic actors/URLs. They cover OFF gates, empty links,
 private tables, Master settings, sender isolation, public channel restrictions,
 internal link restrictions, malformed/forged URL hosts, phone normalization,

@@ -58,6 +58,7 @@ try{
  await deny(prepare,['Fixture','09012345678','testflight','friend']);
  await deny(prepare,['Fixture','09012345678','testflight','employee']);
  snap=await scalar(snapshot,[false]);eq(snap.invitations.length,1);eq(snap.invitations[0].distribution_label,'公開版の案内');
+ eq(snap.distribution_channels.map(c=>c.ready),[false,false,true]);
  eq(snap.invitations[0].registered_user_id,null);eq(snap.invitations[0].points,null);
  await db.exec("set test.allowed='false'");await deny(snapshot,[false]);await deny(prepare,['Fixture','09012345678','public','friend']);
  await as(owner,true);snap=await scalar(snapshot,[true]);eq(snap.invitations.length,3);eq(snap.attribution_connected,false);

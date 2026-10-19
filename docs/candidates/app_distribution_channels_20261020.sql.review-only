@@ -90,11 +90,11 @@ begin
  -- Enrich only the base function's already scoped history.
  return base_snapshot||jsonb_build_object(
   'invitations',coalesce(snapshot,'[]'::jsonb),
-  'distribution_url_ready',links.testflight_url<>'' or links.web_url<>'' or (settings.public_enabled and links.public_url<>''),
+  'distribution_url_ready',((coalesce(admin,false) or master) and (links.testflight_url<>'' or links.web_url<>'')) or (settings.public_enabled and links.public_url<>''),
   'distribution_links',case when master then jsonb_build_object('testflight',links.testflight_url,'web',links.web_url,'public',links.public_url) else '{}'::jsonb end,
   'distribution_channels',jsonb_build_array(
-   jsonb_build_object('key','testflight','label','TestFlight版','ready',links.testflight_url<>''),
-   jsonb_build_object('key','web','label','WEB版','ready',links.web_url<>''),
+   jsonb_build_object('key','testflight','label','TestFlight版','ready',(coalesce(admin,false) or master) and links.testflight_url<>''),
+   jsonb_build_object('key','web','label','WEB版','ready',(coalesce(admin,false) or master) and links.web_url<>''),
    jsonb_build_object('key','public','label','公開版の案内','ready',settings.public_enabled and links.public_url<>'')));
 end $$;
 revoke all on function private.app_distribution_dispatch(text,jsonb) from public,anon,authenticated,service_role;
