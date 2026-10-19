@@ -35,6 +35,7 @@ jobs:
       - run: node tool/verify_resident_tax_reminders.mjs
         env:
           REMINDER_SQL: docs/candidates/resident_tax_reminders_20261020.sql.review-only
+          REMINDER_MODULE_POLICIES: tool/security/resident_reminder_module_policies.sql
           REMINDER_PERMISSION_BASELINE: tool/security/resident_reminder_permission_baseline.sql
           REMINDER_SCHEDULER: docs/candidates/resident_tax_reminder_scheduler_20261020.sql.review-only
           REMINDER_RESTORE: docs/candidates/resident_tax_reminder_scheduler_restore_20261020.sql.review-only
@@ -64,6 +65,7 @@ jobs:
       - run: node tool/verify_resident_tax_reminders.mjs
         env:
           REMINDER_SQL: docs/candidates/resident_tax_reminders_20261020.sql.review-only
+          REMINDER_MODULE_POLICIES: tool/security/resident_reminder_module_policies.sql
           REMINDER_PERMISSION_BASELINE: tool/security/resident_reminder_permission_baseline.sql
           REMINDER_SCHEDULER: docs/candidates/resident_tax_reminder_scheduler_20261020.sql.review-only
           REMINDER_RESTORE: docs/candidates/resident_tax_reminder_scheduler_restore_20261020.sql.review-only

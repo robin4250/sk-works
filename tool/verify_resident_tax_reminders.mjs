@@ -16,10 +16,10 @@ const save='select public.save_resident_tax_reminder_settings($1::uuid,$2::boole
 try{
 await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create role unexpected_grantee;
 create schema auth;create schema private;create table auth.users(id uuid primary key,deleted_at timestamptz,banned_until timestamptz);
-create table companies(id uuid primary key);create table company_members(company_id uuid,user_id uuid,role text,created_at timestamptz not null default now(),primary key(company_id,user_id));
+create table companies(id uuid primary key);create type public.fixture_company_role as enum('owner','admin','manager','viewer','employee');create table company_members(company_id uuid,user_id uuid,role public.fixture_company_role,created_at timestamptz not null default now(),primary key(company_id,user_id));
 create table company_module_settings(company_id uuid references companies, module_key text,is_enabled boolean,updated_by uuid references auth.users,updated_at timestamptz,primary key(company_id,module_key),
 constraint company_module_settings_module_key_check CHECK ((module_key = ANY (ARRAY['qualifications'::text, 'documents'::text, 'attendance'::text, 'sites'::text, 'chat'::text, 'notes'::text, 'albums'::text, 'invoices'::text, 'line_bridge'::text, 'vehicle_routes'::text]))));
-alter table company_module_settings enable row level security;create policy fixture_module_policy on company_module_settings for select to authenticated using(false);grant select on company_module_settings to authenticated;
+alter table company_module_settings enable row level security;grant select,insert,update,maintain on company_module_settings to authenticated;grant select on company_members to authenticated;
 create table private.account_deletion_access_restrictions(user_id uuid);create table workers(company_id uuid,user_id uuid,status text);
 create table member_feature_permissions(company_id uuid,user_id uuid,can_manage_payroll boolean);
 create table payroll_access(company_id uuid,user_id uuid,can_view boolean,can_edit boolean);
@@ -31,9 +31,10 @@ create function private.account_access_allowed() returns boolean language sql as
 create function private.payroll_approver_ids(cid uuid) returns uuid[] language sql as $$select coalesce(array_agg(user_id),'{}'::uuid[]) from public.payroll_approvers where company_id=cid$$;
 create function private.enqueue_notification(c uuid,u uuid,k text,t text,b text,a text,i uuid) returns uuid language plpgsql as $$declare n uuid;begin insert into public.app_notifications(company_id,recipient_user_id,kind,title,body,action_key,action_id) values(c,u,k,t,b,a,i) returning id into n;return n;end$$;
 grant usage on schema private,auth to authenticated;`);
+await db.exec(await readFile(process.env.REMINDER_MODULE_POLICIES||new URL('module_policies.sql',import.meta.url),'utf8'));
 await db.exec(await readFile(process.env.REMINDER_PERMISSION_BASELINE||new URL('permission_baseline.sql',import.meta.url),'utf8'));
 eq(await scalar("select md5(pg_get_constraintdef(oid)) from pg_constraint where conname='company_module_settings_module_key_check'"),'7ecc05d1fbddecb5564b3183346098d2');
-const before=await scalar("select jsonb_build_array(relacl::text,(select pg_get_expr(polqual,polrelid) from pg_policy where polname='fixture_module_policy')) from pg_class where oid='company_module_settings'::regclass");
+const before=await scalar("select jsonb_build_array(relacl::text,(select jsonb_agg(jsonb_build_array(polname,polcmd,polpermissive,pg_get_expr(polqual,polrelid),pg_get_expr(polwithcheck,polrelid)) order by polname) from pg_policy where polrelid='public.company_module_settings'::regclass)) from pg_class where oid='company_module_settings'::regclass");
 for(const [grant,revoke] of [
  ['alter default privileges in schema private grant select on tables to unexpected_grantee','alter default privileges in schema private revoke select on tables from unexpected_grantee'],
  ['alter default privileges in schema private grant execute on functions to unexpected_grantee','alter default privileges in schema private revoke execute on functions from unexpected_grantee'],
@@ -46,9 +47,13 @@ await assert.rejects(()=>db.exec(sql),/CHECK drift/);assertions++;await db.exec(
 await db.exec("create or replace function private.payroll_allowed(cid uuid,capability text) returns boolean language sql as $$select true$$");
 await assert.rejects(()=>db.exec(sql),/permission source drift/);assertions++;await db.exec('rollback');
 await db.exec(await readFile(process.env.REMINDER_PERMISSION_BASELINE||new URL('permission_baseline.sql',import.meta.url),'utf8'));
+await db.exec('begin;drop policy \"owners and admins can update module settings\" on company_module_settings');
+await assert.rejects(()=>db.exec(sql),/RLS drift/);assertions++;await db.exec('rollback');
+await db.exec('begin;alter table company_module_settings disable row level security');
+await assert.rejects(()=>db.exec(sql),/RLS state changed/);assertions++;await db.exec('rollback');
 await db.exec('alter default privileges in schema public grant execute on functions to anon,authenticated,service_role');
 await db.exec(sql);
-eq(await scalar("select jsonb_build_array(relacl::text,(select pg_get_expr(polqual,polrelid) from pg_policy where polname='fixture_module_policy')) from pg_class where oid='company_module_settings'::regclass"),before);
+eq(await scalar("select jsonb_build_array(relacl::text,(select jsonb_agg(jsonb_build_array(polname,polcmd,polpermissive,pg_get_expr(polqual,polrelid),pg_get_expr(polwithcheck,polrelid)) order by polname) from pg_policy where polrelid='public.company_module_settings'::regclass)) from pg_class where oid='company_module_settings'::regclass"),before);
 for(const role of ['anon','service_role','authenticated']){
  eq(await scalar("select has_function_privilege($1,'public.read_resident_tax_reminder_settings(uuid)','EXECUTE')",[role]),role==='authenticated');
  eq(await scalar("select has_function_privilege($1,'private.enqueue_resident_tax_cutover_reminders(timestamptz,boolean)','EXECUTE')",[role]),false);
@@ -63,6 +68,14 @@ await q('update auth.users set banned_until=now()+interval \'1day\' where id=$1'
 await q('update auth.users set deleted_at=now() where id=$1',[deleted]);
 await q('insert into private.account_deletion_access_restrictions values($1)',[restricted]);
 await q('insert into company_module_settings values($1,\'chat\',true,$2,now())',[company,owner]);
+// Direct REST-equivalent paths retain the existing production RLS boundary.
+for(const user of [viewer,manager]){await as(user);await deny('insert into company_module_settings values($1,\'resident_tax_reminders\',true,$2,now())',[company,user]);}
+await as(owner);await q('insert into company_module_settings values($1,\'resident_tax_reminders\',false,$2,now())',[company,owner]);
+for(const user of [viewer,manager]){await as(user);eq((await q('update company_module_settings set is_enabled=true,updated_by=$2 where company_id=$1 and module_key=\'resident_tax_reminders\' returning module_key',[company,user])).length,0);}
+await as(owner);await deny('insert into company_module_settings values($1,\'resident_tax_reminders\',true,$2,now())',[otherCompany,owner]);
+eq((await q('update company_module_settings set is_enabled=true,updated_by=$2 where company_id=$1 and module_key=\'resident_tax_reminders\' returning module_key',[company,owner])).length,1);
+await db.exec("set test.allowed='false'");eq((await q('update company_module_settings set is_enabled=false where company_id=$1 returning module_key',[company])).length,0);
+await db.exec("reset role;delete from company_module_settings where module_key='resident_tax_reminders'");
 await as(owner);let settings=await scalar(read,[company]);eq(settings.enabled,false);eq(settings.can_edit,true);
 await deny(read,[otherCompany]);await deny('select private.enqueue_resident_tax_cutover_reminders()');
 await db.exec('reset role');eq((await scalar(dispatch,['2026-04-30T14:59:59Z',true])).due,false);

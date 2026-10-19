@@ -1,6 +1,8 @@
 -- REVIEW ONLY. No cron change, delivery, enablement or personal tax values.
 begin;
 do $$begin
+ if (select md5(jsonb_agg(jsonb_build_object('name',p.polname,'command',p.polcmd,'permissive',p.polpermissive,'roles',(select jsonb_agg(r.rolname order by r.rolname) from pg_roles r where r.oid=any(p.polroles)),'using',pg_get_expr(p.polqual,p.polrelid),'check',pg_get_expr(p.polwithcheck,p.polrelid)) order by p.polname)::text) from pg_policy p where p.polrelid='public.company_module_settings'::regclass) is distinct from 'd405d1236800c000e01dca03cbbdaae6' then raise exception 'company module RLS drift: review required';end if;
+ if not (select relrowsecurity and not relforcerowsecurity from pg_class where oid='public.company_module_settings'::regclass) then raise exception 'company module RLS state changed';end if;
  if not exists(select 1 from pg_constraint where conrelid='public.company_module_settings'::regclass
   and conname='company_module_settings_module_key_check' and md5(pg_get_constraintdef(oid))='7ecc05d1fbddecb5564b3183346098d2') then
   raise exception 'company module CHECK drift: review required';end if;
