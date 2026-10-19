@@ -96,7 +96,9 @@ def main():
     parser.add_argument('--output', default='原文')
     args = parser.parse_args()
     client = Client(args.url, os.getenv('SKO_ANON_KEY'), os.getenv('SKO_ACCESS_TOKEN'))
-    groups = client.groups(args.group)
+    # A selected ID can have a different SKO display name from its LINE source.
+    # Still resolve it through the user-scoped RPC, never through an admin read.
+    groups = client.groups('' if args.group_id else args.group)
     if args.group_id:
         groups = [group for group in groups if group['group_id'] == args.group_id]
     if len(groups) != 1:

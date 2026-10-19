@@ -2,16 +2,32 @@ import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+import contextlib
+import io
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tool' / 'line_excel'))
 from core import D, SourceStore, invoice_preview, parse, ranking, reconcile
 from sync import Client
+import sync
 
 GID = '00000000-0000-4000-8000-000000000001'
 ACTOR = '00000000-0000-4000-8000-000000000002'
 
 
 class CoreTest(unittest.TestCase):
+    def test_explicit_id_resolves_different_sko_display_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(sync, 'Client') as factory:
+                client = factory.return_value
+                client.groups.return_value = [{'group_id': GID, 'name': 'SKO側の別名'}]
+                client.messages.return_value = []
+                args = ['sync.py', '--url', 'https://example.supabase.co', '--group', 'LINE側の名前', '--group-id', GID, '--output', directory]
+                with patch.object(sys, 'argv', args), contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(sync.main(), 0)
+                client.groups.assert_called_once_with('')
+                self.assertEqual(client.messages.call_args.args[0], GID)
+
     def parse(self, text):
         return parse(text, ['三上', '三嶋'], ['東京海上'])
 
