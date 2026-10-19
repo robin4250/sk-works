@@ -5,8 +5,10 @@ import 'attendance_management_repository.dart';
 import '../../international/language_controller.dart';
 
 class AttendanceManagementPage extends StatefulWidget {
-  const AttendanceManagementPage({super.key, this.repository});
+  const AttendanceManagementPage({super.key, this.repository, this.initialWorkerId, this.initialDate});
   final AttendanceManagementRepository? repository;
+  final String? initialWorkerId;
+  final DateTime? initialDate;
 
   @override
   State<AttendanceManagementPage> createState() => _AttendanceManagementPageState();
@@ -35,6 +37,9 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
     try {
       final options = await repository.loadOptions();
       if (!mounted) return;
+      if (widget.initialWorkerId != null && !options.workers.any((worker) => worker.id == widget.initialWorkerId)) {
+        throw StateError('対象の従業員を勤怠管理で確認できません。');
+      }
       setState(() {
         _workers = options.workers;
         _sites = options.sites;
@@ -92,7 +97,7 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
                       ? Center(child: Text(SkoLanguageController.tr('勤怠管理を利用できません。')))
                       : TabBarView(
                           children: [
-                            _IndividualManagementPanel(repository: repository, workers: _workers, sites: _sites),
+                            _IndividualManagementPanel(repository: repository, workers: _workers, sites: _sites, initialWorkerId: widget.initialWorkerId, initialDate: widget.initialDate),
                             _BulkManagementPanel(repository: repository, workers: _workers, sites: _sites),
                           ],
                         ),
@@ -103,7 +108,9 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
 }
 
 class _IndividualManagementPanel extends StatefulWidget {
-  const _IndividualManagementPanel({required this.repository, required this.workers, required this.sites});
+  const _IndividualManagementPanel({required this.repository, required this.workers, required this.sites, this.initialWorkerId, this.initialDate});
+  final String? initialWorkerId;
+  final DateTime? initialDate;
   final AttendanceManagementRepository repository;
   final List<AttendanceManagementOption> workers;
   final List<AttendanceManagementOption> sites;
@@ -125,7 +132,9 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
   void initState() {
     super.initState();
     if (widget.workers.isNotEmpty) {
-      _workerId = widget.workers.first.id;
+      _workerId = widget.initialWorkerId ?? widget.workers.first.id;
+      final initial = widget.initialDate;
+      if (initial != null) _date = DateTime(initial.year, initial.month, initial.day);
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadCell());
     }
   }
