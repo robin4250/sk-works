@@ -112,6 +112,54 @@ await as(owner);await deny('select public.resident_tax_reminder_target($1)',[not
 await db.exec('reset role');eq((await scalar(dispatch,['2027-05-01T00:00:00Z',true])).delivered,0);
 eq(await scalar("select is_enabled from company_module_settings where module_key='chat'"),true);
 await deny(dispatch,[null,true]);await deny(dispatch,['infinity',true]);
+// Native-only regression: scheduler pauses after module lock, admin toggles
+// concurrently, then scheduler continues into company-FK receipt insertion.
+// Before the company-first fix this creates the actual two-session deadlock.
+if(process.env.SKO_RESIDENT_REMINDER_FIXTURE_URL){
+ const {resident_reminderFixtureUrl}=await import('./security/resident_reminder_fixture_guard.mjs');
+ const {default:pg}=await import('./security/fixture_dependencies/node_modules/pg/lib/index.js');
+ const connectionString=resident_reminderFixtureUrl(process.env.SKO_RESIDENT_REMINDER_FIXTURE_URL);
+ const sender=new pg.Client({connectionString}),admin=new pg.Client({connectionString});
+ let sendPending,savePending;
+ const barrier='900000000000001';
+ await db.exec(`update company_module_settings set is_enabled=true where module_key='resident_tax_reminders';
+ create function private.resident_reminder_fixture_pause() returns trigger language plpgsql as $$begin perform pg_advisory_xact_lock(900000000000001);return new;end$$;
+ create trigger resident_reminder_fixture_pause before insert on private.resident_tax_reminder_receipts for each row execute function private.resident_reminder_fixture_pause();`);
+ await db.query('select pg_advisory_lock($1::bigint)',[barrier]);
+ try{
+  await sender.connect();await admin.connect();
+  for(const peer of [sender,admin])await peer.query("set statement_timeout='5s';set lock_timeout='4s'");
+  await admin.query("select set_config('test.uid',$1,false),set_config('test.allowed','true',false)",[owner]);await admin.query('set role authenticated');
+  const senderPid=(await sender.query('select pg_backend_pid() pid')).rows[0].pid;
+  const adminPid=(await admin.query('select pg_backend_pid() pid')).rows[0].pid;
+  const stamp=await scalar("select to_jsonb(updated_at) from company_module_settings where company_id=$1 and module_key='resident_tax_reminders'",[company]);
+  sendPending=sender.query(dispatch,['2030-05-01T00:00:00Z',true]).then(value=>({value}),error=>({error}));
+  let paused=false;
+  for(let attempt=0;attempt<100;attempt++){
+   if(await scalar("select exists(select 1 from pg_locks where pid=$1 and locktype='advisory' and not granted)",[senderPid])){paused=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  eq(paused,true);
+  savePending=admin.query(save,[company,false,stamp]).then(value=>({value}),error=>({error}));
+  let blocked=false;
+  for(let attempt=0;attempt<100;attempt++){
+   if(await scalar('select $2::integer=any(pg_blocking_pids($1::integer))',[adminPid,senderPid])){blocked=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  eq(blocked,true);
+  await db.query('select pg_advisory_unlock($1::bigint)',[barrier]);
+  const [sent,saved]=await Promise.all([sendPending,savePending]);
+  eq(sent.error?.message,undefined);eq(saved.error?.message,undefined);
+  eq(Object.values(sent.value.rows[0])[0].delivered,2);
+  eq(Object.values(saved.value.rows[0])[0].enabled,false);
+  eq(await scalar('select count(*)::int from private.resident_tax_reminder_receipts where company_id=$1 and tax_year=2030',[company]),2);
+ }finally{
+  await db.query('select pg_advisory_unlock($1::bigint)',[barrier]);
+  await Promise.allSettled([sendPending,savePending].filter(Boolean));
+  await sender.end();await admin.end();
+  await db.exec('drop trigger resident_reminder_fixture_pause on private.resident_tax_reminder_receipts;drop function private.resident_reminder_fixture_pause()');
+ }
+}
 await db.exec("update company_module_settings set is_enabled=false where module_key='resident_tax_reminders'");
 await db.exec(`create schema cron;create table cron.job(jobid bigint primary key,jobname text,schedule text,active boolean,command text);
 create function cron.alter_job(job_id bigint,command text) returns void language sql as $$update cron.job set command=$2 where jobid=$1$$;
