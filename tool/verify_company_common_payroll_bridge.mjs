@@ -36,7 +36,19 @@ try {
  await db.query(`insert into public.attendance_entries(id,company_id,worker_id,site_id,work_date,work_category,base_man_days,overtime_hours,early_hours) values(gen_random_uuid(),$1,$2,'20000000-0000-0000-0000-000000000001','2026-09-02','day',0.5,0,0),(gen_random_uuid(),$1,$2,'20000000-0000-0000-0000-000000000001','2026-09-02','day',0.5,0,0)`,[cid,wid]);
  row=await statement();assert.equal(row.gross_pay,baseline.gross_pay+1300);assert.equal(row.deductions,baseline.deductions+250);assert.equal(row.detail.unit_resolution.items[2].quantity,1);assert.equal(row.net_pay,row.gross_pay-row.deductions);
  await add(7,'monthly','earning','hour',100);await refresh();row=await statement();assert.equal(row.calculation_blocked,true);assert.equal(row.detail.unit_resolution.items.at(-1).quantity,null);
- await db.query("insert into payroll_unit_private.quantities values($1,$2,$3,'2026-09-01',2.5,$4,now())",[cid,wid,iid(7),owner]);await refresh();row=await statement();assert.equal(row.calculation_blocked,false);assert.equal(row.gross_pay,baseline.gross_pay+1550);
+ await db.query("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
+ const common=async()=>(await db.query("select public.payroll_unit_conditions($1,$2,'2026-09-01') value",[cid,wid])).rows[0].value.company_common;
+ const oldSource=(await common()).source;
+ const saveHours=async(source,hours)=>(await db.query("select public.save_payroll_common_hours($1,$2,'2026-09-01',$3::jsonb,$4::jsonb) value",[cid,wid,JSON.stringify(source),JSON.stringify(hours)])).rows[0].value;
+ await assert.rejects(saveHours(oldSource,[{id:iid(7),quantity:'-1'}]),/explicit company common hours/);
+ await assert.rejects(saveHours(oldSource,[{id:iid(6),quantity:'2.5'}]),/identity/);
+ const savedHours=await saveHours(oldSource,[{id:iid(7),quantity:'2.5'}]);
+ assert.equal(savedHours.company_common.items.at(-1).quantity,2.5);
+ await assert.rejects(saveHours(oldSource,[{id:iid(7),quantity:'3'}]),/source conflict/);
+ await db.query("select set_config('request.jwt.claim.sub',$1,false)",['00000000-0000-0000-0000-000000000003']);
+ await assert.rejects(saveHours((await common()).source,[{id:iid(7),quantity:'3'}]),/access denied/);
+ await db.query("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
+ row=await statement();assert.equal(row.calculation_blocked,false);assert.equal(row.gross_pay,baseline.gross_pay+1550);
  const revision=row.revision;await refresh();assert.equal((await statement()).revision,revision);
  await db.query("update company_common_allowance_private.items set retired_at=now(),retired_by=$1 where id=$2",[owner,iid(1)]);await refresh();assert.equal((await statement()).gross_pay,baseline.gross_pay+550);
 
@@ -54,6 +66,7 @@ try {
  const frozen=await statement();
  await db.query('update company_common_allowance_private.items set amount_yen=9999 where id=$1',[iid(3)]);
  await refresh();assert.deepEqual(await statement(),frozen,'finalized payroll and saved detail preserved');
+ await assert.rejects(saveHours((await common()).source,[{id:iid(7),quantity:'3'}]),/finalized\/manual/);
  assert.equal((await db.query("select has_function_privilege('authenticated','payroll_unit_private.resolve_company_common(uuid,uuid,date,date)','EXECUTE') value")).rows[0].value,false);
  assert.equal((await db.query("select has_table_privilege('authenticated','company_common_allowance_private.payroll_activation','SELECT') value")).rows[0].value,false);
  console.log('PASS common extras use actual payroll augmentation: units, types, cutoff, manual hours, totals, blocked state, stable identity, retirement and ACL');

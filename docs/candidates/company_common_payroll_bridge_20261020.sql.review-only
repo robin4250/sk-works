@@ -8,9 +8,10 @@ do $$ begin
  if not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)')
    and md5(prosrc)='5c51172a6169beb90a7ddbb6ae443cd6' and prosecdef and proconfig=ARRAY['search_path=""']) then
   raise exception 'payroll common bridge prerequisite differs';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_unit_private.read_conditions(uuid,uuid,date)') and md5(prosrc)='cf298ba4b1e848ab89a67623f7466bcd') then raise exception 'payroll common read prerequisite differs';end if;
 end $$;
 create table company_common_allowance_private.payroll_activation(
- company_id uuid primary key references public.companies(id),
+ company_id uuid primary key references public.companies(id) on delete cascade,
  starts_on date not null check(starts_on=date_trunc('month',starts_on)::date)
 );
 alter table company_common_allowance_private.payroll_activation enable row level security;
@@ -77,4 +78,77 @@ begin
  'custom_deductions',coalesce(settings->'custom_deductions','[]')||(resolved->'deductions'),
  '_unit_resolution',resolved);
 end $$;
+
+create function payroll_unit_private.common_state(cid uuid,wid uuid,p_month date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare result jsonb; typ text; activation date;
+begin
+ result:=payroll_unit_private.resolve_company_common(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date);
+ select pay_type into typ from public.worker_payroll_settings where company_id=cid and worker_id=wid;
+ select starts_on into activation from company_common_allowance_private.payroll_activation where company_id=cid;
+ return jsonb_build_object('contract_version',1,'items',result->'items','source',
+  jsonb_build_object('starts_on',activation,'pay_type',typ,'items',result->'items'));
+end $$;
+revoke all on function payroll_unit_private.common_state(uuid,uuid,date) from public,anon,authenticated,service_role;
+
+create or replace function payroll_unit_private.read_conditions(cid uuid,wid uuid,p_month date)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare config payroll_unit_private.conditions%rowtype; items jsonb;
+begin
+ perform payroll_unit_private.require_access(cid,wid,'view');
+ if p_month is null or p_month<>date_trunc('month',p_month)::date then raise exception 'canonical month required';end if;
+ select * into config from payroll_unit_private.conditions where company_id=cid and worker_id=wid
+ and starts_on<=p_month order by starts_on desc limit 1;
+ select coalesce(jsonb_agg(item||jsonb_build_object('quantity',q.hours) order by ord),'[]') into items
+ from jsonb_array_elements(coalesce(config.items,'[]')) with ordinality e(item,ord)
+ left join payroll_unit_private.quantities q on q.company_id=cid and q.worker_id=wid
+ and q.item_id=(item->>'id')::uuid and q.month=p_month;
+ return jsonb_build_object('version',coalesce(config.version,0),'month',p_month,'items',items,
+ 'can_edit',private.payroll_settings_allowed(cid,wid,'edit') and not exists(
+  select 1 from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=wid and ps.period_start=p_month
+   and (ps.workflow_state<>'draft' or not ps.automatic_calculation)
+ ),'company_common',payroll_unit_private.common_state(cid,wid,p_month),'resolved',payroll_unit_private.resolve(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date));
+end $$;
+
+create function payroll_unit_private.save_common_hours(cid uuid,wid uuid,p_month date,p_expected_source jsonb,p_hours jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare current_source jsonb; current_items jsonb; item jsonb; iid uuid; quantity numeric; seen uuid[]:='{}';
+begin
+ perform payroll_unit_private.require_access(cid,wid,'edit');
+ if p_month is null or p_month<>date_trunc('month',p_month)::date then raise exception 'canonical month required' using errcode='22023';end if;
+ if exists(select 1 from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=wid and ps.period_start=p_month
+  and (ps.workflow_state is distinct from 'draft' or ps.automatic_calculation is distinct from true)) then
+  raise exception 'finalized/manual payroll is unchanged' using errcode='22023';end if;
+ current_source:=payroll_unit_private.common_state(cid,wid,p_month)->'source';
+ if p_expected_source is distinct from current_source then raise exception 'company common payroll source conflict' using errcode='40001';end if;
+ current_items:=current_source->'items';
+ if jsonb_typeof(p_hours) is distinct from 'array' or jsonb_array_length(p_hours) not between 1 and 100 then
+  raise exception 'invalid company common hours' using errcode='22023';end if;
+ for item in select value from jsonb_array_elements(p_hours) loop
+  if jsonb_typeof(item) is distinct from 'object' or (select count(*) from jsonb_object_keys(item))<>2
+   or coalesce(item->>'id','') !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+   or coalesce(item->>'quantity','') !~ '^\d+(\.\d{1,4})?$' then
+   raise exception 'explicit company common hours required' using errcode='22023';end if;
+  iid:=(item->>'id')::uuid;quantity:=(item->>'quantity')::numeric;
+  if iid=any(seen) or quantity>99999999 or not exists(select 1 from jsonb_array_elements(current_items) i
+    where i->>'id'=iid::text and i->>'unit'='hour') then
+   raise exception 'invalid company common item identity or hours' using errcode='22023';end if;
+  seen:=array_append(seen,iid);
+  insert into payroll_unit_private.quantities values(cid,wid,iid,p_month,quantity,auth.uid(),now())
+   on conflict(company_id,worker_id,item_id,month) do update set hours=excluded.hours,updated_by=excluded.updated_by,updated_at=excluded.updated_at;
+ end loop;
+ perform payroll_unit_private.require_access(cid,wid,'edit');
+ perform private.refresh_automatic_payroll(cid,wid,p_month);
+ perform private.sync_payroll_attendance_detail(cid,wid,p_month);
+ return payroll_unit_private.read_conditions(cid,wid,p_month);
+end $$;
+revoke all on function payroll_unit_private.save_common_hours(uuid,uuid,date,jsonb,jsonb) from public,anon,authenticated,service_role;
+-- Public invoker wrapper follows the existing unit-condition API boundary.
+grant execute on function payroll_unit_private.save_common_hours(uuid,uuid,date,jsonb,jsonb) to authenticated;
+create function public.save_payroll_common_hours(p_company_id uuid,p_worker_id uuid,p_month date,p_expected_source jsonb,p_hours jsonb)
+returns jsonb language sql security invoker set search_path='' as $$
+ select payroll_unit_private.save_common_hours(p_company_id,p_worker_id,p_month,p_expected_source,p_hours)
+$$;
+revoke all on function public.save_payroll_common_hours(uuid,uuid,date,jsonb,jsonb) from public,anon,service_role;
+grant execute on function public.save_payroll_common_hours(uuid,uuid,date,jsonb,jsonb) to authenticated;
 commit;

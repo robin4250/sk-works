@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 
@@ -9,11 +11,15 @@ class PayrollUnitConditions {
     required this.month,
     required this.canEdit,
     required this.items,
+    this.companyCommonItems = const [],
+    this.companyCommonSourceJson,
   });
   final int version;
   final String month;
   final bool canEdit;
   final List<PayrollUnitItemDraft> items;
+  final List<Map<String, dynamic>> companyCommonItems;
+  final String? companyCommonSourceJson;
   factory PayrollUnitConditions.fromJson(Object? raw) {
     if (raw is! Map ||
         raw['version'] is! int ||
@@ -57,11 +63,39 @@ class PayrollUnitConditions {
         ),
       );
     }
+    final common = raw['company_common'];
+    final commonItems = <Map<String, dynamic>>[];
+    String? commonSource;
+    if (common != null) {
+      if (common is! Map || common['contract_version'] != 1 ||
+          common['source'] is! Map || common['items'] is! List) {
+        throw StateError('Company common response unavailable');
+      }
+      final ids = <String>{};
+      for (final entry in common['items'] as List) {
+        if (entry is! Map || entry['id'] is! String ||
+            !ids.add(entry['id'] as String) || entry['name'] is! String ||
+            !['earning', 'deduction'].contains(entry['section']) ||
+            !['hour', 'day', 'month'].contains(entry['unit']) ||
+            entry['rate_yen'] is! int || (entry['rate_yen'] as int) < 0 ||
+            entry['quantity'] != null && (entry['quantity'] is! num ||
+                !(entry['quantity'] as num).isFinite || (entry['quantity'] as num) < 0) ||
+            entry['amount_yen'] != null && (entry['amount_yen'] is! int ||
+                (entry['amount_yen'] as int) < 0) ||
+            entry['quantity_month'] != raw['month']) {
+          throw StateError('Company common item unavailable');
+        }
+        commonItems.add(Map.unmodifiable(Map<String, dynamic>.from(entry)));
+      }
+      commonSource = jsonEncode(common['source']);
+    }
     return PayrollUnitConditions(
       version: raw['version'] as int,
       month: raw['month'] as String,
       canEdit: raw['can_edit'] == true,
       items: List.unmodifiable(items),
+      companyCommonItems: List.unmodifiable(commonItems),
+      companyCommonSourceJson: commonSource,
     );
   }
 }
@@ -105,6 +139,42 @@ class PayrollUnitConditionsRepository {
     return value;
   }
 
+  Future<PayrollUnitConditions> saveCommonHours(
+    String companyId,
+    String workerId,
+    PayrollUnitConditions current,
+    Map<String, String> hours,
+  ) async {
+    final actor = _actor();
+    if (actor == null || !current.canEdit || current.companyCommonSourceJson == null || hours.isEmpty) {
+      throw StateError('Company common edit unavailable');
+    }
+    final known = current.companyCommonItems.where((x) => x['unit'] == 'hour').map((x) => x['id']).toSet();
+    for (final entry in hours.entries) {
+      if (!known.contains(entry.key) || !RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(entry.value) ||
+          num.parse(entry.value) > 99999999) {
+        throw const FormatException('時間数を0以上の数値で入力してください');
+      }
+    }
+    final token = _client.auth.currentSession?.accessToken;
+    if (token == null) throw StateError('Session unavailable');
+    var revoked = false;
+    final subscription = _client.auth.onAuthStateChange.listen((event) {
+      if (event.session?.accessToken != token || event.session?.user.id != actor) revoked = true;
+    }, onError: (Object _) { revoked = true; });
+    try {
+    final raw = await _client.rpc('save_payroll_common_hours', params: {
+      'p_company_id': companyId, 'p_worker_id': workerId,
+      'p_month': current.month, 'p_expected_source': jsonDecode(current.companyCommonSourceJson!),
+      'p_hours': [for (final entry in hours.entries) {'id': entry.key, 'quantity': entry.value}],
+    }).setHeader('Authorization', 'Bearer $token');
+    if (revoked || _actor() != actor || _client.auth.currentSession?.accessToken != token) throw StateError('Session changed');
+    final value = PayrollUnitConditions.fromJson(raw);
+    if (value.month != current.month) throw StateError('Payroll month changed');
+    return value;
+    } finally { await subscription.cancel(); }
+  }
+
   Future<PayrollUnitConditions> save(
     String companyId,
     String workerId,
@@ -144,3 +214,4 @@ class PayrollUnitConditionsRepository {
     return value;
   }
 }
+
