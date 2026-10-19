@@ -93,6 +93,66 @@ class AttendanceManagementRepository {
     );
   }
 
+  /// Read-only: recorded work and approved leave take precedence over punches.
+  /// Scope comes from a visible draft, never from an employee name or list order.
+  Future<PayrollPendingAttendance?> loadPayrollPendingDays(String statementId) async {
+    final userId = _client.auth.currentUser?.id;
+    final token = _client.auth.currentSession?.accessToken;
+    void current() {
+      if (userId == null || token == null ||
+          _client.auth.currentUser?.id != userId ||
+          _client.auth.currentSession?.accessToken != token) {
+        throw StateError('ログイン状態が変わりました。読み込み直してください。');
+      }
+    }
+    current();
+    final access = await _access();
+    current();
+    if (!access.allowed) return null;
+    final row = await _client.from('payroll_statements')
+        .select('id,company_id,worker_id,period_start,workflow_state')
+        .eq('id', statementId).eq('company_id', access.companyId).maybeSingle();
+    current();
+    if (row == null || row['workflow_state'] != 'draft') return null;
+    final workerId = row['worker_id']?.toString() ?? '';
+    final period = DateTime.tryParse(row['period_start']?.toString() ?? '');
+    if (workerId.isEmpty || period == null) throw StateError('給与の対象を確認できません。');
+    final start = DateTime(period.year, period.month);
+    final end = DateTime(period.year, period.month + 1);
+    final from = _dbDate(start), until = _dbDate(end);
+    final entries = await _client.from('attendance_entries').select('work_date')
+        .eq('company_id', access.companyId).eq('worker_id', workerId)
+        .gte('work_date', from).lt('work_date', until);
+    current();
+    final leaves = await _client.from('paid_leave_requests').select('leave_date')
+        .eq('company_id', access.companyId).eq('worker_id', workerId)
+        .eq('status', 'approved').gte('leave_date', from).lt('leave_date', until);
+    current();
+    final punches = await _client.from('attendance_verifications')
+        .select('work_date,event_type,confirmed_at')
+        .eq('company_id', access.companyId).eq('worker_id', workerId)
+        .or('and(work_date.gte.$from,work_date.lt.$until),and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.toUtc().toIso8601String()})');
+    current();
+    final recorded = {
+      for (final entry in entries) entry['work_date']?.toString(),
+      for (final leave in leaves) leave['leave_date']?.toString(),
+    };
+    final days = <DateTime>{};
+    for (final punch in punches) {
+      if (!const {'clock_in', 'clock_out'}.contains(punch['event_type'])) continue;
+      final time = DateTime.tryParse(punch['confirmed_at']?.toString() ?? '')?.toLocal();
+      if (time == null) continue;
+      final rawDate = punch['work_date'];
+      final date = rawDate == null ? time : DateTime.tryParse(rawDate.toString());
+      if (date == null) continue;
+      final day = DateTime(date.year, date.month, date.day);
+      if (!day.isBefore(start) && day.isBefore(end) && !recorded.contains(_dbDate(day))) days.add(day);
+    }
+    return PayrollPendingAttendance(workerId: workerId, dates: days.toList()..sort());
+  }
+
+  Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
+
   Future<AttendanceManagementCell> loadCell({required String workerId, required DateTime date}) async {
     final access = await _access();
     if (!access.allowed) throw StateError('勤怠管理を利用する権限がありません。');
@@ -219,4 +279,10 @@ class AttendanceManagementRepository {
   static double _number(Object? value) => (value as num?)?.toDouble() ?? double.tryParse(value?.toString() ?? '') ?? 0;
   static String _dbDate(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+}
+
+class PayrollPendingAttendance {
+  const PayrollPendingAttendance({required this.workerId, required this.dates});
+  final String workerId;
+  final List<DateTime> dates;
 }

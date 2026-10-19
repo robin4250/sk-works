@@ -1,3 +1,4 @@
+import 'payroll_pending_attendance_panel.dart';
 import 'payroll_condition_warning.dart';
 import 'payroll_finalization_panel.dart';
 import 'package:flutter/material.dart';
@@ -376,6 +377,13 @@ class _PayrollStatementPreviewPageState
                   ),
                 ],
               ),
+            ),
+          if (widget.allowFinalization && statement.isDraft && !_sourceLoading &&
+              !_confirmationBusy && !_finalizationBusy && !_statementUnavailable && _confirmationError == null)
+            PayrollPendingAttendancePanel(
+              key: ValueKey(statement),
+              statementId: statement.id,
+              onReturn: () async { await _loadConfirmation(); },
             ),
           if (_confirmation != null)
             Padding(
