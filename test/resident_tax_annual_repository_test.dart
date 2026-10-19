@@ -53,8 +53,8 @@ void main() {
               await client.auth.signOut(scope: SignOutScope.local);
               await client.auth.signInWithPassword(email: 'fixture@example.invalid', password: 'fixture');
             }
-            if (mode == 'conflict') return http.Response(jsonEncode({'code': '40001', 'message': 'source conflict'}), 409,
-              headers: {'content-type': 'application/json'}, request: req);
+            if (mode == 'conflict') { return http.Response(jsonEncode({'code': '40001', 'message': 'source conflict'}), 409,
+              headers: {'content-type': 'application/json'}, request: req); }
             body = {'request_id': mode == 'wrong_receipt' ? 'other' : requestId,
               'company_id': company, 'fiscal_year': 2030, 'snapshot': annualResponse()['snapshot']};
           } else if (req.url.path == '/rest/v1/rpc/undo_company_resident_tax_annual') {

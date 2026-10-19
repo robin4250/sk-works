@@ -170,11 +170,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
             final id = record?.actionId ?? item.actionId;
             if (!notificationTargetIsValid(key, id)) return false;
             if (SourceNotificationTarget.supports(key)) return true;
-            if (record?.kind == 'resident_tax_reminder') {
+            if (record != null && record.kind == 'resident_tax_reminder') {
               if (key != 'payroll_settings' || id == null) return false;
               final repository = SupabaseResidentTaxReminderRepository.maybeCreate();
               if (repository == null) return false;
-              await repository.target(record!.id, id);
+              await repository.target(record.id, id);
               session.requireCurrent();
               return true;
             }

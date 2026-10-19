@@ -68,7 +68,7 @@ class ResidentTaxAnnualData {
     snapshotJson = jsonEncode(raw['snapshot']);
     receipt = raw['receipt'] is Map ? Map<String, dynamic>.from(raw['receipt'] as Map) : null;
     if (receipt != null && (receipt!['company_id'] != company || receipt!['fiscal_year'] != year ||
-        receipt!['request_id'] is! String)) throw StateError('保存結果の会社・年度が一致しません');
+        receipt!['request_id'] is! String)) { throw StateError('保存結果の会社・年度が一致しません'); }
   }
   late final String companyId, snapshotJson;
   late final int fiscalYear;
