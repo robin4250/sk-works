@@ -1,4 +1,5 @@
 import '../payroll/resident_tax_annual_page.dart';
+import '../payroll/resident_tax_reminder_panel.dart';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -550,7 +551,8 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
           onPressed: _busy ? null : () {
             final now = DateTime.now().toUtc().add(const Duration(hours: 9));
             Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
-              ResidentTaxAnnualUpdatePage(companyId: widget.companyId, fiscalYear: now.year)));
+              ResidentTaxAnnualUpdatePage(companyId: widget.companyId, fiscalYear: now.year,
+                reminderPanel: ResidentTaxReminderPanel(companyId: widget.companyId))));
           },
           icon: const Icon(Icons.people_outline), label: const Text('全員の住民税を更新'),
         ),

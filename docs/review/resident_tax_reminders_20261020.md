@@ -1,0 +1,34 @@
+# Annual resident tax in-app reminders — review-only preparation
+
+No production SQL, scheduler edit, module enablement or notification delivery has been performed. No tax amounts or employee names are included. This candidate does not claim rollout completion.
+
+## Existing infrastructure and policy
+
+Reuse `app_notifications`, `private.enqueue_notification`, existing notification history/attention state, `company_module_settings`, and the existing midnight-JST payroll scheduler. The new company module `resident_tax_reminders` is OFF when absent. Installation seeds no settings. Owners/admins alone may change it; eligible payroll viewers may read it. There is no independent notification service or ChatGPT automation. Read-only catalog review found no server-side per-user notification preference for this category; local notification-sound choice is unchanged.
+
+Eligible recipients must retain current company membership, actual payroll access, an active account, and no deletion restriction or exclusively inactive worker membership. A viewer role alone does not qualify. Current payroll permission sources, the existing module CHECK and all four current module RLS policies are hash guarded; unknown drift aborts the whole install. No existing module row, grant or RLS policy is rewritten. The exact reviewed production policies are exercised in the fixture: direct REST-equivalent INSERT is denied for manager/viewer, UPDATE affects zero rows, owner/admin checks require updated_by = auth.uid(), cross-company writes fail, and the restrictive account-deletion guard remains effective.
+
+## Calendar, deduplication and annual completion
+
+Use Asia/Tokyo calendar dates May 1 and May 25; `tax_year` is the June-start year. The wording asks users to confirm/register when the municipal notice arrives, without treating an undelivered notice as an error. Current company + recipient + year + phase is unique, even after notification read/deletion or membership rejoin. Membership creation time is retained to stop historical targets opening under a later membership. Preview is read-only and the delivery flag defaults false.
+
+The only completion source is `resident_tax_annual_private.year_complete(uuid,integer)` from the annual bulk-update backend. It checks valid annual receipts and current source values for every currently active employee; same amounts/zero still need annual confirmation. New employees need their own confirmation, while existing unchanged confirmations remain valid. Retirement and unrelated subcontractor changes do not invalidate other employees. The employee snapshot is used for save conflict detection rather than unconditionally invalidating all receipts. Missing helper means incomplete. A complete company gets no subsequent reminder. The saved target returns `complete` dynamically so history remains and changes to 更新確認済み; a newly unconfirmed employee, individual tax edit, or cancellation restoring an unconfirmed state makes it pending again. No app-notification history is deleted or marked read to represent completion.
+
+## Client contract and remaining integration
+
+`ResidentTaxReminderPanel(companyId:...)` is a small company-common expansion panel for the annual bulk-update page. It never edits individual tax amounts and never prevents annual tax saving when the reminder backend is absent. Missing RPC shows OFF/preparation text. Viewer toggles are disabled; a save uses the original timestamp as a compare-and-swap token. Actor changes, logout/same-UID ABA, company ABA, late responses and duplicate saves cannot apply stale UI results.
+
+`SupabaseResidentTaxReminderRepository.target(notificationId,companyId)` validates the saved notification through the backend, then validates current payroll workspace company and view permission with a pinned JWT before navigation. The existing `payroll_settings` action is retained; only the new `resident_tax_reminder` kind uses the annual destination. Old action IDs referring to workers retain their existing interpretation. Notification status/routing and annual page slot wiring are a separate dependent change once the annual page is available.
+
+## Deployment/backup/restore gate
+
+1. Review exact production module CHECK and payroll permission hashes again, schema/table/function default ACLs, account-access policy, enqueue signature and existing daily job command/schedule. Unknown grants abort installation.
+2. Export exact module rows/ACLs/policies/CHECK, candidate function absence, and `cron.job` command/schedule/active/jobid before changes. Retain a verified restore copy. Preserve annual receipts and notification history in backups; do not reverse confirmed employee tax updates.
+3. Install the backend separately with no new module row; validate all companies remain OFF. Run preview (default `p_deliver=false`) for both JST dates and a non-due date and confirm zero deliveries. Fixture evidence does not replace real project compatibility checks.
+4. Scheduler append is a separate review-only file. It requires the known active payroll daily job (`0 15 * * *`) and exact command hash. It appends a subtransaction that rolls back every reminder insert on failure while preserving the original payroll tasks. It requires all reminder modules OFF on first install and is idempotent only for the exact suffix.
+5. Enable a company's module only after explicit rollout review and annual-page/backend readiness. No real notification has been sent by this work.
+6. To stop reminders, turn company module OFF and/or apply the separate exact-command scheduler restore candidate. Restore refuses unknown later command edits. Do not drop receipts or delete history as rollback. Full backend removal requires preserving these records, checking dependent clients and restoring the original CHECK only after removing the new module key; it is intentionally not an unconditional DROP script.
+
+## Validation
+
+The shared verifier exercises the actual reviewed permission function sources (non-personal catalog metadata), original module CHECK hash, default-ACL rollback, existing policy/ACL preservation, OFF preview, JST date boundary, role/access/deletion restrictions, cross-company targets, CAS conflict, duplicate delivery/retry/deletion/rejoin, missing annual helper, annual complete/reopen behavior, next year, schedule append/idempotence/drift/restore and failure isolation. Run it unchanged in PGlite and PostgreSQL 17 using the dedicated empty loopback fixture guard; no production connection string is accepted. SDK/widget CI tests additionally cover actor/company generation guards, pinned transport, missing/forbidden RPC, read-only viewer, duplicate save and target/workspace mismatch. See CI results for actual completed checks.

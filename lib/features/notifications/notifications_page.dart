@@ -22,6 +22,9 @@ import '../auth/secondary_protected_page.dart';
 import '../invoices/invoice_notification_page.dart';
 import '../chat/chat_cloud_page.dart';
 import '../payroll/individual_payroll_settings_page.dart';
+import '../payroll/resident_tax_annual_page.dart';
+import '../payroll/resident_tax_reminder_panel.dart';
+import '../payroll/resident_tax_reminder_repository.dart';
 import '../payroll/payroll_review_page.dart';
 import '../attendance/attendance_notification_page.dart';
 import '../payroll/payroll_review_repository.dart';
@@ -167,6 +170,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
             final id = record?.actionId ?? item.actionId;
             if (!notificationTargetIsValid(key, id)) return false;
             if (SourceNotificationTarget.supports(key)) return true;
+            if (record?.kind == 'resident_tax_reminder') {
+              if (key != 'payroll_settings' || id == null) return false;
+              final repository = SupabaseResidentTaxReminderRepository.maybeCreate();
+              if (repository == null) return false;
+              await repository.target(record!.id, id);
+              session.requireCurrent();
+              return true;
+            }
             final supported = notificationDestination(record ?? AppNotificationRecord(id: '', kind: item.source,
               title: item.title, body: item.body, createdAt: item.createdAt ?? DateTime(1970),
               read: true, actionKey: key, actionId: id)) != null;
@@ -262,7 +273,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
         payrollMonth = await review.notificationMonth(target.actionId ?? '');
       }
       Widget? destination;
-      if (target.actionKey == 'daily_report_edit_request' && target.actionId != null) {
+      if (target.kind == 'resident_tax_reminder') {
+        if (target.actionKey != 'payroll_settings' || target.actionId == null) throw StateError('通知の対象を確認できません');
+        final repository = SupabaseResidentTaxReminderRepository.maybeCreate();
+        if (repository == null) throw StateError('通知の対象を確認できません');
+        final saved = await repository.target(target.id, target.actionId!);
+        _session?.requireCurrent();
+        destination = residentTaxReminderDestination(target, saved);
+      } else if (target.actionKey == 'daily_report_edit_request' && target.actionId != null) {
         final client = SupabaseBackend.client;
         final actor = client.auth.currentUser?.id;
         final request = await client.from('daily_report_edit_requests')
@@ -521,6 +539,7 @@ Widget? notificationDestination(
   AppNotificationRecord item, {
   DateTime? payrollMonth,
 }) {
+  if (item.kind == 'resident_tax_reminder') return null; // Requires server-authorized annual target.
   if (!notificationTargetIsValid(item.actionKey, item.actionId)) return null;
   return switch (item.actionKey) {
   'site_payment_agreement' => SiteContractNotificationPage(notificationId: item.id),
@@ -631,4 +650,15 @@ Widget? companyLinkNotificationDestination(String? requestId) {
     mode: TradeCompanyPageMode.customer,
     initialRequestId: requestId,
   );
+}
+
+/// Only a saved, company-checked reminder may open the annual page.
+Widget residentTaxReminderDestination(AppNotificationRecord item, ResidentTaxReminderTarget target) {
+  if (item.kind != 'resident_tax_reminder' || item.actionKey != 'payroll_settings' || item.actionId != target.companyId) {
+    throw const FormatException('通知と年度更新の会社が一致しません');
+  }
+  return SecondaryProtectedPage(title: '住民税の年度一括更新', child: ResidentTaxAnnualUpdatePage(
+    companyId: target.companyId, fiscalYear: target.fiscalYear,
+    reminderPanel: ResidentTaxReminderPanel(companyId: target.companyId),
+  ));
 }
