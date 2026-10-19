@@ -10,9 +10,9 @@ begin
   and not rolcreaterole and not rolreplication and not rolinherit) then
   raise exception 'collector bridge role prerequisite missing';
  end if;
- if exists(select 1 from pg_auth_members m join pg_roles r on r.oid=m.member
-  where m.roleid='sko_security_collector_ingest'::regrole
-   and r.rolname in ('anon','authenticated','service_role')) then
+ if pg_has_role('anon','sko_security_collector_ingest','MEMBER') or
+ pg_has_role('authenticated','sko_security_collector_ingest','MEMBER') or
+ pg_has_role('service_role','sko_security_collector_ingest','MEMBER') then
   raise exception 'collector bridge exposed to API role';
  end if;
  if to_regprocedure('private.consume_reauthentication_proof(text,jsonb,text)') is null then
