@@ -29,9 +29,19 @@ try {
  const frozenLegacy=await row('07');
  const legacyLedger=(await db.query(`select * from private.expense_amount_consumptions where claim_id='${id(10)}'`)).rows;
  const invoiceSource=(await db.query("select md5(prosrc) hash from pg_proc where oid='private.refresh_automatic_invoice(uuid,uuid,date)'::regprocedure")).rows[0].hash;
+ // Preserve the original v1 no-op contract even for a saved nonzero deduction.
+ // This isolated legacy row is deliberately inconsistent; do not repair it here.
+ await approve(16,'06');
+ await db.exec(`update payment_certificates set deductions=375 where company_id='${company}' and partner_company_id='${partner}' and period_start='2026-06-01'`);
+ const deductionOnlyLegacy=await row('06');
+ assert.equal(deductionOnlyLegacy.deductions,375);
+ await db.exec(`select private.refresh_automatic_payment_certificate('${company}','${partner}','2026-06-01')`);
+ assert.deepEqual(await row('06'),deductionOnlyLegacy,'original v1 retains deduction-only legacy row');
  await db.exec(fs.readFileSync(candidate,'utf8'));
  assert.equal((await db.query("select private.expense_cost_direction_v2_enabled('"+company+"') value")).rows[0].value,false);
  const capOff=(await db.query(`select public.expense_payment_direction_capability('${company}') value`)).rows[0].value;assert.equal(capOff.read_enabled,false);assert.equal(capOff.actor_id,actor);
+ await db.exec(`select private.refresh_automatic_payment_certificate('${company}','${partner}','2026-06-01')`);
+ assert.deepEqual(await row('06'),deductionOnlyLegacy,'OFF must retain exact original v1 row, including nonzero deductions and revision');
  await approve(11,'08');assert.equal((await row('08')).net_amount,1000,'OFF retains v1');
  await db.exec(`create or replace function private.expense_cost_direction_v2_enabled(cid uuid) returns boolean language sql stable security invoker set search_path='' as $$select cid='${company}'::uuid$$`);
  const draftsBefore=(await db.query('select count(*)::int n from payment_certificates')).rows[0].n;

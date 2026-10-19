@@ -211,7 +211,7 @@ begin
    );
  elsif existing.gross_amount is distinct from gross::int
     or existing.net_amount is distinct from expense_net::int
-    or existing.deductions is distinct from expense_deductions::int
+    or (use_v2 and existing.deductions is distinct from expense_deductions::int)
     or existing.snapshot is distinct from snapshot_value
     or existing.calculation_blocked then
    update public.payment_certificates
