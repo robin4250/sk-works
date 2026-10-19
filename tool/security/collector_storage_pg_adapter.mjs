@@ -7,8 +7,14 @@ export class PGlite {
     this.ready = this.client.connect().then(async () => {
       const version = Number((await this.client.query("select current_setting('server_version_num') v")).rows[0].v);
       if (version < 170000 || version >= 180000) throw Error('PostgreSQL 17 required');
-      const count = (await this.client.query("select count(*)::int n from pg_tables where schemaname not in ('pg_catalog','information_schema')")).rows[0].n;
-      if (count !== 0) throw Error('Empty disposable collector fixture required');
+      const catalog = (await this.client.query(`
+        select
+          (select count(*)::int from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema','public')) schemas,
+          (select count(*)::int from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname !~ '^pg_' and n.nspname<>'information_schema') relations,
+          (select count(*)::int from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname !~ '^pg_' and n.nspname<>'information_schema') routines
+      `)).rows[0];
+      if (Object.values(catalog).some(count => count !== 0))
+        throw Error('Empty disposable collector fixture required');
     });
   }
   async exec(sql) { await this.ready; return this.client.query(sql); }
