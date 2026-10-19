@@ -4,6 +4,12 @@
 
 本番read-only照会でprivate.trade_document_source(text,uuid,text)の定義MD5はe302bfadb37fc3a68b7cbd1f795fc7a9。支払証明書snapshot.taxがない場合、保存済みcalculation_rowsに消費税行が存在してもdefaults.tax_amount_yenはNULLとなる実装だった。review-only SQLは同じsource内の明示的な保存済み消費税行1件だけをfallbackとする。率からの再計算・NULLの0円化・現在設定の代入はしない。既存snapshot.taxを優先し、曖昧な複数行・不正型・負額・範囲外ではfallbackを行わない。
 
-元のsource_fingerprintは変更せず、既存の手編集別添をsource_changedにしない。既存会社・金額・月・角印・帳票を更新しない。CREATE OR REPLACE前にexact定義を確認し、未知の定義では拒否する。実行には別途、現定義の保護・復旧確認が必要。本番SQL未適用、Auth/RLS/権限変更0。
+元のsource_fingerprintは変更せず、既存の手編集別添をsource_changedにしない。既存会社・金額・月・角印・帳票を更新しない。CREATE OR REPLACE前にexact定義を確認し、未知の定義では拒否する。実行には別途、現定義の保護・復旧確認が必要。当初は本番SQL未適用。後述の限定適用を2026-10-20に実施済み。Auth/RLS/権限変更0。
 
 検証toolは既存の月次別添fixture全体を再利用し、保存済み税額の優先、明示0、複数行・不正型・負額・範囲外・似た文言の拒否、手編集税額20,000円と自動候補30,000円の区別、source_fingerprint・OID・owner・ACL・security definer・search_path保持を確認する。PGliteは成功。PG17・Flutter・iOSはCIで確認する。合成fixtureであり本番の完全復元・実機利用成功の証明ではない。
+
+## 2026-10-20 限定本番適用
+
+変更直前の関数完全定義・OID・owner・ACL・SD・config・volatility・return typeを非公開保護記録へ保存した。隔離環境で元定義・metadata・保存済みworkspaceへの復元を確認。transaction内で前後の全metadataを照合し、lock_timeout3s/statement_timeout15sでread helper1件へ適用した。before定義MD5 e302bfadb37fc3a68b7cbd1f795fc7a9、after 58184e9a1e7022c7d9c13bcb9aa612bb。対象帳票のfull-row MD5は保存記録と一致し変更なし。これは完全DB/Auth/Storage復元や実JWTによる利用確認ではない。
+
+code head20346f5dの専用CI39320643548はSQL/PGlite・PG17・PDFの全job成功。NULL用テストfixtureの型指定を修正し、resolver5件＋PDF2件が成功。自動生成PDFの1/2ページを描画確認済み。全体Flutter/iOSはこの記録時点で実行中。実機セット出力とRelease配布は未完了。後続で戻す場合もafter定義等が保存状態と一致することを確認し、未知の新変更を上書きしない。
