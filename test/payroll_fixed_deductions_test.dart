@@ -96,7 +96,8 @@ void main() {
   testWidgets('disposed deduction panel stops before fetching conditions', (t) async {
     final contract = Completer<dynamic>();
     final calls = <String>[];
-    await t.pumpWidget(MaterialApp(home: PayrollFixedDeductions(
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+      child: PayrollFixedDeductions(
       companyId: 'company', workerId: 'worker', month: month,
       residentTax: const SizedBox.shrink(),
       readStatement: (_, _, _) async => throw StateError('must not read'),
@@ -104,7 +105,7 @@ void main() {
         calls.add(name);
         return contract.future;
       },
-    )));
+    )))));
     await t.pumpWidget(const SizedBox.shrink());
     contract.complete(1);
     await t.pumpAndSettle();
