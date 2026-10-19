@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'panel_seven_repository.dart';
+import 'apple_account_link_card.dart';
 
 class PanelSevenPage extends StatefulWidget {
   const PanelSevenPage({super.key, required this.repository});
@@ -93,7 +94,8 @@ class _PanelSevenPageState extends State<PanelSevenPage>
         '第二パスワードの設定済み表示は、マスター管理の権限や専用パスワードの設定状況を示しません。'
         'Face ID / Touch IDは端末内の本人確認で、'
         'Apple / Googleとの連携や電話番号の所有確認とは異なります。'
-        'この画面からアカウント・会社・権限・パスワードは変更しません。'
+        'Apple追加は提供設定が整った場合だけ、登録済みGoogleで直近にログインした本人が行えます。'
+        'Appleの本人確認後、同じアカウントへの連携を確認します。会社・権限・パスワードは変更しません。'
         'マスター専用設定は従来のマスター本人確認の中で管理します。')),
       actions: [TextButton(onPressed: () => Navigator.pop(context),
           child: const Text('閉じる'))],
@@ -120,6 +122,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
       appBar: AppBar(title: const Text('アカウント設定'),
         actions: [IconButton(tooltip: '使い方', onPressed: _help,
             icon: const Icon(Icons.help_outline))]),
+      bottomNavigationBar: const SafeArea(child: AppleAccountLinkCard()),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _failed || snapshot == null
@@ -170,9 +173,6 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                   const SizedBox(height: 12),
                   const Text('ログイン方法の追加', style: TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold)),
-                  _item('Appleを追加', '既存アカウントへのApple連携は準備中です。'
-                      'Apple側・サーバー側の設定と本人再認証の確認が必要です。'
-                      '今は登録済みの方法でログインしてください。'),
                   _item('電話番号を追加', '番号の所有確認方法を準備中です。'
                       '番号入力やFace IDだけで認証済みにはしません。'
                       'SMS送信や別アカウント作成は行いません。'),

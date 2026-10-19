@@ -46,8 +46,10 @@ void main() {
     expect(find.text('Google'), findsOneWidget);
     expect(find.text('外部アカウント認証（提供元は特定できません）'), findsOneWidget);
     expect(find.textContaining('設定状況は確認できません'), findsOneWidget);
-    expect(find.text('設定済み'), findsOneWidget);
     expect(find.text('第一パスワード（ログイン用）'), findsOneWidget);
+    await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('account-secondary-password')), 100);
+    expect(find.text('設定済み'), findsOneWidget);
     expect(find.text('第二パスワード（重要情報用）'), findsOneWidget);
     expect(find.text('Master 緊急復旧設定'), findsNothing);
     expect(find.byType(TextField), findsNothing);
