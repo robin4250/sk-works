@@ -47,7 +47,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   final _automatic = <String, int?>{};
   Map<String, dynamic>? _profile;
   int _version = 0, _generation = 0;
-  bool _residentEditing = false;
+  bool _residentEditing = false, _hasSavedIncome = false;
   bool _busy = true, _allowed = false, _dirty = false, _uncertain = false;
   String? _error, _actor;
   late String _month;
@@ -96,6 +96,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       _month = '${next.year.toString().padLeft(4, '0')}-'
           '${next.month.toString().padLeft(2, '0')}-01';
       _profile = null;
+      _hasSavedIncome = false;
       _manual.clear();
       _automatic.clear();
       for (final controller in _controllers.values) { controller.clear(); }
@@ -110,6 +111,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         oldWidget.workerId != widget.workerId || oldWidget.month != widget.month) {
       _setMonth();
       _profile = null;
+      _hasSavedIncome = false;
       _manual.clear();
       for (final c in _controllers.values) { c.clear(); }
       _load();
@@ -171,6 +173,12 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         ..addAll(storedOverrides.keys.cast<String>());
       final detail = statement?['detail'];
       final tax = detail is Map ? detail['tax_calculation'] : null;
+      // Legacy statements retain named tax without an automatic-tax profile.
+      // Show the saved snapshot only; never infer insurance or an automatic rate.
+      final savedIncome = profile == null && tax == null &&
+          statement?['calculation_blocked'] != true && detail is Map
+          ? _yen(detail['所得税']) : null;
+      _hasSavedIncome = savedIncome != null;
       final ready = statement?['calculation_blocked'] != true &&
           tax is Map && tax['blocked'] != true &&
           rows.isNotEmpty && tax['condition_version'] == rows.first['version'] &&
@@ -188,7 +196,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         _automatic[item.$1] = automatic;
         final amount = _manual.contains(item.$1) ? _yen(storedOverrides[item.$1])
             : item.$1 == 'income_tax'
-                ? (ready ? _yen(tax['income_tax_yen']) : null)
+                ? (ready ? _yen(tax['income_tax_yen']) : savedIncome)
                 : (premiums is Map ? _yen(premiums[item.$3]) : null);
         _controllers[item.$1]!.text = amount?.toString() ?? '';
       }
@@ -200,6 +208,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       // A failed refresh must not present an old calculated amount as current.
       // Keep explicit corrections so an uncertain save never loses user input.
       _automatic.clear();
+      _hasSavedIncome = false;
       for (final entry in _controllers.entries) {
         if (!_manual.contains(entry.key)) entry.value.clear();
       }
@@ -266,7 +275,10 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
     if (_manual.contains(key)) return '手入力修正';
     if (_busy) return '計算結果を確認中';
     if (_error != null) return '計算結果未確認';
-    if (_profile == null) return '計算条件未設定';
+    if (_profile == null) {
+      return key == 'income_tax' && _hasSavedIncome
+          ? '保存済み明細（自動計算条件未設定）' : '計算条件未設定';
+    }
     if (key == 'income_tax' && _profile!['income_mode'] == 'fixed') {
       return _controllers[key]!.text.isEmpty
           ? '固定額設定・給与計算待ち' : '固定額設定';
