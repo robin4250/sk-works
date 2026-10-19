@@ -91,8 +91,10 @@ Future<SupabaseClient> annualAuth(WidgetTester t) async {
           'created_at': '2026-01-01T00:00:00Z', 'app_metadata': {}, 'user_metadata': {}}}), 200,
         headers: {'content-type': 'application/json'}, request: req);
     }));
-  addTearDown(client.dispose);
-  await client.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture'); return client;
+  addTearDown(() => t.runAsync(client.dispose));
+  debugPrint('annual auth: initial sign-in starting');
+  await t.runAsync(() => client.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture'));
+  debugPrint('annual auth: initial sign-in ready'); return client;
 }
 Future<void> openAnnual(WidgetTester t, AnnualFixture repository, {double scale = 1, SupabaseClient? client}) async {
   t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -194,10 +196,10 @@ void main() {
       await t.ensureVisible(update(a)); await t.tap(update(a)); await t.pumpAndSettle();
       expect(find.text('確認して更新'), findsOneWidget);
       if (mode == 'other_uid') {
-        await auth.auth.signInWithPassword(email: 'b@example.invalid', password: 'fixture');
+        await t.runAsync(() => auth.auth.signInWithPassword(email: 'b@example.invalid', password: 'fixture'));
       } else if (mode == 'same_uid_aba') {
-        await auth.auth.signOut(scope: SignOutScope.local);
-        await auth.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture');
+        await t.runAsync(() => auth.auth.signOut(scope: SignOutScope.local));
+        await t.runAsync(() => auth.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture'));
       } else {
         t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
         t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -214,8 +216,8 @@ void main() {
     await t.tap(find.text('確認して更新')); await t.pumpAndSettle(); expect(f.saves, 1);
     await t.ensureVisible(undo(a)); await t.tap(undo(a)); await t.pumpAndSettle();
     expect(find.text('確認して元に戻す'), findsOneWidget);
-    await auth.auth.signOut(scope: SignOutScope.local);
-    await auth.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture');
+    await t.runAsync(() => auth.auth.signOut(scope: SignOutScope.local));
+    await t.runAsync(() => auth.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture'));
     await t.pumpAndSettle(); expect(find.text('確認して元に戻す'), findsNothing); expect(f.undos, 0);
   });
   for (final mode in ['other_uid', 'background']) {
@@ -223,7 +225,7 @@ void main() {
       final f = AnnualFixture(); final auth = await annualAuth(t); await openAnnual(t, f, client: auth);
       await confirmUpdate(t, a); await t.ensureVisible(undo(a)); await t.tap(undo(a)); await t.pumpAndSettle();
       if (mode == 'other_uid') {
-        await auth.auth.signInWithPassword(email: 'b@example.invalid', password: 'fixture');
+        await t.runAsync(() => auth.auth.signInWithPassword(email: 'b@example.invalid', password: 'fixture'));
       } else {
         t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
         t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -236,8 +238,8 @@ void main() {
     await t.enterText(field(a), '6000'); await t.pumpAndSettle();
     await t.ensureVisible(find.text('住民税の一覧を再読み込み')); await t.tap(find.text('住民税の一覧を再読み込み')); await t.pumpAndSettle();
     expect(find.text('入力を破棄'), findsOneWidget);
-    await auth.auth.signOut(scope: SignOutScope.local);
-    await auth.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture');
+    await t.runAsync(() => auth.auth.signOut(scope: SignOutScope.local));
+    await t.runAsync(() => auth.auth.signInWithPassword(email: 'a@example.invalid', password: 'fixture'));
     await t.pumpAndSettle(); expect(find.text('入力を破棄'), findsNothing); expect(f.reads, 1); expect(f.saves, 0);
   });
 }
