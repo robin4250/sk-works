@@ -28,11 +28,11 @@ void main(){
  });
  tearDown(()async{await client.dispose();});
  test('settings pins JWT and sends only explicit company',()async{
-  handle=(r)async{expect(r.headers['Authorization'],startsWith('Bearer '));expect(jsonDecode(r.body),{'p_company_id':company});return http.Response(jsonEncode(settings()),200,headers:{'content-type':'application/json'});};
+  handle=(r)async{expect(r.headers['Authorization'],startsWith('Bearer '));expect(jsonDecode(r.body),{'p_company_id':company});return http.Response(jsonEncode(settings()),200,request:r,headers:{'content-type':'application/json'});};
   expect((await repository.read(company)).enabled,false);
  });
  test('CAS save retains exact timestamp and requested company flag',()async{
-  handle=(r)async{expect(jsonDecode(r.body),{'p_company_id':company,'p_enabled':true,'p_expected_updated_at':'2026-05-01T00:00:00.123456+00:00'});return http.Response(jsonEncode({...settings(),'enabled':true,'updated_at':'2026-05-02T00:00:00.123456+00:00'}),200,headers:{'content-type':'application/json'});};
+  handle=(r)async{expect(jsonDecode(r.body),{'p_company_id':company,'p_enabled':true,'p_expected_updated_at':'2026-05-01T00:00:00.123456+00:00'});return http.Response(jsonEncode({...settings(),'enabled':true,'updated_at':'2026-05-02T00:00:00.123456+00:00'}),200,request:r,headers:{'content-type':'application/json'});};
   final value=ResidentTaxReminderSettings.parse({...settings(),'updated_at':'2026-05-01T00:00:00.123456+00:00'},company);
   expect((await repository.save(value,true)).enabled,true);
  });
@@ -42,26 +42,26 @@ void main(){
  });
  for(final code in ['PGRST202','42501','40001']){
   test('$code is surfaced without legacy fallback or retry',()async{
-   var calls=0;handle=(r)async{calls++;return http.Response(jsonEncode({'code':code,'message':'fixture'}),403,headers:{'content-type':'application/json'});};
+   var calls=0;handle=(r)async{calls++;return http.Response(jsonEncode({'code':code,'message':'fixture'}),403,request:r,headers:{'content-type':'application/json'});};
    await expectLater(repository.read(company),throwsA(isA<PostgrestException>()));expect(calls,1);
   });
  }
  test('notification validates saved company before workspace request',()async{
-  var calls=0;handle=(r)async{calls++;return http.Response(jsonEncode(target(cid:other)),200,headers:{'content-type':'application/json'});};
+  var calls=0;handle=(r)async{calls++;return http.Response(jsonEncode(target(cid:other)),200,request:r,headers:{'content-type':'application/json'});};
   await expectLater(repository.target(notification,company),throwsFormatException);expect(calls,1);
  });
  test('notification blocks different current workspace before navigation',()async{
-  handle=(r)async=>http.Response(jsonEncode(r.url.path.endsWith('payroll_workspace')?{'company_id':other,'permissions':{'view':true}}:target()),200,headers:{'content-type':'application/json'});
+  handle=(r)async=>http.Response(jsonEncode(r.url.path.endsWith('payroll_workspace')?{'company_id':other,'permissions':{'view':true}}:target()),200,request:r,headers:{'content-type':'application/json'});
   await expectLater(repository.target(notification,company),throwsStateError);
  });
  test('notification authorized workspace retains year and completion',()async{
-  handle=(r)async=>http.Response(jsonEncode(r.url.path.endsWith('payroll_workspace')?{'company_id':company,'permissions':{'view':true}}:{...target(),'complete':true}),200,headers:{'content-type':'application/json'});
+  handle=(r)async=>http.Response(jsonEncode(r.url.path.endsWith('payroll_workspace')?{'company_id':company,'permissions':{'view':true}}:{...target(),'complete':true}),200,request:r,headers:{'content-type':'application/json'});
   final result=await repository.target(notification,company);expect(result.fiscalYear,2026);expect(result.complete,true);
  });
  for(final next in [other,actor]){
   test('delayed response rejects ${next==actor?'same UID logout ABA':'different actor'}',()async{
    final started=Completer<void>(),release=Completer<void>();
-   handle=(r)async{if(r.url.path.endsWith('/logout'))return http.Response('{}',200);started.complete();await release.future;return http.Response(jsonEncode(settings()),200,headers:{'content-type':'application/json'});};
+   handle=(r)async{if(r.url.path.endsWith('/logout'))return http.Response('{}',200);started.complete();await release.future;return http.Response(jsonEncode(settings()),200,request:r,headers:{'content-type':'application/json'});};
    final result=repository.read(company);final expectation=expectLater(result,throwsStateError);await started.future;
    await client.auth.signOut(scope:SignOutScope.local);await client.auth.setInitialSession(session(next));await Future<void>.delayed(Duration.zero);release.complete();await expectation;
   });
