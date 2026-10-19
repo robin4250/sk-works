@@ -15,6 +15,10 @@ class LegacyChannelRepository extends ChannelRepository {
 
 class ChannelRepository implements AppReferralRepository {
   @override
+  Stream<String?> watchActorChanges() => const Stream.empty();
+  @override
+  String? get currentActorId => 'channel-actor';
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
   @override
   Future<Map<String,dynamic>> load({bool master=false}) async => {

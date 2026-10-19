@@ -1,3 +1,4 @@
+import 'app_referral_actor_scope.dart';
 import 'package:flutter/material.dart';
 
 import '../settings/master_protected_page.dart';
@@ -14,6 +15,7 @@ class AppReferralMasterEntry extends StatefulWidget {
 }
 
 class _AppReferralMasterEntryState extends State<AppReferralMasterEntry> {
+  late final AppReferralActorScope _actorScope;
   Map<String, dynamic>? _snapshot;
   bool _loading = true;
   bool _opening = false;
@@ -22,10 +24,31 @@ class _AppReferralMasterEntryState extends State<AppReferralMasterEntry> {
   @override
   void initState() {
     super.initState();
+    _actorScope = AppReferralActorScope(widget.repository, onInvalidated: () {
+      if (!mounted) return;
+      setState(() { _snapshot = null; _loading = false; _opening = false;
+        _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+    });
     _load();
   }
 
+  @override
+  void dispose() { _actorScope.dispose(); super.dispose(); }
+
+  @override
+  void didUpdateWidget(covariant AppReferralMasterEntry oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository != widget.repository) _actorScope.invalidate();
+  }
+
   Future<void> _load() async {
+    if (!_actorScope.check()) {
+      if (mounted) {
+        setState(() { _snapshot = null; _loading = false;
+          _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+      }
+      return;
+    }
     setState(() { _loading = true; _snapshot = null; _error = null; });
     final actor = widget.repository.currentActorId;
     try {
@@ -33,7 +56,7 @@ class _AppReferralMasterEntryState extends State<AppReferralMasterEntry> {
         throw StateError('login required');
       }
       final data = await widget.repository.load(master: true);
-      if (!mounted) {
+      if (!mounted || !_actorScope.check()) {
         return;
       }
       if (widget.repository.currentActorId != actor) {
@@ -41,25 +64,25 @@ class _AppReferralMasterEntryState extends State<AppReferralMasterEntry> {
       }
       setState(() => _snapshot = data);
     } catch (_) {
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         setState(() => _error = '紹介管理を利用できません。Master権限と接続状態を確認してください。');
       }
     } finally {
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         setState(() => _loading = false);
       }
     }
   }
 
   Future<void> _open({required bool master}) async {
-    if (_opening || _loading) {
+    if (!_actorScope.check() || _opening || _loading) {
       return;
     }
     final actor = widget.repository.currentActorId;
     setState(() => _opening = true);
     try {
       final data = await widget.repository.load(master: true);
-      if (!mounted) {
+      if (!mounted || !_actorScope.check()) {
         return;
       }
       if (actor == null || widget.repository.currentActorId != actor) {
@@ -75,15 +98,15 @@ class _AppReferralMasterEntryState extends State<AppReferralMasterEntry> {
           child: AppReferralPage(repository: widget.repository, master: master),
         ),
       ));
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         await _load();
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         setState(() { _snapshot = null; _error = '紹介管理の権限または利用状態を確認できません。'; });
       }
     } finally {
-      if (mounted) {
+      if (mounted && _actorScope.check()) {
         setState(() => _opening = false);
       }
     }
