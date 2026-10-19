@@ -170,13 +170,50 @@ class _ResidentTaxSectionState extends State<ResidentTaxSection> {
       Text('${_month.substring(0, 7)}の住民税：${_data!.amount}円', style: Theme.of(context).textTheme.titleMedium),
       Text(_data!.mode == 'legacy' ? '従来の固定額を適用中' : '${_data!.effectiveMonth!.substring(0, 7)}からの月額を適用中'),
       const SizedBox(height: 8),
-      Row(children: [Expanded(child: TextField(key: const ValueKey('resident-amount'), controller: _amount, onChanged: _markEdited,
-        enabled: widget.canEdit && !_busy && _pendingSave == null, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '月額（円）'))),
-        const SizedBox(width: 12), Expanded(child: TextField(key: const ValueKey('resident-start'), controller: _start, onChanged: _markEdited,
-          enabled: widget.canEdit && !_busy && _pendingSave == null, decoration: const InputDecoration(labelText: '開始年月（YYYY-MM）')))]),
-      const SizedBox(height: 8),
-      FilledButton(onPressed: widget.canEdit && !_busy && _pendingSave == null ? () => _save() : null, child: const Text('住民税だけ保存')),
-      const Text('この設定は住民税の保存ボタンで保存します。'),
+      Container(
+        key: const ValueKey('resident-tax-notice-input'),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+          border: Border.all(color: Theme.of(context).colorScheme.primary, width: 1.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Icon(Icons.edit_note, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 6),
+            const Expanded(child: Text('住民税の通知額を入力', style: TextStyle(fontWeight: FontWeight.bold))),
+          ]),
+          const SizedBox(height: 6),
+          const Text('原則、毎年6月の給与から切り替えます。通知書の各月額を確認してください。'),
+          const SizedBox(height: 4),
+          const Text('6月と7月以降で金額が違う場合は、開始月を分けて登録してください。'),
+          const SizedBox(height: 12),
+          LayoutBuilder(builder: (context, constraints) {
+            final amountField = TextField(
+              key: const ValueKey('resident-amount'), controller: _amount, onChanged: _markEdited,
+              enabled: widget.canEdit && !_busy && _pendingSave == null, keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: '月額（円）', filled: true, border: OutlineInputBorder()),
+            );
+            final startField = TextField(
+              key: const ValueKey('resident-start'), controller: _start, onChanged: _markEdited,
+              enabled: widget.canEdit && !_busy && _pendingSave == null,
+              decoration: const InputDecoration(labelText: '開始年月（YYYY-MM）', filled: true, border: OutlineInputBorder()),
+            );
+            if (constraints.maxWidth < 400) {
+              return Column(children: [amountField, const SizedBox(height: 12), startField]);
+            }
+            return Row(children: [
+              Expanded(child: amountField),
+              const SizedBox(width: 12),
+              Expanded(child: startField),
+            ]);
+          }),
+          const SizedBox(height: 8),
+          FilledButton(onPressed: widget.canEdit && !_busy && _pendingSave == null ? () => _save() : null, child: const Text('住民税だけ保存')),
+          const Text('登録した月額は、次の変更開始月まで継続します。'),
+        ]),
+      ),
       ExpansionTile(title: const Text('予約・履歴・従来設定'), children: [
         if (_data!.state == null) const Text('開始年月の設定はまだ登録されていません'),
         for (final entry in _data!.state?.entries ?? <ResidentTaxEntry>[])
