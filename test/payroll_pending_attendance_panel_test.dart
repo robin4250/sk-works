@@ -19,7 +19,12 @@ class PanelFixture extends existing.PageFixture {
 
 void main() {
   testWidgets('payroll date opens the existing editor with exact employee and date, no automatic quantity', (tester) async {
-    final f = existing.Fixture(); await f.start(); addTearDown(f.client.dispose);
+    final f = existing.Fixture();
+    await tester.runAsync(f.start);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(f.client.dispose);
+    });
     final repository = PanelFixture(f.client);
     final loaded = <(String,DateTime)>[];
     repository.onLoad = (worker,date) async {
@@ -45,7 +50,12 @@ void main() {
     expect(f.calls, isEmpty);
   });
   testWidgets('invisible initial employee is refused instead of silently selecting the first employee', (tester) async {
-    final f = existing.Fixture(); await f.start(); addTearDown(f.client.dispose);
+    final f = existing.Fixture();
+    await tester.runAsync(f.start);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(f.client.dispose);
+    });
     final repository = PanelFixture(f.client);
     var loaded = false;
     repository.onLoad = (worker,date) async {
