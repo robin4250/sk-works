@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/payroll/payroll_fixed_deductions.dart';
@@ -91,6 +93,54 @@ Future<void> save(WidgetTester t) async {
 }
 
 void main() {
+  testWidgets('disposed deduction panel stops before fetching conditions', (t) async {
+    final contract = Completer<dynamic>();
+    final calls = <String>[];
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+      child: PayrollFixedDeductions(
+      companyId: 'company', workerId: 'worker', month: month,
+      residentTax: const SizedBox.shrink(),
+      readStatement: (_, _, _) async => throw StateError('must not read'),
+      rpc: (name, params) {
+        calls.add(name);
+        return contract.future;
+      },
+    )))));
+    await t.pumpWidget(const SizedBox.shrink());
+    contract.complete(1);
+    await t.pumpAndSettle();
+    expect(calls, ['payroll_deduction_overrides_contract_version']);
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('failed refresh clears stale calculated amounts and keeps corrections', (t) async {
+    final b = _Backend()..value = {
+      ...initialProfile, 'deduction_overrides': {'income_tax': 1234},
+    };
+    var failRead = false;
+    await _mount(t, b, reader: (company, worker, period) async {
+      if (failRead) throw StateError('offline');
+      return b.statement(company, worker, period);
+    });
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5000');
+    failRead = true;
+    final reload = find.widgetWithText(TextButton, '税・保険料を再読み込み');
+    await t.ensureVisible(reload);
+    await t.tap(reload);
+    await t.pumpAndSettle();
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, isEmpty);
+    expect(helper(t, 'health_insurance'), '計算結果未確認');
+    expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1234');
+    expect(t.widget<TextFormField>(amount('income_tax')).enabled, isFalse);
+    expect(b.writes, 0);
+    failRead = false;
+    await t.tap(reload);
+    await t.pumpAndSettle();
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5000');
+    expect(helper(t, 'health_insurance'), '自動計算');
+    expect(b.writes, 0);
+  });
+
   testWidgets('returning from initial conditions reloads generated deductions', (t) async {
     final b = _Backend()..hasConditions = false;
     await _mount(t, b, conditions: (_) async { b.hasConditions = true; });

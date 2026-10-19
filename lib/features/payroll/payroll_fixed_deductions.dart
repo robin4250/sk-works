@@ -114,7 +114,11 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
     setState(() { _busy = true; _allowed = false; _error = null; });
     try {
       final supported = await _rpc('payroll_deduction_overrides_contract_version', {});
+      _checkActor();
+      if (!mounted || generation != _generation) return;
       final raw = await _rpc('read_worker_payroll_tax_conditions', _scope);
+      _checkActor();
+      if (!mounted || generation != _generation) return;
       if (raw is! Map || raw['company_id'] != widget.companyId ||
           raw['worker_id'] != widget.workerId || raw['items'] is! List ||
           raw['can_edit'] is! bool) {
@@ -175,6 +179,12 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       _uncertain = false;
     } catch (_) {
       if (!mounted || generation != _generation) return;
+      // A failed refresh must not present an old calculated amount as current.
+      // Keep explicit corrections so an uncertain save never loses user input.
+      _automatic.clear();
+      for (final entry in _controllers.entries) {
+        if (!_manual.contains(entry.key)) entry.value.clear();
+      }
       _error = '税・保険料の計算結果を取得できません。再読み込みしてください。';
     } finally {
       if (mounted && generation == _generation) setState(() => _busy = false);
