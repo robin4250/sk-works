@@ -170,7 +170,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                       setState(() => _saving = true);
                       try {
                         final saved = await widget.repository.saveCommonHours(company, worker, current, hours);
-                        if (!mounted || generation != _generation || widget.companyId != company || widget.workerId != worker) return;
+                        if (!mounted || !context.mounted || generation != _generation || widget.companyId != company || widget.workerId != worker) return;
                         setState(() => _value = saved);
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('共通手当の時間数を保存し、対象月の給与を再計算しました'))));
                       } finally {

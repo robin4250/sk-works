@@ -59,5 +59,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: dart analyze lib/features/payroll/payroll_company_common_card.dart lib/features/payroll/payroll_unit_conditions_repository.dart lib/features/payroll/payroll_unit_conditions_page.dart test/payroll_company_common_test.dart
+      - run: flutter analyze
       - run: timeout 240s flutter test --reporter expanded --timeout 60s test/payroll_company_common_test.dart test/payroll_unit_conditions_repository_test.dart test/payroll_unit_conditions_editor_test.dart test/individual_payroll_fixed_footer_test.dart
