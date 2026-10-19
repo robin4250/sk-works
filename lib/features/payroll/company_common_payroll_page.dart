@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'company_common_allowance_repository.dart';
 import 'company_common_allowance_pending_store.dart';
+import 'company_common_payroll_publication_panel.dart';
 
 import 'payroll_unit_item_editor.dart';
 
@@ -70,6 +71,8 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
   final _legacyAmounts = <int, TextEditingController>{};
   final _legacyUnits = <int, TextEditingController>{};
   bool _confirming = false;
+  bool _publishing = false;
+  String _publicationType = 'hourly';
   bool _loading = true, _busy = false, _active = true, _revoked = false, _conflict = false;
   bool _authorized = true;
   int _generation = 0;
@@ -141,6 +144,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     for (final item in state.items.where((x) => x['payroll_type'] == type.name)) PayrollUnitItemDraft(id: item['id'] as String, section: PayrollItemSection.values.byName(item['section'] as String), unit: PayrollItemUnit.values.byName(item['unit'] as String), name: item['name'] as String, rate: '${item['amount_yen']}'),
   ];
   void _accept(CompanyCommonAllowanceState value, {CompanyPayrollType? only}) {
+    if (only != null) _publicationType = only.name;
     _state = value;
     for (final slot in value.legacyRefs) {
       final number = slot['slot'] as int;
@@ -171,7 +175,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
   }
   Future<void> _save(CompanyPayrollType type, List<PayrollUnitItemDraft> values) async {
     final generation = _generation;
-    if (!_valid(generation) || _busy || _confirming || _pending != null || _conflict || _state?.canEdit != true) throw StateError('現在は保存できません');
+    if (!_valid(generation) || _busy || _publishing || _confirming || _pending != null || _conflict || _state?.canEdit != true) throw StateError('現在は保存できません');
     final legacy = [for (final slot in _state!.legacyRefs) {
       'slot': slot['slot'], 'id': slot['id'], 'generation': slot['generation'],
       'name': _legacyNames[slot['slot']]!.text == (slot['name'] ?? '') ? slot['name'] : (_legacyNames[slot['slot']]!.text.trim().isEmpty ? null : _legacyNames[slot['slot']]!.text.trim()),
@@ -252,24 +256,33 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     Widget surface(Widget body) => widget.embedded ? body : Scaffold(appBar: AppBar(title: const Text('社内共通手当')), body: body);
     if (_revoked) return surface(Center(child: Text(_error!)));
     if (_state == null) return surface(Center(child: _loading ? const CircularProgressIndicator() : Column(mainAxisSize: MainAxisSize.min, children: [Text(_error ?? '設定を確認できません'), TextButton(onPressed: _active ? _load : null, child: const Text('再読み込み'))])));
-    final page = CompanyCommonPayrollPage(embedded: widget.embedded, initialItems: _items, editorRevisions: _revisions, canEdit: _state!.canEdit && _active && !_busy && _pending == null && !_conflict,
+    final page = CompanyCommonPayrollPage(embedded: widget.embedded, initialItems: _items, editorRevisions: _revisions, canEdit: _state!.canEdit && _active && !_busy && !_publishing && _pending == null && !_conflict,
       onRegister: _state!.canEdit ? _save : null, connectionMessage: '閲覧専用です。会社共通手当の登録・変更は管理者が行います。',
       legacyBuilder: (_, __, ___) => Column(children: [
         const Padding(padding: EdgeInsets.all(8), child: Text('元からある手当（各給与形態で共通）')),
         for (final slot in _state!.legacyRefs) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
           Text('既存手当 ${slot['slot']}'),
-          TextField(key: ValueKey('legacy-${slot['slot']}-name'), controller: _legacyNames[slot['slot']], enabled: _state!.canEdit && !_busy && !_confirming && _pending == null && !_conflict, maxLength: 80, decoration: const InputDecoration(labelText: '項目名')),
-          TextField(key: ValueKey('legacy-${slot['slot']}-amount'), controller: _legacyAmounts[slot['slot']], enabled: _state!.canEdit && !_busy && !_confirming && _pending == null && !_conflict, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '日単位の金額（円）')),
-          TextField(key: ValueKey('legacy-${slot['slot']}-unit'), controller: _legacyUnits[slot['slot']], enabled: _state!.canEdit && !_busy && !_confirming && _pending == null && !_conflict, maxLength: 12, decoration: const InputDecoration(labelText: '表示単位', helperText: '元の単位を保持。日単位・支給の分類は変わりません。')),
-          TextButton(onPressed: _state!.canEdit && !_busy && !_confirming && _pending == null && !_conflict ? () { _legacyNames[slot['slot']]!.clear(); } : null, child: const Text('削除')),
+          TextField(key: ValueKey('legacy-${slot['slot']}-name'), controller: _legacyNames[slot['slot']], enabled: _state!.canEdit && !_busy && !_publishing && !_confirming && _pending == null && !_conflict, maxLength: 80, decoration: const InputDecoration(labelText: '項目名')),
+          TextField(key: ValueKey('legacy-${slot['slot']}-amount'), controller: _legacyAmounts[slot['slot']], enabled: _state!.canEdit && !_busy && !_publishing && !_confirming && _pending == null && !_conflict, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '日単位の金額（円）')),
+          TextField(key: ValueKey('legacy-${slot['slot']}-unit'), controller: _legacyUnits[slot['slot']], enabled: _state!.canEdit && !_busy && !_publishing && !_confirming && _pending == null && !_conflict, maxLength: 12, decoration: const InputDecoration(labelText: '表示単位', helperText: '元の単位を保持。日単位・支給の分類は変わりません。')),
+          TextButton(onPressed: _state!.canEdit && !_busy && !_publishing && !_confirming && _pending == null && !_conflict ? () { _legacyNames[slot['slot']]!.clear(); } : null, child: const Text('削除')),
         ]))),
         const Padding(padding: EdgeInsets.all(8), child: Text('追加した手当')),
       ]),
       header: Column(mainAxisSize: MainAxisSize.min, children: [
         if (widget.header != null) widget.header!,
+        if (_repository is SupabaseCompanyCommonAllowanceRepository)
+          CompanyCommonPayrollPublicationPanel(
+            key: ValueKey('common-publications-${widget.companyId}/${_state!.version}'),
+            companyId: widget.companyId,
+            initialPayrollType: _publicationType,
+            canReconcile: _active && !_busy && _authorized,
+            enabled: _state!.canEdit && _active && !_busy && !_confirming && _pending == null && !_conflict,
+            onBusyChanged: (busy) { if (mounted && _publishing != busy) setState(() => _publishing = busy); },
+          ),
         if (_error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text(_error!)),
         if (_pending != null) TextButton(onPressed: _busy || !_active ? null : _reconcile, child: const Text('保存状態を確認')),
-        if (_conflict && _pending == null) TextButton(onPressed: _busy || !_active ? null : _discardAndReload, child: const Text('入力を破棄して再読み込み')),
+        if (_conflict && _pending == null) TextButton(onPressed: _busy || _publishing || !_active ? null : _discardAndReload, child: const Text('入力を破棄して再読み込み')),
       ]));
     return Stack(children: [Offstage(offstage: !_active || !_authorized, child: page), if (!_active || !_authorized) Positioned.fill(child: ColoredBox(color: Theme.of(context).colorScheme.surface, child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Text(_error ?? '本人確認を再確認しています'), if (_active) TextButton(onPressed: _busy ? null : _verifyResume, child: const Text('権限を再確認'))]))))]);
   }
@@ -352,7 +365,7 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
             builder: (context) => AlertDialog(
               title: const Text('社内共通手当'),
               content: const Text(
-                '日給・時給・月給ごとに共通支給と共通控除を分けます。給与形態と、手当の時間・日・月単位は別の設定です。保存と個別給料設定への反映は、給与側の接続が有効な場合だけ利用できます。',
+                '日給・時給・月給ごとに共通支給と共通控除を分けます。給与形態と、手当の時間・日・月単位は別の設定です。追加手当を保存した後、「給与への適用月」で給与形態と月を選ぶと、保存済みの条件を自動下書きへ反映します。未保存の編集内容、従来3枠、確定済み・手入力給与はこの適用操作で上書きしません。給与側の接続と会社の適用開始月が有効な場合に利用できます。',
               ),
               actions: [
                 TextButton(
@@ -475,3 +488,4 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
         : scaffold;
   }
 }
+
