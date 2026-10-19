@@ -1,0 +1,49 @@
+name: Isolated payroll Auth and RPC review
+on:
+  pull_request:
+    paths:
+      - 'tool/payroll_auth_api_gotrue_e2e.mjs'
+      - 'tool/fixtures/payroll_auth_predicates_20261019.json'
+      - 'tool/payroll_scope_fixture_setup.mjs'
+      - 'docs/candidates/payroll_single_draft*.sql.review-only'
+      - 'tool/security/fixture_dependencies/package*.json'
+      - 'supabase/tests/payroll*.sql'
+      - 'supabase/tests/invoice_stamp_approval_workflow.sql'
+      - 'supabase/tests/resident_tax_effective_month_access_fixture.sql'
+      - 'supabase/tests/finalized_payroll_document_access_fixture.sql'
+      - 'supabase/migrations/**'
+      - '.github/workflows/payroll-auth-api-gotrue.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/payroll_auth_api_gotrue_e2e.mjs'
+      - 'tool/fixtures/payroll_auth_predicates_20261019.json'
+      - 'tool/payroll_scope_fixture_setup.mjs'
+      - 'docs/candidates/payroll_single_draft*.sql.review-only'
+      - 'tool/security/fixture_dependencies/package*.json'
+      - 'supabase/tests/payroll*.sql'
+      - 'supabase/tests/invoice_stamp_approval_workflow.sql'
+      - 'supabase/tests/resident_tax_effective_month_access_fixture.sql'
+      - 'supabase/tests/finalized_payroll_document_access_fixture.sql'
+      - 'supabase/migrations/**'
+      - '.github/workflows/payroll-auth-api-gotrue.yml'
+permissions:
+  contents: read
+concurrency:
+  group: payroll-auth-rpc-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  local-auth-rpc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/payroll_auth_api_gotrue_e2e.mjs
+      - name: Real isolated Auth sessions and payroll RPC permissions
+        run: node tool/payroll_auth_api_gotrue_e2e.mjs

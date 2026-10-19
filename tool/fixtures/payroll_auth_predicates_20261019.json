@@ -1,0 +1,55 @@
+{
+  "format": "sko-payroll-auth-fixture-v1",
+  "functions": [
+    {
+      "signature": "private.has_company_feature(uuid,text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.has_company_feature(p_company_id uuid, p_feature text)\n RETURNS boolean\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'private', 'pg_temp'\nAS $function$\ndeclare\n  v_user_id uuid := auth.uid();\n  v_role text;\n  v_perm public.member_feature_permissions%rowtype;\nbegin\n  if v_user_id is null or p_company_id is null then\n    return false;\n  end if;\n\n  select cm.role::text\n  into v_role\n  from public.company_members cm\n  where cm.company_id = p_company_id\n    and cm.user_id = v_user_id\n  limit 1;\n\n  if v_role is null then\n    return false;\n  end if;\n\n  if v_role in ('owner', 'admin') then\n    return true;\n  end if;\n\n  select *\n  into v_perm\n  from public.member_feature_permissions\n  where company_id = p_company_id\n    and user_id = v_user_id;\n\n  if not found then\n    return case\n      when v_role = 'manager'\n       and p_feature in (\n         'can_manage_attendance',\n         'can_approve_daily_report_edits'\n       )\n      then true\n      else false\n    end;\n  end if;\n\n  return case p_feature\n    when 'can_view_invoices' then\n      v_perm.can_view_invoices or v_perm.can_manage_invoices\n    when 'can_manage_invoices' then\n      v_perm.can_manage_invoices\n    when 'can_view_admin_site_data' then\n      false\n    when 'can_manage_admin_site_data' then\n      false\n    when 'can_manage_payroll' then\n      v_perm.can_manage_payroll\n    when 'can_manage_people' then\n      v_perm.can_manage_people\n    when 'can_manage_attendance' then\n      v_perm.can_manage_attendance\n    when 'can_approve_daily_report_edits' then\n      v_perm.can_approve_daily_report_edits\n    when 'can_manage_partner_chat' then\n      v_perm.can_manage_partner_chat\n    else false\n  end;\nend;\n$function$\n",
+      "body_md5": "ead168c7ebccdaf04657a66f1afd5d82",
+      "prosecdef": true,
+      "provolatile": "s",
+      "proconfig": [
+        "search_path=public, private, pg_temp"
+      ]
+    },
+    {
+      "signature": "private.payroll_approver_ids(uuid)",
+      "definition": "CREATE OR REPLACE FUNCTION private.payroll_approver_ids(cid uuid)\n RETURNS uuid[]\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select coalesce((select array_agg(user_id order by position) from public.payroll_approvers where company_id=cid),\n (select array[m.user_id] from public.company_members m where m.company_id=cid and m.role::text in ('owner','admin') order by case when m.role::text='owner' then 0 else 1 end,m.user_id limit 1),'{}'::uuid[])\n$function$\n",
+      "body_md5": "b0968801024f935790407ee274752714",
+      "prosecdef": true,
+      "provolatile": "s",
+      "proconfig": [
+        "search_path=\"\""
+      ]
+    },
+    {
+      "signature": "private.payroll_allowed(uuid,text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.payroll_allowed(cid uuid, capability text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=auth.uid()) and (\n case capability\n when 'admin' then exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=auth.uid() and m.role::text in ('owner','admin'))\n when 'view' then private.has_company_feature(cid,'can_manage_payroll') or auth.uid()=any(private.payroll_approver_ids(cid)) or exists(select 1 from public.payroll_access a where a.company_id=cid and a.user_id=auth.uid() and (a.can_view or a.can_edit))\n when 'edit' then private.has_company_feature(cid,'can_manage_payroll') or exists(select 1 from public.payroll_access a where a.company_id=cid and a.user_id=auth.uid() and a.can_edit)\n else false end) or (capability='view' and auth.uid() is not null and exists(select 1 from private.professional_invites i where i.company_id=cid and i.claimed_by=auth.uid() and i.status='approved' and i.payroll_access<>'none'));\n\n$function$\n",
+      "body_md5": "e211b84587de4c7edbc8dc39273eb27d",
+      "prosecdef": true,
+      "provolatile": "s",
+      "proconfig": [
+        "search_path=\"\""
+      ]
+    },
+    {
+      "signature": "private.payroll_settings_allowed(uuid,uuid,text)",
+      "definition": "CREATE OR REPLACE FUNCTION private.payroll_settings_allowed(cid uuid, wid uuid, cap text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and private.payroll_allowed(cid,cap) and exists(select 1 from public.workers w where w.id=wid and w.company_id=cid)\n$function$\n",
+      "body_md5": "8c9b832e49be412f2919bfae6fa6996d",
+      "prosecdef": true,
+      "provolatile": "s",
+      "proconfig": [
+        "search_path=\"\""
+      ]
+    },
+    {
+      "signature": "private.account_access_allowed()",
+      "definition": "CREATE OR REPLACE FUNCTION private.account_access_allowed()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and not exists(\n  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())\n$function$\n",
+      "body_md5": "aeca25db212c043c472334026bd98724",
+      "prosecdef": true,
+      "provolatile": "s",
+      "proconfig": [
+        "search_path=\"\""
+      ]
+    }
+  ]
+}
