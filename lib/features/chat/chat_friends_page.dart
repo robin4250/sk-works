@@ -114,12 +114,12 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     final actor = repository.currentUserId;
     if (actor == null) { _invalidateActor(null); return; }
     final epoch = _profileActorEpoch.value;
-    if (!_isCurrent(actor, epoch)) return;
+    if (!mounted || !_isCurrent(actor, epoch)) return;
     final loadEpoch = ++_workspaceLoadEpoch;
     try {
       final workspace = await repository.loadFriendWorkspace();
       final prefs = widget.selectForChat ? await SharedPreferences.getInstance() : null;
-      if (!_isCurrent(actor, epoch) || loadEpoch != _workspaceLoadEpoch) return;
+      if (!mounted || !_isCurrent(actor, epoch) || loadEpoch != _workspaceLoadEpoch) return;
       setState(() {
         _actor = actor;
         _pinnedFriends = prefs?.getStringList('sko_chat_friend_pinned_$actor')?.toSet() ?? {};
@@ -128,7 +128,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         _error = null;
       });
     } catch (error) {
-      if (!_isCurrent(actor, epoch) || loadEpoch != _workspaceLoadEpoch) return;
+      if (!mounted || !_isCurrent(actor, epoch) || loadEpoch != _workspaceLoadEpoch) return;
       setState(() {
         _loading = false;
         _error = error.toString();
@@ -144,7 +144,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
       return false;
     }
     final prefs = await SharedPreferences.getInstance();
-    if (!_isCurrent(actor, epoch)) return false;
+    if (!mounted || !_isCurrent(actor, epoch)) return false;
     setState(() {
       if (!_pinnedFriends.remove(id)) _pinnedFriends.add(id);
     });
@@ -159,7 +159,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     final repository = _repository;
     final actor = _actor;
     final epoch = _profileActorEpoch.value;
-    if (!_isCurrent(actor, epoch)) return;
+    if (!mounted || !_isCurrent(actor, epoch)) return;
     final value = _search.text.trim();
     if (repository == null || value.isEmpty || _busy) return;
 
@@ -170,7 +170,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
 
     try {
       final result = await repository.searchFriendBySkoId(value);
-      if (!_isCurrent(actor, epoch)) return;
+      if (!mounted || !_isCurrent(actor, epoch)) return;
       setState(() => _searchResult = result);
       if (result == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -178,7 +178,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         );
       }
     } catch (error) {
-      if (!_isCurrent(actor, epoch)) return;
+      if (!mounted || !_isCurrent(actor, epoch)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -195,7 +195,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     final repository = _repository;
     final actor = _actor;
     final epoch = _profileActorEpoch.value;
-    if (!_isCurrent(actor, epoch)) return;
+    if (!mounted || !_isCurrent(actor, epoch)) return;
     final result = _searchResult;
     if (repository == null || result == null || _busy) return;
 
@@ -226,18 +226,18 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         ));
       },
     );
-    if (!_isCurrent(actor, epoch) || confirmed != true) return;
+    if (!mounted || !_isCurrent(actor, epoch) || confirmed != true) return;
       await repository.sendFriendRequest(result['sko_id']?.toString() ?? '');
-      if (!_isCurrent(actor, epoch)) return;
+      if (!mounted || !_isCurrent(actor, epoch)) return;
       _search.clear();
       _searchResult = null;
       await _load();
-      if (!_isCurrent(actor, epoch)) return;
+      if (!mounted || !_isCurrent(actor, epoch)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(ChatFriendsStrings.tr('友達申請を送信しました'))),
       );
     } catch (error) {
-      if (!_isCurrent(actor, epoch)) return;
+      if (!mounted || !_isCurrent(actor, epoch)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -256,7 +256,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     final repository = _repository;
     final actor = _actor;
     final epoch = _profileActorEpoch.value;
-    if (!_isCurrent(actor, epoch)) return;
+    if (!mounted || !_isCurrent(actor, epoch)) return;
     if (repository == null || _busy) return;
     final id = request['id']?.toString() ?? '';
     if (id.isEmpty) return;
@@ -294,12 +294,12 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         ));
       },
     );
-    if (!_isCurrent(actor, epoch) || confirmed != true) return;
+    if (!mounted || !_isCurrent(actor, epoch) || confirmed != true) return;
       await repository.respondFriendRequest(requestId: id, accept: accept);
-      if (!_isCurrent(actor, epoch)) return;
+      if (!mounted || !_isCurrent(actor, epoch)) return;
       await _load();
     } catch (error) {
-      if (!_isCurrent(actor, epoch)) return;
+      if (!mounted || !_isCurrent(actor, epoch)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -318,7 +318,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
     final repository = _repository;
     final actor = _actor;
     final epoch = _profileActorEpoch.value;
-    if (!_isCurrent(actor, epoch)) return;
+    if (!mounted || !_isCurrent(actor, epoch)) return;
     if (repository == null || _busy) return;
     final userId = friend['user_id']?.toString() ?? '';
     if (userId.isEmpty) return;
@@ -348,12 +348,12 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         ));
       },
     );
-    if (!_isCurrent(actor, epoch) || confirmed != true) return;
+    if (!mounted || !_isCurrent(actor, epoch) || confirmed != true) return;
       await repository.removeFriend(userId);
-      if (!_isCurrent(actor, epoch)) return;
+      if (!mounted || !_isCurrent(actor, epoch)) return;
       await _load();
     } catch (error) {
-      if (!_isCurrent(actor, epoch)) return;
+      if (!mounted || !_isCurrent(actor, epoch)) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -382,7 +382,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
   Future<void> _openAdd() async {
     final actor = _actor;
     final epoch = _profileActorEpoch.value;
-    if (!_isCurrent(actor, epoch) || _busy) return;
+    if (!mounted || !_isCurrent(actor, epoch) || _busy) return;
     setState(() => _busy = true);
     try {
     final method = await showModalBottomSheet<String>(
@@ -406,7 +406,7 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> {
         ),
       )),
     );
-    if (!_isCurrent(actor, epoch) || method == null) return;
+    if (!mounted || !_isCurrent(actor, epoch) || method == null) return;
     if (method == 'phone') {
       final open = widget.onPhoneInvitation;
       if (open != null) {

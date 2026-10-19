@@ -7,3 +7,5 @@
 実画面の合成repositoryで遅延検索成功/失敗、4操作の確認中ABA、同時callbackと取消後再操作、送信後ABAの古いreload拒否、招待sheet取消、actor stream errorを検証する。既chat-display workflowへ追加し、ローカルFlutter実行不在のためCIで解析/実行を確認する。
 
 serverへ送信済みの操作を取り消す保証、token失効・実server/RLS・全chat操作・実電話招待の送信を証明する変更ではない。初回QR/紹介完了帰属/ポイント・通知の既未完を完了へ戻さない。本番/Auth/DB/権限変更なし。
+
+初回CI解析はBuildContextのasync後利用に対するmounted明示のinfoで停止。共通判定内にはmountedがあったが解析器が呼出元へ伝播しないため、各境界にも明示し新headで再検証する。テスト成功へ読み替えない。
