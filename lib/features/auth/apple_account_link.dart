@@ -49,7 +49,7 @@ class AppleAccountLink {
         }
         bytes.addAll(chunk);
         return bytes;
-      });
+      }).timeout(const Duration(seconds: 10));
       final body = utf8.decode(bytes);
       final json = jsonDecode(body);
       return json is Map && json['external'] is Map &&
