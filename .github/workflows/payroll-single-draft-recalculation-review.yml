@@ -1,7 +1,7 @@
 name: Single payroll draft recalculation review fixture
 on:
   push:
-    branches: [support/payroll-single-draft-recalculation-20261019]
+    branches: [support/payroll-single-draft-recalculation-20261019, support/payroll-draft-expense-preservation-20261019]
     paths:
       - 'docs/candidates/payroll_single_draft_recalculation_20261019.sql.review-only'
       - 'tool/verify_payroll_single_draft_recalculation.mjs'

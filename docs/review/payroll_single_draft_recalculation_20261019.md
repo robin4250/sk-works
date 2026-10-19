@@ -45,3 +45,13 @@ source `92a26e089755326b9f5cebefcc6d6dcbd38a05c7`／tree `a149f6e425f75f609951e3
 実worker lock待機→既public unit条件APIの保存/refresh/revision commit→古いrevision CAS拒否、REPEATABLE READ拒否も成功。Secret Scan `39171521338` 成功。初回run `39171416468` はCAS fixture writerのtable権限で失敗しており成功に読み替えない。
 
 上記で「native未実行」は解消したが、すべての既settings/rates/contract/finalizationとの順序組合せ・待機中role取消、実JWT/DataAPI、productionの実before・最新helper完全一致・経費snapshot全副作用、public preview/APIクライアント接続は未達。限定source/APIレビュー段階であり、導入要求・本番適用・実明細修復完了ではない。
+
+## 経費別紙captureの追加検証（2026-10-19）
+
+既存の `20261010141814_expense_document_details.sql` からテーブル・実claims reader・実capture関数・給与triggerまでを無改変で読み込み、同じ再計算fixtureへ追加した。依存する経費表だけは、関数が参照する列を持つ合成表であり、実経費管理・消費ledger・Data API/RLSの全経路を再現しない。請求書/支払証明書のtriggerはこの給与限定試験には導入しない。
+
+PGliteで実行成功。NULL区分の給与下書き修復、再実行、権限/対象/版/源drift等の拒否後に、経費申請原本と履歴別紙（captured_atを含む）が保持される。確定への遷移をtransaction内の正例として実行すると同じtriggerが実申請内容を保存し、その後の確定済み更新でも最初の別紙を保持することを確認し、正例自体をrollbackした。trigger未接続だから不変だった、という偽陽性を避けている。
+
+専用support branchで既native PG17 workflowを自動実行する。新headのnative結果は別途記録し、先行headの成功で代替しない。製品SQL/API/アプリ導線の変更・本番照会/再計算・デプロイは行わない。全本番helper一致、実JWT、待機中権限取消、完全before保護と復元可能性、他の本番副作用の確認は引き続き必要。
+
+Supabase changelogとtriggerの公式説明を確認。今回の合成試験はTLS/ltree/pgcrypto/btree_gist/custom operatorを導入しない。
