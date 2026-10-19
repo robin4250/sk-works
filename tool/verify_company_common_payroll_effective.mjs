@@ -114,6 +114,7 @@ try {
   await actor();settings=await save(settings,[extra(6000,settings.items.find(x=>x.unit==='month').id)]);
  }
  const rollbackMonth=pg?dates.later_key:dates.next_key;
+ await db.exec('reset role');
  // A late receipt failure must roll back publication, every recalculated draft, and its receipt.
  await db.exec("create function company_common_allowance_private.fail_publication_receipt() returns trigger language plpgsql as $$begin raise exception 'fixture receipt failure';end$$;create trigger fail_publication_receipt before insert on company_common_allowance_private.payroll_publication_receipts for each row execute function company_common_allowance_private.fail_publication_receipt()");
  const oldFuture=await statement(rollbackMonth);await actor();t=await timeline();await assert.rejects(publish(t,rollbackMonth),/fixture receipt failure/);assert.deepEqual(await statement(rollbackMonth),oldFuture);await actor();assert.equal((await timeline()).timeline_version,t.timeline_version);
