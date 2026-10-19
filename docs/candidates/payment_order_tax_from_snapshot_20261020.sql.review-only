@@ -1,0 +1,32 @@
+-- Review-only: no deployment or source-data update is performed by this file.
+-- Keep the original source fingerprint so saved manual appendices remain valid.
+DO $patch$
+DECLARE definition text; marker text := E' return result;\nend';
+BEGIN
+ SELECT pg_get_functiondef('private.trade_document_source(text,uuid,text)'::regprocedure) INTO definition;
+ IF md5(definition) <> 'e302bfadb37fc3a68b7cbd1f795fc7a9' THEN
+   RAISE EXCEPTION 'trade_document_source definition changed; review before applying';
+ END IF;
+ IF length(definition)-length(replace(definition,marker,'')) <> length(marker) THEN
+   RAISE EXCEPTION 'trade document return marker differs';
+ END IF;
+ definition := replace(definition,marker,$body$
+ -- Use an explicit saved calculation line only; never infer tax from a rate.
+ IF p_kind='payment_certificate' AND tax IS NULL
+    AND jsonb_typeof(source_snapshot->'calculation_rows')='array' THEN
+   SELECT CASE WHEN count(*)=1 THEN max(
+     CASE WHEN jsonb_typeof(item->'amount_yen')='number'
+        AND (item->>'amount_yen') ~ '^[0-9]{1,10}$'
+     THEN CASE WHEN (item->>'amount_yen')::numeric <= 2147483647
+          THEN (item->>'amount_yen')::bigint END END) END INTO tax
+   FROM jsonb_array_elements(source_snapshot->'calculation_rows') item
+   WHERE regexp_replace(coalesce(item->>'work_content',''),'[（）()[:space:]]','','g')
+         ~ '^消費税([0-9]+([.,][0-9]+)?[%％])?$';
+   IF tax IS NOT NULL THEN
+     result := jsonb_set(result,'{defaults,tax_amount_yen}',to_jsonb(tax));
+   END IF;
+ END IF;
+ return result;
+end$body$);
+ EXECUTE definition;
+END $patch$;

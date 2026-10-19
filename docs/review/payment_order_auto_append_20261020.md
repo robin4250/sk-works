@@ -1,0 +1,9 @@
+# 支払証明書の注文書自動添付
+
+未保存の下書きでは、認可済みworkspace defaultsと説明文templateから注文書を生成し、共通PDF経路で追加する。保存済み別添を優先し、確定済みの欠落分は自動変更しない。計算停止・状態不明・source変更は拒否する。
+
+本番read-only照会でprivate.trade_document_source(text,uuid,text)の定義MD5はe302bfadb37fc3a68b7cbd1f795fc7a9。支払証明書snapshot.taxがない場合、保存済みcalculation_rowsに消費税行が存在してもdefaults.tax_amount_yenはNULLとなる実装だった。review-only SQLは同じsource内の明示的な保存済み消費税行1件だけをfallbackとする。率からの再計算・NULLの0円化・現在設定の代入はしない。既存snapshot.taxを優先し、曖昧な複数行・不正型・負額・範囲外ではfallbackを行わない。
+
+元のsource_fingerprintは変更せず、既存の手編集別添をsource_changedにしない。既存会社・金額・月・角印・帳票を更新しない。CREATE OR REPLACE前にexact定義を確認し、未知の定義では拒否する。実行には別途、現定義の保護・復旧確認が必要。本番SQL未適用、Auth/RLS/権限変更0。
+
+検証toolは既存の月次別添fixture全体を再利用し、保存済み税額の優先、明示0、複数行・不正型・負額・範囲外・似た文言の拒否、手編集税額20,000円と自動候補30,000円の区別、source_fingerprint・OID・owner・ACL・security definer・search_path保持を確認する。PGliteは成功。PG17・Flutter・iOSはCIで確認する。合成fixtureであり本番の完全復元・実機利用成功の証明ではない。
