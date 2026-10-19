@@ -92,11 +92,15 @@ try {
  const cid='10000000-0000-0000-0000-000000000001',wid='40000000-0000-0000-0000-000000000001';
  await db.query('insert into public.company_members values($1,$2,\'manager\')',[cid,users.manager.id]);
  phase='stale-draft-fixture';
+ // Seed the draft through existing triggers in the isolated database only.
+ // The real refresh wrapper deliberately ignores an unauthenticated SQL session.
+ await db.query("select set_config('request.jwt.claim.sub',$1,false)",[users.owner.id]);
  await db.query(`delete from public.attendance_entries;delete from public.payroll_statements;delete from public.payroll_adjustments;delete from public.paid_leave_requests;
  update public.worker_payroll_settings set pay_type='daily',day_daily=20000,custom_earnings='[]',custom_deductions='[]',family_monthly=0,transport_monthly=0,income_tax_monthly=0,social_insurance_monthly=0,resident_tax_monthly=0,other_deduction_monthly=0 where worker_id='${wid}';`);
  await db.query("insert into public.attendance_entries(id,company_id,worker_id,site_id,work_date,work_category,base_man_days) values(gen_random_uuid(),$1,$2,'20000000-0000-0000-0000-000000000001','2026-09-12',null,1)",[cid,wid]);
  const row=async()=>(await db.query("select * from public.payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-09-01'",[cid,wid])).rows[0];
  const original=await row();assert.ok(original,'Expected synthetic draft');assert.equal(original.gross_pay,0,'Expected stale NULL-category draft');
+ await db.query("select set_config('request.jwt.claim.sub','',false)");
  phase='reviewed-candidates';
  await db.query(await read('supabase/migrations/20261018215043_fix_payroll_null_work_category.sql'));
  for(const file of ['payroll_single_draft_recalculation_20261019.sql.review-only','payroll_single_draft_preview_20261019.sql.review-only'])await db.query(await read('docs/candidates/'+file));
