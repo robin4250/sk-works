@@ -90,8 +90,11 @@ void main() {
     await tester.pump();
     expect(tester.widget<TextButton>(find.widgetWithText(TextButton, '電話番号でログインする')).onPressed, isNull);
     expect(requests, hasLength(1));
-    response.complete(http.Response('{"error":"invalid_grant","error_description":"Invalid login credentials"}', 400,
-      headers: {'content-type': 'application/json'}));
+    await tester.runAsync(() async {
+      response.complete(http.Response('{"error":"invalid_grant","error_description":"Invalid login credentials"}', 400,
+        headers: {'content-type': 'application/json'}));
+      await Future<void>.delayed(Duration.zero);
+    });
     await tester.pumpAndSettle();
     expect(authenticated, 0);
     expect(find.text('登録済みのメールアドレスまたは本パスワードを確認してください。'), findsOneWidget);
@@ -111,10 +114,13 @@ void main() {
     await tester.enterText(find.byType(TextField).at(1), 'email-password');
     await tester.tap(find.text('ログイン').last);
     await tester.pump();
-    response.complete(http.Response(jsonEncode({
-      'access_token': token, 'refresh_token': 'synthetic', 'token_type': 'bearer', 'expires_in': 3600,
-      'user': {'id': id, 'aud': 'authenticated', 'email': 'user@example.com', 'created_at': '2026-10-20T00:00:00Z', 'app_metadata': {}, 'user_metadata': {}},
-    }), 200, headers: {'content-type': 'application/json'}));
+    await tester.runAsync(() async {
+      response.complete(http.Response(jsonEncode({
+        'access_token': token, 'refresh_token': 'synthetic', 'token_type': 'bearer', 'expires_in': 3600,
+        'user': {'id': id, 'aud': 'authenticated', 'email': 'user@example.com', 'created_at': '2026-10-20T00:00:00Z', 'app_metadata': {}, 'user_metadata': {}},
+      }), 200, headers: {'content-type': 'application/json'}));
+      await Future<void>.delayed(Duration.zero);
+    });
     await tester.pumpAndSettle();
     expect(authenticated, 1);
     expect(client.auth.currentUser!.id, id);
