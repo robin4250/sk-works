@@ -5,14 +5,15 @@ import 'attendance_management_repository.dart';
 import '../../international/language_controller.dart';
 
 class AttendanceManagementPage extends StatefulWidget {
-  const AttendanceManagementPage({super.key});
+  const AttendanceManagementPage({super.key, this.repository});
+  final AttendanceManagementRepository? repository;
 
   @override
   State<AttendanceManagementPage> createState() => _AttendanceManagementPageState();
 }
 
 class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
-  final _repository = AttendanceManagementRepository.maybeCreate();
+  late final _repository = widget.repository ?? AttendanceManagementRepository.maybeCreate();
   List<AttendanceManagementOption> _workers = const [];
   List<AttendanceManagementOption> _sites = const [];
   bool _loading = true;
@@ -116,6 +117,8 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
   String? _workerId;
   DateTime _date = DateTime.now();
   bool _loadingCell = false;
+  bool _cellReady = false;
+  int _cellGeneration = 0;
   bool _busy = false;
 
   @override
@@ -130,13 +133,15 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
   Future<void> _loadCell() async {
     final workerId = _workerId;
     if (workerId == null) return;
-    setState(() => _loadingCell = true);
+    final date = _date;
+    final generation = ++_cellGeneration;
+    setState(() { _loadingCell = true; _cellReady = false; });
     try {
-      final cell = await widget.repository.loadCell(workerId: workerId, date: _date);
-      if (!mounted) return;
-      setState(() { _form.load(cell); _loadingCell = false; });
+      final cell = await widget.repository.loadCell(workerId: workerId, date: date);
+      if (!mounted || generation != _cellGeneration || workerId != _workerId || date != _date) return;
+      setState(() { _form.load(cell); _loadingCell = false; _cellReady = true; });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _cellGeneration) return;
       setState(() => _loadingCell = false);
       _show('読み込めませんでした: $error');
     }
@@ -156,7 +161,7 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
 
   Future<void> _apply() async {
     final workerId = _workerId;
-    if (workerId == null || _busy) return;
+    if (workerId == null || _busy || _loadingCell || !_cellReady) return;
     final values = _form.values(context, widget.sites);
     if (values == null) return;
     setState(() => _busy = true);
@@ -189,7 +194,7 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
 
   Future<void> _delete() async {
     final workerId = _workerId;
-    if (workerId == null || _busy) return;
+    if (workerId == null || _busy || _loadingCell || !_cellReady) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -434,6 +439,7 @@ class _ManagementValues {
 
 class _ManagementFormState {
   String mode = 'work';
+  bool hasUnrecordedPunches = false;
   String? siteId;
   final manDays = TextEditingController(text: '1');
   final overtime = TextEditingController(text: '0');
@@ -447,8 +453,9 @@ class _ManagementFormState {
 
   void load(AttendanceManagementCell cell) {
     mode = cell.mode;
+    hasUnrecordedPunches = cell.hasUnrecordedPunches;
     siteId = cell.siteId;
-    manDays.text = _num(cell.manDays);
+    manDays.text = cell.hasUnrecordedPunches ? '' : _num(cell.manDays);
     overtime.text = _num(cell.overtimeHours);
     early.text = _num(cell.earlyHours);
     night.text = _num(cell.nightHours);
@@ -463,6 +470,10 @@ class _ManagementFormState {
   }
 
   _ManagementValues? values(BuildContext context, List<AttendanceManagementOption> sites) {
+    if (hasUnrecordedPunches && mode != 'work') {
+      _message(context, '出退勤の打刻があります。勤務内容を確認して出勤として登録してください。削除する場合は削除ボタンで確認してください。');
+      return null;
+    }
     if (mode == 'work' && (siteId == null || !sites.any((site) => site.id == siteId))) {
       _message(context, '現場を選択してください');
       return null;
@@ -517,11 +528,17 @@ class _ManagementFormWidgetState extends State<_ManagementForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (form.hasUnrecordedPunches) ...[
+          const Text('出退勤の打刻がありますが、給与用の勤務記録は未確定です。出勤を選び、現場・人工・作業内容を確認して登録してください。'),
+          Text('保存済み打刻　出勤：${form.clockIn.text.isEmpty ? '未確認' : form.clockIn.text}　退勤：${form.clockOut.text.isEmpty ? '未確認' : form.clockOut.text}'),
+          const SizedBox(height: 12),
+        ],
         SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'work', label: Text('出勤'), icon: Icon(Icons.work_outline)),
-            ButtonSegment(value: 'paid_leave', label: Text('有給'), icon: Icon(Icons.event_available_outlined)),
-            ButtonSegment(value: 'off', label: Text('休み'), icon: Icon(Icons.free_breakfast_outlined)),
+          segments: [
+            if (form.hasUnrecordedPunches) const ButtonSegment(value: 'pending_work', label: Text('未確定'), icon: Icon(Icons.pending_outlined)),
+            const ButtonSegment(value: 'work', label: Text('出勤'), icon: Icon(Icons.work_outline)),
+            const ButtonSegment(value: 'paid_leave', label: Text('有給'), icon: Icon(Icons.event_available_outlined)),
+            const ButtonSegment(value: 'off', label: Text('休み'), icon: Icon(Icons.free_breakfast_outlined)),
           ],
           selected: {form.mode},
           onSelectionChanged: widget.enabled ? (values) => setState(() => form.mode = values.first) : null,

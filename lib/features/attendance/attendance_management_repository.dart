@@ -23,6 +23,7 @@ class AttendanceManagementCell {
     this.workDescription = '',
     this.clockIn,
     this.clockOut,
+    this.hasUnrecordedPunches = false,
   });
   final String mode;
   final DateTime date;
@@ -37,10 +38,13 @@ class AttendanceManagementCell {
   final String workDescription;
   final DateTime? clockIn;
   final DateTime? clockOut;
+  final bool hasUnrecordedPunches;
 }
 
 class AttendanceManagementRepository {
   AttendanceManagementRepository._(this._client);
+
+  AttendanceManagementRepository.forTesting(this._client);
   final SupabaseClient _client;
 
   static AttendanceManagementRepository? maybeCreate() {
@@ -145,7 +149,29 @@ class AttendanceManagementRepository {
     if (leaves.isNotEmpty) {
       return AttendanceManagementCell(mode: 'paid_leave', date: date, workerId: workerId, notes: leaves.first['reason']?.toString() ?? '');
     }
-    return AttendanceManagementCell(mode: 'off', date: date, workerId: workerId);
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1));
+    final punches = await _client.from('attendance_verifications')
+        .select('event_type,confirmed_at,site_id')
+        .eq('company_id', access.companyId).eq('worker_id', workerId)
+        .or('work_date.eq.$day,and(work_date.is.null,confirmed_at.gte.${start.toUtc().toIso8601String()},confirmed_at.lt.${end.toUtc().toIso8601String()})')
+        .order('confirmed_at');
+    DateTime? clockIn;
+    DateTime? clockOut;
+    final sites = <String>{};
+    for (final punch in punches) {
+      final time = DateTime.tryParse(punch['confirmed_at']?.toString() ?? '')?.toLocal();
+      if (time == null || !const {'clock_in', 'clock_out'}.contains(punch['event_type'])) continue;
+      final site = punch['site_id']?.toString();
+      if (site != null && site.isNotEmpty) sites.add(site);
+      if (punch['event_type'] == 'clock_in' && (clockIn == null || time.isBefore(clockIn))) clockIn = time;
+      if (punch['event_type'] == 'clock_out' && (clockOut == null || time.isAfter(clockOut))) clockOut = time;
+    }
+    return AttendanceManagementCell(mode: clockIn != null || clockOut != null ? 'pending_work' : 'off', date: date, workerId: workerId,
+      manDays: 0, siteId: sites.length == 1 ? sites.single : null,
+      clockIn: clockIn, clockOut: clockOut,
+      hasUnrecordedPunches: clockIn != null || clockOut != null);
+
   }
 
   Future<int> apply({
