@@ -5,6 +5,8 @@ on:
       - 'docs/candidates/company_common_payroll_bridge_20261020.sql.review-only'
       - 'tool/verify_company_common_payroll_bridge.mjs'
       - 'tool/payroll_scope_fixture_setup.mjs'
+      - 'tool/staged_company_common_allowances.sql.review-only'
+      - 'supabase/migrations/20261013175452_payroll_unit_conditions.sql'
       - 'lib/features/payroll/payroll_company_common_card.dart'
       - 'lib/features/payroll/payroll_unit_conditions_repository.dart'
       - 'lib/features/payroll/payroll_unit_conditions_page.dart'

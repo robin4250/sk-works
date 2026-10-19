@@ -42,6 +42,8 @@ try {
  const saveHours=async(source,hours)=>(await db.query("select public.save_payroll_common_hours($1,$2,'2026-09-01',$3::jsonb,$4::jsonb) value",[cid,wid,JSON.stringify(source),JSON.stringify(hours)])).rows[0].value;
  await assert.rejects(saveHours(oldSource,[{id:iid(7),quantity:'-1'}]),/explicit company common hours/);
  await assert.rejects(saveHours(oldSource,[{id:iid(6),quantity:'2.5'}]),/identity/);
+ await assert.rejects(saveHours(oldSource,[{id:iid(7),quantity:'99999999'}]),/amount exceeds range/);
+ assert.deepEqual((await common()).source,oldSource,'overflow rolls back quantity write and payroll together');
  const savedHours=await saveHours(oldSource,[{id:iid(7),quantity:'2.5'}]);
  assert.equal(savedHours.company_common.items.at(-1).quantity,2.5);
  await assert.rejects(saveHours(oldSource,[{id:iid(7),quantity:'3'}]),/source conflict/);
@@ -49,6 +51,9 @@ try {
  await assert.rejects(saveHours((await common()).source,[{id:iid(7),quantity:'3'}]),/access denied/);
  await db.query("select set_config('request.jwt.claim.sub',$1,false)",[owner]);
  row=await statement();assert.equal(row.calculation_blocked,false);assert.equal(row.gross_pay,baseline.gross_pay+1550);
+ await add(8,'monthly','deduction','hour',50);await refresh();assert.equal((await statement()).calculation_blocked,true);
+ await saveHours((await common()).source,[{id:iid(8),quantity:'0'}]);
+ row=await statement();assert.equal(row.calculation_blocked,false);assert.equal(row.detail.unit_resolution.items.find(x=>x.id===iid(7)).quantity,2.5,'partial hour save preserves other common quantities');
  const revision=row.revision;await refresh();assert.equal((await statement()).revision,revision);
  await db.query("update company_common_allowance_private.items set retired_at=now(),retired_by=$1 where id=$2",[owner,iid(1)]);await refresh();assert.equal((await statement()).gross_pay,baseline.gross_pay+550);
 
