@@ -189,15 +189,26 @@ class _ResidentTaxSectionState extends State<ResidentTaxSection> {
           const SizedBox(height: 4),
           const Text('6月と7月以降で金額が違う場合は、開始月を分けて登録してください。'),
           const SizedBox(height: 12),
-          Row(children: [
-            Expanded(child: TextField(key: const ValueKey('resident-amount'), controller: _amount, onChanged: _markEdited,
+          LayoutBuilder(builder: (context, constraints) {
+            final amountField = TextField(
+              key: const ValueKey('resident-amount'), controller: _amount, onChanged: _markEdited,
               enabled: widget.canEdit && !_busy && _pendingSave == null, keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: '月額（円）', filled: true, border: OutlineInputBorder()))),
-            const SizedBox(width: 12),
-            Expanded(child: TextField(key: const ValueKey('resident-start'), controller: _start, onChanged: _markEdited,
+              decoration: const InputDecoration(labelText: '月額（円）', filled: true, border: OutlineInputBorder()),
+            );
+            final startField = TextField(
+              key: const ValueKey('resident-start'), controller: _start, onChanged: _markEdited,
               enabled: widget.canEdit && !_busy && _pendingSave == null,
-              decoration: const InputDecoration(labelText: '開始年月（YYYY-MM）', filled: true, border: OutlineInputBorder()))),
-          ]),
+              decoration: const InputDecoration(labelText: '開始年月（YYYY-MM）', filled: true, border: OutlineInputBorder()),
+            );
+            if (constraints.maxWidth < 400) {
+              return Column(children: [amountField, const SizedBox(height: 12), startField]);
+            }
+            return Row(children: [
+              Expanded(child: amountField),
+              const SizedBox(width: 12),
+              Expanded(child: startField),
+            ]);
+          }),
           const SizedBox(height: 8),
           FilledButton(onPressed: widget.canEdit && !_busy && _pendingSave == null ? () => _save() : null, child: const Text('住民税だけ保存')),
           const Text('登録した月額は、次の変更開始月まで継続します。'),

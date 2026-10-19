@@ -112,6 +112,11 @@ void main() {
     )));
     await tester.pumpAndSettle();
     expect(find.text('住民税の通知額を入力'), findsOneWidget);
+    final amountRect = tester.getRect(find.byKey(const ValueKey('resident-amount')));
+    final startRect = tester.getRect(find.byKey(const ValueKey('resident-start')));
+    expect(startRect.top, greaterThan(amountRect.bottom));
+    expect(startRect.width, greaterThan(200));
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('resident-start'))).controller!.text, '2030-05');
     expect(tester.takeException(), isNull);
   });
 
