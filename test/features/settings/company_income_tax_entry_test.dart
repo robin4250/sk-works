@@ -33,6 +33,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: CompanyPayrollRatesPage(companyId: 'selected-company', repository: repository, pendingStore: EntryPendingStore())));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('所得税'), 250, scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(find.text('所得税'));
+    await tester.pumpAndSettle();
+    expect(find.text('所得税').hitTestable(), findsOneWidget);
     await tester.tap(find.text('所得税'));
     await tester.pumpAndSettle();
     final entry = find.text('年度・PDF資料を管理');

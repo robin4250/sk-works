@@ -5,6 +5,7 @@ on:
       - 'lib/features/payroll/resident_tax_annual*'
       - 'lib/features/settings/company_payroll_rates_page.dart'
       - 'test/resident_tax_annual*'
+      - 'test/features/settings/company_income_tax_entry_test.dart'
       - '.github/workflows/resident-tax-annual-ui.yml'
 permissions:
   contents: read
@@ -21,5 +22,5 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: flutter test --reporter expanded test/resident_tax_annual_page_test.dart test/resident_tax_annual_repository_test.dart test/features/payroll/resident_tax_section_test.dart
+      - run: flutter test --reporter expanded test/resident_tax_annual_page_test.dart test/resident_tax_annual_repository_test.dart test/features/payroll/resident_tax_section_test.dart test/features/settings/company_income_tax_entry_test.dart
       - run: flutter analyze
