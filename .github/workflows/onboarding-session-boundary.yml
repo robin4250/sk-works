@@ -1,0 +1,27 @@
+name: Initial password session boundary
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/features/auth/secure_onboarding_repository.dart'
+      - 'test/employee_password_preflight_test.dart'
+      - '.github/workflows/onboarding-session-boundary.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - name: Analyze changed flow
+        run: dart analyze lib/features/auth/secure_onboarding_repository.dart test/employee_password_preflight_test.dart
+      - name: Verify actual SDK password and marker session boundaries
+        run: flutter test test/employee_password_preflight_test.dart test/primary_password_recovery_contract_test.dart test/employee_onboarding_contract_test.dart --reporter expanded

@@ -23,6 +23,11 @@ void main() {
     'state_error',
     'network_error',
     'switch_session',
+    'switch_after_password',
+    'switch_during_marker',
+    'aba_preflight',
+    'aba_password',
+    'aba_marker',
     'missing',
     'malformed',
     'cancelled',
@@ -38,7 +43,11 @@ void main() {
       final state = {
         'invite_id': status == 'empty' ? '' : 'synthetic',
         'status':
-            ['expired', 'invalid', 'valid', 'switch_session'].contains(status)
+            [
+              'expired', 'invalid', 'valid', 'switch_session',
+              'switch_after_password', 'switch_during_marker',
+              'aba_preflight', 'aba_password', 'aba_marker',
+            ].contains(status)
             ? 'invited'
             : status,
         'expires_at': status == 'invalid'
@@ -78,6 +87,10 @@ void main() {
             if (status == 'switch_session') {
               await client.auth.signOut(scope: SignOutScope.local);
             }
+            if (status == 'aba_preflight') {
+              await client.auth.signOut(scope: SignOutScope.local);
+              await client.auth.signInWithPassword(email: 'synthetic@example.invalid', password: 'synthetic-password');
+            }
             response = status == 'missing'
                 ? null
                 : status == 'malformed'
@@ -86,11 +99,28 @@ void main() {
           } else if (r.url.path == '/auth/v1/logout') {
             return http.Response('', 204, request: r);
           } else if (r.url.path == '/auth/v1/user' &&
-              ['valid', 'profile_pending'].contains(status)) {
+              ['valid', 'profile_pending', 'switch_after_password',
+                'switch_during_marker', 'aba_password', 'aba_marker'].contains(status)) {
+            expect(r.headers['authorization'], 'Bearer $token');
+            if (status == 'switch_after_password') {
+              await client.auth.signOut(scope: SignOutScope.local);
+            }
+            if (status == 'aba_password') {
+              await client.auth.signOut(scope: SignOutScope.local);
+              await client.auth.signInWithPassword(email: 'synthetic@example.invalid', password: 'synthetic-password');
+            }
             response = {'user': user};
           } else if (r.url.path ==
                   '/rest/v1/rpc/mark_employee_initial_password_changed' &&
-              ['valid', 'profile_pending'].contains(status)) {
+              ['valid', 'profile_pending', 'switch_during_marker', 'aba_marker'].contains(status)) {
+            expect(r.headers['authorization'], 'Bearer $token');
+            if (status == 'switch_during_marker') {
+              await client.auth.signOut(scope: SignOutScope.local);
+            }
+            if (status == 'aba_marker') {
+              await client.auth.signOut(scope: SignOutScope.local);
+              await client.auth.signInWithPassword(email: 'synthetic@example.invalid', password: 'synthetic-password');
+            }
             response = null;
           } else {
             fail('Unexpected mutation: ${r.url.path}');
@@ -119,6 +149,27 @@ void main() {
           '/rest/v1/rpc/employee_onboarding_state',
           '/auth/v1/user',
           '/rest/v1/rpc/mark_employee_initial_password_changed',
+        ]);
+      } else if (['aba_preflight', 'aba_password', 'aba_marker'].contains(status)) {
+        await expectLater(future, throwsStateError);
+        expect(client.auth.currentSession?.accessToken, token);
+        expect(calls, [
+          '/auth/v1/token',
+          '/rest/v1/rpc/employee_onboarding_state',
+          if (status != 'aba_preflight') '/auth/v1/user',
+          if (status == 'aba_marker') '/rest/v1/rpc/mark_employee_initial_password_changed',
+          '/auth/v1/logout',
+          '/auth/v1/token',
+        ]);
+      } else if (['switch_after_password', 'switch_during_marker'].contains(status)) {
+        await expectLater(future, throwsA(anyOf(isA<StateError>(), isA<AuthException>())));
+        expect(calls, [
+          '/auth/v1/token',
+          '/rest/v1/rpc/employee_onboarding_state',
+          '/auth/v1/user',
+          if (status == 'switch_during_marker')
+            '/rest/v1/rpc/mark_employee_initial_password_changed',
+          '/auth/v1/logout',
         ]);
       } else {
         await expectLater(

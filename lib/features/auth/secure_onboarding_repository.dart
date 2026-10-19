@@ -125,30 +125,50 @@ class SecureOnboardingRepository {
   Future<void> setEmployeePrimaryPassword(String password) async {
     final accessToken = _client.auth.currentSession?.accessToken;
     if (accessToken == null) throw StateError('authentication required');
-    final state = await _client.rpc('employee_onboarding_state');
-    if (_client.auth.currentSession?.accessToken != accessToken ||
-        state is! Map ||
-        state['invite_id'] is! String ||
-        (state['invite_id'] as String).isEmpty ||
-        !const {
-          'invited',
-          'password_changed',
-          'profile_pending',
-        }.contains(state['status'])) {
-      throw StateError('有効な初回登録がありません。管理者に確認してください。');
-    }
-    if (state['status'] == 'invited') {
-      final expiresAt = DateTime.tryParse(
-        state['expires_at']?.toString() ?? '',
-      );
-      if (expiresAt == null || !expiresAt.isAfter(DateTime.now())) {
-        throw StateError('初回登録の期限が切れています。管理者に再発行を依頼してください。');
+    var revoked = false;
+    final subscription = _client.auth.onAuthStateChange.listen((state) {
+      if (state.session?.accessToken != accessToken) revoked = true;
+    }, onError: (Object error) {
+      revoked = true;
+    });
+    try {
+      final state = await _client
+          .rpc('employee_onboarding_state')
+          .setHeader('Authorization', 'Bearer $accessToken');
+      if (revoked || _client.auth.currentSession?.accessToken != accessToken ||
+          state is! Map ||
+          state['invite_id'] is! String ||
+          (state['invite_id'] as String).isEmpty ||
+          !const {
+            'invited',
+            'password_changed',
+            'profile_pending',
+          }.contains(state['status'])) {
+        throw StateError('有効な初回登録がありません。管理者に確認してください。');
       }
+      if (state['status'] == 'invited') {
+        final expiresAt = DateTime.tryParse(
+          state['expires_at']?.toString() ?? '',
+        );
+        if (expiresAt == null || !expiresAt.isAfter(DateTime.now())) {
+          throw StateError('初回登録の期限が切れています。管理者に再発行を依頼してください。');
+        }
+      }
+      // This check reduces stale-screen updates; Auth and the marker remain
+      // separate operations. It is not an atomic server-side expiry guarantee.
+      await updatePrimaryPassword(password);
+      if (revoked || _client.auth.currentSession?.accessToken != accessToken) {
+        throw StateError('ログイン状態が変わりました。初回登録を開き直してください。');
+      }
+      await _client
+          .rpc('mark_employee_initial_password_changed')
+          .setHeader('Authorization', 'Bearer $accessToken');
+      if (revoked || _client.auth.currentSession?.accessToken != accessToken) {
+        throw StateError('ログイン状態が変わりました。初回登録を開き直してください。');
+      }
+    } finally {
+      await subscription.cancel();
     }
-    // This check reduces stale-screen updates; Auth and the marker remain
-    // separate operations. It is not an atomic server-side expiry guarantee.
-    await updatePrimaryPassword(password);
-    await _client.rpc('mark_employee_initial_password_changed');
   }
 
   Future<bool> secondaryPasswordConfigured({String? accessToken}) async {
