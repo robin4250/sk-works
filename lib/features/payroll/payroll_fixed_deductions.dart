@@ -177,6 +177,9 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       }
       rows.sort((a, b) => (b['starts_on'] as String).compareTo(a['starts_on'] as String));
       final profile = rows.isEmpty ? null : Map<String, dynamic>.from(rows.first['value'] as Map);
+      if (profile?['insurance_mode'] == 'manual' && !validManualPayrollInsurance(profile!)) {
+        throw const FormatException('個別保険月額を確認できません');
+      }
       final storedOverrides = profile?['deduction_overrides'] ?? const {};
       if (storedOverrides is! Map || storedOverrides.entries.any((e) =>
           !_controllers.containsKey(e.key) || _yen(e.value) == null)) {
@@ -217,13 +220,16 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
             ? (ready ? _yen(tax['automatic_income_tax_yen'] ?? tax['income_tax_yen']) : null)
             : (autoPremiums is Map ? _yen(autoPremiums[item.$3]) : null);
         _automatic[item.$1] = automatic;
-        final amount = _manual.contains(item.$1) ? _yen(storedOverrides[item.$1])
+        final amount = profile?['insurance_mode'] == 'manual' && item.$1 != 'income_tax'
+            ? _yen((profile!['manual_insurance_premiums'] as Map)[item.$1])
+            : _manual.contains(item.$1) ? _yen(storedOverrides[item.$1])
             : item.$1 == 'income_tax'
                 ? (ready ? _yen(tax['income_tax_yen']) : _savedSnapshot[item.$1])
                 : (premiums is Map ? _yen(premiums[item.$3]) : _savedSnapshot[item.$1]);
         _controllers[item.$1]!.text = amount?.toString() ?? '';
       }
-      _allowed = supported == 1 && raw['can_edit'] == true && widget.canEdit && profile != null;
+      _allowed = supported == 1 && raw['can_edit'] == true && widget.canEdit && profile != null &&
+          (profile['insurance_mode'] != 'manual' || raw['manual_insurance_contract_version'] == 1);
       _dirty = false;
       _uncertain = false;
     } catch (_) {
@@ -253,11 +259,25 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       overrides[key] = value; // Explicit zero is a correction, never automatic.
     }
     final generation = _generation;
-    final value = {..._profile!, 'deduction_overrides': overrides};
+    Map<String, int>? manualAmounts;
+    if (_profile!['insurance_mode'] == 'manual') {
+      manualAmounts = Map<String, int>.from(_profile!['manual_insurance_premiums'] as Map);
+      for (final entry in overrides.entries.where((entry) => entry.key != 'income_tax')) {
+        manualAmounts[entry.key] = entry.value;
+      }
+      overrides.removeWhere((key, value) => key != 'income_tax');
+    }
+    final expectedManualAmounts = manualAmounts;
+    final value = {..._profile!, 'deduction_overrides': overrides,
+      if (manualAmounts != null) 'manual_insurance_premiums': manualAmounts};
+    if (manualAmounts != null && !validManualPayrollInsurance(value)) {
+      setState(() => _error = '保険料の個別月額・合計を確認してください。');
+      return;
+    }
     final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
       title: const Text('税・保険料の修正を保存'),
       content: Text('${_month.substring(0, 7)}分の修正を保存して給料明細へ反映します。'
-          '\n手入力の項目以外は自動計算します。確定済みの給料明細は変更しません。'),
+          '${manualAmounts == null ? '\n手入力の項目以外は自動計算します。' : '\n保険料は登録した本人負担月額を使います。所得税は設定した計算条件に従います。'}確定済みの給料明細は変更しません。'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('戻る')),
         FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('確認して保存')),
@@ -277,7 +297,8 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
           !(result['items'] as List).any((row) => row is Map &&
             row['starts_on'] == _month && row['version'] == _version + 1 &&
             row['value'] is Map &&
-            _sameOverrides((row['value'] as Map)['deduction_overrides'], overrides))) {
+            _sameOverrides((row['value'] as Map)['deduction_overrides'], overrides) &&
+            (expectedManualAmounts == null || _sameOverrides((row['value'] as Map)['manual_insurance_premiums'], expectedManualAmounts)))) {
         throw const FormatException('修正額の保存結果を確認できません');
       }
       await _load();
@@ -298,6 +319,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
     if (_manual.contains(key)) return '手入力修正';
     if (_busy) return '計算結果を確認中';
     if (_error != null) return '計算結果未確認';
+    if (_profile?['insurance_mode'] == 'manual' && key != 'income_tax') return '個別手入力（月額）';
     if (_profile == null) {
       return _savedSnapshot.containsKey(key)
           ? '保存済み明細（自動計算条件未設定）' : '計算条件未設定';
@@ -381,7 +403,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
                 key: ValueKey('fixed-deduction-${item.$1}-amount'),
                 controller: _controllers[item.$1],
                 enabled: widget.canEdit && _allowed && !_busy && !_uncertain &&
-                    (item.$1 == 'income_tax' || _profile?['insurance_mode'] == 'rates'),
+                    (item.$1 == 'income_tax' || const ['rates', 'manual'].contains(_profile?['insurance_mode'])),
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(labelText: item.$2, suffixText: '円',
                   helperText: _amountStatus(item.$1),
@@ -391,7 +413,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
               Wrap(spacing: 8, children: [
                 TextButton(onPressed: () => _formula(item.$1, item.$2),
                   child: const Text('計算式・設定')),
-                if (_manual.contains(item.$1))
+                if (_manual.contains(item.$1) && (_profile?['insurance_mode'] != 'manual' || item.$1 == 'income_tax'))
                   TextButton(onPressed: widget.canEdit && _allowed && !_busy && !_uncertain ? () => setState(() {
                     _manual.remove(item.$1);
                     _controllers[item.$1]!.text = _automatic[item.$1]?.toString() ?? '';
@@ -401,7 +423,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
             ],
           )),
         ),
-      if (_profile?['insurance_mode'] != 'rates' && widget.legacySocialAmount > 0)
+      if (_profile?['insurance_mode'] != 'rates' && _profile?['insurance_mode'] != 'manual' && widget.legacySocialAmount > 0)
         Text('保険料の個別計算条件を設定してください。以前の一括設定${widget.legacySocialAmount.toStringAsFixed(0)}円は保持されています。'),
       if (_profile == null && widget.openConditions != null)
         TextButton(onPressed: _busy ? null : _openConditions,
