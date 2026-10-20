@@ -1,0 +1,54 @@
+{
+  "production_changed": false,
+  "native_executed": false,
+  "root_review_required": true,
+  "node_boundary_tests": 5,
+  "python_composition_tests": 4,
+  "pglite_business_guard_checks": 8,
+  "files": [
+    {
+      "path": "REVIEW.md",
+      "sha256": "831f1500b4aa818c7966d5ae136625ef822696e0672d7a04b7e1353fcda29edd"
+    },
+    {
+      "path": "collector_proof_bundle.json",
+      "sha256": "5a2ddeeac2a10f6a4f7f67bb32170a53d913c4a03d9337adab6ff090d1aa0608"
+    },
+    {
+      "path": "handler.mjs",
+      "sha256": "43631e87a6706af27a2c1388c92b671e3a4c2253ea5c4dbb8886e9e39949e268"
+    },
+    {
+      "path": "native_runner.diff",
+      "sha256": "9c3ede6330f37af3d55dd3b62725852e997ea8a683a788eae960def23afe23a1"
+    },
+    {
+      "path": "owner_collector_public_create_rehearsal.py",
+      "sha256": "4516301d40e80b6f4d280a57f25d00ec6a56061e11605247480424e6cab3d419"
+    },
+    {
+      "path": "owner_expense_off_rehearsal.py",
+      "sha256": "6c3cf1078238d9bbaa9a3b767c20f779e7bcdf0f45712a861271bedcdda25e1a"
+    },
+    {
+      "path": "owner_master_proof_http_rehearsal.py",
+      "sha256": "4fb328ef46a9bf006ec2e12b95046eceb17240b42b331395cf329e182937c8ef"
+    },
+    {
+      "path": "run_master_proof.mjs",
+      "sha256": "7c7045e58292a19182530b421f02ceb02cfd16257840a6a7631b476f520e30df"
+    },
+    {
+      "path": "run_master_proof_test.mjs",
+      "sha256": "2d50df34beb87cc54bc25f0f66db4d9e0fd03b894479ff7bf6420406bee7b8c0"
+    },
+    {
+      "path": "test_native_composition.py",
+      "sha256": "3fb72485fa8dacb856a3dce757258e474f9161c4666fe2bd5465dcc458c0200a"
+    },
+    {
+      "path": "verify_business_guard.mjs",
+      "sha256": "7e2a4d1f32a3043204a47f12e6022a34dad418b608c87d36741c136100e34dd6"
+    }
+  ]
+}
