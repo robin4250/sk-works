@@ -1,0 +1,61 @@
+name: Qualification SQLite dependency lock
+on:
+  push:
+    branches: ['support/qualification-photo-sqflite-*']
+    paths: ['pubspec.yaml', '.github/workflows/qualification-sqlite-dependency-lock.yml']
+permissions:
+  contents: read
+jobs:
+  resolve-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - name: Resolve only the additional SQLite dependency
+        shell: python
+        run: |
+          import pathlib, subprocess, hashlib, json, re
+          root = pathlib.Path.cwd()
+          lock = root / "pubspec.lock"
+          before = lock.read_bytes()
+          def versions(text):
+              result = {}
+              current = None
+              for line in text.splitlines():
+                  match = re.fullmatch(r"  ([a-zA-Z0-9_]+):", line)
+                  if match:
+                      current = match.group(1)
+                  elif line.startswith("    version: ") and current:
+                      result[current] = line.split(": ", 1)[1].strip('"')
+              return result
+          old = versions(before.decode())
+          assert old and "sqflite" not in old
+          environment = json.loads(subprocess.check_output(["flutter", "--version", "--machine"], text=True))
+          assert environment["frameworkVersion"] == "3.47.5"
+          subprocess.run(["flutter", "pub", "get"], check=True)
+          after = lock.read_bytes()
+          new = versions(after.decode())
+          changed = {key: [value, new.get(key)] for key, value in old.items() if new.get(key) != value}
+          assert not changed, "Existing dependency versions changed: " + json.dumps(changed)
+          assert new.get("sqflite") == "2.4.4+2"
+          receipt = {
+              "source_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "pubspec_sha256": hashlib.sha256((root / "pubspec.yaml").read_bytes()).hexdigest(),
+              "original_lock_sha256": hashlib.sha256(before).hexdigest(),
+              "resolved_lock_sha256": hashlib.sha256(after).hexdigest(),
+              "existing_versions_unchanged": True,
+              "added_versions": {key: value for key, value in new.items() if key not in old},
+              "flutter": environment["frameworkVersion"],
+          }
+          (root / "qualification-sqlite-lock-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+          print(json.dumps(receipt))
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qualification-sqlite-resolved-lock
+          path: |
+            pubspec.lock
+            qualification-sqlite-lock-receipt.json
+          retention-days: 7
