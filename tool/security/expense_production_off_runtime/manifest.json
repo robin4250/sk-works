@@ -17,14 +17,16 @@
     "expense_default_off_plan.mjs": "5c4c7acedd93fd2fd162179eb4317c0e170877007346e1a0b404e92c1d51b5b9",
     "native_fixture_transport.mjs": "9461560fb6082b2dda5fa41ca6f93db5eeb4a28678f5f73c690e77c6ad846bf8",
     "offline_generator.mjs": "a66c5d219ae0e4a27a33a92975a7a85d4775094b191a940b2e737a74867247c0",
-    "review_runner.py": "e4b774899f3cd12d5dfe67e93065fadc802f2b9186b093cb724722ce9234d011",
+    "review_runner.py": "a3eb27c6c0c349b9eddd68b2124b0d581e7d64eaae6f85ae99ddb71317800aab",
     "source/expense_direction_code_checkpoint.mjs": "9a642ea96fc3d564f6c711c2547da5954310f5fdf7f1448abdef2a0dcfa6197f",
     "source/expense_direction_default_off_preparation.mjs": "5e1401c0271be411ae6d1de9ac8f20432380cd4ebd6db2cc0ccffd46e83fdda8",
     "source/expense_payment_direction_v2_20261019.sql.review-only": "770728fa45176d7bbeb77ebd0610f936659624e4b1287d63bd83e0dd9264fe5a",
     "test_native_recovery.py": "2e6399525ed3c404bffcb6b00d473310b6b3a24ab7e70fdf8533621df146977d",
-    "test_review_runner.py": "ba8ddf2f3b5059b2bba77a4a1d8754e814dec8a934d5fea3f9df21826069361d"
+    "test_review_runner.py": "ba8ddf2f3b5059b2bba77a4a1d8754e814dec8a934d5fea3f9df21826069361d",
+    "test_recovery_evidence.py": "632412e2724b37f9b1b48658e95f844122f1d1dd87308add6861b29ef33282cc"
   },
   "native_disconnect_ci_candidate": true,
   "native_disconnect_cases_prepared": 3,
-  "native_fixture_endpoint_refusals_passed": 5
+  "native_fixture_endpoint_refusals_passed": 5,
+  "recovery_evidence_lifecycle_cases_passed": 4
 }

@@ -156,6 +156,12 @@ def validated_copy(source: Path, root: Path, node: str) -> Path:
 
 
 def classify(root: Path, state: dict, transport: ReviewTransport, node: str) -> dict:
+    # Historical evidence stays immutable, but no earlier undo is current evidence
+    # for a new observation (including a failure before any new read can run).
+    for key in ('unused_undo', 'unused_undo_sha256', 'observation'):
+        state.pop(key, None)
+    state.update(phase='read_only_classification_pending', retry_allowed=False)
+    atomic_state(root / MARKER, state)
     original = Path(state['stage'])
     private_directory(original)
     if original.parent != root:
