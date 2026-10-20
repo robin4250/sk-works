@@ -44,6 +44,37 @@ async function serviceFetch(path: string, init: RequestInit = {}) {
   });
 }
 
+async function employeePhoneProviderEnabled() {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  try {
+    const response = await serviceFetch("/auth/v1/settings", {
+      method: "GET", redirect: "error", signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok || !response.body) return false;
+    const declared = response.headers.get("content-length");
+    if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > 16384)) return false;
+    reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      if (length + next.value.byteLength > 16384) return false;
+      chunks.push(next.value);
+      length += next.value.byteLength;
+    }
+    const bytes = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    return value !== null && typeof value === "object" && value.external?.phone === true;
+  } catch {
+    return false;
+  } finally {
+    if (reader) { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  }
+}
+
 const accessRpc = async (name: string, args: unknown) => {
   const response = await serviceFetch('/rest/v1/rpc/' + name, {
     method: 'POST', body: JSON.stringify(args), signal: AbortSignal.timeout(10000),
@@ -241,6 +272,12 @@ Deno.serve(async (req: Request) => {
   const existingInvites = await existingInviteResponse.json();
   if (Array.isArray(existingInvites) && existingInvites.length > 0) {
     return json({ error: "この電話番号はすでに登録手続き中です。" }, 409);
+  }
+
+  // A QR containing ordinary phone credentials is unusable when this Auth
+  // provider is OFF. Fail before creating Auth, worker or invitation records.
+  if (!await employeePhoneProviderEnabled()) {
+    return json({ error: "電話番号での初回登録は提供設定が未完了です。現在の登録済みログインはそのまま利用できます。" }, 503);
   }
 
   const changedAccess = await accessFailure(caller.id);
@@ -477,4 +514,5 @@ Deno.serve(async (req: Request) => {
     return json({ error: "従業員登録を保存できませんでした。" }, 500);
   }
 });
+
 
