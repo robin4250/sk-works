@@ -57,10 +57,10 @@ void main() {
       }else if(request.url.path=='/auth/v1/logout'){
         body={};
       }else if(request.url.path=='/rest/v1/rpc/company_uploaded_seal_settings'){
-        if(missing)return http.Response(jsonEncode({'code':'PGRST202','message':'missing RPC'}),404,headers:{'content-type':'application/json'});
+        if(missing)return http.Response(jsonEncode({'code':'PGRST202','message':'missing RPC'}),404,headers:{'content-type':'application/json'},request:request);
         body=settings();
       }else if(request.url.path=='/rest/v1/rpc/company_current_uploaded_seal'){
-        if(missing)return http.Response(jsonEncode({'code':'PGRST202','message':'missing RPC'}),404,headers:{'content-type':'application/json'});
+        if(missing)return http.Response(jsonEncode({'code':'PGRST202','message':'missing RPC'}),404,headers:{'content-type':'application/json'},request:request);
         body={'company_id':company.companyId,'company_name':company.name,'snapshot':{'version':2,'style':'uploaded_png',
           'company_id':company.companyId,'name':company.name,'png_version_id':'00000000-0000-0000-0000-000000000003',
           'png_base64':encoded,'png_sha256':settings()['png_sha256']}};
@@ -70,7 +70,7 @@ void main() {
         expect(params['p_png_base64'],encoded);expect(params['p_enabled'],true);
         revision++;body=settings();
       }else{throw StateError('unexpected request');}
-      return http.Response(jsonEncode(body),200,headers:{'content-type':'application/json'});
+      return http.Response(jsonEncode(body),200,headers:{'content-type':'application/json'},request:request);
     }));
     try{
       await client.auth.signInWithPassword(email:'test@example.invalid',password:'synthetic');
