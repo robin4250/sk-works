@@ -2,16 +2,18 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
+import 'company_common_payroll_publication_summary.dart';
 
 class CommonPayrollPublicationState {
   const CommonPayrollPublicationState({required this.companyId, required this.canEdit,
-    required this.timelineVersion, required this.commonVersion, required this.commonSourceJson, required this.entries});
+    required this.timelineVersion, required this.commonVersion, required this.commonSourceJson, required this.entries, this.applicationSummary});
   final String companyId;
   final bool canEdit;
   final int timelineVersion, commonVersion;
   final String commonSourceJson;
   final List<Map<String, dynamic>> entries;
-  factory CommonPayrollPublicationState.parse(Object? raw, String companyId) {
+  final CommonPayrollPublicationSummary? applicationSummary;
+  factory CommonPayrollPublicationState.parse(Object? raw, String companyId, {CommonPayrollPublicationSummary? applicationSummary}) {
     bool version(Object? x) => x is int && x >= 0 && x <= 9007199254740991;
     if (raw is! Map || raw['contract_version'] != 1 || raw['company_id'] != companyId ||
         raw['can_edit'] is! bool || !version(raw['timeline_version']) || !version(raw['common_version']) ||
@@ -27,7 +29,7 @@ class CommonPayrollPublicationState {
     }
     return CommonPayrollPublicationState(companyId: companyId, canEdit: raw['can_edit'] as bool,
       timelineVersion: raw['timeline_version'] as int, commonVersion: raw['common_version'] as int,
-      commonSourceJson: jsonEncode(raw['common_source']), entries: List.unmodifiable(entries));
+      commonSourceJson: jsonEncode(raw['common_source']), entries: List.unmodifiable(entries), applicationSummary: applicationSummary);
   }
 }
 class CommonPayrollPublicationRequest {
@@ -74,7 +76,8 @@ class SupabaseCommonPayrollPublicationRepository implements CommonPayrollPublica
     if(raw is! Map || raw['contract_version']!=1 || raw['company_id']!=request.state.companyId ||
         raw['request_id']!=request.requestId || raw['payroll_type']!=request.payrollType || raw['starts_on']!=request.startsOn ||
         raw['publication_version']!=request.state.timelineVersion+1) { throw StateError('Payroll publication receipt unavailable'); }
-    final result=CommonPayrollPublicationState.parse(raw['timeline'],request.state.companyId);
+    final result=CommonPayrollPublicationState.parse(raw['timeline'],request.state.companyId,
+      applicationSummary: CommonPayrollPublicationSummary.fromReceipt(raw));
     if(result.timelineVersion!=raw['publication_version']) throw StateError('Payroll publication receipt differs');
     return result;
   }

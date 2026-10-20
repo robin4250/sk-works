@@ -4,6 +4,7 @@ on:
     paths:
       - 'supabase/migrations/20261013181708_route_signed_checkout_customer_billing.sql'
       - 'tool/verify_route_signed_checkout_billing.mjs'
+      - 'tool/verify_invoice_three_day_evidence.mjs'
       - 'tool/fixtures/route_signed_checkout/**'
       - '.github/workflows/route-signed-checkout-billing.yml'
   push:
@@ -11,6 +12,7 @@ on:
     paths:
       - 'supabase/migrations/20261013181708_route_signed_checkout_customer_billing.sql'
       - 'tool/verify_route_signed_checkout_billing.mjs'
+      - 'tool/verify_invoice_three_day_evidence.mjs'
       - 'tool/fixtures/route_signed_checkout/**'
       - '.github/workflows/route-signed-checkout-billing.yml'
   workflow_dispatch:
@@ -29,6 +31,8 @@ jobs:
           node-version: '24'
       - name: Install isolated pinned SQL runtime
         run: npm install --prefix "$RUNNER_TEMP/signed-billing-runtime" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify three-day attendance evidence and edits
+        run: node tool/verify_invoice_three_day_evidence.mjs "$RUNNER_TEMP/signed-billing-runtime/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Verify actual signed checkout and invoice SQL
         run: node tool/verify_route_signed_checkout_billing.mjs "$RUNNER_TEMP/signed-billing-runtime/node_modules/@electric-sql/pglite/dist/index.js"
   signed-checkout-postgres-races:
@@ -36,7 +40,7 @@ jobs:
     timeout-minutes: 10
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:17
+        image: postgres:17
         env:
           POSTGRES_PASSWORD: signed-checkout-fixture
           POSTGRES_DB: sko_signed_checkout_fixture

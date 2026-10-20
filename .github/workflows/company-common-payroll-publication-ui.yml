@@ -14,6 +14,8 @@ on:
       - 'lib/features/payroll/company_common_payroll_publication_repository.dart'
       - 'lib/features/payroll/company_common_payroll_publication_panel.dart'
       - 'test/company_common_payroll_publication_test.dart'
+      - 'lib/features/payroll/company_common_payroll_publication_summary.dart'
+      - 'tool/verify_common_payroll_publication_summary.dart'
       - '.github/workflows/company-common-payroll-publication-ui.yml'
 permissions:
   contents: read
@@ -29,5 +31,6 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - run: dart tool/verify_common_payroll_publication_summary.dart
       - run: flutter analyze
       - run: timeout 240s flutter test --reporter expanded --timeout 60s test/company_common_payroll_publication_test.dart test/company_common_allowance_entry_test.dart test/company_common_allowance_connected_test.dart test/company_common_payroll_page_test.dart test/individual_payroll_fixed_footer_test.dart
