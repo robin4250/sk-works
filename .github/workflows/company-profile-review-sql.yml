@@ -5,6 +5,16 @@ on:
       - 'supabase/migrations/*company_profile_update_review.sql'
       - 'tool/company_profile_review_sql_test.cjs'
       - '.github/workflows/company-profile-review-sql.yml'
+      - 'docs/candidates/partner_company_profile_20261020.sql.review-only'
+      - 'docs/review/partner_company_profile_20261020.md'
+      - 'tool/verify_partner_company_profile.cjs'
+  push:
+    branches: ['support/company-representative-contract-*']
+    paths:
+      - 'docs/candidates/partner_company_profile_20261020.sql.review-only'
+      - 'docs/review/partner_company_profile_20261020.md'
+      - 'tool/verify_partner_company_profile.cjs'
+      - '.github/workflows/company-profile-review-sql.yml'
 jobs:
   profile:
     runs-on: ubuntu-latest
@@ -17,3 +27,5 @@ jobs:
           node-version: '22'
       - run: npm install --prefix /tmp/company-link-test @electric-sql/pglite@0.5.10 --no-audit --no-fund
       - run: NODE_PATH=/tmp/company-link-test/node_modules node tool/company_profile_review_sql_test.cjs
+      - name: Verify own representative contract and unchanged contact writer
+        run: NODE_PATH=/tmp/company-link-test/node_modules node tool/verify_partner_company_profile.cjs
