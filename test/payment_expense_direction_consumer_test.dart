@@ -233,6 +233,37 @@ class _Fixture {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('v2 source headers stay on payment requests and do not leak to a legacy reader', () async {
+    final fixture = _Fixture(v2: false);
+    await fixture.start();
+    try {
+      await PaymentCertificateRepository.forTesting(fixture.client, enableExpenseDirectionV2: true).loadCertificates();
+      final paymentCalls = fixture.calls.where((r) =>
+          r.url.path == '/rest/v1/payment_certificates' ||
+          r.url.path == '/rest/v1/rpc/payment_certificate_detail_rows');
+      expect(paymentCalls, hasLength(2));
+      for (final call in paymentCalls) {
+        expect(call.headers['x-sko-payment-source-version'], '2');
+      }
+      for (final call in fixture.calls.where((r) => !paymentCalls.contains(r))) {
+        expect(call.headers.containsKey('x-sko-payment-source-version'), isFalse);
+      }
+      fixture.calls.clear();
+      await PaymentCertificateRepository.forTesting(fixture.client).loadCertificates();
+      expect(fixture.calls.every((r) => !r.headers.containsKey('x-sko-payment-source-version')), isTrue);
+    } finally { await fixture.client.dispose(); }
+  });
+
+  test('v2 source header also protects the scoped expense detail RPC', () async {
+    final fixture = _Fixture();
+    await fixture.start();
+    try {
+      await PaymentCertificateRepository.forTesting(fixture.client, enableExpenseDirectionV2: true).loadCertificates();
+      final call = fixture.calls.singleWhere((r) => r.url.path == '/rest/v1/rpc/read_expense_document');
+      expect(call.headers['x-sko-payment-source-version'], '2');
+    } finally { await fixture.client.dispose(); }
+  });
+
   test(
     'actual repository and common PDF pipeline render v2 expense-only -1000 and preserve v1 +1000',
     () async {
