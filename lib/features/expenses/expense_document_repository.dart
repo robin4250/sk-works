@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/expense_cost_direction_v2_candidate.dart';
 import '../../data/supabase_backend.dart';
 import 'expense_claim.dart';
@@ -120,13 +122,39 @@ class ExpenseDocumentRepository {
         !SupabaseBackend.isInitialized) {
       return null;
     }
-    final client = SupabaseBackend.client,
-        actor = SupabaseBackend.client.auth.currentUser?.id;
+    return _loadFromClient(SupabaseBackend.client, kind, id, month,
+        revision: revision, updatedAt: updatedAt);
+  }
+
+  @visibleForTesting
+  static Future<ExpenseDocumentDetails> loadForTesting(
+    SupabaseClient client,
+    ExpenseDocument kind,
+    String id,
+    DateTime month, {
+    int? revision,
+    String? updatedAt,
+  }) => _loadFromClient(client, kind, id, month,
+      revision: revision, updatedAt: updatedAt);
+
+  static Future<ExpenseDocumentDetails> _loadFromClient(
+    SupabaseClient client,
+    ExpenseDocument kind,
+    String id,
+    DateTime month, {
+    int? revision,
+    String? updatedAt,
+  }) async {
+    final actor = client.auth.currentUser?.id;
     if (actor == null) throw StateError('ログインが必要です。');
-    final raw = await client.rpc(
+    var request = client.rpc(
       'read_expense_document',
       params: {'p_kind': kind.name, 'p_document': id},
     );
+    if (kind == ExpenseDocument.paymentCertificate) {
+      request = request.setHeader('x-sko-payment-source-version', '2');
+    }
+    final raw = await request;
     if (client.auth.currentUser?.id != actor) {
       throw StateError('ログイン情報が変わりました。');
     }
