@@ -23,7 +23,7 @@ void main() {
       'tax_amount_yen': 10000,
       'invoice_subject': '対象工事',
     },
-    'template': {
+    'template': <String, dynamic>{
       'notes': '編集済み特記事項',
       'payment_conditions': '翌月末払い',
       'issuer': {'name': '別会社'},

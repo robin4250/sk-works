@@ -507,6 +507,8 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
+    final compactInviteAction = MediaQuery.sizeOf(context).width < 420 ||
+        MediaQuery.textScalerOf(context).scale(14) > 16.8;
     final incoming = _rows('incoming');
     final outgoing = _rows('outgoing');
     final friends =
@@ -542,12 +544,20 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
       appBar: AppBar(
         actions: [
           if (!widget.selectForGroupInvite)
-            TextButton.icon(
-              onPressed: _loading || _busy || _sessionInvalidated
-                  ? null : _openPhoneInvitation,
-              icon: const Icon(Icons.sms_outlined),
-              label: Text(ChatFriendsStrings.tr('SKO招待')),
-            ),
+            if (compactInviteAction)
+              IconButton(
+                tooltip: ChatFriendsStrings.tr('SKO招待'),
+                onPressed: _loading || _busy || _sessionInvalidated
+                    ? null : _openPhoneInvitation,
+                icon: const Icon(Icons.sms_outlined),
+              )
+            else
+              TextButton.icon(
+                onPressed: _loading || _busy || _sessionInvalidated
+                    ? null : _openPhoneInvitation,
+                icon: const Icon(Icons.sms_outlined),
+                label: Text(ChatFriendsStrings.tr('SKO招待')),
+              ),
           IconButton(tooltip: '友達一覧を更新', onPressed: _loading || _busy ? null : _refresh, icon: const Icon(Icons.refresh)), IconButton(tooltip: '使い方', onPressed: _showHelp, icon: const Icon(Icons.help_outline))],
         title: Text(
           widget.selectForChat
