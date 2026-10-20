@@ -15,11 +15,11 @@
       "sha256": "98ef87614545e6365e3c015e02aab260147799f6703478ebe1e3b6bfb470e272"
     },
     {
-      "path": "tool/security/employee_authenticated_invite_v2_profile_test.mjs",
+      "path": "tool/security/employee_authenticated_invite_v2_profile_integration.mjs",
       "sha256": "db7d2a4f76fc032a01491630a71551261cbc56180ba7f042e3396b61a1152c4e"
     },
     {
-      "path": "tool/security/employee_authenticated_invite_v2_test.mjs",
+      "path": "tool/security/employee_authenticated_invite_v2_ledger_integration.mjs",
       "sha256": "6193f5f65f688eb7a8a2509feab13f55a2559764b90642eec6988e1864d7b448"
     },
     {
@@ -39,7 +39,7 @@
       "sha256": "91c22261b1f8a06737223dde46dbe31e2d1d3225dc16db6aa10e61d9d51801ec"
     },
     {
-      "path": "tool/security/employee_authenticated_invite_v2_approval_test.mjs",
+      "path": "tool/security/employee_authenticated_invite_v2_approval_integration.mjs",
       "sha256": "018daf488d3a52dfb53929e2a6bac124b87ff4ae844470c97f95cef31fc04dc6"
     },
     {

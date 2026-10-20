@@ -41,8 +41,8 @@ jobs:
         run: |
           unset SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY SUPABASE_SECRET_KEY SUPABASE_ANON_KEY
           case "$SLICE" in
-            ledger) node tool/security/employee_authenticated_invite_v2_test.mjs ;;
-            profile) node tool/security/employee_authenticated_invite_v2_profile_test.mjs ;;
-            approval) node tool/security/employee_authenticated_invite_v2_approval_test.mjs ;;
+            ledger) node tool/security/employee_authenticated_invite_v2_ledger_integration.mjs ;;
+            profile) node tool/security/employee_authenticated_invite_v2_profile_integration.mjs ;;
+            approval) node tool/security/employee_authenticated_invite_v2_approval_integration.mjs ;;
             *) exit 1 ;;
           esac
