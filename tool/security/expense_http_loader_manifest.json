@@ -1,0 +1,12 @@
+{
+  "entry": "owner_expense_http_rehearsal.py",
+  "files": {
+    "expense_off_rehearsal_bundle.json": "87c01d8a8a132b54772c240f9fc3b96de6f91c8d9d727b34a32680e8de2f5d29",
+    "owner_common_http_rehearsal.py": "cd8b49e4e60fdbceabff05eaeafe86d8f04fc491e281650db173765d358ab86d",
+    "owner_expense_http_rehearsal.py": "5f9ecdf56178691cd4d60e80b5a7ca26cc170e7205bd76fdc9fd0aabc16523be",
+    "owner_expense_off_rehearsal.py": "6c3cf1078238d9bbaa9a3b767c20f779e7bcdf0f45712a861271bedcdda25e1a",
+    "owner_payroll_common_rehearsal.py": "eb8253168195780ccb8b22aacd00471e4ff8760b7899c0b62d1bbd5f77eab41d",
+    "runtime_manifest.json": "0ea657c35b1913ee85883141e61bcec53a1124af06a89a0f81847182d2798f9a"
+  },
+  "schema": 1
+}
