@@ -50,12 +50,44 @@ class CaptureTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(1, command)
             return subprocess.CompletedProcess(command, 0, stdout=b'170006\n')
         with tempfile.TemporaryDirectory() as folder, patch.object(capture, 'tool', side_effect=lambda n: n), patch.object(capture.subprocess, 'run', side_effect=run) as runner:
-            with self.assertRaises(subprocess.CalledProcessError):
+            with self.assertRaises(capture.CaptureFailure):
                 capture.capture(URL, 'fixture-secret', Path(folder))
             stages = list(Path(folder).glob('database-capture-*'))
             self.assertEqual(len(stages), 1)
             self.assertFalse(json.loads((stages[0] / 'capture-status.json').read_text())['capture_completed'])
             self.assertEqual(runner.call_count, 2)
+
+    def test_diagnostics_never_echo_raw_secret(self):
+        for raw, expected in (
+            ('password authentication failed for fixture-secret', 'db_password_rejected'),
+            ('SSL error: certificate verify failed fixture-secret', 'tls_certificate_failed'),
+            ('permission denied fixture-secret', 'database_read_permission_denied'),
+            ('unknown fixture-secret', 'capture_failed'),
+        ):
+            self.assertEqual(capture.failure_code(raw), expected)
+            self.assertNotIn('fixture-secret', capture.failure_code(raw))
+
+    def test_certificate_used_for_every_connection_and_auth_failure_not_retried(self):
+        with tempfile.TemporaryDirectory() as folder:
+            cert = Path(folder) / 'downloaded.crt'
+            cert.write_text('synthetic certificate fixture')
+            def run(command, **kwargs):
+                self.assertEqual(kwargs['env']['PGSSLROOTCERT'], str(cert))
+                self.assertEqual(kwargs['env']['PGSSLMODE'], 'verify-full')
+                kwargs['stderr'].write(b'password authentication failed fixture-secret')
+                kwargs['stderr'].flush()
+                raise subprocess.CalledProcessError(2, command)
+            with patch.object(capture, 'tool', side_effect=lambda n: n), patch.object(capture.subprocess, 'run', side_effect=run) as runner:
+                with self.assertRaises(capture.CaptureFailure) as caught:
+                    capture.capture(URL, 'fixture-secret', Path(folder), cert)
+            self.assertEqual(caught.exception.code, 'db_password_rejected')
+            self.assertEqual(runner.call_count, 1)
+            stage = next(Path(folder).glob('database-capture-*'))
+            status = json.loads((stage / 'capture-status.json').read_text())
+            self.assertEqual(status['failure_code'], 'db_password_rejected')
+            self.assertEqual(status['phase'], 'psql')
+            self.assertFalse(status['capture_completed'])
+            self.assertNotIn('fixture-secret', json.dumps(status))
 
 
 if __name__ == '__main__':
