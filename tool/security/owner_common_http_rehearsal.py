@@ -16,6 +16,7 @@ import time
 import selectors
 import threading
 import uuid
+from urllib.parse import urlencode
 import owner_payroll_common_rehearsal as common
 
 AUTH_IMAGE='supabase/gotrue@sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b'
@@ -160,9 +161,19 @@ def identity_sql(excluded):
     return "SELECT md5(jsonb_build_object('users',(SELECT jsonb_agg(jsonb_build_object('id',id,'email',email,'phone',phone,'password',encrypted_password,'app',raw_app_meta_data,'metadata',raw_user_meta_data) ORDER BY id) FROM auth.users WHERE id NOT IN ("+skip+")), 'identities',(SELECT jsonb_agg(jsonb_build_object('user_id',user_id,'provider',provider,'provider_id',provider_id,'data',identity_data) ORDER BY user_id,provider) FROM auth.identities WHERE user_id NOT IN ("+skip+")), 'members',(SELECT jsonb_agg(to_jsonb(m) ORDER BY to_jsonb(m)::text) FROM public.company_members m WHERE user_id NOT IN ("+skip+")), 'companies',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM public.companies c))::text);"
 
 
+def auth_database_url(login,password):
+    check(re.fullmatch(r'sko_http_auth_[a-f0-9]{12}',login) is not None,'auth_db_login_invalid')
+    check(re.fullmatch(r'[a-f0-9]{64}',password) is not None,'auth_db_password_shape_invalid')
+    return 'postgres://'+login+':'+password+'@db:5432/postgres?'+urlencode({'options':'-c role=supabase_auth_admin -c search_path=auth'})
+
+
+def auth_scope_sql():
+    return "SET ROLE supabase_auth_admin;SET search_path=auth;SELECT jsonb_build_object('auth_current_role',current_user='supabase_auth_admin','auth_current_schema',current_schema()='auth','auth_usage',has_schema_privilege(current_user,'auth','USAGE'),'auth_create',has_schema_privilege(current_user,'auth','CREATE'),'auth_schema_owner',pg_has_role(current_user,(SELECT nspowner FROM pg_namespace WHERE nspname='auth'),'USAGE'),'migration_table_found',to_regclass('schema_migrations') IS NOT NULL,'migration_table_select',has_table_privilege(current_user,'auth.schema_migrations','SELECT'),'migration_table_insert',has_table_privilege(current_user,'auth.schema_migrations','INSERT'),'auth_users_select',has_table_privilege(current_user,'auth.users','SELECT'),'auth_users_insert',has_table_privilege(current_user,'auth.users','INSERT'));"
+
+
 class StartupCapture:
     """Drain attached service output; retain only fixed anonymous classifications."""
-    RULES={'db_authentication_failed':b'password authentication failed','db_permission_denied':b'permission denied','db_owner_required':b'must be owner','db_connection_refused':b'connection refused','db_name_resolution_failed':b'no such host','migration_failure':b'migrat','configuration_failure':b'config','required_setting_missing':b'required','db_object_missing':b'does not exist','address_bind_failure':b'address already in use','db_ssl_failure':b'ssl'}
+    RULES={'db_authentication_failed':b'password authentication failed','db_permission_denied':b'permission denied','db_owner_required':b'must be owner','db_connection_refused':b'connection refused','db_name_resolution_failed':b'no such host','migration_failure':b'migrat','configuration_failure':b'config','required_setting_missing':b'required','db_object_missing':b'does not exist','address_bind_failure':b'address already in use','db_ssl_failure':b'ssl','schema_auth_denied':b'permission denied for schema auth','schema_public_denied':b'permission denied for schema public','migration_table_mentioned':b'schema_migrations','create_schema_operation':b'create schema','create_table_operation':b'create table','table_auth_users_denied':b'permission denied for table users','invalid_log_level':b'invalid log level'}
     def __init__(self,args,env):
         self.flags=set();self.sqlstates=set();self.lock=threading.Lock()
         self.proc=subprocess.Popen(args,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -272,9 +283,12 @@ def main():
         pw_auth=secrets.token_hex(32);pw_rest=secrets.token_hex(32);secret=secrets.token_hex(48)
         state['phase']='synthetic_database_roles'
         query("SET password_encryption='scram-sha-256';CREATE ROLE "+db_auth+" LOGIN INHERIT PASSWORD '"+pw_auth+"';GRANT supabase_auth_admin TO "+db_auth+";CREATE ROLE "+db_rest+" LOGIN NOINHERIT PASSWORD '"+pw_rest+"';GRANT anon,authenticated,service_role TO "+db_rest+";GRANT CONNECT ON DATABASE postgres TO "+db_auth+','+db_rest+';',role='supabase_admin')
+        state['phase']='auth_role_scope_preflight'
+        state['auth_role_scope']=json.loads(query(auth_scope_sql(),role=db_auth).splitlines()[-1])
+        check(all(state['auth_role_scope'].values()),'auth_role_scope_preflight_failed')
         state['phase']='auth_rest_start'
         auth='sko-http-auth-'+suffix;rest='sko-http-rest-'+suffix
-        configs={auth:{'GOTRUE_API_HOST':'0.0.0.0','GOTRUE_API_PORT':'9999','API_EXTERNAL_URL':'http://auth:9999','GOTRUE_SITE_URL':'http://fixture.invalid','GOTRUE_DB_DRIVER':'postgres','GOTRUE_DB_DATABASE_URL':'postgres://'+db_auth+':'+pw_auth+'@db:5432/postgres','GOTRUE_DB_NAMESPACE':'auth','GOTRUE_JWT_SECRET':secret,'GOTRUE_JWT_EXP':'3600','GOTRUE_JWT_AUD':'authenticated','GOTRUE_JWT_DEFAULT_GROUP_NAME':'authenticated','GOTRUE_JWT_ADMIN_ROLES':'service_role','GOTRUE_DISABLE_SIGNUP':'true','GOTRUE_EXTERNAL_EMAIL_ENABLED':'true','GOTRUE_MAILER_AUTOCONFIRM':'true','GOTRUE_EXTERNAL_PHONE_ENABLED':'false','GOTRUE_EXTERNAL_GOOGLE_ENABLED':'false','GOTRUE_EXTERNAL_APPLE_ENABLED':'false','GOTRUE_LOG_LEVEL':'error'},
+        configs={auth:{'GOTRUE_API_HOST':'0.0.0.0','GOTRUE_API_PORT':'9999','API_EXTERNAL_URL':'http://auth:9999','GOTRUE_SITE_URL':'http://fixture.invalid','GOTRUE_DB_DRIVER':'postgres','GOTRUE_DB_DATABASE_URL':auth_database_url(db_auth,pw_auth),'GOTRUE_DB_NAMESPACE':'auth','GOTRUE_JWT_SECRET':secret,'GOTRUE_JWT_EXP':'3600','GOTRUE_JWT_AUD':'authenticated','GOTRUE_JWT_DEFAULT_GROUP_NAME':'authenticated','GOTRUE_JWT_ADMIN_ROLES':'service_role','GOTRUE_DISABLE_SIGNUP':'true','GOTRUE_EXTERNAL_EMAIL_ENABLED':'true','GOTRUE_MAILER_AUTOCONFIRM':'true','GOTRUE_EXTERNAL_PHONE_ENABLED':'false','GOTRUE_EXTERNAL_GOOGLE_ENABLED':'false','GOTRUE_EXTERNAL_APPLE_ENABLED':'false','GOTRUE_LOG_LEVEL':'error'},
             rest:{'PGRST_DB_URI':'postgres://'+db_rest+':'+pw_rest+'@db:5432/postgres','PGRST_DB_SCHEMAS':'public','PGRST_DB_ANON_ROLE':'anon','PGRST_JWT_SECRET':secret,'PGRST_JWT_AUD':'authenticated','PGRST_LOG_LEVEL':'error'}}
         for name,img,port in ((auth,AUTH_IMAGE,9999),(rest,REST_IMAGE,3000)):
             env_path=stage/(name+'.env');env_path.write_text('\n'.join(k+'='+v for k,v in configs[name].items())+'\n');env_files.append(env_path)
