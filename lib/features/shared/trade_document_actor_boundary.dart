@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 
 /// A saved contract may never survive an account switch on the preview stack.
@@ -27,7 +28,7 @@ class _BoundaryState extends State<TradeDocumentActorBoundary> {
 
 /// Sticky lease for asynchronous PDF generation and the OS handoff boundary.
 class TradeDocumentActorLease {
- TradeDocumentActorLease({@visibleForTesting String? initialActor,@visibleForTesting Stream<String?>? actorChanges}){
+ TradeDocumentActorLease({@visibleForTesting String? initialActor,@visibleForTesting Stream<String?>? actorChanges}):_client=null{
   if(!SupabaseBackend.isInitialized&&actorChanges==null)return;
   _actor=initialActor??(SupabaseBackend.isInitialized?SupabaseBackend.client.auth.currentUser?.id:null);_revoked=_actor==null;
   final changes=actorChanges??SupabaseBackend.client.auth.onAuthStateChange.map((event)=>event.session?.user.id);
@@ -35,11 +36,21 @@ class TradeDocumentActorLease {
     if(actor!=_actor)_revoked=true;
   },onError:(_){_revoked=true;});
  }
+ /// Bind production requests to their own authenticated client. This also
+ /// avoids mixing a testing client with the global Supabase singleton.
+ TradeDocumentActorLease.forClient(SupabaseClient client):_client=client{
+  _actor=client.auth.currentUser?.id;_revoked=_actor==null;
+  _subscription=client.auth.onAuthStateChange.listen((event){
+   if(event.session?.user.id!=_actor)_revoked=true;
+  },onError:(_){_revoked=true;});
+ }
+ final SupabaseClient? _client;
  String? _actor;bool _revoked=false;StreamSubscription<dynamic>? _subscription;
  void verify(){
-  if(_revoked||(SupabaseBackend.isInitialized&&SupabaseBackend.client.auth.currentUser?.id!=_actor)){
+  if(_revoked||(_client!=null?_client.auth.currentUser?.id!=_actor:(SupabaseBackend.isInitialized&&SupabaseBackend.client.auth.currentUser?.id!=_actor))){
    throw StateError('ログイン情報が変わりました。開き直してください。');
   }
  }
  void dispose(){_subscription?.cancel();}
 }
+
