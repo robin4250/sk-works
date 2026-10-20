@@ -49,13 +49,14 @@ test('client actor, target change, unknown operation, claimed biometric and refr
  for(const body of [
   {operation:'secondary_password.replace',password:'synthetic-password',target:{user_id:'10000000-0000-0000-0000-000000000002'}},
   {operation:'master.feature.set',password:'synthetic-password',target:{feature_key:'route_assignment',enabled:true,extra:true}},
+  {operation:'master.feature.set',password:'synthetic-password',target:{feature_key:'unknown_feature',enabled:true}},
   {operation:'unknown',password:'synthetic-password',target},
   {operation:'secondary_password.replace',password:'synthetic-password',target,biometricVerified:true},
   {operation:'secondary_password.replace',password:'synthetic-password',target,refreshed:true},
  ]) {const f=fixture();assert.equal((await f.invoke(body)).status,400);assert.equal(f.calls.some(x=>x.path.includes('grant_type')),false);}
 });
 test('Master feature value and monitoring target passed unchanged to service issuer',async()=>{
- for(const [operation,t] of [['master.feature.set',{feature_key:'route_assignment',enabled:false}],['master.security_incidents.read',{scope:'platform'}]]) {
+ for(const [operation,t] of [['master.feature.set',{feature_key:'company_seal_image_tools',enabled:false}],['master.feature.set',{feature_key:'route_assignment',enabled:false}],['master.security_incidents.read',{scope:'platform'}]]) {
   const f=fixture();assert.equal((await f.invoke({operation,password:'synthetic-password',target:t})).status,200);assert.deepEqual(f.issued.p_target,t);
  }
 });

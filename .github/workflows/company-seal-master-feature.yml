@@ -1,0 +1,42 @@
+name: Company seal central master gate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/master_feature_*.dart'
+      - 'test/master_feature_*test.dart'
+      - 'docs/candidates/company_seal_master_feature_20261020.sql.review-only'
+      - 'supabase/functions/reauthenticate-operation/handler.mjs'
+      - 'tool/security/verify_seal_master_gate.mjs'
+      - 'tool/security/reauthentication_handler_test.mjs'
+      - '.github/workflows/company-seal-master-feature.yml'
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/settings/master_feature_availability.dart lib/features/settings/master_feature_controls_repository.dart lib/features/settings/master_feature_controls_page.dart test/master_feature_availability_test.dart
+      - run: flutter test test/master_feature_availability_test.dart test/master_feature_reauthentication_test.dart test/master_feature_controls_ui_contract_test.dart test/master_feature_flags_contract_test.dart
+  synthetic-database-edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node tool/security/verify_seal_master_gate.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node --test tool/security/reauthentication_handler_test.mjs

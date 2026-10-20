@@ -5,6 +5,8 @@ class MasterFeatureAvailability {
     this.trafficNearestStation = false,
     this.trafficTrainTransfer = false,
     this.trafficBusStop = false,
+    this.companySealImageTools = false,
+    this.companySealImageToolsSupported = false,
   });
 
   final bool vehicleManagement;
@@ -12,6 +14,8 @@ class MasterFeatureAvailability {
   final bool trafficNearestStation;
   final bool trafficTrainTransfer;
   final bool trafficBusStop;
+  final bool companySealImageTools;
+  final bool companySealImageToolsSupported;
 
   static const unavailable = MasterFeatureAvailability(
     vehicleManagement: false,
@@ -29,6 +33,9 @@ class MasterFeatureAvailability {
       trafficNearestStation: json['traffic_nearest_station'] == true,
       trafficTrainTransfer: json['traffic_train_transfer'] == true,
       trafficBusStop: json['traffic_bus_stop'] == true,
+      companySealImageTools: json['company_seal_image_tools'] == true,
+      companySealImageToolsSupported: json['company_seal_image_tools'] is bool,
     );
   }
 }
+

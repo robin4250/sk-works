@@ -5,7 +5,7 @@ const scopes = new Map([
  ['master.security_incidents.read', 'master_security'],
  ['master.device.lock', 'master_device_lock'],
 ]);
-const featureKeys = new Set(['vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop']);
+const featureKeys = new Set(['vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop','company_seal_image_tools']);
 const reply = (status, data) => new Response(JSON.stringify(data), {
  status, headers: {'Content-Type':'application/json', 'Cache-Control':'no-store'},
 });
@@ -107,3 +107,4 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
   }
  };
 }
+
