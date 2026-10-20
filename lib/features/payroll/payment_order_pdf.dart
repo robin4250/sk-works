@@ -23,7 +23,7 @@ class PaymentOrderPdf {
   pw.Widget field(String name,Object? value)=>pw.Padding(padding:pw.EdgeInsets.only(bottom:compact?3:7),child:text('$name：${value??''}'));
   pw.Widget party(String title,Map<String,dynamic> value,{bool own=false})=>pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:[
    text(title,bold:true),pw.SizedBox(height:5),field('社名','${value['name']}${own?'':'　御中'}'),field('住所',value['address']),
-   field('法人番号',value['corporate_number']),pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
+   field('法人番号',value['corporate_number']),pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.center,children:[
     pw.Expanded(child:field('代表者名',value['representative_name'])),
     if(own&&sealOn)CompanySealPdf.build(seal.registeredName(issuer['name'].toString()),font:font,companyId:seal.companyId,uploadedPng:seal.uploadedPng,
       fallbackFont:regularFont,style:seal.style,size:compact?40:48),]),]);
