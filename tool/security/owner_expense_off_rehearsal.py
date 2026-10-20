@@ -155,6 +155,26 @@ def main():
             after=json.loads(value(bundle['queries']['catalogSql']))
             if value(bundle['queries']['defaultOffBusinessHashSql'])!=business: raise RuntimeError('business_data_changed')
             status['off_install_verified']=True
+            if 'conversion.sql' in bundle['files']:
+                conversion=bundle['files']['conversion.sql']
+                scenario=bundle['files']['conversion_scenario.sql']
+                if hashlib.sha256(conversion.encode()).hexdigest()!='725ff2533539c63759c92c0bbc45d37c131fa431c421fd76deb127bdff2604d7':
+                    raise RuntimeError('conversion_candidate_mismatch')
+                if re.search(r'^\s*(COMMIT|ROLLBACK|START TRANSACTION)\s*;',conversion+'\n'+scenario,re.I|re.M):
+                    raise RuntimeError('conversion_transaction_control_refused')
+                status['phase']='actual_conversion'
+                print('保護済み原本と完全一致する下書きだけを、隔離transaction内で−1,000円へ変換・再実行し、全て戻します。',flush=True)
+                query('BEGIN;\n'+conversion+'\n'+scenario+'\nROLLBACK;')
+                status['phase']='conversion_rollback'
+                if json.loads(value(bundle['queries']['catalogSql']))!=after:
+                    raise RuntimeError('conversion_code_rollback_failed')
+                if value(bundle['queries']['defaultOffBusinessHashSql'])!=business:
+                    raise RuntimeError('conversion_business_rollback_failed')
+                absent="SELECT to_regclass('private.expense_payment_direction_conversions') IS NULL AND to_regprocedure('private.convert_payment_expense_v1_draft(uuid,uuid,uuid,date,integer,jsonb,text,text,text)') IS NULL AND to_regprocedure('private.expense_direction_v2_client_rollout_verified(uuid)') IS NULL AND to_regprocedure('private.expense_payment_conversion_audit_immutable()') IS NULL;"
+                if value(absent)!='t': raise RuntimeError('conversion_objects_not_rolled_back')
+                status.update(actual_conversion_verified=True,conversion_rollback_verified=True,
+                              gross_yen=0,deductions_yen=1000,net_yen=-1000,identical_retry_verified=True,
+                              real_jwt_verified=False)
             undo=generate({'before':before,'after':after})
             (stage/'undo.sql').write_text(undo)
             status['phase']='code_undo'
@@ -165,6 +185,8 @@ def main():
             (stage/'before-code.json').write_text(json.dumps(before))
             (stage/'after-code.json').write_text(json.dumps(after))
         result=f'隔離実DBで経費v2のOFF導入・元コード復旧・金融5表不変の検証成功: {stage.name}。本番適用・−1,000円への変換は未実施。'
+        if status.get('actual_conversion_verified'):
+            result=f'隔離実DBの対象下書きで支給0・控除1000・差引−1000、同一再実行、原本監査、精算履歴不変、全rollback成功: {stage.name}。本番適用・実JWT・旧client遮断は未実施。'
         code=0
     except (Exception,KeyboardInterrupt):
         result='経費v2の隔離検証は未完了（段階: '+status.get('phase','準備')+'）。元の復元DB・バックアップ・本番は変更していません。'
