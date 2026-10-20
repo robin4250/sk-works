@@ -55,11 +55,14 @@ class _CompanySealPngUploaderState extends State<CompanySealPngUploader> {
       if (widget.pickPng != null) {
         bytes = await widget.pickPng!();
       } else {
-        final result = await FilePicker.platform.pickFiles(type: FileType.custom,
-          allowedExtensions: ['png'], allowMultiple: false, withData: true);
-        if (result == null) return;
-        bytes = result.files.single.bytes;
-        if (bytes == null) throw StateError('PNGの読込に失敗しました。');
+        final file = await FilePicker.pickFile(type: FileType.custom,
+          allowedExtensions: const ['png']);
+        if (file == null) return;
+        final length = await file.length();
+        if (length != null && length > CompanyUploadedSealPng.maxBytes) {
+          throw const FormatException('角印PNGは1MB以下にしてください。');
+        }
+        bytes = Uint8List.fromList(await file.readAsBytes());
       }
       if (bytes == null) return;
       final png = CompanyUploadedSealPng.fromBytes(bytes);
@@ -119,11 +122,13 @@ class _CompanySealPngUploaderState extends State<CompanySealPngUploader> {
     final settings = _settings;
     final png = _pending ?? settings?.png;
     if (_busy || settings == null || !settings.available || _source == null ||
-        (enabled && (png == null || _previewedHash != png.sha256))) return;
+        (enabled && (png == null || _previewedHash != png.sha256))) {
+      return;
+    }
     final generation = _generation;
     setState(() { _busy = true; _error = null; });
     try {
-      final result = await _source!.save(settings, png: enabled ? _pending : null, enabled: enabled);
+      final result = await _source.save(settings, png: enabled ? _pending : null, enabled: enabled);
       if (!mounted || generation != _generation) return;
       setState(() { _settings = result; _pending = null; _previewedHash = null; });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(enabled
