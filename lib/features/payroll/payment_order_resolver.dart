@@ -35,18 +35,35 @@ class PaymentOrderResolver {
     final payload = Map<String, dynamic>.from(defaults);
     final template = workspace['template'];
     if (template is Map) {
-      for (final key in ['intro_text', 'notes', 'payment_conditions']) {
-        if (template[key] is String) payload[key] = template[key];
+      for (final key in [
+        'intro_text',
+        'notes',
+        'payment_conditions',
+        'work_name',
+        'work_address',
+      ]) {
+        final value = template[key];
+        if (value is String &&
+            (!{'work_name', 'work_address'}.contains(key) ||
+                value.trim().isNotEmpty)) {
+          payload[key] = value;
+        }
       }
     }
-    payload.putIfAbsent('intro_text', () =>
-      '発注者（以下「甲」という）は、受注者（以下「乙」という）に対し、下記の通り工事を発注します。');
+    payload.putIfAbsent(
+      'intro_text',
+      () => '発注者（以下「甲」という）は、受注者（以下「乙」という）に対し、下記の通り工事を発注します。',
+    );
     payload.putIfAbsent('payment_conditions', () => '工事完了確認後、乙の指定口座に振り込む。');
     payload.putIfAbsent('notes', () => '');
     final result = TradeDocumentAttachment.fromJson({
       'version': 1,
-      'payload': r18InitialValues(payload: payload, sourceDefaults: defaults,
-        hasSavedAttachment: false, subjectKind: 'payment_certificate'),
+      'payload': r18InitialValues(
+        payload: payload,
+        sourceDefaults: defaults,
+        hasSavedAttachment: false,
+        subjectKind: 'payment_certificate',
+      ),
     });
     if (result.payload['kind'] != 'order') {
       throw StateError('注文書の種類を確認できません。');

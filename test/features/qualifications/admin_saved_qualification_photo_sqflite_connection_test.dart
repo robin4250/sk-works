@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite/sqflite.dart' show SqflitePlugin;
+import 'package:sqflite/sqflite.dart' show DatabaseException, SqflitePlugin;
 import 'package:sk_works/features/qualifications/admin_saved_qualification_photo_sqflite_connection.dart';
 import 'package:sk_works/features/qualifications/admin_saved_qualification_photo_sqlite_pending_store.dart';
 
@@ -220,7 +220,13 @@ void main() {
       connection.transaction(
         (txn) => txn.execute('INSERT INTO test VALUES (?)', [1]),
       ),
-      throwsA(isA<PlatformException>()),
+      throwsA(
+        isA<DatabaseException>().having(
+          (error) => error.toString(),
+          'commit acknowledgement',
+          contains('commit acknowledgement unavailable'),
+        ),
+      ),
     );
     await connection.closed;
     await expectLater(connection.query('SELECT 1', []), throwsStateError);

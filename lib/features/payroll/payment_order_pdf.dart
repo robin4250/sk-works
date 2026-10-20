@@ -1,3 +1,4 @@
+import 'payment_order_layout.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../domain/company_seal_snapshot.dart';
@@ -15,15 +16,14 @@ class PaymentOrderPdf {
   final seal=CompanySealSnapshot.fromJson(p['company_seal_snapshot']);
   final sealOn=p['company_seal_enabled']==true;
   final font=sealOn?await CompanySealPdf.loadStyleFont(seal.style):regularFont;
-  final all=p.toString().length;
-  final compact=all>1800;
+  final compact=paymentOrderUsesCompactLayout(p);
   final size=compact?8.0:10.0;
   pw.Widget text(String value,{bool bold=false})=>pw.Text(value,
    style:pw.TextStyle(font:bold?boldFont:regularFont,fontSize:size,lineSpacing:compact?0:2));
   pw.Widget field(String name,Object? value)=>pw.Padding(padding:pw.EdgeInsets.only(bottom:compact?3:7),child:text('$name：${value??''}'));
   pw.Widget party(String title,Map<String,dynamic> value,{bool own=false})=>pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:[
    text(title,bold:true),pw.SizedBox(height:5),field('社名','${value['name']}${own?'':'　御中'}'),field('住所',value['address']),
-   field('法人番号',value['corporate_number']),pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
+   field('法人番号',value['corporate_number']),pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.center,children:[
     pw.Expanded(child:field('代表者名',value['representative_name'])),
     if(own&&sealOn)CompanySealPdf.build(seal.registeredName(issuer['name'].toString()),font:font,companyId:seal.companyId,uploadedPng:seal.uploadedPng,
       fallbackFont:regularFont,style:seal.style,size:compact?40:48),]),]);

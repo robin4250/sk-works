@@ -54,8 +54,25 @@ try {
  await actor();t=await timeline();await publish(t,dates.next_key);
  await db.exec('reset role');await db.query('select private.refresh_automatic_payroll($1,$2,$3)',[cid,wid,dates.next_key]);
  assert.equal((await statement(dates.next_key)).gross_pay,302000);assert.equal((await statement(dates.month_key)).gross_pay,301000);
- await actor();settings=await save(settings,[extra(3000,settings.items[0].id)]);t=await timeline();const current=await publish(t,dates.month_key);
+ await actor();settings=await save(settings,[extra(3000,settings.items[0].id),{id:null,client_key:'common-day',section:'earning',unit:'day',name:'Common day',amount_yen:300}]);t=await timeline();const current=await publish(t,dates.month_key);
  assert.equal(current.recalculated_scopes,currentScopeCount,'next effective boundary excluded from recalculation');assert.equal((await statement(dates.month_key)).gross_pay,303000);assert.equal((await statement(dates.next_key)).gross_pay,302000);
+ // Exercise real existing attendance INSERT/UPDATE triggers, not explicit refresh calls.
+ // Same-day multi-site rows must count once; editing both to zero must remove the day.
+ await db.exec('reset role');
+ const attendance=(await db.query(`insert into public.attendance_entries(company_id,worker_id,site_id,work_date,work_category,base_man_days,overtime_hours,early_hours)
+  values($1,$2,'20000000-0000-0000-0000-000000000001',$3,'day',0.5,0,0),
+        ($1,$2,'20000000-0000-0000-0000-000000000002',$3,'day',0.5,0,0) returning id`,[cid,wid,dates.month_key])).rows;
+ let triggered=await statement(dates.month_key);
+ assert.equal(triggered.gross_pay,303300,'attendance insert includes the published daily allowance');
+ assert.equal(triggered.detail.unit_resolution.items.find(x=>x.origin==='company_common'&&x.unit==='day').quantity,1,'two sites on one day count once');
+ await db.query('update public.attendance_entries set base_man_days=0 where id=$1',[attendance[0].id]);
+ assert.equal((await statement(dates.month_key)).gross_pay,303300,'remaining positive visit retains the daily allowance');
+ await db.query('update public.attendance_entries set base_man_days=0 where id=$1',[attendance[1].id]);
+ triggered=await statement(dates.month_key);
+ assert.equal(triggered.gross_pay,303000,'attendance edit removes the allowance when no worked day remains');
+ assert.equal(triggered.detail.unit_resolution.items.find(x=>x.origin==='company_common'&&x.unit==='day').quantity,0);
+ assert.equal(triggered.net_pay,triggered.gross_pay-triggered.deductions);
+ console.log('PASS published common allowance through actual attendance INSERT/UPDATE triggers; same-day sites, retained/removed daily quantity, totals');
  await actor();await assert.rejects(publish(t,dates.month_key),/source conflict/);await actor(viewer);await assert.rejects(publish(await timeline(),dates.month_key),/access denied/);
  await actor();row=await statement(dates.month_key);await db.query('insert into public.payroll_confirmers(company_id,user_id,position) values($1,$2,1)',[cid,owner]);await db.query('insert into public.payroll_statement_reviews values($1,$2,$3,$3,now(),now())',[row.id,owner,row.revision]);await actor();await db.query('select public.finalize_payroll_statement($1,$2,true)',[row.id,row.revision]);const frozen=await statement(dates.month_key);
  await actor();settings=await save(settings,[extra(4000,settings.items[0].id)]);t=await timeline();const frozenResult=await publish(t,dates.month_key);assert.equal(frozenResult.recalculated_scopes,currentScopeCount-1);assert.deepEqual(await statement(dates.month_key),frozen);

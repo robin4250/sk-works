@@ -3,35 +3,75 @@ import 'package:sk_works/features/payroll/payment_order_resolver.dart';
 
 void main() {
   Map<String, dynamic> workspace() => {
-    'source_locked': false, 'source_blocked': false, 'source_changed': false,
+    'source_locked': false,
+    'source_blocked': false,
+    'source_changed': false,
     'attachment': null,
     'defaults': <String, dynamic>{
-      'version': 1, 'kind': 'order', 'month': '2026-01',
-      'issuer': {'name': '発注会社'}, 'counterparty': {'name': '受注会社'},
-      'company_seal_snapshot': {'version': 1, 'style': 'legacy', 'name': '発注会社'},
-      'company_seal_enabled': false, 'total_amount_yen': 110000,
-      'tax_amount_yen': 10000, 'invoice_subject': '対象工事',
+      'version': 1,
+      'kind': 'order',
+      'month': '2026-01',
+      'issuer': {'name': '発注会社'},
+      'counterparty': {'name': '受注会社'},
+      'company_seal_snapshot': {
+        'version': 1,
+        'style': 'legacy',
+        'name': '発注会社',
+      },
+      'company_seal_enabled': false,
+      'total_amount_yen': 110000,
+      'tax_amount_yen': 10000,
+      'invoice_subject': '対象工事',
     },
-    'template': {
-      'notes': '編集済み特記事項', 'payment_conditions': '翌月末払い',
-      'issuer': {'name': '別会社'}, 'total_amount_yen': 1,
-      'month': '2000-01', 'company_seal_enabled': true,
+    'template': <String, dynamic>{
+      'notes': '編集済み特記事項',
+      'payment_conditions': '翌月末払い',
+      'issuer': {'name': '別会社'},
+      'total_amount_yen': 1,
+      'month': '2000-01',
+      'company_seal_enabled': true,
     },
   };
 
-  test('unsaved order uses source parties amounts month seal and prose only', () {
+  test(
+    'unsaved order uses source parties amounts month seal and prose only',
+    () {
+      final data = workspace();
+      final result = PaymentOrderResolver.resolve(data)!;
+      expect(result.payload['issue_date'], '2025-12-15');
+      expect(result.payload['work_name'], '対象工事');
+      expect(result.payload['issuer'], {'name': '発注会社'});
+      expect(result.payload['total_amount_yen'], 110000);
+      expect(result.payload['month'], '2026-01');
+      expect(result.payload['company_seal_enabled'], false);
+      expect(result.payload['payment_conditions'], '翌月末払い');
+      expect(result.payload['notes'], '編集済み特記事項');
+      expect((data['defaults'] as Map).containsKey('issue_date'), false);
+      expect(data['attachment'], isNull);
+    },
+  );
+
+  test('configured work name and location reach the automatic order', () {
     final data = workspace();
+    (data['template'] as Map).addAll(<String, dynamic>{
+      'work_name': '設定した工事',
+      'work_address': '設定した場所',
+    });
     final result = PaymentOrderResolver.resolve(data)!;
-    expect(result.payload['issue_date'], '2025-12-15');
+    expect(result.payload['work_name'], '設定した工事');
+    expect(result.payload['work_address'], '設定した場所');
+    data['attachment'] = {'version': 2, 'payload': result.payload};
+    (data['template'] as Map)['work_name'] = '後日の変更';
+    expect(PaymentOrderResolver.resolve(data)!.payload['work_name'], '設定した工事');
+  });
+
+  test('blank configured text preserves authorized source values', () {
+    final data = workspace();
+    (data['defaults'] as Map)['work_address'] = '元帳票の場所';
+    (data['template'] as Map).addAll(<String, dynamic>{'work_name': ' ', 'work_address': ''});
+    final result = PaymentOrderResolver.resolve(data)!;
     expect(result.payload['work_name'], '対象工事');
-    expect(result.payload['issuer'], {'name': '発注会社'});
-    expect(result.payload['total_amount_yen'], 110000);
-    expect(result.payload['month'], '2026-01');
-    expect(result.payload['company_seal_enabled'], false);
-    expect(result.payload['payment_conditions'], '翌月末払い');
-    expect(result.payload['notes'], '編集済み特記事項');
-    expect((data['defaults'] as Map).containsKey('issue_date'), false);
-    expect(data['attachment'], isNull);
+    expect(result.payload['work_address'], '元帳票の場所');
   });
 
   test('saved edited appendix wins including on locked source', () {
@@ -59,9 +99,15 @@ void main() {
 
   test('changed blocked unknown readiness and wrong kind cannot generate', () {
     for (final key in ['source_changed', 'source_blocked']) {
-      expect(() => PaymentOrderResolver.resolve(workspace()..[key] = true), throwsStateError);
+      expect(
+        () => PaymentOrderResolver.resolve(workspace()..[key] = true),
+        throwsStateError,
+      );
     }
-    expect(() => PaymentOrderResolver.resolve(workspace()..remove('source_locked')), throwsStateError);
+    expect(
+      () => PaymentOrderResolver.resolve(workspace()..remove('source_locked')),
+      throwsStateError,
+    );
     final data = workspace();
     (data['defaults'] as Map)['kind'] = 'acceptance';
     expect(() => PaymentOrderResolver.resolve(data), throwsStateError);

@@ -47,7 +47,10 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       _version=saved is Map?saved['version'] as int:0;
       if(_version==0||data['source_changed']==true){
         final defaults=data['template'] is Map?Map<String,dynamic>.from(data['template'] as Map):<String,dynamic>{};
-        for(final entry in defaults.entries){_payload[entry.key]=entry.value;}
+        for(final key in ['intro_text','acceptance_text','payment_conditions','notes',if(_order)'work_name',if(_order)'work_address']){
+          final value=defaults[key];
+          if(value is String&&(!{'work_name','work_address'}.contains(key)||value.trim().isNotEmpty))_payload[key]=value;
+        }
         _payload.putIfAbsent('intro_text',()=> '発注者（以下「甲」という）は、受注者（以下「乙」という）に対し、下記の通り工事を発注します。');
         _payload.putIfAbsent('acceptance_text',()=> '乙は、貴殿から受領した{order_date}付の注文書記載の条件通り、本工事を請け負うことを承諾いたします。');
         _payload.putIfAbsent('payment_conditions',()=> '工事完了確認後、乙の指定口座に振り込む。');
