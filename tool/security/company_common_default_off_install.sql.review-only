@@ -1,0 +1,1120 @@
+-- REVIEW ONLY. No deployment runner is provided. Keep all output private.
+BEGIN;
+SET LOCAL lock_timeout='3s';SET LOCAL statement_timeout='120s';
+LOCK TABLE public.company_rate_settings IN SHARE ROW EXCLUSIVE MODE;
+CREATE TEMP TABLE sko_common_install_checkpoints(side text PRIMARY KEY,checkpoint jsonb NOT NULL,all_application_rows_hash text) ON COMMIT PRESERVE ROWS;
+CREATE TEMP TABLE common_data_fingerprints(name text PRIMARY KEY,hash text);
+DO $hash$ DECLARE r record; h text; BEGIN
+ FOR r IN SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE (n.nspname IN ('public','private','auth') OR n.nspname LIKE 'payroll\_%' ESCAPE '\' OR n.nspname LIKE '%\_private' ESCAPE '\') AND n.nspname NOT IN ('company_allowance_identity_private','company_common_allowance_private') AND c.relkind='r' ORDER BY n.nspname,c.relname LOOP
+ EXECUTE format('SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),''[]'')::text) FROM %I.%I x',r.nspname,r.relname) INTO h;
+ INSERT INTO common_data_fingerprints VALUES(r.nspname||'.'||r.relname,h);
+ END LOOP;
+END $hash$;
+
+INSERT INTO sko_common_install_checkpoints(side,checkpoint) SELECT 'before',jsonb_build_object('schema',1,'source_hashes','{"supabase/migrations/20261009201229_company_allowance_identity_lifecycle.sql":"edacd1d8aac3ac0dd7219954192871725782369c82824173b2c73afe8aad3c3d","tool/staged_company_common_allowances.sql.review-only":"8f4c3b1b1cd07519174c88441c5e4b7eea325bbdd99b6ae455897b04e9786e46","docs/candidates/company_common_payroll_bridge_20261020.sql.review-only":"043fa73f7f997c67df21e4544073febe6f351d82f1fcd1b2771c953dd92e1d45","docs/candidates/company_common_payroll_effective_20261020.sql.review-only":"3a6aa28e29de9aee6cbd2464df2cc4361806ccad0aa55f901ec89e1f399eb023"}'::jsonb,'catalog',(SELECT jsonb_build_object('hash',md5(v::text),'catalog',v) FROM (SELECT jsonb_build_object(
+ 'schemas',(SELECT coalesce(jsonb_agg(jsonb_build_array(n.oid,n.nspname,n.nspowner,n.nspacl) ORDER BY n.oid),'[]') FROM pg_namespace n WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'relations',(SELECT coalesce(jsonb_agg(jsonb_build_array(c.oid,c.relname,c.relkind,c.relowner,c.relacl,c.relrowsecurity,c.relforcerowsecurity,c.reloptions) ORDER BY c.oid),'[]') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'attributes',(SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY a.attrelid,a.attnum),'[]') FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'functions',(SELECT coalesce(jsonb_agg(jsonb_build_array(p.oid,pg_get_functiondef(p.oid),p.proowner,p.proacl,p.proconfig,p.prosecdef) ORDER BY p.oid),'[]') FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE (n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema') AND p.prokind IN ('f','p')),
+ 'policies',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.oid),'[]') FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'triggers',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.oid),'[]') FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema')
+,
+ 'constraints',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_constraint x JOIN pg_namespace n ON n.oid=x.connamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'indexes',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.indexrelid),'[]') FROM pg_index x JOIN pg_class c ON c.oid=x.indrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'defaults',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_attrdef x JOIN pg_class c ON c.oid=x.adrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'types',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_type x JOIN pg_namespace n ON n.oid=x.typnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'enums',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_enum x JOIN pg_type t ON t.oid=x.enumtypid JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'rules',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_rewrite x JOIN pg_class c ON c.oid=x.ev_class JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'comments',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.classoid,x.objoid,x.objsubid),'[]') FROM pg_description x),
+ 'security_labels',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.classoid,x.objoid,x.objsubid,x.provider),'[]') FROM pg_seclabel x),
+ 'default_acls',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_default_acl x),
+ 'dependencies',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.classid,x.objid,x.objsubid,x.refclassid,x.refobjid,x.refobjsubid,x.deptype),'[]') FROM pg_depend x WHERE
+ (x.classid='pg_proc'::regclass AND x.objid IN(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_class'::regclass AND x.objid IN(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_type'::regclass AND x.objid IN(SELECT t.oid FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_constraint'::regclass AND x.objid IN(SELECT c.oid FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_rewrite'::regclass AND x.objid IN(SELECT r.oid FROM pg_rewrite r JOIN pg_class c ON c.oid=r.ev_class JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_attrdef'::regclass AND x.objid IN(SELECT d.oid FROM pg_attrdef d JOIN pg_class c ON c.oid=d.adrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))),
+ 'event_triggers',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_event_trigger x),
+ 'database',(SELECT jsonb_build_array(oid,datname,datdba,datacl,datallowconn) FROM pg_database WHERE datname=current_database()),
+ 'roles',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_roles x)
+) v) checkpoint),'functions',(SELECT coalesce(jsonb_agg(jsonb_build_object(
+ 'oid',p.oid,'name',n.nspname||'.'||p.proname,
+ 'signature',n.nspname||'.'||p.proname||'('||oidvectortypes(p.proargtypes)||')',
+ 'definition',pg_get_functiondef(p.oid),'owner',pg_get_userbyid(p.proowner),'owner_oid',p.proowner,'acl',p.proacl,'config',p.proconfig,'definer',p.prosecdef)
+ ORDER BY p.oid),'[]') FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE (n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema') AND p.prokind='f'),'business_hash',(SELECT md5(coalesce(jsonb_agg(jsonb_build_array(name,hash) ORDER BY name),'[]')::text) FROM common_data_fingerprints));
+DROP TABLE common_data_fingerprints;
+CREATE TEMP TABLE common_data_fingerprints(name text PRIMARY KEY,hash text);
+DO $hash$ DECLARE r record; h text; BEGIN
+ FOR r IN SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE (n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema') AND n.nspname NOT IN ('company_allowance_identity_private','company_common_allowance_private') AND c.relkind='r' ORDER BY n.nspname,c.relname LOOP
+ EXECUTE format('SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),''[]'')::text) FROM %I.%I x',r.nspname,r.relname) INTO h;
+ INSERT INTO common_data_fingerprints VALUES(r.nspname||'.'||r.relname,h);
+ END LOOP;
+END $hash$;
+
+UPDATE sko_common_install_checkpoints SET all_application_rows_hash=(SELECT md5(coalesce(jsonb_agg(jsonb_build_array(name,hash) ORDER BY name),'[]')::text) FROM common_data_fingerprints) WHERE side='before';
+DROP TABLE common_data_fingerprints;
+DO $guard$ BEGIN
+ IF to_regnamespace('company_allowance_identity_private') IS NOT NULL OR to_regnamespace('company_common_allowance_private') IS NOT NULL
+ THEN RAISE EXCEPTION 'new common schemas already exist'; END IF;
+ IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)')) IS DISTINCT FROM '5c51172a6169beb90a7ddbb6ae443cd6'
+ OR (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('payroll_unit_private.read_conditions(uuid,uuid,date)')) IS DISTINCT FROM 'cf298ba4b1e848ab89a67623f7466bcd'
+ THEN RAISE EXCEPTION 'existing unit prerequisite differs; never reinstall older unit migration'; END IF;
+END $guard$;
+-- STAGED ONLY. No data backfill, payroll caller, quantity writer or UI adoption.
+-- Replaces #840's derived company+slot identity for LEGACY slots only.
+-- Existing name/amount/unit columns remain the single current pricing source.
+create schema company_allowance_identity_private;
+revoke all on schema company_allowance_identity_private from public,anon,authenticated;
+create table company_allowance_identity_private.state (
+ company_id uuid primary key, version bigint not null check(version>=1),
+ adopted_by uuid not null, adopted_at timestamptz not null default clock_timestamp()
+);
+create table company_allowance_identity_private.identities (
+ id uuid primary key default gen_random_uuid(), company_id uuid not null,
+ slot integer not null check(slot between 1 and 3), generation bigint not null check(generation>0),
+ created_by uuid not null, created_at timestamptz not null default clock_timestamp(),
+ retired_by uuid, retired_at timestamptz,
+ unique(company_id,slot,generation), unique(company_id,id),
+ check((retired_by is null)=(retired_at is null))
+);
+create unique index company_allowance_one_active_slot on company_allowance_identity_private.identities(company_id,slot) where retired_at is null;
+create index company_allowance_identity_recent on company_allowance_identity_private.identities(company_id,created_at desc,id);
+create table company_allowance_identity_private.history (
+ company_id uuid not null,version bigint not null,actor_id uuid not null,
+ changed_at timestamptz not null default clock_timestamp(),
+ event text not null check(event in ('adopt','settings_update')),
+ before_value jsonb,after_value jsonb not null,
+ primary key(company_id,version)
+);
+alter table company_allowance_identity_private.state enable row level security;
+alter table company_allowance_identity_private.identities enable row level security;
+alter table company_allowance_identity_private.history enable row level security;
+revoke all on all tables in schema company_allowance_identity_private from public,anon,authenticated;
+
+-- Pure fixed-field extraction: no generic serialization or second price master.
+create function company_allowance_identity_private.slots(r public.company_rate_settings)
+returns jsonb language sql immutable set search_path='' as $$
+ select jsonb_build_array(
+ jsonb_build_object('slot',1,'name',r.allowance_1_name,'unit',r.allowance_1_unit,'amount_yen',r.allowance_1_amount_yen),
+ jsonb_build_object('slot',2,'name',r.allowance_2_name,'unit',r.allowance_2_unit,'amount_yen',r.allowance_2_amount_yen),
+ jsonb_build_object('slot',3,'name',r.allowance_3_name,'unit',r.allowance_3_unit,'amount_yen',r.allowance_3_amount_yen))
+$$;
+create function company_allowance_identity_private.authorize(cid uuid,editing boolean)
+returns void language plpgsql stable security definer set search_path='' as $$
+begin
+ if auth.uid() is null or private.account_access_allowed() is distinct from true
+ or not exists(select 1 from public.companies where id=cid)
+ or not exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid()
+ and (not editing or role::text in ('owner','admin'))) then
+ raise exception 'company allowance access denied' using errcode='42501';end if;
+end$$;
+
+-- Called while the existing company settings row is locked. Enrollment is explicit.
+-- Only blank -> nonblank allocates a new generation; nonblank rename keeps the ID.
+create function company_allowance_identity_private.advance(r public.company_rate_settings)
+returns void language plpgsql security definer set search_path='' as $$
+declare item jsonb; current_id uuid; next_generation bigint;
+begin
+ for item in select value from jsonb_array_elements(company_allowance_identity_private.slots(r)) loop
+  select id into current_id from company_allowance_identity_private.identities
+  where company_id=r.company_id and slot=(item->>'slot')::integer and retired_at is null;
+  if nullif(btrim(item->>'name'),'') is null then
+   if current_id is not null then update company_allowance_identity_private.identities
+   set retired_by=auth.uid(),retired_at=clock_timestamp() where id=current_id;end if;
+  elsif current_id is null then
+   select coalesce(max(generation),0)+1 into next_generation
+   from company_allowance_identity_private.identities where company_id=r.company_id and slot=(item->>'slot')::integer;
+   insert into company_allowance_identity_private.identities(company_id,slot,generation,created_by)
+   values(r.company_id,(item->>'slot')::integer,next_generation,auth.uid());
+  end if;
+ end loop;
+end$$;
+create function company_allowance_identity_private.current_value(r public.company_rate_settings)
+returns jsonb language sql stable set search_path='' as $$
+ select coalesce(jsonb_agg(item||jsonb_build_object('id',i.id,'generation',i.generation) order by i.slot),'[]')
+ from jsonb_array_elements(company_allowance_identity_private.slots(r)) item
+ join company_allowance_identity_private.identities i on i.company_id=r.company_id and i.slot=(item->>'slot')::integer and i.retired_at is null
+$$;
+
+-- Existing writers remain unchanged. Every enrolled row UPDATE advances version;
+-- the combined saver updates twice. Old clients must not assume version +1.
+create function company_allowance_identity_private.track_settings() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare v bigint; before_state jsonb;
+begin
+ if new.company_id is distinct from old.company_id then
+  if exists(select 1 from company_allowance_identity_private.state where company_id in (old.company_id,new.company_id)) then
+   raise exception 'adopted allowance company identity cannot change';end if;
+  return new;
+ end if;
+ select version into v from company_allowance_identity_private.state where company_id=new.company_id for update;
+ if not found then return new;end if;
+ perform company_allowance_identity_private.authorize(new.company_id,true);
+ before_state:=company_allowance_identity_private.current_value(old);
+ perform company_allowance_identity_private.advance(new);
+ update company_allowance_identity_private.state set version=v+1 where company_id=new.company_id;
+ insert into company_allowance_identity_private.history(company_id,version,actor_id,event,before_value,after_value)
+ values(new.company_id,v+1,auth.uid(),'settings_update',before_state,company_allowance_identity_private.current_value(new));
+ return new;
+end$$;
+create trigger company_allowance_identity_track before update on public.company_rate_settings
+for each row execute function company_allowance_identity_private.track_settings();
+
+-- Deleting/reinserting settings would otherwise reconnect active IDs to new values.
+-- Enrollment stops destructive settings-row replacement while the company exists.
+-- Parent-company cascades may remove settings; private history has no cascading FK
+-- and remains inaccessible once the company is gone.
+create function company_allowance_identity_private.prevent_settings_delete() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ if exists(select 1 from public.companies where id=old.company_id)
+ and exists(select 1 from company_allowance_identity_private.state where company_id=old.company_id) then
+ raise exception 'adopted allowance settings require explicit retirement before deletion';end if;
+ return old;
+end$$;
+create trigger company_allowance_identity_no_delete before delete on public.company_rate_settings
+for each row execute function company_allowance_identity_private.prevent_settings_delete();
+
+-- True INSERT only: does not reject the INSERT side of a legacy ON CONFLICT
+-- UPDATE. A deleted/recreated company with the same UUID must not reuse history.
+create function company_allowance_identity_private.prevent_reinsert() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ if exists(select 1 from company_allowance_identity_private.state where company_id=new.company_id) then
+ raise exception 'adopted allowance company identity cannot be recreated';end if;
+ return new;
+end$$;
+create trigger company_allowance_identity_no_reinsert after insert on public.company_rate_settings
+for each row execute function company_allowance_identity_private.prevent_reinsert();
+
+create function company_allowance_identity_private.admin_state(cid uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare r public.company_rate_settings%rowtype; s company_allowance_identity_private.state%rowtype;
+begin
+ perform company_allowance_identity_private.authorize(cid,true);
+ select * into r from public.company_rate_settings where company_id=cid;
+ if not found then raise exception 'company allowance settings missing' using errcode='22023';end if;
+ select * into s from company_allowance_identity_private.state where company_id=cid;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'adopted',s.company_id is not null,'version',coalesce(s.version,0),
+ 'observed_slots',company_allowance_identity_private.slots(r),'items',company_allowance_identity_private.current_value(r),
+ 'identities',coalesce((select jsonb_agg(to_jsonb(i) order by slot,generation) from (select * from company_allowance_identity_private.identities where company_id=cid order by created_at desc,id limit 100) i),'[]'),
+ 'history',coalesce((select jsonb_agg(to_jsonb(h) order by version) from (select * from company_allowance_identity_private.history where company_id=cid order by version desc limit 100) h),'[]'),
+ 'history_before_version',case when exists(select 1 from company_allowance_identity_private.history where company_id=cid order by version desc offset 100 limit 1)
+ then (select min(version) from (select version from company_allowance_identity_private.history where company_id=cid order by version desc limit 100) h) end);
+end$$;
+create function company_allowance_identity_private.history_page(cid uuid,p_before_version bigint,p_limit integer) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare entries jsonb;oldest bigint;
+begin
+ perform company_allowance_identity_private.authorize(cid,true);
+ if p_limit is null or p_limit not between 1 and 100 or (p_before_version is not null and p_before_version<1) then raise exception 'invalid history page' using errcode='22023';end if;
+ select coalesce(jsonb_agg(to_jsonb(h) order by version desc),'[]'),min(version) into entries,oldest
+ from (select * from company_allowance_identity_private.history where company_id=cid and (p_before_version is null or version<p_before_version) order by version desc limit p_limit) h;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'entries',entries,'before_version',case when exists(select 1 from company_allowance_identity_private.history where company_id=cid and version<oldest) then oldest end);
+end$$;
+create function company_allowance_identity_private.adopt(cid uuid,observed_slots jsonb,confirmed boolean)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare r public.company_rate_settings%rowtype;
+begin
+ perform company_allowance_identity_private.authorize(cid,true);
+ if confirmed is not true then raise exception 'explicit allowance adoption confirmation required' using errcode='22023';end if;
+ -- Match the existing rate saver: company first, then settings. Future quantity
+ -- integration must add worker/month locks between these, never reverse order.
+ perform 1 from public.companies where id=cid for update;
+ if not found then raise exception 'company allowance access denied' using errcode='42501';end if;
+ select * into r from public.company_rate_settings where company_id=cid for update;
+ if not found then raise exception 'company allowance settings missing' using errcode='22023';end if;
+ if exists(select 1 from company_allowance_identity_private.state where company_id=cid) then raise exception 'allowance identity already adopted' using errcode='40001';end if;
+ if observed_slots is distinct from company_allowance_identity_private.slots(r) then raise exception 'allowance source version conflict' using errcode='40001';end if;
+ insert into company_allowance_identity_private.state(company_id,version,adopted_by) values(cid,1,auth.uid());
+ perform company_allowance_identity_private.advance(r);
+ insert into company_allowance_identity_private.history(company_id,version,actor_id,event,after_value)
+ values(cid,1,auth.uid(),'adopt',company_allowance_identity_private.current_value(r));
+ return company_allowance_identity_private.admin_state(cid);
+end$$;
+create function company_allowance_identity_private.labels(cid uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare r public.company_rate_settings%rowtype; v bigint;
+begin
+ perform company_allowance_identity_private.authorize(cid,false);
+ select * into r from public.company_rate_settings where company_id=cid;
+ select version into v from company_allowance_identity_private.state where company_id=cid;
+ if r.company_id is null or v is null then raise exception 'allowance identity not adopted' using errcode='55000';end if;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'version',v,'items',coalesce((
+ select jsonb_agg(jsonb_build_object('id',item->>'id','name',item->>'name','unit',item->>'unit','generation',item->'generation') order by item->>'slot')
+ from jsonb_array_elements(company_allowance_identity_private.current_value(r)) item),'[]'));
+end$$;
+create function company_allowance_identity_private.edit_slot(cid uuid,p_slot integer,p_expected_version bigint,p_name text,p_unit text,p_amount_yen integer,p_confirmed boolean)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare r public.company_rate_settings%rowtype;v bigint;
+begin
+ perform company_allowance_identity_private.authorize(cid,true);
+ if p_confirmed is not true or p_slot is null or p_slot not between 1 and 3 or p_name is null or length(btrim(p_name))>80
+ or p_unit is null or nullif(btrim(p_unit),'') is null or length(btrim(p_unit))>12 or p_amount_yen is null or p_amount_yen<0 then
+ raise exception 'invalid allowance fields or confirmation' using errcode='22023';end if;
+ perform 1 from public.companies where id=cid for update;
+ if not found then raise exception 'company allowance access denied' using errcode='42501';end if;
+ select * into r from public.company_rate_settings where company_id=cid for update;
+ select version into v from company_allowance_identity_private.state where company_id=cid;
+ if r.company_id is null or v is null then raise exception 'allowance identity not adopted' using errcode='55000';end if;
+ if p_expected_version is null or p_expected_version<>v then raise exception 'allowance identity version conflict' using errcode='40001';end if;
+ update public.company_rate_settings set
+ allowance_1_name=case when p_slot=1 then p_name else allowance_1_name end,
+ allowance_1_unit=case when p_slot=1 then p_unit else allowance_1_unit end,
+ allowance_1_amount_yen=case when p_slot=1 then p_amount_yen else allowance_1_amount_yen end,
+ allowance_2_name=case when p_slot=2 then p_name else allowance_2_name end,
+ allowance_2_unit=case when p_slot=2 then p_unit else allowance_2_unit end,
+ allowance_2_amount_yen=case when p_slot=2 then p_amount_yen else allowance_2_amount_yen end,
+ allowance_3_name=case when p_slot=3 then p_name else allowance_3_name end,
+ allowance_3_unit=case when p_slot=3 then p_unit else allowance_3_unit end,
+ allowance_3_amount_yen=case when p_slot=3 then p_amount_yen else allowance_3_amount_yen end,
+ updated_by=auth.uid(),updated_at=clock_timestamp()
+ where company_id=cid;
+ return company_allowance_identity_private.admin_state(cid);
+end$$;
+
+revoke all on all functions in schema company_allowance_identity_private from public,anon,authenticated;
+grant usage on schema company_allowance_identity_private to authenticated;
+grant execute on function company_allowance_identity_private.admin_state(uuid),company_allowance_identity_private.adopt(uuid,jsonb,boolean),company_allowance_identity_private.labels(uuid),company_allowance_identity_private.edit_slot(uuid,integer,bigint,text,text,integer,boolean),company_allowance_identity_private.history_page(uuid,bigint,integer) to authenticated;
+create function public.read_company_allowance_identity_history(p_company_id uuid,p_before_version bigint default null,p_limit integer default 50) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_allowance_identity_private.history_page(p_company_id,p_before_version,p_limit)$$;
+revoke all on function public.read_company_allowance_identity_history(uuid,bigint,integer) from public,anon;
+grant execute on function public.read_company_allowance_identity_history(uuid,bigint,integer) to authenticated;
+create function public.read_company_allowance_identity_admin(p_company_id uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_allowance_identity_private.admin_state(p_company_id)$$;
+create function public.adopt_company_allowance_identity(p_company_id uuid,p_observed_slots jsonb,p_confirmed boolean) returns jsonb
+language sql security invoker set search_path='' as $$select company_allowance_identity_private.adopt(p_company_id,p_observed_slots,p_confirmed)$$;
+create function public.read_company_allowance_identity_labels(p_company_id uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_allowance_identity_private.labels(p_company_id)$$;
+create function public.save_company_allowance_identity_slot(p_company_id uuid,p_slot integer,p_expected_version bigint,p_name text,p_unit text,p_amount_yen integer,p_confirmed boolean) returns jsonb
+language sql security invoker set search_path='' as $$select company_allowance_identity_private.edit_slot(p_company_id,p_slot,p_expected_version,p_name,p_unit,p_amount_yen,p_confirmed)$$;
+revoke all on function public.read_company_allowance_identity_admin(uuid),public.adopt_company_allowance_identity(uuid,jsonb,boolean),public.read_company_allowance_identity_labels(uuid),public.save_company_allowance_identity_slot(uuid,integer,bigint,text,text,integer,boolean) from public,anon;
+grant execute on function public.read_company_allowance_identity_admin(uuid),public.adopt_company_allowance_identity(uuid,jsonb,boolean),public.read_company_allowance_identity_labels(uuid),public.save_company_allowance_identity_slot(uuid,integer,bigint,text,text,integer,boolean) to authenticated;
+
+-- REVIEW ONLY, outside migrations. No production application or payroll caller.
+-- Old three slots remain canonical in company_rate_settings and keep the existing
+-- random-UUID lifecycle. Extras use one new catalog; no payroll/daily writes.
+
+set local lock_timeout = '5s';
+-- Fail closed on baseline source drift. Install/review the existing staged legacy
+-- lifecycle separately; this candidate does not replace it or its privileges.
+do $guard$ begin
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='slots' and md5(p.prosrc)='08dd77edfe0b00d0eb19dbe66d8ac00e' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is false and has_function_privilege('authenticated',p.oid,'EXECUTE') is false and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='authorize' and md5(p.prosrc)='5ea0f7018e87c041776be016c713587f' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is false and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='advance' and md5(p.prosrc)='88bd7ea35e6b37d86569571995f655fd' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is false and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='current_value' and md5(p.prosrc)='3e2c6cd120c22e297e6cbc7656a8faa9' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is false and has_function_privilege('authenticated',p.oid,'EXECUTE') is false and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='track_settings' and md5(p.prosrc)='a518232a914a4b498a3a7a04a6e92bbd' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is false and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='prevent_settings_delete' and md5(p.prosrc)='ccc2d457a0ad85c4b4d02bcb14bec031' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is false and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='prevent_reinsert' and md5(p.prosrc)='13ce1c6eff6617e855f10e299716efb9' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is false and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='admin_state' and md5(p.prosrc)='07c8fdc8fe3602ac962596c7caa98206' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is true and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='history_page' and md5(p.prosrc)='1714d3e87f40c0c8de37715097f15de4' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is true and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='adopt' and md5(p.prosrc)='282c9d6682afce8ec7c355a90cb77d8c' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is true and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='labels' and md5(p.prosrc)='835f268de21abf694c10ccf764477543' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is true and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+ if not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='company_allowance_identity_private' and p.proname='edit_slot' and md5(p.prosrc)='7be66e2c3a683e522b44ede1d8205647' and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=""'] and p.prosecdef is true and has_function_privilege('authenticated',p.oid,'EXECUTE') is true and not has_function_privilege('anon',p.oid,'EXECUTE') and not has_function_privilege('service_role',p.oid,'EXECUTE')) then raise exception 'legacy allowance source baseline drift' using errcode='55000';end if;
+end $guard$;
+do $guard$ begin
+ if not exists(select 1 from pg_proc p where p.oid='public.my_attendance_allowance_units()'::regprocedure
+ and md5(p.prosrc)='17310735021c3a953a093ed196261468' and p.prosecdef
+ and pg_get_userbyid(p.proowner)=current_user and p.proconfig=array['search_path=public, pg_temp']
+ and has_function_privilege('authenticated',p.oid,'EXECUTE') and not has_function_privilege('anon',p.oid,'EXECUTE')) then
+ raise exception 'attendance allowance unit source baseline drift' using errcode='55000';end if;
+end $guard$;
+create schema company_common_allowance_private;
+revoke all on schema company_common_allowance_private from public,anon,authenticated,service_role;
+create table company_common_allowance_private.state (
+ company_id uuid primary key, version bigint not null check(version between 0 and 9007199254740991),
+ created_by uuid not null, created_at timestamptz not null default clock_timestamp()
+);
+create table company_common_allowance_private.items (
+ id uuid primary key default gen_random_uuid(),company_id uuid not null,
+ payroll_type text not null check(payroll_type in ('daily','hourly','monthly')),
+ section text not null check(section in ('earning','deduction')),
+ unit text not null check(unit in ('hour','day','month')),
+ name text not null check(length(name) between 1 and 80 and name=btrim(name)),
+ amount_yen integer not null check(amount_yen>=0),position integer not null check(position>=0),
+ created_by uuid not null,created_at timestamptz not null default clock_timestamp(),
+ updated_by uuid not null,updated_at timestamptz not null default clock_timestamp(),
+ retired_by uuid,retired_at timestamptz,
+ unique(company_id,id),check((retired_by is null)=(retired_at is null))
+);
+create index company_common_allowance_active on company_common_allowance_private.items(company_id,payroll_type,position,id) where retired_at is null;
+create table company_common_allowance_private.history (
+ company_id uuid not null,version bigint not null,actor_id uuid not null,
+ changed_at timestamptz not null default clock_timestamp(),payroll_type text,
+ request_id uuid not null,operation text not null,before_value jsonb not null,after_value jsonb not null,
+ primary key(company_id,version)
+);
+-- Price-free compatibility baseline, created only by an explicit allowance save.
+create table company_common_allowance_private.unit_aliases (
+ company_id uuid primary key,units jsonb not null check(jsonb_typeof(units)='object'),
+ observations jsonb not null default '{}'::jsonb check(jsonb_typeof(observations)='object'),
+ adopted_by uuid not null,adopted_at timestamptz not null default clock_timestamp()
+);
+alter table company_common_allowance_private.unit_aliases enable row level security;
+create table company_common_allowance_private.requests (
+ company_id uuid not null,request_id uuid not null,actor_id uuid not null,
+ payroll_type text,operation text not null,expected_version bigint not null,
+ request_payload jsonb not null,committed_version bigint not null,result jsonb not null,
+ primary key(company_id,request_id)
+);
+alter table company_common_allowance_private.state enable row level security;
+alter table company_common_allowance_private.items enable row level security;
+alter table company_common_allowance_private.history enable row level security;
+alter table company_common_allowance_private.requests enable row level security;
+revoke all on all tables in schema company_common_allowance_private from public,anon,authenticated,service_role;
+
+-- Exactly the old RPC's trim/default/duplicate-key-winner projection, not price.
+create function company_common_allowance_private.current_units(cid uuid) returns jsonb
+language sql stable set search_path='' as $$
+ select jsonb_strip_nulls(jsonb_build_object(
+ coalesce(nullif(trim(r.allowance_1_name),''),'__none1'),coalesce(nullif(trim(r.allowance_1_unit),''),'回'),
+ coalesce(nullif(trim(r.allowance_2_name),''),'__none2'),coalesce(nullif(trim(r.allowance_2_unit),''),'回'),
+ coalesce(nullif(trim(r.allowance_3_name),''),'__none3'),coalesce(nullif(trim(r.allowance_3_unit),''),'回')))-'__none1'-'__none2'-'__none3'
+ from public.company_rate_settings r where r.company_id=cid
+$$;
+create function company_common_allowance_private.protect_unit_aliases() returns trigger
+language plpgsql volatile security definer set search_path='' as $$
+declare baseline jsonb;current_map jsonb;observed jsonb;xid text:=pg_postmaster_start_time()::text||':'||pg_current_xact_id()::text;
+begin
+ select units,observations into baseline,observed from company_common_allowance_private.unit_aliases where company_id=new.company_id for update;
+ if not found then return new;end if;
+ current_map:=company_common_allowance_private.current_units(new.company_id);
+ if exists(select 1 from jsonb_each(current_map) x where baseline ? x.key and baseline->x.key is distinct from x.value and observed->>x.key is distinct from xid) then
+  raise exception 'past allowance display unit requires dated compatibility' using errcode='22023';end if;
+ select observed||coalesce(jsonb_object_agg(x.key,to_jsonb(xid)) filter(where not(baseline ? x.key)),'{}'::jsonb) into observed from jsonb_each(current_map) x;
+ update company_common_allowance_private.unit_aliases set units=baseline||current_map,observations=observed where company_id=new.company_id;
+ return new;
+end $$;
+create trigger company_common_allowance_unit_compat after update on public.company_rate_settings
+for each row execute function company_common_allowance_private.protect_unit_aliases();
+create function company_common_allowance_private.merge_unit_aliases(cid uuid,current_map jsonb) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+begin
+ -- Keep original ordinary-member visibility, not the new admin price scope.
+ if auth.uid() is null or not exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid()) then
+  raise exception 'attendance allowance access denied' using errcode='42501';end if;
+ if not exists(select 1 from public.companies where id=cid) then return coalesce(current_map,'{}'::jsonb);end if;
+ return coalesce((select a.units from company_common_allowance_private.unit_aliases a where a.company_id=cid),'{}'::jsonb)||coalesce(current_map,'{}'::jsonb);
+end $$;
+create function company_common_allowance_private.session_id() returns uuid
+language plpgsql stable security definer set search_path='' as $$
+declare claims jsonb:=auth.jwt();sid text:=claims->>'session_id';
+begin
+ if auth.uid() is null or private.account_access_allowed() is not true
+ or claims->>'role' is distinct from 'authenticated' or claims->>'is_anonymous'='true'
+ or sid is null or sid !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+ or not exists(select 1 from auth.sessions where id=sid::uuid and user_id=auth.uid() and (not_after is null or not_after>clock_timestamp())) then
+  raise exception 'company common allowance session unavailable' using errcode='42501';end if;
+ return sid::uuid;
+end $$;
+create function company_common_allowance_private.authorize(cid uuid,editing boolean) returns boolean
+language plpgsql stable security definer set search_path='' as $$
+declare actor_role text;
+begin
+ perform company_common_allowance_private.session_id();
+ if not exists(select 1 from public.companies where id=cid) then
+  raise exception 'company common allowance access denied' using errcode='42501';end if;
+ select role::text into actor_role from public.company_members where company_id=cid and user_id=auth.uid();
+ if actor_role is null or actor_role not in ('owner','admin','viewer')
+ or (editing and actor_role not in ('owner','admin')) then
+  raise exception 'company common allowance access denied' using errcode='42501';end if;
+ return actor_role in ('owner','admin');
+end $$;
+-- Writer order company -> settings -> legacy identity -> new state. Session and
+-- membership are revalidated/locked after all earlier waits, not only at entry.
+create function company_common_allowance_private.lock_writer(cid uuid) returns void
+language plpgsql volatile security definer set search_path='' as $$
+declare sid uuid;
+begin
+ perform company_common_allowance_private.authorize(cid,true);
+ perform 1 from public.companies where id=cid for update;
+ if not found then raise exception 'company common allowance access denied' using errcode='42501';end if;
+ perform 1 from public.company_rate_settings where company_id=cid for update;
+ if not found then raise exception 'legacy allowance settings unavailable' using errcode='55000';end if;
+ perform 1 from company_allowance_identity_private.state where company_id=cid for update;
+ perform 1 from public.company_members where company_id=cid and user_id=auth.uid() and role::text in ('owner','admin') for share;
+ if not found then raise exception 'company common allowance access denied' using errcode='42501';end if;
+ sid:=company_common_allowance_private.session_id();
+ perform 1 from auth.sessions where id=sid and user_id=auth.uid() and (not_after is null or not_after>clock_timestamp()) for share;
+ if not found then raise exception 'company common allowance session unavailable' using errcode='42501';end if;
+ perform company_common_allowance_private.authorize(cid,true);
+end $$;
+create function company_common_allowance_private.source(cid uuid) returns jsonb
+language sql stable set search_path='' as $$
+ select jsonb_build_object('legacy_adopted',s.company_id is not null,'legacy_version',coalesce(s.version,0),
+ 'legacy_slots',company_allowance_identity_private.slots(r),'tax_rate',c.tax_rate,'welfare_rate',c.default_welfare_rate)
+ from public.companies c join public.company_rate_settings r on r.company_id=c.id
+ left join company_allowance_identity_private.state s on s.company_id=c.id where c.id=cid
+$$;
+create function company_common_allowance_private.active_items(cid uuid,typ text default null) returns jsonb
+language sql stable set search_path='' as $$
+ select coalesce(jsonb_agg(jsonb_build_object('id',i.id,'payroll_type',i.payroll_type,
+ 'section',i.section,'unit',i.unit,'name',i.name,'amount_yen',i.amount_yen)
+ order by i.payroll_type,i.position,i.id),'[]'::jsonb)
+ from company_common_allowance_private.items i
+ where i.company_id=cid and i.retired_at is null and (typ is null or i.payroll_type=typ)
+$$;
+create function company_common_allowance_private.admin_state(cid uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare editable boolean;source_value jsonb;refs jsonb;
+begin
+ editable:=company_common_allowance_private.authorize(cid,false);
+ source_value:=company_common_allowance_private.source(cid);
+ if source_value is null then raise exception 'legacy allowance settings unavailable' using errcode='55000';end if;
+ select jsonb_agg(jsonb_build_object('slot',(item->>'slot')::integer,'id',i.id,'generation',i.generation,
+ 'applicability','all','section','earning','unit','day','name',item->'name','source_unit',item->'unit','amount_yen',item->'amount_yen') order by (item->>'slot')::integer)
+ into refs from jsonb_array_elements(source_value->'legacy_slots') item
+ left join company_allowance_identity_private.identities i on i.company_id=cid and i.slot=(item->>'slot')::integer and i.retired_at is null;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'can_edit',editable,
+ 'version',coalesce((select s.version from company_common_allowance_private.state s where s.company_id=cid),0),
+ 'expected_source',source_value,'tax_rate',source_value->'tax_rate','welfare_rate',source_value->'welfare_rate',
+ 'items',company_common_allowance_private.active_items(cid),'legacy_refs',refs);
+end $$;
+create function company_common_allowance_private.request_result(cid uuid,rid uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare r company_common_allowance_private.requests%rowtype;
+begin
+ perform company_common_allowance_private.authorize(cid,true);
+ if rid is null then raise exception 'invalid request id' using errcode='22023';end if;
+ select * into r from company_common_allowance_private.requests where company_id=cid and request_id=rid and actor_id=auth.uid();
+ if not found then return jsonb_build_object('contract_version',1,'company_id',cid,'request_id',rid,'found',false);end if;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'request_id',rid,'found',true,
+ 'actor_id',r.actor_id,'operation',r.operation,'payroll_type',r.payroll_type,'expected_version',r.expected_version,
+ 'request_payload',r.request_payload,'committed_version',r.committed_version,'result',r.result);
+end $$;
+create function company_common_allowance_private.save(cid uuid,typ text,expected bigint,expected_source jsonb,rid uuid,input_items jsonb,legacy_input jsonb,confirm_adoption boolean) returns jsonb
+language plpgsql volatile security definer set search_path='' as $$
+declare v bigint;payload jsonb;receipt company_common_allowance_private.requests%rowtype;
+ item jsonb;item_id uuid;seen uuid[]:='{}';keys_seen text[]:='{}';key text;pos integer:=0;
+ before_items jsonb;before_legacy jsonb;outcome jsonb;mapping jsonb:='[]';legacy_item jsonb;ref jsonb;legacy_version bigint;
+begin
+ perform company_common_allowance_private.authorize(cid,true);
+ if typ is null or typ not in ('daily','hourly','monthly') or expected is null or expected<0 or expected>9007199254740990
+ or rid is null or input_items is null or jsonb_typeof(input_items)<>'array'
+ or jsonb_array_length(input_items)>100 or octet_length(input_items::text)>131072 then
+  raise exception 'invalid company common allowance request' using errcode='22023';end if;
+ perform company_common_allowance_private.lock_writer(cid);
+ payload:=jsonb_build_object('operation','allowances','payroll_type',typ,'expected_version',expected,'expected_source',expected_source,'items',input_items,'legacy_slots',legacy_input,'confirm_adoption',confirm_adoption);
+ select * into receipt from company_common_allowance_private.requests where company_id=cid and request_id=rid;
+ if found then
+  if receipt.actor_id is distinct from auth.uid() or receipt.request_payload is distinct from payload then
+   raise exception 'request id payload mismatch' using errcode='22023';end if;
+  return receipt.result;
+ end if;
+ insert into company_common_allowance_private.state(company_id,version,created_by)
+ values(cid,0,auth.uid()) on conflict(company_id) do nothing;
+ select version into v from company_common_allowance_private.state where company_id=cid for update;
+ if v<>expected or expected_source is distinct from company_common_allowance_private.source(cid) then raise exception 'company common allowance version conflict' using errcode='40001';end if;
+ -- Validate three references against the observed source BEFORE first adoption.
+ before_legacy:=company_common_allowance_private.admin_state(cid)->'legacy_refs';
+ if legacy_input is null or jsonb_typeof(legacy_input)<>'array' or jsonb_array_length(legacy_input)<>3 or octet_length(legacy_input::text)>8192 then
+  raise exception 'invalid legacy allowance snapshot' using errcode='22023';end if;
+ for pos in 0..2 loop
+  legacy_item:=legacy_input->pos;ref:=before_legacy->pos;
+  if jsonb_typeof(legacy_item)<>'object' or (select count(*) from jsonb_object_keys(legacy_item))<>6
+  or not(legacy_item ?& array['slot','id','generation','name','source_unit','amount_yen'])
+  or legacy_item->'slot' is distinct from ref->'slot' or legacy_item->'id' is distinct from ref->'id'
+  or legacy_item->'generation' is distinct from ref->'generation'
+  or (legacy_item->'source_unit' is distinct from ref->'source_unit' and (jsonb_typeof(legacy_item->'source_unit')<>'string' or length(btrim(legacy_item->>'source_unit')) not between 1 and 12))
+  or (legacy_item->'name' is distinct from ref->'name' and ((legacy_item->'name'<>'null'::jsonb and jsonb_typeof(legacy_item->'name')<>'string') or length(btrim(coalesce(legacy_item->>'name','')))>80))
+  or jsonb_typeof(legacy_item->'amount_yen')<>'number' or legacy_item->>'amount_yen' !~ '^(0|[1-9][0-9]*)$'
+  or (legacy_item->>'amount_yen')::numeric>2147483647 then
+   raise exception 'invalid legacy allowance reference' using errcode='22023';end if;
+ end loop;
+ insert into company_common_allowance_private.unit_aliases(company_id,units,adopted_by)
+ values(cid,company_common_allowance_private.current_units(cid),auth.uid()) on conflict(company_id) do nothing;
+ if (expected_source->>'legacy_adopted')::boolean is not true then
+  if confirm_adoption is not true then raise exception 'explicit legacy adoption confirmation required' using errcode='22023';end if;
+  perform company_allowance_identity_private.adopt(cid,expected_source->'legacy_slots',true);
+ end if;
+ -- Only the legacy names/amounts/explicit display units are updated. Tax and
+ -- other rate columns stay untouched; existing trigger supplies the original UUID lifecycle/history.
+ if exists(select 1 from generate_series(0,2) n where legacy_input->n->'name' is distinct from before_legacy->n->'name' or legacy_input->n->'amount_yen' is distinct from before_legacy->n->'amount_yen' or legacy_input->n->'source_unit' is distinct from before_legacy->n->'source_unit') then
+  update public.company_rate_settings set
+   allowance_1_unit=case when legacy_input->0->'source_unit' is distinct from before_legacy->0->'source_unit' then btrim(legacy_input->0->>'source_unit') else allowance_1_unit end,
+   allowance_2_unit=case when legacy_input->1->'source_unit' is distinct from before_legacy->1->'source_unit' then btrim(legacy_input->1->>'source_unit') else allowance_2_unit end,
+   allowance_3_unit=case when legacy_input->2->'source_unit' is distinct from before_legacy->2->'source_unit' then btrim(legacy_input->2->>'source_unit') else allowance_3_unit end,
+   allowance_1_name=legacy_input->0->>'name',allowance_1_amount_yen=(legacy_input->0->>'amount_yen')::integer,
+   allowance_2_name=legacy_input->1->>'name',allowance_2_amount_yen=(legacy_input->1->>'amount_yen')::integer,
+   allowance_3_name=legacy_input->2->>'name',allowance_3_amount_yen=(legacy_input->2->>'amount_yen')::integer,
+   updated_by=auth.uid(),updated_at=clock_timestamp() where company_id=cid;
+ end if;
+ pos:=0;
+ before_items:=company_common_allowance_private.active_items(cid,typ);
+ for item in select value from jsonb_array_elements(input_items) loop
+  if jsonb_typeof(item)<>'object' or (select count(*) from jsonb_object_keys(item))<>6
+  or not(item ?& array['id','client_key','section','unit','name','amount_yen'])
+  or jsonb_typeof(item->'client_key')<>'string' or item->>'client_key' !~ '^[A-Za-z0-9_-]{1,120}$'
+  or jsonb_typeof(item->'section')<>'string' or item->>'section' not in ('earning','deduction')
+  or jsonb_typeof(item->'unit')<>'string' or item->>'unit' not in ('hour','day','month')
+  or jsonb_typeof(item->'name')<>'string' or length(btrim(item->>'name')) not between 1 and 80
+  or jsonb_typeof(item->'amount_yen')<>'number' or item->>'amount_yen' !~ '^(0|[1-9][0-9]*)$'
+  or (item->>'amount_yen')::numeric>2147483647 then
+   raise exception 'invalid company common allowance item' using errcode='22023';end if;
+  key:=item->>'client_key';
+  if key=any(keys_seen) then raise exception 'duplicate client key' using errcode='22023';end if;
+  keys_seen:=array_append(keys_seen,key);
+  if item->'id'='null'::jsonb then
+   insert into company_common_allowance_private.items(company_id,payroll_type,section,unit,name,amount_yen,position,created_by,updated_by)
+   values(cid,typ,item->>'section',item->>'unit',btrim(item->>'name'),(item->>'amount_yen')::integer,pos,auth.uid(),auth.uid()) returning id into item_id;
+  else
+   if jsonb_typeof(item->'id')<>'string' or item->>'id' !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' then
+    raise exception 'invalid allowance id' using errcode='22023';end if;
+   item_id:=(item->>'id')::uuid;
+   if item_id=any(seen) then raise exception 'duplicate allowance id' using errcode='22023';end if;
+   update company_common_allowance_private.items set section=item->>'section',unit=item->>'unit',
+    name=btrim(item->>'name'),amount_yen=(item->>'amount_yen')::integer,position=pos,updated_by=auth.uid(),updated_at=clock_timestamp()
+   where id=item_id and company_id=cid and payroll_type=typ and retired_at is null;
+   if not found then raise exception 'allowance id unavailable' using errcode='22023';end if;
+  end if;
+  seen:=array_append(seen,item_id);mapping:=mapping||jsonb_build_array(jsonb_build_object('client_key',key,'id',item_id));pos:=pos+1;
+ end loop;
+ update company_common_allowance_private.items set retired_at=clock_timestamp(),retired_by=auth.uid(),updated_at=clock_timestamp(),updated_by=auth.uid()
+ where company_id=cid and payroll_type=typ and retired_at is null and not(id=any(seen));
+ update company_common_allowance_private.state set version=v+1 where company_id=cid;
+ insert into company_common_allowance_private.history(company_id,version,actor_id,payroll_type,request_id,operation,before_value,after_value)
+ values(cid,v+1,auth.uid(),typ,rid,'allowances',jsonb_build_object('items',before_items,'legacy_refs',before_legacy),jsonb_build_object('items',company_common_allowance_private.active_items(cid,typ),'legacy_refs',company_common_allowance_private.admin_state(cid)->'legacy_refs'));
+ outcome:=company_common_allowance_private.admin_state(cid)||jsonb_build_object('request_id',rid,'committed_version',v+1,'id_map',mapping);
+ insert into company_common_allowance_private.requests(company_id,request_id,actor_id,payroll_type,operation,expected_version,request_payload,committed_version,result)
+ values(cid,rid,auth.uid(),typ,'allowances',expected,payload,v+1,outcome);
+ return outcome;
+end $$;
+create function company_common_allowance_private.history_page(cid uuid,before_v bigint,lim integer) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare entries jsonb;oldest bigint;
+begin
+ perform company_common_allowance_private.authorize(cid,false);
+ if lim is null or lim not between 1 and 100 or (before_v is not null and before_v<1) then
+  raise exception 'invalid allowance history page' using errcode='22023';end if;
+ select coalesce(jsonb_agg(to_jsonb(h) order by version desc),'[]'::jsonb),min(version) into entries,oldest
+ from (select * from company_common_allowance_private.history where company_id=cid and (before_v is null or version<before_v) order by version desc limit lim) h;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'entries',entries,'before_version',
+ case when exists(select 1 from company_common_allowance_private.history where company_id=cid and version<oldest) then oldest end);
+end $$;
+create function company_common_allowance_private.save_tax(cid uuid,expected bigint,expected_source jsonb,tax numeric,welfare numeric,rid uuid) returns jsonb
+language plpgsql volatile security definer set search_path='' as $$
+declare v bigint;payload jsonb;receipt company_common_allowance_private.requests%rowtype;outcome jsonb;before_tax jsonb;
+begin
+ perform company_common_allowance_private.lock_writer(cid);
+ if expected is null or expected<0 or expected>9007199254740990 or rid is null
+ or tax is null or welfare is null or tax<0 or tax>100 or welfare<0 or welfare>100
+ or tax<>round(tax,4) or welfare<>round(welfare,4) then
+  raise exception 'invalid company common tax request' using errcode='22023';end if;
+ payload:=jsonb_build_object('operation','tax','expected_version',expected,'expected_source',expected_source,'tax_rate',tax,'welfare_rate',welfare);
+ select * into receipt from company_common_allowance_private.requests where company_id=cid and request_id=rid;
+ if found then
+  if receipt.actor_id is distinct from auth.uid() or receipt.request_payload is distinct from payload then
+   raise exception 'request id payload mismatch' using errcode='22023';end if;
+  return receipt.result;
+ end if;
+ insert into company_common_allowance_private.state(company_id,version,created_by) values(cid,0,auth.uid()) on conflict(company_id) do nothing;
+ select version into v from company_common_allowance_private.state where company_id=cid for update;
+ if v<>expected or expected_source is distinct from company_common_allowance_private.source(cid) then
+  raise exception 'company common allowance version conflict' using errcode='40001';end if;
+ before_tax:=jsonb_build_object('tax_rate',expected_source->'tax_rate','welfare_rate',expected_source->'welfare_rate');
+ update public.companies set tax_rate=tax,default_welfare_rate=welfare where id=cid;
+ update company_common_allowance_private.state set version=v+1 where company_id=cid;
+ insert into company_common_allowance_private.history(company_id,version,actor_id,payroll_type,request_id,operation,before_value,after_value)
+ values(cid,v+1,auth.uid(),null,rid,'tax',before_tax,jsonb_build_object('tax_rate',tax,'welfare_rate',welfare));
+ outcome:=company_common_allowance_private.admin_state(cid)||jsonb_build_object('request_id',rid,'committed_version',v+1,'id_map','[]'::jsonb);
+ insert into company_common_allowance_private.requests(company_id,request_id,actor_id,payroll_type,operation,expected_version,request_payload,committed_version,result)
+ values(cid,rid,auth.uid(),null,'tax',expected,payload,v+1,outcome);
+ return outcome;
+end $$;
+revoke all on all functions in schema company_common_allowance_private from public,anon,authenticated,service_role;
+grant usage on schema company_common_allowance_private to authenticated;
+grant execute on function company_common_allowance_private.admin_state(uuid),company_common_allowance_private.save(uuid,text,bigint,jsonb,uuid,jsonb,jsonb,boolean),company_common_allowance_private.save_tax(uuid,bigint,jsonb,numeric,numeric,uuid),company_common_allowance_private.request_result(uuid,uuid),company_common_allowance_private.history_page(uuid,bigint,integer) to authenticated;
+create function public.read_company_common_allowances_admin(p_company_id uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_common_allowance_private.admin_state(p_company_id)$$;
+create function public.save_company_common_allowances(p_company_id uuid,p_payroll_type text,p_expected_version bigint,p_expected_source jsonb,p_request_id uuid,p_items jsonb,p_legacy_slots jsonb,p_confirm_adoption boolean) returns jsonb
+language sql volatile security invoker set search_path='' as $$select company_common_allowance_private.save(p_company_id,p_payroll_type,p_expected_version,p_expected_source,p_request_id,p_items,p_legacy_slots,p_confirm_adoption)$$;
+create function public.read_company_common_allowance_request(p_company_id uuid,p_request_id uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_common_allowance_private.request_result(p_company_id,p_request_id)$$;
+create function public.read_company_common_allowances_history(p_company_id uuid,p_before_version bigint default null,p_limit integer default 50) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_common_allowance_private.history_page(p_company_id,p_before_version,p_limit)$$;
+create function public.save_company_common_tax_settings(p_company_id uuid,p_expected_version bigint,p_expected_source jsonb,p_tax_rate numeric,p_welfare_rate numeric,p_request_id uuid) returns jsonb
+language sql volatile security invoker set search_path='' as $$select company_common_allowance_private.save_tax(p_company_id,p_expected_version,p_expected_source,p_tax_rate,p_welfare_rate,p_request_id)$$;
+revoke all on function public.read_company_common_allowances_admin(uuid),public.save_company_common_allowances(uuid,text,bigint,jsonb,uuid,jsonb,jsonb,boolean),public.save_company_common_tax_settings(uuid,bigint,jsonb,numeric,numeric,uuid),public.read_company_common_allowance_request(uuid,uuid),public.read_company_common_allowances_history(uuid,bigint,integer) from public,anon,authenticated,service_role;
+grant execute on function public.read_company_common_allowances_admin(uuid),public.save_company_common_allowances(uuid,text,bigint,jsonb,uuid,jsonb,jsonb,boolean),public.save_company_common_tax_settings(uuid,bigint,jsonb,numeric,numeric,uuid),public.read_company_common_allowance_request(uuid,uuid),public.read_company_common_allowances_history(uuid,bigint,integer) to authenticated;
+create or replace function public.my_attendance_allowance_units()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path to 'public','pg_temp'
+as $$
+declare
+  v_user_id uuid:=auth.uid();
+  v_company_id uuid;
+  v_rates public.company_rate_settings%rowtype;
+begin
+  if v_user_id is null then raise exception 'authentication required'; end if;
+  select company_id into v_company_id
+  from public.company_members
+  where user_id=v_user_id
+  limit 1;
+  if v_company_id is null then return '{}'::jsonb; end if;
+
+  select * into v_rates
+  from public.company_rate_settings
+  where company_id=v_company_id;
+
+  return company_common_allowance_private.merge_unit_aliases(v_company_id,jsonb_strip_nulls(jsonb_build_object(
+    coalesce(nullif(trim(v_rates.allowance_1_name),''),'__none1'),
+      coalesce(nullif(trim(v_rates.allowance_1_unit),''),'回'),
+    coalesce(nullif(trim(v_rates.allowance_2_name),''),'__none2'),
+      coalesce(nullif(trim(v_rates.allowance_2_unit),''),'回'),
+    coalesce(nullif(trim(v_rates.allowance_3_name),''),'__none3'),
+      coalesce(nullif(trim(v_rates.allowance_3_unit),''),'回')
+  )) - '__none1' - '__none2' - '__none3');
+end;
+$$;
+
+-- REVIEW ONLY. Install after the existing common-allowance and payroll-unit candidates.
+-- No activation/backfill/recalculation is performed. No client grants are added.
+-- Explicit company cutover prevents current common rates changing earlier drafts.
+
+do $$ begin
+ if to_regclass('company_common_allowance_private.items') is null then
+  raise exception 'company common allowance storage is not installed';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)')
+   and md5(prosrc)='5c51172a6169beb90a7ddbb6ae443cd6' and prosecdef and proconfig=ARRAY['search_path=""']) then
+  raise exception 'payroll common bridge prerequisite differs';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_unit_private.read_conditions(uuid,uuid,date)') and md5(prosrc)='cf298ba4b1e848ab89a67623f7466bcd') then raise exception 'payroll common read prerequisite differs';end if;
+end $$;
+create table company_common_allowance_private.payroll_activation(
+ company_id uuid primary key references public.companies(id) on delete cascade,
+ starts_on date not null check(starts_on=date_trunc('month',starts_on)::date)
+);
+alter table company_common_allowance_private.payroll_activation enable row level security;
+revoke all on company_common_allowance_private.payroll_activation from public,anon,authenticated,service_role;
+
+create function payroll_unit_private.resolve_company_common(cid uuid,wid uuid,p_start date,p_end date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare item record; typ text; quantity numeric; amount numeric;
+ rows jsonb:='[]'; earnings jsonb:='[]'; deductions jsonb:='[]'; blocked boolean:=false;
+begin
+ if p_start is null or p_end is null or p_start<>date_trunc('month',p_start)::date
+ or p_end<>(p_start+interval '1 month - 1 day')::date then
+  raise exception 'canonical payroll month required' using errcode='22023';end if;
+ if not exists(select 1 from company_common_allowance_private.payroll_activation a
+   where a.company_id=cid and a.starts_on<=p_start) then
+  return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',false);end if;
+ select s.pay_type into typ from public.worker_payroll_settings s
+  join public.workers w on w.id=s.worker_id and w.company_id=s.company_id
+  where s.company_id=cid and s.worker_id=wid;
+ for item in select i.* from company_common_allowance_private.items i
+  where i.company_id=cid and i.payroll_type=typ and i.retired_at is null order by i.position,i.id loop
+  quantity:=null;amount:=null;
+  if item.unit='month' then quantity:=1;
+  elsif item.unit='day' then
+   select count(distinct ae.work_date) into quantity from public.attendance_entries ae
+    where ae.company_id=cid and ae.worker_id=wid and ae.work_date between p_start and p_end
+    and ae.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date and ae.base_man_days>0;
+  elsif item.unit='hour' then
+   -- Exact entered monthly hours, keyed by the stable common item ID. Never infer days*8.
+   select q.hours into quantity from payroll_unit_private.quantities q
+    where q.company_id=cid and q.worker_id=wid and q.item_id=item.id and q.month=p_start;
+  end if;
+  if quantity is null then blocked:=true;
+  else
+   amount:=round(item.amount_yen::numeric*quantity);
+   if amount>2147483647 then raise exception 'company common amount exceeds range' using errcode='22023';end if;
+   if item.section='earning' then
+    earnings:=earnings||jsonb_build_array(jsonb_build_object('name',item.name,'amount_yen',amount));
+   else deductions:=deductions||jsonb_build_array(jsonb_build_object('name',item.name,'amount_yen',amount));end if;
+  end if;
+  rows:=rows||jsonb_build_array(jsonb_build_object('id',item.id,'origin','company_common',
+   'payroll_type',item.payroll_type,'section',item.section,'unit',item.unit,'name',item.name,
+   'rate_yen',item.amount_yen,'quantity',quantity,'quantity_month',p_start,'amount_yen',amount));
+ end loop;
+ return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',blocked);
+end $$;
+revoke all on function payroll_unit_private.resolve_company_common(uuid,uuid,date,date) from public,anon,authenticated,service_role;
+
+-- Keep the existing function identity/owner/ACL, and preserve individual conditions.
+create or replace function payroll_unit_private.augment_settings(cid uuid,wid uuid,p_start date,p_end date,settings jsonb)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare resolved jsonb; common_items jsonb;
+begin
+ resolved:=payroll_unit_private.resolve(cid,wid,p_start,p_end);
+ common_items:=payroll_unit_private.resolve_company_common(cid,wid,p_start,p_end);
+ resolved:=resolved||jsonb_build_object(
+  'items',(resolved->'items')||(common_items->'items'),
+  'earnings',(resolved->'earnings')||(common_items->'earnings'),
+  'deductions',(resolved->'deductions')||(common_items->'deductions'),
+  'blocked',(resolved->>'blocked')::boolean or (common_items->>'blocked')::boolean);
+ if resolved->'items'='[]'::jsonb then return settings;end if;
+ return coalesce(settings,'{}')||jsonb_build_object(
+ 'custom_earnings',coalesce(settings->'custom_earnings','[]')||(resolved->'earnings'),
+ 'custom_deductions',coalesce(settings->'custom_deductions','[]')||(resolved->'deductions'),
+ '_unit_resolution',resolved);
+end $$;
+
+create function payroll_unit_private.common_state(cid uuid,wid uuid,p_month date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare result jsonb; typ text; activation date;
+begin
+ result:=payroll_unit_private.resolve_company_common(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date);
+ select pay_type into typ from public.worker_payroll_settings where company_id=cid and worker_id=wid;
+ select starts_on into activation from company_common_allowance_private.payroll_activation where company_id=cid;
+ return jsonb_build_object('contract_version',1,'items',result->'items','source',
+  jsonb_build_object('starts_on',activation,'pay_type',typ,'items',result->'items'));
+end $$;
+revoke all on function payroll_unit_private.common_state(uuid,uuid,date) from public,anon,authenticated,service_role;
+
+create or replace function payroll_unit_private.read_conditions(cid uuid,wid uuid,p_month date)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare config payroll_unit_private.conditions%rowtype; items jsonb;
+begin
+ perform payroll_unit_private.require_access(cid,wid,'view');
+ if p_month is null or p_month<>date_trunc('month',p_month)::date then raise exception 'canonical month required';end if;
+ select * into config from payroll_unit_private.conditions where company_id=cid and worker_id=wid
+ and starts_on<=p_month order by starts_on desc limit 1;
+ select coalesce(jsonb_agg(item||jsonb_build_object('quantity',q.hours) order by ord),'[]') into items
+ from jsonb_array_elements(coalesce(config.items,'[]')) with ordinality e(item,ord)
+ left join payroll_unit_private.quantities q on q.company_id=cid and q.worker_id=wid
+ and q.item_id=(item->>'id')::uuid and q.month=p_month;
+ return jsonb_build_object('version',coalesce(config.version,0),'month',p_month,'items',items,
+ 'can_edit',private.payroll_settings_allowed(cid,wid,'edit') and not exists(
+  select 1 from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=wid and ps.period_start=p_month
+   and (ps.workflow_state<>'draft' or not ps.automatic_calculation)
+ ),'company_common',payroll_unit_private.common_state(cid,wid,p_month),'resolved',payroll_unit_private.resolve(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date));
+end $$;
+
+create function payroll_unit_private.save_common_hours(cid uuid,wid uuid,p_month date,p_expected_source jsonb,p_hours jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare current_source jsonb; current_items jsonb; item jsonb; iid uuid; quantity numeric; seen uuid[]:='{}';
+begin
+ perform payroll_unit_private.require_access(cid,wid,'edit');
+ if p_month is null or p_month<>date_trunc('month',p_month)::date then raise exception 'canonical month required' using errcode='22023';end if;
+ if exists(select 1 from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=wid and ps.period_start=p_month
+  and (ps.workflow_state is distinct from 'draft' or ps.automatic_calculation is distinct from true)) then
+  raise exception 'finalized/manual payroll is unchanged' using errcode='22023';end if;
+ current_source:=payroll_unit_private.common_state(cid,wid,p_month)->'source';
+ if p_expected_source is distinct from current_source then raise exception 'company common payroll source conflict' using errcode='40001';end if;
+ current_items:=current_source->'items';
+ if jsonb_typeof(p_hours) is distinct from 'array' or jsonb_array_length(p_hours) not between 1 and 100 then
+  raise exception 'invalid company common hours' using errcode='22023';end if;
+ for item in select value from jsonb_array_elements(p_hours) loop
+  if jsonb_typeof(item) is distinct from 'object' or (select count(*) from jsonb_object_keys(item))<>2
+   or coalesce(item->>'id','') !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+   or coalesce(item->>'quantity','') !~ '^\d+(\.\d{1,4})?$' then
+   raise exception 'explicit company common hours required' using errcode='22023';end if;
+  iid:=(item->>'id')::uuid;quantity:=(item->>'quantity')::numeric;
+  if iid=any(seen) or quantity>99999999 or not exists(select 1 from jsonb_array_elements(current_items) i
+    where i->>'id'=iid::text and i->>'unit'='hour') then
+   raise exception 'invalid company common item identity or hours' using errcode='22023';end if;
+  seen:=array_append(seen,iid);
+  insert into payroll_unit_private.quantities values(cid,wid,iid,p_month,quantity,auth.uid(),now())
+   on conflict(company_id,worker_id,item_id,month) do update set hours=excluded.hours,updated_by=excluded.updated_by,updated_at=excluded.updated_at;
+ end loop;
+ perform payroll_unit_private.require_access(cid,wid,'edit');
+ perform private.refresh_automatic_payroll(cid,wid,p_month);
+ perform private.sync_payroll_attendance_detail(cid,wid,p_month);
+ return payroll_unit_private.read_conditions(cid,wid,p_month);
+end $$;
+revoke all on function payroll_unit_private.save_common_hours(uuid,uuid,date,jsonb,jsonb) from public,anon,authenticated,service_role;
+-- Public invoker wrapper follows the existing unit-condition API boundary.
+grant execute on function payroll_unit_private.save_common_hours(uuid,uuid,date,jsonb,jsonb) to authenticated;
+create function public.save_payroll_common_hours(p_company_id uuid,p_worker_id uuid,p_month date,p_expected_source jsonb,p_hours jsonb)
+returns jsonb language sql security invoker set search_path='' as $$
+ select payroll_unit_private.save_common_hours(p_company_id,p_worker_id,p_month,p_expected_source,p_hours)
+$$;
+revoke all on function public.save_payroll_common_hours(uuid,uuid,date,jsonb,jsonb) from public,anon,service_role;
+grant execute on function public.save_payroll_common_hours(uuid,uuid,date,jsonb,jsonb) to authenticated;
+
+-- REVIEW ONLY. Depends on company_common_payroll_bridge_20261020 (#1276).
+-- No activation, publication, backfill or production recalculation on install.
+
+set local lock_timeout = '5s';
+do $$ begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_unit_private.resolve_company_common(uuid,uuid,date,date)') and md5(prosrc)='db2de83c4b93ccd56b7c2e5219a0fcbe' and prosecdef and proconfig=ARRAY['search_path=""'])
+ or not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)') and md5(prosrc)='8d5ebc9c0b59e2a4057e1a316767b739')
+ or not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_unit_private.common_state(uuid,uuid,date)') and md5(prosrc)='905491b19029f1811b792bdeb71c6552')
+ or to_regprocedure('company_common_allowance_private.lock_writer(uuid)') is null then
+  raise exception 'dated company common payroll prerequisite differs';end if;
+end $$;
+create table company_common_allowance_private.payroll_publications(
+ company_id uuid not null,version bigint not null check(version between 1 and 9007199254740991),
+ payroll_type text not null check(payroll_type in ('daily','hourly','monthly')),
+ starts_on date not null check(starts_on=date_trunc('month',starts_on)::date),
+ common_version bigint not null,items jsonb not null check(jsonb_typeof(items)='array'),
+ request_id uuid not null,actor_id uuid not null,published_at timestamptz not null default clock_timestamp(),
+ primary key(company_id,version),unique(company_id,request_id)
+);
+create index common_payroll_effective on company_common_allowance_private.payroll_publications(company_id,payroll_type,starts_on desc,version desc);
+create table company_common_allowance_private.payroll_publication_receipts(
+ company_id uuid not null,request_id uuid not null,actor_id uuid not null,
+ payload jsonb not null,result jsonb not null,primary key(company_id,request_id)
+);
+alter table company_common_allowance_private.payroll_publications enable row level security;
+alter table company_common_allowance_private.payroll_publication_receipts enable row level security;
+revoke all on company_common_allowance_private.payroll_publications,company_common_allowance_private.payroll_publication_receipts from public,anon,authenticated,service_role;
+create function company_common_allowance_private.protect_payroll_publication() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin raise exception 'company common payroll history is immutable' using errcode='55000';end $$;
+revoke all on function company_common_allowance_private.protect_payroll_publication() from public,anon,authenticated,service_role;
+create trigger immutable_common_payroll_publication before update or delete on company_common_allowance_private.payroll_publications
+ for each row execute function company_common_allowance_private.protect_payroll_publication();
+create trigger immutable_common_payroll_receipt before update or delete on company_common_allowance_private.payroll_publication_receipts
+ for each row execute function company_common_allowance_private.protect_payroll_publication();
+
+create or replace function payroll_unit_private.resolve_company_common(cid uuid,wid uuid,p_start date,p_end date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare item jsonb; publication company_common_allowance_private.payroll_publications%rowtype;
+ typ text;quantity numeric;amount numeric;rows jsonb:='[]';earnings jsonb:='[]';deductions jsonb:='[]';blocked boolean:=false;
+begin
+ if p_start is null or p_end is null or p_start<>date_trunc('month',p_start)::date
+ or p_end<>(p_start+interval '1 month - 1 day')::date then
+  raise exception 'canonical payroll month required' using errcode='22023';end if;
+ if not exists(select 1 from company_common_allowance_private.payroll_activation a where a.company_id=cid and a.starts_on<=p_start) then
+  return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',false,'history_missing',false);end if;
+ select s.pay_type into typ from public.worker_payroll_settings s join public.workers w on w.company_id=s.company_id and w.id=s.worker_id where s.company_id=cid and s.worker_id=wid;
+ select * into publication from company_common_allowance_private.payroll_publications p
+  where p.company_id=cid and p.payroll_type=typ and p.starts_on<=p_start order by p.starts_on desc,p.version desc limit 1;
+ if not found then
+  return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',true,'history_missing',true);end if;
+ for item in select value from jsonb_array_elements(publication.items) loop
+  quantity:=null;amount:=null;
+  if item->>'unit'='month' then quantity:=1;
+  elsif item->>'unit'='day' then
+   select count(distinct ae.work_date) into quantity from public.attendance_entries ae
+    where ae.company_id=cid and ae.worker_id=wid and ae.work_date between p_start and p_end
+     and ae.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date and ae.base_man_days>0;
+  elsif item->>'unit'='hour' then
+   select q.hours into quantity from payroll_unit_private.quantities q
+    where q.company_id=cid and q.worker_id=wid and q.item_id=(item->>'id')::uuid and q.month=p_start;
+  end if;
+  if quantity is null then blocked:=true;
+  else
+   amount:=round((item->>'amount_yen')::numeric*quantity);
+   if amount>2147483647 then raise exception 'company common amount exceeds range' using errcode='22023';end if;
+   if item->>'section'='earning' then earnings:=earnings||jsonb_build_array(jsonb_build_object('name',item->>'name','amount_yen',amount));
+   else deductions:=deductions||jsonb_build_array(jsonb_build_object('name',item->>'name','amount_yen',amount));end if;
+  end if;
+  rows:=rows||jsonb_build_array(jsonb_build_object('id',item->>'id','origin','company_common',
+   'payroll_type',typ,'section',item->>'section','unit',item->>'unit','name',item->>'name',
+   'rate_yen',item->'amount_yen','quantity',quantity,'quantity_month',p_start,'amount_yen',amount,
+   'publication_version',publication.version,'starts_on',publication.starts_on));
+ end loop;
+ return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',blocked,
+  'history_missing',false,'publication_version',publication.version,'starts_on',publication.starts_on);
+end $$;
+
+create or replace function payroll_unit_private.common_state(cid uuid,wid uuid,p_month date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare result jsonb;typ text;activation date;frozen public.payroll_statements%rowtype;items jsonb;
+begin
+ select * into frozen from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=wid and ps.period_start=p_month
+  and (ps.workflow_state is distinct from 'draft' or ps.automatic_calculation is distinct from true) limit 1;
+ if found then
+  select coalesce(jsonb_agg(i order by ord),'[]') into items from jsonb_array_elements(coalesce(frozen.detail#>'{unit_resolution,items}','[]')) with ordinality e(i,ord)
+   where i->>'origin'='company_common';
+  return jsonb_build_object('contract_version',1,'items',items,'history_missing',false,'frozen',true,
+   'source',jsonb_build_object('statement_id',frozen.id,'statement_revision',frozen.revision,'items',items));
+ end if;
+ result:=payroll_unit_private.resolve_company_common(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date);
+ select pay_type into typ from public.worker_payroll_settings where company_id=cid and worker_id=wid;
+ select starts_on into activation from company_common_allowance_private.payroll_activation where company_id=cid;
+ return jsonb_build_object('contract_version',1,'items',result->'items','history_missing',result->'history_missing','frozen',false,'source',
+  jsonb_build_object('starts_on',activation,'pay_type',typ,'items',result->'items','publication_version',result->'publication_version'));
+end $$;
+create or replace function payroll_unit_private.augment_settings(cid uuid,wid uuid,p_start date,p_end date,settings jsonb)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare resolved jsonb;common_items jsonb;
+begin
+ resolved:=payroll_unit_private.resolve(cid,wid,p_start,p_end);
+ common_items:=payroll_unit_private.resolve_company_common(cid,wid,p_start,p_end);
+ resolved:=resolved||jsonb_build_object('items',(resolved->'items')||(common_items->'items'),
+  'earnings',(resolved->'earnings')||(common_items->'earnings'),'deductions',(resolved->'deductions')||(common_items->'deductions'),
+  'blocked',(resolved->>'blocked')::boolean or (common_items->>'blocked')::boolean,
+  'company_common_history_missing',common_items->'history_missing');
+ if resolved->'items'='[]'::jsonb and (resolved->>'blocked')::boolean is not true then return settings;end if;
+ return coalesce(settings,'{}')||jsonb_build_object('custom_earnings',coalesce(settings->'custom_earnings','[]')||(resolved->'earnings'),
+ 'custom_deductions',coalesce(settings->'custom_deductions','[]')||(resolved->'deductions'),'_unit_resolution',resolved);
+end $$;
+
+create function company_common_allowance_private.read_payroll_publications(cid uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare entries jsonb;editable boolean;
+begin
+ editable:=company_common_allowance_private.authorize(cid,false);
+ select coalesce(jsonb_agg(jsonb_build_object('version',p.version,'payroll_type',p.payroll_type,'starts_on',p.starts_on,
+  'common_version',p.common_version,'request_id',p.request_id,'published_at',p.published_at) order by p.version desc),'[]') into entries
+  from (select * from company_common_allowance_private.payroll_publications where company_id=cid order by version desc limit 100) p;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'can_edit',editable,
+  'timeline_version',coalesce((select max(version) from company_common_allowance_private.payroll_publications where company_id=cid),0),
+  'common_version',coalesce((select version from company_common_allowance_private.state where company_id=cid),0),
+  'common_source',company_common_allowance_private.source(cid),'entries',entries);
+end $$;
+
+create function company_common_allowance_private.publish_payroll(cid uuid,typ text,p_start date,p_common_version bigint,
+ p_common_source jsonb,p_timeline_version bigint,rid uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare current_version bigint;common_version bigint;payload jsonb;snapshot jsonb;next_start date;
+ receipt company_common_allowance_private.payroll_publication_receipts%rowtype;scope record;affected int:=0;result jsonb;
+begin
+ perform company_common_allowance_private.lock_writer(cid);
+ if typ is null or typ not in ('daily','hourly','monthly') or p_start is null or p_start<>date_trunc('month',p_start)::date
+ or rid is null or p_common_version is null or p_timeline_version is null then
+  raise exception 'invalid payroll publication request' using errcode='22023';end if;
+ payload:=jsonb_build_object('payroll_type',typ,'starts_on',p_start,'common_version',p_common_version,'common_source',p_common_source,'timeline_version',p_timeline_version);
+ select * into receipt from company_common_allowance_private.payroll_publication_receipts where company_id=cid and request_id=rid;
+ if found then
+  if receipt.actor_id is distinct from auth.uid() or receipt.payload is distinct from payload then
+   raise exception 'payroll publication request mismatch' using errcode='22023';end if;
+  return receipt.result;
+ end if;
+ if p_start<date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date then
+  raise exception 'past payroll publication requires separate review' using errcode='22023';end if;
+ if not exists(select 1 from company_common_allowance_private.payroll_activation where company_id=cid and starts_on<=p_start) then
+  raise exception 'company payroll activation is not configured' using errcode='55000';end if;
+ select coalesce(max(version),0) into current_version from company_common_allowance_private.payroll_publications where company_id=cid;
+ select coalesce((select version from company_common_allowance_private.state where company_id=cid),0) into common_version;
+ if current_version<>p_timeline_version or common_version<>p_common_version
+ or p_common_source is distinct from company_common_allowance_private.source(cid) then
+  raise exception 'payroll publication source conflict' using errcode='40001';end if;
+ if current_version>=9007199254740991 then raise exception 'payroll publication version exceeds range' using errcode='22023';end if;
+ snapshot:=company_common_allowance_private.active_items(cid,typ);
+ insert into company_common_allowance_private.payroll_publications(company_id,version,payroll_type,starts_on,common_version,items,request_id,actor_id)
+ values(cid,current_version+1,typ,p_start,common_version,snapshot,rid,auth.uid());
+ select min(starts_on) into next_start from company_common_allowance_private.payroll_publications
+  where company_id=cid and payroll_type=typ and starts_on>p_start;
+ -- Established company -> worker -> month ordering. Only editable automatic drafts.
+ for scope in
+  select x.worker_id,x.period_start from (
+   select ps.worker_id,ps.period_start from public.payroll_statements ps join public.worker_payroll_settings s on s.company_id=ps.company_id and s.worker_id=ps.worker_id
+    where ps.company_id=cid and s.pay_type=typ and ps.automatic_calculation is true and ps.workflow_state='draft'
+     and ps.period_start>=p_start and (next_start is null or ps.period_start<next_start)
+   union
+   select s.worker_id,p_start from public.worker_payroll_settings s where s.company_id=cid and s.pay_type=typ
+    and p_start=date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date
+    and not exists(select 1 from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=s.worker_id and ps.period_start=p_start
+      and (ps.automatic_calculation is distinct from true or ps.workflow_state is distinct from 'draft'))
+  ) x order by x.worker_id,x.period_start loop
+  perform payroll_scope_private.lock_scopes(jsonb_build_array(jsonb_build_object('cid',cid,'wid',scope.worker_id,'day',scope.period_start)));
+  perform private.refresh_automatic_payroll(cid,scope.worker_id,scope.period_start);
+  perform private.sync_payroll_attendance_detail(cid,scope.worker_id,scope.period_start);
+  affected:=affected+1;
+ end loop;
+ perform company_common_allowance_private.authorize(cid,true);
+ result:=jsonb_build_object('contract_version',1,'company_id',cid,'request_id',rid,'publication_version',current_version+1,
+  'starts_on',p_start,'payroll_type',typ,'recalculated_scopes',affected,'timeline',company_common_allowance_private.read_payroll_publications(cid));
+ insert into company_common_allowance_private.payroll_publication_receipts values(cid,rid,auth.uid(),payload,result);
+ return result;
+end $$;
+revoke all on function company_common_allowance_private.read_payroll_publications(uuid),company_common_allowance_private.publish_payroll(uuid,text,date,bigint,jsonb,bigint,uuid) from public,anon,authenticated,service_role;
+grant execute on function company_common_allowance_private.read_payroll_publications(uuid),company_common_allowance_private.publish_payroll(uuid,text,date,bigint,jsonb,bigint,uuid) to authenticated;
+create function public.read_company_common_payroll_publications(p_company_id uuid) returns jsonb
+language sql stable security invoker set search_path='' as $$select company_common_allowance_private.read_payroll_publications(p_company_id)$$;
+create function public.publish_company_common_payroll(p_company_id uuid,p_payroll_type text,p_starts_on date,p_common_version bigint,p_common_source jsonb,p_timeline_version bigint,p_request_id uuid) returns jsonb
+language sql security invoker set search_path='' as $$select company_common_allowance_private.publish_payroll(p_company_id,p_payroll_type,p_starts_on,p_common_version,p_common_source,p_timeline_version,p_request_id)$$;
+revoke all on function public.read_company_common_payroll_publications(uuid),public.publish_company_common_payroll(uuid,text,date,bigint,jsonb,bigint,uuid) from public,anon,service_role;
+grant execute on function public.read_company_common_payroll_publications(uuid),public.publish_company_common_payroll(uuid,text,date,bigint,jsonb,bigint,uuid) to authenticated;
+
+DO $verify$ DECLARE r record; tables integer:=0; BEGIN
+ IF to_regprocedure('public.read_company_common_allowances_admin(uuid)') IS NULL
+ OR to_regprocedure('public.save_company_common_allowances(uuid,text,bigint,jsonb,uuid,jsonb,jsonb,boolean)') IS NULL
+ OR to_regprocedure('public.read_company_common_payroll_publications(uuid)') IS NULL
+ OR to_regprocedure('public.publish_company_common_payroll(uuid,text,date,bigint,jsonb,bigint,uuid)') IS NULL
+ THEN RAISE EXCEPTION 'common public contract incomplete'; END IF;
+ FOR r IN SELECT c.oid,c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname IN ('company_allowance_identity_private','company_common_allowance_private') AND c.relkind='r' LOOP
+ tables:=tables+1;
+ IF NOT r.relrowsecurity OR has_table_privilege('authenticated',r.oid,'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('anon',r.oid,'SELECT,INSERT,UPDATE,DELETE')
+ THEN RAISE EXCEPTION 'common storage exposed or RLS disabled'; END IF;
+ END LOOP;
+ IF tables<>11 OR EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_activation)
+ OR EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_publications)
+ THEN RAISE EXCEPTION 'unexpected common objects or nonempty activation/publication'; END IF;
+END $verify$;
+DO $all_unused$ BEGIN
+ IF EXISTS(SELECT 1 FROM company_allowance_identity_private.state) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+ IF EXISTS(SELECT 1 FROM company_allowance_identity_private.identities) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+ IF EXISTS(SELECT 1 FROM company_allowance_identity_private.history) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+ IF EXISTS(SELECT 1 FROM company_common_allowance_private.state) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+ IF EXISTS(SELECT 1 FROM company_common_allowance_private.items) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+ IF EXISTS(SELECT 1 FROM company_common_allowance_private.history) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+ IF EXISTS(SELECT 1 FROM company_common_allowance_private.unit_aliases) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+ IF EXISTS(SELECT 1 FROM company_common_allowance_private.requests) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+ IF EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_activation) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+ IF EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_publications) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+ IF EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_publication_receipts) THEN RAISE EXCEPTION 'new common table is not empty'; END IF;
+END $all_unused$;
+CREATE TEMP TABLE common_data_fingerprints(name text PRIMARY KEY,hash text);
+DO $hash$ DECLARE r record; h text; BEGIN
+ FOR r IN SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE (n.nspname IN ('public','private','auth') OR n.nspname LIKE 'payroll\_%' ESCAPE '\' OR n.nspname LIKE '%\_private' ESCAPE '\') AND n.nspname NOT IN ('company_allowance_identity_private','company_common_allowance_private') AND c.relkind='r' ORDER BY n.nspname,c.relname LOOP
+ EXECUTE format('SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),''[]'')::text) FROM %I.%I x',r.nspname,r.relname) INTO h;
+ INSERT INTO common_data_fingerprints VALUES(r.nspname||'.'||r.relname,h);
+ END LOOP;
+END $hash$;
+
+INSERT INTO sko_common_install_checkpoints(side,checkpoint) SELECT 'after',jsonb_build_object('schema',1,'source_hashes','{"supabase/migrations/20261009201229_company_allowance_identity_lifecycle.sql":"edacd1d8aac3ac0dd7219954192871725782369c82824173b2c73afe8aad3c3d","tool/staged_company_common_allowances.sql.review-only":"8f4c3b1b1cd07519174c88441c5e4b7eea325bbdd99b6ae455897b04e9786e46","docs/candidates/company_common_payroll_bridge_20261020.sql.review-only":"043fa73f7f997c67df21e4544073febe6f351d82f1fcd1b2771c953dd92e1d45","docs/candidates/company_common_payroll_effective_20261020.sql.review-only":"3a6aa28e29de9aee6cbd2464df2cc4361806ccad0aa55f901ec89e1f399eb023"}'::jsonb,'catalog',(SELECT jsonb_build_object('hash',md5(v::text),'catalog',v) FROM (SELECT jsonb_build_object(
+ 'schemas',(SELECT coalesce(jsonb_agg(jsonb_build_array(n.oid,n.nspname,n.nspowner,n.nspacl) ORDER BY n.oid),'[]') FROM pg_namespace n WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'relations',(SELECT coalesce(jsonb_agg(jsonb_build_array(c.oid,c.relname,c.relkind,c.relowner,c.relacl,c.relrowsecurity,c.relforcerowsecurity,c.reloptions) ORDER BY c.oid),'[]') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'attributes',(SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY a.attrelid,a.attnum),'[]') FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'functions',(SELECT coalesce(jsonb_agg(jsonb_build_array(p.oid,pg_get_functiondef(p.oid),p.proowner,p.proacl,p.proconfig,p.prosecdef) ORDER BY p.oid),'[]') FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE (n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema') AND p.prokind IN ('f','p')),
+ 'policies',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.oid),'[]') FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'triggers',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.oid),'[]') FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema')
+,
+ 'constraints',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_constraint x JOIN pg_namespace n ON n.oid=x.connamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'indexes',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.indexrelid),'[]') FROM pg_index x JOIN pg_class c ON c.oid=x.indrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'defaults',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_attrdef x JOIN pg_class c ON c.oid=x.adrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'types',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_type x JOIN pg_namespace n ON n.oid=x.typnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'enums',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_enum x JOIN pg_type t ON t.oid=x.enumtypid JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'rules',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_rewrite x JOIN pg_class c ON c.oid=x.ev_class JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'comments',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.classoid,x.objoid,x.objsubid),'[]') FROM pg_description x),
+ 'security_labels',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.classoid,x.objoid,x.objsubid,x.provider),'[]') FROM pg_seclabel x),
+ 'default_acls',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_default_acl x),
+ 'dependencies',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.classid,x.objid,x.objsubid,x.refclassid,x.refobjid,x.refobjsubid,x.deptype),'[]') FROM pg_depend x WHERE
+ (x.classid='pg_proc'::regclass AND x.objid IN(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_class'::regclass AND x.objid IN(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_type'::regclass AND x.objid IN(SELECT t.oid FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_constraint'::regclass AND x.objid IN(SELECT c.oid FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_rewrite'::regclass AND x.objid IN(SELECT r.oid FROM pg_rewrite r JOIN pg_class c ON c.oid=r.ev_class JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_attrdef'::regclass AND x.objid IN(SELECT d.oid FROM pg_attrdef d JOIN pg_class c ON c.oid=d.adrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))),
+ 'event_triggers',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_event_trigger x),
+ 'database',(SELECT jsonb_build_array(oid,datname,datdba,datacl,datallowconn) FROM pg_database WHERE datname=current_database()),
+ 'roles',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_roles x)
+) v) checkpoint),'functions',(SELECT coalesce(jsonb_agg(jsonb_build_object(
+ 'oid',p.oid,'name',n.nspname||'.'||p.proname,
+ 'signature',n.nspname||'.'||p.proname||'('||oidvectortypes(p.proargtypes)||')',
+ 'definition',pg_get_functiondef(p.oid),'owner',pg_get_userbyid(p.proowner),'owner_oid',p.proowner,'acl',p.proacl,'config',p.proconfig,'definer',p.prosecdef)
+ ORDER BY p.oid),'[]') FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE (n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema') AND p.prokind='f'),'business_hash',(SELECT md5(coalesce(jsonb_agg(jsonb_build_array(name,hash) ORDER BY name),'[]')::text) FROM common_data_fingerprints));
+DROP TABLE common_data_fingerprints;
+CREATE TEMP TABLE common_data_fingerprints(name text PRIMARY KEY,hash text);
+DO $hash$ DECLARE r record; h text; BEGIN
+ FOR r IN SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE (n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema') AND n.nspname NOT IN ('company_allowance_identity_private','company_common_allowance_private') AND c.relkind='r' ORDER BY n.nspname,c.relname LOOP
+ EXECUTE format('SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),''[]'')::text) FROM %I.%I x',r.nspname,r.relname) INTO h;
+ INSERT INTO common_data_fingerprints VALUES(r.nspname||'.'||r.relname,h);
+ END LOOP;
+END $hash$;
+
+UPDATE sko_common_install_checkpoints SET all_application_rows_hash=(SELECT md5(coalesce(jsonb_agg(jsonb_build_array(name,hash) ORDER BY name),'[]')::text) FROM common_data_fingerprints) WHERE side='after';
+DROP TABLE common_data_fingerprints;
+DO $fresh_checkpoints$ DECLARE b jsonb;a jsonb;k text;sig text;old_function jsonb;new_function jsonb; BEGIN
+ SELECT checkpoint INTO STRICT b FROM sko_common_install_checkpoints WHERE side='before';
+ SELECT checkpoint INTO STRICT a FROM sko_common_install_checkpoints WHERE side='after';
+ IF b->>'business_hash' IS DISTINCT FROM a->>'business_hash'
+ OR (SELECT all_application_rows_hash FROM sko_common_install_checkpoints WHERE side='before') IS DISTINCT FROM (SELECT all_application_rows_hash FROM sko_common_install_checkpoints WHERE side='after')
+ THEN RAISE EXCEPTION 'existing application rows changed'; END IF;
+ FOREACH k IN ARRAY ARRAY['schemas','relations','attributes','policies','constraints','indexes','defaults','types','enums','rules','default_acls','event_triggers','roles'] LOOP
+ IF NOT ((a->'catalog'->'catalog'->k) @> (b->'catalog'->'catalog'->k)) THEN RAISE EXCEPTION 'existing catalog changed: %',k; END IF;
+ END LOOP;
+ FOREACH sig IN ARRAY ARRAY['public.my_attendance_allowance_units()','payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)','payroll_unit_private.read_conditions(uuid,uuid,date)'] LOOP
+ SELECT f-'definition' INTO STRICT old_function FROM jsonb_array_elements(b->'functions') f WHERE replace(f->>'signature',', ',',')=sig;
+ SELECT f-'definition' INTO STRICT new_function FROM jsonb_array_elements(a->'functions') f WHERE replace(f->>'signature',', ',',')=sig;
+ IF old_function IS DISTINCT FROM new_function THEN RAISE EXCEPTION 'original function identity/security changed'; END IF;
+ END LOOP;
+ IF (a->'catalog'->'catalog'->'database') IS DISTINCT FROM (b->'catalog'->'catalog'->'database') THEN RAISE EXCEPTION 'database ownership/ACL changed'; END IF;
+END $fresh_checkpoints$;
+COMMIT;
+-- Run only with operator-managed private output redirection. This SELECT is private evidence, not a safe chat result.
+SELECT jsonb_build_object('schema',1,'source_hashes','{"supabase/migrations/20261009201229_company_allowance_identity_lifecycle.sql":"edacd1d8aac3ac0dd7219954192871725782369c82824173b2c73afe8aad3c3d","tool/staged_company_common_allowances.sql.review-only":"8f4c3b1b1cd07519174c88441c5e4b7eea325bbdd99b6ae455897b04e9786e46","docs/candidates/company_common_payroll_bridge_20261020.sql.review-only":"043fa73f7f997c67df21e4544073febe6f351d82f1fcd1b2771c953dd92e1d45","docs/candidates/company_common_payroll_effective_20261020.sql.review-only":"3a6aa28e29de9aee6cbd2464df2cc4361806ccad0aa55f901ec89e1f399eb023"}'::jsonb,'before',(SELECT checkpoint FROM sko_common_install_checkpoints WHERE side='before'),'after',(SELECT checkpoint FROM sko_common_install_checkpoints WHERE side='after'),'all_application_rows_hash',(SELECT all_application_rows_hash FROM sko_common_install_checkpoints WHERE side='after'));
+DROP TABLE sko_common_install_checkpoints;
