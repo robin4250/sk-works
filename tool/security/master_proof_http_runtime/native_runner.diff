@@ -1,0 +1,260 @@
+--- common-http-auth-catalog-rehearsal-20261020/owner_common_http_rehearsal.py
++++ owner_master_proof_http_rehearsal.py
+@@ -17,11 +17,34 @@
+ import threading
+ import uuid
+ from urllib.parse import urlencode
+-import owner_payroll_common_rehearsal as common
++import owner_expense_off_rehearsal as transport
++import owner_collector_public_create_rehearsal as collector
+ 
+ AUTH_IMAGE='supabase/gotrue@sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b'
+ REST_IMAGE='postgrest/postgrest@sha256:d155c6718ed9a9f990d159a2ab7c0a3f16944dbb6d0a0344557421042acfe0df'
+-PAYROLL_HASH='acdb78113fd628c32411c8ce73086213'
++COLLECTOR_PREREQUISITES_SQL="""select to_regrole('sko_security_collector_ingest') is null
++ and to_regclass('private.security_collector_control') is null
++ and to_regclass('private.security_collector_events') is null
++ and to_regclass('private.security_collector_read_audit') is null
++ and to_regprocedure('private.consume_reauthentication_proof(text,jsonb,text)') is null
++ and to_regclass('private.reauthentication_rollout') is null
++ and to_regclass('private.reauthentication_proofs') is null
++ and to_regprocedure('public.sko_fixture_read_collector(text)') is null
++ and to_regclass('auth.sessions') is not null
++ and to_regclass('private.master_admins') is not null
++ and to_regprocedure('private.account_deletion_barrier_key(uuid)') is not null
++ and to_regprocedure('extensions.digest(text,text)') is not null
++ and to_regprocedure('private.account_access_allowed()') is not null
++ and to_regprocedure('public.is_current_user_master_admin()') is not null;"""
++BUSINESS_ROW_QUERIES_SQL="""select coalesce(jsonb_agg(format('select %L as relation,md5(coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text),%L::jsonb)::text) as digest from %I.%I x',n.nspname||'.'||c.relname,'[]',n.nspname,c.relname) order by n.nspname,c.relname),'[]'::jsonb)
++from pg_class c join pg_namespace n on n.oid=c.relnamespace where c.relkind in ('r','p')
++and n.nspname in ('public','private') and not (n.nspname='private' and c.relname='master_admins');"""
++
++
++def business_digest_sql(queries):
++    check(isinstance(queries,list) and len(queries)>0,'existing_business_tables_required')
++    check(all(isinstance(x,str) and x.startswith('select ') for x in queries),'business_queries_invalid')
++    return "SELECT jsonb_agg(to_jsonb(t) order by relation)::text FROM ("+' UNION ALL '.join(queries)+") t;"
+ 
+ 
+ def check(value,code):
+@@ -121,15 +144,8 @@
+     return http.call('rest','/rpc/'+name,token,body)
+ 
+ 
+-def commit_install(bundle):
+-    sql=common.build_install(bundle)
+-    check(sql.endswith('\nROLLBACK;'),'install_transaction_shape_changed')
+-    # HTTP calls use separate connections. Commit ONLY in the new disposable clone.
+-    return sql.removesuffix('\nROLLBACK;')+'\nCOMMIT;'
+-
+-
+ def clone_command(name,image,network):
+-    args=common.transport.clone_command(name,image)
++    args=transport.clone_command(name,image)
+     args[1]='create';args.remove('-d')
+     args[args.index('--network=none')]='--network='+network
+     args.insert(args.index('--user=postgres'),'--network-alias=db')
+@@ -226,14 +242,18 @@
+     try:
+         check(sys.platform=='darwin','mac_required')
+         check(not os.environ.get('DOCKER_HOST') and not os.environ.get('DOCKER_CONTEXT'),'docker_override_refused')
+-        root=Path.home()/'SKO-source-backups'; source=root/common.transport.SOURCE
++        root=Path.home()/'SKO-source-backups'; source=root/transport.SOURCE
+         check(not any(p.is_symlink() for p in (source,*source.parents)) and not root.stat().st_mode&0o077,'private_source_required')
+         original=json.loads((source/'rehearsal-status.json').read_text())
+         check(original.get('archive_restore_verified') and original.get('container_stopped'),'verified_stopped_source_required')
+         original_name=original['container'];check(re.fullmatch(r'sko-restore-[a-f0-9]{12}',original_name) is not None,'source_name_invalid')
+-        bundle=json.loads((Path(__file__).parent/'common_payroll_sources.json').read_text())
+-        install=commit_install(bundle)
+-        stage=Path(tempfile.mkdtemp(prefix='common-http-rehearsal-',dir=root))
++        bundle=json.loads((Path(__file__).parent/'collector_proof_bundle.json').read_text())
++        install=collector.transaction_sql(bundle)
++        check(install.count(bundle['scenario'])==1,'scenario_boundary_changed')
++        install=install.replace(bundle['scenario'],'',1)
++        check(install.endswith('ROLLBACK;'),'collector_transaction_boundary_changed')
++        install=install.removesuffix('ROLLBACK;')+'COMMIT;'
++        stage=Path(tempfile.mkdtemp(prefix='master-proof-http-rehearsal-',dir=root))
+         env={k:v for k,v in os.environ.items() if not k.startswith('PG')}
+         # Never persist raw stdout/stderr from Auth, SQL or Docker: they may contain secrets.
+         def run(args,data=None,timeout=120):
+@@ -247,7 +267,7 @@
+         context=json.loads(run(['docker','context','inspect']))
+         check(context[0]['Endpoints']['docker']['Host'].startswith('unix://'),'remote_docker_refused')
+         src=json.loads(run(['docker','inspect',original_name]))[0]
+-        check(not src['State']['Running'] and src['HostConfig']['NetworkMode']=='none' and not src['HostConfig'].get('PortBindings') and src['Config']['Image']==common.transport.BASE_IMAGE and src['Config']['Labels'].get('sko-purpose')=='offline-restore','source_container_mismatch')
++        check(not src['State']['Running'] and src['HostConfig']['NetworkMode']=='none' and not src['HostConfig'].get('PortBindings') and src['Config']['Image']==transport.BASE_IMAGE and src['Config']['Labels'].get('sko-purpose')=='offline-restore','source_container_mismatch')
+         state['phase']='images'
+         for image in (AUTH_IMAGE,REST_IMAGE): image_check(json.loads(run(['docker','image','inspect',image]))[0],image)
+         suffix=uuid.uuid4().hex[:12]; network='sko-common-http-'+suffix
+@@ -258,6 +278,7 @@
+         cidrs=net.get('IPAM',{}).get('Config',[]);check(len(cidrs)==1,'one_internal_subnet_required')
+         subnet=ipaddress.ip_network(cidrs[0]['Subnet']);check(subnet.version==4 and subnet.is_private,'private_ipv4_subnet_required')
+         state['phase']='clone'
++        print('復元済みDBから専用の隔離コピーを作成しています。',flush=True)
+         image=run(['docker','commit',original_name],timeout=300).decode().strip()
+         check(re.fullmatch(r'sha256:[a-f0-9]{64}',image) is not None,'clone_image_invalid')
+         state['private_local_image']=image; db='sko-http-db-'+suffix
+@@ -284,14 +305,22 @@
+             return run(['docker','exec','-i',db,'psql','-X','-w','-h','/tmp','-U',role,'-d','postgres','-q','-A','-t','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate'],("SET statement_timeout='60s';SET lock_timeout='3s';\n"+sql).encode()).decode().strip()
+         def value(sql): return query(sql).splitlines()[-1]
+         check(value('SHOW cron.launch_active_jobs;')=='off','cron_not_disabled')
+-        query(common.transport.DATABASE_BASELINE_SQL,role='supabase_admin')
+-        state['phase']='install_common_clone_only';query(install);state['clone_changes_committed']=True
+-        scope_rows=json.loads(value("SELECT coalesce(jsonb_agg(jsonb_build_object('company_id',p.company_id,'worker_id',p.worker_id,'payroll_id',p.id,'month',p.period_start,'payroll_type',s.pay_type)),'[]'::jsonb) FROM public.payroll_statements p JOIN public.worker_payroll_settings s ON s.company_id=p.company_id AND s.worker_id=p.worker_id WHERE md5(to_jsonb(p)::text)='"+PAYROLL_HASH+"' AND p.automatic_calculation=true AND p.workflow_state='draft' AND p.period_start=date_trunc('month',current_timestamp AT TIME ZONE 'Asia/Tokyo')::date;"))
+-        check(len(scope_rows)==1,'protected_current_draft_required'); scope=scope_rows[0]
+-        for key in ('company_id','worker_id','payroll_id'): check(str(uuid.UUID(scope[key]))==scope[key],'scope_uuid_invalid')
+-        check(scope['payroll_type'] in ('daily','hourly','monthly'),'payroll_type_invalid')
++        state['phase']='install_proof_collector_clone_only'
++        check(value("SELECT pg_get_userbyid(datdba)='supabase_admin' AND (SELECT rolsuper AND rolcanlogin FROM pg_roles WHERE rolname='supabase_admin') AND has_schema_privilege('postgres','public','USAGE') AND NOT has_schema_privilege('postgres','public','CREATE') AND current_setting('server_version_num')::int BETWEEN 170000 AND 179999 FROM pg_database WHERE datname=current_database();")=='t','clone_bootstrap_contract_differs')
++        check(value(COLLECTOR_PREREQUISITES_SQL)=='t','collector_or_proof_prerequisite_baseline_differs')
++        original_business_queries=json.loads(value(BUSINESS_ROW_QUERIES_SQL))
++        original_business_sql=business_digest_sql(original_business_queries)
++        original_business=value(original_business_sql)
++        (stage/'before-business-table-digests-private.json').write_text(original_business)
++        before_database_owner=value("SELECT datdba FROM pg_database WHERE datname=current_database();")
++        check(value("SELECT has_schema_privilege('authenticated','private','USAGE');")=='t','existing_authenticated_private_usage_required')
++        query(install,role='supabase_admin');state['clone_changes_committed']=True
++        check(value("SELECT datdba FROM pg_database WHERE datname=current_database();")==before_database_owner,'database_owner_changed')
++        check(value("SELECT NOT EXISTS(SELECT 1 FROM private.reauthentication_rollout WHERE enabled) AND NOT EXISTS(SELECT 1 FROM private.security_collector_control WHERE ingest_enabled OR read_enabled);")=='t','default_off_failed')
++        query("CREATE FUNCTION public.sko_fixture_read_collector(p_proof text) RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$SELECT private.read_security_collector_events(p_proof)$$;REVOKE ALL ON FUNCTION public.sko_fixture_read_collector(text) FROM PUBLIC,anon,service_role;GRANT EXECUTE ON FUNCTION public.sko_fixture_read_collector(text) TO authenticated;")
+         def identity_fingerprint(excluded): return value(identity_sql(excluded))
+         original_identity=identity_fingerprint([])
++        original_master=value("SELECT md5(coalesce(jsonb_agg(to_jsonb(m) ORDER BY user_id),'[]'::jsonb)::text) FROM private.master_admins m;")
+         pw_auth=secrets.token_hex(32);pw_rest=secrets.token_hex(32);secret=secrets.token_hex(48)
+         state['phase']='synthetic_database_roles'
+         query("SET password_encryption='scram-sha-256';CREATE ROLE "+db_auth+" LOGIN INHERIT PASSWORD '"+pw_auth+"';GRANT supabase_auth_admin TO "+db_auth+";CREATE ROLE "+db_rest+" LOGIN NOINHERIT PASSWORD '"+pw_rest+"';GRANT anon,authenticated,service_role TO "+db_rest+";GRANT CONNECT ON DATABASE postgres TO "+db_auth+','+db_rest+';',role='supabase_admin')
+@@ -300,6 +329,7 @@
+         state['auth_role_catalog']=json.loads(query(auth_catalog_sql(),role=db_auth).splitlines()[-1])
+         check(auth_scope_allowed(state['auth_role_scope']),'auth_role_scope_preflight_failed')
+         state['phase']='auth_rest_start'
++        print('隔離ネットワーク内でAuthとデータAPIを起動しています。',flush=True)
+         auth='sko-http-auth-'+suffix;rest='sko-http-rest-'+suffix
+         configs={auth:{'GOTRUE_API_HOST':'0.0.0.0','GOTRUE_API_PORT':'9999','API_EXTERNAL_URL':'http://auth:9999','GOTRUE_SITE_URL':'http://fixture.invalid','GOTRUE_DB_DRIVER':'postgres','GOTRUE_DB_DATABASE_URL':auth_database_url(db_auth,pw_auth),'GOTRUE_DB_NAMESPACE':'auth','GOTRUE_JWT_SECRET':secret,'GOTRUE_JWT_EXP':'3600','GOTRUE_JWT_AUD':'authenticated','GOTRUE_JWT_DEFAULT_GROUP_NAME':'authenticated','GOTRUE_JWT_ADMIN_ROLES':'service_role','GOTRUE_DISABLE_SIGNUP':'true','GOTRUE_EXTERNAL_EMAIL_ENABLED':'true','GOTRUE_MAILER_AUTOCONFIRM':'true','GOTRUE_EXTERNAL_PHONE_ENABLED':'false','GOTRUE_EXTERNAL_GOOGLE_ENABLED':'false','GOTRUE_EXTERNAL_APPLE_ENABLED':'false','GOTRUE_LOG_LEVEL':'error'},
+             rest:{'PGRST_DB_URI':'postgres://'+db_rest+':'+pw_rest+'@db:5432/postgres','PGRST_DB_SCHEMAS':'public','PGRST_DB_ANON_ROLE':'anon','PGRST_JWT_SECRET':secret,'PGRST_JWT_AUD':'authenticated','PGRST_LOG_LEVEL':'error'}}
+@@ -329,75 +359,54 @@
+             except (OSError,RuntimeError): pass
+             time.sleep(1)
+         else: raise RuntimeError('auth_not_ready')
+-        state['phase']='synthetic_gotrue_users';service=jwt(secret,'service_role');actors={};tokens={};sessions={}
+-        for label in ('admin','viewer','other_admin','outsider'):
++        state['phase']='rest_health_wait'
++        for _ in range(60):
++            try:
++                if http.call('rest','/',method='GET')[0]==200:break
++            except (OSError,RuntimeError):pass
++            time.sleep(.5)
++        else:raise RuntimeError('rest_not_ready')
++        state['phase']='synthetic_gotrue_users';service=jwt(secret,'service_role');actors={};tokens={};sessions={};credentials={}
++        for label in ('admin','other_admin'):
+             password='Synthetic-'+secrets.token_hex(24)+'!A1';email='sko-http-'+label+'-'+suffix+'@example.invalid'
+             status,created=http.call('auth','/admin/users',service,{'email':email,'password':password,'email_confirm':True})
+             check(status==200 and isinstance(created,dict) and isinstance(created.get('id'),str),'synthetic_user_create_failed')
+-            actor=str(uuid.UUID(created['id']));actors[label]=actor
+-            status,logged=http.call('auth','/token?grant_type=password',body={'email':email,'password':password})
+-            check(status==200 and isinstance(logged,dict) and logged.get('user',{}).get('id')==actor and isinstance(logged.get('access_token'),str),'gotrue_login_failed')
+-            tokens[label]=logged['access_token']
+-            claims=json.loads(base64.urlsafe_b64decode(tokens[label].split('.')[1]+'==='))
+-            check(claims.get('sub')==actor and claims.get('role')=='authenticated' and isinstance(claims.get('session_id'),str),'gotrue_claims_invalid')
+-            sessions[label]=str(uuid.UUID(claims['session_id']))
+-            check(value("SELECT EXISTS(SELECT 1 FROM auth.sessions WHERE id='"+sessions[label]+"' AND user_id='"+actor+"');")=='t','gotrue_session_not_persisted')
+-        cid=scope['company_id']; read_body={'p_company_id':cid}
+-        for label,role in (('admin','admin'),('viewer','viewer'),('other_admin','admin')):
+-            query("INSERT INTO public.company_members(company_id,user_id,role) VALUES('"+cid+"','"+actors[label]+"','"+role+"');")
+-        state['phase']='http_read_and_authorization'
+-        snapshot=None
+-        for _ in range(60):
+-            status,data=rpc(http,'read_company_common_allowances_admin',tokens['admin'],read_body)
+-            if status==200: snapshot=data;break
+-            check(status in (404,503),'admin_common_read_failed');time.sleep(.5)
+-        check(isinstance(snapshot,dict) and snapshot.get('company_id')==cid and snapshot.get('can_edit') is True,'admin_snapshot_invalid')
+-        status,view=rpc(http,'read_company_common_allowances_admin',tokens['viewer'],read_body)
+-        check(status==200 and view.get('can_edit') is False,'viewer_common_read_failed')
+-        for token in (None,tokens['outsider']):
+-            status,_=rpc(http,'read_company_common_allowances_admin',token,read_body);check(status in (401,403),'unrelated_actor_common_read_allowed')
+-        for token in (tokens['admin'],tokens['outsider']):
+-            status,rows=http.call('rest','/payroll_statements?id=eq.'+scope['payroll_id']+'&select=id',token,method='GET')
+-            if token==tokens['admin']: check(status==200 and isinstance(rows,list) and len(rows)==1,'admin_payroll_rls_denied')
+-            else: check(status in (401,403) or (status==200 and rows==[]),'unrelated_actor_payroll_rls_allowed')
+-        corrupt=tokens['admin'].split('.')
+-        corrupt[2]=('A' if corrupt[2][0]!='A' else 'B')+corrupt[2][1:]
+-        status,_=rpc(http,'read_company_common_allowances_admin','.'.join(corrupt),read_body);check(status==401,'invalid_jwt_signature_allowed')
+-        legacy=[{key:item.get(key) for key in ('slot','id','generation','name','source_unit','amount_yen')} for item in snapshot['legacy_refs']]
+-        save_body={'p_company_id':cid,'p_payroll_type':scope['payroll_type'],'p_expected_version':snapshot['version'],'p_expected_source':snapshot['expected_source'],'p_request_id':str(uuid.uuid4()),'p_items':[{'id':None,'client_key':'http-earning','section':'earning','unit':'month','name':'隔離HTTP共通支給','amount_yen':1000},{'id':None,'client_key':'http-deduction','section':'deduction','unit':'month','name':'隔離HTTP共通控除','amount_yen':250}],'p_legacy_slots':legacy,'p_confirm_adoption':True}
+-        for token in (None,tokens['viewer'],tokens['outsider']):
+-            status,_=rpc(http,'save_company_common_allowances',token,save_body);check(status in (401,403),'unauthorized_common_save_allowed')
+-        state['phase']='http_save_retry_cas'
+-        status,saved=rpc(http,'save_company_common_allowances',tokens['admin'],save_body);check(status==200 and isinstance(saved,dict),'http_common_save_failed')
+-        status,repeated=rpc(http,'save_company_common_allowances',tokens['admin'],save_body);check(status==200 and repeated==saved,'http_save_retry_changed_receipt')
+-        stale={**save_body,'p_request_id':str(uuid.uuid4())};status,failure=rpc(http,'save_company_common_allowances',tokens['admin'],stale)
+-        check(status>=400 and isinstance(failure,dict) and failure.get('code')=='40001','http_save_stale_source_allowed')
+-        receipt_body={'p_company_id':cid,'p_request_id':save_body['p_request_id']}
+-        status,receipt=rpc(http,'read_company_common_allowance_request',tokens['admin'],receipt_body);check(status==200 and receipt.get('found') is True and receipt.get('actor_id')==actors['admin'],'actor_receipt_invalid')
+-        status,other_receipt=rpc(http,'read_company_common_allowance_request',tokens['other_admin'],receipt_body);check(status==200 and other_receipt.get('found') is False,'receipt_leaked_to_another_actor')
+-        state['phase']='http_publish_retry_cas'
+-        query("INSERT INTO company_common_allowance_private.payroll_activation VALUES('"+cid+"','"+scope['month']+"');")
+-        status,publication=rpc(http,'read_company_common_payroll_publications',tokens['admin'],read_body);check(status==200 and isinstance(publication,dict),'publication_read_failed')
+-        publish_body={'p_company_id':cid,'p_payroll_type':scope['payroll_type'],'p_starts_on':scope['month'],'p_common_version':publication['common_version'],'p_common_source':publication['common_source'],'p_timeline_version':publication['timeline_version'],'p_request_id':str(uuid.uuid4())}
+-        for token in (None,tokens['viewer'],tokens['outsider']):
+-            status,_=rpc(http,'publish_company_common_payroll',token,publish_body);check(status in (401,403),'unauthorized_publication_allowed')
+-        status,published=rpc(http,'publish_company_common_payroll',tokens['admin'],publish_body);check(status==200 and isinstance(published,dict),'http_publication_failed')
+-        status,repeated=rpc(http,'publish_company_common_payroll',tokens['admin'],publish_body);check(status==200 and repeated==published,'http_publish_retry_changed_receipt')
+-        stale={**publish_body,'p_request_id':str(uuid.uuid4())};status,failure=rpc(http,'publish_company_common_payroll',tokens['admin'],stale)
+-        check(status>=400 and isinstance(failure,dict) and failure.get('code')=='40001','http_stale_publication_allowed')
+-        state['phase']='http_session_expiry'
+-        query("UPDATE auth.sessions SET not_after=clock_timestamp()-interval '1 second' WHERE id='"+sessions['admin']+"' AND user_id='"+actors['admin']+"';")
+-        for name,body in (('read_company_common_allowances_admin',read_body),('save_company_common_allowances',save_body),('publish_company_common_payroll',publish_body)):
+-            status,failure=rpc(http,name,tokens['admin'],body)
+-            check(status in (401,403) and isinstance(failure,dict),'expired_session_rpc_allowed')
+-        state['phase']='http_logout_old_jwt'
+-        status,_=http.call('auth','/logout?scope=local',tokens['other_admin'],body={});check(status in (200,204),'local_logout_failed')
+-        status,_=rpc(http,'read_company_common_allowances_admin',tokens['other_admin'],read_body);check(status in (401,403),'logged_out_session_rpc_allowed')
++            actor=str(uuid.UUID(created['id']));actors[label]=actor;credentials[label]={'email':email,'password':password}
++        query("INSERT INTO private.master_admins(user_id,enabled) VALUES('"+actors['admin']+"',true),('"+actors['other_admin']+"',true);UPDATE private.reauthentication_rollout SET enabled=true WHERE scope='master_security';UPDATE private.security_collector_control SET read_enabled=true;")
++        state['phase']='master_handler_real_http'
++        node_image='node:22.21.0'
++        node_info=json.loads(run(['docker','image','inspect',node_image]))[0]
++        check(node_info.get('Os')=='linux' and re.fullmatch(r'sha256:[a-f0-9]{64}',node_info.get('Id','')),'existing_node_image_required')
++        work=Path(__file__).parent
++        client='sko-proof-client-'+suffix
++        client_id=run(['docker','create','--name',client,'--network='+network,'--log-driver=none','--interactive','--label','sko-purpose=master-proof-http-rehearsal',node_info['Id'],'node','/run_master_proof.mjs']).decode().strip()
++        check(re.fullmatch(r'[a-f0-9]{64}',client_id) is not None,'client_container_invalid');containers.append(client_id)
++        run(['docker','cp',str(work/'handler.mjs'),client+':/handler.mjs'])
++        run(['docker','cp',str(work/'run_master_proof.mjs'),client+':/run_master_proof.mjs'])
++        # Docker starts the client at /run_master_proof.mjs; no fixture credentials on argv/env/disk.
++        run(['docker','container','update','--restart=no',client])
++        payload=json.dumps({'admin':credentials['admin'],'other':credentials['other_admin'],'publicKey':jwt(secret,'anon'),'serviceKey':service}).encode()
++        state['phase']='master_handler_real_http_client'
++        print('正規の本人確認処理から証明を発行し、一回限りの読取と権限拒否を確認しています。',flush=True)
++        proof_result=json.loads(run(['docker','start','-a','-i',client],payload,timeout=90))
++        if isinstance(proof_result,dict) and proof_result.get('verified') is False:
++            allowed={'config_keys','synthetic_credentials_only','distinct_actors_required','fixture_key_invalid','gateway_origin','route_not_allowed','gotrue_login_failed','gotrue_token_missing','wrong_password_accepted','wrong_scope_accepted','proof_issuance_failed','other_actor_accepted','collector_read_failed','reused_proof_accepted','platform_proof_issue_failed','platform_proof_reused_for_collector','original_session_lost','gotrue_session_missing','master_proof_http_failed'}
++            failure=proof_result.get('failure_code')
++            raise RuntimeError(failure if isinstance(failure,str) and failure in allowed else 'master_proof_http_failed')
++        check(proof_result.get('verified') is True,'master_proof_client_failed')
++        fixture_session=str(uuid.UUID(proof_result.pop('fixture_session_id')))
++        state['master_proof_result']=proof_result
++        check(value("SELECT EXISTS(SELECT 1 FROM auth.sessions WHERE id='"+fixture_session+"' AND user_id='"+actors['admin']+"');")=='t','original_session_not_persisted')
++        check(value("SELECT md5(coalesce(jsonb_agg(to_jsonb(m) ORDER BY user_id),'[]'::jsonb)::text) FROM private.master_admins m WHERE user_id NOT IN ('"+actors['admin']+"','"+actors['other_admin']+"');")==original_master,'original_master_configuration_changed')
+         state['phase']='original_identity_preservation'
+         check(identity_fingerprint(list(actors.values()))==original_identity,'original_owner_identity_company_roles_changed')
++        state['phase']='original_business_preservation'
++        check(value(original_business_sql)==original_business,'original_public_or_private_business_rows_changed')
++        state['existing_business_tables_unchanged']=True
++        state['existing_business_table_count']=len(original_business_queries)
+         final_source=json.loads(run(['docker','inspect',original_name]))[0]
+-        check(not final_source['State']['Running'] and final_source['HostConfig']['NetworkMode']=='none' and not final_source['HostConfig'].get('PortBindings') and final_source['Config']['Image']==common.transport.BASE_IMAGE,'original_restore_changed')
+-        state.update(verified=True,phase='verified',http_transport='docker_exec_internal_curl_no_host_ports',gotrue_issued_jwt_verified=True,invalid_signature_denial=True,direct_payroll_rls_verified=True,live_auth_session_verified=True,http_admin_read_save_publish=True,viewer_read_write_denial=True,unrelated_actor_denial=True,actor_receipt_isolation=True,save_retry_cas=True,publish_retry_cas=True,expired_session_denial=True,logout_old_jwt_denial=True,original_identity_preserved=True)
++        check(not final_source['State']['Running'] and final_source['HostConfig']['NetworkMode']=='none' and not final_source['HostConfig'].get('PortBindings') and final_source['Config']['Image']==transport.BASE_IMAGE,'original_restore_changed')
++        state.update(verified=True,phase='verified',http_transport='internal_network_no_host_ports',gotrue_issued_jwt_verified=True,original_identity_preserved=True,database_owner_unchanged=True,real_google_verified=False)
+         code=0
+     except (Exception,KeyboardInterrupt) as error:
+         if isinstance(error,HttpExecFailure):state['http_client_exitcode']=error.client_returncode
+@@ -429,7 +438,7 @@
+         state['cleanup_verified']=cleanup_ok
+         if not cleanup_ok: state['verified']=False;code=1
+         if stage: (stage/'http-rehearsal-status.json').write_text(json.dumps(state,ensure_ascii=False,indent=2))
+-    result=('隔離実DBと実GoTrue発行JWTで共通手当のHTTP読取・保存・公開、権限/Actor境界、再試行/CAS、session期限切れ・ログアウト後旧JWT拒否、原本identity保持を確認: '+stage.name+'。本番適用・実Google/電話・実機配布は未実施。') if state.get('verified') else ('共通手当HTTP/JWT検証は未完了（段階: '+state.get('phase','準備')+'）。元の復元DB・バックアップ・本番は変更していません。')
++    result=('隔離実DBと実GoTrue発行JWTで正規handler→proof発行→collector読取・一回消費・別actor/scope拒否・元session保持を確認: '+stage.name+'。本番適用・実Google/電話・実機配布は未実施。') if state.get('verified') else ('Master proof HTTP/JWT検証は未完了（段階: '+state.get('phase','準備')+'）。元の復元DB・バックアップ・本番は変更していません。')
+     print(result,flush=True)
+     if sys.platform=='darwin': subprocess.run(['/usr/bin/pbcopy'],input=result,text=True,check=False)
+     return code
