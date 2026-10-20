@@ -1,0 +1,11 @@
+# Expense stopped-clone contract diagnostic — READ ONLY
+
+No native execution. Root review required. Runtime is only `owner_expense_contract_diagnostic.py` plus unchanged hash-pinned `capture_queries.json`.
+
+The helper accepts only the latest `expense-prepared-rehearsal-*` whose status is failure at production_clone_contract_comparison/catalog_non_oid_drift, with dedicated clone stopped and install COMMIT not recorded. It verifies immutable production fresh-record hash, original restored-source success/stopped status, local Unix Docker, exact failed clone name/image/label, no network/ports and existing cron-off/autovacuum-off/empty-listen command settings. It starts only this previously created failed clone. It does not create another clone, rerun install, regenerate baselines, change owners/ACLs or run DDL.
+
+One fixed existing scoped catalog SELECT executes in REPEATABLE READ READ ONLY with PGOPTIONS default_transaction_read_only=on, psql no startup config and statement/lock timeouts. Runtime server settings and database/user identity are asserted. Full catalog is saved privately in a new 0700 `expense-contract-readonly-*`, files0600. Safe output contains group, fixed SQL-object identity, differing field names, explicitly allowed owner/volatility/parallel/strict/leakproof/definer/ACL/config metadata. Definitions/source values are never printed; differences may include SHA256 fingerprints only. No row IDs, business rows, login secrets or function bodies are emitted. The helper always stops this clone, including start uncertainty. Original restored source remains stopped, same start/finish timestamps, Config and HostConfig.
+
+SQLSTATE is saved safely on SQL errors. The original catalog guard remains unchanged. No production endpoint/authentication is used, no installation or transformation occurs. Local PostgreSQL may perform ordinary startup/visibility activity; read-only refers to the diagnostic SQL, not a byte-for-byte promise about PostgreSQL data files.
+
+Five Python tests pass: OID-only change ignored; private body values omitted; safe metadata/differing fields exact; scope and duplicate handling; exact query pin and read-only SELECT. Native execution remains pending. Root should review/publish immutable two-file runtime, then provide a single Mac command.
