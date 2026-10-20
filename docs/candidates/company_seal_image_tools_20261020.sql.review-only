@@ -1,0 +1,124 @@
+-- REVIEW ONLY: depends on company_seal_uploaded_png and master company_seal_image_tools.
+-- Append registration changes no active selection. No historical document DML.
+BEGIN;
+SET LOCAL statement_timeout='30s';
+SET LOCAL lock_timeout='3s';
+DO $preflight$
+BEGIN
+ IF to_regclass('private.company_seal_png_versions') IS NULL
+ OR to_regprocedure('private.require_master_optional_feature(text)') IS NULL
+ OR to_regprocedure('public.register_company_seal_png_version(uuid,text,text,text)') IS NOT NULL
+ THEN RAISE EXCEPTION 'PNG versions and central master prerequisite required; candidate must not already be installed'; END IF;
+END $preflight$;
+
+CREATE FUNCTION private.authorize_company_seal_image_tools(p_company_id uuid,p_expected_name text) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE current_name text; uid uuid:=auth.uid();
+BEGIN
+ PERFORM private.require_master_optional_feature('company_seal_image_tools');
+ IF uid IS NULL OR NOT private.account_access_allowed() OR NOT EXISTS(
+ SELECT 1 FROM public.company_members m WHERE m.company_id=p_company_id AND m.user_id=uid AND m.role::text IN ('owner','admin'))
+ THEN RAISE EXCEPTION 'owner or admin permission required' USING errcode='42501'; END IF;
+ SELECT c.name INTO current_name FROM public.companies c WHERE c.id=p_company_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'company not found'; END IF;
+ IF NOT private.account_access_allowed() OR NOT EXISTS(
+ SELECT 1 FROM public.company_members m WHERE m.company_id=p_company_id AND m.user_id=uid AND m.role::text IN ('owner','admin'))
+ THEN RAISE EXCEPTION 'owner or admin permission required' USING errcode='42501'; END IF;
+ IF current_name IS DISTINCT FROM p_expected_name THEN RAISE EXCEPTION 'company name changed: preview again' USING errcode='40001'; END IF;
+ RETURN current_name;
+END $$;
+REVOKE ALL ON FUNCTION private.authorize_company_seal_image_tools(uuid,text) FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION private.company_seal_png_version_metadata(v private.company_seal_png_versions) RETURNS jsonb
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path='' AS $$
+ SELECT jsonb_build_object('version_id',v.id,'company_id',v.company_id,'company_name',v.company_name,
+ 'sha256',v.sha256,'width',v.width,'height',v.height,'created_at',v.created_at)
+$$;
+REVOKE ALL ON FUNCTION private.company_seal_png_version_metadata(private.company_seal_png_versions) FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION private.register_company_seal_png_version(p_company_id uuid,p_expected_name text,p_png_base64 text,p_png_sha256 text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE current_name text; bytes bytea; width bigint; height bigint; version private.company_seal_png_versions;
+BEGIN
+ current_name:=private.authorize_company_seal_image_tools(p_company_id,p_expected_name);
+ IF p_png_base64 IS NULL THEN RAISE EXCEPTION 'PNG is required' USING errcode='22023'; END IF;
+  IF length(p_png_base64)>1398104 THEN RAISE EXCEPTION 'PNG must be at most 1 MiB' USING errcode='22023'; END IF;
+  bytes:=decode(p_png_base64,'base64');
+  IF octet_length(bytes) NOT BETWEEN 57 AND 1048576 OR substring(bytes FROM 1 FOR 8)<>decode('89504e470d0a1a0a','hex')
+  OR substring(bytes FROM 9 FOR 8)<>decode('0000000d49484452','hex')
+  OR substring(bytes FROM octet_length(bytes)-11 FOR 12)<>decode('0000000049454e44ae426082','hex')
+  THEN RAISE EXCEPTION 'invalid PNG structure' USING errcode='22023'; END IF;
+  width:=get_byte(bytes,16)::bigint*16777216+get_byte(bytes,17)*65536+get_byte(bytes,18)*256+get_byte(bytes,19);
+  height:=get_byte(bytes,20)::bigint*16777216+get_byte(bytes,21)*65536+get_byte(bytes,22)*256+get_byte(bytes,23);
+  IF width NOT BETWEEN 32 AND 2048 OR height NOT BETWEEN 32 AND 2048
+  OR get_byte(bytes,24)<>8 OR get_byte(bytes,25) NOT IN (2,6) OR get_byte(bytes,26)<>0 OR get_byte(bytes,27)<>0 OR get_byte(bytes,28)<>0
+  THEN RAISE EXCEPTION 'PNG must be 32-2048px, 8-bit RGB/RGBA, non-interlaced' USING errcode='22023'; END IF;
+  IF p_png_sha256 IS DISTINCT FROM encode(pg_catalog.sha256(bytes),'hex')
+  THEN RAISE EXCEPTION 'PNG content hash differs' USING errcode='22023'; END IF;
+
+ SELECT v.* INTO version FROM private.company_seal_png_versions v
+ WHERE v.company_id=p_company_id AND v.company_name=current_name AND v.sha256=p_png_sha256;
+ IF NOT FOUND THEN
+  INSERT INTO private.company_seal_png_versions(company_id,company_name,png_bytes,sha256,width,height,created_by)
+  VALUES(p_company_id,current_name,bytes,p_png_sha256,width::integer,height::integer,auth.uid()) RETURNING * INTO version;
+ END IF;
+ RETURN private.company_seal_png_version_metadata(version);
+END $$;
+REVOKE ALL ON FUNCTION private.register_company_seal_png_version(uuid,text,text,text) FROM PUBLIC,anon,authenticated,service_role;
+CREATE FUNCTION public.register_company_seal_png_version(p_company_id uuid,p_expected_name text,p_png_base64 text,p_png_sha256 text) RETURNS jsonb
+LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$
+ SELECT private.register_company_seal_png_version(p_company_id,p_expected_name,p_png_base64,p_png_sha256)
+$$;
+REVOKE ALL ON FUNCTION public.register_company_seal_png_version(uuid,text,text,text) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION private.register_company_seal_png_version(uuid,text,text,text),public.register_company_seal_png_version(uuid,text,text,text) TO authenticated;
+
+CREATE FUNCTION private.company_seal_png_versions(p_company_id uuid,p_expected_name text,p_before_created_at timestamptz,p_before_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+BEGIN
+ PERFORM private.authorize_company_seal_image_tools(p_company_id,p_expected_name);
+ IF (p_before_created_at IS NULL)<>(p_before_id IS NULL) THEN RAISE EXCEPTION 'complete cursor required' USING errcode='22023'; END IF;
+ RETURN (SELECT coalesce(jsonb_agg(private.company_seal_png_version_metadata(v) ORDER BY v.created_at DESC,v.id DESC),'[]'::jsonb)
+ FROM (SELECT * FROM private.company_seal_png_versions s
+ WHERE s.company_id=p_company_id AND s.company_name=p_expected_name
+ AND (p_before_created_at IS NULL OR (s.created_at,s.id)<(p_before_created_at,p_before_id))
+ ORDER BY s.created_at DESC,s.id DESC LIMIT 20) v);
+END $$;
+REVOKE ALL ON FUNCTION private.company_seal_png_versions(uuid,text,timestamptz,uuid) FROM PUBLIC,anon,authenticated,service_role;
+CREATE FUNCTION public.company_seal_png_versions(p_company_id uuid,p_expected_name text,p_before_created_at timestamptz DEFAULT NULL,p_before_id uuid DEFAULT NULL) RETURNS jsonb
+LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$
+ SELECT private.company_seal_png_versions(p_company_id,p_expected_name,p_before_created_at,p_before_id)
+$$;
+REVOKE ALL ON FUNCTION public.company_seal_png_versions(uuid,text,timestamptz,uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION private.company_seal_png_versions(uuid,text,timestamptz,uuid),public.company_seal_png_versions(uuid,text,timestamptz,uuid) TO authenticated;
+
+CREATE FUNCTION private.company_seal_png_version(p_company_id uuid,p_expected_name text,p_version_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE version private.company_seal_png_versions;
+BEGIN
+ PERFORM private.authorize_company_seal_image_tools(p_company_id,p_expected_name);
+ SELECT * INTO version FROM private.company_seal_png_versions v WHERE
+ v.company_id=p_company_id AND v.company_name=p_expected_name AND v.id=p_version_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'seal version not found' USING errcode='42501'; END IF;
+ RETURN private.company_seal_png_version_metadata(version)||jsonb_build_object('png_base64',encode(version.png_bytes,'base64'));
+END $$;
+REVOKE ALL ON FUNCTION private.company_seal_png_version(uuid,text,uuid) FROM PUBLIC,anon,authenticated,service_role;
+CREATE FUNCTION public.company_seal_png_version(p_company_id uuid,p_expected_name text,p_version_id uuid) RETURNS jsonb
+LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$
+ SELECT private.company_seal_png_version(p_company_id,p_expected_name,p_version_id)
+$$;
+REVOKE ALL ON FUNCTION public.company_seal_png_version(uuid,text,uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION private.company_seal_png_version(uuid,text,uuid),public.company_seal_png_version(uuid,text,uuid) TO authenticated;
+
+-- Gate write/selection for old clients too. OFF must still allow disabling an
+-- existing selection. Current reads and frozen document snapshots are unchanged.
+DO $patch_save$
+DECLARE definition text; anchor text:=' IF p_enabled IS NULL THEN RAISE EXCEPTION ''enabled is required'' USING errcode=''22023''; END IF;';
+BEGIN
+ definition:=pg_get_functiondef('private.save_company_uploaded_seal(uuid,text,integer,text,text,boolean)'::regprocedure);
+ IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1
+ OR position('company_seal_image_tools' IN definition)>0
+ OR position('s.revision+1' IN definition)=0 THEN RAISE EXCEPTION 'save source differs: stop and review'; END IF;
+ EXECUTE replace(definition,anchor,anchor||E'\n IF p_enabled OR p_png_base64 IS NOT NULL THEN PERFORM private.require_master_optional_feature(''company_seal_image_tools''); END IF;');
+END $patch_save$;
+COMMIT;
+
