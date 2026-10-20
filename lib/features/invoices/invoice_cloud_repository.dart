@@ -1,3 +1,4 @@
+import '../shared/company_seal_current_preview.dart';
 import '../../domain/invoice_document_seal.dart';
 import '../../domain/company_seal_snapshot.dart';
 
@@ -147,7 +148,9 @@ class InvoiceCloudRepository {
           'name': raw['company_name'],
           'company_seal_style': raw['company_seal_style'],
         };
+        currentSealCompany = await companyWithCurrentUploadedSeal(_client, currentSealCompany, companyId);
       } catch (_) {
+        currentSealCompany = null;
         // Keep the list readable; output remains blocked until current seal
         // settings are available, rather than silently using an old draft seal.
       }
@@ -651,4 +654,5 @@ class InvoiceCloudRepository {
     return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 }
+
 

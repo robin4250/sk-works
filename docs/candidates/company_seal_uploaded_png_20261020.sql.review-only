@@ -1,0 +1,179 @@
+-- REVIEW ONLY. OFF by default. Requires updated clients before activation.
+-- No historical document UPDATE, Storage object mutation or company-style rewrite.
+BEGIN;
+SET LOCAL statement_timeout='30s';
+SET LOCAL lock_timeout='3s';
+DO $preflight$
+BEGIN
+ IF to_regclass('private.company_seal_png_versions') IS NOT NULL
+ OR to_regclass('private.company_seal_png_selection') IS NOT NULL
+ THEN RAISE EXCEPTION 'uploaded seal candidate already installed'; END IF;
+ IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('private.document_company_seal_snapshot(jsonb,uuid,boolean)')) IS DISTINCT FROM '5e29407c55cfe7fa33eb7933a38d2af7'
+ THEN RAISE EXCEPTION 'existing document seal snapshots required'; END IF;
+END $preflight$;
+
+CREATE TABLE private.company_seal_png_versions(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ company_id uuid NOT NULL REFERENCES public.companies(id),
+ company_name text NOT NULL CHECK(btrim(company_name)<>''),
+ png_bytes bytea NOT NULL CHECK(octet_length(png_bytes) BETWEEN 57 AND 1048576),
+ sha256 text NOT NULL CHECK(sha256=encode(pg_catalog.sha256(png_bytes),'hex')),
+ width integer NOT NULL CHECK(width BETWEEN 32 AND 2048),
+ height integer NOT NULL CHECK(height BETWEEN 32 AND 2048),
+ created_by uuid NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(company_id,id), UNIQUE(company_id,company_name,sha256)
+);
+CREATE TABLE private.company_seal_png_selection(
+ company_id uuid PRIMARY KEY REFERENCES public.companies(id),
+ version_id uuid,
+ enabled boolean NOT NULL DEFAULT false,
+ revision integer NOT NULL DEFAULT 0 CHECK(revision>=0),
+ updated_by uuid NOT NULL, updated_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(company_id,version_id) REFERENCES private.company_seal_png_versions(company_id,id),
+ CHECK(NOT enabled OR version_id IS NOT NULL)
+);
+ALTER TABLE private.company_seal_png_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE private.company_seal_png_selection ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON private.company_seal_png_versions,private.company_seal_png_selection FROM PUBLIC,anon,authenticated,service_role;
+
+CREATE FUNCTION private.company_seal_png_version_immutable() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
+BEGIN RAISE EXCEPTION 'registered PNG seal versions are immutable' USING errcode='55000'; END $$;
+REVOKE ALL ON FUNCTION private.company_seal_png_version_immutable() FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER company_seal_png_version_immutable BEFORE UPDATE OR DELETE ON private.company_seal_png_versions
+FOR EACH ROW EXECUTE FUNCTION private.company_seal_png_version_immutable();
+
+CREATE FUNCTION private.company_uploaded_seal_settings(p_company_id uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+DECLARE uid uuid:=auth.uid(); result jsonb;
+BEGIN
+ IF uid IS NULL OR NOT private.account_access_allowed() OR NOT EXISTS(
+ SELECT 1 FROM public.company_members m WHERE m.company_id=p_company_id AND m.user_id=uid AND m.role::text IN ('owner','admin'))
+ THEN RAISE EXCEPTION 'owner or admin permission required' USING errcode='42501'; END IF;
+ SELECT jsonb_build_object('company_id',c.id,'company_name',c.name,'available',true,
+ 'enabled',coalesce(s.enabled,false),'revision',coalesce(s.revision,0),'version_id',v.id,
+ 'png_base64',encode(v.png_bytes,'base64'),'png_sha256',v.sha256,'width',v.width,'height',v.height)
+ INTO result FROM public.companies c LEFT JOIN private.company_seal_png_selection s ON s.company_id=c.id
+ LEFT JOIN private.company_seal_png_versions v ON v.company_id=c.id AND v.id=s.version_id WHERE c.id=p_company_id;
+ IF result IS NULL THEN RAISE EXCEPTION 'company not found'; END IF;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION private.company_uploaded_seal_settings(uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION private.company_uploaded_seal_settings(uuid) TO authenticated;
+CREATE FUNCTION public.company_uploaded_seal_settings(p_company_id uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$SELECT private.company_uploaded_seal_settings(p_company_id)$$;
+REVOKE ALL ON FUNCTION public.company_uploaded_seal_settings(uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.company_uploaded_seal_settings(uuid) TO authenticated;
+
+CREATE FUNCTION private.save_company_uploaded_seal(p_company_id uuid,p_expected_name text,p_expected_revision integer,
+ p_png_base64 text,p_png_sha256 text,p_enabled boolean) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE uid uuid:=auth.uid(); v_company_name text; selection private.company_seal_png_selection;
+ bytes bytea; width bigint; height bigint; v_version_id uuid;
+BEGIN
+ IF uid IS NULL OR NOT private.account_access_allowed() OR NOT EXISTS(
+ SELECT 1 FROM public.company_members m WHERE m.company_id=p_company_id AND m.user_id=uid AND m.role::text IN ('owner','admin'))
+ THEN RAISE EXCEPTION 'owner or admin permission required' USING errcode='42501'; END IF;
+ SELECT c.name INTO v_company_name FROM public.companies c WHERE c.id=p_company_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'company not found'; END IF;
+ IF NOT private.account_access_allowed() OR NOT EXISTS(SELECT 1 FROM public.company_members m
+ WHERE m.company_id=p_company_id AND m.user_id=uid AND m.role::text IN ('owner','admin'))
+ THEN RAISE EXCEPTION 'owner or admin permission required' USING errcode='42501'; END IF;
+ IF p_expected_name IS DISTINCT FROM v_company_name THEN RAISE EXCEPTION 'company name changed: preview again' USING errcode='40001'; END IF;
+ INSERT INTO private.company_seal_png_selection(company_id,updated_by) VALUES(p_company_id,uid) ON CONFLICT DO NOTHING;
+ SELECT * INTO selection FROM private.company_seal_png_selection s WHERE s.company_id=p_company_id FOR UPDATE;
+ IF p_expected_revision IS DISTINCT FROM selection.revision THEN RAISE EXCEPTION 'seal settings changed: reload' USING errcode='40001'; END IF;
+ IF p_enabled IS NULL THEN RAISE EXCEPTION 'enabled is required' USING errcode='22023'; END IF;
+ v_version_id:=selection.version_id;
+ IF p_png_base64 IS NOT NULL THEN
+  IF length(p_png_base64)>1398104 THEN RAISE EXCEPTION 'PNG must be at most 1 MiB' USING errcode='22023'; END IF;
+  bytes:=decode(p_png_base64,'base64');
+  IF octet_length(bytes) NOT BETWEEN 57 AND 1048576 OR substring(bytes FROM 1 FOR 8)<>decode('89504e470d0a1a0a','hex')
+  OR substring(bytes FROM 9 FOR 8)<>decode('0000000d49484452','hex')
+  OR substring(bytes FROM octet_length(bytes)-11 FOR 12)<>decode('0000000049454e44ae426082','hex')
+  THEN RAISE EXCEPTION 'invalid PNG structure' USING errcode='22023'; END IF;
+  width:=get_byte(bytes,16)::bigint*16777216+get_byte(bytes,17)*65536+get_byte(bytes,18)*256+get_byte(bytes,19);
+  height:=get_byte(bytes,20)::bigint*16777216+get_byte(bytes,21)*65536+get_byte(bytes,22)*256+get_byte(bytes,23);
+  IF width NOT BETWEEN 32 AND 2048 OR height NOT BETWEEN 32 AND 2048
+  OR get_byte(bytes,24)<>8 OR get_byte(bytes,25) NOT IN (2,6) OR get_byte(bytes,26)<>0 OR get_byte(bytes,27)<>0 OR get_byte(bytes,28)<>0
+  THEN RAISE EXCEPTION 'PNG must be 32-2048px, 8-bit RGB/RGBA, non-interlaced' USING errcode='22023'; END IF;
+  IF p_png_sha256 IS DISTINCT FROM encode(pg_catalog.sha256(bytes),'hex')
+  THEN RAISE EXCEPTION 'PNG content hash differs' USING errcode='22023'; END IF;
+  SELECT v.id INTO v_version_id FROM private.company_seal_png_versions v
+  WHERE v.company_id=p_company_id AND v.company_name=v_company_name AND v.sha256=p_png_sha256;
+  IF v_version_id IS NULL THEN
+   INSERT INTO private.company_seal_png_versions(company_id,company_name,png_bytes,sha256,width,height,created_by)
+   VALUES(p_company_id,v_company_name,bytes,p_png_sha256,width::integer,height::integer,uid) RETURNING id INTO v_version_id;
+  END IF;
+ END IF;
+ IF p_enabled AND (v_version_id IS NULL OR NOT EXISTS(SELECT 1 FROM private.company_seal_png_versions v
+ WHERE v.id=v_version_id AND v.company_id=p_company_id AND v.company_name=v_company_name))
+ THEN RAISE EXCEPTION 'preview and register a PNG for the current company first' USING errcode='22023'; END IF;
+ UPDATE private.company_seal_png_selection s SET version_id=v_version_id,enabled=p_enabled,
+ revision=s.revision+1,updated_by=uid,updated_at=now() WHERE s.company_id=p_company_id;
+ RETURN private.company_uploaded_seal_settings(p_company_id);
+END $$;
+REVOKE ALL ON FUNCTION private.save_company_uploaded_seal(uuid,text,integer,text,text,boolean) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION private.save_company_uploaded_seal(uuid,text,integer,text,text,boolean) TO authenticated;
+CREATE FUNCTION public.save_company_uploaded_seal(p_company_id uuid,p_expected_name text,p_expected_revision integer,
+ p_png_base64 text,p_png_sha256 text,p_enabled boolean) RETURNS jsonb
+LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$SELECT private.save_company_uploaded_seal(p_company_id,p_expected_name,p_expected_revision,p_png_base64,p_png_sha256,p_enabled)$$;
+REVOKE ALL ON FUNCTION public.save_company_uploaded_seal(uuid,text,integer,text,text,boolean) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.save_company_uploaded_seal(uuid,text,integer,text,text,boolean) TO authenticated;
+
+CREATE FUNCTION private.uploaded_company_seal_snapshot(p_company uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
+DECLARE version private.company_seal_png_versions; current_name text;
+BEGIN
+ SELECT v.* INTO version FROM private.company_seal_png_selection s JOIN private.company_seal_png_versions v
+ ON v.company_id=s.company_id AND v.id=s.version_id WHERE s.company_id=p_company AND s.enabled;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT name INTO current_name FROM public.companies WHERE id=p_company FOR SHARE;
+ IF current_name IS DISTINCT FROM version.company_name THEN RAISE EXCEPTION 'company name changed: re-register PNG seal' USING errcode='40001'; END IF;
+ RETURN jsonb_build_object('company_seal_snapshot',jsonb_build_object('version',2,'style','uploaded_png',
+ 'company_id',p_company,'name',version.company_name,'png_version_id',version.id,
+ 'png_sha256',version.sha256,'png_base64',encode(version.png_bytes,'base64')));
+END $$;
+REVOKE ALL ON FUNCTION private.uploaded_company_seal_snapshot(uuid) FROM PUBLIC,anon,authenticated,service_role;
+
+-- Only future snapshots consult the selection; the existing p_new=false branch
+-- returns the original saved metadata unchanged. Source/ACL checkpoint required.
+DO $patch_snapshot$
+DECLARE definition text; anchor text;
+BEGIN
+ definition:=pg_get_functiondef('private.document_company_seal_snapshot(jsonb,uuid,boolean)'::regprocedure);
+ anchor:=' select * into c from public.companies where id=p_company for share;';
+ IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1
+ OR position('if not p_new then' IN definition)=0
+ OR position('declare c public.companies;' IN definition)=0
+ THEN RAISE EXCEPTION 'snapshot baseline differs: do not apply'; END IF;
+ definition:=replace(definition,'declare c public.companies;','declare c public.companies; uploaded_png jsonb;');
+ EXECUTE replace(definition,anchor,$body$
+ uploaded_png:=private.uploaded_company_seal_snapshot(p_company);
+ if uploaded_png IS NOT NULL then
+  return uploaded_png;
+ end if;
+ select * into c from public.companies where id=p_company for share;$body$);
+END $patch_snapshot$;
+
+-- Company-scoped management preview only. Frozen documents never call this.
+CREATE FUNCTION private.company_current_uploaded_seal(p_company_id uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE uid uuid:=auth.uid(); current_name text; snapshot jsonb;
+BEGIN
+ IF uid IS NULL OR NOT private.account_access_allowed() OR NOT EXISTS(SELECT 1 FROM public.company_members m
+ WHERE m.company_id=p_company_id AND m.user_id=uid AND m.role::text IN ('owner','admin','manager'))
+ THEN RAISE EXCEPTION 'management preview permission required' USING errcode='42501'; END IF;
+ SELECT name INTO current_name FROM public.companies WHERE id=p_company_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'company not found'; END IF;
+ snapshot:=private.uploaded_company_seal_snapshot(p_company_id)->'company_seal_snapshot';
+ RETURN jsonb_build_object('company_id',p_company_id,'company_name',current_name,'snapshot',snapshot);
+END $$;
+REVOKE ALL ON FUNCTION private.company_current_uploaded_seal(uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION private.company_current_uploaded_seal(uuid) TO authenticated;
+CREATE FUNCTION public.company_current_uploaded_seal(p_company_id uuid) RETURNS jsonb
+LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$SELECT private.company_current_uploaded_seal(p_company_id)$$;
+REVOKE ALL ON FUNCTION public.company_current_uploaded_seal(uuid) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.company_current_uploaded_seal(uuid) TO authenticated;
+COMMIT;

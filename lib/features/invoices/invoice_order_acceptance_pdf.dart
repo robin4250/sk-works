@@ -81,7 +81,7 @@ class InvoiceOrderAcceptancePdf {
             if (sealEnabled) pw.SizedBox(width:64,height:64,child:CompanySealPdf.build(
               seal.registeredName(issuer['name'].toString()),
               size: 64, font: font, fallbackFont: regularFont,
-              style: seal.style, companyId: seal.companyId)),
+              style: seal.style, companyId: seal.companyId, uploadedPng: seal.uploadedPng)),
           ]),
         ],
       ),
@@ -106,4 +106,5 @@ class InvoiceOrderAcceptancePdf {
     return '${parsed.year}年${parsed.month}月${parsed.day}日';
   }
 }
+
 

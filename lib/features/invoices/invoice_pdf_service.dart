@@ -738,7 +738,7 @@ class InvoicePdfService {
                 invoice.companySealSnapshot.registeredName(
                     settings?.companyName ?? ''),
                 style: invoice.companySealSnapshot.style,
-                companyId: invoice.companySealSnapshot.companyId,
+                companyId: invoice.companySealSnapshot.companyId, uploadedPng: invoice.companySealSnapshot.uploadedPng,
                 font: sealFont,
                 fallbackFont: fallbackFont,
               ),
@@ -2151,4 +2151,5 @@ class _ScreenApprovals extends StatelessWidget {
     ],
   );
 }
+
 

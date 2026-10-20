@@ -16,6 +16,8 @@ class _Fixture {
   late SupabaseClient client;
   final requests = <({String method, Uri uri, List<int> body})>[];
   bool denySeal = false;
+  bool denyUploadedSeal = false;
+  bool frozenInvoice = false;
   bool denyPermissions = false;
   bool signedCheckoutContract = false;
   bool signOutOnContract = false;
@@ -94,13 +96,18 @@ class _Fixture {
       response = denySeal
           ? {'code': '42501', 'message': 'unavailable company lookup'}
           : {'company_id': _company, 'company_name': '検証会社', 'company_seal_style': 'legacy'};
+    } else if (path == '/rest/v1/rpc/company_current_uploaded_seal') {
+      request.response.statusCode = denyUploadedSeal ? 403 : 404;
+      response = denyUploadedSeal
+          ? {'code':'42501','message':'uploaded seal permission denied'}
+          : {'code':'PGRST202','message':'uploaded seal optional backend absent'};
     } else if (path == '/rest/v1/invoices') {
       response = [{
         'id': _invoice, 'customer_id': '', 'billing_period_start': '2026-09-01',
         'billing_period_end': '2026-09-30', 'subtotal': zeroAmount ? 0 : 40000, 'tax': zeroAmount ? 0 : 4000,
         'grand_total': zeroAmount ? 0 : 44000, 'detail_mode': 'consolidated_only',
-        'status': 'draft', 'finalized_at': null, 'approval_finalized_at': null,
-        'invoice_seal_frozen': false, 'snapshot': {
+        'status': frozenInvoice ? 'finalized' : 'draft', 'finalized_at': frozenInvoice ? '2026-10-01T00:00:00Z' : null, 'approval_finalized_at': null,
+        'invoice_seal_frozen': frozenInvoice, 'snapshot': {
           'customer_name': '検証取引先', 'customer_address': '検証住所',
           if (pendingQuantity != null) 'route_quantity_pending': pendingQuantity,
           if (pendingSource != null) 'route_source_pending': pendingSource,
@@ -135,6 +142,7 @@ void main() {
     const readRpcs = {
       '/rest/v1/rpc/invoice_document_settings',
       '/rest/v1/rpc/trade_company_workspace',
+      '/rest/v1/rpc/company_current_uploaded_seal',
     };
     for (final request in fixture.requests) {
       if (request.uri.path.contains('/rpc/')) {
@@ -173,6 +181,28 @@ void main() {
     await expectLater(InvoicePdfService.buildPdf(rows), throwsStateError);
     fixture.denySeal = false;
     expect((await repository.loadAll()).single.outputReadinessError, isNull);
+  });
+
+  test('uploaded-seal backend denial blocks current draft output without hiding saved amounts', () async {
+    fixture.denyUploadedSeal = true;
+    final repository = InvoiceCloudRepository.forTesting(fixture.client);
+    final row = (await repository.loadAll()).single;
+    expect(row.grandTotalYen, 44000);
+    expect(row.outputReadinessError, contains('角印設定'));
+    await expectLater(InvoicePdfService.buildPdf([row]), throwsStateError);
+    fixture.denyUploadedSeal = false;
+    expect((await repository.loadAll()).single.outputReadinessError, isNull,
+      reason: 'Only a missing optional backend keeps the existing company design.');
+  });
+
+  test('frozen invoices do not read a company current PNG selection', () async {
+    fixture.frozenInvoice = true;
+    fixture.denySeal = true;
+    fixture.denyUploadedSeal = true;
+    final row = (await InvoiceCloudRepository.forTesting(fixture.client).loadAll()).single;
+    expect(row.outputReadinessError, isNull);
+    expect(row.grandTotalYen, 44000);
+    expect(fixture.requests.any((r) => r.uri.path == '/rest/v1/rpc/company_current_uploaded_seal'), isFalse);
   });
 
   test('saved route pending state preserves totals and clears only with source state', () async {
@@ -223,4 +253,5 @@ void main() {
     expect(fixture.requests.any((r) => r.uri.path.endsWith('/refresh_signed_checkout_invoices')), isFalse);
   });
 }
+
 
