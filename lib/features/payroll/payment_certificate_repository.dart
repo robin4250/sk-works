@@ -232,11 +232,15 @@ class PaymentCertificateRepository {
     _loadedCompanyId = null;
     final companyId = await _companyId();
     final directionEnabled = await _directionCapability(companyId);
-    final rows = await _client
+    var certificateQuery = _client
         .from('payment_certificates')
         .select(
           'id,company_id,partner_company_id,period_start,period_end,gross_amount,deductions,net_amount,status,revision,snapshot,partner_companies(name)',
-        )
+        );
+    if (enableExpenseDirectionV2) {
+      certificateQuery = certificateQuery.setHeader('x-sko-payment-source-version', '2');
+    }
+    final rows = await certificateQuery
         .eq('company_id', companyId)
         .order('period_start', ascending: false);
 
@@ -252,10 +256,14 @@ class PaymentCertificateRepository {
     final result = <PaymentCertificateRecord>[];
     for (final raw in rows) {
       final id = raw['id']?.toString() ?? '';
-      final detailRaw = await _client.rpc(
+      var detailQuery = _client.rpc(
         'payment_certificate_detail_rows',
         params: {'p_certificate_id': id},
       );
+      if (enableExpenseDirectionV2) {
+        detailQuery = detailQuery.setHeader('x-sko-payment-source-version', '2');
+      }
+      final detailRaw = await detailQuery;
       final lines = <PaymentCertificateLine>[];
       if (detailRaw is List) {
         for (final value in detailRaw) {
@@ -285,7 +293,8 @@ class PaymentCertificateRepository {
         final scope = ExpenseCostContext(kind: ExpenseCostDocumentKind.paymentCertificate,
           companyId: companyId, documentId: id, subjectId: raw['partner_company_id']?.toString() ?? '',
           month: start.substring(0,7), documentRevision: raw['revision'] as int);
-        final detail = await _client.rpc('read_expense_document', params: {'p_kind':'paymentCertificate','p_document':id});
+        final detail = await _client.rpc('read_expense_document', params: {'p_kind':'paymentCertificate','p_document':id})
+            .setHeader('x-sko-payment-source-version', '2');
         if (detail is! Map || detail['expense_cost_basis'] is! Map) throw StateError('経費の同版基礎金額を確認できません。');
         ExpenseDocumentDetails.parse(Map<String,dynamic>.from(detail), ExpenseDocument.paymentCertificate,
           id, DateTime.parse(start), revision: scope.documentRevision);
