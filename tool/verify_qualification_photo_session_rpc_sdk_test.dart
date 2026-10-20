@@ -71,7 +71,7 @@ AdminSavedQualificationPhotoSubmissionScope _scope({
 class _Fixture {
   late final HttpServer server;
   late final SupabaseClient client;
-  late final QualificationPhotoSessionRpcSupabase adapter;
+  late QualificationPhotoSessionRpcSupabase adapter;
   late final String originalToken;
   final contexts =
       StreamController<AdminSavedQualificationPhotoSubmissionScope>.broadcast(
@@ -171,8 +171,9 @@ class _Fixture {
   }
 
   Future<void> close() async {
-    if (holdReadiness != null && !holdReadiness!.isCompleted)
+    if (holdReadiness != null && !holdReadiness!.isCompleted) {
       holdReadiness!.complete();
+    }
     await adapter.dispose();
     await contexts.close();
     await lifecycle.close();
