@@ -164,7 +164,17 @@ def main():
                     raise RuntimeError('conversion_transaction_control_refused')
                 status['phase']='actual_conversion'
                 print('保護済み原本と完全一致する下書きだけを、隔離transaction内で−1,000円へ変換・再実行し、全て戻します。',flush=True)
-                query('BEGIN;\n'+conversion+'\n'+scenario+'\nROLLBACK;')
+                negotiation=bundle['files'].get('negotiation.sql','')
+                negotiation_scenario=bundle['files'].get('negotiation_scenario.sql','')
+                if negotiation and hashlib.sha256(negotiation.encode()).hexdigest()!='accacb5cef0aa1ef079222e3b256728d55082d08112eb0c159057a7f830d9390':
+                    raise RuntimeError('negotiation_candidate_mismatch')
+                if re.search(r'^\s*(BEGIN|COMMIT|ROLLBACK|START TRANSACTION)\s*;',negotiation+'\n'+negotiation_scenario,re.I|re.M):
+                    raise RuntimeError('negotiation_transaction_control_refused')
+                query('BEGIN;\n'+conversion+'\n'+scenario+'\n'+negotiation+'\n'+negotiation_scenario+'\nROLLBACK;')
+                if negotiation:
+                    check="SELECT to_regprocedure('private.payment_expense_v2_requested()') IS NULL AND NOT EXISTS(SELECT 1 FROM pg_policy WHERE polrelid='public.payment_certificates'::regclass AND polname='payment_expense_source_compatibility') AND (SELECT md5(prosrc) FROM pg_proc WHERE oid='public.payment_certificate_detail_rows(uuid)'::regprocedure)='c069b7e687c0bb7faac9ff314d3873ff';"
+                    if value(check)!='t': raise RuntimeError('negotiation_rollback_failed')
+                    status['native_negotiation_verified']=True
                 status['phase']='conversion_rollback'
                 if json.loads(value(bundle['queries']['catalogSql']))!=after:
                     raise RuntimeError('conversion_code_rollback_failed')
@@ -187,6 +197,8 @@ def main():
         result=f'隔離実DBで経費v2のOFF導入・元コード復旧・金融5表不変の検証成功: {stage.name}。本番適用・−1,000円への変換は未実施。'
         if status.get('actual_conversion_verified'):
             result=f'隔離実DBの対象下書きで支給0・控除1000・差引−1000、同一再実行、原本監査、精算履歴不変、全rollback成功: {stage.name}。本番適用・実JWT・旧client遮断は未実施。'
+        if status.get('native_negotiation_verified'):
+            result=f'隔離実DBで−1,000円・対応要求の読取・旧要求の拒否・他ユーザー遮断・全rollback成功: {stage.name}。本番適用・実HTTP/JWT・新アプリ配布は未実施。'
         code=0
     except (Exception,KeyboardInterrupt):
         result='経費v2の隔離検証は未完了（段階: '+status.get('phase','準備')+'）。元の復元DB・バックアップ・本番は変更していません。'
