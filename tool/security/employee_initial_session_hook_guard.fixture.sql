@@ -25,14 +25,14 @@ declare
   claims jsonb := event->'claims';
   target private.fixture_employee_initial_targets%rowtype;
   lease private.fixture_employee_initial_leases%rowtype;
-  session_user uuid;
+  v_session_user_id uuid;
   session_until timestamptz;
   current_password text;
 begin
   select * into target from private.fixture_employee_initial_targets where user_id=actor for update;
   if not found then return jsonb_build_object('claims',claims); end if;
-  select s.user_id,s.not_after into session_user,session_until from auth.sessions s where s.id=sid;
-  if not found or session_user<>actor or (session_until is not null and session_until<=clock_timestamp()) then
+  select s.user_id,s.not_after into v_session_user_id,session_until from auth.sessions s where s.id=sid;
+  if not found or v_session_user_id<>actor or (session_until is not null and session_until<=clock_timestamp()) then
     raise exception 'employee_initial_lease_denied';
   end if;
   select * into lease from private.fixture_employee_initial_leases where session_id=sid;
