@@ -90,7 +90,12 @@ void main() {
     await t.ensureVisible(insurance); await t.pumpAndSettle();
     await t.tap(insurance); await t.pumpAndSettle();
     await t.tap(find.text('保険別の月額を手入力').last); await t.pumpAndSettle();
+    // ListView builds fields lazily; reveal each field before asserting its key.
+    await t.scrollUntilVisible(find.byKey(const ValueKey('income-fixed')), -250,
+      scrollable: find.byType(Scrollable).first);
     expect(find.byKey(const ValueKey('income-fixed')), findsOneWidget);
+    await t.scrollUntilVisible(find.byKey(const ValueKey('manual-insurance-health_insurance')), 250,
+      scrollable: find.byType(Scrollable).first);
     expect(find.byKey(const ValueKey('manual-insurance-health_insurance')), findsOneWidget);
     await tapSave(t);
     expect(find.byType(AlertDialog), findsNothing);
