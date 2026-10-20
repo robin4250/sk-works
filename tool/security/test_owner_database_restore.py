@@ -11,6 +11,16 @@ import owner_database_restore as restore
 
 
 class RestoreTests(unittest.TestCase):
+    def test_bootstrap_role_keeps_original_grantors_and_attributes(self):
+        original = 'CREATE ROLE supabase_admin;\nALTER ROLE supabase_admin SUPERUSER;\nCREATE ROLE test;\nGRANT test TO postgres GRANTED BY supabase_admin;\n'
+        result = restore.restore_roles_sql(original)
+        self.assertNotIn('CREATE ROLE supabase_admin;', result)
+        self.assertIn('ALTER ROLE supabase_admin SUPERUSER;', result)
+        self.assertIn('GRANT test TO postgres GRANTED BY supabase_admin;', result)
+        self.assertEqual(original.count('CREATE ROLE supabase_admin;'), 1)
+        for invalid in ('CREATE ROLE other;', original + 'CREATE ROLE supabase_admin;\n'):
+            with self.assertRaises(RuntimeError): restore.restore_roles_sql(invalid)
+
     def test_copy_counts_empty_quoted_and_escaped_rows(self):
         sql = 'COPY public.test (id) FROM stdin;\nfirst\\nsecond\n\\\\.\n\\.\nCOPY "odd.schema"."table" (id) FROM stdin;\n\\.\n'
         self.assertEqual(restore.expected_rows(sql), {'public.test':2, '"odd.schema"."table"':0})
@@ -35,12 +45,15 @@ class RestoreTests(unittest.TestCase):
             backup = root/restore.CAPTURE; backup.mkdir(mode=0o700)
             files = {}
             for name in ('database.dump','roles.sql','archive-list.txt'):
-                path=backup/name; path.write_text('synthetic fixture')
+                path=backup/name; path.write_text('CREATE ROLE supabase_admin;\n' if name=='roles.sql' else 'synthetic fixture')
                 files[name]={'bytes':path.stat().st_size,'sha256':restore.digest(path)}
             (backup/'capture-status.json').write_text(json.dumps({'capture_completed':True,'files':files}))
             if corrupt: (backup/'database.dump').write_text('changed')
             calls=[]
             def run(command, **kwargs):
+                if command==['/usr/bin/pbcopy']:
+                    self.assertIsInstance(kwargs['input'],str)
+                    return subprocess.CompletedProcess(command,0,b'')
                 calls.append(command)
                 self.assertIsInstance(command,list)
                 self.assertNotIn('shell',kwargs)
