@@ -11,6 +11,7 @@ import '../shared/pdf_pinch_pages.dart';
 
 import '../shared/company_seal_pdf.dart';
 import 'company_seal_style_repository.dart';
+import 'company_seal_png_uploader.dart';
 
 import '../../international/language_controller.dart';
 import '../people/company_submitted_document_repository.dart';
@@ -405,6 +406,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
               onChanged: _busy ? null : _save,
             ),
           Text(SkoLanguageController.tr('OFFでも確認印・承認印と承認履歴は残ります。')),
+          if (_companyContext != null) CompanySealPngUploader(company: _companyContext!),
           if (_styleSettings != null) ...[
             const SizedBox(height: 20),
             Text(_styleSettings!.name),
@@ -533,3 +535,4 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
     );
   }
 }
+
