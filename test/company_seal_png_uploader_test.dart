@@ -9,6 +9,7 @@ import 'package:sk_works/domain/company_uploaded_seal_png.dart';
 import 'package:sk_works/features/settings/company_seal_png_repository.dart';
 import 'package:sk_works/features/settings/company_seal_png_uploader.dart';
 import 'package:sk_works/features/shared/company_seal_current_preview.dart';
+import 'package:sk_works/features/shared/trade_document_actor_boundary.dart';
 
 const company = (companyId:'00000000-0000-0000-0000-000000000001',name:'検証株式会社');
 const actor='00000000-0000-0000-0000-000000000002';
@@ -53,6 +54,8 @@ void main() {
         body={'access_token':'${tokenPart({'alg':'HS256','typ':'JWT'})}.${tokenPart({'sub':actor,'exp':DateTime.now().millisecondsSinceEpoch~/1000+3600})}.c3ludGhldGlj',
           'refresh_token':'synthetic','token_type':'bearer','expires_in':3600,
           'user':{'id':actor,'aud':'authenticated','role':'authenticated','created_at':'2026-01-01T00:00:00Z'}};
+      }else if(request.url.path=='/auth/v1/logout'){
+        body={};
       }else if(request.url.path=='/rest/v1/rpc/company_uploaded_seal_settings'){
         if(missing)return http.Response(jsonEncode({'code':'PGRST202','message':'missing RPC'}),404,headers:{'content-type':'application/json'});
         body=settings();
@@ -81,6 +84,14 @@ void main() {
       expect(fallback.containsKey('company_seal_uploaded_snapshot'),isFalse);
       final unavailable=await repo.load(company);expect(unavailable.available,isFalse);
       calls.clear();await expectLater(repo.save(unavailable,enabled:true),throwsStateError);expect(calls,isEmpty);
+      final lease=TradeDocumentActorLease.forClient(client);
+      lease.verify();
+      try {
+        await client.auth.signOut();
+        await client.auth.signInWithPassword(email:'test@example.invalid',password:'synthetic');
+        await Future<void>.delayed(Duration.zero);
+        expect(lease.verify,throwsStateError);
+      } finally {lease.dispose();}
     }finally{await client.dispose();}
   });
 }
