@@ -171,6 +171,18 @@ def auth_scope_sql():
     return "SET ROLE supabase_auth_admin;SET search_path=auth;SELECT jsonb_build_object('auth_current_role',current_user='supabase_auth_admin','auth_current_schema',current_schema()='auth','auth_usage',has_schema_privilege(current_user,'auth','USAGE'),'auth_create',has_schema_privilege(current_user,'auth','CREATE'),'auth_schema_owner',pg_has_role(current_user,(SELECT nspowner FROM pg_namespace WHERE nspname='auth'),'USAGE'),'migration_table_found',to_regclass('schema_migrations') IS NOT NULL,'migration_table_select',has_table_privilege(current_user,'auth.schema_migrations','SELECT'),'migration_table_insert',has_table_privilege(current_user,'auth.schema_migrations','INSERT'),'auth_users_select',has_table_privilege(current_user,'auth.users','SELECT'),'auth_users_insert',has_table_privilege(current_user,'auth.users','INSERT'));"
 
 
+AUTH_SCOPE_REQUIRED=('auth_current_role','auth_current_schema','auth_usage','auth_create','migration_table_found','migration_table_select','migration_table_insert','auth_users_select','auth_users_insert')
+
+
+def auth_scope_allowed(observed):
+    # Schema ownership is diagnostic; CREATE/USAGE and object-level rights govern operations.
+    return all(observed.get(key) is True for key in AUTH_SCOPE_REQUIRED)
+
+
+def auth_catalog_sql():
+    return "SET ROLE supabase_auth_admin;SET search_path=auth;SELECT jsonb_build_object('schema_owner_class',(SELECT CASE WHEN nspowner='supabase_auth_admin'::regrole THEN 'auth_admin' WHEN nspowner='supabase_admin'::regrole THEN 'supabase_admin' WHEN nspowner='postgres'::regrole THEN 'postgres' ELSE 'other' END FROM pg_namespace WHERE nspname='auth'),'critical_relations',(SELECT jsonb_object_agg(c.relname,jsonb_build_object('effective_owner',pg_has_role(current_user,c.relowner,'USAGE'),'select',has_table_privilege(current_user,c.oid,'SELECT'),'insert',has_table_privilege(current_user,c.oid,'INSERT'),'update',has_table_privilege(current_user,c.oid,'UPDATE'),'delete',has_table_privilege(current_user,c.oid,'DELETE'))) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='auth' AND c.relkind IN ('r','p') AND c.relname IN ('users','sessions','refresh_tokens','identities','schema_migrations','one_time_tokens')),'auth_relation_count',(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='auth' AND c.relkind IN ('r','p','S')),'auth_relations_effective_owner_count',(SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='auth' AND c.relkind IN ('r','p','S') AND pg_has_role(current_user,c.relowner,'USAGE')),'auth_function_count',(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='auth'),'auth_functions_effective_owner_count',(SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='auth' AND pg_has_role(current_user,p.proowner,'USAGE')));"
+
+
 class StartupCapture:
     """Drain attached service output; retain only fixed anonymous classifications."""
     RULES={'db_authentication_failed':b'password authentication failed','db_permission_denied':b'permission denied','db_owner_required':b'must be owner','db_connection_refused':b'connection refused','db_name_resolution_failed':b'no such host','migration_failure':b'migrat','configuration_failure':b'config','required_setting_missing':b'required','db_object_missing':b'does not exist','address_bind_failure':b'address already in use','db_ssl_failure':b'ssl','schema_auth_denied':b'permission denied for schema auth','schema_public_denied':b'permission denied for schema public','migration_table_mentioned':b'schema_migrations','create_schema_operation':b'create schema','create_table_operation':b'create table','table_auth_users_denied':b'permission denied for table users','invalid_log_level':b'invalid log level'}
@@ -285,7 +297,8 @@ def main():
         query("SET password_encryption='scram-sha-256';CREATE ROLE "+db_auth+" LOGIN INHERIT PASSWORD '"+pw_auth+"';GRANT supabase_auth_admin TO "+db_auth+";CREATE ROLE "+db_rest+" LOGIN NOINHERIT PASSWORD '"+pw_rest+"';GRANT anon,authenticated,service_role TO "+db_rest+";GRANT CONNECT ON DATABASE postgres TO "+db_auth+','+db_rest+';',role='supabase_admin')
         state['phase']='auth_role_scope_preflight'
         state['auth_role_scope']=json.loads(query(auth_scope_sql(),role=db_auth).splitlines()[-1])
-        check(all(state['auth_role_scope'].values()),'auth_role_scope_preflight_failed')
+        state['auth_role_catalog']=json.loads(query(auth_catalog_sql(),role=db_auth).splitlines()[-1])
+        check(auth_scope_allowed(state['auth_role_scope']),'auth_role_scope_preflight_failed')
         state['phase']='auth_rest_start'
         auth='sko-http-auth-'+suffix;rest='sko-http-rest-'+suffix
         configs={auth:{'GOTRUE_API_HOST':'0.0.0.0','GOTRUE_API_PORT':'9999','API_EXTERNAL_URL':'http://auth:9999','GOTRUE_SITE_URL':'http://fixture.invalid','GOTRUE_DB_DRIVER':'postgres','GOTRUE_DB_DATABASE_URL':auth_database_url(db_auth,pw_auth),'GOTRUE_DB_NAMESPACE':'auth','GOTRUE_JWT_SECRET':secret,'GOTRUE_JWT_EXP':'3600','GOTRUE_JWT_AUD':'authenticated','GOTRUE_JWT_DEFAULT_GROUP_NAME':'authenticated','GOTRUE_JWT_ADMIN_ROLES':'service_role','GOTRUE_DISABLE_SIGNUP':'true','GOTRUE_EXTERNAL_EMAIL_ENABLED':'true','GOTRUE_MAILER_AUTOCONFIRM':'true','GOTRUE_EXTERNAL_PHONE_ENABLED':'false','GOTRUE_EXTERNAL_GOOGLE_ENABLED':'false','GOTRUE_EXTERNAL_APPLE_ENABLED':'false','GOTRUE_LOG_LEVEL':'error'},
