@@ -61,7 +61,7 @@ void main(){
   await tester.tap(find.text('適用する'));await tester.pumpAndSettle();expect(repository.requests.length,1);
   final now=DateTime.now().toUtc().add(const Duration(hours:9));final next=DateTime(now.year,now.month+1);
   expect(repository.requests.single.startsOn,'${next.year}-${next.month.toString().padLeft(2,'0')}-01');
-  expect(find.textContaining('給与下書きの再計算：2件'),findsWidgets);
+  expect(find.textContaining('給与下書きの再計算：2件'),findsOneWidget);
  });
  for(final count in <int?>[0,null]) {
   testWidgets('publication completion keeps zero and unknown distinct: $count',(tester) async {
@@ -71,7 +71,7 @@ void main(){
    await tester.tap(find.text('給与への適用月'));await tester.pumpAndSettle();
    await tester.tap(find.byKey(const ValueKey('common-publication-apply')));await tester.pumpAndSettle();
    await tester.tap(find.text('適用する'));await tester.pumpAndSettle();
-   expect(find.textContaining(count==null?'再計算件数を確認できません':'給与下書きの再計算：0件'),findsWidgets);
+   expect(find.textContaining(count==null?'再計算件数を確認できません':'給与下書きの再計算：0件'),findsOneWidget);
   });
  }
  testWidgets('a new month or failed application never shows a prior count as current',(tester) async {
@@ -79,7 +79,7 @@ void main(){
   await tester.pumpWidget(MaterialApp(home:Scaffold(body:CompanyCommonPayrollPublicationPanel(companyId:'company',repository:repository))));await tester.pumpAndSettle();
   await tester.tap(find.text('給与への適用月'));await tester.pumpAndSettle();
   Future<void> apply() async {await tester.tap(find.byKey(const ValueKey('common-publication-apply')));await tester.pumpAndSettle();await tester.tap(find.text('適用する'));await tester.pumpAndSettle();}
-  await apply();expect(find.textContaining('給与下書きの再計算：2件'),findsWidgets);
+  await apply();expect(find.textContaining('給与下書きの再計算：2件'),findsOneWidget);
   await tester.tap(find.byKey(const ValueKey('common-publication-next')));await tester.pumpAndSettle();
   expect(find.textContaining('給与下書きの再計算：2件'),findsNothing);
   repository.failOnce=true;await apply();

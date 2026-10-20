@@ -35,3 +35,5 @@ iPhone更新・注文書表示・資格チェック非表示の実機成功は�
 ## GitHub送信後の追補
 
 ユーザーの継続了承を受けPR #1309を作成。ローカル統合treeとremote treeの一致確認済み。前記送信保留は当時の履歴で現在は解消。初回CIでECRのpostgres取得がtoomanyrequestsとなったため公式postgres:17へ同majorの取得元を変更。解析指摘はchat async mounted/ifブロック、独立検証toolのpackage importとstdoutへ補修。空欄の工事名/場所はpayloadから除外し、旧serverでも既存文面を保存できるよう補強（非空の新設定にはbackend更新が必要）。純粋resolver検証は17項目成功。適用件数の所有完了通知はdispose後のframeで閉じ、無関係通知を触らない。
+
+独立追補レビューでFlutter3.47.5のSnackBar controller.closeは期限切れ/待機時に先頭通知を閉じ得ることを確認。成功通知の所有handle方式は撤回し、給与適用結果は画面内summaryだけに一本化。月/会社/actor切替時はsummary非表示。旧通知の操作は行わない。既widget期待をinline1件へ修正。先行headのCIでは17workflow成功、残13進行で失敗0を確認したが、最終headの再検証とは区別する。

@@ -27,8 +27,7 @@ class _CompanyCommonPayrollPublicationPanelState extends State<CompanyCommonPayr
   String _type='hourly';
   late DateTime _month;
   BuildContext? _dialog;
-  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _completionNotice;
-  void _hideApplicationSummary(){_showApplicationSummary=false;_completionNotice?.close();_completionNotice=null;}
+  void _hideApplicationSummary(){_showApplicationSummary=false;}
   DateTime get _currentMonth {final now=DateTime.now().toUtc().add(const Duration(hours:9));return DateTime(now.year,now.month);}
   String get _monthKey=>'${_month.year}-${_month.month.toString().padLeft(2,'0')}-01';
   bool _valid(int generation)=>mounted && generation==_generation && !_revoked && _active && _repository?.sessionKey==_session;
@@ -62,19 +61,19 @@ class _CompanyCommonPayrollPublicationPanelState extends State<CompanyCommonPayr
   Future<void> _applyPending() async {
     final request=_pending;final repository=_repository;if(request==null||request.state.companyId!=widget.companyId||repository==null||_busy||_revoked||!_active||!widget.canReconcile)return;
     final generation=_generation;setState((){_busy=true;_hideApplicationSummary();});widget.onBusyChanged?.call(true);
-    try{final value=await repository.publish(request);if(!mounted||!_valid(generation))return;setState((){_state=value;_pending=null;_error=null;_showApplicationSummary=true;});_completionNotice=ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text((value.applicationSummary??const CommonPayrollPublicationSummary()).message)));}
+    try{final value=await repository.publish(request);if(!mounted||!_valid(generation))return;setState((){_state=value;_pending=null;_error=null;_showApplicationSummary=true;});}
     catch(error){if(!_valid(generation))return;final rejected=error is PostgrestException&&['42501','40001','22023','55000','PGRST202'].contains(error.code);setState((){if(rejected){_pending=null;_state=null;}_error=rejected?'適用できませんでした。設定を再読み込みして確認してください。':'適用結果を確認できません。同じ内容で適用結果を確認してください。';});}
     finally{if(mounted&&generation==_generation){setState(()=>_busy=false);widget.onBusyChanged?.call(_pending!=null);}}
   }
   String _typeLabel(String type)=>const {'daily':'日給','hourly':'時給','monthly':'月給'}[type]!;
-  @override void dispose(){_generation++;final notice=_completionNotice;_completionNotice=null;if(notice!=null)WidgetsBinding.instance.addPostFrameCallback((_)=>notice.close());_subscription?.cancel();WidgetsBinding.instance.removeObserver(this);super.dispose();}
+  @override void dispose(){_generation++;_subscription?.cancel();WidgetsBinding.instance.removeObserver(this);super.dispose();}
   @override Widget build(BuildContext context){
     if(_repository==null)return const SizedBox.shrink();
     if(_revoked)return Padding(padding:const EdgeInsets.all(12),child:Text(_error!));
     final editable=widget.enabled&&!_busy&&!_confirming&&_pending==null&&_state?.canEdit==true&&_active;
     return Card(child:ExpansionTile(title:const Text('給与への適用月'),subtitle:const Text('保存済みの追加手当を給与へ反映'),children:[ConstrainedBox(constraints:const BoxConstraints(maxHeight:120),child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
       if(_error!=null)Padding(padding:const EdgeInsets.all(12),child:Text(_error!)),
-      if(_showApplicationSummary&&_state?.applicationSummary!=null)Padding(padding:const EdgeInsets.all(12),child:Text(_state!.applicationSummary!.message)),
+      if(_showApplicationSummary)Padding(padding:const EdgeInsets.all(12),child:Text((_state?.applicationSummary??const CommonPayrollPublicationSummary()).message)),
       Row(children:[if(_state!=null)Expanded(child:Padding(padding:const EdgeInsets.only(left:12),child:DropdownButton<String>(key:const ValueKey('common-publication-type'),value:_type,isExpanded:true,items:[for(final type in ['daily','hourly','monthly'])DropdownMenuItem(value:type,child:Text(_typeLabel(type)))],onChanged:editable?(value)=>setState((){_type=value!;_hideApplicationSummary();}):null))),IconButton(key:const ValueKey('common-publication-previous'),onPressed:editable&&_month.isAfter(_currentMonth)?()=>setState((){_month=DateTime(_month.year,_month.month-1);_hideApplicationSummary();}):null,icon:const Icon(Icons.chevron_left)),Text('${_month.year}/${_month.month}'),IconButton(key:const ValueKey('common-publication-next'),onPressed:editable?()=>setState((){_month=DateTime(_month.year,_month.month+1);_hideApplicationSummary();}):null,icon:const Icon(Icons.chevron_right))]),
       if(_pending!=null)TextButton(key:const ValueKey('common-publication-reconcile'),onPressed:_busy||!widget.canReconcile||!_active?null:_applyPending,child:const Text('適用結果を確認'))
       else if(_state?.canEdit==true)TextButton(key:const ValueKey('common-publication-apply'),onPressed:editable?_start:null,child:const Text('保存済み手当を適用')),
