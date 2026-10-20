@@ -1,0 +1,20 @@
+{
+  "application_mutations": false,
+  "entrypoints": [
+    "owner_expense_fresh_checkpoint.py",
+    "owner_prepare_expense_install.py"
+  ],
+  "files": {
+    "capture_queries.json": "62f967ee0b5861382caf3f7605c60a39b2b9223a0d8fc32576471029a44994d1",
+    "expense_default_off_plan.mjs": "5c4c7acedd93fd2fd162179eb4317c0e170877007346e1a0b404e92c1d51b5b9",
+    "owner_cli_database_capture.py": "e4f206b3dab91f98295f2f2a1688a02cc74adb80d00d6262a3f3ce4cc9a300e0",
+    "owner_database_capture.py": "15875c927d90364f8dec1973f5fb1661dc12b9f5242aee5175203f7cb8a8702d",
+    "owner_expense_fresh_checkpoint.py": "85713123cf507ae38f265e0f39433091c0935e0279775d01e94c1e5a8ff48d30",
+    "owner_prepare_expense_install.py": "a243c00bc05eaf2b568e8670db17db25276c8a4186028919c73323c0aa87d012",
+    "private_generator.mjs": "9d00f4f7914121a538a97e57eded6dc91b27fb6581af963de9b085602090abcb",
+    "source/expense_direction_code_checkpoint.mjs": "9a642ea96fc3d564f6c711c2547da5954310f5fdf7f1448abdef2a0dcfa6197f",
+    "source/expense_direction_default_off_preparation.mjs": "5e1401c0271be411ae6d1de9ac8f20432380cd4ebd6db2cc0ccffd46e83fdda8",
+    "source/expense_payment_direction_v2_20261019.sql.review-only": "770728fa45176d7bbeb77ebd0610f936659624e4b1287d63bd83e0dd9264fe5a"
+  },
+  "schema": 1
+}
