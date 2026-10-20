@@ -106,7 +106,12 @@ AttentionCenterItem mapAttentionNotification(AppNotificationRecord item,
         }
       : AttentionCenterState.information;
   return AttentionCenterItem(
-    id: item.id, source: 'notification', title: item.title, body: item.body,
+    id: item.id, source: 'notification',
+    title: item.kind == 'resident_tax_reminder' && state == AttentionCenterState.completed
+        ? '${item.title}（更新確認済み）' : item.title, body: item.body,
+    metadata: item.kind == 'resident_tax_reminder' ? {
+      'resident_tax_reminder': true, 'tax_year': item.businessStatus.targetDate?.year,
+    } : const {},
     state: state, actionKey: item.actionKey, actionId: item.actionId,
     targetName: item.businessStatus.targetName,
     targetDate: item.businessStatus.targetDate, createdAt: item.createdAt,

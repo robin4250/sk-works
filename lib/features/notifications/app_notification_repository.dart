@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'notification_business_status.dart';
 import 'source_notification_target.dart';
+import '../payroll/resident_tax_reminder_repository.dart';
 
 class AppNotificationRecord {
   const AppNotificationRecord({
@@ -27,7 +28,7 @@ class AppNotificationRecord {
   final String? actionId;
   final NotificationBusinessStatus businessStatus;
 
-  bool get hasBusinessTarget => const {
+  bool get hasBusinessTarget => (kind == 'resident_tax_reminder' && actionKey == 'payroll_settings') || const {
     'payroll_review', 'invoice_approval', 'daily_report_edit_request',
     'paid_leave_request', 'worker_personnel_change', 'attendance_correction_request',
     'expense_review_request',
@@ -91,7 +92,7 @@ class AppNotificationRepository {
         final index = nextIndex++;
         final item = notifications[index];
         if (!item.hasBusinessTarget) continue;
-        final key = '${item.actionKey}:${item.actionId}';
+        final key = item.kind == 'resident_tax_reminder' ? 'resident-tax:${item.id}' : '${item.actionKey}:${item.actionId}';
         final status = await statuses.putIfAbsent(
           key, () => _businessStatus(item, payrollMonths),
         );
@@ -112,6 +113,15 @@ class AppNotificationRepository {
     final id = item.actionId?.trim() ?? '';
     if (!RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(id)) {
       return const NotificationBusinessStatus();
+    }
+    if (item.kind == 'resident_tax_reminder' && item.actionKey == 'payroll_settings') {
+      try {
+        final target = await SupabaseResidentTaxReminderRepository(_client).target(item.id, id, requireWorkspace: false);
+        return NotificationBusinessStatus(
+          state: target.complete ? NotificationBusinessState.completed : NotificationBusinessState.pending,
+          targetName: '${target.fiscalYear}年度 住民税', targetDate: DateTime(target.fiscalYear, 6, 1),
+        );
+      } catch (_) {return const NotificationBusinessStatus();}
     }
     if (item.actionKey == 'expense_review_request') {
       final actor = _client.auth.currentUser?.id;
