@@ -17,7 +17,9 @@ bool validManualPayrollInsurance(Map value) {
   final premiums = value['manual_insurance_premiums'];
   if (premiums is! Map || premiums.length != manualPayrollInsuranceLabels.length ||
       manualPayrollInsuranceLabels.keys.any((key) => premiums[key] is! int ||
-          (premiums[key] as int) < 0 || (premiums[key] as int) > 2147483647)) return false;
+          (premiums[key] as int) < 0 || (premiums[key] as int) > 2147483647)) {
+    return false;
+  }
   if (premiums.values.fold<int>(0, (sum, amount) => sum + (amount as int)) > 2147483647) return false;
   const allowed = {'insurance_mode', 'manual_insurance_premiums', 'income_mode',
     'dependents', 'non_taxable_yen', 'additional_social_deduction_yen', 'deduction_overrides'};
