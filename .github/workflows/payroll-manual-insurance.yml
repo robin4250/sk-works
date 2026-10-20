@@ -1,0 +1,55 @@
+name: Explicit manual payroll insurance
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payroll_fixed_deductions.dart'
+      - 'lib/features/payroll/payroll_tax_conditions_page.dart'
+      - 'test/payroll_fixed_deductions_test.dart'
+      - 'test/features/payroll/payroll_tax_conditions_page_test.dart'
+      - 'docs/candidates/payroll_manual_insurance_20261020.sql.review-only'
+      - 'tool/verify_payroll_manual_insurance.mjs'
+      - '.github/workflows/payroll-manual-insurance.yml'
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/payroll/payroll_fixed_deductions.dart lib/features/payroll/payroll_tax_conditions_page.dart test/payroll_fixed_deductions_test.dart test/features/payroll/payroll_tax_conditions_page_test.dart
+      - run: flutter test test/payroll_fixed_deductions_test.dart test/features/payroll/payroll_tax_conditions_page_test.dart test/individual_payroll_ui_tabs_test.dart
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_manual_insurance_fixture
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - name: PGlite integration
+        run: node tool/verify_payroll_manual_insurance.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: PostgreSQL 17 integration
+        env:
+          SKO_PAYROLL_MANUAL_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_manual_insurance_fixture
+        run: node tool/verify_payroll_manual_insurance.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
