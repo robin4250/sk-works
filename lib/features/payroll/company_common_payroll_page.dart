@@ -381,7 +381,10 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
         ),
       ],
     ),
-    bottomNavigationBar: _fixedFooter(),
+    bottomNavigationBar: Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: _fixedFooter(),
+    ),
     body: SafeArea(
       child: SingleChildScrollView(
         key: const ValueKey('company-common-scroll'),
