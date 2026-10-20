@@ -55,8 +55,9 @@ class AdminSavedQualificationPhotoPrepareReadiness {
         raw['photo_upload_allowed'] != false ||
         raw['max_photos'] is! int ||
         raw['max_photos'] != 20 ||
-        raw['self_approval_allowed'] != false)
+        raw['self_approval_allowed'] != false) {
       return unavailable;
+    }
     return AdminSavedQualificationPhotoPrepareReadiness._(
       available: raw['photo_submission_available'] == true,
       companyId: companyId,

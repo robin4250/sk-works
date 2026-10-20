@@ -112,15 +112,17 @@ class AdminSavedQualificationPhotoCapabilityRepository {
 
   Future<AdminSavedQualificationPhotoPrepareReadiness>
   prepareReadiness() async {
-    if (!_current)
+    if (!_current) {
       return AdminSavedQualificationPhotoPrepareReadiness.unavailable;
+    }
     try {
       final value = await _rpc(
         AdminSavedQualificationPhotoPrepareReadiness.action,
         {'company_id': _initialCompany},
       );
-      if (!_current)
+      if (!_current) {
         return AdminSavedQualificationPhotoPrepareReadiness.unavailable;
+      }
       return AdminSavedQualificationPhotoPrepareReadiness.parse(
         value,
         companyId: _initialCompany!,
