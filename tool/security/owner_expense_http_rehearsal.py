@@ -57,6 +57,39 @@ def expense_rpc(http,name,token,body,supported):
     return http.call('rest','/rpc/'+name,token,body,headers={'x-sko-payment-source-version':'2'} if supported else None)
 
 
+def http_diagnostic(name,actor,status,data):
+    check(name in ('read_expense_document','payment_certificate_detail_rows','payment_certificates'),'diagnostic_rpc_invalid')
+    check(actor in ('admin','anonymous','outsider','modified_signature','legacy_admin'),'diagnostic_actor_invalid')
+    kind=('object' if isinstance(data,dict) else 'array' if isinstance(data,list) else
+          'null' if data is None else 'boolean' if isinstance(data,bool) else
+          'number' if isinstance(data,(int,float)) else 'string' if isinstance(data,str) else 'unknown')
+    allowed_keys={'code','message','details','hint','company_id','document_id','subject_id','claims',
+        'expense_cost_direction_v2','id','gross_amount','deductions','net_amount','site_name','work_content','amount_yen'}
+    known_codes={'42501','P0001','PGRST301','PGRST302','PGRST202','PGRST100','42883'}
+    denial_messages={'authentication required':'authentication_required',
+        'payment certificate not found':'certificate_not_found',
+        'payment certificate permission required':'certificate_permission_required'}
+    keys=sorted(key for key in allowed_keys if isinstance(data,dict) and key in data)
+    return {'rpc':name,'actor':actor,'status':status if type(status) is int and 100<=status<=599 else None,
+        'payload_type':kind,'has_rows':bool(data) if isinstance(data,list) else False,
+        'row_shape_present':isinstance(data,dict) and bool(set(data)&{'company_id','document_id','subject_id','claims','expense_cost_direction_v2','id','gross_amount','deductions','net_amount','site_name','work_content','amount_yen'}),
+        'allowed_keys_present':keys,'unknown_key_count':len(set(data)-allowed_keys) if isinstance(data,dict) else 0,
+        'known_error_code':data.get('code') if isinstance(data,dict) and isinstance(data.get('code'),str) and data.get('code') in known_codes else None,
+        'denial_category':denial_messages.get(data.get('message')) if isinstance(data,dict) and isinstance(data.get('message'),str) else None}
+
+
+def unrelated_denied(name,actor,status,data):
+    if status in (401,403):
+        diagnostic=http_diagnostic(name,actor,status,data)
+        return not diagnostic['has_rows'] and not diagnostic['row_shape_present']
+    # The pinned c069b7 detail reader uses plain RAISE EXCEPTION (P0001),
+    # which PostgREST maps to 400. Do not accept arbitrary 400/200 objects.
+    if name!='payment_certificate_detail_rows' or actor not in ('anonymous','outsider') or status!=400 or not isinstance(data,dict):
+        return False
+    expected='authentication required' if actor=='anonymous' else 'payment certificate permission required'
+    return set(data)<= {'code','message','details','hint'} and data.get('code')=='P0001' and data.get('message')==expected and data.get('details') is None and data.get('hint') is None
+
+
 def load_bundle(directory):
     manifest=json.loads((directory/'runtime_manifest.json').read_text())
     for name,expected in manifest['files'].items():
@@ -231,6 +264,7 @@ def main():
         state['clone_changes_committed']=True
         state['private_conversion_verified']=True
         state['phase']='http_directional_read_boundary'
+        state['http_checks']=[]
         body={'p_document_kind':'paymentCertificate','p_document_id':doc}
         detail_body={'p_certificate_id':doc}
         # Resolve the pinned restored RPC argument names; never guess a new public RPC.
@@ -240,23 +274,35 @@ def main():
         detail_body={arg_rows['payment_certificate_detail_rows'][0]:doc}
         for _ in range(60):
             status,data=expense_rpc(http,'read_expense_document',tokens['admin'],body,True)
+            state['http_checks']=[http_diagnostic('read_expense_document','admin',status,data)]
             if status==200:break
             check(status in (404,503),'supported_read_failed');time.sleep(.5)
         check(status==200 and isinstance(data,dict) and data.get('expense_cost_direction_v2',{}).get('amount_yen')==1000,'supported_directional_snapshot_invalid')
         status,detail=expense_rpc(http,'payment_certificate_detail_rows',tokens['admin'],detail_body,True)
+        state['http_checks'].append(http_diagnostic('payment_certificate_detail_rows','admin',status,detail))
         check(status==200 and isinstance(detail,list),'supported_detail_failed')
         path='/payment_certificates?id=eq.'+doc+'&select=id,gross_amount,deductions,net_amount'
         status,rows=http.call('rest',path,tokens['admin'],method='GET',headers={'x-sko-payment-source-version':'2'})
+        state['http_checks'].append(http_diagnostic('payment_certificates','admin',status,rows))
         check(status==200 and len(rows)==1 and rows[0]['gross_amount']==0 and rows[0]['deductions']==1000 and rows[0]['net_amount']==-1000,'supported_exact_totals_invalid')
         for name,params in [('read_expense_document',body),('payment_certificate_detail_rows',detail_body)]:
-            status,_=expense_rpc(http,name,tokens['admin'],params,False);check(status in (401,403),'legacy_rpc_allowed')
-            for token in (None,tokens['outsider']):
+            status,denial=expense_rpc(http,name,tokens['admin'],params,False)
+            state['http_checks'].append(http_diagnostic(name,'legacy_admin',status,denial))
+            check(status in (401,403),'legacy_rpc_allowed')
+            for label,token in (('anonymous',None),('outsider',tokens['outsider'])):
                 status,data=expense_rpc(http,name,token,params,True)
-                check(status in (401,403) or (status==200 and (data is None or data==[])),'unrelated_actor_rpc_leak')
-        status,rows=http.call('rest',path,tokens['admin'],method='GET');check(status in (401,403) or (status==200 and rows==[]),'legacy_direct_table_allowed')
-        status,rows=http.call('rest',path,tokens['outsider'],method='GET',headers={'x-sko-payment-source-version':'2'});check(status in (401,403) or (status==200 and rows==[]),'outsider_direct_table_allowed')
+                state['http_checks'].append(http_diagnostic(name,label,status,data))
+                check(unrelated_denied(name,label,status,data),'unrelated_actor_rpc_leak')
+        status,rows=http.call('rest',path,tokens['admin'],method='GET')
+        state['http_checks'].append(http_diagnostic('payment_certificates','legacy_admin',status,rows))
+        check(status in (401,403) or (status==200 and rows==[]),'legacy_direct_table_allowed')
+        status,rows=http.call('rest',path,tokens['outsider'],method='GET',headers={'x-sko-payment-source-version':'2'})
+        state['http_checks'].append(http_diagnostic('payment_certificates','outsider',status,rows))
+        check(status in (401,403) or (status==200 and rows==[]),'outsider_direct_table_allowed')
         corrupt=tokens['admin'].split('.');corrupt[2]=('A' if corrupt[2][0]!='A' else 'B')+corrupt[2][1:]
-        status,_=expense_rpc(http,'read_expense_document','.'.join(corrupt),body,True);check(status==401,'invalid_jwt_signature_allowed')
+        status,denial=expense_rpc(http,'read_expense_document','.'.join(corrupt),body,True)
+        state['http_checks'].append(http_diagnostic('read_expense_document','modified_signature',status,denial))
+        check(status==401,'invalid_jwt_signature_allowed')
         state.update(gotrue_issued_jwt_verified=True,private_conversion_sql_not_http_mutation=True,
             directional_http_read_verified=True,supported_header_verified=True,legacy_header_denial=True,outsider_denial=True,
             same_retry_audit_settlement_verified=True,invalid_signature_denial=True)
