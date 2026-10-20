@@ -40,6 +40,7 @@ class Connection implements AdminQualificationSqliteConnection {
   String? kill;
   String? killSql;
   bool invalidated = false;
+  bool transactionActive = false;
   @override
   void invalidate() {
     invalidated = true;
@@ -111,19 +112,87 @@ class Connection implements AdminQualificationSqliteConnection {
   }
 
   @override
-  Future<int> execute(String sql, List<Object?> parameters) async =>
-      (await request(sql, parameters))['changed'] as int;
+  Future<int> execute(String sql, List<Object?> parameters) async {
+    if (transactionActive) {
+      throw StateError('Outer connection used inside transaction');
+    }
+    return (await request(sql, parameters))['changed'] as int;
+  }
+
   @override
   Future<List<Map<String, Object?>>> query(
     String sql,
     List<Object?> parameters,
-  ) async => ((await request(sql, parameters))['rows'] as List)
-      .map((row) => Map<String, Object?>.from(row as Map))
-      .toList();
+  ) async {
+    if (transactionActive) {
+      throw StateError('Outer connection used inside transaction');
+    }
+    return ((await request(sql, parameters))['rows'] as List)
+        .map((row) => Map<String, Object?>.from(row as Map))
+        .toList();
+  }
+
+  @override
+  Future<T> transaction<T>(
+    Future<T> Function(AdminQualificationSqliteExecutor transaction) operation,
+  ) async {
+    // Fixture bridge owns transactions; a mobile adapter instead calls the
+    // plugin's transaction API and wraps only its supplied Transaction object.
+    if (transactionActive) {
+      throw StateError('Nested transaction');
+    }
+    final executor = _TransactionExecutor(this);
+    transactionActive = true;
+    try {
+      await request('BEGIN IMMEDIATE', const []);
+      final result = await operation(executor);
+      await request('COMMIT', const []);
+      return result;
+    } catch (error, stack) {
+      try {
+        await request('ROLLBACK', const []);
+      } catch (_) {
+        // Keep original error, including unknown BEGIN or COMMIT outcomes.
+      }
+      Error.throwWithStackTrace(error, stack);
+    } finally {
+      executor.active = false;
+      transactionActive = false;
+    }
+  }
+
   Future<void> close() async {
     await process.stdin.close();
     await process.exitCode;
     await lines.cancel();
+  }
+}
+
+class _TransactionExecutor implements AdminQualificationSqliteExecutor {
+  _TransactionExecutor(this.connection);
+  final Connection connection;
+  bool active = true;
+  void checkActive() {
+    if (!active || !connection.transactionActive) {
+      throw StateError('Transaction executor expired');
+    }
+  }
+
+  @override
+  Future<int> execute(String sql, List<Object?> parameters) async {
+    checkActive();
+    return (await connection.request(sql, parameters))['changed'] as int;
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> query(
+    String sql,
+    List<Object?> parameters,
+  ) async {
+    checkActive();
+    return ((await connection.request(sql, parameters))['rows'] as List)
+        .map((row) => Map<String, Object?>.from(row as Map))
+        .toList();
   }
 }
 
@@ -358,6 +427,53 @@ Future<void> main() async {
         '{"recovered":true}',
       ),
       'fresh connection can CAS after rollback',
+    );
+    final owner = await open();
+    await refuses(
+      () => owner.transaction((transaction) => owner.query('SELECT 1', [])),
+      'owner rejects outer connection during callback',
+    );
+    AdminQualificationSqliteExecutor? expired;
+    await owner.transaction((transaction) async {
+      expired = transaction;
+      check(
+        (await transaction.query('SELECT 1 AS value', [])).single['value'] == 1,
+        'callback receives working transaction executor',
+      );
+    });
+    await refuses(
+      () => expired!.query('SELECT 1', []),
+      'executor cannot escape transaction lifetime',
+    );
+    final gated = await open();
+    final gatedStore = SqliteAdminSavedQualificationPhotoPendingStore(gated);
+    final gatedBefore = await gatedStore.read(key);
+    final commitEntered = Completer<void>();
+    final commitRelease = Completer<void>();
+    gated.afterCommit = () async {
+      commitEntered.complete();
+      await commitRelease.future;
+    };
+    bool completed = false;
+    final completion = gatedStore
+        .compareAndSet(key, gatedBefore, '{"owner_commit":true}')
+        .then((result) {
+          completed = true;
+          return result;
+        });
+    await commitEntered.future;
+    check(
+      !completed,
+      'callback result is not store success before transaction Future completes',
+    );
+    check(
+      await second.read(key) == '{"owner_commit":true}',
+      'other connection sees actual commit while ack is gated',
+    );
+    commitRelease.complete();
+    check(
+      await completion,
+      'store succeeds after owner commit Future and readback',
     );
     await b.execute('PRAGMA synchronous=NORMAL', []);
     await refuses(

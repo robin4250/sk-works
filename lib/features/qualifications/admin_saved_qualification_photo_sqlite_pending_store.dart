@@ -2,19 +2,28 @@ import 'dart:convert';
 
 import 'admin_saved_qualification_photo_submission_repository.dart';
 
-/// A single local SQLite connection. No application/path/plugin adapter is wired.
-/// [exclusive] must serialize all access to this connection, including readers,
-/// until its callback completes. Independent connections use SQLite file locks.
-abstract interface class AdminQualificationSqliteConnection {
-  /// Immediately revoke this connection for all users after an uncertain write.
-  /// The adapter must refuse queued/new SQL; recovery opens a fresh connection.
-  void invalidate();
-  Future<T> exclusive<T>(Future<T> Function() operation);
+/// SQL access belonging to exactly one connection or transaction. A transaction
+/// callback must use only its supplied executor, never the outer connection.
+abstract interface class AdminQualificationSqliteExecutor {
   Future<List<Map<String, Object?>>> query(
     String sql,
     List<Object?> parameters,
   );
   Future<int> execute(String sql, List<Object?> parameters);
+}
+
+/// A single local SQLite connection. No application/path/plugin adapter is wired.
+/// [exclusive] serializes all access until the callback completes. The adapter
+/// owns BEGIN/COMMIT/ROLLBACK; [transaction] completes only after commit succeeds,
+/// or throws on begin/callback/commit failure or uncertain acknowledgement.
+abstract interface class AdminQualificationSqliteConnection
+    implements AdminQualificationSqliteExecutor {
+  /// Immediately revoke all users and queued SQL after uncertain writes.
+  void invalidate();
+  Future<T> exclusive<T>(Future<T> Function() operation);
+  Future<T> transaction<T>(
+    Future<T> Function(AdminQualificationSqliteExecutor transaction) operation,
+  );
 }
 
 /// Dedicated local recovery DB only. It must not share a connection with product
@@ -154,35 +163,34 @@ class SqliteAdminSavedQualificationPhotoPendingStore
     final before = expected == null ? null : _envelope(expected);
     final after = replacement == null ? null : _envelope(replacement);
     await _initialize();
-    bool committed = false;
     try {
-      await connection.execute('BEGIN IMMEDIATE', const []);
-      int changed;
-      if (before == null && after != null) {
-        changed = await connection.execute(
-          'INSERT INTO $_table (key, value) VALUES (?, ?) '
-          'ON CONFLICT(key) DO NOTHING',
-          [key, after],
-        );
-      } else if (before != null && after != null) {
-        changed = await connection.execute(
-          'UPDATE $_table SET value = ? WHERE key = ? AND value = ?',
-          [after, key, before],
-        );
-      } else if (before != null) {
-        changed = await connection.execute(
-          'DELETE FROM $_table WHERE key = ? AND value = ?',
-          [key, before],
-        );
-      } else {
-        // Null -> null does not establish ownership and must not grant a send.
-        throw ArgumentError('CAS requires a value transition');
-      }
-      if (changed != 0 && changed != 1) {
-        throw StateError('Unexpected SQLite affected-row count');
-      }
-      await connection.execute('COMMIT', const []);
-      committed = true;
+      final changed = await connection.transaction((transaction) async {
+        int changed;
+        if (before == null && after != null) {
+          changed = await transaction.execute(
+            'INSERT INTO $_table (key, value) VALUES (?, ?) '
+            'ON CONFLICT(key) DO NOTHING',
+            [key, after],
+          );
+        } else if (before != null && after != null) {
+          changed = await transaction.execute(
+            'UPDATE $_table SET value = ? WHERE key = ? AND value = ?',
+            [after, key, before],
+          );
+        } else if (before != null) {
+          changed = await transaction.execute(
+            'DELETE FROM $_table WHERE key = ? AND value = ?',
+            [key, before],
+          );
+        } else {
+          throw ArgumentError('CAS requires a value transition');
+        }
+        if (changed != 0 && changed != 1) {
+          throw StateError('Unexpected SQLite affected-row count');
+        }
+        return changed;
+      });
+      // The transaction Future is the commit boundary, not its callback return.
       if (changed == 0) {
         return false;
       }
@@ -192,13 +200,6 @@ class SqliteAdminSavedQualificationPhotoPendingStore
       return true;
     } catch (error, stack) {
       _failed = true;
-      if (!committed) {
-        try {
-          await connection.execute('ROLLBACK', const []);
-        } catch (_) {
-          // Preserve the original failure, including an uncertain commit.
-        }
-      }
       connection.invalidate();
       Error.throwWithStackTrace(error, stack);
     }
