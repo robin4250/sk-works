@@ -15,6 +15,7 @@ test('Invite failures preserve existing employees and omit raw upstream/cleanup 
  function invalidJson(){const response=Response.json({});response.json=async()=>{throw Error(markers.join(' '));};return response;}
  globalThis.fetch=async(url,options={})=>{
   const u=new URL(url),method=options.method??'GET',body=options.body?JSON.parse(options.body):null;calls.push({path:u.pathname,query:u.searchParams,method,body});
+  if(u.pathname==='/auth/v1/settings')return Response.json({external:{phone:true}});
   if(u.pathname==='/auth/v1/user')return Response.json({id:actor});
   if(u.pathname==='/rest/v1/rpc/account_server_access_allowed')return Response.json(true);
   if(u.pathname==='/rest/v1/rpc/finish_account_server_activity')return Response.json(true);
