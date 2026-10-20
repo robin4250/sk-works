@@ -14,6 +14,38 @@ import uuid
 SOURCE = 'database-restore-01qyi5py'
 BASE_IMAGE = 'supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86'
 NODE_IMAGE = 'node:22.21.0'
+# Read from production catalog on 2026-10-20. pg_dump without --create does
+# not restore the database object's owner/ACL. Apply ONLY to the offline clone.
+DATABASE_BASELINE_SQL = '''DO $database_baseline$
+BEGIN
+ IF current_database()<>'postgres' OR current_user<>'supabase_admin'
+ OR (SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()) NOT IN ('supabase_admin','postgres')
+ THEN RAISE EXCEPTION 'unexpected clone database identity'; END IF;
+ IF EXISTS(SELECT 1 FROM pg_database d CROSS JOIN LATERAL aclexplode(coalesce(d.datacl,acldefault('d',d.datdba))) a
+ WHERE d.datname=current_database() AND a.grantee<>0 AND pg_get_userbyid(a.grantee) NOT IN
+ ('postgres','supabase_admin','supabase_etl_admin','supabase_storage_admin','dashboard_user'))
+ THEN RAISE EXCEPTION 'unknown clone database grant'; END IF;
+ ALTER DATABASE postgres OWNER TO postgres;
+ REVOKE ALL ON DATABASE postgres FROM PUBLIC,postgres,supabase_admin,supabase_etl_admin,supabase_storage_admin,dashboard_user;
+ GRANT TEMPORARY,CONNECT ON DATABASE postgres TO PUBLIC;
+ GRANT ALL ON DATABASE postgres TO postgres;
+ GRANT CREATE ON DATABASE postgres TO supabase_etl_admin,supabase_storage_admin;
+ GRANT ALL ON DATABASE postgres TO dashboard_user;
+END $database_baseline$;
+DO $verify_database_baseline$
+DECLARE actual jsonb; expected jsonb;
+BEGIN
+ SELECT jsonb_agg(jsonb_build_array(CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,
+ a.privilege_type,pg_get_userbyid(a.grantor),a.is_grantable) ORDER BY
+ CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,a.privilege_type) INTO actual
+ FROM pg_database d CROSS JOIN LATERAL aclexplode(d.datacl) a WHERE d.datname=current_database();
+ SELECT jsonb_agg(jsonb_build_array(r,p,'postgres',false) ORDER BY r,p) INTO expected FROM (VALUES
+ ('PUBLIC','CONNECT'),('PUBLIC','TEMPORARY'),('postgres','CREATE'),('postgres','CONNECT'),('postgres','TEMPORARY'),
+ ('supabase_etl_admin','CREATE'),('supabase_storage_admin','CREATE'),
+ ('dashboard_user','CREATE'),('dashboard_user','CONNECT'),('dashboard_user','TEMPORARY')) x(r,p);
+ IF actual IS DISTINCT FROM expected OR NOT has_schema_privilege('postgres','public','CREATE')
+ THEN RAISE EXCEPTION 'clone database owner/ACL differs from observed production'; END IF;
+END $verify_database_baseline$;'''
 GENERATOR = '''import fs from 'node:fs';
 import {buildDefaultOffAtomicDeployment} from './expense_direction_default_off_preparation.mjs';
 import {buildCodeRestore} from './expense_direction_code_checkpoint.mjs';
@@ -86,11 +118,14 @@ def main():
             info=json.loads(run(['docker','inspect',clone]))[0]
             if info['HostConfig']['NetworkMode']!='none' or info['HostConfig'].get('PortBindings'):
                 raise RuntimeError('clone_not_isolated')
-            def query(sql):
-                return run(['docker','exec','-i',clone,'psql','-X','-w','-h','/tmp','-U','postgres','-d','postgres',
+            def query(sql,role='postgres'):
+                return run(['docker','exec','-i',clone,'psql','-X','-w','-h','/tmp','-U',role,'-d','postgres',
                             '-q','-A','-t','-v','ON_ERROR_STOP=1'],
                            ("SET statement_timeout='30s'; SET lock_timeout='3s';\n"+sql).encode()).decode().strip()
             if query('SHOW cron.launch_active_jobs;').splitlines()[-1]!='off': raise RuntimeError('cron_not_disabled')
+            status['phase']='database_properties'
+            query(DATABASE_BASELINE_SQL,role='supabase_admin')
+            status['database_owner_acl_matched']=True
             # -q avoids command status lines in JSON/digest responses.
             def value(sql):
                 output=query(sql)
