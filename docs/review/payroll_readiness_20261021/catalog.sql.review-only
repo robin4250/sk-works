@@ -1,0 +1,109 @@
+-- READ ONLY QUERY PLAN. Not a migration, deployment command, or production proof.
+-- Review connection/project, reader identity and private output destination first.
+-- No business rows, Auth rows, function calls to application code, or raw bodies.
+BEGIN TRANSACTION READ ONLY;
+SET LOCAL statement_timeout = '10s';
+SET LOCAL lock_timeout = '1s';
+
+SELECT current_database() AS database_name, current_user AS reader,
+       current_setting('transaction_read_only') AS transaction_read_only,
+       current_timestamp AS observed_at;
+
+WITH wanted(schema_name, object_name) AS (VALUES
+ ('company_allowance_identity_private','state'),
+ ('company_allowance_identity_private','identities'),
+ ('company_allowance_identity_private','history'),
+ ('company_common_allowance_private','state'),
+ ('company_common_allowance_private','items'),
+ ('company_common_allowance_private','history'),
+ ('company_common_allowance_private','unit_aliases'),
+ ('company_common_allowance_private','requests'),
+ ('company_common_allowance_private','payroll_activation'),
+ ('company_common_allowance_private','payroll_publications'),
+ ('company_common_allowance_private','payroll_publication_receipts'),
+ ('payroll_tax_private','worker_conditions'),
+ ('payroll_tax_private','condition_history'),
+ ('payroll_unit_private','conditions'),
+ ('payroll_unit_private','quantities'),
+ ('payroll_final_private','documents')
+)
+SELECT w.schema_name,w.object_name,c.oid AS object_oid,c.relkind,
+       pg_get_userbyid(c.relowner) AS owner,c.relrowsecurity,c.relforcerowsecurity,
+       c.relacl::text AS acl
+FROM wanted w LEFT JOIN pg_namespace n ON n.nspname=w.schema_name
+LEFT JOIN pg_class c ON c.relnamespace=n.oid AND c.relname=w.object_name
+ORDER BY w.schema_name,w.object_name;
+
+-- Each row is an exact signature; missing overloads remain NULL, not "RLS off".
+WITH wanted(signature) AS (VALUES
+ ('public.read_company_common_allowances_admin(uuid)'),
+ ('public.save_company_common_allowances(uuid,text,bigint,jsonb,uuid,jsonb,jsonb,boolean)'),
+ ('public.read_company_common_allowance_request(uuid,uuid)'),
+ ('public.read_company_common_payroll_publications(uuid)'),
+ ('public.publish_company_common_payroll(uuid,text,date,bigint,jsonb,bigint,uuid)'),
+ ('public.read_worker_payroll_tax_conditions(uuid,uuid)'),
+ ('public.save_worker_payroll_tax_conditions(uuid,uuid,date,bigint,jsonb,boolean)'),
+ ('public.payroll_unit_conditions(uuid,uuid,date)'),
+ ('public.save_payroll_common_hours(uuid,uuid,date,jsonb,jsonb)'),
+ ('public.my_attendance_allowance_units()'),
+ ('payroll_tax_private.validate_conditions(jsonb)'),
+ ('payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'),
+ ('payroll_tax_private.read_conditions(uuid,uuid)'),
+ ('payroll_tax_private.save_conditions(uuid,uuid,date,bigint,jsonb,boolean)'),
+ ('private.apply_payroll_custom_money()'),
+ ('private.refresh_automatic_payroll(uuid,uuid,date)'),
+ ('private.refresh_automatic_payroll_internal(uuid,uuid,date)'),
+ ('private.sync_payroll_attendance_detail(uuid,uuid,date)'),
+ ('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)'),
+ ('payroll_unit_private.read_conditions(uuid,uuid,date)'),
+ ('payroll_unit_private.resolve_company_common(uuid,uuid,date,date)'),
+ ('payroll_unit_private.common_state(uuid,uuid,date)'),
+ ('company_common_allowance_private.lock_writer(uuid)'),
+ ('company_common_allowance_private.publish_payroll(uuid,text,date,bigint,jsonb,bigint,uuid)'),
+ ('private.recalculate_one_payroll_draft(uuid,integer,uuid,uuid,date,boolean,text)'),
+ ('public.preview_one_payroll_draft(uuid,integer,uuid,uuid,date)')
+)
+SELECT w.signature,p.oid AS function_oid,pg_get_userbyid(p.proowner) AS owner,
+       l.lanname,p.prosecdef,p.provolatile,p.proconfig,p.proacl::text AS acl,
+       md5(p.prosrc) AS body_md5,
+       CASE WHEN p.oid IS NOT NULL THEN md5(pg_get_functiondef(p.oid)) END AS definition_md5
+FROM wanted w LEFT JOIN pg_proc p ON p.oid=to_regprocedure(w.signature)
+LEFT JOIN pg_language l ON l.oid=p.prolang ORDER BY w.signature;
+
+-- Full private metadata capture is still required separately before code changes.
+-- These hashes are for drift detection; they do not replace definition/restore bytes.
+SELECT n.nspname,c.relname,t.tgname,t.tgenabled,t.tgfoid AS function_oid,
+       pn.nspname AS function_schema,p.proname,md5(p.prosrc) AS body_md5,
+       md5(pg_get_triggerdef(t.oid,true)) AS trigger_definition_md5
+FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+JOIN pg_namespace n ON n.oid=c.relnamespace
+JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_namespace pn ON pn.oid=p.pronamespace
+WHERE NOT t.tgisinternal AND
+ ((n.nspname='public' AND c.relname IN ('payroll_statements','worker_payroll_settings','attendance_entries','company_rate_settings'))
+  OR n.nspname IN ('company_allowance_identity_private','company_common_allowance_private','payroll_tax_private','payroll_unit_private'))
+ORDER BY n.nspname,c.relname,t.tgname;
+
+SELECT n.nspname,c.relname,a.attnum,a.attname,
+       format_type(a.atttypid,a.atttypmod) AS data_type,a.attnotnull,a.attacl::text AS column_acl,
+       md5(pg_get_expr(d.adbin,d.adrelid)) AS default_expression_md5
+FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+JOIN pg_namespace n ON n.oid=c.relnamespace
+LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+WHERE a.attnum>0 AND NOT a.attisdropped AND
+ ((n.nspname='public' AND c.relname IN ('company_rate_settings','payroll_statements','worker_payroll_settings'))
+  OR n.nspname IN ('company_allowance_identity_private','company_common_allowance_private','payroll_tax_private','payroll_unit_private'))
+ORDER BY n.nspname,c.relname,a.attnum;
+
+SELECT n.nspname,c.relname,p.polname,p.polcmd,p.polpermissive,
+       p.polroles::text,md5(pg_get_expr(p.polqual,p.polrelid)) AS using_expression_md5,
+       md5(pg_get_expr(p.polwithcheck,p.polrelid)) AS check_expression_md5
+FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname IN ('company_allowance_identity_private','company_common_allowance_private','payroll_tax_private','payroll_unit_private','payroll_final_private')
+ORDER BY n.nspname,c.relname,p.polname;
+
+SELECT pg_get_userbyid(d.defaclrole) AS owner,n.nspname,d.defaclobjtype,d.defaclacl::text
+FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
+WHERE d.defaclnamespace=0 OR n.nspname IN
+ ('company_allowance_identity_private','company_common_allowance_private','payroll_tax_private','payroll_unit_private','payroll_final_private')
+ORDER BY owner,n.nspname,d.defaclobjtype;
+ROLLBACK;

@@ -1,0 +1,44 @@
+-- BOUND SELECT TEMPLATE. Not a psql paste command. No identifiers are supplied here.
+-- Bind $1=exact company UUID, $2=exact worker UUID, $3=canonical month start,
+-- $4=exact statement UUID, using an approved private reader.
+-- Run only after catalog confirms these tables/columns and reader authorization.
+-- No application-defined functions, raw values, names, addresses, IDs or amounts output.
+WITH scope AS (
+ SELECT $1::uuid AS cid,$2::uuid AS wid,$3::date AS month_start,$4::uuid AS statement_id
+), selected AS (
+ SELECT ps.* FROM public.payroll_statements ps,scope s
+ WHERE ps.id=s.statement_id AND ps.company_id=s.cid AND ps.worker_id=s.wid
+  AND ps.period_start=s.month_start AND s.month_start=date_trunc('month',s.month_start)::date
+), effective AS (
+ SELECT wc.* FROM payroll_tax_private.worker_conditions wc,scope s
+ WHERE wc.company_id=s.cid AND wc.worker_id=s.wid AND wc.starts_on<=s.month_start
+ ORDER BY wc.starts_on DESC LIMIT 1
+)
+SELECT
+ (SELECT count(*) FROM selected) AS exact_statement_count,
+ (SELECT count(*) FROM payroll_tax_private.worker_conditions wc,scope s
+   WHERE wc.company_id=s.cid AND wc.worker_id=s.wid) AS condition_versions,
+ (SELECT count(*) FROM effective) AS effective_condition_count,
+ (SELECT version FROM effective) AS condition_version,
+ (SELECT value->>'insurance_mode' FROM effective) AS insurance_mode,
+ (SELECT value->>'income_mode' FROM effective) AS income_mode,
+ (SELECT jsonb_typeof(value->'manual_insurance_premiums')='object' FROM effective) AS manual_amount_object_present,
+ (SELECT jsonb_typeof(value#>'{manual_insurance_premiums,health_insurance}')='number'
+     AND jsonb_typeof(value#>'{manual_insurance_premiums,pension_insurance}')='number'
+     AND jsonb_typeof(value#>'{manual_insurance_premiums,employment_insurance}')='number'
+     AND jsonb_typeof(value#>'{manual_insurance_premiums,nursing_insurance}')='number'
+     AND jsonb_typeof(value#>'{manual_insurance_premiums,child_support}')='number'
+  FROM effective) AS five_manual_numbers_present,
+ (SELECT revision FROM selected) AS statement_revision,
+ (SELECT automatic_calculation FROM selected) AS automatic_calculation,
+ (SELECT workflow_state='draft' FROM selected) AS is_draft,
+ (SELECT finalized_at IS NOT NULL FROM selected) AS finalized_at_present,
+ (SELECT calculation_blocked FROM selected) AS calculation_blocked,
+ (SELECT detail#>>'{tax_calculation,blocked}' FROM selected) AS tax_blocked,
+ (SELECT detail#>>'{tax_calculation,condition_version}' FROM selected) AS calculated_condition_version,
+ (SELECT jsonb_typeof(detail#>'{tax_calculation,premiums}')='object' FROM selected) AS calculated_premiums_present,
+ (SELECT detail ?| ARRAY['健康保険料','厚生年金保険','雇用保険料','介護保険料','子ども・子育て支援金'] FROM selected) AS named_insurance_detail_present,
+ (SELECT gross_pay-deductions=net_pay FROM selected) AS totals_consistent,
+ (SELECT EXISTS(SELECT 1 FROM payroll_final_private.documents d WHERE d.statement_id=ps.id) FROM selected ps) AS final_snapshot_present;
+-- false/NULL is not a diagnosis of the cause; old fixed/rates modes use other fields.
+-- Number presence is not proof of correct employee amounts, enrollment, or legal rates.

@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "source_commit": "ab9e13fa77abb0a630c00c8ce917bae62c60f575",
+  "purpose": "Offline source identity only; not live deployment evidence or a plan to apply all files",
+  "artifacts": [
+    {
+      "path": "supabase/migrations/20261009201229_company_allowance_identity_lifecycle.sql",
+      "sha256": "edacd1d8aac3ac0dd7219954192871725782369c82824173b2c73afe8aad3c3d",
+      "git_blob": "6af0ecd2c9a921f03e96034e1d07dbb0de6f747f"
+    },
+    {
+      "path": "tool/staged_company_common_allowances.sql.review-only",
+      "sha256": "8f4c3b1b1cd07519174c88441c5e4b7eea325bbdd99b6ae455897b04e9786e46",
+      "git_blob": "fd0bff09faba5caa2a88379ffff313366b5ba0ec"
+    },
+    {
+      "path": "docs/candidates/company_common_payroll_bridge_20261020.sql.review-only",
+      "sha256": "043fa73f7f997c67df21e4544073febe6f351d82f1fcd1b2771c953dd92e1d45",
+      "git_blob": "4aebbb4a6bd1065d229917107b7f64e5cd8f3dbf"
+    },
+    {
+      "path": "docs/candidates/company_common_payroll_effective_20261020.sql.review-only",
+      "sha256": "3a6aa28e29de9aee6cbd2464df2cc4361806ccad0aa55f901ec89e1f399eb023",
+      "git_blob": "16e0f4e70826b02aa76852f9c59bc51e578d71a1"
+    },
+    {
+      "path": "docs/candidates/payroll_manual_insurance_20261020.sql.review-only",
+      "sha256": "301081ae95e42b020d77ab7e2b3e52e9803e45e472654c1abe0e847c141126cc",
+      "git_blob": "2ef8e78fee562b2755d9c4c621b66f1dbe60f479"
+    },
+    {
+      "path": "docs/candidates/payroll_single_draft_recalculation_20261019.sql.review-only",
+      "sha256": "d5e47bc7706ad841a9e19378c9cc9bf0476f8eecbb2ac37ace6d1db5ecccae5b",
+      "git_blob": "95b4fb96a0faff70bb101365c393898b8393b148"
+    },
+    {
+      "path": "docs/candidates/payroll_single_draft_preview_20261019.sql.review-only",
+      "sha256": "cf79f3e963c3f87850821c1b7429724b77c818b7001e31e72d36f587dff95e2b",
+      "git_blob": "c0beaeeee7cdd4a1c33c861175c53ab20643721b"
+    },
+    {
+      "path": "supabase/migrations/20261010030208_connect_payroll_tax_calculation.sql",
+      "sha256": "1046f6cfd0a32a2d38354549155b78a93d435751543699eac4b6e914fccc3b1c",
+      "git_blob": "2117a6b65b469db7d9c01304e613ac7a3d0b29cc"
+    },
+    {
+      "path": "supabase/migrations/20261013175452_payroll_unit_conditions.sql",
+      "sha256": "043c3a0cf777fd33ee5d2d6d56142db6f6bebc0c80820dbb086358e91c08dbfb",
+      "git_blob": "4df17aaf1d0fdee35281a4c7d33122035de436fa"
+    },
+    {
+      "path": "supabase/migrations/20261014033249_payroll_fixed_deduction_overrides.sql",
+      "sha256": "b048c66d216eff2201e57fbe31dedc9325c9adf1f278d15c21925ad64461d63a",
+      "git_blob": "7d04c7df44f4c48b16ba27258521b4ccd55ea03d"
+    }
+  ]
+}

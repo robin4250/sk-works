@@ -1,0 +1,41 @@
+-- BOUND SELECT TEMPLATE. Requires reviewed catalog/read authorization first.
+-- Bind $1=exact company UUID, $2=proposed canonical starts_on, $3=daily/hourly/monthly.
+-- Pure count plan; NOT a publish RPC, dry-run calculation or approval to change data.
+WITH scope AS (
+ SELECT $1::uuid AS cid,$2::date AS starts_on,$3::text AS payroll_type
+), boundary AS (
+ SELECT min(p.starts_on) AS next_start
+ FROM company_common_allowance_private.payroll_publications p,scope s
+ WHERE p.company_id=s.cid AND p.payroll_type=s.payroll_type AND p.starts_on>s.starts_on
+), selected AS (
+ SELECT ps.* FROM public.payroll_statements ps
+ JOIN public.worker_payroll_settings w ON w.company_id=ps.company_id AND w.worker_id=ps.worker_id
+ CROSS JOIN scope s CROSS JOIN boundary b
+ WHERE ps.company_id=s.cid AND w.pay_type=s.payroll_type
+  AND s.starts_on=date_trunc('month',s.starts_on)::date
+  AND s.payroll_type IN ('daily','hourly','monthly')
+  AND ps.period_start>=s.starts_on AND (b.next_start IS NULL OR ps.period_start<b.next_start)
+), eligible AS (
+ SELECT worker_id,period_start FROM selected
+ WHERE automatic_calculation IS TRUE AND workflow_state='draft'
+ UNION
+ SELECT w.worker_id,s.starts_on
+ FROM public.worker_payroll_settings w CROSS JOIN scope s
+ WHERE w.company_id=s.cid AND w.pay_type=s.payroll_type
+  AND s.starts_on=date_trunc('month',current_timestamp AT TIME ZONE 'Asia/Tokyo')::date
+  AND NOT EXISTS(SELECT 1 FROM public.payroll_statements ps
+   WHERE ps.company_id=s.cid AND ps.worker_id=w.worker_id AND ps.period_start=s.starts_on
+    AND (ps.automatic_calculation IS DISTINCT FROM TRUE OR ps.workflow_state IS DISTINCT FROM 'draft'))
+)
+SELECT
+ (SELECT starts_on>=date_trunc('month',current_timestamp AT TIME ZONE 'Asia/Tokyo')::date FROM scope) AS current_or_future_start,
+ (SELECT EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_activation a WHERE a.company_id=s.cid AND a.starts_on<=s.starts_on) FROM scope s) AS activation_covers_start,
+ (SELECT version FROM company_common_allowance_private.state c,scope s WHERE c.company_id=s.cid) AS current_common_version,
+ (SELECT max(p.version) FROM company_common_allowance_private.payroll_publications p,scope s WHERE p.company_id=s.cid) AS timeline_version,
+ (SELECT count(*) FROM eligible) AS planned_eligible_scope_count,
+ (SELECT count(*) FROM selected WHERE workflow_state IS DISTINCT FROM 'draft') AS non_draft_count,
+ (SELECT count(*) FROM selected WHERE workflow_state='draft' AND automatic_calculation IS DISTINCT FROM TRUE) AS manual_draft_count,
+ (SELECT count(*) FROM selected WHERE workflow_state='draft' AND automatic_calculation IS TRUE AND calculation_blocked IS TRUE) AS currently_blocked_eligible_count,
+ (SELECT count(*) FROM company_common_allowance_private.items i,scope s WHERE i.company_id=s.cid AND i.payroll_type=s.payroll_type AND i.retired_at IS NULL) AS saved_active_item_count;
+-- These are observation-time counts, not a promise of recalculated_scopes.
+-- Missing hours, tax conditions and concurrent updates are not simulated here.
