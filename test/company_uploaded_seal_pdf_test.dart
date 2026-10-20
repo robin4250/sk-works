@@ -69,4 +69,22 @@ void main() {
       expect(File('${output.path}/$name.pdf').lengthSync(),greaterThan(1000));
     }
   });
+  test('acceptance keeps existing legacy Reisho and bundled PNG styles', () async {
+    for (final style in ['legacy','aoyagi_reisho','png_sumida_v1_standard']) {
+      final name=style=='png_sumida_v1_standard'?'すみだ建設株式会社':'株式会社テスト建設';
+      final saved={'version':1,'style':style,'name':name,
+        if(style=='png_sumida_v1_standard')'company_id':'0f117273-0a06-4a2f-85ec-720a3c9f4cf4'};
+      final attachment=TradeDocumentAttachment.fromJson({'version':1,'payload':{
+        'version':1,'kind':'acceptance','month':'2026-10','issue_date':'2026-10-15','order_date':'2026-10-15',
+        'work_name':'検証工事','notes':'','issuer':{'name':name,'address':'東京都','corporate_number':'1234567890123','representative_name':'検証太郎'},
+        'counterparty':{'name':'協力会社','address':'東京都','corporate_number':'1234567890124','representative_name':'検証次郎'},
+        'company_seal_enabled':true,'company_seal_snapshot':saved,
+      }});
+      final font=await CompanySealPdf.loadFont();
+      final doc=pw.Document(theme:pw.ThemeData.withFont(base:font,bold:font));
+      await InvoiceOrderAcceptancePdf.append(doc,attachment,regularFont:font,boldFont:font);
+      expect((await doc.save()).length,greaterThan(1000));
+    }
+  });
+
 }
