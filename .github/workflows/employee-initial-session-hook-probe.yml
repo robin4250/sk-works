@@ -1,0 +1,68 @@
+name: Isolated employee initial session hook prototype
+on:
+  pull_request:
+    paths:
+      - 'tool/security/employee_initial_session_hook_*'
+      - '.github/workflows/employee-initial-session-hook-probe.yml'
+permissions:
+  contents: read
+jobs:
+  actual-local-gotrue-hook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf
+        with:
+          version: 2.121.0
+      - name: Exercise hook in disposable GoTrue only; phone remains OFF
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID SUPABASE_PROJECT_REF SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY SUPABASE_SECRET_KEY SUPABASE_ANON_KEY
+          task_dir=$(mktemp -d "$RUNNER_TEMP/sko-employee-hook.XXXXXX")
+          chmod 700 "$task_dir"
+          cleanup() {
+            local original_status=$?
+            local cleanup_status=0
+            supabase stop --workdir "$task_dir" --no-backup >"$task_dir/stop.log" 2>&1 || cleanup_status=$?
+            if [ "$cleanup_status" -ne 0 ]; then
+              echo 'Disposable hook cleanup failed; private logs retained only on runner.' >&2
+              exit 1
+            fi
+            rm -rf "$task_dir"
+            exit "$original_status"
+          }
+          trap cleanup EXIT
+          supabase --version
+          supabase init --help >"$task_dir/init-help.txt"
+          supabase start --help >"$task_dir/start-help.txt"
+          supabase status --help >"$task_dir/status-help.txt"
+          supabase stop --help >"$task_dir/stop-help.txt"
+          supabase migration new --help >"$task_dir/migration-help.txt"
+          supabase init --workdir "$task_dir" --yes >"$task_dir/init.log" 2>&1
+          supabase migration new fixture_employee_hook --workdir "$task_dir" >"$task_dir/migration.log" 2>&1
+          python3 - "$task_dir" "$PWD/tool/security/employee_initial_session_hook_probe.sql" <<'PY'
+          import pathlib,re,sys,tomllib
+          root=pathlib.Path(sys.argv[1]);p=root/'supabase/config.toml';text=p.read_text();config=tomllib.loads(text)
+          assert config['auth'].get('sms',{}).get('enabled',False) is False
+          assert not config['auth'].get('hook',{}).get('custom_access_token',{}).get('enabled',False)
+          block='[auth.hook.custom_access_token]\nenabled = true\nuri = "pg-functions://postgres/public/fixture_employee_initial_access_token_hook"\n'
+          pattern=r'(?ms)^\[auth\.hook\.custom_access_token\]\n.*?(?=^\[|\Z)'
+          text=re.sub(pattern,lambda _:block+'\n',text) if re.search(pattern,text) else text+'\n'+block
+          value=tomllib.loads(text);assert value['auth']['hook']['custom_access_token']['enabled'] is True
+          p.write_text(text)
+          files=list((root/'supabase/migrations').glob('*.sql'));assert len(files)==1
+          files[0].write_bytes(pathlib.Path(sys.argv[2]).read_bytes())
+          PY
+          supabase start --workdir "$task_dir" --exclude storage-api,realtime,imgproxy,studio,postgres-meta,edge-runtime,logflare,vector,supavisor,mailpit >"$task_dir/start.log" 2>&1
+          supabase status --workdir "$task_dir" -o json >"$task_dir/status.json" 2>"$task_dir/status.log"
+          chmod 600 "$task_dir/status.json"
+          npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+          node --check tool/security/employee_initial_session_hook_probe.mjs
+          node tool/security/employee_initial_session_hook_probe.mjs "$task_dir/status.json" "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
