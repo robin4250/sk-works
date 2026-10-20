@@ -1,0 +1,25 @@
+# 保存済み資格写真：pure Store factory候補
+
+基準 a2425a4c。新factory/tool/docのみ。既transaction core、既fixture、pubspec/lock、route、認証処理は変更しない。実sqflite adapterではなく、mobile bootstrapが満たすべき注入境界である。
+
+## 固定path
+
+bootstrapは既依存path_provider 2.1.6の `getApplicationSupportDirectory()` を使い、存在するprivate support rootのcanonical絶対pathを取得する。このrootを期待値として渡し、providerの再取得値・realpath解決値が同一であることをfactoryが照合してからopenerへ渡す。root/相対path/末尾separator/空segment/dot/dotdot/backslash/control文字を拒否する。
+
+DB名は固定 `sko-qualification-photo-pending-v1.sqlite3`。actor/company/targetをDB名へ埋め込まない。同一factoryの並行createは同じFutureとStoreを使い、pathを途中で切り替えない。actor/companyは既SQLite keyで分離する。
+
+factoryは全isolateの注入値を観測できない。全engine/isolateが同じpath_provider由来のcanonical rootとnamespaceを使うこと、既DB/WAL/SHMのsymlinkや実fileのconfined path、backup/file protection方針は実mobile connector/bootstrapで検証する。任意rootやアプリ外pathを安全と認定するAPIではない。
+
+## scopeとconnection所有
+
+actor/company/target/activeを作成時に固定し、UUIDと現在値を検査する。scope streamの変更・error/doneとgetterの変更はsticky失効し、ABAでも復活しない。open待機中の変更も、返ったconnectionを失効させてStoreを返さない。storeのkeyは固定actor/companyの1件のみ許可する。payload/schema/targetの厳密検証は既repositoryが担当する。
+
+connectionのexclusive/query/execute/transactionとtransaction executorをwrapperでscope検査する。transaction callbackは専用executorだけを使う。scope変化とcore不明transactionはconnectionを同期失効し、queued/new SQLを拒否する。openerが同じconnection objectを別factoryへ返すことをisolate内Expandoで拒否する（別isolateのobjectは観測できず、その場合は別native connectionとSQLite排他が必要）。失効後の新scope復旧は新factoryと新connectionを使い、固定requestを保持する。
+
+connector.invalidateは同期的・非throwでrevoked状態を立て、実closeが必要なら実行中transactionを壊さない段階へ延期する責務を持つ。factoryはセッションやtokenを生成/保存/変更せず、token pinとauth/capability/readiness確認は別の管理者repository/RPC adapterに残す。
+
+## 検証
+
+pure Dart fixture38 assertions成功。固定path、並行create1回、foreign keyのSQL前拒否、scope ABA、無効root、provider/realpath mismatch、open遅延時scope変更、失効connection再利用拒否、新connection復旧、scope stream errorを確認。ここではSQL fakeを使い、SQLiteのdurable CASを再証明しない。既実DB47 assertionsの再実行はしていない。
+
+Flutter解析/実mobile plugin/path_provider呼出/実機は未検証。製品route・本番・外部送信は未接続。
