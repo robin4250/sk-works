@@ -5,6 +5,51 @@ import 'package:sk_works/features/payroll/company_common_payroll_page.dart';
 import 'package:sk_works/features/payroll/payroll_unit_item_editor.dart';
 
 void main() {
+
+  testWidgets('keyboard leaves a scrolling editor and compact fixed actions', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    List<PayrollUnitItemDraft>? saved;
+    await tester.pumpWidget(MaterialApp(home: CompanyCommonPayrollPage(
+      canEdit: true,
+      onRegister: (_, items) async { saved = items; },
+      initialItems: {
+        CompanyPayrollType.hourly: [
+          for (var i = 0; i < 3; i++)
+            PayrollUnitItemDraft(id: 'scroll-$i', section: PayrollItemSection.earning,
+              unit: PayrollItemUnit.hour, name: '手当$i', rate: '100'),
+        ],
+      },
+    )));
+    await tester.pumpAndSettle();
+    final selector = find.widgetWithText(OutlinedButton, '時給');
+    final initialY = tester.getTopLeft(selector).dy;
+    final footer = find.byKey(const ValueKey('company-common-fixed-footer'));
+    final footerY = tester.getTopLeft(footer).dy;
+    expect(tester.getBottomRight(footer).dy, lessThanOrEqualTo(360));
+    final field = find.byKey(const ValueKey('scroll-2-rate'));
+    await tester.ensureVisible(field);
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(selector).dy, lessThan(initialY - 100));
+    expect(tester.getTopLeft(footer).dy, closeTo(footerY, 1));
+    expect(tester.getBottomRight(field).dy, lessThanOrEqualTo(footerY));
+    await tester.enterText(field, '250');
+    await tester.tap(find.widgetWithText(FilledButton, '登録'));
+    await tester.pumpAndSettle();
+    expect(saved!.last.rate, '250');
+    // Returning to the selectors must not dispose drafts below the viewport.
+    await tester.drag(find.byKey(const ValueKey('company-common-scroll')), const Offset(0, 2000));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(field);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).controller!.text, '250');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('salary type and section changes retain separate drafts', (
     tester,
   ) async {

@@ -19,10 +19,12 @@ void main() {
       await tester.pumpAndSettle();
       var rowIndex = 0;
       for (final section in PayrollItemSection.values) {
+        await tester.ensureVisible(find.widgetWithText(OutlinedButton, section == PayrollItemSection.earning ? '支給' : '控除'));
         await tester.tap(find.widgetWithText(OutlinedButton, section == PayrollItemSection.earning ? '支給' : '控除'));
         await tester.pumpAndSettle();
         for (final unit in PayrollItemUnit.values) {
           final unitLabel = switch (unit) { PayrollItemUnit.hour => '時間単位', PayrollItemUnit.day => '日単位', PayrollItemUnit.month => '月単位' };
+          await tester.ensureVisible(find.widgetWithText(OutlinedButton, unitLabel));
           await tester.tap(find.widgetWithText(OutlinedButton, unitLabel));
           await tester.pumpAndSettle();
           expect(find.text('追加'), findsOneWidget);

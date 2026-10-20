@@ -307,12 +307,14 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
     final editable = widget.canEdit && widget.onRegister != null && !_saving;
     return SafeArea(
       key: const ValueKey('company-common-fixed-footer'), top: false,
-      child: Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 8), child: Row(children: [
+      child: Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 4), child: Row(children: [
         Expanded(child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
           onPressed: editable && controller.canAdd ? controller.add : null,
           icon: const Icon(Icons.add), label: const Text('追加'))),
         const SizedBox(width: 12),
         Expanded(child: FilledButton.icon(
+          style: FilledButton.styleFrom(minimumSize: const Size(0, 44), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
           onPressed: editable && controller.canRegister ? controller.register : null,
           icon: const Icon(Icons.save_outlined),
           label: Text(_saving || controller.saving ? '登録中' : '登録'))),
@@ -334,6 +336,7 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
             onPressed: _saving ? null : onPressed,
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(0, 44),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               padding: const EdgeInsets.symmetric(horizontal: 6),
               backgroundColor: selected
                   ? Theme.of(context).colorScheme.primary
@@ -378,12 +381,16 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
         ),
       ],
     ),
-    bottomNavigationBar: _fixedFooter(),
+    bottomNavigationBar: Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: _fixedFooter(),
+    ),
     body: SafeArea(
-      child: Column(
-        children: [
+      child: SingleChildScrollView(
+        key: const ValueKey('company-common-scroll'),
+        child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(9, 12, 9, 4),
+            padding: const EdgeInsets.fromLTRB(9, 4, 9, 2),
             child: Row(
               children: [
                 for (final type in [CompanyPayrollType.hourly, CompanyPayrollType.daily, CompanyPayrollType.monthly])
@@ -396,7 +403,7 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(9),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
             child: Row(
               children: [
                 for (final unit in PayrollItemUnit.values)
@@ -442,12 +449,13 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(widget.connectionMessage ?? '保存・個別給料設定への反映は接続準備中です。現在の給与設定は変更されません。'),
             ),
-          Expanded(
-            child: IndexedStack(
-              index: _type.index,
-              children: [
-                for (final type in CompanyPayrollType.values)
-                  ListView(children: [
+          // Keep every editor mounted so switching tabs retains unsaved input.
+          // Offstage gives only the selected editor layout space in this one
+          // scroll surface; the selectors and publication panel scroll away.
+          for (final type in CompanyPayrollType.values)
+            Offstage(
+              offstage: type != _type,
+              child: Column(children: [
                   if (type == _type && widget.legacyBuilder != null && _unit == PayrollItemUnit.day && _section == PayrollItemSection.earning)
                     widget.legacyBuilder!(type, _unit, _section) ?? const SizedBox.shrink(),
                   PayrollUnitItemEditor(
@@ -475,11 +483,9 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
                             }
                           },
                   ),
-                  ]),
-              ],
+              ]),
             ),
-          ),
-        ],
+        ]),
       ),
     ),
   );

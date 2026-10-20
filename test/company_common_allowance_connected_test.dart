@@ -125,7 +125,7 @@ void main() {
  testWidgets('hour day month additions roundtrip; edit keeps ID and delete affects only selected type', (tester) async {
   final repo = FakeRepository(), store = MemoryStore(); await show(tester, repo, store);
   for (final unit in ['時間単位', '日単位', '月単位']) {
-   await tester.tap(find.widgetWithText(OutlinedButton, unit)); await tester.pump(); await add(tester, unit); await save(tester);
+   await tester.ensureVisible(find.widgetWithText(OutlinedButton, unit)); await tester.tap(find.widgetWithText(OutlinedButton, unit)); await tester.pump(); await add(tester, unit); await save(tester);
    expect(find.text('保存完了'), findsOneWidget); await tester.tap(find.text('閉じる')); await tester.pumpAndSettle();
    expect(find.text(unit), findsWidgets);
   }
@@ -134,7 +134,7 @@ void main() {
   await tester.enterText(find.byKey(ValueKey('$id-name')), '編集済み'); await save(tester); await tester.tap(find.text('閉じる')); await tester.pumpAndSettle();
   expect(repo.value.items.last['id'], id); expect(repo.value.items.last['name'], '編集済み');
   await tester.pumpWidget(const SizedBox()); await show(tester, repo, store);
-  await tester.tap(find.widgetWithText(OutlinedButton, '月単位')); await tester.pump(); expect(find.text('編集済み'), findsOneWidget);
+  await tester.ensureVisible(find.widgetWithText(OutlinedButton, '月単位')); await tester.tap(find.widgetWithText(OutlinedButton, '月単位')); await tester.pump(); expect(find.text('編集済み'), findsOneWidget);
   await tester.tap(find.widgetWithText(TextButton, '削除')); await tester.pumpAndSettle(); await save(tester); await tester.tap(find.text('閉じる')); await tester.pumpAndSettle();
   expect(repo.value.items.length, 2); expect(repo.value.items.any((x) => x['id'] == id), false);
   await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
@@ -166,16 +166,16 @@ void main() {
  });
  testWidgets('legacy three are first in day earnings and share edits across salary types without copies', (tester) async {
   final repo = FakeRepository(), store = MemoryStore(); await show(tester, repo, store);
-  await tester.tap(find.widgetWithText(OutlinedButton, '日単位')); await tester.pumpAndSettle();
+  await tester.ensureVisible(find.widgetWithText(OutlinedButton, '日単位')); await tester.tap(find.widgetWithText(OutlinedButton, '日単位')); await tester.pumpAndSettle();
   expect(find.byKey(const ValueKey('legacy-1-name')), findsOneWidget);
   await tester.enterText(find.byKey(const ValueKey('legacy-1-name')), '共通の編集');
-  await tester.tap(find.widgetWithText(OutlinedButton, '日給')); await tester.pumpAndSettle();
+  await tester.ensureVisible(find.widgetWithText(OutlinedButton, '日給')); await tester.tap(find.widgetWithText(OutlinedButton, '日給')); await tester.pumpAndSettle();
   expect(tester.widget<TextField>(find.byKey(const ValueKey('legacy-1-name'))).controller!.text, '共通の編集');
   await tester.ensureVisible(find.byKey(const ValueKey('legacy-1-unit'))); await tester.enterText(find.byKey(const ValueKey('legacy-1-unit')), '件');
   await save(tester); await tester.tap(find.text('閉じる')); await tester.pumpAndSettle();
   expect(repo.value.legacyRefs.first['name'], '共通の編集'); expect(repo.value.legacyRefs.first['source_unit'], '件');
   expect(repo.value.legacyRefs.first['unit'], 'day'); expect(repo.value.legacyRefs.first['id'], legacy().first['id']); expect(repo.value.items, isEmpty);
-  await tester.tap(find.widgetWithText(OutlinedButton, '控除')); await tester.pumpAndSettle(); expect(find.byKey(const ValueKey('legacy-1-name')), findsNothing);
+  await tester.ensureVisible(find.widgetWithText(OutlinedButton, '控除')); await tester.tap(find.widgetWithText(OutlinedButton, '控除')); await tester.pumpAndSettle(); expect(find.byKey(const ValueKey('legacy-1-name')), findsNothing);
   await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
  });
  testWidgets('in-flight registration cannot issue duplicate commands', (tester) async {
