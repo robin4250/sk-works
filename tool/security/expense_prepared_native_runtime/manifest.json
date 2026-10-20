@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "native_executed": false,
+  "production_connected": false,
+  "production_prepared_sql_executed": false,
+  "explicit_clone_local_oid_mapping": true,
+  "financial_hash_match_required": true,
+  "files": {
+    "REVIEW.md": "726599bb079ee7c18bb04fe8d47914b8f548623152cd75fc0e88bf8c9bb18551",
+    "capture_queries.json": "62f967ee0b5861382caf3f7605c60a39b2b9223a0d8fc32576471029a44994d1",
+    "expense_default_off_plan.mjs": "5c4c7acedd93fd2fd162179eb4317c0e170877007346e1a0b404e92c1d51b5b9",
+    "native_generator.mjs": "0ef76aae2ec2f25101039d3f1f083139ffce5b2ab87679e9e98c75034971241d",
+    "owner_collector_public_create_rehearsal.py": "4516301d40e80b6f4d280a57f25d00ec6a56061e11605247480424e6cab3d419",
+    "owner_expense_off_rehearsal.py": "6c3cf1078238d9bbaa9a3b767c20f779e7bcdf0f45712a861271bedcdda25e1a",
+    "owner_prepared_expense_rehearsal.py": "0ff24bbaedde980148c9502ddfb4e2bba6a8f9cad8efd232266780820423e13b",
+    "runtime_manifest.json": "c52af2d0dc7f642337a8572f902a2d5f0034430f33d486ac00e61732e672e8bd",
+    "source/expense_direction_code_checkpoint.mjs": "9a642ea96fc3d564f6c711c2547da5954310f5fdf7f1448abdef2a0dcfa6197f",
+    "source/expense_direction_default_off_preparation.mjs": "5e1401c0271be411ae6d1de9ac8f20432380cd4ebd6db2cc0ccffd46e83fdda8",
+    "source/expense_payment_direction_v2_20261019.sql.review-only": "770728fa45176d7bbeb77ebd0610f936659624e4b1287d63bd83e0dd9264fe5a",
+    "test_native_contract.py": "91078c5abbb099865dcad742d840808d7d81a9fb65f9cc45ad124155590626af",
+    "verify_public_fixture_transaction.mjs": "6824bbc184b52171103a9598a6e82bea267882798d4e385dcc0fe1f4231d7be2"
+  }
+}
