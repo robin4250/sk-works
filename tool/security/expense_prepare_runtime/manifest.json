@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "prepare_only": true,
+  "production_connected": false,
+  "native_executed": false,
+  "fixture_verified": true,
+  "source_unchanged": true,
+  "files": {
+    "REVIEW.md": "fa558f3429366085cfa597223c33e37bc50009a977f48d5aad663c551c7703d3",
+    "expense_default_off_plan.mjs": "5c4c7acedd93fd2fd162179eb4317c0e170877007346e1a0b404e92c1d51b5b9",
+    "owner_prepare_expense_install.py": "a243c00bc05eaf2b568e8670db17db25276c8a4186028919c73323c0aa87d012",
+    "private_generator.mjs": "9d00f4f7914121a538a97e57eded6dc91b27fb6581af963de9b085602090abcb",
+    "source/expense_direction_code_checkpoint.mjs": "9a642ea96fc3d564f6c711c2547da5954310f5fdf7f1448abdef2a0dcfa6197f",
+    "source/expense_direction_default_off_preparation.mjs": "5e1401c0271be411ae6d1de9ac8f20432380cd4ebd6db2cc0ccffd46e83fdda8",
+    "source/expense_payment_direction_v2_20261019.sql.review-only": "770728fa45176d7bbeb77ebd0610f936659624e4b1287d63bd83e0dd9264fe5a",
+    "verify_expense_prepare_driver.mjs": "6a3def6fb100ac9cc466d0f27b8987e7058c43cb0bd7e2a7f36183e24a4411fd"
+  }
+}
