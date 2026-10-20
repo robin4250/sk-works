@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "shared_transport": "common-http-auth-catalog-rehearsal-20261020 (unchanged import-only)",
+  "files": {
+    "owner_common_http_rehearsal.py": "cd8b49e4e60fdbceabff05eaeafe86d8f04fc491e281650db173765d358ab86d",
+    "owner_payroll_common_rehearsal.py": "eb8253168195780ccb8b22aacd00471e4ff8760b7899c0b62d1bbd5f77eab41d",
+    "owner_expense_off_rehearsal.py": "6c3cf1078238d9bbaa9a3b767c20f779e7bcdf0f45712a861271bedcdda25e1a",
+    "expense_off_rehearsal_bundle.json": "87c01d8a8a132b54772c240f9fc3b96de6f91c8d9d727b34a32680e8de2f5d29"
+  },
+  "bundle_files": {
+    "expense_direction_code_checkpoint.mjs": "9a642ea96fc3d564f6c711c2547da5954310f5fdf7f1448abdef2a0dcfa6197f",
+    "expense_direction_default_off_preparation.mjs": "5e1401c0271be411ae6d1de9ac8f20432380cd4ebd6db2cc0ccffd46e83fdda8",
+    "candidate.sql": "770728fa45176d7bbeb77ebd0610f936659624e4b1287d63bd83e0dd9264fe5a",
+    "conversion.sql": "725ff2533539c63759c92c0bbc45d37c131fa431c421fd76deb127bdff2604d7",
+    "conversion_scenario.sql": "5609287a6a3c723388c2e7121fb5b0d8ea5150f0feaba89e6ecbfd3468323736",
+    "negotiation.sql": "accacb5cef0aa1ef079222e3b256728d55082d08112eb0c159057a7f830d9390",
+    "negotiation_scenario.sql": "b8bda1a20090638a7baf62415313324506e5a44b635c07fe3e194b869b283423"
+  },
+  "runtime": {
+    "source_restore": "database-restore-01qyi5py",
+    "postgres_image": "supabase/postgres@sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86",
+    "auth_image": "supabase/gotrue@sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b",
+    "rest_image": "postgrest/postgrest@sha256:d155c6718ed9a9f990d159a2ab7c0a3f16944dbb6d0a0344557421042acfe0df",
+    "generator_image": "node:22.21.0 (must already exist; ID captured)"
+  }
+}
