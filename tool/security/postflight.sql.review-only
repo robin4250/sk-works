@@ -1,0 +1,30 @@
+-- REVIEW ONLY. Read/check only; requires the exact four-source install.
+DO $verify$ DECLARE r record; tables integer:=0; BEGIN
+ IF to_regprocedure('public.read_company_common_allowances_admin(uuid)') IS NULL
+ OR to_regprocedure('public.save_company_common_allowances(uuid,text,bigint,jsonb,uuid,jsonb,jsonb,boolean)') IS NULL
+ OR to_regprocedure('public.read_company_common_payroll_publications(uuid)') IS NULL
+ OR to_regprocedure('public.publish_company_common_payroll(uuid,text,date,bigint,jsonb,bigint,uuid)') IS NULL
+ THEN RAISE EXCEPTION 'common public contract incomplete'; END IF;
+ FOR r IN SELECT c.oid,c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname IN ('company_allowance_identity_private','company_common_allowance_private') AND c.relkind='r' LOOP
+ tables:=tables+1;
+ IF NOT r.relrowsecurity OR has_table_privilege('authenticated',r.oid,'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('anon',r.oid,'SELECT,INSERT,UPDATE,DELETE')
+ THEN RAISE EXCEPTION 'common storage exposed or RLS disabled'; END IF;
+ END LOOP;
+ IF tables<>11 OR EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_activation)
+ OR EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_publications)
+ THEN RAISE EXCEPTION 'unexpected common objects or nonempty activation/publication'; END IF;
+END $verify$;
+DO $all_unused$ BEGIN
+IF EXISTS(SELECT 1 FROM company_allowance_identity_private.state) THEN RAISE EXCEPTION 'common data was used'; END IF;
+IF EXISTS(SELECT 1 FROM company_allowance_identity_private.identities) THEN RAISE EXCEPTION 'common data was used'; END IF;
+IF EXISTS(SELECT 1 FROM company_allowance_identity_private.history) THEN RAISE EXCEPTION 'common data was used'; END IF;
+IF EXISTS(SELECT 1 FROM company_common_allowance_private.state) THEN RAISE EXCEPTION 'common data was used'; END IF;
+IF EXISTS(SELECT 1 FROM company_common_allowance_private.items) THEN RAISE EXCEPTION 'common data was used'; END IF;
+IF EXISTS(SELECT 1 FROM company_common_allowance_private.history) THEN RAISE EXCEPTION 'common data was used'; END IF;
+IF EXISTS(SELECT 1 FROM company_common_allowance_private.unit_aliases) THEN RAISE EXCEPTION 'common data was used'; END IF;
+IF EXISTS(SELECT 1 FROM company_common_allowance_private.requests) THEN RAISE EXCEPTION 'common data was used'; END IF;
+IF EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_activation) THEN RAISE EXCEPTION 'common data was used'; END IF;
+IF EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_publications) THEN RAISE EXCEPTION 'common data was used'; END IF;
+IF EXISTS(SELECT 1 FROM company_common_allowance_private.payroll_publication_receipts) THEN RAISE EXCEPTION 'common data was used'; END IF;
+END $all_unused$;
