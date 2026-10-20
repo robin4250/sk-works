@@ -31,3 +31,7 @@ iPhone更新・注文書表示・資格チェック非表示の実機成功は�
 追加: Dのpublish receiptをserver件数表示へ接続し、非負整数/0/不明を区別。次の適用・月/形態変更・reload・actor/company/背景変更で旧件数と所有完了通知を隠す。純粋summary検証成功、SDK/widget回帰は追加のみ未実行。詳細ヘルプを更新。給与再計算件数は全員の実額反映完了を意味しない。
 
 統合担当が既存CIへ今回の専用回帰を接続し、YAML構文・diff-check成功。遠隔CIは未実行。各worktreeのコミットは保持し、主branchへ競合なしで統合。
+
+## GitHub送信後の追補
+
+ユーザーの継続了承を受けPR #1309を作成。ローカル統合treeとremote treeの一致確認済み。前記送信保留は当時の履歴で現在は解消。初回CIでECRのpostgres取得がtoomanyrequestsとなったため公式postgres:17へ同majorの取得元を変更。解析指摘はchat async mounted/ifブロック、独立検証toolのpackage importとstdoutへ補修。空欄の工事名/場所はpayloadから除外し、旧serverでも既存文面を保存できるよう補強（非空の新設定にはbackend更新が必要）。純粋resolver検証は17項目成功。適用件数の所有完了通知はdispose後のframeで閉じ、無関係通知を触らない。

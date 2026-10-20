@@ -448,13 +448,15 @@ class _ChatFriendsPageState extends State<ChatFriendsPage> with WidgetsBindingOb
     final actor = _actor;
     final epoch = _profileActorEpoch.value;
     if (!mounted || !_isCurrent(actor, epoch) || _loading || _busy ||
-        widget.selectForGroupInvite) return;
+        widget.selectForGroupInvite) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       await _launchPhoneInvitation();
       if (_isCurrent(actor, epoch)) await _load();
     } catch (_) {
-      if (_isCurrent(actor, epoch)) {
+      if (mounted && _isCurrent(actor, epoch)) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(ChatFriendsStrings.tr('SKO招待を開けませんでした。もう一度お試しください。')),
         ));

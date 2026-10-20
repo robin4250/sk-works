@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
+import 'trade_document_template_payload.dart';
 
 class TradeDocumentTemplateSettingsButton extends StatelessWidget {
   const TradeDocumentTemplateSettingsButton({super.key,required this.subjectKind});
@@ -47,7 +48,7 @@ class _TemplateState extends State<TradeDocumentTemplateSettingsPage> {
  Future<void> _save()async{
   if(!_sameActor||_revoked||!_canManage||_saving)return;setState(()=>_saving=true);
   try{await SupabaseBackend.client.rpc('trade_document_template',params:{'p_kind':widget.subjectKind,'p_company':_company,
-   'p_expected_version':_version,'p_payload':{for(final entry in _controllers.entries)entry.key:entry.value.text.trim()}});
+   'p_expected_version':_version,'p_payload':tradeDocumentTemplatePayload({for(final entry in _controllers.entries)entry.key:entry.value.text})});
    if(mounted&&_sameActor&&!_revoked)Navigator.of(context).pop();
   }catch(e){if(mounted)setState(()=>_error=e.toString());}finally{if(mounted)setState(()=>_saving=false);}
  }

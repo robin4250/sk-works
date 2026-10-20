@@ -1,4 +1,5 @@
-import '../lib/features/payroll/company_common_payroll_publication_summary.dart';
+import 'dart:io';
+import 'package:sk_works/features/payroll/company_common_payroll_publication_summary.dart';
 
 // Pure Dart only: no Flutter startup, SDK client or network.
 void main() {
@@ -51,7 +52,7 @@ void main() {
       'timeline or missing payload must not supply a count',
     );
   }
-  print(
+  stdout.writeln(
     'PASS publication summary: exact nonnegative integers, explicit zero, invalid/missing counts, no inferred totals',
   );
 }

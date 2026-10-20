@@ -1,4 +1,5 @@
-import '../lib/features/payroll/payment_order_layout.dart';
+import 'dart:io';
+import 'package:sk_works/features/payroll/payment_order_layout.dart';
 
 // Dependency-free regression check. No Flutter startup, network or user data.
 void main() {
@@ -47,7 +48,7 @@ void main() {
   );
   check(!paymentOrderUsesCompactLayout({'notes': 'X' * 1800}), '1800 boundary');
   check(paymentOrderUsesCompactLayout({'notes': 'X' * 1801}), '1801 boundary');
-  print(
+  stdout.writeln(
     'PASS 7 order layout checks: visible text, uploaded seal, metadata, boundary',
   );
 }

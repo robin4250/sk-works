@@ -67,7 +67,7 @@ class _CompanyCommonPayrollPublicationPanelState extends State<CompanyCommonPayr
     finally{if(mounted&&generation==_generation){setState(()=>_busy=false);widget.onBusyChanged?.call(_pending!=null);}}
   }
   String _typeLabel(String type)=>const {'daily':'日給','hourly':'時給','monthly':'月給'}[type]!;
-  @override void dispose(){_generation++;_subscription?.cancel();WidgetsBinding.instance.removeObserver(this);super.dispose();}
+  @override void dispose(){_generation++;final notice=_completionNotice;_completionNotice=null;if(notice!=null)WidgetsBinding.instance.addPostFrameCallback((_)=>notice.close());_subscription?.cancel();WidgetsBinding.instance.removeObserver(this);super.dispose();}
   @override Widget build(BuildContext context){
     if(_repository==null)return const SizedBox.shrink();
     if(_revoked)return Padding(padding:const EdgeInsets.all(12),child:Text(_error!));

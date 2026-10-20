@@ -1,5 +1,7 @@
-import '../lib/features/payroll/payment_order_resolver.dart';
-import '../lib/features/invoices/invoice_acceptance_resolver.dart';
+import 'dart:io';
+import 'package:sk_works/features/shared/trade_document_template_payload.dart';
+import 'package:sk_works/features/payroll/payment_order_resolver.dart';
+import 'package:sk_works/features/invoices/invoice_acceptance_resolver.dart';
 
 // Local-only actual resolver checks. No Flutter, HTTP, Supabase or saved data.
 void main() {
@@ -37,6 +39,16 @@ void main() {
       'notes': '設定した特記事項',
     },
   };
+  final oldServerPayload = tradeDocumentTemplatePayload({
+    'work_name': ' ', 'work_address': '', 'notes': '保存する文面',
+  });
+  check(oldServerPayload.length == 1 && oldServerPayload['notes'] == '保存する文面',
+      'blank optional fields do not block legacy prose saves');
+  final configuredPayload = tradeDocumentTemplatePayload({
+    'work_name': ' 工事 ', 'work_address': ' 場所 ',
+  });
+  check(configuredPayload['work_name'] == '工事' && configuredPayload['work_address'] == '場所',
+      'nonempty configured defaults are sent');
   final order = workspace('order');
   final resolved = PaymentOrderResolver.resolve(order)!;
   check(resolved.payload['work_name'] == '設定した工事', 'configured work name');
@@ -103,7 +115,7 @@ void main() {
         4,
     'saved acceptance wins on a locked source',
   );
-  print(
+  stdout.writeln(
     'PASS $checks actual resolver checks; PDF render and production are unverified',
   );
 }
