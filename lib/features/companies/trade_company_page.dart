@@ -91,9 +91,26 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       })
       .toList(growable: false);
 
-  Future<void> _invite() async {
+  Future<void> _invite({TradeCompanyRecord? recipient}) async {
     final actor = SupabaseBackend.client.auth.currentUser?.id;
     if (actor == null) return;
+    void openInvite(TradeCompanyRecord? company) {
+      if (!mounted || SupabaseBackend.client.auth.currentUser?.id != actor) return;
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => AppReferralPage(
+          repository: AppReferralRepository(SupabaseBackend.client),
+          invitationKind: 'company',
+          initialName: company == null ? '' :
+              company.representativeName.trim().isNotEmpty
+                  ? company.representativeName : company.name,
+          initialPhone: company?.representativePhone ?? '',
+        ),
+      ));
+    }
+    if (recipient != null) {
+      openInvite(recipient);
+      return;
+    }
     var selected = false;
     await showModalBottomSheet<void>(
       context: context,
@@ -104,17 +121,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
           if (selected || !mounted) return;
           selected = true;
           Navigator.of(sheetContext).pop();
-          if (SupabaseBackend.client.auth.currentUser?.id != actor) return;
-          Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => AppReferralPage(
-              repository: AppReferralRepository(SupabaseBackend.client),
-              invitationKind: 'company',
-              initialName: company == null ? '' :
-                  company.representativeName.trim().isNotEmpty
-                      ? company.representativeName : company.name,
-              initialPhone: company?.representativePhone ?? '',
-            ),
-          ));
+          openInvite(company);
         },
       ),
     );
@@ -133,7 +140,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
           TextButton.icon(
             onPressed: _loading || _repository == null ? null : _invite,
             icon: const Icon(Icons.person_add_alt_1_outlined),
-            label: const Text('招待'),
+            label: const Text('SKO招待'),
           ),
           if (_linkEnabled)
             IconButton(
@@ -277,6 +284,13 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
                       : '協力会社',
                 ),
                 _detailLine('SKO連携', _linkLabel(item.linkStatus)),
+                if (item.linkStatus != 'linked')
+                  OutlinedButton.icon(
+                    key: const ValueKey('trade-company-sko-invite'),
+                    onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.invite),
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    label: const Text('SKO招待'),
+                  ),
                 _detailLine('郵便番号', item.postalCode),
                 _detailLine('住所', item.address),
                 _detailLine('電話番号', item.phone),
@@ -335,6 +349,8 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     );
     if (!mounted || action == null) return;
     switch (action) {
+      case _CompanyAction.invite:
+        await _invite(recipient: item);
       case _CompanyAction.edit:
         await _editCompany(item);
       case _CompanyAction.contract:
@@ -593,7 +609,7 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   };
 }
 
-enum _CompanyAction { edit, contract, delete, source }
+enum _CompanyAction { edit, contract, delete, source, invite }
 
 class _CompanyDraft {
   const _CompanyDraft({
