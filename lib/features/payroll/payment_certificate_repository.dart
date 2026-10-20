@@ -1,3 +1,4 @@
+import '../shared/company_seal_current_preview.dart';
 import '../../domain/expense_cost_direction_v2_candidate.dart';
 import '../../domain/expense_payment_reader_candidate.dart';
 import '../expenses/expense_document_repository.dart';
@@ -249,7 +250,7 @@ class PaymentCertificateRepository {
         .select('id,name,postal_code,address,phone,fax,company_seal_enabled,company_seal_style')
         .eq('id', companyId)
         .limit(1);
-    final company = companyRows.isEmpty
+    var company = companyRows.isEmpty
         ? const <String, dynamic>{}
         : Map<String, dynamic>.from(companyRows.first);
 
@@ -364,6 +365,12 @@ class PaymentCertificateRepository {
       return result;
     }
     _loadedCompanyId = companyId;
+    try {
+      company = await companyWithCurrentUploadedSeal(_client, company, companyId);
+    } catch (_) {
+      // Current-preview metadata must not hide already authorized saved records.
+      return result;
+    }
     return withRegisteredCompanyPreviews(
       result,
       settings,
@@ -549,10 +556,11 @@ class PaymentCertificateRepository {
         .select('id,name,postal_code,address,phone,fax,company_seal_enabled,company_seal_style')
         .eq('id', companyId)
         .limit(1);
-    final company = companyRows.isEmpty
+    var company = companyRows.isEmpty
         ? const <String, dynamic>{}
         : Map<String, dynamic>.from(companyRows.first);
 
+    company = await companyWithCurrentUploadedSeal(_client, company, companyId);
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, 1);
     final end = DateTime(now.year, now.month + 1, 0);
@@ -712,3 +720,4 @@ class _PaymentDirectionActorLease {
   }
   void dispose() { subscription?.cancel(); }
 }
+
