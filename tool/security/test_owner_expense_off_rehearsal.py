@@ -19,6 +19,12 @@ class ExpenseRehearsalTests(unittest.TestCase):
         for forbidden in ('--mount','--publish','--privileged','PGPASSWORD'):
             self.assertNotIn(forbidden,command)
 
+    def test_database_properties_match_source_without_extra_schema_grant(self):
+        self.assertIn('ALTER DATABASE postgres OWNER TO postgres',off.DATABASE_BASELINE_SQL)
+        self.assertNotIn('GRANT CREATE ON SCHEMA',off.DATABASE_BASELINE_SQL)
+        self.assertIn('actual IS DISTINCT FROM expected',off.DATABASE_BASELINE_SQL)
+        self.assertIn('unknown clone database grant',off.DATABASE_BASELINE_SQL)
+
     def lifecycle(self,fail_install=False):
         with tempfile.TemporaryDirectory() as folder:
             home=Path(folder); root=home/'SKO-source-backups'; root.mkdir(mode=0o700)
@@ -67,6 +73,7 @@ class ExpenseRehearsalTests(unittest.TestCase):
         self.assertTrue(status['verified'])
         self.assertTrue(status['code_undo_verified'])
         self.assertTrue(status['business_unchanged'])
+        self.assertTrue(status['database_owner_acl_matched'])
         self.assertTrue(status['container_stopped'])
         self.assertFalse(status['production_connected'])
         self.assertFalse(status['expense_rows_converted'])
