@@ -45,3 +45,10 @@ Storage policy/bytesの追加変更・写真物理削除・新uploadはない。
 `private.admin_qualification_saved_photos(text,jsonb)`、approved-update permit helper、registered-update guard helper、permit表、queueのadmin_saved_photos列、registered-update guard triggerは不在だった。したがってbaseline/readinessだけの配備では動かず、製品routeを接続しても管理者削除が解消しないことをcatalogで確認した。
 
 この観測は完全backup/既pending調査/Storage実照合ではない。DDL/DML/Auth/RLS/gate/写真bytesの変更は0。既writer/metadata代替導線・既pendingと使用開始後の復元条件を満たすまで本番HOLDを維持する。native保存adapterと固定session adapterの検証成功をbackend導入成功に読み替えない。
+
+
+## 既本人経路の対象制約を本番原典で追加照合
+
+ローカルexec環境の障害中も、GitHubのmain原典と本番READ ONLY本文照会は実行できた。現routerのprepareは workers.id/company_id に加え `workers.user_id = auth.uid()` を明示要求し、本人以外は『本人の資格証だけ申請できます』で拒否する。owner/adminの他社員metadata申請へ既prepareを流用できるという証拠はなく、現定義では拒否されることを確認した。原典hashは前記ed2f102bのまま。
+
+main2853のQualificationCertificateRepositoryには、管理権限とactor/companyを照合した上で正式rowのfront/back/extra写真参照を直接UPDATEする既writerがある。全row guardを先に配備すると、これら既操作にも影響する。登録本体DELETEの承認経路を確認できたとはしない。既本人承認・管理保存写真・管理metadata/登録本体削除を同一機能とみなさず、既存権限/承認履歴と正規代替導線を保つまで本番HOLDを維持する。
