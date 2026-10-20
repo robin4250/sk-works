@@ -1,0 +1,68 @@
+name: Company seal image tools
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'lib/domain/company_seal*.dart'
+      - 'lib/domain/company_uploaded_seal_png.dart'
+      - 'lib/features/settings/company_seal*.dart'
+      - 'lib/features/settings/master_feature*.dart'
+      - 'lib/features/shared/company_seal*.dart'
+      - 'test/company_seal*.dart'
+      - 'test/company_uploaded_seal*.dart'
+      - 'docs/candidates/company_seal*.sql.review-only'
+      - 'tool/verify_company_seal_image_tools.mjs'
+      - '.github/workflows/company-seal-image-tools.yml'
+permissions:
+  contents: read
+concurrency:
+  group: company-seal-image-tools-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  image-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Resolve existing dependencies
+        run: flutter pub get
+      - name: Analyze image tools and shared PNG integration
+        run: >-
+          flutter analyze --no-pub
+          lib/domain/company_seal_image_processing.dart
+          lib/features/settings/company_seal_image_import.dart
+          lib/features/settings/company_seal_image_editor_page.dart
+          lib/features/settings/company_seal_image_versions_repository.dart
+          lib/features/settings/company_seal_png_uploader.dart
+          test/company_seal_image_processing_test.dart
+          test/company_seal_image_import_test.dart
+      - name: Verify processing, codec, existing PNG UI and frozen PDF paths
+        run: >-
+          flutter test --no-pub
+          test/company_seal_image_processing_test.dart
+          test/company_seal_image_import_test.dart
+          test/company_uploaded_seal_png_test.dart
+          test/company_seal_png_uploader_test.dart
+          test/company_seal_settings_recovery_test.dart
+          test/company_uploaded_seal_pdf_test.dart
+  append-only-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated SQL runtime
+        run: npm install --prefix "$RUNNER_TEMP/seal-sql" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
+      - name: Verify append, immutable versions, gate, CAS and frozen documents
+        run: >-
+          node tool/verify_company_seal_image_tools.mjs
+          "$RUNNER_TEMP/seal-sql/node_modules/@electric-sql/pglite/dist/index.js"
+          docs/candidates/company_seal_uploaded_png_20261020.sql.review-only
+          docs/candidates/company_seal_image_tools_20261020.sql.review-only
