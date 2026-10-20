@@ -68,6 +68,43 @@ void main() {
   );
   tearDown(() async => client.dispose());
 
+  testWidgets('saving one allowance preserves existing tax, resident tax and every legacy insurance row', (t) async {
+    final insurance = [
+      {'name': '健康保険料', 'amount_yen': 5100},
+      {'name': '厚生年金保険', 'amount_yen': 9000},
+      {'name': '雇用保険料', 'amount_yen': 1200},
+      {'name': '介護保険料', 'amount_yen': 0},
+    ];
+    final repository = _Repository(client, initial: {
+      'pay_type': 'daily', 'day_daily': 20000,
+      'income_tax_monthly': 6300, 'resident_tax_monthly': 12500,
+      'social_insurance_monthly': 0,
+      'custom_earnings': [{'name': '個別手当', 'amount_yen': 100}],
+      'custom_deductions': insurance,
+      'rate_formula': {'paid_leave_daily_yen': 9000},
+    });
+    await t.pumpWidget(MaterialApp(home: IndividualPayrollSettingsPage(repository: repository)));
+    await t.pumpAndSettle();
+    final allowance = find.widgetWithText(TextFormField, '支給1 金額');
+    await t.ensureVisible(allowance);
+    await t.enterText(allowance, '200');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.tap(find.widgetWithText(FilledButton, '登録'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('確定して保存'));
+    await t.pumpAndSettle();
+    expect(repository.saved!['custom_earnings'], [{'name': '個別手当', 'amount_yen': 200}]);
+    expect(repository.saved!['custom_deductions'], insurance);
+    expect(repository.saved!['income_tax_monthly'], 6300);
+    expect(repository.saved!['resident_tax_monthly'], 12500);
+    expect(repository.saved!['social_insurance_monthly'], 0);
+    expect((repository.saved!['rate_formula'] as Map)['paid_leave_daily_yen'], 9000);
+    expect(repository.saved!.keys, isNot(contains('company_common')));
+    expect(repository.saved!.keys, isNot(contains('unit_conditions')));
+    expect(repository.saved!.keys, isNot(contains('unit_quantities')));
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets(
     'tabs retain raw input, footer adds to selected section and saves both',
     (tester) async {
@@ -333,3 +370,4 @@ void main() {
     },
   );
 }
+

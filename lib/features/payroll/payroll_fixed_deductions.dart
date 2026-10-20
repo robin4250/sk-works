@@ -130,6 +130,24 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   int? _yen(Object? raw) => raw is num && raw.isFinite &&
       raw >= 0 && raw <= 2147483647 && raw == raw.round() ? raw.toInt() : null;
 
+  int? _savedNamedDeduction(Map detail, String name) {
+    // A saved named scalar remains authoritative. Never divide the old
+    // social-insurance aggregate into guessed insurance premiums.
+    if (detail.containsKey(name)) return _yen(detail[name]);
+    final items = detail['custom_deductions'];
+    if (items is! List) return null;
+    var found = false;
+    var total = 0;
+    for (final raw in items) {
+      if (raw is! Map || raw['name']?.toString().trim() != name) continue;
+      final amount = _yen(raw['amount_yen']);
+      if (amount == null || total + amount > 2147483647) return null;
+      found = true;
+      total += amount;
+    }
+    return found ? total : null;
+  }
+
   Future<void> _load() async {
     final generation = ++_generation;
     setState(() { _busy = true; _allowed = false; _error = null; });
@@ -180,7 +198,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       if (profile == null && tax == null &&
           statement?['calculation_blocked'] != true && detail is Map) {
         for (final item in fixedPayrollDeductions) {
-          final amount = _yen(detail[item.$3]);
+          final amount = _savedNamedDeduction(detail, item.$3);
           if (amount != null) _savedSnapshot[item.$1] = amount;
         }
       }
@@ -410,4 +428,5 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
     ],
   );
 }
+
 

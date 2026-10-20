@@ -1,0 +1,50 @@
+name: Legacy payroll insurance linkage
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payroll_fixed_deductions.dart'
+      - 'test/payroll_fixed_deductions_test.dart'
+      - 'test/individual_payroll_ui_tabs_test.dart'
+      - '.github/workflows/payroll-legacy-insurance-link.yml'
+permissions:
+  contents: read
+jobs:
+  legacy-link:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Require the saved-custom-insurance regression on original main
+        shell: bash
+        run: |
+          cp lib/features/payroll/payroll_fixed_deductions.dart "$RUNNER_TEMP/payroll_fixed_deductions.fixed.dart"
+          git show c8216d9a31e0d8340c9ec123307907bc148191a8:lib/features/payroll/payroll_fixed_deductions.dart > lib/features/payroll/payroll_fixed_deductions.dart
+          set +e
+          flutter test test/payroll_fixed_deductions_test.dart --plain-name 'legacy named insurance in saved custom rows stays linked without automatic conditions' --reporter expanded > "$RUNNER_TEMP/legacy-insurance-red.log" 2>&1
+          sko_red_exit=$?
+          set -e
+          cp "$RUNNER_TEMP/payroll_fixed_deductions.fixed.dart" lib/features/payroll/payroll_fixed_deductions.dart
+          python3 - "$sko_red_exit" "$RUNNER_TEMP/legacy-insurance-red.log" <<'PY'
+          import pathlib,re,sys
+          text=pathlib.Path(sys.argv[2]).read_text()
+          assert int(sys.argv[1])!=0, 'Original source unexpectedly passes; reassess the regression'
+          assert re.search(r"Expected: '5100'\s+Actual: ''",text), 'The original test did not fail on the missing saved insurance value'
+          print('Original source RED: saved health-insurance row is absent from the fixed frame')
+          PY
+      - run: flutter analyze lib/features/payroll/payroll_fixed_deductions.dart test/payroll_fixed_deductions_test.dart test/individual_payroll_ui_tabs_test.dart
+      - run: flutter test test/payroll_fixed_deductions_test.dart test/individual_payroll_ui_tabs_test.dart
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: legacy-insurance-original-red
+          path: ${{ runner.temp }}/legacy-insurance-red.log
+          if-no-files-found: ignore
