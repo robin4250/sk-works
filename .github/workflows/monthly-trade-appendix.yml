@@ -35,6 +35,7 @@ jobs:
       - run: node tool/verify_payment_order_snapshot_tax.mjs ./trade_document_pg_adapter.mjs
   directory-postgres:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix: {source: [base, tax]}

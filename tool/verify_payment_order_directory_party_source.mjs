@@ -9,10 +9,17 @@ if(!process.argv[2])throw new Error('Pass the disposable database adapter module
 process.argv[2]=pathToFileURL(process.argv[2]).href;
 const original=await fs.readFile(fixture,'utf8');
 const marker="console.log('PASS monthly appendices";
+const databaseAnchor='const {PGlite}=await import(process.argv[2]);const db=new PGlite();';
+if(original.split(databaseAnchor).length!==2)throw new Error('appendix database lifecycle anchor changed');
 if(original.split(marker).length!==2)throw new Error('appendix fixture anchor changed');
 for(const taxFallback of flavors){
  let script=original.replaceAll('import.meta.url',JSON.stringify(fixture.href));
- const check=`
+ // Preserve the original native concurrency check, while always closing its client on failure.
+ script=script.replace(databaseAnchor,databaseAnchor+'\ntry {');
+ const closeAnchor='await db.close();';
+ if(script.split(closeAnchor).length!==2)throw new Error('appendix close anchor changed');
+ script=script.replace(closeAnchor,'} finally { await db.close(); }');
+ let check=`
  await db.exec("reset role");await db.query("select set_config('test.uid',$1,false)",[a]);
  await db.exec('create table public.trade_companies(id uuid primary key,company_id uuid,partner_company_id uuid,trade_role text,address text,corporate_number text,representative_name text)');
  const candidate=await fs.readFile(new URL('../docs/candidates/payment_order_directory_party_source_20261021.sql.review-only',${JSON.stringify(fixture.href)}),'utf8');
@@ -100,7 +107,11 @@ for(const taxFallback of flavors){
  await assert.rejects(db.exec(candidate),e=>e.code==='55000');await db.exec('rollback');
  console.log('PASS payment order directory supplement (${taxFallback ? 'tax fallback source' : 'base source'}): exact scope/role, foreign ignored, one mapping, blank fallback, manager unchanged, saved+invoice+finance unchanged, ambiguity refused, metadata preserved');
  `;
- script=script.replace(marker,()=>check+'\n'+marker);
+ // pc2 is saved by the original native concurrentSave test; use a distinct synthetic
+ // subject for the directory checks in both adapters, without weakening concurrency.
+ check=check.replace(/\bpc2\b/g,'directorySubject');
+ const subjectSetup="\n const directorySubject='20000000-0000-0000-0000-000000000001';\n await db.exec('reset role');\n await db.query(\"insert into payment_certificates(id,company_id,partner_company_id,period_start,period_end,revision,status,finalized_at,gross_amount,snapshot) values($1,$2,$3,'2026-11-01','2026-11-30',1,'draft',null,220000,'{}')\",[directorySubject,c,p]);\n";
+ script=script.replace(marker,()=>subjectSetup+check+'\n'+marker);
  try {await import('data:text/javascript;base64,'+Buffer.from(script).toString('base64')+'#'+String(taxFallback));}
  catch(error){console.error(error.name+': '+error.message.split(' from \"data:')[0]);process.exitCode=1;break;}
 }

@@ -61,3 +61,21 @@ PGliteの簡略schema上の結果であり、本番のdirectory対応分布・�
 初候補はdirectoryの非空文字をそのまま採用していたが、directory住所/法人番号は無制約、代表者200文字に対して、注文書保存は住所240・代表80・法人ASCII13桁であり、補完値によって自動表示と保存の契約が食い違うという指摘を受けた。関数認可・metadata・fingerprint・保存済み保持を変えず、戻り値の各field選択だけを保存契約に合わせた。無効なdirectory値で文書全体を停止せず、既値を保持する。
 
 **旧partner値そのものが長さ・形式など既保存契約の範囲外だった場合、その修復は今回の補完候補に含めない。** 元値を勝手に切り詰めたり消したりせず、正規の会社情報編集で確認・修正する必要がある。
+
+### Native fixture lifecycle correction
+
+The first base/tax native run reused `pc2` after the original appendix fixture's
+native-only `concurrentSave` branch had already saved an appendix for it. PGlite
+has no such method, so the directory checks previously saw an unsaved subject
+only in PGlite. This is a fixture state difference, not a change to the source
+supplement's saved-document protection. On assertion failure the wrapper also
+skipped the fixture's final `db.close()`, leaving the native client open.
+
+The wrapper now inserts a distinct synthetic payment-certificate subject for
+its directory checks and wraps the reused fixture in `try/finally` with close.
+All lifecycle injection anchors require exactly one match. The original fixture,
+its concurrency assertions, the PostgreSQL adapter, and candidate SQL are unchanged.
+Base/tax PGlite passed. A temporary PGlite adapter exposing `concurrentSave`
+exercised the same capability branch sequentially and passed both flavors;
+this does not prove real concurrency. An injected failure in that branch reached
+close and exited 1. Corrected native PostgreSQL CI results remain required.
