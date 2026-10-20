@@ -1,0 +1,66 @@
+name: Invitation OFF install and rollback
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/app_distribution_off_*.sql.review-only'
+      - 'docs/review/app_distribution_off_stage_20261020.md'
+      - 'tool/verify_distribution_off_stage.mjs'
+      - '.github/workflows/distribution-off-stage.yml'
+permissions:
+  contents: read
+jobs:
+  off-stage-pglite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node tool/verify_distribution_candidate.mjs
+        env:
+          DISTRIBUTION_SQL: docs/candidates/app_distribution_off_install_20261020.sql.review-only
+          PGLITE_PACKAGE: ${{ github.workspace }}/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js
+      - run: node tool/verify_distribution_off_stage.mjs
+        env:
+          DISTRIBUTION_OFF_INSTALL: docs/candidates/app_distribution_off_install_20261020.sql.review-only
+          DISTRIBUTION_OFF_UNDO: docs/candidates/app_distribution_off_undo_20261020.sql.review-only
+          PGLITE_PACKAGE: ${{ github.workspace }}/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js
+  off-stage-native:
+    strategy:
+      matrix:
+        suite: [compatibility, rollback]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_distribution_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_distribution_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - run: node tool/security/distribution_fixture_guard_test.mjs
+      - if: matrix.suite == 'compatibility'
+        run: node tool/verify_distribution_candidate.mjs
+        env:
+          DISTRIBUTION_SQL: docs/candidates/app_distribution_off_install_20261020.sql.review-only
+          PGLITE_PACKAGE: ${{ github.workspace }}/tool/security/distribution_pg_adapter.mjs
+          SKO_DISTRIBUTION_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_distribution_fixture
+      - if: matrix.suite == 'rollback'
+        run: node tool/verify_distribution_off_stage.mjs
+        env:
+          DISTRIBUTION_OFF_INSTALL: docs/candidates/app_distribution_off_install_20261020.sql.review-only
+          DISTRIBUTION_OFF_UNDO: docs/candidates/app_distribution_off_undo_20261020.sql.review-only
+          PGLITE_PACKAGE: ${{ github.workspace }}/tool/security/distribution_pg_adapter.mjs
+          SKO_DISTRIBUTION_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_distribution_fixture
