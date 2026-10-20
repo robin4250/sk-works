@@ -11,13 +11,14 @@ returns jsonb language plpgsql security definer set search_path='' as $$
 declare
   actor uuid := (event->>'user_id')::uuid;
   sid uuid := (event->'claims'->>'session_id')::uuid;
-  session_user uuid;
+  v_session_user_id uuid;
 begin
-  select s.user_id into session_user from auth.sessions s where s.id=sid;
+  select s.user_id into v_session_user_id from auth.sessions s where s.id=sid;
   insert into private.fixture_employee_hook_observations
     (user_id,session_id,method,session_visible,session_matches_user)
-  values(actor,sid,event->>'authentication_method',found,coalesce(session_user=actor,false));
+  values(actor,sid,event->>'authentication_method',found,coalesce(v_session_user_id=actor,false));
   return jsonb_build_object('claims',event->'claims');
 end $$;
 revoke all on function public.fixture_employee_initial_access_token_hook(jsonb) from public,anon,authenticated;
+grant usage on schema public to supabase_auth_admin;
 grant execute on function public.fixture_employee_initial_access_token_hook(jsonb) to supabase_auth_admin;
