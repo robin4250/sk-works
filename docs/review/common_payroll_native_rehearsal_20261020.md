@@ -1,0 +1,13 @@
+# 社内共通手当: 実復元DBでの依存導入確認候補
+
+基準mainは c8216d9a31e0d8340c9ec123307907bc148191a8。給与の既存unit層は再適用しない。2026-10-20の限定本番catalog SELECTで、identity/common schemaは不存在、unit schemaは存在し、augment_settings/read_conditionsのbody MD5が既存bridge原本guardと一致した。my_attendance_allowance_unitsもcommon saver原本guardのMD5/owner/SD/search_pathと一致した。個人行・金額・実IDは取得していない。
+
+原本を変更せず、identity lifecycle → staged common saver → payroll common bridge → payroll common effective の4ファイルを順番に単一transactionへまとめる。外側のBEGIN/COMMITだけを厳密に除き、すべての既存source guardsを残す。末尾はROLLBACK固定。hashが違うファイルや余分なファイルは拒否する。
+
+既存の owner_expense_off_rehearsal.py から、停止済み原本restore・network none・cron OFF・localhost socketのみのclone起動とDB owner/ACLの既知補正を再利用する。同ファイルSHA256は6c3cf1078238d9bbaa9a3b767c20f779e7bcdf0f45712a861271bedcdda25e1a。元DBは起動・停止しない。バックアップは開かず、元停止済みコンテナをdocker commitでローカル複製する。新しい私有imageは外部へ送信しない。
+
+導入後にpublic契約4件、private表11件のRLSとanon/authenticated直接権限なし、activation/publicationの空を照合。rollback後にはapp/auth系テーブルの全行hash、schema/function/owner/ACL/列/RLS/policy/triggerのcatalog hashを前後比較する。これらのhashは金額/個人値を表示しない。clone停止を確認できなければ成功としない。結果はpbcopyする。
+
+検証: Python mock lifecycle 5件成功。既存給与fixtureで4原本を連結したSQLの導入・postflight・全catalog/data rollbackをPGliteで確認済み。実Macでの今回の4原本導入、保存API、publication、給与再計算、発行JWT/PostgREST、本番配備、実機利用は未検証。
+
+本ヘルパーは採用・有効化・publication登録・保険条件入力・給与再計算を一切実行しない。これは導入依存の確認であり、社内共通手当が本番で利用可能になった証明ではない。次は元データを保護したまま、隔離transaction内で正規APIの保存→適用月→対象自動下書き再計算→明細の照合を検証する。
