@@ -13,8 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
-import urllib.request
+import selectors
 import uuid
 import owner_payroll_common_rehearsal as common
 
@@ -33,31 +32,85 @@ def jwt(secret,role):
     return unsigned+'.'+base64.urlsafe_b64encode(hmac.new(secret.encode(),unsigned.encode(),hashlib.sha256).digest()).decode().rstrip('=')
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self,*args,**kwargs): raise RuntimeError('http_redirect_refused')
+class HttpExecFailure(RuntimeError):
+    def __init__(self,code):
+        super().__init__('internal_http_client_failed')
+        self.client_returncode=code
 
 
-class LocalHttp:
-    def __init__(self,auth_port,rest_port):
-        check(all(isinstance(v,int) and 1<=v<=65535 for v in (auth_port,rest_port)),'local_port_invalid')
-        self.ports={'auth':auth_port,'rest':rest_port}
-        self.opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+def bounded_http_exec(args,data,env,timeout=30):
+    check(isinstance(data,bytes) and len(data)<=65536,'http_request_too_large')
+    proc=subprocess.Popen(args,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+    selector=selectors.DefaultSelector(); output=bytearray(); offset=0; deadline=time.monotonic()+timeout
+    try:
+        os.set_blocking(proc.stdin.fileno(),False);os.set_blocking(proc.stdout.fileno(),False)
+        selector.register(proc.stdin,selectors.EVENT_WRITE)
+        selector.register(proc.stdout,selectors.EVENT_READ)
+        while selector.get_map():
+            remaining=deadline-time.monotonic()
+            check(remaining>0,'internal_http_timeout')
+            for key,_ in selector.select(min(remaining,1)):
+                if key.fileobj is proc.stdin:
+                    try: sent=os.write(proc.stdin.fileno(),data[offset:])
+                    except BrokenPipeError: sent=0;offset=len(data)
+                    offset+=sent
+                    if offset>=len(data):selector.unregister(proc.stdin);proc.stdin.close()
+                else:
+                    chunk=os.read(proc.stdout.fileno(),16384)
+                    if not chunk:selector.unregister(proc.stdout);continue
+                    output.extend(chunk)
+                    check(len(output)<=1048584,'http_response_too_large')
+        code=proc.wait(timeout=max(.1,deadline-time.monotonic()))
+        if code:raise HttpExecFailure(code)
+        return bytes(output)
+    finally:
+        selector.close()
+        if proc.poll() is None:
+            proc.kill()
+            try:proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:pass
+        for stream in (proc.stdin,proc.stdout):
+            if stream and not stream.closed:stream.close()
+
+
+class InternalCurlHttp:
+    def __init__(self,db_container,endpoints,env):
+        check(re.fullmatch(r'sko-http-db-[a-f0-9]{12}',db_container) is not None,'http_container_invalid')
+        check(set(endpoints)=={'auth','rest'},'http_services_invalid')
+        for endpoint in endpoints.values():
+            check(re.fullmatch(r'http://[0-9.]+:[0-9]{1,5}',endpoint) is not None,'internal_endpoint_invalid')
+            host=endpoint.removeprefix('http://').split(':')[0]
+            check(ipaddress.ip_address(host).version==4 and ipaddress.ip_address(host).is_private,'private_ipv4_endpoint_required')
+        self.db_container=db_container;self.endpoints=endpoints;self.env=env
+
+    def config(self,service,path,token,body,method,headers):
+        check(service in self.endpoints and isinstance(path,str) and path.startswith('/') and not path.startswith('//') and not any(c in path for c in ('\r','\n')),'internal_route_invalid')
+        check(method in ('GET','POST','PUT','DELETE'),'http_method_invalid')
+        lines=['url = '+json.dumps(self.endpoints[service]+path),'request = '+json.dumps(method), 'header = "Accept: application/json"']
+        if token:
+            check(isinstance(token,str) and re.fullmatch(r'[A-Za-z0-9_.-]+',token) is not None,'http_token_invalid')
+            lines.append('header = '+json.dumps('Authorization: Bearer '+token))
+        for key,value in (headers or {}).items():
+            check(key in ('Accept-Profile','Content-Profile') and isinstance(value,str) and re.fullmatch(r'[a-z_]+',value) is not None,'http_header_invalid')
+            lines.append('header = '+json.dumps(key+': '+value))
+        if body is not None:
+            lines.append('header = "Content-Type: application/json"')
+            lines.append('data-binary = '+json.dumps(json.dumps(body,ensure_ascii=False,separators=(',',':')),ensure_ascii=False))
+        data=('\n'.join(lines)+'\n').encode()
+        check(len(data)<=65536,'http_request_too_large')
+        return data
 
     def call(self,service,path,token=None,body=None,method='POST',headers=None):
-        check(service in self.ports and isinstance(path,str) and path.startswith('/') and not path.startswith('//') and not any(c in path for c in ('\r','\n')),'local_route_invalid')
-        url='http://127.0.0.1:'+str(self.ports[service])+path
-        request_headers={'Accept':'application/json',**(headers or {})}
-        if token: request_headers['Authorization']='Bearer '+token
-        data=None if body is None else json.dumps(body,separators=(',',':')).encode()
-        if data is not None: request_headers['Content-Type']='application/json'
-        request=urllib.request.Request(url,data=data,method=method,headers=request_headers)
-        try: response=self.opener.open(request,timeout=20)
-        except urllib.error.HTTPError as error: response=error
-        with response:
-            status=response.status; raw=response.read(1048577)
-        check(len(raw)<=1048576,'http_response_too_large')
-        try: value=json.loads(raw) if raw else None
-        except (ValueError,UnicodeDecodeError): value=None
+        data=self.config(service,path,token,body,method,headers)
+        args=['docker','exec','-i',self.db_container,'curl','--disable','--silent','--show-error','--noproxy','*','--proxy','','--connect-timeout','5','--max-time','20','--max-redirs','0','--proto','=http','--max-filesize','1048576','--write-out','\n%{http_code}','--config','-']
+        raw=bounded_http_exec(args,data,self.env)
+        body_raw,separator,status_raw=raw.rpartition(b'\n')
+        check(separator==b'\n' and re.fullmatch(rb'[0-9]{3}',status_raw) is not None,'http_status_missing')
+        status=int(status_raw)
+        check(not 300<=status<400,'http_redirect_refused')
+        check(len(body_raw)<=1048576,'http_response_too_large')
+        try:value=json.loads(body_raw) if body_raw else None
+        except (ValueError,UnicodeDecodeError):value=None
         return status,value
 
 
@@ -90,13 +143,15 @@ def image_check(info,expected):
     check(info.get('Os')=='linux' and info.get('Architecture') in ('arm64','amd64'),'image_platform_invalid')
 
 
-def bound_port(info,port,network):
+def internal_endpoint(info,port,network,subnet,expected_image):
     check(set(info['NetworkSettings']['Networks'])=={network},'service_network_invalid')
     check(info['HostConfig'].get('LogConfig',{}).get('Type')=='none','service_logs_not_disabled')
-    entries=info['NetworkSettings']['Ports'].get(str(port)+'/tcp')
-    check(isinstance(entries,list) and len(entries)==1 and entries[0].get('HostIp')=='127.0.0.1','loopback_binding_required')
-    value=entries[0].get('HostPort','');check(re.fullmatch(r'[0-9]{1,5}',value) is not None,'service_port_invalid')
-    return int(value)
+    check(not info['HostConfig'].get('PortBindings'),'host_publish_forbidden')
+    check(info['State']['Running'] and info['Config']['Image']==expected_image,'service_not_running')
+    host=info['NetworkSettings']['Networks'][network].get('IPAddress','')
+    ip=ipaddress.ip_address(host)
+    check(ip.version==4 and ip in subnet and ip.is_private and not ip.is_loopback,'service_ip_not_internal')
+    return 'http://'+str(ip)+':'+str(port)
 
 
 def identity_sql(excluded):
@@ -188,13 +243,17 @@ def main():
             rest:{'PGRST_DB_URI':'postgres://'+db_rest+':'+pw_rest+'@db:5432/postgres','PGRST_DB_SCHEMAS':'public','PGRST_DB_ANON_ROLE':'anon','PGRST_JWT_SECRET':secret,'PGRST_JWT_AUD':'authenticated','PGRST_LOG_LEVEL':'crit'}}
         for name,img,port in ((auth,AUTH_IMAGE,9999),(rest,REST_IMAGE,3000)):
             env_path=stage/(name+'.env');env_path.write_text('\n'.join(k+'='+v for k,v in configs[name].items())+'\n');env_files.append(env_path)
-            service_id=run(['docker','create','--name',name,'--network='+network,'--network-alias='+('auth' if name==auth else 'rest'),'--log-driver=none','--label','sko-purpose=common-http-rehearsal','--env-file',str(env_path),'-p','127.0.0.1::'+str(port),img]).decode().strip()
+            service_id=run(['docker','create','--name',name,'--network='+network,'--network-alias='+('auth' if name==auth else 'rest'),'--log-driver=none','--label','sko-purpose=common-http-rehearsal','--env-file',str(env_path),img]).decode().strip()
             check(re.fullmatch(r'[a-f0-9]{64}',service_id) is not None,'service_container_id_invalid')
             containers.append(service_id)
             run(['docker','start',name])
-        ports={}
-        for name,port in ((auth,9999),(rest,3000)): ports[name]=bound_port(json.loads(run(['docker','inspect',name]))[0],port,network)
-        http=LocalHttp(ports[auth],ports[rest])
+        state['phase']='internal_http_client'
+        tools=run(['docker','exec',db,'/bin/sh','-c','command -v curl >/dev/null 2>&1 && printf available']).decode()
+        check(tools=='available','internal_curl_missing')
+        endpoints={}
+        for label,name,port,img in (('auth',auth,9999,AUTH_IMAGE),('rest',rest,3000,REST_IMAGE)):
+            endpoints[label]=internal_endpoint(json.loads(run(['docker','inspect',name]))[0],port,network,subnet,img)
+        http=InternalCurlHttp(db,endpoints,env)
         for _ in range(90):
             try:
                 if http.call('auth','/health',method='GET')[0]==200: break
@@ -269,9 +328,10 @@ def main():
         check(identity_fingerprint(list(actors.values()))==original_identity,'original_owner_identity_company_roles_changed')
         final_source=json.loads(run(['docker','inspect',original_name]))[0]
         check(not final_source['State']['Running'] and final_source['HostConfig']['NetworkMode']=='none' and not final_source['HostConfig'].get('PortBindings') and final_source['Config']['Image']==common.transport.BASE_IMAGE,'original_restore_changed')
-        state.update(verified=True,phase='verified',gotrue_issued_jwt_verified=True,invalid_signature_denial=True,direct_payroll_rls_verified=True,live_auth_session_verified=True,http_admin_read_save_publish=True,viewer_read_write_denial=True,unrelated_actor_denial=True,actor_receipt_isolation=True,save_retry_cas=True,publish_retry_cas=True,expired_session_denial=True,logout_old_jwt_denial=True,original_identity_preserved=True)
+        state.update(verified=True,phase='verified',http_transport='docker_exec_internal_curl_no_host_ports',gotrue_issued_jwt_verified=True,invalid_signature_denial=True,direct_payroll_rls_verified=True,live_auth_session_verified=True,http_admin_read_save_publish=True,viewer_read_write_denial=True,unrelated_actor_denial=True,actor_receipt_isolation=True,save_retry_cas=True,publish_retry_cas=True,expired_session_denial=True,logout_old_jwt_denial=True,original_identity_preserved=True)
         code=0
     except (Exception,KeyboardInterrupt) as error:
+        if isinstance(error,HttpExecFailure):state['http_client_exitcode']=error.client_returncode
         if isinstance(error,RuntimeError) and error.args and isinstance(error.args[0],str) and re.fullmatch(r'[a-z_]{1,80}',error.args[0]):
             state['failure_code']=error.args[0]
         state['verified']=False;code=1
