@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-20",
+  "source_baseline": "c8216d9a31e0d8340c9ec123307907bc148191a8",
+  "fixed_frame_commit": "03e5823e707bdb8cf92ecdc87e66be0de14dbcd9",
+  "pre_fixed_frame_parent": "2054f69814aa9430971a9afed54f4d2b5e4d86ec",
+  "source_findings": {
+    "pre_frame_page_has_inline_insurance_calculator": false,
+    "pre_frame_page_has_legacy_social_column": true,
+    "current_tax_calculator_reads_personnel_documents": false,
+    "tax_calculator_initially_required_worker_conditions": true,
+    "current_fixed_frame_missing_saved_custom_rows_reproduced_in_ci": true
+  },
+  "structural_queries_only": true,
+  "business_ids_or_amounts_in_this_record": false,
+  "production_writes": false,
+  "counts": {
+    "company_worker_settings": 6,
+    "company_positive_legacy_social_settings": 0,
+    "company_tax_profiles": 0,
+    "target_tax_profiles": 0,
+    "company_condition_history": 0,
+    "target_condition_history": 0,
+    "company_unit_condition_rows": 4,
+    "company_unit_condition_items": 0,
+    "target_unit_condition_rows": 0,
+    "company_payroll_statements": 1,
+    "company_final_payroll_history": 0,
+    "company_insurance_rate_settings": 5,
+    "company_rate_scope": 1,
+    "company_insurance_rate_history": 9,
+    "settings_before_after_audit_candidates": 0,
+    "personnel_proposals_with_insurance_field_keys": 0,
+    "company_named_insurance_adjustments_including_cancelled": 0,
+    "target_named_insurance_adjustments_including_cancelled": 0
+  },
+  "target_original_hash_still_matches": true,
+  "target_deductions_equal_saved_income_tax_plus_resident_tax": true,
+  "target_has_calculated_insurance_evidence": false,
+  "interpretation": "The current queried records do not provide recoverable prior positive insurance amounts. This does not prove non-enrollment or deny an earlier successful display. Do not infer employee premiums from company percentage rates or documents."
+}
