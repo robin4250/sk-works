@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 import selectors
+import threading
 import uuid
 import owner_payroll_common_rehearsal as common
 
@@ -159,9 +160,43 @@ def identity_sql(excluded):
     return "SELECT md5(jsonb_build_object('users',(SELECT jsonb_agg(jsonb_build_object('id',id,'email',email,'phone',phone,'password',encrypted_password,'app',raw_app_meta_data,'metadata',raw_user_meta_data) ORDER BY id) FROM auth.users WHERE id NOT IN ("+skip+")), 'identities',(SELECT jsonb_agg(jsonb_build_object('user_id',user_id,'provider',provider,'provider_id',provider_id,'data',identity_data) ORDER BY user_id,provider) FROM auth.identities WHERE user_id NOT IN ("+skip+")), 'members',(SELECT jsonb_agg(to_jsonb(m) ORDER BY to_jsonb(m)::text) FROM public.company_members m WHERE user_id NOT IN ("+skip+")), 'companies',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM public.companies c))::text);"
 
 
+class StartupCapture:
+    """Drain attached service output; retain only fixed anonymous classifications."""
+    RULES={'db_authentication_failed':b'password authentication failed','db_permission_denied':b'permission denied','db_owner_required':b'must be owner','db_connection_refused':b'connection refused','db_name_resolution_failed':b'no such host','migration_failure':b'migrat','configuration_failure':b'config','required_setting_missing':b'required','db_object_missing':b'does not exist','address_bind_failure':b'address already in use','db_ssl_failure':b'ssl'}
+    def __init__(self,args,env):
+        self.flags=set();self.sqlstates=set();self.lock=threading.Lock()
+        self.proc=subprocess.Popen(args,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        self.thread=threading.Thread(target=self.read,daemon=True);self.thread.start()
+    def read(self):
+        tail=b''
+        try:
+            while True:
+                chunk=os.read(self.proc.stdout.fileno(),4096)
+                if not chunk:break
+                tail=(tail+chunk)[-8192:];lower=tail.lower()
+                with self.lock:
+                    for code,needle in self.RULES.items():
+                        if needle in lower:self.flags.add(code)
+                    for code in re.findall(rb'SQLSTATE[ :]+([0-9A-Z]{5})',tail):self.sqlstates.add(code.decode())
+        except (OSError,ValueError):pass
+    def summary(self):
+        with self.lock:return {'categories':sorted(self.flags),'sqlstates':sorted(self.sqlstates)}
+    def close(self):
+        if self.proc.poll() is None:self.proc.terminate()
+        try:self.proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:self.proc.kill();self.proc.wait(timeout=5)
+        self.thread.join(timeout=5)
+        if not self.thread.is_alive():self.proc.stdout.close()
+
+
+def safe_service_state(info):
+    value=info.get('State',{})
+    return {'running':value.get('Running') is True,'exit_code':value.get('ExitCode') if type(value.get('ExitCode')) is int else None,'oom_killed':value.get('OOMKilled') is True}
+
+
 def main():
     os.umask(0o077)
-    stage=None; network=None; network_id=None; containers=[]; env_files=[]
+    stage=None; network=None; network_id=None; containers=[]; env_files=[]; captures={}
     state={'schema':1,'verified':False,'production_connected':False,'original_restore_changed':False,
         'owner_google_login_verified':False,'real_phone_provider_verified':False,'clone_changes_committed':False}
     code=1
@@ -239,21 +274,28 @@ def main():
         query("SET password_encryption='scram-sha-256';CREATE ROLE "+db_auth+" LOGIN INHERIT PASSWORD '"+pw_auth+"';GRANT supabase_auth_admin TO "+db_auth+";CREATE ROLE "+db_rest+" LOGIN NOINHERIT PASSWORD '"+pw_rest+"';GRANT anon,authenticated,service_role TO "+db_rest+";GRANT CONNECT ON DATABASE postgres TO "+db_auth+','+db_rest+';',role='supabase_admin')
         state['phase']='auth_rest_start'
         auth='sko-http-auth-'+suffix;rest='sko-http-rest-'+suffix
-        configs={auth:{'GOTRUE_API_HOST':'0.0.0.0','GOTRUE_API_PORT':'9999','API_EXTERNAL_URL':'http://auth:9999','GOTRUE_SITE_URL':'http://fixture.invalid','GOTRUE_DB_DRIVER':'postgres','GOTRUE_DB_DATABASE_URL':'postgres://'+db_auth+':'+pw_auth+'@db:5432/postgres','GOTRUE_DB_NAMESPACE':'auth','GOTRUE_JWT_SECRET':secret,'GOTRUE_JWT_EXP':'3600','GOTRUE_JWT_AUD':'authenticated','GOTRUE_JWT_DEFAULT_GROUP_NAME':'authenticated','GOTRUE_JWT_ADMIN_ROLES':'service_role','GOTRUE_DISABLE_SIGNUP':'true','GOTRUE_EXTERNAL_EMAIL_ENABLED':'true','GOTRUE_MAILER_AUTOCONFIRM':'true','GOTRUE_EXTERNAL_PHONE_ENABLED':'false','GOTRUE_EXTERNAL_GOOGLE_ENABLED':'false','GOTRUE_EXTERNAL_APPLE_ENABLED':'false','GOTRUE_LOG_LEVEL':'panic'},
-            rest:{'PGRST_DB_URI':'postgres://'+db_rest+':'+pw_rest+'@db:5432/postgres','PGRST_DB_SCHEMAS':'public','PGRST_DB_ANON_ROLE':'anon','PGRST_JWT_SECRET':secret,'PGRST_JWT_AUD':'authenticated','PGRST_LOG_LEVEL':'crit'}}
+        configs={auth:{'GOTRUE_API_HOST':'0.0.0.0','GOTRUE_API_PORT':'9999','API_EXTERNAL_URL':'http://auth:9999','GOTRUE_SITE_URL':'http://fixture.invalid','GOTRUE_DB_DRIVER':'postgres','GOTRUE_DB_DATABASE_URL':'postgres://'+db_auth+':'+pw_auth+'@db:5432/postgres','GOTRUE_DB_NAMESPACE':'auth','GOTRUE_JWT_SECRET':secret,'GOTRUE_JWT_EXP':'3600','GOTRUE_JWT_AUD':'authenticated','GOTRUE_JWT_DEFAULT_GROUP_NAME':'authenticated','GOTRUE_JWT_ADMIN_ROLES':'service_role','GOTRUE_DISABLE_SIGNUP':'true','GOTRUE_EXTERNAL_EMAIL_ENABLED':'true','GOTRUE_MAILER_AUTOCONFIRM':'true','GOTRUE_EXTERNAL_PHONE_ENABLED':'false','GOTRUE_EXTERNAL_GOOGLE_ENABLED':'false','GOTRUE_EXTERNAL_APPLE_ENABLED':'false','GOTRUE_LOG_LEVEL':'error'},
+            rest:{'PGRST_DB_URI':'postgres://'+db_rest+':'+pw_rest+'@db:5432/postgres','PGRST_DB_SCHEMAS':'public','PGRST_DB_ANON_ROLE':'anon','PGRST_JWT_SECRET':secret,'PGRST_JWT_AUD':'authenticated','PGRST_LOG_LEVEL':'error'}}
         for name,img,port in ((auth,AUTH_IMAGE,9999),(rest,REST_IMAGE,3000)):
             env_path=stage/(name+'.env');env_path.write_text('\n'.join(k+'='+v for k,v in configs[name].items())+'\n');env_files.append(env_path)
             service_id=run(['docker','create','--name',name,'--network='+network,'--network-alias='+('auth' if name==auth else 'rest'),'--log-driver=none','--label','sko-purpose=common-http-rehearsal','--env-file',str(env_path),img]).decode().strip()
             check(re.fullmatch(r'[a-f0-9]{64}',service_id) is not None,'service_container_id_invalid')
             containers.append(service_id)
-            run(['docker','start',name])
-        state['phase']='internal_http_client'
+            captures['auth' if name==auth else 'rest']=StartupCapture(['docker','start','-a',name],env)
+        state['phase']='internal_curl_probe'
         tools=run(['docker','exec',db,'/bin/sh','-c','command -v curl >/dev/null 2>&1 && printf available']).decode()
         check(tools=='available','internal_curl_missing')
         endpoints={}
         for label,name,port,img in (('auth',auth,9999,AUTH_IMAGE),('rest',rest,3000,REST_IMAGE)):
-            endpoints[label]=internal_endpoint(json.loads(run(['docker','inspect',name]))[0],port,network,subnet,img)
+            state['phase']=label+'_endpoint_inspect'
+            for attempt in range(50):
+                info=json.loads(run(['docker','inspect',name]))[0]
+                if info.get('State',{}).get('Status') in ('running','exited','dead'):break
+                time.sleep(.1)
+            state[label+'_startup']=safe_service_state(info)
+            endpoints[label]=internal_endpoint(info,port,network,subnet,img)
         http=InternalCurlHttp(db,endpoints,env)
+        state['phase']='auth_health_wait'
         for _ in range(90):
             try:
                 if http.call('auth','/health',method='GET')[0]==200: break
@@ -337,6 +379,8 @@ def main():
         state['verified']=False;code=1
     finally:
         cleanup_ok=True
+        for label,capture in captures.items():
+            state[label+'_startup_diagnostic']=capture.summary()
         # Stop/remove only containers created by this invocation; no original name is in this list.
         for name in reversed(containers):
             try:
@@ -348,6 +392,10 @@ def main():
                 result=subprocess.run(['docker','network','rm',network_id],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
                 cleanup_ok=cleanup_ok and result.returncode==0
             except (Exception,KeyboardInterrupt): cleanup_ok=False
+        for label,capture in captures.items():
+            try:
+                capture.close();state[label+'_startup_diagnostic']=capture.summary()
+            except Exception:cleanup_ok=False
         for path in env_files:
             try: path.unlink(missing_ok=True)
             except OSError: cleanup_ok=False
