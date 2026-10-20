@@ -41,6 +41,7 @@ class Connection implements AdminQualificationSqliteConnection {
   String? killSql;
   bool invalidated = false;
   bool transactionActive = false;
+  AdminQualificationSqliteExecutor? capturedExecutor;
   @override
   void invalidate() {
     invalidated = true;
@@ -142,10 +143,17 @@ class Connection implements AdminQualificationSqliteConnection {
       throw StateError('Nested transaction');
     }
     final executor = _TransactionExecutor(this);
+    capturedExecutor = executor;
     transactionActive = true;
     try {
       await request('BEGIN IMMEDIATE', const []);
-      final result = await operation(executor);
+      late T result;
+      try {
+        result = await operation(executor);
+      } finally {
+        // The callback lease ends before commit starts, including a delayed ACK.
+        executor.active = false;
+      }
       await request('COMMIT', const []);
       return result;
     } catch (error, stack) {
@@ -462,6 +470,17 @@ Future<void> main() async {
           return result;
         });
     await commitEntered.future;
+    await refuses(
+      () => gated.capturedExecutor!.query('SELECT 1', []),
+      'captured query rejected between callback end and commit acknowledgement',
+    );
+    await refuses(
+      () => gated.capturedExecutor!.execute(
+        'DELETE FROM qualification_photo_pending_v1',
+        [],
+      ),
+      'captured mutation rejected between callback end and commit acknowledgement',
+    );
     check(
       !completed,
       'callback result is not store success before transaction Future completes',

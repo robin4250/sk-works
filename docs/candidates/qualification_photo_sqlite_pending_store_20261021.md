@@ -20,7 +20,7 @@ WAL・synchronous FULL・read_uncommitted OFFを初期化し、各操作前に�
 
 `tool/verify_qualification_photo_sqlite_store.dart` → Python stdlib `sqlite3` subprocess fixture。DB pathは作成した `/tmp/sko-qualification-sqlite-*/pending.sqlite3` のみに制限し、終了時に削除する。本番・実appデータ・ネットワーク不使用。
 
-45 assertions成功（テストケース数ではない）:
+47 assertions成功（テストケース数ではない）:
 
 - 別process/connectionの同時insert/update/deleteで勝者がそれぞれ1件。
 - 同一connectionの別Storeもtransactionが交錯しない。
@@ -30,7 +30,7 @@ WAL・synchronous FULL・read_uncommitted OFFを初期化し、各操作前に�
 - commit/readback間の別connection書換えは成功とせずthrowし、競合データを上書きしない。
 - 実SQLite writer競合（SQLITE_BUSY）、弱めたFULL/isolation、不正envelopeを拒否。
 - BEGINがSQLiteで成功した後の応答消失もtransaction失敗としてrollback/connection失効を通す。元errorを保持し、待機中の別Store読取/更新・旧connectionの新Storeは拒否。新connectionで元記録の再読込とCAS復旧を確認。
-- transaction callback内のouter connection使用と、callback外へ持ち出したtransaction executorの使用をfixtureで拒否。commit後のackをgateし、callback戻り値だけではStoreが成功せず、transaction Future完了とreadback後に成功することを確認。
+- transaction callback内のouter connection使用と、callback外へ持ち出したtransaction executorの使用をfixtureで拒否。callback終了直後にexecutorを失効し、commit ACK gate中でもcaptured executorのquery/executeを拒否する回帰を含む（従来45 assertionsではこの待機区間までは検証していなかった）。commit後のackをgateし、callback戻り値だけではStoreが成功せず、transaction Future完了とreadback後に成功することを確認。
 - 不明transaction後は同じStoreおよび同じconnectionを使う新Storeも拒否。
 
 既submissionの純粋fixture425 assertionsも成功。Dart formatとdiffcheck済み。Flutter解析/testは未実行。
