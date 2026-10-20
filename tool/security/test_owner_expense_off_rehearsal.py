@@ -25,7 +25,7 @@ class ExpenseRehearsalTests(unittest.TestCase):
         self.assertIn('actual IS DISTINCT FROM expected',off.DATABASE_BASELINE_SQL)
         self.assertIn('unknown clone database grant',off.DATABASE_BASELINE_SQL)
 
-    def lifecycle(self,fail_install=False):
+    def lifecycle(self,fail_install=False,fail_conversion=False):
         with tempfile.TemporaryDirectory() as folder:
             home=Path(folder); root=home/'SKO-source-backups'; root.mkdir(mode=0o700)
             source=root/off.SOURCE; source.mkdir(mode=0o700)
@@ -55,9 +55,13 @@ class ExpenseRehearsalTests(unittest.TestCase):
                     if 'SHOW cron.launch_active_jobs' in text: data=b'off\n'
                     elif bundle['queries']['catalogSql'] in text:
                         checkpoints+=1
-                        data=json.dumps({'fixture':2 if checkpoints==2 else 1}).encode()
+                        data=json.dumps({'fixture':2 if checkpoints in (2,3) else 1}).encode()
                     elif bundle['queries']['defaultOffBusinessHashSql'] in text: data=('d'*32).encode()
                     elif 'INSTALL FIXTURE' in text and fail_install: raise subprocess.CalledProcessError(1,command)
+                    elif 'BEGIN;\n-- REVIEW ONLY.' in text:
+                        self.assertIn('ROLLBACK;',text)
+                        if fail_conversion: raise subprocess.CalledProcessError(1,command)
+                    elif "SELECT to_regclass('private.expense_payment_direction_conversions')" in text: data=b't\n'
                 return subprocess.CompletedProcess(command,0,data)
             with patch.object(off.sys,'platform','darwin'),patch.object(off.Path,'home',return_value=home),patch.dict(off.os.environ,{},clear=True),patch.object(off.subprocess,'run',side_effect=run),contextlib.redirect_stdout(io.StringIO()):
                 code=off.main()
@@ -77,6 +81,17 @@ class ExpenseRehearsalTests(unittest.TestCase):
         self.assertTrue(status['container_stopped'])
         self.assertFalse(status['production_connected'])
         self.assertFalse(status['expense_rows_converted'])
+        self.assertTrue(status['actual_conversion_verified'])
+        self.assertTrue(status['conversion_rollback_verified'])
+        self.assertEqual(status['net_yen'],-1000)
+        self.assertFalse(status['real_jwt_verified'])
+
+    def test_conversion_error_stops_clone_without_claiming_success(self):
+        code,status=self.lifecycle(fail_conversion=True)
+        self.assertEqual(code,1)
+        self.assertFalse(status['verified'])
+        self.assertEqual(status['phase'],'actual_conversion')
+        self.assertTrue(status['container_stopped'])
 
     def test_failed_install_stops_only_clone_and_reports_incomplete(self):
         code,status=self.lifecycle(fail_install=True)
