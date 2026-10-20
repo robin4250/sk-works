@@ -6,6 +6,8 @@ on:
       - 'lib/features/expenses/expense_detail_pdf.dart'
       - 'test/payment_expense_direction_consumer_test.dart'
       - 'tool/verify_payment_expense_direction_consumer_pdfs.py'
+      - 'tool/verify_payment_expense_source_negotiation.mjs'
+      - 'docs/candidates/payment_expense_source_negotiation_20261020.sql.review-only'
       - '.github/workflows/payment-direction-consumer.yml'
 permissions:
   contents: read
@@ -36,3 +38,16 @@ jobs:
           name: payment-direction-consumer-proof
           path: build/payment-direction-consumer-proof/*
           if-no-files-found: ignore
+
+  negotiation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/verify_payment_expense_source_negotiation.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
