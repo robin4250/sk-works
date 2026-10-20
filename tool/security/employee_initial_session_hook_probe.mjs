@@ -13,11 +13,17 @@ const pg=await import(pathToFileURL(path.resolve(process.argv[3])).href),Client=
 const db=new Client({connectionString:database.href});
 const anon=status.ANON_KEY,service=status.SERVICE_ROLE_KEY;
 assert.equal(typeof anon,'string');assert.equal(typeof service,'string');
-let phase='freshness';
+let phase='freshness',lastHttpStatus=null,lastAuthErrorCode=null;
+const safeAuthCodes=new Set(['unexpected_failure','hook_timeout','hook_timeout_after_retry','hook_payload_invalid_content_type','hook_payload_over_size_limit','invalid_credentials','phone_provider_disabled','email_provider_disabled','over_request_rate_limit']);
 const read=name=>fs.readFileSync(path.join(root,'tool/security',name),'utf8');
 async function request(route,{token,body,method='POST',admin=false}={}){
  const url=new URL(route,api);assert.equal(url.origin,api.origin);
- return fetch(url,{method,redirect:'error',signal:AbortSignal.timeout(15000),headers:{apikey:admin?service:anon,Authorization:`Bearer ${admin?service:(token??anon)}`,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+ const response=await fetch(url,{method,redirect:'error',signal:AbortSignal.timeout(15000),headers:{apikey:admin?service:anon,Authorization:`Bearer ${admin?service:(token??anon)}`,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+ lastHttpStatus=response.status;lastAuthErrorCode=null;
+ if(!response.ok&&url.pathname.startsWith('/auth/')) {
+  try {const value=await response.clone().json();if(safeAuthCodes.has(value.error_code))lastAuthErrorCode=value.error_code;} catch {}
+ }
+ return response;
 }
 const login=(user,password=user.password)=>request('/auth/v1/token?grant_type=password',{body:{email:user.email,password}});
 const rpc=(name,token)=>request('/rest/v1/rpc/'+name,{token,body:{}});
@@ -45,8 +51,13 @@ try{
  assert.equal((await db.query('select count(*)::int n from auth.users')).rows[0].n,0);
  assert.equal((await db.query("select count(*)::int n from pg_tables where schemaname='public'")).rows[0].n,0);
  await db.query(read('employee_initial_session_hook_probe.sql'));
+ phase='auth-hook-role-preflight';
+ const hookPrivileges=(await db.query("select has_schema_privilege('supabase_auth_admin','public','usage') schema_usage,has_function_privilege('supabase_auth_admin','public.fixture_employee_initial_access_token_hook(jsonb)','execute') hook_execute")).rows[0];
+ assert.deepEqual(hookPrivileges,{schema_usage:true,hook_execute:true});
  phase='phone-remains-off';let r=await request('/auth/v1/settings',{method:'GET'});assert.equal(r.status,200);assert.equal((await r.json()).external.phone,false);
- phase='real-hook-session-visibility';const owner=await created('ordinary-owner-proxy');const ownerSession=await tokenFor(owner);
+ phase='create-ordinary-owner-proxy';const owner=await created('ordinary-owner-proxy');
+ phase='owner-password-grant-through-hook';const ownerSession=await tokenFor(owner);
+ phase='verify-real-hook-session-visibility';
  const ownerClaims=claims(ownerSession.access_token);
  assert.equal(ownerClaims.sub,owner.id);assert.equal(ownerClaims.role,'authenticated');
  const observation=(await db.query('select session_visible,session_matches_user,method from private.fixture_employee_hook_observations where user_id=$1 order by ordinal desc limit 1',[owner.id])).rows[0];
@@ -86,5 +97,9 @@ try{
   phase='old-password-stays-invalid';await denied(await login(finishing));
   console.log(JSON.stringify({result:'PASS isolated Auth hook/session prototype only',actual_hook_invoked:true,live_session_visible:true,actual_session_uid_bound:true,expired_cancelled_repeat_denied:true,concurrent_one_winner:true,initial_role_rest_rpc_denied:true,old_jwt_denied_on_lease_operations:true,fresh_permanent_session_after_approval:true,ordinary_and_existing_approved_email_proxy_preserved:true,phone_enabled:false,credential_mechanism:'email_proxy_NOT_phone_QR_proof',actual_google_or_faceid_e2e:false,product_issuer_connected:false,token_redemption_implemented:false,storage_graph_proven:false,production_equivalence:false,qr_v2_complete:false}));
  }
-}catch{console.error(`Employee initial-session disposable probe failed at ${phase}; private responses and credentials omitted.`);process.exitCode=1;}
+}catch(error){
+ const kind=error?.code==='ERR_ASSERTION'?'assertion':/^[0-9A-Z]{5}$/.test(error?.code??'')?'postgres':'other';
+ const sqlstate=kind==='postgres'?error.code:null;
+ console.error(JSON.stringify({result:'FAIL disposable initial-session probe',phase,kind,sqlstate,last_http_status:lastHttpStatus,auth_error_code:lastAuthErrorCode,private_response_omitted:true}));process.exitCode=1;
+}
 finally{await db.end().catch(()=>{});}
