@@ -313,6 +313,7 @@ Future<void> main() async {
         );
         rethrow;
       }
+      return null;
     }, 'lost BEGIN acknowledgement throws');
     await uncertainBegin.beginEntered!.future;
     final queuedRead = refuses(
