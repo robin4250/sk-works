@@ -5,6 +5,29 @@ import '../../data/supabase_backend.dart';
 
 typedef PayrollTaxRpc = Future<dynamic> Function(String, Map<String, dynamic>);
 
+const manualPayrollInsuranceLabels = <String, String>{
+  'employment_insurance': '雇用保険料',
+  'health_insurance': '健康保険料',
+  'pension_insurance': '厚生年金保険',
+  'nursing_insurance': '介護保険料',
+  'child_support': '子ども・子育て支援金',
+};
+
+bool validManualPayrollInsurance(Map value) {
+  final premiums = value['manual_insurance_premiums'];
+  if (premiums is! Map || premiums.length != manualPayrollInsuranceLabels.length ||
+      manualPayrollInsuranceLabels.keys.any((key) => premiums[key] is! int ||
+          (premiums[key] as int) < 0 || (premiums[key] as int) > 2147483647)) return false;
+  if (premiums.values.fold<int>(0, (sum, amount) => sum + (amount as int)) > 2147483647) return false;
+  const allowed = {'insurance_mode', 'manual_insurance_premiums', 'income_mode',
+    'dependents', 'non_taxable_yen', 'additional_social_deduction_yen', 'deduction_overrides'};
+  if (value.keys.any((key) => !allowed.contains(key))) return false;
+  final overrides = value['deduction_overrides'];
+  return overrides == null || (overrides is Map && overrides.keys.every((key) => key == 'income_tax') &&
+    overrides.values.every((amount) => amount is int && amount >= 0 && amount <= 2147483647));
+}
+
+
 /// Conditions are effective-dated; existing fixed amounts remain stored.
 class PayrollTaxConditionsPage extends StatefulWidget {
   const PayrollTaxConditionsPage({
@@ -39,6 +62,10 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     ])
       key: TextEditingController(text: '0'),
   };
+  final _manualPremiums = <String, TextEditingController>{
+    for (final key in manualPayrollInsuranceLabels.keys) key: TextEditingController(),
+  };
+  bool _manualSupported = false;
   final _flags = <String, bool>{
     for (final key in const [
       'health',
@@ -108,6 +135,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   void dispose() {
     _month.dispose();
     _birth.dispose();
+    for (final c in _manualPremiums.values) { c.dispose(); }
     for (final c in _amounts.values) {
       c.dispose();
     }
@@ -135,10 +163,13 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       if (!RegExp(
             r'^20\d{2}-(0[1-9]|1[0-2])-01$',
           ).hasMatch(row['starts_on'] as String) ||
-          !const ['fixed', 'rates'].contains(value['insurance_mode']) ||
+          !const ['fixed', 'rates', 'manual'].contains(value['insurance_mode']) ||
           !const ['fixed', 'koh', 'otsu'].contains(value['income_mode']) ||
-          _flags.keys.any((k) => value[k] is! bool) ||
-          _amounts.keys.any((k) => value[k] is! int || (value[k] as int) < 0) ||
+          (value['insurance_mode'] == 'manual'
+              ? !validManualPayrollInsurance(value) ||
+                  const ['dependents', 'non_taxable_yen', 'additional_social_deduction_yen'].any((k) => value[k] is! int || (value[k] as int) < 0)
+              : _flags.keys.any((k) => value[k] is! bool) ||
+                  _amounts.keys.any((k) => value[k] is! int || (value[k] as int) < 0)) ||
           (value['birth_date'] != null && value['birth_date'] is! String)) {
         throw const FormatException('税計算条件の内容を確認できません');
       }
@@ -147,7 +178,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     items.sort((a, b) =>
         (b['starts_on'] as String).compareTo(a['starts_on'] as String));
     _items = items;
-    _canEdit = raw['can_edit'] == true;
+    _manualSupported = raw['manual_insurance_contract_version'] == 1;
+    _canEdit = raw['can_edit'] == true && (_manualSupported || !items.any((row) => (row['value'] as Map)['insurance_mode'] == 'manual'));
   }
 
   void _fill(Map<String, dynamic> row) {
@@ -159,16 +191,22 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     _deductionOverrides = value['deduction_overrides'] is Map
         ? Map<String, dynamic>.from(value['deduction_overrides'] as Map) : {};
     for (final key in _amounts.keys) {
-      _amounts[key]!.text = '${value[key]}';
+      _amounts[key]!.text = '${value[key] ?? 0}';
     }
     for (final key in _flags.keys) {
       _flags[key] = value[key] == true;
     }
+    for (final entry in _manualPremiums.entries) {
+      final premiums = value['manual_insurance_premiums'];
+      entry.value.text = premiums is Map && premiums[entry.key] is int ? '${premiums[entry.key]}' : '';
+    }
+    if (_insurance == 'manual') _initialConditionsConfirmed = false;
   }
 
   void _resetInitialConditions() {
     _month.text = _targetMonth;
     _deductionOverrides = {};
+    for (final c in _manualPremiums.values) { c.clear(); }
     _insurance = 'rates';
     _income = 'koh';
     _birth.clear();
@@ -190,7 +228,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       : 'custom';
 
   bool get _needsInitialConfirmation =>
-      _items.isEmpty && (_income != 'fixed' || _insurance != 'fixed');
+      _insurance == 'manual' || (_items.isEmpty && (_income != 'fixed' || _insurance != 'fixed'));
 
   Future<void> _load() async {
     final generation = ++_generation;
@@ -232,17 +270,28 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
 
   Future<void> _save() async {
     if (_needsInitialConfirmation && !_initialConditionsConfirmed) return;
+    if (_insurance == 'manual' && !_manualSupported) return;
     final generation = _generation;
     if (!_form.currentState!.validate()) return;
     final start = '${_month.text}-01';
     final value = <String, dynamic>{
       'insurance_mode': _insurance,
       'income_mode': _income,
-      'birth_date': _birth.text.isEmpty ? null : _birth.text,
-      if (_deductionOverrides.isNotEmpty) 'deduction_overrides': _deductionOverrides,
-      ..._flags,
-      for (final key in _amounts.keys) key: int.parse(_amounts[key]!.text),
+      if (_insurance == 'manual') ...{
+        'manual_insurance_premiums': {for (final e in _manualPremiums.entries) e.key: int.parse(e.value.text)},
+        for (final key in const ['dependents', 'non_taxable_yen', 'additional_social_deduction_yen']) key: int.parse(_amounts[key]!.text),
+        if (_deductionOverrides.containsKey('income_tax')) 'deduction_overrides': {'income_tax': _deductionOverrides['income_tax']},
+      } else ...{
+        'birth_date': _birth.text.isEmpty ? null : _birth.text,
+        if (_deductionOverrides.isNotEmpty) 'deduction_overrides': _deductionOverrides,
+        ..._flags,
+        for (final key in _amounts.keys) key: int.parse(_amounts[key]!.text),
+      },
     };
+    if (_insurance == 'manual' && !validManualPayrollInsurance(value)) {
+      setState(() => _error = '保険別の月額と合計を確認してください。空欄は保存できません。');
+      return;
+    }
     final previous = _items.where((e) => e['starts_on'] == start).firstOrNull;
     final version = previous?['version'] ?? 0;
     setState(() {
@@ -262,14 +311,15 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                 : _income == 'koh'
                 ? '月額表・甲欄'
                 : '月額表・乙欄'}\n'
-            '社会保険：${_insurance == 'fixed' ? '個別設定の固定月額' : '会社の登録料率'}\n'
+            '社会保険：${_insurance == 'manual' ? '保険別の個別手入力月額' : _insurance == 'fixed' ? '個別設定の固定月額' : '会社の登録料率'}\n'
             '扶養人数：${value['dependents']}人\n'
-            '健康保険の標準報酬月額：${value['health_base_yen']}円\n'
-            '厚生年金の標準報酬月額：${value['pension_base_yen']}円\n'
+            '${_insurance == 'manual'
+                ? manualPayrollInsuranceLabels.entries.map((e) => '${e.value}：${(value['manual_insurance_premiums'] as Map)[e.key]}円').join('\n')
+                : '健康保険の標準報酬月額：${value['health_base_yen']}円\n厚生年金の標準報酬月額：${value['pension_base_yen']}円'}\n'
             '非課税支給額：${value['non_taxable_yen']}円\n'
-            '雇用保険対象外額：${value['employment_excluded_yen']}円\n'
+            '${_insurance == 'manual' ? '' : '雇用保険対象外額：${value['employment_excluded_yen']}円\n'}'
             '他項目で控除済みの社会保険料等：${value['additional_social_deduction_yen']}円\n\n'
-            '対象の未確定給与を再計算します。加入条件・標準報酬・扶養申告・非課税額を確認してください。'
+            '対象の未確定給与を再計算します。${_insurance == 'manual' ? '本人負担月額・適用月・所得税の方式' : '加入条件・標準報酬・扶養申告・非課税額'}を確認してください。'
             '確定済み給与は変更しません。',
           ),
         ),
@@ -454,10 +504,10 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                   key: ValueKey('income-$_income'),
                   initialValue: _income,
                   decoration: const InputDecoration(labelText: '所得税'),
-                  items: const [
-                    DropdownMenuItem(value: 'fixed', child: Text('個別設定の固定月額')),
-                    DropdownMenuItem(value: 'koh', child: Text('自動計算・月額表甲欄')),
-                    DropdownMenuItem(value: 'otsu', child: Text('自動計算・月額表乙欄')),
+                  items: [
+                    const DropdownMenuItem(value: 'fixed', child: Text('個別設定の固定月額')),
+                    const DropdownMenuItem(value: 'koh', child: Text('自動計算・月額表甲欄')),
+                    const DropdownMenuItem(value: 'otsu', child: Text('自動計算・月額表乙欄')),
                   ],
                   onChanged: _canEdit && !_busy && !_uncertain
                       ? (v) => setState(() => _income = v!)
@@ -474,17 +524,37 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                   key: ValueKey('insurance-$_insurance'),
                   initialValue: _insurance,
                   decoration: const InputDecoration(labelText: '保険料'),
-                  items: const [
-                    DropdownMenuItem(value: 'fixed', child: Text('個別設定の固定月額')),
-                    DropdownMenuItem(
+                  items: [
+                    if (_manualSupported || _insurance == 'manual')
+                      DropdownMenuItem(value: 'manual', enabled: _manualSupported,
+                        child: const Text('保険別の月額を手入力')),
+                    const DropdownMenuItem(value: 'fixed', child: Text('個別設定の固定月額')),
+                    const DropdownMenuItem(
                       value: 'rates',
                       child: Text('会社の登録料率で自動計算'),
                     ),
                   ],
                   onChanged: _canEdit && !_busy && !_uncertain
-                      ? (v) => setState(() => _insurance = v!)
+                      ? (v) => setState(() {
+                          _insurance = v!;
+                          if (v == 'manual' && _items.isEmpty) _income = 'fixed';
+                          _initialConditionsConfirmed = false;
+                        })
                       : null,
                 ),
+                if (_insurance == 'manual') ...[
+                  const Text('通知書などに記載された本人負担の月額を入力してください。会社負担分は含めません。該当しない項目も0円を入力します。加入条件や標準報酬からは推測しません。'),
+                  for (final entry in manualPayrollInsuranceLabels.entries)
+                    TextFormField(
+                      key: ValueKey('manual-insurance-${entry.key}'),
+                      controller: _manualPremiums[entry.key],
+                      enabled: _manualSupported && _canEdit && !_busy && !_uncertain,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(labelText: '${entry.value}（本人負担月額）', suffixText: '円'),
+                      validator: (text) => text != null && RegExp(r'^\d{1,10}$').hasMatch(text) &&
+                          int.parse(text) <= 2147483647 ? null : '月額を入力してください。該当なしは0円',
+                    ),
+                ],
                 if (_insurance == 'rates') ...[
                   DropdownButtonFormField<String>(
                     key: ValueKey('insurance-plan-$_insurancePlan'),
@@ -545,7 +615,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                   ),
                 ],
                 _amount('non_taxable_yen', '支給額のうち非課税分（月額・円）'),
-                _amount('employment_excluded_yen', '支給額のうち雇用保険対象外分（月額・円）'),
+                if (_insurance != 'manual') _amount('employment_excluded_yen', '支給額のうち雇用保険対象外分（月額・円）'),
                 _amount(
                   'additional_social_deduction_yen',
                   '他項目で控除済みの社会保険料等（月額・円）',
@@ -556,7 +626,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                 if (_canEdit && _needsInitialConfirmation)
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('扶養人数・保険の加入／未加入・標準報酬月額を確認しました'),
+                    title: Text(_insurance == 'manual' ? '本人負担の各月額・該当なしの0円・適用月を確認しました' : '扶養人数・保険の加入／未加入・標準報酬月額を確認しました'),
                     value: _initialConditionsConfirmed,
                     onChanged: _busy || _uncertain
                         ? null
@@ -583,3 +653,4 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
           ),
   );
 }
+
