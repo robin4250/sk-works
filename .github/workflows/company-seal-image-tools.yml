@@ -41,11 +41,13 @@ jobs:
           lib/features/settings/company_seal_png_uploader.dart
           test/company_seal_image_processing_test.dart
           test/company_seal_image_import_test.dart
+          test/company_seal_image_versions_repository_test.dart
       - name: Verify processing, codec, existing PNG UI and frozen PDF paths
         run: >-
           flutter test --no-pub
           test/company_seal_image_processing_test.dart
           test/company_seal_image_import_test.dart
+          test/company_seal_image_versions_repository_test.dart
           test/company_uploaded_seal_png_test.dart
           test/company_seal_png_uploader_test.dart
           test/company_seal_settings_recovery_test.dart
@@ -66,3 +68,4 @@ jobs:
           "$RUNNER_TEMP/seal-sql/node_modules/@electric-sql/pglite/dist/index.js"
           docs/candidates/company_seal_uploaded_png_20261020.sql.review-only
           docs/candidates/company_seal_image_tools_20261020.sql.review-only
+
