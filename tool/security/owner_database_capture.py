@@ -38,13 +38,16 @@ def failure_code(raw):
     return 'capture_failed'
 
 
-def endpoint(raw):
+def endpoint(raw, cli_login=False):
     """Accept only this project's direct endpoint or session pooler."""
     u = urlsplit(raw.strip().replace(':[YOUR-PASSWORD]@', ':@'))
     if u.scheme not in ('postgres', 'postgresql') or u.fragment or u.path != '/postgres':
         raise ValueError('接続形式を確認してください')
-    direct = u.hostname == f'db.{PROJECT}.supabase.co' and unquote(u.username or '') == 'postgres'
-    pool = bool(re.fullmatch(r'aws-[0-9]+-[a-z0-9-]+\.pooler\.supabase\.com', u.hostname or '')) and unquote(u.username or '') == f'postgres.{PROJECT}'
+    user = unquote(u.username or '')
+    direct_user = user == 'postgres' or (cli_login and bool(re.fullmatch(r'cli_login_[a-z0-9_]+', user)))
+    pool_user = user == f'postgres.{PROJECT}' or (cli_login and bool(re.fullmatch(r'cli_login_[a-z0-9_]+\.' + PROJECT, user)))
+    direct = u.hostname == f'db.{PROJECT}.supabase.co' and direct_user
+    pool = bool(re.fullmatch(r'aws-[0-9]+-[a-z0-9-]+\.pooler\.supabase\.com', u.hostname or '')) and pool_user
     if not (direct or pool) or u.port != 5432:
         raise ValueError('対象プロジェクトのDirectまたはSession pooler（5432）を使ってください')
     if any(k != 'sslmode' or v not in ('require', 'verify-full') for k, v in parse_qsl(u.query, keep_blank_values=True)):
@@ -70,8 +73,8 @@ def digest(path):
     return h.hexdigest()
 
 
-def capture(connection, password, root, certificate=None):
-    config = endpoint(connection)
+def capture(connection, password, root, certificate=None, cli_login=False):
+    config = endpoint(connection, cli_login=cli_login)
     if not password or '\x00' in password:
         raise ValueError('DBパスワードが必要です')
     executables = {name: tool(name) for name in ('pg_dump', 'pg_dumpall', 'pg_restore', 'psql')}
@@ -93,7 +96,8 @@ def capture(connection, password, root, certificate=None):
         raise ValueError('保存先は本人のみアクセス可能な権限が必要です')
     stage = Path(tempfile.mkdtemp(prefix='database-capture-', dir=root))
     status = {'schema': 1, 'capture_completed': False, 'restore_verified': False,
-              'production_mutations': False, 'role_passwords_included': False,
+              'production_mutations': cli_login, 'application_data_mutations': False,
+              'cli_temporary_role_requested': cli_login, 'role_passwords_included': False,
               'external_auth_settings_included': False, 'storage_bytes_included': False}
     try:
         with (stage / 'private-errors.log').open('xb') as errors:
@@ -106,9 +110,10 @@ def capture(connection, password, root, certificate=None):
                                   '-c', 'SHOW server_version_num'], subprocess.PIPE).stdout.strip()
             if not version.isdigit() or not 170000 <= int(version) < 180000:
                 raise RuntimeError('本番DBのPostgreSQLバージョンが想定と異なります')
-            run('pg_dump', ['--no-password', '--format=custom', '--lock-wait-timeout=5s',
+            role_flags = ['--role=postgres'] if cli_login else []
+            run('pg_dump', [*role_flags, '--no-password', '--format=custom', '--lock-wait-timeout=5s',
                             '--file', str(stage / 'database.dump')])
-            run('pg_dumpall', ['--no-password', '--roles-only', '--no-role-passwords',
+            run('pg_dumpall', [*role_flags, '--no-password', '--roles-only', '--no-role-passwords',
                                '--file', str(stage / 'roles.sql')])
             # Decode the entire archive to a file sink; never execute its SQL.
             run('pg_restore', ['--file', os.devnull, str(stage / 'database.dump')])
