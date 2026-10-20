@@ -1,0 +1,22 @@
+{
+  "runtime": [
+    {
+      "path": "owner_collector_proof_rehearsal.py",
+      "sha256": "a90d34e7a72005cce43ec772aa665c76a24d33113f9a316e31c831701b8f72e8"
+    },
+    {
+      "path": "owner_expense_off_rehearsal.py",
+      "sha256": "6c3cf1078238d9bbaa9a3b767c20f779e7bcdf0f45712a861271bedcdda25e1a"
+    },
+    {
+      "path": "collector_proof_bundle.json",
+      "sha256": "b31267e239829c3cb5a5bd6d5b2ab3a09031aac1af0963bb587240bb28c9f2ac"
+    }
+  ],
+  "python_tests_passed": 6,
+  "pglite_outer_transaction_verified": true,
+  "native_clone_executed": false,
+  "real_http_jwt_verified": false,
+  "production_changed": false,
+  "owner_changes_executed": false
+}
