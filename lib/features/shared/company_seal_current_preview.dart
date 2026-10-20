@@ -7,8 +7,7 @@ Future<Map<String, dynamic>> companyWithCurrentUploadedSeal(
     SupabaseClient client, Map<String, dynamic> company, String companyId) async {
   final actor = client.auth.currentUser?.id;
   if (actor == null) throw StateError('ログインが必要です。');
-  final lease = TradeDocumentActorLease(initialActor: actor,
-    actorChanges: client.auth.onAuthStateChange.map((event) => event.session?.user.id));
+  final lease = TradeDocumentActorLease.forClient(client);
   try {
     final raw = await client.rpc('company_current_uploaded_seal', params: {'p_company_id': companyId});
     lease.verify();
