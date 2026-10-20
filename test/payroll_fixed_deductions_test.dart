@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -98,6 +99,61 @@ Future<void> save(WidgetTester t) async {
 }
 
 void main() {
+  testWidgets('legacy named insurance in saved custom rows stays linked without automatic conditions', (t) async {
+    final b = _Backend()..hasConditions = false;
+    final snapshot = <String, dynamic>{
+      'calculation_blocked': false,
+      'detail': {
+        '所得税': 6300, '住民税': 12500, '社会保険': 0,
+        'custom_deductions': [
+          {'name': '健康保険料', 'amount_yen': 5100},
+          {'name': '雇用保険料', 'amount_yen': 1200},
+          {'name': '厚生年金保険', 'amount_yen': 9000},
+          {'name': '介護保険料', 'amount_yen': 0},
+        ],
+        'unit_resolution': {'contract_version': 1, 'items': [
+          {'id': 'common-fixed', 'origin': 'company_common', 'section': 'earning',
+            'unit': 'month', 'name': '会社共通手当', 'amount_yen': 700},
+        ]},
+      },
+    };
+    final originalSnapshot = jsonDecode(jsonEncode(snapshot));
+    await _mount(t, b, reader: (_, _, _) async => snapshot);
+    for (final expected in {'income_tax': '6300', 'health_insurance': '5100',
+      'employment_insurance': '1200', 'pension_insurance': '9000', 'nursing_insurance': '0'}.entries) {
+      expect(t.widget<TextFormField>(amount(expected.key)).controller!.text, expected.value);
+      expect(t.widget<TextFormField>(amount(expected.key)).enabled, isFalse);
+      expect(helper(t, expected.key), '保存済み明細（自動計算条件未設定）');
+    }
+    expect(snapshot, originalSnapshot);
+    expect((snapshot['detail'] as Map)['住民税'], 12500);
+    expect(((snapshot['detail'] as Map)['unit_resolution'] as Map)['items'], [
+      {'id': 'common-fixed', 'origin': 'company_common', 'section': 'earning',
+        'unit': 'month', 'name': '会社共通手当', 'amount_yen': 700},
+    ]);
+    expect(b.writes, 0);
+  });
+
+  testWidgets('saved scalar zero wins and custom fallback never invents or accepts invalid premiums', (t) async {
+    final b = _Backend()..hasConditions = false;
+    await _mount(t, b, reader: (_, _, _) async => {
+      'calculation_blocked': false,
+      'detail': {'健康保険料': 0, '社会保険': 24000,
+        'custom_deductions': [
+          {'name': '健康保険料', 'amount_yen': 5100},
+          {'name': '雇用保険料', 'amount_yen': -1},
+          {'name': '厚生年金保険', 'amount_yen': 2000},
+          {'name': ' 厚生年金保険 ', 'amount_yen': 3000},
+          {'name': '介護保険料', 'amount_yen': '700'},
+        ]},
+    });
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '0');
+    expect(t.widget<TextFormField>(amount('employment_insurance')).controller!.text, isEmpty);
+    expect(t.widget<TextFormField>(amount('pension_insurance')).controller!.text, '5000');
+    expect(t.widget<TextFormField>(amount('nursing_insurance')).controller!.text, isEmpty);
+    expect(b.writes, 0);
+  });
+
   for (final saved in [1500, 0]) {
     testWidgets('legacy saved income tax stays visible without invented insurance ($saved)', (t) async {
       final b = _Backend()..hasConditions = false;
@@ -438,4 +494,5 @@ void main() {
     expect(t.takeException(), isNull);
   });
 }
+
 
