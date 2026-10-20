@@ -86,7 +86,7 @@ void main() {
       );
       expect(find.byType(Image), findsOneWidget);
       expect(
-        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        tester.widget<FilledButton>(find.byKey(const ValueKey('company-seal-style-save'))).onPressed,
         isNull,
       );
       expect(source.saves, 0);
@@ -103,11 +103,11 @@ void main() {
         (_) async => throw StateError('asset missing'),
       );
       expect(
-        tester.widget<OutlinedButton>(find.byType(OutlinedButton)).onPressed,
+        tester.widget<OutlinedButton>(find.byKey(const ValueKey('company-seal-style-preview'))).onPressed,
         isNull,
       );
       expect(
-        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        tester.widget<FilledButton>(find.byKey(const ValueKey('company-seal-style-save'))).onPressed,
         isNull,
       );
       final dropdown = tester.widget<DropdownButtonFormField<String>>(
@@ -116,12 +116,12 @@ void main() {
       dropdown.onChanged!('legacy');
       await tester.pump();
       expect(
-        tester.widget<OutlinedButton>(find.byType(OutlinedButton)).onPressed,
+        tester.widget<OutlinedButton>(find.byKey(const ValueKey('company-seal-style-preview'))).onPressed,
         isNotNull,
       );
       // Recovery does not bypass the required PDF preview before style saving.
       expect(
-        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        tester.widget<FilledButton>(find.byKey(const ValueKey('company-seal-style-save'))).onPressed,
         isNull,
       );
       tester.widget<SwitchListTile>(find.byType(SwitchListTile)).onChanged!(
@@ -147,20 +147,20 @@ void main() {
       retry();
       await tester.pump();
       expect(source.styleLoads, 2);
-      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(find.byKey(const ValueKey('company-seal-style-loading')), findsOneWidget);
       expect(
         tester.widget<SwitchListTile>(find.byType(SwitchListTile)).onChanged,
         isNull,
       );
       coverage.complete('');
       await tester.pumpAndSettle();
-      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.byKey(const ValueKey('company-seal-style-loading')), findsNothing);
       expect(
-        tester.widget<OutlinedButton>(find.byType(OutlinedButton)).onPressed,
+        tester.widget<OutlinedButton>(find.byKey(const ValueKey('company-seal-style-preview'))).onPressed,
         isNotNull,
       );
       expect(
-        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        tester.widget<FilledButton>(find.byKey(const ValueKey('company-seal-style-save'))).onPressed,
         isNull,
       );
     },
@@ -212,3 +212,4 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+

@@ -25,7 +25,7 @@ class PaymentOrderPdf {
    text(title,bold:true),pw.SizedBox(height:5),field('社名','${value['name']}${own?'':'　御中'}'),field('住所',value['address']),
    field('法人番号',value['corporate_number']),pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
     pw.Expanded(child:field('代表者名',value['representative_name'])),
-    if(own&&sealOn)CompanySealPdf.build(seal.registeredName(issuer['name'].toString()),font:font,companyId:seal.companyId,
+    if(own&&sealOn)CompanySealPdf.build(seal.registeredName(issuer['name'].toString()),font:font,companyId:seal.companyId,uploadedPng:seal.uploadedPng,
       fallbackFont:regularFont,style:seal.style,size:compact?40:48),]),]);
   document.addPage(pw.Page(pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.all(36),build:(_)=>pw.Column(
    crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:[
@@ -49,3 +49,4 @@ class PaymentOrderPdf {
   return value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'),(_)=>',');
  }
 }
+

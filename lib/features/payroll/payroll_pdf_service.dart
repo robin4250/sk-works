@@ -260,7 +260,7 @@ class PayrollPdfService {
                       : CompanySealPdf.build(
                           seal.registeredName(statement.companyName),
                           style: seal.style,
-                          companyId: seal.companyId,
+                          companyId: seal.companyId, uploadedPng: seal.uploadedPng,
                           size: 32,
                           font: sealFont,
                           fallbackFont: fallbackFont,
@@ -1423,3 +1423,4 @@ class PayrollPdfService {
 
   static String _yen(int value) => '¥${_number(value)}';
 }
+

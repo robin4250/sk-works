@@ -1,4 +1,6 @@
 import '../../domain/company_seal_design.dart';
+import '../../domain/company_uploaded_seal_png.dart';
+import '../../domain/company_seal_snapshot.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'dart:typed_data';
 import 'dart:convert';
@@ -23,6 +25,7 @@ class CompanySealPdf {
   static const _reishoAssets = 'assets/fonts/company-seal/aoyagi-reisho';
 
   static Future<pw.Font> loadStyleFont(String style) async {
+    if (style == CompanySealSnapshot.uploadedStyle) return loadFont();
     if (CompanySealDesign.isPng(style)) {
       final design = CompanySealDesign.designs[style]!;
       if (!_pngBytes.containsKey(style)) {
@@ -198,7 +201,15 @@ class CompanySealPdf {
     pw.Font? fallbackFont,
     String style = legacyStyle,
     String? companyId,
+    CompanyUploadedSealPng? uploadedPng,
   }) {
+    if (style == CompanySealSnapshot.uploadedStyle) {
+      if (companyId == null || companyId.isEmpty || uploadedPng == null) {
+        throw StateError('The saved uploaded PNG seal is missing.');
+      }
+      return pw.Image(pw.MemoryImage(uploadedPng.bytes), width: size,
+          height: size, fit: pw.BoxFit.contain);
+    }
     if (CompanySealDesign.isPng(style)) {
       if (!CompanySealDesign.matches(companyId, companyName)) {
         throw StateError('The PNG seal belongs to another registered company.');
@@ -268,3 +279,4 @@ class CompanySealPdf {
     );
   }
 }
+

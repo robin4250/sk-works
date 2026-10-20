@@ -17,14 +17,18 @@ Future<Uint8List> renderSiteContractSeal(CompanySealSnapshot snapshot, String co
       (await CompanySealPdf.unsupportedReishoCharacters(snapshot.name)).isNotEmpty) {
     throw StateError('登録された会社印を正しく表示できません。');
   }
+  if (snapshot.uploadedPng != null && snapshot.companyId != companyId) {
+    throw StateError('会社角印の対象が一致しません。');
+  }
   final font = await CompanySealPdf.loadStyleFont(snapshot.style);
   final document = pw.Document();
   document.addPage(pw.Page(pageFormat: const PdfPageFormat(120, 120),
     margin: const pw.EdgeInsets.all(12), build: (_) => pw.Center(
       child: CompanySealPdf.build(snapshot.name, size: 80, font: font,
-        style: snapshot.style, companyId: companyId),
+        style: snapshot.style, companyId: companyId, uploadedPng: snapshot.uploadedPng),
     )));
   final bytes = await document.save();
   final raster = await Printing.raster(bytes, pages: const [0], dpi: 160).first;
   return raster.toPng();
 }
+

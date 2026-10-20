@@ -1,0 +1,56 @@
+name: Uploaded company PNG seal
+on:
+  pull_request:
+    paths:
+      - 'lib/domain/company*seal*.dart'
+      - 'lib/features/settings/company_seal*.dart'
+      - 'lib/features/shared/company_seal*.dart'
+      - 'lib/features/invoices/invoice*pdf*.dart'
+      - 'lib/features/invoices/invoice_cloud_repository.dart'
+      - 'lib/features/payroll/*pdf*.dart'
+      - 'lib/features/payroll/payment_certificate_repository.dart'
+      - 'test/company*seal*.dart'
+      - 'docs/candidates/company_seal_uploaded_png_20261020.sql.review-only'
+      - 'tool/verify_company*seal*.mjs'
+      - 'tool/verify_company_uploaded_seal_pdfs.py'
+      - '.github/workflows/company-uploaded-png-seal.yml'
+permissions:
+  contents: read
+jobs:
+  png:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/domain/company_uploaded_seal_png.dart lib/domain/company_seal_snapshot.dart lib/features/settings/company_seal_png_repository.dart lib/features/settings/company_seal_png_uploader.dart lib/features/shared/company_seal_current_preview.dart test/company_uploaded_seal_png_test.dart test/company_seal_png_uploader_test.dart test/company_uploaded_seal_pdf_test.dart
+      - run: flutter test test/company_uploaded_seal_png_test.dart test/company_seal_png_uploader_test.dart test/company_uploaded_seal_pdf_test.dart
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y poppler-utils
+          python3 tool/verify_company_uploaded_seal_pdfs.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: uploaded-png-seal-proof
+          path: build/company-uploaded-seal-proof/
+          if-no-files-found: ignore
+  storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/verify_company_seal_uploaded_png.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"

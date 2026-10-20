@@ -18,8 +18,10 @@ class _Backend {
   Map<String, dynamic>? sent;
   bool edit = true, failSave = false;
   bool hasConditions = true;
+  bool manualSupported = false;
   Map<String, dynamic> get response => {
     'company_id': 'company', 'worker_id': 'worker', 'can_edit': edit,
+    if (manualSupported) 'manual_insurance_contract_version': 1,
     'items': hasConditions
         ? [{'starts_on': month, 'version': version, 'value': value}] : [],
   };
@@ -42,6 +44,7 @@ class _Backend {
   Future<Map<String, dynamic>?> statement(String company, String worker, String period) async {
     expect([company, worker, period], ['company', 'worker', month]);
     final overrides = value['deduction_overrides'] as Map? ?? {};
+    final manual = value['manual_insurance_premiums'] as Map?;
     return {'calculation_blocked': false, 'detail': {'tax_calculation': {
       'condition_version': version, 'conditions_start': month,
       'income_tax_yen': overrides['income_tax'] ?? 1000,
@@ -50,10 +53,10 @@ class _Backend {
         '雇用保険料': 100, '健康保険料': 5000, '厚生年金保険': 9000, '介護保険料': 0,
       },
       'premiums': {
-        '雇用保険料': overrides['employment_insurance'] ?? 100,
-        '健康保険料': overrides['health_insurance'] ?? 5000,
-        '厚生年金保険': overrides['pension_insurance'] ?? 9000,
-        '介護保険料': overrides['nursing_insurance'] ?? 0,
+        '雇用保険料': manual?['employment_insurance'] ?? overrides['employment_insurance'] ?? 100,
+        '健康保険料': manual?['health_insurance'] ?? overrides['health_insurance'] ?? 5000,
+        '厚生年金保険': manual?['pension_insurance'] ?? overrides['pension_insurance'] ?? 9000,
+        '介護保険料': manual?['nursing_insurance'] ?? overrides['nursing_insurance'] ?? 0,
       },
     }}};
   }
@@ -99,6 +102,32 @@ Future<void> save(WidgetTester t) async {
 }
 
 void main() {
+  Map<String, dynamic> manualProfile() => {
+    'insurance_mode': 'manual', 'income_mode': 'koh',
+    'dependents': 2, 'non_taxable_yen': 100, 'additional_social_deduction_yen': 0,
+    'deduction_overrides': {'income_tax': 800},
+    'manual_insurance_premiums': {'health_insurance': 5000, 'pension_insurance': 9000,
+      'employment_insurance': 100, 'nursing_insurance': 0, 'child_support': 200},
+  };
+  testWidgets('manual premium edit preserves other premiums, income override and profile', (t) async {
+    final b = _Backend()..manualSupported = true..value = manualProfile();
+    await _mount(t, b);
+    final field = amount('health_insurance');
+    await t.ensureVisible(field); await t.enterText(field, '5100');
+    await save(t);
+    final expected = manualProfile();
+    expected['manual_insurance_premiums'] = {...expected['manual_insurance_premiums'] as Map, 'health_insurance': 5100};
+    expect(b.sent, expected);
+    expect(b.writes, 1);
+  });
+  testWidgets('manual profile remains read only without backend capability', (t) async {
+    final b = _Backend()..value = manualProfile();
+    await _mount(t, b);
+    final field = t.widget<TextField>(find.descendant(of: amount('health_insurance'), matching: find.byType(TextField)));
+    expect(field.enabled, isFalse);
+    expect(b.writes, 0);
+  });
+
   testWidgets('legacy named insurance in saved custom rows stays linked without automatic conditions', (t) async {
     final b = _Backend()..hasConditions = false;
     final snapshot = <String, dynamic>{
@@ -494,5 +523,6 @@ void main() {
     expect(t.takeException(), isNull);
   });
 }
+
 
 

@@ -236,7 +236,7 @@ class PaymentCertificatePdfService {
                           record.companySealSnapshot.registeredName(
                               record.payerCompanyName),
                           style: record.companySealSnapshot.style,
-                          companyId: record.companySealSnapshot.companyId,
+                          companyId: record.companySealSnapshot.companyId, uploadedPng: record.companySealSnapshot.uploadedPng,
                           size: 55,
                           font: sealFont,
                           fallbackFont: fallbackFont,
@@ -413,3 +413,4 @@ class PaymentCertificatePdfService {
     return value;
   }
 }
+

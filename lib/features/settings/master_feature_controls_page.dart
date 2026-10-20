@@ -239,6 +239,15 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
                             ),
                           ),
                           const SizedBox(height: 12),
+                          if (availability.companySealImageToolsSupported) ...[
+                            _featureTile(
+                              featureKey: 'company_seal_image_tools',
+                              label: '角印画像ツール',
+                              description: '角印画像の新規作成・加工・登録を制御。保存済みの角印・帳票は保持',
+                              enabled: availability.companySealImageTools,
+                            ),
+                            const SizedBox(height: 10),
+                          ],
                           _featureTile(
                             featureKey: 'vehicle_management',
                             label: '車両管理',
@@ -313,3 +322,4 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
     );
   }
 }
+
