@@ -31,14 +31,18 @@ class CompanySealPngRepository implements CompanySealPngSource {
   CompanySealPngSettings _parse(Object? raw, UploadedSealCompany company) {
     if (raw is! Map || raw['company_id'] != company.companyId || raw['company_name'] != company.name ||
         raw['available'] != true || raw['enabled'] is! bool || raw['revision'] is! int ||
-        (raw['revision'] as int) < 0) throw StateError('会社角印の設定が一致しません。');
+        (raw['revision'] as int) < 0) {
+      throw StateError('会社角印の設定が一致しません。');
+    }
     final encoded = raw['png_base64'];
     final hash = raw['png_sha256'];
     final id = raw['version_id'];
     CompanyUploadedSealPng? png;
     if (encoded != null || hash != null || id != null) {
       if (encoded is! String || hash is! String || id is! String ||
-          !RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(id)) throw StateError('保存したPNGを確認できません。');
+          !RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(id)) {
+        throw StateError('保存したPNGを確認できません。');
+      }
       png = CompanyUploadedSealPng.fromBase64(encoded, expectedSha256: hash);
       if (raw['width'] != png.width || raw['height'] != png.height) throw StateError('保存したPNGの大きさが一致しません。');
     }
@@ -47,9 +51,7 @@ class CompanySealPngRepository implements CompanySealPngSource {
       enabled: raw['enabled'] as bool, revision: raw['revision'] as int,
       png: png, versionId: id as String?);
   }
-  TradeDocumentActorLease _lease() => TradeDocumentActorLease(
-    initialActor: _client.auth.currentUser?.id,
-    actorChanges: _client.auth.onAuthStateChange.map((event) => event.session?.user.id));
+  TradeDocumentActorLease _lease() => TradeDocumentActorLease.forClient(_client);
   @override
   Future<CompanySealPngSettings> load(UploadedSealCompany company) async {
     if (_client.auth.currentUser == null) throw StateError('ログインが必要です。');
@@ -79,7 +81,9 @@ class CompanySealPngRepository implements CompanySealPngSource {
       lease.verify();
       final result = _parse(raw, settings.company);
       if (result.revision != settings.revision + 1 || result.enabled != enabled ||
-          (png != null && result.png?.sha256 != png.sha256)) throw StateError('PNGの保存結果を確認できません。');
+          (png != null && result.png?.sha256 != png.sha256)) {
+        throw StateError('PNGの保存結果を確認できません。');
+      }
       return result;
     } finally { lease.dispose(); }
   }
