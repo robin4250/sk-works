@@ -1,0 +1,42 @@
+-- REVIEW ONLY. Central optional-feature gate; no billing or PNG data changes.
+BEGIN;
+SET LOCAL lock_timeout='3s';
+SET LOCAL statement_timeout='30s';
+ALTER TABLE private.master_feature_settings DROP CONSTRAINT master_feature_settings_feature_key_check;
+ALTER TABLE private.master_feature_settings ADD CONSTRAINT master_feature_settings_feature_key_check
+ CHECK(feature_key IN ('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop','company_seal_image_tools'));
+-- Preserve every existing key/value and any prior explicit seal choice.
+INSERT INTO private.master_feature_settings(feature_key,enabled) VALUES('company_seal_image_tools',true)
+ ON CONFLICT(feature_key) DO NOTHING;
+DO $patch$
+DECLARE signature text; definition text; old_keys text; new_keys text; anchor text;
+BEGIN
+ old_keys:='''vehicle_management'',''route_assignment'',''traffic_nearest_station'',''traffic_train_transfer'',''traffic_bus_stop''';
+ new_keys:=old_keys||',''company_seal_image_tools''';
+ FOREACH signature IN ARRAY ARRAY['public.set_master_feature_enabled(text,boolean)',
+ 'public.set_master_feature_enabled_with_proof(text,boolean,text)',
+ 'public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)'] LOOP
+  IF to_regprocedure(signature) IS NULL THEN
+   IF signature='public.set_master_feature_enabled(text,boolean)' THEN RAISE EXCEPTION 'master setter missing'; END IF;
+   CONTINUE;
+  END IF;
+  definition:=pg_get_functiondef(to_regprocedure(signature));
+  IF (length(definition)-length(replace(definition,old_keys,'')))/length(old_keys)<>1 THEN
+   RAISE EXCEPTION 'master feature allowlist differs: %',signature;
+  END IF;
+  EXECUTE replace(definition,old_keys,new_keys);
+ END LOOP;
+ IF (to_regprocedure('public.set_master_feature_enabled_with_proof(text,boolean,text)') IS NULL)
+ <> (to_regprocedure('public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)') IS NULL)
+ THEN RAISE EXCEPTION 'partial reauthentication contract'; END IF;
+ definition:=pg_get_functiondef('private.require_master_optional_feature(text)'::regprocedure);
+ anchor:='p_key not in (''vehicle_management'',''route_assignment'')';
+ IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN RAISE EXCEPTION 'master optional guard differs'; END IF;
+ -- NULL previously slipped through NOT IN. Reject it explicitly, too.
+ EXECUTE replace(definition,anchor,'p_key is null or p_key not in (''vehicle_management'',''route_assignment'',''company_seal_image_tools'')');
+ definition:=pg_get_functiondef('public.current_master_feature_flags()'::regprocedure);
+ anchor:='''traffic_bus_stop'', coalesce((select enabled from private.master_feature_settings where feature_key=''traffic_bus_stop''),false)';
+ IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN RAISE EXCEPTION 'master flags reader differs'; END IF;
+ EXECUTE replace(definition,anchor,anchor||','||E'\n      ''company_seal_image_tools'', coalesce((select enabled from private.master_feature_settings where feature_key=''company_seal_image_tools''),true)');
+END $patch$;
+COMMIT;
