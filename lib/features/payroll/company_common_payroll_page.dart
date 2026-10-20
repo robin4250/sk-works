@@ -383,9 +383,9 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
     ),
     bottomNavigationBar: _fixedFooter(),
     body: SafeArea(
-      child: ListView(
+      child: SingleChildScrollView(
         key: const ValueKey('company-common-scroll'),
-        children: [
+        child: Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(9, 4, 9, 2),
             child: Row(
@@ -482,7 +482,7 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
                   ),
               ]),
             ),
-        ],
+        ]),
       ),
     ),
   );
