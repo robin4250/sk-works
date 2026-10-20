@@ -398,7 +398,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
         children: [
           Text(SkoLanguageController.tr('会社共通。請求書・給与明細・支払証明書に反映します。')),
           const SizedBox(height: 12),
-          if (_busy) const LinearProgressIndicator(),
+          if (_busy) const LinearProgressIndicator(key: ValueKey('company-seal-style-loading')),
           if (_enabled != null)
             SwitchListTile(
               title: Text(SkoLanguageController.tr('会社角印を表示')),
@@ -406,7 +406,10 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
               onChanged: _busy ? null : _save,
             ),
           Text(SkoLanguageController.tr('OFFでも確認印・承認印と承認履歴は残ります。')),
-          if (_companyContext != null) CompanySealPngUploader(company: _companyContext!),
+          if (_companyContext != null) CompanySealPngUploader(
+            key: ValueKey('company-seal-png:${_companyContext!.companyId}'),
+            company: _companyContext!,
+          ),
           if (_styleSettings != null) ...[
             const SizedBox(height: 20),
             Text(_styleSettings!.name),
@@ -482,6 +485,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
                 ),
             ],
             OutlinedButton(
+              key: const ValueKey('company-seal-style-preview'),
               onPressed:
                   _busy ||
                       (_selectedStyle == CompanySealPdf.reishoStyle &&
@@ -491,6 +495,7 @@ class _CompanySealSettingsPageState extends State<CompanySealSettingsPage> {
               child: Text(SkoLanguageController.tr('選択中の角印をプレビュー')),
             ),
             FilledButton(
+              key: const ValueKey('company-seal-style-save'),
               onPressed:
                   _busy ||
                       !_styleSettings!.available ||
