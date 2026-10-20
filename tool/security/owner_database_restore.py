@@ -17,6 +17,20 @@ IDENT = r'(?:"(?:[^"]|"")*"|[A-Za-z_][A-Za-z_0-9$]*)'
 COPY = re.compile(r'^COPY (' + IDENT + r'\.' + IDENT + r') \(.*\) FROM stdin;$')
 
 
+def restore_roles_sql(original):
+    # The production bootstrap role (OID 10) is supabase_admin. PostgreSQL
+    # records its grants specially; an arbitrary replacement superuser cannot
+    # reproduce those GRANTED BY relationships. Keep every ALTER/GRANT and
+    # suppress only its CREATE, since initdb has already created that role.
+    lines = original.splitlines(keepends=True)
+    matches = [i for i, line in enumerate(lines)
+               if line.strip() in ('CREATE ROLE supabase_admin;', 'CREATE ROLE "supabase_admin";')]
+    if len(matches) != 1:
+        raise RuntimeError('bootstrap_role_definition_mismatch')
+    lines[matches[0]] = '-- bootstrap supabase_admin already created by initdb\n'
+    return ''.join(lines)
+
+
 def digest(path):
     value = hashlib.sha256()
     with path.open('rb') as stream:
@@ -90,7 +104,7 @@ def main():
         stage = Path(tempfile.mkdtemp(prefix='database-restore-', dir=root))
         status['source_sha256'] = originals
         name = 'sko-restore-' + uuid.uuid4().hex[:12]
-        admin = 'sko_recovery_' + uuid.uuid4().hex[:12]
+        admin = 'supabase_admin'
         status['container'] = name
         env = {k:v for k,v in os.environ.items() if not k.startswith('PG')}
         # Refuse remote Docker contexts/hosts; the backup must stay on this Mac.
@@ -133,8 +147,9 @@ def main():
                 raise RuntimeError('cron_not_disabled')
             print('ロール・DBを復元しています。', flush=True)
             status['phase'] = 'roles'
+            role_sql = restore_roles_sql((backup / 'roles.sql').read_text())
             local(['psql', '-X', '-w', '-h', '/tmp', '-U', admin, '-d', 'postgres',
-                   '-v', 'ON_ERROR_STOP=1', '-f', '/backup/roles.sql'])
+                   '-v', 'ON_ERROR_STOP=1'], data=role_sql.encode())
             listing = (backup / 'archive-list.txt').read_text()
             if re.search(r' SCHEMA - public ', listing):
                 query('DROP SCHEMA public;')
@@ -168,6 +183,8 @@ def main():
         if stage:
             (stage / 'rehearsal-status.json').write_text(json.dumps(status, ensure_ascii=False, indent=2))
     print(result, flush=True)
+    if sys.platform == 'darwin':
+        subprocess.run(['/usr/bin/pbcopy'], input=result, text=True, check=False)
     return code
 
 
