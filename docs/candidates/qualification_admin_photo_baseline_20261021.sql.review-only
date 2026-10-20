@@ -1,0 +1,19 @@
+-- REVIEW ONLY. Requires the exact saved-photo candidate. No rollout or product migration.
+-- New requests must carry the ordered baseline the administrator actually reviewed.
+begin;
+do $patch$
+declare body text; definition text;
+begin
+ select prosrc,pg_get_functiondef(oid) into body,definition from pg_proc
+ where oid=to_regprocedure('private.admin_qualification_saved_photos(text,jsonb)');
+ if body is null or md5(body)<>'02baf8c4d52adbbd3396ed3edfcdd713' then
+ raise exception 'admin saved photo source drift; review required' using errcode='55000';end if;
+ if strpos(body,$old$ oldpaths:=array_remove(array[oldrow.attachment_path,oldrow.attachment_back_path]||oldrow.attachment_extra_paths,null);$old$)=0 then raise exception 'saved-photo baseline anchor missing';end if;
+ definition:=replace(definition,$old$ oldpaths:=array_remove(array[oldrow.attachment_path,oldrow.attachment_back_path]||oldrow.attachment_extra_paths,null);$old$,$new$ oldpaths:=array_remove(array[oldrow.attachment_path,oldrow.attachment_back_path]||oldrow.attachment_extra_paths,null);
+ -- Reject a stale selection before recording a request against unseen photos.
+ if jsonb_typeof(p_data->'expected_photo_paths') is distinct from 'array'
+ or p_data->'expected_photo_paths' is distinct from to_jsonb(oldpaths) then
+ raise exception 'saved photos changed; reload before preparing removal' using errcode='40001';end if;$new$);
+ execute definition;
+end $patch$;
+commit;

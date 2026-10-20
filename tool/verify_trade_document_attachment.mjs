@@ -87,4 +87,28 @@ await db.exec(`set test.uid='${a}'`);
 await db.exec(`set test.blocked='true'`);await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'),/ログイン/);
 await db.exec(`set test.blocked='false';set test.uid=''`);await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'));
 await db.exec('reset role;set role anon');await assert.rejects(call('invoice',inv,'2026-10-14T12:00:00Z'),/permission denied/);
+await db.exec(`reset role;set test.uid='${a}'`);
+const templateMetadata=`select oid::text,proowner::text,proacl::text,prosecdef,proconfig from pg_proc where oid='private.trade_document_template(text,uuid,integer,jsonb)'::regprocedure`;
+const beforeTemplateMetadata=(await db.query(templateMetadata)).rows;
+const beforeAppendices=(await db.query('select * from private.trade_document_attachments order by subject_kind,subject_id')).rows;
+await db.exec(await fs.readFile(new URL('../supabase/migrations/20261020210553_payment_order_work_defaults.sql',import.meta.url),'utf8'));
+assert.deepEqual((await db.query(templateMetadata)).rows,beforeTemplateMetadata);
+assert.deepEqual((await db.query('select * from private.trade_document_attachments order by subject_kind,subject_id')).rows,beforeAppendices);
+await db.exec('set role authenticated');
+const templateCall=(kind,version,payload)=>db.query('select public.trade_document_template($1,$2,$3,$4) result',[kind,c,version,payload]);
+const currentTemplate=(await templateCall('payment_certificate',null,null)).rows[0].result;
+const workTemplate={work_name:'設定工事',work_address:'東京都の工事場所',notes:'特記事項'};
+const updatedTemplate=(await templateCall('payment_certificate',currentTemplate.version,workTemplate)).rows[0].result;
+assert.deepEqual(updatedTemplate.payload,workTemplate);
+assert.deepEqual((await call('payment_certificate',pc2,'1')).template,workTemplate);
+for(const payload of [{work_name:'x'.repeat(241)},{work_address:'x'.repeat(241)},{work_name:1},{work_address:null},{issuer:{name:'別会社'}},{total_amount_yen:1}])
+ await assert.rejects(templateCall('payment_certificate',updatedTemplate.version,payload));
+await assert.rejects(templateCall('invoice',0,workTemplate));
+await assert.rejects(templateCall('payment_certificate',currentTemplate.version,workTemplate),/再読込/);
+for(const actor of [v,o]){await db.exec(`set test.uid='${actor}'`);await assert.rejects(templateCall('payment_certificate',updatedTemplate.version,workTemplate),/権限/);}
+await db.exec('reset role');
+await assert.rejects(db.exec(await fs.readFile(new URL('../supabase/migrations/20261020210553_payment_order_work_defaults.sql',import.meta.url),'utf8')),/definition changed/);
+await db.exec('rollback');
+console.log('PASS order work defaults: saved/workspace roundtrip, field limits, scope, CAS, ACL/OID preservation, historical appendices unchanged');
+
 console.log('PASS monthly appendices: permissions, NULL, CAS, month, source revision, finalized protection, immutable saved templates/seals, direct-table denial');await db.close();

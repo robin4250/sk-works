@@ -109,6 +109,49 @@ void main() {
     expect(find.textContaining('ログイン情報を確認できません'), findsNothing);
   });
 
+  for (final picker in [false, true]) {
+    testWidgets('direct SKO invite opens existing callback from ${picker ? 'chat picker' : 'friend management'}', (tester) async {
+      final repo = _Repository();
+      addTearDown(repo.changes.close);
+      final sources = <String>[];
+      final pending = Completer<void>();
+      await tester.pumpWidget(MaterialApp(home: ChatFriendsPage(
+        repository: repo,
+        selectForChat: picker,
+        onPhoneInvitation: (context, source) async {
+          sources.add(source);
+          await pending.future;
+        },
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'SKO招待'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(TextButton, 'SKO招待'));
+      await tester.pump();
+      expect(sources, ['friend_add']);
+      final before = repo.loads;
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(repo.loads, before + 1);
+      repo.actor = 'other';
+      repo.changes.add('other');
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'SKO招待'));
+      await tester.pump();
+      expect(sources, ['friend_add']);
+    });
+  }
+
+  testWidgets('group member picker does not expose app invitation', (tester) async {
+    final repo = _Repository();
+    addTearDown(repo.changes.close);
+    await tester.pumpWidget(MaterialApp(home: ChatFriendsPage(
+      repository: repo, selectForGroupInvite: true,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('SKO招待'), findsNothing);
+  });
+
   testWidgets('pin keeps row, persists per actor and actor change clears identity', (tester) async {
     final repo = _Repository();
     addTearDown(repo.changes.close);

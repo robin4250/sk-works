@@ -7,6 +7,8 @@ on:
       - 'test/payment_expense_direction_consumer_test.dart'
       - 'tool/verify_payment_expense_direction_consumer_pdfs.py'
       - 'tool/verify_payment_expense_source_negotiation.mjs'
+      - 'tool/verify_expense_readonly_readiness.mjs'
+      - 'docs/candidates/expense_payment_readonly_readiness_20261021.sql'
       - 'docs/candidates/payment_expense_source_negotiation_20261020.sql.review-only'
       - '.github/workflows/payment-direction-consumer.yml'
 permissions:
@@ -51,3 +53,4 @@ jobs:
           node-version: '22.21.0'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: node tool/verify_payment_expense_source_negotiation.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_expense_readonly_readiness.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"

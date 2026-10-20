@@ -4,6 +4,8 @@ on:
     paths:
       - 'tool/verify_qualification_admin_photo_postgres_race.mjs'
       - 'tool/verify_qualification_admin_saved_photos.mjs'
+      - 'tool/verify_qualification_admin_photo_baseline.mjs'
+      - 'docs/candidates/qualification_admin_photo_baseline_20261021.sql.review-only'
       - 'tool/fixtures/qualification_photo_submission/**'
       - 'docs/candidates/qualification_admin_saved_photos_20261019.sql.review-only'
       - '.github/workflows/qualification-admin-photo-postgres-race.yml'
@@ -12,6 +14,8 @@ on:
     paths:
       - 'tool/verify_qualification_admin_photo_postgres_race.mjs'
       - 'tool/verify_qualification_admin_saved_photos.mjs'
+      - 'tool/verify_qualification_admin_photo_baseline.mjs'
+      - 'docs/candidates/qualification_admin_photo_baseline_20261021.sql.review-only'
       - 'tool/fixtures/qualification_photo_submission/**'
       - 'docs/candidates/qualification_admin_saved_photos_20261019.sql.review-only'
       - '.github/workflows/qualification-admin-photo-postgres-race.yml'
@@ -39,6 +43,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node tool/verify_qualification_admin_photo_baseline.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
       - run: node tool/verify_qualification_admin_photo_postgres_race.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
         env:
           SKO_QUALIFICATION_PHOTO_RACE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_qualification_photo_race_fixture

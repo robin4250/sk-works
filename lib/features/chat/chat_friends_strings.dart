@@ -12,6 +12,8 @@ class ChatFriendsStrings {
     strings: {
       '友達機能を利用できません。': 'Friends are unavailable.',
       '友達一覧': 'Friends list',
+      'SKO招待': 'Invite to SKO',
+      'SKO招待を開けませんでした。もう一度お試しください。': 'Could not open the SKO invitation. Please try again.',
       'ログイン状態が変わった場合は、検索結果と確認中の操作を破棄します。友達一覧を開き直してください。': 'If your sign-in state changes, search results and pending confirmations are discarded. Reopen the friends list.',
       '友達を招待': 'Invite friends',
       '友達': 'Friends',
