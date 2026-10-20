@@ -1,0 +1,25 @@
+name: Qualification photo session guard
+on:
+  push:
+    branches: ['fix/qualification-photo-session-rpc-*']
+  pull_request:
+    paths:
+      - 'lib/features/qualifications/qualification_photo_session_rpc*'
+      - 'tool/verify_qualification_photo_session_rpc.dart'
+      - '.github/workflows/qualification-photo-session-guard.yml'
+permissions:
+  contents: read
+jobs:
+  sdk-and-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - name: Analyze fixed SDK adapter and verification
+        run: dart analyze lib/features/qualifications/qualification_photo_session_rpc.dart lib/features/qualifications/qualification_photo_session_rpc_supabase.dart tool/verify_qualification_photo_session_rpc.dart
+      - name: Verify session pinning and submission composition
+        run: dart tool/verify_qualification_photo_session_rpc.dart
