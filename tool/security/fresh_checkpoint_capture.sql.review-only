@@ -1,0 +1,58 @@
+-- REVIEW ONLY. Same capture used in install; output must be private.
+BEGIN;
+CREATE TEMP TABLE sko_common_install_checkpoints(side text PRIMARY KEY,checkpoint jsonb NOT NULL,all_application_rows_hash text);
+CREATE TEMP TABLE common_data_fingerprints(name text PRIMARY KEY,hash text);
+DO $hash$ DECLARE r record; h text; BEGIN
+ FOR r IN SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE (n.nspname IN ('public','private','auth') OR n.nspname LIKE 'payroll\_%' ESCAPE '\' OR n.nspname LIKE '%\_private' ESCAPE '\') AND n.nspname NOT IN ('company_allowance_identity_private','company_common_allowance_private') AND c.relkind='r' ORDER BY n.nspname,c.relname LOOP
+ EXECUTE format('SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),''[]'')::text) FROM %I.%I x',r.nspname,r.relname) INTO h;
+ INSERT INTO common_data_fingerprints VALUES(r.nspname||'.'||r.relname,h);
+ END LOOP;
+END $hash$;
+
+INSERT INTO sko_common_install_checkpoints(side,checkpoint) SELECT 'before',jsonb_build_object('schema',1,'source_hashes','{"supabase/migrations/20261009201229_company_allowance_identity_lifecycle.sql":"edacd1d8aac3ac0dd7219954192871725782369c82824173b2c73afe8aad3c3d","tool/staged_company_common_allowances.sql.review-only":"8f4c3b1b1cd07519174c88441c5e4b7eea325bbdd99b6ae455897b04e9786e46","docs/candidates/company_common_payroll_bridge_20261020.sql.review-only":"043fa73f7f997c67df21e4544073febe6f351d82f1fcd1b2771c953dd92e1d45","docs/candidates/company_common_payroll_effective_20261020.sql.review-only":"3a6aa28e29de9aee6cbd2464df2cc4361806ccad0aa55f901ec89e1f399eb023"}'::jsonb,'catalog',(SELECT jsonb_build_object('hash',md5(v::text),'catalog',v) FROM (SELECT jsonb_build_object(
+ 'schemas',(SELECT coalesce(jsonb_agg(jsonb_build_array(n.oid,n.nspname,n.nspowner,n.nspacl) ORDER BY n.oid),'[]') FROM pg_namespace n WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'relations',(SELECT coalesce(jsonb_agg(jsonb_build_array(c.oid,c.relname,c.relkind,c.relowner,c.relacl,c.relrowsecurity,c.relforcerowsecurity,c.reloptions) ORDER BY c.oid),'[]') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'attributes',(SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY a.attrelid,a.attnum),'[]') FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'functions',(SELECT coalesce(jsonb_agg(jsonb_build_array(p.oid,pg_get_functiondef(p.oid),p.proowner,p.proacl,p.proconfig,p.prosecdef) ORDER BY p.oid),'[]') FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE (n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema') AND p.prokind IN ('f','p')),
+ 'policies',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.oid),'[]') FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'triggers',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.oid),'[]') FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema')
+,
+ 'constraints',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_constraint x JOIN pg_namespace n ON n.oid=x.connamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'indexes',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.indexrelid),'[]') FROM pg_index x JOIN pg_class c ON c.oid=x.indrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'defaults',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_attrdef x JOIN pg_class c ON c.oid=x.adrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'types',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_type x JOIN pg_namespace n ON n.oid=x.typnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'enums',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_enum x JOIN pg_type t ON t.oid=x.enumtypid JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'rules',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_rewrite x JOIN pg_class c ON c.oid=x.ev_class JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'),
+ 'comments',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.classoid,x.objoid,x.objsubid),'[]') FROM pg_description x),
+ 'security_labels',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.classoid,x.objoid,x.objsubid,x.provider),'[]') FROM pg_seclabel x),
+ 'default_acls',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_default_acl x),
+ 'dependencies',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.classid,x.objid,x.objsubid,x.refclassid,x.refobjid,x.refobjsubid,x.deptype),'[]') FROM pg_depend x WHERE
+ (x.classid='pg_proc'::regclass AND x.objid IN(SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_class'::regclass AND x.objid IN(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_type'::regclass AND x.objid IN(SELECT t.oid FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_constraint'::regclass AND x.objid IN(SELECT c.oid FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_rewrite'::regclass AND x.objid IN(SELECT r.oid FROM pg_rewrite r JOIN pg_class c ON c.oid=r.ev_class JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))
+ OR (x.classid='pg_attrdef'::regclass AND x.objid IN(SELECT d.oid FROM pg_attrdef d JOIN pg_class c ON c.oid=d.adrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema'))),
+ 'event_triggers',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_event_trigger x),
+ 'database',(SELECT jsonb_build_array(oid,datname,datdba,datacl,datallowconn) FROM pg_database WHERE datname=current_database()),
+ 'roles',(SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]') FROM pg_roles x)
+) v) checkpoint),'functions',(SELECT coalesce(jsonb_agg(jsonb_build_object(
+ 'oid',p.oid,'name',n.nspname||'.'||p.proname,
+ 'signature',n.nspname||'.'||p.proname||'('||oidvectortypes(p.proargtypes)||')',
+ 'definition',pg_get_functiondef(p.oid),'owner',pg_get_userbyid(p.proowner),'owner_oid',p.proowner,'acl',p.proacl,'config',p.proconfig,'definer',p.prosecdef)
+ ORDER BY p.oid),'[]') FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE (n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema') AND p.prokind='f'),'business_hash',(SELECT md5(coalesce(jsonb_agg(jsonb_build_array(name,hash) ORDER BY name),'[]')::text) FROM common_data_fingerprints));
+DROP TABLE common_data_fingerprints;
+CREATE TEMP TABLE common_data_fingerprints(name text PRIMARY KEY,hash text);
+DO $hash$ DECLARE r record; h text; BEGIN
+ FOR r IN SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE (n.nspname NOT LIKE 'pg\_%' ESCAPE '\' AND n.nspname<>'information_schema') AND n.nspname NOT IN ('company_allowance_identity_private','company_common_allowance_private') AND c.relkind='r' ORDER BY n.nspname,c.relname LOOP
+ EXECUTE format('SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY to_jsonb(x)::text),''[]'')::text) FROM %I.%I x',r.nspname,r.relname) INTO h;
+ INSERT INTO common_data_fingerprints VALUES(r.nspname||'.'||r.relname,h);
+ END LOOP;
+END $hash$;
+
+UPDATE sko_common_install_checkpoints SET all_application_rows_hash=(SELECT md5(coalesce(jsonb_agg(jsonb_build_array(name,hash) ORDER BY name),'[]')::text) FROM common_data_fingerprints) WHERE side='before';
+DROP TABLE common_data_fingerprints;
+SELECT checkpoint FROM sko_common_install_checkpoints WHERE side='before';
+ROLLBACK;
