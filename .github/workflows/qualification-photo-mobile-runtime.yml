@@ -20,6 +20,8 @@ jobs:
         run: dart analyze lib/features/qualifications/qualification_photo_mobile_runtime.dart lib/features/qualifications/qualification_photo_session_rpc.dart lib/features/qualifications/qualification_photo_session_rpc_supabase.dart test/features/qualifications/qualification_photo_mobile_runtime_test.dart tool/verify_qualification_photo_session_rpc.dart tool/verify_qualification_photo_session_rpc_sdk_test.dart
       - name: Verify runtime isolation
         run: flutter test test/features/qualifications/qualification_photo_mobile_runtime_test.dart --reporter expanded
+      - name: Verify existing native channel boundaries
+        run: flutter test test/features/qualifications/admin_saved_qualification_photo_sqflite_connection_test.dart --reporter expanded
       - name: Verify SDK loopback
         run: flutter test tool/verify_qualification_photo_session_rpc_sdk_test.dart --reporter expanded
       - name: Verify pure guard assertions

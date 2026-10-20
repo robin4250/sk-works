@@ -49,3 +49,17 @@ lifecycle behavior remain separate checks.
 
 No production/Auth/provider/RLS/Storage changes, actual invitation, logout,
 Mac/iPhone operation, product route/help or workflow change was performed.
+
+## CI continuation
+
+A dedicated push-only workflow on the isolated runtime branch pins Flutter 3.47.5,
+enforces the existing lockfile and verifies pubspec/lock unchanged. It analyzes
+runtime and fixed guard/tools, runs runtime tests, existing native channel tests,
+SDK loopback tests and the pure 171-assertion guard.
+
+Two further runtime tests use actual pinned Supabase SDK with an in-memory
+HTTP MockClient (all session/token values synthetic): readiness refusal must keep
+directory lookup at zero; disposal while directory lookup is blocked must wait for
+that provider and reject its late result before canonicalization/native open.
+These exercise enabled rejection boundaries, not a successful native composition.
+Results must be read from the current-head CI before treating them as verified.
