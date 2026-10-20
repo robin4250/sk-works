@@ -11,6 +11,7 @@ test('Auth failure logs only status and preserves response and account checks', 
  console.error=(...args)=>logs.push(args);
  globalThis.fetch=async(url,options={})=>{
   const u=new URL(url);calls.push({path:u.pathname,method:options.method??'GET'});
+  if(u.pathname==='/auth/v1/settings')return Response.json({external:{phone:true}});
   if(u.pathname==='/auth/v1/user')return Response.json({id:'10000000-0000-0000-0000-000000000001'});
   if(u.pathname==='/rest/v1/rpc/account_server_access_allowed')return Response.json(true);
   if(u.pathname==='/rest/v1/rpc/begin_account_server_activity')return Response.json('20000000-0000-0000-0000-000000000001');

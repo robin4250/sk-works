@@ -1,0 +1,21 @@
+name: Employee invitation provider readiness
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/create-employee-invite/**'
+      - 'supabase/functions/_shared/account_access.mjs'
+      - 'supabase/functions/_shared/account_activity.mjs'
+      - 'supabase/functions/_shared/account_deletion_inspection.mjs'
+      - '.github/workflows/employee-invite-provider-readiness.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test supabase/functions/create-employee-invite/auth_error_logging_test.mjs supabase/functions/create-employee-invite/persistence_error_logging_test.mjs supabase/functions/create-employee-invite/provider_readiness_test.mjs

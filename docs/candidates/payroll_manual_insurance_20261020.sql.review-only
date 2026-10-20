@@ -1,0 +1,96 @@
+-- REVIEW ONLY: individual real monthly insurance amounts, no inferred enrollment.
+-- Reuses the current effective-month saver, audit/CAS, refresh and final protection.
+BEGIN;
+SET LOCAL lock_timeout='3s';
+SET LOCAL statement_timeout='30s';
+DO $guard$
+BEGIN
+ IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('payroll_tax_private.validate_conditions(jsonb)')) IS DISTINCT FROM '4da2bc7e0e19291fba7a5a588e143315'
+ OR (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)')) IS DISTINCT FROM '17ab2de831a2db457b8ad7ae4283b7fc'
+ OR (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('payroll_tax_private.read_conditions(uuid,uuid)')) IS DISTINCT FROM 'bf7cb912a973c4ca71fea8cd259c2190'
+ OR (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('private.apply_payroll_custom_money()')) IS DISTINCT FROM '5a2ee941d0ab23e56f588e4218103670'
+ THEN RAISE EXCEPTION 'manual insurance baseline differs'; END IF;
+END $guard$;
+DO $patch_validator$
+DECLARE definition text; needle text; replacement text;
+BEGIN
+ definition:=pg_get_functiondef('payroll_tax_private.validate_conditions(jsonb)'::regprocedure);
+ needle:='declare k text; d date; entry record;';
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'validator declaration differs'; END IF;
+ definition:=replace(definition,needle,'declare k text; d date; entry record; manual_total bigint:=0;');
+ needle:=E'begin\n if v is null';
+ replacement:=$manual$begin
+ if v->>'insurance_mode'='manual' then
+  if jsonb_typeof(v) IS DISTINCT FROM 'object' OR octet_length(v::text)>4096
+  OR v-array['insurance_mode','manual_insurance_premiums','income_mode','dependents','non_taxable_yen','additional_social_deduction_yen','deduction_overrides']<>'{}'::jsonb
+  OR coalesce(v->>'income_mode','') NOT IN ('fixed','koh','otsu')
+  THEN RAISE EXCEPTION '個別保険月額の条件を確認してください' USING errcode='22023'; END IF;
+  FOREACH k IN ARRAY ARRAY['dependents','non_taxable_yen','additional_social_deduction_yen'] LOOP
+   IF jsonb_typeof(v->k) IS DISTINCT FROM 'number' OR (v->>k)!~'^[0-9]{1,9}$'
+   THEN RAISE EXCEPTION '金額・人数は整数で入力してください' USING errcode='22023'; END IF;
+  END LOOP;
+  IF (v->>'dependents')::integer>99 THEN RAISE EXCEPTION '扶養人数を確認してください' USING errcode='22023'; END IF;
+  IF jsonb_typeof(v->'manual_insurance_premiums') IS DISTINCT FROM 'object'
+  OR (v->'manual_insurance_premiums')-ARRAY['health_insurance','pension_insurance','employment_insurance','nursing_insurance','child_support']<>'{}'::jsonb
+  THEN RAISE EXCEPTION '保険別の個別月額を確認してください' USING errcode='22023'; END IF;
+  FOREACH k IN ARRAY ARRAY['health_insurance','pension_insurance','employment_insurance','nursing_insurance','child_support'] LOOP
+   IF jsonb_typeof(v->'manual_insurance_premiums'->k) IS DISTINCT FROM 'number'
+   OR (v->'manual_insurance_premiums'->>k)!~'^[0-9]{1,10}$'
+   OR (v->'manual_insurance_premiums'->>k)::numeric>2147483647
+   THEN RAISE EXCEPTION '各保険料は本人負担月額を入力してください。該当なしは0円を明示してください' USING errcode='22023'; END IF;
+   manual_total:=manual_total+(v->'manual_insurance_premiums'->>k)::bigint;
+  END LOOP;
+  IF manual_total>2147483647 THEN RAISE EXCEPTION '保険料合計が上限を超えています' USING errcode='22023'; END IF;
+  IF v?'deduction_overrides' THEN
+   IF jsonb_typeof(v->'deduction_overrides') IS DISTINCT FROM 'object' OR (v->'deduction_overrides')-ARRAY['income_tax']<>'{}'::jsonb
+   THEN RAISE EXCEPTION '個別保険月額と自動計算修正を混在できません' USING errcode='22023'; END IF;
+   IF v->'deduction_overrides'?'income_tax' AND (jsonb_typeof(v#>'{deduction_overrides,income_tax}') IS DISTINCT FROM 'number'
+   OR (v#>>'{deduction_overrides,income_tax}')!~'^[0-9]{1,10}$' OR (v#>>'{deduction_overrides,income_tax}')::numeric>2147483647)
+   THEN RAISE EXCEPTION '所得税の修正額を確認してください' USING errcode='22023'; END IF;
+  END IF;
+  RETURN;
+ end if;
+ if v is null$manual$;
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'validator entry differs'; END IF;
+ EXECUTE replace(definition,needle,replacement);
+END $patch_validator$;
+DO $patch_calculation$
+DECLARE definition text; needle text; replacement text;
+BEGIN
+ definition:=pg_get_functiondef('payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'::regprocedure);
+ -- Existing duplicate-deduction checks apply equally to named manual premiums.
+ needle:=$needle$(v->>'insurance_mode'='rates' and trim($needle$;
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>2 THEN RAISE EXCEPTION 'duplicate deduction guards differ'; END IF;
+ definition:=replace(definition,needle,$replacement$(v->>'insurance_mode' IN ('rates','manual') and trim($replacement$);
+ needle:=' automatic_premiums:=premiums;';
+ replacement:=$manual$
+ if v->>'insurance_mode'='manual' then
+  premiums:=jsonb_build_object(
+   '健康保険料',v#>'{manual_insurance_premiums,health_insurance}',
+   '厚生年金保険',v#>'{manual_insurance_premiums,pension_insurance}',
+   '雇用保険料',v#>'{manual_insurance_premiums,employment_insurance}',
+   '介護保険料',v#>'{manual_insurance_premiums,nursing_insurance}',
+   '子ども・子育て支援金',v#>'{manual_insurance_premiums,child_support}');
+  select coalesce(sum(value::text::bigint),0) into social from jsonb_each(premiums);
+ end if;
+ automatic_premiums:=case when v->>'insurance_mode'='manual' then null else premiums end;$manual$;
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'premium finalization differs'; END IF;
+ EXECUTE replace(definition,needle,replacement);
+END $patch_calculation$;
+DO $patch_named_premiums$
+DECLARE definition text; needle text;
+BEGIN
+ definition:=pg_get_functiondef('private.apply_payroll_custom_money()'::regprocedure);
+ needle:='if tax_result#>>''{conditions,insurance_mode}''=''rates'' then';
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'named premium merge differs'; END IF;
+ EXECUTE replace(definition,needle,'if tax_result#>>''{conditions,insurance_mode}'' IN (''rates'',''manual'') then');
+END $patch_named_premiums$;
+DO $patch_read_contract$
+DECLARE definition text; needle text;
+BEGIN
+ definition:=pg_get_functiondef('payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure);
+ needle:='return jsonb_build_object(''company_id'',cid';
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'condition reader differs'; END IF;
+ EXECUTE replace(definition,needle,'return jsonb_build_object(''manual_insurance_contract_version'',1,''company_id'',cid');
+END $patch_read_contract$;
+COMMIT;

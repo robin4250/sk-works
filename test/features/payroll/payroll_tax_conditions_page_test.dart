@@ -57,6 +57,84 @@ void main() {
     await t.pumpAndSettle();
   }
 
+  test('manual amounts require all five explicit integers without invented conditions', () {
+    final premiums = {for (final key in manualPayrollInsuranceLabels.keys) key: 0};
+    final manual = <String, dynamic>{'insurance_mode': 'manual',
+      'income_mode': 'fixed', 'manual_insurance_premiums': premiums,
+      'dependents': 0, 'non_taxable_yen': 0, 'additional_social_deduction_yen': 0};
+    expect(validManualPayrollInsurance(manual), isTrue);
+    for (final invalid in [null, '', -1, 0.5, 2147483648]) {
+      expect(validManualPayrollInsurance({...manual,
+        'manual_insurance_premiums': {...premiums, 'health_insurance': invalid}}), isFalse);
+    }
+    expect(validManualPayrollInsurance({...manual, 'health': false}), isFalse);
+    expect(validManualPayrollInsurance({...manual, 'deduction_overrides': {'health_insurance': 10}}), isFalse);
+  });
+
+  testWidgets('manual entry is unavailable on an unprepared backend', (t) async {
+    await open(t, (_, __) async => state());
+    final insurance = find.byKey(const ValueKey('insurance-rates'));
+    await t.ensureVisible(insurance); await t.pumpAndSettle();
+    await t.tap(insurance); await t.pumpAndSettle();
+    expect(find.text('保険別の月額を手入力'), findsNothing);
+    expect(find.text('会社の登録料率で自動計算'), findsWidgets);
+  });
+
+  testWidgets('manual selection is explicit, preserves fixed income and rejects empty amounts', (t) async {
+    final calls = <String>[];
+    await open(t, (name, params) async {
+      calls.add(name);
+      return {...state(), 'manual_insurance_contract_version': 1};
+    });
+    final insurance = find.byKey(const ValueKey('insurance-rates'));
+    await t.ensureVisible(insurance); await t.pumpAndSettle();
+    await t.tap(insurance); await t.pumpAndSettle();
+    await t.tap(find.text('保険別の月額を手入力').last); await t.pumpAndSettle();
+    // ListView builds fields lazily; reveal each field before asserting its key.
+    await t.scrollUntilVisible(find.byKey(const ValueKey('income-fixed')), -250,
+      scrollable: find.byType(Scrollable).first);
+    expect(find.byKey(const ValueKey('income-fixed')), findsOneWidget);
+    await t.scrollUntilVisible(find.byKey(const ValueKey('manual-insurance-health_insurance')), 250,
+      scrollable: find.byType(Scrollable).first);
+    expect(find.byKey(const ValueKey('manual-insurance-health_insurance')), findsOneWidget);
+    await tapSave(t);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(calls, ['read_worker_payroll_tax_conditions']);
+  });
+
+  testWidgets('confirmed explicit zero premiums save no synthetic enrollment or base', (t) async {
+    Map<String, dynamic>? sent;
+    await open(t, (name, params) async {
+      if (name.startsWith('read_')) return {...state(), 'manual_insurance_contract_version': 1};
+      sent = params;
+      return {...state(items: [{'starts_on': params['p_starts_on'], 'version': 1,
+        'value': params['p_value']}]), 'manual_insurance_contract_version': 1};
+    });
+    final insurance = find.byKey(const ValueKey('insurance-rates'));
+    await t.ensureVisible(insurance); await t.pumpAndSettle();
+    await t.tap(insurance); await t.pumpAndSettle();
+    await t.tap(find.text('保険別の月額を手入力').last); await t.pumpAndSettle();
+    for (final key in manualPayrollInsuranceLabels.keys) {
+      final field = find.byKey(ValueKey('manual-insurance-$key'));
+      await t.scrollUntilVisible(field, 250, scrollable: find.byType(Scrollable).first);
+      await t.enterText(field, '0'); t.testTextInput.hide(); await t.pumpAndSettle();
+    }
+    final confirmation = find.widgetWithText(CheckboxListTile, '本人負担の各月額・該当なしの0円・適用月を確認しました');
+    await t.scrollUntilVisible(confirmation, 250, scrollable: find.byType(Scrollable).first);
+    await t.tap(confirmation); await t.pumpAndSettle();
+    await tapSave(t);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await t.tap(find.widgetWithText(FilledButton, '確認して保存').last); await t.pumpAndSettle();
+    expect(sent, isNotNull);
+    final saved = sent!['p_value'] as Map;
+    expect(saved['insurance_mode'], 'manual'); expect(saved['income_mode'], 'fixed');
+    expect(saved['manual_insurance_premiums'], {for (final key in manualPayrollInsuranceLabels.keys) key: 0});
+    for (final key in ['health', 'pension', 'employment', 'nursing', 'birth_date', 'health_base_yen', 'pension_base_yen']) {
+      expect(saved.containsKey(key), isFalse);
+    }
+    expect(sent!['p_expected_version'], 0); expect(sent!['p_confirmed'], isTrue);
+  });
+
   testWidgets('target month opens its effective profile before a future profile', (t) async {
     final calls = <String>[];
     await t.pumpWidget(MaterialApp(home: PayrollTaxConditionsPage(
@@ -497,3 +575,4 @@ void main() {
     expect(find.textContaining('税計算条件を取得できません'), findsOneWidget);
   });
 }
+
