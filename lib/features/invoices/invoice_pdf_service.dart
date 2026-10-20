@@ -1203,14 +1203,16 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
 
   Future<void> _openAcceptanceEditor() async {
     if (_openingAcceptance || _singleInvoice?.invoiceId.isNotEmpty != true ||
-        _singleInvoice?.documentUpdatedAt == null) return;
+        _singleInvoice?.documentUpdatedAt == null) {
+      return;
+    }
     setState(() => _openingAcceptance = true);
     try {
       _actorLease.verify();
       final invoice = _singleInvoice!;
       final pending = _previewData;
       final data = await pending;
-      if (!context.mounted) return;
+      if (!mounted) return;
       _actorLease.verify();
       if (!identical(pending, _previewData)) return;
       final actor = SupabaseBackend.isInitialized
@@ -1234,7 +1236,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
         });
       }
     } catch (_) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('請求書を再読み込みしてから注文請書を開いてください。')));
       }
@@ -2158,5 +2160,6 @@ class _ScreenApprovals extends StatelessWidget {
     ],
   );
 }
+
 
 
