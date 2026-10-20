@@ -30,6 +30,7 @@ void main() {
     final initialY = tester.getTopLeft(selector).dy;
     final footer = find.byKey(const ValueKey('company-common-fixed-footer'));
     final footerY = tester.getTopLeft(footer).dy;
+    expect(tester.getBottomRight(footer).dy, lessThanOrEqualTo(360));
     final field = find.byKey(const ValueKey('scroll-2-rate'));
     await tester.ensureVisible(field);
     await tester.pumpAndSettle();
