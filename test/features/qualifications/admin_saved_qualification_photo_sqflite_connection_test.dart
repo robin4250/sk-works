@@ -3,11 +3,14 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite/sqflite.dart' show SqflitePlugin;
 import 'package:sk_works/features/qualifications/admin_saved_qualification_photo_sqflite_connection.dart';
 import 'package:sk_works/features/qualifications/admin_saved_qualification_photo_sqlite_pending_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // Linux test host: explicitly register the public mobile methodchannel plugin.
+  SqflitePlugin.registerWith();
   const channel = MethodChannel('com.tekartik.sqflite');
   late Directory root;
   late List<MethodCall> calls;
@@ -186,6 +189,30 @@ void main() {
       await expectLater(connection.query('SELECT 1', []), throwsStateError);
     },
   );
+  test('invalidation during callback await rolls back before commit', () async {
+    final connection = await open();
+    final sqlFinished = Completer<void>();
+    final callbackRelease = Completer<void>();
+    final transaction = connection.transaction((executor) async {
+      final result = await executor.execute('UPDATE test SET value = ?', [1]);
+      sqlFinished.complete();
+      await callbackRelease.future;
+      return result;
+    });
+    final failure = expectLater(transaction, throwsStateError);
+    await sqlFinished.future;
+    connection.invalidate();
+    expect(calls.where((call) => call.method == 'closeDatabase'), isEmpty);
+    callbackRelease.complete();
+    await failure;
+    await connection.closed;
+    final control = calls
+        .where((call) => call.method == 'execute')
+        .map((call) => (call.arguments as Map)['sql']);
+    expect(control, contains('ROLLBACK'));
+    expect(control, isNot(contains('COMMIT')));
+    expect(calls.last.method, 'closeDatabase');
+  });
   test('unknown commit invalidates all users and closes', () async {
     final connection = await open();
     loseCommit = true;

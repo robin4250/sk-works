@@ -43,6 +43,8 @@ class Connection implements AdminQualificationSqliteConnection {
   bool invalid = false;
   int calls = 0;
   bool failTransaction = false;
+  bool mutationFinished = false;
+  bool committed = false;
   @override
   void invalidate() {
     invalid = true;
@@ -69,12 +71,17 @@ class Connection implements AdminQualificationSqliteConnection {
     if (failTransaction) {
       throw StateError('unknown transaction');
     }
-    return operation(this);
+    final result = await operation(this);
+    committed = true;
+    return result;
   }
 
   @override
   Future<int> execute(String sql, List<Object?> parameters) async {
     live();
+    if (sql.startsWith('INSERT')) {
+      mutationFinished = true;
+    }
     return 0;
   }
 
@@ -112,6 +119,7 @@ class Fixture {
         sync: true,
       );
   AdminSavedQualificationPhotoSubmissionScope scope = valid;
+  void Function()? onScopeRead;
   String selected = '/private/app/support';
   String canonical = '/private/app/support';
   Connection connection = Connection();
@@ -131,7 +139,11 @@ class Fixture {
       await gate?.future;
       return connection;
     },
-    scope: () => scope,
+    scope: () {
+      final snapshot = scope;
+      onScopeRead?.call();
+      return snapshot;
+    },
     scopeChanges: changes.stream,
   );
   Future<void> close() async {
@@ -247,6 +259,28 @@ Future<void> main() async {
     final store = await f.factory.create();
     f.changes.addError(StateError('scope stream failed'));
     await refuses(() => store.read(key), 'stream error revokes');
+  });
+  await run((f) async {
+    final store = await f.factory.create();
+    bool scheduled = false;
+    f.onScopeRead = () {
+      if (f.connection.mutationFinished && !scheduled) {
+        scheduled = true;
+        // Return the getter's captured old value once, then expose the changed
+        // value at callback completion, with no stream event delivered.
+        f.scope = changed;
+      }
+    };
+    await refuses(
+      () => store.compareAndSet(key, null, '{}'),
+      'getter change after last SQL refuses callback completion',
+    );
+    check(scheduled, 'getter-only boundary was reached');
+    check(!f.connection.committed, 'factory refuses before owner commit');
+    check(
+      f.connection.invalid,
+      'getter-only scope change invalidates connection',
+    );
   });
   stdout.writeln(
     'PASS $checks factory assertions: fixed path identity, namespace, scope ABA, async open, fresh connection, invalidated reuse refusal',

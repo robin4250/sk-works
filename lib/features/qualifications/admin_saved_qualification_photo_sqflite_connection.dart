@@ -125,7 +125,9 @@ class SqfliteAdminQualificationConnection
         final executor = _SqfliteTransactionExecutor(transaction, _check);
         try {
           _check();
-          return await operation(executor);
+          final result = await operation(executor);
+          _check();
+          return result;
         } finally {
           // End the lease before sqflite sends COMMIT or waits for its ACK.
           executor.active = false;

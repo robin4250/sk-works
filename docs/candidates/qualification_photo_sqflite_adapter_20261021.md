@@ -25,3 +25,9 @@ begin/callback/commitの失敗・結果不明はconnection全体を同期invalid
 ローカルFlutter/SDK型解析は実行不可のため未実行。root CIで実lock/採用versionのanalyze＋対象testが必要。過去のpure425/実SQLite47/factory38を今回再実行していない。
 
 実機で残るもの: plugin/OSのcommit完了と再起動readback、複数isolate/engine同一path、kill/端末ロック/容量不足、DB/WALファイル保護とbackup設定、会社actor/session/token pin、元targetへの復帰UI、正規承認経路。製品route・本番・Storage/Auth変更・外部送信は行わない。
+
+## Linuxhost channel registration補修
+
+初回専用CIは型解析・pure/privatepath・factory・実SQLiteまで成功し、channel testsはLinuxhostの未登録databaseFactoryで失敗した。fixtureはpublic `package:sqflite/sqflite.dart` の `SqflitePlugin.registerWith()` を明示する。これは未設定時にnative methodchannel factoryを登録するpublic APIであり、private implementation importや製品factory変更、FFIへの置換、追加依存は使わない。
+
+公式export/registration source: https://github.com/tekartik/sqflite/blob/master/sqflite/lib/sqflite.dart と https://github.com/tekartik/sqflite/blob/master/sqflite/lib/src/sqflite_plugin.dart 。補修後のchannel実行・型解析はroot CI待ち、ローカルFlutter未実行。

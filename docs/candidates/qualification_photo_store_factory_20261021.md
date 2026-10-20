@@ -20,6 +20,6 @@ connector.invalidateは同期的・非throwでrevoked状態を立て、実close�
 
 ## 検証
 
-pure Dart fixture38 assertions成功。固定path、並行create1回、foreign keyのSQL前拒否、scope ABA、無効root、provider/realpath mismatch、open遅延時scope変更、失効connection再利用拒否、新connection復旧、scope stream errorを確認。ここではSQL fakeを使い、SQLiteのdurable CASを再証明しない。既実DB47 assertionsの再実行はしていない。
+pure Dart fixture42 assertions成功。固定path、並行create1回、foreign keyのSQL前拒否、scope ABA、無効root、provider/realpath mismatch、open遅延時scope変更、失効connection再利用拒否、新connection復旧、scope stream errorを確認。getterだけが最終SQL後に切り替わりstream未配送のケースも、transaction callback完了前に再検査してcommit前で拒否する。新回帰4assertionsは旧callbackではowner commit済みとなり失敗するnegative controlを確認した。ここではSQL fakeを使い、SQLiteのdurable CASを再証明しない。既実DB47 assertionsの再実行はしていない。
 
 Flutter解析/実mobile plugin/path_provider呼出/実機は未検証。製品route・本番・外部送信は未接続。

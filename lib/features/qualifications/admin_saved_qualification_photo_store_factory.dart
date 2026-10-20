@@ -220,7 +220,9 @@ class _GuardedConnection implements AdminQualificationSqliteConnection {
     _check();
     final result = await inner.transaction((executor) async {
       _check();
-      return operation(_GuardedExecutor(executor, _check));
+      final result = await operation(_GuardedExecutor(executor, _check));
+      _check();
+      return result;
     });
     _check();
     return result;
