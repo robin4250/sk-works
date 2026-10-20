@@ -1,0 +1,45 @@
+{
+  "original_proof_sha256": "962bde205969b4b223bc0474107068a79e83c860f429d8106e0d2eebf30cac40",
+  "reviewed_proof_sha256": "13076dd8ecf932423cea823f9c761fd41e3d688534a37bb659fbba99cb966dd1",
+  "collector_sha256": "b96f6e4365e2e992886f38dad0f777e55665f18b03525cddf4edbdf746348207",
+  "proof_mutations": "exactly three new public functions additionally revoke service_role; existing setters unchanged",
+  "production_changes": false,
+  "native_executed": false,
+  "root_review_required": true,
+  "fixture_checks": 14,
+  "source_composition_tests": 2,
+  "files": [
+    {
+      "path": "REVIEW.md",
+      "sha256": "5f1434aac63c4249153734f2c7d4977c4722601f89ff341198df21bc16dfbf3d"
+    },
+    {
+      "path": "collector_proof_bundle.json",
+      "sha256": "5a2ddeeac2a10f6a4f7f67bb32170a53d913c4a03d9337adab6ff090d1aa0608"
+    },
+    {
+      "path": "composed_transaction.fixture.sql",
+      "sha256": "1e3b2f994d8b81d6d34e3d611e504040da4889d63e8f4f0cde8f6a6cb41c9944"
+    },
+    {
+      "path": "owner_collector_public_create_rehearsal.py",
+      "sha256": "4516301d40e80b6f4d280a57f25d00ec6a56061e11605247480424e6cab3d419"
+    },
+    {
+      "path": "owner_expense_off_rehearsal.py",
+      "sha256": "6c3cf1078238d9bbaa9a3b767c20f779e7bcdf0f45712a861271bedcdda25e1a"
+    },
+    {
+      "path": "permission_contract_fixture.mjs",
+      "sha256": "cfe15b519a41847a4e824ea96573fe77dd75ab615a84ef0090af46a36a10e15c"
+    },
+    {
+      "path": "reauthentication_proofs_public_acl.sql.review-only",
+      "sha256": "13076dd8ecf932423cea823f9c761fd41e3d688534a37bb659fbba99cb966dd1"
+    },
+    {
+      "path": "test_composition.py",
+      "sha256": "ee191a5563c76249ce5a9098c832cf9f1eedd6f34323c7384935cc670952aa38"
+    }
+  ]
+}
