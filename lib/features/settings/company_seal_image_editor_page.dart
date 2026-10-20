@@ -166,7 +166,7 @@ class _CompanySealImageEditorPageState extends State<CompanySealImageEditorPage>
             child: Image.memory(candidate.bytes, fit: BoxFit.contain)))),
           FilledButton(onPressed: _busy ? null : () async {
             final allowed = await _allowed();
-            if (!mounted || !allowed || _candidate != candidate) { return; }
+            if (!context.mounted || !allowed || _candidate != candidate) { return; }
             Navigator.of(context).pop(candidate);
           }, child: const Text('このPNGを追加候補にする（まだ保存しない）')),
         ],
