@@ -1,0 +1,112 @@
+BEGIN;
+DO $lock_rows$ DECLARE r record;BEGIN FOR r IN SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname LOOP EXECUTE format('LOCK TABLE %I.%I IN SHARE MODE',r.nspname,r.relname);END LOOP;END $lock_rows$;
+DO $external_before_guard$ BEGIN IF nullif(current_setting('sko.manual_install.external_before',true),'') IS NULL OR (SELECT jsonb_build_object('schema',1,'functions',(SELECT coalesce(jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'definition',pg_get_functiondef(p.oid),'body_hash',md5(p.prosrc),'metadata',to_jsonb(p)-'prosrc'-'prosqlbody') ORDER BY p.oid::regprocedure::text),'[]') FROM pg_proc p WHERE p.oid=ANY(ARRAY['payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'private.apply_payroll_custom_money()'::regprocedure])),'business_hash',pg_temp.manual_install_business_hash(),'table_hash',(SELECT md5(jsonb_build_object('classes',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.oid),'[]') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND c.relkind IN ('r','p','S')),'policies',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.oid),'[]') FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private')))::text)),'other_bodies_hash',(SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]')::text) FROM (SELECT p.* FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND p.oid<>ALL(ARRAY['payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'private.apply_payroll_custom_money()'::regprocedure])) x),'database_hash',(SELECT md5(to_jsonb(d)::text) FROM pg_database d WHERE datname=current_database()),'manual_used',(EXISTS(SELECT 1 FROM payroll_tax_private.worker_conditions WHERE value->>'insurance_mode'='manual')  OR EXISTS(SELECT 1 FROM payroll_tax_private.condition_history WHERE before_value->>'insurance_mode'='manual' OR after_value->>'insurance_mode'='manual')  OR EXISTS(SELECT 1 FROM public.payroll_statements WHERE jsonb_path_exists(detail,'$.** ? (@.insurance_mode == "manual")'))  OR EXISTS(SELECT 1 FROM payroll_final_private.history WHERE jsonb_path_exists(value,'$.** ? (@.insurance_mode == "manual")'))))) IS DISTINCT FROM current_setting('sko.manual_install.external_before')::jsonb THEN RAISE EXCEPTION 'external before checkpoint changed: install refused';END IF;END $external_before_guard$;
+DO $unused_install$ BEGIN IF (EXISTS(SELECT 1 FROM payroll_tax_private.worker_conditions WHERE value->>'insurance_mode'='manual')  OR EXISTS(SELECT 1 FROM payroll_tax_private.condition_history WHERE before_value->>'insurance_mode'='manual' OR after_value->>'insurance_mode'='manual')  OR EXISTS(SELECT 1 FROM public.payroll_statements WHERE jsonb_path_exists(detail,'$.** ? (@.insurance_mode == "manual")'))  OR EXISTS(SELECT 1 FROM payroll_final_private.history WHERE jsonb_path_exists(value,'$.** ? (@.insurance_mode == "manual")'))) THEN RAISE EXCEPTION 'manual mode already used: install refused';END IF;END $unused_install$;
+DO $runtime_capture$ BEGIN PERFORM set_config('sko.manual_install.before',(SELECT jsonb_build_object('schema',1,'functions',(SELECT coalesce(jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'definition',pg_get_functiondef(p.oid),'body_hash',md5(p.prosrc),'metadata',to_jsonb(p)-'prosrc'-'prosqlbody') ORDER BY p.oid::regprocedure::text),'[]') FROM pg_proc p WHERE p.oid=ANY(ARRAY['payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'private.apply_payroll_custom_money()'::regprocedure])),'business_hash',pg_temp.manual_install_business_hash(),'table_hash',(SELECT md5(jsonb_build_object('classes',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.oid),'[]') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND c.relkind IN ('r','p','S')),'policies',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.oid),'[]') FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private')))::text)),'other_bodies_hash',(SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]')::text) FROM (SELECT p.* FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND p.oid<>ALL(ARRAY['payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'private.apply_payroll_custom_money()'::regprocedure])) x),'database_hash',(SELECT md5(to_jsonb(d)::text) FROM pg_database d WHERE datname=current_database()),'manual_used',(EXISTS(SELECT 1 FROM payroll_tax_private.worker_conditions WHERE value->>'insurance_mode'='manual')  OR EXISTS(SELECT 1 FROM payroll_tax_private.condition_history WHERE before_value->>'insurance_mode'='manual' OR after_value->>'insurance_mode'='manual')  OR EXISTS(SELECT 1 FROM public.payroll_statements WHERE jsonb_path_exists(detail,'$.** ? (@.insurance_mode == "manual")'))  OR EXISTS(SELECT 1 FROM payroll_final_private.history WHERE jsonb_path_exists(value,'$.** ? (@.insurance_mode == "manual")'))))::text),true); END $runtime_capture$;
+DO $runtime_capture$ BEGIN PERFORM set_config('sko.manual_install.business',pg_temp.manual_install_business_hash(),true); END $runtime_capture$;
+DO $runtime_capture$ BEGIN PERFORM set_config('sko.manual_install.other_bodies',(SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]')::text) FROM (SELECT p.* FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND p.oid<>ALL(ARRAY['payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'private.apply_payroll_custom_money()'::regprocedure])) x),true); END $runtime_capture$;
+DO $runtime_capture$ BEGIN PERFORM set_config('sko.manual_install.metadata',(SELECT md5(coalesce(jsonb_agg(to_jsonb(x)-'prosrc'-'prosqlbody' ORDER BY x.oid),'[]')::text) FROM (SELECT p.* FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private')) x),true); END $runtime_capture$;
+DO $runtime_capture$ BEGIN PERFORM set_config('sko.manual_install.tables',(SELECT md5(jsonb_build_object('classes',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.oid),'[]') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND c.relkind IN ('r','p','S')),'policies',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.oid),'[]') FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private')))::text)),true); END $runtime_capture$;
+-- REVIEW ONLY: individual real monthly insurance amounts, no inferred enrollment.
+-- Reuses the current effective-month saver, audit/CAS, refresh and final protection.
+
+SET LOCAL lock_timeout='3s';
+SET LOCAL statement_timeout='30s';
+DO $guard$
+BEGIN
+ IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('payroll_tax_private.validate_conditions(jsonb)')) IS DISTINCT FROM '4da2bc7e0e19291fba7a5a588e143315'
+ OR (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)')) IS DISTINCT FROM '17ab2de831a2db457b8ad7ae4283b7fc'
+ OR (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('payroll_tax_private.read_conditions(uuid,uuid)')) IS DISTINCT FROM 'bf7cb912a973c4ca71fea8cd259c2190'
+ OR (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('private.apply_payroll_custom_money()')) IS DISTINCT FROM '5a2ee941d0ab23e56f588e4218103670'
+ THEN RAISE EXCEPTION 'manual insurance baseline differs'; END IF;
+END $guard$;
+DO $patch_validator$
+DECLARE definition text; needle text; replacement text;
+BEGIN
+ definition:=pg_get_functiondef('payroll_tax_private.validate_conditions(jsonb)'::regprocedure);
+ needle:='declare k text; d date; entry record;';
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'validator declaration differs'; END IF;
+ definition:=replace(definition,needle,'declare k text; d date; entry record; manual_total bigint:=0;');
+ needle:=E'begin\n if v is null';
+ replacement:=$manual$begin
+ if v->>'insurance_mode'='manual' then
+  if jsonb_typeof(v) IS DISTINCT FROM 'object' OR octet_length(v::text)>4096
+  OR v-array['insurance_mode','manual_insurance_premiums','income_mode','dependents','non_taxable_yen','additional_social_deduction_yen','deduction_overrides']<>'{}'::jsonb
+  OR coalesce(v->>'income_mode','') NOT IN ('fixed','koh','otsu')
+  THEN RAISE EXCEPTION '個別保険月額の条件を確認してください' USING errcode='22023'; END IF;
+  FOREACH k IN ARRAY ARRAY['dependents','non_taxable_yen','additional_social_deduction_yen'] LOOP
+   IF jsonb_typeof(v->k) IS DISTINCT FROM 'number' OR (v->>k)!~'^[0-9]{1,9}$'
+   THEN RAISE EXCEPTION '金額・人数は整数で入力してください' USING errcode='22023'; END IF;
+  END LOOP;
+  IF (v->>'dependents')::integer>99 THEN RAISE EXCEPTION '扶養人数を確認してください' USING errcode='22023'; END IF;
+  IF jsonb_typeof(v->'manual_insurance_premiums') IS DISTINCT FROM 'object'
+  OR (v->'manual_insurance_premiums')-ARRAY['health_insurance','pension_insurance','employment_insurance','nursing_insurance','child_support']<>'{}'::jsonb
+  THEN RAISE EXCEPTION '保険別の個別月額を確認してください' USING errcode='22023'; END IF;
+  FOREACH k IN ARRAY ARRAY['health_insurance','pension_insurance','employment_insurance','nursing_insurance','child_support'] LOOP
+   IF jsonb_typeof(v->'manual_insurance_premiums'->k) IS DISTINCT FROM 'number'
+   OR (v->'manual_insurance_premiums'->>k)!~'^[0-9]{1,10}$'
+   OR (v->'manual_insurance_premiums'->>k)::numeric>2147483647
+   THEN RAISE EXCEPTION '各保険料は本人負担月額を入力してください。該当なしは0円を明示してください' USING errcode='22023'; END IF;
+   manual_total:=manual_total+(v->'manual_insurance_premiums'->>k)::bigint;
+  END LOOP;
+  IF manual_total>2147483647 THEN RAISE EXCEPTION '保険料合計が上限を超えています' USING errcode='22023'; END IF;
+  IF v?'deduction_overrides' THEN
+   IF jsonb_typeof(v->'deduction_overrides') IS DISTINCT FROM 'object' OR (v->'deduction_overrides')-ARRAY['income_tax']<>'{}'::jsonb
+   THEN RAISE EXCEPTION '個別保険月額と自動計算修正を混在できません' USING errcode='22023'; END IF;
+   IF v->'deduction_overrides'?'income_tax' AND (jsonb_typeof(v#>'{deduction_overrides,income_tax}') IS DISTINCT FROM 'number'
+   OR (v#>>'{deduction_overrides,income_tax}')!~'^[0-9]{1,10}$' OR (v#>>'{deduction_overrides,income_tax}')::numeric>2147483647)
+   THEN RAISE EXCEPTION '所得税の修正額を確認してください' USING errcode='22023'; END IF;
+  END IF;
+  RETURN;
+ end if;
+ if v is null$manual$;
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'validator entry differs'; END IF;
+ EXECUTE replace(definition,needle,replacement);
+END $patch_validator$;
+DO $patch_calculation$
+DECLARE definition text; needle text; replacement text;
+BEGIN
+ definition:=pg_get_functiondef('payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'::regprocedure);
+ -- Existing duplicate-deduction checks apply equally to named manual premiums.
+ needle:=$needle$(v->>'insurance_mode'='rates' and trim($needle$;
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>2 THEN RAISE EXCEPTION 'duplicate deduction guards differ'; END IF;
+ definition:=replace(definition,needle,$replacement$(v->>'insurance_mode' IN ('rates','manual') and trim($replacement$);
+ needle:=' automatic_premiums:=premiums;';
+ replacement:=$manual$
+ if v->>'insurance_mode'='manual' then
+  premiums:=jsonb_build_object(
+   '健康保険料',v#>'{manual_insurance_premiums,health_insurance}',
+   '厚生年金保険',v#>'{manual_insurance_premiums,pension_insurance}',
+   '雇用保険料',v#>'{manual_insurance_premiums,employment_insurance}',
+   '介護保険料',v#>'{manual_insurance_premiums,nursing_insurance}',
+   '子ども・子育て支援金',v#>'{manual_insurance_premiums,child_support}');
+  select coalesce(sum(value::text::bigint),0) into social from jsonb_each(premiums);
+ end if;
+ automatic_premiums:=case when v->>'insurance_mode'='manual' then null else premiums end;$manual$;
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'premium finalization differs'; END IF;
+ EXECUTE replace(definition,needle,replacement);
+END $patch_calculation$;
+DO $patch_named_premiums$
+DECLARE definition text; needle text;
+BEGIN
+ definition:=pg_get_functiondef('private.apply_payroll_custom_money()'::regprocedure);
+ needle:='if tax_result#>>''{conditions,insurance_mode}''=''rates'' then';
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'named premium merge differs'; END IF;
+ EXECUTE replace(definition,needle,'if tax_result#>>''{conditions,insurance_mode}'' IN (''rates'',''manual'') then');
+END $patch_named_premiums$;
+DO $patch_read_contract$
+DECLARE definition text; needle text;
+BEGIN
+ definition:=pg_get_functiondef('payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure);
+ needle:='return jsonb_build_object(''company_id'',cid';
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'condition reader differs'; END IF;
+ EXECUTE replace(definition,needle,'return jsonb_build_object(''manual_insurance_contract_version'',1,''company_id'',cid');
+END $patch_read_contract$;
+
+DO $postcheck$ BEGIN IF pg_temp.manual_install_business_hash() IS DISTINCT FROM current_setting('sko.manual_install.business') THEN RAISE EXCEPTION 'manual install changed existing business rows';END IF;
+IF (SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]')::text) FROM (SELECT p.* FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND p.oid<>ALL(ARRAY['payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'private.apply_payroll_custom_money()'::regprocedure])) x) IS DISTINCT FROM current_setting('sko.manual_install.other_bodies') THEN RAISE EXCEPTION 'manual install changed unrelated function bodies';END IF;
+IF (SELECT md5(coalesce(jsonb_agg(to_jsonb(x)-'prosrc'-'prosqlbody' ORDER BY x.oid),'[]')::text) FROM (SELECT p.* FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private')) x) IS DISTINCT FROM current_setting('sko.manual_install.metadata') THEN RAISE EXCEPTION 'manual install changed function OID owner ACL or metadata';END IF;
+IF (SELECT md5(jsonb_build_object('classes',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.oid),'[]') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND c.relkind IN ('r','p','S')),'policies',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.oid),'[]') FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private')))::text)) IS DISTINCT FROM current_setting('sko.manual_install.tables') THEN RAISE EXCEPTION 'manual install changed existing tables policies or owners';END IF;
+IF NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid='payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure AND prosrc LIKE '%manual_insurance_contract_version%') THEN RAISE EXCEPTION 'manual reader capability absent';END IF;END $postcheck$;
+SELECT jsonb_build_object('schema',1,'before',current_setting('sko.manual_install.before')::jsonb,'after',(SELECT jsonb_build_object('schema',1,'functions',(SELECT coalesce(jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'definition',pg_get_functiondef(p.oid),'body_hash',md5(p.prosrc),'metadata',to_jsonb(p)-'prosrc'-'prosqlbody') ORDER BY p.oid::regprocedure::text),'[]') FROM pg_proc p WHERE p.oid=ANY(ARRAY['payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'private.apply_payroll_custom_money()'::regprocedure])),'business_hash',pg_temp.manual_install_business_hash(),'table_hash',(SELECT md5(jsonb_build_object('classes',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.oid),'[]') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND c.relkind IN ('r','p','S')),'policies',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.oid),'[]') FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private')))::text)),'other_bodies_hash',(SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.oid),'[]')::text) FROM (SELECT p.* FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','private','payroll_tax_private','payroll_unit_private','resident_tax_private','company_common_allowance_private','company_allowance_identity_private') AND p.oid<>ALL(ARRAY['payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.calculate(uuid,uuid,date,date,bigint,bigint)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'private.apply_payroll_custom_money()'::regprocedure])) x),'database_hash',(SELECT md5(to_jsonb(d)::text) FROM pg_database d WHERE datname=current_database()),'manual_used',(EXISTS(SELECT 1 FROM payroll_tax_private.worker_conditions WHERE value->>'insurance_mode'='manual')  OR EXISTS(SELECT 1 FROM payroll_tax_private.condition_history WHERE before_value->>'insurance_mode'='manual' OR after_value->>'insurance_mode'='manual')  OR EXISTS(SELECT 1 FROM public.payroll_statements WHERE jsonb_path_exists(detail,'$.** ? (@.insurance_mode == "manual")'))  OR EXISTS(SELECT 1 FROM payroll_final_private.history WHERE jsonb_path_exists(value,'$.** ? (@.insurance_mode == "manual")'))))));
+COMMIT;
