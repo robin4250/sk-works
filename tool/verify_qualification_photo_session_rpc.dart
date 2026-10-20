@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
-import '../lib/features/qualifications/qualification_photo_session_rpc.dart';
-import '../lib/features/qualifications/admin_saved_qualification_photo_draft.dart';
-import '../lib/features/qualifications/admin_saved_qualification_photo_prepare.dart';
-import '../lib/features/qualifications/admin_saved_qualification_photo_submission_repository.dart';
+import 'package:sk_works/features/qualifications/qualification_photo_session_rpc.dart';
+import 'package:sk_works/features/qualifications/admin_saved_qualification_photo_draft.dart';
+import 'package:sk_works/features/qualifications/admin_saved_qualification_photo_prepare.dart';
+import 'package:sk_works/features/qualifications/admin_saved_qualification_photo_submission_repository.dart';
 
 const actor = '00000000-0000-0000-0000-000000000001';
 const company = '00000000-0000-0000-0000-000000000002';
@@ -391,7 +392,7 @@ Future<void> main() async {
   );
   await repository.dispose();
   await connected.guard.dispose();
-  print(
+  stdout.writeln(
     'PASS $checks qualification photo session RPC assertions (pure fake transport; no SDK/server/mobile)',
   );
 }

@@ -202,8 +202,9 @@ class QualificationPhotoSessionRpc {
             (payload['company_id'] != _initial.companyId ||
                 payload['target_id'] != _initial.targetId)) ||
         (!prepare && (payload.length != 1 || !payload.containsKey('id'))) ||
-        (_requestId != null && id != _requestId))
+        (_requestId != null && id != _requestId)) {
       _reject();
+    }
     await authorization();
     _check();
     // Recovery may start at get. A first submit/cancel must first prove its

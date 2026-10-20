@@ -20,6 +20,8 @@ jobs:
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
       - name: Analyze fixed SDK adapter and verification
-        run: dart analyze lib/features/qualifications/qualification_photo_session_rpc.dart lib/features/qualifications/qualification_photo_session_rpc_supabase.dart tool/verify_qualification_photo_session_rpc.dart
+        run: dart analyze lib/features/qualifications/qualification_photo_session_rpc.dart lib/features/qualifications/qualification_photo_session_rpc_supabase.dart tool/verify_qualification_photo_session_rpc.dart tool/verify_qualification_photo_session_rpc_sdk_test.dart
       - name: Verify session pinning and submission composition
         run: dart tool/verify_qualification_photo_session_rpc.dart
+      - name: Verify fixed Supabase SDK over loopback HTTP
+        run: flutter test tool/verify_qualification_photo_session_rpc_sdk_test.dart --reporter expanded

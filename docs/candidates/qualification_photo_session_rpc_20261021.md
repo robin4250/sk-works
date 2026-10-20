@@ -45,3 +45,16 @@ SDK wrapperはDart formatterによる構文読取のみ。現環境はFlutter起
 - Supabase changelog（2026-10-12 TLS旧cipher廃止予告を確認。今回TLS/provider設定の変更なし）。
 - https://supabase.com/docs/reference/dart/rpc
 - https://supabase.com/docs/reference/dart/auth-onauthstatechange （onErrorを必ず扱う指示を確認）。
+
+## 継続：global lintと実SDK loopback fixture
+
+親担当の既専用CI39513633171は成功、global Flutter CI39513633195は新guard/verifierの6 infoで失敗したと報告を受領。ifのblock、toolからlibへの4importをpackage形式へ、printをstdoutへ最小修正した。製品動作やgateは変更しない。ローカルはpackage_configにsk_worksのsourceだけを指定しpure171 assertionsを再実行して成功。Flutter起動・依存更新・pubspec変更なし。
+
+新 `tool/verify_qualification_photo_session_rpc_sdk_test.dart` は固定Supabase SDKを使う実HTTP fixtureを4testに限定して用意する。loopback IPv4のランダムportにだけ送信を許すhttp.ClientをSupabaseClientへ注入し、他host/scheme/portの要求はsocket送信前に拒否する。サーバーは既RPCのPOSTだけを受け、全認証値は合成fixture値である。AuthのsetInitialSessionは合成ローカルsessionを設定するために使い、本番ログイン/ログアウト/provider操作をしない。
+
+1. 実SDKのrpc/setHeaderによる固定Authorization・単一既RPC・scope一致receiptと、その後token変更時の追加RPC0。
+2. 実HTTP readiness応答を保留中にtokenを変更し、旧応答を拒否してprepare write0。
+3. wrapperのforeground/会社streamがABAでも失効を保持し、HTTP0。
+4. 実SDKのget応答が別targetならsubmit/cancelを送らない。
+
+SDK fixtureはlocal Flutter禁止を維持して未実行。型解析と実行は親担当の専用CIに `dart analyze ... tool/verify_qualification_photo_session_rpc_sdk_test.dart` と `flutter test tool/verify_qualification_photo_session_rpc_sdk_test.dart --reporter expanded` を追加して確認する。fixtureを用意したことを実SDK検証成功・mobile接続済みとしない。既171 assertionsと同じ疑似transportをもう一度測るfixtureではなく、未実証だったSDK HTTPの境界を測る。
