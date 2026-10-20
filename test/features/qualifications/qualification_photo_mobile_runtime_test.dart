@@ -157,7 +157,7 @@ class _EnabledFixture {
           'photo_upload_allowed': false,
           'max_photos': 20,
           'self_approval_allowed': false,
-        }), 200, headers: {'content-type': 'application/json'});
+        }), 200, headers: {'content-type': 'application/json'}, request: request);
       }),
     );
     String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value)));
