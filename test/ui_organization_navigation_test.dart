@@ -29,10 +29,10 @@ class DocumentFixture extends WorkerDocumentRepository {
       {'id': 'worker', 'name': '社員A'},
     ],
     'requirements': [
-      if (!removed.contains('internal'))
-        {'id': 'internal', 'name': '社内書類', 'scope': 'internal'},
-      if (!removed.contains('upstream'))
-        {'id': 'upstream', 'name': '取引先書類', 'scope': 'upstream'},
+      if (includeHiddenRequirements || !removed.contains('internal'))
+        {'id': 'internal', 'name': '社内書類', 'scope': 'internal', 'is_active': !removed.contains('internal')},
+      if (includeHiddenRequirements || !removed.contains('upstream'))
+        {'id': 'upstream', 'name': '取引先書類', 'scope': 'upstream', 'is_active': !removed.contains('upstream')},
     ],
     'statuses': [
       {
@@ -44,7 +44,11 @@ class DocumentFixture extends WorkerDocumentRepository {
   };
   @override
   Future<void> setRequirementVisible(String id, bool visible) async {
-    removed.add(id);
+    if (visible) {
+      removed.remove(id);
+    } else {
+      removed.add(id);
+    }
   }
 }
 
@@ -119,21 +123,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('社内書類'), findsNothing);
       expect(find.text('取引先書類'), findsOneWidget);
-      await tester.tap(find.byType(PopupMenuButton<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('非表示'));
+      await tester.tap(find.byKey(const ValueKey('requirement-visible-upstream')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('キャンセル'));
       await tester.pumpAndSettle();
       expect(repo.removed, isEmpty);
-      await tester.tap(find.byType(PopupMenuButton<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('非表示'));
+      await tester.tap(find.byKey(const ValueKey('requirement-visible-upstream')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('非表示'));
       await tester.pumpAndSettle();
       expect(repo.removed, ['upstream']);
-      expect(find.text('取引先書類'), findsNothing);
+      expect(find.text('取引先書類'), findsOneWidget);
+      expect(tester.widget<Checkbox>(find.byKey(const ValueKey('requirement-visible-upstream'))).value, isFalse);
     },
   );
 }

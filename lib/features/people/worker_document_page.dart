@@ -48,6 +48,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   String? _loadedActorId;
   String _scope = 'all';
   String _workerQuery = '';
+  final Set<String> _visibilitySaving = {};
 
   @override
   void initState() {
@@ -415,6 +416,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                     ),
                   ],
                 ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Text(
+                    SkoLanguageController.tr('チェックした項目を本人の「書類登録」に表示します。'),
+                  ),
+                ),
                 Expanded(
                   child: rows.isEmpty
                       ? Center(
@@ -436,27 +443,30 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                   ),
                                 ),
                                 onTap: row['is_active'] == false ? null : () => _editRequirement(row),
-                                trailing: PopupMenuButton<String>(
-                                  onSelected: (action) {
-                                    if (action == 'edit') {
-                                      _editRequirement(row);
-                                    } else {
-                                      _removeRequirement(row);
-                                    }
-                                  },
-                                  itemBuilder: (_) => [
-                                    if (row['is_active'] != false) PopupMenuItem(
-                                      value: 'edit',
-                                      child: Text(
-                                        SkoLanguageController.tr('編集'),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Tooltip(
+                                      message: SkoLanguageController.tr('本人の書類登録に表示'),
+                                      child: Checkbox(
+                                        key: ValueKey('requirement-visible-${row['id']}'),
+                                        semanticLabel: '${row['name']}：${SkoLanguageController.tr('本人の書類登録に表示')}',
+                                        value: row['is_active'] != false,
+                                        onChanged: _visibilitySaving.contains(row['id'])
+                                            ? null
+                                            : (visible) {
+                                                if (visible != null) {
+                                                  _setRequirementVisible(row, visible);
+                                                }
+                                              },
                                       ),
                                     ),
-                                    PopupMenuItem(
-                                      value: 'remove',
-                                      child: Text(
-                                        SkoLanguageController.tr(row['is_active'] == false ? '表示' : '非表示'),
+                                    if (row['is_active'] != false)
+                                      IconButton(
+                                        tooltip: SkoLanguageController.tr('編集'),
+                                        icon: const Icon(Icons.edit_outlined),
+                                        onPressed: () => _editRequirement(row),
                                       ),
-                                    ),
                                   ],
                                 ),
                               ),
@@ -469,37 +479,42 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     );
   }
 
-  Future<void> _removeRequirement(Map<String, dynamic> row) async {
+  Future<void> _setRequirementVisible(Map<String, dynamic> row, bool visible) async {
+    final id = row['id'] as String;
+    if (_visibilitySaving.contains(id) || visible == (row['is_active'] != false)) return;
     final actor = _loadedActorId;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(SkoLanguageController.tr(row['is_active'] == false ? '必要書類を表示' : '必要書類を非表示')),
-        content: Text(SkoLanguageController.tr(row['is_active'] == false ? '書類登録の一覧に再表示します。' : '書類登録の一覧から外します。提出済みデータと写真は保持します。')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(SkoLanguageController.tr('キャンセル')),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(SkoLanguageController.tr(row['is_active'] == false ? '表示' : '非表示')),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
+    setState(() => _visibilitySaving.add(id));
     try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(SkoLanguageController.tr(visible ? '必要書類を表示' : '必要書類を非表示')),
+          content: Text(SkoLanguageController.tr(visible ? '書類登録の一覧に再表示します。' : '書類登録の一覧から外します。提出済みデータと写真は保持します。')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(SkoLanguageController.tr('キャンセル')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(SkoLanguageController.tr(visible ? '表示' : '非表示')),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
       if (actor == null || _repository?.actorId != actor) {
         throw StateError('ログイン情報が変更されました。再読み込みしてください。');
       }
-      await _repository?.setRequirementVisible(row['id'] as String, row['is_active'] == false);
-      if (mounted) _reload();
+      await _repository?.setRequirementVisible(id, visible);
+      if (mounted) await _load();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(error.toString())));
       }
+    } finally {
+      if (mounted) setState(() => _visibilitySaving.remove(id));
     }
   }
 
@@ -1194,4 +1209,5 @@ class WorkerDocumentEntryChoices extends StatelessWidget {
     ],
   );
 }
+
 

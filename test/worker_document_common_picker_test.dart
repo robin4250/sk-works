@@ -10,8 +10,12 @@ class _Repository extends WorkerDocumentRepository {
   String? get actorId => 'actor';
   final row = <String, dynamic>{'id': 'original-id', 'name': '履歴書', 'scope': 'upstream', 'is_required': false, 'expiry_required': true};
   bool includedHidden = false;
+  bool visibilityFails = false;
+  final visibilityWrites = <bool>[];
   @override
   Future<void> setRequirementVisible(String id, bool visible) async {
+    visibilityWrites.add(visible);
+    if (visibilityFails) throw StateError('保存できませんでした');
     row['is_active'] = visible;
   }
   Map<String, dynamic>? update;
@@ -55,15 +59,54 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.includedHidden, isTrue);
     expect(find.text('非表示'), findsOneWidget);
-    await tester.tap(find.byType(PopupMenuButton<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('表示'));
+    expect(tester.widget<Checkbox>(find.byKey(const ValueKey('requirement-visible-original-id'))).value, isFalse);
+    await tester.tap(find.byKey(const ValueKey('requirement-visible-original-id')));
     await tester.pumpAndSettle();
     expect(repository.row['is_active'], isFalse);
     await tester.tap(find.widgetWithText(FilledButton, '表示'));
     await tester.pumpAndSettle();
     expect(repository.row['is_active'], isTrue);
     expect(find.text('履歴書'), findsOneWidget);
+  });
+  testWidgets('visibility checkbox preserves saved value until confirmation and cancellation writes nothing', (tester) async {
+    repository.row['scope'] = 'internal';
+    repository.row['is_active'] = true;
+    await tester.pumpWidget(MaterialApp(home: WorkerDocumentPage(view: WorkerDocumentView.settings, repositoryOverride: repository)));
+    await tester.pumpAndSettle();
+    final checkbox = find.byKey(const ValueKey('requirement-visible-original-id'));
+    expect(tester.widget<Checkbox>(checkbox).value, isTrue);
+    await tester.tap(checkbox);
+    await tester.pumpAndSettle();
+    expect(repository.row['is_active'], isTrue);
+    expect(repository.visibilityWrites, isEmpty);
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(checkbox).value, isTrue);
+    expect(repository.visibilityWrites, isEmpty);
+    await tester.tap(checkbox);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '非表示'));
+    await tester.pumpAndSettle();
+    expect(repository.visibilityWrites, [false]);
+    expect(tester.widget<Checkbox>(checkbox).value, isFalse);
+    expect(find.text('履歴書'), findsOneWidget);
+    expect(repository.includedHidden, isTrue);
+  });
+  testWidgets('visibility save failure retains the checked value and allows retry', (tester) async {
+    repository.row['scope'] = 'internal';
+    repository.row['is_active'] = true;
+    repository.visibilityFails = true;
+    await tester.pumpWidget(MaterialApp(home: WorkerDocumentPage(view: WorkerDocumentView.settings, repositoryOverride: repository)));
+    await tester.pumpAndSettle();
+    final checkbox = find.byKey(const ValueKey('requirement-visible-original-id'));
+    await tester.tap(checkbox);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '非表示'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(checkbox).value, isTrue);
+    expect(tester.widget<Checkbox>(checkbox).onChanged, isNotNull);
+    expect(find.textContaining('保存できませんでした'), findsOneWidget);
+    expect(repository.visibilityWrites, [false]);
   });
   testWidgets('existing other-purpose document shares original ID and flags without insert', (tester) async {
     await open(tester);
@@ -99,3 +142,4 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
