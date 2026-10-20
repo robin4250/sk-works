@@ -1,0 +1,173 @@
+-- REVIEW ONLY: NOT A MIGRATION. No Auth/provider/hook or production change.
+-- Authenticated-account alternative; does NOT solve unauthenticated phone QR login.
+-- Default OFF. App/profile/approval/Storage integration is a separate required slice.
+create table private.employee_authenticated_invite_v2_rollout (
+ company_id uuid primary key references public.companies(id),enabled boolean not null default false
+);
+create table private.employee_authenticated_invite_v2 (
+ id uuid primary key,company_id uuid not null references public.companies(id),
+ worker_id uuid not null unique references public.workers(id),
+ issued_by uuid not null references auth.users(id),issue_request_id uuid not null unique,
+ name text not null,phone text not null,token_hash bytea not null check(octet_length(token_hash)=32),
+ generation integer not null check(generation>0),expires_at timestamptz not null,
+ state text not null check(state in ('pending','redeemed','cancelled')),
+ redeemed_by uuid references auth.users(id),redeemed_session_id uuid,redeem_request_id uuid,
+ product_invite_id uuid references public.employee_registration_invites(id),
+ check((state='pending' and redeemed_by is null and product_invite_id is null)
+    or (state='redeemed' and redeemed_by is not null and redeemed_session_id is not null
+        and redeem_request_id is not null and product_invite_id is not null)
+    or state='cancelled')
+);
+alter table private.employee_authenticated_invite_v2_rollout enable row level security;
+alter table private.employee_authenticated_invite_v2 enable row level security;
+revoke all on private.employee_authenticated_invite_v2_rollout,private.employee_authenticated_invite_v2
+ from public,anon,authenticated;
+
+create function private.require_employee_authenticated_invite_v2(p_company uuid)
+returns void language plpgsql security definer set search_path='' as $$
+begin
+ if auth.uid() is null or private.account_access_allowed() is distinct from true then
+  raise exception 'invite unavailable' using errcode='42501';
+ end if;
+ perform 1 from private.employee_authenticated_invite_v2_rollout where company_id=p_company and enabled for share;
+ if not found then raise exception 'invite v2 unavailable' using errcode='55000'; end if;
+end $$;
+revoke all on function private.require_employee_authenticated_invite_v2(uuid) from public,anon,authenticated;
+
+-- The authenticated manager generates a 256-bit random QR token in memory and
+-- submits SHA-256 only. No Auth user is provisioned; no password is created.
+create function public.issue_employee_authenticated_invite_v2(
+ p_company_id uuid,p_worker_id uuid,p_request_id uuid,p_token_hash text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare v_worker public.workers%rowtype;v_prior private.employee_authenticated_invite_v2%rowtype;
+ v_id uuid;v_generation integer;v_until timestamptz;
+begin
+ perform private.require_employee_authenticated_invite_v2(p_company_id);
+ if p_request_id is null or p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
+  raise exception 'invalid invite request' using errcode='22023';end if;
+ if not exists(select 1 from public.company_members m where m.company_id=p_company_id
+   and m.user_id=auth.uid() and m.role::text in ('owner','admin')) then
+  raise exception 'management permission required' using errcode='42501';end if;
+ select * into v_worker from public.workers where id=p_worker_id and company_id=p_company_id
+  and affiliation::text='employee' for update;
+ if not found or v_worker.user_id is not null or nullif(trim(v_worker.name),'') is null
+  or regexp_replace(coalesce(v_worker.phone,''),'[^0-9]','','g') !~ '^(0(70|80|90)[0-9]{8}|81(70|80|90)[0-9]{8})$' then
+  raise exception 'unlinked employee required' using errcode='42501';end if;
+ select * into v_prior from private.employee_authenticated_invite_v2 where worker_id=p_worker_id for update;
+ if found and v_prior.issue_request_id=p_request_id then
+  if v_prior.issued_by<>auth.uid() or v_prior.token_hash<>decode(p_token_hash,'hex')
+    or v_prior.state<>'pending' or v_prior.expires_at<=clock_timestamp() then
+   raise exception 'invite retry differs' using errcode='42501';end if;
+  return jsonb_build_object('protocol',2,'invite_id',v_prior.id,'generation',v_prior.generation,'expires_at',v_prior.expires_at);
+ end if;
+ if found and v_prior.state='redeemed' then raise exception 'invite already redeemed' using errcode='42501';end if;
+ if exists(select 1 from public.employee_registration_invites where worker_id=p_worker_id) then
+  raise exception 'existing registration requires review' using errcode='42501';end if;
+ v_id:=coalesce(v_prior.id,gen_random_uuid());v_generation:=coalesce(v_prior.generation,0)+1;
+ v_until:=clock_timestamp()+interval '14 days';
+ insert into private.employee_authenticated_invite_v2
+ (id,company_id,worker_id,issued_by,issue_request_id,name,phone,token_hash,generation,expires_at,state)
+ values(v_id,p_company_id,p_worker_id,auth.uid(),p_request_id,v_worker.name,v_worker.phone,
+  decode(p_token_hash,'hex'),v_generation,v_until,'pending')
+ on conflict(worker_id) do update set issued_by=excluded.issued_by,issue_request_id=excluded.issue_request_id,
+ name=excluded.name,phone=excluded.phone,token_hash=excluded.token_hash,generation=excluded.generation,
+ expires_at=excluded.expires_at,state='pending';
+ return jsonb_build_object('protocol',2,'invite_id',v_id,'generation',v_generation,'expires_at',v_until);
+end $$;
+
+-- Caller must already be authenticated through an existing, real Auth session.
+-- Row locks serialize issue/reissue/redeem/cancel in worker -> ledger order.
+-- Receipt retries return bounded identifiers only, NEVER Auth credentials.
+create function public.redeem_employee_authenticated_invite_v2(
+ p_invite_id uuid,p_generation integer,p_token text,p_request_id uuid,p_confirm_identity boolean)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare v_row private.employee_authenticated_invite_v2%rowtype;v_worker public.workers%rowtype;
+ v_phone text;v_actor uuid:=auth.uid();v_sid uuid:=(auth.jwt()->>'session_id')::uuid;v_product uuid;
+begin
+ if v_actor is null or v_sid is null or p_confirm_identity is distinct from true or p_request_id is null
+  or p_token is null or p_token !~ '^[0-9a-f]{64}$' then
+  raise exception 'invite redemption unavailable' using errcode='42501';end if;
+ select * into v_row from private.employee_authenticated_invite_v2 where id=p_invite_id;
+ if not found then raise exception 'invite redemption unavailable' using errcode='42501';end if;
+ perform private.require_employee_authenticated_invite_v2(v_row.company_id);
+ perform 1 from auth.sessions s where s.id=v_sid and s.user_id=v_actor
+  and (s.not_after is null or s.not_after>clock_timestamp());
+ if not found then raise exception 'live session required' using errcode='42501';end if;
+ select * into v_worker from public.workers where id=v_row.worker_id and company_id=v_row.company_id for update;
+ select * into v_row from private.employee_authenticated_invite_v2 where id=p_invite_id for update;
+ if v_row.generation is distinct from p_generation or v_row.token_hash<>sha256(convert_to(p_token,'UTF8'))
+  or v_row.expires_at<=clock_timestamp() or v_row.state='cancelled'
+  or v_worker.name is distinct from v_row.name or v_worker.phone is distinct from v_row.phone then
+  raise exception 'invite redemption unavailable' using errcode='42501';end if;
+ if v_row.state='redeemed' then
+  if v_row.redeemed_by<>v_actor or v_row.redeemed_session_id<>v_sid or v_row.redeem_request_id<>p_request_id
+   or not exists(select 1 from public.employee_registration_invites i where i.id=v_row.product_invite_id
+    and i.auth_user_id=v_actor and i.worker_id=v_row.worker_id and i.company_id=v_row.company_id
+    and i.status<>'cancelled') then
+   raise exception 'invite already redeemed' using errcode='42501';end if;
+  v_product:=v_row.product_invite_id;
+ else
+  if v_worker.user_id is not null
+   or exists(select 1 from public.company_members where company_id=v_row.company_id and user_id=v_actor)
+   or exists(select 1 from public.employee_registration_invites where auth_user_id=v_actor or worker_id=v_row.worker_id) then
+   raise exception 'existing account registration requires review' using errcode='42501';end if;
+  -- Authentication proof is distinct from password replacement. Never synthesize
+  -- password_changed_at for an existing Google/Apple/email account.
+  v_phone:=regexp_replace(v_row.phone,'[^0-9]','','g');
+  v_phone:=case when left(v_phone,1)='0' then '+81'||substr(v_phone,2) else '+'||v_phone end;
+  insert into public.employee_registration_invites
+   (company_id,worker_id,auth_user_id,name,phone_e164,status,created_by,expires_at)
+  values(v_row.company_id,v_row.worker_id,v_actor,v_row.name,v_phone,'profile_pending',v_row.issued_by,v_row.expires_at)
+  returning id into v_product;
+  update private.employee_authenticated_invite_v2 set state='redeemed',redeemed_by=v_actor,
+   redeemed_session_id=v_sid,redeem_request_id=p_request_id,product_invite_id=v_product where id=v_row.id;
+ end if;
+ return jsonb_build_object('protocol',2,'operation_id',p_request_id,'invite_id',v_product,
+  'company_id',v_row.company_id,'worker_id',v_row.worker_id);
+end $$;
+
+create function public.cancel_employee_authenticated_invite_v2(p_invite_id uuid,p_generation integer)
+returns void language plpgsql security definer set search_path='' as $$
+declare v_row private.employee_authenticated_invite_v2%rowtype;v_status text;
+begin
+ select * into v_row from private.employee_authenticated_invite_v2 where id=p_invite_id;
+ if not found then raise exception 'invite unavailable' using errcode='42501';end if;
+ perform private.require_employee_authenticated_invite_v2(v_row.company_id);
+ if not exists(select 1 from public.company_members where company_id=v_row.company_id
+  and user_id=auth.uid() and role::text in ('owner','admin')) then
+  raise exception 'management permission required' using errcode='42501';end if;
+ perform 1 from public.workers where id=v_row.worker_id for update;
+ select * into v_row from private.employee_authenticated_invite_v2 where id=p_invite_id for update;
+ if v_row.generation is distinct from p_generation then raise exception 'invite generation differs' using errcode='42501';end if;
+ if v_row.product_invite_id is not null then
+  select status into v_status from public.employee_registration_invites where id=v_row.product_invite_id for update;
+  if v_status='approved' then raise exception 'approved registration preserved' using errcode='42501';end if;
+  update public.employee_registration_invites set status='cancelled' where id=v_row.product_invite_id;
+ end if;
+ update private.employee_authenticated_invite_v2 set state='cancelled' where id=v_row.id;
+end $$;
+
+-- Used by the separate review-only profile-gate candidate. Storage remains unwired.
+create function private.employee_authenticated_invite_v2_proof_valid(p_product_invite_id uuid)
+returns boolean language sql security definer set search_path='' as $$
+ select auth.uid() is not null and private.account_access_allowed() is true and exists(
+ select 1 from private.employee_authenticated_invite_v2 l
+ join private.employee_authenticated_invite_v2_rollout r on r.company_id=l.company_id and r.enabled
+ join public.workers w on w.id=l.worker_id and w.company_id=l.company_id
+  and w.affiliation::text='employee' and w.user_id is null
+ join public.employee_registration_invites i on i.id=l.product_invite_id
+ join auth.sessions s on s.id=l.redeemed_session_id and s.user_id=l.redeemed_by
+ where l.product_invite_id=p_product_invite_id and l.state='redeemed'
+ and l.redeemed_by=auth.uid() and l.redeemed_session_id=(auth.jwt()->>'session_id')::uuid
+ and l.expires_at>clock_timestamp() and i.expires_at>clock_timestamp()
+ and i.auth_user_id=l.redeemed_by and i.worker_id=l.worker_id and i.company_id=l.company_id
+ and i.status in ('profile_pending','approval_pending')
+ and (s.not_after is null or s.not_after>clock_timestamp()))
+$$;
+revoke all on function private.employee_authenticated_invite_v2_proof_valid(uuid) from public,anon,authenticated;
+revoke all on function public.issue_employee_authenticated_invite_v2(uuid,uuid,uuid,text) from public,anon;
+revoke all on function public.redeem_employee_authenticated_invite_v2(uuid,integer,text,uuid,boolean) from public,anon;
+revoke all on function public.cancel_employee_authenticated_invite_v2(uuid,integer) from public,anon;
+grant execute on function public.issue_employee_authenticated_invite_v2(uuid,uuid,uuid,text) to authenticated;
+grant execute on function public.redeem_employee_authenticated_invite_v2(uuid,integer,text,uuid,boolean) to authenticated;
+grant execute on function public.cancel_employee_authenticated_invite_v2(uuid,integer) to authenticated;

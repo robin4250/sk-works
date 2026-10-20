@@ -1,0 +1,81 @@
+{
+  "base_main": "d70b90b9f19f854e8f13c00c4a1e66fbfeb4235e",
+  "scope": "Review-only authenticated UID invite ledger, real profile and captured approval integration; no deployment/UI/Authprovider changes",
+  "files": [
+    {
+      "path": "docs/candidates/employee_authenticated_invite_v2.sql.review-only",
+      "sha256": "766294e19c4ef3260ebef4751ec698cb95a63b87ff0b4438dd3618aa32541f33"
+    },
+    {
+      "path": "docs/candidates/employee_authenticated_invite_v2_profile_gate.sql.review-only",
+      "sha256": "50788fe2423cb6ff2076d2ac5f39f9d85d2f214d059df8506351e97b62fafb5c"
+    },
+    {
+      "path": "docs/review/employee_authenticated_invite_v2_scope_20261020.md",
+      "sha256": "98ef87614545e6365e3c015e02aab260147799f6703478ebe1e3b6bfb470e272"
+    },
+    {
+      "path": "tool/security/employee_authenticated_invite_v2_profile_test.mjs",
+      "sha256": "db7d2a4f76fc032a01491630a71551261cbc56180ba7f042e3396b61a1152c4e"
+    },
+    {
+      "path": "tool/security/employee_authenticated_invite_v2_test.mjs",
+      "sha256": "6193f5f65f688eb7a8a2509feab13f55a2559764b90642eec6988e1864d7b448"
+    },
+    {
+      "path": "tool/security/employee_invite_foundation.main.fixture.sql",
+      "sha256": "1ddc0af4cc7ffc312de117185f503cbd1d02f95640e7db9941a8c902c7029493"
+    },
+    {
+      "path": "tool/security/employee_onboarding_profile.main.fixture.sql",
+      "sha256": "82fb9d74a9dc52decd226d9594dd4c6fa4021f7cec8ed7e8c1c62f78915ddc5d"
+    },
+    {
+      "path": "tool/security/employee_onboarding_profile.retained.fixture.sql",
+      "sha256": "5df8bd2eb1d736027d05f472e3949d4e4b5f1500b2105525e53b892d434eb0a0"
+    },
+    {
+      "path": "docs/candidates/employee_authenticated_invite_v2_approval_gate.sql.review-only",
+      "sha256": "91c22261b1f8a06737223dde46dbe31e2d1d3225dc16db6aa10e61d9d51801ec"
+    },
+    {
+      "path": "tool/security/employee_authenticated_invite_v2_approval_test.mjs",
+      "sha256": "018daf488d3a52dfb53929e2a6bac124b87ff4ae844470c97f95cef31fc04dc6"
+    },
+    {
+      "path": "tool/security/employee_onboarding_approval.captured.fixture.sql",
+      "sha256": "d56c92c8fb49f214837f12c0b958d9a00101871819a7698460dce49989084fdf"
+    }
+  ],
+  "validation": {
+    "engine": "PGlite 0.3.14 / Node24",
+    "ledger_assertions": 27,
+    "profile_checks": 35,
+    "profile_source_md5": [
+      "3e0b34238e7d84abebdbd95593b64949",
+      "3e5e7b7c799109c85d22ca4ce2a74d66"
+    ],
+    "proof_source_md5": "e941ec1190ddf66dab9131e22b779138",
+    "actual_product_invite_inserted": true,
+    "actual_profile_save_connected_in_fixture": true,
+    "password_markers_fabricated": false,
+    "legacy_password_identity_approved_preserved": true,
+    "profile_oid_acl_preserved": true,
+    "auth_password_changed": false,
+    "membership_added_before_approval": false,
+    "app_connected": false,
+    "approval_connected": false,
+    "photo_capability_connected": false,
+    "actual_gotrue": false,
+    "storage_proven": false,
+    "concurrent_connections": false,
+    "approval_checks": 50,
+    "approval_source_md5": "43a11acbc88d289bb17eec739b371f2a",
+    "actual_captured_approval_connected_in_fixture": true,
+    "all_existing_company_memberships_refused_for_v2_approval": true,
+    "actual_http_jwt": false,
+    "production_changes": false
+  },
+  "production_changes": false,
+  "publish_executed": false
+}

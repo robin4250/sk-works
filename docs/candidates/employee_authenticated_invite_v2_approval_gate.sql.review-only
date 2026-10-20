@@ -1,0 +1,91 @@
+-- REVIEW ONLY: no deployment, migration, Auth/provider change or production write.
+-- Preserve ordinary approval; bind v2 approval to the live redemption lease.
+begin;
+set local lock_timeout='5s';
+do $guard$
+declare f record;
+begin
+ select * into f from pg_proc where oid=to_regprocedure('public.approve_employee_onboarding(uuid)');
+ if not found or md5(f.prosrc)<>'43a11acbc88d289bb17eec739b371f2a'
+  or not f.prosecdef or f.provolatile<>'v' or f.prorettype<>'void'::regtype
+  or f.proconfig is distinct from array['search_path=public, private, pg_temp']
+  or f.proacl is distinct from '{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}'::aclitem[]
+  or pg_get_userbyid(f.proowner)<>'postgres' then
+  raise exception 'Onboarding approval contract drift' using errcode='55000';end if;
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure('private.account_access_allowed()'))
+    is distinct from 'aeca25db212c043c472334026bd98724'
+  or (select md5(prosrc) from pg_proc where oid=to_regprocedure('private.employee_authenticated_invite_v2_proof_valid(uuid)'))
+    is distinct from 'e941ec1190ddf66dab9131e22b779138'
+  or to_regclass('private.account_deletion_access_restrictions') is null
+  or not exists(select 1 from pg_class where oid=to_regclass('private.employee_authenticated_invite_v2') and relrowsecurity)
+  or has_table_privilege('authenticated','private.employee_authenticated_invite_v2','select,insert,update,delete')
+  or has_table_privilege('anon','private.employee_authenticated_invite_v2','select,insert,update,delete') then
+  raise exception 'V2 approval prerequisite contract drift' using errcode='55000';end if;
+ if to_regprocedure('private.lock_employee_authenticated_invite_v2_for_approval(uuid)') is not null then
+  raise exception 'V2 approval gate already present' using errcode='55000';end if;
+end $guard$;
+
+create function private.lock_employee_authenticated_invite_v2_for_approval(p_product uuid)
+returns void language plpgsql security definer set search_path='' as $$
+declare l private.employee_authenticated_invite_v2%rowtype;
+ w public.workers%rowtype;i public.employee_registration_invites%rowtype;
+ actor uuid:=auth.uid();sid uuid:=(auth.jwt()->>'session_id')::uuid;
+begin
+ select * into l from private.employee_authenticated_invite_v2 where product_invite_id=p_product;
+ -- Ordinary legacy approvals retain their current authentication/role behavior.
+ if not found then return;end if;
+ if actor is null or private.account_access_allowed() is distinct from true
+  or not exists(select 1 from auth.sessions s join auth.users u on u.id=s.user_id
+    where s.id=sid and s.user_id=actor and (s.not_after is null or s.not_after>clock_timestamp())
+    and u.deleted_at is null and u.is_anonymous is not true
+    and (u.banned_until is null or u.banned_until<=clock_timestamp()))
+  or not exists(select 1 from public.company_members m
+    left join public.company_approval_assignees a on a.company_id=m.company_id and a.user_id=m.user_id
+    where m.company_id=l.company_id and m.user_id=actor
+    and (m.role::text in ('owner','admin') or a.user_id is not null)) then
+  raise exception 'V2 approval unavailable' using errcode='42501';end if;
+ perform 1 from private.employee_authenticated_invite_v2_rollout where company_id=l.company_id and enabled for share;
+ if not found then raise exception 'V2 approval unavailable' using errcode='42501';end if;
+ -- Same order as issue/redeem/cancel, before the original approval locks product.
+ select * into w from public.workers where id=l.worker_id and company_id=l.company_id for update;
+ select * into l from private.employee_authenticated_invite_v2 where product_invite_id=p_product for update;
+ select * into i from public.employee_registration_invites where id=p_product for update;
+ if l.id is null or w.id is null or i.id is null or l.state<>'redeemed'
+  or l.expires_at<=clock_timestamp() or i.expires_at<=clock_timestamp()
+  or i.status<>'approval_pending' or i.requested_role<>'viewer' or i.requested_approval_assignee
+  or i.auth_user_id is distinct from l.redeemed_by or i.company_id is distinct from l.company_id
+  or i.worker_id is distinct from l.worker_id or w.user_id is not null
+  or w.affiliation::text<>'employee' or w.name is distinct from l.name or w.phone is distinct from l.phone
+  or actor=l.redeemed_by
+  -- Initial onboarding is not an account transfer. The captured approval writes
+  -- the global user profile, so an account already belonging to any company
+  -- requires a separately reviewed transfer flow rather than silent overwrite.
+  or exists(select 1 from public.company_members where user_id=l.redeemed_by)
+  or exists(select 1 from private.account_deletion_access_restrictions where user_id=l.redeemed_by)
+  or not exists(select 1 from auth.sessions s join auth.users u on u.id=s.user_id
+    where s.id=l.redeemed_session_id and s.user_id=l.redeemed_by
+    and (s.not_after is null or s.not_after>clock_timestamp()) and u.deleted_at is null
+    and u.is_anonymous is not true and (u.banned_until is null or u.banned_until<=clock_timestamp())) then
+  raise exception 'V2 approval unavailable' using errcode='42501';end if;
+end $$;
+revoke all on function private.lock_employee_authenticated_invite_v2_for_approval(uuid) from public,anon,authenticated,service_role;
+do $patch$
+declare f oid;definition text;needle text;
+begin
+ f:='public.approve_employee_onboarding(uuid)'::regprocedure;
+ definition:=pg_get_functiondef(f);
+ needle:='  select *
+  into v_invite
+  from public.employee_registration_invites';
+ if (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 then
+  raise exception 'Approval lock insertion point changed' using errcode='55000';end if;
+ execute replace(definition,needle,'  perform private.lock_employee_authenticated_invite_v2_for_approval(p_invite_id);
+
+'||needle);
+ if exists(select 1 from aclexplode(coalesce((select proacl from pg_proc
+    where oid='private.lock_employee_authenticated_invite_v2_for_approval(uuid)'::regprocedure),
+    acldefault('f',(select proowner from pg_proc where oid=f)))) a
+    where a.grantee<>(select proowner from pg_proc where oid=f)) then
+  raise exception 'Unexpected approval gate grant' using errcode='55000';end if;
+end $patch$;
+commit;

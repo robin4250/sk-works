@@ -1,0 +1,43 @@
+-- REVIEW ONLY. No migration/live apply. Requires the separately reviewed v2 ledger.
+-- Changes one predicate in the captured profile RPC; preserves all other source,
+-- photo policy, notification logic, OID, owner, signature and EXECUTE privileges.
+begin;
+set local lock_timeout='5s';
+do $patch$
+declare f record;proof record;v_definition text;v_before text;v_after text;
+begin
+ select p.* into f from pg_proc p
+ where p.oid=to_regprocedure('public.save_employee_onboarding_profile(text,text,text,text,text,text,text,text,text,text)');
+ if not found or md5(f.prosrc) not in ('3e0b34238e7d84abebdbd95593b64949','3e5e7b7c799109c85d22ca4ce2a74d66')
+  or not f.prosecdef or f.provolatile<>'v' or f.prorettype<>'void'::regtype
+  or f.proconfig is distinct from array['search_path=public, private, pg_temp']
+  or f.proacl is distinct from '{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}'::aclitem[]
+  or pg_get_userbyid(f.proowner)<>'postgres' then
+  raise exception 'Onboarding profile contract drift; independent review required' using errcode='55000';
+ end if;
+ select p.* into proof from pg_proc p
+ where p.oid=to_regprocedure('private.employee_authenticated_invite_v2_proof_valid(uuid)');
+ if not found or md5(proof.prosrc)<>'e941ec1190ddf66dab9131e22b779138'
+  or not proof.prosecdef or proof.provolatile<>'v' or proof.prorettype<>'boolean'::regtype
+  or proof.proconfig is distinct from array['search_path=""']
+  or pg_get_userbyid(proof.proowner)<>'postgres'
+  or has_function_privilege('authenticated',proof.oid,'execute')
+  or has_function_privilege('anon',proof.oid,'execute') then
+  raise exception 'Authenticated invite proof contract drift' using errcode='55000';
+ end if;
+ if not exists(select 1 from pg_class where oid=to_regclass('private.employee_authenticated_invite_v2') and relrowsecurity)
+  or has_table_privilege('authenticated','private.employee_authenticated_invite_v2','select,insert,update,delete')
+  or has_table_privilege('anon','private.employee_authenticated_invite_v2','select,insert,update,delete') then
+  raise exception 'Authenticated invite ledger boundary differs' using errcode='55000';
+ end if;
+ v_before:='and (eri.password_changed_at is not null or eri.identity_verified_at is not null)';
+ v_after:='and case when exists(select 1 from private.employee_authenticated_invite_v2 l where l.product_invite_id=eri.id)
+      then private.employee_authenticated_invite_v2_proof_valid(eri.id)
+      else (eri.password_changed_at is not null or eri.identity_verified_at is not null) end';
+ v_definition:=pg_get_functiondef(f.oid);
+ if (length(v_definition)-length(replace(v_definition,v_before,'')))/length(v_before)<>1 then
+  raise exception 'Onboarding predicate must occur exactly once' using errcode='55000';
+ end if;
+ execute replace(v_definition,v_before,v_after);
+end $patch$;
+commit;
