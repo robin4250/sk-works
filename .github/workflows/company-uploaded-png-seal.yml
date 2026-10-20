@@ -40,7 +40,7 @@ jobs:
         if: always()
         with:
           name: uploaded-png-seal-proof
-          path: build/uploaded-seal-proof/
+          path: build/company-uploaded-seal-proof/
           if-no-files-found: ignore
   storage:
     runs-on: ubuntu-latest
