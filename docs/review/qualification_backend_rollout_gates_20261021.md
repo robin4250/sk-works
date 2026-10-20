@@ -37,3 +37,11 @@ Storage policy/bytesの追加変更・写真物理削除・新uploadはない。
 5. backend確認後にmobileの永続CAS/readback、固定ID不明結果復旧、actor/company/target/背景ABA失効、明示submit/cancelと独立承認を接続しRelease実機で確認する。現backend候補の読取レビューは本番適用許可や削除機能完了を意味しない。
 
 依拠した保存資料: `docs/review/qualification_admin_saved_photos_candidate_20261019.md`、`qualification_admin_capability_20261019.md`、`qualification_admin_photo_native_race_20261019.md`、`qualification_edit_approval_reuse_20261019.md`、`docs/candidates/qualification_admin_photo_baseline_20261021.md`、`qualification_admin_photo_prepare_readiness_20261021.md`、`qualification_admin_photo_ci_candidate_20261021.md`。
+
+## 2026-10-21 JST 統合担当の本番READ ONLY観測
+
+本番の業務row/写真/本人情報を取得せず、catalogのみをREAD ONLY transactionで照合した。既router本文MD5は `ed2f102b6b86342b657d659e039d5066`、既photo handlerは `b31a93002c1877cad114273859fa65da` で、前提candidateが許可する原本と一致した。account/feature helperの存在も確認したが、hash存在だけで全依存意味論を確認済みとはしない。
+
+`private.admin_qualification_saved_photos(text,jsonb)`、approved-update permit helper、registered-update guard helper、permit表、queueのadmin_saved_photos列、registered-update guard triggerは不在だった。したがってbaseline/readinessだけの配備では動かず、製品routeを接続しても管理者削除が解消しないことをcatalogで確認した。
+
+この観測は完全backup/既pending調査/Storage実照合ではない。DDL/DML/Auth/RLS/gate/写真bytesの変更は0。既writer/metadata代替導線・既pendingと使用開始後の復元条件を満たすまで本番HOLDを維持する。native保存adapterと固定session adapterの検証成功をbackend導入成功に読み替えない。
