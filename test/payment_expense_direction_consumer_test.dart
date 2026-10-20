@@ -254,6 +254,31 @@ void main() {
     } finally { await fixture.client.dispose(); }
   });
 
+  test('shared PDF expense reader negotiates payment v2 without changing invoice requests', () async {
+    for (final kind in [ExpenseDocument.paymentCertificate, ExpenseDocument.invoice]) {
+      final fixture = _Fixture(v2: kind == ExpenseDocument.paymentCertificate);
+      if (kind == ExpenseDocument.invoice) {
+        fixture.changeDetails = (value) {
+          value['kind'] = kind.name;
+          for (final claim in value['claims'] as List) {
+            (claim as Map)['allocation'] = 'customer';
+          }
+        };
+      }
+      await fixture.start();
+      try {
+        final details = await ExpenseDocumentRepository.loadForTesting(
+          fixture.client, kind, _doc, DateTime(2026, 10), revision: 3,
+        );
+        expect(details.documentId, _doc);
+        final call = fixture.calls.single;
+        expect(call.url.path, '/rest/v1/rpc/read_expense_document');
+        expect(call.headers['x-sko-payment-source-version'],
+            kind == ExpenseDocument.paymentCertificate ? '2' : isNull);
+      } finally { await fixture.client.dispose(); }
+    }
+  });
+
   test('v2 source header also protects the scoped expense detail RPC', () async {
     final fixture = _Fixture();
     await fixture.start();
