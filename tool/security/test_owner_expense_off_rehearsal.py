@@ -61,6 +61,7 @@ class ExpenseRehearsalTests(unittest.TestCase):
                     elif 'BEGIN;\n-- REVIEW ONLY.' in text:
                         self.assertIn('ROLLBACK;',text)
                         if fail_conversion: raise subprocess.CalledProcessError(1,command)
+                    elif "SELECT to_regprocedure('private.payment_expense_v2_requested()')" in text: data=b't\n'
                     elif "SELECT to_regclass('private.expense_payment_direction_conversions')" in text: data=b't\n'
                 return subprocess.CompletedProcess(command,0,data)
             with patch.object(off.sys,'platform','darwin'),patch.object(off.Path,'home',return_value=home),patch.dict(off.os.environ,{},clear=True),patch.object(off.subprocess,'run',side_effect=run),contextlib.redirect_stdout(io.StringIO()):
@@ -85,6 +86,7 @@ class ExpenseRehearsalTests(unittest.TestCase):
         self.assertTrue(status['conversion_rollback_verified'])
         self.assertEqual(status['net_yen'],-1000)
         self.assertFalse(status['real_jwt_verified'])
+        self.assertTrue(status['native_negotiation_verified'])
 
     def test_conversion_error_stops_clone_without_claiming_success(self):
         code,status=self.lifecycle(fail_conversion=True)
