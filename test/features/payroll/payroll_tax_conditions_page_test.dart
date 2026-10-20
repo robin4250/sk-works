@@ -73,9 +73,11 @@ void main() {
 
   testWidgets('manual entry is unavailable on an unprepared backend', (t) async {
     await open(t, (_, __) async => state());
-    final insurance = t.widget<DropdownButtonFormField<String>>(
-      find.byKey(const ValueKey('insurance-rates')));
-    expect(insurance.items!.any((item) => item.value == 'manual'), isFalse);
+    final insurance = find.byKey(const ValueKey('insurance-rates'));
+    await t.ensureVisible(insurance); await t.pumpAndSettle();
+    await t.tap(insurance); await t.pumpAndSettle();
+    expect(find.text('保険別の月額を手入力'), findsNothing);
+    expect(find.text('会社の登録料率で自動計算'), findsWidgets);
   });
 
   testWidgets('manual selection is explicit, preserves fixed income and rejects empty amounts', (t) async {
