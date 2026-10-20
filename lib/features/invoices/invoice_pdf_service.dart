@@ -5,6 +5,7 @@ import '../shared/trade_document_attachment_repository.dart';
 import '../shared/trade_document_attachment_editor_page.dart';
 import 'invoice_order_acceptance_pdf.dart';
 import 'invoice_acceptance_resolver.dart';
+import 'invoice_acceptance_notice.dart';
 import '../expenses/expense_document_repository.dart';
 import '../expenses/expense_detail_pdf.dart';
 import 'dart:typed_data';
@@ -998,6 +999,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   late Future<_InvoicePreviewData> _previewData;
   int _previewRevision = 0;
   bool _approving = false;
+  bool _openingAcceptance = false;
   final _actorLease = TradeDocumentActorLease();
 
   @override
@@ -1199,6 +1201,48 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     }
   }
 
+  Future<void> _openAcceptanceEditor() async {
+    if (_openingAcceptance || _singleInvoice?.invoiceId.isNotEmpty != true ||
+        _singleInvoice?.documentUpdatedAt == null) return;
+    setState(() => _openingAcceptance = true);
+    try {
+      _actorLease.verify();
+      final invoice = _singleInvoice!;
+      final pending = _previewData;
+      final data = await pending;
+      if (!context.mounted) return;
+      _actorLease.verify();
+      if (!identical(pending, _previewData)) return;
+      final actor = SupabaseBackend.isInitialized
+          ? SupabaseBackend.client.auth.currentUser?.id : null;
+      final revision = DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String();
+      final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
+        builder: (_) => TradeDocumentAttachmentEditorPage(
+          subjectKind: 'invoice', subjectId: invoice.invoiceId,
+          sourceRevision: revision,
+          initialInput: actor == null ? null : R33Input(
+            actorId: actor, companyId: invoice.companySealSnapshot.companyId ?? '',
+            subjectId: invoice.invoiceId, sourceRevision: revision,
+            text: data.settings?.invoiceSubject ?? '')),
+      ));
+      if (!mounted) return;
+      _actorLease.verify();
+      if (saved == true) {
+        setState(() {
+          _previewRevision++;
+          _previewData = _buildPreviewData();
+        });
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('請求書を再読み込みしてから注文請書を開いてください。')));
+      }
+    } finally {
+      if (mounted) setState(() => _openingAcceptance = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return TradeDocumentActorBoundary(child: Scaffold(
@@ -1208,42 +1252,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
           if (_singleInvoice?.invoiceId.isNotEmpty == true &&
               _singleInvoice?.documentUpdatedAt != null)
             TextButton(
-              onPressed: () async {
-                try {
-                  _actorLease.verify();
-                  final invoice = _singleInvoice!;
-                  final pending = _previewData;
-                  final data = await pending;
-                  if (!context.mounted) return;
-                  _actorLease.verify();
-                  if (!identical(pending, _previewData)) return;
-                  final actor = SupabaseBackend.isInitialized
-                      ? SupabaseBackend.client.auth.currentUser?.id : null;
-                  final revision = DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String();
-                  final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
-                    builder: (_) => TradeDocumentAttachmentEditorPage(
-                      subjectKind: 'invoice', subjectId: invoice.invoiceId,
-                      sourceRevision: revision,
-                      initialInput: actor == null ? null : R33Input(
-                        actorId: actor, companyId: invoice.companySealSnapshot.companyId ?? '',
-                        subjectId: invoice.invoiceId, sourceRevision: revision,
-                        text: data.settings?.invoiceSubject ?? '')),
-                  ));
-                  if (!mounted) return;
-                  _actorLease.verify();
-                  if (saved == true) {
-                    setState(() {
-                      _previewRevision++;
-                      _previewData = _buildPreviewData();
-                    });
-                  }
-                } catch (_) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('請求書を再読み込みしてから注文請書を開いてください。')));
-                  }
-                }
-              },
+              onPressed: _openingAcceptance ? null : _openAcceptanceEditor,
               child: const Text('注文請書'),
             ),
         ],
@@ -1278,15 +1287,13 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
               return Column(
                 children: [
                   if (previewData.missingAcceptanceCount > 0)
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(SkoLanguageController.isEnglish
-                          ? (_singleInvoice != null
-                              ? 'The locked invoice has no order acceptance. An administrator can open “注文請書” above to review and attach it. The original invoice is preserved.'
-                              : '${previewData.missingAcceptanceCount} locked invoices have no order acceptance. An administrator can open each invoice separately to review and attach it.')
-                          : (_singleInvoice != null
-                              ? 'このロック済み請求書には注文請書が未添付です。管理者が上部の「注文請書」で内容を確認し、保存して添付できます。元の請求書は保持されます。'
-                              : 'ロック済み請求書${previewData.missingAcceptanceCount}件に注文請書が未添付です。管理者が各請求書を個別に開き、内容を確認して添付してください。')),
+                    InvoiceAcceptanceNotice(
+                      missingCount: previewData.missingAcceptanceCount,
+                      singleInvoice: _singleInvoice != null,
+                      onReview: !_openingAcceptance &&
+                          _singleInvoice?.invoiceId.isNotEmpty == true &&
+                          _singleInvoice?.documentUpdatedAt != null
+                          ? _openAcceptanceEditor : null,
                     ),
                   if (approvals.isNotEmpty)
                     Padding(
@@ -2151,4 +2158,5 @@ class _ScreenApprovals extends StatelessWidget {
     ],
   );
 }
+
 
