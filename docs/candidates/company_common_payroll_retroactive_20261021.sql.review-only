@@ -71,7 +71,7 @@ begin
  for r in select n.nspname,c.relname,exists(select 1 from pg_attribute a where a.attrelid=c.oid and a.attname='company_id' and not a.attisdropped) scoped
  from pg_class c join pg_namespace n on n.oid=c.relnamespace where c.relkind in ('r','p')
  and (n.nspname='public' or n.nspname in ('payroll_rate_private','payroll_unit_private','payroll_tax_private','resident_tax_private','payroll_final_private','company_common_allowance_private'))
- and not(n.nspname='public' and c.relname='payroll_statements')
+ and not(n.nspname='public' and c.relname in ('payroll_statements','payroll_audit'))
  and not(n.nspname='company_common_allowance_private' and c.relname in ('payroll_publications','payroll_publication_receipts'))
  order by n.nspname,c.relname loop
  if r.scoped then predicate:=' where t.company_id=$1';
@@ -165,7 +165,7 @@ begin
 end $$;
 create function common_payroll_retro_review_private.apply_plan(cid uuid,typ text,p_start date,rid uuid,expected jsonb,confirmed boolean) returns jsonb
 language plpgsql security definer set search_path='' as $$
-declare current_plan jsonb;payload jsonb;receipt common_payroll_retro_review_private.receipts%rowtype;result jsonb;entry jsonb;after_row jsonb;source_before text;blocked int:=0;worker uuid;parts_before jsonb;parts_after jsonb;changed_tables text;
+declare current_plan jsonb;payload jsonb;receipt common_payroll_retro_review_private.receipts%rowtype;result jsonb;entry jsonb;after_row jsonb;source_before text;blocked int:=0;worker uuid;parts_before jsonb;parts_after jsonb;changed_tables text;audit_before jsonb;audit_entry jsonb;
 begin
  if current_setting('transaction_isolation')<>'read committed' or confirmed is distinct from true or rid is null or expected is null then raise exception 'explicit reviewed plan required' using errcode='22023';end if;
  perform company_common_allowance_private.lock_writer(cid);
@@ -182,6 +182,7 @@ begin
  if common_payroll_retro_review_private.plan(cid,typ,p_start) is distinct from expected then raise exception 'retroactive plan changed after lock' using errcode='40001';end if;
  source_before:=current_plan->>'source_digest';
  parts_before:=common_payroll_retro_review_private.source_parts(cid);
+ select coalesce(jsonb_agg(to_jsonb(a) order by to_jsonb(a)::text),'[]') into audit_before from public.payroll_audit a where company_id=cid;
  result:=common_payroll_retro_review_private.publish_past(cid,typ,p_start,(current_plan->>'common_version')::bigint,current_plan->'common_source',(current_plan->>'timeline_version')::bigint,rid);
  if result->>'recalculated_scopes' is distinct from current_plan->>'eligible_count' then raise exception 'retroactive target count differs' using errcode='40001';end if;
  for entry in select value from jsonb_array_elements(current_plan->'entries') loop
@@ -192,6 +193,20 @@ begin
  if after_row->>'workflow_state' is distinct from 'draft' or after_row->>'automatic_calculation' is distinct from 'true' or after_row->>'finalized_at' is not null then raise exception 'draft postcondition failed' using errcode='40001';end if;
  if after_row->>'calculation_blocked'='true' then blocked:=blocked+1;end if;
  end if;end loop;
+ -- Audit is a deliberate output of the actual refresh, never a calculation input.
+ -- Preserve the previous multiset; allow only expected append records from this plan.
+ if exists(select value from jsonb_array_elements(audit_before)
+ except all select to_jsonb(a) from public.payroll_audit a where company_id=cid) then
+ raise exception 'existing payroll audit changed' using errcode='40001';end if;
+ for audit_entry in select to_jsonb(a) from public.payroll_audit a where company_id=cid
+ except all select value from jsonb_array_elements(audit_before) loop
+ if audit_entry->>'action' is distinct from 'automatic_recalculation'
+ or audit_entry->>'actor_id' is distinct from auth.uid()::text
+ or not exists(select 1 from jsonb_array_elements(current_plan->'entries') e
+ where e->>'reason'='eligible' and e->>'statement_id'=audit_entry->>'statement_id'
+ and (audit_entry->>'revision')::int>(e->>'revision')::int) then
+ raise exception 'unexpected payroll audit append' using errcode='40001';end if;
+ end loop;
  if common_payroll_retro_review_private.source(cid) is distinct from source_before then
  parts_after:=common_payroll_retro_review_private.source_parts(cid);
  select string_agg(k,', ' order by k) into changed_tables from (select key k from jsonb_object_keys(parts_before||parts_after) as keys(key) where parts_before->key is distinct from parts_after->key) q;
