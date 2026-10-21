@@ -44,6 +44,7 @@ jobs:
       - name: Verify own issuer on the current tax and directory source
         run: NODE_PATH=/tmp/company-link-test/node_modules node tool/verify_payment_order_own_representative.mjs /tmp/company-link-test/node_modules/@electric-sql/pglite/dist/index.js
   client:
+    timeout-minutes: 8
     runs-on: ubuntu-latest
     permissions: {contents: read}
     steps:

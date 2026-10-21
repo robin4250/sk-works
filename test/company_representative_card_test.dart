@@ -21,7 +21,7 @@ void main() {
     await tester.tap(find.text('設定を再読込'));await tester.pumpAndSettle();
     expect(find.text('新代表'),findsOneWidget);
     await tester.pumpWidget(const SizedBox());await f.close();
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
   testWidgets('auth change removes old company and representative text', (tester) async {
     final f=Fixture();
     await tester.pumpWidget(MaterialApp(home:Scaffold(body:CompanyRepresentativeCard(repository:f.repo))));
@@ -33,5 +33,5 @@ void main() {
     expect(find.text('甲代表'),findsNothing);expect(find.text('保存先：甲会社'),findsNothing);
     expect(find.text('会社データを開き直してください。'),findsOneWidget);
     await tester.pumpWidget(const SizedBox());await f.close();
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }

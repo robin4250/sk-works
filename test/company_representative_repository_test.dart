@@ -41,34 +41,34 @@ void main(){
   expect(saved.companyId,first);expect(saved.representative,'新しい 代表者');
   expect(f.representatives[second],'乙代表');
   expect(f.calls.where((c)=>c['action']=='save_partner_company_representative').single['p_company_id'],first);
- });
+ }, timeout: const Timeout(Duration(seconds: 30)));
  test('80 codepoints accepted, 81 refused before RPC',()async{
   final f=Fixture();addTearDown(f.close);await f.repo.choices();
   var chosen=await f.repo.selectCompany(first);chosen=await f.repo.save(chosen,'代'*80);
   final count=f.calls.length;await expectLater(f.repo.save(chosen,'代'*81),throwsStateError);expect(f.calls.length,count);
- });
+ }, timeout: const Timeout(Duration(seconds: 30)));
  test('foreign choice and old company snapshot refused',()async{
   final f=Fixture();addTearDown(f.close);await f.repo.choices();
   await expectLater(f.repo.selectCompany(actor),throwsStateError);
   final old=await f.repo.selectCompany(first);await f.repo.selectCompany(second);
   await expectLater(f.repo.save(old,'誤接続'),throwsStateError);
- });
+ }, timeout: const Timeout(Duration(seconds: 30)));
  test('same actor token ABA stays revoked',()async{
   final f=Fixture();addTearDown(f.close);await f.repo.choices();await f.repo.selectCompany(first);
   f.currentToken='token-two';f.changes.add((actor:actor,token:f.currentToken));
   f.currentToken='token-one';f.changes.add((actor:actor,token:f.currentToken));
   await expectLater(f.repo.reload(),throwsStateError);
- });
+ }, timeout: const Timeout(Duration(seconds: 30)));
  test('uncertain save cannot resend before explicit readback',()async{
   final f=Fixture();addTearDown(f.close);await f.repo.choices();
   final old=await f.repo.selectCompany(first);f.loseSave=true;
   await expectLater(f.repo.save(old,'保存された代表'),throwsStateError);
   final count=f.calls.length;await expectLater(f.repo.save(old,'保存された代表'),throwsStateError);expect(f.calls.length,count);
   f.loseSave=false;expect((await f.repo.reload()).representative,'保存された代表');
- });
+ }, timeout: const Timeout(Duration(seconds: 30)));
  test('late old company read cannot replace selected company',()async{
   final f=Fixture();addTearDown(f.close);await f.repo.choices();f.readGate=Completer<void>();
   final old=f.repo.selectCompany(first);final oldCheck=expectLater(old,throwsStateError);
   final current=f.repo.selectCompany(second);f.readGate!.complete();await oldCheck;expect((await current).companyId,second);
- });
+ }, timeout: const Timeout(Duration(seconds: 30)));
 }
