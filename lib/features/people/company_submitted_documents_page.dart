@@ -17,6 +17,7 @@ import '../payroll/payroll_confirmation_settings_page.dart';
 import '../settings/company_seal_settings_page.dart';
 import 'company_document_exchange_repository.dart';
 import 'company_submitted_document_repository.dart';
+import 'company_representative_card.dart';
 import 'company_transfer_send_page.dart';
 
 class CompanySubmittedDocumentsPage extends StatefulWidget {
@@ -174,6 +175,7 @@ class _CompanySubmittedDocumentsPageState
                 padding: const EdgeInsets.all(16),
                 children: [
                   _companyDataCard(),
+                  const CompanyRepresentativeCard(),
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.approval_outlined),
