@@ -59,64 +59,51 @@ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261014124714_m
  await db.query("insert into payment_certificates values($1,$2,$3,'2026-10-01','2026-10-31',1,'draft',null,110000,'{}',false)",[PC,A,PARTNER]);
  await db.query("insert into invoices values($1,$2,$3,'2026-10-01','2026-10-31','2026-10-14T12:00:00Z','draft',null,110000,10000,'{}',false,now(),false)",[INV,A,CUSTOMER]);
  await db.exec(await fs.readFile('docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only','utf8'));
- await actor(UA);
- const doc=id(31);await prepare(doc);
+
+ await actor(UA);const doc=id(31);await prepare(doc);
  let p=await preview(doc,1,A);check(p.own_seal.snapshot.style,'legacy');check(p.own_seal.version_key.startsWith('snapshot-v1:'),true);
- check(JSON.stringify(p).includes('乙会社'),false); // Own preview carries no other-party seal/body.
+ check(JSON.stringify(p).includes('乙会社'),false);
  await deny(()=>render(doc,1,A),/approved/);
  await deny(()=>decide(doc,1,A,p,'approve',id(++request),p.own_seal.seal_hash,false),/explicit/);
- const rid=id(++request),first=await decide(doc,1,A,p,'approve',rid);check(first.current_state,'open');
+ const rid=id(++request),first=await decide(doc,1,A,p,'approve',rid);check(first.current_state,'approved');
  check(await decide(doc,1,A,p,'approve',rid),first);
- await actor(UB);await upload(B,'乙会社',0,255);
+ const approved=await render(doc,1,A);
+ await actor(UB);await db.query('select trade_document_consent_private.bind_local($1,$2,$3)',[doc,B,localId(doc,B)]);
  await deny(()=>preview(doc,1,A),/permission/);
- await preview(doc,1,B);
- await deny(()=>render(doc,1,B),/approved/);
- p=await preview(doc,1,B);check(p.own_seal.snapshot.style,'uploaded_png');
- await decide(doc,1,B,p);
- const approved=await render(doc,1,B);await actor(UA);check(await render(doc,1,A),approved);
- check(approved.seals.length,1);check(approved.consents.length,2);check(approved.seals.find(s=>s.company_id===A).seal_snapshot.style,'legacy');
- // Rotation after full approval preserves the exact saved document and seal metadata.
- await upload(A,'甲会社',0,128);check(await render(doc,1,A),approved);
- await db.query("update private.company_connections set status='disabled'");
- check(await render(doc,1,A,true),approved);
- await deny(()=>prepare(id(32)),/accepted/);
- await db.query("update private.company_connections set status='accepted'");
- await prepare(doc,1,standalone(101));
- await deny(()=>render(doc,1,A),/approved/);check(await render(doc,1,A,true),approved);
- await deny(()=>render(doc,2,A),/approved/);
- // Change/reapproval + stale epoch; no old consent is implicitly reused.
- let ap=await preview(doc,2,A);await actor(UB);const staleB=await preview(doc,2,B);
- await actor(UA);await decide(doc,2,A,ap);
- await actor(UB);await deny(()=>decide(doc,2,B,staleB),/revision/);
- await decide(doc,2,B,await preview(doc,2,B));check((await render(doc,2,B)).body.total_amount_yen,101);
- // Pending A consent cannot newly use a rotated seal to complete B's approval.
- const rotating=id(33);await actor(UA);await prepare(rotating);
- await decide(rotating,1,A,await preview(rotating,1,A));
- await upload(A,'甲会社',1,64);
- await actor(UB);await deny(async()=>decide(rotating,1,B,await preview(rotating,1,B)),/reconfirm/);
- await actor(UA);await decide(rotating,1,A,await preview(rotating,1,A));
- await actor(UB);await decide(rotating,1,B,await preview(rotating,1,B));check((await render(rotating,1,B)).seals.length,1);
- // Local pages are distinct; reverse orders never collapse an unordered pair.
+ await deny(()=>preview(doc,1,B),/issuer stamp owner/);
+ // Receipt page sees the same issued version without an additional stamp request.
+ check(await render(doc,1,B),approved);check(approved.seals.length,1);check(approved.consents.length,1);
+ check(approved.render_seal_company_id,A);check(approved.seals[0].seal_snapshot.style,'legacy');
  check(localId(doc,A)===localId(doc,B),false);
+ await actor(UA);await upload(A,'甲会社',0,128);check(await render(doc,1,A),approved);
+ await db.query("update private.company_connections set status='disabled'");check(await render(doc,1,A,true),approved);
+ await deny(()=>prepare(id(32)),/accepted/);await db.query("update private.company_connections set status='accepted'");
+ await prepare(doc,1,standalone(101));await deny(()=>render(doc,1,A),/approved/);check(await render(doc,1,A,true),approved);
+ await deny(()=>render(doc,2,A),/approved/);
+ p=await preview(doc,2,A);await decide(doc,2,A,p);check((await render(doc,2,A)).body.total_amount_yen,101);
+ await deny(()=>decide(doc,2,A,p),/revision/);
+ // Pending preview of the owner's registered PNG is invalidated by rotation.
+ const rotating=id(33);await prepare(rotating);p=await preview(rotating,1,A);
+ await upload(A,'甲会社',1,64);await deny(()=>decide(rotating,1,A,p),/seal changed/);
+ await decide(rotating,1,A,await preview(rotating,1,A));check((await render(rotating,1,A)).seals[0].seal_snapshot.style,'uploaded_png');
+ // Reverse orders and corresponding acceptances have distinct IDs/kinds/issuer roles.
+ await actor(UB);await upload(B,'乙会社',0,255);
  const reverse=id(39),reverseBody={kind:'order',transaction_id:reverse,issuer_company_id:B,counterparty_company_id:A,issuer:{name:'乙会社'},counterparty:{name:'甲会社'},total_amount_yen:100};
  await q('select trade_document_consent_private.prepare_document($1,$2,$3,0,$4::jsonb) v',[reverse,B,A,JSON.stringify(reverseBody)]);
- await decide(reverse,1,B,await preview(reverse,1,B));await actor(UA);await decide(reverse,1,A,await preview(reverse,1,A));
+ await decide(reverse,1,B,await preview(reverse,1,B));
+ await actor(UA);await db.query('select trade_document_consent_private.bind_local($1,$2,$3)',[reverse,A,localId(reverse,A)]);
  const reverseRender=await render(reverse,1,A);check(reverseRender.render_seal_company_id,B);check(reverseRender.transaction_id===doc,false);
  await deny(()=>db.query('select trade_document_consent_private.bind_local($1,$2,$3)',[reverse,A,localId(doc,A)]),/another directional/);
- // The corresponding acceptance is another document kind/issuer, not the order page.
  const acceptance=id(38),acceptanceBody={...reverseBody,kind:'acceptance',transaction_id:doc};await actor(UB);
  await q('select trade_document_consent_private.prepare_document($1,$2,$3,0,$4::jsonb) v',[acceptance,B,A,JSON.stringify(acceptanceBody)]);
- await decide(acceptance,1,B,await preview(acceptance,1,B));await actor(UA);await decide(acceptance,1,A,await preview(acceptance,1,A));
+ await decide(acceptance,1,B,await preview(acceptance,1,B));await actor(UA);
+ await db.query('select trade_document_consent_private.bind_local($1,$2,$3)',[acceptance,A,localId(acceptance,A)]);
  check((await render(acceptance,1,A)).document_role,'accepting_company');check((await render(acceptance,1,A)).render_seal_company_id,B);
- // Distinct reject / return / cancel, no approval or raw seal leak from legacy approval.
  for(const [num,action,state] of [[34,'reject','rejected'],[35,'return','returned'],[36,'cancel','cancelled']]){
-  await actor(UA);const target=id(num);await prepare(target);const before=await preview(target,1,A);
-  check((await decide(target,1,A,before,action)).current_state,state);
-  await deny(()=>render(target,1,A),/approved/);
- }
+ await actor(UA);const target=id(num);await prepare(target);const before=await preview(target,1,A);
+ check((await decide(target,1,A,before,action)).current_state,state);await deny(()=>render(target,1,A),/approved/);}
  await actor(UV);await deny(()=>preview(doc,2,A),/permission/);await actor(UC);await deny(()=>render(doc,2,C),/company-specific/);
  await actor(UA);await db.exec('set role authenticated');await deny(()=>db.query('select * from trade_document_consent_private.consents'),/permission denied/);await db.exec('reset role');
- // Parent path defaults fail closed until a real formal mapping adapter is connected.
  await deny(()=>q('select trade_document_consent_private.prepare_document($1,$2,$3,0,$4::jsonb,$5,$6,$7,1) v',[id(40),A,B,JSON.stringify({...standalone(),transaction_id:id(40)}),'invoice',INV,'2026-10-14 12:00:00+00']),/not connected/);
  await deny(()=>q('select trade_document_consent_private.confirm_local_document($1,$2,2,$3::jsonb,$4,true,true) v',[localId(doc,A),A,'{}',id(++request)]),/not connected/);
  // A READ ONLY disposable adapter binds the actual existing attachment SQL.
@@ -138,24 +125,23 @@ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261014124714_m
  'attachment_payload',att.payload-array['company_seal_snapshot','company_seal_enabled'],
  'internal_confirmation',jsonb_build_object('financial_status',parent->'status','separate_from_other_company_seal_consent',true));
  end $$`);
+
  const linkedBody={...payload,issuer_company_id:A,counterparty_company_id:B,transaction_id:id(41)};delete linkedBody.company_seal_snapshot;delete linkedBody.company_seal_enabled;
  const linked=id(41),financialBefore=await q('select to_jsonb(p) v from payment_certificates p where id=$1',[PC]);
  await q("select trade_document_consent_private.prepare_document($1,$2,$3,0,$4::jsonb,'payment_certificate',$5,'1',1) v",[linked,A,B,JSON.stringify(linkedBody),PC]);
+ p=await preview(linked,1,A);await decide(linked,1,A,p);
+ // Default linked read stays unavailable until a document-specific ACL adapter exists.
+ await deny(()=>render(linked,1,A),/view permission/);
  await db.exec("create or replace function trade_document_consent_private.linked_view_allowed(kind text,parent_id uuid,doc uuid,rev int,cid uuid) returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid() and role in ('owner','admin'))$$");
- await decide(linked,1,A,await preview(linked,1,A));
- await actor(UB);await decide(linked,1,B,await preview(linked,1,B));const linkedApproved=await render(linked,1,B);
+ const linkedApproved=await render(linked,1,A);await actor(UB);
+ await db.query('select trade_document_consent_private.bind_local($1,$2,$3)',[linked,B,localId(linked,B)]);check(await render(linked,1,B),linkedApproved);
  check(await q('select to_jsonb(p) v from payment_certificates p where id=$1',[PC]),financialBefore);
  await db.query('update payment_certificates set revision=2 where id=$1',[PC]);
  await deny(()=>render(linked,1,B),/changed/);check(await render(linked,1,B,true),linkedApproved);
- // ACK receipt replay is historical metadata, never active rendering authorization after cancel.
- await actor(UA);const active=await q('select jsonb_build_object(\'epoch\',epoch,\'body_hash\',body_hash) v from trade_document_consent_private.revisions where document_id=$1 and revision=2',[doc]);
- const cancelPreview={...active,own_seal:{seal_hash:null}};
- await db.query("update private.company_connections set status='disabled'");
- await decide(doc,2,A,cancelPreview,'cancel');
- await deny(()=>render(doc,2,A),/approved/);
+ await actor(UA);const active=await q("select jsonb_build_object('epoch',epoch,'body_hash',body_hash) v from trade_document_consent_private.revisions where document_id=$1 and revision=2",[doc]);
+ const cancelPreview={...active,own_seal:{seal_hash:null}};await db.query("update private.company_connections set status='disabled'");
+ await decide(doc,2,A,cancelPreview,'cancel');await deny(()=>render(doc,2,A),/approved/);
  await db.exec('set role anon');await deny(()=>db.query('select trade_document_consent_private.own_seal($1)',[B]),/permission denied/);await db.exec('reset role');
- check((await q('select count(*)::int v from payment_certificates')),1);
- check((await q('select count(*)::int v from invoices')),1);
- console.log('PASS '+n+' bound consent checks; official v1/v2 seal source, both-party identical render, changes/replay/rotation, denied leak/actor, independent IDs, actual attachment binding, no parent financial writes');
+ check(await q('select count(*)::int v from payment_certificates'),1);check(await q('select count(*)::int v from invoices'),1);
+ console.log('PASS '+n+' bound consent checks; separate company local IDs and directional kinds, issuer-only explicit seal consent, identical received copy without extra approval, official v1/v2 source, change/replay/rotation/denial, actual attachment binding, no parent financial writes; unified adapter UNIMPLEMENTED');
 }finally{await db.close();}
-

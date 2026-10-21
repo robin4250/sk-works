@@ -118,6 +118,7 @@ declare d trade_document_consent_private.documents%rowtype;r trade_document_cons
 begin
  perform trade_document_consent_private.require_local(doc,cid);select * into d from trade_document_consent_private.documents where id=doc;
  if d.id is null or cid not in(d.issuer_company_id,d.counterparty_company_id) then raise exception 'document access denied';end if;
+ if cid<>d.issuer_company_id then raise exception 'issuer stamp owner approval required' using errcode='42501';end if;
  perform trade_document_consent_private.lock_pair(d.issuer_company_id,d.counterparty_company_id);
  select * into r from trade_document_consent_private.revisions where document_id=doc and revision=rev;
  if d.current_revision<>rev or r.state<>'open' then raise exception 'latest open revision required' using errcode='40001';end if;
@@ -126,12 +127,13 @@ begin
 -- Internal primitive only; never expose as a second user-facing request workflow.
 create function trade_document_consent_private.decide(doc uuid,rev int,cid uuid,expected_epoch int,expected_body_hash text,action text,expected_seal_hash text,confirmed boolean,rid uuid) returns jsonb
 language plpgsql security definer set search_path='' as $$
-declare d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;seal jsonb;other record;binding jsonb;payload jsonb;receipt trade_document_consent_private.receipts%rowtype;result jsonb;next_state text;
+declare d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;seal jsonb;binding jsonb;payload jsonb;receipt trade_document_consent_private.receipts%rowtype;result jsonb;next_state text;
 begin
  perform trade_document_consent_private.require_local(doc,cid);
  if confirmed is distinct from true or rid is null or action is null or action not in('approve','reject','return','cancel') then raise exception 'explicit document and seal consent required';end if;
  select * into d from trade_document_consent_private.documents where id=doc;
  if d.id is null or cid not in(d.issuer_company_id,d.counterparty_company_id) then raise exception 'document access denied';end if;
+ if cid<>d.issuer_company_id then raise exception 'issuer stamp owner approval required' using errcode='42501';end if;
  if action='cancel' then perform 1 from public.companies where id in(d.issuer_company_id,d.counterparty_company_id) order by id for share;
  else perform trade_document_consent_private.lock_pair(d.issuer_company_id,d.counterparty_company_id);end if;
  select * into d from trade_document_consent_private.documents where id=doc for update;
@@ -149,11 +151,9 @@ begin
  if action='approve' then
  seal:=trade_document_consent_private.own_seal(cid);
  if expected_seal_hash is null or expected_seal_hash is distinct from seal->>'seal_hash' then raise exception 'registered seal changed' using errcode='40001';end if;
- for other in select * from trade_document_consent_private.consents where document_id=doc and revision=rev and company_id<>cid loop
- if trade_document_consent_private.own_seal(other.company_id)->>'seal_hash' is distinct from other.seal_hash then raise exception 'other party must reconfirm current registered seal' using errcode='40001';end if;end loop;
  insert into trade_document_consent_private.consents values(doc,rev,cid,auth.uid(),seal->'snapshot',seal->>'seal_hash',(seal->>'version_id')::uuid,seal->>'asset_hash',seal->>'version_key',seal->>'renderer_contract')
  on conflict(document_id,revision,company_id) do update set actor_id=excluded.actor_id,seal_snapshot=excluded.seal_snapshot,seal_hash=excluded.seal_hash,seal_version_id=excluded.seal_version_id,seal_asset_hash=excluded.seal_asset_hash,seal_version_key=excluded.seal_version_key,renderer_contract=excluded.renderer_contract;
- next_state:=case when(select count(*) from trade_document_consent_private.consents where document_id=doc and revision=rev)=2 then 'approved' else 'open' end;
+ next_state:='approved';
  else next_state:=case action when 'reject' then 'rejected' when 'return' then 'returned' else 'cancelled' end;end if;
  update trade_document_consent_private.revisions set state=next_state,epoch=epoch+1 where document_id=doc and revision=rev;
  perform trade_document_consent_private.require_actor(cid);
@@ -185,10 +185,10 @@ begin
  if binding is distinct from r.binding then raise exception 'parent changed; new approval required' using errcode='40001';end if;end if;
  select jsonb_agg(jsonb_build_object('company_id',company_id,'actor_id',actor_id,'seal_hash',seal_hash,'version_key',seal_version_key)order by company_id)
  into approvals from trade_document_consent_private.consents where document_id=doc and revision=rev;
- -- Both snapshots remain private evidence; print only the registered issuer seal.
+ -- Each kind is issued by its own stamp owner. Do not wait for an extra peer stamp.
  select jsonb_agg(jsonb_build_object('company_id',company_id,'seal_snapshot',seal_snapshot,'seal_hash',seal_hash,'seal_version_id',seal_version_id,'asset_hash',seal_asset_hash,'version_key',seal_version_key,'renderer_contract',renderer_contract))
  into seals from trade_document_consent_private.consents where document_id=doc and revision=rev and company_id=d.issuer_company_id;
- if jsonb_array_length(approvals)<>2 or jsonb_array_length(seals)<>1 then raise exception 'both explicit consents required';end if;
+ if jsonb_array_length(approvals)<>1 or jsonb_array_length(seals)<>1 then raise exception 'issuer explicit consent required';end if;
  result:=jsonb_build_object('document_id',doc,'revision',rev,'transaction_id',d.transaction_id,'body',r.body,'body_hash',r.body_hash,'binding',r.binding,'seals',seals,'consents',approvals,'render_seal_company_id',d.issuer_company_id,
  'document_role',case d.document_kind when 'order' then 'ordering_company' else 'accepting_company' end);
  return result||jsonb_build_object('render_hash',encode(sha256(convert_to(result::text,'UTF8')),'hex'));end $$;
