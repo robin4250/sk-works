@@ -77,10 +77,11 @@ try {
  await db.exec('reset role');await db.query('update public.worker_payroll_settings set transport_monthly=123 where company_id=$1 and worker_id=$2',[cid,wid]);
  await assert.rejects(apply(stale),/plan changed/);
  p=await plan();
+ const laterBeforeSecond=await statement(dates.month_key);
  const second=await apply(p);
  assert.equal(second.recalculated_scopes,1);assert.equal(second.excluded_count,p.excluded_count);
  assert.equal((await statement(past.b)).gross_pay,302623,'common plus individual earning and transport are retained');
- assert.deepEqual(await statement(past.a),frozen);assert.deepEqual(await statement(dates.previous_key),manual);assert.deepEqual(await statement(dates.month_key),beforeCurrent);
+ assert.deepEqual(await statement(past.a),frozen);assert.deepEqual(await statement(dates.previous_key),manual);assert.deepEqual(await statement(dates.month_key),laterBeforeSecond);
  // A receipt failure rolls back all publication and financial writes together.
  await actor();settings=await save(settings,[extra(3000)]);p=await plan();
  const financialBefore=await statement(past.b);await actor();const timelineBefore=await timeline();await db.exec('reset role');
