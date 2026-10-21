@@ -9,7 +9,6 @@ const marker = "console.log('PASS monthly appendices:";
 if (script.split(marker).length !== 2) throw Error('Original fixture final marker changed');
 const checks = `
 await db.exec(\`reset role;set test.uid='\${a}';set test.invoice_manage='true';set test.invoice_view='true';set test.blocked='false'\`);
-await db.exec(await fs.readFile(new URL('../supabase/migrations/20261020210553_payment_order_work_defaults.sql',${JSON.stringify(original.href)}),'utf8'));
 const configCatalog=async()=> (await db.query(\`select proname,to_jsonb(p)-'prosrc' metadata from pg_proc p where p.oid in ('private.trade_document_template(text,uuid,integer,jsonb)'::regprocedure,'private.trade_document_attachment_workspace(text,uuid,text)'::regprocedure) order by proname\`)).rows;
 const configBefore=await configCatalog();
 const financialBefore=(await db.query(\`select (select jsonb_agg(to_jsonb(x)) from public.invoices x) invoices,(select jsonb_agg(to_jsonb(x)) from public.payment_certificates x) certificates,(select jsonb_agg(to_jsonb(x)) from private.trade_document_attachments x) appendices\`)).rows;
