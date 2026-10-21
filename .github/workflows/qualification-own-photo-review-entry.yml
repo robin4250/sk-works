@@ -1,0 +1,26 @@
+name: Own qualification photo review entry
+on:
+  push:
+    branches: ['fix/qualification-own-photo-review-entry-20261021']
+permissions:
+  contents: read
+jobs:
+  review-entry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - name: Verify entry, own removal and existing approval contracts
+        run: >-
+          flutter test
+          test/qualification_photo_review_entry_test.dart
+          test/own_qualification_photo_submission_test.dart
+          test/own_qualification_photo_editor_test.dart
+          test/own_qualification_photo_selection_test.dart
+          test/qualification_photo_submission_review_test.dart
+          test/qualification_photo_submission_review_http_test.dart
