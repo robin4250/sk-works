@@ -63,3 +63,36 @@ directory lookup at zero; disposal while directory lookup is blocked must wait f
 that provider and reject its late result before canonicalization/native open.
 These exercise enabled rejection boundaries, not a successful native composition.
 Results must be read from the current-head CI before treating them as verified.
+
+## Enabled composition verification
+
+Code commit `cc004597798991dd14ce4a6328a2c58530b2cb66` passed dedicated
+[CI 39519168441](https://github.com/robin4250/sk-works/actions/runs/39519168441):
+analysis, lock unchanged, runtime 4, enabled composition 1, native channel 9,
+SDK loopback 4 and pure guard 171 assertions. No local exec/Flutter run occurred.
+
+The new enabled composition uses actual pinned Supabase SDK and real loopback
+HTTP, with a client rejecting all non-fixture hosts/ports. The production runtime
+obtains an actual canonical temporary private directory and opens the existing
+native sqflite adapter through its public mobile MethodChannel plugin binding.
+The existing store factory and submission repository are composed unchanged.
+Checks cover fixed actor/company/target/Bearer, capability/readiness before path
+lookup, one open per runtime, preparation after local pending identity recording,
+pending readback, close completion, a new runtime reading/recovering the same
+request without another prepare, then background invalidation with subsequent
+submit rejected before additional HTTP or SQL updates.
+
+This proves the composition and transport boundaries represented by this fixture.
+The MethodChannel handler emulates SQL rows in one in-memory Map and has no
+transaction rollback engine; reopening reads that same fixture Map. It does not
+prove atomic durable storage, actual SQLite execution, native platform plugin
+execution, process termination/restart recovery or iPhone lifecycle behavior.
+The sentinel at the fixed DB path checks only that runtime close/failure does not
+delete/truncate those fixture bytes; it is not a database durability test.
+The existing separate Python core checks retain their own scope and are not
+substituted by this Map fixture.
+
+Successful prepare/get and explicit recovery were tested. Explicit submit/cancel
+execution was not: the only submit attempt is after invalidation and must send
+nothing. No production backend, product route or UI was connected; no deletion,
+real Auth/provider, Mac/iPhone or production data operation was performed.
