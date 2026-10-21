@@ -81,9 +81,9 @@ begin
  snapshot:=snapshot||jsonb_build_object(r.nspname||'.'||r.relname,md5(contents::text));
  end loop;
  return snapshot;
-end $;
+end $$;
 create function common_payroll_retro_review_private.source(cid uuid) returns text
-language sql volatile security definer set search_path='' as $select md5(common_payroll_retro_review_private.source_parts(cid)::text)$;
+language sql volatile security definer set search_path='' as $$select md5(common_payroll_retro_review_private.source_parts(cid)::text)$$;
 create function common_payroll_retro_review_private.plan(cid uuid,typ text,p_start date) returns jsonb
 language plpgsql volatile security definer set search_path='' as $$
 declare timeline jsonb;boundary date;activation date;entries jsonb;eligible int;excluded int;
