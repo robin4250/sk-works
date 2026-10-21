@@ -1,11 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:sk_works/features/qualifications/admin_saved_qualification_photo_submission_repository.dart';
 import 'package:sk_works/features/qualifications/qualification_photo_management_runtime_page.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class _NoRequests extends http.BaseClient {
+  int requests = 0;
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    requests++;
+    throw StateError('Product route is OFF');
+  }
+}
 
 void main() {
   testWidgets('default OFF shows unavailable and help without any SDK request', (tester) async {
-    var signedReads = 0;
+    late _NoRequests httpClient;
+    final client = (await tester.runAsync(() async {
+      httpClient = _NoRequests();
+      return SupabaseClient('https://fixture.invalid', 'synthetic-public-key',
+        httpClient: httpClient,
+        authOptions: const AuthClientOptions(autoRefreshToken: false));
+    }))!;
+    debugPrint('OFF fixture: SDK created');
     final scope = ValueNotifier(const AdminSavedQualificationPhotoSubmissionScope(
       actorId: '00000000-0000-0000-0000-000000000001',
       companyId: '00000000-0000-0000-0000-000000000002',
@@ -13,17 +31,21 @@ void main() {
       active: true,
     ));
     await tester.pumpWidget(MaterialApp(home: QualificationPhotoManagementRuntimePage(
-      scope: scope, qualificationName: '合成資格', holderName: '合成保有者',
-      signedUrl: (_) async { signedReads++; throw StateError('OFF reader forbidden'); },
+      scope: scope, qualificationName: '合成資格', holderName: '合成保有者', client: client,
     )));
+    debugPrint('OFF fixture: page mounted');
     expect(find.text('写真の変更申請は準備中です。現在は利用できません。'), findsOneWidget);
     expect(find.text('残す写真を選ぶ'), findsNothing);
     await tester.tap(find.byTooltip('ヘルプ'));
     await tester.pumpAndSettle();
     expect(find.text('操作と保留中の申請について'), findsOneWidget);
-    expect(signedReads, 0);
+    debugPrint('OFF fixture: help settled');
+    expect(httpClient.requests, 0);
     await tester.pumpWidget(const SizedBox());
     scope.dispose();
+    debugPrint('OFF fixture: page unmounted');
+    await tester.runAsync(() => client.dispose());
+    debugPrint('OFF fixture: SDK disposed');
   }, timeout: const Timeout(Duration(seconds: 30)));
 
   testWidgets('enabled without a session stays unavailable and cannot select photos', (tester) async {
