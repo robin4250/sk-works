@@ -148,6 +148,7 @@ function validatedAfter(before,after){
  assert.equal(a.audit.constraints.length,1);assert.equal(a.audit.constraints[0].contype,'p');
  const triggers=a.audit.triggers.filter(t=>!t.tgisinternal);assert.equal(triggers.length,1);assert.equal(triggers[0].tgname,'expense_payment_conversion_audit_immutable');assert.equal(triggers[0].tgtype,27);assert.equal(triggers[0].tgenabled,'O');assert.equal(triggers[0].tgfoid,a.functions['private.expense_payment_conversion_audit_immutable()'].proc.oid);assert.equal(triggers[0].tgqual,null);
  assert.equal(a.audit.relation.relrowsecurity,true);assert.equal(a.audit.relation.relforcerowsecurity,false);assert.equal(a.audit.relation.relowner,b.functions[existing[0]].proc.proowner);assert.deepEqual(a.audit.policies,[]);
+ assert.deepEqual(Object.keys(a.closure).filter(s=>s!==added[0]).sort(),Object.keys(b.closure).sort());
  // Compare each old dependency exactly, allowing only the two reviewed reader bodies.
  for(const [sig,item] of Object.entries(b.closure)){
   const found=a.closure[sig];assert(found);if(existing.includes(sig)){const x={...item.proc},y={...found.proc};delete x.prosrc;delete y.prosrc;assert.deepEqual(y,x);assert.equal(found.proc.prosrc,sources[sig]);}else assert.deepEqual(found,item);
