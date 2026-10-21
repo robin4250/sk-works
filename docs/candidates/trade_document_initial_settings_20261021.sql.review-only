@@ -1,0 +1,29 @@
+-- REVIEW ONLY. No live deploy; template text/config only, no financial DML.
+begin;
+set local lock_timeout='5s';
+DO $patch$
+declare body text; definition text; patched text; workspace_body text; workspace_definition text;
+begin
+ select prosrc,pg_get_functiondef(oid) into body,definition from pg_proc where oid=to_regprocedure('private.trade_document_template(text,uuid,integer,jsonb)');
+ select prosrc,pg_get_functiondef(oid) into workspace_body,workspace_definition from pg_proc where oid=to_regprocedure('private.trade_document_attachment_workspace(text,uuid,text)');
+ if md5(body) is distinct from '77819febe9b0a8e933746eaa29484230' or md5(workspace_body) is distinct from 'c263b374c1279dee5dc685971b2c447d' then raise exception 'trade settings source drift' using errcode='55000';end if;
+ if exists(select 1 from pg_proc p where p.oid in (to_regprocedure('private.trade_document_template(text,uuid,integer,jsonb)'),to_regprocedure('private.trade_document_attachment_workspace(text,uuid,text)')) and (pg_get_userbyid(p.proowner)<>'postgres' or not p.prosecdef or p.provolatile<>'v' or p.proconfig is distinct from array['search_path=""'])) then raise exception 'trade settings metadata drift' using errcode='55000';end if;
+ patched:=body;
+ if strpos(patched,$old$   if (item not in ('intro_text','acceptance_text','payment_conditions','notes')
+       and not (p_kind='payment_certificate' and item in ('work_name','work_address'))) or jsonb_typeof(p_payload->item)<>'string'
+    or length(p_payload->>item)>(case when item='notes' then 600 when item in ('work_name','work_address') then 240 else 400 end) then$old$)=0 then raise exception 'trade settings anchor missing';end if;
+ patched:=replace(patched,$old$   if (item not in ('intro_text','acceptance_text','payment_conditions','notes')
+       and not (p_kind='payment_certificate' and item in ('work_name','work_address'))) or jsonb_typeof(p_payload->item)<>'string'
+    or length(p_payload->>item)>(case when item='notes' then 600 when item in ('work_name','work_address') then 240 else 400 end) then$old$,$new$   if (item='auto_generate' and jsonb_typeof(p_payload->item) is distinct from 'boolean')
+    or (item<>'auto_generate' and (item not in ('intro_text','acceptance_text','payment_conditions','notes','work_name','work_address')
+     or jsonb_typeof(p_payload->item) is distinct from 'string'
+     or length(p_payload->>item)>(case when item='notes' then 600 when item in ('work_name','work_address') then 240 else 400 end))) then$new$);
+ if strpos(patched,$old$return jsonb_build_object('version',coalesce(saved.version,0),'payload',coalesce(saved.payload,'{}'::jsonb),'can_manage',can_manage);$old$)=0 then raise exception 'trade settings anchor missing';end if;
+ patched:=replace(patched,$old$return jsonb_build_object('version',coalesce(saved.version,0),'payload',coalesce(saved.payload,'{}'::jsonb),'can_manage',can_manage);$old$,$new$return jsonb_build_object('settings_contract_version',2,'version',coalesce(saved.version,0),'payload',(case when p_kind='invoice' then coalesce((select jsonb_object_agg(key,value) from jsonb_each(coalesce((select payload from private.trade_document_templates where company_id=p_company and subject_kind='payment_certificate'),'{}'::jsonb)) where key in ('work_name','work_address')),'{}'::jsonb) else '{}'::jsonb end)||coalesce(saved.payload,'{}'::jsonb),'can_manage',can_manage);$new$);
+ if strpos(patched,$old$not private.account_access_allowed()$old$)=0 then raise exception 'trade settings anchor missing';end if;
+ patched:=replace(patched,$old$not private.account_access_allowed()$old$,$new$private.account_access_allowed() is not true$new$);
+ execute replace(definition,body,patched);
+ if strpos(workspace_body,$old$coalesce((select payload from private.trade_document_templates where company_id=(source->>'company_id')::uuid and subject_kind=p_kind),'{}'::jsonb)$old$)=0 then raise exception 'trade workspace anchor missing';end if;
+ execute replace(workspace_definition,$old$coalesce((select payload from private.trade_document_templates where company_id=(source->>'company_id')::uuid and subject_kind=p_kind),'{}'::jsonb)$old$,$new$(case when p_kind='invoice' then coalesce((select jsonb_object_agg(key,value) from jsonb_each(coalesce((select payload from private.trade_document_templates where company_id=(source->>'company_id')::uuid and subject_kind='payment_certificate'),'{}'::jsonb)) where key in ('work_name','work_address')),'{}'::jsonb) else '{}'::jsonb end)||coalesce((select payload from private.trade_document_templates where company_id=(source->>'company_id')::uuid and subject_kind=p_kind),'{}'::jsonb)$new$);
+end $patch$;
+commit;
