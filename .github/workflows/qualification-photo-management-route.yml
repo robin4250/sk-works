@@ -19,6 +19,8 @@ jobs:
         run: dart analyze lib/features/qualifications/qualification_photo_management_runtime_page.dart lib/features/qualifications/qualification_photo_mobile_runtime.dart lib/features/qualifications/qualification_certificate_page.dart lib/features/qualifications/qualification_certificate_repository.dart test/features/qualifications/qualification_photo_management_runtime_page_test.dart
       - name: Verify route isolation
         run: flutter test test/features/qualifications/qualification_photo_management_runtime_page_test.dart --reporter expanded
+      - name: Preserve saved certificate and draft screens
+        run: flutter test test/qualification_registered_edit_hold_test.dart test/admin_saved_qualification_photo_draft_page_test.dart --reporter expanded
       - name: Preserve runtime boundaries
         run: flutter test test/features/qualifications/qualification_photo_mobile_runtime_test.dart test/features/qualifications/qualification_photo_mobile_runtime_composition_test.dart --reporter expanded
       - name: Preserve SDK pinning

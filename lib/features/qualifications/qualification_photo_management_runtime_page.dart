@@ -51,7 +51,7 @@ class _QualificationPhotoManagementRuntimePageState
   AdminSavedQualificationPhotoSubmissionResult? _result;
   String? _pending, _token, _message;
   StreamSubscription<AuthState>? _auth;
-  bool _foreground = false, _revoked = false, _busy = false;
+  bool _foreground = false, _revoked = false, _busy = false, _loaded = false;
 
   @override
   void initState() {
@@ -182,11 +182,12 @@ class _QualificationPhotoManagementRuntimePageState
   }
 
   Future<void> _load() async {
+    _loaded = false;
     final repository = _repository ??= await _runtime!.open();
     _check();
     final pending = await repository.pendingRequestId();
     _check();
-    setState(() { _pending = pending; _result = null; });
+    setState(() { _pending = pending; _result = null; _loaded = true; });
     if (pending != null) {
       final result = await repository.recover(expectedRequestId: pending);
       _check();
@@ -375,7 +376,9 @@ class _QualificationPhotoManagementRuntimePageState
               setState(() { _pending = null; _result = null; });
             }) : null, child: const Text('確認済みとして保留を閉じる')),
         ] else if (widget.enabled && !_revoked)
-          FilledButton(onPressed: allowed ? () => _run(_prepare) : null, child: const Text('残す写真を選ぶ')),
+          FilledButton(onPressed: allowed && _loaded ? () => _run(_prepare) : null, child: const Text('残す写真を選ぶ')),
+        if (widget.enabled && !_revoked && _repository != null && !_loaded && !_busy)
+          OutlinedButton(onPressed: () => _run(_load), child: const Text('保留中の申請を再確認')),
         if (widget.enabled && !_revoked && _repository == null && !_busy)
           const Text('元の画面から開き直してください。'),
       ]),
