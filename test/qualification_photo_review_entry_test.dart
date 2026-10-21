@@ -88,6 +88,19 @@ void main() {
     expect(find.text('資格写真の承認待ち'), findsNothing);
   });
 
+  testWidgets('initial background mount does not read or expose requests', (tester) async {
+    var reads = 0;
+    load = () async { reads++; return rows; };
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await show(tester);
+    expect(reads, 0);
+    expect(find.text('資格写真の承認待ち'), findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(reads, 1);
+    expect(find.text('資格写真の承認待ち'), findsOneWidget);
+  });
+
   testWidgets('disposing before response returns exposes nothing', (tester) async {
     final reply = Completer<List<Map<String, dynamic>>>();
     load = () => reply.future;

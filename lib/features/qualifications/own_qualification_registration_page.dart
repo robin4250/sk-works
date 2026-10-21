@@ -606,8 +606,8 @@ class _OwnQualificationRegistrationPageState
               builder: (context) => AlertDialog(
                 title: const Text('資格写真の変更・削除'),
                 content: const SingleChildScrollView(child: Text(
-                  '登録済み資格の「確認・編集」から、ごみ箱で写真を一覧から外し、「写真を確定」で変更申請を送ります。全写真を外す申請もできます。\\n\\n'
-                  '申請後、承認権限がある場合はこの画面の「資格写真の承認待ち」を開き、内容を確認して承認します。権限がない場合は会社の承認担当者へ確認してください。\\n\\n'
+                  '登録済み資格の「確認・編集」から、ごみ箱で写真を一覧から外し、「写真を確定」で変更申請を送ります。全写真を外す申請もできます。\n\n'
+                  '申請後、承認権限がある場合はこの画面の「資格写真の承認待ち」を開き、内容を確認して承認します。権限がない場合は会社の承認担当者へ確認してください。\n\n'
                   '承認後に一覧へ反映します。資格登録そのものと写真ファイルの履歴は削除しません。送信結果が不明な場合は、新しく送らず「保留中の写真申請を再確認」を使います。',
                 )),
                 actions: [TextButton(
@@ -699,7 +699,7 @@ class _OwnQualificationRegistrationPageState
                       loadPending: _reviewRepository.pending,
                       scope: () {
                         final session = _reviewRepository.client.auth.currentSession;
-                        return session == null ? null :
+                        return session == null || session.isExpired ? null :
                             (session.user.id, session.accessToken);
                       },
                       scopeChanges: _reviewRepository.client.auth.onAuthStateChange,

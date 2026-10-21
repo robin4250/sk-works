@@ -34,6 +34,8 @@ class _EntryState extends State<QualificationPhotoReviewEntry>
   @override
   void initState() {
     super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _subscription = widget.scopeChanges.listen(
       (_) => _invalidate(),
