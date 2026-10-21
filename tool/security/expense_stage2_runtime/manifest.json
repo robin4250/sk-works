@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "offline_only": true,
+  "production_executed": false,
+  "files": {
+    "REVIEW.md": "5a6b14e095078895069890ac6bdb413b7d8a6f3e0ae31db86545ea2c53e29511",
+    "source/converter.sql.review-only": "725ff2533539c63759c92c0bbc45d37c131fa431c421fd76deb127bdff2604d7",
+    "source/expense_direction_code_checkpoint.mjs": "9a642ea96fc3d564f6c711c2547da5954310f5fdf7f1448abdef2a0dcfa6197f",
+    "source/expense_direction_default_off_preparation.mjs": "5e1401c0271be411ae6d1de9ac8f20432380cd4ebd6db2cc0ccffd46e83fdda8",
+    "source/negotiation.sql.review-only": "f08628a18891c114c64f7551c33f1139879da3fb1439bac23c8eb54f1995507d",
+    "stage2_plan.mjs": "bfc8af329575ebf4a3fd87f4e7ccc37eda3b8e696e39d0d5297ab131227e9a21",
+    "verify_stage2.mjs": "88140b35062e72427a27b8f74f207c5ccb6fee2030fc6b2c5ee94e38926a1a87"
+  }
+}
