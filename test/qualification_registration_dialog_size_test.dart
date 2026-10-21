@@ -76,6 +76,7 @@ void main() {
         final cancel = find.descendant(of: dialog, matching: find.text('キャンセル'));
         expect(tester.getCenter(cancel).dy, lessThan(size.height - 260));
         await tester.tap(cancel);
+        keyboard.value = 0;
         await tester.pumpAndSettle();
         expect(dialog, findsNothing);
         expect(repository.writes, 0);

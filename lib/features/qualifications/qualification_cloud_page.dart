@@ -32,6 +32,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   List<Map<String, dynamic>> _workers = [];
   List<Map<String, dynamic>> _qualifications = [];
   bool _loading = true;
+  bool _registrationDialogOpen = false;
   bool _canManageMaster = false;
   bool _canManageWorkerQualifications = false;
   bool _showExpiringOnly = false;
@@ -148,6 +149,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     }).toList(growable: false);
 
     return Scaffold(
+      resizeToAvoidBottomInset: !_registrationDialogOpen,
       appBar: AppBar(
         title: const Text('従業員資格'),
         actions: [
@@ -362,6 +364,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     final notesController = TextEditingController();
     var expiryRequired = false;
 
+    setState(() => _registrationDialogOpen = true);
     Future<dynamic>? dialogCompleted;
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -437,6 +440,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       categoryController.dispose();
       issuerController.dispose();
       notesController.dispose();
+      if (mounted) {
+        setState(() => _registrationDialogOpen = false);
+      }
     }
     final completed = dialogCompleted;
     if (completed == null) {
@@ -491,6 +497,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     DateTime? issuedAt;
     DateTime? expiresAt;
 
+    setState(() => _registrationDialogOpen = true);
     Future<dynamic>? dialogCompleted;
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -608,6 +615,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       certificateController.dispose();
       issuerController.dispose();
       notesController.dispose();
+      if (mounted) {
+        setState(() => _registrationDialogOpen = false);
+      }
     }
 
     // Dialog results precede the reverse animation. Keep its controllers alive

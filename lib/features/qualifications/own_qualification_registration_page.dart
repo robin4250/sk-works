@@ -38,6 +38,7 @@ class _OwnQualificationRegistrationPageState
   List<Map<String, dynamic>> _qualifications = const [];
   String _query = '';
   bool _loading = true;
+  bool _registrationDialogOpen = false;
   String? _error;
 
   @override
@@ -334,6 +335,7 @@ class _OwnQualificationRegistrationPageState
     DateTime? issuedAt;
     DateTime? expiresAt;
 
+    setState(() => _registrationDialogOpen = true);
     Future<dynamic>? dialogCompleted;
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -445,6 +447,9 @@ class _OwnQualificationRegistrationPageState
       certificateController.dispose();
       issuerController.dispose();
       notesController.dispose();
+      if (mounted) {
+        setState(() => _registrationDialogOpen = false);
+      }
     }
     final completed = dialogCompleted;
     if (completed == null) {
@@ -607,6 +612,7 @@ class _OwnQualificationRegistrationPageState
         .toList(growable: false);
 
     return Scaffold(
+      resizeToAvoidBottomInset: !_registrationDialogOpen,
       appBar: AppBar(
         title: const Text(
           '資格登録',
