@@ -71,6 +71,14 @@ class QualificationPhotoMobileRuntime {
     return _opening ??= _start();
   }
 
+  /// Recheck the dedicated contract under this runtime's captured session.
+  Future<AdminSavedQualificationPhotoAuthorization> authorization() async {
+    _check();
+    final result = await _rpc!.authorization();
+    _check();
+    return result;
+  }
+
   void _check() {
     if (!_enabled || _closed || _rpc?.scope().active != true) {
       throw StateError('Qualification photo runtime scope changed');

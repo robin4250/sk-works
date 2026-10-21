@@ -91,6 +91,7 @@ class QualificationCertificateRepository {
 
     if (!canManage && (ownWorkerId == null || ownWorkerId.isEmpty)) {
       return {
+        'company_id': companyId,
         'masters': List<Map<String, dynamic>>.from(masters),
         'workers': const <Map<String, dynamic>>[],
         'qualifications': const <Map<String, dynamic>>[],
@@ -141,6 +142,7 @@ class QualificationCertificateRepository {
     }
 
     return {
+      'company_id': companyId,
       'masters': List<Map<String, dynamic>>.from(masters),
       'workers': List<Map<String, dynamic>>.from(workers),
       'qualifications': qualifications,

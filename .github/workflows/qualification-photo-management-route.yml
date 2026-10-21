@@ -1,0 +1,27 @@
+name: Qualification photo management route
+on:
+  push:
+    branches: ['support/qualification-photo-management-route-20261021']
+permissions:
+  contents: read
+jobs:
+  management-route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
+      - name: Analyze route and entry
+        run: dart analyze lib/features/qualifications/qualification_photo_management_runtime_page.dart lib/features/qualifications/qualification_photo_mobile_runtime.dart lib/features/qualifications/qualification_certificate_page.dart lib/features/qualifications/qualification_certificate_repository.dart test/features/qualifications/qualification_photo_management_runtime_page_test.dart
+      - name: Verify route isolation
+        run: flutter test test/features/qualifications/qualification_photo_management_runtime_page_test.dart --reporter expanded
+      - name: Preserve runtime boundaries
+        run: flutter test test/features/qualifications/qualification_photo_mobile_runtime_test.dart test/features/qualifications/qualification_photo_mobile_runtime_composition_test.dart --reporter expanded
+      - name: Preserve SDK pinning
+        run: flutter test tool/verify_qualification_photo_session_rpc_sdk_test.dart --reporter expanded
+      - name: Preserve submission state machine
+        run: dart tool/verify_qualification_admin_photo_submission.dart
