@@ -1,6 +1,6 @@
 # Expense default-OFF one-shot orchestration: REVIEW CANDIDATE ONLY
 
-No production transport is included. The command-line entry point always refuses with exit 2 before connection, authentication, marker creation or SQL execution. No password, endpoint, CLI login, PostgREST client or production adapter is read or accepted. The Python functions are a harness for the synthetic transport supplied by tests, **not an approved production operator command**.
+A dedicated direct-PostgreSQL adapter implementation is now included, but its deployment trust anchor remains deliberately unbound. The command-line entry points still refuse before connection or credential acquisition. No credentials are searched/read, no production connection has been attempted, and no exact prepared artifacts or durable root have been self-approved. The new adapter is not yet an approved production operator command.
 
 ## Reuse boundary
 
@@ -69,3 +69,19 @@ Native-only command, on the dedicated empty CI fixture:
 ```bash
 SKO_PAYROLL_SCOPE_FIXTURE_URL=postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_payroll_scope_fixture python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_native_recovery.py' -v
 ```
+
+## Dedicated transport implementation (unbound; no production connection)
+
+production_transport.py connects the existing permanent-marker runner to a new fixed direct PostgreSQL worker. production_transport_core.mjs fixes project ztktgquxvcxcjxtluspu, host db.ztktgquxvcxcjxtluspu.supabase.co, port5432, database/role postgres. No URL/host/role/SQL CLI option is accepted. Poolers are not silently substituted. Integration owner must confirm direct IPv6 availability and the exact authorized role; these candidate defaults are not approval.
+
+TLS requires rejectUnauthorized=true, fixed hostname/SNI, minimum TLS1.2. A fresh pg.Client is created for every invocation, with no pool or retry. Session/effective role and database must match exactly; search_path=public is set and checked. Acknowledged return, disconnect/timeout and fresh READ ONLY observation remain distinct. The original SQL is hashed and submitted once as one unchanged BEGIN/COMMIT payload. No undo is executed. Server/driver exceptions are reduced to constant codes, never raw SQL/password/messages.
+
+Credential input is only an explicitly supplied owned0600 regular-file descriptor (not a path, environment variable, keychain search or argv). It is carried to the child only on stdin with close_fds and a clean environment. Timeout kills the child and becomes commit-unknown; it never authorizes retry. The password is necessarily present in process memory; this candidate does not claim memory zeroization or privilege separation from the same OS owner.
+
+production_transport_binding.py contains None for the one fixed durable0700 root and the integration-owner-approved manifest digest. Nothing in argv/env/manifest can arm it. Until the integration owner reviews and fixes these code anchors, both Python public entry functions reject before reading the credential descriptor. The fixed root contains production-approval.json and prepared/ with the exact original checkpoint, install, observation and prepare-status files. Approval must bind their SHA256, the three adapter code-file hashes, exact Node binary hash and the installed pinned dependency-tree digest. The binding trust anchor is separately code-reviewed to avoid a self-referential hash. Runtime/code/dependencies must be frozen against other writers before actual operation; local hash checks alone do not prove hostile same-owner filesystem race safety.
+
+The permanent exclusive-lock/O_EXCL/fsync attempt marker remains the unchanged review_runner implementation. Public install/recover wrappers use only the one bound root; source is fixed to root/prepared. Existing permanent markers refuse new attempts, including a different transport instance or plan. Fresh readonly recovery preserves the marker and cannot call install. Recovery still requires the approved original artifacts/code; changed evidence does not trigger a fallback.
+
+New validation: Node actual-core fixture verifies fixed endpoint/TLS options/hostname, wrong-role/path rejection before payload, fresh sessions, single immutable payload and failure without retry. A real loopback TLS fixture uses the production SSL policy with an explicit disposable CA and checks valid fixed-name, untrusted and wrong-name certificates. It does not connect to PostgreSQL or the project. Seven Python tests verify unbound refusal before credential/process, manifest/root/original/code/dependency tamper refusal, explicit privateFD, clean subprocess environment, secret-free failure codes, timeout no-resend and the actual permanent runner marker/recovery integration. The marker test substitutes SQL generation/classification only; earlier native SQL/disconnect CI remains separate and unchanged.
+
+Still missing before production: integration owner confirmation of direct endpoint/role, one actual durable root, exact original artifact approval, frozen code/dependencies and approved operator binding; native production-adapter PostgreSQL+TLS/disconnect integration proof. The prior fixture transport's native PG17 tests do not prove this new TLS adapter end to end. This transport does not enable gates, negotiate client source, convert v1 drafts or repair the specific -1000 row. Those remain separate authorized/root-guarded steps.

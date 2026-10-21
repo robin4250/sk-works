@@ -1,0 +1,23 @@
+name: Expense production transport boundaries
+on:
+  pull_request:
+    paths:
+      - 'tool/security/expense_production_off_runtime/**'
+      - '.github/workflows/expense-production-transport-boundaries.yml'
+permissions:
+  contents: read
+jobs:
+  dedicated-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - name: Fixed adapter protocol and identity boundaries
+        run: node tool/security/expense_production_off_runtime/test_production_transport_core.mjs
+      - name: Actual isolated TLS hostname and trust failures
+        run: node tool/security/expense_production_off_runtime/test_production_transport_tls.mjs
+      - name: Approval, private descriptor, permanent attempt and fresh recovery boundaries
+        run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_production_transport.py' -v
