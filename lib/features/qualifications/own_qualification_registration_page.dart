@@ -3,6 +3,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../people/worker_document_photo_editor.dart';
 import 'own_qualification_photo_contract.dart';
+import 'qualification_photo_review_entry.dart';
+import 'qualification_photo_submission_review_page.dart';
+import 'qualification_photo_submission_review_repository.dart';
 import 'own_qualification_photo_submission_repository.dart';
 
 import 'qualification_cloud_repository.dart';
@@ -22,6 +25,8 @@ class _OwnQualificationRegistrationPageState
   final _repository = QualificationCloudRepository.maybeCreate();
   final _photoRepository =
       OwnQualificationPhotoSubmissionRepository.maybeCreate();
+  final _reviewRepository =
+      QualificationPhotoSubmissionReviewRepository.maybeCreate();
   OwnQualificationPhotoCapability _photoCapability =
       OwnQualificationPhotoCapability.unavailable;
   Map<String, dynamic>? _pendingPhotos;
@@ -594,6 +599,25 @@ class _OwnQualificationRegistrationPageState
         ),
         actions: [
           IconButton(
+            tooltip: '資格写真の変更・削除のヘルプ',
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('資格写真の変更・削除'),
+                content: const SingleChildScrollView(child: Text(
+                  '登録済み資格の「確認・編集」から、ごみ箱で写真を一覧から外し、「写真を確定」で変更申請を送ります。全写真を外す申請もできます。\n\n'
+                  '申請後、承認権限がある場合はこの画面の「資格写真の承認待ち」を開き、内容を確認して承認します。権限がない場合は会社の承認担当者へ確認してください。\n\n'
+                  '承認後に一覧へ反映します。資格登録そのものと写真ファイルの履歴は削除しません。送信結果が不明な場合は、新しく送らず「保留中の写真申請を再確認」を使います。',
+                )),
+                actions: [TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('閉じる'),
+                )],
+              ),
+            ),
+          ),
+          IconButton(
             tooltip: '再読み込み',
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
@@ -669,6 +693,24 @@ class _OwnQualificationRegistrationPageState
                       ),
                     ),
                   ),
+                  if (_reviewRepository != null)
+                    QualificationPhotoReviewEntry(
+                      key: ValueKey('qualification-review:$_loadGeneration'),
+                      loadPending: _reviewRepository.pending,
+                      scope: () {
+                        final session = _reviewRepository.client.auth.currentSession;
+                        return session == null || session.isExpired ? null :
+                            (session.user.id, session.accessToken);
+                      },
+                      scopeChanges: _reviewRepository.client.auth.onAuthStateChange,
+                      onOpen: () async {
+                        await Navigator.of(context).push<void>(
+                          MaterialPageRoute(builder: (_) =>
+                              const QualificationPhotoSubmissionReviewPage()),
+                        );
+                        if (mounted) await _load();
+                      },
+                    ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
                     child: TextField(
@@ -802,4 +844,5 @@ class _OwnQualificationError extends StatelessWidget {
     );
   }
 }
+
 
