@@ -107,7 +107,7 @@ def _operator_transport(binding):
     # directory only. No account/token/password files are opened by this code.
     old_path=os.environ.get('PATH')
     try:
-        os.environ['PATH']=str(Path(binding['cli']['path']).parent)
+        os.environ['PATH']=str(Path(binding['cli']['path']).parent)+':/usr/bin:/bin'
         with tempfile.TemporaryDirectory(prefix='sko-expense-cli-',dir=APPROVED_DURABLE_ROOT) as folder:
             work=Path(folder);(work/'supabase').mkdir(mode=0o700)
             (work/'supabase/config.toml').write_text('project_id = "sko-private-capture"\n[db]\nmajor_version = 17\n')
