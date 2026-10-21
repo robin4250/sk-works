@@ -1,0 +1,40 @@
+# 資格写真backend：既writer closure追補（2026-10-21）
+
+基準PR1313 head30ec9561、PR1311 head13332beb、既rollout docs/qualification-backend-rollout-20261021を読取確認。新branch support/qualification-existing-writer-closure-20261021。製品UI/runtime/既SQL候補は未変更。本番照会・DDL/DML・Storage API/bytes操作なし。**本番HOLDは継続**。
+
+## 実sourceで確認したwriterと導入影響
+
+|入口|現操作|全row guard導入後|最小接続条件|
+|---|---|---|---|
+|QualificationCertificateRepository.uploadCertificate / uploadCertificateBack / uploadExtraCertificate|Storageへ新object upload後、写真3列を直接UPDATE（既写真は物理削除しない）|正式UPDATEが拒否される。uploadは先に完了し得る|管理側の新upload承認契約は現admin_saved_photosにはない。新保存写真削除だけをONにしてupload対応済みと言わない。旧client/直接API writer停止又は正規承認置換が必要|
+|同removeCertificate / removeCertificateBack / removeExtraCertificate|写真参照を直接UPDATE|拒否|PR1313は同社・actor・target・ordered baseline固定の保存写真除外prepare→明示submit→独立approveへ接続済み候補。ただし製品flag OFFで実機未確認|
+|QualificationCloudRepository.deleteWorkerQualification|worker_qualifications DELETE。管理者・manager許可をclientで確認するがquery自体はidのみ|全DELETEを拒否|QualificationCloudPage._deleteは既に直接repoを呼ばず「登録後の変更について」を表示する。capture済callbackも停止。登録本体の正規承認削除は未実装で、写真除外とは別件|
+|QualificationCloudRepository.insertOwnQualification / insertWorkerQualification|初回INSERT（後者は任意attachmentPathも可）|既candidateは初回INSERTを変更しない|更新→削除→再INSERT迂回を防ぐためDELETEガード解除不可。全本番INSERT権限/unique/FKは導入担当のclosure照合対象|
+|private.personal_qualification_submission approve|本人metadata/単写真、既snapshot CAS、既worker履歴|candidateがpermit発行を既UPDATE直前へ追加|既pendingを新prepareし直さず同IDで承認可（下記検証）|
+|private.personal_qualification_photo_submission approve|本人複数写真、snapshot CAS、Storage存在検査|candidateがpermit発行を既UPDATE直前へ追加|既pending同ID保持、下記検証|
+|private.admin_qualification_saved_photos|管理者の保存済写真のみ再配置/除外、同queue、独立承認|candidate/baseline/readiness一括前提|新upload不可、登録本体DELETE不可、自己承認不可。runtimeの永続CAS/同ID復旧を併用|
+|直接metadata UPDATE/管理・退職・会社削除cascade/保守|既正規writerの全実内容UPDATE・DELETE|全row guardが拒否|メタデータだけ許す新SQLは今回は作っていない。全入口の正規承認代替・停止条件を欠いたまま導入しない|
+
+現PR1313 QualificationCertificatePageは閲覧＋「写真の変更申請」に置換済みで、旧repoのupload/remove呼出UIはない。一方、旧SDK repo自体/旧Release/直接RESTは存在する。UI非表示だけで承認強制化を達成したとは扱わない。会社選択limit(1)等の既repo弱点も新runtimeの固定scopeと同等に改善済みとは言わない。
+
+## DELETEとStorageは別の保護
+
+20260919024500_harden_qualification_rls.sqlの「managers can manage worker qualifications」はowner/admin/managerのFOR ALL（DELETEを含む）。最新本番の全policy/ACL一致をこのsourceレビューだけで証明しない。DELETEをguard素通しに戻すと、添付の正式参照を未承認で消せる。履歴やStorage bytesが残ることは、正式参照削除の承認ではない。
+
+20261010222753_protect_qualification_photo_snapshots.sqlはAFTER DELETE/UPDATEで旧写真をqualification_photo_historyへ記録し、現row/history/旧worker履歴/delivery/queue.previous参照をStorageのrestrictive delete/update policyで保護する。20261010233011はphoto_paths/upload_pathsも保護する。既candidateはこれらStorage方針を変更しない。全DELETE拒否を維持し、cascadeを黙って例外にしない。退職等の保守運用が止まらないことは別途未証明。
+
+## 新規の隔離検証
+
+tool/verify_qualification_existing_writer_closure.mjsは既verify_qualification_admin_saved_photos.mjsを改変せず再利用し、**candidate導入前の実router**で本人metadata pendingと本人photo pendingを作る。candidate導入後の期待列admin_saved_photos=false以外はqueue全JSON・official全JSON不変を検査する。
+
+新旧photo本文2modeで、各旧pendingを別savepointから独立承認し、metadata/写真反映・status・permit一回消費・history/Storage参照保護を確認、probeをrollbackして元pendingのID/内容/状態を保持する。legacy metadata approveの応答は既{}、photoはstatus付きであり、同一形と仮定しない。既テストの権限/CAS/越境/actor拒否もそのまま実行する。
+
+合成fixtureに既DELETE許可とRLS相当を明示し、DELETE拒否がfixtureのgrant不足ではなくguard自身によることを検査する。管理SDK相当のfront/back/extra除外とmetadata直接UPDATEも拒否され、queueとofficialが不変と確認する。
+
+実行：Node24＋既lock済PGlite package、2mode成功（2026-10-21 UTC）。初回fixtureでは追加default列の期待差、SAVEPOINTのtransaction前提、legacy{}応答、拒否後transaction abortの扱いを修正し、製品SQL/ACLを変えず成功した。実PG17競合・JWT/Storage API・native/iPhone・全本番権限の証明ではない。既native lock-order CIの代替にしない。
+
+## 次に必要な接続（未実装）
+
+同一PR1313へ最終集約する。現保存写真削除routeが既repo直接removeを呼ばないこと、新backendreadiness後だけONにすること、旧client/直接writerを停止または正規申請へ置換することを同時に満たす。新upload承認/管理metadata/登録本体削除は現保存写真APIへ別用途として流さない。既pendingを一括cancel/再prepare/付替えしない。元pendingで申請者本人が承認者でもあった場合、新自己承認禁止により別の正規承認者が必要となる範囲は実運用確認を残す。
+
+本番適用はrootが原本fullcatalog・依存closure・writer停止/排出・未使用復元/利用開始後queue保持条件を整えて実施する。写真列だけへguardを緩めてDELETEを通す案は不採用。候補/隔離成功を実機削除可能や本番readyへ読み替えない。
