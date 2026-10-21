@@ -21,3 +21,5 @@ jobs:
         run: node tool/security/expense_production_off_runtime/test_production_transport_tls.mjs
       - name: Approval, private descriptor, permanent attempt and fresh recovery boundaries
         run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_production_transport.py' -v
+      - name: Pinned original CLI parser and sanitized Mac preflight (mock only)
+        run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_owner_cli_preflight.py' -v
