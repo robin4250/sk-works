@@ -96,7 +96,7 @@ void main() {
     expect(reads, 0);
     expect(find.text('資格写真の承認待ち'), findsNothing);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(reads, 1);
     expect(find.text('資格写真の承認待ち'), findsOneWidget);
   });
