@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/attendance/attendance_checkout_minute_guard.dart';
+import 'package:sk_works/features/attendance/attendance_checkout_minute_guard.dart';
 
 void main() {
   test('seconds and fractional seconds do not make a different minute', () {

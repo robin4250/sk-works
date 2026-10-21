@@ -74,6 +74,6 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - name: Analyze changed client surfaces
-        run: flutter analyze --no-fatal-infos lib/features/attendance/attendance_checkout_minute_guard.dart lib/features/attendance/attendance_verification_page.dart lib/features/attendance/attendance_management_page.dart lib/features/attendance/group_checkout_dialog.dart lib/features/help/menu_help_catalog.dart test/attendance_checkout_minute_guard_test.dart test/attendance_management_clock_precision_test.dart
+        run: flutter analyze lib/features/attendance/attendance_checkout_minute_guard.dart lib/features/attendance/attendance_verification_page.dart lib/features/attendance/attendance_management_page.dart lib/features/attendance/group_checkout_dialog.dart lib/features/help/menu_help_catalog.dart test/attendance_checkout_minute_guard_test.dart test/attendance_management_clock_precision_test.dart
       - name: Verify minute rejection and existing save/recovery contracts
         run: flutter test test/attendance_checkout_minute_guard_test.dart test/attendance_management_clock_precision_test.dart test/attendance_unrecorded_punches_test.dart test/attendance_shift_context_test.dart test/group_checkout_repository_test.dart test/group_checkout_dialog_test.dart test/capture_verification_draft_test.dart --reporter expanded
