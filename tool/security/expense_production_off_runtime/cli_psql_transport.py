@@ -15,7 +15,8 @@ from production_transport_binding import APPROVED_DURABLE_ROOT, APPROVED_MANIFES
 from review_runner import FILES, MAX_BYTES, Refused, read_private, install_review_once, recover_review_readonly
 
 RUNTIME=Path(__file__).absolute().parent
-CODE_FILES=('cli_psql_transport.py','owner_cli_preflight.py','review_runner.py','offline_generator.mjs')
+CODE_FILES=('cli_psql_transport.py','owner_cli_preflight.py','review_runner.py','offline_generator.mjs',
+            'offline_docker_generator.py','offline_docker_generator.sh')
 
 def _sha(value):return hashlib.sha256(value).hexdigest()
 

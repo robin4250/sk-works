@@ -6,8 +6,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
-import threading
-import time
+import select
 import unittest
 from unittest.mock import patch
 import cli_psql_transport as adapter
@@ -52,7 +51,6 @@ class NativeCliTlsTest(unittest.TestCase):
   url,password=cli.parse_cli_script(script);config=cli.capture.endpoint(url,cli_login=True)
   self.transport=adapter.CliPsqlTransport(config,password,self.psql,self.ca,self.artifacts,HOST)
  def tearDown(self):
-  self.control(b'DROP EVENT TRIGGER IF EXISTS fixture_delay_ddl;DROP FUNCTION IF EXISTS private.fixture_delay_ddl();')
   marker=self.root/MARKER
   if marker.exists():
    state=json.loads(marker.read_text())
@@ -63,31 +61,37 @@ class NativeCliTlsTest(unittest.TestCase):
     self.assertEqual(actual['after'],before['before']);self.assertEqual(actual['business'],before['business'])
   self.temp.cleanup()
  def run_case(self,mode):
-  original=(self.source/FILES[1]).read_bytes();calls=[];failures=[];thread=None
-  if mode=='disconnect-before':
-   self.control(b"CREATE FUNCTION private.fixture_delay_ddl() RETURNS event_trigger LANGUAGE plpgsql AS $$BEGIN PERFORM pg_sleep(60);END$$;CREATE EVENT TRIGGER fixture_delay_ddl ON ddl_command_start WHEN TAG IN ('CREATE FUNCTION') EXECUTE FUNCTION private.fixture_delay_ddl();")
-   def terminate():
-    try:
-     for _ in range(100):
-      rows=self.control(("select pid from pg_stat_activity where usename='"+LOGIN+"' and wait_event='PgSleep'").encode()).strip()
-      if rows:
-       self.control(b'select pg_terminate_backend('+rows+b');');return
-      time.sleep(.05)
-     failures.append('fixture_backend_not_observed')
-    except Exception:failures.append('fixture_kill_failed')
-   thread=threading.Thread(target=terminate);thread.start()
+  original=(self.source/FILES[1]).read_bytes();calls=[]
   def run(args,**kw):
-   result=RUN(args,**kw)
    if args[0]==str(self.psql) and kw.get('input')==original:
     calls.append(1)
+    if mode=='disconnect-before':
+     # Isolated fault injection only: production adapter supplied the full
+     # original bytes ONCE. Withhold only final COMMIT on this fixture pipe.
+     # No event trigger/catalog drift or production transport change is used.
+     self.assertTrue(original.rstrip().endswith(b'COMMIT;'))
+     prefix=original.rstrip()[:-len(b'COMMIT;')]
+     process=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=kw['env'],close_fds=True)
+     try:
+      process.stdin.write(prefix+b'\n\\echo fixture_original_body_complete\n');process.stdin.flush()
+      self.assertTrue(select.select([process.stdout],[],[],30)[0],'fixture original body must finish before termination')
+      self.assertEqual(process.stdout.readline().strip(),b'fixture_original_body_complete')
+      pids=self.control(("select pid from pg_stat_activity where usename='"+LOGIN+"' and state='idle in transaction'").encode()).strip().splitlines()
+      self.assertEqual(len(pids),1,'same fixture session must retain the uncommitted original body')
+      self.assertEqual(self.control(b'select pg_terminate_backend('+pids[0]+b');').strip(),b't')
+      process.stdin.close();process.stdin=None
+      process.communicate(timeout=10)
+     finally:
+      if process.poll() is None:process.kill();process.communicate(timeout=5)
+     return subprocess.CompletedProcess(args,3,b'',b'fixture_backend_terminated_before_commit')
+   result=RUN(args,**kw)
+   if args[0]==str(self.psql) and kw.get('input')==original:
     if mode=='disconnect-after':
      self.assertEqual(result.returncode,0,'real server COMMIT must complete before withholding caller acknowledgment')
      return subprocess.CompletedProcess(args,3,b'',b'fixture_acknowledgment_withheld')
    return result
   with patch.object(adapter.subprocess,'run',side_effect=run):
    state=install_review_once(self.source,self.root,self.transport,self.node)
-   if thread:thread.join(timeout=10)
-   self.assertEqual(failures,[])
    self.assertEqual(len(calls),1)
    self.assertEqual(state['phase'],'before_state_observed' if mode=='disconnect-before' else 'installed_off_unused_undo_candidate')
    self.assertEqual(state['commit_acknowledged'],mode=='ack')

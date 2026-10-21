@@ -25,6 +25,8 @@ jobs:
         run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_owner_cli_preflight.py' -v
       - name: Preferred native psql adapter boundaries (mock only)
         run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_cli_psql_transport.py' -v
+      - name: Fixed offline Docker generator bridge (mock only)
+        run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_offline_docker_generator.py' -v
   native-psql-pg17-tls:
     runs-on: ubuntu-latest
     timeout-minutes: 10
