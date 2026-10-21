@@ -15,6 +15,7 @@ const financialBefore=(await db.query(\`select (select jsonb_agg(to_jsonb(x)) fr
 const candidate=await fs.readFile(new URL('../docs/candidates/trade_document_initial_settings_20261021.sql.review-only',${JSON.stringify(original.href)}),'utf8');
 await db.exec(candidate);
 assert.deepEqual(await configCatalog(),configBefore);
+const revision=(await db.query('select updated_at::text v from public.invoices where id=$1',[inv])).rows[0].v;
 await db.exec('set role authenticated');
 const configCall=async(kind,version,payload)=> (await db.query('select public.trade_document_template($1,$2,$3,$4) result',[kind,c,version,payload])).rows[0].result;
 const baseOrder=await configCall('payment_certificate',null,null);
@@ -26,7 +27,6 @@ assert.equal(inherited.payload.work_address,'共通の初期場所');
 assert.equal(inherited.payload.auto_generate,undefined); // order auto switch never controls invoices.
 const invoiceConfig=await configCall('invoice',inherited.version,{work_name:'請書の明示工事',work_address:'',auto_generate:false});
 assert.equal(invoiceConfig.payload.work_name,'請書の明示工事');assert.equal(invoiceConfig.payload.work_address,'');
-const revision=(await db.query('select updated_at::text v from public.invoices where id=$1',[inv])).rows[0].v;
 const invoiceWorkspace=await call('invoice',inv,revision);
 assert.equal(invoiceWorkspace.template.work_name,'請書の明示工事');assert.equal(invoiceWorkspace.template.work_address,'');assert.equal(invoiceWorkspace.template.auto_generate,false);assert.equal(invoiceWorkspace.auto_generate,false);
 await db.exec("set test.invoice_manage='false'");
