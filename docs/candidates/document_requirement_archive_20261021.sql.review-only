@@ -1,0 +1,26 @@
+-- REVIEW ONLY. Preserve all existing keys, RLS, grants, references and history.
+begin;
+set local lock_timeout = '5s';
+do $guard$
+declare key_columns text[];
+begin
+ if to_regclass('public.document_requirements') is null
+ or exists(select 1 from pg_attribute where attrelid='public.document_requirements'::regclass
+   and attname='archived_at' and not attisdropped)
+ or not exists(select 1 from pg_attribute where attrelid='public.document_requirements'::regclass
+   and attname='upstream_name' and atttypid='text'::regtype and attnotnull)
+ or not exists(select 1 from pg_attribute where attrelid='public.document_requirements'::regclass
+   and attname='company_template_id' and atttypid='uuid'::regtype)
+ then raise exception 'document requirement archive schema drift/reapply; inspect before deployment' using errcode='55000';end if;
+ select array_agg(a.attname order by k.ordinality) into key_columns
+ from pg_constraint c cross join lateral unnest(c.conkey) with ordinality k(attnum,ordinality)
+ join pg_attribute a on a.attrelid=c.conrelid and a.attnum=k.attnum
+ where c.conrelid='public.document_requirements'::regclass and c.contype='u';
+ if key_columns is distinct from array['company_id','scope','upstream_name','name']::text[] then
+ raise exception 'document requirement unique-key drift; existing writers must remain compatible' using errcode='55000';end if;
+end $guard$;
+alter table public.document_requirements add column archived_at timestamptz;
+alter table public.document_requirements add constraint document_requirement_archive_inactive
+ check(archived_at is null or is_active=false);
+-- No UPDATE/DELETE, unique replacement, RLS/grant change or Storage operation.
+commit;

@@ -1,0 +1,63 @@
+name: Required document archive and registration dialogs
+on:
+  push:
+    branches: ['fix/document-requirement-archive-20261021']
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - name: Verify archive, original requirement contracts and actual dialog layout
+        run: >-
+          flutter test
+          test/worker_document_requirement_archive_page_test.dart
+          test/worker_document_requirement_archive_http_test.dart
+          test/worker_document_common_picker_test.dart
+          test/worker_document_requirement_edit_http_test.dart
+          test/worker_document_scope_test.dart
+          test/qualification_registration_dialog_size_test.dart
+          test/qualification_registered_edit_hold_test.dart
+          test/own_qualification_photo_contract_test.dart
+          --reporter expanded
+  sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --no-audit --no-fund --ignore-scripts
+      - run: node tool/verify_document_requirement_archive.mjs "$(pwd)/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_trade_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_trade_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --no-audit --no-fund --ignore-scripts
+      - name: Verify actual PostgreSQL archive and retained foreign-key records
+        env:
+          SKO_TRADE_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_trade_fixture
+        run: node tool/verify_document_requirement_archive.mjs "$(pwd)/tool/trade_document_pg_adapter.mjs"
