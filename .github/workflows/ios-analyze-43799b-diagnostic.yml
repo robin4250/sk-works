@@ -1,0 +1,254 @@
+name: Bounded full iOS verification (43799b)
+on:
+  pull_request:
+    paths: ['.github/workflows/ios-analyze-43799b-diagnostic.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-analyze-43799b-diagnostic
+  cancel-in-progress: false
+jobs:
+  diagnose-analyze:
+    timeout-minutes: 80
+    # Explicit Intel pool avoids the arm64 hosted-runner capacity failure.
+    # CI Xcode 26.6 is distinct from the user's Xcode 27 device environment.
+    runs-on: macos-26-intel
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Checkout
+        timeout-minutes: 3
+        uses: actions/checkout@v4
+        with:
+          ref: 43799b390fc9db3107134be2200fd8b271f055dd
+      - name: Verify exact diagnostic source
+        timeout-minutes: 3
+        run: test "$(git rev-parse HEAD)" = 43799b390fc9db3107134be2200fd8b271f055dd
+
+      - name: Verify and record iOS build environment
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          uname -m
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          test "$(uname -m)" = x86_64
+          test "$(xcodebuild -version | head -n 1)" = 'Xcode 26.6'
+
+      - name: Validate iOS helper scripts
+        timeout-minutes: 3
+        run: |
+          bash -n tool/prepare_ios.sh
+          bash -n tool/check_ios_readiness.sh
+          bash -n tool/check_ios_generated_contract.sh
+          bash -n tool/run_ios_device.sh
+          bash -n tool/run_ios_device_debug.sh
+          bash -n tool/ios_install_assistant.sh
+          bash -n tool/mac_first_run.sh
+          bash -n tool/collect_ios_diagnostics.sh
+          bash -n tool/local_supabase_env.example.sh
+          bash -n tool/device_day_preflight.sh
+          bash -n tool/device_day.sh
+          bash -n tool/pre_device_release_gate.sh
+          bash -n tool/testflight_candidate.sh
+          bash -n tool/testflight_preflight.sh
+          bash -n tool/testflight_upload.sh
+          bash -n tool/testflight_finish.sh
+
+      - name: Verify device-day signing diagnostics
+        timeout-minutes: 3
+        run: |
+          grep -q 'xcodebuild -checkFirstLaunchStatus' tool/ios_install_assistant.sh
+          grep -q 'xcodebuild -showsdks' tool/ios_install_assistant.sh
+          grep -q 'Signing Team候補' tool/ios_install_assistant.sh
+          grep -q 'Detected Team ID candidates' tool/collect_ios_diagnostics.sh
+
+      - name: Verify public Supabase client template
+        timeout-minutes: 3
+        run: |
+          grep -Eq '^export SUPABASE_URL="https://.*\.supabase\.co"$' tool/local_supabase_env.example.sh
+          grep -q '^export SUPABASE_PUBLISHABLE_KEY="sb_publishable_' tool/local_supabase_env.example.sh
+          ! grep '^export ' tool/local_supabase_env.example.sh | grep -qi 'service_role'
+          grep -Eq '^/?tool/local_supabase_env\.sh$' .gitignore
+
+      - name: Scan tracked files for production secrets
+        timeout-minutes: 3
+        run: bash tool/check_no_client_secrets.sh
+
+      - name: Set up Flutter
+        timeout-minutes: 10
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+
+      - name: Verify pinned Flutter
+        timeout-minutes: 3
+        run: flutter --version
+
+      - name: Verify dependency pins
+        timeout-minutes: 3
+        run: bash tool/check_dependency_pins.sh
+
+      - name: Prepare iOS project
+        timeout-minutes: 3
+        run: bash tool/prepare_ios.sh
+
+      - name: Verify generated iOS project contract
+        timeout-minutes: 3
+        run: bash tool/check_ios_generated_contract.sh
+
+      - name: Verify lockfile is stable
+        timeout-minutes: 3
+        run: git diff --exit-code -- pubspec.lock
+
+      - name: Verify prepare preserves existing iOS project
+        timeout-minutes: 3
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("ios/Runner.xcodeproj/project.pbxproj")
+          p.write_text("// SKO_SIGNING_SENTINEL\n" + p.read_text())
+          import json, plistlib
+          info = Path("ios/Runner/Info.plist")
+          with info.open("rb") as f:
+              data = plistlib.load(f)
+          data["CFBundleURLTypes"].append({"CFBundleURLName": "CI existing", "CFBundleURLSchemes": ["ci-existing-one", "ci-existing-two"], "preserve": True})
+          Path("/tmp/sko-url-types-before.json").write_text(json.dumps(data["CFBundleURLTypes"]))
+          with info.open("wb") as f:
+              plistlib.dump(data, f)
+          PY
+          bash tool/prepare_ios.sh
+          grep -q 'SKO_SIGNING_SENTINEL' ios/Runner.xcodeproj/project.pbxproj
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, plistlib
+          with Path("ios/Runner/Info.plist").open("rb") as f:
+              data = plistlib.load(f)
+          assert data["CFBundleURLTypes"] == json.loads(Path("/tmp/sko-url-types-before.json").read_text())
+          PY
+
+      - name: Flutter doctor
+        timeout-minutes: 4
+        run: flutter doctor -v
+
+      - name: Verify iOS permission descriptions
+        timeout-minutes: 3
+        run: |
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSFaceIDUsageDescription" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSLocationWhenInUseUsageDescription" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSLocationAlwaysAndWhenInUseUsageDescription" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :NSPhotoLibraryUsageDescription" ios/Runner/Info.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          with Path("ios/Runner/Info.plist").open("rb") as f:
+              data = plistlib.load(f)
+
+          assert "NSLocationAlwaysUsageDescription" not in data
+          assert "NSLocationAlwaysAndWhenInUseUsageDescription" in data
+          assert "location" in data.get("UIBackgroundModes", [])
+          ats = data.get("NSAppTransportSecurity", {})
+          assert ats.get("NSAllowsArbitraryLoads") is not True
+          assert ats.get("NSAllowsArbitraryLoadsInWebContent") is not True
+          assert data.get("UISupportedInterfaceOrientations") == [
+              "UIInterfaceOrientationPortrait",
+              "UIInterfaceOrientationLandscapeLeft",
+              "UIInterfaceOrientationLandscapeRight",
+          ]
+          assert data.get("ITSAppUsesNonExemptEncryption") is False
+          PY
+
+      - name: Verify Personal Team bundle identifier
+        timeout-minutes: 3
+        run: grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.skworks.skWorks;' ios/Runner.xcodeproj/project.pbxproj
+
+      - name: Bounded Analyze with non-sensitive process heartbeat
+        timeout-minutes: 12
+        run: |
+          python3 - <<'PY'
+          import os, signal, subprocess, sys, time
+          started = time.monotonic()
+          process = subprocess.Popen(["flutter", "analyze"], start_new_session=True)
+          def heartbeat():
+              # Deliberately exclude process arguments and environment variables.
+              raw = subprocess.check_output(["ps", "-axo", "pid=,ppid=,stat=,etime=,pcpu=,rss=,comm="], text=True)
+              rows = [line.split(None, 6) for line in raw.splitlines()]
+              selected = {process.pid}
+              for _ in range(len(rows)):
+                  children = {int(row[0]) for row in rows if len(row) == 7 and int(row[1]) in selected}
+                  before = len(selected)
+                  selected.update(children)
+                  if len(selected) == before:
+                      break
+              print("DIAGNOSTIC elapsed_seconds=" + str(int(time.monotonic() - started)), flush=True)
+              print("PID PPID STATE ELAPSED CPU RSS_KB EXECUTABLE_NAME", flush=True)
+              for row in rows:
+                  if len(row) == 7 and int(row[0]) in selected:
+                      row[6] = os.path.basename(row[6])
+                      print(" ".join(row), flush=True)
+          next_heartbeat = 0
+          while process.poll() is None:
+              elapsed = time.monotonic() - started
+              if elapsed >= next_heartbeat:
+                  heartbeat()
+                  next_heartbeat = elapsed + 30
+              if elapsed >= 600:
+                  print("DIAGNOSTIC Analyze timeout; this is not an iOS release validation.", flush=True)
+                  os.killpg(process.pid, signal.SIGTERM)
+                  try:
+                      process.wait(timeout=10)
+                  except subprocess.TimeoutExpired:
+                      os.killpg(process.pid, signal.SIGKILL)
+                      process.wait()
+                  sys.exit(124)
+              time.sleep(2)
+          print("DIAGNOSTIC Analyze exit=" + str(process.returncode) + "; continuing exact-source full iOS checks.", flush=True)
+          sys.exit(process.returncode)
+          PY
+      - name: Test
+        timeout-minutes: 25
+        run: flutter test
+
+      - name: Register the official CocoaPods CDN explicitly
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          pod --version
+          # Automatic URL probing can misclassify the CDN as a Git repository
+          # after an HTTP failure. The official add-cdn command fixes its type;
+          # compatibility checks and subsequent network/build failures remain fatal.
+          pod repo add-cdn trunk https://cdn.cocoapods.org/
+          pod repo list
+
+      - name: Build iOS debug without codesigning
+        timeout-minutes: 15
+        run: flutter build ios --debug --no-codesign --dart-define=SKO_MASTER_PASSWORD_V1=false
+
+      - name: Build iOS release without codesigning
+        timeout-minutes: 20
+        run: flutter build ios --release --no-codesign --dart-define=SKO_MASTER_PASSWORD_V1=false
+
+
+      - name: Verify generated and compiled Release OAuth callback
+        timeout-minutes: 3
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import plistlib
+          for path in ["ios/Runner/Info.plist", "build/ios/iphoneos/Runner.app/Info.plist"]:
+              with Path(path).open("rb") as f:
+                  data = plistlib.load(f)
+              assert any("com.skworks.sko" in t.get("CFBundleURLSchemes", []) for t in data.get("CFBundleURLTypes", [])), path
+              assert data.get("FlutterDeepLinkingEnabled") is False, path
+              if "Runner.app" in path:
+                  assert data["CFBundleIdentifier"] == "com.skworks.skWorks"
+              print("OAuth callback scheme verified:", path)
+          PY
+
