@@ -29,12 +29,13 @@ class InvoiceAcceptanceResolver {
       throw StateError('注文請書の元帳票を確認できません。');
     }
     if (issueDate == null) throw StateError('請求書の発行日を確認してください。');
+    if (workspace['auto_generate'] == false || (workspace['template'] as Map?)?['auto_generate'] == false) return null;
     final defaults = Map<String, dynamic>.from(workspace['defaults'] as Map);
     final payload = Map<String, dynamic>.from(defaults);
     // Templates may change prose only, never parties, amounts, month or seal.
     final template = workspace['template'];
     if (template is Map) {
-      for (final key in ['acceptance_text', 'notes', 'payment_conditions']) {
+      for (final key in ['acceptance_text', 'notes', 'payment_conditions', 'work_name', 'work_address']) {
         if (template[key] is String) payload[key] = template[key];
       }
     }
@@ -58,3 +59,4 @@ class InvoiceAcceptanceResolver {
     return TradeDocumentAttachment.fromJson({'version': 1, 'payload': result});
   }
 }
+

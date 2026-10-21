@@ -61,7 +61,24 @@ jobs:
                           for line in block['lines']:
                               for span in line['spans']:
                                   if '代表代表' in span['text']:
-                                      assert span['bbox'][2] <= page.rect.width-48-64-12,(path,span)
+                                      assert span['bbox'][2] <= page.rect.width-48+1,(path,span)
+                  # The seal now overlays the issuer company name, not the representative row.
+                  spans = [s for b in page.get_text('dict')['blocks'] for l in b.get('lines', []) for s in l['spans']]
+                  issuer = next(s['bbox'] for s in spans if '株式会社受注' in s['text'] and s.get('color', 0) == 0)
+                  image = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
+                  samples = image.samples
+                  red = [(x/1.5, y/1.5) for y in range(image.height) for x in range(image.width)
+                         if samples[y*image.stride+x*image.n] > 170
+                         and samples[y*image.stride+x*image.n+1] < 110
+                         and samples[y*image.stride+x*image.n+2] < 110]
+                  assert red, (path, 'issuer seal missing')
+                  seal = (min(x for x,y in red), min(y for x,y in red), max(x for x,y in red), max(y for x,y in red))
+                  assert min(seal[2],issuer[2]) > max(seal[0],issuer[0]) and min(seal[3],issuer[3]) > max(seal[1],issuer[1]), (path, seal, issuer)
+                  assert abs((seal[1]+seal[3]-issuer[1]-issuer[3])/2) <= 10, (path, seal, issuer)
+                  for span in spans:
+                      if '代表代表' in span['text']:
+                          box = span['bbox']
+                          assert min(seal[2],box[2]) <= max(seal[0],box[0]) or min(seal[3],box[3]) <= max(seal[1],box[1]), (path, 'seal overlaps representative', seal, box)
                   for index, rendered in enumerate(doc):
                       for block in rendered.get_text('blocks'):
                           assert block[0] >= -1 and block[1] >= -1 and block[2] <= rendered.rect.width+1 and block[3] <= rendered.rect.height+1, (path, index, block[:4])

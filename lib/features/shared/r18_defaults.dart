@@ -11,7 +11,7 @@ Map<String, dynamic> r18InitialValues({
       (result[key] is String && (result[key] as String).trim().isEmpty);
 
   // Explicit draft/template values precede source and generated fallbacks.
-  for (final key in ['issue_date', 'order_date', 'work_name']) {
+  for (final key in ['issue_date', 'order_date', 'work_name', 'work_address']) {
     final value = sourceDefaults[key];
     if (blank(key) && value is String && value.trim().isNotEmpty) {
       result[key] = value;
@@ -44,3 +44,4 @@ Map<String, dynamic> r18InitialValues({
   // Acceptance issue_date is deliberately not inferred as contract date + 1.
   return result;
 }
+

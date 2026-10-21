@@ -47,7 +47,7 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       _version=saved is Map?saved['version'] as int:0;
       if(_version==0||data['source_changed']==true){
         final defaults=data['template'] is Map?Map<String,dynamic>.from(data['template'] as Map):<String,dynamic>{};
-        for(final key in ['intro_text','acceptance_text','payment_conditions','notes',if(_order)'work_name',if(_order)'work_address']){
+        for(final key in ['intro_text','acceptance_text','payment_conditions','notes','work_name','work_address']){
           final value=defaults[key];
           if(value is String&&(!{'work_name','work_address'}.contains(key)||value.trim().isNotEmpty))_payload[key]=value;
         }
@@ -141,4 +141,5 @@ class _EditorState extends State<TradeDocumentAttachmentEditorPage> {
       const SizedBox(height:16),FilledButton(onPressed:_canEdit&&!_saving?_save:null,child:Text(_saving?'保存中…':'保存して添付')),
     ]));
 }
+
 
