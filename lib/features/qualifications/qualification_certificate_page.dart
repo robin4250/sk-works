@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../international/language_controller.dart';
+import '../../data/supabase_backend.dart';
+import 'admin_saved_qualification_photo_submission_repository.dart';
+import 'qualification_photo_management_runtime_page.dart';
 import 'qualification_certificate_repository.dart';
 
 const registeredQualificationChangeNotice =
@@ -41,6 +44,10 @@ class _QualificationCertificatePageState
   String _query = '';
   String? _busyId;
   String? _error;
+  String? _companyId;
+  final _managementScope = ValueNotifier(const AdminSavedQualificationPhotoSubmissionScope(
+    actorId: null, companyId: null, targetId: null, active: false,
+  ));
 
   @override
   void initState() {
@@ -57,6 +64,7 @@ class _QualificationCertificatePageState
 
   void _revoke() {
     if (!mounted || _revoked) return;
+    _disableManagementScope();
     setState(() {
       _revoked = true;
       _generation++;
@@ -79,13 +87,25 @@ class _QualificationCertificatePageState
       _repository?.currentUserId == _actor;
 
   @override
+  void didUpdateWidget(covariant QualificationCertificatePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialQualificationId != widget.initialQualificationId ||
+        oldWidget.repository != widget.repository) {
+      _disableManagementScope();
+    }
+  }
+
+  @override
   void dispose() {
     _authSubscription?.cancel();
+    _disableManagementScope();
+    _managementScope.dispose();
     _queryController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
+    _disableManagementScope();
     final generation = ++_generation;
     final repository = _repository;
     if (_revoked) return;
@@ -106,6 +126,7 @@ class _QualificationCertificatePageState
       final data = values[0] as Map<String, dynamic>;
       if (!_scopeActive || generation != _generation) return;
       setState(() {
+        _companyId = data['company_id'] as String?;
         _canManage = values[1] as bool;
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
         _workers = List<Map<String, dynamic>>.from(data['workers'] as List);
@@ -266,6 +287,35 @@ class _QualificationCertificatePageState
     );
   }
 
+  void _disableManagementScope() {
+    _managementScope.value = const AdminSavedQualificationPhotoSubmissionScope(
+      actorId: null, companyId: null, targetId: null, active: false,
+    );
+  }
+
+  Future<void> _managePhotos(Map<String, dynamic> row, String qualification, String holder) async {
+    if (!_scopeActive || !_canManage) { return; }
+    _managementScope.value = AdminSavedQualificationPhotoSubmissionScope(
+      actorId: _actor, companyId: _companyId, targetId: row['id']?.toString(),
+      active: _scopeActive && _companyId != null,
+    );
+    try {
+      await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
+        QualificationPhotoManagementRuntimePage(
+          scope: _managementScope,
+          qualificationName: qualification,
+          holderName: holder,
+          enabled: adminSavedPhotoManagementEnabled,
+          client: adminSavedPhotoManagementEnabled && SupabaseBackend.isInitialized
+              ? SupabaseBackend.client : null,
+          signedUrl: _repository?.createSignedUrl,
+        )));
+    } finally {
+      if (mounted) { _disableManagementScope(); }
+    }
+    if (mounted && _scopeActive) { await _load(); }
+  }
+
   Future<void> _showActions(
     Map<String, dynamic> row,
     String qualificationName,
@@ -322,6 +372,17 @@ class _QualificationCertificatePageState
                         SkoLanguageController.tr(
                           registeredQualificationChangeNotice,
                         ),
+                      ),
+                    ],
+                    if (_canManage) ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.edit_note),
+                        label: const Text('写真の変更申請'),
+                        onPressed: () {
+                          Navigator.pop(sheetContext);
+                          unawaited(_managePhotos(row, qualificationName, workerName));
+                        },
                       ),
                     ],
                     const SizedBox(height: 18),

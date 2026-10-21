@@ -26,6 +26,7 @@ dependencies:
   archive: 4.3.0
   printing: 5.15.1
   shared_preferences: 2.5.5
+  sqflite: 2.4.4+2
   supabase_flutter: 2.17.2
   url_launcher: 6.3.2
 

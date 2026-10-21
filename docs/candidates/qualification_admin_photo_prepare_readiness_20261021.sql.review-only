@@ -1,0 +1,28 @@
+-- REVIEW ONLY. Dedicated read contract; legacy capability responses remain unchanged.
+-- Apply only after the exact saved-photo candidate and ordered-baseline guard.
+begin;
+do $patch$
+declare admin_body text; admin_definition text; router_body text; router_definition text;
+begin
+ select prosrc,pg_get_functiondef(oid) into admin_body,admin_definition from pg_proc
+ where oid=to_regprocedure('private.admin_qualification_saved_photos(text,jsonb)');
+ select prosrc,pg_get_functiondef(oid) into router_body,router_definition from pg_proc
+ where oid=to_regprocedure('private.personal_qualification_submission(text,jsonb)');
+ if admin_body is null or md5(admin_body)<>'8db1b9ad7b141c6d132ae4252f363288'
+ or router_body is null or md5(router_body)<>'e1dd246978182b2baf5222bc7ef03cbf' then
+ raise exception 'saved-photo readiness prerequisite/source drift; review required' using errcode='55000';end if;
+ admin_definition:=replace(admin_definition,$old$ if p_action='admin_saved_photo_capability' then$old$,$new$ if p_action='admin_saved_photo_prepare_readiness' then
+ cid:=(p_data->>'company_id')::uuid;
+ if cid is null then raise exception 'exact company required' using errcode='22023';end if;
+ return jsonb_build_object('version',1,'contract','qualification_admin_photo_prepare_baseline',
+ 'company_id',cid,'actor_id',uid,'baseline_guard_version',1,'prepare_action','prepare_admin_saved_photos',
+ 'photo_submission_available',exists(select 1 from public.company_members where company_id=cid and user_id=uid and role::text in ('owner','admin'))
+  and coalesce(private.has_company_feature(cid,'can_manage_people'),false),
+ 'photo_upload_allowed',false,'max_photos',20,'self_approval_allowed',false);
+ end if;
+ if p_action='admin_saved_photo_capability' then$new$);
+ router_definition:=replace(router_definition,$old$ if p_action in ('prepare_admin_saved_photos','admin_saved_photo_capability')$old$,$new$ if p_action in ('prepare_admin_saved_photos','admin_saved_photo_capability','admin_saved_photo_prepare_readiness')$new$);
+ execute admin_definition;
+ execute router_definition;
+end $patch$;
+commit;

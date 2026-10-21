@@ -1,0 +1,16 @@
+{
+  "source_sha": "ed93a702100393db0258b31fd4231b3ec4e122d6",
+  "pubspec_sha256": "143dcc58e9ee9d980fef2c25608349c924aadf84ae9bc1d8e056a34baf311036",
+  "original_lock_sha256": "7c69f52afb5485536e07bdbff8d9944afeabfe058125daee7f2db480683d78dd",
+  "resolved_lock_sha256": "98c763e3bf49a500c066fe32492bb039321c11958e578996fb561e5daf855ec5",
+  "existing_versions_unchanged": true,
+  "added_versions": {
+    "sqflite": "2.4.4+2",
+    "sqflite_android": "2.4.4+1",
+    "sqflite_common": "2.5.14",
+    "sqflite_darwin": "2.4.4+1",
+    "sqflite_platform_interface": "2.4.2",
+    "synchronized": "3.5.0"
+  },
+  "flutter": "3.47.5"
+}

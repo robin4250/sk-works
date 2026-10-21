@@ -1,0 +1,11 @@
+# 管理側の保存済み資格写真：ローカル選択画面
+
+製品の既存画面からは未接続。申請送信・RPC・upload・DB更新・権限変更・写真削除は行わない。実行中のMac Releaseと別の隔離branchで準備した。
+
+`AdminSavedQualificationPhotoDraftPage` は会社・actor・対象UUID・信頼済み保存写真baseline・現在scopeのValueListenable・管理専用capabilityを受け取る。本人photo_capabilityを管理利用に流用しない。保存済み写真の順番変更・選択からの除外・元へ戻す・取消・選択確認だけを扱い、immutableなローカルdraftを返す。確認は申請成功や承認ではない。
+
+baselineまたは選択の重複、空/空白path、20枚超、選択に含まれる未知path、対象UUID不正、能力不在/会社actor不一致を拒否。baselineが空なら編集対象なしとして拒否する。非空baselineから写真を全て外した選択は許可する。既存review-only `qualification_admin_saved_photos_20261019.sql.review-only` のprepareは `photo_slots` の配列型と上限20のみを要求し、最小件数制限がなく、空配列のloopも許可するため。写真原本を消す意味ではない。
+
+scope変更は通知時に不可逆失効とし、同じactor/会社へ戻るABAでも復帰しない。表示済み写真を消去して再入場を案内する。widgetの対象・baseline・scopeの差替えも失効。受け取ったbaselineが外から変更された場合も操作時に拒否する。サムネイルは既存rendererのDIだけとし、この画面からsigned URLや媒体を取得しない。
+
+後続接続では、既存資格詳細の正式rowと同社権限からbaselineを取得し、写真の表示寿命・背景移行・最新capability・固定申請復旧をrepositoryと組み合わせて再検証する必要がある。この画面だけで現在の認証・サーバー権限や申請送信を保証しない。本番導入HOLDは維持する。共有help/英訳は未接続のため変更していない。

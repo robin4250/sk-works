@@ -1,0 +1,30 @@
+name: Qualification photo mobile runtime
+on:
+  push:
+    branches: ['support/qualification-photo-mobile-runtime-remote-20261021']
+permissions:
+  contents: read
+jobs:
+  runtime-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - name: Assert lock unchanged
+        run: git diff --exit-code -- pubspec.yaml pubspec.lock
+      - name: Analyze runtime and fixed SDK boundary
+        run: dart analyze lib/features/qualifications/qualification_photo_mobile_runtime.dart lib/features/qualifications/qualification_photo_session_rpc.dart lib/features/qualifications/qualification_photo_session_rpc_supabase.dart test/features/qualifications/qualification_photo_mobile_runtime_test.dart test/features/qualifications/qualification_photo_mobile_runtime_composition_test.dart tool/verify_qualification_photo_session_rpc.dart tool/verify_qualification_photo_session_rpc_sdk_test.dart
+      - name: Verify runtime isolation
+        run: flutter test test/features/qualifications/qualification_photo_mobile_runtime_test.dart --reporter expanded
+      - name: Verify enabled SDK native repository composition
+        run: flutter test test/features/qualifications/qualification_photo_mobile_runtime_composition_test.dart --reporter expanded
+      - name: Verify existing native channel boundaries
+        run: flutter test test/features/qualifications/admin_saved_qualification_photo_sqflite_connection_test.dart --reporter expanded
+      - name: Verify SDK loopback
+        run: flutter test tool/verify_qualification_photo_session_rpc_sdk_test.dart --reporter expanded
+      - name: Verify pure guard assertions
+        run: dart tool/verify_qualification_photo_session_rpc.dart

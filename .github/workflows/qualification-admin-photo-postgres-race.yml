@@ -1,11 +1,17 @@
-name: Qualification saved photo PostgreSQL lock order
+name: Qualification saved photo contracts and PostgreSQL lock order
 on:
   pull_request:
     paths:
       - 'tool/verify_qualification_admin_photo_postgres_race.mjs'
       - 'tool/verify_qualification_admin_saved_photos.mjs'
       - 'tool/verify_qualification_admin_photo_baseline.mjs'
+      - 'tool/verify_qualification_admin_photo_prepare_readiness.mjs'
+      - 'tool/verify_qualification_admin_photo_prepare.dart'
+      - 'tool/verify_qualification_admin_photo_readiness.dart'
+      - 'lib/features/qualifications/admin_saved_qualification_photo*.dart'
+      - 'test/admin_saved_qualification_photo*_test.dart'
       - 'docs/candidates/qualification_admin_photo_baseline_20261021.sql.review-only'
+      - 'docs/candidates/qualification_admin_photo_prepare_readiness_20261021.sql.review-only'
       - 'tool/fixtures/qualification_photo_submission/**'
       - 'docs/candidates/qualification_admin_saved_photos_20261019.sql.review-only'
       - '.github/workflows/qualification-admin-photo-postgres-race.yml'
@@ -15,7 +21,13 @@ on:
       - 'tool/verify_qualification_admin_photo_postgres_race.mjs'
       - 'tool/verify_qualification_admin_saved_photos.mjs'
       - 'tool/verify_qualification_admin_photo_baseline.mjs'
+      - 'tool/verify_qualification_admin_photo_prepare_readiness.mjs'
+      - 'tool/verify_qualification_admin_photo_prepare.dart'
+      - 'tool/verify_qualification_admin_photo_readiness.dart'
+      - 'lib/features/qualifications/admin_saved_qualification_photo*.dart'
+      - 'test/admin_saved_qualification_photo*_test.dart'
       - 'docs/candidates/qualification_admin_photo_baseline_20261021.sql.review-only'
+      - 'docs/candidates/qualification_admin_photo_prepare_readiness_20261021.sql.review-only'
       - 'tool/fixtures/qualification_photo_submission/**'
       - 'docs/candidates/qualification_admin_saved_photos_20261019.sql.review-only'
       - '.github/workflows/qualification-admin-photo-postgres-race.yml'
@@ -47,3 +59,54 @@ jobs:
       - run: node tool/verify_qualification_admin_photo_postgres_race.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
         env:
           SKO_QUALIFICATION_PHOTO_RACE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_qualification_photo_race_fixture
+
+  baseline-readiness-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - name: Verify baseline and dedicated readiness in both isolated fixture modes
+        run: node tool/verify_qualification_admin_photo_prepare_readiness.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+  client-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - name: Analyze only the disconnected saved-photo client and its checks
+        run: >-
+          flutter analyze
+          lib/features/qualifications/admin_saved_qualification_photo_capability_repository.dart
+          lib/features/qualifications/admin_saved_qualification_photo_contract.dart
+          lib/features/qualifications/admin_saved_qualification_photo_draft.dart
+          lib/features/qualifications/admin_saved_qualification_photo_draft_page.dart
+          lib/features/qualifications/admin_saved_qualification_photo_prepare.dart
+          lib/features/qualifications/admin_saved_qualification_photo_prepare_readiness.dart
+          test/admin_saved_qualification_photo_capability_repository_test.dart
+          test/admin_saved_qualification_photo_contract_test.dart
+          tool/verify_qualification_admin_photo_prepare.dart
+          tool/verify_qualification_admin_photo_readiness.dart
+      - name: Verify pure prepare payload and readiness contracts
+        run: |
+          dart tool/verify_qualification_admin_photo_prepare.dart
+          dart tool/verify_qualification_admin_photo_readiness.dart
+      - name: Verify repository and parser without widget interaction
+        run: >-
+          flutter test
+          test/admin_saved_qualification_photo_capability_repository_test.dart
+          test/admin_saved_qualification_photo_contract_test.dart
+          --reporter expanded
