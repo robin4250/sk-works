@@ -46,6 +46,41 @@ const checks = `
  }
  assert.deepEqual((await db.query('select to_jsonb(r) v from private.qualification_submissions r order by id')).rows,oldQueue);
  assert.deepEqual((await db.query('select to_jsonb(q) v from worker_qualifications q where id=$1',[target])).rows[0].v,oldOfficial);
+ // Existing self-request is not rewritten/cancelled; a different existing
+ // legitimate reviewer can approve the same ID after installation.
+ await db.exec('savepoint self_request_probe');
+ await db.query('insert into company_approval_assignees values($1,$2)',[company,user]);
+ await db.exec("set test.uid='"+user+"';set role authenticated");
+ await assert.rejects(legacyRpc('approve',{id:oldMetadata.id}),e=>e.code==='42501');
+ await db.exec('rollback to savepoint self_request_probe;release savepoint self_request_probe');
+ // Current admin photo request, then retirement: status retirement itself does
+ // not edit qualification snapshots. Approve fails; rejection remains possible.
+ await db.exec('savepoint retirement_probe');
+ await db.exec("set test.uid='"+admin+"'");
+ await legacyRpc('prepare_admin_saved_photos',{company_id:company,target_id:target,request_id:id(91),photo_slots:[]});
+ await legacyRpc('submit',{id:id(91)});
+ const retiredQueue=(await db.query('select to_jsonb(r) v from private.qualification_submissions r where id=$1',[id(91)])).rows[0].v;
+ await db.query("update workers set status='retired' where id=$1",[worker]);
+ await db.exec('savepoint retired_approval');
+ await db.exec("set test.uid='"+reviewer+"';set role authenticated");
+ await assert.rejects(legacyRpc('approve',{id:id(91)}),e=>e.code==='40001');
+ await db.exec('rollback to savepoint retired_approval;release savepoint retired_approval');
+ assert.deepEqual((await db.query('select to_jsonb(r) v from private.qualification_submissions r where id=$1',[id(91)])).rows[0].v,retiredQueue);
+ assert.deepEqual((await db.query('select to_jsonb(q) v from worker_qualifications q where id=$1',[target])).rows[0].v,oldOfficial);
+ await db.exec("set test.uid='"+reviewer+"';set role authenticated");
+ assert.equal((await legacyRpc('reject',{id:id(91),reason:'退職済みのため原本を保持'})).status,'rejected');
+ await db.exec('reset role');
+ for(const path of [front,back]) assert.equal((await db.query("select private.qualification_photo_unreferenced('qualification-certificates',$1) v",[path])).rows[0].v,false);
+ // Model an actual worker FK cascade explicitly: its DELETE is rejected by the
+ // qualification guard and the entire parent deletion is atomic/rolled back.
+ await db.exec('alter table worker_qualifications add constraint fixture_worker_cascade foreign key(worker_id) references workers(id) on delete cascade');
+ await db.exec('savepoint worker_delete_probe');
+ await assert.rejects(db.query('delete from workers where id=$1',[worker]),e=>e.code==='42501');
+ await db.exec('rollback to savepoint worker_delete_probe;release savepoint worker_delete_probe');
+ assert.equal((await db.query('select status from workers where id=$1',[worker])).rows[0].status,'retired');
+ assert.deepEqual((await db.query('select to_jsonb(q) v from worker_qualifications q where id=$1',[target])).rows[0].v,oldOfficial);
+ await db.exec('rollback to savepoint retirement_probe;release savepoint retirement_probe');
+ assert.deepEqual((await db.query('select to_jsonb(r) v from private.qualification_submissions r order by id')).rows,oldQueue);
  // The broad candidate also blocks legacy metadata and registered DELETE.
  await db.exec('commit');
  // Give DELETE its existing role/RLS equivalent in this synthetic schema:
