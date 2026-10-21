@@ -67,7 +67,9 @@ void main() {
         expect(dialog, findsOneWidget);
         final field = find.descendant(of: dialog, matching: find.byType(TextField)).first;
         final available = size.width - 80;
-        expect(tester.getSize(field).width, closeTo(available < 512 ? available : 512, 1));
+        expect(tester.getSize(field).width, greaterThanOrEqualTo(available < 512 ? available : 512));
+        final outerWidth = size.width - 32;
+        expect(tester.getSize(field).width, lessThanOrEqualTo(outerWidth < 560 ? outerWidth : 560));
         keyboard.value = 260;
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);

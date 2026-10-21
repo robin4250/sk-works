@@ -109,7 +109,8 @@ void main() {
   testWidgets('old backend has disabled archive while existing visibility stays available', (tester) async {
     repo.row.remove('archived_at');
     await open(tester);
-    expect(tester.widget<IconButton>(find.byTooltip('項目削除は準備中です')).onPressed, isNull);
+    expect(tester.widget<IconButton>(find.byWidgetPredicate((widget) =>
+        widget is IconButton && widget.tooltip == '項目削除は準備中です')).onPressed, isNull);
     expect(tester.widget<Checkbox>(find.byType(Checkbox)).onChanged, isNotNull);
   });
   testWidgets('new document dialogs use 320px screen and remain operable above keyboard', (tester) async {
