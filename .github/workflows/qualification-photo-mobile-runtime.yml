@@ -17,9 +17,11 @@ jobs:
       - name: Assert lock unchanged
         run: git diff --exit-code -- pubspec.yaml pubspec.lock
       - name: Analyze runtime and fixed SDK boundary
-        run: dart analyze lib/features/qualifications/qualification_photo_mobile_runtime.dart lib/features/qualifications/qualification_photo_session_rpc.dart lib/features/qualifications/qualification_photo_session_rpc_supabase.dart test/features/qualifications/qualification_photo_mobile_runtime_test.dart tool/verify_qualification_photo_session_rpc.dart tool/verify_qualification_photo_session_rpc_sdk_test.dart
+        run: dart analyze lib/features/qualifications/qualification_photo_mobile_runtime.dart lib/features/qualifications/qualification_photo_session_rpc.dart lib/features/qualifications/qualification_photo_session_rpc_supabase.dart test/features/qualifications/qualification_photo_mobile_runtime_test.dart test/features/qualifications/qualification_photo_mobile_runtime_composition_test.dart tool/verify_qualification_photo_session_rpc.dart tool/verify_qualification_photo_session_rpc_sdk_test.dart
       - name: Verify runtime isolation
         run: flutter test test/features/qualifications/qualification_photo_mobile_runtime_test.dart --reporter expanded
+      - name: Verify enabled SDK native repository composition
+        run: flutter test test/features/qualifications/qualification_photo_mobile_runtime_composition_test.dart --reporter expanded
       - name: Verify existing native channel boundaries
         run: flutter test test/features/qualifications/admin_saved_qualification_photo_sqflite_connection_test.dart --reporter expanded
       - name: Verify SDK loopback
