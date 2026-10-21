@@ -21,3 +21,8 @@ current tax+directory sourceの本文MD5 c61f8835084400b68fbccd9cba35a926とowne
 専用profile CIへ新repo/card解析・repository6tests・widget2testsとissuer SQL fixtureを接続。SQL fixtureは既月次別添source/saveを再利用し、current tax+directory状態へ拡張して代表者save/read→未保存default→正規別添save→後日変更でもsnapshot保持、counterparty/invoice/manager/tenant/fingerprint/catalog/金融原本保持を検査する。すべて合成データ。既44profile checksも既CI stepとして保持する。
 
 ローカルexec/Flutter実行なし、MCPでbranch保存後のexact-head CIを確認する。製品main/既PR/本番/会社role/Auth/RLSは変更しない。実機保存→再読込→新規注文書/PDF/印刷/共有は別確認。
+
+
+## 独立レビュー後のfail-closed補修
+
+PR1307旧候補の require_admin は NOT account_access_allowed() を使い、gateがNULLのときSQLの三値論理で拒否IFもNULLになり得た。本branchは IS NOT TRUE へ限定補修し、NULLも拒否する。account gateの実装・会社role・RLS・許可範囲は変更しない。合成fixtureにNULL時のread/save拒否とextension/audit完全不変を追加する。これは旧44checksに含まれなかった境界である。

@@ -9,7 +9,7 @@ await db.exec(`create role anon; create role authenticated; create schema privat
  create table public.companies(id uuid primary key,name text,address text,phone text,email text,corporate_number text,updated_at timestamptz default now());
  create table public.company_members(company_id uuid,user_id uuid,role text);
  create table private.company_connections(parent_company_id uuid,child_company_id uuid,status text);
- create function private.account_access_allowed() returns boolean language sql as $$select coalesce(current_setting('fixture.blocked',true),'')<>'true'$$;
+ create function private.account_access_allowed() returns boolean language sql as $$select case when current_setting('fixture.blocked',true)='null' then null else coalesce(current_setting('fixture.blocked',true),'')<>'true' end$$;
  grant usage on schema private,auth to authenticated;
  insert into public.companies(id,name,address,phone,email,corporate_number) values
  ('${id(1)}','A','A secret address','A secret phone','A secret email','1111111111111'),
@@ -84,6 +84,15 @@ await deny(()=>save(1,before,'rollback representative'));
 check(await read(1),before);check(await query('select count(*)::int v from private.partner_company_profile_audit'),count);
 await db.exec('drop trigger fixture_fail on private.partner_company_profile_audit');
 for(const who of [13,14,99]){await actor(who);await db.exec('set role authenticated');await deny(()=>read(1));await deny(()=>save(1,before,'forbidden'));await db.exec('reset role');}
+await actor(11);
+const nullBefore=await query('select to_jsonb(e) v from private.partner_company_profile_extensions e where company_id=$1',[id(1)]);
+const nullAudit=await query('select count(*)::int v from private.partner_company_profile_audit');
+await db.exec("set fixture.blocked='null';set role authenticated");
+await deny(()=>read(1));
+await deny(()=>save(1,before,'must not save under unknown account gate'));
+await db.exec("reset role;set fixture.blocked='false'");
+check(await query('select to_jsonb(e) v from private.partner_company_profile_extensions e where company_id=$1',[id(1)]),nullBefore);
+check(await query('select count(*)::int v from private.partner_company_profile_audit'),nullAudit);
 await actor(11);await db.exec("set fixture.blocked='true';set role authenticated");await deny(()=>read(1));await db.exec("reset role;set fixture.blocked='false';set fixture.actor='';set role authenticated");await deny(()=>read(1));
 await db.exec('reset role;set role anon');await deny(()=>read(1));
 console.log(`PASS ${n} profile readiness/visibility/CAS/ACL/rollback/80-char/real-writer checks`);

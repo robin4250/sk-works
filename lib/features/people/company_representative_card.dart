@@ -76,6 +76,10 @@ class _CardState extends State<CompanyRepresentativeCard> with WidgetsBindingObs
   Future<void> _save() async {
     final snapshot = _snapshot;
     if (_repo == null || snapshot == null || _busy || _mustReload) { return; }
+    if (_text.text.replaceAll(RegExp(r'\s+'), ' ').trim().runes.length > 80) {
+      setState(() => _error = '代表者名は80文字以内で入力してください。');
+      return;
+    }
     setState(() { _busy = true; _saved = false; _error = null; });
     try {
       final value = await _repo!.save(snapshot, _text.text);
