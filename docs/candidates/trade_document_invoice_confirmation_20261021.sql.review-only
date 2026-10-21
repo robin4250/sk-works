@@ -32,7 +32,7 @@ begin
  select count(*) into links from public.trade_companies t where t.company_id=own_company and t.customer_id=counter_id;
  if links<>1 then raise exception 'exact unique customer link required' using errcode='42501';end if;
  select t.linked_company_id,t.trade_role::text,t.link_status::text into target,role_name,link_state from public.trade_companies t where t.company_id=own_company and t.customer_id=counter_id for share;
- if role_name not in('customer','both') then raise exception 'customer company role required' using errcode='42501';end if;
+ if role_name is null or role_name not in('customer','both') then raise exception 'customer company role required' using errcode='42501';end if;
  elsif kind='payment_certificate' then
  raise exception 'monthly payment confirmation adapter is not connected' using errcode='0A000';
  else raise exception 'invoice parent required';end if;
@@ -73,7 +73,7 @@ begin
  if r.binding->>'parent_kind' is distinct from 'invoice' then raise exception 'invoice financial parent required' using errcode='0A000';end if;
  result:=trade_document_consent_private.preview_own(doc,rev,cid);
  select * into parent from public.invoices where id=(r.binding->>'parent_id')::uuid and company_id=cid for share;
- if parent.status is distinct from 'draft' or parent.finalized_at is not null or parent.approval_finalized_at is not null or parent.invoice_seal_frozen or parent.calculation_blocked then raise exception 'unfinalized invoice approval required';end if;
+ if parent.status is distinct from 'draft' or parent.finalized_at is not null or parent.approval_finalized_at is not null or parent.invoice_seal_frozen or parent.calculation_blocked is distinct from false then raise exception 'unfinalized invoice approval required';end if;
  binding:=trade_document_consent_private.parent_binding('invoice',parent.id,cid,d.counterparty_company_id);
  binding:=(binding-'attachment_payload')||jsonb_build_object('parent_kind','invoice','parent_id',parent.id);
  if binding is distinct from r.binding or binding->>'attachment_source_revision' is distinct from parent.updated_at::text then raise exception 'parent or attachment version changed' using errcode='40001';end if;

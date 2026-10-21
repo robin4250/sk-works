@@ -33,7 +33,7 @@ export async function verifyInvoiceConfirmation(db,c){
   await db.query('select private.ensure_invoice_approval_rows($1)',[parent]);
   const source=await q('select updated_at::text v from invoices where id=$1',[parent]);
   const workspace=await q("select public.trade_document_attachment_workspace('invoice',$1,$2) v",[parent,source]);
-  const payload={...workspace.defaults,issue_date:'2026-10-21',work_name:'合成承認工事',work_address:'東京都',tax_amount_yen:10000,intro_text:'合成請負',payment_conditions:'翌月末',notes:'',issuer:{...workspace.defaults.issuer,representative_name:'甲代表'},counterparty:{...workspace.defaults.counterparty,corporate_number:'2222222222222'}};
+  const payload={...workspace.defaults,issue_date:'2026-10-21',order_date:'2026-10-20',acceptance_text:'上記注文内容を承諾します。',work_name:'合成承認工事',work_address:'東京都',tax_amount_yen:10000,intro_text:'合成請負',payment_conditions:'翌月末',notes:'',issuer:{...workspace.defaults.issuer,representative_name:'甲代表'},counterparty:{...workspace.defaults.counterparty,corporate_number:'2222222222222'}};
   await q("select public.save_trade_document_attachment('invoice',$1,$2,0,$3::jsonb) v",[parent,source,JSON.stringify(payload)]);
   const body={...payload,issuer_company_id:A,counterparty_company_id:B,transaction_id:doc};delete body.company_seal_snapshot;delete body.company_seal_enabled;
   await q("select trade_document_consent_private.prepare_document($1,$2,$3,0,$4::jsonb,'invoice',$5,$6,1) v",[doc,A,B,JSON.stringify(body),parent,source]);
