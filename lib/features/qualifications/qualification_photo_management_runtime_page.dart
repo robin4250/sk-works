@@ -355,7 +355,11 @@ class _QualificationPhotoManagementRuntimePageState
       appBar: AppBar(title: const Text('資格写真の変更申請'), actions: [
         IconButton(tooltip: 'ヘルプ', onPressed: _help, icon: const Icon(Icons.help_outline)),
       ]),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
+      body: _revoked
+          ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(
+              _message ?? '操作を停止しました。元の画面から開き直してください。',
+            )))
+          : ListView(padding: const EdgeInsets.all(16), children: [
         Text(widget.qualificationName, style: Theme.of(context).textTheme.titleLarge),
         Text('保有者: ${widget.holderName}'),
         const SizedBox(height: 16),
