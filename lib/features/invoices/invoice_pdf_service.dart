@@ -99,6 +99,8 @@ class InvoicePdfService {
                 subjectKind: 'invoice', subjectId: invoice.invoiceId,
                 sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String()),
               issueDate: invoice.issueDate,
+              parentSealSnapshot: invoice.companySealSnapshot,
+              parentSealEnabled: effectiveSettings?.companySealEnabled != false,
               onMissingLockedAcceptance: onMissingLockedAcceptance,
             );
       final expenses = expenseDetailsByInvoice?[invoice.invoiceId] ?? (invoice.periodStart == null ? null : await ExpenseDocumentRepository.load(ExpenseDocument.invoice, invoice.invoiceId, invoice.periodStart!, updatedAt:invoice.documentUpdatedAt));
@@ -2168,4 +2170,5 @@ class _ScreenApprovals extends StatelessWidget {
     ],
   );
 }
+
 

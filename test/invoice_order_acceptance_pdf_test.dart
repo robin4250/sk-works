@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:sk_works/domain/company_seal_snapshot.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:sk_works/features/invoices/invoice_order_acceptance_pdf.dart';
@@ -86,6 +88,75 @@ void main() {
     }
   });
 
+  test('automatic output includes locked invoices without changing page one or saved originals', () async {
+    final font = await CompanySealPdf.loadFont();
+    final parentSeal = CompanySealSnapshot.fromJson({
+      'version': 1, 'style': 'legacy', 'name': '株式会社受注',
+    });
+    final invoice = InvoiceEngine.calculate(customerId: '株式会社発注',
+      invoiceId: 'automatic-fixture', billingPeriod: '2026年10月',
+      issueDate: DateTime(2026, 10, 16), companySealSnapshot: parentSeal,
+      detailMode: InvoiceDetailMode.consolidatedOnly,
+      sites: const [SiteInvoiceCalculation(siteId: 'site', siteName: '補修工事',
+        lines: [InvoiceLine(label: '工事', quantity: 1, unitPriceYen: 100000)])],
+      taxRateBps: 1000);
+    const settings = InvoiceSettingsData(companyName: '株式会社受注', taxRate: 10,
+      welfareRate: 0, templateTitle: '請求書', footerNote: '', bankName: '',
+      bankBranch: '', bankAccountType: '', bankAccountNumber: '', bankAccountHolder: '',
+      companySealEnabled: true);
+    Future<List<int>> render(TradeDocumentAttachment? value) => InvoicePdfService.buildPdf(
+      [invoice], settings: settings, regularFont: font, boldFont: font,
+      approvalsByInvoice: const {'automatic-fixture': []},
+      acceptanceByInvoice: {'automatic-fixture': value});
+    final baseline = await render(null);
+    final outputs = <String, List<int>>{'invoice-base': baseline};
+    for (final locked in [false, true]) {
+      final defaults = Map<String, dynamic>.from(attachment().payload)
+        ..remove('order_date')..remove('issue_date');
+      defaults['company_seal_snapshot'] = {
+        'version': 1, 'style': 'legacy', 'name': '後から変更した現在印',
+      };
+      final workspace = <String, dynamic>{
+        'source_locked': locked, 'source_blocked': false, 'source_changed': false,
+        'attachment': null, 'auto_generate': true, 'defaults': defaults,
+        'template': {'acceptance_text': '{order_date}付の注文書を承諾します。'},
+      };
+      final value = InvoiceAcceptanceResolver.resolve(workspace, issueDate: invoice.issueDate,
+        parentSealSnapshot: invoice.companySealSnapshot,
+        parentSealEnabled: settings.companySealEnabled)!;
+      expect(value.payload['company_seal_snapshot'], {
+        'version': 1, 'style': 'legacy', 'name': '株式会社受注',
+      });
+      expect(workspace['attachment'], isNull);
+      outputs[locked ? 'invoice-locked-auto' : 'invoice-unlocked-auto'] = await render(value);
+      if (locked) {
+        workspace['auto_generate'] = false;
+        final disabled = InvoiceAcceptanceResolver.resolve(workspace, issueDate: invoice.issueDate,
+          parentSealSnapshot: invoice.companySealSnapshot,
+          parentSealEnabled: settings.companySealEnabled);
+        expect(disabled, isNull);
+        outputs['invoice-locked-off'] = await render(disabled);
+        final saved = attachment(date: '2026-10-20');
+        workspace['attachment'] = {'version': 7, 'payload': saved.payload};
+        final original = InvoiceAcceptanceResolver.resolve(workspace, issueDate: invoice.issueDate,
+          parentSealSnapshot: CompanySealSnapshot.legacy, parentSealEnabled: false)!;
+        expect(original.version, 7);
+        expect(original.payload, saved.payload);
+        outputs['invoice-locked-saved'] = await render(original);
+      }
+    }
+    expect(invoice.companySealSnapshot, same(parentSeal));
+    expect(invoice.grandTotalYen, 110000);
+    for (final bytes in outputs.values) { expect(bytes.length, greaterThan(1000)); }
+    final directory = Platform.environment['SKO_AUTOMATIC_PDF_OUTPUT_DIR'];
+    if (directory != null) {
+      Directory(directory).createSync(recursive: true);
+      for (final entry in outputs.entries) {
+        File('$directory/${entry.key}.pdf').writeAsBytesSync(entry.value);
+      }
+    }
+  });
+
   test('rejects invalid calendar date rather than normalizing it', () async {
     final font = await CompanySealPdf.loadFont();
     await expectLater(InvoiceOrderAcceptancePdf.append(pw.Document(),
@@ -93,4 +164,5 @@ void main() {
       throwsStateError);
   });
 }
+
 
