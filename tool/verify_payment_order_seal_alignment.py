@@ -4,11 +4,18 @@ import sys
 import fitz
 
 proof = Path(sys.argv[1] if len(sys.argv) > 1 else 'build/payment-order-proof')
-for name in ('payment-order.pdf', 'payment-long.pdf'):
+cases=[('payment-order.pdf',1,'株式会社発注'),('payment-long.pdf',1,'株式会社発注')]
+if '--all' in sys.argv:
+    cases += [('invoice-with-acceptance.pdf',1,'株式会社受注'),
+              ('invoice-with-automatic-acceptance.pdf',1,'株式会社受注'),
+              ('invoice-order-acceptance-long.pdf',0,'株式会社受注'),
+              ('standalone-order.pdf',0,'株式会社自社'),
+              ('standalone-acceptance.pdf',0,'株式会社自社')]
+for name,page_index,company_name in cases:
     with fitz.open(proof / name) as document:
-        page = document[1]
+        page = document[page_index]
         spans = [s for b in page.get_text('dict')['blocks'] for l in b.get('lines', []) for s in l['spans']]
-        names = [s for s in spans if '株式会社発注' in s['text'] and s.get('color', 0) == 0]
+        names = [s for s in spans if company_name in s['text'] and s.get('color', 0) == 0]
         if not names:
             raise AssertionError(f'{name}: issuer company name missing')
         name_box = names[0]['bbox']
@@ -29,4 +36,4 @@ for name in ('payment-order.pdf', 'payment-long.pdf'):
             raise AssertionError(f'{name}: registered seal does not overlap issuer company name')
         if abs((top+bottom)/2-(name_box[1]+name_box[3])/2)>10:
             raise AssertionError(f'{name}: seal is not vertically aligned to issuer company name')
-print('PASS normal and long order registered-seal overlay on issuer company name')
+print('PASS registered-seal overlay on exact issuer company name for',len(cases),'generated PDFs')

@@ -13,7 +13,9 @@ TradeDocumentAttachment standaloneTradeDocument({required Map<String, dynamic> c
     final value = requiredText(key, 10);
     final parsed = DateTime.tryParse(value);
     if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value) || parsed == null ||
-        parsed.toIso8601String().substring(0, 10) != value) throw StateError('日付はYYYY-MM-DDで入力してください。');
+        parsed.toIso8601String().substring(0, 10) != value) {
+      throw StateError('日付はYYYY-MM-DDで入力してください。');
+    }
     return value;
   }
   final issue = date('issue_date');

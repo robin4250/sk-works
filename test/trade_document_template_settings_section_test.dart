@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/shared/trade_document_template_settings_page.dart';
 void main() {
   testWidgets('invoice and payment settings use same inline section and folded scope help', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: ListView(children: [
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ListView(children: const [
       TradeDocumentTemplateSettingsSection(subjectKind: 'invoice'),
       TradeDocumentTemplateSettingsSection(subjectKind: 'payment_certificate'),
     ]))));
