@@ -64,7 +64,7 @@ revoke all on common_payroll_retro_review_private.receipts from public,anon,auth
 create trigger immutable_retro_receipt before update or delete on common_payroll_retro_review_private.receipts for each row execute function company_common_allowance_private.protect_payroll_publication();
 -- Overinclusive catalog snapshot is a fixture contract, NOT a production dependency manifest.
 -- Raw financial rows stay internal. Exclude only outputs deliberately changed by publication.
-create function common_payroll_retro_review_private.source(cid uuid) returns text
+create function common_payroll_retro_review_private.source_parts(cid uuid) returns jsonb
 language plpgsql volatile security definer set search_path='' as $$
 declare r record;snapshot jsonb:='{}';contents jsonb;predicate text;
 begin
@@ -78,10 +78,12 @@ begin
  elsif r.nspname='public' and r.relname='companies' then predicate:=' where t.id=$1';
  elsif r.nspname='public' then continue;else predicate:='';end if;
  execute format('select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),''[]''::jsonb) from %I.%I t%s',r.nspname,r.relname,predicate) into contents using cid;
- snapshot:=snapshot||jsonb_build_object(r.nspname||'.'||r.relname,contents);
+ snapshot:=snapshot||jsonb_build_object(r.nspname||'.'||r.relname,md5(contents::text));
  end loop;
- return md5(snapshot::text);
-end $$;
+ return snapshot;
+end $;
+create function common_payroll_retro_review_private.source(cid uuid) returns text
+language sql volatile security definer set search_path='' as $select md5(common_payroll_retro_review_private.source_parts(cid)::text)$;
 create function common_payroll_retro_review_private.plan(cid uuid,typ text,p_start date) returns jsonb
 language plpgsql volatile security definer set search_path='' as $$
 declare timeline jsonb;boundary date;activation date;entries jsonb;eligible int;excluded int;
@@ -163,7 +165,7 @@ begin
 end $$;
 create function common_payroll_retro_review_private.apply_plan(cid uuid,typ text,p_start date,rid uuid,expected jsonb,confirmed boolean) returns jsonb
 language plpgsql security definer set search_path='' as $$
-declare current_plan jsonb;payload jsonb;receipt common_payroll_retro_review_private.receipts%rowtype;result jsonb;entry jsonb;after_row jsonb;source_before text;blocked int:=0;worker uuid;
+declare current_plan jsonb;payload jsonb;receipt common_payroll_retro_review_private.receipts%rowtype;result jsonb;entry jsonb;after_row jsonb;source_before text;blocked int:=0;worker uuid;parts_before jsonb;parts_after jsonb;changed_tables text;
 begin
  if current_setting('transaction_isolation')<>'read committed' or confirmed is distinct from true or rid is null or expected is null then raise exception 'explicit reviewed plan required' using errcode='22023';end if;
  perform company_common_allowance_private.lock_writer(cid);
@@ -179,6 +181,7 @@ begin
  perform 1 from public.workers where company_id=cid and id=worker for update;end loop;
  if common_payroll_retro_review_private.plan(cid,typ,p_start) is distinct from expected then raise exception 'retroactive plan changed after lock' using errcode='40001';end if;
  source_before:=current_plan->>'source_digest';
+ parts_before:=common_payroll_retro_review_private.source_parts(cid);
  result:=common_payroll_retro_review_private.publish_past(cid,typ,p_start,(current_plan->>'common_version')::bigint,current_plan->'common_source',(current_plan->>'timeline_version')::bigint,rid);
  if result->>'recalculated_scopes' is distinct from current_plan->>'eligible_count' then raise exception 'retroactive target count differs' using errcode='40001';end if;
  for entry in select value from jsonb_array_elements(current_plan->'entries') loop
@@ -189,7 +192,10 @@ begin
  if after_row->>'workflow_state' is distinct from 'draft' or after_row->>'automatic_calculation' is distinct from 'true' or after_row->>'finalized_at' is not null then raise exception 'draft postcondition failed' using errcode='40001';end if;
  if after_row->>'calculation_blocked'='true' then blocked:=blocked+1;end if;
  end if;end loop;
- if common_payroll_retro_review_private.source(cid) is distinct from source_before then raise exception 'retroactive calculation source changed' using errcode='40001';end if;
+ if common_payroll_retro_review_private.source(cid) is distinct from source_before then
+ parts_after:=common_payroll_retro_review_private.source_parts(cid);
+ select string_agg(k,', ' order by k) into changed_tables from (select key k from jsonb_object_keys(parts_before||parts_after) as keys(key) where parts_before->key is distinct from parts_after->key) q;
+ raise exception 'retroactive calculation source changed' using errcode='40001',detail=changed_tables;end if;
  perform company_common_allowance_private.authorize(cid,true);
  result:=result||jsonb_build_object('excluded_count',current_plan->'excluded_count','exclusions',(select coalesce(jsonb_agg(e),'[]') from jsonb_array_elements(current_plan->'entries') e where e->>'reason'<>'eligible'),'blocked_scopes',blocked,'review_only',true);
  insert into common_payroll_retro_review_private.receipts values(cid,rid,auth.uid(),payload,result);
