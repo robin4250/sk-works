@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
 import 'attendance_management_repository.dart';
+import 'attendance_checkout_minute_guard.dart';
 import '../../international/language_controller.dart';
 
 class AttendanceManagementPage extends StatefulWidget {
@@ -503,6 +504,11 @@ class _ManagementFormState {
       _message(context, '出勤・退勤時刻は HH:mm 形式で入力してください');
       return null;
     }
+    if (mode == 'work' && clockIn.text.trim().isNotEmpty &&
+        clockIn.text.trim() == clockOut.text.trim()) {
+      _message(context, sameMinuteCheckoutMessage);
+      return null;
+    }
     return _ManagementValues(
       mode: mode, siteId: siteId, manDays: parsedManDays, overtimeHours: parsedOvertime, earlyHours: parsedEarly, nightHours: parsedNight,
       allowanceNames: [for (final c in allowances) if (c.text.trim().isNotEmpty) c.text.trim()],
@@ -627,3 +633,4 @@ class _ManagementFormWidgetState extends State<_ManagementForm> {
 
 String _dateText(DateTime value) =>
     '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
+

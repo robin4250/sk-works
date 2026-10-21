@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 
 import 'group_checkout_repository.dart';
+import 'attendance_checkout_minute_guard.dart';
 
 /// Called only after personal checkout succeeds. Failures never repeat that INSERT.
 Future<void> showGroupCheckoutAfterPersonalSave(BuildContext context, {
@@ -109,7 +110,11 @@ class _GroupCheckoutPageState extends State<GroupCheckoutPage> {
       Navigator.of(context).pop();
     } catch (error) {
       if (mounted) {
-        setState(() { _error = error.toString(); _uncertain = true; });
+        setState(() {
+          _error = isSameMinuteCheckoutError(error)
+              ? sameMinuteCheckoutMessage : error.toString();
+          _uncertain = !isSameMinuteCheckoutError(error);
+        });
       }
     } finally {
       if (mounted) {
@@ -168,3 +173,4 @@ class _GroupCheckoutPageState extends State<GroupCheckoutPage> {
     ));
   }
 }
+
