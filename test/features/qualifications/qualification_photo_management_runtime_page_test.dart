@@ -37,8 +37,8 @@ void main() {
     expect(httpClient.requests, 0);
     await tester.pumpWidget(const SizedBox());
     scope.dispose();
-    await client.dispose();
-  });
+    await tester.runAsync(() => client.dispose());
+  }, timeout: const Timeout(Duration(seconds: 30)));
 
   testWidgets('enabled without a session stays unavailable and cannot select photos', (tester) async {
     final scope = ValueNotifier(const AdminSavedQualificationPhotoSubmissionScope(
