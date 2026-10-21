@@ -71,5 +71,10 @@ export async function verifyInvoiceConfirmation(db,c){
  await deny(()=>db.query('update trade_document_consent_private.consents set actor_id=actor_id where document_id=$1',[x.doc]),/immutable/);
  await deny(()=>db.query('delete from trade_document_consent_private.financial_receipts where document_id=$1',[x.doc]),/immutable/);
  await db.exec('set role authenticated');await deny(()=>preview(x),/permission denied/);await db.exec('reset role');
+ if(c.openNativePeer){
+  await (await import('./trade_document_invoice_confirmation_races.mjs')).verifyInvoiceConfirmationRaces(db,{...c,prepare,preview,state});
+ }else{
+  console.log('SKIP native invoice races: PGlite does not supply independent PostgreSQL connections');
+ }
  console.log('PASS invoice adapter: verbatim existing approve/surname/freeze source, atomic success and two later-stage rollback paths, CAS, finalized protection, issuer/received local copies; no public/API/UI/monthly-payment rollout');
 }

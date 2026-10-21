@@ -7,6 +7,7 @@ on:
       - 'docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only'
       - 'docs/candidates/trade_document_invoice_confirmation_20261021.sql.review-only'
       - 'tool/trade_document_invoice_confirmation_fixture.mjs'
+      - 'tool/trade_document_invoice_confirmation_races.mjs'
       - 'tool/verify_trade_document_bound_seal_consent.mjs'
       - '.github/workflows/trade-document-bound-seal-consent.yml'
 permissions:

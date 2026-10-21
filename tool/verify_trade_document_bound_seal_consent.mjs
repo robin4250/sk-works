@@ -1,12 +1,13 @@
 // Disposable fixture; actual existing attachment SQL and official registered-seal SQL.
 import fs from 'node:fs/promises';import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';import {deflateSync} from 'node:zlib';
-let db;
+let db,openNativePeer;
 if(process.argv[3]==='postgres'){
  const pg=(await import(process.argv[2])).default;const url=new URL(process.env.SKO_CONSENT_FIXTURE_URL??'');
  if(!['127.0.0.1','localhost'].includes(url.hostname)||url.pathname!=='/sko_document_consent_fixture')throw Error('disposable loopback consent fixture required');
  const client=new pg.Client({connectionString:url.href});await client.connect();
  db={query:(...a)=>client.query(...a),exec:s=>client.query(s),close:()=>client.end()};
+ openNativePeer=async()=>{const peer=new pg.Client({connectionString:url.href,connectionTimeoutMillis:5000,application_name:'sko_document_consent_fixture_peer'});await peer.connect();return peer;};
 }else{const {PGlite}=await import(process.argv[2]);db=new PGlite();}
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 function crc32(bytes){let c=0xffffffff;for(const b of bytes){c^=b;for(let k=0;k<8;k++)c=(c>>>1)^((c&1)?0xedb88320:0);}return (c^0xffffffff)>>>0;}
@@ -147,6 +148,6 @@ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261014124714_m
  await decide(doc,2,A,cancelPreview,'cancel');await deny(()=>render(doc,2,A),/approved/);
  await db.exec('set role anon');await deny(()=>db.query('select trade_document_consent_private.own_seal($1)',[B]),/permission denied/);await db.exec('reset role');
  check(await q('select count(*)::int v from payment_certificates'),1);check(await q('select count(*)::int v from invoices'),1);
- await (await import('./trade_document_invoice_confirmation_fixture.mjs')).verifyInvoiceConfirmation(db,{id,A,B,UA,UB,UV,INV,CUSTOMER,actor,q,check,deny,localId,render});
+ await (await import('./trade_document_invoice_confirmation_fixture.mjs')).verifyInvoiceConfirmation(db,{id,A,B,UA,UB,UV,INV,CUSTOMER,actor,q,check,deny,localId,render,openNativePeer});
  console.log('PASS '+n+' bound consent checks; separate company local IDs and directional kinds, issuer-only explicit seal consent, identical received copy without extra approval, official v1/v2 source, change/replay/rotation/denial, actual attachment binding, no parent financial writes; private invoice adapter separately checked; public API/UI/monthly-payment integration UNIMPLEMENTED');
 }finally{await db.close();}

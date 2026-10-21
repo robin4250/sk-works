@@ -25,11 +25,11 @@ Content hash, document revision, decision epoch, company, actor and seal hash bi
 
 Rotation after preview requires the issuer to confirm the current registered version; a stale preview cannot authorize another seal. Rotation after issuance leaves the saved approved snapshot unchanged. Connection disablement stops new preparation/approval, does not delete evidence or replace stamps, and does not itself grant/revoke archival document viewing. Issuer cancellation remains possible after disablement. Reject/return/cancel are distinct issuer lifecycle states; recipient-side financial review/return is not implemented by these internal stamp decisions. Changed content creates a new revision and reuses no consent. Current rendering rejects superseded revisions, while explicit archive reads can use an older approved version under document-specific permissions. Cancelled versions remain stored but this minimum renderer does not expose their stamps; full audit/archive UX is not implemented.
 
-## Mandatory single confirmation operation: not implemented
+## Mandatory single confirmation operation: private invoice-only adapter, product still incomplete
 
 The final product must reuse the existing confirmation/approval screen: show the exact invoice/payment certificate, related order/acceptance and registered-seal use, then complete financial confirmation and seal consent atomically under **one request ID and one user operation**. There must be no separate extra stamp request/button. Both authorities and explicit choices, the company-specific parent revision, attachment revision, directional document identity and seal version/hash must be rechecked in the same transaction. Any mismatch must roll back both records. Old internal invoice approval is never interpreted as counterpart permission.
 
-`confirm_local_document` deliberately raises adapter-not-connected. `parent_binding` also fails closed and `linked_view_allowed` defaults false. The ungranted `decide` primitive is for isolated boundary tests only, not an alternate product workflow. The actual formal FK→registered counterparty resolver, local-parent mapping on both companies' pages, shared request delivery/workspaces, proper financial recipient-review authority and same-TX recording are still missing. The fixture's explicitly synthetic read-only parent/view adapters prove binding mechanics against the real attachment saver; they do not implement those production permissions or change existing financial confirmation status.
+In the base SQL, `confirm_local_document` deliberately raises adapter-not-connected, `parent_binding` fails closed and `linked_view_allowed` defaults false. The separate private invoice-only adapter below overrides these primitives for its narrowly guarded path; loading the base alone never enables it. The ungranted `decide` primitive is for isolated boundary tests only, not an alternate product workflow. The actual formal FK→registered counterparty resolver, local-parent mapping on both companies' pages, shared request delivery/workspaces, proper financial recipient-review authority and same-TX recording are still missing. The fixture's explicitly synthetic read-only parent/view adapters prove binding mechanics against the real attachment saver; they do not implement those production permissions or change existing financial confirmation status.
 
 ## Verification and remaining blockers
 
@@ -74,3 +74,29 @@ standalone core is not a substitute for financial confirmation. No production
 DDL/DML, existing financial data change, other-company request, deployment,
 Release/iPhone confirmation was performed. Do not mark simultaneous confirmation
 or the user's complete workflow as delivered from this private candidate.
+
+## Native two-connection invoice races (prepared; CI result required)
+
+The verifier opens additional PostgreSQL clients only after its existing strict
+loopback/disposable-database check. No production connection, real JWT, new grant,
+financial implementation or SQL candidate is introduced. PGlite runs the existing
+85 checks and explicitly skips this native-only stage; a skip is not native success.
+
+The PostgreSQL stage uses the real existing approval/freeze/invalidation functions
+already loaded by the fixture. It holds an uncommitted transaction on one client
+and observes the second client's actual Lock wait and blocking PID before release:
+
+- Simultaneous identical confirmation requests serialize and produce one financial
+  audit, seal consent, event and receipt. Replay after a known committed connection
+  is closed returns the identical saved result, with no new rows.
+- A material financial edit wins first: the waiting old preview must reject with
+  serialization failure and leave financial/seal evidence unchanged.
+- Confirmation wins first: the waiting edit then invalidates the current invoice
+  approval by the existing trigger. Issued receipt/seal evidence remains immutable
+  and is readable through explicit archive, while current rendering rejects it.
+
+This does not simulate a lost COMMIT acknowledgement or use real revoked sessions.
+Native execution remains unverified until this exact source's PostgreSQL CI passes.
+Local environment had neither native PostgreSQL nor Docker; no package was fetched
+and local Flutter was not started. Baseline PGlite and Node syntax checks are the
+local verification. Public API/UI/PDF/monthly-payment integration remains absent.
