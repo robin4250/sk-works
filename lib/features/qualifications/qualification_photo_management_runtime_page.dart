@@ -369,12 +369,21 @@ class _QualificationPhotoManagementRuntimePageState
             FilledButton(onPressed: allowed ? () => _run(() => _action(cancel: false)) : null, child: const Text('変更を申請')),
             TextButton(onPressed: allowed ? () => _run(() => _action(cancel: true)) : null, child: const Text('下書きを取り消す')),
           ],
-          if (_result != null && _result!.status != 'draft')
-            TextButton(onPressed: allowed ? () => _run(() async {
-              await _repository!.acknowledge(expectedRequestId: _pending!);
+          QualificationPhotoAcknowledgementButton(
+            status: _result?.status,
+            onPressed: allowed ? () => _run(() async {
+              final id = _pending!;
+              final latest = await _repository!.recover(expectedRequestId: id);
+              _check();
+              setState(() => _result = latest);
+              if (latest.status != 'approved' && latest.status != 'rejected') {
+                throw StateError('承認待ちの申請は保留を閉じられません。');
+              }
+              await _repository!.acknowledge(expectedRequestId: id);
               _check();
               setState(() { _pending = null; _result = null; });
-            }) : null, child: const Text('確認済みとして保留を閉じる')),
+            }) : null,
+          ),
         ] else if (widget.enabled && !_revoked)
           FilledButton(onPressed: allowed && _loaded ? () => _run(_prepare) : null, child: const Text('残す写真を選ぶ')),
         if (widget.enabled && !_revoked && _repository != null && !_loaded && !_busy)
@@ -382,6 +391,26 @@ class _QualificationPhotoManagementRuntimePageState
         if (widget.enabled && !_revoked && _repository == null && !_busy)
           const Text('元の画面から開き直してください。'),
       ]),
+    );
+  }
+}
+
+/// Only terminal values from the submission result contract may expose local
+/// receipt acknowledgement. Pending retains identity and prevents a new prepare.
+class QualificationPhotoAcknowledgementButton extends StatelessWidget {
+  const QualificationPhotoAcknowledgementButton({
+    super.key, required this.status, required this.onPressed,
+  });
+  final String? status;
+  final VoidCallback? onPressed;
+  @override
+  Widget build(BuildContext context) {
+    if (status != 'approved' && status != 'rejected') {
+      return const SizedBox.shrink();
+    }
+    return TextButton(
+      onPressed: onPressed,
+      child: const Text('確認済みとして保留を閉じる'),
     );
   }
 }

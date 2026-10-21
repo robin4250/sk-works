@@ -52,4 +52,30 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     scope.dispose();
   });
+  for (final status in <String?>[null, 'draft', 'pending', 'unknown']) {
+    testWidgets('status=$status cannot acknowledge local pending identity', (tester) async {
+      var acknowledgements = 0;
+      await tester.pumpWidget(MaterialApp(home: Scaffold(
+        body: QualificationPhotoAcknowledgementButton(
+          status: status, onPressed: () => acknowledgements++,
+        ),
+      )));
+      expect(find.text('確認済みとして保留を閉じる'), findsNothing);
+      expect(acknowledgements, 0);
+    });
+  }
+  for (final status in ['approved', 'rejected']) {
+    testWidgets('terminal status=$status permits explicit acknowledgement', (tester) async {
+      var acknowledgements = 0;
+      await tester.pumpWidget(MaterialApp(home: Scaffold(
+        body: QualificationPhotoAcknowledgementButton(
+          status: status, onPressed: () => acknowledgements++,
+        ),
+      )));
+      expect(acknowledgements, 0);
+      await tester.tap(find.text('確認済みとして保留を閉じる'));
+      expect(acknowledgements, 1);
+    });
+  }
+
 }

@@ -31,7 +31,7 @@ images; no upload or Storage object delete is introduced.
 Pending identity is read/recovered first. The page never creates another request
 while one is pending. Submit and cancel require explicit confirmation and call
 the existing repository. Status and cancellation/rejection reason are displayed;
-uncertainty offers same-request recovery. Explicit acknowledged non-draft receipt
+uncertainty offers same-request recovery. Explicit acknowledged terminal (approved/rejected) receipt
 can close local pending, without changing the server record. No self approval,
 direct qualification DELETE or legacy attachment-update fallback exists.
 
@@ -40,3 +40,11 @@ not been enabled in production, installed or exercised on iPhone. New OFF/missin
 session widget fixtures and existing runtime/SDK/submission regression checks
 must pass dedicated CI; successful ON UI end-to-end and real native durability
 remain separate requirements. No legacy repository mutation APIs are invoked.
+
+Pending acknowledgement is intentionally unavailable in the new route, even though
+the older repository accepts any non-draft acknowledgement. Only approved/rejected
+values from the strict existing result contract expose the button; its handler
+first recovers the exact ID and refuses acknowledgement if it is still pending.
+Pending remains get-only in this UI and blocks new preparation. A dedicated widget
+test covers pending/draft/unknown/null rejection and explicit approved/rejected
+acknowledgement. The core repository contract is unchanged.
