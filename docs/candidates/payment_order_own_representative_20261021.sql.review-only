@@ -1,0 +1,41 @@
+-- REVIEW ONLY. Requires the 80-character own-company profile candidate.
+-- Extends the already tax+directory-enriched production source; no live deploy.
+begin;
+set local lock_timeout='5s';
+DO $patch$
+declare body text; definition text;
+begin
+ if to_regclass('private.partner_company_profile_extensions') is null then
+  raise exception 'Own company representative storage unavailable' using errcode='55000';
+ end if;
+ select prosrc,pg_get_functiondef(oid) into body,definition from pg_proc
+ where oid=to_regprocedure('private.trade_document_source(text,uuid,text)');
+ if body is null or md5(body)<>'c61f8835084400b68fbccd9cba35a926' then
+  raise exception 'Trade document source changed; review required' using errcode='55000';
+ end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.trade_document_source(text,uuid,text)')
+   and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef and p.provolatile='v'
+   and p.proconfig=array['search_path=""'] and p.proacl is not null
+   and not exists(select 1 from aclexplode(p.proacl) acl where acl.grantee<>p.proowner)) then
+  raise exception 'Trade document source attributes changed' using errcode='55000';
+ end if;
+ if length(body)-length(replace(body,E' return result;\nend',''))<>length(E' return result;\nend') then
+  raise exception 'Trade document source return anchor changed' using errcode='55000';
+ end if;
+ definition:=replace(definition,E' return result;\nend',$new$
+ -- Own issuer only; directory counterparty enrichment above stays unchanged.
+ if p_kind='payment_certificate' and can_manage and not exists(
+  select 1 from private.trade_document_attachments a
+  where a.subject_kind=p_kind and a.subject_id=p_subject and a.company_id=cid
+ ) then
+  result:=jsonb_set(result,'{defaults,issuer,representative_name}',coalesce((
+   select to_jsonb(e.representative_name)
+   from private.partner_company_profile_extensions e
+   where e.company_id=cid and length(e.representative_name) between 1 and 80
+  ),result#>'{defaults,issuer,representative_name}'));
+ end if;
+ return result;
+end$new$);
+ execute definition;
+end $patch$;
+commit;

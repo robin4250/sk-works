@@ -4,16 +4,28 @@ on:
     paths:
       - 'supabase/migrations/*company_profile_update_review.sql'
       - 'tool/company_profile_review_sql_test.cjs'
+      - "docs/candidates/payment_order_own_representative_20261021.sql.review-only"
+      - "tool/verify_payment_order_own_representative.mjs"
+      - "lib/features/people/company_representative*"
+      - "lib/features/people/company_submitted_documents_page.dart"
+      - "test/company_representative*"
+      - "docs/review/company_representative_issuer_20261021.md"
       - '.github/workflows/company-profile-review-sql.yml'
       - 'docs/candidates/partner_company_profile_20261020.sql.review-only'
       - 'docs/review/partner_company_profile_20261020.md'
       - 'tool/verify_partner_company_profile.cjs'
   push:
-    branches: ['support/company-representative-contract-*']
+    branches: ['support/company-representative-contract-*', 'support/company-representative-issuer-*']
     paths:
       - 'docs/candidates/partner_company_profile_20261020.sql.review-only'
       - 'docs/review/partner_company_profile_20261020.md'
       - 'tool/verify_partner_company_profile.cjs'
+      - "docs/candidates/payment_order_own_representative_20261021.sql.review-only"
+      - "tool/verify_payment_order_own_representative.mjs"
+      - "lib/features/people/company_representative*"
+      - "lib/features/people/company_submitted_documents_page.dart"
+      - "test/company_representative*"
+      - "docs/review/company_representative_issuer_20261021.md"
       - '.github/workflows/company-profile-review-sql.yml'
 jobs:
   profile:
@@ -29,3 +41,16 @@ jobs:
       - run: NODE_PATH=/tmp/company-link-test/node_modules node tool/company_profile_review_sql_test.cjs
       - name: Verify own representative contract and unchanged contact writer
         run: NODE_PATH=/tmp/company-link-test/node_modules node tool/verify_partner_company_profile.cjs
+      - name: Verify own issuer on the current tax and directory source
+        run: NODE_PATH=/tmp/company-link-test/node_modules node tool/verify_payment_order_own_representative.mjs /tmp/company-link-test/node_modules/@electric-sql/pglite/dist/index.js
+  client:
+    runs-on: ubuntu-latest
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/people/company_representative_repository.dart lib/features/people/company_representative_card.dart lib/features/people/company_submitted_documents_page.dart test/company_representative_repository_test.dart test/company_representative_card_test.dart
+      - run: flutter test test/company_representative_repository_test.dart test/company_representative_card_test.dart
