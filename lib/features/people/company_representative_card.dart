@@ -93,7 +93,11 @@ class _CardState extends State<CompanyRepresentativeCard> with WidgetsBindingObs
   }
   @override void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _revocation?.cancel(); _repo?.dispose(); _text.dispose(); super.dispose();
+    _revocation?.cancel();
+    _repo?.revoke();
+    // A supplied repository belongs to its caller; only close one we created.
+    if (widget.repository == null) { _repo?.dispose(); }
+    _text.dispose(); super.dispose();
   }
   @override Widget build(BuildContext context) => Card(
     child: Padding(padding: const EdgeInsets.all(16), child: Column(
