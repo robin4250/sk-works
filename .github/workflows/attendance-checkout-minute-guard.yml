@@ -17,6 +17,34 @@ on:
 permissions:
   contents: read
 jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_trade_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_trade_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix tool/security/fixture_dependencies --no-audit --no-fund --ignore-scripts --no-save pg@8.16.3
+      - name: Verify actual PostgreSQL 17 trigger and rollback behavior
+        env:
+          SKO_TRADE_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_trade_fixture
+        run: node tool/verify_attendance_checkout_minute_guard.mjs "$(pwd)/tool/trade_document_pg_adapter.mjs"
   sql:
     runs-on: ubuntu-latest
     timeout-minutes: 10
