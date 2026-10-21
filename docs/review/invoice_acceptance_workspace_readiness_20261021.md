@@ -1,0 +1,22 @@
+# 注文請書未反映：workspace確認不能の独立修正候補
+基準main `2853e2d8d530f3fc65ce74ef307a1c63b21b0496`。GitHub MCPによるsource確認と独立branch編集のみ。本番照会/変更・SQL・Flutter起動・実機/実PDF検証なし。実機対象の未反映原因は未確定。
+
+## 既存の正常経路
+invoice_pdf_service.dart共通buildPdfは、保存invoiceのworkspaceを読取りInvoiceAcceptanceResolverへ渡す。未保存別添・source_locked=false・source_blocked=falseなら認可済defaultsと文章templateから自動生成し、請求書最初のページ直後へ注文請書を追加する。既保存別添は優先、locked未添付は自動追加せずInvoiceAcceptanceNoticeから既editorへ明示移動する。これはmain包含済みのため再実装しない。build6の実機結果がこのmain変更を含む証拠ではない。
+
+## 今回修正する欠落
+保存invoiceのIDとsourceRevisionが両方あるのにrepositoryを作れない時、従来はacceptance=nullとして共通PDFを成功させていた。locked未添付callbackにも入らず、確認不能と正式な未添付が区別されない。
+pure InvoiceAcceptanceWorkspaceGuardを通し、このケースだけ再ログイン状態確認/請求書再読込のエラーにする。previewは既InvoicePreviewFailureに表示し、printInvoices/shareInvoicesも共通builderを使うため未確認PDFを出力しない。source_lockedや確定内容を変えない。共有repository/issuer/金融数量/DBは変更なし。
+
+## caller互換境界
+- buildPdfのexplicit acceptanceByInvoiceキーがあれば保存別添も明示nullもcaller所有として保持する。既PDFfixtureの明示注入を維持。
+- InvoiceEngineはinvoiceId=''、documentUpdatedAt=nullが既定で、保存originフラグを持たない。id空またはrevision=nullのlocal/synthetic出力は従来どおり維持する。idありrevisionなしが実は破損cloud rowというケースはこのモデルだけで確定できず、今回未修正。
+- InvoiceCloudRepositoryの通常保存row decodeはidを必須にしupdated_atをdocumentUpdatedAtへ渡す。この正常metadataの帳票だけをworkspace-backedとして識別する。
+- 共通print/share/previewおよび既invoice_order_acceptance_pdf_testのexplicit saved/automatic注入、invoice_pdf_service_testのIDなし計算をsource確認した。全test suite/全画面caller動作を実行検証したという意味ではない。
+
+## 検証待ち
+新pure guard testは保存workspace必須・repository不在拒否・明示null/saved選択維持・local/synthetic維持を扱う。既invoice_acceptance_resolver_test、invoice_order_acceptance_pdf_test、invoice_acceptance_notice_testを再利用する。ローカルexec障害とFlutter起動の既拒否境界があり、今回これらを実行していない。統合担当が正規CIでcompile/tests/PDF2ページを確認するまで完成扱いしない。
+
+## 共通「？」ヘルプ追補案（統合担当所有）
+通常の未確定請求書には注文請書を自動表示します。承認・印影固定の履歴があり未添付の場合は「注文請書を確認・添付」から内容を確認してください。ログイン状態のため注文請書を確認できない場合は、請求書を再読み込みしてください。保存済みの注文請書と確定帳票は自動で置き換えません。
+英語案: An order acceptance appears automatically for an eligible draft invoice. If approval or seal history prevents automatic attachment, use Review and attach order acceptance. If the workspace cannot be verified, check your sign-in state and reload the invoice. Existing saved appendices and finalized invoices are preserved.
