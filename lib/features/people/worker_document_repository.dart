@@ -232,7 +232,7 @@ class WorkerDocumentRepository {
     }
 
     final retainedRequirements = await _readRequirementRows(companyId,
-        includeHidden: true, includeArchived: true);
+        includeHidden: canManage, includeArchived: canManage);
     final requirements = retainedRequirements.where((row) =>
         row['archived_at'] == null &&
         ((includeHiddenRequirements && canManage) || row['is_active'] == true)).toList();
@@ -280,10 +280,8 @@ class WorkerDocumentRepository {
   Future<Map<String, List<Map<String, dynamic>>>> loadOwnDocuments() async {
     final worker = await currentWorker();
     final companyId = await _companyId();
-    final retainedRequirements = await _readRequirementRows(companyId,
-        includeHidden: true, includeArchived: true);
-    final requirements = retainedRequirements.where((row) =>
-        row['archived_at'] == null && row['is_active'] == true).toList();
+    final requirements = await _readRequirementRows(companyId);
+    final retainedRequirements = requirements;
     final workers = await _client
         .from('workers')
         .select('id, name, affiliation, status')
