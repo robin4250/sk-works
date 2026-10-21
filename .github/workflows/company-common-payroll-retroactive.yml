@@ -1,0 +1,41 @@
+name: Common payroll retroactive review
+on:
+  push:
+    branches: ['support/common-payroll-retroactive-plan-*']
+  pull_request:
+    paths:
+      - 'docs/candidates/company_common_payroll_retroactive_20261021.sql.review-only'
+      - 'tool/verify_company_common_payroll_retroactive.mjs'
+      - '.github/workflows/company-common-payroll-retroactive.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [pglite, postgres]
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_common_effective_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/sko-retro --no-save --ignore-scripts @electric-sql/pglite@0.3.14 pg@8.16.3
+      - if: matrix.runtime == 'pglite'
+        run: node tool/verify_company_common_payroll_retroactive.mjs /tmp/sko-retro/node_modules/@electric-sql/pglite/dist/index.js
+      - if: matrix.runtime == 'postgres'
+        run: node tool/verify_company_common_payroll_retroactive.mjs /tmp/sko-retro/node_modules/pg/lib/index.js postgres
+        env:
+          SKO_COMMON_EFFECTIVE_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_common_effective_fixture
