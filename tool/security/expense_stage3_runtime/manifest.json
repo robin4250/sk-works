@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "production_connected": false,
+  "files": {
+    "REVIEW.md": "94041b2a910c95ffb4423ad91d206ca42454608d0e637d876c36191b75cf87a3",
+    "verify_plan_cli.mjs": "bd565433536b68e7eda1080707dccd73bd65924bc2c6a142adfee9344eec6afb",
+    "test_owner_stage3.py": "316cf9b34e540964f232910cb6aa67adb794904e3e6396277f77d2a4d9ae52f3",
+    "owner_stage3.py": "434505b15e6c3cb8167577359642d4da3d46acb292e331053629ea7552b59236"
+  }
+}
