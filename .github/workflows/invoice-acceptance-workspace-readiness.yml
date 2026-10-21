@@ -1,0 +1,49 @@
+name: Invoice acceptance workspace readiness
+on:
+  push:
+    branches: ['fix/invoice-acceptance-workspace-readiness-20261021']
+    paths:
+      - 'lib/features/invoices/invoice_acceptance_workspace_guard.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'test/invoice_acceptance_workspace_guard_test.dart'
+      - '.github/workflows/invoice-acceptance-workspace-readiness.yml'
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze --no-fatal-infos
+      - name: Verify guard and existing acceptance paths
+        run: >-
+          flutter test
+          test/invoice_acceptance_workspace_guard_test.dart
+          test/invoice_acceptance_resolver_test.dart
+          test/invoice_order_acceptance_pdf_test.dart
+          test/invoice_acceptance_notice_test.dart
+        env: {SKO_PDF_OUTPUT_DIR: build/invoice-acceptance-proof}
+      - run: python -m pip install PyMuPDF==1.26.6
+      - name: Verify automatic and saved acceptance are second pages
+        run: |
+          python - <<'PY'
+          import fitz
+          from pathlib import Path
+          root=Path('build/invoice-acceptance-proof')
+          for name in ['invoice-with-acceptance', 'invoice-with-automatic-acceptance']:
+              path=root / (name+'.pdf')
+              with fitz.open(path) as doc:
+                  assert len(doc)==2,(name,len(doc))
+                  assert '請求書' in ''.join(doc[0].get_text().split()),name
+                  assert '注文請書' in ''.join(doc[1].get_text().split()),name
+                  for index,page in enumerate(doc):
+                      page.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(root / f'{name}-{index+1}.png')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: invoice-acceptance-workspace-proof, path: build/invoice-acceptance-proof/}
