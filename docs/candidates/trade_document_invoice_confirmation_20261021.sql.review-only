@@ -1,0 +1,147 @@
+-- REVIEW ONLY. Invoice-own approval adapter, not a public endpoint or rollout.
+-- Monthly payment-certificate confirmation remains unavailable: no existing RPC found.
+begin;
+do $$begin
+ if to_regprocedure('public.approve_invoice(uuid)') is null or to_regprocedure('public.approve_invoice_with_stamp_surname(uuid)') is null
+ or to_regclass('public.trade_companies') is null or to_regclass('private.trade_document_attachments') is null then
+ raise exception 'invoice confirmation source prerequisites unavailable';end if;end $$;
+-- Pin existing financial mutation bodies; source drift requires fresh review.
+do $$begin
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure('private.ensure_invoice_approval_rows(uuid)')) is distinct from 'b96d072260cb54857a28bb867b508f57' then raise exception 'unexpected invoice dependency: private.ensure_invoice_approval_rows';end if;
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure('public.approve_invoice(uuid)')) is distinct from '5bc1e283ca727de24f5cf12fac15884c' then raise exception 'unexpected invoice dependency: public.approve_invoice';end if;
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure('public.approve_invoice_with_stamp_surname(uuid)')) is distinct from '1642933289661c4ec24f1bbdd85df669' then raise exception 'unexpected invoice dependency: public.approve_invoice_with_stamp_surname';end if;
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure('private.preserve_invoice_company_seal_snapshot()')) is distinct from '78ab702df260b8004ad18923ad6dbd97' then raise exception 'unexpected invoice dependency: private.preserve_invoice_company_seal_snapshot';end if;
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure('private.invoice_seal_first_freeze(public.invoices,public.invoices)')) is distinct from '4f0b4b2411588248e9bcd7000cb5763c' then raise exception 'unexpected invoice dependency: private.invoice_seal_first_freeze';end if;
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure('private.invoice_seal_material_change_trigger()')) is distinct from '41f0dd936511ab55106dd22e2c749114' then raise exception 'unexpected invoice dependency: private.invoice_seal_material_change_trigger';end if;
+end $$;
+create table trade_document_consent_private.financial_receipts(
+ request_id uuid primary key,document_id uuid not null,revision int not null,company_id uuid not null,actor_id uuid not null,
+ payload jsonb not null,prior_binding jsonb not null,approved_binding jsonb not null,result jsonb not null,
+ unique(document_id,revision),foreign key(document_id,revision) references trade_document_consent_private.revisions(document_id,revision));
+alter table trade_document_consent_private.financial_receipts enable row level security;
+revoke all on trade_document_consent_private.financial_receipts from public,anon,authenticated,service_role;
+create trigger immutable_financial_receipt before update or delete on trade_document_consent_private.financial_receipts for each row execute function trade_document_consent_private.immutable();
+create trigger immutable_recorded_consent before update or delete on trade_document_consent_private.consents for each row execute function trade_document_consent_private.immutable();
+
+create or replace function trade_document_consent_private.parent_binding(kind text,parent_id uuid,own_company uuid,peer_company uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare parent jsonb;att private.trade_document_attachments%rowtype;counter_id uuid;links int;target uuid;role_name text;link_state text;source_revision text;
+begin
+ if kind='invoice' then
+ select to_jsonb(i),i.customer_id,i.updated_at::text into parent,counter_id,source_revision from public.invoices i where i.id=parent_id and i.company_id=own_company for share;
+ select count(*) into links from public.trade_companies t where t.company_id=own_company and t.customer_id=counter_id;
+ if links<>1 then raise exception 'exact unique customer link required' using errcode='42501';end if;
+ select t.linked_company_id,t.trade_role::text,t.link_status::text into target,role_name,link_state from public.trade_companies t where t.company_id=own_company and t.customer_id=counter_id for share;
+ if role_name not in('customer','both') then raise exception 'customer company role required' using errcode='42501';end if;
+ elsif kind='payment_certificate' then
+ raise exception 'monthly payment confirmation adapter is not connected' using errcode='0A000';
+ else raise exception 'invoice parent required';end if;
+ if parent is null or target is distinct from peer_company or link_state is distinct from 'linked' then raise exception 'formal counterparty FK mismatch' using errcode='42501';end if;
+ select * into att from private.trade_document_attachments where subject_kind=kind and subject_id=parent_id and company_id=own_company for share;
+ if att.subject_id is null then raise exception 'saved attachment required';end if;
+ return jsonb_build_object('parent_revision',source_revision,'parent_fingerprint',md5(parent::text),
+ 'content_fingerprint',md5(jsonb_build_object('row',parent-array['updated_at','approval_finalized_at','invoice_seal_frozen','snapshot'],
+ 'snapshot',coalesce(parent->'snapshot','{}')-'company_seal_snapshot')::text),
+ 'attachment_version',att.version,'attachment_source_revision',att.source_revision,'attachment_source_fingerprint',att.source_fingerprint,
+ 'attachment_fingerprint',md5(att.payload::text),'attachment_payload',att.payload-array['company_seal_snapshot','company_seal_enabled'],
+ 'internal_confirmation',jsonb_build_object('approval_finalized_at',parent->'approval_finalized_at','financial_status',parent->'status','separate_from_explicit_seal_consent',true));
+end $$;
+
+create or replace function trade_document_consent_private.linked_view_allowed(kind text,parent_id uuid,doc uuid,rev int,cid uuid) returns boolean
+language plpgsql stable security definer set search_path='' as $$
+declare issuer uuid;recipient uuid;
+begin
+ if auth.uid() is null or private.account_access_allowed() is not true or not exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid() and role::text in('owner','admin')) then return false;end if;
+ select issuer_company_id,counterparty_company_id into issuer,recipient from trade_document_consent_private.documents where id=doc;
+ if not exists(select 1 from trade_document_consent_private.local_links where company_id=cid and document_id=doc) then return false;end if;
+ if cid=issuer then return kind='invoice' and private.has_company_feature(cid,'can_view_invoices') is true and exists(select 1 from public.invoices where id=parent_id and company_id=cid);end if;
+ -- Explicit independent received-document ACL, not access to the issuer's financial row.
+ return cid=recipient and exists(select 1 from trade_document_consent_private.revisions where document_id=doc and revision=rev and state='approved');
+end $$;
+
+create function trade_document_consent_private.preview_confirmation(local_id uuid,cid uuid,rev int) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare doc uuid;d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;
+ parent public.invoices%rowtype;binding jsonb;result jsonb;approval_source jsonb;use_surname boolean;
+begin
+ perform trade_document_consent_private.require_actor(cid);
+ if private.has_company_feature(cid,'can_manage_invoices') is not true or private.has_company_feature(cid,'can_view_invoices') is not true then raise exception 'invoice and stamp permission required' using errcode='42501';end if;
+ select document_id into doc from trade_document_consent_private.local_links where company_id=cid and local_document_id=local_id;
+ select * into d from trade_document_consent_private.documents where id=doc;
+ if d.id is null or d.issuer_company_id<>cid or d.document_kind<>'acceptance' then raise exception 'own invoice acceptance required' using errcode='42501';end if;
+ select * into r from trade_document_consent_private.revisions where document_id=doc and revision=rev;
+ if r.binding->>'parent_kind' is distinct from 'invoice' then raise exception 'invoice financial parent required' using errcode='0A000';end if;
+ result:=trade_document_consent_private.preview_own(doc,rev,cid);
+ select * into parent from public.invoices where id=(r.binding->>'parent_id')::uuid and company_id=cid for share;
+ if parent.status is distinct from 'draft' or parent.finalized_at is not null or parent.approval_finalized_at is not null or parent.invoice_seal_frozen or parent.calculation_blocked then raise exception 'unfinalized invoice approval required';end if;
+ binding:=trade_document_consent_private.parent_binding('invoice',parent.id,cid,d.counterparty_company_id);
+ binding:=(binding-'attachment_payload')||jsonb_build_object('parent_kind','invoice','parent_id',parent.id);
+ if binding is distinct from r.binding or binding->>'attachment_source_revision' is distinct from parent.updated_at::text then raise exception 'parent or attachment version changed' using errcode='40001';end if;
+ if not exists(select 1 from public.invoice_approvals where invoice_id=parent.id and company_id=cid and approver_user_id=auth.uid() and status='pending') then raise exception 'pending assigned own approver required' using errcode='42501';end if;
+ -- Preserve existing multi-approver workflow. Only the final own stamp approver can
+ -- issue this combined command; never approve other users on their behalf.
+ if exists(select 1 from public.invoice_approvals where invoice_id=parent.id and approver_user_id<>auth.uid() and status<>'approved') then raise exception 'other assigned confirmations are still pending';end if;
+ select jsonb_build_object('configured',(select jsonb_agg(to_jsonb(a) order by position) from public.invoice_approvers a where company_id=cid),
+ 'rows',(select jsonb_agg(to_jsonb(a) order by position) from public.invoice_approvals a where invoice_id=parent.id),
+ 'surname_draft',(select to_jsonb(s) from private.invoice_stamp_surname_drafts s where invoice_id=parent.id and approver_user_id=auth.uid())) into approval_source;
+ select coalesce((select enabled from private.invoice_stamp_surname_rollout where company_id=cid),false) into use_surname;
+ return result||jsonb_build_object('local_document_id',local_id,'approval_source',approval_source,'approval_function',case when use_surname then 'approve_invoice_with_stamp_surname' else 'approve_invoice' end);
+end $$;
+
+create or replace function trade_document_consent_private.binding_matches_approval(doc uuid,rev int,expected jsonb,current_binding jsonb) returns boolean
+language sql stable security definer set search_path='' as $$
+ select expected is not distinct from current_binding or exists(select 1 from trade_document_consent_private.financial_receipts f
+ where f.document_id=doc and f.revision=rev and f.prior_binding=expected and f.approved_binding=current_binding)
+$$;
+
+create or replace function trade_document_consent_private.confirm_local_document(local_id uuid,cid uuid,rev int,expected jsonb,rid uuid,financial_confirmed boolean,seal_confirmed boolean) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare doc uuid;d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;
+ current_preview jsonb;receipt trade_document_consent_private.financial_receipts%rowtype;payload jsonb;seal_result jsonb;
+ approved_binding jsonb;final boolean;result jsonb;parent_id uuid;
+begin
+ perform trade_document_consent_private.require_actor(cid);
+ if financial_confirmed is not true or seal_confirmed is not true or rid is null or expected is null then raise exception 'both explicit confirmations required';end if;
+ select document_id into doc from trade_document_consent_private.local_links where company_id=cid and local_document_id=local_id;
+ select * into d from trade_document_consent_private.documents where id=doc;
+ if d.id is null or d.issuer_company_id<>cid then raise exception 'issuer own financial approval required' using errcode='42501';end if;
+ -- Existing approval APIs acquire company FOR UPDATE. Take both ordered company
+ -- locks up front, avoiding SHARE-to-UPDATE upgrade after consent-row locks.
+ perform 1 from public.companies where id in(d.issuer_company_id,d.counterparty_company_id) order by id for update;
+ perform trade_document_consent_private.lock_pair(d.issuer_company_id,d.counterparty_company_id);
+ payload:=jsonb_build_object('local_id',local_id,'company_id',cid,'revision',rev,'expected',expected,'financial_confirmed',true,'seal_confirmed',true);
+ select * into receipt from trade_document_consent_private.financial_receipts where request_id=rid;
+ if found then if receipt.actor_id is distinct from auth.uid() or receipt.payload is distinct from payload then raise exception 'integrated request mismatch';end if;return receipt.result;end if;
+ select * into r from trade_document_consent_private.revisions where document_id=doc and revision=rev;
+ if r.binding->>'parent_kind' is distinct from 'invoice' then raise exception 'monthly payment confirmation adapter is not connected' using errcode='0A000';end if;
+ parent_id:=(r.binding->>'parent_id')::uuid;
+ perform 1 from public.invoices where id=parent_id and company_id=cid for update;
+ perform 1 from private.trade_document_attachments where subject_kind='invoice' and subject_id=parent_id and company_id=cid for share;
+ perform 1 from public.invoice_approvers where company_id=cid order by position for share;
+ perform 1 from private.invoice_stamp_surname_rollout where company_id=cid for share;
+ perform 1 from private.invoice_stamp_surname_drafts where invoice_id=parent_id and approver_user_id=auth.uid() for share;
+ perform 1 from public.invoice_approvals where invoice_id=parent_id order by position for update;
+ perform 1 from trade_document_consent_private.documents where id=doc for update;
+ perform 1 from trade_document_consent_private.revisions where document_id=doc and revision=rev for update;
+ current_preview:=trade_document_consent_private.preview_confirmation(local_id,cid,rev);
+ if current_preview is distinct from expected then raise exception 'integrated approval source changed' using errcode='40001';end if;
+ -- Both mutations share this transaction; any later failure rolls both back.
+ seal_result:=trade_document_consent_private.decide(doc,rev,cid,(expected->>'epoch')::int,expected->>'body_hash','approve',expected#>>'{own_seal,seal_hash}',true,rid);
+ if expected->>'approval_function'='approve_invoice_with_stamp_surname' then final:=public.approve_invoice_with_stamp_surname(parent_id);
+ else final:=public.approve_invoice(parent_id);end if;
+ if final is not true then raise exception 'financial approval did not complete';end if;
+ approved_binding:=trade_document_consent_private.parent_binding('invoice',parent_id,cid,d.counterparty_company_id);
+ approved_binding:=(approved_binding-'attachment_payload')||jsonb_build_object('parent_kind','invoice','parent_id',parent_id);
+ if approved_binding->'content_fingerprint' is distinct from r.binding->'content_fingerprint'
+ or (approved_binding-array['parent_revision','parent_fingerprint','internal_confirmation']) is distinct from (r.binding-array['parent_revision','parent_fingerprint','internal_confirmation'])
+ or approved_binding#>>'{internal_confirmation,approval_finalized_at}' is null then raise exception 'approved invoice content or attachment changed' using errcode='40001';end if;
+ if not exists(select 1 from public.invoice_approvals where invoice_id=parent_id and company_id=cid and approver_user_id=auth.uid() and status='approved' and approved_at is not null)then raise exception 'own approval result unavailable';end if;
+ perform trade_document_consent_private.require_actor(cid);
+ if private.has_company_feature(cid,'can_manage_invoices') is not true then raise exception 'invoice permission changed';end if;
+ result:=jsonb_build_object('document_id',doc,'revision',rev,'local_document_id',local_id,'request_id',rid,'financial_approved',true,'seal_consent_recorded',true,'parent_kind','invoice','parent_id',parent_id,
+ 'parent_revision_before',r.binding->'parent_revision','parent_revision_after',approved_binding->'parent_revision','attachment_version',r.binding->'attachment_version','body_hash',r.body_hash);
+ insert into trade_document_consent_private.financial_receipts values(rid,doc,rev,cid,auth.uid(),payload,r.binding,approved_binding,result);
+ return result;
+end $$;
+revoke all on all functions in schema trade_document_consent_private from public,anon,authenticated,service_role;
+commit;

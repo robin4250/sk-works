@@ -34,3 +34,43 @@ The final product must reuse the existing confirmation/approval screen: show the
 ## Verification and remaining blockers
 
 Dedicated PGlite/PostgreSQL17 CI loads the real existing attachment SQL and official seal helper/upload contract. It checks issuer-only explicit consent, own-only preview, identical issued/received evidence without extra approval, separate local IDs/directions/kinds, body changes/new approval, receipt replay, stale epoch, rotation, rejection/return/cancel, unrelated actor/ACL denial, no parent financial writes and default fail-closed unified integration. Results are separate from source preparation. Native two-connection races, real JWT/session revocation, durable lost-COMMIT reconciliation, stamp permission integration beyond this restrictive role contract, renderer pin enforcement, existing private source/canonical mapping guard closure, counterpart delivery, UI/PDF/device and production rollout remain unverified. The required single-operation same-TX financial approval plus stamp consent is UNIMPLEMENTED; core CI cannot satisfy that completion condition. No migration or deployment is authorized by this candidate.
+
+## Private invoice confirmation adapter (isolated candidate, not rollout)
+
+`trade_document_invoice_confirmation_20261021.sql.review-only` replaces the
+unconnected command for **own-company invoice → acceptance only**. It calls the
+existing `approve_invoice` or explicit-surname approval function, preserving its
+assigned approver rows, audit, approval timestamp and invoice freeze trigger.
+Their exact source bodies are guarded against drift. It requires owner/admin,
+invoice view/manage permission, the assigned pending final approver, explicit
+financial and seal consent, accepted formal connection and exact customer FK.
+Earlier assigned confirmations must already exist; it never approves others.
+
+The two changes and immutable financial receipt execute in one transaction.
+Preview binds parent row, saved attachment/version, configured approvers, approval
+rows, surname draft, own registered seal and immutable document revision.
+Approval lifecycle changes are saved as separate pre/post binding evidence;
+original document content/binding is never overwritten. Current reads accept only
+that exact post-approval receipt; later content changes require fresh approval,
+while an explicitly requested archive retains the issued snapshot. Companies keep
+separate local IDs/pages. A received owner/admin may read that issued copy without
+another stamp approval; this is a narrow independent document ACL, not general
+access to the issuer's invoice or raw stamp.
+
+The disposable fixture loads original financial functions and freeze migration,
+not a fabricated financial writer. Synthetic prerequisites are minimal tables,
+a clock trigger and companies/users/amounts. Cases cover normal/surname paths,
+parent CAS, stale surname draft, finalized protection, permissions, replay and
+later receipt-failure rollback. CI execution status must be read from this head;
+source save alone is not a passing result. Real concurrent lock races and the full
+production dependency closure remain unproved. Ordered company → financial
+parent/attachment → consent locks align current rendering with confirmation.
+
+**Still incomplete:** monthly payment certificates have no matching existing
+confirmation RPC, so that path fails closed. Public RPC grants, existing approval
+screen integration and actual renderer binding are absent. The renderer marker in
+`own_seal` is a review contract, not proof of current PDF execution. Existing
+standalone core is not a substitute for financial confirmation. No production
+DDL/DML, existing financial data change, other-company request, deployment,
+Release/iPhone confirmation was performed. Do not mark simultaneous confirmation
+or the user's complete workflow as delivered from this private candidate.
