@@ -362,12 +362,19 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     final notesController = TextEditingController();
     var expiryRequired = false;
 
+    Future<dynamic>? dialogCompleted;
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext) {
+        dialogCompleted ??= ModalRoute.of(dialogContext)?.completed;
+        return StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          constraints: const BoxConstraints(maxWidth: 560),
           title: const Text('資格マスター追加'),
-          content: SingleChildScrollView(
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -400,6 +407,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               ],
             ),
           ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
@@ -420,13 +428,22 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
             ),
           ],
         ),
-      ),
+        );
+      },
     );
 
-    nameController.dispose();
-    categoryController.dispose();
-    issuerController.dispose();
-    notesController.dispose();
+    void disposeDraft() {
+      nameController.dispose();
+      categoryController.dispose();
+      issuerController.dispose();
+      notesController.dispose();
+    }
+    final completed = dialogCompleted;
+    if (completed == null) {
+      disposeDraft();
+    } else {
+      unawaited(completed.then((_) => disposeDraft()));
+    }
     if (draft == null) return;
 
     try {
@@ -481,12 +498,17 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         dialogCompleted ??= ModalRoute.of(dialogContext)?.completed;
         return StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            constraints: const BoxConstraints(maxWidth: 560),
             title: const Text('資格登録'),
-            content: SingleChildScrollView(
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<String>(
+                  isExpanded: true,
                     initialValue: workerId,
                     decoration: const InputDecoration(labelText: '保有者'),
                     items: _workers
@@ -502,6 +524,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
+                  isExpanded: true,
                     initialValue: masterId,
                     decoration: const InputDecoration(labelText: '資格・免許・講習'),
                     items: _masters
@@ -554,6 +577,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                   ),
                 ],
               ),
+            ),
             ),
             actions: [
               TextButton(

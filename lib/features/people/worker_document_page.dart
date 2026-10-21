@@ -535,7 +535,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     final actor = _loadedActorId;
     final repository = _repository;
     if (!_canManageRequirements || repository == null || id == null ||
-        _visibilitySaving.contains(id)) return;
+        _visibilitySaving.contains(id)) {
+      return;
+    }
     setState(() => _visibilitySaving.add(id));
     try {
       final confirmed = await showDialog<bool>(context: context,
