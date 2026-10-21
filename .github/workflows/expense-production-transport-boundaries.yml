@@ -23,3 +23,56 @@ jobs:
         run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_production_transport.py' -v
       - name: Pinned original CLI parser and sanitized Mac preflight (mock only)
         run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_owner_cli_preflight.py' -v
+      - name: Preferred native psql adapter boundaries (mock only)
+        run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_cli_psql_transport.py' -v
+  native-psql-pg17-tls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - name: Prepare isolated PG17 TLS and loopback-only approved hostname
+        env:
+          FIXTURE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          if [ ! -x /usr/lib/postgresql/17/bin/psql ]; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends postgresql-client-17
+          fi
+          tls_fixture_dir="$RUNNER_TEMP/expense-native-tls"
+          mkdir -m 700 "$tls_fixture_dir"
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$tls_fixture_dir/ca.key" -out "$tls_fixture_dir/ca.crt" -days 1 -subj /CN=isolated-expense-fixture-CA
+          openssl req -newkey rsa:2048 -nodes -keyout "$tls_fixture_dir/server.key" -out "$tls_fixture_dir/server.csr" -subj /CN=aws-0-ap-northeast-1.pooler.supabase.com
+          printf 'subjectAltName=DNS:aws-0-ap-northeast-1.pooler.supabase.com\nextendedKeyUsage=serverAuth\n' > "$tls_fixture_dir/server.ext"
+          openssl x509 -req -in "$tls_fixture_dir/server.csr" -CA "$tls_fixture_dir/ca.crt" -CAkey "$tls_fixture_dir/ca.key" -CAcreateserial -out "$tls_fixture_dir/server.crt" -days 1 -extfile "$tls_fixture_dir/server.ext"
+          docker cp "$tls_fixture_dir/server.key" "$FIXTURE_CONTAINER:/var/lib/postgresql/server.key"
+          docker cp "$tls_fixture_dir/server.crt" "$FIXTURE_CONTAINER:/var/lib/postgresql/server.crt"
+          docker exec --user root "$FIXTURE_CONTAINER" chown postgres:postgres /var/lib/postgresql/server.key /var/lib/postgresql/server.crt
+          docker exec --user root "$FIXTURE_CONTAINER" chmod 600 /var/lib/postgresql/server.key
+          printf "ssl=on\nssl_cert_file='/var/lib/postgresql/server.crt'\nssl_key_file='/var/lib/postgresql/server.key'\n" > "$tls_fixture_dir/ssl.conf"
+          docker cp "$tls_fixture_dir/ssl.conf" "$FIXTURE_CONTAINER:/tmp/expense-ssl.conf"
+          docker exec --user postgres "$FIXTURE_CONTAINER" sh -c 'cat /tmp/expense-ssl.conf >> "$PGDATA/postgresql.conf"'
+          docker restart "$FIXTURE_CONTAINER"
+          for attempt in $(seq 1 20); do
+            if docker exec "$FIXTURE_CONTAINER" pg_isready --username postgres; then break; fi
+            sleep 1
+          done
+          printf '127.0.0.1 aws-0-ap-northeast-1.pooler.supabase.com\n' | sudo tee -a /etc/hosts > /dev/null
+          printf 'SKO_EXPENSE_FIXTURE_CA=%s\n' "$tls_fixture_dir/ca.crt" >> "$GITHUB_ENV"
+      - name: Actual preferred psql adapter with PG17 TLS, disconnect and fresh recovery
+        env:
+          SKO_EXPENSE_NATIVE_TLS_FIXTURE: isolated-loopback-only
+          SKO_EXPENSE_FIXTURE_PSQL: /usr/lib/postgresql/17/bin/psql
+        run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_cli_psql_native_tls.py' -v
