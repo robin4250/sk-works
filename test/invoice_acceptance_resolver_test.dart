@@ -21,7 +21,7 @@ void main() {
       'company_seal_enabled': false,
       'total_amount_yen': 110000,
     },
-    'template': {
+    'template': <String, dynamic>{
       'acceptance_text': '{order_date}の注文を承諾',
       'issuer': {'name': '別会社'},
       'total_amount_yen': 1,
