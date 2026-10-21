@@ -51,7 +51,7 @@ class _SectionState extends State<TradeDocumentTemplateSettingsSection> with Wid
       final c = SupabaseBackend.client;
       _actor = c.auth.currentUser?.id; _token = c.auth.currentSession?.accessToken;
       if (_actor == null || _token == null) throw StateError('ログインが必要です。');
-      _auth = c.auth.onAuthStateChange.listen((_) { if (!_same) _revoke(); }, onError: (_) => _revoke());
+      _auth = c.auth.onAuthStateChange.listen((_) { if (!_same) _revoke(); }, onError: (_) => _revoke(), onDone: _revoke);
       final rows = await c.from('company_members').select('company_id').eq('user_id', _actor!)
           .setHeader('Authorization', 'Bearer $_token');
       if (!_same || !mounted) return;
@@ -104,7 +104,15 @@ class _SectionState extends State<TradeDocumentTemplateSettingsSection> with Wid
       if (raw is! Map || raw['version'] != _version + 1 || raw['payload'] is! Map) {
         throw StateError('保存結果を確認できません。設定を開き直してください。');
       }
-      setState(() { _version = raw['version'] as int; _error = '設定を保存しました。新規生成分から反映します。'; });
+      final fresh = await SupabaseBackend.client.rpc('trade_document_template', params: {
+        'p_kind': widget.subjectKind, 'p_company': _company,
+      }).setHeader('Authorization', 'Bearer $_token');
+      if (!_same || !mounted) return;
+      if (fresh is! Map || fresh['version'] != raw['version'] || fresh['payload'] is! Map ||
+          payload.entries.any((entry) => (fresh['payload'] as Map)[entry.key] != entry.value)) {
+        throw StateError('保存後の設定が変わりました。開き直して確認してください。');
+      }
+      setState(() { _version = fresh['version'] as int; _error = '設定を保存しました。新規生成分から反映します。'; });
     } catch (e) { if (mounted && _same) setState(() => _error = e.toString()); }
     finally { if (mounted) setState(() => _saving = false); }
   }

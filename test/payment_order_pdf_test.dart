@@ -18,9 +18,9 @@ void main(){
   'intro_text':long?List.filled(100,'発注条件').join():'発注者（以下「甲」という）は、受注者（以下「乙」という）に対し、下記の通り工事を発注します。',
   'payment_conditions':long?List.filled(100,'完了確認').join():'工事完了確認後、2026年11月末日までに乙の指定口座に振り込む。',
   'notes':long?List.filled(200,'特記事項').join().substring(0,600):'当月の合意事項を記録します。',
-  'issuer':{'name':'株式会社発注','address':long?List.filled(120,'住所').join():'東京都1-1-1','corporate_number':'1234567890123','representative_name':'発注 太郎'},
+  'issuer':{'name':long?List.filled(4,'株式会社発注').join():'株式会社発注','address':long?List.filled(120,'住所').join():'東京都1-1-1','corporate_number':'1234567890123','representative_name':'発注 太郎'},
   'counterparty':{'name':long?List.filled(30,'株式会社').join():'株式会社下請','address':long?List.filled(120,'住所').join():'神奈川県2-2-2','corporate_number':'9876543210987','representative_name':long?List.filled(40,'代表').join():'下請 次郎'},
-  'company_seal_enabled':true,'company_seal_snapshot':{'version':1,'style':'legacy','name':'株式会社発注'},
+  'company_seal_enabled':true,'company_seal_snapshot':{'version':1,'style':'legacy','name':long?List.filled(4,'株式会社発注').join():'株式会社発注'},
  }});
  test('saved and automatically generated appendices preserve first page and amounts',()async{
   final font=await CompanySealPdf.loadFont();
@@ -48,3 +48,4 @@ void main(){
   await expectLater(PaymentCertificatePdfService.buildPdf(record,regularFont:font,boldFont:font,orderAttachment:order()),throwsStateError);
  });
 }
+

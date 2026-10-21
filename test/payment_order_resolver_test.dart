@@ -112,4 +112,25 @@ void main() {
     (data['defaults'] as Map)['kind'] = 'acceptance';
     expect(() => PaymentOrderResolver.resolve(data), throwsStateError);
   });
+  test('automatic OFF preserves saved appendices and suppresses only a new one', () {
+    final data = workspace();
+    final saved = PaymentOrderResolver.resolve(data)!;
+    data['template'] = {'auto_generate': false};
+    expect(PaymentOrderResolver.resolve(data), isNull);
+    data['attachment'] = {'version': 7, 'payload': saved.payload};
+    final retained = PaymentOrderResolver.resolve(data)!;
+    expect(retained.version, 7);
+    expect(retained.payload, saved.payload);
+  });
+
+  test('read-only workspace auto flag suppresses only unsaved generation without prose access', () {
+    final data = workspace();
+    final saved = PaymentOrderResolver.resolve(data)!;
+    data['template'] = <String, dynamic>{}; data['auto_generate'] = false;
+    expect(PaymentOrderResolver.resolve(data), isNull);
+    data['attachment'] = {'version': 7, 'payload': saved.payload};
+    expect(PaymentOrderResolver.resolve(data)!.version, 7);
+  });
+
 }
+

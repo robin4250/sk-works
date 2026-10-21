@@ -29,7 +29,7 @@ class InvoiceAcceptanceResolver {
       throw StateError('注文請書の元帳票を確認できません。');
     }
     if (issueDate == null) throw StateError('請求書の発行日を確認してください。');
-    if ((workspace['template'] as Map?)?['auto_generate'] == false) return null;
+    if (workspace['auto_generate'] == false || (workspace['template'] as Map?)?['auto_generate'] == false) return null;
     final defaults = Map<String, dynamic>.from(workspace['defaults'] as Map);
     final payload = Map<String, dynamic>.from(defaults);
     // Templates may change prose only, never parties, amounts, month or seal.

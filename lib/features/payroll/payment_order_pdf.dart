@@ -22,11 +22,15 @@ class PaymentOrderPdf {
    style:pw.TextStyle(font:bold?boldFont:regularFont,fontSize:size,lineSpacing:compact?0:2));
   pw.Widget field(String name,Object? value)=>pw.Padding(padding:pw.EdgeInsets.only(bottom:compact?3:7),child:text('$name：${value??''}'));
   pw.Widget party(String title,Map<String,dynamic> value,{bool own=false})=>pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:[
-   text(title,bold:true),pw.SizedBox(height:5),field('社名','${value['name']}${own?'':'　御中'}'),field('住所',value['address']),
-   field('法人番号',value['corporate_number']),pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.center,children:[
-    pw.Expanded(child:field('代表者名',value['representative_name'])),
-    if(own&&sealOn)CompanySealPdf.build(seal.registeredName(issuer['name'].toString()),font:font,companyId:seal.companyId,uploadedPng:seal.uploadedPng,
-      fallbackFont:regularFont,style:seal.style,size:compact?40:48),]),]);
+   text(title,bold:true),pw.SizedBox(height:5),
+   if(own&&sealOn)pw.Stack(children:[
+    pw.Padding(padding:const pw.EdgeInsets.symmetric(vertical:18),child:pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[text('社名：'),pw.Expanded(child:text(value['name'].toString()))])),
+    pw.Positioned(left:36,top:0,child:CompanySealPdf.build(seal.registeredName(issuer['name'].toString()),
+      font:font,companyId:seal.companyId,uploadedPng:seal.uploadedPng,
+      fallbackFont:regularFont,style:seal.style,size:compact?40:48)),
+   ])else field('社名','${value['name']}${own?'':'　御中'}'),
+   field('住所',value['address']),field('法人番号',value['corporate_number']),
+   field('代表者名',value['representative_name']),]);
   document.addPage(pw.Page(pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.all(36),build:(_)=>pw.Column(
    crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:[
     pw.Center(child:pw.Text('注文書',style:pw.TextStyle(font:boldFont,fontSize:compact?18:22,letterSpacing:5))),
@@ -49,4 +53,5 @@ class PaymentOrderPdf {
   return value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'),(_)=>',');
  }
 }
+
 

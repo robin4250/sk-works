@@ -1,4 +1,4 @@
-"""Inspect the actual generated order page; no app or production connection."""
+"""Inspect the actual generated company-name seal overlay; no production access."""
 from pathlib import Path
 import sys
 import fitz
@@ -7,31 +7,26 @@ proof = Path(sys.argv[1] if len(sys.argv) > 1 else 'build/payment-order-proof')
 for name in ('payment-order.pdf', 'payment-long.pdf'):
     with fitz.open(proof / name) as document:
         page = document[1]
-        labels = [span for block in page.get_text('dict')['blocks']
-                  for line in block.get('lines', []) for span in line['spans']
-                  if '代表者名' in span['text']]
-        if not labels:
-            raise AssertionError(f'{name}: issuer representative label missing')
-        # Issuer is rendered before the counterparty in both party layouts.
-        top = labels[0]['bbox'][1]
-        bottom = labels[0]['bbox'][3]
+        spans = [s for b in page.get_text('dict')['blocks'] for l in b.get('lines', []) for s in l['spans']]
+        names = [s for s in spans if '株式会社発注' in s['text'] and s.get('color', 0) == 0]
+        if not names:
+            raise AssertionError(f'{name}: issuer company name missing')
+        name_box = names[0]['bbox']
         image = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
         samples = image.samples
-        red_rows = []
+        red_points = []
         for y in range(image.height):
             start = y * image.stride
-            if any(samples[start+x*image.n] > 170 and
-                   samples[start+x*image.n+1] < 110 and
-                   samples[start+x*image.n+2] < 110
-                   for x in range(image.width)):
-                red_rows.append(y)
-        if not red_rows:
+            for x in range(image.width):
+                at = start + x * image.n
+                if samples[at] > 170 and samples[at+1] < 110 and samples[at+2] < 110:
+                    red_points.append((x/1.5, y/1.5))
+        if not red_points:
             raise AssertionError(f'{name}: seal missing')
-        center = (red_rows[0] + red_rows[-1]) / (2 * 1.5)
-        # Long representative values may wrap; the seal should remain within
-        # their row, while the normal single-line name is centered beside it.
-        if name == 'payment-order.pdf' and abs(center - (top+bottom)/2) > 8:
-            raise AssertionError(f'{name}: seal and representative centers differ by {abs(center-(top+bottom)/2):.1f}pt')
-        if center < top - 30 or center > page.rect.height - 20:
-            raise AssertionError(f'{name}: seal is outside the issuer area')
-print('PASS normal and long order seal alignment in actual generated PDFs')
+        left=min(x for x,y in red_points);right=max(x for x,y in red_points)
+        top=min(y for x,y in red_points);bottom=max(y for x,y in red_points)
+        if min(right,name_box[2]) <= max(left,name_box[0]) or min(bottom,name_box[3]) <= max(top,name_box[1]):
+            raise AssertionError(f'{name}: registered seal does not overlap issuer company name')
+        if abs((top+bottom)/2-(name_box[1]+name_box[3])/2)>10:
+            raise AssertionError(f'{name}: seal is not vertically aligned to issuer company name')
+print('PASS normal and long order registered-seal overlay on issuer company name')

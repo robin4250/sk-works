@@ -84,4 +84,33 @@ void main() {
       throwsStateError,
     );
   });
+  test('automatic OFF preserves saved appendices and suppresses only a new one', () {
+    final data = workspace();
+    final saved = InvoiceAcceptanceResolver.resolve(data, issueDate: date)!;
+    data['template'] = {'auto_generate': false};
+    expect(InvoiceAcceptanceResolver.resolve(data, issueDate: date), isNull);
+    data['attachment'] = {'version': 7, 'payload': saved.payload};
+    final retained = InvoiceAcceptanceResolver.resolve(data, issueDate: date)!;
+    expect(retained.version, 7);
+    expect(retained.payload, saved.payload);
+  });
+
+  test('initial construction name and location are copied to acceptance only before saving', () {
+    final data = workspace();
+    (data['template'] as Map).addAll({'work_name': '同じ初期文', 'work_address': '同じ工事場所'});
+    final value = InvoiceAcceptanceResolver.resolve(data, issueDate: date)!;
+    expect(value.payload['work_name'], '同じ初期文');
+    expect(value.payload['work_address'], '同じ工事場所');
+  });
+
+  test('read-only workspace auto flag suppresses only unsaved generation without prose access', () {
+    final data = workspace();
+    final saved = InvoiceAcceptanceResolver.resolve(data, issueDate: date)!;
+    data['template'] = <String, dynamic>{}; data['auto_generate'] = false;
+    expect(InvoiceAcceptanceResolver.resolve(data, issueDate: date), isNull);
+    data['attachment'] = {'version': 7, 'payload': saved.payload};
+    expect(InvoiceAcceptanceResolver.resolve(data, issueDate: date)!.version, 7);
+  });
+
 }
+

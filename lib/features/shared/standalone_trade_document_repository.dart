@@ -9,7 +9,7 @@ class StandaloneTradeDocumentRepository {
       _token = _client.auth.currentSession?.accessToken {
     _auth = _client.auth.onAuthStateChange.listen((_) {
       if (!_same) invalidate();
-    }, onError: (_) => invalidate());
+    }, onError: (_) => invalidate(), onDone: invalidate);
   }
   static StandaloneTradeDocumentRepository? maybeCreate() => SupabaseBackend.isInitialized &&
     SupabaseBackend.client.auth.currentSession != null ? StandaloneTradeDocumentRepository(SupabaseBackend.client) : null;
@@ -17,6 +17,7 @@ class StandaloneTradeDocumentRepository {
   final String? _actor, _token;
   StreamSubscription<dynamic>? _auth;
   bool _revoked = false;
+  Future<void>? _disposing;
   bool get _same => !_revoked && _actor != null && _token != null &&
     _client.auth.currentUser?.id == _actor && _client.auth.currentSession?.accessToken == _token &&
     _client.auth.currentSession?.isExpired == false;
@@ -79,5 +80,6 @@ class StandaloneTradeDocumentRepository {
       'template': Map<String, dynamic>.from(template['payload'] as Map),
       'company_seal_snapshot': seal, 'company_seal_enabled': company['company_seal_enabled'] == true};
   }
-  Future<void> dispose() async { invalidate(); await _auth?.cancel(); }
+  Future<void> dispose() { invalidate(); return _disposing ??= _close(); }
+  Future<void> _close() async { await _auth?.cancel(); }
 }

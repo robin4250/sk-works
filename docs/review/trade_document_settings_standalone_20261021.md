@@ -1,0 +1,41 @@
+# 帳票初期文・自動生成設定・会社別単体生成
+
+Issue273先頭の2026-10-21追加仕様に従う。基準main2853、PR1314の確認不能guardはhead ee11を再利用。PR1316の自社代表者保存UI/repoは再実装せず、限定導入済みread_partner_company_profileを単体生成の自社代表者原本に使用する。issuer source現在a24は変更しない。
+
+## 設定と新規生成
+
+請求書設定と支払証明書設定に、同じinline sectionで工事名・工事場所の初期文／自動生成ON・OFF／既定文面を配置する。各セクションの設定保存は既template CAS APIを再利用し、金融帳票・契約rowを保存しない。詳しい反映範囲は初期状態で折りたたむ。自動生成切替は新backend settings_contract_version=2を確認するまで無効。旧serverで未対応項目を送らず、従来の文面保存は保持する。
+
+invoice初回はpayment templateのwork_name/work_addressだけを同社内で引き継ぐ。invoiceの保存済み独自値（明示空も含む）が優先し、毎回orderを上書きコピーしない。空欄へ戻した値をorder初期文で勝手に復活させない。通常の元帳票由来fallbackは維持する。acceptance resolver/editorも新規だけwork2項目を使い、PDFに工事場所を追加する。
+
+旧clientの文面replace保存から新設auto_generateとinvoice work2keyを守るため、それらだけ欠落時に既保存値を保持する。明示false/空は反映する。既payment work2keyのomit-clear契約や他文面全体をmergeへ変えない。旧buildはautoフラグを読まないため、新autoOFFの動作保証は新Release以降。本人端末を新版へ揃えて確認する。
+
+workspaceは認可済み閲覧者全員へauto_generate boolだけを独立keyで返す。template文章/会社private情報の閲覧権限は拡張しない。旧workspaceのkey不在時は従来通り自動生成。保存済み別添はOFFより先に採用する。未保存・適格draftだけをOFFで抑止し、locked状態の偽装や確定帳票への自動追加をしない。invoice read-only actorにtemplate文面が公開されない既権限差は今回未解消であり、初期文の閲覧権限拡張を勝手に行わない。
+
+右上の各帳票ボタンは外し、プレビュー本文の「この注文書／注文請書を確認・編集」へ移動する。既過去未添付noticeからの明示添付を維持する。自動生成機能は削除しない。
+
+## 会社登録の単体生成
+
+取引会社の当該会社詳細に注文請書生成、協力会社の当該会社詳細に注文書生成を置く。渡すtradeCompanyId/roleは固定し、登録workspaceを再読取して一致を確認する。未保存の架空会社や請求書/支払証明書/金融行/別契約schemaを生成しない。現在の単体入口は会社を一意に確認できるowner/adminに限定し、複数所属から先頭を推測しない。
+
+読取は固定actor/token、exact会社・登録会社を確認。actor/token/背景移行で不可逆停止する。自社プロフィール、同社の会社登録印影、認可済み既templateを読み、足りない住所/代表者名・工事情報・実金額を入力して確認する。登録会社名は固定。価格・消費税の空欄を架空0へ置換せず、注文書は整数の明示入力を必須にする。注文請書に不要な金融額を捏造しない。フォーム入力はPDF用の一時値で会社登録や金融データへ保存しない。
+
+単体PDFは既PaymentOrderPdf/InvoiceOrderAcceptancePdfをそのまま呼び、プレビューと印刷に同じ生成bytesを渡す。保存済み帳票を別会社に付け替えない。
+
+## 角印の位置と原本
+
+注文書issuer（甲・発注者）／注文請書issuer（乙・受注者）の会社名に、その自社の既snapshot印影を重ねる。相手先名へ自社印を流用しない。単体新規では会社登録の現在印影を正規RPCで読み、uploaded PNGの会社ID/会社名/version/hashをCompanySealSnapshotで検証する。既保存帳票は保存済みsnapshotを読み続け、現在の別assetへ置換しない。以前の代表者行中央位置の検証は最新仕様の会社名とのbbox重なりへ更新する。
+
+既保存PDFファイルや金融snapshot/承認履歴は更新しない。現在UIで新たに生成するPDFの印影位置レイアウトだけを新仕様へ変える。uploaded PNG bytesによる帳票全体の縮小回避は維持する。
+
+## backendと検証範囲
+
+review-only候補はprivate.trade_document_template（元77819）とprivate.trade_document_attachment_workspace（元c263）の局所置換のみ。新table/金融DML/GRANT/Auth/RLS/issuer source変更なし。全catalog原本・fresh guard・停止区間限定復元・本番適用はrootの別工程。独断で適用しない。
+
+専用SQL workflowは既月次fixtureを再利用し、PGlite/空PostgreSQL17で初回inherit・独自override/clear・旧client新key保持・payment旧clear・独立autoOFF/readonly bool・CAS/不正key/金融/保存別添/metadata不変を確認する。client専用workflowはFlutter3.47.5 lockfile enforce/analyze、既resolver/notice/両PDF＋新単体/設定/認証拒否fixtureを実行し、単体1頁・請求別添2頁・工事初期文・issuer印影重なり/境界を生成PDFで検査する。実行結果はCI観測後に追補する。local Flutter/Dart実行はしていない。実機解消・本番導入済みとは扱わない。
+
+先行SQL結果: exact head d6556df20f85f11549544c620ba166ad21de819b、run39523748226のPGlite/PG17両job成功。初回は既prerequisite二重適用、2回目はfixture原本revision読取roleの誤りで失敗し、余分な再適用削除とowner setup区間の読取へ修正した。製品候補のguard/ACLを緩めていない。統合担当からmigration20261021005159で限定適用・両関数catalog照合成功の報告あり（金融DMLなし）。この担当から本番適用はしていない。
+
+追加の双方承認仕様: 正式連携会社の相手登録印影は、その相手会社の正規承認と内容revision/印影hash・version固定が確認できるまで取得・描画しない。本候補は自社印影だけで、親請求書/支払証明書承認との連動や双方共通承認済み版を実装した扱いにしない。単体は内容確認用のephemeral PDFであり、独立immutable文書/承認IDの代用ではない。双方版共有は既承認closureを別途照合し、変更後の再承認と元承認原本保持を設計してから接続する。
+
+単体印刷は明示print lease中のnative inactiveだけを固定bytes identity/target/token下で許可する。通常inactiveとhidden/paused/detachedは不可逆失効、印刷終了時inactiveでも失効へ戻す。開始時foreground未確認は読取/出力を開始しない。専用pure lease9境界をCIへ追加し、実機native印刷の確認は別に残す。

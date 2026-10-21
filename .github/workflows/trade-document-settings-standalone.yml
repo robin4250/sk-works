@@ -1,0 +1,66 @@
+name: Trade document settings and standalone PDF
+on:
+  push:
+    branches: ['feat/trade-document-settings-standalone-20261021']
+permissions:
+  contents: read
+jobs:
+  client-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze --no-fatal-infos
+      - name: Verify settings, automatic selection, standalone and existing PDFs
+        run: >-
+          flutter test
+          test/standalone_trade_document_test.dart
+          test/standalone_trade_document_print_scope_test.dart
+          test/standalone_trade_document_repository_test.dart
+          test/trade_document_template_settings_section_test.dart
+          test/invoice_acceptance_workspace_guard_test.dart
+          test/invoice_acceptance_resolver_test.dart
+          test/payment_order_resolver_test.dart
+          test/invoice_order_acceptance_pdf_test.dart
+          test/payment_order_pdf_test.dart
+          test/invoice_acceptance_notice_test.dart
+          test/r18_defaults_test.dart
+          test/r18_editor_defaults_contract_test.dart
+          test/trade_company_detail_edit_delete_contract_test.dart
+          test/invoice_full_screen_preview_contract_test.dart
+        env: {SKO_PDF_OUTPUT_DIR: build/trade-document-settings-proof}
+      - run: python -m pip install PyMuPDF==1.26.6
+      - run: python tool/verify_payment_order_seal_alignment.py build/trade-document-settings-proof
+      - name: Verify standalone pages and construction initial text
+        run: |
+          python - <<'PY'
+          import fitz
+          from pathlib import Path
+          root=Path('build/trade-document-settings-proof')
+          for kind,title in [('order','注文書'),('acceptance','注文請書')]:
+              with fitz.open(root/f'standalone-{kind}.pdf') as doc:
+                  assert len(doc)==1,(kind,len(doc))
+                  text=''.join(doc[0].get_text().split())
+                  for expected in [title,'登録した工事初期文','登録した工事場所','株式会社自社','株式会社登録相手']:
+                      assert expected in text,(kind,expected)
+          for name in ['invoice-with-acceptance','invoice-with-automatic-acceptance']:
+              with fitz.open(root/f'{name}.pdf') as doc:
+                  assert len(doc)==2,(name,len(doc))
+                  assert '注文請書' in ''.join(doc[1].get_text().split()),name
+          for path in root.glob('*.pdf'):
+              with fitz.open(path) as doc:
+                  for i,page in enumerate(doc):
+                      for block in page.get_text('dict')['blocks']:
+                          for line in block.get('lines',[]):
+                              for span in line['spans']:
+                                  x0,y0,x1,y1=span['bbox']
+                                  assert x0>=-1 and y0>=-1 and x1<=page.rect.width+1 and y1<=page.rect.height+1,(path,span)
+                      page.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(root/f'{path.stem}-{i+1}.png')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: trade-document-settings-proof, path: build/trade-document-settings-proof/}

@@ -28,8 +28,9 @@ class InvoiceOrderAcceptancePdf {
         ? payload['acceptance_text'].toString()
         : '乙は、貴殿から受領した$orderDate付の注文書記載の条件通り、本工事を請け負うことを承諾いたします。';
     final workName = payload['work_name']?.toString().trim() ?? '';
+    final workAddress = payload['work_address']?.toString().trim() ?? '';
     final notes = payload['notes']?.toString().trim() ?? '';
-    final compact = workName.length > 80 || notes.isNotEmpty || acceptanceText.length > 180 || issuer['address'].toString().length > 120 ||
+    final compact = workAddress.length > 80 || workName.length > 80 || notes.isNotEmpty || acceptanceText.length > 180 || issuer['address'].toString().length > 120 ||
         issuer['name'].toString().length > 60 || customer['name'].toString().length > 60;
     final gap = compact ? 8.0 : 40.0;
     final seal = CompanySealSnapshot.fromJson(payload['company_seal_snapshot']);
@@ -57,6 +58,7 @@ class InvoiceOrderAcceptancePdf {
             _field('工事名', workName, compact: compact),
             pw.SizedBox(height: 8),
           ],
+          if (workAddress.isNotEmpty) _field('工事場所', workAddress, compact: compact),
           pw.Text(
             acceptanceText,
             style: pw.TextStyle(fontSize: compact ? 8 : 13, lineSpacing: compact ? 1 : 9),
@@ -72,17 +74,17 @@ class InvoiceOrderAcceptancePdf {
           pw.SizedBox(height: gap),
           pw.Text('（乙・受注者）', style: pw.TextStyle(font: boldFont, fontSize: 12)),
           pw.SizedBox(height: 12),
-          _field('社名', issuer['name'], compact: compact),
+          if (sealEnabled) pw.Stack(children: [
+            pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 24),
+              child: _field('社名', issuer['name'], compact: compact)),
+            pw.Positioned(left: 80, top: 0, child: CompanySealPdf.build(
+              seal.registeredName(issuer['name'].toString()), size: 64,
+              font: font, fallbackFont: regularFont, style: seal.style,
+              companyId: seal.companyId, uploadedPng: seal.uploadedPng)),
+          ]) else _field('社名', issuer['name'], compact: compact),
           _field('住所', issuer['address'], compact: compact),
           _field('法人番号', issuer['corporate_number'], compact: compact),
-          pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-            pw.Expanded(child: _field('代表者名', issuer['representative_name'], compact: compact)),
-            if (sealEnabled) pw.SizedBox(width: 16),
-            if (sealEnabled) pw.SizedBox(width:64,height:64,child:CompanySealPdf.build(
-              seal.registeredName(issuer['name'].toString()),
-              size: 64, font: font, fallbackFont: regularFont,
-              style: seal.style, companyId: seal.companyId, uploadedPng: seal.uploadedPng)),
-          ]),
+          _field('代表者名', issuer['representative_name'], compact: compact),
         ],
       ),
     ));
@@ -106,5 +108,6 @@ class InvoiceOrderAcceptancePdf {
     return '${parsed.year}年${parsed.month}月${parsed.day}日';
   }
 }
+
 
 
