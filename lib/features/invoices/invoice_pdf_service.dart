@@ -5,6 +5,7 @@ import '../shared/trade_document_attachment_repository.dart';
 import '../shared/trade_document_attachment_editor_page.dart';
 import 'invoice_order_acceptance_pdf.dart';
 import 'invoice_acceptance_resolver.dart';
+import 'invoice_acceptance_workspace_guard.dart';
 import 'invoice_acceptance_notice.dart';
 import '../expenses/expense_document_repository.dart';
 import '../expenses/expense_detail_pdf.dart';
@@ -81,13 +82,20 @@ class InvoicePdfService {
     );
     for (final invoice in invoices) {
       final attachmentRepository = TradeDocumentAttachmentRepository.maybeCreate();
-      final acceptance = acceptanceByInvoice?.containsKey(invoice.invoiceId) == true
+      final hasExplicitAcceptance =
+          acceptanceByInvoice?.containsKey(invoice.invoiceId) == true;
+      final loadAcceptanceWorkspace = InvoiceAcceptanceWorkspaceGuard.shouldLoad(
+        invoiceId: invoice.invoiceId,
+        sourceRevision: invoice.documentUpdatedAt,
+        hasExplicitSelection: hasExplicitAcceptance,
+        repositoryAvailable: attachmentRepository != null,
+      );
+      final acceptance = hasExplicitAcceptance
           ? acceptanceByInvoice![invoice.invoiceId]
-          : invoice.invoiceId.isEmpty || invoice.documentUpdatedAt == null ||
-              attachmentRepository == null
+          : !loadAcceptanceWorkspace
           ? null
           : InvoiceAcceptanceResolver.resolve(
-              await attachmentRepository.loadWorkspace(
+              await attachmentRepository!.loadWorkspace(
                 subjectKind: 'invoice', subjectId: invoice.invoiceId,
                 sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String()),
               issueDate: invoice.issueDate,
