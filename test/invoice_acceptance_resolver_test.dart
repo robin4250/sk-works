@@ -97,7 +97,7 @@ void main() {
 
   test('initial construction name and location are copied to acceptance only before saving', () {
     final data = workspace();
-    (data['template'] as Map).addAll({'work_name': '同じ初期文', 'work_address': '同じ工事場所'});
+    (data['template'] as Map).addAll(<String, dynamic>{'work_name': '同じ初期文', 'work_address': '同じ工事場所'});
     final value = InvoiceAcceptanceResolver.resolve(data, issueDate: date)!;
     expect(value.payload['work_name'], '同じ初期文');
     expect(value.payload['work_address'], '同じ工事場所');
