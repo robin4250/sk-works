@@ -126,6 +126,101 @@ class WorkerDocumentRepository {
     }
   }
 
+  static const _requirementColumns =
+      'id, company_id, name, scope, upstream_name, company_template_id, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at';
+
+  Future<List<Map<String, dynamic>>> _readRequirementRows(
+    String companyId, {bool includeHidden = false, bool includeArchived = false}
+  ) async {
+    var archiveSupported = true;
+    while (true) {
+      try {
+        var query = _client.from('document_requirements')
+            .select('$_requirementColumns${archiveSupported ? ', archived_at' : ''}')
+            .eq('company_id', companyId);
+        if (!includeHidden) query = query.eq('is_active', true);
+        final rows = await query.order('sort_order').order('name');
+        return List<Map<String, dynamic>>.from(rows)
+            .where((row) => includeArchived || row['archived_at'] == null).toList();
+      } on PostgrestException catch (error) {
+        if (!archiveSupported ||
+            !const ['42703', 'PGRST204'].contains(error.code) ||
+            !RegExp(r'(?<![A-Za-z0-9_])archived_at(?![A-Za-z0-9_])')
+                .hasMatch(error.message)) {
+          rethrow;
+        }
+        // Old backend remains readable; no archive action is offered without
+        // an actual archived_at column in the returned row.
+        archiveSupported = false;
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> loadArchivedRequirements() async {
+    final actor = actorId;
+    await _requireManagePeople();
+    final companyId = await _companyId();
+    final rows = await _readRequirementRows(companyId,
+        includeHidden: true, includeArchived: true);
+    if (actor == null || actorId != actor) {
+      throw StateError('ログイン情報が変更されました。');
+    }
+    return rows.where((row) => row['archived_at'] != null).toList();
+  }
+
+  Future<void> archiveRequirement(Map<String, dynamic> row) =>
+      _setRequirementArchived(row, restore: false);
+
+  Future<void> restoreRequirement(Map<String, dynamic> row) =>
+      _setRequirementArchived(row, restore: true);
+
+  Future<void> _setRequirementArchived(
+    Map<String, dynamic> row, {required bool restore}
+  ) async {
+    final actor = actorId;
+    final token = _client.auth.currentSession?.accessToken;
+    const columns = ['name', 'scope', 'upstream_name', 'company_template_id',
+      'is_required', 'expiry_required', 'renewal_reminder_days', 'is_active',
+      'sort_order', 'created_at', 'updated_at', 'archived_at'];
+    final id = row['id'];
+    if (actor == null || token == null || id is! String || id.isEmpty ||
+        row['company_id'] is! String || row['is_active'] is! bool ||
+        !columns.every(row.containsKey) ||
+        (restore ? row['archived_at'] is! String : row['archived_at'] != null) ||
+        !const ['internal', 'upstream', 'both'].contains(row['scope']) ||
+        row['updated_at'] is! String ||
+        DateTime.tryParse(row['updated_at'] as String) == null) {
+      throw StateError('書類項目を確認できません。再読み込みしてください。');
+    }
+    await _requireManagePeople();
+    final companyId = await _companyId();
+    if (actorId != actor ||
+        _client.auth.currentSession?.accessToken != token ||
+        row['company_id'] != companyId) {
+      throw StateError('会社またはログイン情報が変更されました。再読み込みしてください。');
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    // Compare every persisted content column, not only updated_at: old writers
+    // do not necessarily advance timestamps. Preserve the existing unique key.
+    var query = _client.from('document_requirements')
+        .update({'archived_at': restore ? null : now,
+          'is_active': false, 'updated_at': now})
+        .eq('company_id', companyId).eq('id', id);
+    for (final column in columns) {
+      final value = row[column];
+      query = value == null ? query.isFilter(column, null) : query.eq(column, value);
+    }
+    final rows = await query.select('id, archived_at, is_active');
+    if (actorId != actor || _client.auth.currentSession?.accessToken != token) {
+      throw StateError('ログイン情報が変更されました。同じ項目を再確認してください。');
+    }
+    if (rows.length != 1 || rows.single['id'] != id ||
+        (restore ? rows.single['archived_at'] != null : rows.single['archived_at'] == null) ||
+        rows.single['is_active'] != false) {
+      throw StateError('書類項目が更新されています。再読み込みしてください。');
+    }
+  }
+
   Future<Map<String, List<Map<String, dynamic>>>> loadAll({bool includeHiddenRequirements = false}) async {
     final companyId = await _companyId();
     final canManage = await canManageStatuses();
@@ -136,21 +231,17 @@ class WorkerDocumentRepository {
       ownWorkerId = value?.toString();
     }
 
-    var requirementsQuery = _client
-        .from('document_requirements')
-        .select(
-          'id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at',
-        )
-        .eq('company_id', companyId);
-    if (!includeHiddenRequirements || !canManage) {
-      requirementsQuery = requirementsQuery.eq('is_active', true);
-    }
-    final requirements = await requirementsQuery.order('sort_order').order('name');
+    final retainedRequirements = await _readRequirementRows(companyId,
+        includeHidden: true, includeArchived: true);
+    final requirements = retainedRequirements.where((row) =>
+        row['archived_at'] == null &&
+        ((includeHiddenRequirements && canManage) || row['is_active'] == true)).toList();
 
     if (!canManage && (ownWorkerId == null || ownWorkerId.isEmpty)) {
       return {
         'workers': const <Map<String, dynamic>>[],
         'requirements': List<Map<String, dynamic>>.from(requirements),
+      'retained_requirements': retainedRequirements,
         'statuses': const <Map<String, dynamic>>[],
       };
     }
@@ -181,6 +272,7 @@ class WorkerDocumentRepository {
     return {
       'workers': List<Map<String, dynamic>>.from(workers),
       'requirements': List<Map<String, dynamic>>.from(requirements),
+      'retained_requirements': retainedRequirements,
       'statuses': List<Map<String, dynamic>>.from(statuses),
     };
   }
@@ -188,15 +280,10 @@ class WorkerDocumentRepository {
   Future<Map<String, List<Map<String, dynamic>>>> loadOwnDocuments() async {
     final worker = await currentWorker();
     final companyId = await _companyId();
-    final requirements = await _client
-        .from('document_requirements')
-        .select(
-          'id, name, scope, is_required, expiry_required, renewal_reminder_days, is_active, sort_order, created_at, updated_at',
-        )
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .order('sort_order')
-        .order('name');
+    final retainedRequirements = await _readRequirementRows(companyId,
+        includeHidden: true, includeArchived: true);
+    final requirements = retainedRequirements.where((row) =>
+        row['archived_at'] == null && row['is_active'] == true).toList();
     final workers = await _client
         .from('workers')
         .select('id, name, affiliation, status')
@@ -215,6 +302,7 @@ class WorkerDocumentRepository {
     return {
       'workers': List<Map<String, dynamic>>.from(workers),
       'requirements': List<Map<String, dynamic>>.from(requirements),
+      'retained_requirements': retainedRequirements,
       'statuses': List<Map<String, dynamic>>.from(statuses),
     };
   }
@@ -222,10 +310,8 @@ class WorkerDocumentRepository {
   Future<void> addDefaultRequirements({String? scope}) async {
     await _requireManagePeople();
     final companyId = await _companyId();
-    final existingRows = await _client
-        .from('document_requirements')
-        .select('name, scope')
-        .eq('company_id', companyId);
+    final existingRows = await _readRequirementRows(companyId,
+        includeHidden: true, includeArchived: true);
     final existing = existingRows
         .map((row) => '${row['scope']}::${row['name']}')
         .toSet();
@@ -931,3 +1017,4 @@ class WorkerDocumentRepository {
     requireActor();
   }
 }
+
