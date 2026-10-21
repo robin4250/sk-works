@@ -20,7 +20,9 @@ void main() {
     expect(find.text('選択した会社の代表者名を保存しました。'),findsOneWidget);
     await tester.tap(find.text('設定を再読込'));await tester.pumpAndSettle();
     expect(find.text('新代表'),findsOneWidget);
-    await tester.pumpWidget(const SizedBox());await f.close();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    await tester.runAsync(f.close);
   }, timeout: const Timeout(Duration(seconds: 30)));
   testWidgets('auth change removes old company and representative text', (tester) async {
     final f=Fixture();
@@ -32,6 +34,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('甲代表'),findsNothing);expect(find.text('保存先：甲会社'),findsNothing);
     expect(find.text('会社データを開き直してください。'),findsOneWidget);
-    await tester.pumpWidget(const SizedBox());await f.close();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    await tester.runAsync(f.close);
   }, timeout: const Timeout(Duration(seconds: 30)));
 }

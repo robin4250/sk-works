@@ -54,4 +54,5 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
       - run: flutter analyze lib/features/people/company_representative_repository.dart lib/features/people/company_representative_card.dart lib/features/people/company_submitted_documents_page.dart test/company_representative_repository_test.dart test/company_representative_card_test.dart
-      - run: flutter test test/company_representative_repository_test.dart test/company_representative_card_test.dart
+      - run: flutter test --reporter expanded test/company_representative_repository_test.dart
+      - run: flutter test --reporter expanded test/company_representative_card_test.dart

@@ -48,6 +48,7 @@ class CompanyRepresentativeRepository {
   String? _selected;
   int _epoch = 0;
   bool _revoked = false, _unknown = false;
+  Future<void>? _disposeFuture;
   final _invalidations = StreamController<void>.broadcast(sync: true);
   Stream<void> get invalidations => _invalidations.stream;
   static final _uuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
@@ -138,5 +139,6 @@ class CompanyRepresentativeRepository {
       return fresh;
     } catch (_) { _unknown = true; rethrow; }
   }
-  Future<void> dispose() async { revoke(); await _subscription.cancel(); await _invalidations.close(); }
+  Future<void> dispose() => _disposeFuture ??= _dispose();
+  Future<void> _dispose() async { revoke(); await _subscription.cancel(); await _invalidations.close(); }
 }

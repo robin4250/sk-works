@@ -32,6 +32,13 @@ class Fixture {
   Future<void> close()async{await repo.dispose();await changes.close();}
 }
 void main(){
+ test('repository disposal is one future across ownership boundaries',()async{
+  final f=Fixture();await f.repo.choices();
+  final firstDispose=f.repo.dispose();final secondDispose=f.repo.dispose();
+  expect(identical(firstDispose,secondDispose),isTrue);
+  await firstDispose;await f.changes.close();
+ }, timeout: const Timeout(Duration(seconds: 30)));
+
  test('multiple memberships require explicit selected company',()async{
   final f=Fixture();addTearDown(f.close);
   expect((await f.repo.choices()).map((c)=>c.id),[second,first]);
