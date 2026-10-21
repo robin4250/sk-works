@@ -39,3 +39,9 @@ review-only候補はprivate.trade_document_template（元77819）とprivate.trad
 追加の双方承認仕様: 正式連携会社の相手登録印影は、その相手会社の正規承認と内容revision/印影hash・version固定が確認できるまで取得・描画しない。本候補は自社印影だけで、親請求書/支払証明書承認との連動や双方共通承認済み版を実装した扱いにしない。単体は内容確認用のephemeral PDFであり、独立immutable文書/承認IDの代用ではない。双方版共有は既承認closureを別途照合し、変更後の再承認と元承認原本保持を設計してから接続する。
 
 単体印刷は明示print lease中のnative inactiveだけを固定bytes identity/target/token下で許可する。通常inactiveとhidden/paused/detachedは不可逆失効、印刷終了時inactiveでも失効へ戻す。開始時foreground未確認は読取/出力を開始しない。専用pure lease9境界をCIへ追加し、実機native印刷の確認は別に残す。
+
+## 統合後の確認と各社の編集範囲
+
+main160542の代表者設定をmergecommit319287baで取り込み、C側と競合するファイルはなかった。319287baの専用CI: SQL run39525703507（PGlite・PostgreSQL17）、client run39525703509（Flutter3.47.5 lockfile enforce・analyze・59テスト・実生成7PDFの会社名/角印bbox・単体1頁/別添2頁・文字境界）、Secret Scanが成功。通常/長文/単体の同一PDF実装を生成した先行artifactで目視確認済み。iPhoneでの動作・native印刷復帰は未確認で、未配布。
+
+同じ内容でも「出した側ページ」「受け取った側ページ」は各社別とする。A→BとB→Aも別件として扱う。会社別の編集範囲に他社が同時書込みする単一mutableページを導入しない。将来連携するのは対応取引の承認状態・承認済み印影/固定証拠だけであり、変更は既版を勝手に上書きせず改訂・再承認へ進む。この双方連携は現候補では未接続。
