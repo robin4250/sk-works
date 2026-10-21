@@ -99,6 +99,10 @@ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261014124714_m
  await decide(acceptance,1,B,await preview(acceptance,1,B));await actor(UA);
  await db.query('select trade_document_consent_private.bind_local($1,$2,$3)',[acceptance,A,localId(acceptance,A)]);
  check((await render(acceptance,1,A)).document_role,'accepting_company');check((await render(acceptance,1,A)).render_seal_company_id,B);
+ // A privileged fixture can create an orphan approved state; it must still fail closed.
+ await actor(UA);const orphan=id(37);await prepare(orphan);await preview(orphan,1,A);
+ await db.query("update trade_document_consent_private.revisions set state='approved' where document_id=$1",[orphan]);
+ await deny(()=>render(orphan,1,A),/issuer explicit consent/);
  for(const [num,action,state] of [[34,'reject','rejected'],[35,'return','returned'],[36,'cancel','cancelled']]){
  await actor(UA);const target=id(num);await prepare(target);const before=await preview(target,1,A);
  check((await decide(target,1,A,before,action)).current_state,state);await deny(()=>render(target,1,A),/approved/);}

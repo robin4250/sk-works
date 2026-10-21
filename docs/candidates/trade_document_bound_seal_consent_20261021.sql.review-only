@@ -188,7 +188,7 @@ begin
  -- Each kind is issued by its own stamp owner. Do not wait for an extra peer stamp.
  select jsonb_agg(jsonb_build_object('company_id',company_id,'seal_snapshot',seal_snapshot,'seal_hash',seal_hash,'seal_version_id',seal_version_id,'asset_hash',seal_asset_hash,'version_key',seal_version_key,'renderer_contract',renderer_contract))
  into seals from trade_document_consent_private.consents where document_id=doc and revision=rev and company_id=d.issuer_company_id;
- if jsonb_array_length(approvals)<>1 or jsonb_array_length(seals)<>1 then raise exception 'issuer explicit consent required';end if;
+ if jsonb_array_length(approvals) is distinct from 1 or jsonb_array_length(seals) is distinct from 1 then raise exception 'issuer explicit consent required';end if;
  result:=jsonb_build_object('document_id',doc,'revision',rev,'transaction_id',d.transaction_id,'body',r.body,'body_hash',r.body_hash,'binding',r.binding,'seals',seals,'consents',approvals,'render_seal_company_id',d.issuer_company_id,
  'document_role',case d.document_kind when 'order' then 'ordering_company' else 'accepting_company' end);
  return result||jsonb_build_object('render_hash',encode(sha256(convert_to(result::text,'UTF8')),'hex'));end $$;
