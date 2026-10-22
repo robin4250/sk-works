@@ -19,6 +19,9 @@ on:
       - 'docs/candidates/company_common_payroll_*'
       - 'docs/candidates/company_common_canonical_*'
       - 'tool/verify_company_common_canonical_*.mjs'
+      - 'tool/security/prepare_common_canonical_deployment_review.py'
+      - 'tool/security/test_prepare_common_canonical_deployment_review.py'
+      - 'docs/review/company-common-canonical-deployment-preparation-20261022.md'
       - 'supabase/migrations/**'
       - 'supabase/tests/**'
 permissions:
@@ -47,6 +50,8 @@ jobs:
             script: verify_company_common_canonical_publisher.mjs
           - fixture: canonical-publisher-future
             script: verify_company_common_canonical_publisher_future.mjs
+          - fixture: canonical-deployment
+            script: verify_company_common_canonical_deployment.mjs
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -68,6 +73,9 @@ jobs:
           node-version: 22
       - name: Install locked fixture-only dependencies
         run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Offline deployment preparation guards
+        if: matrix.fixture == 'canonical-deployment'
+        run: python3 tool/security/test_prepare_common_canonical_deployment_review.py
       - name: PGlite synthetic fixture
         run: node tool/${{ matrix.script }} "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Native PostgreSQL 17 synthetic fixture

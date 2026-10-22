@@ -9,7 +9,7 @@ DO $$begin
  or exists(select 1 from (values
  ('payroll_unit_private.resolve_company_common(uuid,uuid,date,date)','ba65d7c894fbc0fa2b7bab41cc7dcb5f',true,array['cid','wid','p_start','p_end']::text[]),
  ('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)','42c841c244f492de24f8ad299b56590f',true,array['cid','wid','p_start','p_end','settings']::text[]),
- ('payroll_unit_private.common_state(uuid,uuid,date)','91613785e58063e4a9ef922958541d74',true,array['cid','wid','p_month']::text[]),
+ ('payroll_unit_private.common_state(uuid,uuid,date)','ee332d5b1ee6f02a8432b7194a36dfab',true,array['cid','wid','p_month']::text[]),
  ('company_common_canonical_review_private.resolve_legacy(uuid,uuid,date,date,jsonb,bigint,date)','cdafde8689df45273c6b469c2f684158',false,array['cid','wid','p_start','p_end','publication_items','p_version','p_effective']::text[]),
  ('company_common_canonical_review_private.snapshot_plan(uuid,text,bigint,jsonb,jsonb,text)','d36dd7685aa65483eb19e4ecdf33e2f4',false,array['cid','typ','p_expected_version','p_expected_source','p_quantities','p_inheritance_rule']::text[])
  ) expected(signature,source_md5,security_definer,argnames) left join pg_proc p on p.oid=to_regprocedure(expected.signature)

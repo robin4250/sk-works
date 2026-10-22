@@ -170,7 +170,7 @@ returns jsonb language plpgsql stable security definer set search_path='' as $$
 declare result jsonb;typ text;activation date;frozen public.payroll_statements%rowtype;items jsonb;
 begin
  select * into frozen from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=wid and ps.period_start=p_month
-  and (ps.workflow_state is distinct from 'draft' or ps.automatic_calculation is distinct from true) limit 1;
+  and (ps.workflow_state is distinct from 'draft' or ps.automatic_calculation is distinct from true or ps.finalized_at is not null) limit 1;
  if found then
   select coalesce(jsonb_agg(i order by ord),'[]') into items from jsonb_array_elements(coalesce(frozen.detail#>'{unit_resolution,items}','[]')) with ordinality e(i,ord)
    where i->>'origin'='company_common';
