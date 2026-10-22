@@ -4,14 +4,15 @@ set local lock_timeout='5s';
 do $$begin
  if exists(select 1 from (values
  ('payroll_unit_private.resolve_company_common(uuid,uuid,date,date)','d56f5fa295167f8c49f6e9c1dd97b7f0'),
- ('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)','47ee121481cea77af1e0275c686c65db')
+ ('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)','47ee121481cea77af1e0275c686c65db'),
+ ('payroll_unit_private.common_state(uuid,uuid,date)','a2de405fc0e6721fd1eaf81325a60b8d')
  ) expected(signature,source_md5) left join pg_proc p on p.oid=to_regprocedure(expected.signature)
  where p.oid is null or md5(p.prosrc) is distinct from expected.source_md5
  or pg_get_userbyid(p.proowner) is distinct from 'postgres' or not p.prosecdef
  or p.provolatile is distinct from 's'::"char" or p.prorettype is distinct from 'jsonb'::regtype or p.proretset
  or p.proconfig is distinct from array['search_path=""']::text[]
  or p.proargmodes is not null or p.proallargtypes is not null
- or p.proargnames is distinct from case when expected.signature like '%augment_settings%' then array['cid','wid','p_start','p_end','settings']::text[] else array['cid','wid','p_start','p_end']::text[] end
+ or p.proargnames is distinct from case when expected.signature like '%augment_settings%' then array['cid','wid','p_start','p_end','settings']::text[] when expected.signature like '%common_state%' then array['cid','wid','p_month']::text[] else array['cid','wid','p_start','p_end']::text[] end
  or p.prokind is distinct from 'f'::"char" or p.prolang is distinct from (select oid from pg_language where lanname='plpgsql')
  or p.proparallel is distinct from 'u'::"char" or p.proleakproof or p.proisstrict or p.provariadic<>0
  or array(select a::text from unnest(coalesce(p.proacl,acldefault('f',p.proowner))) a order by a::text) is distinct from array['postgres=X/postgres']::text[])
@@ -135,8 +136,29 @@ begin
   'earnings',(resolved->'earnings')||(common_items->'earnings'),'deductions',(resolved->'deductions')||(common_items->'deductions'),
   'blocked',(resolved->>'blocked')::boolean or (common_items->>'blocked')::boolean,
   'company_common_history_missing',common_items->'history_missing');
+ if common_items->'legacy_resolution' is not null then
+  resolved:=resolved||jsonb_build_object('company_common_resolution',jsonb_build_object('blocked',common_items->'blocked','reasons',common_items#>'{legacy_resolution,reasons}','selection_classification',common_items#>'{legacy_resolution,selection_classification}'));
+ end if;
  if resolved->'items'='[]'::jsonb and (resolved->>'blocked')::boolean is not true then return effective;end if;
  return coalesce(effective,'{}')||jsonb_build_object('custom_earnings',coalesce(effective->'custom_earnings','[]')||(resolved->'earnings'),
  'custom_deductions',coalesce(effective->'custom_deductions','[]')||(resolved->'deductions'),'_unit_resolution',resolved);
+end $$;
+create or replace function payroll_unit_private.common_state(cid uuid,wid uuid,p_month date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare result jsonb;typ text;activation date;frozen public.payroll_statements%rowtype;items jsonb;
+begin
+ select * into frozen from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=wid and ps.period_start=p_month
+  and (ps.workflow_state is distinct from 'draft' or ps.automatic_calculation is distinct from true) limit 1;
+ if found then
+  select coalesce(jsonb_agg(i order by ord),'[]') into items from jsonb_array_elements(coalesce(frozen.detail#>'{unit_resolution,items}','[]')) with ordinality e(i,ord)
+   where i->>'origin'='company_common';
+  return jsonb_build_object('contract_version',1,'items',items,'history_missing',false,'frozen',true,
+   'source',jsonb_build_object('statement_id',frozen.id,'statement_revision',frozen.revision,'items',items))||case when frozen.detail#>'{unit_resolution,company_common_resolution}' is null then '{}'::jsonb else jsonb_build_object('resolution',frozen.detail#>'{unit_resolution,company_common_resolution}') end;
+ end if;
+ result:=payroll_unit_private.resolve_company_common(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date);
+ select pay_type into typ from public.worker_payroll_settings where company_id=cid and worker_id=wid;
+ select starts_on into activation from company_common_allowance_private.payroll_activation where company_id=cid;
+ return jsonb_build_object('contract_version',1,'items',result->'items','history_missing',result->'history_missing','frozen',false,'source',
+  jsonb_build_object('starts_on',activation,'pay_type',typ,'items',result->'items','publication_version',result->'publication_version'))||case when result->'legacy_resolution' is null then '{}'::jsonb else jsonb_build_object('resolution',jsonb_build_object('blocked',result->'blocked','reasons',result#>'{legacy_resolution,reasons}','selection_classification',result#>'{legacy_resolution,selection_classification}')) end;
 end $$;
 commit;
