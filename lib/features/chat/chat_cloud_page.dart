@@ -18,6 +18,7 @@ import 'chat_group_delete_confirmation.dart';
 import 'chat_friends_page.dart';
 import 'chat_direct_search_page.dart';
 import 'chat_actor_guard.dart';
+import 'chat_message_date_label.dart';
 import 'chat_list_widgets.dart';
 import 'line_joined_groups_page.dart';
 import 'line_linked_talk_page.dart';
@@ -3252,14 +3253,22 @@ class _MessageBubble extends StatelessWidget {
       onLongPress: own ? onDelete : null,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          mainAxisAlignment: own
-              ? MainAxisAlignment.end
-              : MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: own
-              ? [timeWidget, const SizedBox(width: 6), bubble]
-              : [bubble, const SizedBox(width: 6), timeWidget],
+        child: Column(
+          crossAxisAlignment: own
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            ChatMessageDateLabel(sentAt: message['sent_at']?.toString()),
+            Row(
+              mainAxisAlignment: own
+                  ? MainAxisAlignment.end
+                  : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: own
+                  ? [timeWidget, const SizedBox(width: 6), bubble]
+                  : [bubble, const SizedBox(width: 6), timeWidget],
+            ),
+          ],
         ),
       ),
     );
@@ -3272,4 +3281,5 @@ class _MessageBubble extends StatelessWidget {
     return '${two(parsed.hour)}:${two(parsed.minute)}';
   }
 }
+
 
