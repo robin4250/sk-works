@@ -37,6 +37,19 @@ Object? tradeConfirmationCopy(Object? value, {bool journal = false}) {
 }
 String tradeConfirmationJson(Object? value) => jsonEncode(tradeConfirmationCopy(value, journal: true));
 
+/// Keep the evidence ID as local response expectation. It is not an extra RPC
+/// parameter and must never be derived from the render response itself.
+Map<String, dynamic> tradeConfirmationRenderScope(Map source) {
+  if (!tradeConfirmationUuid(source['company_id']) || !tradeConfirmationUuid(source['local_document_id']) ||
+      !tradeConfirmationUuid(source['document_id']) || source['local_document_id'] == source['document_id'] ||
+      !_positive(source['document_revision']) || !_kinds.contains(source['kind'])) {
+    throw const FormatException('承認済み書類の保存先が一致しません');
+  }
+  return Map<String, dynamic>.unmodifiable({'p_company_id': source['company_id'],
+    'p_local_document_id': source['local_document_id'], 'p_document_revision': source['document_revision'],
+    'p_kind': source['kind'], 'expected_document_id': source['document_id']});
+}
+
 class TradeConfirmationWorkspace {
   TradeConfirmationWorkspace._(this.value);
   final Map<String, dynamic> value;

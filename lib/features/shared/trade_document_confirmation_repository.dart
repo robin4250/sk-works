@@ -88,7 +88,12 @@ class SupabaseTradeConfirmationRepository implements TradeConfirmationRepository
     return raw['found'] == true ? TradeConfirmationResult.parse(raw['result'], command) : null;
   }
   @override Future<Map<String, dynamic>> render(Map<String, dynamic> scope, {bool archive = false}) async {
-    final raw = await _call('render_confirmed_trade_document', {...scope, 'p_archive': archive});
+    const keys = {'p_company_id', 'p_local_document_id', 'p_document_revision', 'p_kind', 'expected_document_id'};
+    if (scope.length != keys.length || !keys.every(scope.containsKey) || !tradeConfirmationUuid(scope['expected_document_id'])) {
+      throw const FormatException('承認済み書類の対象を確認してください');
+    }
+    final args = {for (final key in keys.where((key) => key != 'expected_document_id')) key: scope[key], 'p_archive': archive};
+    final raw = await _call('render_confirmed_trade_document', args);
     if (raw is! Map) throw const FormatException('承認済み書類を取得できません');
     return tradeConfirmationCopy(raw) as Map<String, dynamic>;
   }

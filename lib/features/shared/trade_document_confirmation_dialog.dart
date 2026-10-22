@@ -146,8 +146,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
         if (saved['can_render_current'] != true) {
           setState(() {
             if (saved['can_render_archive'] == true) {
-              _archiveScope = {'p_company_id': saved['company_id'], 'p_local_document_id': saved['local_document_id'],
-                'p_document_revision': saved['document_revision'], 'p_kind': saved['kind']};
+              _archiveScope = tradeConfirmationRenderScope(saved);
             }
             _error = saved['can_render_archive'] == true
               ? '書類の内容が変わっています。過去の承認済み書類を開くことができます。'
@@ -155,8 +154,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
           });
           return;
         }
-        final scope = {'p_company_id': saved['company_id'], 'p_local_document_id': saved['local_document_id'],
-          'p_document_revision': saved['document_revision'], 'p_kind': saved['kind']};
+        final scope = tradeConfirmationRenderScope(saved);
         final evidence = await widget.repository.render(scope);
         if (!mounted || !_current(generation)) return;
         final bytes = await TradeConfirmationPdf.approved(evidence, scope, _actor!);
@@ -169,7 +167,7 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
         Navigator.of(context).pop(TradeConfirmationFlowOutcome.legacy); return;
       }
       if (!workspace.canConfirm) {
-        final scope = workspace.scope;
+        final scope = workspace.value['can_render'] == true ? tradeConfirmationRenderScope(workspace.value) : workspace.scope;
         if (workspace.value['can_render'] == true && tradeConfirmationUuid(scope['p_local_document_id']) &&
             scope['p_document_revision'] is int) {
           final evidence = await widget.repository.render(scope);
@@ -363,8 +361,7 @@ class _ReceivedTradeDocumentsPageState extends State<ReceivedTradeDocumentsPage>
     try {
       final own = await widget.repository.receive(widget.tradeCompanyId, item['document_id'] as String, item['document_revision'] as int);
       if (!mounted || !_same) return;
-      final scope = {'p_company_id': own['company_id'], 'p_local_document_id': own['local_document_id'],
-        'p_document_revision': own['document_revision'], 'p_kind': own['kind']};
+      final scope = tradeConfirmationRenderScope(own);
       final archive = own['can_render_current'] != true;
       if (archive) {
         final accepted = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
@@ -399,7 +396,8 @@ class _ReceivedTradeDocumentsPageState extends State<ReceivedTradeDocumentsPage>
 
 /// Received or issued immutable evidence. This page has no confirmation API.
 class TradeApprovedDocumentPage extends StatefulWidget {
-  const TradeApprovedDocumentPage({super.key, required this.repository, required this.scope, this.archive = false});
+  TradeApprovedDocumentPage({super.key, required this.repository, required Map<String, dynamic> scope, this.archive = false})
+    : scope = Map<String, dynamic>.unmodifiable(Map<String, dynamic>.from(scope));
   final TradeConfirmationRepository repository;
   final Map<String, dynamic> scope;
   final bool archive;

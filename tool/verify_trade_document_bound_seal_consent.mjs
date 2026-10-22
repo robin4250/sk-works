@@ -1,22 +1,25 @@
 // Disposable fixture; actual existing attachment SQL and official registered-seal SQL.
 import fs from 'node:fs/promises';import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';import {deflateSync} from 'node:zlib';
-let db,openNativePeer;
-if(process.argv[3]==='postgres'){
+let db,openNativePeer,authContext;
+if(process.argv[3]==='auth-http-setup'){
+ if(process.env.SKO_TRADE_DOCUMENT_REAL_AUTH_HOOK!=='contract-v1')throw Error('Fixed isolated Auth hook required');
+ authContext=(await import('./trade_document_auth_fixture_context.mjs')).tradeDocumentAuthContext();db=authContext.db;
+}else if(process.argv[3]==='postgres'){
  const pg=(await import(process.argv[2])).default;const url=new URL(process.env.SKO_CONSENT_FIXTURE_URL??'');
  if(!['127.0.0.1','localhost'].includes(url.hostname)||url.pathname!=='/sko_document_consent_fixture')throw Error('disposable loopback consent fixture required');
  const client=new pg.Client({connectionString:url.href});await client.connect();
  db={query:(...a)=>client.query(...a),exec:s=>client.query(s),close:()=>client.end()};
  openNativePeer=async()=>{const peer=new pg.Client({connectionString:url.href,connectionTimeoutMillis:5000,application_name:'sko_document_consent_fixture_peer'});await peer.connect();return peer;};
 }else{const {PGlite}=await import(process.argv[2]);db=new PGlite();}
-const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
+const id=n=>authContext?.actorId(n)??`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 function crc32(bytes){let c=0xffffffff;for(const b of bytes){c^=b;for(let k=0;k<8;k++)c=(c>>>1)^((c&1)?0xedb88320:0);}return (c^0xffffffff)>>>0;}
 function chunk(type,data){const t=Buffer.from(type);const size=Buffer.alloc(4);size.writeUInt32BE(data.length);const crc=Buffer.alloc(4);crc.writeUInt32BE(crc32(Buffer.concat([t,data])));return Buffer.concat([size,t,data,crc]);}
 function png(color){const h=Buffer.alloc(13);h.writeUInt32BE(32,0);h.writeUInt32BE(32,4);h[8]=8;h[9]=6;const raw=Buffer.alloc(32*(1+32*4));for(let y=0;y<32;y++)for(let x=0;x<32;x++){const n=y*129+1+x*4;raw[n]=color;raw[n+3]=x%2?255:0;}return Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),chunk('IHDR',h),chunk('IDAT',deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]);}
 
 const A=id(1),B=id(2),C=id(3),UA=id(11),UB=id(12),UV=id(13),UC=id(14),PC=id(21),INV=id(22),PARTNER=id(23),CUSTOMER=id(24);
 let request=1000,n=0;
-const actor=async uid=>{await db.exec('reset role');await db.query("select set_config('test.uid',$1,false)",[uid]);};
+const actor=async uid=>{if(authContext)return authContext.actor(uid);await db.exec('reset role');await db.query("select set_config('test.uid',$1,false)",[uid]);};
 const q=async(sql,args=[])=>(await db.query(sql,args)).rows[0]?.v;
 const check=(a,b)=>{assert.deepEqual(a,b);n++;};
 const deny=async(fn,pattern)=>{await assert.rejects(fn,pattern);n++;};

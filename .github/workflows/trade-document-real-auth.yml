@@ -1,0 +1,31 @@
+name: Trade document real Auth review
+on:
+  pull_request:
+    paths:
+      - 'tool/trade_document_auth_*.mjs'
+      - 'tool/verify_trade_document_bound_seal_consent.mjs'
+      - 'tool/trade_document_*fixture.mjs'
+      - 'docs/candidates/trade_document_*.sql.review-only'
+      - '.github/workflows/trade-document-real-auth.yml'
+permissions:
+  contents: read
+concurrency:
+  group: trade-document-auth-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  local-auth-rpc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/trade_document_auth_api_gotrue_e2e.mjs
+      - name: Actual local GoTrue tokens and PostgREST approval
+        env:
+          SKO_TRADE_DOCUMENT_REAL_AUTH_HOOK: contract-v1
+        run: node tool/trade_document_auth_api_gotrue_e2e.mjs

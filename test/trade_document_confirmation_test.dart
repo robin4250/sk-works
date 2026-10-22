@@ -113,13 +113,16 @@ void main() {
     final received = sql['received_workspace'] as Map;
     expect(received['local_document_id'], isNot(issued['local_document_id']));
     expect(received['document_id'], issued['document_id']);
-    Map<String, dynamic> scope(Map w) => {'p_company_id': w['company_id'], 'p_local_document_id': w['local_document_id'],
-      'p_document_revision': w['document_revision'], 'p_kind': w['kind']};
+    Map<String, dynamic> scope(Map w) => tradeConfirmationRenderScope(w);
     final ownAttachment = TradeConfirmationPdf.approvedAttachment(Map<String, dynamic>.from(sql['issued_render'] as Map),
       scope(issued), issued['actor_id'] as String);
     final peerAttachment = TradeConfirmationPdf.approvedAttachment(Map<String, dynamic>.from(sql['received_render'] as Map),
       scope(received), received['actor_id'] as String);
     expect(peerAttachment.payload, ownAttachment.payload);
+    final ownScope = scope(issued);
+    expect(() => ownScope['expected_document_id'] = parent, throwsUnsupportedError);
+    final wrongDocument = Map<String, dynamic>.from(sql['issued_render'] as Map)..['document_id'] = parent;
+    expect(() => TradeConfirmationPdf.approvedAttachment(wrongDocument, ownScope, issued['actor_id'] as String), throwsFormatException);
     expect((ownAttachment.payload['company_seal_snapshot'] as Map)['style'], 'uploaded_png');
     expect((ownAttachment.payload['company_seal_snapshot'] as Map)['png_base64'], isNot(contains('\n')));
     final originalSnapshot = (((sql['issued_render'] as Map)['evidence'] as Map)['seals'] as List).single['seal_snapshot'] as Map;
@@ -164,7 +167,7 @@ void main() {
   }
   test('approved renderer rejects actor, company, local page and revision mismatches before loading fonts or assets', () {
     final scope = {'p_company_id': company, 'p_local_document_id': local,
-      'p_document_revision': 1, 'p_kind': 'invoice'};
+      'p_document_revision': 1, 'p_kind': 'invoice', 'expected_document_id': document};
     final raw = {'contract_version': 1, 'kind': 'invoice', 'company_id': company, 'actor_id': actor,
       'local_document_id': local, 'document_id': document, 'document_revision': 1,
       'side': 'issued', 'archive': false, 'evidence': <String, dynamic>{}};

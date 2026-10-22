@@ -61,7 +61,8 @@ class TradeConfirmationPdf {
       String actor, {bool archive = false}) {
     if (raw['contract_version'] is! int || raw['contract_version'] != 1 || raw['company_id'] != scope['p_company_id'] || raw['actor_id'] != actor ||
         raw['kind'] != scope['p_kind'] || raw['local_document_id'] != scope['p_local_document_id'] ||
-        raw['document_revision'] != scope['p_document_revision'] || !tradeConfirmationUuid(raw['document_id']) ||
+        raw['document_revision'] != scope['p_document_revision'] || !tradeConfirmationUuid(scope['expected_document_id']) ||
+        raw['document_id'] != scope['expected_document_id'] || !tradeConfirmationUuid(raw['document_id']) ||
         raw['local_document_id'] == raw['document_id'] || raw['archive'] != archive ||
         !const {'issued', 'received'}.contains(raw['side']) || raw['evidence'] is! Map) {
       throw const FormatException('承認済み書類の対象が一致しません');
