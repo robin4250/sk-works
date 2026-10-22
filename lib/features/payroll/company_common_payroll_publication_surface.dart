@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../international/language_controller.dart';
 import 'company_common_allowance_repository.dart';
 import 'company_common_canonical_publication_panel.dart';
 import 'company_common_canonical_publication_repository.dart';
@@ -22,10 +23,12 @@ class _CompanyCommonPayrollPublicationSurfaceState extends State<CompanyCommonPa
   late Future<bool> _probe;
   @override void initState() { super.initState(); _repository = widget.repository ??
     SupabaseCommonPayrollCanonicalPublicationRepository.maybeCreate(); _probe = _repository?.available() ?? Future.value(false); }
-  @override Widget build(BuildContext context) => FutureBuilder<bool>(future: _probe, builder: (context, snapshot) {
+  @override Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
+    return FutureBuilder<bool>(future: _probe, builder: (context, snapshot) {
     if (snapshot.connectionState != ConnectionState.done) {
-      return const Card(child: ListTile(
-      title: Text('未確定給与への反映'), subtitle: Text('反映方法を確認しています')));
+      return Card(child: ListTile(
+      title: Text(SkoLanguageController.tr('未確定給与への反映')), subtitle: Text(SkoLanguageController.tr('反映方法を確認しています'))));
     }
     if (snapshot.data == true && _repository != null) {
       return CompanyCommonCanonicalPublicationPanel(
@@ -41,11 +44,12 @@ class _CompanyCommonPayrollPublicationSurfaceState extends State<CompanyCommonPa
       companyId: widget.settings.companyId, enabled: widget.enabled, canReconcile: widget.canReconcile,
       initialPayrollType: widget.initialPayrollType, onBusyChanged: widget.onBusyChanged);
     }
-    return Card(child: ExpansionTile(title: const Text('未確定給与への反映'),
-      subtitle: const Text('共通手当の登録・保存は利用できます'), children: [
-        const Padding(padding: EdgeInsets.all(12), child: Text('給与への反映を確認できません。設定を保存後、もう一度確認してください。')),
+    return Card(child: ExpansionTile(title: Text(SkoLanguageController.tr('未確定給与への反映')),
+      subtitle: Text(SkoLanguageController.tr('共通手当の登録・保存は利用できます')), children: [
+        Padding(padding: const EdgeInsets.all(12), child: Text(SkoLanguageController.tr('給与への反映を確認できません。設定を保存後、もう一度確認してください。'))),
         TextButton(onPressed: () => setState(() => _probe = _repository?.available() ?? Future.value(false)),
-          child: const Text('反映方法を確認')),
+          child: Text(SkoLanguageController.tr('反映方法を確認'))),
       ]));
-  });
+    });
+  }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../international/language_controller.dart';
 
 /// View data supplied only after the existing payroll-view/admin authorization
 /// and versioned preview contract have been verified by the repository.
@@ -53,26 +54,29 @@ class _CommonPayrollCanonicalPublicationApprovalDialogState
     }
   }
   @override Widget build(BuildContext context) {
+    SkoLanguageController.watch(context);
     final p = widget.preview;
     final enabled = !_decided && widget.deploymentAvailable && p.valid && p.readyToPublish &&
         p.unresolvedCount == 0 && (!p.activationRequired || _activation) &&
         (p.legacyCount == 0 || _selectedDays);
     return AlertDialog(
-      title: const Text('共通手当を給与へ反映'),
+      title: Text(SkoLanguageController.tr('共通手当を給与へ反映')),
       content: SizedBox(width: 480, child: SingleChildScrollView(child: Column(
         mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${p.payrollTypeLabel}・${p.startsOn.year}年${p.startsOn.month}月以降の未確定給与'),
+          Text(SkoLanguageController.trParams('{type}・{year}年{month}月以降の未確定給与',
+            {'type': SkoLanguageController.tr(p.payrollTypeLabel), 'year': p.startsOn.year, 'month': p.startsOn.month})),
           const SizedBox(height: 12),
-          Text('反映対象 ${p.targetCount}件　除外 ${p.excludedCount}件　要確認 ${p.unresolvedCount}件'),
+          Text(SkoLanguageController.trParams('反映対象 {target}件　除外 {excluded}件　要確認 {unresolved}件',
+            {'target': p.targetCount, 'excluded': p.excludedCount, 'unresolved': p.unresolvedCount})),
           const SizedBox(height: 8),
-          const Text('確定済み給与・手動調整は保持します。未保存の編集は含みません。'),
+          Text(SkoLanguageController.tr('確定済み給与・手動調整は保持します。未保存の編集は含みません。')),
           if (p.reasons.isNotEmpty) ExpansionTile(
             key: const ValueKey('canonical-publication-reasons'),
             tilePadding: EdgeInsets.zero,
-            title: const Text('対象・除外・要確認の詳細'),
+            title: Text(SkoLanguageController.tr('対象・除外・要確認の詳細')),
             children: [for (final reason in p.reasons)
-              ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text(reason))],
+              ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text(SkoLanguageController.tr(reason)))],
           ),
           if (p.legacyCount > 0) CheckboxListTile(
             key: const ValueKey('canonical-publication-selected-days'),
@@ -80,8 +84,8 @@ class _CommonPayrollCanonicalPublicationApprovalDialogState
             value: _selectedDays,
             onChanged: p.valid && p.readyToPublish && widget.deploymentAvailable
                 ? (value) => setState(() => _selectedDays = value == true) : null,
-            title: const Text('日報で選んだ手当を、選択した日数で反映する'),
-            subtitle: const Text('同じ日は1回。選んでいない日は加算しません。'),
+            title: Text(SkoLanguageController.tr('日報で選んだ手当を、選択した日数で反映する')),
+            subtitle: Text(SkoLanguageController.tr('同じ日は1回。選んでいない日は加算しません。')),
           ),
           if (p.activationRequired) CheckboxListTile(
             key: const ValueKey('canonical-publication-activation'),
@@ -89,25 +93,26 @@ class _CommonPayrollCanonicalPublicationApprovalDialogState
             value: _activation,
             onChanged: p.valid && p.readyToPublish && widget.deploymentAvailable
                 ? (value) => setState(() => _activation = value == true) : null,
-            title: Text('${p.payrollTypeLabel}の共通手当の給与反映を開始する'),
+            title: Text(SkoLanguageController.trParams('{type}の共通手当の給与反映を開始する',
+              {'type': SkoLanguageController.tr(p.payrollTypeLabel)})),
           ),
           if (p.unresolvedCount > 0)
-            Text('要確認の設定を解消してから反映してください。',
+            Text(SkoLanguageController.tr('要確認の設定を解消してから反映してください。'),
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
           if (!widget.deploymentAvailable || !p.valid)
-            const Text('適用準備を確認できません。給与は変更されません。'),
+            Text(SkoLanguageController.tr('適用準備を確認できません。給与は変更されません。')),
           if (widget.deploymentAvailable && p.valid && !p.readyToPublish && p.unresolvedCount == 0)
-            const Text('適用月の設定を確認してください。詳細は確認理由を開いてください。'),
+            Text(SkoLanguageController.tr('適用月の設定を確認してください。詳細は確認理由を開いてください。')),
         ],
       ))),
       actions: [
-        TextButton(onPressed: _decided ? null : () => _complete(null), child: const Text('戻る')),
+        TextButton(onPressed: _decided ? null : () => _complete(null), child: Text(SkoLanguageController.tr('戻る'))),
         FilledButton(
           key: const ValueKey('canonical-publication-confirm'),
           onPressed: enabled ? () => _complete(
             CommonPayrollCanonicalApproval(approveActivation: _activation,
               approveSelectedDays: _selectedDays)) : null,
-          child: const Text('確認して反映'),
+          child: Text(SkoLanguageController.tr('確認して反映')),
         ),
       ],
     );

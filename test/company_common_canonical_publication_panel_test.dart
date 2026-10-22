@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sk_works/international/language_controller.dart';
+import 'package:sk_works/international/core/language_pack.dart';
 import 'package:sk_works/features/payroll/company_common_allowance_repository.dart';
 import 'package:sk_works/features/payroll/company_common_canonical_publication_approval.dart';
 import 'package:sk_works/features/payroll/company_common_canonical_publication_command.dart';
@@ -83,6 +85,30 @@ void main() {
     await tester.pumpAndSettle();
     return tester.widget<FilledButton>(find.byKey(const ValueKey('canonical-publication-confirm'))).onPressed!;
   }
+  testWidgets('translated panel and approval format counts without changing request data', (tester) async {
+    final previous = SkoLanguageController.pack.value;
+    addTearDown(() => SkoLanguageController.pack.value = previous);
+    SkoLanguageController.pack.value = const LanguagePack(languageCode: 'en', fallbackLanguageCode: 'ja', strings: {
+      '未確定給与への反映': 'Apply to draft payroll',
+      '共通手当を給与へ反映': 'Apply common allowances',
+      '反映対象 {target}件　除外 {excluded}件　要確認 {unresolved}件':
+        'Targets {target}, excluded {excluded}, review {unresolved}',
+    });
+    final store = _MemoryStore(); final repository = _Repository(store);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: CompanyCommonCanonicalPublicationPanel(
+      settings: settings(), repository: repository, pendingStore: store,
+      initialPayrollType: 'monthly',
+    ))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apply to draft payroll'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('canonical-publication-prepare')));
+    await tester.pumpAndSettle();
+    expect(find.text('Apply common allowances'), findsOneWidget);
+    expect(find.text('Targets 1, excluded 0, review 0'), findsOneWidget);
+    expect(repository.publishes, 0);
+    expect(store.value, isNull);
+  });
   testWidgets('one explicit approval persists before publish and repeated callback does not pop the page', (tester) async {
     final store = _MemoryStore();
     // Use the same store for the durability assertion inside the repository.
