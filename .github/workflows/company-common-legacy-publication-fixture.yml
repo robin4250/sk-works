@@ -17,6 +17,8 @@ on:
       - 'tool/payroll_scope_fixture_setup.mjs'
       - 'tool/staged_company_common_allowances.sql.review-only'
       - 'docs/candidates/company_common_payroll_*'
+      - 'docs/candidates/company_common_canonical_*'
+      - 'tool/verify_company_common_canonical_*.mjs'
       - 'supabase/migrations/**'
       - 'supabase/tests/**'
 permissions:
@@ -37,6 +39,8 @@ jobs:
             script: verify_company_common_future_policy.mjs
           - fixture: future-connection
             script: verify_company_common_future_connection.mjs
+          - fixture: canonical-snapshot
+            script: verify_company_common_canonical_snapshot.mjs
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:

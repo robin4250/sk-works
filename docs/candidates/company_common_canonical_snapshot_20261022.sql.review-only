@@ -1,0 +1,68 @@
+-- REVIEW ONLY: prepare the existing publisher's legacy-inclusive snapshot.
+-- No publication, activation, salary, role or product function is modified.
+begin;
+create schema company_common_canonical_review_private;
+revoke all on schema company_common_canonical_review_private from public,anon,authenticated,service_role;
+create function company_common_canonical_review_private.snapshot_plan(cid uuid,typ text,p_expected_version bigint,p_expected_source jsonb,p_quantities jsonb,p_inheritance_rule text)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare state jsonb; ref jsonb; quantity jsonb; snapshot jsonb; count_legacy integer:=0;
+begin
+ if typ not in ('daily','hourly','monthly') or typ is null
+  or p_inheritance_rule is distinct from 'inherit_absent_or_same_rate_otherwise_unresolved'
+  or jsonb_typeof(p_quantities) is distinct from 'array' or octet_length(p_quantities::text)>16384 then
+  raise exception 'explicit canonical legacy snapshot contract required' using errcode='22023';end if;
+ state:=company_common_allowance_private.admin_state(cid);
+ if state->>'can_edit' is distinct from 'true' then raise exception 'company payroll edit required' using errcode='42501';end if;
+ if p_expected_version is distinct from (state->>'version')::bigint or p_expected_source is distinct from state->'expected_source' then
+  raise exception 'canonical common source changed' using errcode='40001';end if;
+ snapshot:=company_common_allowance_private.active_items(cid,typ);
+ for ref in select value from jsonb_array_elements(state->'legacy_refs') where nullif(btrim(value->>'name'),'') is not null and (value->>'amount_yen')::numeric>0 order by (value->>'slot')::integer loop
+  count_legacy:=count_legacy+1;
+  if ref->>'id' is null or ref->>'generation' is null then raise exception 'adopted company identity required';end if;
+  if (select count(*) from jsonb_array_elements(p_quantities) q where q->>'id'=ref->>'id')<>1 then raise exception 'explicit identity quantity decision missing or duplicated';end if;
+  select value into quantity from jsonb_array_elements(p_quantities) where value->>'id'=ref->>'id';
+  if quantity->'generation' is distinct from ref->'generation' or quantity->'source_unit' is distinct from ref->'source_unit'
+   or quantity->>'basis' is distinct from 'attendance_selected_distinct_dates'
+   or quantity->'aliases' is distinct from jsonb_build_array(ref->>'name') then
+   raise exception 'quantity interpretation requires review; arbitrary counts/historical aliases unsupported' using errcode='55000';end if;
+  snapshot:=snapshot||jsonb_build_array(jsonb_build_object('id',ref->'id','generation',ref->'generation','payroll_type',typ,
+   'origin','company_legacy','section','earning','unit','day','source_unit',ref->'source_unit','name',ref->'name','amount_yen',ref->'amount_yen',
+   'quantity_basis',quantity->'basis','selection_aliases',quantity->'aliases','individual_reconciliation',p_inheritance_rule));
+ end loop;
+ if count_legacy<>jsonb_array_length(p_quantities) then raise exception 'quantity decision set differs from current identities';end if;
+ if exists(select 1 from jsonb_array_elements(snapshot) e group by e->>'id' having count(*)>1)
+  or exists(select 1 from jsonb_array_elements(snapshot) e group by btrim(e->>'name') having count(*)>1) then
+  raise exception 'canonical snapshot source collision requires review' using errcode='55000';end if;
+ return jsonb_build_object('review_only',true,'company_id',cid,'payroll_type',typ,'common_version',state->'version','common_source',state->'expected_source',
+  'items',snapshot,'legacy_count',count_legacy,'snapshot_md5',md5(snapshot::text),'ready_for_calculation',false,'blocker','origin_quantity_resolver_not_integrated');
+end $$;
+
+create function company_common_canonical_review_private.publication_preview(cid uuid,typ text,p_start date,p_expected_version bigint,p_expected_source jsonb,p_timeline_version bigint,p_quantities jsonb,p_inheritance_rule text,p_request_id uuid)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare plan jsonb; timeline jsonb; next_start date; scopes jsonb; activation date;
+begin
+ if p_request_id is null or p_start is null or p_start<>date_trunc('month',p_start)::date or p_start<date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date then raise exception 'nonpast canonical month and durable publish request required';end if;
+ plan:=company_common_canonical_review_private.snapshot_plan(cid,typ,p_expected_version,p_expected_source,p_quantities,p_inheritance_rule);
+ timeline:=company_common_allowance_private.read_payroll_publications(cid);
+ if (timeline->>'timeline_version')::bigint is distinct from p_timeline_version then raise exception 'canonical publication timeline changed' using errcode='40001';end if;
+ select starts_on into activation from company_common_allowance_private.payroll_activation where company_id=cid;
+ select min(starts_on) into next_start from company_common_allowance_private.payroll_publications where company_id=cid and payroll_type=typ and starts_on>p_start;
+ with candidates as(
+  select s.worker_id,p_start month_key from public.worker_payroll_settings s where s.company_id=cid and s.pay_type=typ and p_start=date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date
+  union
+  select ps.worker_id,ps.period_start from public.payroll_statements ps join public.worker_payroll_settings s on s.company_id=ps.company_id and s.worker_id=ps.worker_id
+   where ps.company_id=cid and s.pay_type=typ and ps.period_start>=p_start and (next_start is null or ps.period_start<next_start)
+ ) select coalesce(jsonb_agg(jsonb_build_object('worker_id',c.worker_id,'month',c.month_key,'status',case when ps.id is null then 'target_new_scope'
+  when ps.automatic_calculation is distinct from true then 'excluded_manual'
+  when ps.workflow_state is distinct from 'draft' or ps.finalized_at is not null then 'excluded_finalized' else 'target_draft' end)
+  order by c.worker_id,c.month_key),'[]'::jsonb) into scopes from candidates c left join public.payroll_statements ps on ps.company_id=cid and ps.worker_id=c.worker_id and ps.period_start=c.month_key;
+ return jsonb_build_object('review_only',true,'operation_kind','publish_common_legacy','request_id',p_request_id,'plan',plan,'starts_on',p_start,'next_effective_boundary',next_start,
+  'scopes',scopes,'target_count',(select count(*) from jsonb_array_elements(scopes) e where e->>'status' in ('target_new_scope','target_draft')),
+  'excluded_count',(select count(*) from jsonb_array_elements(scopes) e where e->>'status' in ('excluded_manual','excluded_finalized')),
+  'activation_required',activation is null or activation>p_start,'activation_change_performed',false,
+  'request_contract',jsonb_build_object('company_id',cid,'payroll_type',typ,'starts_on',p_start,'common_version',p_expected_version,'common_source',p_expected_source,'timeline_version',p_timeline_version,'request_id',p_request_id,
+    'legacy_snapshot_contract',jsonb_build_object('quantities',p_quantities,'individual_reconciliation',p_inheritance_rule)),
+  'ready_to_publish',false,'blockers',jsonb_build_array('origin_quantity_resolver_not_integrated','explicit_activation_approval_not_integrated','canonical_request_version_not_integrated'));
+end $$;
+revoke all on all functions in schema company_common_canonical_review_private from public,anon,authenticated,service_role;
+commit;
