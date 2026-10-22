@@ -172,7 +172,9 @@ class CompanySealPdf {
   }
 
   static List<String> verticalColumns(String companyName) {
-    final name = companyName.trim();
+    // Line separators have no printable width and cannot be FittedBox glyphs.
+    // Keep every other registered character; the saved name is never changed.
+    final name = companyName.trim().replaceAll(RegExp(r'[\r\n]'), '').trim();
     if (name.isEmpty) return const [];
     // Japanese square seals traditionally read from the right-hand column.
     final chars = name.runes.map(String.fromCharCode).toList();
@@ -279,4 +281,5 @@ class CompanySealPdf {
     );
   }
 }
+
 
