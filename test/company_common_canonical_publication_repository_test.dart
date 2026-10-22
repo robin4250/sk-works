@@ -57,7 +57,7 @@ void main() {
             expect(jsonDecode(request.body), command.receiptParams); value = sql['receipt_found'];
           } else { throw StateError('unexpected fixture endpoint'); }
         }
-        return http.Response(jsonEncode(value), 200, headers: {'content-type': 'application/json'});
+        return http.Response(jsonEncode(value), 200, headers: {'content-type': 'application/json'}, request: request);
       }));
     addTearDown(client.dispose);
     await client.auth.signInWithPassword(email: 'fixture@example.invalid', password: 'fixture');
@@ -111,7 +111,7 @@ void main() {
     expect(restored.pending, isNotNull);
     await expectLater(restored.publish(command()), throwsStateError);
     repository.receiptError = const PostgrestException(message: 'fixture permission denial', code: '42501');
-    await expectLater(restored.lookup(), isA<PostgrestException>());
+    await expectLater(restored.lookup(), throwsA(isA<PostgrestException>()));
     expect(await store().read(actor, company), isNotNull);
     repository..receiptError = null..found = true;
     expect((await restored.lookup())!.targetCount, 1);
@@ -126,7 +126,7 @@ void main() {
     final store = FileCommonPayrollCanonicalPublicationPendingStore(currentActor: () => actor, directory: () async => root);
     final controller = CommonPayrollCanonicalPublicationController(companyId: company, repository: repository, store: store);
     await controller.load();
-    await expectLater(controller.publish(command()), isA<PostgrestException>());
+    await expectLater(controller.publish(command()), throwsA(isA<PostgrestException>()));
     expect(controller.pending, isNull);
     expect(await store.read(actor, company), isNull);
   });
@@ -156,7 +156,7 @@ void main() {
               value = {'contract_version': 3, 'found': false};
             } else { throw StateError('unexpected fixture endpoint'); }
           }
-          return http.Response(jsonEncode(value), 200, headers: {'content-type': 'application/json'});
+          return http.Response(jsonEncode(value), 200, headers: {'content-type': 'application/json'}, request: request);
         }));
       addTearDown(client.dispose);
       await client.auth.signInWithPassword(email: 'fixture@example.invalid', password: 'fixture');
