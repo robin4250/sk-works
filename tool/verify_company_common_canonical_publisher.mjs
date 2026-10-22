@@ -1,9 +1,13 @@
 // Disposable fixture only. Original common saver + actual payroll refresh/finalization.
 import fs from 'node:fs';
+import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {setupPayrollScopeFixture} from './payroll_scope_fixture_setup.mjs';
-if(process.env.SKO_CANONICAL_PUBLIC_CONTRACT_OUTPUT&&process.env.SKO_COMMON_LEGACY_PRIVATE_FIXTURE)throw Error('public contract export forbids all private-rate inputs');
+const contractOutput=process.env.SKO_CANONICAL_PUBLIC_CONTRACT_OUTPUT,flowOutput=process.env.SKO_CANONICAL_PAYROLL_FLOW_OUTPUT;
+if((contractOutput||flowOutput)&&process.env.SKO_COMMON_LEGACY_PRIVATE_FIXTURE)throw Error('public contract/payroll export forbids all private-rate inputs');
+for(const output of [contractOutput,flowOutput].filter(Boolean))if(!path.isAbsolute(output))throw Error('absolute synthetic export output path required');
+if(contractOutput&&flowOutput&&path.resolve(contractOutput)===path.resolve(flowOutput))throw Error('distinct synthetic contract/payroll export paths required');
 let db;let pg;
 if(process.argv[3]==='postgres') {
  pg=(await import(process.argv[2])).default;const url=new URL(process.env.SKO_COMMON_LEGACY_FIXTURE_URL??'');
@@ -48,8 +52,7 @@ try {
   const entries=Object.entries(obj).filter(([k])=>columns.includes(k)&&!['company_id','worker_id','updated_at','updated_by'].includes(k));
   await db.query(`update public.${table} set `+entries.map(([k],i)=>`"${k}"=$${i+1}`).join(',')+' where '+where.replace(/\$(\d+)/g,(_,n)=>'$'+(entries.length+Number(n))),[...entries.map(([,v])=>v!==null&&typeof v==='object'?JSON.stringify(v):v),...args]);
  }
- if(process.env.SKO_CANONICAL_PUBLIC_CONTRACT_OUTPUT){
-  const path=await import('node:path');if(!path.isAbsolute(process.env.SKO_CANONICAL_PUBLIC_CONTRACT_OUTPUT))throw Error('absolute synthetic contract output path required');
+ if(contractOutput||flowOutput){
   // Fixture-only default allocator: actual SQL responses contain fixed synthetic IDs.
   await db.exec("create sequence public.synthetic_contract_ids;create function public.synthetic_contract_uuid() returns uuid language sql volatile as $$select ('90000000-0000-0000-0000-'||lpad(nextval('public.synthetic_contract_ids')::text,12,'0'))::uuid$$;alter table company_allowance_identity_private.identities alter column id set default public.synthetic_contract_uuid();alter table public.payroll_statements alter column id set default public.synthetic_contract_uuid()");
  }
@@ -127,6 +130,23 @@ try {
  await assert.rejects(db.query('select public.read_company_common_payroll_publish_receipt_v2($1,$2,$3::jsonb)',[cid,requestV2,JSON.stringify({...command,p_approve_activation:false})]),/receipt request mismatch/);
  await db.exec('reset role');assert.deepEqual((await db.query('select to_jsonb(s) v from public.payroll_statements s where company_id=$1 and worker_id=$2',[cid,manualWid])).rows[0].v,manualBefore,'excluded manual original preserved');
  let actual=await statement(month);assert.equal(actual.calculation_blocked,false);assert.equal(actual.detail.unit_resolution.items.find(x=>x.id===first.id).quantity,1);
+ let payrollFlow;
+ if(flowOutput){
+  assert.equal(privatePath,undefined);assert.equal(typ,'daily');
+  assert.deepEqual(positive.map(x=>[x.name,Number(x.amount_yen)]),[['Synthetic travel',1200],['Synthetic work',800]],'payroll export uses only the fixed synthetic rates');
+  const saved=(await db.query('select to_jsonb(s) v from public.payroll_statements s where company_id=$1 and worker_id=$2 and period_start=$3',[cid,wid,month])).rows[0].v;
+  const settings=(await db.query('select to_jsonb(s) v from public.worker_payroll_settings s where company_id=$1 and worker_id=$2',[cid,wid])).rows[0].v;
+  const attendance=(await db.query(`select coalesce(jsonb_agg(to_jsonb(a) order by a.id),'[]'::jsonb) v from public.attendance_entries a where company_id=$1 and worker_id=$2 and work_date between $3::date and ($3::date+interval '1 month - 1 day')::date`,[cid,wid,month])).rows[0].v;
+  const publication=(await db.query('select to_jsonb(p) v from company_common_allowance_private.payroll_publications p where company_id=$1 and version=1',[cid])).rows[0].v;
+  await actor();const clientRows=(await db.query('select to_jsonb(r) v from public.my_payroll_statement_rows_with_adjustments() r where r.id=$1',[saved.id])).rows;assert.equal(clientRows.length,1,'actual employee RPC must return the saved target statement');
+  const clientRow=clientRows[0].v;await db.exec('reset role');
+  for(const key of ['id','period_start','period_end','gross_pay','deductions','net_pay'])assert.deepEqual(clientRow[key],saved[key],'actual RPC preserves saved '+key);
+  for(const key of ['unit_resolution','custom_earnings','custom_deductions'])assert.deepEqual(clientRow.detail[key],saved.detail[key],'actual RPC preserves saved '+key);
+  const inherited=saved.detail.unit_resolution.items.filter(x=>x.origin==='company_common');
+  assert.deepEqual(inherited.map(x=>[x.name,x.rate_yen,x.quantity,x.amount_yen]),[['Synthetic travel',1200,1,1200],['Synthetic work',800,0,0]]);
+  assert.deepEqual([saved.gross_pay,saved.deductions,saved.net_pay],[11200,0,11200]);assert.equal(settings.allowance_1,1200,'individual original rate remains stored');
+  payrollFlow={schema:1,synthetic_only:true,case_name:'canonical_daily_selected_legacy_one_day',saved_statement:saved,client_rpc_row:clientRow,source_settings:settings,source_attendance:attendance,publication,expected:{base_pay_yen:10000,common_earning_yen:1200,gross_pay:11200,deductions:0,net_pay:11200,common_items:[{name:'Synthetic travel',rate_yen:1200,quantity:1,amount_yen:1200},{name:'Synthetic work',rate_yen:800,quantity:0,amount_yen:0}]}};
+ }
  const gross=actual.gross_pay;await db.query('update public.attendance_entries set allowance_names=$2 where id=$1',[rid(850),[]]);assert.equal((await statement(month)).gross_pay,gross-Number(first.amount_yen));await db.query('update public.attendance_entries set allowance_names=$2 where id=$1',[rid(850),[first.name]]);assert.equal((await statement(month)).gross_pay,gross);
  assert.equal((await db.query('select count(*) n from company_common_allowance_private.payroll_publications')).rows[0].n,1);assert.equal((await db.query('select count(*) n from company_common_allowance_private.payroll_publication_receipts')).rows[0].n,1,'retry/readback creates no duplicate receipt');
  await db.query("update public.company_members set role='admin' where company_id=$1 and user_id=$2",[cid,viewer]);await actor(viewer);await assert.rejects(db.query('select public.read_company_common_payroll_publish_receipt_v2($1,$2,$3::jsonb)',[cid,requestV2,JSON.stringify(command)]),/receipt request mismatch/);await actor();await db.exec('reset role');await db.query("update public.company_members set role='viewer' where company_id=$1 and user_id=$2",[cid,viewer]);
@@ -163,6 +183,12 @@ try {
   const bytes=JSON.stringify(exported,null,2)+'\n';const uuids=bytes.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)??[];
   assert(uuids.every(id=>/^(?:00000000-0000-0000-0000-000000000001|10000000-0000-0000-0000-000000000001|40000000-0000-0000-0000-0000000000(?:01|88)|[89]0000000-0000-0000-0000-\d{12})$/.test(id)),'export allows fixed synthetic UUID namespaces only');
   const path=await import('node:path');fs.mkdirSync(path.dirname(process.env.SKO_CANONICAL_PUBLIC_CONTRACT_OUTPUT),{recursive:true});fs.writeFileSync(process.env.SKO_CANONICAL_PUBLIC_CONTRACT_OUTPUT,bytes,{mode:0o600});
+ }
+ if(flowOutput){
+  assert(payrollFlow?.synthetic_only);const bytes=JSON.stringify(payrollFlow,null,2)+'\n';
+  const uuids=bytes.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)??[];
+  assert(uuids.every(id=>/^(?:00000000-0000-0000-0000-000000000001|10000000-0000-0000-0000-000000000001|40000000-0000-0000-0000-000000000001|[89]0000000-0000-0000-0000-\d{12})$/.test(id)),'payroll export allows only fixed synthetic UUID namespaces');
+  fs.mkdirSync(path.dirname(flowOutput),{recursive:true});fs.writeFileSync(flowOutput,bytes,{mode:0o600,flag:'wx'});
  }
  console.log(JSON.stringify({review_only:true,private_rates:!!privatePath,canonical_v2_public_rpc:true,per_type_activation:true,other_type_original_path:true,other_type_requires_approval:true,historical_global_missing_blocked:true,historical_boundary_advance_refused:true,activation_audit_immutable:true,explicit_first_activation:true,activation_refusal_rolls_back:true,preview_target_excluded_counts:true,atomic_publication_readback_receipt:true,same_payload_receipt_before_cas:true,read_only_receipt:true,wrong_payload_rejected:true,different_admin_receipt_denied:true,no_duplicate_receipts:true,manual_original_preserved:true,excluded_trigger_rollback:true,unresolved_preview:true,viewer_denied:true,install_default_off:true,atomic_closure_install:true,publisher_security_mutations_rejected:true,stale_preview_rejected:true,legacy_v1_drop_prevented:true,attendance_edit:true,no_future_policy_dependency:true,production_changed:false}));
 }catch(error){console.error(error.name==='AssertionError'?error.stack:error.message);process.exitCode=1;}finally {await db.close();}
