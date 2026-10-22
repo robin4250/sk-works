@@ -1,0 +1,41 @@
+-- REVIEW ONLY: one shared augmenter replacement, not a deployable migration.
+-- Leaves caller definitions, role grants, data and policy enablement unchanged.
+begin;
+do $$begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)') and md5(prosrc)='47ee121481cea77af1e0275c686c65db' and prosecdef and prorettype='jsonb'::regtype)
+  or to_regprocedure('common_payroll_future_review_private.resolve_internal(uuid,uuid,date,date,jsonb)') is null then
+  raise exception 'reviewed payroll augmenter prerequisite differs' using errcode='55000';end if;
+end $$;
+create or replace function payroll_unit_private.augment_settings(cid uuid,wid uuid,p_start date,p_end date,settings jsonb)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare resolved jsonb; common_items jsonb; future jsonb; effective jsonb:=settings; future_blocked boolean:=false;
+begin
+ resolved:=payroll_unit_private.resolve(cid,wid,p_start,p_end);
+ common_items:=payroll_unit_private.resolve_company_common(cid,wid,p_start,p_end);
+ -- No approved future policy: retain the existing path exactly. No extra salary
+ -- view/edit authority is requested from the legitimate attendance actor.
+ if exists(select 1 from common_payroll_future_review_private.policies p where p.company_id=cid and p.payroll_type=settings->>'pay_type' and p.starts_on<=p_start) then
+  future:=common_payroll_future_review_private.resolve_internal(cid,wid,p_start,p_end,settings);
+  future_blocked:=coalesce((future->>'blocked')::boolean,false);
+  if future->>'active'='true' and not future_blocked then
+   -- An existing product common item cannot add the same identity/name again.
+   if exists(select 1 from jsonb_array_elements(common_items->'items') old_item
+    join jsonb_array_elements(future->'items') new_item
+     on old_item->>'id'=new_item->>'id' or btrim(old_item->>'name')=btrim(new_item->>'name')) then
+    future_blocked:=true;future:=future||jsonb_build_object('blocked',true,'reason','common_publication_overlap');
+   else
+    effective:=future->'effective_settings';
+    resolved:=resolved||jsonb_build_object('items',(resolved->'items')||(future->'items'),'earnings',(resolved->'earnings')||(future->'earnings'));
+   end if;
+  end if;
+ end if;
+ resolved:=resolved||jsonb_build_object('items',(resolved->'items')||(common_items->'items'),
+  'earnings',(resolved->'earnings')||(common_items->'earnings'),'deductions',(resolved->'deductions')||(common_items->'deductions'),
+  'blocked',(resolved->>'blocked')::boolean or (common_items->>'blocked')::boolean or future_blocked,
+  'company_common_history_missing',common_items->'history_missing');
+ if future is not null then resolved:=resolved||jsonb_build_object('company_common_future',future-'effective_settings'-'earnings');end if;
+ if resolved->'items'='[]'::jsonb and (resolved->>'blocked')::boolean is not true then return effective;end if;
+ return coalesce(effective,'{}')||jsonb_build_object('custom_earnings',coalesce(effective->'custom_earnings','[]')||(resolved->'earnings'),
+ 'custom_deductions',coalesce(effective->'custom_deductions','[]')||(resolved->'deductions'),'_unit_resolution',resolved);
+end $$;
+commit;

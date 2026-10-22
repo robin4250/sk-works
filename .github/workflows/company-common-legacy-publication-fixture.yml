@@ -9,6 +9,8 @@ on:
       - 'tool/verify_company_common_legacy_integration.mjs'
       - 'tool/verify_company_common_legacy_bounded.mjs'
       - 'tool/verify_company_common_future_policy.mjs'
+      - 'tool/verify_company_common_future_connection.mjs'
+      - 'docs/candidates/company_common_future_connection_20261022.sql.review-only'
       - 'docs/candidates/company_common_future_policy_20261022.sql.review-only'
       - 'docs/candidates/company_common_legacy_bounded_20261022.sql.review-only'
       - 'docs/candidates/company_common_legacy_integration_20261022.sql.review-only'
@@ -33,6 +35,8 @@ jobs:
             script: verify_company_common_legacy_bounded.mjs
           - fixture: future-policy
             script: verify_company_common_future_policy.mjs
+          - fixture: future-connection
+            script: verify_company_common_future_connection.mjs
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
