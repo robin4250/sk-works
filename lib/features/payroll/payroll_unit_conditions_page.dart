@@ -160,11 +160,12 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                     padding: const EdgeInsets.all(12),
                     child: Text(tr('社内共通手当の適用月が未登録のため、給与計算を保留しています。社内共通手当の適用月を確認してください。')),
                   ),
-                if (_value!.companyCommonItems.isNotEmpty)
+                if (_value!.companyCommonItems.isNotEmpty || _value!.companyCommonResolution?.blocked == true)
                   PayrollCompanyCommonCard(
                     key: ValueKey('${widget.companyId}/${widget.workerId}/${_value!.month}/${_value!.companyCommonSourceJson}'),
                     items: _value!.companyCommonItems,
                     frozen: _value!.companyCommonFrozen,
+                    resolution: _value!.companyCommonResolution,
                     canEdit: _value!.canEdit && !_saving,
                     section: widget.section, unit: widget.unit,
                     onReload: _load,
@@ -238,7 +239,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
           item.section == widget.section && item.unit == PayrollItemUnit.month) ?? false;
       return Offstage(
         offstage: widget.unit == PayrollItemUnit.month && !_loading &&
-            _error == null && _value?.companyCommonHistoryMissing != true && !hasMonthlyItems && !(_value?.companyCommonItems.any((item) => item['unit'] == 'month' && item['section'] == widget.section?.name) ?? false),
+            _error == null && _value?.companyCommonHistoryMissing != true && _value?.companyCommonResolution?.blocked != true && !hasMonthlyItems && !(_value?.companyCommonItems.any((item) => item['unit'] == 'month' && item['section'] == widget.section?.name) ?? false),
         child: body,
       );
     }

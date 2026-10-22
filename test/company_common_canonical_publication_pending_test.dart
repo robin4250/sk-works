@@ -18,7 +18,7 @@ Map<String, dynamic> commandJson({String requestId = request}) => {
     'aliases': ['合成手当'],
   }],
   'p_individual_reconciliation': CommonPayrollCanonicalPublicationCommand.reconciliation,
-  'p_request_id': requestId, 'p_preview_token': 'fixture-preview-hash',
+  'p_request_id': requestId, 'p_preview_token': List.filled(64, 'a').join(),
   'p_approve_activation': true,
 };
 CommonPayrollCanonicalPublicationPending pending({String requestId = request}) =>
@@ -64,7 +64,7 @@ void main() {
     expect(restored.command.receiptParams, pending().command.receiptParams);
     await expectLater(store().write(pending()), throwsStateError);
     await expectLater(store().clear(pending(requestId: otherActor)), throwsStateError);
-    final changed = commandJson()..['p_preview_token'] = 'different-approved-preview';
+    final changed = commandJson()..['p_preview_token'] = List.filled(64, 'b').join();
     final sameIdDifferentPayload = CommonPayrollCanonicalPublicationPending(actorId: actor,
       command: CommonPayrollCanonicalPublicationCommand.fromParams(changed));
     await expectLater(store().clear(sameIdDifferentPayload), throwsStateError);

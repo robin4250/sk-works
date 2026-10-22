@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 
 import 'payroll_unit_item_editor.dart';
+import 'company_common_calculation_resolution.dart';
 
 class PayrollUnitConditions {
   const PayrollUnitConditions({
@@ -15,6 +16,7 @@ class PayrollUnitConditions {
     this.companyCommonSourceJson,
     this.companyCommonHistoryMissing = false,
     this.companyCommonFrozen = false,
+    this.companyCommonResolution,
   });
   final int version;
   final String month;
@@ -24,6 +26,7 @@ class PayrollUnitConditions {
   final String? companyCommonSourceJson;
   final bool companyCommonHistoryMissing;
   final bool companyCommonFrozen;
+  final CompanyCommonCalculationResolution? companyCommonResolution;
   factory PayrollUnitConditions.fromJson(Object? raw) {
     if (raw is! Map ||
         raw['version'] is! int ||
@@ -104,6 +107,8 @@ class PayrollUnitConditions {
       companyCommonSourceJson: commonSource,
       companyCommonHistoryMissing: common is Map && common['history_missing'] == true,
       companyCommonFrozen: common is Map && common['frozen'] == true,
+      companyCommonResolution: common is Map && common['resolution'] != null
+          ? CompanyCommonCalculationResolution.parse(common['resolution']) : null,
     );
   }
 }

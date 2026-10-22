@@ -4,6 +4,11 @@ on:
     paths:
       - 'lib/features/payroll/company_common_canonical_publication_*.dart'
       - 'test/company_common_canonical_publication_*_test.dart'
+      - 'lib/features/payroll/company_common_calculation_resolution.dart'
+      - 'lib/features/payroll/payroll_company_common_card.dart'
+      - 'lib/features/payroll/payroll_unit_conditions_page.dart'
+      - 'lib/features/payroll/payroll_unit_conditions_repository.dart'
+      - 'test/company_common_calculation_resolution_test.dart'
       - '.github/workflows/company-common-canonical-ui.yml'
 permissions:
   contents: read
@@ -21,4 +26,4 @@ jobs:
       - run: flutter pub get
       - run: git diff --exit-code -- pubspec.lock
       - run: flutter analyze
-      - run: timeout 240s flutter test --reporter expanded --timeout 60s test/company_common_canonical_publication_pending_test.dart test/company_common_canonical_publication_approval_test.dart
+      - run: timeout 240s flutter test --reporter expanded --timeout 60s test/company_common_canonical_publication_pending_test.dart test/company_common_canonical_publication_approval_test.dart test/company_common_calculation_resolution_test.dart test/company_common_payroll_publication_test.dart test/payroll_company_common_test.dart test/payroll_unit_conditions_repository_test.dart test/payroll_unit_conditions_editor_test.dart

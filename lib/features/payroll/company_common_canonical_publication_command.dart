@@ -41,8 +41,7 @@ class CommonPayrollCanonicalPublicationCommand {
         map['p_common_source'] is! Map ||
         map['p_individual_reconciliation'] != reconciliation ||
         map['p_preview_token'] is! String ||
-        (map['p_preview_token'] as String).isEmpty ||
-        (map['p_preview_token'] as String).length > 8192 ||
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(map['p_preview_token'] as String) ||
         map['p_approve_activation'] is! bool ||
         map['p_legacy_quantities'] is! List) {
       throw const FormatException('給与適用の確認内容が一致しません');
