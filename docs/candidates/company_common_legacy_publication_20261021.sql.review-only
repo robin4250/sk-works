@@ -1,0 +1,132 @@
+-- REVIEW ONLY, UNGRANTED. No product publisher/resolver, rows or UI are changed.
+-- Legacy company identities are proposed in the existing publication shape.
+-- Explicit per-worker identity/slot bindings are required before any overlay.
+-- This prototype does not persist bindings or implement a production activation.
+begin;
+create schema common_payroll_legacy_review_private;
+revoke all on schema common_payroll_legacy_review_private from public,anon,authenticated,service_role;
+
+create function common_payroll_legacy_review_private.company_plan(cid uuid,typ text)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare state jsonb; entry jsonb; proposed jsonb:='[]'; reasons jsonb:='[]';
+begin
+ if typ is null or typ not in ('daily','hourly','monthly') then
+  raise exception 'unsupported payroll type' using errcode='22023';end if;
+ state:=company_common_allowance_private.admin_state(cid);
+ if state->>'can_edit' is distinct from 'true' then
+  raise exception 'common-payroll edit authorization required' using errcode='42501';end if;
+ for entry in select value from jsonb_array_elements(state->'legacy_refs') loop
+  if nullif(btrim(entry->>'name'),'') is null or (entry->>'amount_yen')::numeric<=0 then continue;end if;
+  if entry->>'id' is null or entry->>'generation' is null then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','legacy_identity_missing','slot',entry->'slot'));
+   continue;end if;
+  proposed:=proposed||jsonb_build_array(jsonb_build_object(
+   'id',entry->'id','payroll_type',typ,'section','earning','unit','day',
+   'name',entry->'name','amount_yen',entry->'amount_yen','origin','company_legacy',
+   'legacy_slot',entry->'slot','legacy_generation',entry->'generation',
+   'legacy_source_unit',entry->'source_unit'));
+ end loop;
+ for entry in select value from jsonb_array_elements(state->'items')
+  where value->>'payroll_type'=typ loop
+  proposed:=proposed||jsonb_build_array(entry||jsonb_build_object('origin','company_common'));
+ end loop;
+ if exists(select 1 from jsonb_array_elements(proposed) e group by e->>'id' having count(*)>1) then
+  reasons:=reasons||jsonb_build_array(jsonb_build_object('code','duplicate_item_identity'));end if;
+ -- Name equality is only an ambiguity detector, never an implicit ID binding.
+ if exists(select 1 from jsonb_array_elements(proposed) e group by btrim(e->>'name') having count(*)>1) then
+  reasons:=reasons||jsonb_build_array(jsonb_build_object('code','ambiguous_company_item_name'));end if;
+ return jsonb_build_object('contract_version',1,'review_only',true,'company_id',cid,
+  'payroll_type',typ,'common_version',state->'version','common_source',state->'expected_source',
+  'snapshot_items',proposed,'reasons',reasons,'ready',reasons='[]'::jsonb);
+end $$;
+
+create function common_payroll_legacy_review_private.worker_plan(
+ cid uuid,wid uuid,p_month date,p_company_plan jsonb,
+ p_bindings jsonb default null,p_expected_worker_settings_md5 text default null)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare fresh jsonb; raw_settings jsonb; effective_settings jsonb; settings_hash text;
+ entry jsonb; binding jsonb; bindings jsonb:='[]'; reasons jsonb:='[]';
+ expected_ids uuid[]:='{}'; seen_ids uuid[]:='{}'; matching_slots integer[];
+ suggested_slot integer; chosen_slot integer; own_rate numeric; selected_days integer;
+ legacy_count integer:=0; statement public.payroll_statements%rowtype; own_items jsonb;
+begin
+ if p_company_plan is null or p_month is null or p_month<>date_trunc('month',p_month)::date then
+  raise exception 'explicit company plan and canonical month required' using errcode='22023';end if;
+ fresh:=common_payroll_legacy_review_private.company_plan(cid,p_company_plan->>'payroll_type');
+ if fresh is distinct from p_company_plan then raise exception 'common source changed' using errcode='40001';end if;
+ if not coalesce(private.payroll_settings_allowed(cid,wid,'edit'),false) then
+  raise exception 'worker payroll edit authorization required' using errcode='42501';end if;
+ select to_jsonb(s) into raw_settings from public.worker_payroll_settings s
+  join public.workers w on w.company_id=s.company_id and w.id=s.worker_id
+  where s.company_id=cid and s.worker_id=wid;
+ if raw_settings is null then raise exception 'worker settings unavailable' using errcode='55000';end if;
+ settings_hash:=md5(raw_settings::text);effective_settings:=raw_settings;
+ reasons:=fresh->'reasons';
+ if raw_settings->>'pay_type' is distinct from fresh->>'payroll_type' then
+  reasons:=reasons||jsonb_build_array(jsonb_build_object('code','other_payroll_type'));end if;
+ select * into statement from public.payroll_statements where company_id=cid and worker_id=wid and period_start=p_month;
+ if found and (statement.automatic_calculation is distinct from true or statement.workflow_state is distinct from 'draft'
+  or statement.finalized_at is not null or exists(select 1 from payroll_final_private.documents d where d.statement_id=statement.id)) then
+  reasons:=reasons||jsonb_build_array(jsonb_build_object('code','finalized_or_manual_statement'));end if;
+ if p_bindings is not null and (jsonb_typeof(p_bindings)<>'array' or octet_length(p_bindings::text)>16384
+  or p_expected_worker_settings_md5 is distinct from settings_hash) then
+  raise exception 'worker source/bindings changed' using errcode='40001';end if;
+ select coalesce(items,'[]'::jsonb) into own_items from payroll_unit_private.conditions
+  where company_id=cid and worker_id=wid and starts_on<=p_month order by starts_on desc limit 1;
+ for entry in select value from jsonb_array_elements(fresh->'snapshot_items') where value->>'origin'='company_legacy' loop
+  legacy_count:=legacy_count+1;expected_ids:=array_append(expected_ids,(entry->>'id')::uuid);
+  select coalesce(array_agg(n order by n),'{}'::integer[]) into matching_slots
+   from generate_series(1,3) n where nullif(btrim(raw_settings->>('allowance_name_'||n)),'')=entry->>'name';
+  suggested_slot:=case when cardinality(matching_slots)=1 then matching_slots[1] else null end;
+  own_rate:=case when suggested_slot is not null then coalesce((raw_settings->>('allowance_'||suggested_slot))::numeric,0) else null end;
+  select count(distinct ae.work_date) into selected_days from public.attendance_entries ae
+   where ae.company_id=cid and ae.worker_id=wid and ae.work_date between p_month and (p_month+interval '1 month - 1 day')::date
+    and ae.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date
+    and (entry->>'name')=any(coalesce(ae.allowance_names,'{}'::text[]));
+  bindings:=bindings||jsonb_build_array(jsonb_build_object('common_id',entry->'id',
+   'legacy_generation',entry->'legacy_generation','worker_slot',suggested_slot,'action','inherit',
+   'legacy_selected_days',selected_days));
+  if cardinality(matching_slots)>1 then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','ambiguous_worker_legacy_name','common_id',entry->'id'));
+  elsif suggested_slot is not null and own_rate is distinct from (entry->>'amount_yen')::numeric then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','individual_rate_override_unresolved','common_id',entry->'id'));
+  end if;
+  if exists(select 1 from jsonb_array_elements(coalesce(own_items,'[]'::jsonb)) e where btrim(e->>'name')=btrim(entry->>'name'))
+   or exists(select 1 from jsonb_array_elements(coalesce(raw_settings->'custom_earnings','[]'::jsonb)) e where btrim(e->>'name')=btrim(entry->>'name')) then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','individual_item_overlap_unresolved','common_id',entry->'id'));end if;
+  -- A legacy payment on a zero-man-day record cannot be silently lost when the
+  -- new day rule counts positive-work dates only.
+  if exists(select 1 from public.attendance_entries ae where ae.company_id=cid and ae.worker_id=wid
+   and ae.work_date between p_month and (p_month+interval '1 month - 1 day')::date
+   and ae.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date
+   and (entry->>'name')=any(coalesce(ae.allowance_names,'{}'::text[]))
+   and not exists(select 1 from public.attendance_entries worked where worked.company_id=cid and worked.worker_id=wid
+    and worked.work_date=ae.work_date and worked.base_man_days>0)) then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','legacy_payment_on_nonworking_day','common_id',entry->'id'));end if;
+  if p_bindings is null then continue;end if;
+  if (select count(*) from jsonb_array_elements(p_bindings) b where b->>'common_id'=entry->>'id')<>1 then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','explicit_identity_binding_required','common_id',entry->'id'));continue;end if;
+  select b into binding from jsonb_array_elements(p_bindings) b where b->>'common_id'=entry->>'id';
+  if jsonb_typeof(binding)<>'object' or (select count(*) from jsonb_object_keys(binding))<>4
+   or not(binding ?& array['common_id','legacy_generation','worker_slot','action'])
+   or binding->'legacy_generation' is distinct from entry->'legacy_generation'
+   or binding->>'action' is distinct from 'inherit'
+   or binding->'worker_slot' is distinct from coalesce(to_jsonb(suggested_slot),'null'::jsonb) then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','binding_differs_from_observed_source','common_id',entry->'id'));continue;end if;
+  seen_ids:=array_append(seen_ids,(entry->>'id')::uuid);
+  if suggested_slot is not null then
+   -- Overlay only. The underlying individual value/ID/history is not updated.
+   effective_settings:=jsonb_set(effective_settings,array['allowance_'||suggested_slot],'0'::jsonb);
+  end if;
+ end loop;
+ if p_bindings is null and legacy_count>0 then
+  reasons:=reasons||jsonb_build_array(jsonb_build_object('code','explicit_identity_bindings_required'));
+ elsif p_bindings is not null and (jsonb_array_length(p_bindings)<>legacy_count or cardinality(seen_ids)<>legacy_count) then
+  reasons:=reasons||jsonb_build_array(jsonb_build_object('code','binding_set_incomplete'));end if;
+ return jsonb_build_object('contract_version',1,'review_only',true,'company_id',cid,'worker_id',wid,
+  'month',p_month,'company_plan',fresh,'worker_settings_md5',settings_hash,
+  'suggested_bindings',bindings,'reasons',reasons,'ready',reasons='[]'::jsonb,
+  'effective_worker_settings',case when reasons='[]'::jsonb then effective_settings else null end);
+end $$;
+revoke all on all functions in schema common_payroll_legacy_review_private from public,anon,authenticated,service_role;
+commit;
