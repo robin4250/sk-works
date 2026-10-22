@@ -64,9 +64,11 @@ class _CompanyCommonCanonicalPublicationPanelState extends State<CompanyCommonCa
   }
   void _closeDialog() {
     final dialog = _dialog; _dialog = null;
-    if (dialog != null) WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (dialog != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
       if (dialog.mounted && ModalRoute.of(dialog)?.isCurrent == true) Navigator.of(dialog).pop();
-    });
+      });
+    }
   }
   void _revoke() {
     if (!mounted || _revoked) return;
@@ -78,7 +80,9 @@ class _CompanyCommonCanonicalPublicationPanelState extends State<CompanyCommonCa
   @override void didChangeAppLifecycleState(AppLifecycleState state) {
     _active = state == AppLifecycleState.resumed;
     if (!_active) { _generation++; _closeDialog(); if (mounted) setState(() { _timeline = null; _message = null; }); }
-    else if (!_revoked) unawaited(_load());
+    else if (!_revoked) {
+      unawaited(_load());
+    }
   }
   Future<void> _load() async {
     if (!_active || _revoked) return;
@@ -96,11 +100,13 @@ class _CompanyCommonCanonicalPublicationPanelState extends State<CompanyCommonCa
       setState(() { _available = available; _timeline = timeline; _storageBlocked = false;
         _error = available ? null : '給与への反映を確認できません。時間をおいて、もう一度確認してください。'; });
     } catch (_) {
-      if (_valid(generation)) setState(() {
+      if (_valid(generation)) {
+        setState(() {
         _storageBlocked = !_controller.ready && _controller.pending == null;
         _error = _storageBlocked ? '前の給与反映の確認記録を読み取れません。給与への反映を止めています。'
             : '給与反映の設定を取得できません。もう一度確認してください。';
-      });
+        });
+      }
     } finally { _finish(); }
   }
   void _finish() {
@@ -116,14 +122,16 @@ class _CompanyCommonCanonicalPublicationPanelState extends State<CompanyCommonCa
   Future<void> _start() async {
     final timeline = _timeline, generation = _generation;
     if (timeline == null || !timeline.canEdit || !_available || !_legacyReady || !_controller.ready ||
-        !widget.enabled || _running || _busy || _confirming || !_valid(generation)) return;
+        !widget.enabled || _running || _busy || _confirming || !_valid(generation)) {
+      return;
+    }
     _running = true;
     setState(() { _busy = true; _message = null; _error = null; }); _parentBusy();
     try {
       final params = canonicalCommonPayrollPreviewParams(widget.settings, timeline, _type,
         '${_month.year}-${_month.month.toString().padLeft(2, '0')}-01');
       final preview = await widget.repository.preview(params);
-      if (!_valid(generation) || !widget.enabled) return;
+      if (!mounted || !_valid(generation) || !widget.enabled) return;
       setState(() { _busy = false; _confirming = true; });
       final approval = await showDialog<CommonPayrollCanonicalApproval>(context: context, builder: (context) {
         _dialog = context;
@@ -137,12 +145,14 @@ class _CompanyCommonCanonicalPublicationPanelState extends State<CompanyCommonCa
       if (!_valid(generation)) return;
       setState(() { _timeline = result.timeline; _message = result.message; _error = null; });
     } catch (_) {
-      if (_valid(generation)) setState(() {
+      if (_valid(generation)) {
+        setState(() {
         _error = _controller.pending != null
           ? '給与反映の結果を確認できません。「結果を確認」で同じ申請の結果を確認してください。'
           : '給与へ反映できませんでした。保存済みの設定を再読み込みして確認してください。';
         _message = null;
-      });
+        });
+      }
     } finally {
       _dialog = null;
       _finish();
@@ -157,8 +167,9 @@ class _CompanyCommonCanonicalPublicationPanelState extends State<CompanyCommonCa
       final result = await _controller.lookup();
       if (!_valid(generation)) return;
       setState(() {
-        if (result == null) _error = 'まだ結果を確認できません。同じ申請を保持しています。時間をおいて確認してください。';
-        else { _timeline = result.timeline; _message = result.message; _error = null; }
+        if (result == null) {
+          _error = 'まだ結果を確認できません。同じ申請を保持しています。時間をおいて確認してください。';
+        } else { _timeline = result.timeline; _message = result.message; _error = null; }
       });
     } catch (_) { if (_valid(generation)) setState(() => _error = '結果を確認できません。同じ申請を保持しています。'); }
     finally { _finish(); }
