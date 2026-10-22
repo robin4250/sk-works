@@ -1,5 +1,8 @@
 # Common allowance legacy publication candidate
 
+Historical prototype: its all-workday quantity hypothesis is superseded by the explicit selected-date bounded candidate. Success of these earlier fixtures is not proof of the selected-allowance business contract. Production remains blocked.
+
+
 Review only. This isolated prototype is not deployed, granted, integrated, or ready for production activation. It changes no existing publisher, domain/UI, source payroll row, company amount, or identity. Historical PR #1315 is outside this scope.
 
 ## Connection being restored

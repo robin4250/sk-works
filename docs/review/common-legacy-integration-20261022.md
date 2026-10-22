@@ -1,5 +1,8 @@
 # Legacy common allowance integration prototype
 
+Historical prototype: its all-workday quantity hypothesis is superseded by the explicit selected-date bounded candidate. Success of these earlier fixtures is not proof of the selected-allowance business contract. Production remains blocked.
+
+
 Review only; no existing source function, production row, or UI was changed. Requires the earlier legacy plan candidate. All new tables/functions remain ungranted in `common_payroll_legacy_review_private`.
 
 ## Implemented

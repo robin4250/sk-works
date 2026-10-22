@@ -7,6 +7,8 @@ on:
       - 'docs/candidates/company_common_legacy_publication_20261021.sql.review-only'
       - 'tool/verify_company_common_legacy_publication.mjs'
       - 'tool/verify_company_common_legacy_integration.mjs'
+      - 'tool/verify_company_common_legacy_bounded.mjs'
+      - 'docs/candidates/company_common_legacy_bounded_20261022.sql.review-only'
       - 'docs/candidates/company_common_legacy_integration_20261022.sql.review-only'
       - 'tool/payroll_scope_fixture_setup.mjs'
       - 'tool/staged_company_common_allowances.sql.review-only'
@@ -20,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fixture: [publication, integration]
+        fixture: [publication, integration, bounded]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:

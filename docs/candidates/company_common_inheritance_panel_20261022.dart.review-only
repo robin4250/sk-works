@@ -1,0 +1,65 @@
+// REVIEW ONLY: not imported into the product, not Flutter-validated.
+// Consume ONLY the narrow authorized display endpoint. Never copy these values
+// into individual allowance controllers or include them in an individual save.
+import 'package:flutter/material.dart';
+
+class CompanyCommonInheritanceReviewPanel extends StatelessWidget {
+  const CompanyCommonInheritanceReviewPanel({
+    super.key,
+    required this.value,
+    required this.onReviewSettings,
+  });
+  final Map<String, dynamic>? value;
+  final VoidCallback onReviewSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = value;
+    if (data == null) {
+      return const Text('会社共通手当を確認できませんでした。再読み込みしてください。');
+    }
+    if (data['active'] != true) {
+      return const Text('会社共通手当はこの月の給与へ未適用です。');
+    }
+    if (data['blocked'] != false) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('会社共通手当の引継ぎを確認してください。計算は未確定です。'),
+        TextButton(onPressed: onReviewSettings, child: const Text('設定を確認')),
+      ]);
+    }
+    final raw = data['items'];
+    if (raw is! List || raw.any((item) =>
+        item is! Map || item['readonly'] != true ||
+        item['quantity_basis'] != 'attendance_selected_distinct_dates' ||
+        item['quantity'] is! num || item['rate_yen'] is! num ||
+        item['amount_yen'] is! num)) {
+      return const Text('会社共通手当の数量条件を確認できません。設定を確認してください。');
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('会社共通から継承'),
+      Text('適用月：${data['month']}'),
+      for (final item in raw)
+        ListTile(
+          dense: true,
+          leading: const Icon(Icons.link),
+          title: Text('${item['name']}'),
+          subtitle: Text(
+            '日報で選択した${item['quantity']}日 × ${item['rate_yen']}円'
+            '（登録単位：${item['source_unit']}）',
+          ),
+          trailing: Text('${item['amount_yen']}円'),
+        ),
+      // Initially collapsed help; translations must use the product helper when
+      // the integration owner wires this review widget into the actual screen.
+      const ExpansionTile(
+        title: Text('？ 会社共通手当について'),
+        children: [Padding(
+          padding: EdgeInsets.all(12),
+          child: Text('会社の設定から引き継ぎます。勤務しただけでは加算せず、'
+              '日報で選択した日を数えます。同じ個別手当は二重に加算しません。'
+              '個別の例外や確定済みの給与は別途確認します。'),
+        )],
+      ),
+    ]);
+  }
+}
