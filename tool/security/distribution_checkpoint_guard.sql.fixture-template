@@ -1,0 +1,89 @@
+-- SYNTHETIC FIXTURE GENERATION TEMPLATE ONLY. Not a production deployment script.
+-- Business payload comes from the reviewed public PR1305 OFF source.
+BEGIN;
+SET LOCAL lock_timeout='5s';
+SET LOCAL statement_timeout='120s';
+LOCK TABLE private.app_referral_settings,private.app_referral_invitations IN SHARE ROW EXCLUSIVE MODE;
+DO $sko_checkpoint_guard$
+DECLARE expected jsonb := $sko_before$__FIXTURE_BEFORE_SNAPSHOT_JSON__$sko_before$::jsonb; actual jsonb;
+BEGIN
+ actual := jsonb_build_object(
+ 'functions',(select jsonb_agg(jsonb_build_object('schema',n.nspname,'name',p.proname,'identity',pg_get_function_identity_arguments(p.oid),'oid',p.oid,'metadata',to_jsonb(p)-'prosrc'-'probin'-'prosqlbody','body_md5',md5(p.prosrc)) order by p.oid) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('app_referral_dispatch','account_access_allowed')) or (n.nspname='public' and p.proname in ('app_referral_snapshot','app_referral_master_snapshot','app_referral_prepare','app_referral_composer_opened','app_referral_save_settings','is_current_user_master_admin')) or (n.nspname='auth' and p.proname='uid')),
+ 'relations',(select jsonb_agg(to_jsonb(c)-'relpages'-'reltuples'-'relallvisible'-'relfrozenxid'-'relminmxid' order by c.oid) from pg_class c where c.oid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass])),
+ 'columns',(select jsonb_agg(to_jsonb(a) order by a.attrelid,a.attnum) from pg_attribute a where a.attrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass]) and a.attnum>0),
+ 'constraints',(select jsonb_agg(to_jsonb(c) order by c.oid) from pg_constraint c where c.conrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass]) or c.confrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass])),
+ 'indexes',(select jsonb_agg(to_jsonb(i) order by i.indexrelid) from pg_index i where i.indrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass])),
+ 'policies',(select coalesce(jsonb_agg(to_jsonb(p) order by p.oid),'[]'::jsonb) from pg_policy p where p.polrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass])),
+ 'triggers',(select coalesce(jsonb_agg(to_jsonb(t) order by t.oid),'[]'::jsonb) from pg_trigger t where t.tgrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass])),
+ 'default_acls',(select coalesce(jsonb_agg(to_jsonb(d) order by d.oid),'[]'::jsonb) from pg_default_acl d where d.defaclnamespace=0 or d.defaclnamespace in ('public'::regnamespace,'private'::regnamespace)),
+ 'schema_acl',(select jsonb_agg(jsonb_build_object('name',n.nspname,'oid',n.oid,'owner',n.nspowner,'acl',n.nspacl) order by n.oid) from pg_namespace n where n.nspname in ('public','private','auth')),
+'dependencies',(select coalesce(jsonb_agg(to_jsonb(d) order by d.classid,d.objid,d.objsubid,d.refclassid,d.refobjid,d.refobjsubid,d.deptype),'[]'::jsonb) from pg_depend d where (d.classid='pg_proc'::regclass and d.objid in (select p.oid from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('app_referral_dispatch','account_access_allowed')) or (n.nspname='public' and p.proname in ('app_referral_snapshot','app_referral_master_snapshot','app_referral_prepare','app_referral_composer_opened','app_referral_save_settings','is_current_user_master_admin')) or (n.nspname='auth' and p.proname='uid'))) or (d.refclassid='pg_proc'::regclass and d.refobjid in (select p.oid from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('app_referral_dispatch','account_access_allowed')) or (n.nspname='public' and p.proname in ('app_referral_snapshot','app_referral_master_snapshot','app_referral_prepare','app_referral_composer_opened','app_referral_save_settings','is_current_user_master_admin')) or (n.nspname='auth' and p.proname='uid'))) or (d.classid='pg_class'::regclass and d.objid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass])) or (d.refclassid='pg_class'::regclass and d.refobjid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass]))),
+ 'effective_privileges',(select jsonb_agg(jsonb_build_object('role',r.rolname,'schema',n.nspname,'schema_usage',has_schema_privilege(r.oid,n.oid,'USAGE'),'schema_create',has_schema_privilege(r.oid,n.oid,'CREATE')) order by r.oid,n.oid) from pg_roles r cross join pg_namespace n where r.rolname in ('anon','authenticated','service_role','postgres') and n.nspname in ('public','private','auth')),
+ 'settings',(select jsonb_agg(to_jsonb(s) order by s.id) from private.app_referral_settings s),
+ 'history',(select jsonb_build_object('count',count(*),'rows_md5',md5(coalesce(jsonb_agg(to_jsonb(i) order by i.id)::text,'[]'))) from private.app_referral_invitations i),
+ 'new_objects',(select jsonb_build_object(
+  'functions',coalesce((select jsonb_agg(jsonb_build_object('schema',n.nspname,'name',p.proname,'identity',pg_get_function_identity_arguments(p.oid))) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private') and (p.proname like 'app_distribution%' or p.proname='app_referral_save_flags')),'[]'::jsonb),
+  'relations',coalesce((select jsonb_agg(jsonb_build_object('schema',n.nspname,'name',c.relname)) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','private') and c.relname like 'app_distribution%'),'[]'::jsonb)))
+);
+ IF actual IS DISTINCT FROM expected THEN
+  RAISE EXCEPTION 'invitation OFF checkpoint drift; no deployment; capture/review anew';
+ END IF;
+ IF jsonb_array_length(actual->'new_objects'->'functions')<>0
+ OR jsonb_array_length(actual->'new_objects'->'relations')<>0
+ OR jsonb_array_length(actual->'settings')<>1
+ OR actual->'settings'->0->'enabled' IS DISTINCT FROM 'false'::jsonb
+ OR actual->'settings'->0->'public_enabled' IS DISTINCT FROM 'false'::jsonb
+ OR actual->'settings'->0->>'distribution_url' IS DISTINCT FROM '' THEN
+  RAISE EXCEPTION 'OFF/empty/singleton/new-object absence required';
+ END IF;
+END $sko_checkpoint_guard$;
+-- Fixture generator inserts unchanged public PR1305 OFF payload here.
+__REVIEWED_OFF_INSTALL_PAYLOAD__
+-- END original payload. Original objects/settings/history must still match.
+DO $sko_checkpoint_post$
+DECLARE expected jsonb := $sko_after$__FIXTURE_AFTER_SNAPSHOT_JSON__$sko_after$::jsonb; actual jsonb; old_triggers jsonb; old_constraints jsonb;
+BEGIN
+ actual := jsonb_build_object(
+ 'functions',(select jsonb_agg(jsonb_build_object('schema',n.nspname,'name',p.proname,'identity',pg_get_function_identity_arguments(p.oid),'oid',p.oid,'metadata',to_jsonb(p)-'prosrc'-'probin'-'prosqlbody','body_md5',md5(p.prosrc)) order by p.oid) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('app_referral_dispatch','account_access_allowed')) or (n.nspname='public' and p.proname in ('app_referral_snapshot','app_referral_master_snapshot','app_referral_prepare','app_referral_composer_opened','app_referral_save_settings','is_current_user_master_admin')) or (n.nspname='auth' and p.proname='uid')),
+ 'relations',(select jsonb_agg(to_jsonb(c)-'relpages'-'reltuples'-'relallvisible'-'relfrozenxid'-'relminmxid' order by c.oid) from pg_class c where c.oid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass])),
+ 'columns',(select jsonb_agg(to_jsonb(a) order by a.attrelid,a.attnum) from pg_attribute a where a.attrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass]) and a.attnum>0),
+ 'constraints',(select jsonb_agg(to_jsonb(c) order by c.oid) from pg_constraint c where c.conrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass]) or c.confrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass])),
+ 'indexes',(select jsonb_agg(to_jsonb(i) order by i.indexrelid) from pg_index i where i.indrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass])),
+ 'policies',(select coalesce(jsonb_agg(to_jsonb(p) order by p.oid),'[]'::jsonb) from pg_policy p where p.polrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass])),
+ 'triggers',(select coalesce(jsonb_agg(to_jsonb(t) order by t.oid),'[]'::jsonb) from pg_trigger t where t.tgrelid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass])),
+ 'default_acls',(select coalesce(jsonb_agg(to_jsonb(d) order by d.oid),'[]'::jsonb) from pg_default_acl d where d.defaclnamespace=0 or d.defaclnamespace in ('public'::regnamespace,'private'::regnamespace)),
+ 'schema_acl',(select jsonb_agg(jsonb_build_object('name',n.nspname,'oid',n.oid,'owner',n.nspowner,'acl',n.nspacl) order by n.oid) from pg_namespace n where n.nspname in ('public','private','auth')),
+'dependencies',(select coalesce(jsonb_agg(to_jsonb(d) order by d.classid,d.objid,d.objsubid,d.refclassid,d.refobjid,d.refobjsubid,d.deptype),'[]'::jsonb) from pg_depend d where (d.classid='pg_proc'::regclass and d.objid in (select p.oid from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('app_referral_dispatch','account_access_allowed')) or (n.nspname='public' and p.proname in ('app_referral_snapshot','app_referral_master_snapshot','app_referral_prepare','app_referral_composer_opened','app_referral_save_settings','is_current_user_master_admin')) or (n.nspname='auth' and p.proname='uid'))) or (d.refclassid='pg_proc'::regclass and d.refobjid in (select p.oid from pg_proc p join pg_namespace n on n.oid=p.pronamespace where (n.nspname='private' and p.proname in ('app_referral_dispatch','account_access_allowed')) or (n.nspname='public' and p.proname in ('app_referral_snapshot','app_referral_master_snapshot','app_referral_prepare','app_referral_composer_opened','app_referral_save_settings','is_current_user_master_admin')) or (n.nspname='auth' and p.proname='uid'))) or (d.classid='pg_class'::regclass and d.objid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass,'private.account_deletion_access_restrictions'::regclass,'private.master_admins'::regclass,'public.companies'::regclass,'public.company_members'::regclass,'public.user_profiles'::regclass,'auth.users'::regclass])) or (d.refclassid='pg_class'::regclass and d.refobjid=any(array['private.app_referral_settings'::regclass,'private.app_referral_invitations'::regclass]))),
+ 'effective_privileges',(select jsonb_agg(jsonb_build_object('role',r.rolname,'schema',n.nspname,'schema_usage',has_schema_privilege(r.oid,n.oid,'USAGE'),'schema_create',has_schema_privilege(r.oid,n.oid,'CREATE')) order by r.oid,n.oid) from pg_roles r cross join pg_namespace n where r.rolname in ('anon','authenticated','service_role','postgres') and n.nspname in ('public','private','auth')),
+ 'settings',(select jsonb_agg(to_jsonb(s) order by s.id) from private.app_referral_settings s),
+ 'history',(select jsonb_build_object('count',count(*),'rows_md5',md5(coalesce(jsonb_agg(to_jsonb(i) order by i.id)::text,'[]'))) from private.app_referral_invitations i),
+ 'new_objects',(select jsonb_build_object(
+  'functions',coalesce((select jsonb_agg(jsonb_build_object('schema',n.nspname,'name',p.proname,'identity',pg_get_function_identity_arguments(p.oid))) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','private') and (p.proname like 'app_distribution%' or p.proname='app_referral_save_flags')),'[]'::jsonb),
+  'relations',coalesce((select jsonb_agg(jsonb_build_object('schema',n.nspname,'name',c.relname)) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','private') and c.relname like 'app_distribution%'),'[]'::jsonb)))
+);
+ SELECT coalesce(jsonb_agg(v ORDER BY (v->>'oid')::oid),'[]'::jsonb) INTO old_triggers
+ FROM jsonb_array_elements(actual->'triggers') v
+ WHERE (v->>'oid')::oid IN (SELECT (e->>'oid')::oid FROM jsonb_array_elements(expected->'triggers') e);
+ SELECT coalesce(jsonb_agg(v ORDER BY (v->>'oid')::oid),'[]'::jsonb) INTO old_constraints
+ FROM jsonb_array_elements(actual->'constraints') v
+ WHERE (v->>'oid')::oid IN (SELECT (e->>'oid')::oid FROM jsonb_array_elements(expected->'constraints') e);
+ IF (actual-'new_objects'-'triggers'-'constraints'-'dependencies') IS DISTINCT FROM (expected-'new_objects'-'triggers'-'constraints'-'dependencies')
+ OR NOT ((expected->'dependencies') <@ (actual->'dependencies'))
+ OR old_triggers IS DISTINCT FROM coalesce(expected->'triggers','[]'::jsonb)
+ OR old_constraints IS DISTINCT FROM coalesce(expected->'constraints','[]'::jsonb) THEN
+  RAISE EXCEPTION 'original dependency/catalog/ACL/settings/history changed; rollback required';
+ END IF;
+ -- Only FK-generated additions owned by the two new tables may touch old refs.
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(actual->'constraints') v
+  WHERE (v->>'oid')::oid NOT IN (SELECT (e->>'oid')::oid FROM jsonb_array_elements(expected->'constraints') e)
+  AND (v->>'conrelid')::oid NOT IN ('private.app_distribution_links'::regclass,'private.app_distribution_invitation_channels'::regclass))
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(actual->'triggers') v
+  WHERE (v->>'oid')::oid NOT IN (SELECT (e->>'oid')::oid FROM jsonb_array_elements(expected->'triggers') e)
+  AND NOT EXISTS(SELECT 1 FROM pg_constraint c WHERE c.oid=(v->>'tgconstraint')::oid
+   AND c.contype='f' AND c.conrelid='private.app_distribution_invitation_channels'::regclass
+   AND c.confrelid='private.app_referral_invitations'::regclass)) THEN
+  RAISE EXCEPTION 'unexpected constraint/trigger addition to original dependencies';
+ END IF;
+END $sko_checkpoint_post$;
+COMMIT;
+
