@@ -1,0 +1,24 @@
+name: Canonical common payroll client
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/company_common_canonical_publication_*.dart'
+      - 'test/company_common_canonical_publication_*_test.dart'
+      - '.github/workflows/company-common-canonical-ui.yml'
+permissions:
+  contents: read
+jobs:
+  canonical-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze
+      - run: timeout 240s flutter test --reporter expanded --timeout 60s test/company_common_canonical_publication_pending_test.dart test/company_common_canonical_publication_approval_test.dart
