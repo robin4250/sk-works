@@ -25,7 +25,9 @@ class TradeConfirmationController {
   Future<TradeConfirmationResult> confirm(TradeConfirmationDescriptor expected) async {
     verify();
     if (!loaded || busy || pending != null || expected.actorId != actorId ||
-        expected.kind != kind || expected.parentId != parentId) throw StateError('前の書類確認の結果を確認してください');
+        expected.kind != kind || expected.parentId != parentId) {
+      throw StateError('前の書類確認の結果を確認してください');
+    }
     busy = true;
     final saved = TradeConfirmationPending(TradeConfirmationCommand(expected: expected,
       requestId: TradeConfirmationCommand.newRequestId()));

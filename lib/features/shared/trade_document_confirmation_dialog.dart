@@ -112,8 +112,8 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
       _generation++;
       if (mounted) setState(() { _bytes = null; _preview = null; _content = false; _seal = false; });
     } else if (!_revoked) {
-      if (_busy) _reload = true;
-      else unawaited(_load());
+      if (_busy) { _reload = true; }
+      else { unawaited(_load()); }
     }
   }
   void _finish() {
@@ -218,8 +218,8 @@ class _TradeDocumentConfirmationPageState extends State<TradeDocumentConfirmatio
     try {
       final result = await _controller.lookup();
       if (!mounted || !_current(generation)) return;
-      if (result != null) Navigator.of(context).pop(TradeConfirmationFlowOutcome.confirmed);
-      else setState(() => _error = 'まだ結果を確認できません。同じ申請を保持しています。');
+      if (result != null) { Navigator.of(context).pop(TradeConfirmationFlowOutcome.confirmed); }
+      else { setState(() => _error = 'まだ結果を確認できません。同じ申請を保持しています。'); }
     } catch (_) {
       if (_current(generation)) setState(() => _error = '結果を確認できません。同じ申請を保持しています。');
     } finally { _finish(); }

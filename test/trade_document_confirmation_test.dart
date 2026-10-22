@@ -100,6 +100,16 @@ void main() {
     final invoice = TradeConfirmationCommand(expected: TradeConfirmationDescriptor.parse(sql['invoice_expected_command']),
       requestId: (sql['invoice_confirmation'] as Map)['request_id'] as String);
     expect(TradeConfirmationResult.parse(sql['invoice_confirmation'], invoice).value['operation'], 'invoice_final_approval_with_seal');
+    final ordinaryRaw = sql['ordinary_assigned_workspace'] as Map;
+    final ordinary = TradeConfirmationWorkspace.parse(ordinaryRaw, kind: 'invoice',
+      parentId: ordinaryRaw['parent_id'] as String,
+      sourceRevision: DateTime.parse(ordinaryRaw['source_revision'] as String).toUtc().toIso8601String(),
+      actorId: ordinaryRaw['actor_id'] as String);
+    expect(ordinary.integrationRequired, false);
+    expect(ordinary.canConfirm, false);
+    expect(ordinary.value['local_document_id'], isNull);
+    expect(ordinary.unavailableReason, 'ordinary_assigned_approval');
+    expect(() => TradeConfirmationPreview.parse(sql['issued_preview'], ordinary), throwsFormatException);
     final received = sql['received_workspace'] as Map;
     expect(received['local_document_id'], isNot(issued['local_document_id']));
     expect(received['document_id'], issued['document_id']);
@@ -115,6 +125,13 @@ void main() {
     final originalSnapshot = (((sql['issued_render'] as Map)['evidence'] as Map)['seals'] as List).single['seal_snapshot'] as Map;
     expect((ownAttachment.payload['company_seal_snapshot'] as Map)['png_sha256'], originalSnapshot['png_sha256']);
     expect(originalSnapshot['png_base64'], contains('\n'));
+    final crlfRender = Map<String, dynamic>.from(jsonDecode(jsonEncode(sql['issued_render'])) as Map);
+    final crlfSnapshot = (((crlfRender['evidence'] as Map)['seals'] as List).single as Map)['seal_snapshot'] as Map;
+    crlfSnapshot['png_base64'] = (crlfSnapshot['png_base64'] as String).replaceAll('\n', '\r\n');
+    expect(crlfSnapshot['png_base64'], contains('\r\n'));
+    final crlfAttachment = TradeConfirmationPdf.approvedAttachment(crlfRender, scope(issued), issued['actor_id'] as String);
+    expect(crlfAttachment.payload, ownAttachment.payload);
+    expect((crlfAttachment.payload['company_seal_snapshot'] as Map)['png_sha256'], originalSnapshot['png_sha256']);
     final journal = tradeConfirmationJson(TradeConfirmationPending(command).toJson());
     expect(journal.contains('png_base64'), false);
     expect(journal.contains('snapshot'), false);
@@ -125,8 +142,10 @@ void main() {
       addTearDown(repository.changes.close);
       if (mode == 'transport') repository.capabilityError = StateError('transport');
       final store = MemoryStore();
-      if (mode == 'unknown_pending') store.value = TradeConfirmationPending(TradeConfirmationCommand(
-        expected: TradeConfirmationDescriptor.parse(descriptor()), requestId: TradeConfirmationCommand.newRequestId()));
+      if (mode == 'unknown_pending') {
+        store.value = TradeConfirmationPending(TradeConfirmationCommand(
+          expected: TradeConfirmationDescriptor.parse(descriptor()), requestId: TradeConfirmationCommand.newRequestId()));
+      }
       TradeConfirmationFlowOutcome? outcome;
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: Builder(builder: (context) => TextButton(
         onPressed: () async { outcome = await Navigator.of(context).push<TradeConfirmationFlowOutcome>(MaterialPageRoute(builder: (_) =>

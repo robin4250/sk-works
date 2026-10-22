@@ -101,7 +101,7 @@ export async function verifyConfirmationApi(db,c){
  check(await confirm(ip,id(8105)),invoiceResult);check((await resolve('invoice',inv)).phase,'approved');
  check((await render(iw)).evidence.body.kind,'acceptance');
  if(process.env.SKO_TRADE_DOCUMENT_API_EXPORT){
-  await fs.writeFile(process.env.SKO_TRADE_DOCUMENT_API_EXPORT,JSON.stringify({synthetic_fixture:true,issued_workspace:w,issued_preview:p,confirmation:approved,received_list:list,received_workspace:rw,issued_render:issued,received_render:receivedRender,invoice_expected_command:ip.expected_command,invoice_confirmation:invoiceResult},null,2)+'\n');
+  await fs.writeFile(process.env.SKO_TRADE_DOCUMENT_API_EXPORT,JSON.stringify({synthetic_fixture:true,ordinary_assigned_workspace:member,issued_workspace:w,issued_preview:p,confirmation:approved,received_list:list,received_workspace:rw,issued_render:issued,received_render:receivedRender,invoice_expected_command:ip.expected_command,invoice_confirmation:invoiceResult},null,2)+'\n');
  }
  if(c.openNativePeer)console.log('LIMIT public API native: SQL-role sessions only; real JWT HTTP and concurrent API requests require the dedicated Auth stage');
  console.log('PASS public API candidate: current SQL session/role/issuer authority, idempotent parent and received workspaces, compact command, real invoice final approve, monthly unchanged parent, exact receipt replay, current/archive body, primitive bypass/session revocation refusals and registered PNG over 64KiB');
