@@ -1,0 +1,79 @@
+name: Attendance checkout minute guard
+on:
+  push:
+    branches: [fix/attendance-same-minute-checkout-20261021]
+  pull_request:
+    paths:
+      - 'lib/features/attendance/attendance_checkout_minute_guard.dart'
+      - 'lib/features/attendance/attendance_verification_page.dart'
+      - 'lib/features/attendance/attendance_management_page.dart'
+      - 'lib/features/attendance/group_checkout_dialog.dart'
+      - 'test/attendance_checkout_minute_guard_test.dart'
+      - 'test/attendance_management_clock_precision_test.dart'
+      - 'tool/verify_attendance_checkout_minute_guard.mjs'
+      - 'tool/security/attendance_minute_guard/**'
+      - '.github/workflows/attendance-checkout-minute-guard.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_trade_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_trade_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix tool/security/fixture_dependencies --no-audit --no-fund --ignore-scripts --no-save pg@8.16.3
+      - name: Verify actual PostgreSQL 17 trigger and rollback behavior
+        env:
+          SKO_TRADE_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_trade_fixture
+        run: node tool/verify_attendance_checkout_minute_guard.mjs "$(pwd)/tool/trade_document_pg_adapter.mjs"
+  sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix "$RUNNER_TEMP/minute-guard" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.3.14
+      - name: Verify candidate SQL and original source compatibility
+        run: node tool/verify_attendance_checkout_minute_guard.mjs "$RUNNER_TEMP/minute-guard/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Verify original GPS source and RLS contracts
+        run: node tool/verify_gps_shift_work_date.mjs "$RUNNER_TEMP/minute-guard/node_modules/@electric-sql/pglite/dist/index.js"
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Analyze changed client surfaces
+        run: flutter analyze lib/features/attendance/attendance_checkout_minute_guard.dart lib/features/attendance/attendance_verification_page.dart lib/features/attendance/attendance_management_page.dart lib/features/attendance/group_checkout_dialog.dart lib/features/help/menu_help_catalog.dart test/attendance_checkout_minute_guard_test.dart test/attendance_management_clock_precision_test.dart
+      - name: Verify minute rejection and existing save/recovery contracts
+        run: flutter test test/attendance_checkout_minute_guard_test.dart test/attendance_management_clock_precision_test.dart test/attendance_unrecorded_punches_test.dart test/attendance_shift_context_test.dart test/group_checkout_repository_test.dart test/group_checkout_dialog_test.dart test/capture_verification_draft_test.dart --reporter expanded

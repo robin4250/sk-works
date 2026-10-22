@@ -366,6 +366,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   }
 
   Future<void> _openConditions() async {
+    if (_busy || _dirty || _uncertain || _residentEditing) return;
     final generation = _generation;
     await widget.openConditions?.call(_month);
     if (mounted && generation == _generation && !_dirty) await _load();
@@ -392,6 +393,35 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         const Text('月を切り替える前に修正額の保存・読込の完了を確認してください。'),
       if (_busy) const LinearProgressIndicator(),
       if (_error != null) Text(_error!),
+      if (!_busy && _error == null && _profile == null)
+        Card(
+          key: const ValueKey('deduction-conditions-missing'),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('この月の本人の計算条件が未設定です。'),
+                const Text('空欄は保険料0円を意味しません。保存済みの金額は保持しています。'),
+                const ExpansionTile(
+                  title: Text('設定する条件について'),
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text('会社の料率に加えて、本人の加入条件・標準報酬月額を確認してください。介護保険では生年月日も必要です。正しい月額を個別入力する方法もあります。'),
+                    ),
+                  ],
+                ),
+                if (widget.openConditions != null)
+                  TextButton(
+                    onPressed: _dirty || _uncertain || _residentEditing
+                        ? null : _openConditions,
+                    child: const Text('本人の計算条件を確認'),
+                  ),
+              ],
+            ),
+          ),
+        ),
       for (final item in fixedPayrollDeductions)
         Card(
           key: ValueKey('fixed-deduction-${item.$1}'),
@@ -425,9 +455,6 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         ),
       if (_profile?['insurance_mode'] != 'rates' && _profile?['insurance_mode'] != 'manual' && widget.legacySocialAmount > 0)
         Text('保険料の個別計算条件を設定してください。以前の一括設定${widget.legacySocialAmount.toStringAsFixed(0)}円は保持されています。'),
-      if (_profile == null && widget.openConditions != null)
-        TextButton(onPressed: _busy ? null : _openConditions,
-          child: const Text('税・保険料の自動計算を設定')),
       FilledButton(onPressed: widget.canEdit && _allowed && _dirty && !_busy && !_uncertain ? _save : null,
         child: const Text('税・保険料を登録')),
       TextButton(onPressed: _busy ? null : _load, child: const Text('税・保険料を再読み込み')),
@@ -450,5 +477,6 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
     ],
   );
 }
+
 
 

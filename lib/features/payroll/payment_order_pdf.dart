@@ -4,6 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../domain/company_seal_snapshot.dart';
 import '../shared/company_seal_pdf.dart';
 import '../shared/trade_document_attachment.dart';
+import '../shared/trade_document_company_name_pdf.dart';
 
 class PaymentOrderPdf {
  const PaymentOrderPdf._();
@@ -22,11 +23,16 @@ class PaymentOrderPdf {
    style:pw.TextStyle(font:bold?boldFont:regularFont,fontSize:size,lineSpacing:compact?0:2));
   pw.Widget field(String name,Object? value)=>pw.Padding(padding:pw.EdgeInsets.only(bottom:compact?3:7),child:text('$name：${value??''}'));
   pw.Widget party(String title,Map<String,dynamic> value,{bool own=false})=>pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:[
-   text(title,bold:true),pw.SizedBox(height:5),field('社名','${value['name']}${own?'':'　御中'}'),field('住所',value['address']),
-   field('法人番号',value['corporate_number']),pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.center,children:[
-    pw.Expanded(child:field('代表者名',value['representative_name'])),
-    if(own&&sealOn)CompanySealPdf.build(seal.registeredName(issuer['name'].toString()),font:font,companyId:seal.companyId,uploadedPng:seal.uploadedPng,
-      fallbackFont:regularFont,style:seal.style,size:compact?40:48),]),]);
+   text(title,bold:true),pw.SizedBox(height:5),
+   if(own&&sealOn)TradeDocumentCompanyNamePdf.build(
+    name:value['name']?.toString()??'',textFont:regularFont,fontSize:size,
+    labelWidth:36,sealSize:compact?40:48,
+    seal:CompanySealPdf.build(seal.registeredName(issuer['name'].toString()),
+      font:font,companyId:seal.companyId,uploadedPng:seal.uploadedPng,
+      fallbackFont:regularFont,style:seal.style,size:compact?40:48),
+   )else field('社名','${value['name']}${own?'':'　御中'}'),
+   field('住所',value['address']),field('法人番号',value['corporate_number']),
+   field('代表者名',value['representative_name']),]);
   document.addPage(pw.Page(pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.all(36),build:(_)=>pw.Column(
    crossAxisAlignment:pw.CrossAxisAlignment.stretch,children:[
     pw.Center(child:pw.Text('注文書',style:pw.TextStyle(font:boldFont,fontSize:compact?18:22,letterSpacing:5))),
@@ -49,4 +55,5 @@ class PaymentOrderPdf {
   return value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'),(_)=>',');
  }
 }
+
 

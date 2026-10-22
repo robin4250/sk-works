@@ -1,0 +1,67 @@
+name: Invoice automatic acceptance for frozen sources
+on:
+  pull_request:
+    paths:
+      - 'lib/features/invoices/invoice_acceptance_resolver.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'test/invoice_acceptance_resolver_test.dart'
+      - 'test/invoice_order_acceptance_pdf_test.dart'
+      - '.github/workflows/invoice-automatic-locked-acceptance.yml'
+  push:
+    branches: ['fix/invoice-automatic-locked-acceptance-20261021']
+permissions:
+  contents: read
+jobs:
+  automatic-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - run: >-
+          flutter test
+          test/invoice_acceptance_resolver_test.dart
+          test/invoice_acceptance_workspace_guard_test.dart
+          test/invoice_order_acceptance_pdf_test.dart
+          test/invoice_acceptance_notice_test.dart
+          test/invoice_pdf_service_test.dart
+        env:
+          SKO_AUTOMATIC_PDF_OUTPUT_DIR: build/invoice-automatic-proof
+      - run: python -m pip install PyMuPDF==1.26.6
+      - name: Verify actual frozen/normal/saved/off pages and unchanged invoice rendering
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import fitz
+          folder = Path('build/invoice-automatic-proof')
+          expected = {'invoice-base': 1, 'invoice-locked-off': 1,
+                      'invoice-unlocked-auto': 2, 'invoice-locked-auto': 2,
+                      'invoice-locked-saved': 2}
+          assert {p.stem for p in folder.glob('*.pdf')} == set(expected)
+          with fitz.open(folder/'invoice-base.pdf') as base:
+              original = base[0].get_pixmap().samples
+              original_text = base[0].get_text()
+          for name, pages in expected.items():
+              with fitz.open(folder/(name+'.pdf')) as pdf:
+                  assert len(pdf) == pages, (name, len(pdf))
+                  assert pdf[0].get_pixmap().samples == original, name
+                  assert pdf[0].get_text() == original_text, name
+                  assert '110,000' in original_text and '100,000' in original_text and '10,000' in original_text
+                  if pages == 2:
+                      text = ''.join(pdf[1].get_text().split())
+                      assert '注文請書' in text and '株式会社受注' in text and '株式会社発注' in text, (name, text)
+                      assert '後から変更した現在印' not in text, name
+                      if name == 'invoice-locked-saved':
+                          assert '2026年10月20日' in text and '2026年10月15日' in text, text
+                      else:
+                          assert '2026年10月16日' in text and '2026-09-15' in text, text
+                  for index, page in enumerate(pdf):
+                      page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5)).save(folder/(name+f'-{index+1}.png'))
+          print('PASS: locked/normal 2 pages, saved original, auto OFF, and identical parent page pixels/text')
+          PY
+      - uses: actions/upload-artifact@v4
+        with: {name: invoice-automatic-acceptance-proof, path: build/invoice-automatic-proof/}

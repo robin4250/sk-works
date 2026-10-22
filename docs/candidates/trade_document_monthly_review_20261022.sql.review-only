@@ -1,0 +1,178 @@
+-- REVIEW ONLY: new monthly content-review receipt, NOT financial finalization.
+-- No public endpoint/grant and no update to payment_certificates or expense data.
+begin;
+do $$
+declare expected record;p pg_proc;
+begin
+ for expected in select * from (values
+ ('trade_document_consent_private.parent_binding(text,uuid,uuid,uuid)','8262dbf16ad4eb85f6322d5f8438778c'),
+ ('trade_document_consent_private.linked_view_allowed(text,uuid,uuid,integer,uuid)','fd5b32f78ad745b7f816a17fbd66e77d'),
+ ('trade_document_consent_private.require_actor(uuid)','672a165b2b721befce37aa706626be7c'),
+ ('trade_document_consent_private.own_seal(uuid)','fc0ca4038ae151980216657a46ddc58d'),
+ ('trade_document_consent_private.preview_own(uuid,integer,uuid)','479151769943b00bf76ebd4e31ed69b4'),
+ ('trade_document_consent_private.decide(uuid,integer,uuid,integer,text,text,text,boolean,uuid)','15b5a7a4a961cfee60da6be237c180ec'),
+ ('private.trade_document_source(text,uuid,text)','ebcc70935938482054943560390038b2')
+ ) v(signature,hash) loop
+ select * into p from pg_proc where oid=to_regprocedure(expected.signature);
+ if p.oid is null or md5(p.prosrc) is distinct from expected.hash or pg_get_userbyid(p.proowner)<>'postgres'
+ or not p.prosecdef or p.proconfig is distinct from array['search_path=""']::text[]
+ or p.prokind<>'f' or p.proretset or p.proisstrict or p.proleakproof or p.proparallel<>'u' or p.provariadic<>0
+ or (select lanname from pg_language where oid=p.prolang) is distinct from 'plpgsql'
+ or p.provolatile is distinct from (case when expected.signature like '%require_actor%' or expected.signature like '%linked_view_allowed%' then 's'::"char" else 'v'::"char" end)
+ or p.prorettype is distinct from (case when expected.signature like '%require_actor%' then 'void'::regtype when expected.signature like '%linked_view_allowed%' then 'boolean'::regtype else 'jsonb'::regtype end)
+ or (expected.signature='private.trade_document_source(text,uuid,text)' and p.proargnames is distinct from array['p_kind','p_subject','p_source_revision']::text[])
+ or has_function_privilege('anon',p.oid,'EXECUTE') or has_function_privilege('authenticated',p.oid,'EXECUTE')
+ or has_function_privilege('service_role',p.oid,'EXECUTE') then raise exception 'monthly review prerequisite changed: %',expected.signature;end if;
+ end loop;
+ if to_regclass('trade_document_consent_private.monthly_review_receipts') is not null
+ or to_regprocedure('trade_document_consent_private.monthly_binding(uuid,uuid,uuid)') is not null then
+ raise exception 'monthly review candidate already present';end if;
+end $$;
+
+create table trade_document_consent_private.monthly_review_receipts(
+ company_id uuid not null references public.companies(id),request_id uuid not null,actor_id uuid not null,
+ local_document_id uuid not null,document_id uuid not null,revision integer not null,
+ payload jsonb not null,parent_binding jsonb not null,result jsonb not null,recorded_at timestamptz not null default now(),
+ primary key(company_id,request_id),unique(document_id,revision),
+ foreign key(document_id,revision) references trade_document_consent_private.revisions(document_id,revision));
+alter table trade_document_consent_private.monthly_review_receipts enable row level security;
+revoke all on trade_document_consent_private.monthly_review_receipts from public,anon,authenticated,service_role;
+create trigger immutable_monthly_review_receipt before update or delete on trade_document_consent_private.monthly_review_receipts
+for each row execute function trade_document_consent_private.immutable();
+
+create function trade_document_consent_private.monthly_binding(parent_id uuid,own_company uuid,peer_company uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare parent jsonb;att private.trade_document_attachments%rowtype;counter_id uuid;links integer;target uuid;role_name text;link_state text;
+begin
+ -- Owner-only internal binding; callers enforce issuer/received document ACL.
+ select to_jsonb(p),p.partner_company_id into parent,counter_id from public.payment_certificates p where p.id=parent_id and p.company_id=own_company for share;
+ if parent is null then raise exception 'saved own monthly certificate required' using errcode='42501';end if;
+ select count(*) into links from public.trade_companies t where t.company_id=own_company and t.partner_company_id=counter_id;
+ if links<>1 then raise exception 'exact unique partner link required' using errcode='42501';end if;
+ select t.linked_company_id,t.trade_role::text,t.link_status::text into target,role_name,link_state from public.trade_companies t
+ where t.company_id=own_company and t.partner_company_id=counter_id for share;
+ if target is distinct from peer_company or role_name not in('subcontractor','both') or role_name is null or link_state is distinct from 'linked' then
+ raise exception 'formal monthly counterparty mismatch' using errcode='42501';end if;
+ select * into att from private.trade_document_attachments where subject_kind='payment_certificate' and subject_id=parent_id and company_id=own_company for share;
+ if att.subject_id is null or att.source_revision is distinct from parent->>'revision' then raise exception 'saved current monthly attachment required' using errcode='40001';end if;
+ return jsonb_build_object('parent_revision',parent->>'revision','parent_fingerprint',md5(parent::text),
+ 'content_fingerprint',md5((parent-'updated_at')::text),
+ 'attachment_version',att.version,'attachment_source_revision',att.source_revision,'attachment_source_fingerprint',att.source_fingerprint,
+ 'attachment_fingerprint',md5(att.payload::text),'attachment_payload',att.payload-array['company_seal_snapshot','company_seal_enabled'],
+ 'monthly_review_only',true,'financial_status',parent->'status','finalized_at',parent->'finalized_at');
+end $$;
+
+create function trade_document_consent_private.monthly_view_allowed(parent_id uuid,doc uuid,rev integer,cid uuid) returns boolean
+language plpgsql stable security definer set search_path='' as $$
+declare d trade_document_consent_private.documents%rowtype;
+begin
+ perform trade_document_consent_private.require_actor(cid);
+ select * into d from trade_document_consent_private.documents where id=doc;
+ return d.id is not null and cid in(d.issuer_company_id,d.counterparty_company_id)
+ and exists(select 1 from trade_document_consent_private.local_links where company_id=cid and document_id=doc)
+ and exists(select 1 from trade_document_consent_private.monthly_review_receipts r where r.document_id=doc and r.revision=rev
+ and r.company_id=d.issuer_company_id and r.parent_binding->>'parent_id'=parent_id::text);
+end $$;
+
+-- The two existing private callbacks are copied verbatim below except for their
+-- narrowly added monthly branch, guarded by the exact original body above.
+create or replace function trade_document_consent_private.parent_binding(kind text,parent_id uuid,own_company uuid,peer_company uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare parent jsonb;att private.trade_document_attachments%rowtype;counter_id uuid;links int;target uuid;role_name text;link_state text;source_revision text;
+begin
+ if kind='invoice' then
+ select to_jsonb(i),i.customer_id,i.updated_at::text into parent,counter_id,source_revision from public.invoices i where i.id=parent_id and i.company_id=own_company for share;
+ select count(*) into links from public.trade_companies t where t.company_id=own_company and t.customer_id=counter_id;
+ if links<>1 then raise exception 'exact unique customer link required' using errcode='42501';end if;
+ select t.linked_company_id,t.trade_role::text,t.link_status::text into target,role_name,link_state from public.trade_companies t where t.company_id=own_company and t.customer_id=counter_id for share;
+ if role_name is null or role_name not in('customer','both') then raise exception 'customer company role required' using errcode='42501';end if;
+ elsif kind='payment_certificate' then
+ return trade_document_consent_private.monthly_binding(parent_id,own_company,peer_company);
+ else raise exception 'invoice parent required';end if;
+ if parent is null or target is distinct from peer_company or link_state is distinct from 'linked' then raise exception 'formal counterparty FK mismatch' using errcode='42501';end if;
+ select * into att from private.trade_document_attachments where subject_kind=kind and subject_id=parent_id and company_id=own_company for share;
+ if att.subject_id is null then raise exception 'saved attachment required';end if;
+ return jsonb_build_object('parent_revision',source_revision,'parent_fingerprint',md5(parent::text),
+ 'content_fingerprint',md5(jsonb_build_object('row',parent-array['updated_at','approval_finalized_at','invoice_seal_frozen','snapshot'],
+ 'snapshot',coalesce(parent->'snapshot','{}')-'company_seal_snapshot')::text),
+ 'attachment_version',att.version,'attachment_source_revision',att.source_revision,'attachment_source_fingerprint',att.source_fingerprint,
+ 'attachment_fingerprint',md5(att.payload::text),'attachment_payload',att.payload-array['company_seal_snapshot','company_seal_enabled'],
+ 'internal_confirmation',jsonb_build_object('approval_finalized_at',parent->'approval_finalized_at','financial_status',parent->'status','separate_from_explicit_seal_consent',true));
+end $$;
+
+create or replace function trade_document_consent_private.linked_view_allowed(kind text,parent_id uuid,doc uuid,rev int,cid uuid) returns boolean
+language plpgsql stable security definer set search_path='' as $$
+declare issuer uuid;recipient uuid;
+begin
+ if auth.uid() is null or private.account_access_allowed() is not true or not exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid() and role::text in('owner','admin')) then return false;end if;
+ if kind='payment_certificate' then return trade_document_consent_private.monthly_view_allowed(parent_id,doc,rev,cid);end if;
+ select issuer_company_id,counterparty_company_id into issuer,recipient from trade_document_consent_private.documents where id=doc;
+ if not exists(select 1 from trade_document_consent_private.local_links where company_id=cid and document_id=doc) then return false;end if;
+ if cid=issuer then return kind='invoice' and private.has_company_feature(cid,'can_view_invoices') is true and exists(select 1 from public.invoices where id=parent_id and company_id=cid);end if;
+ -- Explicit independent received-document ACL, not access to the issuer's financial row.
+ return cid=recipient and exists(select 1 from trade_document_consent_private.revisions where document_id=doc and revision=rev and state='approved');
+end $$;
+
+create function trade_document_consent_private.preview_monthly_review(local_id uuid,cid uuid,rev integer) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;binding jsonb;result jsonb;parent jsonb;source jsonb;
+begin
+ perform trade_document_consent_private.require_actor(cid);
+ select x.* into d from trade_document_consent_private.documents x join trade_document_consent_private.local_links l on l.document_id=x.id
+ where l.company_id=cid and l.local_document_id=local_id;
+ if d.id is null or d.issuer_company_id<>cid or d.document_kind<>'order' then raise exception 'own monthly order required' using errcode='42501';end if;
+ select * into r from trade_document_consent_private.revisions where document_id=d.id and revision=rev;
+ if r.binding->>'parent_kind' is distinct from 'payment_certificate' then raise exception 'saved monthly parent required' using errcode='22023';end if;
+ result:=trade_document_consent_private.preview_own(d.id,rev,cid);
+ select to_jsonb(p) into parent from public.payment_certificates p where p.id=(r.binding->>'parent_id')::uuid and p.company_id=cid for share;
+ if parent is null or parent->>'status' is distinct from 'draft' or parent->>'finalized_at' is not null
+ or parent->'calculation_blocked' is distinct from 'false'::jsonb then raise exception 'unfinalized ready monthly certificate required' using errcode='55000';end if;
+ source:=private.trade_document_source('payment_certificate',(r.binding->>'parent_id')::uuid,parent->>'revision');
+ if source->>'source_fingerprint' is distinct from r.binding->>'attachment_source_fingerprint' then raise exception 'monthly attachment source changed' using errcode='40001';end if;
+ binding:=trade_document_consent_private.monthly_binding((r.binding->>'parent_id')::uuid,cid,d.counterparty_company_id);
+ binding:=(binding-'attachment_payload')||jsonb_build_object('parent_kind','payment_certificate','parent_id',r.binding->'parent_id');
+ if binding is distinct from r.binding then raise exception 'monthly parent or attachment changed' using errcode='40001';end if;
+ return result||jsonb_build_object('local_document_id',local_id,'monthly_review_only',true,'financial_finalized',false);
+end $$;
+
+create function trade_document_consent_private.confirm_monthly_review(local_id uuid,cid uuid,rev integer,expected jsonb,rid uuid,monthly_confirmed boolean,seal_confirmed boolean) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;
+ receipt trade_document_consent_private.monthly_review_receipts%rowtype;payload jsonb;current_preview jsonb;seal_result jsonb;result jsonb;binding jsonb;
+begin
+ perform trade_document_consent_private.require_actor(cid);
+ if rid is null or jsonb_typeof(expected) is distinct from 'object' or octet_length(expected::text)>65536 then raise exception 'exact original request required' using errcode='22023';end if;
+ select x.* into d from trade_document_consent_private.documents x join trade_document_consent_private.local_links l on l.document_id=x.id
+ where l.company_id=cid and l.local_document_id=local_id;
+ if d.id is null or d.issuer_company_id<>cid or d.document_kind<>'order' then raise exception 'own monthly order required' using errcode='42501';end if;
+ perform 1 from public.companies where id in(d.issuer_company_id,d.counterparty_company_id) order by id for update;
+ payload:=jsonb_build_object('local_document_id',local_id,'company_id',cid,'revision',rev,'expected',expected,'monthly_confirmed',monthly_confirmed,'seal_confirmed',seal_confirmed);
+ select * into receipt from trade_document_consent_private.monthly_review_receipts where company_id=cid and request_id=rid for update;
+ if found then
+ if receipt.actor_id<>auth.uid() or receipt.payload is distinct from payload then raise exception 'monthly request payload or actor mismatch' using errcode='22023';end if;
+ return receipt.result;end if;
+ if monthly_confirmed is distinct from true or seal_confirmed is distinct from true then raise exception 'both explicit monthly review and own seal choices required' using errcode='22023';end if;
+ select * into r from trade_document_consent_private.revisions where document_id=d.id and revision=rev;
+ if r.binding->>'parent_kind' is distinct from 'payment_certificate' then raise exception 'saved monthly parent required' using errcode='22023';end if;
+ perform 1 from public.payment_certificates where id=(r.binding->>'parent_id')::uuid and company_id=cid for update;
+ perform 1 from private.trade_document_attachments where subject_kind='payment_certificate' and subject_id=(r.binding->>'parent_id')::uuid for update;
+ perform pg_advisory_xact_lock(hashtextextended('trade-document-consent:'||d.id::text,0));
+ current_preview:=trade_document_consent_private.preview_monthly_review(local_id,cid,rev);
+ if current_preview is distinct from expected then raise exception 'monthly review source changed' using errcode='40001';end if;
+ seal_result:=trade_document_consent_private.decide(d.id,rev,cid,(expected->>'epoch')::integer,expected->>'body_hash','approve',expected#>>'{own_seal,seal_hash}',true,rid);
+ binding:=trade_document_consent_private.monthly_binding((r.binding->>'parent_id')::uuid,cid,d.counterparty_company_id);
+ binding:=(binding-'attachment_payload')||jsonb_build_object('parent_kind','payment_certificate','parent_id',r.binding->'parent_id');
+ if binding is distinct from r.binding then raise exception 'monthly parent changed during review' using errcode='40001';end if;
+ result:=jsonb_build_object('contract','monthly_content_review_v1','request_id',rid,'company_id',cid,'document_id',d.id,'revision',rev,
+ 'monthly_review_recorded',true,'seal_consent_recorded',true,'financial_finalized',false,'financial_parent_unchanged',true,'seal_result',seal_result);
+ insert into trade_document_consent_private.monthly_review_receipts(company_id,request_id,actor_id,local_document_id,document_id,revision,payload,parent_binding,result)
+ values(cid,rid,auth.uid(),local_id,d.id,rev,payload,binding,result);
+ return result;
+end $$;
+
+revoke all on function trade_document_consent_private.monthly_binding(uuid,uuid,uuid),
+ trade_document_consent_private.monthly_view_allowed(uuid,uuid,integer,uuid),
+ trade_document_consent_private.preview_monthly_review(uuid,uuid,integer),
+ trade_document_consent_private.confirm_monthly_review(uuid,uuid,integer,jsonb,uuid,boolean,boolean)
+from public,anon,authenticated,service_role;
+commit;

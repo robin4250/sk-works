@@ -4,15 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/attendance/attendance_management_page.dart';
 import 'package:sk_works/features/attendance/attendance_management_repository.dart';
+import 'package:sk_works/features/attendance/attendance_checkout_minute_guard.dart';
 
 import 'attendance_unrecorded_punches_test.dart' as fixture;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  for (final editStart in [false, true]) {
+  for (final scenario in ['preserve', 'edit', 'reject']) {
+    final editStart = scenario == 'edit';
+    final sameMinute = scenario == 'reject';
     testWidgets(
-      editStart
+      sameMinute
+          ? 'same minute rejects before any management write even when seconds differ'
+          : editStart
           ? 'edited time uses the entered minute while untouched end retains precision'
           : 'confirming quantity preserves both original clock timestamps',
       (tester) async {
@@ -26,7 +31,7 @@ void main() {
           siteId: fixture.site,
           hasUnrecordedPunches: true,
           clockIn: DateTime(2026, 10, 13, 1, 13, 20, 264, 851),
-          clockOut: DateTime(2026, 10, 13, 1, 13, 26, 155, 896),
+          clockOut: DateTime(2026, 10, 13, 1, sameMinute ? 13 : 14, 26, 155, 896),
         );
         addTearDown(() async {
           await tester.pumpWidget(const SizedBox.shrink());
@@ -63,6 +68,12 @@ void main() {
         expect(save.hitTestable(), findsOneWidget);
         await tester.tap(save);
         await tester.pumpAndSettle();
+        if (sameMinute) {
+          expect(find.text(sameMinuteCheckoutMessage), findsOneWidget);
+          expect(f.calls.where(
+            (r) => r.url.path == '/rest/v1/rpc/force_manage_attendance'), isEmpty);
+          return;
+        }
         final request = f.calls.singleWhere(
           (r) => r.url.path == '/rest/v1/rpc/force_manage_attendance',
         );
@@ -70,8 +81,9 @@ void main() {
         final item = (payload['p_items'] as List).single as Map<String, dynamic>;
         expect(item['man_days'], 1);
         expect(item['clock_in'], editStart ? '02:45' : '01:13:20.264851');
-        expect(item['clock_out'], '01:13:26.155896');
+        expect(item['clock_out'], '01:14:26.155896');
       },
     );
   }
 }
+

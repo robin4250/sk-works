@@ -1,7 +1,5 @@
 name: Trade document bound seal consent review
 on:
-  push:
-    branches: ['support/trade-document-bound-seal-consent-*']
   pull_request:
     paths:
       - 'docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only'
@@ -9,11 +7,17 @@ on:
       - 'tool/trade_document_invoice_confirmation_fixture.mjs'
       - 'tool/trade_document_invoice_confirmation_races.mjs'
       - 'tool/verify_trade_document_bound_seal_consent.mjs'
+      - 'docs/candidates/trade_document_monthly_review_20261022.sql.review-only'
+      - 'docs/review/monthly-payment-confirmation-contract-20261022.md'
+      - 'docs/review/monthly-payment-review-proof-20261022.md'
+      - 'tool/trade_document_monthly_review_fixture.mjs'
       - '.github/workflows/trade-document-bound-seal-consent.yml'
 permissions:
   contents: read
 jobs:
   isolated-sql:
+    env:
+      SKO_MONTHLY_PAYMENT_REVIEW_HOOK: contract-v1
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -35,10 +39,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: npm install --prefix /tmp/sko-consent --no-save --ignore-scripts @electric-sql/pglite@0.3.14 pg@8.16.3
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - if: matrix.runtime == 'pglite'
-        run: node tool/verify_trade_document_bound_seal_consent.mjs /tmp/sko-consent/node_modules/@electric-sql/pglite/dist/index.js
+        run: node tool/verify_trade_document_bound_seal_consent.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
       - if: matrix.runtime == 'postgres'
-        run: node tool/verify_trade_document_bound_seal_consent.mjs /tmp/sko-consent/node_modules/pg/lib/index.js postgres
+        run: node tool/verify_trade_document_bound_seal_consent.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
         env:
           SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture

@@ -25,6 +25,7 @@ class PaymentOrderResolver {
         workspace['source_blocked'] != false) {
       throw StateError('注文書の元帳票を確認できません。');
     }
+    if (workspace['auto_generate'] == false || (workspace['template'] as Map?)?['auto_generate'] == false) return null;
     final defaults = Map<String, dynamic>.from(workspace['defaults'] as Map);
     for (final key in ['total_amount_yen', 'tax_amount_yen']) {
       final amount = defaults[key];
@@ -71,3 +72,4 @@ class PaymentOrderResolver {
     return result;
   }
 }
+

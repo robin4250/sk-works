@@ -149,5 +149,9 @@ await db.exec(await fs.readFile(new URL('../supabase/migrations/20261014124714_m
  await db.exec('set role anon');await deny(()=>db.query('select trade_document_consent_private.own_seal($1)',[B]),/permission denied/);await db.exec('reset role');
  check(await q('select count(*)::int v from payment_certificates'),1);check(await q('select count(*)::int v from invoices'),1);
  await (await import('./trade_document_invoice_confirmation_fixture.mjs')).verifyInvoiceConfirmation(db,{id,A,B,UA,UB,UV,INV,CUSTOMER,actor,q,check,deny,localId,render,openNativePeer});
+ if(process.env.SKO_MONTHLY_PAYMENT_REVIEW_HOOK){
+  if(process.env.SKO_MONTHLY_PAYMENT_REVIEW_HOOK!=='contract-v1')throw Error('unknown monthly review fixture hook');
+  await (await import('./trade_document_monthly_review_fixture.mjs')).verifyMonthlyReview(db,{id,A,B,C,UA,UB,UV,UC,PARTNER,actor,q,check,deny,localId,render,upload,openNativePeer});
+ }
  console.log('PASS '+n+' bound consent checks; separate company local IDs and directional kinds, issuer-only explicit seal consent, identical received copy without extra approval, official v1/v2 source, change/replay/rotation/denial, actual attachment binding, no parent financial writes; private invoice adapter separately checked; public API/UI/monthly-payment integration UNIMPLEMENTED');
 }finally{await db.close();}

@@ -267,7 +267,7 @@ class _InvoiceSettingsPageState extends State<InvoiceSettingsPage> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      const TradeDocumentTemplateSettingsButton(subjectKind: 'invoice'),
+                      const TradeDocumentTemplateSettingsSection(subjectKind: 'invoice'),
                       const SizedBox(height: 12),
                       Card(
                         child: ListTile(
@@ -590,3 +590,4 @@ class _Section extends StatelessWidget {
     );
   }
 }
+

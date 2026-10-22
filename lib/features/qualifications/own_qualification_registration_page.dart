@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -36,6 +38,7 @@ class _OwnQualificationRegistrationPageState
   List<Map<String, dynamic>> _qualifications = const [];
   String _query = '';
   bool _loading = true;
+  bool _registrationDialogOpen = false;
   String? _error;
 
   @override
@@ -332,12 +335,20 @@ class _OwnQualificationRegistrationPageState
     DateTime? issuedAt;
     DateTime? expiresAt;
 
+    setState(() => _registrationDialogOpen = true);
+    Future<dynamic>? dialogCompleted;
     final draft = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext) {
+        dialogCompleted ??= ModalRoute.of(dialogContext)?.completed;
+        return StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          constraints: const BoxConstraints(maxWidth: 560),
           title: const Text('自分の資格を登録'),
-          content: SingleChildScrollView(
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -350,6 +361,7 @@ class _OwnQualificationRegistrationPageState
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
+                isExpanded: true,
                   initialValue: masterId,
                   decoration: const InputDecoration(labelText: '資格種類'),
                   items: [
@@ -406,6 +418,7 @@ class _OwnQualificationRegistrationPageState
               ],
             ),
           ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
@@ -426,12 +439,24 @@ class _OwnQualificationRegistrationPageState
             ),
           ],
         ),
-      ),
+        );
+      },
     );
 
-    certificateController.dispose();
-    issuerController.dispose();
-    notesController.dispose();
+    void disposeDraft() {
+      certificateController.dispose();
+      issuerController.dispose();
+      notesController.dispose();
+      if (mounted) {
+        setState(() => _registrationDialogOpen = false);
+      }
+    }
+    final completed = dialogCompleted;
+    if (completed == null) {
+      disposeDraft();
+    } else {
+      unawaited(completed.then((_) => disposeDraft()));
+    }
     if (draft == null) return;
 
     try {
@@ -587,6 +612,7 @@ class _OwnQualificationRegistrationPageState
         .toList(growable: false);
 
     return Scaffold(
+      resizeToAvoidBottomInset: !_registrationDialogOpen,
       appBar: AppBar(
         title: const Text(
           '資格登録',

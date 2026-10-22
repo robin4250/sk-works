@@ -99,6 +99,8 @@ class InvoicePdfService {
                 subjectKind: 'invoice', subjectId: invoice.invoiceId,
                 sourceRevision: DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String()),
               issueDate: invoice.issueDate,
+              parentSealSnapshot: invoice.companySealSnapshot,
+              parentSealEnabled: effectiveSettings?.companySealEnabled != false,
               onMissingLockedAcceptance: onMissingLockedAcceptance,
             );
       final expenses = expenseDetailsByInvoice?[invoice.invoiceId] ?? (invoice.periodStart == null ? null : await ExpenseDocumentRepository.load(ExpenseDocument.invoice, invoice.invoiceId, invoice.periodStart!, updatedAt:invoice.documentUpdatedAt));
@@ -1258,14 +1260,6 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     return TradeDocumentActorBoundary(child: Scaffold(
       appBar: AppBar(
         title: Text(widget.title ?? '請求書PDFプレビュー'),
-        actions: [
-          if (_singleInvoice?.invoiceId.isNotEmpty == true &&
-              _singleInvoice?.documentUpdatedAt != null)
-            TextButton(
-              onPressed: _openingAcceptance ? null : _openAcceptanceEditor,
-              child: const Text('注文請書'),
-            ),
-        ],
       ),
       body: FutureBuilder<_InvoicePreviewData>(
         future: _previewData,
@@ -1296,6 +1290,14 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
               );
               return Column(
                 children: [
+                  if (previewData.missingAcceptanceCount == 0 &&
+                      _singleInvoice?.invoiceId.isNotEmpty == true &&
+                      _singleInvoice?.documentUpdatedAt != null)
+                    TextButton.icon(
+                      onPressed: _openingAcceptance ? null : _openAcceptanceEditor,
+                      icon: const Icon(Icons.description_outlined),
+                      label: const Text('この注文請書を確認・編集'),
+                    ),
                   if (previewData.missingAcceptanceCount > 0)
                     InvoiceAcceptanceNotice(
                       missingCount: previewData.missingAcceptanceCount,
@@ -2168,3 +2170,5 @@ class _ScreenApprovals extends StatelessWidget {
     ],
   );
 }
+
+

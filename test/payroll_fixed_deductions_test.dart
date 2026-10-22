@@ -399,7 +399,7 @@ void main() {
   testWidgets('returning from initial conditions reloads generated deductions', (t) async {
     final b = _Backend()..hasConditions = false;
     await _mount(t, b, conditions: (_) async { b.hasConditions = true; });
-    final setup = find.widgetWithText(TextButton, '税・保険料の自動計算を設定');
+    final setup = find.widgetWithText(TextButton, '本人の計算条件を確認');
     await t.ensureVisible(setup);
     await t.pumpAndSettle();
     await t.tap(setup);
@@ -414,7 +414,7 @@ void main() {
     final b = _Backend()..hasConditions = false;
     String? inspected;
     await _mount(t, b, conditions: (month) async { inspected = month; });
-    final setup = find.widgetWithText(TextButton, '税・保険料の自動計算を設定');
+    final setup = find.widgetWithText(TextButton, '本人の計算条件を確認');
     await t.ensureVisible(setup);
     await t.pumpAndSettle();
     await t.tap(setup);
@@ -522,7 +522,69 @@ void main() {
     expect(t.widget<FilledButton>(find.widgetWithText(FilledButton, '税・保険料を登録')).onPressed, isNull);
     expect(t.takeException(), isNull);
   });
+  testWidgets('missing conditions explains blank amounts and keeps saved tax and resident values', (t) async {
+    final b = _Backend()..hasConditions = false;
+    var opened = 0;
+    await _mount(t, b, conditions: (selected) async {
+      expect(selected, month);
+      opened++;
+    }, residentBuilder: (_, __) => const Text('住民税2500円'),
+    reader: (_, _, _) async => {
+      'calculation_blocked': false,
+      'detail': {'所得税': 1500, '住民税': 2500},
+    });
+    expect(find.byKey(const ValueKey('deduction-conditions-missing')), findsOneWidget);
+    expect(find.textContaining('空欄は保険料0円を意味しません'), findsOneWidget);
+    expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1500');
+    expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, isEmpty);
+    expect(find.text('住民税2500円'), findsOneWidget);
+    final link = find.widgetWithText(TextButton, '本人の計算条件を確認');
+    await t.ensureVisible(link);
+    await t.tap(link);
+    await t.pumpAndSettle();
+    expect(opened, 1);
+    expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1500');
+    expect(b.writes, 0);
+  });
+
+  testWidgets('failed read does not claim conditions are missing', (t) async {
+    final b = _Backend()..hasConditions = false;
+    await _mount(t, b, conditions: (_) async {}, reader: (_, _, _) async {
+      throw StateError('offline');
+    });
+    expect(find.byKey(const ValueKey('deduction-conditions-missing')), findsNothing);
+    expect(find.textContaining('計算結果を取得できません'), findsOneWidget);
+    expect(find.text('本人の計算条件を確認'), findsNothing);
+    expect(b.writes, 0);
+  });
+
+  for (final uncertain in [false, true]) {
+    testWidgets('conditions navigation preserves ${uncertain ? 'uncertain' : 'dirty'} correction', (t) async {
+      final b = _Backend();
+      var opened = 0;
+      await _mount(t, b, conditions: (_) async { opened++; });
+      await t.ensureVisible(amount('income_tax'));
+      await t.enterText(amount('income_tax'), '1234');
+      if (uncertain) {
+        b.failSave = true;
+        await save(t);
+      }
+      final formula = find.descendant(of: card('income_tax'),
+          matching: find.text('計算式・設定'));
+      await t.ensureVisible(formula);
+      await t.tap(formula);
+      await t.pumpAndSettle();
+      await t.tap(find.text('個別の計算条件'));
+      await t.pumpAndSettle();
+      expect(opened, 0);
+      expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1234');
+      expect(b.writes, 0);
+      expect(t.takeException(), isNull);
+    });
+  }
+
 }
+
 
 
 

@@ -12,6 +12,7 @@ import '../notifications/notification_bell.dart';
 import 'attendance_cloud_repository.dart';
 import 'attendance_verification_repository.dart';
 import 'attendance_shift_context.dart';
+import 'attendance_checkout_minute_guard.dart';
 import 'gps_photo_capture_controller.dart';
 import 'gps_photo_capture_result.dart';
 import 'capture_verification_draft.dart';
@@ -681,6 +682,12 @@ class _AttendanceVerificationPageState
         return;
       }
       if (workerId == null) { throw StateError('社員情報を確認してください'); }
+      // Recover already-saved/uncertain requests above before checking a new end.
+      // Fail before requesting a new photograph, location or signature.
+      if (_eventType == 'clock_out' && _shift != null &&
+          isSameAttendanceMinute(_shift!.clockIn, DateTime.now())) {
+        throw StateError(sameMinuteCheckoutMessage);
+      }
       if (_mode == 'gps_auto') {
         if (!mounted) return;
         final allowed = await ensureGpsAutoLocationPermission(context);
@@ -908,6 +915,13 @@ class _AttendanceVerificationPageState
         return;
       }
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      if (isSameMinuteCheckoutError(error)) {
+        _unconfirmedCheckout = null;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(sameMinuteCheckoutMessage)),
+        );
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_savedCaptureVerification != null
             ? '勤怠は登録済みです。日報を開けませんでした: $error'
@@ -1088,3 +1102,4 @@ class _ReadOnlySelectionCard extends StatelessWidget {
     );
   }
 }
+

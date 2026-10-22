@@ -39,6 +39,8 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
 
   List<Map<String, dynamic>> _workers = [];
   List<Map<String, dynamic>> _requirements = [];
+  List<Map<String, dynamic>> _retainedRequirements = [];
+  List<Map<String, dynamic>> _archivedRequirements = [];
   List<Map<String, dynamic>> _statuses = [];
   bool _loading = true;
   bool _canManageRequirements = false;
@@ -84,6 +86,9 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       setState(() {
         _workers = workers;
         _requirements = data['requirements'] ?? const <Map<String, dynamic>>[];
+        _retainedRequirements = data['retained_requirements'] ?? _requirements;
+        _archivedRequirements = _retainedRequirements
+            .where((row) => row['archived_at'] != null).toList();
         _statuses = data['statuses'] ?? const <Map<String, dynamic>>[];
         _canManageRequirements = values[1] as bool;
         _canManageStatuses = values[2] as bool;
@@ -375,7 +380,19 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   Widget _buildSettings() {
     final rows = _requirements.where((r) => workerDocumentMatchesScope(r['scope'], _scope)).toList();
     return Scaffold(
-      appBar: AppBar(title: Text(SkoLanguageController.tr('必要書類設定'))),
+      appBar: AppBar(
+        title: Text(SkoLanguageController.tr('必要書類設定')),
+        actions: [IconButton(
+          tooltip: '必要書類設定のヘルプ', icon: const Icon(Icons.help_outline),
+          onPressed: () => showDialog<void>(context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('必要書類の表示と削除'),
+              content: const Text('チェックは本人の書類登録への表示・非表示です。不要な重複項目は、ごみ箱から管理一覧と選択候補から削除できます。社内・取引先共用の項目は両方から外れます。\n\n提出済みデータ・添付写真・履歴・送信済みデータは保持します。削除済み項目は元の登録IDで復元でき、非表示で戻ります。表示する場合はチェックを入れてください。'),
+              actions: [TextButton(onPressed: () => Navigator.pop(context),
+                child: const Text('閉じる'))],
+            )),
+        )],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -422,6 +439,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                     SkoLanguageController.tr('チェックした項目を本人の「書類登録」に表示します。'),
                   ),
                 ),
+                if (_archivedRequirements.isNotEmpty)
+                  TextButton(
+                    onPressed: _showArchivedRequirements,
+                    child: Text('削除済みの項目（${_archivedRequirements.length}件）'),
+                  ),
                 Expanded(
                   child: rows.isEmpty
                       ? Center(
@@ -461,6 +483,14 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                               },
                                       ),
                                     ),
+                                    IconButton(
+                                      tooltip: row.containsKey('archived_at')
+                                          ? '書類項目を削除' : '項目削除は準備中です',
+                                      icon: const Icon(Icons.delete_outline),
+                                      onPressed: !row.containsKey('archived_at') ||
+                                          _visibilitySaving.contains(row['id'])
+                                          ? null : () => _changeRequirementArchive(row),
+                                    ),
                                     if (row['is_active'] != false)
                                       IconButton(
                                         tooltip: SkoLanguageController.tr('編集'),
@@ -477,6 +507,69 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
               ],
             ),
     );
+  }
+
+  Future<void> _showArchivedRequirements() async {
+    final selected = await showDialog<Map<String, dynamic>>(
+      context: context, builder: (context) => AlertDialog(
+        title: const Text('削除済みの書類項目'),
+        content: SizedBox(width: 420, height: 280,
+          child: ListView(children: [for (final row in _archivedRequirements)
+            ListTile(title: Text(row['name']?.toString() ?? '書類'),
+              subtitle: Text(workerDocumentScopeLabel(row['scope'])),
+              trailing: TextButton(onPressed: () => Navigator.pop(context, row),
+                child: const Text('復元'))),
+          ])),
+        actions: [TextButton(onPressed: () => Navigator.pop(context),
+          child: const Text('閉じる'))],
+      ));
+    if (selected != null && mounted) {
+      await _changeRequirementArchive(selected, restore: true);
+    }
+  }
+
+  Future<void> _changeRequirementArchive(
+    Map<String, dynamic> row, {bool restore = false}
+  ) async {
+    final id = row['id']?.toString();
+    final actor = _loadedActorId;
+    final repository = _repository;
+    if (!_canManageRequirements || repository == null || id == null ||
+        _visibilitySaving.contains(id)) {
+      return;
+    }
+    setState(() => _visibilitySaving.add(id));
+    try {
+      final confirmed = await showDialog<bool>(context: context,
+        builder: (context) => AlertDialog(
+          title: Text(restore ? '書類項目を復元' : '書類項目を削除'),
+          content: Text(restore
+              ? '${row['name']}を元の登録IDで復元します。提出済みデータと履歴を引き継ぎ、本人への表示はオフで戻します。'
+              : '${row['name']}を管理一覧と選択候補から削除します。提出済みデータ・添付・履歴・送信済みデータは保持します。${row['scope'] == 'both' ? '社内・取引先の両方から外れます。' : ''}'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false),
+              child: const Text('キャンセル')),
+            FilledButton(onPressed: () => Navigator.pop(context, true),
+              child: Text(restore ? '復元' : '削除')),
+          ],
+        ));
+      if (confirmed != true || !mounted) return;
+      if (actor == null || repository.actorId != actor) {
+        throw StateError('ログイン情報が変更されました。再読み込みしてください。');
+      }
+      if (restore) {
+        await repository.restoreRequirement(row);
+      } else {
+        await repository.archiveRequirement(row);
+      }
+      if (mounted) await _load();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _visibilitySaving.remove(id));
+    }
   }
 
   Future<void> _setRequirementVisible(Map<String, dynamic> row, bool visible) async {
@@ -588,9 +681,11 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     final selected = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        constraints: const BoxConstraints(maxWidth: 560),
         title: const Text('必要書類を選択'),
         content: SizedBox(
-          width: 420,
+          width: double.maxFinite,
           child: ListView(
             shrinkWrap: true,
             children: [
@@ -648,10 +743,13 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          constraints: const BoxConstraints(maxWidth: 560),
           title: Text(
             SkoLanguageController.tr(current == null ? '必要書類を追加' : '必要書類を編集'),
           ),
-          content: SingleChildScrollView(
+          content: SizedBox(width: double.maxFinite,
+            child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -662,6 +760,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: scope,
                   decoration: const InputDecoration(labelText: '用途'),
                   items: const [
@@ -690,6 +789,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
               ],
             ),
           ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
@@ -698,6 +798,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
             FilledButton(
               onPressed: () {
                 if (nameController.text.trim().isEmpty) return;
+                if (current == null && _archivedRequirements.any(
+                  (row) => row['name']?.toString().trim() == nameController.text.trim(),
+                )) {
+                  setDialogState(() => nameError = '削除済みの同名項目があります。「削除済みの項目」から復元してください。');
+                  return;
+                }
                 if (current == null && _requirements.any(
                   (row) => row['name']?.toString().trim() == nameController.text.trim(),
                 )) {
@@ -763,7 +869,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WorkerDocumentChangeReviewPage(
         repository: changes, companyId: membership.companyId,
         workerNames: {for (final row in _workers) row['id'].toString(): row['name']?.toString() ?? '対象者'},
-        requirementNames: {for (final row in _requirements) row['id'].toString(): row['name']?.toString() ?? '書類'},
+        requirementNames: {for (final row in _retainedRequirements) row['id'].toString(): row['name']?.toString() ?? '書類'},
         isCurrent: () => mounted && actor == repository.actorId,
       )));
     } finally { await changes.dispose(); }
@@ -1209,5 +1315,6 @@ class WorkerDocumentEntryChoices extends StatelessWidget {
     ],
   );
 }
+
 
 
