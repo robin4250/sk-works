@@ -1,0 +1,508 @@
+{
+  "company_state": {
+    "items": [],
+    "version": 1,
+    "can_edit": true,
+    "tax_rate": 10,
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "legacy_refs": [
+      {
+        "id": "90000000-0000-0000-0000-000000000001",
+        "name": "Synthetic travel",
+        "slot": 1,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 1200,
+        "generation": 1,
+        "source_unit": "day",
+        "applicability": "all"
+      },
+      {
+        "id": "90000000-0000-0000-0000-000000000002",
+        "name": "Synthetic work",
+        "slot": 2,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 800,
+        "generation": 1,
+        "source_unit": "day",
+        "applicability": "all"
+      },
+      {
+        "id": null,
+        "name": null,
+        "slot": 3,
+        "unit": "day",
+        "section": "earning",
+        "amount_yen": 0,
+        "generation": null,
+        "source_unit": "回",
+        "applicability": "all"
+      }
+    ],
+    "welfare_rate": 0,
+    "expected_source": {
+      "tax_rate": 10,
+      "legacy_slots": [
+        {
+          "name": "Synthetic travel",
+          "slot": 1,
+          "unit": "day",
+          "amount_yen": 1200
+        },
+        {
+          "name": "Synthetic work",
+          "slot": 2,
+          "unit": "day",
+          "amount_yen": 800
+        },
+        {
+          "name": null,
+          "slot": 3,
+          "unit": "回",
+          "amount_yen": 0
+        }
+      ],
+      "welfare_rate": 0,
+      "legacy_adopted": true,
+      "legacy_version": 1
+    },
+    "contract_version": 1
+  },
+  "preview": {
+    "items": [
+      {
+        "id": "90000000-0000-0000-0000-000000000001",
+        "name": "Synthetic travel",
+        "unit": "day",
+        "origin": "company_legacy",
+        "section": "earning",
+        "amount_yen": 1200,
+        "generation": 1,
+        "source_unit": "day",
+        "payroll_type": "daily",
+        "quantity_basis": "attendance_selected_distinct_dates",
+        "selection_aliases": [
+          "Synthetic travel"
+        ],
+        "individual_reconciliation": "inherit_absent_or_same_rate_otherwise_unresolved"
+      },
+      {
+        "id": "90000000-0000-0000-0000-000000000002",
+        "name": "Synthetic work",
+        "unit": "day",
+        "origin": "company_legacy",
+        "section": "earning",
+        "amount_yen": 800,
+        "generation": 1,
+        "source_unit": "day",
+        "payroll_type": "daily",
+        "quantity_basis": "attendance_selected_distinct_dates",
+        "selection_aliases": [
+          "Synthetic work"
+        ],
+        "individual_reconciliation": "inherit_absent_or_same_rate_otherwise_unresolved"
+      }
+    ],
+    "ready": true,
+    "scopes": [
+      {
+        "month": "2026-10-01",
+        "status": "target_draft",
+        "reasons": [],
+        "worker_id": "40000000-0000-0000-0000-000000000001",
+        "statement_md5": "1aaef8713fc76f9b8242ec196b8a99f7",
+        "attendance_md5": "6f307708d3add49b288da67ecf616c99",
+        "worker_settings_md5": "d8c326cb3f2d331883ccc2a1b4361e03",
+        "selection_classification": [
+          {
+            "name": "Synthetic travel",
+            "state": "approved_same_rate_legacy_pair",
+            "sources": [
+              {
+                "id": "90000000-0000-0000-0000-000000000001",
+                "kind": "company_legacy",
+                "name": "Synthetic travel"
+              },
+              {
+                "kind": "individual_legacy",
+                "name": "Synthetic travel",
+                "slot": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "month": "2026-10-01",
+        "status": "excluded_manual",
+        "reasons": [],
+        "worker_id": "40000000-0000-0000-0000-000000000088",
+        "statement_md5": "c786af15783769364ae944e567bd25e6",
+        "attendance_md5": "0258fd11a0101fee38ed683f22c4ec89",
+        "worker_settings_md5": "740a43c94320b0e0cb5ee9d1c7f418dc",
+        "selection_classification": []
+      }
+    ],
+    "timeline": {
+      "entries": [],
+      "can_edit": true,
+      "company_id": "10000000-0000-0000-0000-000000000001",
+      "common_source": {
+        "tax_rate": 10,
+        "legacy_slots": [
+          {
+            "name": "Synthetic travel",
+            "slot": 1,
+            "unit": "day",
+            "amount_yen": 1200
+          },
+          {
+            "name": "Synthetic work",
+            "slot": 2,
+            "unit": "day",
+            "amount_yen": 800
+          },
+          {
+            "name": null,
+            "slot": 3,
+            "unit": "回",
+            "amount_yen": 0
+          }
+        ],
+        "welfare_rate": 0,
+        "legacy_adopted": true,
+        "legacy_version": 1
+      },
+      "common_version": 1,
+      "contract_version": 1,
+      "timeline_version": 0
+    },
+    "command_base": {
+      "p_starts_on": "2026-10-01",
+      "p_company_id": "10000000-0000-0000-0000-000000000001",
+      "p_payroll_type": "daily",
+      "p_common_source": {
+        "tax_rate": 10,
+        "legacy_slots": [
+          {
+            "name": "Synthetic travel",
+            "slot": 1,
+            "unit": "day",
+            "amount_yen": 1200
+          },
+          {
+            "name": "Synthetic work",
+            "slot": 2,
+            "unit": "day",
+            "amount_yen": 800
+          },
+          {
+            "name": null,
+            "slot": 3,
+            "unit": "回",
+            "amount_yen": 0
+          }
+        ],
+        "welfare_rate": 0,
+        "legacy_adopted": true,
+        "legacy_version": 1
+      },
+      "p_common_version": 1,
+      "p_timeline_version": 0,
+      "p_legacy_quantities": [
+        {
+          "id": "90000000-0000-0000-0000-000000000001",
+          "basis": "attendance_selected_distinct_dates",
+          "aliases": [
+            "Synthetic travel"
+          ],
+          "generation": 1,
+          "source_unit": "day"
+        },
+        {
+          "id": "90000000-0000-0000-0000-000000000002",
+          "basis": "attendance_selected_distinct_dates",
+          "aliases": [
+            "Synthetic work"
+          ],
+          "generation": 1,
+          "source_unit": "day"
+        }
+      ],
+      "p_individual_reconciliation": "inherit_absent_or_same_rate_otherwise_unresolved"
+    },
+    "target_count": 1,
+    "preview_token": "674ec417d2394068b0d187e82cc58c2544061a962abd4d6c4d55451375d50d3d",
+    "excluded_count": 1,
+    "activation_mode": "per_type",
+    "activation_scope": "payroll_type",
+    "contract_version": 3,
+    "unresolved_count": 0,
+    "activation_blockers": [],
+    "activation_required": true,
+    "next_effective_boundary": null
+  },
+  "command": {
+    "p_starts_on": "2026-10-01",
+    "p_company_id": "10000000-0000-0000-0000-000000000001",
+    "p_request_id": "80000000-0000-0000-0000-000000000860",
+    "p_payroll_type": "daily",
+    "p_common_source": {
+      "tax_rate": 10,
+      "legacy_slots": [
+        {
+          "name": "Synthetic travel",
+          "slot": 1,
+          "unit": "day",
+          "amount_yen": 1200
+        },
+        {
+          "name": "Synthetic work",
+          "slot": 2,
+          "unit": "day",
+          "amount_yen": 800
+        },
+        {
+          "name": null,
+          "slot": 3,
+          "unit": "回",
+          "amount_yen": 0
+        }
+      ],
+      "welfare_rate": 0,
+      "legacy_adopted": true,
+      "legacy_version": 1
+    },
+    "p_preview_token": "674ec417d2394068b0d187e82cc58c2544061a962abd4d6c4d55451375d50d3d",
+    "p_common_version": 1,
+    "p_activation_scope": "payroll_type",
+    "p_timeline_version": 0,
+    "p_legacy_quantities": [
+      {
+        "id": "90000000-0000-0000-0000-000000000001",
+        "basis": "attendance_selected_distinct_dates",
+        "aliases": [
+          "Synthetic travel"
+        ],
+        "generation": 1,
+        "source_unit": "day"
+      },
+      {
+        "id": "90000000-0000-0000-0000-000000000002",
+        "basis": "attendance_selected_distinct_dates",
+        "aliases": [
+          "Synthetic work"
+        ],
+        "generation": 1,
+        "source_unit": "day"
+      }
+    ],
+    "p_approve_activation": true,
+    "p_individual_reconciliation": "inherit_absent_or_same_rate_otherwise_unresolved"
+  },
+  "publish_result": {
+    "scopes": [
+      {
+        "month": "2026-10-01",
+        "status": "target_draft",
+        "reasons": [],
+        "worker_id": "40000000-0000-0000-0000-000000000001",
+        "statement_md5": "1aaef8713fc76f9b8242ec196b8a99f7",
+        "attendance_md5": "6f307708d3add49b288da67ecf616c99",
+        "readback_status": "verified",
+        "statement_md5_after": "fda736fde363ae1a2cfbd8015b84c08b",
+        "worker_settings_md5": "d8c326cb3f2d331883ccc2a1b4361e03",
+        "selection_classification": [
+          {
+            "name": "Synthetic travel",
+            "state": "approved_same_rate_legacy_pair",
+            "sources": [
+              {
+                "id": "90000000-0000-0000-0000-000000000001",
+                "kind": "company_legacy",
+                "name": "Synthetic travel"
+              },
+              {
+                "kind": "individual_legacy",
+                "name": "Synthetic travel",
+                "slot": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "month": "2026-10-01",
+        "status": "excluded_manual",
+        "reasons": [],
+        "worker_id": "40000000-0000-0000-0000-000000000088",
+        "statement_md5": "c786af15783769364ae944e567bd25e6",
+        "attendance_md5": "0258fd11a0101fee38ed683f22c4ec89",
+        "worker_settings_md5": "740a43c94320b0e0cb5ee9d1c7f418dc",
+        "selection_classification": []
+      }
+    ],
+    "timeline": {
+      "entries": [
+        {
+          "version": 1,
+          "starts_on": "2026-10-01",
+          "request_id": "80000000-0000-0000-0000-000000000860",
+          "payroll_type": "daily",
+          "published_at": "2026-10-22T11:22:30.152+00:00",
+          "common_version": 1
+        }
+      ],
+      "can_edit": true,
+      "company_id": "10000000-0000-0000-0000-000000000001",
+      "common_source": {
+        "tax_rate": 10,
+        "legacy_slots": [
+          {
+            "name": "Synthetic travel",
+            "slot": 1,
+            "unit": "day",
+            "amount_yen": 1200
+          },
+          {
+            "name": "Synthetic work",
+            "slot": 2,
+            "unit": "day",
+            "amount_yen": 800
+          },
+          {
+            "name": null,
+            "slot": 3,
+            "unit": "回",
+            "amount_yen": 0
+          }
+        ],
+        "welfare_rate": 0,
+        "legacy_adopted": true,
+        "legacy_version": 1
+      },
+      "common_version": 1,
+      "contract_version": 1,
+      "timeline_version": 1
+    },
+    "starts_on": "2026-10-01",
+    "company_id": "10000000-0000-0000-0000-000000000001",
+    "request_id": "80000000-0000-0000-0000-000000000860",
+    "payroll_type": "daily",
+    "activation_mode": "per_type",
+    "excluded_scopes": 1,
+    "activation_scope": "payroll_type",
+    "contract_version": 3,
+    "unresolved_scopes": 0,
+    "activation_changed": true,
+    "publication_version": 1,
+    "recalculated_scopes": 1
+  },
+  "receipt_found": {
+    "found": true,
+    "result": {
+      "scopes": [
+        {
+          "month": "2026-10-01",
+          "status": "target_draft",
+          "reasons": [],
+          "worker_id": "40000000-0000-0000-0000-000000000001",
+          "statement_md5": "1aaef8713fc76f9b8242ec196b8a99f7",
+          "attendance_md5": "6f307708d3add49b288da67ecf616c99",
+          "readback_status": "verified",
+          "statement_md5_after": "fda736fde363ae1a2cfbd8015b84c08b",
+          "worker_settings_md5": "d8c326cb3f2d331883ccc2a1b4361e03",
+          "selection_classification": [
+            {
+              "name": "Synthetic travel",
+              "state": "approved_same_rate_legacy_pair",
+              "sources": [
+                {
+                  "id": "90000000-0000-0000-0000-000000000001",
+                  "kind": "company_legacy",
+                  "name": "Synthetic travel"
+                },
+                {
+                  "kind": "individual_legacy",
+                  "name": "Synthetic travel",
+                  "slot": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "month": "2026-10-01",
+          "status": "excluded_manual",
+          "reasons": [],
+          "worker_id": "40000000-0000-0000-0000-000000000088",
+          "statement_md5": "c786af15783769364ae944e567bd25e6",
+          "attendance_md5": "0258fd11a0101fee38ed683f22c4ec89",
+          "worker_settings_md5": "740a43c94320b0e0cb5ee9d1c7f418dc",
+          "selection_classification": []
+        }
+      ],
+      "timeline": {
+        "entries": [
+          {
+            "version": 1,
+            "starts_on": "2026-10-01",
+            "request_id": "80000000-0000-0000-0000-000000000860",
+            "payroll_type": "daily",
+            "published_at": "2026-10-22T11:22:30.152+00:00",
+            "common_version": 1
+          }
+        ],
+        "can_edit": true,
+        "company_id": "10000000-0000-0000-0000-000000000001",
+        "common_source": {
+          "tax_rate": 10,
+          "legacy_slots": [
+            {
+              "name": "Synthetic travel",
+              "slot": 1,
+              "unit": "day",
+              "amount_yen": 1200
+            },
+            {
+              "name": "Synthetic work",
+              "slot": 2,
+              "unit": "day",
+              "amount_yen": 800
+            },
+            {
+              "name": null,
+              "slot": 3,
+              "unit": "回",
+              "amount_yen": 0
+            }
+          ],
+          "welfare_rate": 0,
+          "legacy_adopted": true,
+          "legacy_version": 1
+        },
+        "common_version": 1,
+        "contract_version": 1,
+        "timeline_version": 1
+      },
+      "starts_on": "2026-10-01",
+      "company_id": "10000000-0000-0000-0000-000000000001",
+      "request_id": "80000000-0000-0000-0000-000000000860",
+      "payroll_type": "daily",
+      "activation_mode": "per_type",
+      "excluded_scopes": 1,
+      "activation_scope": "payroll_type",
+      "contract_version": 3,
+      "unresolved_scopes": 0,
+      "activation_changed": true,
+      "publication_version": 1,
+      "recalculated_scopes": 1
+    },
+    "contract_version": 3
+  },
+  "receipt_missing": {
+    "found": false,
+    "contract_version": 3
+  }
+}
