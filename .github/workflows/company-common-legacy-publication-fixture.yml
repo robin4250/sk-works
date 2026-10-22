@@ -45,6 +45,8 @@ jobs:
             script: verify_company_common_canonical_resolver.mjs
           - fixture: canonical-publisher
             script: verify_company_common_canonical_publisher.mjs
+          - fixture: canonical-publisher-future
+            script: verify_company_common_canonical_publisher_future.mjs
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:

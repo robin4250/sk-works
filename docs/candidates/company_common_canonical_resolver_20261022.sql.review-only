@@ -25,6 +25,25 @@ do $$begin
  or to_regprocedure('company_common_canonical_review_private.snapshot_plan(uuid,text,bigint,jsonb,jsonb,text)') is null then
  raise exception 'canonical payroll resolver prerequisite differs' using errcode='55000';end if;
 end $$;
+-- New opt-in metadata is empty at code installation. Absence of a mode row
+-- preserves the historical global activation contract, including missing history.
+create table company_common_allowance_private.payroll_activation_modes(
+ company_id uuid primary key references public.companies(id),mode text not null check(mode='per_type'),
+ actor_id uuid not null,request_id uuid not null,established_at timestamptz not null default clock_timestamp());
+create table company_common_allowance_private.payroll_type_activation(
+ company_id uuid not null references public.companies(id),payroll_type text not null check(payroll_type in ('daily','hourly','monthly')),
+ starts_on date not null check(starts_on=date_trunc('month',starts_on)::date),actor_id uuid not null,request_id uuid not null,changed_at timestamptz not null default clock_timestamp(),primary key(company_id,payroll_type));
+create table company_common_allowance_private.payroll_type_activation_events(
+ company_id uuid not null references public.companies(id),payroll_type text not null check(payroll_type in ('daily','hourly','monthly')),
+ request_id uuid not null,actor_id uuid not null,previous_starts_on date,starts_on date not null,recorded_at timestamptz not null default clock_timestamp(),primary key(company_id,request_id));
+ alter table company_common_allowance_private.payroll_type_activation_events enable row level security;
+ revoke all on company_common_allowance_private.payroll_type_activation_events from public,anon,authenticated,service_role;
+ create trigger immutable_payroll_type_activation_event before update or delete on company_common_allowance_private.payroll_type_activation_events for each row execute function company_common_allowance_private.protect_payroll_publication();
+alter table company_common_allowance_private.payroll_activation_modes enable row level security;
+alter table company_common_allowance_private.payroll_type_activation enable row level security;
+revoke all on company_common_allowance_private.payroll_activation_modes,company_common_allowance_private.payroll_type_activation from public,anon,authenticated,service_role;
+create trigger immutable_payroll_activation_mode before update or delete on company_common_allowance_private.payroll_activation_modes for each row execute function company_common_allowance_private.protect_payroll_publication();
+
 create function company_common_canonical_review_private.resolve_legacy(cid uuid,wid uuid,p_start date,p_end date,publication_items jsonb,p_version bigint,p_effective date)
 returns jsonb language plpgsql stable security invoker set search_path='' as $$
 declare raw jsonb;effective jsonb;item jsonb;slots integer[];slot integer;quantity numeric;amount numeric;individual_items jsonb;
@@ -87,6 +106,9 @@ begin
  if not exists(select 1 from company_common_allowance_private.payroll_activation a where a.company_id=cid and a.starts_on<=p_start) then
   return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',false,'history_missing',false);end if;
  select s.pay_type into typ from public.worker_payroll_settings s join public.workers w on w.company_id=s.company_id and w.id=s.worker_id where s.company_id=cid and s.worker_id=wid;
+ if exists(select 1 from company_common_allowance_private.payroll_activation_modes m where m.company_id=cid and m.mode='per_type')
+ and not exists(select 1 from company_common_allowance_private.payroll_type_activation a where a.company_id=cid and a.payroll_type=typ and a.starts_on<=p_start) then
+  return jsonb_build_object('items',rows,'earnings',earnings,'deductions',deductions,'blocked',false,'history_missing',false);end if;
  select * into publication from company_common_allowance_private.payroll_publications p
   where p.company_id=cid and p.payroll_type=typ and p.starts_on<=p_start order by p.starts_on desc,p.version desc limit 1;
  if not found then
@@ -158,6 +180,9 @@ begin
  result:=payroll_unit_private.resolve_company_common(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date);
  select pay_type into typ from public.worker_payroll_settings where company_id=cid and worker_id=wid;
  select starts_on into activation from company_common_allowance_private.payroll_activation where company_id=cid;
+ if exists(select 1 from company_common_allowance_private.payroll_activation_modes m where m.company_id=cid and m.mode='per_type') then
+  select starts_on into activation from company_common_allowance_private.payroll_type_activation a where a.company_id=cid and a.payroll_type=typ;
+ end if;
  return jsonb_build_object('contract_version',1,'items',result->'items','history_missing',result->'history_missing','frozen',false,'source',
   jsonb_build_object('starts_on',activation,'pay_type',typ,'items',result->'items','publication_version',result->'publication_version'))||case when result->'legacy_resolution' is null then '{}'::jsonb else jsonb_build_object('resolution',jsonb_build_object('blocked',result->'blocked','reasons',result#>'{legacy_resolution,reasons}','selection_classification',result#>'{legacy_resolution,selection_classification}')) end;
 end $$;
