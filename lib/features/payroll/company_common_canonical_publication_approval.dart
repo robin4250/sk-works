@@ -84,7 +84,7 @@ class _CommonPayrollCanonicalPublicationApprovalDialogState
             value: _activation,
             onChanged: p.valid && p.readyToPublish && widget.deploymentAvailable
                 ? (value) => setState(() => _activation = value == true) : null,
-            title: const Text('この会社の共通手当の給与反映を開始する'),
+            title: Text('${p.payrollTypeLabel}の共通手当の給与反映を開始する'),
           ),
           if (p.unresolvedCount > 0)
             Text('要確認の設定を解消してから反映してください。',

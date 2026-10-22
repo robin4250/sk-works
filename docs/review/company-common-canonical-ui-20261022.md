@@ -1,9 +1,10 @@
 # Canonical common payroll UI foundation
 
 Prepared against main `6ffaf7d4adec9a63805fc1acb094d9cbc97b5308`.
-This is an **unwired client candidate**, not a completed payroll rollout.
-No existing panel, repository, salary calculation, common card, help, translation,
-role, database or network endpoint is changed by these new files.
+This is a **client candidate**, not a completed payroll rollout. The versioned
+publisher remains disconnected from the existing registration page. An optional
+backward-compatible common-card reason projection is prepared separately. No
+salary calculation, help, translation, role or database is changed.
 
 ## Files to stage onto the reviewed main tree
 
@@ -29,7 +30,7 @@ The tests remain unexecuted until the integration owner's remote CI runs them.
 
 ## Command and recovery boundary
 
-The immutable command matches the backend agent's draft v2 publish parameter
+The immutable command matches the backend agent's contract-3 publish parameter
 names. It retains the original company/source/timeline versions, exact original
 request ID, preview token, individual reconciliation rule and each legacy
 identity/generation/selection basis. No aliases or quantities are inferred.
@@ -64,10 +65,40 @@ salary reader may expose amounts or worker scopes to attendance-only proxies.
 ## Next integration work
 
 Finalize and validate backend preview/receipt response keys and deployment
-capability; then add a gated v2 repository and reuse the existing publication
+capability; then add a gated canonical repository and reuse the existing publication
 panel's type/month controls. Persist the exact approved command **before** its
 first network call. On unknown outcome, restore the matching pending command and
 offer read-only receipt verification only. Map verified results and unresolved
 reasons to the existing common-card contract. Update root-owned help/translations
 when the UI is actually connected. Real JWT/RLS/proxy, native concurrency,
 screen/PDF/print/share and administrator iPhone checks remain unfinished.
+
+## Versioned repository and one-attempt controller
+
+The additional candidate files are
+`company_common_canonical_publication_repository.dart`,
+`company_common_canonical_publication_controller.dart` and
+`test/company_common_canonical_publication_repository_test.dart` in the existing
+payroll/test directories. Add the last test to the remote command above.
+
+The Supabase repository requires an integer `3` from the read-only
+`company_common_payroll_publication_v2_contract_version` probe under the current
+session before any canonical preview, publish or receipt call. Returned command, company,
+timeline, target/excluded/unresolved counts and readback evidence are validated.
+The controller persists before its sole publish call. A PostgreSQL rejection of
+that first attempt clears only the identical command after confirmed rollback.
+Transport/session/parse failures remain unknown and keep the pending record.
+Restored requests can only query the read-only receipt endpoint; missing receipts
+or receipt permission errors never clear or resend a command. Candidate tests
+exercise the real Supabase SDK against a synthetic HTTP transport plus actual
+temporary files for lost-result/recreation and known-rejection behavior.
+
+These tests have not been run locally. The repository follows the existing pinned
+Dart SDK `.rpc(..., params: ...)`/authorization-header usage; official Dart RPC
+documentation was checked. The markdown changelog index could not be retrieved
+by the documentation browser because of its unsupported content type; this code
+does not change the SDK dependency version or use a new SDK feature.
+
+## Activation contract correction
+
+The first publisher draft used company-wide activation and could stop an unrelated payroll type. It is rejected by this client: capability and response contract must be integer 3. RPC names still end in `_v2`; the confirmed publish command now includes `p_activation_scope`. Preview must distinguish `payroll_type`/`per_type` from existing `legacy_company`/`legacy_global`. A legacy-company initial activation is never approved by this client. Approval wording names the selected payroll type. The pending command kind, schema and private folder are version 3; draft version-2 records are neither accepted nor silently migrated. No version-2 client was shipped by this candidate. Backend contract/activation changes must finish before rollout.

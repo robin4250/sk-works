@@ -20,6 +20,7 @@ Map<String, dynamic> commandJson({String requestId = request}) => {
   'p_individual_reconciliation': CommonPayrollCanonicalPublicationCommand.reconciliation,
   'p_request_id': requestId, 'p_preview_token': List.filled(64, 'a').join(),
   'p_approve_activation': true,
+  'p_activation_scope': 'payroll_type',
 };
 CommonPayrollCanonicalPublicationPending pending({String requestId = request}) =>
     CommonPayrollCanonicalPublicationPending(actorId: actor,
@@ -40,6 +41,7 @@ void main() {
   test('different schema, owner, request identity and unsupported quantities fail closed', () {
     final saved = pending().toJson();
     expect(() => CommonPayrollCanonicalPublicationPending.parse({...saved, 'kind': 'company_common_allowance_save'}), throwsFormatException);
+    expect(() => CommonPayrollCanonicalPublicationPending.parse({...saved, 'schema': 1}), throwsFormatException);
     expect(() => CommonPayrollCanonicalPublicationPending.parse({...saved, 'company_id': otherActor}), throwsFormatException);
     expect(() => CommonPayrollCanonicalPublicationPending.parse({...saved, 'request_id': otherActor}), throwsFormatException);
     final raw = commandJson();
@@ -77,7 +79,7 @@ void main() {
     addTearDown(() => root.delete(recursive: true));
     final store = FileCommonPayrollCanonicalPublicationPendingStore(currentActor: () => actor, directory: () async => root);
     await store.write(pending());
-    final folder = Directory('${root.path}/company-common-payroll-publication-pending-v2');
+    final folder = Directory('${root.path}/company-common-payroll-publication-pending-v3');
     final file = (await folder.list().where((x) => x.path.endsWith('.json')).toList()).single as File;
     final foreign = pending().toJson()..['actor_id'] = otherActor;
     await file.writeAsString(jsonEncode(foreign));
@@ -106,7 +108,7 @@ void main() {
     addTearDown(() => root.delete(recursive: true));
     final store = FileCommonPayrollCanonicalPublicationPendingStore(currentActor: () => actor, directory: () async => root);
     await store.write(pending());
-    final folder = Directory('${root.path}/company-common-payroll-publication-pending-v2');
+    final folder = Directory('${root.path}/company-common-payroll-publication-pending-v3');
     final file = (await folder.list().where((x) => x.path.endsWith('.json')).toList()).single as File;
     await file.rename('${file.path}.tmp');
     expect((await store.read(actor, company))!.command.requestId, request);

@@ -13,7 +13,7 @@ class CommonPayrollCanonicalPublicationCommand {
     'p_company_id', 'p_payroll_type', 'p_starts_on', 'p_common_version',
     'p_common_source', 'p_timeline_version', 'p_legacy_quantities',
     'p_individual_reconciliation', 'p_request_id', 'p_preview_token',
-    'p_approve_activation',
+    'p_approve_activation', 'p_activation_scope',
   };
   final Map<String, dynamic> params;
   String get companyId => params['p_company_id'] as String;
@@ -22,6 +22,7 @@ class CommonPayrollCanonicalPublicationCommand {
   String get startsOn => params['p_starts_on'] as String;
   String get previewToken => params['p_preview_token'] as String;
   bool get approvesActivation => params['p_approve_activation'] as bool;
+  String get activationScope => params['p_activation_scope'] as String;
 
   factory CommonPayrollCanonicalPublicationCommand.fromParams(Object? raw) {
     if (raw is! Map || raw.length != _keys.length ||
@@ -43,6 +44,8 @@ class CommonPayrollCanonicalPublicationCommand {
         map['p_preview_token'] is! String ||
         !RegExp(r'^[0-9a-f]{64}$').hasMatch(map['p_preview_token'] as String) ||
         map['p_approve_activation'] is! bool ||
+        !const ['payroll_type', 'legacy_company'].contains(map['p_activation_scope']) ||
+        map['p_activation_scope'] == 'legacy_company' && map['p_approve_activation'] == true ||
         map['p_legacy_quantities'] is! List) {
       throw const FormatException('給与適用の確認内容が一致しません');
     }

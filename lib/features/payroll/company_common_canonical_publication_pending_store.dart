@@ -11,19 +11,19 @@ class CommonPayrollCanonicalPublicationPending {
       throw const FormatException('給与適用の本人情報を確認できません');
     }
   }
-  static const kind = 'company_common_payroll_publish_v2';
+  static const kind = 'company_common_payroll_publish_v3';
   final String actorId;
   final CommonPayrollCanonicalPublicationCommand command;
   String get companyId => command.companyId;
   Map<String, dynamic> toJson() => {
-    'schema': 1, 'kind': kind, 'actor_id': actorId,
+    'schema': 3, 'kind': kind, 'actor_id': actorId,
     'company_id': companyId, 'request_id': command.requestId,
     'command': command.params,
   };
   factory CommonPayrollCanonicalPublicationPending.parse(Object? raw) {
     const keys = {'schema', 'kind', 'actor_id', 'company_id', 'request_id', 'command'};
     if (raw is! Map || raw.length != keys.length || !keys.every(raw.containsKey) ||
-        raw['schema'] != 1 || raw['kind'] != kind ||
+        raw['schema'] != 3 || raw['kind'] != kind ||
         !canonicalPublicationUuid(raw['actor_id'])) {
       throw const FormatException('給与適用の確認記録を読み取れません');
     }
@@ -64,7 +64,7 @@ class FileCommonPayrollCanonicalPublicationPendingStore
     if (!canonicalPublicationUuid(company)) throw const FormatException('会社を確認できません');
     final root = await directory();
     _actor(actor);
-    final folder = Directory('${root.path}/company-common-payroll-publication-pending-v2');
+    final folder = Directory('${root.path}/company-common-payroll-publication-pending-v3');
     await folder.create(recursive: true);
     final name = sha256.convert(utf8.encode(jsonEncode([actor, company]))).toString();
     final file = File('${folder.path}/$name.json');
