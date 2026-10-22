@@ -8,6 +8,8 @@ on:
       - 'tool/verify_company_common_legacy_publication.mjs'
       - 'tool/verify_company_common_legacy_integration.mjs'
       - 'tool/verify_company_common_legacy_bounded.mjs'
+      - 'tool/verify_company_common_future_policy.mjs'
+      - 'docs/candidates/company_common_future_policy_20261022.sql.review-only'
       - 'docs/candidates/company_common_legacy_bounded_20261022.sql.review-only'
       - 'docs/candidates/company_common_legacy_integration_20261022.sql.review-only'
       - 'tool/payroll_scope_fixture_setup.mjs'
@@ -22,7 +24,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fixture: [publication, integration, bounded]
+        include:
+          - fixture: publication
+            script: verify_company_common_legacy_publication.mjs
+          - fixture: integration
+            script: verify_company_common_legacy_integration.mjs
+          - fixture: bounded
+            script: verify_company_common_legacy_bounded.mjs
+          - fixture: future-policy
+            script: verify_company_common_future_policy.mjs
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -45,8 +55,8 @@ jobs:
       - name: Install locked fixture-only dependencies
         run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - name: PGlite synthetic fixture
-        run: node tool/verify_company_common_legacy_${{ matrix.fixture }}.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+        run: node tool/${{ matrix.script }} "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Native PostgreSQL 17 synthetic fixture
         env:
           SKO_COMMON_LEGACY_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_common_legacy_fixture
-        run: node tool/verify_company_common_legacy_${{ matrix.fixture }}.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+        run: node tool/${{ matrix.script }} "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
