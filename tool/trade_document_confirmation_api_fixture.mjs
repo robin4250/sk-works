@@ -79,10 +79,25 @@ export async function verifyConfirmationApi(db,c){
  const iwSource=await q("select public.trade_document_attachment_workspace('invoice',$1,$2) v",[inv,invSource]);
  const payload={...iwSource.defaults,company_seal_enabled:false,company_seal_snapshot:null,issue_date:'2026-10-22',order_date:'2026-10-21',work_name:'公開承認合成工事',work_address:'東京都',acceptance_text:'上記注文内容を承諾します。',intro_text:'合成請負',payment_conditions:'翌月末',notes:''};
  await q("select public.save_trade_document_attachment('invoice',$1,$2,0,$3::jsonb) v",[inv,invSource,JSON.stringify(payload)]);
+ // Ordinary assigned member approval remains on the existing path, with no
+ // evidence preparation or permission-error fallback. Final stamp authority
+ // and normal invoice-view permission remain independent requirements.
+ await db.query("insert into invoice_approvals(invoice_id,company_id,approver_user_id,position) values($1,$2,$3,2)",[inv,A,UV]);
+ await db.query("update company_members set role='member' where company_id=$1 and user_id=$2",[A,UV]);
+ await asActor(UV);const member=await workspace('invoice',inv,invSource);
+ check(member.integration_required,false);check(member.unavailable_reason,'ordinary_assigned_approval');check(member.document_id,null);
+ await db.exec("select set_config('test.invoice_view','false',false)");await deny(()=>workspace('invoice',inv,invSource),/permission/);await db.exec("select set_config('test.invoice_view','true',false)");
+ await asActor(UA);const nonfinal=await workspace('invoice',inv,invSource);check(nonfinal.integration_required,false);check(nonfinal.document_id,null);
+ check(await q('select count(*)::int v from trade_document_confirmation_api_private.parent_links where parent_id=$1',[inv]),0);
+ await asActor(UV);check(await api('select public.approve_invoice($1) v',[inv]),false);
+ check(await q("select status v from invoice_approvals where invoice_id=$1 and approver_user_id=$2",[inv,UV]),'approved');
+ await db.query("update company_members set role='viewer' where company_id=$1 and user_id=$2",[A,UV]);
+ await asActor(UV);await deny(()=>workspace('invoice',inv,invSource),/permission/);
+ await asActor(UA);
  const iw=await workspace('invoice',inv,invSource),ip=await preview(iw),invBefore=await q('select to_jsonb(i) v from invoices i where id=$1',[inv]);
  const invoiceResult=await confirm(ip,id(8105));check(invoiceResult.operation,'invoice_final_approval_with_seal');check(invoiceResult.result.financial_approved,true);
  const invAfter=await q('select to_jsonb(i) v from invoices i where id=$1',[inv]);check(invAfter.grand_total,invBefore.grand_total);check(invAfter.tax,invBefore.tax);check(invAfter.invoice_seal_frozen,true);
- check(await q("select count(*)::int v from invoice_approval_audit where invoice_id=$1",[inv]),1);
+ check(await q("select count(*)::int v from invoice_approval_audit where invoice_id=$1",[inv]),2);
  check(await confirm(ip,id(8105)),invoiceResult);check((await resolve('invoice',inv)).phase,'approved');
  check((await render(iw)).evidence.body.kind,'acceptance');
  if(process.env.SKO_TRADE_DOCUMENT_API_EXPORT){

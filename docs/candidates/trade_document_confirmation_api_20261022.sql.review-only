@@ -117,7 +117,19 @@ begin
  if kind='invoice' then select company_id,customer_id into cid,counter_id from public.invoices where id=parent_id;
  elsif kind='payment_certificate' then select company_id,partner_company_id into cid,counter_id from public.payment_certificates where id=parent_id;
  else raise exception 'exact financial subject kind required' using errcode='22023';end if;
+ base:=jsonb_build_object('contract_version',1,'kind',kind,'company_id',cid,'actor_id',uid,'parent_id',parent_id,'source_revision',source_revision,
+ 'side','issued','document_id',null,'document_revision',null,'local_document_id',null,'attachment_version',null,
+ 'integration_required',false,'can_integrated_confirm',false,'unavailable_reason',null,'can_render',false);
+ -- Existing assigned non-final or non-stamp approvers keep the ordinary approval
+ -- transaction. This branch neither prepares evidence nor grants seal authority.
+ if kind='invoice' and private.has_company_feature(cid,'can_view_invoices') is true
+ and exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=uid)
+ and exists(select 1 from public.invoice_approvals a where a.invoice_id=parent_id and a.company_id=cid and a.approver_user_id=uid and a.status='pending')
+ and (not exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=uid and m.role::text in('owner','admin'))
+ or exists(select 1 from public.invoice_approvals a where a.invoice_id=parent_id and a.company_id=cid and a.approver_user_id<>uid and a.status<>'approved')) then
+ return base||jsonb_build_object('unavailable_reason','ordinary_assigned_approval');end if;
  perform trade_document_consent_private.require_actor(cid);
+ if kind='invoice' and private.has_company_feature(cid,'can_view_invoices') is not true then raise exception 'invoice view permission required' using errcode='42501';end if;
  select count(*),min(t.linked_company_id::text)::uuid,min(t.trade_role),min(t.link_status) into mapping_count,peer,mapping_role,mapping_status
  from public.trade_companies t where t.company_id=cid and (case kind when 'invoice' then t.customer_id=counter_id else t.partner_company_id=counter_id end);
  base:=jsonb_build_object('contract_version',1,'kind',kind,'company_id',cid,'actor_id',uid,'parent_id',parent_id,'source_revision',source_revision,
