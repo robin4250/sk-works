@@ -47,4 +47,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('合成手当：').hitTestable(), findsOneWidget);
   });
+  testWidgets('inherited selected-day allowance keeps its registered display unit', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PayrollCompanyCommonCard(
+      items: const [{'id': 'synthetic-allowance', 'name': '合成手当', 'section': 'earning',
+        'unit': 'day', 'source_origin': 'company_legacy', 'source_unit': '回',
+        'quantity': 2, 'rate_yen': 100}], canEdit: false,
+      onSave: (_) async {}, onReload: () {},
+    ))));
+    await tester.tap(find.text('社内共通手当'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 × 回'), findsOneWidget);
+    expect(find.textContaining('未選択の日は0回'), findsOneWidget);
+  });
 }

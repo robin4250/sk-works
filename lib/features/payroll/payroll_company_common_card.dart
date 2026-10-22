@@ -62,6 +62,16 @@ class _PayrollCompanyCommonCardState extends State<PayrollCompanyCommonCard> {
   @override
   Widget build(BuildContext context) {
     String tr(String value) => SkoLanguageController.tr(value);
+    String quantityUnit(Map<String, dynamic> item) {
+      if (item['source_origin'] == 'company_legacy' &&
+          item['source_unit'] is String && (item['source_unit'] as String).isNotEmpty) {
+        final source = item['source_unit'] as String;
+        return switch (source) {
+          'day' => tr('日'), 'hour' => tr('時間'), 'month' => tr('月'), _ => source,
+        };
+      }
+      return tr(item['unit'] == 'day' ? '日' : '月');
+    }
     final items = widget.items.where((x) =>
       (widget.section == null || x['section'] == widget.section!.name) &&
       (widget.unit == null || x['unit'] == widget.unit!.name)).toList();
@@ -75,6 +85,9 @@ class _PayrollCompanyCommonCardState extends State<PayrollCompanyCommonCard> {
         children: [ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 260),
           child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (items.any((item) => item['source_origin'] == 'company_legacy'))
+            Padding(padding: const EdgeInsets.all(12),
+              child: Text(tr('日報で選んだ日数を反映しています。同じ日は1回、未選択の日は0回です。'))),
           if (widget.resolution?.blocked == true) ...[
             Padding(padding: const EdgeInsets.all(12),
               child: Text(tr('共通手当の計算を保留しています。設定を確認して再計算してください。'),
@@ -102,7 +115,7 @@ class _PayrollCompanyCommonCardState extends State<PayrollCompanyCommonCard> {
                     decoration: InputDecoration(labelText: tr('対象月の時間数')),
                   ))
                 else
-                  Text('${item['quantity'] ?? '—'} × ${tr(item['unit'] == 'day' ? '日' : '月')}'),
+                  Text('${item['quantity'] ?? '—'} × ${quantityUnit(item)}'),
               ]),
             ),
           if (_error != null) ...[

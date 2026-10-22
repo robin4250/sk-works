@@ -38,7 +38,12 @@ class CommonPayrollCanonicalPublicationApprovalDialog extends StatefulWidget {
 
 class _CommonPayrollCanonicalPublicationApprovalDialogState
     extends State<CommonPayrollCanonicalPublicationApprovalDialog> {
-  bool _activation = false, _selectedDays = false;
+  bool _activation = false, _selectedDays = false, _decided = false;
+  void _complete(CommonPayrollCanonicalApproval? approval) {
+    if (_decided || ModalRoute.of(context)?.isCurrent != true) return;
+    setState(() => _decided = true);
+    Navigator.pop(context, approval);
+  }
   @override void didUpdateWidget(covariant CommonPayrollCanonicalPublicationApprovalDialog oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.preview, widget.preview) ||
@@ -49,7 +54,7 @@ class _CommonPayrollCanonicalPublicationApprovalDialogState
   }
   @override Widget build(BuildContext context) {
     final p = widget.preview;
-    final enabled = widget.deploymentAvailable && p.valid && p.readyToPublish &&
+    final enabled = !_decided && widget.deploymentAvailable && p.valid && p.readyToPublish &&
         p.unresolvedCount == 0 && (!p.activationRequired || _activation) &&
         (p.legacyCount == 0 || _selectedDays);
     return AlertDialog(
@@ -89,15 +94,17 @@ class _CommonPayrollCanonicalPublicationApprovalDialogState
           if (p.unresolvedCount > 0)
             Text('要確認の設定を解消してから反映してください。',
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          if (!widget.deploymentAvailable || !p.readyToPublish || !p.valid)
+          if (!widget.deploymentAvailable || !p.valid)
             const Text('適用準備を確認できません。給与は変更されません。'),
+          if (widget.deploymentAvailable && p.valid && !p.readyToPublish && p.unresolvedCount == 0)
+            const Text('適用月の設定を確認してください。詳細は確認理由を開いてください。'),
         ],
       ))),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('戻る')),
+        TextButton(onPressed: _decided ? null : () => _complete(null), child: const Text('戻る')),
         FilledButton(
           key: const ValueKey('canonical-publication-confirm'),
-          onPressed: enabled ? () => Navigator.pop(context,
+          onPressed: enabled ? () => _complete(
             CommonPayrollCanonicalApproval(approveActivation: _activation,
               approveSelectedDays: _selectedDays)) : null,
           child: const Text('確認して反映'),
