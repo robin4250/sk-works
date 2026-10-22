@@ -42,13 +42,20 @@ try {
  await assert.rejects(observe(),/required canonical baseline relation or schema missing/);
  await db.exec('alter table public.synthetic_missing_payroll_audit rename to payroll_audit');
  assert.deepEqual(await observe(),before,'missing mandatory relation refuses; restoring fixture name leaves exact original inventory');
- const strip=s=>s.replace(/^begin;$/m,'').replace(/commit;\s*$/,'');
- const bundle='begin;\n'+['snapshot','resolver','publisher'].map(unit=>strip(read('docs/candidates/company_common_canonical_'+unit+'_20261022.sql.review-only'))).join('\n')+'\ncommit;';
- await db.exec(bundle);const after=await observe();
+ const beforeFile=path.join(temp,'install-before.json'),installFile=path.join(temp,'install.sql');fs.writeFileSync(beforeFile,JSON.stringify(before));
+ prepare(['--before',beforeFile,'--install-output',installFile]);const installer=fs.readFileSync(installFile,'utf8');
+ assert.ok(!installer.includes(before.routines['payroll_unit_private.common_state(uuid,uuid,date)'].definition),'installer embeds original observation digest, not private original definitions');
+ const originalName=(await db.query('select name from public.companies where id=$1',[cid])).rows[0].name;
+ await db.query('update public.companies set name=$2 where id=$1',[cid,'Synthetic stale install']);const staleInstall=await observe();
+ await assert.rejects(db.exec(installer),/canonical install original observation changed/);await db.exec('rollback');assert.deepEqual(await observe(),staleInstall,'stale before observation refuses before any DDL');
+ await db.query('update public.companies set name=$2 where id=$1',[cid,originalName]);assert.deepEqual(await observe(),before);
+ const badAfter=installer.replace('-- Begin post-install observation',"update public.companies set name='Synthetic after corruption';\n-- Begin post-install observation");
+ assert.notEqual(badAfter,installer);await assert.rejects(db.exec(badAfter),/canonical install changed protected originals or object inventory/);await db.exec('rollback');assert.deepEqual(await observe(),before,'after guard failure rolls back original-row mutation and all three units');
+ await db.exec(installer);const after=await observe();
  function restoreSQL(old,installed,label){const b=path.join(temp,label+'-before.json'),a=path.join(temp,label+'-after.json'),s=path.join(temp,label+'-restore.sql');fs.writeFileSync(b,JSON.stringify(old));fs.writeFileSync(a,JSON.stringify(installed));prepare(['--before',b,'--after',a,'--restore-output',s]);return fs.readFileSync(s,'utf8');}
  const restore=restoreSQL(before,after,'first');await db.exec(restore);assert.deepEqual(await observe(),before,'unused restore exactly returns all observed catalogs and protected data');
  // Reinstall only after exact unused restoration; new object OIDs are captured anew.
- await db.exec(bundle);const second=await observe(),secondRestore=restoreSQL(before,second,'second');
+ await db.exec(installer);const second=await observe(),secondRestore=restoreSQL(before,second,'second');
  const name=(await db.query('select name from public.companies where id=$1',[cid])).rows[0].name;
  await db.query('update public.companies set name=$2 where id=$1',[cid,'Synthetic stale original']);const stale=await observe();
  await assert.rejects(db.exec(secondRestore),/post-install catalog\/data changed; restore refused/);await db.exec('rollback');assert.deepEqual(await observe(),stale,'stale financial/source observation refuses without partial restore');
@@ -60,5 +67,5 @@ try {
  const owner='00000000-0000-0000-0000-000000000001';
  await db.query("insert into company_common_allowance_private.payroll_activation_modes(company_id,mode,actor_id,request_id) values($1,'per_type',$2,'80000000-0000-0000-0000-000000000111')",[cid,owner]);
  const used=await observe();await assert.rejects(db.exec(secondRestore),/post-install catalog\/data changed; restore refused/);await db.exec('rollback');assert.deepEqual(await observe(),used,'used activation refuses without deleting immutable metadata or functions');
- console.log(JSON.stringify({synthetic_only:true,observer_parser_runtime:true,protected_catalog_and_data_roundtrip:true,missing_baseline_refused:true,stale_state_refused:true,changed_acl_refused:true,used_activation_refused:true,pinned_three_units:true,production_changed:false}));
+ console.log(JSON.stringify({synthetic_only:true,observer_parser_runtime:true,protected_catalog_and_data_roundtrip:true,missing_baseline_refused:true,stale_state_refused:true,changed_acl_refused:true,used_activation_refused:true,pinned_three_units:true,exact_generated_installer:true,stale_install_refused:true,install_after_failure_full_rollback:true,production_changed:false}));
 }catch(error){console.error(error.stack??error.message);process.exitCode=1;}finally{if(db)await db.close();fs.rmSync(temp,{recursive:true,force:true});}

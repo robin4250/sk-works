@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+from decimal import Decimal
 from pathlib import Path
 
 ORIGINAL = {
@@ -119,19 +120,8 @@ def prepare_restore(before, after):
     old=before['routines']; new=after['routines']; added=set(new)-set(old)
     if not added or any(new[s]!=old[s] for s in old if s not in ORIGINAL):
         raise ValueError('unexpected existing routine change')
-    expected_added={
-      'company_common_canonical_review_private.snapshot_plan(uuid,text,bigint,jsonb,jsonb,text)',
-      'company_common_canonical_review_private.publication_preview(uuid,text,date,bigint,jsonb,bigint,jsonb,text,uuid)',
-      'company_common_canonical_review_private.resolve_legacy(uuid,uuid,date,date,jsonb,bigint,date)',
-      'company_common_canonical_review_private.preview(uuid,text,date,bigint,jsonb,bigint,jsonb,text)',
-      'company_common_allowance_private.preview_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text)',
-      'company_common_allowance_private.publish_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text,uuid,text,boolean,text)',
-      'company_common_allowance_private.read_publish_receipt_v2(uuid,uuid,jsonb)',
-      'public.preview_company_common_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text)',
-      'public.publish_company_common_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text,uuid,text,boolean,text)',
-      'public.read_company_common_payroll_publish_receipt_v2(uuid,uuid,jsonb)',
-      'public.company_common_payroll_publication_v2_contract_version()'}
-    if added!=expected_added:
+
+    if added!=EXPECTED_ADDED:
         raise ValueError('unexpected new routine inventory')
     if set(after['namespaces'])-set(before['namespaces'])!={'company_common_canonical_review_private'}:
         raise ValueError('unexpected namespace inventory')
@@ -156,18 +146,133 @@ def prepare_restore(before, after):
     sql+="do $sko_guard$ begin if current_setting('sko.canonical_observation')::jsonb is distinct from "+literal(json.dumps(before,separators=(',',':')))+"::jsonb then raise exception 'restored catalog/data differs; rollback required';end if;end $sko_guard$;\ncommit;\n"
     return sql
 
+EXPECTED_ADDED={
+  'company_common_canonical_review_private.snapshot_plan(uuid,text,bigint,jsonb,jsonb,text)',
+  'company_common_canonical_review_private.publication_preview(uuid,text,date,bigint,jsonb,bigint,jsonb,text,uuid)',
+  'company_common_canonical_review_private.resolve_legacy(uuid,uuid,date,date,jsonb,bigint,date)',
+  'company_common_canonical_review_private.preview(uuid,text,date,bigint,jsonb,bigint,jsonb,text)',
+  'company_common_allowance_private.preview_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text)',
+  'company_common_allowance_private.publish_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text,uuid,text,boolean,text)',
+  'company_common_allowance_private.read_publish_receipt_v2(uuid,uuid,jsonb)',
+  'public.preview_company_common_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text)',
+  'public.publish_company_common_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text,uuid,text,boolean,text)',
+  'public.read_company_common_payroll_publish_receipt_v2(uuid,uuid,jsonb)',
+  'public.company_common_payroll_publication_v2_contract_version()'}
+
+def pg_jsonb_text(value):
+    """PG17 jsonb text: byte-length/byte-order object keys and decimal numbers.
+
+    Observations contain only catalog metadata, integers/numerics and strings.
+    The complete before SHA is independently checked by PG in the runtime proof.
+    """
+    if value is None:return 'null'
+    if value is True:return 'true'
+    if value is False:return 'false'
+    if isinstance(value,str):return json.dumps(value,ensure_ascii=False)
+    if isinstance(value,(int,float,Decimal)):
+        number=Decimal(str(value))
+        if not number.is_finite():raise ValueError('nonfinite observation number')
+        return format(abs(number) if number==0 else number,'f')
+    if isinstance(value,list):return '['+', '.join(pg_jsonb_text(x) for x in value)+']'
+    if isinstance(value,dict):
+        keys=sorted(value,key=lambda key:(len(key.encode()),key.encode()))
+        return '{'+', '.join(pg_jsonb_text(k)+': '+pg_jsonb_text(value[k]) for k in keys)+'}'
+    raise ValueError('unsupported observation value')
+
+def locked_relations(data):
+    names=[]
+    for name in sorted(data):
+        if not re.fullmatch(r'[a-z_]+\.[a-z_]+',name):raise ValueError('unexpected relation identifier')
+        names.append('.'.join('"'+part+'"' for part in name.split('.')))
+    if not names:raise ValueError('protected relation inventory required')
+    return 'lock table '+','.join(names)+' in access exclusive mode;\n'
+
+def prepare_install(before):
+    sources=reviewed_sources()
+    required={'public.'+name for name in PUBLIC_TABLES}|set(REQUIRED_PRIVATE_TABLES)
+    if not required<=set(before['data']) or set(before['relations'])!=set(before['data']):
+        raise ValueError('complete required protected relation observation required')
+    if set(NEW_TABLES)&set(before['data']) or set(EXPECTED_ADDED)&set(before['routines']) or 'company_common_canonical_review_private' in before['namespaces']:
+        raise ValueError('canonical installation already present or partially observed')
+    if not set(SCHEMAS[:-1])<=set(before['namespaces']):raise ValueError('required namespace observation missing')
+    for sig,expected in ORIGINAL.items():
+        row=before['routines'][sig]
+        if row['source_md5']!=expected or row['owner']!='postgres':raise ValueError('original source or owner baseline differs: '+sig)
+    before_hash=hashlib.sha256(pg_jsonb_text(before).encode()).hexdigest()
+    sql="-- REVIEW ONLY: exact-observation-bound default-OFF canonical code installation.\n"
+    sql+='-- Unit SHA256: '+json.dumps(UNIT_SHA256,sort_keys=True)+'\n'
+    sql+='-- Before observation jsonb SHA256: '+before_hash+'\n'
+    sql+="begin;\nset local lock_timeout='5s';\nset local statement_timeout='60s';\nset local search_path='';\n"
+    sql+=locked_relations(before['data'])+observer()
+    sql+="do $sko_install_before$ begin if encode(sha256(convert_to(current_setting('sko.canonical_observation')::jsonb::text,'UTF8')),'hex') is distinct from "+literal(before_hash)+" then raise exception 'canonical install original observation changed';end if;perform set_config('sko.canonical_install_before',current_setting('sko.canonical_observation'),true);end $sko_install_before$;\n"
+    for unit in UNIT_SHA256:
+        file=Path(__file__).resolve().parents[2]/'docs/candidates'/('company_common_canonical_'+unit+'_20261022.sql.review-only')
+        text=file.read_text()
+        if len(re.findall(r'^begin;$',text,re.M))!=1 or not re.search(r'commit;\s*$',text):raise ValueError('review unit transaction wrapper differs')
+        sql+=re.sub(r'^begin;$','',re.sub(r'commit;\s*$','',text),count=1,flags=re.M)+'\n'
+    sql+='-- Begin post-install observation\n'+observer()
+    new_tables='array['+','.join(map(literal,NEW_TABLES))+']::text[]'
+    added='array['+','.join(map(literal,sorted(EXPECTED_ADDED)))+']::text[]'
+    originals='array['+','.join(map(literal,ORIGINAL))+']::text[]'
+    expected_sources={sig:sources[sig.split('(')[0]] for sig in set(ORIGINAL)|set(EXPECTED_ADDED)}
+    sources_json=literal(json.dumps(expected_sources,separators=(',',':')))+'::jsonb'
+    sql+=f"""do $sko_install_after$
+declare old jsonb:=current_setting('sko.canonical_install_before')::jsonb; now_state jsonb:=current_setting('sko.canonical_observation')::jsonb; k text; spec record; attrs jsonb;
+begin
+ if (now_state->'data')-{new_tables} is distinct from old->'data'
+ or (now_state->'relations')-{new_tables} is distinct from old->'relations'
+ or (now_state->'namespaces')-'company_common_canonical_review_private' is distinct from old->'namespaces'
+ or (now_state->'routines')-{added}-{originals} is distinct from (old->'routines')-{originals}
+ or now_state->'impact' is distinct from old->'impact' then
+  raise exception 'canonical install changed protected originals or object inventory';end if;
+ foreach k in array {new_tables} loop
+  if not ((now_state->'data')?k and (now_state->'relations')?k)
+   or now_state#>array['data',k,'count'] is distinct from '0'::jsonb
+   or now_state#>>array['relations',k,'owner'] is distinct from 'postgres'
+   or now_state#>array['relations',k,'rls'] is distinct from 'true'::jsonb then
+   raise exception 'canonical install new activation relation invalid or used';end if;
+ end loop;
+ if now_state#>>'{{namespaces,company_common_canonical_review_private,owner}}' is distinct from 'postgres'
+ or now_state#>'{{namespaces,company_common_canonical_review_private,acl}}' is distinct from '["postgres=UC/postgres"]'::jsonb then
+  raise exception 'canonical install private namespace differs';end if;
+ foreach k in array {originals} loop
+  if now_state#>array['routines',k,'attributes'] is distinct from old#>array['routines',k,'attributes'] then
+   raise exception 'canonical install original routine attributes changed';end if;
+ end loop;
+ for spec in select key,value from jsonb_each_text({sources_json}) loop
+  if now_state#>>array['routines',spec.key,'source_md5'] is distinct from spec.value
+   or now_state#>>array['routines',spec.key,'owner'] is distinct from 'postgres' then
+   raise exception 'canonical install reviewed routine source or owner differs';end if;
+ end loop;
+ foreach k in array {added} loop
+  attrs:=now_state#>array['routines',k,'attributes'];
+  if attrs is null or attrs->'proconfig' is distinct from '["search_path=\\"\\""]'::jsonb
+   or (attrs->>'prosecdef')::boolean is distinct from (k like 'company_common_allowance_private.%')
+   or array(select value from jsonb_array_elements_text(attrs->'proacl') order by value) is distinct from (case when k like 'company_common_canonical_review_private.%' then array['postgres=X/postgres']::text[] else array['authenticated=X/postgres','postgres=X/postgres']::text[] end)
+   or has_function_privilege('anon',k,'EXECUTE') or has_function_privilege('service_role',k,'EXECUTE')
+   or has_function_privilege('authenticated',k,'EXECUTE') is distinct from (k not like 'company_common_canonical_review_private.%') then
+   raise exception 'canonical install new routine privilege contract differs';end if;
+ end loop;
+end $sko_install_after$;
+commit;
+"""
+    return sql
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--observer-output',type=Path)
+    p.add_argument('--install-output',type=Path)
     p.add_argument('--before',type=Path);p.add_argument('--after',type=Path);p.add_argument('--restore-output',type=Path)
     a=p.parse_args();os.umask(0o077)
     if a.observer_output:
-        if any([a.before,a.after,a.restore_output]):p.error('choose observer or restore generation')
+        if any([a.before,a.after,a.restore_output,a.install_output]):p.error('choose observer or restore generation')
         text="-- REVIEW ONLY: private result contains complete function definitions.\nbegin isolation level repeatable read read only;\nset local statement_timeout='60s';\nset local search_path='';\n"+observer()+"select current_setting('sko.canonical_observation')::jsonb;\ncommit;\n"
         write_private(a.observer_output,text)
-    elif all([a.before,a.after,a.restore_output]):
+    elif a.install_output and a.before and not any([a.after,a.restore_output]):
+        text=prepare_install(load(a.before));write_private(a.install_output,text)
+    elif all([a.before,a.after,a.restore_output]) and not a.install_output:
         text=prepare_restore(load(a.before),load(a.after));write_private(a.restore_output,text)
-    else:p.error('observer-output or before/after/restore-output required')
+    else:p.error('observer-output, before/install-output, or before/after/restore-output required')
     print('Review-only artifact created; no database connection or SQL execution. SHA256: '+hashlib.sha256(text.encode()).hexdigest())
 
 if __name__=='__main__':main()

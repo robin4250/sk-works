@@ -34,6 +34,13 @@ def pair():
     return before,after
 
 class GuardTests(unittest.TestCase):
+    def test_pg_jsonb_canonical_order_and_numbers(self):
+        self.assertEqual(m.pg_jsonb_text({'long':1,'b':2,'a':3,'é':4}), '{"a": 3, "b": 2, "é": 4, "long": 1}')
+        self.assertEqual(m.pg_jsonb_text([1e-7,-0.0,True,None]), '[0.0000001, 0.0, true, null]')
+    def test_install_requires_complete_baseline(self):
+        before,_=pair()
+        with self.assertRaisesRegex(ValueError,'complete required'):m.prepare_install(before)
+
     def test_unused_review_generation(self):
         before,after=pair();sql=m.prepare_restore(before,after)
         self.assertIn('in access exclusive mode;',sql)
