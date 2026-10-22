@@ -41,6 +41,8 @@ jobs:
             script: verify_company_common_future_connection.mjs
           - fixture: canonical-snapshot
             script: verify_company_common_canonical_snapshot.mjs
+          - fixture: canonical-resolver
+            script: verify_company_common_canonical_resolver.mjs
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
