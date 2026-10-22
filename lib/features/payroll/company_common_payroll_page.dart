@@ -4,7 +4,7 @@ import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'company_common_allowance_repository.dart';
 import 'company_common_allowance_pending_store.dart';
-import 'company_common_payroll_publication_panel.dart';
+import 'company_common_payroll_publication_surface.dart';
 
 import 'payroll_unit_item_editor.dart';
 
@@ -272,9 +272,9 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
       header: Column(mainAxisSize: MainAxisSize.min, children: [
         if (widget.header != null) widget.header!,
         if (_repository is SupabaseCompanyCommonAllowanceRepository)
-          CompanyCommonPayrollPublicationPanel(
+          CompanyCommonPayrollPublicationSurface(
             key: ValueKey('common-publications-${widget.companyId}/${_state!.version}'),
-            companyId: widget.companyId,
+            settings: _state!,
             initialPayrollType: _publicationType,
             canReconcile: _active && !_busy && _authorized,
             enabled: _state!.canEdit && _active && !_busy && !_confirming && _pending == null && !_conflict,
