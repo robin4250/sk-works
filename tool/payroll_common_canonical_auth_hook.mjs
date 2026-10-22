@@ -69,6 +69,18 @@ export async function verifyCanonicalCommonPayrollAuth({db,fixture,read,rpc,requ
  await db.query('insert into public.company_rate_settings(company_id) select id from public.companies');
  await db.query('alter table public.worker_payroll_settings add column if not exists allowance_name_2 text,add column if not exists allowance_2 numeric default 0,add column if not exists allowance_name_3 text,add column if not exists allowance_3 numeric default 0');
  for(const name of ['20260922020000_add_company_rate_settings_management.sql','20261003002700_add_attendance_allowance_display_units.sql','20261008043823_atomic_company_rate_and_allowance_units_save.sql','20261009201229_company_allowance_identity_lifecycle.sql'])await install(name,await read('supabase/migrations/'+name),value=>fixture.exec(value));
+ setPhase('reviewed-legacy-unit-acl');
+ // Supabase's real public-schema default privileges may explicitly grant anon
+ // EXECUTE even though the old migration revokes PUBLIC. The candidate correctly
+ // rejects that broader fixture baseline. Restrict only this fixture function;
+ // preserve its reviewed body/owner/config and authenticated/service-role grants.
+ const unitBefore=(await db.query("select md5(p.prosrc) source_md5,pg_get_userbyid(p.proowner) owner,p.prosecdef,p.proconfig,has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated_execute,has_function_privilege('service_role',p.oid,'EXECUTE') service_execute from pg_proc p where p.oid='public.my_attendance_allowance_units()'::regprocedure")).rows[0];
+ assert.deepEqual(unitBefore,{source_md5:'17310735021c3a953a093ed196261468',owner:'postgres',prosecdef:true,proconfig:['search_path=public, pg_temp'],authenticated_execute:true,service_execute:unitBefore.service_execute},'exact old unit baseline before restrictive fixture ACL');
+ await db.query('revoke execute on function public.my_attendance_allowance_units() from anon');
+ const unitAfter=(await db.query("select md5(p.prosrc) source_md5,pg_get_userbyid(p.proowner) owner,p.prosecdef,p.proconfig,has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated_execute,has_function_privilege('service_role',p.oid,'EXECUTE') service_execute from pg_proc p where p.oid='public.my_attendance_allowance_units()'::regprocedure")).rows[0];
+ assert.deepEqual(unitAfter,unitBefore,'restrictive fixture ACL preserves body owner configuration and existing trusted execution');
+ assert.equal((await db.query("select has_function_privilege('anon','public.my_attendance_allowance_units()','EXECUTE') allowed")).rows[0].allowed,false);
+ console.log('PASS isolated legacy-unit fixture removes only inherited anon execution; source guard, reviewed body and authenticated/trusted execution remain unchanged');
  for(const file of ['tool/staged_company_common_allowances.sql.review-only','docs/candidates/company_common_payroll_bridge_20261020.sql.review-only','docs/candidates/company_common_payroll_effective_20261020.sql.review-only'])await install(file.split('/').at(-1),await read(file));
  const strip=sql=>sql.replace(/^begin;$/m,'').replace(/commit;\s*$/,'');
  await install('canonical-atomic-bundle','begin;\n'+(await Promise.all(['snapshot','resolver','publisher'].map(async unit=>strip(await read('docs/candidates/company_common_canonical_'+unit+'_20261022.sql.review-only'))))).join('\n')+'\ncommit;');
@@ -112,6 +124,13 @@ export async function verifyCanonicalCommonPayrollAuth({db,fixture,read,rpc,requ
  for(const role of ['editor','viewer','outsider','manager']) {
   await rejected(previewName,base,tokens[role]);await rejected(publishName,command,tokens[role]);await rejected(receiptName,receiptBody,tokens[role]);
  }
+ // The inherited payroll-view session is a company member in the old fixture.
+ // Exercise the distinct company viewer role too, then restore that membership.
+ const viewerRole=(await db.query('select role::text v from public.company_members where company_id=$1 and user_id=$2',[cid,users.viewer.id])).rows[0].v;
+ try {
+  await db.query("update public.company_members set role='viewer' where company_id=$1 and user_id=$2",[cid,users.viewer.id]);
+  for(const [name,body] of [[previewName,base],[publishName,command],[receiptName,receiptBody]])await rejected(name,body,tokens.viewer);
+ } finally {await db.query('update public.company_members set role=$3 where company_id=$1 and user_id=$2',[cid,users.viewer.id,viewerRole]);}
  for(const [name,body] of [[previewName,base],[publishName,command],[receiptName,receiptBody]])await rejected(name,body);
  await rejected(previewName,{...base,p_company_id:otherCid},tokens.owner);
  await rejected(publishName,{...command,p_company_id:otherCid},tokens.owner);
@@ -134,7 +153,11 @@ export async function verifyCanonicalCommonPayrollAuth({db,fixture,read,rpc,requ
  setPhase('real-owner-publish');
  await rejected(publishName,{...command,p_approve_activation:false},tokens.owner,'55000');
  const absent=await jsonRpc(receiptName,receiptBody,tokens.owner);assert.equal(absent.found,false);
- const result=await jsonRpc(publishName,command,tokens.owner);
+ const counts=async()=>(await db.query('select (select count(*)::int from company_common_allowance_private.payroll_publications where company_id=$1) publications,(select count(*)::int from company_common_allowance_private.payroll_publication_receipts where company_id=$1) receipts',[cid])).rows[0];
+ const beforeConcurrentPublish=await counts();
+ const [result,concurrentReplay]=await Promise.all([jsonRpc(publishName,command,tokens.owner),jsonRpc(publishName,command,tokens.owner)]);
+ assert.deepEqual(concurrentReplay,result,'concurrent identical real-JWT commands return the same immutable receipt');
+ assert.deepEqual(await counts(),{publications:beforeConcurrentPublish.publications+1,receipts:beforeConcurrentPublish.receipts+1},'concurrent identical commands create only one publication and one receipt');
  assert.equal(result.contract_version,3);assert.equal(result.activation_changed,true);assert.equal(result.activation_scope,'payroll_type');assert.equal(result.publication_version,1);
  const publication=(await db.query('select actor_id,request_id from company_common_allowance_private.payroll_publications where company_id=$1 and version=1',[cid])).rows[0];
  assert.equal(publication.actor_id,users.owner.id);assert.equal(publication.request_id,command.p_request_id);
@@ -163,8 +186,28 @@ export async function verifyCanonicalCommonPayrollAuth({db,fixture,read,rpc,requ
  assert.equal((await jsonRpc(previewName,currentBase,tokens.owner)).contract_version,3,'original owner session remains usable');
  assert.deepEqual(await originalAuth(),authBefore,'original GoTrue users identities sessions and Auth functions remain unchanged');
  assert.deepEqual(await predicateInventory(),predicatesBefore,'real access predicate source and permissions remain unchanged');
+ setPhase('concurrent-different-requests');
+ const racePreview=await jsonRpc(previewName,currentBase,tokens.owner);
+ assert.equal(racePreview.ready,true);
+ const raceCommands=Array.from({length:2},()=>({...racePreview.command_base,p_request_id:randomUUID(),p_preview_token:racePreview.preview_token,p_approve_activation:true,p_activation_scope:racePreview.activation_scope}));
+ const beforeRace=await counts();
+ const raced=await Promise.all(raceCommands.map(async candidate=>{
+  const response=await rpc(publishName,candidate,tokens.owner);
+  return {status:response.status,body:await response.json(),command:candidate};
+ }));
+ const winners=raced.filter(item=>item.status===200),refused=raced.filter(item=>item.status!==200);
+ assert.equal(winners.length,1,'only one distinct request may commit the same approved timeline');
+ assert.equal(refused.length,1);assert.equal(refused[0].body.code,'40001','losing distinct request refuses changed source/timeline');
+ assert.deepEqual(await counts(),{publications:beforeRace.publications+1,receipts:beforeRace.receipts+1},'distinct real-JWT race creates only one publication and receipt');
+ assert.deepEqual(await jsonRpc(publishName,winners[0].command,tokens.owner),winners[0].body,'winning race request remains replayable');
+ const losingReceipt=await jsonRpc(receiptName,{p_company_id:cid,p_request_id:refused[0].command.p_request_id,p_expected_command:refused[0].command},tokens.owner);
+ assert.equal(losingReceipt.found,false,'losing request has no phantom committed receipt');
+ assert.deepEqual(await jsonRpc(publishName,command,tokens.owner),result,'earlier receipt remains replayable after concurrent later publication');
+ assert.deepEqual(await originalAuth(),authBefore,'concurrent HTTP requests preserve original Auth rows and functions');
+ assert.deepEqual(await predicateInventory(),predicatesBefore,'concurrent HTTP requests preserve authorization predicates');
  console.log('PASS real isolated GoTrue JWT -> canonical contract 3 preview/publish/receipt; one canonical publication records the real actor; same request replays without mutation');
  console.log('PASS member-payroll-editor/viewer/other-company/manager/anonymous, live admin removal, restricted actor, mismatched command/admin and own logged-out extra session refused with unchanged business state');
  console.log('PASS original Auth functions/users/identities/sessions/tokens preserved; only an additional synthetic actor was created and its own session logged out');
- console.log('LIMIT canonical Auth hook: disposable application schema and real local Auth sessions; no production JWT/config/RLS, public attendance proxy, native concurrent writer, OAuth or iPhone proof');
+ console.log('PASS concurrent real-JWT HTTP publishes: identical command returns one receipt twice; distinct request IDs sharing one preview yield one commit and one 40001 without duplicate publication');
+ console.log('LIMIT canonical Auth hook: disposable application schema and real local Auth sessions; no production JWT/config/RLS, public attendance proxy, mixed attendance/settings/finalization writer races, OAuth or iPhone proof');
 }
