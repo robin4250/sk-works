@@ -42,3 +42,10 @@ The no-view insert runs as the fixture owner with actor claims. It proves the in
 ## Remaining production blockers
 
 Native PostgreSQL checks for this new candidate, canonical public attendance/JWT/RLS/proxy tests, concurrent policy/settings/finalization and complete dependency closure, approved policy/interpretation UI, public display rollout, automatic new-month scheduled evidence, PDF/print/share and administrator iPhone verification remain unfinished. Original one-off selected binding candidates and the future policy must be unified under the normal product publisher before rollout; this must not become an independent competing production payment route.
+
+
+## Exact security prerequisite correction
+
+The installer now pins both the shared augmenter and future internal resolver to the expected signatures, reviewed source hashes, `postgres` owner, owner-only execute ACL, JSON scalar return, PL/pgSQL function kind, stable volatility, expected security-definer/invoker mode, empty search path, parallel-unsafe mode, and non-strict/non-leakproof/non-variadic attributes. It also pins the owners and normalized ACLs of both private schemas: the existing payroll-unit schema retains only its reviewed authenticated USAGE entry, and the future schema stays owner-only.
+
+The connection fixture mutates owner, execute ACL, search path, volatility and security mode on each function, plus private-schema usage/ownership, inside disposable transactions. It also replaces the internal resolver with the **same source body/signature but a different return type**. Every mutation rejects before installation; rollback restores the baseline. Positive installation still preserves caller definitions and existing grants. These are expected-baseline checks, not merely a before/after-equality claim. Native verification for the updated negative controls is pending root CI.

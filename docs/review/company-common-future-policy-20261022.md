@@ -35,3 +35,10 @@ The no-view test exercises only the **trusted internal input boundary** as the f
 ## Remaining work / production hold
 
 Normal caller/checkout integration, a reviewed exact caller/dependency contract, actual proxy attendance plus real issued tokens, native PostgreSQL concurrency/RLS tests, atomic current activation plus durable policy approval UI, source/identity lifecycle review, bank-change end-to-end evidence, interpretation classification/receipts, saved final-document display, salary/PDF totals, and administrator iPhone verification remain unfinished. The minimum resolver tests do not demonstrate actual future payroll creation or actual checkout success. The normal product publisher must be the final integration owner; this private policy must not create a competing production payment route.
+
+
+## Source classification correction
+
+Attendance selections are now classified against the approved company policy, legacy personal slots, personal unit-condition items, personal custom earnings, and existing product common publication items. The display returns `selection_classification` with the actual source kinds/IDs/slots. A known personal or product-common selection is not automatically renamed or reassigned to a policy item and does not create an unconfirmed-history block merely because it is absent from the legacy three slots.
+
+A same-name policy/personal legacy pair is accepted only under the already-approved same-rate inheritance rule or an exact explicit individual preference. Other multiple-source matches are `attendance_source_collision` and unresolved. Truly unknown historical names are `attendance_interpretation_unconfirmed`, never a silent successful zero. Tests separately cover known personal custom/unit selections, a known product-common selection, personal-source collision, policy/product-common collision, and an unknown historical name.

@@ -83,7 +83,29 @@ try {
  const callerHashes=async()=>(await db.query('select oid::regprocedure::text signature,md5(prosrc) hash from pg_proc where oid=any($1::regprocedure[]) order by 1',[callerSignatures])).rows;
  const unchangedCallers=await callerHashes();
  const augmenterAcl=(await db.query("select proacl::text acl,proowner,prosecdef from pg_proc where oid='payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)'::regprocedure")).rows[0];
- await db.exec(read('docs/candidates/company_common_future_connection_20261022.sql.review-only'));
+ const connectionSql=read('docs/candidates/company_common_future_connection_20261022.sql.review-only');
+ const guardWithinTransaction=connectionSql.replace(/^begin;$/m,'').replace(/commit;\s*$/,'');
+ const aug='payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)',internal='common_payroll_future_review_private.resolve_internal(uuid,uuid,date,date,jsonb)';
+ for(const mutation of [
+  `alter function ${aug} owner to authenticated`,
+  `grant execute on function ${aug} to authenticated`,
+  `alter function ${aug} set search_path=public`,
+  `alter function ${aug} volatile`,
+  `alter function ${aug} security invoker`,
+  `grant usage on schema common_payroll_future_review_private to authenticated`,
+  `alter schema common_payroll_future_review_private owner to authenticated`,
+  `alter function ${internal} owner to authenticated`,
+  `grant execute on function ${internal} to authenticated`,
+  `alter function ${internal} set search_path=public`,
+  `alter function ${internal} volatile`,
+  `alter function ${internal} security definer`,
+ ]){
+  await db.exec('begin');await db.exec(mutation);await assert.rejects(db.exec(guardWithinTransaction),/prerequisite differs/);await db.exec('rollback');
+ }
+ // Same source body/signature but changed return type must also reject.
+ const originalInternalDef=(await db.query('select pg_get_functiondef($1::regprocedure) def',[internal])).rows[0].def;
+ await db.exec('begin');await db.exec('drop function '+internal);await db.exec(originalInternalDef.replace('RETURNS jsonb','RETURNS text'));await assert.rejects(db.exec(guardWithinTransaction),/prerequisite differs/);await db.exec('rollback');
+ await db.exec(connectionSql);
  assert.deepEqual(await callerHashes(),unchangedCallers,'canonical payroll/attendance callers unchanged');
  assert.deepEqual((await db.query("select proacl::text acl,proowner,prosecdef from pg_proc where oid='payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)'::regprocedure")).rows[0],augmenterAcl,'shared augmenter owner/execute grants/security mode unchanged');
  const insertSelected=async(id,worker,date,names)=>db.query("insert into public.attendance_entries(id,company_id,worker_id,work_date,work_category,base_man_days,overtime_hours,early_hours,allowance_names) values($1,$2,$3,$4,'day',1,0,0,$5)",[rid(id),cid,worker,date,names]);
@@ -140,5 +162,5 @@ try {
  assert.deepEqual((await db.query('select to_jsonb(s) v from public.payroll_statements s where company_id=$1 and worker_id=$2 and period_start=$3',[cid,wid,month])).rows[0].v,frozenBefore);
  // Future disable wins for its effective month; current policy remains intact.
  await savePolicy(false,next,1,rid(++n));assert.equal((await resolvePolicy(wid,next)).active,false);assert.equal((await resolvePolicy(wid,month)).frozen,true);
- console.log(JSON.stringify({review_only:true,private_rates:!!privatePath,shared_augmenter_connected:true,actual_payroll_created:true,actual_attendance_edit:true,unchanged_caller_hashes:true,unchanged_execute_grants:true,manual_scope_preserved:true,no_view_trigger_contract:true,explicit_future_policy:true,later_month:true,new_employee:true,fresh_unrelated_settings_preserved:true,individual_priority:true,renamed_individual_unconfirmed:true,no_salary_view_internal_contract:true,public_view_enforced:true,unknown_alias_unconfirmed:true,production_changed:false}));
+ console.log(JSON.stringify({review_only:true,private_rates:!!privatePath,shared_augmenter_connected:true,actual_payroll_created:true,actual_attendance_edit:true,unchanged_caller_hashes:true,unchanged_execute_grants:true,exact_security_guard_mutations:true,manual_scope_preserved:true,no_view_trigger_contract:true,explicit_future_policy:true,later_month:true,new_employee:true,fresh_unrelated_settings_preserved:true,individual_priority:true,renamed_individual_unconfirmed:true,no_salary_view_internal_contract:true,public_view_enforced:true,unknown_alias_unconfirmed:true,production_changed:false}));
 }catch(error){console.error(error.name==='AssertionError'?error.stack:error.message);process.exitCode=1;}finally {await db.close();}

@@ -77,6 +77,24 @@ try {
  let inherited=await resolvePolicy();assert.equal(inherited.active,true);assert.equal(inherited.blocked,false);
  const next=(await db.query("select ($1::date+interval '1 month')::date::text m",[month])).rows[0].m;
  assert.equal((await resolvePolicy(wid,next)).active,true,'later not-yet-generated month inherits latest approved policy');
+ // Source classification negative controls. All fixture changes roll back;
+ // known names remain attached to their real source, never aliases of policy.
+ await db.exec('begin');
+ await db.query("update public.worker_payroll_settings set custom_earnings=custom_earnings||$3::jsonb where company_id=$1 and worker_id=$2",[cid,wid,JSON.stringify([{name:'Synthetic individual custom',amount_yen:17}])]);
+ await db.query('insert into payroll_unit_private.conditions(company_id,worker_id,starts_on,version,items) values($1,$2,$3,1,$4::jsonb)',[cid,wid,month,JSON.stringify([{id:rid(460),section:'earning',unit:'day',name:'Synthetic unit selection',rate_yen:19}])]);
+ await db.query('insert into company_common_allowance_private.payroll_activation values($1,$2)',[cid,month]);
+ await db.query('insert into company_common_allowance_private.payroll_publications(company_id,version,payroll_type,starts_on,common_version,items,request_id,actor_id) values($1,1,$2,$3,1,$4::jsonb,$5,$6)',[cid,typ,month,JSON.stringify([{id:rid(461),section:'earning',unit:'month',name:'Synthetic product common',amount_yen:23}]),rid(462),owner]);
+ await db.query("insert into public.attendance_entries(id,company_id,worker_id,work_date,work_category,base_man_days,overtime_hours,early_hours,allowance_names) values($1,$2,$3,$4,'day',1,0,0,$5)",[rid(463),cid,wid,month,['Synthetic individual custom','Synthetic unit selection','Synthetic product common']]);
+ let classified=await resolvePolicy();assert.equal(classified.blocked,false);assert(classified.items.every(x=>x.quantity===0),'known other-source selection is never rebound to policy quantity');
+ for(const [name,kind] of [['Synthetic individual custom','individual_custom'],['Synthetic unit selection','individual_unit'],['Synthetic product common','company_publication']]){const row=classified.selection_classification.find(x=>x.name===name);assert.equal(row.state,'known_source');assert.equal(row.sources[0].kind,kind);}
+ await db.query("update public.worker_payroll_settings set custom_earnings=custom_earnings||$3::jsonb where company_id=$1 and worker_id=$2",[cid,wid,JSON.stringify([{name:'Synthetic unit selection',amount_yen:29}])]);
+ classified=await resolvePolicy();assert(classified.reasons.some(x=>x.code==='attendance_source_collision'));assert.equal(classified.selection_classification.find(x=>x.name==='Synthetic unit selection').sources.length,2);
+ await db.query('insert into company_common_allowance_private.payroll_publications(company_id,version,payroll_type,starts_on,common_version,items,request_id,actor_id) values($1,2,$2,$3,1,$4::jsonb,$5,$6)',[cid,typ,month,JSON.stringify([{id:rid(464),section:'earning',unit:'month',name:plan.snapshot_items[0].name,amount_yen:31}]),rid(465),owner]);
+ await db.query('update public.attendance_entries set allowance_names=$2 where id=$1',[rid(463),[plan.snapshot_items[0].name]]);
+ classified=await resolvePolicy();assert(classified.reasons.some(x=>x.code==='attendance_source_collision'));assert(classified.selection_classification[0].sources.some(x=>x.kind==='company_publication'));assert(classified.selection_classification[0].sources.some(x=>x.kind==='company_policy'));assert.equal(classified.selection_classification[0].sources.find(x=>x.kind==='company_publication').id,rid(464));assert.equal(classified.selection_classification[0].sources.find(x=>x.kind==='company_policy').id,plan.snapshot_items[0].id);
+ await db.query('update public.attendance_entries set allowance_names=$2 where id=$1',[rid(463),['Synthetic unknown historic alias']]);
+ classified=await resolvePolicy();assert(classified.reasons.some(x=>x.code==='attendance_interpretation_unconfirmed'));assert.equal(classified.selection_classification[0].sources.length,0);
+ await db.exec('rollback');
  // Resolver is actor-independent, not a salary reader. Simulate only the trusted
  // caller input boundary, without granting a proxy attendance or salary role.
  await db.query("select set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claims',$2,false)",['00000000-0000-0000-0000-000000000004',JSON.stringify({sub:'00000000-0000-0000-0000-000000000004',role:'authenticated'})]);
@@ -106,5 +124,5 @@ try {
  assert((await resolvePolicy(newWid)).reasons.some(x=>x.code==='attendance_interpretation_unconfirmed'));
  // Future disable wins for its effective month; current policy remains intact.
  await savePolicy(false,next,1,rid(++n));assert.equal((await resolvePolicy(wid,next)).active,false);assert.equal((await resolvePolicy(wid,month)).active,true);
- console.log(JSON.stringify({review_only:true,private_rates:!!privatePath,explicit_future_policy:true,later_month:true,new_employee:true,fresh_unrelated_settings_preserved:true,individual_priority:true,renamed_individual_unconfirmed:true,no_salary_view_internal_contract:true,public_view_enforced:true,unknown_alias_unconfirmed:true,production_changed:false}));
+ console.log(JSON.stringify({review_only:true,private_rates:!!privatePath,explicit_future_policy:true,later_month:true,new_employee:true,fresh_unrelated_settings_preserved:true,individual_priority:true,renamed_individual_unconfirmed:true,no_salary_view_internal_contract:true,public_view_enforced:true,known_sources_classified:true,source_collision_unresolved:true,unknown_alias_unconfirmed:true,production_changed:false}));
 }catch(error){console.error(error.name==='AssertionError'?error.stack:error.message);process.exitCode=1;}finally {await db.close();}

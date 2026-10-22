@@ -2,8 +2,28 @@
 -- Leaves caller definitions, role grants, data and policy enablement unchanged.
 begin;
 do $$begin
- if not exists(select 1 from pg_proc where oid=to_regprocedure('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)') and md5(prosrc)='47ee121481cea77af1e0275c686c65db' and prosecdef and prorettype='jsonb'::regtype)
-  or to_regprocedure('common_payroll_future_review_private.resolve_internal(uuid,uuid,date,date,jsonb)') is null then
+ if exists(select 1 from (values
+  ('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)','47ee121481cea77af1e0275c686c65db',true),
+  ('common_payroll_future_review_private.resolve_internal(uuid,uuid,date,date,jsonb)','5aa0408ef225b0c116fb96e612646f88',false)
+ ) expected(signature,source_md5,security_definer)
+ left join pg_proc p on p.oid=to_regprocedure(expected.signature)
+ where p.oid is null or md5(p.prosrc) is distinct from expected.source_md5
+  or pg_get_userbyid(p.proowner) is distinct from 'postgres' or p.prosecdef is distinct from expected.security_definer
+  or p.proargmodes is not null or p.proallargtypes is not null
+  or p.proargnames is distinct from case when expected.security_definer then array['cid','wid','p_start','p_end','settings']::text[] else array['cid','wid','p_start','p_end','p_fresh_settings']::text[] end
+  or p.prorettype is distinct from 'jsonb'::regtype or p.proretset or p.provolatile is distinct from 's'::"char"
+  or p.prokind is distinct from 'f'::"char" or p.prolang is distinct from (select oid from pg_language where lanname='plpgsql')
+  or p.proparallel is distinct from 'u'::"char" or p.proleakproof or p.proisstrict or p.provariadic<>0
+  or p.proconfig is distinct from array['search_path=""']::text[]
+  or array(select a::text from unnest(coalesce(p.proacl,acldefault('f',p.proowner))) a order by a::text) is distinct from array['postgres=X/postgres']::text[]
+ ) or exists(select 1 from (values
+  ('payroll_unit_private',array['authenticated=U/postgres','postgres=UC/postgres']::text[]),
+  ('common_payroll_future_review_private',array['postgres=UC/postgres']::text[])
+ ) expected(schema_name,acl)
+ left join pg_namespace n on n.nspname=expected.schema_name
+ where n.oid is null or pg_get_userbyid(n.nspowner) is distinct from 'postgres'
+  or array(select a::text from unnest(coalesce(n.nspacl,acldefault('n',n.nspowner))) a order by a::text) is distinct from expected.acl
+ ) then
   raise exception 'reviewed payroll augmenter prerequisite differs' using errcode='55000';end if;
 end $$;
 create or replace function payroll_unit_private.augment_settings(cid uuid,wid uuid,p_start date,p_end date,settings jsonb)

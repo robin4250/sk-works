@@ -62,7 +62,7 @@ end $$;
 create function common_payroll_future_review_private.resolve_internal(cid uuid,wid uuid,p_start date,p_end date,p_fresh_settings jsonb)
 returns jsonb language plpgsql stable security invoker set search_path='' as $$
 declare policy record; preference record; raw jsonb; item jsonb; contract jsonb; effective jsonb; slots integer[]; n integer; qty integer;
- earnings jsonb:='[]'; items jsonb:='[]'; exceptions jsonb:='[]'; reasons jsonb:='[]'; unknown_names jsonb; individual_items jsonb;
+ earnings jsonb:='[]'; items jsonb:='[]'; exceptions jsonb:='[]'; reasons jsonb:='[]'; individual_items jsonb; product_items jsonb; catalog jsonb; classification jsonb:='[]'; selection record; sources jsonb; state text; approved_pair boolean;
 begin
  if p_start is null or p_end is null or p_start<>date_trunc('month',p_start)::date or p_end<>(p_start+interval '1 month - 1 day')::date then
   return jsonb_build_object('active',false,'blocked',true,'reason','invalid_internal_month_contract');end if;
@@ -75,16 +75,37 @@ begin
   return jsonb_build_object('active',false,'blocked',false,'frozen',true,'items','[]'::jsonb,'earnings','[]'::jsonb);end if;
  effective:=raw;
  select c.items into individual_items from payroll_unit_private.conditions c where c.company_id=cid and c.worker_id=wid and c.starts_on<=p_start order by c.starts_on desc limit 1;
- -- Unknown selections remain interpretation-unconfirmed, never implicit aliases
- -- or a successful zero-value interpretation. No automatic historical mapping.
- select coalesce(jsonb_agg(name order by name),'[]'::jsonb) into unknown_names from (
-  select distinct name from public.attendance_entries a cross join unnest(coalesce(a.allowance_names,'{}'::text[])) name
-  where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end
-   and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date
-   and not exists(select 1 from jsonb_array_elements(policy.items) i where i->>'name'=name)
-   and not exists(select 1 from generate_series(1,3) k where nullif(btrim(raw->>('allowance_name_'||k)),'')=name)
- ) pending;
- if unknown_names<>'[]'::jsonb then reasons:=reasons||jsonb_build_array(jsonb_build_object('code','attendance_interpretation_unconfirmed','names',unknown_names));end if;
+ -- Classify selections by their actual stored sources. Classification is not
+ -- an alias mapping and never changes the quantity/identity of another source.
+ product_items:=payroll_unit_private.resolve_company_common(cid,wid,p_start,p_end)->'items';
+ select coalesce(jsonb_agg(source),'[]'::jsonb) into catalog from (
+  select jsonb_build_object('kind','company_policy','id',e->'id','generation',e->'legacy_generation','name',e->'name','rate_yen',e->'amount_yen') source from jsonb_array_elements(policy.items) e
+  union all
+  select jsonb_build_object('kind','individual_legacy','slot',k,'name',btrim(raw->>('allowance_name_'||k)),'rate_yen',coalesce((raw->>('allowance_'||k))::numeric,0)) from generate_series(1,3) k where nullif(btrim(raw->>('allowance_name_'||k)),'') is not null
+  union all
+  select jsonb_build_object('kind','individual_unit','id',e->'id','name',e->'name') from jsonb_array_elements(coalesce(individual_items,'[]'::jsonb)) e
+  union all
+  select jsonb_build_object('kind','individual_custom','index',ord,'name',e->'name') from jsonb_array_elements(coalesce(raw->'custom_earnings','[]'::jsonb)) with ordinality x(e,ord)
+  union all
+  select jsonb_build_object('kind','company_publication','id',e->'id','name',e->'name') from jsonb_array_elements(coalesce(product_items,'[]'::jsonb)) e
+ ) candidates;
+ for selection in select distinct name from public.attendance_entries a cross join unnest(coalesce(a.allowance_names,'{}'::text[])) name
+  where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date order by name loop
+  select coalesce(jsonb_agg(e order by e->>'kind',e::text),'[]'::jsonb) into sources from jsonb_array_elements(catalog) e where e->>'name'=selection.name;
+  approved_pair:=false;
+  if jsonb_array_length(sources)=2 then
+   select exists(select 1 from jsonb_array_elements(sources) p join jsonb_array_elements(sources) l on p->>'kind'='company_policy' and l->>'kind'='individual_legacy'
+    where p->'rate_yen'=l->'rate_yen' or exists(select 1 from common_payroll_future_review_private.individual_preferences pref
+     where pref.company_id=cid and pref.worker_id=wid and pref.payroll_type=policy.payroll_type and pref.policy_version=policy.version
+      and pref.common_id=(p->>'id')::uuid and pref.generation=(p->>'generation')::bigint and pref.individual_slot=(l->>'slot')::integer and pref.approved_name=selection.name)) into approved_pair;
+  end if;
+  if sources='[]'::jsonb then
+   state:='interpretation_unconfirmed';reasons:=reasons||jsonb_build_array(jsonb_build_object('code','attendance_interpretation_unconfirmed','name',selection.name));
+  elsif jsonb_array_length(sources)>1 and not approved_pair then
+   state:='source_collision_unresolved';reasons:=reasons||jsonb_build_array(jsonb_build_object('code','attendance_source_collision','name',selection.name));
+  else state:=case when approved_pair then 'approved_inheritance_or_individual_pair' else 'known_source' end;end if;
+  classification:=classification||jsonb_build_array(jsonb_build_object('name',selection.name,'state',state,'sources',(select coalesce(jsonb_agg(e-'rate_yen'),'[]'::jsonb) from jsonb_array_elements(sources) e)));
+ end loop;
  for item in select value from jsonb_array_elements(policy.items) loop
   select * into preference from common_payroll_future_review_private.individual_preferences e where e.company_id=cid and e.worker_id=wid and e.payroll_type=policy.payroll_type and e.common_id=(item->>'id')::uuid and e.generation=(item->>'legacy_generation')::bigint and e.policy_version=policy.version;
   if found then
@@ -112,7 +133,7 @@ begin
   earnings:=earnings||jsonb_build_array(jsonb_build_object('name',item->>'name','amount_yen',(item->>'amount_yen')::numeric*qty));
  end loop;
  return jsonb_build_object('review_only',true,'active',true,'blocked',reasons<>'[]'::jsonb,'reasons',reasons,'policy_version',policy.version,'policy_starts_on',policy.starts_on,
-  'items',items,'earnings',earnings,'exceptions',exceptions,'effective_settings',case when reasons='[]'::jsonb then effective else null end);
+  'items',items,'earnings',earnings,'selection_classification',classification,'exceptions',exceptions,'effective_settings',case when reasons='[]'::jsonb then effective else null end);
 end $$;
 
 create function common_payroll_future_review_private.read_display(cid uuid,wid uuid,p_month date)
