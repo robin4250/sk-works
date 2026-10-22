@@ -1,3 +1,4 @@
+import '../shared/trade_document_confirmation_dialog.dart';
 import '../shared/trade_document_actor_boundary.dart';
 import '../shared/document_display_totals.dart';
 import '../shared/trade_document_attachment.dart';
@@ -1173,7 +1174,15 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
       if (!saved || !mounted) return;
       }
       checkActor();
-      final approved = await repository.approve(invoice.invoiceId);
+      if (!mounted) return;
+      final outcome = await openTradeDocumentConfirmation(context,
+        kind: 'invoice', parentId: invoice.invoiceId,
+        sourceRevision: invoice.documentUpdatedAt == null ? ''
+          : DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String());
+      checkActor();
+      if (!mounted || outcome == TradeConfirmationFlowOutcome.cancelled) return;
+      final approved = outcome == TradeConfirmationFlowOutcome.confirmed ||
+        await repository.approve(invoice.invoiceId);
       checkActor();
       if (!approved) {
         throw StateError(SkoLanguageController.isEnglish
@@ -1343,6 +1352,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         ],
                       ),
                     ),
+                  if (_singleInvoice != null)
+                    TradeConfirmationAction(kind: 'invoice', parentId: _singleInvoice!.invoiceId,
+                      sourceRevision: '', label: '承認済み注文請書を開く', inspectOnly: true),
                   InvoicePreviewGuidance(
                     needsStampSurname: approvals.any((row) => row.stampSurname == null),
                   ),
@@ -2170,5 +2182,6 @@ class _ScreenApprovals extends StatelessWidget {
     ],
   );
 }
+
 
 

@@ -11,6 +11,9 @@ on:
       - 'docs/review/monthly-payment-confirmation-contract-20261022.md'
       - 'docs/review/monthly-payment-review-proof-20261022.md'
       - 'tool/trade_document_monthly_review_fixture.mjs'
+      - 'docs/candidates/trade_document_confirmation_api_20261022.sql.review-only'
+      - 'tool/trade_document_confirmation_api_fixture.mjs'
+      - 'tool/fixtures/trade_document_confirmation_api_synthetic.json'
       - '.github/workflows/trade-document-bound-seal-consent.yml'
 permissions:
   contents: read
@@ -18,6 +21,7 @@ jobs:
   isolated-sql:
     env:
       SKO_MONTHLY_PAYMENT_REVIEW_HOOK: contract-v1
+      SKO_TRADE_DOCUMENT_API_REVIEW_HOOK: contract-v1
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:

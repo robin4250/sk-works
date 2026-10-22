@@ -129,6 +129,10 @@ export async function verifyMonthlyReview(db,c){
  for(const parent of oldFinancial.parents)check(finalFinancial.parents.find(row=>row.id===parent.id),parent);
  for(const key of ['invoice_parents','invoice_audit','invoice_approvals'])check(finalFinancial[key],oldFinancial[key]);
  console.log('PASS monthly content-review NEW private candidate: saved UUID/revision/attachment/formal partner/issuer seal bound, explicit choices, one receipt/replay, changed payload/actor/preview/parent/finalized/ambiguous mapping refusals, late rollback, separate received copy, no financial parent finalization; public/API/UI/realJWT/production UNIMPLEMENTED');
+ if(process.env.SKO_TRADE_DOCUMENT_API_REVIEW_HOOK){
+  if(process.env.SKO_TRADE_DOCUMENT_API_REVIEW_HOOK!=='contract-v1')throw Error('unknown confirmation API review fixture hook');
+  await (await import('./trade_document_confirmation_api_fixture.mjs')).verifyConfirmationApi(db,{...c,prepareMonthly:prepare,monthlyState:state});
+ }
 }
 
 async function verifyNativeMonthlyRace(db,c){

@@ -141,7 +141,7 @@ declare d trade_document_consent_private.documents%rowtype;r trade_document_cons
  receipt trade_document_consent_private.monthly_review_receipts%rowtype;payload jsonb;current_preview jsonb;seal_result jsonb;result jsonb;binding jsonb;
 begin
  perform trade_document_consent_private.require_actor(cid);
- if rid is null or jsonb_typeof(expected) is distinct from 'object' or octet_length(expected::text)>65536 then raise exception 'exact original request required' using errcode='22023';end if;
+ if rid is null or jsonb_typeof(expected) is distinct from 'object' or octet_length(expected::text)>2097152 then raise exception 'exact original request required' using errcode='22023';end if;
  select x.* into d from trade_document_consent_private.documents x join trade_document_consent_private.local_links l on l.document_id=x.id
  where l.company_id=cid and l.local_document_id=local_id;
  if d.id is null or d.issuer_company_id<>cid or d.document_kind<>'order' then raise exception 'own monthly order required' using errcode='42501';end if;
