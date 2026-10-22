@@ -73,7 +73,7 @@ try{
  const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`,A=id(1),B=id(2),partner=id(23),customer=id(24),payment=id(9100),invoice=id(9101),trade=id(9102);
  const q=async(sql,args=[])=>(await db.query(sql,args)).rows[0]?.v;
  // Only synthetic application parents are written through the established savers.
- await db.query("insert into payment_certificates(id,company_id,partner_company_id,period_start,period_end,revision,status,gross_amount,snapshot) values($1,$2,$3,'2026-10-01','2026-10-31',1,'draft',110000,'{}')",[payment,A,partner]);
+ await db.query("insert into payment_certificates(id,company_id,partner_company_id,period_start,period_end,revision,status,gross_amount,snapshot) values($1,$2,$3,'2026-10-01','2026-10-31',1,'draft',110000,'{\"calculation_rows\":[{\"work_content\":\"消費税\",\"amount_yen\":10000}]}')",[payment,A,partner]);
  await db.query("insert into invoices(id,company_id,customer_id,billing_period_start,billing_period_end,updated_at,status,grand_total,tax,snapshot) values($1,$2,$3,'2026-10-01','2026-10-31',clock_timestamp(),'draft',110000,10000,'{}')",[invoice,A,customer]);
  await db.query('select private.ensure_invoice_approval_rows($1)',[invoice]);
  const invoiceRev=await q('select updated_at::text v from invoices where id=$1',[invoice]);
@@ -126,7 +126,7 @@ try{
 }catch(error){
  console.error('FAIL isolated trade Auth phase='+phase+' code='+(typeof error?.code==='string'?error.code:'E2E_ASSERTION'));
  if(typeof error?.actual==='number'&&typeof error?.expected==='number')console.error(JSON.stringify({actual:error.actual,expected:error.expected}));
- const safeMessages=new Set(['発行日を入力してください。','工事・工期・支払条件を確認してください。','会社情報の未入力・文字数を確認してください。','入力内容が長すぎます。','受領注文書日を入力してください。','承諾文を確認してください。']);
+ const safeMessages=new Set(['発行日を入力してください。','工事・工期・支払条件を確認してください。','会社情報の未入力・文字数を確認してください。','入力内容が長すぎます。','受領注文書日を入力してください。','承諾文を確認してください。','請負代金・消費税額を数字で入力してください。','当月の請負代金と消費税額を確認してください。','工期の開始・終了を確認してください。']);
  if(safeMessages.has(error?.message))console.error('fixed_sql_message='+error.message);
  if(lastHttp)console.error(JSON.stringify(lastHttp));process.exitCode=1;
 }finally{

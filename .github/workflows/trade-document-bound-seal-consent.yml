@@ -13,6 +13,7 @@ on:
       - 'tool/trade_document_monthly_review_fixture.mjs'
       - 'docs/candidates/trade_document_confirmation_api_20261022.sql.review-only'
       - 'tool/trade_document_confirmation_api_fixture.mjs'
+      - 'tool/trade_document_confirmation_api_races.mjs'
       - 'tool/fixtures/trade_document_confirmation_api_synthetic.json'
       - '.github/workflows/trade-document-bound-seal-consent.yml'
 permissions:

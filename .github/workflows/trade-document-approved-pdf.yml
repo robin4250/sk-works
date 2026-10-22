@@ -1,0 +1,65 @@
+name: Approved trade document actual SQL to PDF
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/trade_document_confirmation_*.dart'
+      - 'lib/features/invoices/invoice_order_acceptance_pdf.dart'
+      - 'lib/features/payroll/payment_order_pdf.dart'
+      - 'test/trade_document_confirmation_pdf_test.dart'
+      - 'test/fixtures/trade_document_confirmation_api_synthetic.json'
+      - 'tool/trade_document_confirmation_api_*.mjs'
+      - 'tool/verify_trade_confirmation_pdf.py'
+      - '.github/workflows/trade-document-approved-pdf.yml'
+permissions:
+  contents: read
+jobs:
+  actual-sql-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Export actual approved evidence from native PostgreSQL
+        env:
+          SKO_MONTHLY_PAYMENT_REVIEW_HOOK: contract-v1
+          SKO_TRADE_DOCUMENT_API_REVIEW_HOOK: contract-v1
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+          SKO_TRADE_DOCUMENT_API_EXPORT: ${{ runner.temp }}/trade-confirmation-native.json
+        run: |
+          node tool/verify_trade_document_bound_seal_consent.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+          cp "$RUNNER_TEMP/trade-confirmation-native.json" test/fixtures/trade_document_confirmation_api_synthetic.json
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze
+      - name: Generate four PDFs with real approved renderer and registered font
+        env:
+          SKO_TRADE_CONFIRMATION_PDF_OUTPUT_DIR: build/trade-confirmation-pdf-proof
+        run: timeout 240s flutter test --reporter expanded --timeout 60s test/trade_document_confirmation_pdf_test.dart
+      - run: python3 -m pip install PyMuPDF==1.26.6
+      - run: python3 tool/verify_trade_confirmation_pdf.py build/trade-confirmation-pdf-proof
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trade-confirmation-actual-sql-pdf
+          path: build/trade-confirmation-pdf-proof/

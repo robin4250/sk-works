@@ -72,6 +72,9 @@ export async function verifyConfirmationApi(db,c){
  const lw=await workspace('payment_certificate',large.parent,'1'),lp=await preview(lw);
  check(Buffer.byteLength(JSON.stringify(lp.display_preview))>65536,true);check(Buffer.byteLength(JSON.stringify(lp.expected_command))<8192,true);
  check((await confirm(lp,id(8104))).result.financial_finalized,false);
+ // Restore a small registered image for shareable invoice response fixtures.
+ const invoiceSealRevision=await q('select revision v from private.company_seal_png_selection where company_id=$1',[A]);
+ await c.upload(A,'甲会社',invoiceSealRevision,32);
  // Existing invoice final approval, not a parallel content-review writer.
  const inv=id(8300);await db.query("insert into invoices(id,company_id,customer_id,billing_period_start,billing_period_end,updated_at,status,grand_total,tax,snapshot) values($1,$2,$3,'2026-10-01','2026-10-31',clock_timestamp(),'draft',110000,10000,'{}')",[inv,A,CUSTOMER]);
  await db.query('select private.ensure_invoice_approval_rows($1)',[inv]);
@@ -99,11 +102,16 @@ export async function verifyConfirmationApi(db,c){
  const invAfter=await q('select to_jsonb(i) v from invoices i where id=$1',[inv]);check(invAfter.grand_total,invBefore.grand_total);check(invAfter.tax,invBefore.tax);check(invAfter.invoice_seal_frozen,true);
  check(await q("select count(*)::int v from invoice_approval_audit where invoice_id=$1",[inv]),2);
  check(await confirm(ip,id(8105)),invoiceResult);check((await resolve('invoice',inv)).phase,'approved');
- check((await render(iw)).evidence.body.kind,'acceptance');
+ const invoiceRender=await render(iw);check(invoiceRender.evidence.body.kind,'acceptance');
+ await asActor(UB);
+ const invoiceReceivedWorkspace=await api('select public.received_trade_document_confirmation_workspace($1,$2,$3) v',[reverseTrade,iw.document_id,iw.document_revision]);
+ const invoiceReceivedRender=await render(invoiceReceivedWorkspace);
+ check(invoiceReceivedWorkspace.local_document_id===iw.local_document_id,false);check(invoiceReceivedRender.evidence,invoiceRender.evidence);
+ await asActor(UA);
  if(process.env.SKO_TRADE_DOCUMENT_API_EXPORT){
-  await fs.writeFile(process.env.SKO_TRADE_DOCUMENT_API_EXPORT,JSON.stringify({synthetic_fixture:true,ordinary_assigned_workspace:member,issued_workspace:w,issued_preview:p,confirmation:approved,received_list:list,received_workspace:rw,issued_render:issued,received_render:receivedRender,invoice_expected_command:ip.expected_command,invoice_confirmation:invoiceResult},null,2)+'\n');
+  await fs.writeFile(process.env.SKO_TRADE_DOCUMENT_API_EXPORT,JSON.stringify({synthetic_fixture:true,ordinary_assigned_workspace:member,issued_workspace:w,issued_preview:p,confirmation:approved,received_list:list,received_workspace:rw,issued_render:issued,received_render:receivedRender,invoice_render:invoiceRender,invoice_received_workspace:invoiceReceivedWorkspace,invoice_received_render:invoiceReceivedRender,invoice_expected_command:ip.expected_command,invoice_confirmation:invoiceResult},null,2)+'\n');
  }
- if(c.openNativePeer)console.log('LIMIT public API native: SQL-role sessions only; real JWT HTTP and concurrent API requests require the dedicated Auth stage');
+ if(c.openNativePeer)await (await import('./trade_document_confirmation_api_races.mjs')).verifyPublicConfirmationApiRaces(db,c);
  console.log('PASS public API candidate: current SQL session/role/issuer authority, idempotent parent and received workspaces, compact command, real invoice final approve, monthly unchanged parent, exact receipt replay, current/archive body, primitive bypass/session revocation refusals and registered PNG over 64KiB');
 }
 
