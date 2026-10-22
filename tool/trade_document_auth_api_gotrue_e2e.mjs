@@ -128,6 +128,10 @@ try{
  if(typeof error?.actual==='number'&&typeof error?.expected==='number')console.error(JSON.stringify({actual:error.actual,expected:error.expected}));
  const safeMessages=new Set(['発行日を入力してください。','工事・工期・支払条件を確認してください。','会社情報の未入力・文字数を確認してください。','入力内容が長すぎます。','受領注文書日を入力してください。','承諾文を確認してください。','請負代金・消費税額を数字で入力してください。','当月の請負代金と消費税額を確認してください。','工期の開始・終了を確認してください。']);
  if(safeMessages.has(error?.message))console.error('fixed_sql_message='+error.message);
+ const missing=error?.code==='42703'&&typeof error?.message==='string'?error.message.match(/(?:column|field) "([a-z_][a-z0-9_]{0,80})"/):null;
+ if(missing)console.error('missing_identifier='+missing[1]);
+ const structural=Object.fromEntries(['schema','table','column','routine'].filter(k=>typeof error?.[k]==='string'&&/^[a-z_][a-z0-9_]{0,80}$/.test(error[k])).map(k=>[k,error[k]]));
+ if(Object.keys(structural).length)console.error(JSON.stringify(structural));
  if(lastHttp)console.error(JSON.stringify(lastHttp));process.exitCode=1;
 }finally{
  if(db)await db.end().catch(()=>{});
