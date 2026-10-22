@@ -1,0 +1,50 @@
+name: Invoice party source isolated proof
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/invoice_party_representatives*'
+      - 'tool/verify_invoice_party_source.mjs'
+      - 'tool/trade_document_pg_adapter.mjs'
+      - 'tool/security/fixture_dependencies/**'
+      - 'docs/candidates/payment_order_tax_from_snapshot_20261020.sql.review-only'
+      - 'docs/candidates/payment_order_directory_party_source_20261021.sql.review-only'
+      - 'docs/candidates/payment_order_own_representative_20261021.sql.review-only'
+      - 'supabase/migrations/20261014124714_monthly_trade_document_attachment.sql'
+      - '.github/workflows/invoice-party-source.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-source:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [pglite, postgres17]
+    services:
+      postgres:
+        image: ${{ matrix.engine == 'postgres17' && 'postgres:17' || '' }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_trade_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_trade_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts
+      - name: Run public-baseline source, restore and row-hash checks
+        env:
+          FIXTURE_ENGINE: ${{ matrix.engine }}
+          SKO_TRADE_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_trade_fixture
+        run: |
+          if [ "$FIXTURE_ENGINE" = "postgres17" ]; then
+            node tool/verify_invoice_party_source.mjs "$PWD/tool/trade_document_pg_adapter.mjs"
+          else
+            node tool/verify_invoice_party_source.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          fi

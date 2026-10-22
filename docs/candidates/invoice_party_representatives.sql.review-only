@@ -1,0 +1,59 @@
+-- REVIEW ONLY. Existing representative storage is required; never reapplies it.
+-- Extends only unsaved invoice-child defaults; no production execution.
+begin;
+set local lock_timeout='5s';
+DO $patch$
+declare body text; definition text; before_attributes jsonb;
+begin
+ if to_regclass('private.partner_company_profile_extensions') is null then
+  raise exception 'Own company representative storage unavailable' using errcode='55000';
+ end if;
+ select prosrc,pg_get_functiondef(oid),to_jsonb(p)-'prosrc' into body,definition,before_attributes from pg_proc p
+ where oid=to_regprocedure('private.trade_document_source(text,uuid,text)');
+ if body is null or md5(body)<>'a24d433cb49462869a06d51081562a43' then
+  raise exception 'Trade document source changed; review required' using errcode='55000';
+ end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.trade_document_source(text,uuid,text)')
+   and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef and p.provolatile='v'
+   and p.proconfig=array['search_path=""'] and p.proacl is not null
+   and not exists(select 1 from aclexplode(p.proacl) acl where acl.grantee<>p.proowner)) then
+  raise exception 'Trade document source attributes changed' using errcode='55000';
+ end if;
+ if length(body)-length(replace(body,E' return result;\nend',''))<>length(E' return result;\nend') then
+  raise exception 'Trade document source return anchor changed' using errcode='55000';
+ end if;
+ definition:=replace(definition,E' return result;\nend',$new$
+ -- Invoice-only missing party details: never replace a saved child or write the parent invoice.
+ if p_kind='invoice' and can_manage
+ and not exists(select 1 from private.trade_document_attachments a
+   where a.subject_kind=p_kind and a.subject_id=p_subject and a.company_id=cid) then
+  result:=jsonb_set(result,'{defaults,issuer,representative_name}',coalesce((
+   select to_jsonb(btrim(e.representative_name))
+   from private.partner_company_profile_extensions e
+   where e.company_id=cid and length(btrim(e.representative_name)) between 1 and 80
+  ),result#>'{defaults,issuer,representative_name}'));
+  select count(*),min(t.trade_role),min(t.address),min(t.corporate_number),min(t.representative_name)
+    into directory_count,directory_role,directory_address,directory_corporate,directory_representative
+  from public.trade_companies t where t.company_id=cid and t.customer_id=counter_id;
+  if directory_count=1 and coalesce(directory_role in ('customer','both'),false) then
+   result:=jsonb_set(result,'{defaults,counterparty}',
+    (result->'defaults'->'counterparty')||jsonb_build_object(
+     'address',case when length(btrim(directory_address)) between 1 and 240
+       then btrim(directory_address) else coalesce(counter->>'address','') end,
+     'corporate_number',case when btrim(directory_corporate) ~ '^[0-9]{13}$'
+       then btrim(directory_corporate) else coalesce(counter->>'corporate_number','') end,
+     'representative_name',case when length(btrim(directory_representative)) between 1 and 80
+       then btrim(directory_representative) else coalesce(counter->>'representative_name','') end));
+  end if;
+ end if;
+ return result;
+end$new$);
+ execute definition;
+ if not exists(select 1 from pg_proc p
+   where p.oid=to_regprocedure('private.trade_document_source(text,uuid,text)')
+   and md5(p.prosrc)='ebcc70935938482054943560390038b2'
+   and to_jsonb(p)-'prosrc'=before_attributes) then
+  raise exception 'Invoice source after-source/attributes mismatch' using errcode='55000';
+ end if;
+end $patch$;
+commit;
