@@ -38,6 +38,22 @@ export async function verifyCanonicalCommonPayrollAuth({db,fixture,read,rpc,requ
   if(token)assert.equal((await response.json()).code,code);else assert.ok([401,403].includes(response.status));
   assert.deepEqual(await business(),before,'refused request changes no business row');
  }
+ async function install(label,sql,execute=value=>db.query(value)) {
+  setPhase('install-'+label);
+  try {await execute(sql);} catch(error) {
+   await db.query('rollback').catch(()=>{});
+   const safeMessages=new Set(['legacy allowance source baseline drift','attendance allowance unit source baseline drift','payroll common bridge prerequisite differs','payroll common read prerequisite differs','canonical payroll resolver prerequisite differs','canonical publisher prerequisite differs']);
+   if(safeMessages.has(error.message))console.error('CANONICAL_PREREQUISITE '+error.message);
+   const metadata=(await db.query(`select n.nspname||'.'||p.proname function_name,md5(p.prosrc) source_md5,pg_get_userbyid(p.proowner) owner
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='company_allowance_identity_private'
+     or (n.nspname='payroll_unit_private' and p.proname in ('augment_settings','read_conditions','resolve_company_common','common_state'))
+     or (n.nspname='public' and p.proname='my_attendance_allowance_units')
+    order by n.nspname,p.proname`)).rows;
+   console.error('CANONICAL_PREREQUISITE_FUNCTIONS '+JSON.stringify(metadata));
+   throw error;
+  }
+ }
 
  setPhase('common-baseline');
  await db.query('reset role');
@@ -52,10 +68,10 @@ export async function verifyCanonicalCommonPayrollAuth({db,fixture,read,rpc,requ
  await db.query(tables);
  await db.query('insert into public.company_rate_settings(company_id) select id from public.companies');
  await db.query('alter table public.worker_payroll_settings add column if not exists allowance_name_2 text,add column if not exists allowance_2 numeric default 0,add column if not exists allowance_name_3 text,add column if not exists allowance_3 numeric default 0');
- for(const name of ['20260922020000_add_company_rate_settings_management.sql','20261003002700_add_attendance_allowance_display_units.sql','20261008043823_atomic_company_rate_and_allowance_units_save.sql','20261009201229_company_allowance_identity_lifecycle.sql'])await fixture.exec(await read('supabase/migrations/'+name));
- for(const file of ['tool/staged_company_common_allowances.sql.review-only','docs/candidates/company_common_payroll_bridge_20261020.sql.review-only','docs/candidates/company_common_payroll_effective_20261020.sql.review-only'])await db.query(await read(file));
+ for(const name of ['20260922020000_add_company_rate_settings_management.sql','20261003002700_add_attendance_allowance_display_units.sql','20261008043823_atomic_company_rate_and_allowance_units_save.sql','20261009201229_company_allowance_identity_lifecycle.sql'])await install(name,await read('supabase/migrations/'+name),value=>fixture.exec(value));
+ for(const file of ['tool/staged_company_common_allowances.sql.review-only','docs/candidates/company_common_payroll_bridge_20261020.sql.review-only','docs/candidates/company_common_payroll_effective_20261020.sql.review-only'])await install(file.split('/').at(-1),await read(file));
  const strip=sql=>sql.replace(/^begin;$/m,'').replace(/commit;\s*$/,'');
- await db.query('begin;\n'+(await Promise.all(['snapshot','resolver','publisher'].map(async unit=>strip(await read('docs/candidates/company_common_canonical_'+unit+'_20261022.sql.review-only'))))).join('\n')+'\ncommit;');
+ await install('canonical-atomic-bundle','begin;\n'+(await Promise.all(['snapshot','resolver','publisher'].map(async unit=>strip(await read('docs/candidates/company_common_canonical_'+unit+'_20261022.sql.review-only'))))).join('\n')+'\ncommit;');
  assert.deepEqual(await predicateInventory(),predicatesBefore,'five real access predicate definitions and permissions preserved');
  assert.deepEqual(await originalAuth(),authBefore,'application installation preserves original GoTrue users identities sessions and functions');
  assert.equal((await db.query('select count(*)::int n from company_common_allowance_private.payroll_activation_modes')).rows[0].n,0);
