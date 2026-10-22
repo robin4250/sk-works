@@ -64,7 +64,22 @@ jobs:
                                       assert span['bbox'][2] <= page.rect.width-48+1,(path,span)
                   # The seal now overlays the issuer company name, not the representative row.
                   spans = [s for b in page.get_text('dict')['blocks'] for l in b.get('lines', []) for s in l['spans']]
-                  issuer = next(s['bbox'] for s in spans if '株式会社受注' in s['text'] and s.get('color', 0) == 0)
+                  # Find the complete issuer text across wrapped lines, then use
+                  # the final printed line: the seal is centered on its right end.
+                  chars = [c for b in page.get_text('rawdict')['blocks']
+                           for l in b.get('lines', []) for s in l['spans']
+                           if s.get('color', 0) == 0 for c in s['chars']
+                           if not c['c'].isspace()]
+                  visible = ''.join(c['c'] for c in chars)
+                  expected_name = '株式会社受注' * (20 if path.stem.endswith('-long') else 1)
+                  start = visible.find(expected_name)
+                  assert start >= 0, (path, 'full issuer name missing', expected_name)
+                  name = chars[start:start + len(expected_name)]
+                  final_y = max((c['bbox'][1] + c['bbox'][3]) / 2 for c in name)
+                  final_line = [c['bbox'] for c in name
+                                if abs((c['bbox'][1] + c['bbox'][3]) / 2 - final_y) < 2]
+                  issuer = (min(b[0] for b in final_line), min(b[1] for b in final_line),
+                            max(b[2] for b in final_line), max(b[3] for b in final_line))
                   image = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
                   samples = image.samples
                   red = [(x/1.5, y/1.5) for y in range(image.height) for x in range(image.width)
@@ -74,7 +89,9 @@ jobs:
                   assert red, (path, 'issuer seal missing')
                   seal = (min(x for x,y in red), min(y for x,y in red), max(x for x,y in red), max(y for x,y in red))
                   assert min(seal[2],issuer[2]) > max(seal[0],issuer[0]) and min(seal[3],issuer[3]) > max(seal[1],issuer[1]), (path, seal, issuer)
-                  assert abs((seal[1]+seal[3]-issuer[1]-issuer[3])/2) <= 10, (path, seal, issuer)
+                  assert abs((seal[0]+seal[2])/2-issuer[2]) <= 4, (path, 'seal not centered at name end', seal, issuer)
+                  assert abs((seal[1]+seal[3]-issuer[1]-issuer[3])/2) <= 6, (path, seal, issuer)
+                  assert seal[0] >= 48-1 and seal[2] <= page.rect.width-48+1, (path, 'seal outside party column', seal)
                   for span in spans:
                       if '代表代表' in span['text']:
                           box = span['bbox']
@@ -88,3 +105,4 @@ jobs:
         with:
           name: invoice-acceptance-pdf-proof
           path: build/invoice-acceptance-proof/
+

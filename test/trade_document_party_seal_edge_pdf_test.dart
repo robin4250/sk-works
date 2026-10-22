@@ -10,6 +10,14 @@ import 'package:sk_works/features/invoices/invoice_order_acceptance_pdf.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('generated seal columns omit only line separators and keep visible glyphs', () {
+    const name = '株式会社\r\n右端確認';
+    final columns = CompanySealPdf.verticalColumns(name);
+    expect(columns.join(), '株式会社右端確認');
+    expect(name, '株式会社\r\n右端確認');
+    expect(CompanySealPdf.verticalColumns('足').join(), '足');
+    expect(CompanySealPdf.verticalColumns('A B').join(), 'A B');
+  });
   test('both real appendix builders keep saved parties and place generated/uploaded seals at the name end', () async {
     final font = await CompanySealPdf.loadFont();
     final directory = Platform.environment['SKO_SEAL_EDGE_OUTPUT_DIR'];
@@ -21,6 +29,8 @@ void main() {
     for (final kind in ['order', 'acceptance']) {
       for (final item in names.entries) {
         for (final style in ['legacy', 'uploaded_png']) {
+          // ignore: avoid_print
+          print('rendering $kind-${item.key}-$style');
           final compactOrder = kind == 'order' && item.key == 'wrapped';
           final payload = <String, dynamic>{
             'version': 1, 'kind': kind, 'month': '2026-10',

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:sk_works/domain/company_seal_snapshot.dart';
 import 'package:sk_works/features/shared/trade_document_template_payload.dart';
 import 'package:sk_works/features/payroll/payment_order_resolver.dart';
 import 'package:sk_works/features/invoices/invoice_acceptance_resolver.dart';
@@ -99,16 +100,34 @@ void main() {
   );
   check(missing == 0, 'draft is not reported missing');
   acceptance['source_locked'] = true;
-  check(
-    InvoiceAcceptanceResolver.resolve(
-          acceptance,
-          issueDate: null,
-          onMissingLockedAcceptance: () => missing++,
-        ) ==
-        null,
-    'historical output is retained',
+  var missingDateRejected = false;
+  try {
+    InvoiceAcceptanceResolver.resolve(acceptance, issueDate: null);
+  } on StateError {
+    missingDateRejected = true;
+  }
+  check(missingDateRejected, 'missing invoice issue date is rejected');
+  var missingParentRejected = false;
+  try {
+    InvoiceAcceptanceResolver.resolve(acceptance, issueDate: DateTime(2026, 10, 31));
+  } on StateError {
+    missingParentRejected = true;
+  }
+  check(missingParentRejected, 'locked invoice requires frozen parent seal');
+  final lockedGenerated = InvoiceAcceptanceResolver.resolve(
+    acceptance,
+    issueDate: DateTime(2026, 10, 31),
+    parentSealSnapshot: CompanySealSnapshot.legacy,
+    parentSealEnabled: false,
+    onMissingLockedAcceptance: () => missing++,
   );
-  check(missing == 1, 'historical missing appendix is reported');
+  check(lockedGenerated?.payload['issue_date'] == '2026-10-31',
+      'locked source automatically generates with its explicit issue date');
+  check(lockedGenerated?.payload['company_seal_enabled'] == false &&
+      lockedGenerated?.payload['company_seal_snapshot'] == null,
+      'locked source preserves legacy disabled parent seal');
+  check(acceptance['attachment'] == null, 'locked generation never saves appendix');
+  check(missing == 0, 'locked automatic generation is not reported missing');
   acceptance['attachment'] = {'version': 4, 'payload': generated!.payload};
   check(
     InvoiceAcceptanceResolver.resolve(acceptance, issueDate: null)!.version ==
@@ -119,3 +138,4 @@ void main() {
     'PASS $checks actual resolver checks; PDF render and production are unverified',
   );
 }
+
