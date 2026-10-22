@@ -24,3 +24,7 @@ The runner asserts:
 - Real local GoTrue signout removes the session; the previously signed JWT cannot preview, confirm or read its receipt through the public API afterward. Signout is the intended explicit session mutation, distinct from app operations.
 
 Local validation performed: JS syntax and diff checks; unchanged ordinary PGlite path passes 230 checks. The current host has no Docker, so the real GoTrue/PostgREST runner has **not yet been executed**. First root-owned CI execution is required; this document does not claim successful real-JWT proof. Its surrounding application tables and access predicates remain synthetic; it does not establish production RLS/config/ACL, OAuth/device behavior, native concurrent public API races or production deployment.
+
+## First CI correction
+
+First root-run CI reached all four real GoTrue logins and passed the unchanged private fixture checks, then failed in the broad setup phase with 22023. Source inspection identified the HTTP-only monthly attachment seed omitted the required `issue_date` (the invoice branch supplied it). Both kinds now explicitly supply issue date, intro and payment conditions as the already-passing monthly fixture does. Setup phase labels now distinguish public API installation, parent creation and each kind's workspace/save. Failure logging accepts only six fixed, literal validation messages from the existing attachment saver; it never prints arbitrary SQL messages, details, values or tokens. Successful HTTP completion still requires the next CI run.

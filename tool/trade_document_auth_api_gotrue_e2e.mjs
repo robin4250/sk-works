@@ -68,7 +68,8 @@ try{
  installTradeDocumentAuthContext({db:fixture,actor,actorId:n=>actorIds.get(n)});
  phase='unchanged-consent-fixtures';process.env.SKO_MONTHLY_PAYMENT_REVIEW_HOOK='contract-v1';delete process.env.SKO_TRADE_DOCUMENT_API_REVIEW_HOOK;
  process.argv[3]='auth-http-setup';await import('./verify_trade_document_bound_seal_consent.mjs');assert.equal(adapted,true);assert.equal(invoiceAdapted,true);
- await actor(users.owner.id);await db.query(await fs.readFile('docs/candidates/trade_document_confirmation_api_20261022.sql.review-only','utf8'));
+ phase='install-public-api';await actor(users.owner.id);await db.query(await fs.readFile('docs/candidates/trade_document_confirmation_api_20261022.sql.review-only','utf8'));
+ phase='seed-saved-parents';
  const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`,A=id(1),B=id(2),partner=id(23),customer=id(24),payment=id(9100),invoice=id(9101),trade=id(9102);
  const q=async(sql,args=[])=>(await db.query(sql,args)).rows[0]?.v;
  // Only synthetic application parents are written through the established savers.
@@ -77,9 +78,11 @@ try{
  await db.query('select private.ensure_invoice_approval_rows($1)',[invoice]);
  const invoiceRev=await q('select updated_at::text v from invoices where id=$1',[invoice]);
  for(const [kind,parentId,rev] of [['payment_certificate',payment,'1'],['invoice',invoice,invoiceRev]]){
+  phase='seed-attachment-workspace/'+kind;
   const w=await q('select public.trade_document_attachment_workspace($1,$2,$3) v',[kind,parentId,rev]);
-  const payload={...w.defaults,company_seal_enabled:false,company_seal_snapshot:null,work_name:'実JWT合成工事',work_address:'東京都',notes:''};
+  const payload={...w.defaults,company_seal_enabled:false,company_seal_snapshot:null,issue_date:'2026-10-22',intro_text:'合成発注',payment_conditions:'翌月末',work_name:'実JWT合成工事',work_address:'東京都',notes:''};
   if(kind==='invoice')Object.assign(payload,{issue_date:'2026-10-22',order_date:'2026-10-21',acceptance_text:'上記注文内容を承諾します。',intro_text:'合成請負',payment_conditions:'翌月末'});
+  phase='seed-attachment-save/'+kind;
   await q('select public.save_trade_document_attachment($1,$2,$3,0,$4::jsonb) v',[kind,parentId,rev,JSON.stringify(payload)]);
  }
  await db.query("insert into trade_companies(id,company_id,linked_company_id,trade_role,link_status) values($1,$2,$3,'customer','linked')",[trade,B,A]);
@@ -123,6 +126,8 @@ try{
 }catch(error){
  console.error('FAIL isolated trade Auth phase='+phase+' code='+(typeof error?.code==='string'?error.code:'E2E_ASSERTION'));
  if(typeof error?.actual==='number'&&typeof error?.expected==='number')console.error(JSON.stringify({actual:error.actual,expected:error.expected}));
+ const safeMessages=new Set(['発行日を入力してください。','工事・工期・支払条件を確認してください。','会社情報の未入力・文字数を確認してください。','入力内容が長すぎます。','受領注文書日を入力してください。','承諾文を確認してください。']);
+ if(safeMessages.has(error?.message))console.error('fixed_sql_message='+error.message);
  if(lastHttp)console.error(JSON.stringify(lastHttp));process.exitCode=1;
 }finally{
  if(db)await db.end().catch(()=>{});
