@@ -4,6 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../domain/company_seal_snapshot.dart';
 import '../shared/company_seal_pdf.dart';
 import '../shared/trade_document_attachment.dart';
+import '../shared/trade_document_company_name_pdf.dart';
 
 /// The acceptance is rendered from its saved party/date/seal snapshot only.
 /// Invoice amounts and the adopted first-page template remain independent.
@@ -46,13 +47,19 @@ class InvoiceOrderAcceptancePdf {
         children: [
           pw.Center(child: pw.Text('注文請書', style: pw.TextStyle(
             font: boldFont, fontSize: 23, letterSpacing: 5))),
-          pw.SizedBox(height: 12),
+          pw.SizedBox(height: compact ? 6 : 12),
           pw.Center(child: pw.Text('${payload['month']} 月分', style: const pw.TextStyle(fontSize: 11))),
-          pw.SizedBox(height: 28),
+          pw.SizedBox(height: compact ? 14 : 28),
           pw.Text('（甲・発注者）', style: const pw.TextStyle(fontSize: 11)),
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: compact ? 6 : 10),
           pw.Text('${customer['name']}　御中', style: pw.TextStyle(
             font: boldFont, fontSize: compact ? 9 : 16)),
+          for (final entry in [
+            ('住所', 'address'), ('法人番号', 'corporate_number'),
+            ('代表者名', 'representative_name'),
+          ])
+            if (customer[entry.$2]?.toString().trim().isNotEmpty == true)
+              _field(entry.$1, customer[entry.$2], compact: compact),
           pw.SizedBox(height: gap),
           if (workName.isNotEmpty) ...[
             _field('工事名', workName, compact: compact),
@@ -73,15 +80,15 @@ class InvoiceOrderAcceptancePdf {
             child: pw.Text(issueDate, style: const pw.TextStyle(fontSize: 11))),
           pw.SizedBox(height: gap),
           pw.Text('（乙・受注者）', style: pw.TextStyle(font: boldFont, fontSize: 12)),
-          pw.SizedBox(height: 12),
-          if (sealEnabled) pw.Stack(children: [
-            pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 24),
-              child: _field('社名', issuer['name'], compact: compact)),
-            pw.Positioned(left: 80, top: 0, child: CompanySealPdf.build(
+          pw.SizedBox(height: compact ? 6 : 12),
+          if (sealEnabled) TradeDocumentCompanyNamePdf.build(
+            name: issuer['name']?.toString() ?? '', textFont: regularFont,
+            fontSize: compact ? 8 : 11, labelWidth: 75, sealSize: 64,
+            seal: CompanySealPdf.build(
               seal.registeredName(issuer['name'].toString()), size: 64,
               font: font, fallbackFont: regularFont, style: seal.style,
-              companyId: seal.companyId, uploadedPng: seal.uploadedPng)),
-          ]) else _field('社名', issuer['name'], compact: compact),
+              companyId: seal.companyId, uploadedPng: seal.uploadedPng),
+          ) else _field('社名', issuer['name'], compact: compact),
           _field('住所', issuer['address'], compact: compact),
           _field('法人番号', issuer['corporate_number'], compact: compact),
           _field('代表者名', issuer['representative_name'], compact: compact),
@@ -91,7 +98,7 @@ class InvoiceOrderAcceptancePdf {
   }
 
   static pw.Widget _field(String label, Object? value, {bool compact = false}) => pw.Padding(
-    padding: pw.EdgeInsets.only(bottom: compact ? 6 : 15),
+    padding: pw.EdgeInsets.only(bottom: compact ? 4 : 15),
     child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
       pw.SizedBox(width: 75, child: pw.Text('$label：', style: pw.TextStyle(fontSize: compact ? 8 : 11))),
       pw.Expanded(child: pw.Text(value?.toString() ?? '', style: pw.TextStyle(fontSize: compact ? 8 : 11))),
