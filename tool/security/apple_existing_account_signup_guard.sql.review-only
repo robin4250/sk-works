@@ -1,0 +1,35 @@
+-- REVIEW ONLY. No hosted installation, Auth-hook registration, or provider enablement.
+-- GoTrue before-user-created hook. It does not run on an existing-user sign-in.
+-- Deploy only after preserving and composing any already configured hook.
+create schema if not exists private;
+
+create function private.apple_existing_account_signup_guard(event jsonb)
+returns jsonb
+language sql
+immutable
+security invoker
+set search_path = ''
+as $guard$
+  select case
+    when jsonb_typeof(event) = 'object'
+      and jsonb_typeof(event->'user') = 'object'
+      and jsonb_typeof(event->'user'->'app_metadata') = 'object'
+      and jsonb_typeof(event->'user'->'app_metadata'->'provider') = 'string'
+      and length(event->'user'->'app_metadata'->>'provider') > 0
+      and jsonb_typeof(event->'user'->'app_metadata'->'providers') = 'array'
+      and (event->'user'->'app_metadata'->'providers')
+          @> jsonb_build_array(event->'user'->'app_metadata'->>'provider')
+      and event->'user'->'app_metadata'->>'provider' <> 'apple'
+      and not (event->'user'->'app_metadata'->'providers' ? 'apple')
+    then '{}'::jsonb
+    else jsonb_build_object('error', jsonb_build_object(
+      'http_code', 403,
+      'message', 'Appleは登録済みSKOアカウントへの追加後に利用してください。'))
+  end
+$guard$;
+
+revoke all on function private.apple_existing_account_signup_guard(jsonb)
+  from public, anon, authenticated;
+grant usage on schema private to supabase_auth_admin;
+grant execute on function private.apple_existing_account_signup_guard(jsonb)
+  to supabase_auth_admin;

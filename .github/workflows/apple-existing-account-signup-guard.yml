@@ -1,0 +1,39 @@
+name: Apple existing-account signup guard SQL
+on:
+  pull_request:
+    paths:
+      - 'tool/security/apple_existing_account_signup_guard*'
+      - '.github/workflows/apple-existing-account-signup-guard.yml'
+permissions:
+  contents: read
+jobs:
+  native-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic-fixture-only
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check native SQL policy and caller privileges in disposable database
+        env:
+          FIXTURE_CONTAINER: ${{ job.services.postgres.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+          create role anon;
+          create role authenticated;
+          create role supabase_auth_admin;
+          SQL
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tool/security/apple_existing_account_signup_guard.sql.review-only
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tool/security/apple_existing_account_signup_guard.fixture.sql
