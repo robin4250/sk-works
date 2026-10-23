@@ -1,0 +1,50 @@
+name: Distribution checkpoint guard fixture
+on:
+  pull_request:
+    paths:
+      - 'tool/security/verify_distribution_checkpoint_guard.mjs'
+      - 'tool/security/distribution_checkpoint_guard.sql.fixture-template'
+      - 'tool/security/distribution_checkpoint_snapshot.sql.fixture-only'
+      - '.github/workflows/distribution-checkpoint-guard.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic-checkpoint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/security/verify_distribution_checkpoint_guard.mjs
+        env:
+          PGLITE_PACKAGE: ./fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js
+  native-checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_distribution_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_distribution_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Verify existing disposable destination guard
+        run: node tool/security/distribution_fixture_guard_test.mjs
+      - name: Execute synthetic checkpoint guard and unused undo
+        run: node tool/security/verify_distribution_checkpoint_guard.mjs
+        env:
+          PGLITE_PACKAGE: ./distribution_pg_adapter.mjs
+          SKO_DISTRIBUTION_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_distribution_fixture
+
