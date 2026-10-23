@@ -59,25 +59,33 @@ try {
  phase='provider-readonly';
  const settings=await json(await request('/auth/v1/settings',{method:'GET'}));
  assert.equal(settings.external.email,true);assert.equal(settings.external.phone,false);
- phase='passwordless-seed-and-real-session';
+ phase='create-disposable-bootstrap-user';
  const email=`enrollment-${randomUUID()}@example.invalid`;
  const seed=await json(await request('/auth/v1/admin/users',{admin:true,body:{email,email_confirm:true}}));
- assert.equal((await db.query("select coalesce(encrypted_password,'')='' absent from auth.users where id=$1",[seed.id])).rows[0].absent,true);
+ phase='generate-private-bootstrap-link';
  const link=await json(await request('/auth/v1/admin/generate_link',{admin:true,body:{type:'magiclink',email}}));
+ phase='bootstrap-link-token-shape';
  assert.equal(typeof link.hashed_token,'string');
+ phase='verify-real-bootstrap-session';
  const original=await json(await request('/auth/v1/verify',{body:{type:'magiclink',token_hash:link.hashed_token}}));
+ phase='bootstrap-session-user-and-claims';
  assert.equal(original.user.id,seed.id);assert.equal(typeof claims(original.access_token).session_id,'string');
+ phase='bootstrap-session-database-binding';
  assert.equal((await db.query('select count(*)::int n from auth.sessions where id=$1 and user_id=$2',
   [claims(original.access_token).session_id,seed.id])).rows[0].n,1);
  phase='synthetic-google-identity-fixture';
  // Transform only this disposable user's identity after email bootstrap. This
- // models Google-only identity storage; it does not simulate Google's consent.
+ // models Google-only identity storage and an empty password hash; it does not
+ // simulate Google's consent. Admin-created bootstrap users can receive a
+ // random credential internally, so the OAuth-only seed is established here.
  const identity=(await db.query('select id from auth.identities where user_id=$1',[seed.id])).rows;
  assert.equal(identity.length,1);
  await db.query(`update auth.identities set provider='google',provider_id=$1,
    identity_data=jsonb_build_object('sub',$1::text,'email',$2::text,'email_verified',true)
    where user_id=$3`,[seed.id,email,seed.id]);
- await db.query(`update auth.users set raw_app_meta_data=jsonb_build_object('provider','google','providers',jsonb_build_array('google')) where id=$1`,[seed.id]);
+ await db.query(`update auth.users set encrypted_password='',raw_app_meta_data=jsonb_build_object('provider','google','providers',jsonb_build_array('google')) where id=$1`,[seed.id]);
+ phase='verify-google-only-seed-has-no-password';
+ assert.equal((await db.query("select coalesce(encrypted_password,'')='' absent from auth.users where id=$1",[seed.id])).rows[0].absent,true);
  await db.query(`create table public.company_members(company_id uuid,user_id uuid,role text);
   alter table public.company_members enable row level security;
   grant select on public.company_members to authenticated;

@@ -129,7 +129,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
           client.auth.currentSession?.accessToken != token) { revoked = true; }
     }, onError: (Object _) { revoked = true; });
     try {
-      final user = (await client.auth.getUser(token)).user;
+      final user = (await client.auth.getUser(token).timeout(const Duration(seconds: 15))).user;
       check();
       if (user == null || user.id != actor || user.toJson()['is_anonymous'] == true) {
         throw StateError('本人のアカウントを確認できません。');
@@ -162,7 +162,8 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
 
   Future<String> _memberships(String token, String actor, void Function() check) async {
     final rows = await client.from('company_members').select('company_id,role')
-        .eq('user_id', actor).setHeader('Authorization', 'Bearer $token');
+        .eq('user_id', actor).setHeader('Authorization', 'Bearer $token')
+        .timeout(const Duration(seconds: 15));
     check();
     if (rows.isEmpty) throw StateError('会社への所属を確認できません。');
     final values = rows.map((row) => jsonEncode({'company_id': row['company_id'],
@@ -173,7 +174,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
   Future<void> _verify(String token, User before, String roles,
       void Function() check) async {
     check();
-    final after = (await client.auth.getUser(token)).user;
+    final after = (await client.auth.getUser(token).timeout(const Duration(seconds: 15))).user;
     check();
     if (after == null || after.id != before.id ||
         after.toJson()['is_anonymous'] == true) { throw StateError('本人を確認できません。'); }
@@ -218,7 +219,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
     await _request('verify', token, method: 'POST',
         body: {'type': 'phone_change', 'phone': phone, 'token': code.trim()});
     await _verify(token, user, roles, check);
-    final after = (await client.auth.getUser(token)).user;
+    final after = (await client.auth.getUser(token).timeout(const Duration(seconds: 15))).user;
     check();
     if (after?.phone != phone || after?.toJson()['phone_confirmed_at'] == null) {
       throw StateError('番号の確認結果を取得できません。再読み込みしてください。');
