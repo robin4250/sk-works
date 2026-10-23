@@ -14,9 +14,12 @@ class PrimaryPasswordReauthenticationRequired implements Exception {
 class LoginMethodEnrollmentState {
   const LoginMethodEnrollmentState({required this.email, required this.phone,
     required this.emailConfirmed, required this.phoneConfirmed,
-    required this.emailAvailable, required this.phoneAvailable});
+    required this.emailAvailable, required this.phoneAvailable,
+    this.phoneConfirmationPending = false, this.primaryPasswordCodeRequired = false,
+    this.primaryPasswordCodeSent = false});
   final String email, phone;
   final bool emailConfirmed, phoneConfirmed, emailAvailable, phoneAvailable;
+  final bool phoneConfirmationPending, primaryPasswordCodeRequired, primaryPasswordCodeSent;
   bool get canSetPassword =>
       (emailAvailable && emailConfirmed && email.isNotEmpty) ||
       (phoneAvailable && phoneConfirmed && phone.isNotEmpty);
@@ -59,6 +62,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
   String? _pendingPhone, _pendingActor;
   int _generation = 0;
   bool _busy = false, _disposed = false;
+  bool _passwordChallengeNeeded = false, _passwordCodeRequested = false;
 
   static LoginMethodEnrollmentRepository? maybeCreate() =>
       SupabaseBackend.isInitialized && SupabaseBackendConfig.isConfigured
@@ -88,6 +92,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
       try {
         final error = jsonDecode(utf8.decode(bytes));
         if (error is Map && (error['code'] ?? error['error_code']) == 'reauthentication_needed') {
+          _passwordChallengeNeeded = true;
           throw const PrimaryPasswordReauthenticationRequired();
         }
       } on PrimaryPasswordReauthenticationRequired { rethrow; } catch (_) {}
@@ -146,7 +151,9 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
     return LoginMethodEnrollmentState(email: user.email ?? '', phone: user.phone ?? '',
       emailConfirmed: json['email_confirmed_at'] != null,
       phoneConfirmed: json['phone_confirmed_at'] != null,
-      emailAvailable: external['email'] == true, phoneAvailable: external['phone'] == true);
+      emailAvailable: external['email'] == true, phoneAvailable: external['phone'] == true,
+      phoneConfirmationPending: _pendingActor == user.id && _pendingPhone != null,
+      primaryPasswordCodeRequired: _passwordChallengeNeeded, primaryPasswordCodeSent: _passwordCodeRequested);
   }
 
   @override
@@ -243,6 +250,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
     check();
     await _request('user', token, method: 'PUT', body: {'password': password, if (nonce != null) 'nonce': nonce});
     await _verify(token, user, roles, check);
+    _passwordChallengeNeeded = false; _passwordCodeRequested = false;
   });
 
   @override
@@ -252,6 +260,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
     check();
     await _request('reauthenticate', token);
     check();
+    _passwordCodeRequested = true;
   });
 
   @override

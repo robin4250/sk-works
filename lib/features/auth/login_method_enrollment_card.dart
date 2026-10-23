@@ -30,7 +30,12 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
     try {
       final state = await _source?.load();
       if (!mounted || generation != _generation) return;
-      setState(() { _state = state; _loading = false; });
+      setState(() {
+        _state = state; _loading = false;
+        _awaitingPhone = state?.phoneConfirmationPending ?? false;
+        _passwordNeedsCode = state?.primaryPasswordCodeRequired ?? false;
+        _passwordCodeSent = state?.primaryPasswordCodeSent ?? false;
+      });
     } catch (_) {
       if (!mounted || generation != _generation) return;
       setState(() { _loading = false; _message = '登録方法を確認できませんでした。再読み込みしてください。'; });
@@ -114,7 +119,7 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
   @override
   void dispose() {
     _generation++;
-    if (widget.source == null) { _source?.dispose(); } else { _source?.cancelPhone(); }
+    if (widget.source == null) { _source?.dispose(); }
     super.dispose();
   }
 

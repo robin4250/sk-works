@@ -6,13 +6,13 @@ import 'package:sk_works/features/auth/login_method_enrollment_repository.dart';
 class Source implements LoginMethodEnrollmentSource {
   bool phoneAvailable = false;
   int loads = 0, passwords = 0, phoneRequests = 0, confirmations = 0, cancellations = 0;
-  bool fail = false;
+  bool fail = false, pendingPhone = false;
   @override
   Future<LoginMethodEnrollmentState> load() async {
     loads++;
     return LoginMethodEnrollmentState(email: 'existing@example.invalid', phone: '',
       emailConfirmed: true, phoneConfirmed: false, emailAvailable: true,
-      phoneAvailable: phoneAvailable);
+      phoneAvailable: phoneAvailable, phoneConfirmationPending: pendingPhone);
   }
   @override
   Future<void> setPrimaryPassword(String value, {String? nonce}) async {
@@ -20,10 +20,10 @@ class Source implements LoginMethodEnrollmentSource {
     passwords++;
   }
   @override Future<void> requestPrimaryPasswordCode() async {}
-  @override Future<void> requestPhone(String value) async { phoneRequests++; }
-  @override Future<void> confirmPhone(String value) async { confirmations++; }
+  @override Future<void> requestPhone(String value) async { phoneRequests++; pendingPhone = true; }
+  @override Future<void> confirmPhone(String value) async { confirmations++; pendingPhone = false; }
   @override Future<void> requestEmail(String value) async {}
-  @override void cancelPhone() { cancellations++; }
+  @override void cancelPhone() { cancellations++; pendingPhone = false; }
   @override void dispose() {}
 }
 
@@ -96,4 +96,17 @@ void main() {
     expect(source.confirmations, 1);
     expect(find.text('電話番号の所有確認と登録を確認しました。'), findsOneWidget);
   });
+  testWidgets('page-owned pending SMS survives card teardown and rebuild', (t) async {
+    final source = Source()..phoneAvailable = true;
+    await show(t, source);
+    await t.tap(find.text('電話番号を登録')); await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField), '09012345678'); await t.pump();
+    await t.tap(find.text('確認へ')); await t.pumpAndSettle();
+    await t.pumpWidget(const SizedBox.shrink()); await t.pumpAndSettle();
+    expect(source.cancellations, 0);
+    await show(t, source);
+    expect(find.text('SMSコードを入力'), findsOneWidget);
+    expect(source.phoneRequests, 1);
+  });
+
 }

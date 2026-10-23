@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'panel_seven_repository.dart';
 import 'apple_account_link_card.dart';
 import 'login_method_enrollment_card.dart';
+import 'login_method_enrollment_repository.dart';
 
 class PanelSevenPage extends StatefulWidget {
   const PanelSevenPage({super.key, required this.repository});
@@ -16,6 +17,7 @@ class PanelSevenPage extends StatefulWidget {
 class _PanelSevenPageState extends State<PanelSevenPage>
     with WidgetsBindingObserver {
   StreamSubscription<AuthState>? _subscription;
+  LoginMethodEnrollmentRepository? _enrollment;
   PanelSevenSnapshot? _snapshot;
   bool _loading = true;
   bool _failed = false;
@@ -26,6 +28,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _enrollment = LoginMethodEnrollmentRepository.maybeCreate();
     _subscription = widget.repository.changes.listen((_) {
       final snapshot = _snapshot;
       // Never use the event's session: a delayed logout event may carry B.
@@ -91,6 +94,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
   void dispose() {
     _generation++;
     _subscription?.cancel();
+    _enrollment?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -190,7 +194,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                   const SizedBox(height: 12),
                   const Text('ログイン方法の追加', style: TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold)),
-                  LoginMethodEnrollmentCard(onChanged: _refreshRegistration),
+                  LoginMethodEnrollmentCard(source: _enrollment, onChanged: _refreshRegistration),
                   const AppleAccountLinkCard(),
                   TextButton(onPressed: _load, child: const Text('最新の状態を確認')),
                 ]),
