@@ -97,8 +97,9 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     final actor = SupabaseBackend.client.auth.currentUser?.id;
     if (actor == null) return;
     void openInvite(TradeCompanyRecord? company) {
-      if (!mounted || SupabaseBackend.client.auth.currentUser?.id != actor)
+      if (!mounted || SupabaseBackend.client.auth.currentUser?.id != actor) {
         return;
+      }
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => AppReferralPage(
@@ -781,8 +782,9 @@ class _CompanyRegistrationDialogState
       if (id.isEmpty) throw StateError('保存結果を確認できません。');
       setState(() => _savedId = id);
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() => _error = '保存できませんでした。入力を確認して再試行してください。 $error');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

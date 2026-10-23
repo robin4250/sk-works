@@ -118,8 +118,9 @@ class _AppReferralPageState extends State<AppReferralPage> {
     final generation = ++_loadGeneration;
     try {
       final data = await widget.repository.load(master: widget.master);
-      if (!mounted || !_actorScope.check() || generation != _loadGeneration)
+      if (!mounted || !_actorScope.check() || generation != _loadGeneration) {
         return;
+      }
       setState(() {
         _snapshot = data;
         final links = data['distribution_links'];
