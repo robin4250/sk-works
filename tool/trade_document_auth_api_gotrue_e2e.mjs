@@ -91,19 +91,37 @@ try{
  const financial=()=>q("select jsonb_build_object('payment',(select to_jsonb(p) from payment_certificates p where id=$1),'invoice',(select to_jsonb(i) from invoices i where id=$2)) v",[payment,invoice]);
  phase='postgrest-schema-cache';await db.query("select set_config('request.jwt.claims','{}',false),set_config('request.jwt.claim.sub','',false);notify pgrst,'reload schema'");
  for(let attempt=0;;attempt++){const r=await rpc('trade_document_confirmation_contract_version',{},tokens.owner);if(r.status===200){assert.equal(await r.json(),1);break;}const e=await r.json();if(e.code!=='PGRST202'||attempt===30)throw Error('Local schema cache unavailable');await new Promise(resolve=>setTimeout(resolve,250));}
- const ok=async(name,body,token=tokens.owner)=>{const r=await rpc(name,body,token);assert.equal(r.status,200);return r.json();};
+ const rpcJson=async response=>{const value=await response.json();
+  if(typeof value?.code==='string'&&/^(?:[0-9A-Z]{5}|PGRST[0-9]{3})$/.test(value.code))lastHttp={...lastHttp,sqlstate:value.code};
+  return value;
+ };
+ const ok=async(name,body,token=tokens.owner)=>{const r=await rpc(name,body,token);const value=await rpcJson(r);assert.equal(r.status,200);return value;};
  const protectedBusiness=()=>q(`select jsonb_build_object('financial',jsonb_build_object('payments',(select jsonb_agg(to_jsonb(x) order by id) from payment_certificates x),'invoices',(select jsonb_agg(to_jsonb(x) order by id) from invoices x)),
  'receipts',(select jsonb_agg(to_jsonb(x) order by company_id,request_id) from trade_document_confirmation_api_private.receipts x),
  'consents',(select jsonb_agg(to_jsonb(x) order by document_id,revision,company_id) from trade_document_consent_private.consents x),
  'approvals',(select jsonb_agg(to_jsonb(x) order by invoice_id,approver_user_id) from invoice_approvals x),
  'audit',(select jsonb_agg(to_jsonb(x) order by id) from invoice_approval_audit x),
  'links',(select jsonb_agg(to_jsonb(x) order by company_id,kind,parent_id) from trade_document_confirmation_api_private.parent_links x)) v`);
- const rejected=async(name,body,token,code='42501')=>{const before=await protectedBusiness();const r=await rpc(name,body,token);assert.notEqual(r.status,200);assert.equal((await r.json()).code,code);assert.deepEqual(await protectedBusiness(),before);};
+ const rejected=async(name,body,token,code='42501')=>{const before=await protectedBusiness();const r=await rpc(name,body,token);const value=await rpcJson(r);assert.notEqual(r.status,200);assert.equal(value.code,code);assert.deepEqual(await protectedBusiness(),before);};
  const wsBody=(kind,parentId,rev)=>({p_kind:kind,p_parent_id:parentId,p_source_revision:rev});
  phase='real-jwt-workspace';const w=await ok('trade_document_confirmation_workspace',wsBody('payment_certificate',payment,'1'));assert.equal(w.can_integrated_confirm,true);
  const scope={p_company_id:A,p_local_document_id:w.local_document_id,p_document_revision:w.document_revision,p_kind:'payment_certificate'};
  const p=await ok('preview_trade_document_confirmation',scope),command={p_expected_command:p.expected_command,p_request_id:id(9200),p_document_confirmed:true,p_seal_confirmed:true};
- for(const name of ['viewer','outsider']){await rejected('trade_document_confirmation_workspace',wsBody('payment_certificate',payment,'1'),tokens[name]);await rejected('confirm_trade_document_with_seal',command,tokens[name]);}
+ for(const name of ['viewer','outsider']){
+  phase='real-jwt-denial/'+name+'/workspace';
+  await rejected('trade_document_confirmation_workspace',wsBody('payment_certificate',payment,'1'),tokens[name]);
+  phase='real-jwt-denial/'+name+'/actor-bound-command';
+  // The owner's immutable command carries actor_id=owner. The API rejects this
+  // actor mismatch as an invalid exact command before company authorization.
+  await rejected('confirm_trade_document_with_seal',command,tokens[name],'22023');
+  phase='real-jwt-denial/'+name+'/company-permission';
+  // A copied descriptor with the current actor is structurally valid, but must
+  // still fail issuer-company authorization without touching the owner command.
+  const deniedCommand={...command,p_expected_command:{...command.p_expected_command,actor_id:users[name].id}};
+  await rejected('confirm_trade_document_with_seal',deniedCommand,tokens[name]);
+  assert.equal(command.p_expected_command.actor_id,users.owner.id);
+ }
+ phase='real-jwt-denial/missing-explicit-seal-choice';
  await rejected('confirm_trade_document_with_seal',{...command,p_seal_confirmed:false},tokens.owner,'22023');
  const paymentBefore=(await financial()).payment;phase='real-jwt-monthly-review';const result=await ok('confirm_trade_document_with_seal',command);assert.equal(result.result.financial_finalized,false);assert.deepEqual((await financial()).payment,paymentBefore);
  assert.deepEqual(await ok('confirm_trade_document_with_seal',command),result);assert.deepEqual((await ok('read_trade_document_confirmation_receipt',{p_company_id:A,p_request_id:command.p_request_id,p_expected_command:p.expected_command})).result,result);
