@@ -86,8 +86,8 @@ try{
   await q('select public.save_trade_document_attachment($1,$2,$3,0,$4::jsonb) v',[kind,parentId,rev,JSON.stringify(payload)]);
  }
  await db.query("insert into trade_companies(id,company_id,linked_company_id,trade_role,link_status) values($1,$2,$3,'customer','linked')",[trade,B,A]);
- const identity=async()=>(await db.query("select jsonb_build_object('users',(select jsonb_agg(jsonb_build_object('id',id,'email',email,'role',role,'app_metadata',raw_app_meta_data) order by id) from auth.users),'identities',(select jsonb_agg(to_jsonb(i) order by id) from auth.identities i),'sessions',(select jsonb_agg(to_jsonb(s) order by id) from auth.sessions)) v")).rows[0].v;
- const identityBefore=await identity();
+ const identity=async()=>(await db.query("select jsonb_build_object('users',(select jsonb_agg(jsonb_build_object('id',id,'email',email,'role',role,'app_metadata',raw_app_meta_data) order by id) from auth.users),'identities',(select jsonb_agg(to_jsonb(i) order by id) from auth.identities i),'sessions',(select jsonb_agg(to_jsonb(s) order by id) from auth.sessions s)) v")).rows[0].v;
+ phase='baseline-auth-identity';const identityBefore=await identity();
  const financial=()=>q("select jsonb_build_object('payment',(select to_jsonb(p) from payment_certificates p where id=$1),'invoice',(select to_jsonb(i) from invoices i where id=$2)) v",[payment,invoice]);
  phase='postgrest-schema-cache';await db.query("select set_config('request.jwt.claims','{}',false),set_config('request.jwt.claim.sub','',false);notify pgrst,'reload schema'");
  for(let attempt=0;;attempt++){const r=await rpc('trade_document_confirmation_contract_version',{},tokens.owner);if(r.status===200){assert.equal(await r.json(),1);break;}const e=await r.json();if(e.code!=='PGRST202'||attempt===30)throw Error('Local schema cache unavailable');await new Promise(resolve=>setTimeout(resolve,250));}
