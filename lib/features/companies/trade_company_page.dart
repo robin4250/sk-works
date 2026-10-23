@@ -33,7 +33,8 @@ class TradeCompanyPage extends StatefulWidget {
 }
 
 class _TradeCompanyPageState extends State<TradeCompanyPage> {
-  late final _repository = widget.repository ?? TradeCompanyRepository.maybeCreate();
+  late final _repository =
+      widget.repository ?? TradeCompanyRepository.maybeCreate();
   bool _companyEditorOpen = false;
   List<TradeCompanyRecord> _items = const [];
   bool _loading = true;
@@ -97,18 +98,28 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     final actor = SupabaseBackend.client.auth.currentUser?.id;
     if (actor == null) return;
     void openInvite(TradeCompanyRecord? company) {
-      if (!mounted || SupabaseBackend.client.auth.currentUser?.id != actor) return;
-      Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => AppReferralPage(
-          repository: AppReferralRepository(SupabaseBackend.client),
-          invitationKind: 'company',
-          initialName: company == null ? '' :
-              company.representativeName.trim().isNotEmpty
-                  ? company.representativeName : company.name,
-          initialPhone: company?.representativePhone ?? '',
+      if (!mounted || SupabaseBackend.client.auth.currentUser?.id != actor) {
+        return;
+      }
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => AppReferralPage(
+            repository: AppReferralRepository(SupabaseBackend.client),
+            invitationKind: 'company',
+            guideKind: widget.mode == TradeCompanyPageMode.customer
+                ? 'client'
+                : 'partner',
+            initialName: company == null
+                ? ''
+                : company.representativeName.trim().isNotEmpty
+                ? company.representativeName
+                : company.name,
+            initialPhone: company?.representativePhone ?? '',
+          ),
         ),
-      ));
+      );
     }
+
     if (recipient != null) {
       openInvite(recipient);
       return;
@@ -240,18 +251,28 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         builder: (_) => _CompanyRegistrationDialog(
           title: _title,
           onSave: (draft) {
-            final same = _items.where((item) =>
-              item.name.trim().toLowerCase() == draft.name.trim().toLowerCase());
+            final same = _items.where(
+              (item) =>
+                  item.name.trim().toLowerCase() ==
+                  draft.name.trim().toLowerCase(),
+            );
             final existing = same.isEmpty ? null : same.first;
             final desiredRole = widget.mode == TradeCompanyPageMode.customer
-                ? 'customer' : 'subcontractor';
+                ? 'customer'
+                : 'subcontractor';
             final role = existing == null || existing.tradeRole == desiredRole
-                ? desiredRole : 'both';
+                ? desiredRole
+                : 'both';
             return repository.saveCompany(
-              id: existing?.id, name: draft.name, tradeRole: role,
-              postalCode: draft.postalCode, address: draft.address,
-              phone: draft.phone, email: draft.email,
-              corporateNumber: draft.corporateNumber, notes: draft.notes,
+              id: existing?.id,
+              name: draft.name,
+              tradeRole: role,
+              postalCode: draft.postalCode,
+              address: draft.address,
+              phone: draft.phone,
+              email: draft.email,
+              corporateNumber: draft.corporateNumber,
+              notes: draft.notes,
               representativeName: draft.representativeName,
               representativePhone: draft.representativePhone,
             );
@@ -289,7 +310,8 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
                 if (item.linkStatus != 'linked')
                   OutlinedButton.icon(
                     key: const ValueKey('trade-company-sko-invite'),
-                    onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.invite),
+                    onPressed: () =>
+                        Navigator.of(dialogContext).pop(_CompanyAction.invite),
                     icon: const Icon(Icons.person_add_alt_1_outlined),
                     label: const Text('SKO招待'),
                   ),
@@ -341,9 +363,12 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
             label: const Text('計算元を確認・変更'),
           ),
           OutlinedButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(_CompanyAction.document),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_CompanyAction.document),
             icon: const Icon(Icons.description_outlined),
-            label: Text(widget.mode == TradeCompanyPageMode.customer ? '注文請書生成' : '注文書生成'),
+            label: Text(
+              widget.mode == TradeCompanyPageMode.customer ? '注文請書生成' : '注文書生成',
+            ),
           ),
           if (item.linkStatus == 'linked')
             OutlinedButton.icon(
@@ -363,9 +388,14 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
     if (!mounted || action == null) return;
     switch (action) {
       case _CompanyAction.document:
-        await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
-          StandaloneTradeDocumentPage(tradeCompanyId: item.id,
-            acceptance: widget.mode == TradeCompanyPageMode.customer)));
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => StandaloneTradeDocumentPage(
+              tradeCompanyId: item.id,
+              acceptance: widget.mode == TradeCompanyPageMode.customer,
+            ),
+          ),
+        );
 
       case _CompanyAction.receivedDocuments:
         await openReceivedTradeDocuments(context, item.id, item.name);
@@ -383,8 +413,9 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
           await _resolveConflicts(item.id, revise: true);
         } catch (error) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('計算元を変更できませんでした: $error')));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('計算元を変更できませんでした: $error')));
         }
     }
   }
@@ -392,8 +423,9 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
   Future<void> _launchContact(Uri uri) async {
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
         mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('電話・地図を開けませんでした')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('電話・地図を開けませんでした')));
     }
   }
 
@@ -440,12 +472,18 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         context: context,
         barrierDismissible: false,
         builder: (_) => _CompanyRegistrationDialog(
-          title: _title, initial: item,
+          title: _title,
+          initial: item,
           onSave: (draft) => repository.saveCompany(
-            id: item.id, name: draft.name, tradeRole: item.tradeRole,
-            postalCode: draft.postalCode, address: draft.address,
-            phone: draft.phone, email: draft.email,
-            corporateNumber: draft.corporateNumber, notes: draft.notes,
+            id: item.id,
+            name: draft.name,
+            tradeRole: item.tradeRole,
+            postalCode: draft.postalCode,
+            address: draft.address,
+            phone: draft.phone,
+            email: draft.email,
+            corporateNumber: draft.corporateNumber,
+            notes: draft.notes,
             representativeName: draft.representativeName,
             representativePhone: draft.representativePhone,
           ),
@@ -478,12 +516,14 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
       await _resolveConflicts(item.id);
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('契約設定を保存しました')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('契約設定を保存しました')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('契約設定を保存できませんでした: $error')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('契約設定を保存できませんでした: $error')));
     }
   }
 
@@ -524,13 +564,15 @@ class _TradeCompanyPageState extends State<TradeCompanyPage> {
         );
         return;
       }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('会社を削除しました')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('会社を削除しました')));
     } catch (error) {
       if (!mounted) return;
       final message = error.toString().replaceFirst('Bad state: ', '');
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -657,7 +699,11 @@ class _CompanyDraft {
 }
 
 class _CompanyRegistrationDialog extends StatefulWidget {
-  const _CompanyRegistrationDialog({required this.title, required this.onSave, this.initial});
+  const _CompanyRegistrationDialog({
+    required this.title,
+    required this.onSave,
+    this.initial,
+  });
   final Future<String> Function(_CompanyDraft draft) onSave;
   final String title;
   final TradeCompanyRecord? initial;
@@ -726,20 +772,29 @@ class _CompanyRegistrationDialogState
       return;
     }
     final draft = _CompanyDraft(
-      name: _name.text.trim(), postalCode: _postalCode.text.trim(),
-      address: _address.text.trim(), phone: _phone.text.trim(),
-      email: _email.text.trim(), corporateNumber: _corporateNumber.text.trim(),
-      notes: _notes.text.trim(), representativeName: _representativeName.text.trim(),
+      name: _name.text.trim(),
+      postalCode: _postalCode.text.trim(),
+      address: _address.text.trim(),
+      phone: _phone.text.trim(),
+      email: _email.text.trim(),
+      corporateNumber: _corporateNumber.text.trim(),
+      notes: _notes.text.trim(),
+      representativeName: _representativeName.text.trim(),
       representativePhone: _representativePhone.text.trim(),
     );
-    setState(() { _saving = true; _error = null; });
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     try {
       final id = await widget.onSave(draft);
       if (!mounted) return;
       if (id.isEmpty) throw StateError('保存結果を確認できません。');
       setState(() => _savedId = id);
     } catch (error) {
-      if (mounted) setState(() => _error = '保存できませんでした。入力を確認して再試行してください。 $error');
+      if (mounted) {
+        setState(() => _error = '保存できませんでした。入力を確認して再試行してください。 $error');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -750,106 +805,130 @@ class _CompanyRegistrationDialogState
     return PopScope(
       canPop: !_saving && _savedId == null,
       child: TradeCompanyDialog(
-      title: Text(
-        _savedId != null
-            ? (widget.initial == null ? '登録しました' : '更新しました')
-            : (widget.initial == null ? '${widget.title}を登録' : '${widget.title}を編集'),
-      ),
-      content: _savedId != null
-          ? Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.check_circle, color: Colors.green, size: 48),
-              const SizedBox(height: 12),
-              Text('${_name.text.trim()}の会社情報を${widget.initial == null ? '登録' : '更新'}しました。'),
-              const SizedBox(height: 8),
-              const Text('一覧で保存した内容を確認できます。'),
-            ])
-          : AbsorbPointer(absorbing: _saving, child: SizedBox(
-        width: 460,
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              if (_error != null) Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(_error!, key: const ValueKey('company-save-error'))),
-              TextField(
-                enabled: !_saving,
-                controller: _name,
-                decoration: const InputDecoration(labelText: '会社名 *'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                enabled: !_saving,
-                controller: _phone,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: '電話番号'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                enabled: !_saving,
-                controller: _postalCode,
-                decoration: const InputDecoration(labelText: '郵便番号'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                enabled: !_saving,
-                controller: _address,
-                decoration: const InputDecoration(labelText: '住所'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                enabled: !_saving,
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'メール'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                enabled: !_saving,
-                controller: _corporateNumber,
-                decoration: const InputDecoration(labelText: '法人番号'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                enabled: !_saving,
-                controller: _representativeName,
-                decoration: const InputDecoration(labelText: '代表者氏名'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                enabled: !_saving,
-                controller: _representativePhone,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: '代表者電話番号'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                enabled: !_saving,
-                controller: _notes,
-                maxLines: 3,
-                decoration: const InputDecoration(labelText: '備考'),
-              ),
-              const SizedBox(height: 10),
-              const Text('SKO連携は必須ではありません。連携なしのまま請求書・支払証明書用の会社として利用できます。'),
-            ],
-          ),
+        title: Text(
+          _savedId != null
+              ? (widget.initial == null ? '登録しました' : '更新しました')
+              : (widget.initial == null
+                    ? '${widget.title}を登録'
+                    : '${widget.title}を編集'),
         ),
-      )),
-      actions: _savedId != null ? [
-        FilledButton(onPressed: () => Navigator.of(context).pop(_savedId),
-          child: const Text('一覧で確認')),
-      ] : [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('キャンセル'),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: Text(_saving
-              ? (widget.initial == null ? '登録中…' : '更新中…')
-              : (widget.initial == null ? '登録' : '保存')),
-
-        ),
-      ],
+        content: _savedId != null
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green, size: 48),
+                  const SizedBox(height: 12),
+                  Text(
+                    '${_name.text.trim()}の会社情報を${widget.initial == null ? '登録' : '更新'}しました。',
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('一覧で保存した内容を確認できます。'),
+                ],
+              )
+            : AbsorbPointer(
+                absorbing: _saving,
+                child: SizedBox(
+                  width: 460,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        if (_error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              _error!,
+                              key: const ValueKey('company-save-error'),
+                            ),
+                          ),
+                        TextField(
+                          enabled: !_saving,
+                          controller: _name,
+                          decoration: const InputDecoration(labelText: '会社名 *'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          enabled: !_saving,
+                          controller: _phone,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(labelText: '電話番号'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          enabled: !_saving,
+                          controller: _postalCode,
+                          decoration: const InputDecoration(labelText: '郵便番号'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          enabled: !_saving,
+                          controller: _address,
+                          decoration: const InputDecoration(labelText: '住所'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          enabled: !_saving,
+                          controller: _email,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(labelText: 'メール'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          enabled: !_saving,
+                          controller: _corporateNumber,
+                          decoration: const InputDecoration(labelText: '法人番号'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          enabled: !_saving,
+                          controller: _representativeName,
+                          decoration: const InputDecoration(labelText: '代表者氏名'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          enabled: !_saving,
+                          controller: _representativePhone,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: '代表者電話番号',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          enabled: !_saving,
+                          controller: _notes,
+                          maxLines: 3,
+                          decoration: const InputDecoration(labelText: '備考'),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'SKO連携は必須ではありません。連携なしのまま請求書・支払証明書用の会社として利用できます。',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+        actions: _savedId != null
+            ? [
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(_savedId),
+                  child: const Text('一覧で確認'),
+                ),
+              ]
+            : [
+                TextButton(
+                  onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                  child: const Text('キャンセル'),
+                ),
+                FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: Text(
+                    _saving
+                        ? (widget.initial == null ? '登録中…' : '更新中…')
+                        : (widget.initial == null ? '登録' : '保存'),
+                  ),
+                ),
+              ],
       ),
     );
   }
@@ -1056,5 +1135,3 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
-
-

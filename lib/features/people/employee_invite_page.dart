@@ -2,15 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../international/language_controller.dart';
 import 'employee_invite_repository.dart';
 
 class EmployeeInvitePage extends StatefulWidget {
-  const EmployeeInvitePage({
-    super.key,
-    this.canAssignManagementRole = false,
-  });
+  const EmployeeInvitePage({super.key, this.canAssignManagementRole = false});
 
   final bool canAssignManagementRole;
 
@@ -32,8 +30,7 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
   EmployeeInviteResult? _result;
   String? _error;
 
-  String _tr(String ja, String en) =>
-      SkoLanguageController.isEnglish ? en : ja;
+  String _tr(String ja, String en) => SkoLanguageController.isEnglish ? en : ja;
 
   @override
   void initState() {
@@ -93,8 +90,8 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                       item.role == 'owner'
                           ? _tr('管理者', 'Administrator')
                           : item.role == 'admin'
-                              ? _tr('管理者', 'Administrator')
-                              : _tr('サブ管理者', 'Sub-administrator'),
+                          ? _tr('管理者', 'Administrator')
+                          : _tr('サブ管理者', 'Sub-administrator'),
                     ),
                     trailing: TextButton(
                       onPressed: () =>
@@ -154,7 +151,12 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     final repository = _repository;
     if (repository == null) return;
     if (_name.text.trim().isEmpty || _phone.text.trim().isEmpty) {
-      setState(() => _error = _tr('名前と電話番号を入力してください。', 'Enter the employee name and phone number.'));
+      setState(
+        () => _error = _tr(
+          '名前と電話番号を入力してください。',
+          'Enter the employee name and phone number.',
+        ),
+      );
       return;
     }
 
@@ -164,7 +166,12 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
       final replacement = await _chooseApprovalReplacement();
       if (!mounted) return;
       if (replacement == null) {
-        setState(() => _error = _tr('承認担当者から外す人を選んでください。', 'Choose an approver to replace.'));
+        setState(
+          () => _error = _tr(
+            '承認担当者から外す人を選んでください。',
+            'Choose an approver to replace.',
+          ),
+        );
         return;
       }
       _replaceApprovalAssigneeUserId = replacement;
@@ -199,19 +206,44 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
 
   String _shareText(EmployeeInviteResult result) =>
       SkoLanguageController.isEnglish
-          ? 'An SKO employee registration has been created.\n'
-              'Phone: ${result.phone}\n'
-              'Temporary password: ${result.temporaryPassword}\n'
-              'Open the SKO app and sign in with the temporary password. Set your permanent password after the first sign-in.'
-          : 'SKOの従業員登録が作成されました。\n'
-              '電話番号: ${result.phone}\n'
-              '初期パスワード: ${result.temporaryPassword}\n'
-              'SKOアプリを開き、初期パスワードでログインしてください。初回ログイン後に本パスワードを設定します。';
+      ? 'An SKO employee registration has been created.\n'
+            'Phone: ${result.phone}\n'
+            'Temporary password: ${result.temporaryPassword}\n'
+            'Open the SKO app and sign in with the temporary password. Set your permanent password after the first sign-in.'
+      : 'SKOの従業員登録が作成されました。\n'
+            '電話番号: ${result.phone}\n'
+            '初期パスワード: ${result.temporaryPassword}\n'
+            'SKOアプリを開き、初期パスワードでログインしてください。初回ログイン後に本パスワードを設定します。';
 
   Future<void> _share(EmployeeInviteResult result) async {
-    await SharePlus.instance.share(
-      ShareParams(text: _shareText(result)),
+    await SharePlus.instance.share(ShareParams(text: _shareText(result)));
+  }
+
+  Future<void> _sendEmployeeSms(EmployeeInviteResult result) async {
+    final phone = result.phone.trim();
+    if (phone.isEmpty) return;
+    final body =
+        '【SKOアプリ 従業員登録のご案内】\n\n'
+        '登録電話番号: $phone\n'
+        '初期パスワード: ${result.temporaryPassword}\n\n'
+        'インストール・利用開始案内:\n'
+        'https://skojapan.com/install/employee/\n\n'
+        '初回ログイン後にパスワードを変更してください。';
+    final uri = Uri(
+      scheme: 'sms',
+      path: phone,
+      queryParameters: {'body': body},
     );
+    try {
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw StateError('SMS unavailable');
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('SMS作成画面を開けませんでした。')));
+    }
   }
 
   void _reset() {
@@ -235,16 +267,14 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
     final replacementName = _replaceApprovalAssigneeUserId == null
         ? null
         : _currentApprovalAssignees
-                .where(
-                  (item) => item.userId == _replaceApprovalAssigneeUserId,
-                )
-                .isEmpty
-            ? null
-            : _currentApprovalAssignees
-                .firstWhere(
-                  (item) => item.userId == _replaceApprovalAssigneeUserId,
-                )
-                .displayName;
+              .where((item) => item.userId == _replaceApprovalAssigneeUserId)
+              .isEmpty
+        ? null
+        : _currentApprovalAssignees
+              .firstWhere(
+                (item) => item.userId == _replaceApprovalAssigneeUserId,
+              )
+              .displayName;
 
     return Scaffold(
       appBar: AppBar(
@@ -338,16 +368,18 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                         title: Text(_tr('承認担当者にする', 'Make approval assignee')),
                         subtitle: Text(
                           _assigneeLoading
-                              ? _tr('現在の承認担当者を確認中...', 'Checking current approvers...')
+                              ? _tr(
+                                  '現在の承認担当者を確認中...',
+                                  'Checking current approvers...',
+                                )
                               : SkoLanguageController.isEnglish
-                                  ? 'Current ${_currentApprovalAssignees.length} / 3${replacementName == null ? '' : ' → Replace with $replacementName'}'
-                                  : '現在 ${_currentApprovalAssignees.length} / 3名${replacementName == null ? '' : '　→ $replacementNameさんと入れ替え予定'}',
+                              ? 'Current ${_currentApprovalAssignees.length} / 3${replacementName == null ? '' : ' → Replace with $replacementName'}'
+                              : '現在 ${_currentApprovalAssignees.length} / 3名${replacementName == null ? '' : '　→ $replacementNameさんと入れ替え予定'}',
                         ),
                         value: _makeApprovalAssignee,
                         onChanged: _busy || _assigneeLoading
                             ? null
-                            : (value) =>
-                                _setApprovalAssignee(value ?? false),
+                            : (value) => _setApprovalAssignee(value ?? false),
                       ),
                       if (_makeApprovalAssignee)
                         Text(
@@ -401,8 +433,14 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                         const SizedBox(height: 6),
                         Text(
                           _makeApprovalAssignee
-                              ? _tr('本登録後：サブ管理者・承認担当者', 'After registration: Sub-admin + Approver')
-                              : _tr('本登録後：サブ管理者', 'After registration: Sub-administrator'),
+                              ? _tr(
+                                  '本登録後：サブ管理者・承認担当者',
+                                  'After registration: Sub-admin + Approver',
+                                )
+                              : _tr(
+                                  '本登録後：サブ管理者',
+                                  'After registration: Sub-administrator',
+                                ),
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ],
@@ -425,18 +463,33 @@ class _EmployeeInvitePageState extends State<EmployeeInvitePage> {
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(_tr('初期パスワードをコピーしました', 'Temporary password copied')),
+                              content: Text(
+                                _tr(
+                                  '初期パスワードをコピーしました',
+                                  'Temporary password copied',
+                                ),
+                              ),
                             ),
                           );
                         },
                         icon: const Icon(Icons.copy_outlined),
-                        label: Text(_tr('初期パスワードをコピー', 'Copy Temporary Password')),
+                        label: Text(
+                          _tr('初期パスワードをコピー', 'Copy Temporary Password'),
+                        ),
                       ),
                       const SizedBox(height: 8),
                       FilledButton.icon(
                         onPressed: () => _share(result),
                         icon: const Icon(Icons.ios_share),
-                        label: Text(_tr('SMS・メッセージなどで共有', 'Share by SMS or Message')),
+                        label: Text(
+                          _tr('SMS・メッセージなどで共有', 'Share by SMS or Message'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => _sendEmployeeSms(result),
+                        icon: const Icon(Icons.sms_outlined),
+                        label: const Text('SMS送信'),
                       ),
                     ],
                   ),
