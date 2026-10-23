@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "source_ref": "994342fc136045d8ce6769b55f606952111808e6",
+  "files": {
+    "build_candidate.py": "a6729364575d6acec1304153afab55628805aa92dfc21da6b66da7d1b9f1b086",
+    "maintenance.sql.review-only": "33e6a0988ddd6f747371f9d4a5b036995b0b798671ef64467e39678894d51572",
+    "verify.mjs": "c1c83790e1b4be351757005f77f0ed12a1ca792f046469d304898c76ccdf1144",
+    "test_build_candidate.py": "52c217936a42036eb12d3bf75756d7917a852f350430759b93aa500f2dacab99",
+    "README.md": "f2718bf06bb18629017b1ae0b90270661d33ddddaf7011e5551240d1cc43ce85",
+    "source/conversion.sql": "725ff2533539c63759c92c0bbc45d37c131fa431c421fd76deb127bdff2604d7",
+    "source/candidate.sql": "770728fa45176d7bbeb77ebd0610f936659624e4b1287d63bd83e0dd9264fe5a"
+  },
+  "tests": {
+    "python": 2,
+    "pglite_checks": 66
+  },
+  "production_connected": false,
+  "conversion_performed": false
+}

@@ -2,6 +2,7 @@ name: Expense default OFF preparation
 on:
   pull_request:
     paths:
+      - 'tool/security/expense_production_off_runtime/**'
       - 'tool/expense_direction_default_off_preparation.mjs'
       - 'tool/verify_expense_direction_default_off_preparation.mjs'
       - 'tool/expense_direction_code_checkpoint.mjs'
@@ -37,3 +38,30 @@ jobs:
         run: node tool/verify_expense_direction_default_off_preparation.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
       - name: Native PostgreSQL 17 and competing writer refusal
         run: node tool/verify_expense_direction_default_off_preparation.mjs "file://$PWD/tool/payroll_scope_native_pg17_runtime.mjs" "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+
+  native-one-shot-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_payroll_scope_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_PAYROLL_SCOPE_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_payroll_scope_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - name: Reject stale recovery evidence after fresh observation failures
+        run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_recovery_evidence.py' -v
+      - name: Real before/after-COMMIT disconnect and READ ONLY recovery
+        run: python3 -m unittest discover -s tool/security/expense_production_off_runtime -p 'test_native_recovery.py' -v

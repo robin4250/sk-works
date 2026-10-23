@@ -1,0 +1,61 @@
+-- REVIEW ONLY. Apply after reviewed OFF backend; no gate ON or business DML.
+BEGIN;
+SET LOCAL statement_timeout='30s';
+SET LOCAL lock_timeout='3s';
+DO $preflight$
+BEGIN
+ IF to_regprocedure('private.payment_expense_v2_requested()') IS NOT NULL
+ OR EXISTS(SELECT 1 FROM pg_policy WHERE polrelid='public.payment_certificates'::regclass AND polname='payment_expense_source_compatibility')
+ THEN RAISE EXCEPTION 'source negotiation already installed'; END IF;
+ IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid='public.payment_certificates'::regclass)
+ THEN RAISE EXCEPTION 'existing payment RLS must remain enabled'; END IF;
+ IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('public.payment_certificate_detail_rows(uuid)'))
+ IS DISTINCT FROM 'c069b7e687c0bb7faac9ff314d3873ff'
+ OR (SELECT md5(prosrc) FROM pg_proc WHERE oid=to_regprocedure('private.read_expense_document(text,uuid)'))
+ IS DISTINCT FROM '85a16c6a5181c4f4ee85316f69a288cb'
+ THEN RAISE EXCEPTION 'payment reader baseline differs'; END IF;
+END $preflight$;
+
+-- Representation negotiation ONLY. This header grants no company/user rights.
+-- Existing membership/RLS/account checks still decide authorization.
+CREATE FUNCTION private.payment_expense_v2_requested() RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $$
+DECLARE headers jsonb;
+BEGIN
+ headers:=coalesce(nullif(current_setting('request.headers',true),''),'{}')::jsonb;
+ RETURN jsonb_typeof(headers)='object'
+ AND (headers->'x-sko-payment-source-version') IS NOT DISTINCT FROM '"2"'::jsonb;
+EXCEPTION WHEN invalid_text_representation THEN RETURN false;
+END $$;
+REVOKE ALL ON FUNCTION private.payment_expense_v2_requested() FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION private.payment_expense_v2_requested() TO authenticated;
+
+CREATE POLICY payment_expense_source_compatibility ON public.payment_certificates
+AS RESTRICTIVE FOR SELECT TO authenticated
+USING (NOT coalesce(snapshot?'expense_cost_direction_v2',false)
+ OR (SELECT private.payment_expense_v2_requested()));
+
+-- SECURITY DEFINER readers can bypass table RLS; protect those paths too.
+DO $patch_readers$
+DECLARE definition text; anchor text; replacement text;
+BEGIN
+ definition:=pg_get_functiondef('public.payment_certificate_detail_rows(uuid)'::regprocedure);
+ anchor:=' if jsonb_typeof(c.snapshot->''calculation_rows'')=''array'' then';
+ replacement:=$body$
+ if c.snapshot?'expense_cost_direction_v2' AND private.payment_expense_v2_requested() IS NOT TRUE
+ then raise exception 'Update SKO to read directional expenses' using errcode='42501'; end if;
+ if jsonb_typeof(c.snapshot->'calculation_rows')='array' then$body$;
+ IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1
+ THEN RAISE EXCEPTION 'payment detail reader anchor differs'; END IF;
+ EXECUTE replace(definition,anchor,replacement);
+ definition:=pg_get_functiondef('private.read_expense_document(text,uuid)'::regprocedure);
+ anchor:=' if p_kind=''paymentCertificate'' and row_data->''snapshot''?''expense_cost_direction_v2'' then';
+ replacement:=$body$
+ if p_kind='paymentCertificate' and row_data->'snapshot'?'expense_cost_direction_v2' then
+ if private.payment_expense_v2_requested() IS NOT TRUE
+ then raise exception 'Update SKO to read directional expenses' using errcode='42501'; end if;$body$;
+ IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1
+ THEN RAISE EXCEPTION 'expense detail reader anchor differs'; END IF;
+ EXECUTE replace(definition,anchor,replacement);
+END $patch_readers$;
+COMMIT;

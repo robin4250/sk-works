@@ -1,0 +1,125 @@
+-- REVIEW ONLY; offline generated from converter SHA256 725ff2533539c63759c92c0bbc45d37c131fa431c421fd76deb127bdff2604d7.
+-- Separate maintenance identity. No JWT/GUC fabrication, public API or grants.
+-- This does not enable gates, verify rollout, invoke conversion or alter old audit.
+BEGIN;
+DO $source_guard$ BEGIN
+ IF to_regprocedure('private.convert_payment_expense_v1_draft(uuid,uuid,uuid,date,integer,jsonb,text,text,text)') IS NOT NULL
+ AND (SELECT md5(prosrc)FROM pg_proc WHERE oid=to_regprocedure('private.convert_payment_expense_v1_draft(uuid,uuid,uuid,date,integer,jsonb,text,text,text)')) IS DISTINCT FROM 'cc033b2e605aaa26459843fd6a3111d4'
+ THEN RAISE EXCEPTION 'existing original converter source differs';END IF;
+ END $source_guard$;
+CREATE TABLE private.expense_payment_maintenance_conversions(
+ document_id uuid primary key,company_id uuid not null,subject_id uuid not null,
+ month date not null,source_revision integer not null,source_hash text not null,
+ before_row jsonb not null,after_row jsonb not null,backup_reference text not null,
+ rollout_reference text not null,execution_kind text not null check(execution_kind='maintenance'),
+ db_session_user name not null,db_current_user name not null,
+ authority_original jsonb not null,authorization_reference text not null check(authorization_reference~'^[0-9a-f]{64}$'),
+ converted_at timestamptz not null default now());
+ALTER TABLE private.expense_payment_maintenance_conversions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON private.expense_payment_maintenance_conversions FROM public,anon,authenticated,service_role;
+CREATE FUNCTION private.expense_payment_maintenance_audit_immutable()RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$BEGIN RAISE EXCEPTION 'maintenance conversion original and receipt are immutable';END $$;
+REVOKE ALL ON FUNCTION private.expense_payment_maintenance_audit_immutable()FROM public,anon,authenticated,service_role;
+CREATE TRIGGER expense_payment_maintenance_audit_immutable BEFORE UPDATE OR DELETE ON private.expense_payment_maintenance_conversions
+FOR EACH ROW EXECUTE FUNCTION private.expense_payment_maintenance_audit_immutable();
+create function private.convert_payment_expense_v1_maintenance(
+ cid uuid, doc uuid, subject uuid, month_day date, expected_revision integer,
+ expected_source jsonb, expected_hash text, backup_reference text, rollout_reference text, expected_db_login text, authority_original jsonb, authorization_reference text
+) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare old_row public.payment_certificates%rowtype; result public.payment_certificates%rowtype;
+ audit private.expense_payment_maintenance_conversions%rowtype; component jsonb; envelope jsonb;
+ rows_now jsonb; gross numeric; amount numeric; first_day date:=date_trunc('month',month_day)::date;
+ last_day date:=(date_trunc('month',month_day)+interval '1 month - 1 day')::date;
+ next_revision integer; next_snapshot jsonb; authority_now jsonb;
+begin
+ if cid is null or doc is null or subject is null or month_day is null or month_day<>first_day
+ or expected_revision is null or expected_revision<1 or expected_revision>=2147483647
+ or jsonb_typeof(expected_source) is distinct from 'object'
+ or expected_hash is null or expected_hash!~'^[0-9a-f]{32}$'
+ or md5(expected_source::text) is distinct from expected_hash
+ or coalesce(length(trim(backup_reference)),0)=0 or coalesce(length(trim(rollout_reference)),0)=0
+ then raise exception 'explicit conversion request differs';end if;
+ -- Maintenance authorization is explicit DB-operator authority, never an app JWT.
+ if current_user<>'postgres' or session_user::text is distinct from expected_db_login
+ or expected_db_login is null or expected_db_login !~ '^cli_login_[A-Za-z0-9_]+(\.ztktgquxvcxcjxtluspu)?$'
+ or auth.uid() is not null
+ or nullif(current_setting('request.jwt.claims',true),'') is not null
+ or nullif(current_setting('request.jwt.claim.sub',true),'') is not null
+ or nullif(current_setting('request.jwt.claim.role',true),'') is not null
+ then raise exception 'maintenance database executor denied' using errcode='42501';end if;
+ if authorization_reference is null or authorization_reference !~ '^[0-9a-f]{64}$'
+ or jsonb_typeof(authority_original) is distinct from 'object'
+ or authority_original->>'company_id' is distinct from cid::text
+ or authority_original->>'role' is distinct from 'owner'
+ or coalesce(authority_original->>'user_id','')!~'^[0-9a-fA-F-]{36}$'
+ then raise exception 'maintenance authorization original required';end if;
+ if private.expense_cost_direction_v2_enabled(cid) is not true
+ or private.expense_direction_v2_client_rollout_verified(cid) is not true
+ then raise exception 'direction consumer rollout is not verified';end if;
+ perform private.expense_cost_scope_lock(cid,'subcontractor',subject,first_day);
+ -- Membership is a preserved authorization original, not the executing identity.
+ select to_jsonb(m) into strict authority_now from public.company_members m
+ where m.company_id=cid and m.user_id=(authority_original->>'user_id')::uuid for share;
+ if authority_now is distinct from authority_original then raise exception 'maintenance authority original changed';end if;
+ select * into old_row from public.payment_certificates where id=doc for update;
+ if not found or old_row.company_id is distinct from cid or old_row.partner_company_id is distinct from subject
+ or old_row.period_start is distinct from first_day or old_row.period_end is distinct from last_day
+ then raise exception 'explicit conversion scope differs';end if;
+ select * into audit from private.expense_payment_maintenance_conversions where document_id=doc;
+ if found then
+ if audit.execution_kind is distinct from 'maintenance'
+ or audit.db_session_user::text is distinct from session_user::text
+ or audit.db_current_user::text is distinct from current_user::text
+ or audit.authorization_reference is distinct from authorization_reference
+ or audit.authority_original is distinct from authority_original
+ or audit.company_id is distinct from cid or audit.subject_id is distinct from subject or audit.month is distinct from first_day
+ or audit.source_revision is distinct from expected_revision or audit.source_hash is distinct from expected_hash
+ or audit.before_row is distinct from expected_source or audit.backup_reference is distinct from backup_reference
+ or audit.rollout_reference is distinct from rollout_reference or audit.after_row is distinct from to_jsonb(old_row)
+ then raise exception 'conversion retry differs from saved receipt';end if;
+ return audit.after_row;
+ end if;
+ if old_row.status is distinct from 'draft' or old_row.automatic_calculation is not true
+ or old_row.calculation_blocked is distinct from false or old_row.revision is distinct from expected_revision
+ or to_jsonb(old_row) is distinct from expected_source or md5(to_jsonb(old_row)::text) is distinct from expected_hash
+ then raise exception 'conversion requires exact unchanged automatic draft';end if;
+ if old_row.snapshot?'expense_cost_direction_v2' or old_row.snapshot?'expense_cost_basis'
+ or old_row.snapshot->'expense_extra_source_version' is distinct from '1'::jsonb
+ then raise exception 'explicit legacy v1 source required';end if;
+ -- Lock the same source claims/choices as finalization; retain requester settlement unchanged.
+ perform e.id from private.expense_claims e join private.expense_settlement_choices s on s.claim_id=e.id
+ where e.company_id=cid and e.incurred_on between first_day and last_day
+ and s.cost_allocation_current and e.allocation='subcontractor' and e.counterparty_id=subject
+ order by e.id for share of e,s;
+ if exists(select 1 from private.expense_amount_consumptions where company_id=cid and document_kind='paymentCertificate' and document_id=doc)
+ or exists(select 1 from private.expense_amount_consumptions c join jsonb_array_elements(old_row.snapshot->'expense_extra_claims') e on c.claim_id=(e->>'id')::uuid where c.purpose='cost_recovery')
+ then raise exception 'consumed legacy source cannot convert';end if;
+ component:=private.expense_cost_components('paymentCertificate',cid,subject,first_day,last_day,doc);
+ amount:=(component->>'amount_yen')::numeric;
+ if old_row.snapshot->'expense_extra_amount_yen' is distinct from to_jsonb(amount)
+ or old_row.snapshot->'expense_extra_claims' is distinct from component->'claims'
+ then raise exception 'legacy allocated expenses changed';end if;
+ select coalesce(jsonb_agg(to_jsonb(r)),'[]'::jsonb),coalesce(sum(r.amount_yen),0)
+ into rows_now,gross from private.certificate_calculation_rows(cid,subject,first_day,last_day) r;
+ if old_row.snapshot->'calculation_rows' is distinct from rows_now or gross<0 or gross<>trunc(gross)
+ or amount<=0 or amount<>trunc(amount) or gross+amount>2147483647
+ or old_row.gross_amount is distinct from (gross+amount)::integer
+ or old_row.deductions is distinct from 0 or old_row.net_amount is distinct from (gross+amount)::integer
+ then raise exception 'legacy calculation basis differs';end if;
+ next_revision:=expected_revision+1;
+ envelope:=private.expense_payment_v2_envelope(cid,doc,subject,first_day,next_revision,amount,component->'claims');
+ next_snapshot:=(old_row.snapshot-'expense_extra_source_version'-'expense_extra_amount_yen'-'expense_extra_claims')
+ ||jsonb_build_object('expense_cost_direction_v2',envelope,'expense_cost_basis',jsonb_build_object(
+ 'company_id',cid,'document_id',doc,'subject_id',subject,'month',to_char(first_day,'YYYY-MM'),
+ 'document_revision',next_revision,'gross_before_expense_yen',gross,'other_deductions_yen',0));
+ -- The existing v2 guard verifies the saved scope/basis/net. No finalization or consumption here.
+ update public.payment_certificates set snapshot=next_snapshot,gross_amount=gross::integer,deductions=amount::integer,
+ net_amount=(gross-amount)::integer,revision=next_revision,updated_at=now() where id=doc returning * into result;
+ insert into private.expense_payment_maintenance_conversions(document_id,company_id,subject_id,month,source_revision,source_hash,
+ before_row,after_row,backup_reference,rollout_reference,execution_kind,db_session_user,db_current_user,authority_original,authorization_reference)
+ values(doc,cid,subject,first_day,expected_revision,expected_hash,expected_source,to_jsonb(result),backup_reference,rollout_reference,'maintenance',session_user,current_user,authority_original,authorization_reference);
+ return to_jsonb(result);
+end $$;
+revoke all on function private.convert_payment_expense_v1_maintenance(uuid,uuid,uuid,date,integer,jsonb,text,text,text,text,jsonb,text) from public,anon,authenticated,service_role;
+
+COMMIT;
