@@ -64,31 +64,9 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
 
   Future<String?> _input(String title, String label, {bool password = false,
       TextInputType? keyboard, String? explanation}) async {
-    final value = TextEditingController(), confirm = TextEditingController();
-    final result = await showDialog<String>(context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(builder: (context, update) {
-        final valid = password ? value.text.length >= 8 && value.text == confirm.text
-            : value.text.trim().isNotEmpty;
-        return AlertDialog(title: Text(title), content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (explanation != null) Text(explanation),
-            TextField(controller: value, obscureText: password, autocorrect: false,
-              enableSuggestions: !password, keyboardType: keyboard,
-              onChanged: (_) => update(() {}),
-              decoration: InputDecoration(labelText: label)),
-            if (password) TextField(controller: confirm, obscureText: true,
-              autocorrect: false, enableSuggestions: false,
-              onChanged: (_) => update(() {}),
-              decoration: const InputDecoration(labelText: '確認のためもう一度')),
-          ])), actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル')),
-            FilledButton(onPressed: valid ? () => Navigator.pop(context, value.text) : null,
-              child: Text(password ? '保存' : '確認へ')),
-          ]);
-      }));
-    value.dispose(); confirm.dispose();
-    return result;
+    return showDialog<String>(context: context, barrierDismissible: false,
+      builder: (_) => _EnrollmentInputDialog(title: title, label: label,
+        password: password, keyboard: keyboard, explanation: explanation));
   }
 
   Future<void> _password() async {
@@ -177,5 +155,43 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
         if (_busy) const LinearProgressIndicator(),
         TextButton(onPressed: _busy ? null : _load, child: const Text('登録方法を再読み込み')),
       ])));
+  }
+}
+
+class _EnrollmentInputDialog extends StatefulWidget {
+  const _EnrollmentInputDialog({required this.title, required this.label,
+    required this.password, this.keyboard, this.explanation});
+  final String title, label;
+  final bool password;
+  final TextInputType? keyboard;
+  final String? explanation;
+  @override
+  State<_EnrollmentInputDialog> createState() => _EnrollmentInputDialogState();
+}
+
+class _EnrollmentInputDialogState extends State<_EnrollmentInputDialog> {
+  final _value = TextEditingController(), _confirm = TextEditingController();
+  @override
+  void dispose() { _value.dispose(); _confirm.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    final valid = widget.password ? _value.text.length >= 8 && _value.text == _confirm.text
+        : _value.text.trim().isNotEmpty;
+    return AlertDialog(title: Text(widget.title), content: SingleChildScrollView(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (widget.explanation != null) Text(widget.explanation!),
+        TextField(controller: _value, obscureText: widget.password, autocorrect: false,
+          enableSuggestions: !widget.password, keyboardType: widget.keyboard,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(labelText: widget.label)),
+        if (widget.password) TextField(controller: _confirm, obscureText: true,
+          autocorrect: false, enableSuggestions: false,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(labelText: '確認のためもう一度')),
+      ])), actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル')),
+        FilledButton(onPressed: valid ? () => Navigator.pop(context, _value.text) : null,
+          child: Text(widget.password ? '保存' : '確認へ')),
+      ]);
   }
 }
