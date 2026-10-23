@@ -1,0 +1,26 @@
+name: Account login method enrollment
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/login_method_enrollment_*.dart'
+      - 'lib/features/auth/panel_seven_page.dart'
+      - 'test/login_method_enrollment_*_test.dart'
+      - '.github/workflows/login-method-enrollment.yml'
+permissions:
+  contents: read
+jobs:
+  account-enrollment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/auth/login_method_enrollment_repository.dart lib/features/auth/login_method_enrollment_card.dart lib/features/auth/panel_seven_page.dart test/login_method_enrollment_repository_test.dart test/login_method_enrollment_card_test.dart
+      - run: timeout 180s flutter test test/login_method_enrollment_repository_test.dart test/login_method_enrollment_card_test.dart test/panel_seven_repository_test.dart test/panel_seven_test.dart test/apple_account_link_test.dart --reporter expanded --timeout 30s
