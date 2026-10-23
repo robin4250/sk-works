@@ -65,7 +65,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     try {
       final snapshot = await widget.repository.load();
       if (!mounted || !_foreground || generation != _generation ||
-          !widget.repository.isCurrent(snapshot)) return;
+          !widget.repository.isCurrent(snapshot)) { return; }
       setState(() => _snapshot = snapshot);
     } catch (_) {
       // Keep the operation receipt visible; explicit reload remains available.

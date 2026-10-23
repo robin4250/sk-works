@@ -48,13 +48,17 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
       await _load();
       if (mounted && !phoneRequested) widget.onChanged?.call();
     } on PrimaryPasswordReauthenticationRequired {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _passwordNeedsCode = true;
         _message = '登録済みの連絡先への確認コードが必要です。確認コードを送信してから保存してください。';
-      });
+        });
+      }
     } catch (error) {
-      if (mounted) setState(() => _message = error is StateError
+      if (mounted) {
+        setState(() => _message = error is StateError
           ? error.message.toString() : '登録を完了できませんでした。再読み込みして確認してください。');
+      }
     } finally { if (mounted) setState(() => _busy = false); }
   }
 

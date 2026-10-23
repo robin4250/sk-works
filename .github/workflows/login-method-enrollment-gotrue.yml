@@ -1,0 +1,24 @@
+name: Account first-password real GoTrue enrollment
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/login_method_enrollment_repository.dart'
+      - 'tool/security/login_method_enrollment_gotrue_e2e.mjs'
+      - '.github/workflows/login-method-enrollment-gotrue.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-gotrue-enrollment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node --check tool/security/login_method_enrollment_gotrue_e2e.mjs
+      - name: Real Auth password addition and same-user login in disposable stack
+        run: node tool/security/login_method_enrollment_gotrue_e2e.mjs

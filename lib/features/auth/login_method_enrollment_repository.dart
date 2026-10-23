@@ -121,7 +121,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
     final subscription = client.auth.onAuthStateChange.listen((event) {
       if (event.event == AuthChangeEvent.signedOut ||
           client.auth.currentSession?.user.id != actor ||
-          client.auth.currentSession?.accessToken != token) revoked = true;
+          client.auth.currentSession?.accessToken != token) { revoked = true; }
     }, onError: (Object _) { revoked = true; });
     try {
       final user = (await client.auth.getUser(token)).user;
@@ -169,7 +169,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
     final after = (await client.auth.getUser(token)).user;
     check();
     if (after == null || after.id != before.id ||
-        after.toJson()['is_anonymous'] == true) throw StateError('本人を確認できません。');
+        after.toJson()['is_anonymous'] == true) { throw StateError('本人を確認できません。'); }
     for (final identity in before.identities ?? <UserIdentity>[]) {
       if (!(after.identities ?? <UserIdentity>[]).any((value) =>
           value.provider == identity.provider && value.id == identity.id &&
