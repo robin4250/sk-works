@@ -1,0 +1,56 @@
+name: Isolated employee QR behavior observation
+on:
+  pull_request:
+    paths:
+      - 'tool/security/employee_invite_qr_gotrue_review.mjs'
+      - 'tool/security/onboarding_storage_catalog.json'
+      - 'supabase/migrations/20261013210756_guard_employee_invitation_initial_password_expiry.sql'
+      - '.github/workflows/employee-invite-qr-observation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actual-local-gotrue-observation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf
+        with:
+          version: 2.121.0
+      - name: Observe baseline QR behavior in disposable GoTrue; no product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID SUPABASE_PROJECT_REF SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY SUPABASE_SECRET_KEY SUPABASE_ANON_KEY
+          task_dir=$(mktemp -d "$RUNNER_TEMP/sko-invite-qr.XXXXXX")
+          chmod 700 "$task_dir"
+          cleanup() {
+            local original_status=$?
+            local cleanup_status=0
+            supabase stop --workdir "$task_dir" --no-backup >"$task_dir/stop.log" 2>&1 || cleanup_status=$?
+            if [ "$cleanup_status" -ne 0 ]; then
+              echo 'Disposable fixture cleanup failed; private logs retained only on runner.' >&2
+              exit 1
+            fi
+            rm -rf "$task_dir"
+            exit "$original_status"
+          }
+          trap cleanup EXIT
+          supabase --version
+          supabase init --help >"$task_dir/init-help.txt"
+          supabase start --help >"$task_dir/start-help.txt"
+          supabase status --help >"$task_dir/status-help.txt"
+          supabase stop --help >"$task_dir/stop-help.txt"
+          supabase init --workdir "$task_dir" --yes >"$task_dir/init.log" 2>&1
+          supabase start --workdir "$task_dir" --exclude storage-api,realtime,imgproxy,studio,postgres-meta,edge-runtime,logflare,vector,supavisor,mailpit >"$task_dir/start.log" 2>&1
+          supabase status --workdir "$task_dir" -o json >"$task_dir/status.json" 2>"$task_dir/status.log"
+          chmod 600 "$task_dir/status.json"
+          npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+          node --check tool/security/employee_invite_qr_gotrue_review.mjs
+          node tool/security/employee_invite_qr_gotrue_review.mjs "$task_dir/status.json" "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
