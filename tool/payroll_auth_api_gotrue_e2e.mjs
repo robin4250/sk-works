@@ -7,6 +7,8 @@ import {promisify} from 'node:util';
 import {randomBytes} from 'node:crypto';
 import {setupPayrollScopeFixture} from './payroll_scope_fixture_setup.mjs';
 const run=promisify(execFile),root=process.cwd();
+const authReviewHook=process.env.SKO_PAYROLL_AUTH_REVIEW_HOOK;
+if(authReviewHook!==undefined&&authReviewHook!=='canonical-common-v3')throw Error('Unknown isolated payroll Auth review hook');
 const parent=path.resolve(process.env.RUNNER_TEMP??'');
 if(!process.env.CI||!process.env.RUNNER_TEMP||parent==='/'||Object.keys(process.env).some(k=>/^SUPABASE_(ACCESS_TOKEN|DB_PASSWORD|URL|SERVICE_ROLE_KEY|SECRET_KEY|PROJECT_REF)$/.test(k)))throw Error('Isolated CI without hosted credentials required');
 const project='sko-payroll-auth-'+randomBytes(8).toString('hex'),workdir=path.join(parent,project);
@@ -137,6 +139,11 @@ try {
  assert.equal((await db.query("select count(*)::int n from public.payroll_audit where statement_id=$1 and actor_id=$2 and action='automatic_recalculation'",[fixed.id,users.editor.id])).rows[0].n,1);
  assert.deepEqual(await identity(),identityBefore);
  assert.equal((await db.query("select md5(pg_get_functiondef('auth.uid()'::regprocedure)) value")).rows[0].value,authUidBefore);
+ if(authReviewHook==='canonical-common-v3') {
+  phase='canonical-common-v3';
+  const {verifyCanonicalCommonPayrollAuth}=await import('./payroll_common_canonical_auth_hook.mjs');
+  await verifyCanonicalCommonPayrollAuth({db,fixture,read,rpc,request,users,tokens,apiUrl:api.href,setPhase:value=>{phase='canonical-common-v3/'+value;}});
+ }
  console.log('PASS actual isolated GoTrue sessions -> PostgREST current-draft preview and exact-scope apply; original GoTrue Auth function and identity/session rows preserved');
  console.log('PASS owner/editor preview, viewer/other-company/ungranted-manager/anonymous refusals, live permission removal, restricted account, confirmation/revision rejection and unchanged business state on every refusal');
  console.log('PASS five frozen production-matching access predicate bodies/security attributes; successful synthetic recalculation remains draft and records the real isolated Auth actor');

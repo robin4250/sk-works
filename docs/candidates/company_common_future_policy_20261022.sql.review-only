@@ -1,0 +1,149 @@
+-- REVIEW ONLY. No product caller, production row, role or auth policy changed.
+begin;
+create schema common_payroll_future_review_private;
+revoke all on schema common_payroll_future_review_private from public,anon,authenticated,service_role;
+create table common_payroll_future_review_private.policies(
+ company_id uuid not null,payroll_type text not null,version bigint not null,starts_on date not null,
+ enabled boolean not null,source_publication_month date not null,source_publication_version bigint not null,
+ items jsonb not null,quantity_contracts jsonb not null,reconciliation text not null,
+ actor_id uuid not null,request_id uuid not null,payload jsonb not null,
+ primary key(company_id,payroll_type,version),unique(company_id,request_id));
+create table common_payroll_future_review_private.individual_preferences(
+ company_id uuid not null,worker_id uuid not null,payroll_type text not null,common_id uuid not null,generation bigint not null,
+ policy_version bigint not null,individual_slot integer not null,approved_name text not null,preference text not null check(preference='individual'),actor_id uuid not null,
+ primary key(company_id,worker_id,payroll_type,common_id,generation,policy_version));
+alter table common_payroll_future_review_private.policies enable row level security;
+alter table common_payroll_future_review_private.individual_preferences enable row level security;
+revoke all on all tables in schema common_payroll_future_review_private from public,anon,authenticated,service_role;
+
+create function common_payroll_future_review_private.save_policy(cid uuid,typ text,p_start date,p_source_month date,p_source_version bigint,p_enabled boolean,p_expected_version bigint,p_request_id uuid,p_reconciliation text)
+returns jsonb language plpgsql volatile security invoker set search_path='' as $$
+declare publication record; contracts jsonb; previous record; v bigint; payload jsonb;
+begin
+ if p_request_id is null or p_enabled is null or p_expected_version is null or p_expected_version<0
+  or p_start is null or p_start<>date_trunc('month',p_start)::date or p_start<date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date
+  or p_reconciliation is distinct from 'inherit_absent_or_same_rate_preserve_individual_exception' then raise exception 'explicit future policy contract required';end if;
+ perform 1 from public.companies where id=cid for update;
+ if company_common_allowance_private.admin_state(cid)->>'can_edit' is distinct from 'true' then raise exception 'policy administrator required' using errcode='42501';end if;
+ payload:=jsonb_build_object('type',typ,'start',p_start,'source_month',p_source_month,'source_version',p_source_version,'enabled',p_enabled,'expected_version',p_expected_version,'reconciliation',p_reconciliation);
+ select * into previous from common_payroll_future_review_private.policies where company_id=cid and request_id=p_request_id;
+ if found then
+  if previous.payload is distinct from payload then raise exception 'policy request conflict' using errcode='40001';end if;
+  return jsonb_build_object('review_only',true,'policy_version',previous.version,'enabled',previous.enabled);end if;
+ select coalesce(max(version),0) into v from common_payroll_future_review_private.policies where company_id=cid and payroll_type=typ;
+ if v<>p_expected_version then raise exception 'policy version changed' using errcode='40001';end if;
+ select * into publication from common_payroll_legacy_review_private.publications where company_id=cid and payroll_type=typ and starts_on=p_source_month and version=p_source_version;
+ if not found or p_start<p_source_month then raise exception 'approved publication required';end if;
+ select q.contracts into contracts from common_payroll_legacy_review_private.quantity_contracts q where q.company_id=cid and q.payroll_type=typ and q.starts_on=p_source_month and q.version=p_source_version;
+ if common_payroll_legacy_review_private.quantity_contracts_valid(publication.company_plan,contracts) is distinct from true then raise exception 'approved selected quantity contract required';end if;
+ insert into common_payroll_future_review_private.policies values(cid,typ,v+1,p_start,p_enabled,p_source_month,p_source_version,publication.company_plan->'snapshot_items',contracts,p_reconciliation,auth.uid(),p_request_id,payload);
+ return jsonb_build_object('review_only',true,'policy_version',v+1,'enabled',p_enabled);
+end $$;
+
+create function common_payroll_future_review_private.prefer_individual(cid uuid,wid uuid,typ text,p_policy_version bigint,p_common_id uuid,p_generation bigint)
+returns void language plpgsql volatile security invoker set search_path='' as $$
+declare common_name text; slots integer[];
+begin
+ perform 1 from public.companies where id=cid for update;
+ if company_common_allowance_private.admin_state(cid)->>'can_edit' is distinct from 'true' or not coalesce(private.payroll_settings_allowed(cid,wid,'edit'),false) then raise exception 'policy administrator required' using errcode='42501';end if;
+ if not exists(select 1 from public.workers where company_id=cid and id=wid) or not exists(
+  select 1 from common_payroll_future_review_private.policies p,jsonb_array_elements(p.items) e
+  where p.company_id=cid and p.payroll_type=typ and p.version=p_policy_version and e->>'id'=p_common_id::text and (e->>'legacy_generation')::bigint=p_generation) then raise exception 'policy identity unavailable';end if;
+ select e->>'name' into common_name from common_payroll_future_review_private.policies p,jsonb_array_elements(p.items) e where p.company_id=cid and p.payroll_type=typ and p.version=p_policy_version and e->>'id'=p_common_id::text;
+ select coalesce(array_agg(k),'{}'::integer[]) into slots from public.worker_payroll_settings s cross join generate_series(1,3) k where s.company_id=cid and s.worker_id=wid and nullif(btrim(to_jsonb(s)->>('allowance_name_'||k)),'')=common_name;
+ if cardinality(slots)<>1 then raise exception 'individual preference requires exact current slot';end if;
+ insert into common_payroll_future_review_private.individual_preferences values(cid,wid,typ,p_common_id,p_generation,p_policy_version,slots[1],common_name,'individual',auth.uid()) on conflict do nothing;
+end $$;
+
+-- Internal calculation contract only: all application roles are revoked. The
+-- existing canonical payroll caller must validate company/worker write scope.
+-- Never require actor payroll-view/admin privileges here: a legitimate proxy
+-- attendance actor need not be allowed to read salary details.
+create function common_payroll_future_review_private.resolve_internal(cid uuid,wid uuid,p_start date,p_end date,p_fresh_settings jsonb)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare policy record; preference record; raw jsonb; item jsonb; contract jsonb; effective jsonb; slots integer[]; n integer; qty integer;
+ earnings jsonb:='[]'; items jsonb:='[]'; exceptions jsonb:='[]'; reasons jsonb:='[]'; individual_items jsonb; product_items jsonb; catalog jsonb; classification jsonb:='[]'; selection record; sources jsonb; state text; approved_pair boolean;
+begin
+ if p_start is null or p_end is null or p_start<>date_trunc('month',p_start)::date or p_end<>(p_start+interval '1 month - 1 day')::date then
+  return jsonb_build_object('active',false,'blocked',true,'reason','invalid_internal_month_contract');end if;
+ select to_jsonb(s) into raw from public.worker_payroll_settings s join public.workers w on w.company_id=s.company_id and w.id=s.worker_id where s.company_id=cid and s.worker_id=wid;
+ if raw is null or p_fresh_settings is distinct from raw then return jsonb_build_object('active',false,'blocked',true,'reason','fresh_internal_settings_required');end if;
+ select * into policy from common_payroll_future_review_private.policies p where p.company_id=cid and p.payroll_type=raw->>'pay_type' and p.starts_on<=p_start order by p.starts_on desc,p.version desc limit 1;
+ if not found or not policy.enabled then return jsonb_build_object('active',false,'blocked',false,'items','[]'::jsonb,'earnings','[]'::jsonb);end if;
+ if exists(select 1 from public.payroll_statements s where s.company_id=cid and s.worker_id=wid and s.period_start=p_start
+  and (s.automatic_calculation is distinct from true or s.workflow_state is distinct from 'draft' or s.finalized_at is not null)) then
+  return jsonb_build_object('active',false,'blocked',false,'frozen',true,'items','[]'::jsonb,'earnings','[]'::jsonb);end if;
+ effective:=raw;
+ select c.items into individual_items from payroll_unit_private.conditions c where c.company_id=cid and c.worker_id=wid and c.starts_on<=p_start order by c.starts_on desc limit 1;
+ -- Classify selections by their actual stored sources. Classification is not
+ -- an alias mapping and never changes the quantity/identity of another source.
+ product_items:=payroll_unit_private.resolve_company_common(cid,wid,p_start,p_end)->'items';
+ select coalesce(jsonb_agg(source),'[]'::jsonb) into catalog from (
+  select jsonb_build_object('kind','company_policy','id',e->'id','generation',e->'legacy_generation','name',e->'name','rate_yen',e->'amount_yen') source from jsonb_array_elements(policy.items) e
+  union all
+  select jsonb_build_object('kind','individual_legacy','slot',k,'name',btrim(raw->>('allowance_name_'||k)),'rate_yen',coalesce((raw->>('allowance_'||k))::numeric,0)) from generate_series(1,3) k where nullif(btrim(raw->>('allowance_name_'||k)),'') is not null
+  union all
+  select jsonb_build_object('kind','individual_unit','id',e->'id','name',e->'name') from jsonb_array_elements(coalesce(individual_items,'[]'::jsonb)) e
+  union all
+  select jsonb_build_object('kind','individual_custom','index',ord,'name',e->'name') from jsonb_array_elements(coalesce(raw->'custom_earnings','[]'::jsonb)) with ordinality x(e,ord)
+  union all
+  select jsonb_build_object('kind','company_publication','id',e->'id','name',e->'name') from jsonb_array_elements(coalesce(product_items,'[]'::jsonb)) e
+ ) candidates;
+ for selection in select distinct name from public.attendance_entries a cross join unnest(coalesce(a.allowance_names,'{}'::text[])) name
+  where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date order by name loop
+  select coalesce(jsonb_agg(e order by e->>'kind',e::text),'[]'::jsonb) into sources from jsonb_array_elements(catalog) e where e->>'name'=selection.name;
+  approved_pair:=false;
+  if jsonb_array_length(sources)=2 then
+   select exists(select 1 from jsonb_array_elements(sources) p join jsonb_array_elements(sources) l on p->>'kind'='company_policy' and l->>'kind'='individual_legacy'
+    where p->'rate_yen'=l->'rate_yen' or exists(select 1 from common_payroll_future_review_private.individual_preferences pref
+     where pref.company_id=cid and pref.worker_id=wid and pref.payroll_type=policy.payroll_type and pref.policy_version=policy.version
+      and pref.common_id=(p->>'id')::uuid and pref.generation=(p->>'generation')::bigint and pref.individual_slot=(l->>'slot')::integer and pref.approved_name=selection.name)) into approved_pair;
+  end if;
+  if sources='[]'::jsonb then
+   state:='interpretation_unconfirmed';reasons:=reasons||jsonb_build_array(jsonb_build_object('code','attendance_interpretation_unconfirmed','name',selection.name));
+  elsif jsonb_array_length(sources)>1 and not approved_pair then
+   state:='source_collision_unresolved';reasons:=reasons||jsonb_build_array(jsonb_build_object('code','attendance_source_collision','name',selection.name));
+  else state:=case when approved_pair then 'approved_inheritance_or_individual_pair' else 'known_source' end;end if;
+  classification:=classification||jsonb_build_array(jsonb_build_object('name',selection.name,'state',state,'sources',(select coalesce(jsonb_agg(e-'rate_yen'),'[]'::jsonb) from jsonb_array_elements(sources) e)));
+ end loop;
+ for item in select value from jsonb_array_elements(policy.items) loop
+  select * into preference from common_payroll_future_review_private.individual_preferences e where e.company_id=cid and e.worker_id=wid and e.payroll_type=policy.payroll_type and e.common_id=(item->>'id')::uuid and e.generation=(item->>'legacy_generation')::bigint and e.policy_version=policy.version;
+  if found then
+   if nullif(btrim(raw->>('allowance_name_'||preference.individual_slot)),'') is distinct from preference.approved_name then
+    reasons:=reasons||jsonb_build_array(jsonb_build_object('code','preferred_individual_name_changed','common_id',item->'id','interpretation','unconfirmed'));
+   end if;
+   exceptions:=exceptions||jsonb_build_array(jsonb_build_object('common_id',item->'id','status','explicit_individual_priority'));continue;
+  end if;
+  select coalesce(array_agg(k order by k),'{}'::integer[]) into slots from generate_series(1,3) k where nullif(btrim(raw->>('allowance_name_'||k)),'')=item->>'name';
+  if cardinality(slots)>1 then reasons:=reasons||jsonb_build_array(jsonb_build_object('code','ambiguous_individual_name','common_id',item->'id'));continue;end if;
+  if cardinality(slots)=1 then
+   n:=slots[1];
+   if coalesce((raw->>('allowance_'||n))::numeric,0) is distinct from (item->>'amount_yen')::numeric then
+    reasons:=reasons||jsonb_build_array(jsonb_build_object('code','individual_override_unresolved','common_id',item->'id'));continue;end if;
+   effective:=jsonb_set(effective,array['allowance_'||n],'0'::jsonb);
+  end if;
+  if exists(select 1 from jsonb_array_elements(coalesce(raw->'custom_earnings','[]'::jsonb)||coalesce(individual_items,'[]'::jsonb)) e where btrim(e->>'name')=btrim(item->>'name')) then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','individual_item_overlap_unresolved','common_id',item->'id'));continue;end if;
+  select value into contract from jsonb_array_elements(policy.quantity_contracts) where value->>'id'=item->>'id';
+  if contract->>'basis' is distinct from 'attendance_selected_distinct_dates' then
+   reasons:=reasons||jsonb_build_array(jsonb_build_object('code','quantity_basis_unresolved'));continue;end if;
+  select count(distinct a.work_date) into qty from public.attendance_entries a where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end
+   and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date and exists(select 1 from jsonb_array_elements_text(contract->'aliases') alias where alias=any(coalesce(a.allowance_names,'{}'::text[])));
+  items:=items||jsonb_build_array(item||jsonb_build_object('quantity',qty,'rate_yen',item->'amount_yen','amount_yen',(item->>'amount_yen')::numeric*qty,'readonly',true,'inherited',true,'quantity_basis',contract->'basis','source_unit',contract->'source_unit'));
+  earnings:=earnings||jsonb_build_array(jsonb_build_object('name',item->>'name','amount_yen',(item->>'amount_yen')::numeric*qty));
+ end loop;
+ return jsonb_build_object('review_only',true,'active',true,'blocked',reasons<>'[]'::jsonb,'reasons',reasons,'policy_version',policy.version,'policy_starts_on',policy.starts_on,
+  'items',items,'earnings',earnings,'selection_classification',classification,'exceptions',exceptions,'effective_settings',case when reasons='[]'::jsonb then effective else null end);
+end $$;
+
+create function common_payroll_future_review_private.read_display(cid uuid,wid uuid,p_month date)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare raw jsonb; result jsonb;
+begin
+ if not coalesce(private.payroll_settings_allowed(cid,wid,'view'),false) then raise exception 'salary view required' using errcode='42501';end if;
+ select to_jsonb(s) into raw from public.worker_payroll_settings s where company_id=cid and worker_id=wid;
+ result:=common_payroll_future_review_private.resolve_internal(cid,wid,p_month,(p_month+interval '1 month - 1 day')::date,raw);
+ return result-'effective_settings'-'earnings';
+end $$;
+revoke all on all functions in schema common_payroll_future_review_private from public,anon,authenticated,service_role;
+commit;

@@ -1,0 +1,61 @@
+-- REVIEW ONLY: one shared augmenter replacement, not a deployable migration.
+-- Leaves caller definitions, role grants, data and policy enablement unchanged.
+begin;
+do $$begin
+ if exists(select 1 from (values
+  ('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)','47ee121481cea77af1e0275c686c65db',true),
+  ('common_payroll_future_review_private.resolve_internal(uuid,uuid,date,date,jsonb)','5aa0408ef225b0c116fb96e612646f88',false)
+ ) expected(signature,source_md5,security_definer)
+ left join pg_proc p on p.oid=to_regprocedure(expected.signature)
+ where p.oid is null or md5(p.prosrc) is distinct from expected.source_md5
+  or pg_get_userbyid(p.proowner) is distinct from 'postgres' or p.prosecdef is distinct from expected.security_definer
+  or p.proargmodes is not null or p.proallargtypes is not null
+  or p.proargnames is distinct from case when expected.security_definer then array['cid','wid','p_start','p_end','settings']::text[] else array['cid','wid','p_start','p_end','p_fresh_settings']::text[] end
+  or p.prorettype is distinct from 'jsonb'::regtype or p.proretset or p.provolatile is distinct from 's'::"char"
+  or p.prokind is distinct from 'f'::"char" or p.prolang is distinct from (select oid from pg_language where lanname='plpgsql')
+  or p.proparallel is distinct from 'u'::"char" or p.proleakproof or p.proisstrict or p.provariadic<>0
+  or p.proconfig is distinct from array['search_path=""']::text[]
+  or array(select a::text from unnest(coalesce(p.proacl,acldefault('f',p.proowner))) a order by a::text) is distinct from array['postgres=X/postgres']::text[]
+ ) or exists(select 1 from (values
+  ('payroll_unit_private',array['authenticated=U/postgres','postgres=UC/postgres']::text[]),
+  ('common_payroll_future_review_private',array['postgres=UC/postgres']::text[])
+ ) expected(schema_name,acl)
+ left join pg_namespace n on n.nspname=expected.schema_name
+ where n.oid is null or pg_get_userbyid(n.nspowner) is distinct from 'postgres'
+  or array(select a::text from unnest(coalesce(n.nspacl,acldefault('n',n.nspowner))) a order by a::text) is distinct from expected.acl
+ ) then
+  raise exception 'reviewed payroll augmenter prerequisite differs' using errcode='55000';end if;
+end $$;
+create or replace function payroll_unit_private.augment_settings(cid uuid,wid uuid,p_start date,p_end date,settings jsonb)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare resolved jsonb; common_items jsonb; future jsonb; effective jsonb:=settings; future_blocked boolean:=false;
+begin
+ resolved:=payroll_unit_private.resolve(cid,wid,p_start,p_end);
+ common_items:=payroll_unit_private.resolve_company_common(cid,wid,p_start,p_end);
+ -- No approved future policy: retain the existing path exactly. No extra salary
+ -- view/edit authority is requested from the legitimate attendance actor.
+ if exists(select 1 from common_payroll_future_review_private.policies p where p.company_id=cid and p.payroll_type=settings->>'pay_type' and p.starts_on<=p_start) then
+  future:=common_payroll_future_review_private.resolve_internal(cid,wid,p_start,p_end,settings);
+  future_blocked:=coalesce((future->>'blocked')::boolean,false);
+  if future->>'active'='true' and not future_blocked then
+   -- An existing product common item cannot add the same identity/name again.
+   if exists(select 1 from jsonb_array_elements(common_items->'items') old_item
+    join jsonb_array_elements(future->'items') new_item
+     on old_item->>'id'=new_item->>'id' or btrim(old_item->>'name')=btrim(new_item->>'name')) then
+    future_blocked:=true;future:=future||jsonb_build_object('blocked',true,'reason','common_publication_overlap');
+   else
+    effective:=future->'effective_settings';
+    resolved:=resolved||jsonb_build_object('items',(resolved->'items')||(future->'items'),'earnings',(resolved->'earnings')||(future->'earnings'));
+   end if;
+  end if;
+ end if;
+ resolved:=resolved||jsonb_build_object('items',(resolved->'items')||(common_items->'items'),
+  'earnings',(resolved->'earnings')||(common_items->'earnings'),'deductions',(resolved->'deductions')||(common_items->'deductions'),
+  'blocked',(resolved->>'blocked')::boolean or (common_items->>'blocked')::boolean or future_blocked,
+  'company_common_history_missing',common_items->'history_missing');
+ if future is not null then resolved:=resolved||jsonb_build_object('company_common_future',future-'effective_settings'-'earnings');end if;
+ if resolved->'items'='[]'::jsonb and (resolved->>'blocked')::boolean is not true then return effective;end if;
+ return coalesce(effective,'{}')||jsonb_build_object('custom_earnings',coalesce(effective->'custom_earnings','[]')||(resolved->'earnings'),
+ 'custom_deductions',coalesce(effective->'custom_deductions','[]')||(resolved->'deductions'),'_unit_resolution',resolved);
+end $$;
+commit;

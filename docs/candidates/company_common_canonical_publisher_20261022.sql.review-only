@@ -1,0 +1,238 @@
+-- REVIEW ONLY: canonical versioned preview/publish/receipt connection.
+-- Existing publication and receipt tables are reused. Install does not activate or publish.
+begin;
+set local lock_timeout='5s';
+DO $$begin
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('company_common_allowance_private.publish_payroll(uuid,text,date,bigint,jsonb,bigint,uuid)') and md5(p.prosrc)='8a58b8bc819b9dd2c28298617b3da859'
+ and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef and p.provolatile='v' and p.proconfig=array['search_path=""']::text[]
+ and array(select a::text from unnest(coalesce(p.proacl,acldefault('f',p.proowner))) a order by a::text)=array['authenticated=X/postgres','postgres=X/postgres']::text[])
+ or exists(select 1 from (values
+ ('payroll_unit_private.resolve_company_common(uuid,uuid,date,date)','ba65d7c894fbc0fa2b7bab41cc7dcb5f',true,array['cid','wid','p_start','p_end']::text[]),
+ ('payroll_unit_private.augment_settings(uuid,uuid,date,date,jsonb)','42c841c244f492de24f8ad299b56590f',true,array['cid','wid','p_start','p_end','settings']::text[]),
+ ('payroll_unit_private.common_state(uuid,uuid,date)','ee332d5b1ee6f02a8432b7194a36dfab',true,array['cid','wid','p_month']::text[]),
+ ('company_common_canonical_review_private.resolve_legacy(uuid,uuid,date,date,jsonb,bigint,date)','cdafde8689df45273c6b469c2f684158',false,array['cid','wid','p_start','p_end','publication_items','p_version','p_effective']::text[]),
+ ('company_common_canonical_review_private.snapshot_plan(uuid,text,bigint,jsonb,jsonb,text)','d36dd7685aa65483eb19e4ecdf33e2f4',false,array['cid','typ','p_expected_version','p_expected_source','p_quantities','p_inheritance_rule']::text[])
+ ) expected(signature,source_md5,security_definer,argnames) left join pg_proc p on p.oid=to_regprocedure(expected.signature)
+ where p.oid is null or md5(p.prosrc) is distinct from expected.source_md5 or pg_get_userbyid(p.proowner) is distinct from 'postgres'
+ or p.prosecdef is distinct from expected.security_definer or p.provolatile is distinct from 's'::"char"
+ or p.proconfig is distinct from array['search_path=""']::text[] or p.proargnames is distinct from expected.argnames
+ or p.proargmodes is not null or p.proallargtypes is not null or p.prorettype is distinct from 'jsonb'::regtype or p.proretset
+ or p.prokind is distinct from 'f'::"char" or p.prolang is distinct from (select oid from pg_language where lanname='plpgsql')
+ or p.proparallel is distinct from 'u'::"char" or p.proleakproof or p.proisstrict or p.provariadic<>0
+ or array(select a::text from unnest(coalesce(p.proacl,acldefault('f',p.proowner))) a order by a::text) is distinct from array['postgres=X/postgres']::text[])
+ or exists(select 1 from (values
+ ('payroll_unit_private',array['authenticated=U/postgres','postgres=UC/postgres']::text[]),
+ ('company_common_canonical_review_private',array['postgres=UC/postgres']::text[]),
+ ('company_common_allowance_private',array['authenticated=U/postgres','postgres=UC/postgres']::text[])
+ ) expected(schema_name,acl) left join pg_namespace n on n.nspname=expected.schema_name
+ where n.oid is null or pg_get_userbyid(n.nspowner) is distinct from 'postgres'
+ or array(select a::text from unnest(coalesce(n.nspacl,acldefault('n',n.nspowner))) a order by a::text) is distinct from expected.acl) then
+ raise exception 'canonical publisher prerequisite differs' using errcode='55000';end if;
+end $$;
+
+create function company_common_canonical_review_private.preview(cid uuid,typ text,p_start date,p_common_version bigint,p_common_source jsonb,p_timeline_version bigint,p_quantities jsonb,p_reconciliation text)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare plan jsonb;timeline jsonb;next_start date;activation date;global_activation date;activation_mode text;activation_scope text;activation_required boolean;activation_blocked boolean:=false;scope record;raw jsonb;statement jsonb;resolution jsonb;scopes jsonb:='[]';status text;unresolved integer:=0;targets integer:=0;excluded integer:=0;fingerprint jsonb;token text;command jsonb;
+begin
+ perform company_common_allowance_private.authorize(cid,true);
+ if p_start is null or p_start<>date_trunc('month',p_start)::date or p_start<date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date
+ or p_start>(date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')+interval '12 months')::date then raise exception 'bounded nonpast canonical month required' using errcode='22023';end if;
+ plan:=company_common_canonical_review_private.snapshot_plan(cid,typ,p_common_version,p_common_source,p_quantities,p_reconciliation);
+ timeline:=company_common_allowance_private.read_payroll_publications(cid);
+ if (timeline->>'timeline_version')::bigint is distinct from p_timeline_version then raise exception 'canonical timeline changed' using errcode='40001';end if;
+ select starts_on into global_activation from company_common_allowance_private.payroll_activation where company_id=cid;
+ select mode into activation_mode from company_common_allowance_private.payroll_activation_modes where company_id=cid;
+ if activation_mode='per_type' or global_activation is null then
+  activation_mode:='per_type';activation_scope:='payroll_type';
+  select starts_on into activation from company_common_allowance_private.payroll_type_activation where company_id=cid and payroll_type=typ;
+ else activation_mode:='legacy_global';activation_scope:='legacy_company';activation:=global_activation;end if;
+ activation_required:=activation is null or activation>p_start;
+ activation_blocked:=activation_mode='legacy_global' and activation_required;
+ select min(starts_on) into next_start from company_common_allowance_private.payroll_publications where company_id=cid and payroll_type=typ and starts_on>p_start;
+ for scope in select c.worker_id,c.month_key from(
+  select s.worker_id,p_start month_key from public.worker_payroll_settings s join public.workers w on w.id=s.worker_id and w.company_id=s.company_id where s.company_id=cid and s.pay_type=typ and p_start=date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date
+  union select ps.worker_id,ps.period_start from public.payroll_statements ps join public.worker_payroll_settings s on s.company_id=ps.company_id and s.worker_id=ps.worker_id join public.workers w on w.id=s.worker_id and w.company_id=s.company_id
+   where ps.company_id=cid and s.pay_type=typ and ps.period_start>=p_start and (next_start is null or ps.period_start<next_start)
+ ) c order by c.worker_id,c.month_key loop
+  if jsonb_array_length(scopes)>=100 or scope.month_key>(p_start+interval '12 months')::date then raise exception 'publication scope exceeds reviewed bound' using errcode='54000';end if;
+  select to_jsonb(s) into raw from public.worker_payroll_settings s where company_id=cid and worker_id=scope.worker_id;
+  select to_jsonb(s) into statement from public.payroll_statements s where company_id=cid and worker_id=scope.worker_id and period_start=scope.month_key;
+  resolution:=null;
+  if statement is not null and (statement->>'automatic_calculation')::boolean is distinct from true then status:='excluded_manual';excluded:=excluded+1;
+  elsif statement is not null and (statement->>'workflow_state' is distinct from 'draft' or nullif(statement->>'finalized_at','') is not null) then status:='excluded_finalized';excluded:=excluded+1;
+  else
+   resolution:=company_common_canonical_review_private.resolve_legacy(cid,scope.worker_id,scope.month_key,(scope.month_key+interval '1 month - 1 day')::date,plan->'items',p_timeline_version+1,p_start);
+   if (resolution->>'blocked')::boolean then status:='unresolved';unresolved:=unresolved+1;else status:=case when statement is null then 'target_new_scope' else 'target_draft' end;targets:=targets+1;end if;
+  end if;
+  if resolution is not null then
+   if (payroll_unit_private.resolve(cid,scope.worker_id,scope.month_key,(scope.month_key+interval '1 month - 1 day')::date)->>'blocked')::boolean then
+    resolution:=resolution||jsonb_build_object('blocked',true,'reasons',(resolution->'reasons')||jsonb_build_array(jsonb_build_object('code','individual_unit_unresolved')));
+   end if;
+   if exists(select 1 from jsonb_array_elements(plan->'items') e where e->>'origin' is distinct from 'company_legacy' and e->>'unit'='hour' and not exists(select 1 from payroll_unit_private.quantities q where q.company_id=cid and q.worker_id=scope.worker_id and q.item_id=(e->>'id')::uuid and q.month=scope.month_key)) then
+    resolution:=resolution||jsonb_build_object('blocked',true,'reasons',(resolution->'reasons')||jsonb_build_array(jsonb_build_object('code','company_hour_quantity_missing')));
+   end if;
+   if resolution->>'blocked'='true' and status<>'unresolved' then status:='unresolved';targets:=targets-1;unresolved:=unresolved+1;end if;
+  end if;
+  scopes:=scopes||jsonb_build_array(jsonb_build_object('worker_id',scope.worker_id,'month',scope.month_key,'status',status,'reasons',coalesce(resolution->'reasons','[]'::jsonb),'selection_classification',coalesce(resolution->'selection_classification','[]'::jsonb),
+   'worker_settings_md5',md5(raw::text),'statement_md5',md5(coalesce(statement::text,'absent')),
+   'attendance_md5',(select md5(coalesce(jsonb_agg(to_jsonb(a) order by a.id)::text,'[]')) from public.attendance_entries a where a.company_id=cid and a.worker_id=scope.worker_id and a.work_date between scope.month_key and (scope.month_key+interval '1 month - 1 day')::date)));
+ end loop;
+ command:=jsonb_build_object('p_company_id',cid,'p_payroll_type',typ,'p_starts_on',p_start,'p_common_version',p_common_version,'p_common_source',p_common_source,'p_timeline_version',p_timeline_version,'p_legacy_quantities',p_quantities,'p_individual_reconciliation',p_reconciliation);
+ fingerprint:=jsonb_build_object('command',command,'items',plan->'items','activation',activation,'global_activation',global_activation,'activation_mode',activation_mode,'activation_scope',activation_scope,'next_start',next_start,'scopes',scopes);
+ token:=encode(sha256(convert_to(fingerprint::text,'UTF8')),'hex');
+ return jsonb_build_object('contract_version',3,'ready',unresolved=0 and not activation_blocked,'preview_token',token,'command_base',command,'activation_required',activation_required,'activation_scope',activation_scope,'activation_mode',activation_mode,'activation_blockers',case when activation_blocked then jsonb_build_array('legacy_global_boundary_advance_requires_review') else '[]'::jsonb end,
+ 'target_count',targets,'excluded_count',excluded,'unresolved_count',unresolved,'scopes',scopes,'next_effective_boundary',next_start,'items',plan->'items','timeline',timeline);
+end $$;
+revoke all on function company_common_canonical_review_private.preview(uuid,text,date,bigint,jsonb,bigint,jsonb,text) from public,anon,authenticated,service_role;
+
+create function company_common_allowance_private.preview_payroll_v2(cid uuid,typ text,p_start date,p_common_version bigint,p_common_source jsonb,p_timeline_version bigint,p_quantities jsonb,p_reconciliation text)
+returns jsonb language sql stable security definer set search_path='' as $$select company_common_canonical_review_private.preview(cid,typ,p_start,p_common_version,p_common_source,p_timeline_version,p_quantities,p_reconciliation)$$;
+
+create function company_common_allowance_private.publish_payroll_v2(cid uuid,typ text,p_start date,p_common_version bigint,p_common_source jsonb,p_timeline_version bigint,p_quantities jsonb,p_reconciliation text,rid uuid,p_preview_token text,p_approve_activation boolean,p_activation_scope text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare payload jsonb;receipt company_common_allowance_private.payroll_publication_receipts%rowtype;preview jsonb;locked_preview jsonb;scope jsonb;result jsonb;readbacks jsonb:='[]';statement jsonb;expected jsonb;actual jsonb;next_version bigint;activation_changed boolean:=false;
+begin
+ perform company_common_allowance_private.lock_writer(cid);
+ if rid is null or p_preview_token is null or length(p_preview_token)<>64 or p_approve_activation is null or p_activation_scope not in ('payroll_type','legacy_company') or p_activation_scope is null then raise exception 'explicit publish approval and request required' using errcode='22023';end if;
+ payload:=jsonb_build_object('p_company_id',cid,'p_payroll_type',typ,'p_starts_on',p_start,'p_common_version',p_common_version,'p_common_source',p_common_source,'p_timeline_version',p_timeline_version,'p_legacy_quantities',p_quantities,'p_individual_reconciliation',p_reconciliation,'p_request_id',rid,'p_preview_token',p_preview_token,'p_approve_activation',p_approve_activation,'p_activation_scope',p_activation_scope);
+ select * into receipt from company_common_allowance_private.payroll_publication_receipts where company_id=cid and request_id=rid;
+ if found then
+  if receipt.actor_id is distinct from auth.uid() or receipt.payload is distinct from payload then raise exception 'canonical publish request mismatch' using errcode='22023';end if;
+  return receipt.result;
+ end if;
+ preview:=company_common_canonical_review_private.preview(cid,typ,p_start,p_common_version,p_common_source,p_timeline_version,p_quantities,p_reconciliation);
+ if preview->>'preview_token' is distinct from p_preview_token then raise exception 'canonical preview changed' using errcode='40001';end if;
+ if preview->>'activation_scope' is distinct from p_activation_scope then raise exception 'canonical activation scope changed' using errcode='40001';end if;
+ if preview->>'ready' is distinct from 'true' then raise exception 'canonical unresolved scopes require review' using errcode='55000';end if;
+ if preview->>'activation_required'='true' and not p_approve_activation then raise exception 'first activation requires explicit approval' using errcode='55000';end if;
+ for scope in select value from jsonb_array_elements(preview->'scopes') loop
+  perform payroll_scope_private.lock_scopes(jsonb_build_array(jsonb_build_object('cid',cid,'wid',scope->'worker_id','day',scope->'month')));
+ end loop;
+ locked_preview:=company_common_canonical_review_private.preview(cid,typ,p_start,p_common_version,p_common_source,p_timeline_version,p_quantities,p_reconciliation);
+ if locked_preview is distinct from preview then raise exception 'canonical locked preview changed' using errcode='40001';end if;
+ next_version:=p_timeline_version+1;if next_version>9007199254740991 then raise exception 'canonical publication version exceeds range' using errcode='22023';end if;
+ if preview->>'activation_required'='true' then
+  if p_activation_scope<>'payroll_type' then raise exception 'legacy global activation boundary requires separate review' using errcode='55000';end if;
+  insert into company_common_allowance_private.payroll_activation_modes(company_id,mode,actor_id,request_id) values(cid,'per_type',auth.uid(),rid) on conflict(company_id) do nothing;
+  if not exists(select 1 from company_common_allowance_private.payroll_activation_modes where company_id=cid and mode='per_type') then raise exception 'canonical activation mode changed' using errcode='55000';end if;
+  insert into company_common_allowance_private.payroll_type_activation_events(company_id,payroll_type,request_id,actor_id,previous_starts_on,starts_on)
+   values(cid,typ,rid,auth.uid(),(select starts_on from company_common_allowance_private.payroll_type_activation where company_id=cid and payroll_type=typ),p_start);
+  insert into company_common_allowance_private.payroll_type_activation(company_id,payroll_type,starts_on,actor_id,request_id) values(cid,typ,p_start,auth.uid(),rid) on conflict(company_id,payroll_type) do update set starts_on=excluded.starts_on,actor_id=excluded.actor_id,request_id=excluded.request_id,changed_at=clock_timestamp();
+  insert into company_common_allowance_private.payroll_activation values(cid,p_start) on conflict(company_id) do update set starts_on=least(company_common_allowance_private.payroll_activation.starts_on,excluded.starts_on);
+  activation_changed:=true;
+ end if;
+ insert into company_common_allowance_private.payroll_publications(company_id,version,payroll_type,starts_on,common_version,items,request_id,actor_id)
+ values(cid,next_version,typ,p_start,p_common_version,preview->'items',rid,auth.uid());
+ for scope in select value from jsonb_array_elements(preview->'scopes') where value->>'status' in ('target_new_scope','target_draft') loop
+  perform private.refresh_automatic_payroll(cid,(scope->>'worker_id')::uuid,(scope->>'month')::date);
+  perform private.sync_payroll_attendance_detail(cid,(scope->>'worker_id')::uuid,(scope->>'month')::date);
+  select to_jsonb(s) into statement from public.payroll_statements s where company_id=cid and worker_id=(scope->>'worker_id')::uuid and period_start=(scope->>'month')::date;
+  if statement is null then
+   if typ='monthly' or exists(select 1 from public.attendance_entries a where company_id=cid and worker_id=(scope->>'worker_id')::uuid and date_trunc('month',work_date)::date=(scope->>'month')::date) then raise exception 'canonical target salary missing' using errcode='55000';end if;
+   readbacks:=readbacks||jsonb_build_array(scope||jsonb_build_object('readback_status','no_salary_without_attendance'));
+  else
+   if statement->>'calculation_blocked' is distinct from 'false' then raise exception 'canonical payroll readback blocked' using errcode='55000';end if;
+   expected:=payroll_unit_private.resolve_company_common(cid,(scope->>'worker_id')::uuid,(scope->>'month')::date,((scope->>'month')::date+interval '1 month - 1 day')::date)->'items';
+   select coalesce(jsonb_agg(e order by ord),'[]'::jsonb) into actual from jsonb_array_elements(coalesce(statement#>'{detail,unit_resolution,items}','[]'::jsonb)) with ordinality x(e,ord) where e->>'origin'='company_common';
+   if actual is distinct from expected then raise exception 'canonical payroll item readback differs' using errcode='55000';end if;
+   readbacks:=readbacks||jsonb_build_array(scope||jsonb_build_object('readback_status','verified','statement_md5_after',md5(statement::text)));
+  end if;
+ end loop;
+ for scope in select value from jsonb_array_elements(preview->'scopes') where value->>'status' in ('excluded_manual','excluded_finalized') loop
+  select to_jsonb(s) into statement from public.payroll_statements s where company_id=cid and worker_id=(scope->>'worker_id')::uuid and period_start=(scope->>'month')::date;
+  if md5(coalesce(statement::text,'absent')) is distinct from scope->>'statement_md5' then raise exception 'canonical excluded salary changed' using errcode='55000';end if;
+ end loop;
+ for scope in select value from jsonb_array_elements(preview->'scopes') loop
+  if (select md5(to_jsonb(w)::text) from public.worker_payroll_settings w where w.company_id=cid and w.worker_id=(scope->>'worker_id')::uuid) is distinct from scope->>'worker_settings_md5'
+  or (select md5(coalesce(jsonb_agg(to_jsonb(a) order by a.id)::text,'[]')) from public.attendance_entries a where a.company_id=cid and a.worker_id=(scope->>'worker_id')::uuid and a.work_date between (scope->>'month')::date and ((scope->>'month')::date+interval '1 month - 1 day')::date) is distinct from scope->>'attendance_md5' then
+   raise exception 'canonical original calculation inputs changed' using errcode='55000';end if;
+ end loop;
+ perform company_common_allowance_private.authorize(cid,true);
+ result:=jsonb_build_object('contract_version',3,'company_id',cid,'request_id',rid,'publication_version',next_version,'starts_on',p_start,'payroll_type',typ,'recalculated_scopes',preview->'target_count','excluded_scopes',preview->'excluded_count','unresolved_scopes',0,'activation_changed',activation_changed,'activation_scope',p_activation_scope,'activation_mode',preview->'activation_mode','scopes',readbacks||(select coalesce(jsonb_agg(e),'[]'::jsonb) from jsonb_array_elements(preview->'scopes') e where e->>'status' in ('excluded_manual','excluded_finalized')),'timeline',company_common_allowance_private.read_payroll_publications(cid));
+ insert into company_common_allowance_private.payroll_publication_receipts values(cid,rid,auth.uid(),payload,result);
+ return result;
+end $$;
+
+create function company_common_allowance_private.read_publish_receipt_v2(cid uuid,rid uuid,p_expected_command jsonb)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare receipt company_common_allowance_private.payroll_publication_receipts%rowtype;
+begin
+ perform company_common_allowance_private.authorize(cid,true);
+ select * into receipt from company_common_allowance_private.payroll_publication_receipts where company_id=cid and request_id=rid;
+ if not found then return jsonb_build_object('contract_version',3,'found',false);end if;
+ if receipt.actor_id is distinct from auth.uid() or receipt.payload is distinct from p_expected_command then raise exception 'canonical receipt request mismatch' using errcode='42501';end if;
+ return jsonb_build_object('contract_version',3,'found',true,'result',receipt.result);
+end $$;
+revoke all on function company_common_allowance_private.preview_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text),company_common_allowance_private.publish_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text,uuid,text,boolean,text),company_common_allowance_private.read_publish_receipt_v2(uuid,uuid,jsonb) from public,anon,authenticated,service_role;
+grant execute on function company_common_allowance_private.preview_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text),company_common_allowance_private.publish_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text,uuid,text,boolean,text),company_common_allowance_private.read_publish_receipt_v2(uuid,uuid,jsonb) to authenticated;
+
+create function public.preview_company_common_payroll_v2(p_company_id uuid,p_payroll_type text,p_starts_on date,p_common_version bigint,p_common_source jsonb,p_timeline_version bigint,p_legacy_quantities jsonb,p_individual_reconciliation text)
+returns jsonb language sql stable security invoker set search_path='' as $$select company_common_allowance_private.preview_payroll_v2(p_company_id,p_payroll_type,p_starts_on,p_common_version,p_common_source,p_timeline_version,p_legacy_quantities,p_individual_reconciliation)$$;
+create function public.publish_company_common_payroll_v2(p_company_id uuid,p_payroll_type text,p_starts_on date,p_common_version bigint,p_common_source jsonb,p_timeline_version bigint,p_legacy_quantities jsonb,p_individual_reconciliation text,p_request_id uuid,p_preview_token text,p_approve_activation boolean,p_activation_scope text)
+returns jsonb language sql security invoker set search_path='' as $$select company_common_allowance_private.publish_payroll_v2(p_company_id,p_payroll_type,p_starts_on,p_common_version,p_common_source,p_timeline_version,p_legacy_quantities,p_individual_reconciliation,p_request_id,p_preview_token,p_approve_activation,p_activation_scope)$$;
+create function public.read_company_common_payroll_publish_receipt_v2(p_company_id uuid,p_request_id uuid,p_expected_command jsonb)
+returns jsonb language sql stable security invoker set search_path='' as $$select company_common_allowance_private.read_publish_receipt_v2(p_company_id,p_request_id,p_expected_command)$$;
+revoke all on function public.preview_company_common_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text),public.publish_company_common_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text,uuid,text,boolean,text),public.read_company_common_payroll_publish_receipt_v2(uuid,uuid,jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.preview_company_common_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text),public.publish_company_common_payroll_v2(uuid,text,date,bigint,jsonb,bigint,jsonb,text,uuid,text,boolean,text),public.read_company_common_payroll_publish_receipt_v2(uuid,uuid,jsonb) to authenticated;
+create or replace function company_common_allowance_private.publish_payroll(cid uuid,typ text,p_start date,p_common_version bigint,
+ p_common_source jsonb,p_timeline_version bigint,rid uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare current_version bigint;common_version bigint;payload jsonb;snapshot jsonb;next_start date;
+ receipt company_common_allowance_private.payroll_publication_receipts%rowtype;scope record;affected int:=0;result jsonb;
+begin
+ perform company_common_allowance_private.lock_writer(cid);
+ if typ is null or typ not in ('daily','hourly','monthly') or p_start is null or p_start<>date_trunc('month',p_start)::date
+ or rid is null or p_common_version is null or p_timeline_version is null then
+  raise exception 'invalid payroll publication request' using errcode='22023';end if;
+ payload:=jsonb_build_object('payroll_type',typ,'starts_on',p_start,'common_version',p_common_version,'common_source',p_common_source,'timeline_version',p_timeline_version);
+ select * into receipt from company_common_allowance_private.payroll_publication_receipts where company_id=cid and request_id=rid;
+ if found then
+  if receipt.actor_id is distinct from auth.uid() or receipt.payload is distinct from payload then
+   raise exception 'payroll publication request mismatch' using errcode='22023';end if;
+  return receipt.result;
+ end if;
+ if p_start<date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date then
+  raise exception 'past payroll publication requires separate review' using errcode='22023';end if;
+ if not exists(select 1 from company_common_allowance_private.payroll_activation where company_id=cid and starts_on<=p_start) then
+  raise exception 'company payroll activation is not configured' using errcode='55000';end if;
+ select coalesce(max(version),0) into current_version from company_common_allowance_private.payroll_publications where company_id=cid;
+ select coalesce((select version from company_common_allowance_private.state where company_id=cid),0) into common_version;
+ if current_version<>p_timeline_version or common_version<>p_common_version
+ or p_common_source is distinct from company_common_allowance_private.source(cid) then
+  raise exception 'payroll publication source conflict' using errcode='40001';end if;
+ if current_version>=9007199254740991 then raise exception 'payroll publication version exceeds range' using errcode='22023';end if;
+ if exists(select 1 from company_common_allowance_private.payroll_activation_modes where company_id=cid)
+ or exists(select 1 from jsonb_array_elements(company_common_allowance_private.admin_state(cid)->'legacy_refs') e where nullif(btrim(e->>'name'),'') is not null and (e->>'amount_yen')::numeric>0) then
+  raise exception 'legacy payroll requires versioned preview and explicit quantity contract' using errcode='55000';end if;
+ snapshot:=company_common_allowance_private.active_items(cid,typ);
+ insert into company_common_allowance_private.payroll_publications(company_id,version,payroll_type,starts_on,common_version,items,request_id,actor_id)
+ values(cid,current_version+1,typ,p_start,common_version,snapshot,rid,auth.uid());
+ select min(starts_on) into next_start from company_common_allowance_private.payroll_publications
+  where company_id=cid and payroll_type=typ and starts_on>p_start;
+ -- Established company -> worker -> month ordering. Only editable automatic drafts.
+ for scope in
+  select x.worker_id,x.period_start from (
+   select ps.worker_id,ps.period_start from public.payroll_statements ps join public.worker_payroll_settings s on s.company_id=ps.company_id and s.worker_id=ps.worker_id
+    where ps.company_id=cid and s.pay_type=typ and ps.automatic_calculation is true and ps.workflow_state='draft'
+     and ps.period_start>=p_start and (next_start is null or ps.period_start<next_start)
+   union
+   select s.worker_id,p_start from public.worker_payroll_settings s where s.company_id=cid and s.pay_type=typ
+    and p_start=date_trunc('month',current_timestamp at time zone 'Asia/Tokyo')::date
+    and not exists(select 1 from public.payroll_statements ps where ps.company_id=cid and ps.worker_id=s.worker_id and ps.period_start=p_start
+      and (ps.automatic_calculation is distinct from true or ps.workflow_state is distinct from 'draft'))
+  ) x order by x.worker_id,x.period_start loop
+  perform payroll_scope_private.lock_scopes(jsonb_build_array(jsonb_build_object('cid',cid,'wid',scope.worker_id,'day',scope.period_start)));
+  perform private.refresh_automatic_payroll(cid,scope.worker_id,scope.period_start);
+  perform private.sync_payroll_attendance_detail(cid,scope.worker_id,scope.period_start);
+  affected:=affected+1;
+ end loop;
+ perform company_common_allowance_private.authorize(cid,true);
+ result:=jsonb_build_object('contract_version',1,'company_id',cid,'request_id',rid,'publication_version',current_version+1,
+  'starts_on',p_start,'payroll_type',typ,'recalculated_scopes',affected,'timeline',company_common_allowance_private.read_payroll_publications(cid));
+ insert into company_common_allowance_private.payroll_publication_receipts values(cid,rid,auth.uid(),payload,result);
+ return result;
+end $$;
+create function public.company_common_payroll_publication_v2_contract_version() returns integer language sql stable security invoker set search_path='' as $$select 3$$;
+revoke all on function public.company_common_payroll_publication_v2_contract_version() from public,anon,authenticated,service_role;
+grant execute on function public.company_common_payroll_publication_v2_contract_version() to authenticated;
+commit;
