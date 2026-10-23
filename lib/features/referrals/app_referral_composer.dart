@@ -22,7 +22,8 @@ class AppReferralComposer {
     String name,
     String phone,
     bool friendInvite,
-  ) prepare;
+  )
+  prepare;
   final Future<bool> Function(Uri uri) openComposer;
   final Future<void> Function(String id) recordOpened;
 
@@ -46,6 +47,7 @@ class AppReferralComposer {
     required String phone,
     required bool friendInvite,
     String distributionKey = '',
+    String guideUrl = '',
   }) async {
     if (_busy) {
       return AppReferralComposeOutcome.busy;
@@ -61,7 +63,13 @@ class AppReferralComposer {
       if (canonicalPhone.startsWith('+81')) {
         canonicalPhone = '0${canonicalPhone.substring(3)}';
       }
-      final key = (actor, name.trim(), canonicalPhone, friendInvite, distributionKey);
+      final key = (
+        actor,
+        name.trim(),
+        canonicalPhone,
+        friendInvite,
+        '$distributionKey|$guideUrl',
+      );
       if (_key != key) {
         _clear();
       }
@@ -79,14 +87,24 @@ class AppReferralComposer {
         final id = result['id'];
         final recipient = result['phone'];
         final message = result['message'];
-        if (id is! String || id.isEmpty || recipient is! String ||
-            recipient.isEmpty || message is! String || message.isEmpty) {
+        if (id is! String ||
+            id.isEmpty ||
+            recipient is! String ||
+            recipient.isEmpty ||
+            message is! String ||
+            message.isEmpty) {
           return AppReferralComposeOutcome.prepareFailed;
         }
         _key = key;
         _invitationId = id;
-        _uri = Uri(scheme: 'sms', path: recipient,
-            queryParameters: {'body': message});
+        final body = guideUrl.isNotEmpty && !message.contains(guideUrl)
+            ? '$message\n\nご利用開始のご案内:\n$guideUrl'
+            : message;
+        _uri = Uri(
+          scheme: 'sms',
+          path: recipient,
+          queryParameters: {'body': body},
+        );
       }
       if (!_opened) {
         try {

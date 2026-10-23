@@ -14,6 +14,7 @@ class AppReferralPage extends StatefulWidget {
     this.initialName = '',
     this.initialPhone = '',
     this.invitationKind = 'app',
+    this.guideKind = '',
   });
   final AppReferralRepository repository;
   final bool master;
@@ -21,6 +22,7 @@ class AppReferralPage extends StatefulWidget {
   final String initialName;
   final String initialPhone;
   final String invitationKind;
+  final String guideKind;
   @override
   State<AppReferralPage> createState() => _AppReferralPageState();
 }
@@ -44,19 +46,33 @@ class _AppReferralPageState extends State<AppReferralPage> {
   @override
   void initState() {
     super.initState();
-    _actorScope = AppReferralActorScope(widget.repository, onInvalidated: () {
-      if (!mounted) return;
-      _loadGeneration++;
-      _name.clear(); _phone.clear(); _url.clear();
-      _testflight.clear(); _web.clear(); _guide.clear();
-      setState(() { _snapshot = null; _busy = false;
-        _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
-    });
+    _actorScope = AppReferralActorScope(
+      widget.repository,
+      onInvalidated: () {
+        if (!mounted) return;
+        _loadGeneration++;
+        _name.clear();
+        _phone.clear();
+        _url.clear();
+        _testflight.clear();
+        _web.clear();
+        _guide.clear();
+        setState(() {
+          _snapshot = null;
+          _busy = false;
+          _error = 'ログイン情報が変わりました。画面を開き直してください。';
+        });
+      },
+    );
     _composer = AppReferralComposer(
       actorId: () => _actorScope.check() ? _actorScope.actor : null,
       prepare: (name, phone, friendInvite) => _usesDistribution
-          ? widget.repository.prepareDistribution(name, phone, _channel,
-              friendInvite ? 'friend' : widget.invitationKind)
+          ? widget.repository.prepareDistribution(
+              name,
+              phone,
+              _channel,
+              friendInvite ? 'friend' : widget.invitationKind,
+            )
           : widget.repository.prepare(name, phone, friendInvite: friendInvite),
       openComposer: (uri) => launchUrl(uri),
       recordOpened: widget.repository.recordComposerOpened,
@@ -72,15 +88,19 @@ class _AppReferralPageState extends State<AppReferralPage> {
     _name.dispose();
     _phone.dispose();
     _url.dispose();
-    _testflight.dispose(); _web.dispose(); _guide.dispose();
+    _testflight.dispose();
+    _web.dispose();
+    _guide.dispose();
     super.dispose();
   }
 
   @override
   void didUpdateWidget(covariant AppReferralPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.repository != widget.repository || oldWidget.master != widget.master ||
-        oldWidget.friendInvite != widget.friendInvite || oldWidget.invitationKind != widget.invitationKind) {
+    if (oldWidget.repository != widget.repository ||
+        oldWidget.master != widget.master ||
+        oldWidget.friendInvite != widget.friendInvite ||
+        oldWidget.invitationKind != widget.invitationKind) {
       _actorScope.invalidate();
     }
   }
@@ -88,15 +108,18 @@ class _AppReferralPageState extends State<AppReferralPage> {
   Future<void> _load() async {
     if (!_actorScope.check()) {
       if (mounted) {
-        setState(() { _snapshot = null;
-          _error = 'ログイン情報が変わりました。画面を開き直してください。'; });
+        setState(() {
+          _snapshot = null;
+          _error = 'ログイン情報が変わりました。画面を開き直してください。';
+        });
       }
       return;
     }
     final generation = ++_loadGeneration;
     try {
       final data = await widget.repository.load(master: widget.master);
-      if (!mounted || !_actorScope.check() || generation != _loadGeneration) return;
+      if (!mounted || !_actorScope.check() || generation != _loadGeneration)
+        return;
       setState(() {
         _snapshot = data;
         final links = data['distribution_links'];
@@ -108,8 +131,13 @@ class _AppReferralPageState extends State<AppReferralPage> {
         if (!_channelInitialized && data['distribution_channels'] is List) {
           _channel = widget.friendInvite ? 'public' : 'testflight';
           final channels = data['distribution_channels'] as List;
-          if (!widget.friendInvite && !channels.any((c) => c is Map && c['key'] == _channel && c['ready'] == true)) {
-            final ready = channels.whereType<Map>().where((c) => c['ready'] == true);
+          if (!widget.friendInvite &&
+              !channels.any(
+                (c) => c is Map && c['key'] == _channel && c['ready'] == true,
+              )) {
+            final ready = channels.whereType<Map>().where(
+              (c) => c['ready'] == true,
+            );
             if (ready.isNotEmpty) {
               _channel = ready.first['key'].toString();
             }
@@ -127,7 +155,9 @@ class _AppReferralPageState extends State<AppReferralPage> {
   }
 
   Future<void> _send() async {
-    if (!_actorScope.check() || _busy || (widget.friendInvite && !_usesDistribution)) {
+    if (!_actorScope.check() ||
+        _busy ||
+        (widget.friendInvite && !_usesDistribution)) {
       return;
     }
     setState(() => _busy = true);
@@ -136,7 +166,16 @@ class _AppReferralPageState extends State<AppReferralPage> {
         name: _name.text,
         phone: _phone.text,
         friendInvite: widget.friendInvite,
-        distributionKey: _usesDistribution ? '$_channel:${widget.invitationKind}' : '',
+        distributionKey: _usesDistribution
+            ? '$_channel:${widget.invitationKind}'
+            : '',
+        guideUrl: switch (widget.friendInvite ? 'friend' : widget.guideKind) {
+          'friend' => 'https://skojapan.com/install/friends/',
+          'client' => 'https://skojapan.com/install/client/',
+          'partner' => 'https://skojapan.com/install/partner/',
+          'employee' => 'https://skojapan.com/install/employee/',
+          _ => 'https://skojapan.com/install/invite/',
+        },
       );
       if (!mounted || !_actorScope.check()) {
         return;
@@ -148,12 +187,13 @@ class _AppReferralPageState extends State<AppReferralPage> {
           'SMS作成画面は開きましたが履歴を更新できませんでした。「履歴を更新」で記録だけ再試行できます。送信・配達は未確認です。',
         AppReferralComposeOutcome.prepareFailed =>
           '招待を準備できません。名前・電話番号・配布URL・利用権限を確認してください。',
-        AppReferralComposeOutcome.actorChanged =>
-          'ログイン情報が変わりました。画面を開き直してください。',
+        AppReferralComposeOutcome.actorChanged => 'ログイン情報が変わりました。画面を開き直してください。',
         _ => null,
       };
       if (message != null) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
       }
     } finally {
       // Preparation may have saved a history row even if the local composer failed.
@@ -170,12 +210,17 @@ class _AppReferralPageState extends State<AppReferralPage> {
     if (!_actorScope.check() || _busy) return;
     setState(() => _busy = true);
     try {
-      await widget.repository.saveDistributionLinks(_testflight.text, _web.text, _guide.text);
+      await widget.repository.saveDistributionLinks(
+        _testflight.text,
+        _web.text,
+        _guide.text,
+      );
       await _load();
     } catch (_) {
       if (mounted && _actorScope.check()) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('配布先URLを保存できませんでした。URL・利用権限を確認してください。')));
+          const SnackBar(content: Text('配布先URLを保存できませんでした。URL・利用権限を確認してください。')),
+        );
       }
     } finally {
       if (mounted && _actorScope.check()) setState(() => _busy = false);
@@ -191,19 +236,26 @@ class _AppReferralPageState extends State<AppReferralPage> {
       final notifyMaster = _snapshot!['notify_master'] == true;
       if (_usesDistribution) {
         await widget.repository.saveSettingsPreservingDistributionUrl(
-          enabled: enabled, publicEnabled: publicEnabled, notifyMaster: notifyMaster,
+          enabled: enabled,
+          publicEnabled: publicEnabled,
+          notifyMaster: notifyMaster,
         );
       } else {
         await widget.repository.saveSettings(
-          enabled: enabled, publicEnabled: publicEnabled,
-          notifyMaster: notifyMaster, url: _url.text,
+          enabled: enabled,
+          publicEnabled: publicEnabled,
+          notifyMaster: notifyMaster,
+          url: _url.text,
         );
       }
       await _load();
     } catch (_) {
       if (mounted && _actorScope.check()) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('設定を保存できませんでした。既存の配布URL・利用権限を確認し、再読み込みしてください。')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('設定を保存できませんでした。既存の配布URL・利用権限を確認し、再読み込みしてください。'),
+          ),
+        );
       }
     } finally {
       if (mounted && _actorScope.check()) setState(() => _busy = false);
@@ -216,7 +268,13 @@ class _AppReferralPageState extends State<AppReferralPage> {
     final rows = data?['invitations'] as List? ?? const [];
     final rankings = data?['rankings'] as List? ?? const [];
     final channels = (data?['distribution_channels'] as List? ?? const [])
-        .whereType<Map>().where((c) => widget.friendInvite ? c['key'] == 'public' : c['key'] != 'public' || c['ready'] == true).toList();
+        .whereType<Map>()
+        .where(
+          (c) => widget.friendInvite
+              ? c['key'] == 'public'
+              : c['key'] != 'public' || c['ready'] == true,
+        )
+        .toList();
     final channelReady = _usesDistribution
         ? channels.any((c) => c['key'] == _channel && c['ready'] == true)
         : !widget.friendInvite && data?['distribution_url_ready'] == true;
@@ -279,40 +337,66 @@ class _AppReferralPageState extends State<AppReferralPage> {
                         ? null
                         : (value) => setState(() => data[entry.key] = value),
                   ),
-                if (!_usesDistribution) TextField(
-                  controller: _url,
-                  decoration: const InputDecoration(
-                    labelText: '配布URL（TestFlight／公開後のストア）',
+                if (!_usesDistribution)
+                  TextField(
+                    controller: _url,
+                    decoration: const InputDecoration(
+                      labelText: '配布URL（TestFlight／公開後のストア）',
+                    ),
                   ),
-                ),
                 FilledButton(
                   onPressed: _busy ? null : _save,
                   child: const Text('設定を保存'),
                 ),
                 if (_usesDistribution) ...[
-                  TextField(controller: _testflight, enabled: !_busy,
-                    decoration: const InputDecoration(labelText: 'TestFlight URL')),
-                  TextField(controller: _web, enabled: !_busy,
-                    decoration: const InputDecoration(labelText: 'WEB版 URL')),
-                  TextField(controller: _guide, enabled: !_busy,
-                    decoration: const InputDecoration(labelText: '公開版の案内ページ URL')),
-                  const Text('公開案内はApp Store・Google Play・WEB版の公開済み経路をまとめたページです。'),
-                  OutlinedButton(onPressed: _busy ? null : _saveLinks,
-                    child: const Text('配布先URLを保存')),
+                  TextField(
+                    controller: _testflight,
+                    enabled: !_busy,
+                    decoration: const InputDecoration(
+                      labelText: 'TestFlight URL',
+                    ),
+                  ),
+                  TextField(
+                    controller: _web,
+                    enabled: !_busy,
+                    decoration: const InputDecoration(labelText: 'WEB版 URL'),
+                  ),
+                  TextField(
+                    controller: _guide,
+                    enabled: !_busy,
+                    decoration: const InputDecoration(
+                      labelText: '公開版の案内ページ URL',
+                    ),
+                  ),
+                  const Text(
+                    '公開案内はApp Store・Google Play・WEB版の公開済み経路をまとめたページです。',
+                  ),
+                  OutlinedButton(
+                    onPressed: _busy ? null : _saveLinks,
+                    child: const Text('配布先URLを保存'),
+                  ),
                 ],
               ] else if (data['can_invite'] == true) ...[
                 if (_usesDistribution)
                   DropdownButtonFormField<String>(
                     initialValue: _channel,
                     decoration: const InputDecoration(labelText: '送信する案内'),
-                    items: [for (final channel in channels)
-                      DropdownMenuItem<String>(
-                        value: channel['key'].toString(),
-                        enabled: channel['ready'] == true,
-                        child: Text(channel['label'].toString()),
-                      )],
-                    onChanged: _busy || _composer.needsRecordRetry || widget.friendInvite
-                        ? null : (value) { if (value != null) setState(() => _channel = value); },
+                    items: [
+                      for (final channel in channels)
+                        DropdownMenuItem<String>(
+                          value: channel['key'].toString(),
+                          enabled: channel['ready'] == true,
+                          child: Text(channel['label'].toString()),
+                        ),
+                    ],
+                    onChanged:
+                        _busy ||
+                            _composer.needsRecordRetry ||
+                            widget.friendInvite
+                        ? null
+                        : (value) {
+                            if (value != null) setState(() => _channel = value);
+                          },
                   ),
                 TextField(
                   controller: _name,
@@ -330,7 +414,8 @@ class _AppReferralPageState extends State<AppReferralPage> {
                 if (!channelReady)
                   const Text('配布URLが未登録、または公開前です。管理者へURL・公開設定の確認を依頼してください。'),
                 FilledButton(
-                  onPressed: _busy || (!channelReady && !_composer.needsRecordRetry)
+                  onPressed:
+                      _busy || (!channelReady && !_composer.needsRecordRetry)
                       ? null
                       : _send,
                   child: Text(_composer.needsRecordRetry ? '履歴を更新' : '送信'),
@@ -371,4 +456,3 @@ class _AppReferralPageState extends State<AppReferralPage> {
     );
   }
 }
-
