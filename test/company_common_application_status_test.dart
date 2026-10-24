@@ -21,15 +21,20 @@ CompanyCommonApplicationStatus? status(String? json, {
 }) => companyCommonApplicationStatus(sourceJson: json, month: '2026-10-01',
   frozen: frozen, historyMissing: historyMissing, hasItems: hasItems, blocked: blocked);
 
-class LoadedConditionsRepository extends PayrollUnitConditionsRepository {
-  LoadedConditionsRepository(SupabaseClient client, this.value)
-      : super.forTesting(client, () => 'fixture-actor');
+Map<String, dynamic> conditionsJson(String month) => {
+  'version': 0, 'month': month, 'can_edit': false, 'items': <Object>[],
+  'company_common': {'contract_version': 1, 'history_missing': false,
+    'frozen': false, 'items': <Object>[], 'source': jsonDecode(source())},
+};
+
+class LoadedConditionsRepository implements PayrollUnitConditionsRepository {
+  LoadedConditionsRepository(this.value);
 
   final PayrollUnitConditions value;
-  int loads = 0;
+  int capabilities = 0, loads = 0, writes = 0;
 
   @override
-  Future<bool> available() async => true;
+  Future<bool> available() async { capabilities++; return true; }
 
   @override
   Future<PayrollUnitConditions> load(String companyId, String workerId, String month) async {
@@ -39,6 +44,24 @@ class LoadedConditionsRepository extends PayrollUnitConditionsRepository {
     loads++;
     return value;
   }
+
+  @override
+  Future<PayrollUnitConditions> save(String companyId, String workerId,
+      PayrollUnitConditions current, List<PayrollUnitItemDraft> items) async {
+    writes++;
+    throw StateError('Unexpected write');
+  }
+
+  @override
+  Future<PayrollUnitConditions> saveCommonHours(String companyId, String workerId,
+      PayrollUnitConditions current, Map<String, String> hours) async {
+    writes++;
+    throw StateError('Unexpected write');
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnsupportedError('Unexpected repository member ${invocation.memberName}');
 }
 
 void main() {
@@ -63,44 +86,57 @@ void main() {
     expect(status(source(), hasItems: true), isNull);
   });
 
-  testWidgets('empty monthly individual panel exposes unregistered application without a write', (tester) async {
+  test('actual SDK reader preserves the unregistered source and performs only two scoped reads', () async {
     final requests = <http.Request>[];
-    final now = DateTime.now();
-    final month = '${now.year}-${now.month.toString().padLeft(2, '0')}-01';
+    const month = '2026-10-01';
     final transport = MockClient((request) async {
       requests.add(request);
       if (request.url.path.endsWith('/payroll_unit_conditions_contract_version')) {
-        return http.Response('1', 200, headers: {'content-type': 'application/json'});
+        return http.Response('1', 200,
+          headers: {'content-type': 'application/json'}, request: request);
       }
       expect(request.url.path.endsWith('/payroll_unit_conditions'), isTrue);
-      final response = http.Response(jsonEncode({
-        'version': 0, 'month': month, 'can_edit': false, 'items': <Object>[],
-        'company_common': {'contract_version': 1, 'history_missing': false,
-          'frozen': false, 'items': <Object>[], 'source': jsonDecode(source())},
-      }), 200, headers: {'content-type': 'application/json'});
-      return response;
+      return http.Response(jsonEncode(conditionsJson(month)), 200,
+        headers: {'content-type': 'application/json'}, request: request);
     });
-    SupabaseClient? client;
-    late PayrollUnitConditions value;
-    addTearDown(() async {
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.runAsync(() async {
-        await client?.dispose().timeout(const Duration(seconds: 2));
-      });
-    });
-    // Run the actual SDK and response parser outside the widget fake clock,
-    // then exercise the monthly panel with that exact validated read result.
-    await tester.runAsync(() async {
-      final sdk = SupabaseClient('https://fixture.invalid', 'fixture-key',
-        authOptions: const AuthClientOptions(autoRefreshToken: false),
-        httpClient: transport);
-      client = sdk;
-      final reader = PayrollUnitConditionsRepository.forTesting(sdk, () => 'fixture-actor');
-      expect(await reader.available().timeout(const Duration(seconds: 2)), isTrue);
-      value = await reader.load('fixture-company', 'fixture-worker', month)
+    final client = SupabaseClient('https://fixture.invalid', 'fixture-key',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: transport);
+    addTearDown(() => client.dispose().timeout(const Duration(seconds: 2)));
+    final reader = PayrollUnitConditionsRepository.forTesting(client, () => 'fixture-actor');
+    final available = await reader.available().timeout(const Duration(seconds: 2));
+    if (!available) {
+      // available() intentionally catches capability errors. Expose the same
+      // read-only call here so a failed fixture cannot hide the SDK exception.
+      final result = await client.rpc('payroll_unit_conditions_contract_version')
           .timeout(const Duration(seconds: 2));
+      fail('Capability read was unavailable; direct response: ${result.runtimeType} $result');
+    }
+    final value = await reader.load('fixture-company', 'fixture-worker', month)
+        .timeout(const Duration(seconds: 2));
+    expect(value.canEdit, isFalse);
+    expect(value.companyCommonItems, isEmpty);
+    expect(jsonDecode(value.companyCommonSourceJson!), jsonDecode(source()));
+    expect(companyCommonApplicationStatus(sourceJson: value.companyCommonSourceJson,
+      month: value.month, frozen: value.companyCommonFrozen,
+      historyMissing: value.companyCommonHistoryMissing, hasItems: false,
+      blocked: value.companyCommonResolution?.blocked == true),
+      CompanyCommonApplicationStatus.notRegistered);
+    expect(requests.map((request) => request.url.path), [
+      '/rest/v1/rpc/payroll_unit_conditions_contract_version',
+      '/rest/v1/rpc/payroll_unit_conditions',
+    ]);
+    expect(jsonDecode(requests.last.body), {
+      'p_company_id': 'fixture-company', 'p_worker_id': 'fixture-worker', 'p_month': month,
     });
-    final repository = LoadedConditionsRepository(client!, value);
+  }, timeout: const Timeout(Duration(seconds: 15)));
+
+  testWidgets('empty monthly individual panel exposes unregistered application without a write', (tester) async {
+    final now = DateTime.now();
+    final month = '${now.year}-${now.month.toString().padLeft(2, '0')}-01';
+    // Widget fake time must not own SDK isolate/HTTP lifecycle. The async test
+    // above separately checks the actual reader and this exact parsed shape.
+    final repository = LoadedConditionsRepository(PayrollUnitConditions.fromJson(conditionsJson(month)));
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
       child: PayrollUnitConditionsPage(
         repository: repository,
@@ -112,14 +148,9 @@ void main() {
       EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
     expect(find.byKey(const ValueKey('company-common-application-status')), findsOneWidget);
     expect(find.text('この給与形態の適用開始月は未登録です。社内共通手当で対象を確認して反映してください。'), findsOneWidget);
+    expect(repository.capabilities, 1);
     expect(repository.loads, 1);
-    expect(requests.map((request) => request.url.path), [
-      '/rest/v1/rpc/payroll_unit_conditions_contract_version',
-      '/rest/v1/rpc/payroll_unit_conditions',
-    ]);
-    expect(jsonDecode(requests.last.body), {
-      'p_company_id': 'fixture-company', 'p_worker_id': 'fixture-worker', 'p_month': month,
-    });
+    expect(repository.writes, 0);
     expect(tester.takeException(), isNull);
   }, timeout: const Timeout(Duration(seconds: 15)));
 }
