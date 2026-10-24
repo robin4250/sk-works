@@ -6,6 +6,7 @@ import '../../international/language_controller.dart';
 import 'dart:convert';
 import 'dart:async';
 import '../shared/company_allowance_label_repository.dart';
+import '../shared/company_allowance_current_price_repository.dart';
 
 import '../../domain/payroll_rate_settings_hydration.dart';
 import '../../data/supabase_backend.dart';
@@ -103,7 +104,7 @@ class _IndividualPayrollSettingsPageState
     super.initState();
     _repository = widget.repository ?? IndividualPayrollSettingsRepository.maybeCreate();
     _registeredAllowanceSource = widget.registeredAllowanceSource ??
-        SupabaseCompanyAllowanceLabelRepository.maybeCreate();
+        CompanyAllowanceCurrentPriceRepository.maybeCreate();
     for (final field in _amountFields) {
       _controllers[field.$1] = TextEditingController();
     }
@@ -538,7 +539,7 @@ class _IndividualPayrollSettingsPageState
         actions: [IconButton(tooltip: '使い方', icon: const Icon(Icons.help_outline),
           onPressed: () => showDialog<void>(context: context, builder: (context) =>
             AlertDialog(title: const Text('手当の登録'),
-              content: const Text('時間・日・月の単位ごとに、追加ボタンから手当を登録します。登録済みの手当も同じ一覧で編集・削除できます。会社共通手当は共通の見出しから確認し、「共通設定」で編集します。「個別手当」はこの社員だけの設定です。同名でも保存元を分けて保持し、共通を個別へコピーしません。会社共通の定義や確定済み明細は、この社員の手当編集では削除しません。保存結果を確認できない場合は入力を保持し、再送せず保存済みの状態を確認します。'),
+              content: Text(SkoLanguageController.tr('時間・日・月の単位ごとに、追加ボタンから手当を登録します。登録済みの手当も同じ一覧で編集・削除できます。会社共通手当は現在登録されている名前と単価を共通の見出しから確認します。権限不足や取得失敗などで単価を照合できないときは「単価未確認」と表示し、0円とは扱いません。ここでの現在単価は過去の給与への適用額とは別です。「共通設定」で編集します。「個別手当」はこの社員だけの設定です。同名でも保存元を分けて保持し、共通を個別へコピーしません。会社共通の定義や確定済み明細は、この社員の手当編集では削除しません。保存結果を確認できない場合は入力を保持し、再送せず保存済みの状態を確認します。')),
               actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]))),
           const SkoNotificationBell()],
         bottom: _updatedAt == null
@@ -1171,6 +1172,7 @@ class _IndividualPayrollSettingsPageState
         PayrollRegisteredAllowanceName(
           key: '${item.origin}/${item.id ?? item.legacySlot}', itemId: item.id,
           name: item.name, legacySlot: item.legacySlot,
+          currentRateYen: item.currentRateYen, displayUnit: item.displayUnit,
           section: PayrollItemSection.values.byName(item.section),
           unit: PayrollItemUnit.values.byName(item.unit)),
     ];
@@ -1428,4 +1430,5 @@ class _CustomMoneyDraft {
     amount.dispose();
   }
 }
+
 
