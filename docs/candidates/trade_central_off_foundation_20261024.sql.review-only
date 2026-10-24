@@ -1,0 +1,56 @@
+-- REVIEW ONLY: five-key observed baseline; no public toggle or activation.
+begin;
+lock table private.master_feature_settings in access exclusive mode;
+do $preflight$
+declare expected_check text := $$CHECK ((feature_key = ANY (ARRAY['vehicle_management'::text, 'route_assignment'::text, 'traffic_nearest_station'::text, 'traffic_train_transfer'::text, 'traffic_bus_stop'::text])))$$;
+begin
+ if current_user <> 'postgres' then raise exception 'reviewed owner required'; end if;
+ if (select pg_get_constraintdef(oid) from pg_constraint where conrelid='private.master_feature_settings'::regclass and conname='master_feature_settings_feature_key_check') is distinct from expected_check then raise exception 'unsupported central constraint'; end if;
+ if exists(select 1 from pg_proc where oid=to_regprocedure('private.require_trade_document_reciprocal_seals()')) or exists(select 1 from private.master_feature_settings where feature_key='trade_document_reciprocal_seals') then raise exception 'foundation already present; inspect instead of retry'; end if;
+ if not exists(select 1 from pg_class where oid='private.master_feature_settings'::regclass and relowner='postgres'::regrole and relrowsecurity and relacl=array['postgres=arwdDxtm/postgres']::aclitem[]) then raise exception 'central table security mismatch'; end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.current_master_feature_flags()') and md5(prosrc)='0f2cbe837823fc973519f87e67423fcf' and proowner='postgres'::regrole and prosecdef and provolatile='s' and proconfig=array['search_path=""']) then raise exception 'reader baseline mismatch'; end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.set_master_feature_enabled(text,boolean)') and md5(prosrc)='f60fda81495ae9375fd144f6205b887f' and proowner='postgres'::regrole and prosecdef and provolatile='v' and proconfig=array['search_path=""']) then raise exception 'legacy setter baseline mismatch'; end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('private.require_master_optional_feature(text)') and md5(prosrc)='5f8826d105d3f1838ce1bad1940c1499' and proowner='postgres'::regrole and prosecdef and provolatile='v' and proconfig=array['search_path=""']) then raise exception 'legacy guard baseline mismatch'; end if;
+ if exists(select 1 from pg_proc where oid in ('public.current_master_feature_flags()'::regprocedure,'public.set_master_feature_enabled(text,boolean)'::regprocedure) and proacl is distinct from array['postgres=X/postgres','authenticated=X/postgres','service_role=X/postgres']::aclitem[]) or (select proacl from pg_proc where oid='private.require_master_optional_feature(text)'::regprocedure) is distinct from array['postgres=X/postgres']::aclitem[] then raise exception 'routine grant baseline mismatch'; end if;
+ -- Proof-bearing deployments need a separately pinned extension, never a broad
+ -- replacement of an issuer/setter installed by another work stream.
+ if exists(select 1 from pg_proc where pronamespace='public'::regnamespace and proname in ('set_master_feature_enabled_with_proof','issue_reauthentication_proof')) then raise exception 'proof deployment requires separately reviewed baseline'; end if;
+end $preflight$;
+create temporary table trade_central_off_before on commit drop as
+ select jsonb_agg(to_jsonb(s) order by feature_key) as rows from private.master_feature_settings s;
+create temporary table trade_central_routines_before on commit drop as
+ select oid,prosrc,proowner,proacl,proconfig,prosecdef,provolatile from pg_proc
+ where oid in ('public.current_master_feature_flags()'::regprocedure,'public.set_master_feature_enabled(text,boolean)'::regprocedure,'private.require_master_optional_feature(text)'::regprocedure);
+alter table private.master_feature_settings drop constraint master_feature_settings_feature_key_check;
+alter table private.master_feature_settings add constraint master_feature_settings_feature_key_check check(feature_key in ('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop','trade_document_reciprocal_seals'));
+insert into private.master_feature_settings(feature_key,enabled,updated_at,updated_by) values('trade_document_reciprocal_seals',false,clock_timestamp(),null);
+do $reader$
+declare source text; old_fragment text := $$'traffic_bus_stop', coalesce((select enabled from private.master_feature_settings where feature_key='traffic_bus_stop'),false)$$;
+begin
+ select pg_get_functiondef(oid) into source from pg_proc where oid='public.current_master_feature_flags()'::regprocedure;
+ if length(source)-length(replace(source,old_fragment,''))<>length(old_fragment) then raise exception 'reader fragment not unique'; end if;
+ execute replace(source,old_fragment,old_fragment||$$,
+      'trade_document_reciprocal_seals', coalesce((select enabled from private.master_feature_settings where feature_key='trade_document_reciprocal_seals'),false)$$);
+end $reader$;
+-- Owner-only invoker helper: business SECURITY DEFINER functions must first
+-- authorize actor/company and invoke this before their document locks. No API
+-- role may use it as a substitute for document authorization.
+create function private.require_trade_document_reciprocal_seals()
+returns void language plpgsql security invoker set search_path='' as $guard$
+declare enabled_value boolean;
+begin
+ select enabled into enabled_value from private.master_feature_settings
+ where feature_key='trade_document_reciprocal_seals' for share;
+ if not found or enabled_value is not true then
+  raise exception using errcode='55000',message='trade reciprocal seals disabled';
+ end if;
+end $guard$;
+revoke all on function private.require_trade_document_reciprocal_seals() from public,anon,authenticated,service_role;
+do $postflight$
+begin
+ if (select rows from trade_central_off_before) is distinct from (select jsonb_agg(to_jsonb(s) order by feature_key) from private.master_feature_settings s where feature_key<>'trade_document_reciprocal_seals') then raise exception 'old central rows changed'; end if;
+ if not exists(select 1 from private.master_feature_settings where feature_key='trade_document_reciprocal_seals' and enabled is false and updated_by is null) then raise exception 'new gate not OFF'; end if;
+ if exists(select 1 from trade_central_routines_before b join pg_proc p using(oid) where (b.proowner,b.proacl,b.proconfig,b.prosecdef,b.provolatile) is distinct from (p.proowner,p.proacl,p.proconfig,p.prosecdef,p.provolatile) or (b.oid<>'public.current_master_feature_flags()'::regprocedure and b.prosrc is distinct from p.prosrc)) then raise exception 'old routine contract changed'; end if;
+ if exists(select 1 from aclexplode((select proacl from pg_proc where oid='private.require_trade_document_reciprocal_seals()'::regprocedure)) where grantee<>'postgres'::regrole) then raise exception 'unexpected guard grant'; end if;
+end $postflight$;
+commit;
