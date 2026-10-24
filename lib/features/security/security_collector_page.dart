@@ -76,6 +76,7 @@ class _SecurityCollectorPageState extends State<SecurityCollectorPage> with Widg
     if (_busy || !_available || _password.text.isEmpty || _revoked) return;
     final repository = _repository;
     if (repository == null) return;
+    FocusScope.of(context).unfocus();
     final generation = ++_generation;
     final password = _password.text; _password.clear();
     setState(() { _busy = true; _error = null; _snapshot = null; });
