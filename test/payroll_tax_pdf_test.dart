@@ -132,11 +132,13 @@ p.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(sys.argv[1]+'.png')
         final font = pw.Font.ttf(
           ByteData.sublistView(await File(fontPath!).readAsBytes()),
         );
+        final savedBefore = jsonEncode(variant);
         final bytes = await PayrollPdfService.buildPdf(
           record(variant),
           regularFont: font,
           boldFont: font,
         );
+        expect(jsonEncode(variant), savedBefore, reason: mode);
         final dir =
             Platform.environment['SKO_PDF_OUTPUT_DIR'] ??
             (await Directory.systemTemp.createTemp('sko-tax-pdf-')).path;
@@ -165,6 +167,10 @@ p.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(sys.argv[1]+'.png')
           reason: 'Insurance deductions must never become earnings',
         );
         expect(report['total'], variant['deductions']);
+        final net = (variant['net_pay'] as int).toString().replaceAllMapped(
+          RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',',
+        );
+        expect(report['text'], contains(net), reason: mode);
         expect(report['pages'], 1);
         for (final label in [
           '健康保険料',
