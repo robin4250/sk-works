@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
-const {Client}=await import(process.argv[2]);
+const pg=await import(process.argv[2]);
+const {Client}=pg.default??pg;
 const url=process.env.SKO_INSURANCE_REFERENCE_FIXTURE_URL;
 if(!url || !/^postgresql:\/\/postgres:fixture-only-password@127\.0\.0\.1:\d+\/insurance_reference_fixture$/.test(url)) throw Error('isolated fixture URL required');
 const db=new Client({connectionString:url});await db.connect();
@@ -18,9 +19,12 @@ try{
  await db.query(`revoke all on function payroll_tax_private.validate_conditions(jsonb) from public,anon,authenticated;
  revoke all on function payroll_tax_private.read_conditions(uuid,uuid),payroll_tax_private.save_conditions(uuid,uuid,date,bigint,jsonb,boolean) from public,anon;
  grant execute on function payroll_tax_private.read_conditions(uuid,uuid),payroll_tax_private.save_conditions(uuid,uuid,date,bigint,jsonb,boolean) to authenticated;`);
- const before=(await db.query("select oid::regprocedure::text id,proowner,proacl::text,proconfig,prosecdef,provolatile from pg_proc where oid in ('payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'payroll_tax_private.save_conditions(uuid,uuid,date,bigint,jsonb,boolean)'::regprocedure) order by 1")).rows;
+ await db.query(`revoke all on function public.read_worker_payroll_tax_conditions(uuid,uuid) from public,anon,authenticated;
+ grant execute on function public.read_worker_payroll_tax_conditions(uuid,uuid) to service_role;
+ grant execute on function public.read_worker_payroll_tax_conditions(uuid,uuid) to authenticated;`);
+ const before=(await db.query("select oid::regprocedure::text id,proowner,proacl::text,proconfig,prosecdef,provolatile from pg_proc where oid in ('payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'payroll_tax_private.save_conditions(uuid,uuid,date,bigint,jsonb,boolean)'::regprocedure,'public.read_worker_payroll_tax_conditions(uuid,uuid)'::regprocedure) order by 1")).rows;
  await db.query(read('docs/candidates/insurance_basis_reference_20261024.sql.review-only'));
- ok((await db.query("select oid::regprocedure::text id,proowner,proacl::text,proconfig,prosecdef,provolatile from pg_proc where oid in ('payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'payroll_tax_private.save_conditions(uuid,uuid,date,bigint,jsonb,boolean)'::regprocedure) order by 1")).rows,before);
+ ok((await db.query("select oid::regprocedure::text id,proowner,proacl::text,proconfig,prosecdef,provolatile from pg_proc where oid in ('payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'payroll_tax_private.save_conditions(uuid,uuid,date,bigint,jsonb,boolean)'::regprocedure,'public.read_worker_payroll_tax_conditions(uuid,uuid)'::regprocedure) order by 1")).rows,before);
  await db.query('insert into public.companies values($1);',[c]);await db.query('insert into public.workers values($1,$2)',[w,c]);
  const ids=[1,2,3,4,5].map(n=>`50000000-0000-0000-0000-${String(n).padStart(12,'0')}`);
  const insert=async(id,month,gross,state='draft',detail={})=> db.query("insert into public.payroll_statements(id,company_id,worker_id,period_start,period_end,gross_pay,revision,workflow_state,detail) values($1,$2,$3,$4,($4::date+interval '1 month - 1 day')::date,$5,1,$6,$7::jsonb)",[id,c,w,month,gross,state,JSON.stringify(detail)]);
@@ -43,15 +47,25 @@ try{
  // Historical evidence is retained when unrelated condition fields are changed.
  r=await save(2,{...base,dependents:1,insurance_basis_reference:actual});ok(r.items[0].value.insurance_basis_reference,actual);
  await assert.rejects(save(3,{...base,insurance_basis_reference:{...actual,source:'actual_available'}}),/給与実績/);checks++;
- await db.query("select set_config('test.viewer','yes',false)");ok((await history()).items.length,3);await assert.rejects(save(3,base),/access denied/);checks++;
+ r=await save(3,base);ok(r.items[0].version,4);ok(r.items[0].value,base);
+ ok((await db.query('select payroll_tax_private.read_conditions($1,$2) v',[c,w])).rows[0].v.items[0].value.insurance_basis_reference,actual);
+ r=await save(3,base);ok(r.items[0].version,4); // Legacy-client retry keeps metadata.
+ await db.query("select set_config('test.viewer','yes',false)");ok((await history()).items.length,3);await assert.rejects(save(4,base),/access denied/);checks++;
  await db.query("select set_config('test.viewer','',false),set_config('test.blocked','yes',false)");await assert.rejects(history(),/access denied/);checks++;
  await db.query("select set_config('test.blocked','',false),set_config('test.actor','00000000-0000-0000-0000-000000000009',false)");await assert.rejects(history(),/access denied/);checks++;
  await db.query("select set_config('test.actor',$1,false)",[actor]);await assert.rejects(db.query('select public.read_worker_payroll_insurance_income_history($1,$2,$3,$4)',[c,'40000000-0000-0000-0000-000000000009','2026-04-01','2026-06-01']),/access denied/);checks++;
  await db.query('reset role');await db.query('update public.payroll_statements set calculation_blocked=true where id=$1',[ids[3]]);await db.query('set role authenticated');
  ok((await history()).items.map(x=>x.month),['2026-04-01','2026-05-01']);
- await assert.rejects(save(3,{...base,insurance_basis_reference:{...actual,history_fingerprint:(await history()).history_fingerprint}}),/給与実績/);checks++;
+ await assert.rejects(save(4,{...base,insurance_basis_reference:{...actual,history_fingerprint:(await history()).history_fingerprint}}),/給与実績/);checks++;
+ const premiumManual={insurance_mode:'manual',manual_insurance_premiums:{health_insurance:10000,pension_insurance:20000,employment_insurance:0,nursing_insurance:0,child_support:0},income_mode:'fixed',dependents:0,non_taxable_yen:0,additional_social_deduction_yen:0};
+ r=await save(4,{...premiumManual,insurance_basis_reference:actual});ok(r.items[0].version,5);
+ const legacy=(await db.query('select public.read_worker_payroll_tax_conditions($1,$2) v',[c,w])).rows[0].v;
+ const full=(await db.query('select public.read_worker_payroll_tax_conditions_with_insurance_reference($1,$2) v',[c,w])).rows[0].v;
+ ok(legacy.items[0].value,premiumManual);ok(full.items[0].value.insurance_basis_reference,actual);
+ r=await save(5,premiumManual);ok(r.items[0].value,premiumManual);ok(r.items[0].version,6);
+ ok((await db.query('select public.read_worker_payroll_tax_conditions_with_insurance_reference($1,$2) v',[c,w])).rows[0].v.items[0].value.insurance_basis_reference,actual);
  await db.query('reset role');await db.query('update public.payroll_statements set calculation_blocked=false where id=$1',[ids[3]]);await insert(ids[4],'2026-06-01',1,'draft');await db.query('set role authenticated');ok((await history()).items.map(x=>x.month),['2026-04-01','2026-05-01']);
- await assert.rejects(save(3,{...base,insurance_basis_reference:{...actual,history_fingerprint:(await history()).history_fingerprint}}),/給与実績/);checks++;
+ await assert.rejects(save(6,{...base,insurance_basis_reference:{...actual,history_fingerprint:(await history()).history_fingerprint}}),/給与実績/);checks++;
  await db.query('reset role');ok((await db.query('select value from payroll_final_private.documents where statement_id=$1',[ids[1]])).rows[0].value.result.gross_pay,310000);
  await db.query('set role anon');await assert.rejects(history(),/permission denied/);checks++;
  console.log(JSON.stringify({checks,native:true,synthetic_authorization:true,production_connected:false,actual_premium_rebase:false}));

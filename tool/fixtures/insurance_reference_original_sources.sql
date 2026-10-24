@@ -126,3 +126,8 @@ begin
   end loop;
  end if;
 end $function$;
+CREATE OR REPLACE FUNCTION public.read_worker_payroll_tax_conditions(p_company_id uuid, p_worker_id uuid)
+ RETURNS jsonb
+ LANGUAGE sql
+ SET search_path TO ''
+AS $function$ select payroll_tax_private.read_conditions(p_company_id,p_worker_id) $function$;

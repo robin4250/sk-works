@@ -1,6 +1,7 @@
 -- Synthetic authorization surroundings. Not a real GoTrue/session proof.
 create role anon nologin;
 create role authenticated nologin;
+create role service_role nologin;
 create schema auth;create schema private;create schema payroll_tax_private;create schema payroll_final_private;
 grant usage on schema auth,private,payroll_tax_private to authenticated;
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.actor',true),'')::uuid$$;
