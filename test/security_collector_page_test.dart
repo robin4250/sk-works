@@ -13,6 +13,18 @@ void main() {
     await t.runAsync(() async { await Future<void>.delayed(Duration.zero); });
     await t.pumpAndSettle();
   }
+  Future<void> readSuccessfully(WidgetTester t, Completer<void> readReached,
+      String Function() stages) async {
+    // Start the entire repository chain in the real async zone, rather than
+    // jumping zones only after nested session/availability work has begun.
+    await t.runAsync(() async {
+      await t.tap(find.text('再認証して収集記録を表示'));
+      await readReached.future.timeout(const Duration(seconds: 2),
+        onTimeout: () => throw StateError('Collector read stage not reached: ${stages()}'));
+      await Future<void>.delayed(Duration.zero);
+    });
+    await t.pumpAndSettle();
+  }
   testWidgets('unavailable is not confused with zero records or safety', (t) async {
     final repository = SecurityCollectorRepository(sessionKey: () => 'master/a',
       sessionChanges: const Stream<void>.empty(), availableCheck: () async => false,
@@ -25,16 +37,18 @@ void main() {
     expect(find.textContaining('対象範囲の保存記録はありません'),findsNothing);
   });
   testWidgets('background clears snapshot and password; resumed screen requires fresh read', (t) async {
-    var issued=0;
+    var issued=0, reads=0, availableCalls=0;
+    final readReached=Completer<void>();
     final repository = SecurityCollectorRepository(sessionKey: () => 'master/a',
-      sessionChanges: const Stream<void>.empty(), availableCheck: () async => true,
+      sessionChanges: const Stream<void>.empty(), availableCheck: () async { availableCalls++; return true; },
       issueProof: (_) async { issued++; return 'a'*64; },
-      readWithProof: (_) async => {'version':1,'source_provenance':'trusted_collector_observation',
-        'coverage':'collector_observations_only','attack_confirmed':false,'events':[]});
+      readWithProof: (_) async { reads++;readReached.complete();return {'version':1,'source_provenance':'trusted_collector_observation',
+        'coverage':'collector_observations_only','attack_confirmed':false,'events':[]}; });
     await t.pumpWidget(MaterialApp(home: SecurityCollectorPage(repository:repository)));
     await settle(t);
     await t.enterText(find.byKey(const ValueKey('collector-password')),'password');
-    await t.tap(find.text('再認証して収集記録を表示')); await settle(t);
+    await readSuccessfully(t,readReached,()=> 'available=$availableCalls issued=$issued reads=$reads');
+    expect(reads,1);
     expect(issued,1); expect(find.textContaining('対象範囲の保存記録はありません'),findsOneWidget);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused); await t.pump();
     expect(find.textContaining('対象範囲の保存記録はありません'),findsNothing);
@@ -59,14 +73,17 @@ void main() {
   testWidgets('session replacement clears displayed records and remains locked after return', (t) async {
     final changes=StreamController<void>.broadcast(sync:true);
     String? key='master/a';
+    var issued=0,reads=0,availableCalls=0;
+    final readReached=Completer<void>();
     final repository=SecurityCollectorRepository(sessionKey:()=>key,sessionChanges:changes.stream,
-      availableCheck:() async=>true,issueProof:(_) async=>'a'*64,
-      readWithProof:(_) async=>{'version':1,'source_provenance':'trusted_collector_observation',
-        'coverage':'collector_observations_only','attack_confirmed':false,'events':[]});
+      availableCheck:() async {availableCalls++;return true;},issueProof:(_) async {issued++;return 'a'*64;},
+      readWithProof:(_) async {reads++;readReached.complete();return {'version':1,'source_provenance':'trusted_collector_observation',
+        'coverage':'collector_observations_only','attack_confirmed':false,'events':[]};});
     await t.pumpWidget(MaterialApp(home:SecurityCollectorPage(repository:repository)));
     await settle(t);
     await t.enterText(find.byKey(const ValueKey('collector-password')),'password');
-    await t.tap(find.text('再認証して収集記録を表示')); await settle(t);
+    await readSuccessfully(t,readReached,()=> 'available=$availableCalls issued=$issued reads=$reads');
+    expect(issued,1);expect(reads,1);
     expect(find.textContaining('対象範囲の保存記録はありません'),findsOneWidget);
     key='other/b';changes.add(null);await t.pump();
     key='master/a';changes.add(null);await settle(t);
