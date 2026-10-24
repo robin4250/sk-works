@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+// Test-only platform fake for SharedPreferencesAsync used by report stores.
+// ignore: depend_on_referenced_packages
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+// ignore: depend_on_referenced_packages
+import 'package:shared_preferences_platform_interface/types.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/daily_reports/daily_report_page.dart';
 import 'package:sk_works/features/daily_reports/signature_capture_page.dart';
@@ -17,6 +21,13 @@ CompanyAllowanceLabel registered(int number, String name, {String unit = 'day',
     name: name, unit: unit, generation: origin == 'company_legacy' && ready ? 1 : null,
     registrationVersion: ready ? 7 : null, origin: origin, payrollType: payrollType,
     displayUnit: unit == 'hour' ? '時間' : unit == 'month' ? '月' : '日');
+
+final class _EmptyAsyncPreferences extends SharedPreferencesAsyncPlatform {
+  @override
+  Future<String?> getString(String key, SharedPreferencesOptions options) async => null;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError('Unexpected preference operation: ${invocation.memberName}');
+}
 
 class _CheckoutFlowRepository extends DailyReportRepository {
   _CheckoutFlowRepository(this.client) : super.forTesting(client);
@@ -67,8 +78,11 @@ class _CheckoutFlowRepository extends DailyReportRepository {
 
 void main() {
   testWidgets('first draft save stays on report and selected allowance is saved before signature page', (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final client = SupabaseClient('https://synthetic.invalid', 'synthetic-public');
+    final previousPreferences = SharedPreferencesAsyncPlatform.instance;
+    SharedPreferencesAsyncPlatform.instance = _EmptyAsyncPreferences();
+    addTearDown(() => SharedPreferencesAsyncPlatform.instance = previousPreferences);
+    final client = SupabaseClient('https://synthetic.invalid', 'synthetic-public',
+      authOptions: const AuthClientOptions(autoRefreshToken: false));
     addTearDown(client.dispose);
     final repository = _CheckoutFlowRepository(client);
     await tester.pumpWidget(MaterialApp(home: DailyReportPage(
