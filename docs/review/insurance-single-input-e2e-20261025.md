@@ -60,3 +60,14 @@ successful. PDF visual balance on the user's iPhone remains separate.
   and PDF totals. No repeated monthly condition registration is required: the
   latest effective condition is used until changed; monthly rate applicability
   and source payroll data still need to exist.
+
+
+## Real I/O boundary correction
+
+The widget bridge reads its prepared JSON and writes its captured payload with
+`WidgetTester.runAsync`, outside the widget test's FakeAsync zone. Widget
+interaction, assertions and payload verification remain in the normal tester
+zone; no timeout was extended. The separate PDF verification uses ordinary
+`test`, not `testWidgets`; its font/JSON/PDF file operations and PyMuPDF process
+therefore already execute in the real async zone, consistent with the existing
+PDF proof tests reused here. No runtime or workflow changes.

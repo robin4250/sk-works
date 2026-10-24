@@ -7,7 +7,8 @@ import 'package:sk_works/features/payroll/payroll_tax_conditions_page.dart';
 void main() {
   final folder = Platform.environment['SKO_INSURANCE_E2E_DIR'];
   testWidgets('export the actual one-input form save request for isolated PG17', (t) async {
-    final state = jsonDecode(await File('$folder/read-state.json').readAsString()) as Map<String, dynamic>;
+    final stateText = await t.runAsync(() => File('$folder/read-state.json').readAsString());
+    final state = jsonDecode(stateText!) as Map<String, dynamic>;
     Map<String, dynamic>? captured;
     await t.pumpWidget(MaterialApp(home: PayrollTaxConditionsPage(
       companyId: state['company_id'] as String, workerId: state['worker_id'] as String,
@@ -46,7 +47,8 @@ void main() {
     expect(value['pension_base_yen'], 650000);
     expect(value['health'], true); expect(value['pension'], true);
     expect(value['income_mode'], 'fixed');
-    await File('$folder/ui-save-request.json').writeAsString(const JsonEncoder.withIndent('  ').convert(captured));
+    await t.runAsync(() => File('$folder/ui-save-request.json').writeAsString(
+      const JsonEncoder.withIndent('  ').convert(captured)));
     expect(t.takeException(), isNull);
     await t.pumpWidget(const SizedBox.shrink()); await t.pump();
   }, skip: folder == null);
