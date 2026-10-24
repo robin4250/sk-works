@@ -5,6 +5,13 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+enum AppleLinkProviderStatus { enabled, disabled, unavailable }
+
+enum AppleLinkReadiness {
+  ready, linked, loginRequired, googleRequired, recentOAuthRequired,
+  providerDisabled, unavailable,
+}
+
 /// Adds Apple to a signed-in Google account. Never starts Apple sign-in/signup.
 class AppleAccountLink {
   AppleAccountLink(this.client, {
@@ -32,16 +39,26 @@ class AppleAccountLink {
   Stream<AuthState> get changes => client.auth.onAuthStateChange;
   bool get pending => _pending && !_revoked;
 
-  Future<bool> providerEnabled() async {
+  Future<bool> providerEnabled() async =>
+      await providerStatus() == AppleLinkProviderStatus.enabled;
+
+  Future<AppleLinkProviderStatus> providerStatus() async {
     final check = _providerCheck;
-    if (check != null) return check();
+    if (check != null) {
+      try {
+        return await check() ? AppleLinkProviderStatus.enabled
+            : AppleLinkProviderStatus.disabled;
+      } catch (_) { return AppleLinkProviderStatus.unavailable; }
+    }
     final http = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
       final request = await http.getUrl(settingsUrl).timeout(const Duration(seconds: 10));
       request.followRedirects = false;
       request.headers.set('apikey', publicKey);
       final response = await request.close().timeout(const Duration(seconds: 10));
-      if (response.statusCode != 200 || response.contentLength > 65536) return false;
+      if (response.statusCode != 200 || response.contentLength > 65536) {
+        return AppleLinkProviderStatus.unavailable;
+      }
       final bytes = await response.timeout(const Duration(seconds: 10))
           .fold<List<int>>(<int>[], (bytes, chunk) {
         if (bytes.length + chunk.length > 65536) {
@@ -52,11 +69,79 @@ class AppleAccountLink {
       }).timeout(const Duration(seconds: 10));
       final body = utf8.decode(bytes);
       final json = jsonDecode(body);
-      return json is Map && json['external'] is Map &&
-          json['external']['apple'] == true;
+      if (json is! Map || json['external'] is! Map ||
+          json['external']['apple'] is! bool) {
+        return AppleLinkProviderStatus.unavailable;
+      }
+      return json['external']['apple'] == true
+          ? AppleLinkProviderStatus.enabled : AppleLinkProviderStatus.disabled;
     } catch (_) {
-      return false;
+      return AppleLinkProviderStatus.unavailable;
     } finally { http.close(force: true); }
+  }
+
+  /// Read-only preflight. It neither refreshes/signs in nor starts a link URL.
+  /// A fresh verified token is still required again by begin().
+  Future<AppleLinkReadiness> readiness() async {
+    final initial = client.auth.currentSession;
+    if (initial == null || initial.isExpired) {
+      return AppleLinkReadiness.loginRequired;
+    }
+    final actor = initial.user.id, token = initial.accessToken;
+    var revoked = false;
+    final subscription = changes.listen((event) {
+      if (event.event == AuthChangeEvent.signedOut ||
+          client.auth.currentSession?.accessToken != token ||
+          client.auth.currentSession?.user.id != actor) {
+        revoked = true;
+      }
+    }, onError: (Object _) { revoked = true; });
+    void check() {
+      if (revoked || client.auth.currentSession?.user.id != actor ||
+          client.auth.currentSession?.accessToken != token ||
+          client.auth.currentSession?.isExpired != false) {
+        throw StateError('apple_link_session_changed');
+      }
+    }
+    Future<AppleLinkReadiness> inspect() async {
+      final user = (await client.auth.getUser(token)
+          .timeout(const Duration(seconds: 10))).user;
+      check();
+      if (user == null || user.id != actor || user.toJson()['is_anonymous'] == true) {
+        return AppleLinkReadiness.unavailable;
+      }
+      if (!_has(user, 'google')) {
+        return AppleLinkReadiness.googleRequired;
+      }
+      if (_has(user, 'apple')) {
+        return AppleLinkReadiness.linked;
+      }
+      final provider = await providerStatus();
+      check();
+      if (provider == AppleLinkProviderStatus.unavailable) {
+        return AppleLinkReadiness.unavailable;
+      }
+      if (provider == AppleLinkProviderStatus.disabled) {
+        return AppleLinkReadiness.providerDisabled;
+      }
+      if (!_recentOAuth(token)) {
+        return AppleLinkReadiness.recentOAuthRequired;
+      }
+      final rows = await client.from('company_members').select('company_id,role')
+          .eq('user_id', actor).setHeader('Authorization', 'Bearer $token')
+          .timeout(const Duration(seconds: 10));
+      check();
+      if (rows.isEmpty) {
+        return AppleLinkReadiness.unavailable;
+      }
+      return AppleLinkReadiness.ready;
+    }
+    AppleLinkReadiness result;
+    try { result = await inspect(); }
+    catch (_) { result = AppleLinkReadiness.unavailable; }
+    finally { await subscription.cancel(); }
+    try { check(); return result; }
+    catch (_) { return AppleLinkReadiness.unavailable; }
   }
 
   void _checkActor(int generation) {

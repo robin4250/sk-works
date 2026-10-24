@@ -43,6 +43,21 @@ class MemoryPKCE extends GotrueAsyncStorage {
   @override Future<void> removeItem({required String key}) async { values.remove(key); }
 }
 
+// These three widget tests isolate dialog/session invalidation. Their readiness
+// is deterministic; real preflight reads are covered in the dedicated source
+// tests. begin(), auth events, original client and security guards stay real.
+class WidgetReadinessAppleLink extends AppleAccountLink {
+  WidgetReadinessAppleLink(super.client, {
+    required Future<bool> Function() providerCheck,
+    required Future<bool> Function(Uri) launch,
+  }) : super(
+    settingsUrl: Uri.parse('https://apple-link.invalid/auth/v1/settings'),
+    publicKey: 'public-synthetic', providerCheck: providerCheck, launch: launch);
+
+  @override Future<AppleLinkReadiness> readiness() async =>
+      await providerEnabled() ? AppleLinkReadiness.ready : AppleLinkReadiness.providerDisabled;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late SupabaseClient client;
@@ -91,6 +106,13 @@ void main() {
       launch:(uri) async { launches++; return true; });
   });
   tearDown(() async { await source.dispose(); await client.dispose(); });
+
+  AppleAccountLink widgetSource() {
+    final value = WidgetReadinessAppleLink(client, providerCheck: () async => enabled,
+      launch: (uri) async { launches++; return true; });
+    addTearDown(value.dispose);
+    return value;
+  }
 
   test('actual settings HTTP accepts enabled JSON and rejects oversized chunked body',() async {
     var oversized=false;
@@ -199,7 +221,7 @@ void main() {
     expect(launches,1); expect(source.pending,true);
   });
   testWidgets('dialog for A closes when another UID signs in without linking B',(t) async {
-    await t.pumpWidget(MaterialApp(home:Scaffold(body:AppleAccountLinkCard(source:source))));
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:AppleAccountLinkCard(source:widgetSource()))));
     await t.pumpAndSettle();
     await t.tap(find.text('このアカウントにAppleを追加'));
     await t.pumpAndSettle();
@@ -211,7 +233,7 @@ void main() {
     expect(paths, isNot(contains('GET /auth/v1/user/identities/authorize')));
   });
   testWidgets('dialog for A cannot survive same-UID logout and login ABA',(t) async {
-    await t.pumpWidget(MaterialApp(home:Scaffold(body:AppleAccountLinkCard(source:source))));
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:AppleAccountLinkCard(source:widgetSource()))));
     await t.pumpAndSettle();
     await t.tap(find.text('このアカウントにAppleを追加'));
     await t.pumpAndSettle();
@@ -225,9 +247,9 @@ void main() {
   });
   testWidgets('disabled provider retains preparation text without active button',(t) async {
     enabled=false;
-    await t.pumpWidget(MaterialApp(home:Scaffold(body:AppleAccountLinkCard(source:source))));
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:AppleAccountLinkCard(source:widgetSource()))));
     await t.pumpAndSettle();
-    expect(find.textContaining('Apple連携は準備中'),findsOneWidget);
+    expect(find.textContaining('Apple連携は提供準備中'),findsOneWidget);
     expect(find.text('このアカウントにAppleを追加'),findsNothing);
     expect(launches,0);
   });
