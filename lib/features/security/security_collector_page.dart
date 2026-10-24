@@ -31,7 +31,7 @@ class _SecurityCollectorPageState extends State<SecurityCollectorPage> with Widg
     _lifecycle = WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _subscription = _repository?.sessionChanges.listen((_) {
-      if (_repository?.sessionKey() != _initialSession) _revoke();
+      if (_repository.sessionKey() != _initialSession) _revoke();
     }, onError: (Object _) => _revoke());
     if (_lifecycle == AppLifecycleState.resumed) { _check(); }
     else { _checking = false; }
