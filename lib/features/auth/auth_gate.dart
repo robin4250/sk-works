@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/supabase_backend.dart';
+import '../attendance/checkout_report_gate.dart';
 import 'admin_initial_setup_page.dart';
 import 'admin_initial_setup_repository.dart';
 import 'employee_onboarding_pages.dart';
@@ -144,7 +145,14 @@ class _SupabaseAuthGateState extends State<SupabaseAuthGate> {
               onCompleted: _reload,
               onSignOut: _signOut,
             ),
-          _GateStatus.authenticated => widget.homeBuilder(_signOut),
+          _GateStatus.authenticated => SupabaseBackend.client.auth.currentUser == null
+            ? SecureAuthPage(onAuthenticated: _reload)
+            : CheckoutReportGateActivation(
+            key: ValueKey(SupabaseBackend.client.auth.currentUser?.id),
+            actorId: SupabaseBackend.client.auth.currentUser!.id,
+            onReauthenticate: _signOut,
+            child: widget.homeBuilder(_signOut),
+          ),
         };
       },
     );

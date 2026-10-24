@@ -1,0 +1,33 @@
+name: Checkout report registration gate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/checkout_report_gate*'
+      - 'lib/features/daily_reports/daily_report_page.dart'
+      - 'lib/features/auth/auth_gate.dart'
+      - 'lib/app_v2.dart'
+      - 'lib/features/attendance/attendance_verification_page.dart'
+      - 'lib/features/attendance/attendance_management_repository.dart'
+      - 'lib/features/attendance/worker_attendance_sheet_page.dart'
+      - 'test/checkout_report_gate*'
+      - 'test/attendance_checkout_completion_widgets_test.dart'
+      - 'test/attendance_management_report_gate_refresh_test.dart'
+      - '.github/workflows/checkout-report-registration-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checkout-report-registration-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/attendance/checkout_report_gate.dart lib/features/attendance/checkout_report_gate_repository.dart lib/features/daily_reports/daily_report_page.dart lib/features/auth/auth_gate.dart lib/app_v2.dart test/checkout_report_gate_test.dart test/checkout_report_gate_repository_test.dart lib/features/attendance/checkout_report_resume_repository.dart lib/features/attendance/checkout_report_resume_action.dart lib/features/attendance/attendance_verification_page.dart lib/features/attendance/worker_attendance_sheet_page.dart test/checkout_report_resume_repository_test.dart test/checkout_report_resume_action_test.dart test/attendance_checkout_completion_widgets_test.dart
+      - run: flutter analyze lib/features/attendance/attendance_management_repository.dart test/attendance_management_report_gate_refresh_test.dart
+      - run: flutter test test/checkout_report_gate_test.dart test/checkout_report_gate_repository_test.dart test/checkout_report_resume_repository_test.dart test/checkout_report_resume_action_test.dart test/attendance_checkout_completion_widgets_test.dart test/attendance_checkout_recovery_http_test.dart test/attendance_management_report_gate_refresh_test.dart test/attendance_management_clock_precision_test.dart
