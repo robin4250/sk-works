@@ -193,7 +193,9 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
       if (blocked) Positioned.fill(child: PopScope(canPop: false, child: Stack(children: [
         if (_pending.isNotEmpty && _pending.first.state != 'source_conflict') Positioned.fill(child: NavigatorPopHandler<Object?>(
           onPopWithResult: (_) => _navigator.currentState?.maybePop(),
-          child: Navigator(key: _navigator, onGenerateRoute: (_) {
+          // The ordinary Navigator remains mounted offstage. Its inherited
+          // MaterialApp HeroController must not attach to this second Navigator.
+          child: HeroControllerScope.none(child: Navigator(key: _navigator, onGenerateRoute: (_) {
             final target = _pending.first;
             return MaterialPageRoute<void>(settings: RouteSettings(name: target.identity), builder: (_) =>
               widget.reportBuilder?.call(target, _changed) ?? DailyReportPage(
@@ -204,7 +206,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
                 restrictedReporterRegistration: true, registrationActorId: _actor,
                 registrationCompanyId: target.companyId, registrationWorkerId: target.workerId,
                 onRegistrationSaved: _changed));
-          }),
+          })),
         )),
         if (_pending.isEmpty || _checking || _error != null || _pending.first.state == 'source_conflict') Positioned.fill(child: _status()),
       ]))),

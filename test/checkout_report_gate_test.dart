@@ -46,6 +46,14 @@ void main() {
       ]))), child: child!), home: const Scaffold(body: Text('ordinary-home')))));
     await tester.pump();
   }
+  testWidgets('dedicated Navigator has an isolated Hero scope while ordinary Navigator stays mounted', (tester) async {
+    await mount(tester);
+    final scope = tester.widget<HeroControllerScope>(find.ancestor(
+      of: find.text('report-in'), matching: find.byType(HeroControllerScope)).first);
+    expect(scope.controller, isNull);
+    expect(find.byType(Navigator, skipOffstage: false), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('pending server evidence isolates normal screens and local completion never unlocks', (tester) async {
     await mount(tester);
     expect(find.text('report-in'), findsOneWidget);
