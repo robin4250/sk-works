@@ -12,7 +12,7 @@ const run=promisify(execFile);
 const root=await mkdtemp(join(tmpdir(),'company-checkout-proof-'));
 let client, phase='destination',checks=0;
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
-const A=id(1),B=id(2),U=id(10),OTHER=id(11),W=id(20),W2=id(21),W3=id(22),W4=id(23),SITE=id(30),SITE2=id(31);
+const A=id(1),B=id(2),U=id(10),OTHER=id(11),W=id(20),W2=id(21),W3=id(22),W4=id(23),SITE=id(30),SITE2=id(31),SITE3=id(32);
 const LEGACY=id(100),DAYS=[id(101),id(102),id(103),id(104)],HOUR=id(105),MONTH=id(106),FOREIGN=id(107);
 const dbBody=definition=>{const m=/\bAS\s+(\$[A-Za-z_0-9]*\$)([\s\S]*)\1\s*;?\s*$/i.exec(definition);assert.ok(m);return m[2];};
 const md5=s=>createHash('md5').update(s).digest('hex');
@@ -64,7 +64,7 @@ try{
  await client.query('insert into companies(id) values($1),($2)',[A,B]);
  await client.query('insert into company_members(company_id,user_id) values($1,$2),($3,$4)',[A,U,B,OTHER]);
  await client.query("insert into workers(id,company_id,name) values($1,$2,'合成社員A'),($3,$2,'合成社員B'),($4,$2,'合成社員C'),($5,$2,'合成社員D')",[W,A,W2,W3,W4]);
- await client.query('insert into sites(id,company_id) values($1,$2),($3,$2)',[SITE,A,SITE2]);
+ await client.query('insert into sites(id,company_id) values($1,$2),($3,$2),($4,$2)',[SITE,A,SITE2,SITE3]);
  await client.query("insert into worker_payroll_settings(company_id,worker_id,allowance_name_1,allowance_1) values($1,$2,'合成会社日手当',1700),($1,$3,'合成会社日手当',1700),($1,$4,'合成会社日手当',1700),($1,$5,'合成会社日手当',1700)",[A,W,W2,W3,W4]);
  await client.query("insert into company_rate_settings(company_id,allowance_1_name,allowance_1_amount_yen,allowance_1_unit) values($1,'合成会社日手当',3000,'回'),($2,'他社の手当',9999,'回')",[A,B]);
  await client.query('insert into company_allowance_identity_private.state values($1,1),($2,1)',[A,B]);
@@ -131,7 +131,7 @@ try{
  eq(current.detail.custom_earnings_total,4000,'Second same-day site does not duplicate daily allowance');
  eq(current.gross_pay,35700,'Base follows original attendance contract; allowance remains once per actual work date');
  phase='separate-workers-same-company-item';
- const secondWorker=await draft('2020-10-20',W2,[legacy]);await sign(secondWorker);
+ const secondWorker=await draft('2020-10-20',W2,[legacy],{site:SITE3});await sign(secondWorker);
  eq((await statement(W2)).detail.custom_earnings_total,3000,'Same date/item on another employee is separate');
  eq((await statement(W)).detail.custom_earnings_total,4000,'Employee receipts never mix');
  phase='immutable-rate-and-name-snapshot';
@@ -167,8 +167,8 @@ try{
  phase='manual-and-finalized-payroll-preserved';
  await client.query("insert into payroll_statements(company_id,worker_id,period_start,period_end,gross_pay,deductions,net_pay,workflow_state,automatic_calculation) values($1,$2,'2020-10-01','2020-10-31',777,7,770,'finalized',true),($1,$3,'2020-10-01','2020-10-31',888,8,880,'draft',false)",[A,W3,W4]);
  const protectedBefore=[await statement(W3),await statement(W4)];
- const frozenReport=await draft('2020-10-20',W3,[updatedLegacy]);await sign(frozenReport);
- const manualReport=await draft('2020-10-20',W4,[updatedLegacy]);await sign(manualReport);
+ const frozenReport=await draft('2020-10-26',W3,[updatedLegacy]);await sign(frozenReport);
+ const manualReport=await draft('2020-10-27',W4,[updatedLegacy]);await sign(manualReport);
  eq([await statement(W3),await statement(W4)],protectedBefore,'Frozen and manual salary originals unchanged');
  phase='cross-company-and-scope-denials';
  const foreign={...updatedLegacy,id:FOREIGN,name_snapshot:'他社の手当',registration_version:1};
