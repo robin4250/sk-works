@@ -10,6 +10,7 @@ import '../shared/pdf_bytes_cache.dart';
 import '../../international/language_controller.dart';
 import '../../data/supabase_backend.dart';
 import 'payroll_pdf_service.dart';
+import 'payroll_insurance_evidence_card.dart';
 import 'payroll_statement_repository.dart';
 import 'payroll_confirmation_repository.dart';
 import 'payroll_statement_source_repository.dart';
@@ -421,6 +422,10 @@ class _PayrollStatementPreviewPageState
                 ],
               ),
             ),
+          if (!_statementUnavailable && !_sourceLoading && !_confirmationBusy &&
+              !_finalizationBusy && !_finalizationUncertain && _confirmationError == null)
+            PayrollInsuranceEvidenceCard(detail: statement.detail,
+              month: '${statement.periodStart.year.toString().padLeft(4, '0')}-${statement.periodStart.month.toString().padLeft(2, '0')}-01'),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text(
