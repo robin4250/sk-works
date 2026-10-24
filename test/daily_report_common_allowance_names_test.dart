@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 // ignore: depend_on_referenced_packages
 import 'package:shared_preferences_platform_interface/types.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/daily_reports/daily_report_page.dart';
 import 'package:sk_works/features/daily_reports/signature_capture_page.dart';
 import 'package:sk_works/features/attendance/group_checkout_repository.dart';
@@ -29,9 +28,9 @@ final class _EmptyAsyncPreferences extends SharedPreferencesAsyncPlatform {
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError('Unexpected preference operation: ${invocation.memberName}');
 }
 
-class _CheckoutFlowRepository extends DailyReportRepository {
-  _CheckoutFlowRepository(this.client) : super.forTesting(client);
-  final SupabaseClient client;
+class _CheckoutFlowRepository implements DailyReportRepository {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError('Unexpected repository operation: ${invocation.memberName}');
   DailyReportRecord? saved;
   final saves = <List<DailyReportWorkerDraft>>[];
   int eligibilityReads = 0;
@@ -81,10 +80,7 @@ void main() {
     final previousPreferences = SharedPreferencesAsyncPlatform.instance;
     SharedPreferencesAsyncPlatform.instance = _EmptyAsyncPreferences();
     addTearDown(() => SharedPreferencesAsyncPlatform.instance = previousPreferences);
-    final client = SupabaseClient('https://synthetic.invalid', 'synthetic-public',
-      authOptions: const AuthClientOptions(autoRefreshToken: false));
-    addTearDown(() async { await tester.runAsync(client.dispose); });
-    final repository = _CheckoutFlowRepository(client);
+    final repository = _CheckoutFlowRepository();
     await tester.pumpWidget(MaterialApp(home: DailyReportPage(
       initialDate: DateTime(2026, 10, 1), initialSiteId: 'site', repositoryForTesting: repository)));
     await tester.pumpAndSettle();
