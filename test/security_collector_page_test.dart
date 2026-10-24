@@ -6,6 +6,16 @@ import 'package:sk_works/features/security/security_collector_repository.dart';
 import 'package:sk_works/features/security/security_collector_page.dart';
 
 void main() {
+  void pause(WidgetTester t) {
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+  }
+  void resume(WidgetTester t) {
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
   Future<void> settle(WidgetTester t) async {
     // The UI starts work in FakeAsync, while Stream cancellation may complete
     // in the real zone. Drain each of the nested availability/read cleanup
@@ -61,10 +71,10 @@ void main() {
     await readSuccessfully(t,(witness)=>readReached=witness,()=> 'available=$availableCalls issued=$issued reads=$reads');
     expect(reads,1);
     expect(issued,1); expect(find.textContaining('対象範囲の保存記録はありません'),findsOneWidget);
-    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused); await t.pump();
+    pause(t); await t.pump();
     // Paused schedulers do not paint a new frame. Do not claim this proves a
     // native app-switcher privacy cover or an immediate background screenshot.
-    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await settle(t);
+    resume(t); await settle(t);
     expect(issued,1);
     expect(find.textContaining('対象範囲の保存記録はありません'),findsNothing);
     expect(t.widget<TextField>(find.byKey(const ValueKey('collector-password'))).controller!.text,isEmpty);
@@ -118,13 +128,13 @@ void main() {
     await t.enterText(find.byKey(const ValueKey('collector-password')),'password');
     await beginRead(t,(witness){readReached=witness;response=Completer<dynamic>();},
       ()=> 'issued=$issued reads=$reads');
-    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    pause(t);
     await t.runAsync(() async {
       response.complete({'version':1,'source_provenance':'trusted_collector_observation',
         'coverage':'collector_observations_only','attack_confirmed':false,'events':[]});
       await Future<void>.delayed(Duration.zero);
     });
-    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    resume(t);
     await settle(t);
     expect(issued,1);expect(reads,1);
     expect(find.textContaining('対象範囲の保存記録はありません'),findsNothing);
