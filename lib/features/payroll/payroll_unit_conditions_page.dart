@@ -211,13 +211,13 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
 
   List<Map<String, dynamic>> get _registeredPayrollItems =>
       _displayCurrentRegistration
-          ? [for (final item in _value!.companyCommonItems)
+          ? [for (final item in _visibleCommonItems)
               if (_matchesCurrentRegistration(item)) item]
           : _visibleCommonItems;
 
   List<Map<String, dynamic>> get _previousPayrollItems =>
       !_displayCurrentRegistration ? const [] : [
-        for (final item in _value!.companyCommonItems)
+        for (final item in _visibleCommonItems)
           if (!_matchesCurrentRegistration(item)) item,
       ];
 

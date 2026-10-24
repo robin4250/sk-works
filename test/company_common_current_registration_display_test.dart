@@ -224,4 +224,39 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
+  testWidgets('legacy ID and slot correspondence retains the original payroll display de-duplication', (t) async {
+    const legacy = PayrollRegisteredAllowanceName(key: 'company_legacy/legacy-pc',
+      itemId: 'legacy-pc', legacySlot: 1, name: 'PC',
+      section: PayrollItemSection.earning, unit: PayrollItemUnit.day);
+    const personal = PayrollUnitItemDraft(id: 'worker-allowance-slot-1',
+      section: PayrollItemSection.earning, unit: PayrollItemUnit.day,
+      name: 'PC', rate: '2500', source: 'selected_allowance_days');
+    final repository = _Repository([oldItem('legacy-pc', 'PC')]);
+    await mount(t, repository, registered: [legacy], individualItems: [personal]);
+    expect(find.byKey(const ValueKey('current-company-registered-company_legacy/legacy-pc')), findsOneWidget);
+    expect(find.byKey(const ValueKey('worker-allowance-slot-1-name')), findsOneWidget);
+    expect(find.text('会社共通手当の給与用条件'), findsNothing);
+    expect(find.text('登録変更前の給与用手当'), findsNothing);
+    final editor = t.widget<PayrollUnitItemEditor>(find.byType(PayrollUnitItemEditor));
+    expect(editor.initialItems.map((item) => item.id), ['worker-allowance-slot-1']);
+    expect(repository.writes, 0);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('same name with a different legacy slot does not suppress a distinct payroll item', (t) async {
+    const legacy = PayrollRegisteredAllowanceName(key: 'company_legacy/other-pc',
+      itemId: 'other-pc', legacySlot: 2, name: 'PC',
+      section: PayrollItemSection.earning, unit: PayrollItemUnit.day);
+    const personal = PayrollUnitItemDraft(id: 'worker-allowance-slot-1',
+      section: PayrollItemSection.earning, unit: PayrollItemUnit.day,
+      name: 'PC', rate: '3000', source: 'selected_allowance_days');
+    final repository = _Repository([oldItem('other-pc', 'PC')]);
+    await mount(t, repository, registered: [legacy], individualItems: [personal]);
+    expect(find.text('会社共通手当の給与用条件'), findsOneWidget);
+    await t.tap(find.text('会社共通手当の給与用条件')); await t.pumpAndSettle();
+    expect(find.text('PC  ¥2500'), findsOneWidget);
+    expect(t.widget<TextField>(find.byKey(const ValueKey('worker-allowance-slot-1-rate'))).controller!.text, '3000');
+    expect(repository.writes, 0);
+    expect(t.takeException(), isNull);
+  });
+
 }
