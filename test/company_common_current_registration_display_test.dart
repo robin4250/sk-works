@@ -39,7 +39,7 @@ class _Repository implements PayrollUnitConditionsRepository {
     writes++; throw StateError('Unexpected write');
   }
 }
-Future<void> mount(WidgetTester t, _Repository repository, {
+Future<void> _mount(WidgetTester t, _Repository repository, {
   List<PayrollRegisteredAllowanceName> registered = const [],
   bool loaded = true, bool unavailable = false, String worker = 'worker-a',
   PayrollItemUnit unit = PayrollItemUnit.day,
@@ -65,7 +65,7 @@ Future<void> mount(WidgetTester t, _Repository repository, {
 void main() {
   testWidgets('successful empty registration does not present old payroll rows as current company settings', (t) async {
     final repository = _Repository([oldItem('old-pc', 'PC'), oldItem('old-steel', '鉄骨')]);
-    await mount(t, repository);
+    await _mount(t, repository);
     expect(find.byKey(const ValueKey('current-company-registration')), findsOneWidget);
     expect(find.text('この区分の会社共通手当は未登録です。'), findsOneWidget);
     expect(find.text('登録変更前の給与用手当'), findsOneWidget);
@@ -81,11 +81,11 @@ void main() {
   });
   testWidgets('employees with different payroll histories see the same newly registered company names', (t) async {
     final first = _Repository([oldItem('old-pc', 'PC')]);
-    await mount(t, first, registered: [currentPc]);
+    await _mount(t, first, registered: [currentPc]);
     expect(find.text('新PC'), findsOneWidget);
     expect(find.text('登録変更前の給与用手当'), findsOneWidget);
     final second = _Repository([]);
-    await mount(t, second, registered: [currentPc], worker: 'worker-b');
+    await _mount(t, second, registered: [currentPc], worker: 'worker-b');
     expect(find.text('新PC'), findsOneWidget);
     expect(find.byKey(const ValueKey('current-company-registration')), findsOneWidget);
     expect(find.text('PC  ¥2500'), findsNothing);
@@ -94,7 +94,7 @@ void main() {
   for (final unavailable in [false, true]) {
     testWidgets('unknown registration unavailable=$unavailable is never inferred as empty', (t) async {
       final repository = _Repository([oldItem('old-pc', 'PC')]);
-      await mount(t, repository, loaded: false, unavailable: unavailable);
+      await _mount(t, repository, loaded: false, unavailable: unavailable);
       expect(find.byKey(const ValueKey('current-company-registration')), findsOneWidget);
       expect(find.text(unavailable
           ? '会社共通の登録名を確認できません。' : '会社共通の登録名を確認しています。'), findsOneWidget);
@@ -106,7 +106,7 @@ void main() {
   }
   testWidgets('frozen payroll keeps saved rows even with empty current registration', (t) async {
     final repository = _Repository([oldItem('old-pc', 'PC')], frozen: true);
-    await mount(t, repository);
+    await _mount(t, repository);
     expect(find.byKey(const ValueKey('current-company-registration')), findsNothing);
     expect(find.text('保存済み給与の共通手当'), findsOneWidget);
     await t.tap(find.text('社内共通手当')); await t.pumpAndSettle();
@@ -116,7 +116,7 @@ void main() {
   });
   testWidgets('past month uses payroll conditions rather than current registration', (t) async {
     final repository = _Repository([oldItem('old-pc', 'PC')]);
-    await mount(t, repository);
+    await _mount(t, repository);
     await t.tap(find.byIcon(Icons.chevron_left)); await t.pumpAndSettle();
     await t.tap(find.widgetWithText(TextButton, '月を変更')); await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('current-company-registration')), findsNothing);
@@ -127,7 +127,7 @@ void main() {
   });
   testWidgets('renamed registration ID does not relabel older payroll snapshot', (t) async {
     final repository = _Repository([oldItem('new-pc', 'PC')]);
-    await mount(t, repository, registered: [currentPc]);
+    await _mount(t, repository, registered: [currentPc]);
     expect(find.text('新PC'), findsOneWidget);
     expect(find.text('登録変更前の給与用手当'), findsOneWidget);
     expect(find.text('会社共通手当の給与用条件'), findsNothing);
@@ -139,7 +139,7 @@ void main() {
     const name = PayrollRegisteredAllowanceName(key: 'company_common/hour', itemId: 'hour',
       name: '共通時間', section: PayrollItemSection.earning, unit: PayrollItemUnit.hour);
     final repository = _Repository([oldItem('hour', '共通時間', unit: 'hour')]);
-    await mount(t, repository, registered: [name], unit: PayrollItemUnit.hour);
+    await _mount(t, repository, registered: [name], unit: PayrollItemUnit.hour);
     expect(find.text('共通時間'), findsOneWidget);
     expect(find.text('会社共通手当の給与用条件'), findsOneWidget);
     expect(find.text('登録変更前の給与用手当'), findsNothing);
@@ -150,7 +150,7 @@ void main() {
   });
   testWidgets('retired hourly payroll rows are historical read only', (t) async {
     final repository = _Repository([oldItem('old-hour', '旧時間', unit: 'hour')]);
-    await mount(t, repository, unit: PayrollItemUnit.hour);
+    await _mount(t, repository, unit: PayrollItemUnit.hour);
     await t.tap(find.text('登録変更前の給与用手当')); await t.pumpAndSettle();
     expect(t.widget<TextField>(find.byKey(const ValueKey('common-hour-old-hour'))).enabled, false);
     expect(find.byKey(const ValueKey('common-hours-save')), findsNothing);
@@ -158,7 +158,7 @@ void main() {
   });
   testWidgets('current registration remains visible when payroll history is missing', (t) async {
     final repository = _Repository([], historyMissing: true);
-    await mount(t, repository, registered: [currentPc]);
+    await _mount(t, repository, registered: [currentPc]);
     expect(find.text('新PC'), findsOneWidget);
     expect(find.text('社内共通手当の適用月が未登録のため、給与計算を保留しています。社内共通手当の適用月を確認してください。'), findsOneWidget);
     expect(repository.writes, 0); expect(t.takeException(), isNull);
@@ -166,7 +166,7 @@ void main() {
   for (final unit in PayrollItemUnit.values) {
     testWidgets('embedded $unit keeps an empty current registration panel without a payroll snapshot', (t) async {
       final repository = _Repository([]);
-      await mount(t, repository, unit: unit, embedded: true);
+      await _mount(t, repository, unit: unit, embedded: true);
       expect(find.byKey(const ValueKey('current-company-registration')), findsOneWidget);
       expect(find.text('現在の会社共通手当'), findsOneWidget);
       expect(find.text('この区分の会社共通手当は未登録です。'), findsOneWidget);
@@ -183,7 +183,7 @@ void main() {
         name: '共通月名', section: PayrollItemSection.earning, unit: PayrollItemUnit.month);
       const names = [hour, day, month];
       final repository = _Repository([]);
-      await mount(t, repository, unit: unit, embedded: true, registered: names);
+      await _mount(t, repository, unit: unit, embedded: true, registered: names);
       for (final name in names) {
         expect(find.text(name.name), name.unit == unit ? findsOneWidget : findsNothing);
       }
@@ -199,7 +199,7 @@ void main() {
       section: PayrollItemSection.earning, unit: PayrollItemUnit.day,
       name: '新PC', rate: '3000', source: 'selected_allowance_days');
     final repository = _Repository([]);
-    await mount(t, repository, registered: [currentPc], individualItems: [personal]);
+    await _mount(t, repository, registered: [currentPc], individualItems: [personal]);
     expect(find.text('現在の会社共通手当'), findsOneWidget);
     expect(find.text('個別手当（この社員だけ）'), findsOneWidget);
     expect(find.byKey(const ValueKey('current-company-registered-company_common/new-pc')), findsOneWidget);
@@ -215,7 +215,7 @@ void main() {
   testWidgets('company editing is delegated to the company settings action without saving individual values', (t) async {
     final repository = _Repository([]);
     var opened = 0;
-    await mount(t, repository, registered: [currentPc],
+    await _mount(t, repository, registered: [currentPc],
       onOpenCompanyCommonSettings: () async { opened++; });
     await t.tap(find.byKey(const ValueKey('open-company-common-settings')));
     await t.pumpAndSettle();
@@ -232,7 +232,7 @@ void main() {
       section: PayrollItemSection.earning, unit: PayrollItemUnit.day,
       name: 'PC', rate: '2500', source: 'selected_allowance_days');
     final repository = _Repository([oldItem('legacy-pc', 'PC')]);
-    await mount(t, repository, registered: [legacy], individualItems: [personal]);
+    await _mount(t, repository, registered: [legacy], individualItems: [personal]);
     expect(find.byKey(const ValueKey('current-company-registered-company_legacy/legacy-pc')), findsOneWidget);
     expect(find.byKey(const ValueKey('worker-allowance-slot-1-name')), findsOneWidget);
     expect(find.text('会社共通手当の給与用条件'), findsNothing);
@@ -250,7 +250,7 @@ void main() {
       section: PayrollItemSection.earning, unit: PayrollItemUnit.day,
       name: 'PC', rate: '3000', source: 'selected_allowance_days');
     final repository = _Repository([oldItem('other-pc', 'PC')]);
-    await mount(t, repository, registered: [legacy], individualItems: [personal]);
+    await _mount(t, repository, registered: [legacy], individualItems: [personal]);
     expect(find.text('会社共通手当の給与用条件'), findsOneWidget);
     await t.tap(find.text('会社共通手当の給与用条件')); await t.pumpAndSettle();
     expect(find.text('PC  ¥2500'), findsOneWidget);
