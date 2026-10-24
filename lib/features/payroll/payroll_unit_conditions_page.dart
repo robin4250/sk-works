@@ -4,6 +4,7 @@ import '../../international/language_controller.dart';
 import 'payroll_unit_conditions_repository.dart';
 import 'payroll_unit_item_editor.dart';
 import 'payroll_company_common_card.dart';
+import 'company_common_application_status.dart';
 
 class PayrollUnitConditionsPage extends StatefulWidget {
   const PayrollUnitConditionsPage({
@@ -114,6 +115,15 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     String tr(String x) => SkoLanguageController.tr(x);
+    final value = _value;
+    final applicationStatus = value == null ? null : companyCommonApplicationStatus(
+      sourceJson: value.companyCommonSourceJson,
+      month: value.month,
+      frozen: value.companyCommonFrozen,
+      historyMissing: value.companyCommonHistoryMissing,
+      hasItems: value.companyCommonItems.isNotEmpty,
+      blocked: value.companyCommonResolution?.blocked == true,
+    );
     final body = _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -160,6 +170,14 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                     padding: const EdgeInsets.all(12),
                     child: Text(tr('社内共通手当の適用月が未登録のため、給与計算を保留しています。社内共通手当の適用月を確認してください。')),
                   ),
+                if (applicationStatus != null)
+                  Card(child: ListTile(
+                    key: const ValueKey('company-common-application-status'),
+                    title: Text(tr('社内共通手当')),
+                    subtitle: Text(tr(applicationStatus == CompanyCommonApplicationStatus.notRegistered
+                        ? 'この給与形態の適用開始月は未登録です。社内共通手当で対象を確認して反映してください。'
+                        : 'この対象月は社内共通手当の適用開始前です。')),
+                  )),
                 if (_value!.companyCommonItems.isNotEmpty || _value!.companyCommonResolution?.blocked == true)
                   PayrollCompanyCommonCard(
                     key: ValueKey('${widget.companyId}/${widget.workerId}/${_value!.month}/${_value!.companyCommonSourceJson}'),
@@ -239,7 +257,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
           item.section == widget.section && item.unit == PayrollItemUnit.month) ?? false;
       return Offstage(
         offstage: widget.unit == PayrollItemUnit.month && !_loading &&
-            _error == null && _value?.companyCommonHistoryMissing != true && _value?.companyCommonResolution?.blocked != true && !hasMonthlyItems && !(_value?.companyCommonItems.any((item) => item['unit'] == 'month' && item['section'] == widget.section?.name) ?? false),
+            _error == null && applicationStatus == null && _value?.companyCommonHistoryMissing != true && _value?.companyCommonResolution?.blocked != true && !hasMonthlyItems && !(_value?.companyCommonItems.any((item) => item['unit'] == 'month' && item['section'] == widget.section?.name) ?? false),
         child: body,
       );
     }
@@ -256,7 +274,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                 content: SingleChildScrollView(
                   child: Text(
                     tr(
-                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。選択した月から条件が有効になり、従来の直接金額は別に保持されます。未入力の時間数は計算保留になります。確定済み給与は変更しません。社内共通手当は会社の設定を自動参照します。共通の時間単位手当は対象月の時間数を入力して保存すると給与を再計算します。会社で適用開始月を設定する前は共通項目を給与に加えません。適用対象の会社で適用月の履歴が未登録の場合は給与計算を保留します。会社の編集値と、適用月を登録した給与用の条件は別に管理されます。',
+                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。選択した月から条件が有効になり、従来の直接金額は別に保持されます。未入力の時間数は計算保留になります。確定済み給与は変更しません。社内共通手当は会社の設定を自動参照します。共通の時間単位手当は対象月の時間数を入力して保存すると給与を再計算します。会社で適用開始月を設定する前は共通項目を給与に加えません。適用対象の会社で適用月の履歴が未登録の場合は給与計算を保留します。会社の編集値と、適用月を登録した給与用の条件は別に管理されます。個別設定の社内共通手当に適用開始月の未登録や開始前の表示がある場合は、その対象月にはまだ加算・控除していません。社内共通手当で給与形態と適用月を確認します。',
                     ),
                   ),
                 ),
@@ -275,4 +293,5 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
     );
   }
 }
+
 
