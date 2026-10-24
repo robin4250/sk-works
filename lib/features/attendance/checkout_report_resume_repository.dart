@@ -234,7 +234,7 @@ class CheckoutReportResumeRepository {
     final rows = await loadDay(workerId: target.workerId, workDate: target.workDate);
     final matches = rows.where((row) => row.companyId == target.companyId &&
         row.siteId == target.siteId && row.routeId == target.routeId &&
-        row.sourceClockInIds.indexOf(target.sourceClockInId) >= 0 &&
+        row.sourceClockInIds.contains(target.sourceClockInId) &&
         row.clockOutIds[row.sourceClockInIds.indexOf(target.sourceClockInId)] == target.clockOutId).toList();
     if (matches.length != 1) { throw StateError('退勤の原本が変わりました。再読み込みしてください。'); }
     return matches.single;
@@ -249,7 +249,7 @@ class CheckoutReportResumeRepository {
     if (date == null || _date(date) != text) { throw StateError('退勤の勤務日を確認できません。'); }
     final rows = await loadDay(workerId: worker, workDate: date);
     final found = rows.where((row) => row.companyId == company &&
-        row.sourceClockInIds.indexOf(source) >= 0 &&
+        row.sourceClockInIds.contains(source) &&
         row.clockOutIds[row.sourceClockInIds.indexOf(source)] == end &&
         row.siteId == saved['site_id'] && row.routeId == saved['route_assignment_id']).toList();
     if (found.length != 1) { throw StateError('保存した退勤の原本を確認できません。'); }

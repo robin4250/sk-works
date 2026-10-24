@@ -50,12 +50,12 @@ class _Fixture {
         if (failRead) { return http.Response('{"message":"fixture read failed","code":"42501"}',403,
             headers: {'content-type':'application/json'}); }
         final start = {'id': id(1000+day), 'company_id': company, 'worker_id': worker,
-          'work_date': text, 'event_type': 'clock_in', 'confirmed_at': text+'T08:00:00+09:00',
+          'work_date': text, 'event_type': 'clock_in', 'confirmed_at': '${text}T08:00:00+09:00',
           'source_clock_in_id': null, 'site_id': site, 'route_assignment_id': null,
           'daily_report_id': reportExists ? rid : null, 'sites': {'name':'合成現場'}};
         final end = {...start, 'id': id(1100+day), 'event_type':'clock_out',
           'source_clock_in_id': badPair ? id(9999) : id(1000+day),
-          'confirmed_at': day == 21 ? '2026-10-22T01:00:00+09:00' : text+'T17:00:00+09:00'};
+          'confirmed_at': day == 21 ? '2026-10-22T01:00:00+09:00' : '${text}T17:00:00+09:00'};
         rows = [start,end,if(duplicateEnd) {...end,'id':id(1200+day)}];
         if(actorChange) { actor=id(98); }
       case 'daily_reports':
