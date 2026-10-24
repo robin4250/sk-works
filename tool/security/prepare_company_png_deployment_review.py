@@ -94,7 +94,7 @@ def validate_before(before):
 
 
 def checkpoint_guard(value):
-    return observer() + 'do $png_guard$ begin if current_setting(\'sko.png_observation\')::jsonb is distinct from ' + literal(json.dumps(value, separators=(',', ':'))) + "::jsonb then raise exception 'PNG catalog/data checkpoint changed';end if;end $png_guard$;\n"
+    return observer() + 'do $png_guard$ declare a jsonb:=current_setting(\'sko.png_observation\')::jsonb; b jsonb:=' + literal(json.dumps(value, separators=(',', ':'))) + "::jsonb; k text; n text; field text; begin if a is distinct from b then for k in select jsonb_object_keys(b) loop if a->k is distinct from b->k then if k in('routines','relations','data') then for n in select jsonb_object_keys(b->k) loop if a#>array[k,n] is distinct from b#>array[k,n] then for field in select jsonb_object_keys(b#>array[k,n]) loop if a#>array[k,n,field] is distinct from b#>array[k,n,field] then raise exception 'PNG catalog/data checkpoint changed: % / % / %',k,n,field;end if;end loop;raise exception 'PNG catalog/data checkpoint changed: % / %',k,n;end if;end loop;end if;raise exception 'PNG catalog/data checkpoint changed: %',k;end if;end loop;raise exception 'PNG catalog/data checkpoint changed';end if;end $png_guard$;\n"
 
 
 def lock_tables(tables):
