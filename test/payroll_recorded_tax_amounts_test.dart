@@ -5,7 +5,7 @@ import 'package:sk_works/features/payroll/payroll_recorded_tax_amounts.dart';
 
 void main() {
   Map<String, dynamic> calculated() => {
-    'tax_calculation': {
+    'tax_calculation': <String, dynamic>{
       'calculator_version': 'payroll-tax-20261010-v1',
       'condition_version': 1, 'conditions_start': '2026-09-01',
       'conditions': {'insurance_mode': 'rates'},
