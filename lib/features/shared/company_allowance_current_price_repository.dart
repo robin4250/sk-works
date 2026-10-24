@@ -52,7 +52,7 @@ class CompanyAllowanceCurrentPriceRepository implements CompanyAllowanceLabelSou
         prices.version == names.version &&
         prices.expectedSource['legacy_version'] == names.legacyVersion;
     int? price(CompanyAllowanceLabel item) {
-      if (!matched || prices == null || item.id == null) return null;
+      if (!matched || item.id == null) return null;
       final legacy = item.origin == 'company_legacy';
       final rows = legacy ? prices.legacyRefs : prices.items;
       final matches = rows.where((row) => row['id'] == item.id &&

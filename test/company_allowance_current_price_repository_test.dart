@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/shared/company_allowance_current_price_repository.dart';
-import '../lib/features/shared/company_allowance_label_repository.dart';
-import '../lib/features/payroll/company_common_allowance_repository.dart';
+import 'package:sk_works/features/shared/company_allowance_current_price_repository.dart';
+import 'package:sk_works/features/shared/company_allowance_label_repository.dart';
+import 'package:sk_works/features/payroll/company_common_allowance_repository.dart';
 
 const definition = CompanyAllowanceLabel(id: 'item', name: '現場手当',
   unit: 'day', generation: null, origin: 'company_common',

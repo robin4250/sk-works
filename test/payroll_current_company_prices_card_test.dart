@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/features/payroll/payroll_company_common_card.dart';
-import '../lib/features/payroll/payroll_unit_item_editor.dart';
+import 'package:sk_works/features/payroll/payroll_company_common_card.dart';
+import 'package:sk_works/features/payroll/payroll_unit_item_editor.dart';
 
 void main() {
   for (final unit in PayrollItemUnit.values) {
