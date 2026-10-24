@@ -48,7 +48,7 @@ CREATE FUNCTION private.company_uploaded_seal_settings(p_company_id uuid) RETURN
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
 DECLARE uid uuid:=auth.uid(); result jsonb;
 BEGIN
- IF uid IS NULL OR NOT private.account_access_allowed() OR NOT EXISTS(
+ IF uid IS NULL OR private.account_access_allowed() IS NOT TRUE OR NOT EXISTS(
  SELECT 1 FROM public.company_members m WHERE m.company_id=p_company_id AND m.user_id=uid AND m.role::text IN ('owner','admin'))
  THEN RAISE EXCEPTION 'owner or admin permission required' USING errcode='42501'; END IF;
  SELECT jsonb_build_object('company_id',c.id,'company_name',c.name,'available',true,
@@ -72,12 +72,12 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE uid uuid:=auth.uid(); v_company_name text; selection private.company_seal_png_selection;
  bytes bytea; width bigint; height bigint; v_version_id uuid;
 BEGIN
- IF uid IS NULL OR NOT private.account_access_allowed() OR NOT EXISTS(
+ IF uid IS NULL OR private.account_access_allowed() IS NOT TRUE OR NOT EXISTS(
  SELECT 1 FROM public.company_members m WHERE m.company_id=p_company_id AND m.user_id=uid AND m.role::text IN ('owner','admin'))
  THEN RAISE EXCEPTION 'owner or admin permission required' USING errcode='42501'; END IF;
  SELECT c.name INTO v_company_name FROM public.companies c WHERE c.id=p_company_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'company not found'; END IF;
- IF NOT private.account_access_allowed() OR NOT EXISTS(SELECT 1 FROM public.company_members m
+ IF private.account_access_allowed() IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.company_members m
  WHERE m.company_id=p_company_id AND m.user_id=uid AND m.role::text IN ('owner','admin'))
  THEN RAISE EXCEPTION 'owner or admin permission required' USING errcode='42501'; END IF;
  IF p_expected_name IS DISTINCT FROM v_company_name THEN RAISE EXCEPTION 'company name changed: preview again' USING errcode='40001'; END IF;
@@ -162,7 +162,7 @@ CREATE FUNCTION private.company_current_uploaded_seal(p_company_id uuid) RETURNS
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE uid uuid:=auth.uid(); current_name text; snapshot jsonb;
 BEGIN
- IF uid IS NULL OR NOT private.account_access_allowed() OR NOT EXISTS(SELECT 1 FROM public.company_members m
+ IF uid IS NULL OR private.account_access_allowed() IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.company_members m
  WHERE m.company_id=p_company_id AND m.user_id=uid AND m.role::text IN ('owner','admin','manager'))
  THEN RAISE EXCEPTION 'management preview permission required' USING errcode='42501'; END IF;
  SELECT name INTO current_name FROM public.companies WHERE id=p_company_id;
@@ -177,3 +177,4 @@ LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$SELECT private.company_cur
 REVOKE ALL ON FUNCTION public.company_current_uploaded_seal(uuid) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.company_current_uploaded_seal(uuid) TO authenticated;
 COMMIT;
+
