@@ -33,7 +33,7 @@ class _CheckoutFlowRepository implements DailyReportRepository {
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError('Unexpected repository operation: ${invocation.memberName}');
   DailyReportRecord? saved;
   final saves = <List<DailyReportWorkerDraft>>[];
-  int eligibilityReads = 0;
+  int eligibilityReads = 0, labelReads = 0;
   @override
   String? get currentActorId => 'synthetic-actor';
   @override
@@ -52,8 +52,10 @@ class _CheckoutFlowRepository implements DailyReportRepository {
   Future<bool> vehicleMeterEnabledForAnchor(String? anchor) async => false;
   @override
   Future<CompanyAllowanceLabelSnapshot> loadCompanyAllowanceLabels({
-    required Iterable<String> workerIds, String? expectedCompanyId}) async =>
-      CompanyAllowanceLabelSnapshot(companyId: 'own', version: 1, items: [registered(1, 'PC手当')]);
+    required Iterable<String> workerIds, String? expectedCompanyId}) async {
+    labelReads++;
+    return CompanyAllowanceLabelSnapshot(companyId: 'own', version: 1, items: [registered(1, 'PC手当')]);
+  }
   @override
   Future<Map<String, Set<String>>> loadCompanyAllowanceEligibility({required String reportId,
     required Iterable<String> workerIds, required CompanyAllowanceLabelSnapshot snapshot}) async {
@@ -85,10 +87,14 @@ void main() {
       initialDate: DateTime(2026, 10, 1), initialSiteId: 'site', repositoryForTesting: repository)));
     await tester.pumpAndSettle();
     expect(repository.eligibilityReads, 0);
+    expect(repository.labelReads, 1);
     final reportScroll = find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first;
     final member = find.text('合成社員');
     await tester.scrollUntilVisible(member, 250, scrollable: reportScroll);
     await tester.tap(member); await tester.pumpAndSettle();
+    expect(find.byType(DailyReportAllowanceNameField), findsOneWidget,
+      reason: tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).join(' | '));
+    expect(tester.widget<DailyReportAllowanceNameField>(find.byType(DailyReportAllowanceNameField)).registeredItems, hasLength(1));
     await tester.scrollUntilVisible(find.widgetWithText(FilterChip, 'PC手当'), 250, scrollable: reportScroll);
     expect(tester.widget<FilterChip>(find.widgetWithText(FilterChip, 'PC手当')).onSelected, isNull);
     final register = find.text('登録');
