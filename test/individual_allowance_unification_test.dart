@@ -37,7 +37,8 @@ class _Units extends PayrollUnitConditionsRepository {
 }
 
 class _Settings extends IndividualPayrollSettingsRepository {
-  _Settings(SupabaseClient client) : units = _Units(client), super.forTesting(client);
+  _Settings(SupabaseClient client) : this._(client, _Units(client));
+  _Settings._(super.client, this.units) : super.forTesting();
   final _Units units;
   int saves = 0;
   bool allowGeneralSave = false, failAfterWorkerSave = false;
@@ -61,8 +62,10 @@ class _Settings extends IndividualPayrollSettingsRepository {
       required Map<String, dynamic> values}) async {
     expect(workerId, 'worker-a'); saves++;
     // A partial old-slot save must not rewrite tax/rates/monthly custom values.
-    if (!allowGeneralSave) expect(values.keys.toSet(), {'allowance_name_1', 'allowance_1',
-      'allowance_name_2', 'allowance_2', 'allowance_name_3', 'allowance_3'});
+    if (!allowGeneralSave) {
+      expect(values.keys.toSet(), {'allowance_name_1', 'allowance_1',
+        'allowance_name_2', 'allowance_2', 'allowance_name_3', 'allowance_3'});
+    }
     this.values.addAll(values);
     if (failAfterWorkerSave) throw StateError('synthetic worker response unknown');
   }

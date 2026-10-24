@@ -418,7 +418,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         workerIds: _workers.map((worker) => worker.workerId),
         expectedCompanyId: _report?.companyId);
       if (!mounted || generation != _loadGeneration ||
-          repository.currentActorId != actor) return;
+          repository.currentActorId != actor) {
+        return;
+      }
       setState(() {
         _companyAllowanceActor = actor;
         _companyAllowanceItems = List.unmodifiable(snapshot.items);

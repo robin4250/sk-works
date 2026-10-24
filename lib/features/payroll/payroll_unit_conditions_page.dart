@@ -216,17 +216,21 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
         individualSaved = await widget.onSaveIndividualAllowances!(items);
       }
       if (!mounted || generation != _generation ||
-          widget.companyId != company || widget.workerId != worker) return;
+          widget.companyId != company || widget.workerId != worker) {
+        return;
+      }
       if (widget.individualAllowanceScopeCurrent?.call() == false) {
         throw StateError('ログイン状態が変わりました');
       }
       var saved = current;
       if (saveUnitConditions) {
         writeStarted = true;
-        saved = await widget.repository.save(company, worker, current!, unitItems);
+        saved = await widget.repository.save(company, worker, current, unitItems);
       }
       if (!mounted || generation != _generation ||
-          widget.companyId != company || widget.workerId != worker) return;
+          widget.companyId != company || widget.workerId != worker) {
+        return;
+      }
       setState(() => _value = saved);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
         split == null ? '単位別設定を保存し、対象月の給与を再計算しました'

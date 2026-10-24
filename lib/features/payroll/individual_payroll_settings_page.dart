@@ -1137,7 +1137,9 @@ class _IndividualPayrollSettingsPageState
       final value = await source.read(company);
       if (!mounted || generation != _loadGeneration || _workerId != worker ||
           !_allowanceScopeCurrent() || value.companyId != company ||
-          (_workspace?.companyId ?? _settingValues['company_id']) != company) return;
+          (_workspace?.companyId ?? _settingValues['company_id']) != company) {
+        return;
+      }
       setState(() { _registeredAllowanceNames = value; _registeredAllowanceReadFailed = false; });
     } catch (_) {
       if (mounted && generation == _loadGeneration && _workerId == worker) {
@@ -1186,7 +1188,9 @@ class _IndividualPayrollSettingsPageState
     final company = _workspace?.companyId ?? _settingValues['company_id'];
     final generation = _loadGeneration;
     if (worker == null || company is! String || _repository == null ||
-        _workspace?.canEdit != true || _allowanceSaveUncertain || !_allowanceScopeCurrent()) throw StateError('手当の保存対象を確認できません');
+        _workspace?.canEdit != true || _allowanceSaveUncertain || !_allowanceScopeCurrent()) {
+      throw StateError('手当の保存対象を確認できません');
+    }
     final values = splitIndividualAllowanceRows(items).workerValues;
     final changed = values.entries.any((entry) {
       final previous = _settingValues[entry.key];
@@ -1195,7 +1199,7 @@ class _IndividualPayrollSettingsPageState
           : (previous as num? ?? 0) != entry.value;
     });
     if (!changed) return false;
-    await _repository!.saveSetting(workerId: worker, values: values);
+    await _repository.saveSetting(workerId: worker, values: values);
     if (!mounted || generation != _loadGeneration || _workerId != worker || !_allowanceScopeCurrent() ||
         (_workspace?.companyId ?? _settingValues['company_id']) != company) {
       throw StateError('手当の保存後に対象が変わりました');
@@ -1208,7 +1212,7 @@ class _IndividualPayrollSettingsPageState
     final worker = _workerId;
     final generation = _loadGeneration;
     if (worker == null || _repository == null) throw StateError('社員を確認できません');
-    final saved = await _repository!.loadSetting(worker);
+    final saved = await _repository.loadSetting(worker);
     final expectedCompany = _workspace?.companyId ?? _settingValues['company_id'];
     if (saved.values['company_id'] is String && saved.values['company_id'] != expectedCompany) {
       throw StateError('給与設定の会社が一致しません');
