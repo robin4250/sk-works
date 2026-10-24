@@ -38,6 +38,12 @@ begin
 end $bounded_guard$;
 '''%(json.dumps(comparable(expected),separators=(',',':')),inventory,json.dumps(list(ignore_added)),json.dumps(OWNED_COLS),label)
 
+def locks(snapshot):
+ names=sorted(snapshot['relations'])+['company_checkout_allowance_private.receipts']
+ targets=','.join('to_regclass('+literal(x)+')' for x in names)
+ exclusive=','.join('to_regclass('+literal(x)+')' for x in ['public.daily_reports','public.daily_report_workers','public.attendance_entries','company_checkout_allowance_private.receipts'])
+ return "do $bounded_locks$ declare r record;begin for r in select c.oid,n.nspname,c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where c.oid in("+targets+") order by c.oid loop execute format('lock table %I.%I in %s mode',r.nspname,r.relname,case when r.oid in("+exclusive+") then 'ACCESS EXCLUSIVE' else 'SHARE' end);end loop;end $bounded_locks$;\n"
+
 def definitions(sql):
  pattern=r'create(?:\s+or\s+replace)?\s+function\s+([\w.]+)\(([^)]*)\)([\s\S]*?)\bAS\s+(\$[A-Za-z_0-9]*\$)([\s\S]*?)\4\s*;'
  result={}
@@ -53,11 +59,18 @@ def added_guard(added,mode):
   auth=identity.startswith('public.') or identity=='company_common_allowance_private.registered_labels(uuid)'
   service=identity=='public.read_daily_report_company_allowance_eligibility(uuid)'
   lines.append("if not exists(select 1 from pg_proc where oid=to_regprocedure("+literal(identity)+") and proowner='postgres'::regrole and md5(prosrc)="+literal(r['body_md5'])+" and prosecdef="+str(r['definer']).lower()+" and provolatile="+literal(r['volatility'])+" and not proisstrict and not proleakproof and proparallel='u' and prokind='f' and prorettype="+literal(r['return_type'])+"::regtype and proconfig=array['search_path=\"\"']) then raise exception 'added routine source/security differs: "+identity+"';end if;")
+  argnames='null::text[]' if r['argnames'] is None else 'array['+','.join(literal(x) for x in r['argnames'])+']::text[]'
+  lines.append("if (select proargnames from pg_proc where oid="+literal(identity)+"::regprocedure) is distinct from "+argnames+" then raise exception 'added routine argument contract differs';end if;")
   lines.append("if has_function_privilege('anon',"+literal(identity)+",'EXECUTE') or has_function_privilege('authenticated',"+literal(identity)+",'EXECUTE') is distinct from "+str(auth).lower()+" or has_function_privilege('service_role',"+literal(identity)+",'EXECUTE') is distinct from "+str(service).lower()+" then raise exception 'added routine grant differs';end if;")
   allowed=["'postgres'::regrole"]+(["'authenticated'::regrole"] if auth else [])+(["'service_role'::regrole"] if service else [])
   lines.append("if exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where p.oid="+literal(identity)+"::regprocedure and (a.grantee not in("+','.join(allowed)+") or a.grantor<>'postgres'::regrole or a.privilege_type<>'EXECUTE' or a.is_grantable)) then raise exception 'unexpected routine grantee';end if;")
  if mode=='integration':
   lines.append("if not exists(select 1 from pg_class where oid=to_regclass('company_checkout_allowance_private.receipts') and relowner='postgres'::regrole and relrowsecurity) or has_schema_privilege('authenticated','company_checkout_allowance_private','USAGE') or has_schema_privilege('service_role','company_checkout_allowance_private','USAGE') then raise exception 'private receipt security differs';end if;")
+ if mode=='integration':
+  receipt_columns=[('id','uuid','gen_random_uuid()'),('company_id','uuid',None),('worker_id','uuid',None),('report_id','uuid',None),('work_date','date',None),('snapshot','jsonb',None),('snapshot_sha256','text',None),('captured_at','timestamp with time zone','clock_timestamp()'),('captured_by','uuid',None)]
+  expected_columns=[{'name':n,'type':t,'not_null':True,'default':d} for n,t,d in receipt_columns]
+  lines.append("if (select jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'not_null',a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid)) order by a.attnum) from pg_attribute a left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum where a.attrelid='company_checkout_allowance_private.receipts'::regclass and a.attnum>0 and not a.attisdropped) is distinct from "+literal(json.dumps(expected_columns))+"::jsonb then raise exception 'private receipt column catalog differs';end if;")
+  lines.append("if exists(select 1 from pg_class c cross join lateral aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a where c.oid='company_checkout_allowance_private.receipts'::regclass and a.grantee<>c.relowner) or exists(select 1 from pg_namespace n cross join lateral aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) a where n.oid='company_checkout_allowance_private'::regnamespace and a.grantee<>n.nspowner) then raise exception 'private namespace/receipt extra grantee';end if;")
  if mode=='integration':
   for relation,cols in OWNED_COLS.items():
    for column in cols:
@@ -87,9 +100,9 @@ def main():
  unit=re.sub(r'(?im)^begin;\s*','',sql);unit=re.sub(r'(?im)^commit;\s*','',unit)
  # The existing generator puts begin and SET on a single line; only its exact prefix is removed.
  unit=unit.replace("begin;set local lock_timeout='3s';set local statement_timeout='30s';", "set local lock_timeout='3s';set local statement_timeout='30s';")
- prefix="begin;set local lock_timeout='3s';set local statement_timeout='30s';\n"
+ prefix="begin;set local search_path='';set local lock_timeout='3s';set local statement_timeout='30s';\n"+locks(before)
  install=prefix+guard(before,'before')+unit+'\n'+guard(after,'after',added)+added_guard(added,a.mode)+'commit;\n'
- post=INVENTORY.read_text()
+ post="begin read only;\n"+guard(after,'postflight',added)+added_guard(added,a.mode)+INVENTORY.read_text()+"rollback;\n"
  restore=prefix+guard(after,'unused restore',added)+added_guard(added,a.mode)
  if a.mode=='integration':
   restore+="do $unused$ begin if exists(select 1 from company_checkout_allowance_private.receipts) or exists(select 1 from public.daily_report_workers where company_allowance_selections is not null or company_allowance_legacy_labels is not null) or exists(select 1 from public.attendance_entries where company_allowance_receipt_id is not null) then raise exception 'checkout already used; restore prohibited';end if;end $unused$;\n"
