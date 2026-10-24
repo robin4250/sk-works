@@ -42,5 +42,5 @@ Map<String, int> recordedPayrollInsuranceAmounts(Map detail, {required String mo
 }
 
 Map<String, dynamic> detailWithRecordedPayrollInsurance(
-  Map<String, dynamic> detail, {required String month},
+  Map<String, dynamic> detail, {required String month}
 ) => {...detail, ...recordedPayrollInsuranceAmounts(detail, month: month)};
