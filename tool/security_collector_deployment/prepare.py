@@ -81,19 +81,19 @@ def guard(snapshot,label):
     expected=json.dumps(comparable(snapshot),separators=(',',':'))
     if '$security_expected$' in expected:raise ValueError('unexpected delimiter')
     return """do $security_guard$
-declare a jsonb; k text; expected jsonb:=$security_expected$%s$security_expected$::jsonb;
+declare observed_inventory jsonb; identity_key text; expected jsonb:=$security_expected$%s$security_expected$::jsonb;
 begin
- select inventory into a from (%s) observed;
- a:=a-'bridge_dependencies';
- for k in select jsonb_object_keys(a->'routines') loop
-  if k=any(array[%s]) then a:=a#-array['routines',k];
-  else a:=jsonb_set(a,array['routines',k],(a#>array['routines',k])-'definition');end if;
+ select inventory into observed_inventory from (%s) observed;
+ observed_inventory:=observed_inventory-'bridge_dependencies';
+ for identity_key in select jsonb_object_keys(observed_inventory->'routines') loop
+  if identity_key=any(array[%s]) then observed_inventory:=observed_inventory#-array['routines',identity_key];
+  else observed_inventory:=jsonb_set(observed_inventory,array['routines',identity_key],(observed_inventory#>array['routines',identity_key])-'definition');end if;
  end loop;
- for k in select unnest(array[%s]) loop a:=a#-array['relations',k];end loop;
- if a#>'{private_schema,nspacl}'<>'null'::jsonb then
-  a:=jsonb_set(a,'{private_schema,nspacl}',(select coalesce(jsonb_agg(x),'[]') from jsonb_array_elements(a#>'{private_schema,nspacl}') x where x#>>'{}' not like 'sko_security_collector_ingest=%%'));
+ for identity_key in select unnest(array[%s]) loop observed_inventory:=observed_inventory#-array['relations',identity_key];end loop;
+ if observed_inventory#>'{private_schema,nspacl}'<>'null'::jsonb then
+  observed_inventory:=jsonb_set(observed_inventory,'{private_schema,nspacl}',(select coalesce(jsonb_agg(x),'[]') from jsonb_array_elements(observed_inventory#>'{private_schema,nspacl}') x where x#>>'{}' not like 'sko_security_collector_ingest=%%'));
  end if;
- if a is distinct from expected then raise exception 'Collector %s inventory differs; re-observe without retry';end if;
+ if observed_inventory is distinct from expected then raise exception 'Collector %s inventory differs; re-observe without retry';end if;
 end $security_guard$;
 """%(expected,INVENTORY.read_text().strip().rstrip(';'),','.join(map(literal,sorted(ADDED))),','.join(map(literal,sorted(TABLES))),label)
 

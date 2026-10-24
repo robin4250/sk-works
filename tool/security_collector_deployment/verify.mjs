@@ -30,7 +30,7 @@ try{
  await db.query('set role collector_fixture_operator');
  await db.query('begin');
  await db.query('create role sko_security_collector_ingest NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS');
- const creatorMembership=(await db.query("select admin_option,inherit_option,set_option from pg_auth_members where roleid='sko_security_collector_ingest'::regrole and member='collector_fixture_operator'::regrole")).rows;
+ const creatorMembership=(await db.query("select admin_option,inherit_option,set_option,grantor::regrole::text grantor,member::regrole::text member from pg_auth_members where roleid='sko_security_collector_ingest'::regrole and member='collector_fixture_operator'::regrole")).rows;
  ok(creatorMembership.length,1,'Non-super CREATEROLE automatically gains a creator membership');
  ok(creatorMembership[0].admin_option,true,'Non-super creator membership carries ADMIN');
  await db.query('rollback');
