@@ -80,7 +80,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   PayrollInsuranceBasisReference? _basisReference, _loadedBasisReference;
   int _basisEditorRevision = 0;
   bool _incomeConversionActive = false;
+  bool _incomeNeedsApplication = false;
   String? _incomeConversionError;
+  String? _baseInputError;
   final _flags = <String, bool>{
     for (final key in const [
       'health',
@@ -204,7 +206,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   }
 
   void _fill(Map<String, dynamic> row) {
-    _incomeConversionActive = false; _incomeConversionError = null;
+    _incomeConversionActive = false; _incomeNeedsApplication = false; _incomeConversionError = null; _baseInputError = null;
     final value = row['value'] as Map;
     _month.text = (row['starts_on'] as String).substring(0, 7);
     _basisReference = value['insurance_basis_reference'] == null ? null :
@@ -230,7 +232,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   }
 
   void _resetInitialConditions() {
-    _incomeConversionActive = false; _incomeConversionError = null;
+    _incomeConversionActive = false; _incomeNeedsApplication = false; _incomeConversionError = null; _baseInputError = null;
     _month.text = _targetMonth;
     _basisReference = null;
     _loadedBasisReference = null;
@@ -306,13 +308,19 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
 
   void _useMonthlyIncome(PayrollInsuranceBasisReference? reference) {
     _basisReference = reference;
-    _incomeConversionError = null;
-    if (reference == null || _insurance != 'rates') return;
+    _incomeConversionError = null; _baseInputError = null;
+    _incomeNeedsApplication = reference != null;
+    if (reference == null) return;
+    if (_insurance != 'rates') {
+      setState(() => _message = '平均月収は計算に未適用です。会社の登録料率で自動計算へ切り替えた後、平均月収を計算に使う操作が必要です。');
+      return;
+    }
     try {
       final bases = PayrollStandardRemuneration.fromMonthlyIncome(
           reference.averageMonthlyIncomeYen, _month.text);
       setState(() {
         _incomeConversionActive = true;
+        _incomeNeedsApplication = false;
         _amounts['health_base_yen']!.text = '${bases.healthYen}';
         _amounts['pension_base_yen']!.text = '${bases.pensionYen}';
         _message = '平均月収から標準報酬月額を設定しました。適用月と確認画面の金額を確認して保存してください。';
@@ -326,7 +334,17 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     if (_needsInitialConfirmation && !_initialConditionsConfirmed) return;
     if (_insurance == 'manual' && !_manualSupported) return;
     final generation = _generation;
+    if (_insurance == 'rates' &&
+        ((_flags['health']! && (int.tryParse(_amounts['health_base_yen']!.text) ?? 0) <= 0) ||
+         (_flags['pension']! && (int.tryParse(_amounts['pension_base_yen']!.text) ?? 0) <= 0))) {
+      setState(() => _baseInputError = '平均月収を入力するか、「通知書の金額で手動修正」から加入している保険の標準報酬月額を入力してください。');
+      return;
+    }
     if (!_form.currentState!.validate()) return;
+    if (_insurance == 'rates' && _incomeNeedsApplication) {
+      setState(() => _baseInputError = '変更した平均月収は未適用です。「平均月収を計算に使う」で標準報酬月額を確認してください。');
+      return;
+    }
     if (_insurance == 'rates' && _incomeConversionActive && _basisReference != null) {
       try {
         PayrollStandardRemuneration.fromMonthlyIncome(
@@ -451,7 +469,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     child: TextFormField(
       controller: _amounts[key],
       onChanged: key == 'health_base_yen' || key == 'pension_base_yen'
-          ? (_) => setState(() { _incomeConversionActive = false; _incomeConversionError = null; }) : null,
+          ? (_) => setState(() { _incomeConversionActive = false; _incomeNeedsApplication = false; _incomeConversionError = null; _baseInputError = null; }) : null,
       enabled: _canEdit && !_busy && !_uncertain,
       keyboardType: TextInputType.number,
       decoration: InputDecoration(labelText: label),
@@ -601,7 +619,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                     if (!mounted || generation != _generation) throw StateError('対象が変わりました');
                     return result;
                   },
-                  onChanged: _useMonthlyIncome,
+                  onChanged: (value) { _basisReference = value; },
+                  onIncomeChanged: _useMonthlyIncome,
                 ),
                 DropdownButtonFormField<String>(
                   key: ValueKey('income-$_income'),
@@ -659,6 +678,15 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                     ),
                 ],
                 if (_insurance == 'rates') ...[
+                  if (_incomeNeedsApplication) ...[
+                    const Text('変更した平均月収は計算に未適用です。'),
+                    OutlinedButton(
+                      key: const ValueKey('insurance-apply-monthly-income'),
+                      onPressed: _canEdit && !_busy && !_uncertain && _basisReference != null
+                          ? () => _useMonthlyIncome(_basisReference) : null,
+                      child: const Text('平均月収を計算に使う'),
+                    ),
+                  ],
                   DropdownButtonFormField<String>(
                     key: ValueKey('insurance-plan-$_insurancePlan'),
                     initialValue: _insurancePlan,
@@ -744,6 +772,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                         : (v) =>
                               setState(() => _initialConditionsConfirmed = v!),
                   ),
+                if (_baseInputError != null)
+                  Text(_baseInputError!, key: const ValueKey('insurance-base-input-error'),
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
                 if (_canEdit)
                   FilledButton(
                     onPressed:

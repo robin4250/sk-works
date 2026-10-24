@@ -51,3 +51,35 @@ Remote CI required before integration. Tests added/updated: all 49 nonzero grade
 boundaries ±1, independent floors/caps, bad amounts/year/month, one-input save /
 reload, existing different bases preserved on open/save, manual override.
 Existing reference validation/auth failure tests retained.
+
+## Follow-up: visible entry in every deduction unit view
+
+Root cause: the entire fixed-deduction component, including its settings link,
+was hidden inside the monthly-only body. The individual page now mounts that
+component in a persistent section header. Its setting button/status stay visible
+when day/hour/month is selected; amount editors/resident tax remain monthly-only
+via a mounted Offstage body. No duplicated repository/widget read or new route.
+
+The button reads `保険料を設定`; status distinguishes loaded applicable condition,
+no applicable condition and failure/unknown. A loaded condition is not a claim
+that computed payroll amounts have been verified. Existing dirty/uncertain/
+resident-editing gates still block navigation to protect drafts. Existing deep
+links and formula dialogs remain. Formula help now describes the one-input path.
+Three state tests cover the persistent entry and unit view toggling without
+reload, and the exact month passed to the existing callback.
+
+## Review fixes: preserve deliberate bases and show unapplied input
+
+- Reference-period edits now update metadata only. Only an explicit amount edit
+  or history selection triggers conversion, so changing a period cannot replace
+  a notice-based manual override.
+- Income edited in fixed/manual mode is marked unapplied. Returning to rates
+  requires the visible `平均月収を計算に使う` action (or an explicit manual base edit)
+  before saving. Save refuses an unapplied reference; it does not silently keep
+  an old base paired with a changed income.
+- Missing positive bases show an actionable error next to the save button;
+  the user is directed to the income field or notice override, rather than
+  receiving invisible errors inside a collapsed form. Existing first-setup
+  tests now use the single income field and assert visible refusal / no writes.
+- New regressions cover period change after a health override and rates → fixed
+  → income edit → rates → refused save → explicit apply → correct distinct bases.

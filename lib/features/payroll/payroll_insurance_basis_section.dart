@@ -8,12 +8,14 @@ import 'payroll_insurance_basis_reference.dart';
 class PayrollInsuranceBasisSection extends StatefulWidget {
   const PayrollInsuranceBasisSection({super.key, required this.month,
     required this.supported, required this.enabled, required this.readHistory,
-    required this.onChanged, this.initialReference});
+    required this.onChanged, this.onIncomeChanged, this.initialReference});
   final String month;
   final bool supported, enabled;
   final PayrollInsuranceBasisReference? initialReference;
   final Future<PayrollInsuranceIncomeHistory> Function(String from, String to) readHistory;
   final ValueChanged<PayrollInsuranceBasisReference?> onChanged;
+  /// Only explicit amount/history selection, never a period-only metadata edit.
+  final ValueChanged<PayrollInsuranceBasisReference?>? onIncomeChanged;
 
   @override
   State<PayrollInsuranceBasisSection> createState() => _PayrollInsuranceBasisSectionState();
@@ -87,9 +89,14 @@ class _PayrollInsuranceBasisSectionState extends State<PayrollInsuranceBasisSect
         });
       }
     }
-    try { widget.onChanged(_reference()); } on FormatException {
+    try {
+      final reference = _reference();
+      widget.onChanged(reference);
+      if (!period) widget.onIncomeChanged?.call(reference);
+    } on FormatException {
       // The enclosing Form validates before save. Never emit a guessed value.
       widget.onChanged(null);
+      if (!period) widget.onIncomeChanged?.call(null);
     }
   }
 
@@ -125,6 +132,7 @@ class _PayrollInsuranceBasisSectionState extends State<PayrollInsuranceBasisSect
       _average.text = '${ref.averageMonthlyIncomeYen}';
     });
     widget.onChanged(ref);
+    widget.onIncomeChanged?.call(ref);
   }
 
   String get _sourceLabel => switch (_source) {

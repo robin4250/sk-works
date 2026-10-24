@@ -24,8 +24,8 @@ void main() {
     await t.pumpAndSettle();
   }
 
-  Future<void> scenario(WidgetTester t, {required bool supported, bool editIncome = true, bool manualOverride = false}) async {
-    var version = 1;
+  Future<void> scenario(WidgetTester t, {required bool supported, bool editIncome = true, bool manualOverride = false, bool changePeriod = false, bool modeRoundtrip = false}) async {
+    var version = 1, saves = 0;
     var saved = Map<String, dynamic>.from(original);
     Map<String, dynamic> response() => {'company_id': 'company', 'worker_id': 'worker',
       'can_edit': true, if (supported) 'insurance_basis_reference_contract_version': 1,
@@ -43,6 +43,7 @@ void main() {
             'history_fingerprint': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'};
         }
         expect(name, 'save_worker_payroll_tax_conditions');
+        saves++;
         expect(params['p_expected_version'], version);
         saved = Map<String, dynamic>.from(params['p_value'] as Map);
         version++;
@@ -70,20 +71,42 @@ void main() {
       await t.ensureVisible(health); await t.pumpAndSettle();
       await t.enterText(health, '440000'); await t.pump();
     }
+    if (changePeriod) {
+      await enter(t, 'insurance-reference-from', '2026-06');
+    }
+    if (modeRoundtrip) {
+      Future<void> mode(String current, String label) async {
+        final dropdown = find.byKey(ValueKey('insurance-$current'));
+        await t.ensureVisible(dropdown); await t.pumpAndSettle();
+        await t.tap(dropdown); await t.pumpAndSettle();
+        await t.tap(find.text(label).last); await t.pumpAndSettle();
+      }
+      await mode('rates', '個別設定の固定月額');
+      await enter(t, 'insurance-reference-average', '700000');
+      await mode('fixed', '会社の登録料率で自動計算');
+      final saveButton = find.widgetWithText(FilledButton, '確認して保存');
+      await t.ensureVisible(saveButton); await t.pumpAndSettle();
+      await t.tap(saveButton); await t.pumpAndSettle();
+      expect(saves, 0); expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(const ValueKey('insurance-base-input-error')).hitTestable(), findsOneWidget);
+      final apply = find.byKey(const ValueKey('insurance-apply-monthly-income'));
+      await t.ensureVisible(apply); await t.pumpAndSettle();
+      await t.tap(apply); await t.pumpAndSettle();
+    }
     await save(t);
-    expect(saved['health_base_yen'], manualOverride ? 440000 : 470000);
-    expect(saved['pension_base_yen'], 470000);
+    expect(saved['health_base_yen'], modeRoundtrip ? 710000 : manualOverride ? 440000 : 470000);
+    expect(saved['pension_base_yen'], modeRoundtrip ? 650000 : 470000);
     expect(saved['income_mode'], 'fixed');
     if (supported) {
-      expect(saved['insurance_basis_reference'], {'schema': 1, 'from': '2026-07-01',
-        'to': '2026-09-01', 'average_monthly_income_yen': 480000,
+      expect(saved['insurance_basis_reference'], {'schema': 1, 'from': changePeriod ? '2026-06-01' : '2026-07-01',
+        'to': '2026-09-01', 'average_monthly_income_yen': modeRoundtrip ? 700000 : 480000,
         'source': 'manual', 'observed_months': 0, 'history_fingerprint': null});
       final reload = find.widgetWithText(TextButton, '再読み込み');
       await t.ensureVisible(reload); await t.pumpAndSettle();
       await t.tap(reload); await t.pumpAndSettle();
       final field = t.widget<TextFormField>(find.byKey(const ValueKey('insurance-reference-average')));
-      expect(field.controller!.text, '480000');
-      expect(t.widget<TextFormField>(find.byKey(const ValueKey('insurance-reference-from'))).controller!.text, '2026-07');
+      expect(field.controller!.text, modeRoundtrip ? '700000' : '480000');
+      expect(t.widget<TextFormField>(find.byKey(const ValueKey('insurance-reference-from'))).controller!.text, changePeriod ? '2026-06' : '2026-07');
     } else {
       expect(saved.containsKey('insurance_basis_reference'), isFalse);
       expect(find.textContaining('対象期間・平均月収は未保存です。'), findsWidgets);
@@ -98,6 +121,10 @@ void main() {
       (t) => scenario(t, supported: true, editIncome: false));
   testWidgets('notice amount override is saved instead of the derived health base',
       (t) => scenario(t, supported: true, manualOverride: true));
+  testWidgets('period-only metadata change preserves the notice amount override',
+      (t) => scenario(t, supported: true, manualOverride: true, changePeriod: true));
+  testWidgets('fixed mode income edit requires explicit application when returning to rates',
+      (t) => scenario(t, supported: true, modeRoundtrip: true));
   testWidgets('unprepared server preserves normal condition save and discloses unsaved reference',
       (t) => scenario(t, supported: false));
 

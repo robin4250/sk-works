@@ -240,17 +240,10 @@ void main() {
         ],
       );
     });
-    for (final label in ['健康保険の標準報酬月額（円）', '厚生年金の標準報酬月額（円）']) {
-      final field = find.widgetWithText(TextFormField, label);
-      await t.scrollUntilVisible(
-        field,
-        350,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await t.enterText(field, '300000');
-      t.testTextInput.hide();
-      await t.pumpAndSettle();
-    }
+    final income = find.byKey(const ValueKey('insurance-reference-average'));
+    await t.ensureVisible(income); await t.pumpAndSettle();
+    await t.enterText(income, '300000');
+    t.testTextInput.hide(); await t.pumpAndSettle();
     final confirmation = find.widgetWithText(
       CheckboxListTile,
       '扶養人数・保険の加入／未加入・標準報酬月額を確認しました',
@@ -472,7 +465,9 @@ void main() {
       await t.pumpAndSettle();
       await tapSave(t);
       expect(find.byType(AlertDialog), findsNothing);
-      expect(find.text('加入している保険の標準報酬月額を入力してください'), findsNWidgets(2));
+      expect(find.byKey(const ValueKey('insurance-base-input-error')), findsOneWidget);
+      expect(find.text('平均月収を入力するか、「通知書の金額で手動修正」から加入している保険の標準報酬月額を入力してください。'), findsOneWidget);
+      expect(find.byKey(const ValueKey('insurance-base-input-error')).hitTestable(), findsOneWidget);
       expect(writes, 0);
     },
   );
