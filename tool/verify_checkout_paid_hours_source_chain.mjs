@@ -17,6 +17,7 @@ const extension=String.raw`
  await client.query('update workers set user_id=$1 where id=$2',[U,W5]);
  const lockRow=hourSources.functions.find(f=>f.signature==='payroll_scope_private.lock_scopes(jsonb,boolean)');
  eq(md5(dbBody(lockRow.definition)),lockRow.source_md5,'Exact live scope lock supplied');
+ await exec('drop function payroll_scope_private.lock_scopes(jsonb,boolean)');
  await exec(lockRow.definition);
  const guardRow=clockSources.functions.find(f=>f.signature==='private.validate_attendance_shift_evidence()');
  eq(md5(dbBody(guardRow.definition)),guardRow.source_md5,'Exact live clock source guard');
