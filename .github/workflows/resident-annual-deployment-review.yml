@@ -1,0 +1,50 @@
+name: Resident tax annual bounded deployment
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/resident_tax_annual_20261020.sql.review-only'
+      - 'tool/security/prepare_resident_annual_deployment_review.py'
+      - 'tool/security/test_prepare_resident_annual_deployment_review.py'
+      - 'tool/verify_resident_annual_deployment_review.mjs'
+      - 'tool/verify_resident_tax_annual.mjs'
+      - 'tool/payroll_scope_fixture_setup.mjs'
+      - '.github/workflows/resident-annual-deployment-review.yml'
+permissions:
+  contents: read
+jobs:
+  native-annual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        proof: [existing-functional, deployment]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_resident_annual_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SKO_RESIDENT_ANNUAL_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_resident_annual_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: python3 -m unittest discover -s tool/security -p 'test_prepare_resident_annual_deployment_review.py' -v
+      - if: matrix.proof == 'existing-functional'
+        run: node tool/verify_resident_tax_annual.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+      - if: matrix.proof == 'deployment'
+        run: node tool/verify_resident_annual_deployment_review.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
