@@ -1,0 +1,44 @@
+{
+  "review_only": true,
+  "main": "22ecb36d0b15bc0fb498f3c23016508507ea5a99",
+  "source_sha256": {
+    "docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only": "dce7ca9653988c642d49325ff331d0548448206ae3e8c2e2dc24202d36a04e01",
+    "docs/candidates/trade_document_invoice_confirmation_20261021.sql.review-only": "8cc6569ee8b8194d820d6632dd22b34a671f3e5711b718e8131d253892d9e121",
+    "docs/candidates/trade_document_monthly_review_20261022.sql.review-only": "a599a9a5274a3a2a071948a0fcd63deb41f21d3426d0745b6b8575a2eb8a438e",
+    "docs/candidates/trade_document_confirmation_api_20261022.sql.review-only": "18d738705b4f55a82e67faec31f115473df38c5a51bcb31da6e621c10646db83"
+  },
+  "phase_a_guard_md5": "fda823bd0baae732b550fcca20b9e9d1",
+  "routines": [
+    {
+      "signature": "trade_document_consent_private.prepare_document(uuid,uuid,uuid,integer,jsonb,text,uuid,text,integer)",
+      "before_md5": "a609aebf840b34a6e576a5fe2428e439",
+      "after_md5": "4960105751b62949e1ecd6be2a9b3356"
+    },
+    {
+      "signature": "trade_document_consent_private.decide(uuid,integer,uuid,integer,text,text,text,boolean,uuid)",
+      "before_md5": "15b5a7a4a961cfee60da6be237c180ec",
+      "after_md5": "10bc1fa02e8deffe8e5465f26c5f48e0"
+    },
+    {
+      "signature": "trade_document_consent_private.confirm_local_document(uuid,uuid,integer,jsonb,uuid,boolean,boolean)",
+      "before_md5": "db1cff0846ed41ae1dd9b8a437b810ca",
+      "after_md5": "b6eba08727b8e683bb7bb160f6bbc64d"
+    },
+    {
+      "signature": "trade_document_consent_private.confirm_monthly_review(uuid,uuid,integer,jsonb,uuid,boolean,boolean)",
+      "before_md5": "4a43c7ec090882d384de11b451318cd8",
+      "after_md5": "f9a07e18a71c70946809539080ac5f06"
+    },
+    {
+      "signature": "trade_document_confirmation_api_private.workspace(text,uuid,text)",
+      "before_md5": "487f5a174cf7c1d76fc4a750b8bb78ca",
+      "after_md5": "cf1efad0e248941526144fec09886392"
+    },
+    {
+      "signature": "trade_document_confirmation_api_private.confirm(jsonb,uuid,boolean,boolean)",
+      "before_md5": "1e92c0750bafc5e78b6dcadd4d4b16e1",
+      "after_md5": "0c6bef1c21a1e387016a2a45c53399c3"
+    }
+  ],
+  "output_sha256": "a652ea6dcefd637d72037e47a6962504e38f1ec95fed97a3bd8aad6c2faf30e1"
+}

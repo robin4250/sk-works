@@ -1,0 +1,30 @@
+ // Approved evidence remains readable when new reciprocal operations are OFF.
+ await asActor(UA);const approvedBeforeOff=await render(w,true);
+ const financialBeforeOff=await protectedState();
+ if(c.openNativePeer){
+  const holder=await c.openNativePeer(),off=await c.openNativePeer();let switched;
+  try{
+   await holder.query('begin');await holder.query("select set_config('test.uid',$1,false),set_config('test.jwt',$2,false)",[UA,JSON.stringify({sub:UA,role:'authenticated',session_id:sessions.get(UA)})]);await holder.query('set role authenticated');
+   await holder.query('select public.trade_document_confirmation_workspace($1,$2,$3)',['payment_certificate',large.parent,'1']);
+   const pid=(await off.query('select pg_backend_pid() pid')).rows[0].pid;
+   switched=off.query("update private.master_feature_settings set enabled=false where feature_key='trade_document_reciprocal_seals'");
+   let observed=false;for(let attempt=0;attempt<100;attempt++){const row=(await db.query('select wait_event_type from pg_stat_activity where pid=$1',[pid])).rows[0];if(row?.wait_event_type==='Lock'){observed=true;break;}await new Promise(resolve=>setTimeout(resolve,20));}
+   check(observed,true);await holder.query('commit');await switched;
+   check(await q("select enabled v from private.master_feature_settings where feature_key='trade_document_reciprocal_seals'"),false);
+  }finally{await holder.query('rollback');if(switched)await switched;await holder.end();await off.end();}
+ }else await db.exec("update private.master_feature_settings set enabled=false where feature_key='trade_document_reciprocal_seals'");
+ await deny(()=>confirm(ip,id(8990)),/disabled/);
+ const offWorkspace=await workspace('payment_certificate',monthly.parent,'1');
+ check(offWorkspace.can_integrated_confirm,false);check(offWorkspace.unavailable_reason,'reciprocal_feature_disabled');
+ check(offWorkspace.can_render,true);check(await render(w,true),approvedBeforeOff);
+ check((await receipt(ip,id(8105))).result.operation,'invoice_final_approval_with_seal');
+ await deny(()=>q('select trade_document_consent_private.prepare_document($1,$2,$3,0,$4::jsonb) v',[id(8991),A,B,JSON.stringify({kind:'order',transaction_id:id(8991),issuer_company_id:A,counterparty_company_id:B,issuer:{name:'甲会社'},counterparty:{name:'乙会社'}})]),/disabled/);
+ await asActor(UC);await deny(()=>workspace('payment_certificate',monthly.parent,'1'),/permission/);await asActor(UA);
+ await db.exec("update private.master_feature_settings set enabled=null where feature_key='trade_document_reciprocal_seals'");
+ await deny(()=>confirm(ip,id(8992)),/disabled/);
+ await db.exec("delete from private.master_feature_settings where feature_key='trade_document_reciprocal_seals'");
+ await deny(()=>confirm(ip,id(8993)),/disabled/);
+ await db.exec("insert into private.master_feature_settings values('trade_document_reciprocal_seals',false)");
+ check(await protectedState(),financialBeforeOff);
+ await asActor(UB);check((await render(rw,true)).evidence.body_hash,approvedBeforeOff.evidence.body_hash);await asActor(UA);
+ console.log('PASS reciprocal business gate: exact 6 write boundaries, ON existing invoice/monthly flow, OFF/null/missing refusal, auth before gate, metadata unchanged, immutable issuer/recipient archive and readonly receipt retained, financial/approval/consent state unchanged; production/proof toggle NOT PERFORMED');
