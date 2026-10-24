@@ -18,7 +18,7 @@ void main() {
   for (final entry in <(Widget, String)>[
     (const IndividualPayrollSettingsPage(), '個別給与設定'),
     (const PayrollConfirmationSettingsPage(), '会社の給与設定'),
-    (const CompanyRateSettingsPage(), '会社単価・手当設定'),
+    (const CompanyRateSettingsPage(), '消費税・福利厚生費・旧単価'),
     (const CompanyModuleSettingsPage(), '利用機能のON／OFF'),
     (const CompanySealSettingsPage(), '会社角印'),
   ]) {

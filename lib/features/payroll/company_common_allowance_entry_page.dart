@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../data/supabase_backend.dart';
+import '../settings/company_allowance_identity_page.dart';
 import 'company_common_payroll_page.dart';
 
 class CompanyCommonAllowanceScope {
@@ -13,7 +14,8 @@ class CompanyCommonAllowanceScope {
 }
 
 /// Allowance-only scope entry, narrowed from the reviewed PR1156 selector.
-/// Tax, welfare and existing four-rate routes are deliberately unchanged.
+/// Company data does not expose a second allowance editor. Registered-item
+/// management remains available inside this payroll-list entry.
 /// Membership hints only select the scope; each child RPC authorizes it again.
 class CompanyCommonAllowanceEntryPage extends StatefulWidget {
   const CompanyCommonAllowanceEntryPage({super.key, this.companyId,
@@ -171,9 +173,17 @@ class _CompanyCommonAllowanceEntryPageState extends State<CompanyCommonAllowance
         for (final scope in _choices) ListTile(title: Text(scope.name),
           subtitle: Text(scope.canEdit ? '管理者' : '閲覧のみ'),
           onTap: () => setState(() { _selected = scope; _error = null; _editorEpoch++; })),
-      ]) : KeyedSubtree(key: ValueKey('${selected.companyId}/$_editorEpoch'), child:
-        widget.allowancesBuilder?.call(context, selected.companyId) ??
-          CompanyCommonPayrollPage(companyId: selected.companyId)),
+      ]) : Column(children: [
+        Expanded(child: KeyedSubtree(key: ValueKey('${selected.companyId}/$_editorEpoch'), child:
+          widget.allowancesBuilder?.call(context, selected.companyId) ??
+            CompanyCommonPayrollPage(companyId: selected.companyId))),
+        if (selected.canEdit) SafeArea(top: false, child: TextButton(
+          key: const ValueKey('common-allowance-registered-items'),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => CompanyAllowanceIdentityPage(companyId: selected.companyId))),
+          child: const Text('登録済み項目管理'),
+        )),
+      ]),
     );
     return Stack(children: [
       Offstage(offstage: covered, child: content),

@@ -1,9 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../data/supabase_backend.dart';
 
 class CompanyRateSettings {
   const CompanyRateSettings({
+    this.companyId,
     required this.taxRate,
     required this.welfareRate,
     required this.overtimeHourRateYen,
@@ -21,6 +23,7 @@ class CompanyRateSettings {
     this.allowance3Unit = '回',
   });
 
+  final String? companyId;
   final double taxRate;
   final double welfareRate;
   final int overtimeHourRateYen;
@@ -44,6 +47,7 @@ class CompanyRateSettings {
         value is num ? value.toInt() : int.tryParse('$value') ?? 0;
 
     return CompanyRateSettings(
+      companyId: row['company_id'] is String ? row['company_id'] as String : null,
       taxRate: number(row['tax_rate']),
       welfareRate: number(row['welfare_rate']),
       overtimeHourRateYen: yen(row['overtime_hour_rate_yen']),
@@ -67,12 +71,99 @@ class CompanyRateSettings {
           : '回',
     );
   }
+
+  Map<String, dynamic> get defaultsValues => {
+    'tax_rate': taxRate,
+    'welfare_rate': welfareRate,
+    'overtime_hour_rate_yen': overtimeHourRateYen,
+    'early_hour_rate_yen': earlyHourRateYen,
+    'night_hour_rate_yen': nightHourRateYen,
+    'holiday_day_rate_yen': holidayDayRateYen,
+  };
 }
 
 class CompanyRateSettingsRepository {
-  CompanyRateSettingsRepository._(this._client);
+  CompanyRateSettingsRepository._(SupabaseClient client)
+      : _client = client, _actor = client.auth.currentUser?.id;
+  @visibleForTesting
+  CompanyRateSettingsRepository.forTesting(SupabaseClient client)
+      : _client = client, _actor = client.auth.currentUser?.id;
 
   final SupabaseClient _client;
+  final String? _actor;
+
+  Future<dynamic> _defaultsCall(String name, Map<String, dynamic> params) async {
+    final session = _client.auth.currentSession;
+    if (_actor == null || session == null || session.isExpired ||
+        session.user.id != _actor) {
+      throw StateError('ログイン情報が変わりました。画面を開き直してください。');
+    }
+    final token = session.accessToken;
+    final result = await _client.rpc(name, params: params)
+        .setHeader('Authorization', 'Bearer $token')
+        .timeout(const Duration(seconds: 15));
+    if (_client.auth.currentUser?.id != _actor ||
+        _client.auth.currentSession?.accessToken != token) {
+      throw StateError('保存状態を再読み込みして確認してください。');
+    }
+    return result;
+  }
+
+  CompanyRateSettings _defaultsResult(Object? raw, String companyId) {
+    if (raw is! Map || raw['company_id'] != companyId ||
+        raw['contract_version'] != 1) {
+      throw StateError('会社の設定対象を確認できません。');
+    }
+    for (final key in const ['tax_rate', 'welfare_rate',
+      'overtime_hour_rate_yen', 'early_hour_rate_yen',
+      'night_hour_rate_yen', 'holiday_day_rate_yen']) {
+      final value = raw[key];
+      final rate = key == 'tax_rate' || key == 'welfare_rate';
+      if (value is! num || !value.isFinite || value < 0 ||
+          (rate ? value > 100 || value != double.parse(value.toStringAsFixed(key == 'tax_rate' ? 2 : 3))
+              : value > 2147483647 || value != value.round())) {
+        throw StateError('会社の設定値を確認できません。');
+      }
+    }
+    return CompanyRateSettings.fromMap(Map<String, dynamic>.from(raw));
+  }
+
+  Future<CompanyRateSettings> loadDefaults(String companyId) async =>
+      _defaultsResult(await _defaultsCall('read_company_rate_defaults',
+        {'p_company_id': companyId}), companyId);
+
+  Future<CompanyRateSettings> saveDefaults({
+    required CompanyRateSettings expected,
+    required double taxRate,
+    required double welfareRate,
+    required int overtimeHourRateYen,
+    required int earlyHourRateYen,
+    required int nightHourRateYen,
+    required int holidayDayRateYen,
+  }) async {
+    final companyId = expected.companyId;
+    if (companyId == null || companyId.isEmpty) {
+      throw StateError('会社情報を確認できません。');
+    }
+    final values = {
+      'tax_rate': taxRate, 'welfare_rate': welfareRate,
+      'overtime_hour_rate_yen': overtimeHourRateYen,
+      'early_hour_rate_yen': earlyHourRateYen,
+      'night_hour_rate_yen': nightHourRateYen,
+      'holiday_day_rate_yen': holidayDayRateYen,
+    };
+    // Match the existing numeric(5,2) / numeric(6,3) columns exactly. Never
+    // silently round and then report an uncertain save after the DB changed.
+    _defaultsResult({'contract_version': 1, 'company_id': companyId, ...values}, companyId);
+    final saved = _defaultsResult(await _defaultsCall('save_company_rate_defaults', {
+      'p_company_id': companyId, 'p_expected': expected.defaultsValues,
+      'p_values': values,
+    }), companyId);
+    if (values.entries.any((entry) => saved.defaultsValues[entry.key] != entry.value)) {
+      throw StateError('保存結果を確認できません。再読み込みしてください。');
+    }
+    return saved;
+  }
 
   static CompanyRateSettingsRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -122,3 +213,4 @@ class CompanyRateSettingsRepository {
     );
   }
 }
+
