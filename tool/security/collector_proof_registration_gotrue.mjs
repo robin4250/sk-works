@@ -48,6 +48,8 @@ try{
  if(typeof publicKey!=='string'||typeof serviceKey!=='string')throw Error('Missing local fixture keys');
  const pg=(await import(path.join(root,'tool/security/fixture_dependencies/node_modules/pg/lib/index.js'))).default;
  db=new pg.Client({connectionString:database.href});await db.connect();
+ const serverVersion=Number((await db.query('show server_version_num')).rows[0].server_version_num);
+ assert.ok(serverVersion>=170000&&serverVersion<180000,'Native PostgreSQL17 fixture required');
  assert.equal((await db.query("select count(*)::int n from pg_tables where schemaname='public'")).rows[0].n,0,'Fresh local public schema required');
  assert.equal((await db.query('select count(*)::int n from auth.users')).rows[0].n,0,'Fresh GoTrue fixture required');
  assert.equal((await db.query("select to_regnamespace('private') is null absent")).rows[0].absent,true);
@@ -108,11 +110,12 @@ try{
  assert.equal((await db.query("select private.reauthentication_scope('master.security_collector.read') s")).rows[0].s,'master_security');
  assert.equal((await db.query('select enabled from private.master_device_lock_rollout')).rows[0].enabled,false);
  assert.deepEqual(await protectedIdentity(),protectedBefore,'Registration cannot change identity/provider/company/member/master/device values');
- phase='exact-collector-and-explicit-fixture-bridges';
+ phase='exact-collector-review-unit-install';
  const collector=await read('docs/candidates/security_collector_storage_v1_20261020.sql.review-only');
  assert.equal(hash(collector),'b96f6e4365e2e992886f38dad0f777e55665f18b03525cddf4edbdf746348207');
  await db.query('create role sko_security_collector_ingest nologin noinherit');
  await db.query(collector);
+ phase='explicit-fixture-private-read-bridges';
  // These two narrow RPCs exist ONLY in this disposable fixture. Current product
  // source has no public collector read route. They preserve the real request JWT
  // and call the exact existing private consumer; they are not a proposed API.
@@ -122,9 +125,11 @@ try{
  const collectorId=randomUUID(),eventId=randomUUID(),now=new Date().toISOString();
  const event={event_id:eventId,collector_id:collectorId,occurred_at:now,event_kind:'current_lure_touched',generation:1,correlation_key:'a'.repeat(64),key_epoch:now.slice(0,10)};
  await db.query('update private.security_collector_control set ingest_enabled=true');
- await db.query('set role sko_security_collector_ingest');
- try{await db.query('select private.ingest_security_collector_event($1)',[event]);}
- finally{await db.query('reset role');}
+ // The fixture owner seeds through the exact ingest function. Bridge-role and
+ // HMAC authorization are covered by the separate signed transport Native job;
+ // this proof does not grant role membership or pretend to re-prove that path.
+ phase='fixture-owner-seeds-exact-ingest';
+ await db.query('select private.ingest_security_collector_event($1)',[event]);
  await db.query('update private.security_collector_control set ingest_enabled=false');
  await db.query("notify pgrst,'reload schema'");
  phase='actual-edge-runtime';
