@@ -1,0 +1,27 @@
+name: Company checkout real GoTrue JWT boundaries
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/company-checkout-real-gotrue.yml'
+      - 'tool/company_checkout_real_gotrue_e2e.mjs'
+      - 'tool/fixtures/company_checkout_account_predicate.json'
+permissions:
+  contents: read
+concurrency:
+  group: checkout-real-auth-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  local-gotrue-postgrest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/company_checkout_real_gotrue_e2e.mjs
+      - name: Official local GoTrue sessions and unchanged checkout RPCs
+        run: node tool/company_checkout_real_gotrue_e2e.mjs

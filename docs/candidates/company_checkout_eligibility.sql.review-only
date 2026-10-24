@@ -1,0 +1,73 @@
+-- Review only. Requires the source-bound checkout receipt integration first.
+-- No application data writes, prices, employee pay-type values or new auth scope.
+begin;
+set local lock_timeout='3s';
+set local statement_timeout='30s';
+do $preflight$ begin
+ if current_user<>'postgres' then raise exception 'owner required';end if;
+ if to_regprocedure('public.company_checkout_allowance_contract_version()') is null
+ or to_regprocedure('company_checkout_allowance_private.registered_item(uuid,uuid,jsonb)') is null
+ then raise exception 'checkout receipt integration required';end if;
+ if to_regprocedure('public.read_daily_report_company_allowance_eligibility(uuid)') is not null
+ then raise exception 'eligibility reader already exists';end if;
+end $preflight$;
+create function public.read_daily_report_company_allowance_eligibility(p_report_id uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $eligibility$
+declare actor uuid:=auth.uid();cid uuid;report public.daily_reports%rowtype;
+ legacy_version bigint;common_version bigint;worker record;candidate jsonb;validated jsonb;
+ items jsonb;workers jsonb:='[]';
+begin
+ if actor is null or private.account_access_allowed() is not true then
+  raise exception 'daily report unavailable' using errcode='42501';end if;
+ -- Same company selection as the existing normal report draft writer.
+ select cm.company_id into cid from public.company_members cm where cm.user_id=actor limit 1;
+ if cid is null then raise exception 'daily report unavailable' using errcode='42501';end if;
+ select r.* into report from public.daily_reports r where r.id=p_report_id and r.company_id=cid;
+ if not found or report.report_date is null then
+  raise exception 'daily report unavailable' using errcode='42501';end if;
+ if report.status is distinct from 'draft' and not (report.status='signed' and exists(
+  select 1 from public.daily_report_edit_requests e where e.report_id=report.id
+   and e.requested_by=actor and e.status='approved')) then
+  raise exception 'daily report editing unavailable' using errcode='42501';end if;
+ select s.version into legacy_version from company_allowance_identity_private.state s where s.company_id=cid;
+ select s.version into common_version from company_common_allowance_private.state s where s.company_id=cid;
+ if common_version is null and exists(select 1 from company_common_allowance_private.items i
+   where i.company_id=cid and i.retired_at is null) then
+  raise exception 'registered common source version missing' using errcode='55000';end if;
+ for worker in select w.id from public.daily_report_workers rw
+  join public.workers w on w.id=rw.worker_id and w.company_id=cid
+  where rw.report_id=report.id order by w.id loop
+  items:='[]';
+  -- Missing settings has no verified eligible choices; do not infer a payroll type.
+  if exists(select 1 from public.worker_payroll_settings s
+    where s.company_id=cid and s.worker_id=worker.id and s.pay_type is not null) then
+   for candidate in
+    select x.item from (
+     select jsonb_build_object('origin','company_legacy','id',i.id,'generation',i.generation,
+      'registration_version',legacy_version,'name_snapshot',to_jsonb(r)->>('allowance_'||i.slot||'_name'),'unit','day') item
+     from company_allowance_identity_private.identities i
+     join public.company_rate_settings r on r.company_id=i.company_id
+     where i.company_id=cid and i.retired_at is null and legacy_version is not null
+      and nullif(trim(to_jsonb(r)->>('allowance_'||i.slot||'_name')),'') is not null
+     union all
+     select jsonb_build_object('origin','company_common','id',i.id,'generation',null,
+      'registration_version',common_version,'name_snapshot',i.name,'unit',i.unit)
+     from company_common_allowance_private.items i join public.worker_payroll_settings s
+      on s.company_id=i.company_id and s.worker_id=worker.id and s.pay_type=i.payroll_type
+     where i.company_id=cid and i.retired_at is null and i.unit in('day','hour')
+    ) x order by x.item->>'origin',x.item->>'id' loop
+    -- Reuse the save/sign registration and worker eligibility authority.
+    validated:=company_checkout_allowance_private.registered_item(cid,worker.id,candidate);
+    items:=items||jsonb_build_array(jsonb_build_object('origin',validated->'origin','id',validated->'id',
+     'generation',validated->'generation','registration_version',validated->'registration_version'));
+   end loop;
+  end if;
+  workers:=workers||jsonb_build_array(jsonb_build_object('worker_id',worker.id,'items',items));
+ end loop;
+ return jsonb_build_object('contract_version',1,'report_id',report.id,'company_id',cid,
+  'source_versions',jsonb_build_object('legacy_version',legacy_version,'common_version',coalesce(common_version,0)),
+  'workers',workers);
+end $eligibility$;
+revoke all on function public.read_daily_report_company_allowance_eligibility(uuid) from public,anon,authenticated,service_role;
+grant execute on function public.read_daily_report_company_allowance_eligibility(uuid) to authenticated,service_role;
+commit;

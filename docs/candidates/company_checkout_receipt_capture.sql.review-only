@@ -1,0 +1,223 @@
+-- REVIEW ONLY. Requires receipt core; source-bound writers/consumers are separate.
+-- This is not a production installer or a declaration of complete hour support.
+alter table public.daily_report_workers add column company_allowance_selections jsonb;
+alter table public.daily_report_workers add column company_allowance_legacy_labels text;
+alter table public.attendance_entries add column company_allowance_receipt_id uuid;
+create table company_checkout_allowance_private.receipts(
+ id uuid primary key default gen_random_uuid(),
+ company_id uuid not null, worker_id uuid not null, report_id uuid not null,
+ work_date date not null, snapshot jsonb not null, snapshot_sha256 text not null,
+ captured_at timestamptz not null default clock_timestamp(), captured_by uuid not null,
+ unique(company_id,worker_id,report_id,work_date,snapshot_sha256),
+ check(jsonb_typeof(snapshot)='object'),check(snapshot_sha256~'^[0-9a-f]{64}$')
+);
+alter table company_checkout_allowance_private.receipts enable row level security;
+revoke all on table company_checkout_allowance_private.receipts from public,anon,authenticated,service_role;
+
+create function company_checkout_allowance_private.report_basis(rid uuid)
+returns jsonb language sql stable security invoker set search_path='' as $basis$
+ select jsonb_build_object('header',jsonb_build_object('company_id',r.company_id,'site_id',r.site_id,
+  'route_assignment_id',r.route_assignment_id,'report_date',r.report_date,'work_description',r.work_description),
+  'workers',(select coalesce(jsonb_agg(jsonb_build_object('worker_id',w.worker_id,'overtime_hours',w.overtime_hours,
+   'early_hours',w.early_hours,'night_hours',w.night_hours,'allowance_amount',w.allowance_amount,
+   'allowance_label',w.allowance_label,'work_category',w.work_category,'company_allowance_selections',w.company_allowance_selections)
+   order by w.worker_id),'[]'::jsonb) from public.daily_report_workers w where w.report_id=rid))
+ from public.daily_reports r where r.id=rid
+$basis$;
+revoke all on function company_checkout_allowance_private.report_basis(uuid) from public,anon,authenticated,service_role;
+
+create function company_checkout_allowance_private.registered_item(cid uuid,wid uuid,item jsonb)
+returns jsonb language plpgsql stable security invoker set search_path='' as $registered$
+declare answer jsonb; typ text;
+begin
+ if jsonb_typeof(item) is distinct from 'object' or (select count(*) from jsonb_object_keys(item))<>6
+ or not item?&array['origin','id','generation','registration_version','name_snapshot','unit']
+ or coalesce(item->>'origin','') not in ('company_legacy','company_common')
+ or coalesce(item->>'id','')!~'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+ or jsonb_typeof(item->'registration_version') is distinct from 'number'
+ or coalesce(item->>'registration_version','')!~'^(0|[1-9][0-9]{0,14})$'
+ or jsonb_typeof(item->'name_snapshot') is distinct from 'string'
+ or nullif(trim(item->>'name_snapshot'),'') is null or length(item->>'name_snapshot')>4096
+ or item->>'name_snapshot'~E'[\n\r]'
+ or coalesce(item->>'unit','') not in ('day','hour') then
+  raise exception 'invalid company allowance selection' using errcode='22023';end if;
+ select s.pay_type into typ from public.worker_payroll_settings s join public.workers w
+ on w.company_id=s.company_id and w.id=s.worker_id where s.company_id=cid and s.worker_id=wid;
+ if typ is null then raise exception 'worker payroll scope unavailable' using errcode='42501';end if;
+ if item->>'origin'='company_legacy' then
+  if jsonb_typeof(item->'generation') is distinct from 'number'
+   or coalesce(item->>'generation','')!~'^[1-9][0-9]{0,14}$' or item->>'unit'<>'day'
+   or (item->>'registration_version')::bigint<1
+   then raise exception 'legacy selection identity unavailable' using errcode='22023';end if;
+  select jsonb_build_object('origin','company_legacy','id',i.id,'generation',i.generation,
+    'registration_version',s.version,'legacy_slot',i.slot,'name',to_jsonb(r)->>('allowance_'||i.slot||'_name'),
+    'section','earning','unit','day','display_unit',to_jsonb(r)->>('allowance_'||i.slot||'_unit'),
+    'rate_yen',(to_jsonb(r)->>('allowance_'||i.slot||'_amount_yen'))::integer)
+   into answer from company_allowance_identity_private.identities i
+   join company_allowance_identity_private.state s on s.company_id=i.company_id
+   join public.company_rate_settings r on r.company_id=i.company_id
+   where i.company_id=cid and i.id=(item->>'id')::uuid and i.retired_at is null
+    and i.generation=(item->>'generation')::bigint and s.version=(item->>'registration_version')::bigint;
+ else
+  if item->'generation' is distinct from 'null'::jsonb then raise exception 'common generation must be null' using errcode='22023';end if;
+  select jsonb_build_object('origin','company_common','id',i.id,'generation',null,
+    'registration_version',s.version,'payroll_type',i.payroll_type,'name',i.name,
+    'section',i.section,'unit',i.unit,'display_unit',i.unit,'rate_yen',i.amount_yen)
+   into answer from company_common_allowance_private.items i
+   join company_common_allowance_private.state s on s.company_id=i.company_id
+   where i.company_id=cid and i.id=(item->>'id')::uuid and i.retired_at is null
+    and i.payroll_type=typ and s.version=(item->>'registration_version')::bigint;
+ end if;
+ if answer is null or answer->>'name' is distinct from item->>'name_snapshot'
+ or answer->>'unit' is distinct from item->>'unit'
+ or coalesce(answer->>'section','') not in ('earning','deduction')
+ or jsonb_typeof(answer->'rate_yen') is distinct from 'number'
+ or (answer->>'rate_yen')::numeric<0 or (answer->>'rate_yen')::numeric>2147483647 then
+  raise exception 'company allowance registration changed; reload report choices' using errcode='40001';end if;
+ return answer;
+end $registered$;
+revoke all on function company_checkout_allowance_private.registered_item(uuid,uuid,jsonb) from public,anon,authenticated,service_role;
+
+create function company_checkout_allowance_private.normalize_choices(cid uuid,wid uuid,choices jsonb)
+returns jsonb language plpgsql stable security invoker set search_path='' as $normalize$
+declare item jsonb; matched jsonb;
+begin
+ if choices is null then return null;end if;
+ if auth.uid() is null or private.account_access_allowed() is not true or not exists(
+ select 1 from public.company_members where company_id=cid and user_id=auth.uid())
+ then raise exception 'company allowance report unavailable' using errcode='42501';end if;
+ if jsonb_typeof(choices) is distinct from 'object' or (select count(*) from jsonb_object_keys(choices))<>2
+ or choices->'contract_version' is distinct from '1'::jsonb or jsonb_typeof(choices->'items') is distinct from 'array'
+ or jsonb_array_length(choices->'items')>303 then raise exception 'invalid versioned company selections' using errcode='22023';end if;
+ if exists(select 1 from jsonb_array_elements(choices->'items') x group by x->>'origin',(x->>'id')::uuid having count(*)>1)
+ or exists(select 1 from jsonb_array_elements(choices->'items') x group by x->>'origin' having count(distinct x->>'registration_version')>1)
+ or exists(select 1 from jsonb_array_elements(choices->'items') x group by x->>'name_snapshot' having count(*)>1)
+ then raise exception 'ambiguous company allowance selections' using errcode='22023';end if;
+ for item in select value from jsonb_array_elements(choices->'items') loop
+  matched:=company_checkout_allowance_private.registered_item(cid,wid,item);
+ end loop;
+ return choices;
+end $normalize$;
+revoke all on function company_checkout_allowance_private.normalize_choices(uuid,uuid,jsonb) from public,anon,authenticated,service_role;
+
+create function company_checkout_allowance_private.validate_labels(cid uuid,wid uuid,new_text text,choices jsonb,prior_text text)
+returns void language plpgsql stable security invoker set search_path='' as $labels$
+declare selected text[]; prior text[]; present text[];
+begin
+ if choices is null then return;end if;
+ perform company_checkout_allowance_private.normalize_choices(cid,wid,choices);
+ if length(coalesce(new_text,''))>1048576 then raise exception 'allowance labels exceed range' using errcode='22023';end if;
+ select coalesce(array_agg(value->>'name_snapshot'),'{}') into selected from jsonb_array_elements(choices->'items');
+ select coalesce(array_agg(distinct btrim(v)) filter(where btrim(v)<>''),'{}') into prior
+ from unnest(string_to_array(coalesce(prior_text,''),E'\n')) v;
+ select coalesce(array_agg(distinct btrim(v)) filter(where btrim(v)<>''),'{}') into present
+ from unnest(string_to_array(coalesce(new_text,''),E'\n')) v;
+ if not selected<@present or not present<@(prior||selected) then
+  raise exception 'allowance labels do not match explicit company choices' using errcode='22023';end if;
+end $labels$;
+revoke all on function company_checkout_allowance_private.validate_labels(uuid,uuid,text,jsonb,text) from public,anon,authenticated,service_role;
+
+create function company_checkout_allowance_private.capture_report(rid uuid)
+returns jsonb language plpgsql volatile security invoker set search_path='' as $capture$
+declare report public.daily_reports%rowtype; w record; item jsonb; rows jsonb; body jsonb;
+ id_value uuid; digest_value text; answer jsonb:='{}';
+begin
+ select * into report from public.daily_reports where id=rid;
+ if not found or auth.uid() is null or private.account_access_allowed() is not true
+ or not exists(select 1 from public.company_members where company_id=report.company_id and user_id=auth.uid())
+ then raise exception 'company allowance report unavailable' using errcode='42501';end if;
+ if not exists(select 1 from public.daily_report_workers where report_id=rid and company_allowance_selections is not null) then return answer;end if;
+ if report.representative_signature_json is null or report.supervisor_signature_json is null then
+  raise exception 'both report signatures required for company selections' using errcode='42501';end if;
+ for w in select * from public.daily_report_workers where report_id=rid order by worker_id loop
+  if w.company_allowance_selections is null then continue;end if;
+  perform company_checkout_allowance_private.validate_labels(report.company_id,w.worker_id,w.allowance_label,w.company_allowance_selections,w.company_allowance_legacy_labels);
+  rows:='[]';
+  for item in select value from jsonb_array_elements(w.company_allowance_selections->'items') order by value->>'origin',value->>'id' loop
+   rows:=rows||jsonb_build_array(company_checkout_allowance_private.registered_item(report.company_id,w.worker_id,item));
+  end loop;
+  body:=jsonb_build_object('contract_version',1,'work_date',report.report_date,'items',rows);
+  digest_value:=encode(sha256(convert_to(body::text,'UTF8')),'hex');
+  insert into company_checkout_allowance_private.receipts(company_id,worker_id,report_id,work_date,snapshot,snapshot_sha256,captured_by)
+   values(report.company_id,w.worker_id,rid,report.report_date,body,digest_value,auth.uid())
+   on conflict(company_id,worker_id,report_id,work_date,snapshot_sha256) do nothing;
+  select id into id_value from company_checkout_allowance_private.receipts
+   where company_id=report.company_id and worker_id=w.worker_id and report_id=rid
+    and work_date=report.report_date and snapshot_sha256=digest_value and snapshot=body;
+  if id_value is null then raise exception 'company receipt unavailable';end if;
+  answer:=jsonb_set(answer,array[w.worker_id::text],to_jsonb(id_value::text),true);
+ end loop;
+ return answer;
+end $capture$;
+revoke all on function company_checkout_allowance_private.capture_report(uuid) from public,anon,authenticated,service_role;
+
+create function company_checkout_allowance_private.guard_receipt_pointer()
+returns trigger language plpgsql security invoker set search_path='' as $guard$
+begin
+ if current_user<>'postgres' and ((tg_op='INSERT' and new.company_allowance_receipt_id is not null)
+ or (tg_op='UPDATE' and new.company_allowance_receipt_id is distinct from old.company_allowance_receipt_id)) then
+  raise exception 'server-owned company allowance receipt' using errcode='42501';end if;
+ return new;
+end $guard$;
+revoke all on function company_checkout_allowance_private.guard_receipt_pointer() from public,anon,authenticated,service_role;
+create trigger company_checkout_receipt_pointer_guard before insert or update on public.attendance_entries
+ for each row execute function company_checkout_allowance_private.guard_receipt_pointer();
+
+create function company_checkout_allowance_private.guard_report_metadata()
+returns trigger language plpgsql security invoker set search_path='' as $report_guard$
+begin
+ if current_user<>'postgres' and ((tg_op='INSERT' and (new.company_allowance_selections is not null or new.company_allowance_legacy_labels is not null))
+ or (tg_op='UPDATE' and (new.company_allowance_selections is distinct from old.company_allowance_selections
+  or new.company_allowance_legacy_labels is distinct from old.company_allowance_legacy_labels))) then
+  raise exception 'server-validated company allowance selections required' using errcode='42501';end if;
+ return new;
+end $report_guard$;
+revoke all on function company_checkout_allowance_private.guard_report_metadata() from public,anon,authenticated,service_role;
+create trigger company_checkout_report_metadata_guard before insert or update on public.daily_report_workers
+ for each row execute function company_checkout_allowance_private.guard_report_metadata();
+
+create function company_checkout_allowance_private.resolve(cid uuid,wid uuid,p_start date,p_end date)
+returns jsonb language plpgsql stable security invoker set search_path='' as $resolve$
+declare receipts jsonb; answer jsonb;
+begin
+ if p_start is null or p_end is null or p_start<>date_trunc('month',p_start)::date
+ or p_end<>(p_start+interval '1 month - 1 day')::date then raise exception 'canonical payroll month required' using errcode='22023';end if;
+ if exists(select 1 from public.attendance_entries a left join company_checkout_allowance_private.receipts r
+ on r.id=a.company_allowance_receipt_id and r.company_id=a.company_id and r.worker_id=a.worker_id
+ and r.work_date=a.work_date and r.report_id=a.source_report_id
+ where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end
+ and a.company_allowance_receipt_id is not null and r.id is null) then
+  return jsonb_build_object('items','[]'::jsonb,'earnings','[]'::jsonb,'deductions','[]'::jsonb,'blocked',true,
+   'reasons',jsonb_build_array(jsonb_build_object('code','company_receipt_scope_mismatch')));end if;
+ select coalesce(jsonb_agg(r.snapshot order by a.work_date,r.id),'[]') into receipts
+ from public.attendance_entries a join company_checkout_allowance_private.receipts r
+ on r.id=a.company_allowance_receipt_id and r.company_id=a.company_id and r.worker_id=a.worker_id
+ and r.work_date=a.work_date and r.report_id=a.source_report_id
+ where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end
+ and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date;
+ answer:=company_checkout_allowance_private.aggregate(receipts);
+ return answer;
+end $resolve$;
+revoke all on function company_checkout_allowance_private.resolve(uuid,uuid,date,date) from public,anon,authenticated,service_role;
+
+create function company_checkout_allowance_private.covers_legacy(cid uuid,wid uuid,work_day date,slot integer)
+returns boolean language sql stable security invoker set search_path='' as $covers$
+ select exists(select 1 from public.attendance_entries a join company_checkout_allowance_private.receipts r
+ on r.id=a.company_allowance_receipt_id and r.company_id=a.company_id and r.worker_id=a.worker_id
+ and r.work_date=a.work_date and r.report_id=a.source_report_id
+ cross join lateral jsonb_array_elements(r.snapshot->'items') i
+ where a.company_id=cid and a.worker_id=wid and a.work_date=work_day
+ and i->>'origin' in('company_legacy','company_common') and i->>'name'=(select nullif(btrim(to_jsonb(s)->>('allowance_name_'||slot)),'')
+  from public.worker_payroll_settings s where s.company_id=cid and s.worker_id=wid))
+$covers$;
+revoke all on function company_checkout_allowance_private.covers_legacy(uuid,uuid,date,integer) from public,anon,authenticated,service_role;
+
+create function company_checkout_allowance_private.covers_item(cid uuid,wid uuid,work_day date,item_id uuid,item_origin text)
+returns boolean language sql stable security invoker set search_path='' as $covers_item$
+ select exists(select 1 from public.attendance_entries a join company_checkout_allowance_private.receipts r
+ on r.id=a.company_allowance_receipt_id and r.company_id=a.company_id and r.worker_id=a.worker_id
+ and r.work_date=a.work_date and r.report_id=a.source_report_id
+ cross join lateral jsonb_array_elements(r.snapshot->'items') i
+ where a.company_id=cid and a.worker_id=wid and a.work_date=work_day and i->>'origin'=item_origin and (i->>'id')::uuid=item_id)
+$covers_item$;
+revoke all on function company_checkout_allowance_private.covers_item(uuid,uuid,date,uuid,text) from public,anon,authenticated,service_role;

@@ -1,0 +1,33 @@
+name: Company checkout receipt core review
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/company_checkout_receipt_core.sql.review-only'
+      - 'tool/company_checkout_receipt_core_fixture.sql'
+      - '.github/workflows/company-checkout-receipt-core.yml'
+permissions:
+  contents: read
+jobs:
+  native-receipt-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_checkout_receipt_core_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Pure server-receipt aggregation and explicit missing-hours refusal
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: fixture-only
+          PGDATABASE: sko_checkout_receipt_core_fixture
+        run: psql -X -v ON_ERROR_STOP=1 -f tool/company_checkout_receipt_core_fixture.sql
