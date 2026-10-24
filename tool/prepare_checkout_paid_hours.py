@@ -47,7 +47,8 @@ def produce():
     for sig in ('company_checkout_allowance_private.report_basis(uuid)','public.sign_daily_report(uuid,text,jsonb)','company_checkout_allowance_private.resolve(uuid,uuid,date,date)'):
         f=sources[sig];pins+=f" IF NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid=to_regprocedure('{sig}') AND md5(prosrc)='{f['source_md5']}') THEN RAISE EXCEPTION 'paid-hours source differs: {sig}'; END IF;\n"
     pins+='END $pins$;\n'
-    sql=pins+'\n'+aggregate+'\n'+basis+'\n'+sign+'\n'+resolve+'''\nREVOKE ALL ON FUNCTION checkout_paid_hours_candidate_private.aggregate_with_hours(jsonb,jsonb) FROM public,anon,authenticated,service_role;\n'''
+    definitions='\n'.join(source.rstrip().rstrip(';')+';' for source in (aggregate,basis,sign,resolve))
+    sql=pins+'\n'+definitions+'''\nREVOKE ALL ON FUNCTION checkout_paid_hours_candidate_private.aggregate_with_hours(jsonb,jsonb) FROM public,anon,authenticated,service_role;\n'''
     return sql
 
 def main():
