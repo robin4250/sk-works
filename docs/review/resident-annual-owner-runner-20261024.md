@@ -57,37 +57,44 @@ PG17, read-only mode and no JWT/auth actor. This is deliberately fail-closed.
 ## Validation performed
 
 - Python syntax compilation passed.
-- Fourteen mocked transport/lifecycle tests passed: exact before, stale refusal,
+- Sixteen mocked transport/lifecycle tests passed: exact before, stale refusal,
   acknowledgment, unknown commit with successful readback, unknown/no-change,
   later read-only recovery, marker-before-delivery, tampered after/removal files,
   used/drifting after refusal, symlink marker refusal, no resend, clean PG
-  environment/TLS command and secret suppression.
+  environment/TLS command, secret suppression, read-only preflight zero delivery
+  and fail-closed maintenance identity validation.
 - The actual private prepared bundle was copied to a temporary private folder
   for offline verification. All three hashes and generator byte equality passed
   for 248851 installer bytes; no CLI, credential or database operation occurred.
 
-## Required native proof before owner use
+## Prepared native proof and remaining gates
 
-Add a dedicated native PG17 disposable fixture job reusing
-`tool/verify_resident_annual_deployment_review.mjs` and
-`setupPayrollScopeFixture`, with a loopback-only destination and no hosted
-credentials. The current production-pinned `Proof` and `INSTALL_SHA` must not
-be made configurable for fixture convenience. A separate test fixture may
-construct `Proof`-equivalent synthetic artifacts and patch constants only in
-the test process, while exercising the actual `operate` and psql boundary.
+The dedicated `native-tls-boundary` job reuses `setupPayrollScopeFixture` and
+the existing annual generation/SQL. It creates a private localhost CA/server
+certificate for its disposable PG17 service. `test_native_tls.py` has seven
+real-psql cases for acknowledgment, commit-before-acknowledgment disconnect,
+backend termination before COMMIT, wrong CA, wrong current role, read-only
+preflight, and stale checkpoint zero delivery. Native CI has not yet run.
 
-1. Exercise the real psql command against the existing annual fixture under
+The production-pinned `Proof` and `INSTALL_SHA` remain unconfigurable in owner
+execution. The separate fixture constructs synthetic artifacts from the same
+reviewed annual unit and patches `INSTALL_SHA` only in its isolated imported
+test module. It exercises actual `operate` and `PsqlTransport`, including
+verify-full TLS. Fixture teardown alone executes generated unused removal;
+the production operation never does so.
+
+1. The prepared native case exercises the real psql command against the existing annual fixture under
    verify-full TLS, not just a pg-js adapter or mocked subprocess. Prove the
    CLI-session/current-role relationship. A plain fixture CLI login without a
    postgres current role must fail before any attempt marker or installer.
    Do not silently add `SET ROLE` to make a test pass.
-2. Test an owner-equivalent fixture session whose current role is postgres;
+2. Its owner-equivalent fixture session has a server-side default role postgres;
    prove before equality, exact install, empty annual tables, existing originals
    unchanged, exact unused-removal generation and no removal execution.
-3. Inject disconnect after commit and before the acknowledgment. Restart only
+3. It injects disconnect after commit and before the acknowledgment, then restarts only
    in recover mode, show successful readback and a single installer delivery.
    Test disconnect before commit/no-change and stale input with zero delivery.
-4. Verify runtime/bundle/marker tampering and changed original rows are refused.
+4. Mocked tests verify runtime/bundle/marker tampering and changed original rows are refused.
    No server-side filesystem or OS commands, external producer, real SMS/email,
    project role change or production credential is part of this proof.
 
@@ -96,3 +103,13 @@ for this new runner. The existing capture tool explicitly gives `--role=postgres
 to pg_dump; that does not prove a fresh psql session starts as postgres. Until
 the native boundary and real maintenance-identity preflight are proved, this
 candidate must not be presented as user-ready.
+
+The optional `preflight` command is a separate no-install operation. After
+local artifact/source hashes and the maintenance identity pass, it checks the
+exact read-only original checkpoint and writes a private preflight observation.
+It makes no installer call, creates no attempt marker and generates no removal
+SQL. Failure receipts identify only the last safe phase and a fixed error code;
+they do not include endpoint credentials, subprocess stderr or SQL values.
+This mode can eventually establish the actual CLI role relationship before an
+owner installation is attempted. It too needs Native CI success and packaging
+review before a user-facing command is issued.

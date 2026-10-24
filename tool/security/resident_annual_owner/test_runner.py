@@ -70,6 +70,15 @@ class LifecycleTest(unittest.TestCase):
         self.assertEqual(len(list(self.root.glob('unused-removal-*.sql.review-only'))), 1)
         self.assertFalse(state['retry_allowed'])
 
+    def test_preflight_is_readonly_and_never_creates_install_marker_or_undo(self):
+        t = TransportFixture(self.root, [self.p.before])
+        state = r.operate(self.root, self.p, t, 'preflight')
+        self.assertEqual(state['phase'], 'preflight_before_verified_no_install')
+        self.assertFalse(state['deployment_performed'])
+        self.assertEqual(t.installs, [])
+        self.assertFalse((self.root / r.MARKER).exists())
+        self.assertEqual(list(self.root.glob('unused-removal-*')), [])
+
     def test_stale_before_refuses_without_marker_or_delivery(self):
         t = TransportFixture(self.root, [{'schema': 1, 'original': 'changed'}])
         with self.assertRaisesRegex(ValueError, 'stale'):
@@ -196,6 +205,16 @@ class CommandBoundaryTest(unittest.TestCase):
         with patch.object(r.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, b'', b'fixture-secret')):
             with self.assertRaisesRegex(RuntimeError, '^transport_result_unknown$'):
                 t.read(b'fixture')
+
+    def test_maintenance_identity_fails_closed_for_wrong_role_or_actor(self):
+        identity = {'read_only': 'on', 'current_user': 'postgres', 'session_user': 'cli_login_fixture',
+            'database': 'postgres', 'server_version_num': '170011', 'auth_uid': None,
+            'jwt_claims': None, 'jwt_sub': None, 'jwt_role': None}
+        r.verify_identity(self.config, identity)
+        for change in ({'current_user': 'cli_login_fixture'}, {'auth_uid': 'fixture-actor'},
+                {'read_only': 'off'}, {'database': 'other'}, {'session_user': 'other'}, {'server_version_num': '160000'}):
+            with self.assertRaises(ValueError):
+                r.verify_identity(self.config, dict(identity, **change))
 
 
 if __name__ == '__main__':

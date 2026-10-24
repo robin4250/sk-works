@@ -187,6 +187,15 @@ class PsqlTransport:
 def operate(root, proof, transport, mode):
     private_dir(root)
     marker = root / MARKER
+    if mode == 'preflight':
+        actual = transport.read(proof.read_sql)
+        proof.before_ok(actual)
+        state = {'schema': 1, 'project': PROJECT, 'phase': 'preflight_before_verified_no_install',
+            'deployment_performed': False, 'annual_objects_observed_absent': True,
+            'complete': False, 'retry_allowed': False, 'financial_input_performed': False}
+        evidence = json.dumps(actual, sort_keys=True).encode()
+        write_once_or_verify(root / ('preflight-' + sha(evidence)[:20] + '.private.json'), evidence)
+        return state
     if mode == 'install':
         if marker.exists() or marker.is_symlink():
             raise ValueError('prior_attempt_recovery_only')
@@ -230,6 +239,15 @@ def operate(root, proof, transport, mode):
     return state
 
 
+def verify_identity(config, identity):
+    expected = {'read_only', 'current_user', 'session_user', 'database', 'server_version_num',
+        'auth_uid', 'jwt_claims', 'jwt_sub', 'jwt_role'}
+    if set(identity) != expected or identity['read_only'] != 'on' or identity['current_user'] != 'postgres' or identity['database'] != 'postgres' or not 170000 <= int(identity['server_version_num']) < 180000:
+        raise ValueError('maintenance_identity_refused')
+    if config['PGUSER'] not in (identity['session_user'], identity['session_user'] + '.' + PROJECT) or any(identity[k] is not None for k in ('auth_uid', 'jwt_claims', 'jwt_sub', 'jwt_role')):
+        raise ValueError('maintenance_identity_refused')
+
+
 def connect(binding, root):
     here = Path(__file__).resolve().parent
     for name, digest in HELPERS.items():
@@ -266,12 +284,7 @@ def connect(binding, root):
     transport = PsqlTransport(binding, config, password)
     try:
         identity = transport.read(IDENTITY_SQL)
-        expected = {'read_only', 'current_user', 'session_user', 'database', 'server_version_num',
-            'auth_uid', 'jwt_claims', 'jwt_sub', 'jwt_role'}
-        if set(identity) != expected or identity['read_only'] != 'on' or identity['current_user'] != 'postgres' or identity['database'] != 'postgres' or not 170000 <= int(identity['server_version_num']) < 180000:
-            raise ValueError('maintenance_identity_refused')
-        if config['PGUSER'] not in (identity['session_user'], identity['session_user'] + '.' + PROJECT) or any(identity[k] is not None for k in ('auth_uid', 'jwt_claims', 'jwt_sub', 'jwt_role')):
-            raise ValueError('maintenance_identity_refused')
+        verify_identity(config, identity)
         return transport
     except BaseException:
         transport.password = None
@@ -283,11 +296,12 @@ def connect(binding, root):
 def main():
     os.umask(0o077)
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('mode', choices=['install', 'recover'])
+    p.add_argument('mode', choices=['preflight', 'install', 'recover'])
     p.add_argument('--bundle', type=Path, required=True)
     p.add_argument('--source-root', type=Path, required=True)
     a = p.parse_args()
     transport = None
+    phase = 'local_artifact_verification'
     try:
         if sys.platform != 'darwin' or not sys.flags.isolated:
             raise ValueError('isolated_mac_python_required')
@@ -299,12 +313,15 @@ def main():
         if a.mode == 'install' and ((root / MARKER).exists() or (root / MARKER).is_symlink()):
             raise ValueError('prior_attempt_recovery_only')
         binding = json.loads(read_private(a.bundle / 'runtime-binding.private.json'))
+        phase = 'connection_and_maintenance_identity_check'
         transport = connect(binding, root)
+        phase = a.mode + '_observation'
         state = operate(root, proof, transport, a.mode)
-    except (Exception, KeyboardInterrupt):
+    except (Exception, KeyboardInterrupt) as error:
         state = {'schema': 1, 'project': PROJECT, 'complete': False,
             'phase': 'requires_review', 'retry_allowed': False,
-            'financial_input_performed': False}
+            'last_phase': phase, 'financial_input_performed': False,
+            'failure_code': 'maintenance_identity_refused' if isinstance(error, ValueError) and str(error) == 'maintenance_identity_refused' else 'phase_incomplete'}
     finally:
         if transport is not None:
             transport.password = None
@@ -312,7 +329,7 @@ def main():
     print(text, flush=True)
     if sys.platform == 'darwin':
         subprocess.run(['/usr/bin/pbcopy'], input=text.encode(), check=False, timeout=10)
-    return 0 if state.get('complete') else 1
+    return 0 if state.get('complete') or state.get('phase') == 'preflight_before_verified_no_install' else 1
 
 
 if __name__ == '__main__':

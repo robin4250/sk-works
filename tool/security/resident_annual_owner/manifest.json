@@ -4,16 +4,20 @@
   "production_executable": false,
   "production_connected": false,
   "owner_command_ready": false,
-  "mocked_tests_passed": 14,
+  "mocked_tests_passed": 16,
   "native_tls_verified": false,
   "real_cli_maintenance_identity_verified": false,
   "source_ref_helpers": "994342fc136045d8ce6769b55f606952111808e6",
   "files": {
-    ".github/workflows/resident-annual-owner-runner-review.yml": "ef96f923370783d3930685ae70c002fc7a394014f7133dbbfa0ea95b05fb057f",
-    "docs/review/resident-annual-owner-runner-20261024.md": "ee911940242f9dca7bf182b6a02f7ffd668204554a5dd9ca60c64c225765bae4",
+    ".github/workflows/resident-annual-owner-runner-review.yml": "a0dbae95984608ba82757b23bb787da6649f47166b56edf0676a6d0aa35d6f79",
+    "docs/review/resident-annual-owner-runner-20261024.md": "8f82d89f4eef0eb084866a9e9c32910605c5f39ebd4234818c90487493e087f1",
     "tool/security/resident_annual_owner/owner_cli_database_capture.py": "e4f206b3dab91f98295f2f2a1688a02cc74adb80d00d6262a3f3ce4cc9a300e0",
     "tool/security/resident_annual_owner/owner_database_capture.py": "15875c927d90364f8dec1973f5fb1661dc12b9f5242aee5175203f7cb8a8702d",
-    "tool/security/resident_annual_owner/runner.py": "393bf5d9385418a82fbc5d67d4174513181b51b6e89230fb87ba1e429505984f",
-    "tool/security/resident_annual_owner/test_runner.py": "eb7f318c1f7c4592eb5615657ce3f77f2c2b364d71314c8552cdc0234a7bb3fd"
-  }
+    "tool/security/resident_annual_owner/prepare_native_fixture.mjs": "92a35bd395d75b60a153c0986b38b08dc27bf009c32dc9ae8df2d94f61be4d46",
+    "tool/security/resident_annual_owner/runner.py": "f214b67cafbd936300ca4600fae2fface5bf0061ef0334b438721021998fc428",
+    "tool/security/resident_annual_owner/test_native_tls.py": "612ecf24e2c94eb12a8349f5c2c4fa51af5cc9bc5cb6fdb10a0b4eb0ec204e10",
+    "tool/security/resident_annual_owner/test_runner.py": "c771ad0d2718e47ed445b83ccb3657a6da28db1d8c28c6b344d1b043897e4db5"
+  },
+  "native_tls_cases_prepared": 7,
+  "preflight_no_install_implemented": true
 }
