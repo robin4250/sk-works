@@ -152,7 +152,7 @@ def prepare():
     sql+="create temporary table checkout_procedures_before on commit drop as select oid,to_jsonb(p)-'prosrc' attributes from pg_proc p where oid in("+names+");\n"
     sql+=(ROOT/'docs/candidates/company_checkout_receipt_core.sql.review-only').read_text()+'\n'
     sql+=(ROOT/'docs/candidates/company_checkout_receipt_capture.sql.review-only').read_text()+'\n'
-    sql+=published_copy(sources['payroll_unit_private.resolve_company_common(uuid,uuid,date,date)']['definition'])+'\n'
+    sql+=published_copy(sources['payroll_unit_private.resolve_company_common(uuid,uuid,date,date)']['definition']).rstrip(';\n')+';\n'
     sql+="revoke all on function company_checkout_allowance_private.resolve_published(uuid,uuid,date,date) from public,anon,authenticated,service_role;\n"
     for source in patches.values(): sql+=source.rstrip(';\n')+';\n'
     sql+="do $postflight$ begin if exists(select 1 from checkout_procedures_before b join pg_proc p using(oid) where b.attributes is distinct from to_jsonb(p)-'prosrc') then raise exception 'existing function attributes changed';end if;end $postflight$;\n"
