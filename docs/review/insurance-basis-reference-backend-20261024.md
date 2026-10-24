@@ -10,7 +10,7 @@ The existing authenticated/effective-dated personal tax-condition save stores an
 
 The range uses **payroll calculation period**, explicitly returned as `period_basis: payroll_period`. It must not be advertised as a completed statutory payment-month assessment. Payment dates are separate actual metadata, never guessed from the period. Statutory remuneration can include considerations not represented by this gross-pay reference. The standard-remuneration fields and effective month remain explicitly entered/confirmed by the operator/adviser.
 
-One finalized document takes priority over draft alternatives. Its immutable snapshot gross includes frozen additions. A finalized row without a valid snapshot, duplicate finalized months, duplicate draft months, negative/out-of-range gross or tax-blocked draft is excluded, never substituted with zero. A unique draft includes active addition adjustments, not deductions or net pay. Missing months stay absent.
+One finalized document takes priority over draft alternatives. Its immutable snapshot gross includes frozen additions. A finalized row without a valid snapshot, duplicate finalized months, duplicate draft months, negative/out-of-range gross or a draft blocked by either the top-level calculation flag or tax detail is excluded, never substituted with zero. A unique draft includes active addition adjustments, not deductions or net pay. Missing months stay absent.
 
 ## Stored reference
 

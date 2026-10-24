@@ -9,7 +9,7 @@ create table public.companies(id uuid primary key);
 create table public.workers(id uuid primary key,company_id uuid not null);
 create table public.payroll_statements(id uuid primary key,company_id uuid not null,worker_id uuid not null,
  period_start date not null,period_end date not null,gross_pay integer not null,revision integer not null,
- workflow_state text not null,automatic_calculation boolean not null default false,detail jsonb not null default '{}');
+ workflow_state text not null,automatic_calculation boolean not null default false,calculation_blocked boolean not null default false,detail jsonb not null default '{}');
 create table public.payroll_adjustments(id uuid primary key,company_id uuid,worker_id uuid,effective_date date,
  direction text,amount_yen integer,cancelled_at timestamptz);
 create table payroll_final_private.documents(statement_id uuid primary key,company_id uuid,worker_id uuid,value jsonb);

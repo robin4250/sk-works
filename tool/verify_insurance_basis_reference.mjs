@@ -47,7 +47,10 @@ try{
  await db.query("select set_config('test.viewer','',false),set_config('test.blocked','yes',false)");await assert.rejects(history(),/access denied/);checks++;
  await db.query("select set_config('test.blocked','',false),set_config('test.actor','00000000-0000-0000-0000-000000000009',false)");await assert.rejects(history(),/access denied/);checks++;
  await db.query("select set_config('test.actor',$1,false)",[actor]);await assert.rejects(db.query('select public.read_worker_payroll_insurance_income_history($1,$2,$3,$4)',[c,'40000000-0000-0000-0000-000000000009','2026-04-01','2026-06-01']),/access denied/);checks++;
- await db.query('reset role');await insert(ids[4],'2026-06-01',1,'draft');await db.query('set role authenticated');ok((await history()).items.map(x=>x.month),['2026-04-01','2026-05-01']);
+ await db.query('reset role');await db.query('update public.payroll_statements set calculation_blocked=true where id=$1',[ids[3]]);await db.query('set role authenticated');
+ ok((await history()).items.map(x=>x.month),['2026-04-01','2026-05-01']);
+ await assert.rejects(save(3,{...base,insurance_basis_reference:{...actual,history_fingerprint:(await history()).history_fingerprint}}),/給与実績/);checks++;
+ await db.query('reset role');await db.query('update public.payroll_statements set calculation_blocked=false where id=$1',[ids[3]]);await insert(ids[4],'2026-06-01',1,'draft');await db.query('set role authenticated');ok((await history()).items.map(x=>x.month),['2026-04-01','2026-05-01']);
  await assert.rejects(save(3,{...base,insurance_basis_reference:{...actual,history_fingerprint:(await history()).history_fingerprint}}),/給与実績/);checks++;
  await db.query('reset role');ok((await db.query('select value from payroll_final_private.documents where statement_id=$1',[ids[1]])).rows[0].value.result.gross_pay,310000);
  await db.query('set role anon');await assert.rejects(history(),/permission denied/);checks++;

@@ -84,13 +84,16 @@ begin
     else private.payroll_document_metadata(id)->>'payment_date' end payment_day
   from candidates c
   where (finals=1 and workflow_state='finalized' and frozen is not null)
-   or (finals=0 and drafts=1 and workflow_state='draft'
+   or (finals=0 and drafts=1 and workflow_state='draft' and not coalesce(calculation_blocked,true)
     and coalesce(detail#>>'{tax_calculation,blocked}','false')='false')
+ ), numeric_rows as (
+  select selected.*,case when amount~'^[0-9]{1,10}$' then amount::numeric else null end amount_number
+  from selected
  )
  select coalesce(jsonb_agg(jsonb_build_object('statement_id',id,'month',period_start,
    'gross_pay',amount::bigint,'finalized',workflow_state='finalized','revision',revision,
    'payment_date',payment_day) order by period_start,id),'[]') into items
- from selected where amount~'^[0-9]{1,10}$' and amount::numeric<=2147483647 and revision>=1;
+ from numeric_rows where amount_number between 0 and 2147483647 and revision>=1;
  fingerprint:=encode(sha256(convert_to(jsonb_build_object('company_id',cid,'worker_id',wid,'from',f,'to',t,'items',items)::text,'UTF8')),'hex');
  return jsonb_build_object('contract_version',1,'company_id',cid,'worker_id',wid,'from',f,'to',t,
   'items',items,'history_fingerprint',fingerprint,'period_basis','payroll_period','premium_rebase',false);

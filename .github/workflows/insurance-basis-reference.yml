@@ -21,7 +21,7 @@ jobs:
           POSTGRES_PASSWORD: fixture-only-password
         ports: ['5432:5432']
         options: >-
-          --health-cmd 'pg_isready -U postgres -d insurance_reference_fixture'
+          --health-cmd "pg_isready -U postgres -d insurance_reference_fixture"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       SKO_INSURANCE_REFERENCE_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/insurance_reference_fixture
