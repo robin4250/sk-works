@@ -153,3 +153,23 @@ writer plus original report signature APIs with no committed-meter framework,
 then installs the newer framework only in the disposable fixture to exercise
 strong ON attachment and existing concurrency proof. Diagnostic failure output
 contains synthetic fixture rows only; it must never be used against production.
+
+
+### Public reader authentication and explicit ACL
+
+Both no-argument pending and notification-target readers use one private
+`current_actor()` helper with the already deployed self-status live-session
+contract: authenticated SQL role and JWT role/sub; correctly typed non-anonymous
+claims; valid session UUID; existing same-UID auth.sessions row with unexpired
+not_after; existing non-anonymous/unbanned auth.users row; and the unchanged
+account-access guard. No password field is read. Scheduler/internal actor scans
+remain owner-only and do not impersonate JWTs.
+
+Public reader ACL first revokes PUBLIC, anon, authenticated and service_role,
+then grants only authenticated. The fixture recreates production-style public
+function default grants to catch accidental service_role inheritance. Native
+synthetic tests cover both readers against malformed/missing/other-UID/deleted/
+expired sessions, JWT-role/sub/anonymous mismatches, banned/deleted/anonymous
+users and denied existing account guard; original source-chain writers stay
+unchanged and only public reader calls run with SET ROLE authenticated. These
+fixtures do not claim real GoTrue proof or modify any production Auth row.

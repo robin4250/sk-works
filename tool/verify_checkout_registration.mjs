@@ -10,13 +10,21 @@ assert.ok(!Object.keys(process.env).some(k=>/^SUPABASE_(ACCESS_TOKEN|DB_PASSWORD
 const pg=(await import(process.argv[2])).default;
 const db=new pg.Client({connectionString:url.href});await db.connect();
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
-const q=async(s,p=[]) => (await db.query(s,p)).rows[0]?.v;
+const q=async(s,p=[]) => {
+ const publicReader=/select public\.read_(pending_checkout_report_registration|checkout_report_registration_notification)\(/.test(s);
+ if(publicReader)await db.query('set role authenticated');
+ try{return(await db.query(s,p)).rows[0]?.v;}finally{if(publicReader)await db.query('reset role');}
+};
 try {
  const version=Number(await q("select current_setting('server_version_num') v"));assert.ok(version>=170000&&version<180000);
  assert.equal(await q("select count(*)::int v from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public'"),0);
- await db.query(`create role anon; create role authenticated; create schema auth;create schema private;
+ await db.query(`create role anon; create role authenticated; create role service_role; create schema auth;create schema private;
+ alter default privileges for role postgres in schema public grant execute on functions to anon,authenticated,service_role;
+ create table auth.users(id uuid primary key,is_anonymous boolean default false,banned_until timestamptz);
+ create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
+ create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('fixture.claims',true),'')::jsonb,jsonb_build_object('role','authenticated','sub',current_setting('fixture.actor',true),'session_id',coalesce(nullif(current_setting('fixture.session',true),''),'00000000-0000-0000-0000-000000000080'),'is_anonymous',false))$$;
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('fixture.actor',true),'')::uuid$$;
- create function private.account_access_allowed() returns boolean language sql stable as $$select true$$;
+ create function private.account_access_allowed() returns boolean language sql stable as $$select coalesce(nullif(current_setting('fixture.account',true),'')::boolean,true)$$;
  create table companies(id uuid primary key);
  create table workers(id uuid primary key,company_id uuid,user_id uuid,status text default 'active');
  create table company_members(company_id uuid,user_id uuid,primary key(company_id,user_id));
@@ -48,6 +56,13 @@ try {
  await db.query("alter function private.guard_linked_vehicle_meter_report() set search_path=''");
  for(const p of ['validators','reminders','schedule'])await db.query(await readFile(`docs/candidates/checkout_report_registration_${p}.sql.review-only`,'utf8'));
  await db.query('select set_config(\'fixture.actor\',$1,false)',[id(2)]);
+ await db.query('insert into auth.users(id) values($1),($2)',[id(2),id(99)]);
+ await db.query('insert into auth.sessions(id,user_id) values($1,$2),($3,$4)',[id(80),id(2),id(81),id(99)]);
+ for(const signature of ['public.read_pending_checkout_report_registration()','public.read_checkout_report_registration_notification(uuid)']){
+  assert.equal(await q('select has_function_privilege(\'service_role\',$1,\'EXECUTE\') v',[signature]),false,'Default service ACL explicitly revoked');
+  assert.equal(await q('select has_function_privilege(\'anon\',$1,\'EXECUTE\') v',[signature]),false,'Default anon ACL explicitly revoked');
+ }
+
  await db.query('insert into companies values($1);',[id(1)]);
  await db.query('insert into private.vehicle_usage_rollout values($1,true)',[id(1)]);
  await db.query('insert into workers(id,company_id,user_id) values($1,$2,$3)',[id(3),id(1),id(2)]);
@@ -89,6 +104,31 @@ try {
  await db.query(enqueueDefinition);
  let delivered=await q('select checkout_report_registration_private.deliver_daily() v');assert.equal(delivered.sent,1,JSON.stringify(delivered));
  assert.equal((await q('select public.read_checkout_report_registration_notification($1) v',[id(20)])).items[0].registration_state,'reporter_saved_waiting_supervisor');
+
+ const goodClaims={role:'authenticated',sub:id(2),session_id:id(80),is_anonymous:false};
+ const deniedReaders=async()=>{
+  await assert.rejects(read,/checkout_report_actor_access_unavailable/);
+  await assert.rejects(()=>q('select public.read_checkout_report_registration_notification($1) v',[id(20)]),/checkout_report_actor_access_unavailable/);
+ };
+ for(const claims of [{...goodClaims,session_id:null},{...goodClaims,session_id:'malformed'},
+  {...goodClaims,session_id:id(89)},{...goodClaims,sub:id(99)},
+  {...goodClaims,role:'service_role'},{...goodClaims,is_anonymous:true},{...goodClaims,is_anonymous:'false'}]){
+  await db.query('select set_config(\'fixture.claims\',$1,false)',[JSON.stringify(claims)]);await deniedReaders();
+ }
+ await db.query("select set_config('fixture.claims','',false)");
+ await db.query("update auth.sessions set not_after=now()-interval '1 minute' where id=$1",[id(80)]);await deniedReaders();
+ await db.query('update auth.sessions set not_after=null,user_id=$1 where id=$2',[id(99),id(80)]);await deniedReaders();
+ await db.query('update auth.sessions set user_id=$1 where id=$2',[id(2),id(80)]);
+ await db.query("update auth.users set banned_until=now()+interval '1 day' where id=$1",[id(2)]);await deniedReaders();
+ await db.query('update auth.users set banned_until=null,is_anonymous=true where id=$1',[id(2)]);await deniedReaders();
+ await db.query('update auth.users set is_anonymous=false where id=$1',[id(2)]);
+ await db.query('delete from auth.sessions where id=$1',[id(80)]);await deniedReaders();
+ await db.query('insert into auth.sessions(id,user_id) values($1,$2)',[id(80),id(2)]);
+ await db.query('delete from auth.users where id=$1',[id(2)]);await deniedReaders();
+ await db.query('insert into auth.users(id) values($1)',[id(2)]);
+ await db.query("select set_config('fixture.account','false',false)");await deniedReaders();
+ await db.query("select set_config('fixture.account','true',false)");
+
  await db.query('update app_notifications set read_at=now()');
  delivered=await q('select checkout_report_registration_private.deliver_daily() v');assert.equal(delivered.sent,0);assert.equal(delivered.deduplicated,1,'Read does not resolve business pending');
  await db.query("update checkout_report_registration_private.daily_deliveries set notification_day=notification_day-1");
@@ -116,6 +156,9 @@ try {
  assert.equal(await q("select has_function_privilege('authenticated','checkout_report_registration_private.deliver_daily(uuid,integer)','EXECUTE') v"),false,'No client scheduler');
  assert.equal(await q("select has_function_privilege('authenticated','checkout_report_registration_private.read_for_actor(uuid)','EXECUTE') v"),false,'No client arbitrary actor read');
  await db.query('select set_config(\'fixture.actor\',$1,false)',[id(99)]);
+ await db.query('select set_config(\'fixture.session\',$1,false)',[id(81)]);
  assert.deepEqual((await read()).items,[],'Other actor gets no source');
+ await assert.rejects(()=>q('select public.read_checkout_report_registration_notification($1) v',[id(20)]),/notification_target_unavailable/);
+ assert.equal(await q("select has_function_privilege('authenticated','checkout_report_registration_private.current_actor()','EXECUTE') v"),false,'No direct actor helper access');
  console.log('PASS synthetic actor isolation/OFF/source input/meter/reporter unlock/daily dedup/failure rollback/reason transition/projection stop/private grants/scheduler');
 } finally {await db.end();}

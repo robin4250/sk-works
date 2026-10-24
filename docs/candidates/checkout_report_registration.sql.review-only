@@ -23,6 +23,35 @@ returns boolean language sql immutable set search_path='' as $$
 $$;
 revoke all on function checkout_report_registration_private.has_signature(text,jsonb) from public,anon,authenticated;
 
+-- Same live-session contract as the deployed self-status reader. No password
+-- material is read or returned; expired/deleted/switched sessions fail closed.
+create function checkout_report_registration_private.current_actor()
+returns uuid language plpgsql stable security invoker set search_path='' as $$
+declare actor uuid:=auth.uid(); claims jsonb:=auth.jwt(); sid uuid;
+begin
+ if current_setting('role',true) is distinct from 'authenticated'
+ or actor is null or claims->>'role' is distinct from 'authenticated'
+ or claims->>'sub' is distinct from actor::text
+ or (claims ? 'is_anonymous' and claims->'is_anonymous' not in ('false'::jsonb,'null'::jsonb)) then
+  raise sqlstate '42501' using message='checkout_report_actor_access_unavailable';
+ end if;
+ begin sid:=nullif(claims->>'session_id','')::uuid;
+ exception when invalid_text_representation then
+  raise sqlstate '42501' using message='checkout_report_actor_access_unavailable';
+ end;
+ if sid is null or private.account_access_allowed() is distinct from true then
+  raise sqlstate '42501' using message='checkout_report_actor_access_unavailable';
+ end if;
+ if not exists(select 1 from auth.sessions s where s.id=sid and s.user_id=actor
+  and (s.not_after is null or s.not_after>clock_timestamp()))
+ or not exists(select 1 from auth.users u where u.id=actor and not coalesce(u.is_anonymous,false)
+  and (u.banned_until is null or u.banned_until<=clock_timestamp())) then
+  raise sqlstate '42501' using message='checkout_report_actor_access_unavailable';
+ end if;
+ return actor;
+end $$;
+revoke all on function checkout_report_registration_private.current_actor() from public,anon,authenticated,service_role;
+
 -- Internal actor scope. No caller-supplied company/worker/date. The worker must
 -- still belong to the authenticated actor and the actor to that company.
 -- Proxy responsibility is intentionally not inferred from created_by.
@@ -83,11 +112,11 @@ end $$;
 revoke all on function checkout_report_registration_private.read_for_actor(uuid) from public,anon,authenticated;
 create function public.read_pending_checkout_report_registration()
 returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid;
 begin
- if auth.uid() is null then raise exception 'authentication_required' using errcode='28000'; end if;
- if private.account_access_allowed() is not true then raise exception 'account_access_unavailable' using errcode='42501'; end if;
- return checkout_report_registration_private.read_for_actor(auth.uid());
+ actor:=checkout_report_registration_private.current_actor();
+ return checkout_report_registration_private.read_for_actor(actor);
 end $$;
-revoke all on function public.read_pending_checkout_report_registration() from public,anon;
+revoke all on function public.read_pending_checkout_report_registration() from public,anon,authenticated,service_role;
 grant execute on function public.read_pending_checkout_report_registration() to authenticated;
 commit;

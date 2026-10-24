@@ -98,10 +98,9 @@ revoke all on function checkout_report_registration_private.deliver_daily(uuid,i
 
 create function public.read_checkout_report_registration_notification(p_report_id uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare actor uuid:=auth.uid(); envelope jsonb; selected jsonb;
+declare actor uuid; envelope jsonb; selected jsonb;
 begin
- if actor is null or private.account_access_allowed() is not true then
-  raise exception 'notification_access_unavailable' using errcode='42501'; end if;
+ actor:=checkout_report_registration_private.current_actor();
  if not exists(select 1 from public.app_notifications n
   join public.daily_reports r on r.id=n.action_id and r.company_id=n.company_id
   join public.company_members m on m.company_id=r.company_id and m.user_id=actor
@@ -121,6 +120,6 @@ begin
   'resolved',jsonb_array_length(selected)=0 and (envelope->>'enforcement_enabled')::boolean,
   'items',selected);
 end $$;
-revoke all on function public.read_checkout_report_registration_notification(uuid) from public,anon;
+revoke all on function public.read_checkout_report_registration_notification(uuid) from public,anon,authenticated,service_role;
 grant execute on function public.read_checkout_report_registration_notification(uuid) to authenticated;
 commit;
