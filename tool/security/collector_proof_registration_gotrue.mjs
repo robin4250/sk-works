@@ -192,6 +192,27 @@ try{
  await db.query('update private.security_collector_control set read_enabled=true');statusCode(await consumer(readOff),200);
  const gateOff=await proof();await db.query("update private.reauthentication_rollout set enabled=false where scope='master_security'");statusCode(await obtain(),403);statusCode(await consumer(gateOff),403);assert.equal((await stored(gateOff)).rows[0].consumed_at,null);
  await db.query("update private.reauthentication_rollout set enabled=true where scope='master_security'");statusCode(await consumer(gateOff),200);
+ // The exact collector reader already fails closed for NULL helpers. Preserve
+ // that contract; do not change the pinned consumer or claim a production bug.
+ phase='forced-null-fixture-helpers-retain-proof';
+ for(const signature of ['private.account_access_allowed()','public.is_current_user_master_admin()']){
+  const nullableProof=await proof();
+  const original=(await db.query('select pg_get_functiondef($1::regprocedure) definition,md5(prosrc) source_hash from pg_proc where oid=$1::regprocedure',[signature])).rows[0];
+  const body=/LANGUAGE plpgsql/i.test(original.definition)?'BEGIN RETURN NULL; END;':'SELECT NULL::boolean';
+  const forced=original.definition.replace(/\bAS\s+(\$[A-Za-z_0-9]*\$)[\s\S]*?\1\s*;?\s*$/i,(_all,tag)=>'AS '+tag+body+tag+';').replace(/^CREATE FUNCTION /i,'CREATE OR REPLACE FUNCTION ');
+  assert.notEqual(forced,original.definition);
+  const auditsBefore=(await db.query('select count(*)::int n from private.security_collector_read_audit')).rows[0].n;
+  await db.query(forced);
+  try{
+   statusCode(await consumer(nullableProof),403);
+   assert.equal((await stored(nullableProof)).rows[0].consumed_at,null);
+   assert.equal((await db.query('select count(*)::int n from private.security_collector_read_audit')).rows[0].n,auditsBefore);
+  }finally{
+   await db.query(original.definition.replace(/^CREATE FUNCTION /i,'CREATE OR REPLACE FUNCTION '));
+  }
+  assert.equal((await db.query('select md5(prosrc) source_hash from pg_proc where oid=$1::regprocedure',[signature])).rows[0].source_hash,original.source_hash);
+  statusCode(await consumer(nullableProof),200);
+ }
  phase='identity-original-session-and-default-off-restored';
  assert.deepEqual(await protectedIdentity(),protectedBefore);
  statusCode(await request('/auth/v1/user',{token:master.access_token,method:'GET'}),200);
@@ -199,7 +220,7 @@ try{
  await db.query('update private.security_collector_control set ingest_enabled=false,read_enabled=false');
  await db.query("update private.reauthentication_rollout set enabled=false where scope='master_security'");
  assert.equal((await db.query('select enabled from private.master_device_lock_rollout')).rows[0].enabled,false);
- console.log(JSON.stringify({pass:true,real_local_gotrue:true,real_edge_runtime:true,real_postgrest:true,native_postgres:true,actual_private_collector_consumer:true,fixture_only_rpc_bridge:true,product_public_collector_route_exists:false,baseline_handler_fail_closed:true,original_session_preserved:true,temporary_session_cleaned:true,actor_session_scope_target_ttl_replay_and_gate_denials:true,original_identity_company_role_preserved:true,missing_historical_sources_recovered:false,production_changed:false}));
+ console.log(JSON.stringify({pass:true,real_local_gotrue:true,real_edge_runtime:true,real_postgrest:true,native_postgres:true,actual_private_collector_consumer:true,fixture_only_rpc_bridge:true,product_public_collector_route_exists:false,baseline_handler_fail_closed:true,original_session_preserved:true,temporary_session_cleaned:true,actor_session_scope_target_ttl_replay_and_gate_denials:true,existing_null_helper_guards_verified:true,original_identity_company_role_preserved:true,missing_historical_sources_recovered:false,production_changed:false}));
 }catch(error){console.error(`FAIL local platform/auth integration phase=${phase} code=${typeof error?.code==='string'?error.code:'E2E_ASSERTION'}${typeof error?.actual==='number'&&typeof error?.expected==='number'?` actual=${error.actual} expected=${error.expected}`:''}`);if(lastHttp)console.error(JSON.stringify(lastHttp));
  if(server)console.error(JSON.stringify({edge_launcher_exit_code:server.exitCode,edge_launcher_signal:server.signalCode}));
  if(started){try{
