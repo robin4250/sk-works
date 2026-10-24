@@ -37,19 +37,29 @@ void main() {
   late MockClient network;
   bool phoneEnabled = false, confirmed = true, needsNonce = false;
   String phone = '', role = 'owner';
+  int settingsStatus = 200, userStatus = 200;
+  Object? settingsOverride;
+  Completer<void>? holdUser, reachedUser;
   Completer<void>? holdWrite, reachedWrite;
 
   setUp(() async {
     requests = []; phoneEnabled = false; confirmed = true; phone = ''; role = 'owner';
     holdWrite = null; reachedWrite = null; needsNonce = false;
+    settingsStatus = 200; userStatus = 200; settingsOverride = null;
+    holdUser = null; reachedUser = null;
     network = MockClient((request) async {
       requests.add(request);
       dynamic value = {};
       if (request.url.path.endsWith('/settings')) {
-        value = {'external': {'email': true, 'phone': phoneEnabled}};
+        if (settingsStatus != 200) return http.Response('PRIVATE_SETTINGS_$actor', settingsStatus);
+        value = settingsOverride ?? {'external': {'email': true, 'phone': phoneEnabled}};
       } else if (request.url.path.endsWith('/company_members')) {
         value = [{'company_id': 'synthetic-company', 'role': role}];
       } else if (request.url.path.endsWith('/user')) {
+        if (request.method == 'GET') {
+          reachedUser?.complete(); await holdUser?.future;
+          if (userStatus != 200) return http.Response('PRIVATE_USER_$actor', userStatus);
+        }
         if (request.method == 'PUT') {
           if (needsNonce && jsonDecode(request.body)['nonce'] != '123456') {
             return http.Response('{"code":"reauthentication_needed"}', 400, headers: {'content-type':'application/json'});
@@ -165,4 +175,70 @@ void main() {
     expect(requests.singleWhere((r) => r.method == 'PUT').headers['authorization'], 'Bearer $original');
     expect(client.auth.currentUser!.id, other);
   });
+  Future<LoginEnrollmentReadFailure> readFailure(LoginEnrollmentReadStage stage) async {
+    try {
+      await repository.load();
+      fail('read must fail');
+    } on LoginEnrollmentReadFailure catch (error) {
+      expect(error.stage, stage);
+      expect(error.toString(), 'LoginEnrollmentReadFailure(${stage.name})');
+      expect(error.toString(), isNot(contains(actor)));
+      expect(error.message, isNot(contains(actor)));
+      expect(error.toString(), isNot(contains('PRIVATE_')));
+      expect(error.message, isNot(contains('PRIVATE_')));
+      return error;
+    }
+  }
+
+  test('provider transport failure is sanitized and phone OFF recovers without OTP', () async {
+    final token = client.auth.currentSession!.accessToken;
+    settingsStatus = 503;
+    await readFailure(LoginEnrollmentReadStage.providerSettings);
+    settingsStatus = 200;
+    final state = await repository.load();
+    expect(state.phone, isEmpty); expect(state.phoneAvailable, false);
+    expect(state.canSetPassword, true);
+    expect(requests.every((r) => r.method == 'GET'), true);
+    expect(client.auth.currentSession!.accessToken, token);
+  });
+
+  test('wrong public provider response shape is a separate sanitized stage', () async {
+    settingsOverride = {'external': 'PRIVATE_SHAPE_$actor'};
+    await readFailure(LoginEnrollmentReadStage.providerShape);
+    expect(requests.every((r) => r.method == 'GET'), true);
+  });
+
+  test('verified user read failure is distinct from settings and never exposes response', () async {
+    userStatus = 404;
+    await readFailure(LoginEnrollmentReadStage.verifiedUser);
+    expect(requests.any((r) => r.url.path.endsWith('/settings')), false);
+    expect(requests.every((r) => r.method == 'GET'), true);
+  });
+
+  test('missing initial session is a fixed session-stage failure without API calls', () async {
+    repository.dispose();
+    final fresh = SupabaseClient('https://enroll.invalid', 'synthetic-public',
+      authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: network);
+    repository = LoginMethodEnrollmentRepository(fresh,
+      authUrl: Uri.parse('https://enroll.invalid/auth/v1/'), publicKey: 'synthetic-public', transport: network);
+    addTearDown(fresh.dispose);
+    await readFailure(LoginEnrollmentReadStage.session);
+    expect(requests, isEmpty);
+  });
+
+  test('session change during verified user read reports session stage and preserves new login', () async {
+    holdUser = Completer<void>(); reachedUser = Completer<void>();
+    final operation = repository.load();
+    final rejected = expectLater(operation, throwsA(isA<LoginEnrollmentReadFailure>()
+      .having((e) => e.stage, 'stage', LoginEnrollmentReadStage.session)));
+    await reachedUser!.future;
+    await client.auth.setInitialSession(session(other));
+    final newToken = client.auth.currentSession!.accessToken;
+    holdUser!.complete(); await rejected;
+    expect(client.auth.currentUser!.id, other);
+    expect(client.auth.currentSession!.accessToken, newToken);
+    expect(requests.any((r) => r.url.path.endsWith('/settings')), false);
+    expect(requests.every((r) => r.method == 'GET'), true);
+  });
+
 }

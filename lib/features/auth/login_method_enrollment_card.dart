@@ -42,11 +42,12 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
         _passwordNeedsCode = state.primaryPasswordCodeRequired;
         _passwordCodeSent = state.primaryPasswordCodeSent;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || generation != _generation) return;
       setState(() {
         _state = null; _loading = false;
-        _loadError = '登録状況と提供状態を確認できませんでした。再読み込みしてください。';
+        _loadError = error is LoginEnrollmentReadFailure ? error.message
+            : '登録状況と提供状態を確認できませんでした。再読み込みしてください。';
       });
     }
   }
@@ -178,7 +179,8 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
             '電話番号の登録状況と、SMSを送れる提供状態は別です。'
             'SMS送信後はコードの確認が完了するまで登録確認済みになりません。'
             '電話番号が未登録でも、利用可能な確認済みメールがあれば第一パスワードを設定できます。'
-            '取得に失敗した場合は登録状況を推測せず、再読み込みしてください。')),
+            '取得に失敗した場合は登録状況を推測せず、再読み込みしてください。'
+            'エラー案内で、ログイン状態・本人情報・提供状態のどこを確認できなかったかを表示します。')),
         ]),
         if (_busy) const LinearProgressIndicator(),
         TextButton(onPressed: _busy ? null : _load, child: const Text('登録方法を再読み込み')),

@@ -11,6 +11,21 @@ class PrimaryPasswordReauthenticationRequired implements Exception {
   const PrimaryPasswordReauthenticationRequired();
 }
 
+enum LoginEnrollmentReadStage { session, verifiedUser, providerSettings, providerShape }
+
+/// Contains only a fixed stage. Never retains Auth replies, identifiers or tokens.
+class LoginEnrollmentReadFailure implements Exception {
+  const LoginEnrollmentReadFailure(this.stage);
+  final LoginEnrollmentReadStage stage;
+  String get message => switch (stage) {
+    LoginEnrollmentReadStage.session => '現在のログイン状態を確認できません。設定画面を開き直してください。',
+    LoginEnrollmentReadStage.verifiedUser => '本人の登録情報を取得できませんでした。再読み込みしてください。',
+    LoginEnrollmentReadStage.providerSettings => 'ログイン方法の提供状態を取得できませんでした。再読み込みしてください。',
+    LoginEnrollmentReadStage.providerShape => 'ログイン方法の提供状態の応答を確認できませんでした。再読み込みしてください。',
+  };
+  @override String toString() => 'LoginEnrollmentReadFailure(${stage.name})';
+}
+
 class LoginMethodEnrollmentState {
   const LoginMethodEnrollmentState({required this.email, required this.phone,
     required this.emailConfirmed, required this.phoneConfirmed,
@@ -104,7 +119,9 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
     return Map<String, dynamic>.from(value);
   }
 
-  Future<T> _bound<T>(Future<T> Function(String, User, void Function()) action) async {
+  Future<T> _bound<T>(Future<T> Function(String, User, void Function()) action,
+      {void Function(LoginEnrollmentReadStage)? readStage}) async {
+    readStage?.call(LoginEnrollmentReadStage.session);
     if (_busy || _disposed) throw StateError('処理中です。');
     if (_invalidated || client.auth.currentUser?.id != _actorAtCreation) {
       throw StateError('ログイン状態が変わりました。設定を開き直してください。');
@@ -129,8 +146,11 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
           client.auth.currentSession?.accessToken != token) { revoked = true; }
     }, onError: (Object _) { revoked = true; });
     try {
+      readStage?.call(LoginEnrollmentReadStage.verifiedUser);
       final user = (await client.auth.getUser(token).timeout(const Duration(seconds: 15))).user;
+      readStage?.call(LoginEnrollmentReadStage.session);
       check();
+      readStage?.call(LoginEnrollmentReadStage.verifiedUser);
       if (user == null || user.id != actor || user.toJson()['is_anonymous'] == true) {
         throw StateError('本人のアカウントを確認できません。');
       }
@@ -142,9 +162,12 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
   }
 
   Future<LoginMethodEnrollmentState> _state(String token, User user,
-      void Function() check) async {
+      void Function() check, {void Function(LoginEnrollmentReadStage)? readStage}) async {
+    readStage?.call(LoginEnrollmentReadStage.providerSettings);
     final settings = await _request('settings', token);
+    readStage?.call(LoginEnrollmentReadStage.session);
     check();
+    readStage?.call(LoginEnrollmentReadStage.providerShape);
     final external = settings['external'];
     if (external is! Map) throw StateError('ログイン方法の提供状態を確認できません。');
     final json = user.toJson();
@@ -157,8 +180,17 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
   }
 
   @override
-  Future<LoginMethodEnrollmentState> load() => _bound((token, user, check) =>
-      _state(token, user, check));
+  Future<LoginMethodEnrollmentState> load() async {
+    var stage = LoginEnrollmentReadStage.session;
+    void readStage(LoginEnrollmentReadStage value) { stage = value; }
+    try {
+      return await _bound((token, user, check) =>
+        _state(token, user, check, readStage: readStage), readStage: readStage);
+    } catch (_) {
+      // Deliberately do not attach the original error/response as a cause.
+      throw LoginEnrollmentReadFailure(stage);
+    }
+  }
 
   Future<String> _memberships(String token, String actor, void Function() check) async {
     final rows = await client.from('company_members').select('company_id,role')

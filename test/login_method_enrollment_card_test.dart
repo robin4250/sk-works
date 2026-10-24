@@ -13,12 +13,14 @@ class Source implements LoginMethodEnrollmentSource {
   String phone = '';
   bool phoneConfirmed = false;
   Future<LoginMethodEnrollmentState>? nextLoad;
+  Object? readFailure;
   @override
   Future<LoginMethodEnrollmentState> load() async {
     loads++;
     final pending = nextLoad;
     nextLoad = null;
     if (pending != null) return await pending;
+    if (readFailure != null) throw readFailure!;
     if (failLoad) throw StateError('synthetic settings unavailable');
     return LoginMethodEnrollmentState(email: email, phone: phone,
       emailConfirmed: true, phoneConfirmed: phoneConfirmed, emailAvailable: true,
@@ -220,6 +222,69 @@ void main() {
     expect(find.textContaining('第一パスワードの保存と同じアカウントを確認しました。'), findsOneWidget);
     expect(find.byKey(const ValueKey('login-enrollment-load-error')), findsOneWidget);
     expect(find.text('電話番号を登録'), findsNothing);
+  });
+
+  testWidgets('fixed read stages are visible without stale actions or false registration', (t) async {
+    final source = Source();
+    var receipts = 0;
+    await show(t, source, onPrimaryPasswordSaved: () => receipts++);
+    for (final stage in LoginEnrollmentReadStage.values) {
+      source.readFailure = LoginEnrollmentReadFailure(stage);
+      await t.tap(find.text('登録方法を再読み込み')); await t.pumpAndSettle();
+      expect(find.text(LoginEnrollmentReadFailure(stage).message), findsOneWidget);
+      expect(find.text('電話番号を登録'), findsNothing);
+      expect(find.text('電話番号は未登録です。'), findsNothing);
+      expect(find.text('電話番号は登録確認済みです。'), findsNothing);
+      expect(find.textContaining('電話番号ログインは提供準備中'), findsNothing);
+      expect(find.text('第一パスワードを設定・変更'), findsNothing);
+    }
+    source.readFailure = null;
+    await t.tap(find.text('登録方法を再読み込み')); await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('login-enrollment-load-error')), findsNothing);
+    expect(find.text('電話番号は未登録です。'), findsOneWidget);
+    expect(find.textContaining('電話番号ログインは提供準備中'), findsOneWidget);
+    expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '第一パスワードを設定・変更')).onPressed, isNotNull);
+    expect(source.phoneRequests, 0); expect(source.passwords, 0); expect(receipts, 0);
+  });
+
+  testWidgets('unknown read error never displays upstream body identifiers or token', (t) async {
+    final source = Source()..readFailure = StateError('PRIVATE_BODY actor=synthetic-user token=synthetic-bearer');
+    await show(t, source);
+    expect(find.text('登録状況と提供状態を確認できませんでした。再読み込みしてください。'), findsOneWidget);
+    final text = t.widgetList<Text>(find.byType(Text)).map((w) => w.data ?? '').join(' ');
+    for (final secret in ['PRIVATE_BODY', 'synthetic-user', 'synthetic-bearer']) {
+      expect(text, isNot(contains(secret)));
+    }
+    expect(find.text('電話番号は未登録です。'), findsNothing);
+    expect(source.phoneRequests, 0); expect(source.passwords, 0);
+  });
+
+  testWidgets('late failed read cannot replace a newer successful provider state', (t) async {
+    final source = Source()..phoneAvailable = true;
+    await show(t, source);
+    final older = Completer<LoginMethodEnrollmentState>(); source.nextLoad = older.future;
+    await t.tap(find.text('登録方法を再読み込み')); await t.pump();
+    expect(find.text('電話番号を登録'), findsNothing);
+    source.phoneAvailable = false;
+    await t.tap(find.text('登録方法を再読み込み')); await t.pumpAndSettle();
+    older.completeError(const LoginEnrollmentReadFailure(LoginEnrollmentReadStage.verifiedUser));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('login-enrollment-load-error')), findsNothing);
+    expect(find.text('電話番号は未登録です。'), findsOneWidget);
+    expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '電話番号を登録')).onPressed, isNull);
+    expect(source.phoneRequests, 0); expect(t.takeException(), isNull);
+  });
+
+  testWidgets('late failure after card teardown cannot surface stale diagnostic', (t) async {
+    final source = Source();
+    await show(t, source);
+    final pending = Completer<LoginMethodEnrollmentState>(); source.nextLoad = pending.future;
+    await t.tap(find.text('登録方法を再読み込み')); await t.pump();
+    await t.pumpWidget(const SizedBox.shrink());
+    pending.completeError(const LoginEnrollmentReadFailure(LoginEnrollmentReadStage.providerSettings));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('login-enrollment-load-error')), findsNothing);
+    expect(t.takeException(), isNull); expect(source.phoneRequests, 0);
   });
 
 }
