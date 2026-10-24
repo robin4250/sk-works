@@ -24,6 +24,7 @@ import 'bulk_attendance_page.dart';
 import 'gps_auto_attendance_service.dart';
 import 'gps_auto_schedule_dialog.dart';
 import 'checkout_report_resume_repository.dart';
+import 'checkout_report_gate.dart';
 import 'checkout_report_resume_action.dart';
 
 /// Today's explicit destination wins over a saved GPS schedule, including nulls.
@@ -954,6 +955,12 @@ class _AttendanceVerificationPageState
       );
 
       if (_eventType == 'clock_out') {
+        if (widget.openSavedReport == null && CheckoutReportGateController.instance.requestCheck()) {
+          // The outer gate owns authoritative registration and isolates this
+          // ordinary Navigator before it returns to its previous screen.
+          if (mounted) { Navigator.of(context).pop(true); }
+          return;
+        }
         final reportOverride = widget.openSavedReport;
         if (reportOverride != null) {
           await reportOverride(context, saved);
