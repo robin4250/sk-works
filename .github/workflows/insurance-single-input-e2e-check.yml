@@ -1,0 +1,69 @@
+name: Insurance single input payroll PDF proof
+on:
+  pull_request:
+    paths:
+      - 'tool/verify_insurance_single_input_e2e.mjs'
+      - 'test/payroll_insurance_single_input_export_test.dart'
+      - 'test/payroll_insurance_single_input_pdf_test.dart'
+      - '.github/workflows/insurance-single-input-e2e-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/verify_insurance_single_input_e2e.mjs'
+      - 'test/payroll_insurance_single_input_export_test.dart'
+      - 'test/payroll_insurance_single_input_pdf_test.dart'
+      - '.github/workflows/insurance-single-input-e2e-check.yml'
+permissions:
+  contents: read
+jobs:
+  native-ui-pdf-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_resident_tax_fixture
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_resident_tax_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_RESIDENT_TAX_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_resident_tax_fixture
+      SKO_INSURANCE_E2E_DIR: build/insurance-single-input-proof
+      SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Install pinned fixture dependencies
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sko-insurance-pg" --no-save --ignore-scripts --no-audit --no-fund pg@8.16.3
+          python3 -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
+          python3 tool/prepare_pdf_fixture_font.py
+          flutter pub get --enforce-lockfile
+      - name: Analyze the new bridge tests
+        run: flutter analyze test/payroll_insurance_single_input_export_test.dart test/payroll_insurance_single_input_pdf_test.dart
+      - name: Prepare exact existing calculator and read conditions in disposable PG17
+        run: node tool/verify_insurance_single_input_e2e.mjs "file://$GITHUB_WORKSPACE/tool/resident_tax_native_pg17_runtime.mjs" "$RUNNER_TEMP/sko-insurance-pg/node_modules/pg/lib/index.js" prepare "$SKO_INSURANCE_E2E_DIR"
+      - name: Drive actual single-input UI and capture its confirmed save payload
+        run: flutter test --reporter expanded test/payroll_insurance_single_input_export_test.dart
+      - name: Apply that exact payload through existing SQL save and inspect generated statement
+        run: node tool/verify_insurance_single_input_e2e.mjs "file://$GITHUB_WORKSPACE/tool/resident_tax_native_pg17_runtime.mjs" "$RUNNER_TEMP/sko-insurance-pg/node_modules/pg/lib/index.js" apply "$SKO_INSURANCE_E2E_DIR"
+      - name: Build actual payroll PDF and reconcile deduction rows, totals and net
+        run: flutter test --reporter expanded test/payroll_insurance_single_input_pdf_test.dart
+      - name: Preserve synthetic JSON, PDF and rendered image proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: insurance-single-input-payroll-pdf-proof
+          path: build/insurance-single-input-proof
+          if-no-files-found: warn
