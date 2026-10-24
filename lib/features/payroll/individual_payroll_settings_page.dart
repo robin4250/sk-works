@@ -3,8 +3,11 @@ import 'payroll_fixed_deductions.dart';
 import '../settings/company_payroll_rates_page.dart';
 import '../../international/language_controller.dart';
 import 'dart:convert';
+import 'dart:async';
+import '../shared/company_allowance_label_repository.dart';
 
 import '../../domain/payroll_rate_settings_hydration.dart';
+import '../../data/supabase_backend.dart';
 import 'package:flutter/material.dart';
 
 import '../../widgets/rate_formula_editor_card.dart';
@@ -18,12 +21,16 @@ import 'resident_tax_section.dart';
 import 'resident_tax_capability.dart';
 import 'payroll_unit_conditions_page.dart';
 import 'payroll_unit_item_editor.dart';
+import 'individual_allowance_rows.dart';
 
 class IndividualPayrollSettingsPage extends StatefulWidget {
-  const IndividualPayrollSettingsPage({super.key, this.repository});
+  const IndividualPayrollSettingsPage({super.key, this.repository,
+    this.registeredAllowanceSource});
 
   @visibleForTesting
   final IndividualPayrollSettingsRepository? repository;
+  @visibleForTesting
+  final CompanyAllowanceLabelSource? registeredAllowanceSource;
 
   @override
   State<IndividualPayrollSettingsPage> createState() =>
@@ -56,6 +63,9 @@ class _IndividualPayrollSettingsPageState
   ];
 
   late final IndividualPayrollSettingsRepository? _repository;
+  late final CompanyAllowanceLabelSource? _registeredAllowanceSource;
+  CompanyAllowanceLabelSnapshot? _registeredAllowanceNames;
+  bool _registeredAllowanceReadFailed = false;
   final _confirmationRepository = PayrollConfirmationRepository.maybeCreate();
   PayrollConfirmationSettings? _companyPolicy;
   final _controllers = <String, TextEditingController>{};
@@ -63,15 +73,18 @@ class _IndividualPayrollSettingsPageState
   final _customDeductions = <_CustomMoneyDraft>[];
   IndividualPayrollWorkspace? _workspace;
   String? _workerId;
+  String? _allowanceActorAtLoad;
+  bool _allowanceUsesLiveSession = false;
   int _loadGeneration = 0;
   bool _loading = true;
   bool _saving = false;
+  bool _allowanceSaveUncertain = false;
   bool _showDeductions = false;
   PayrollItemUnit _earningUnit = PayrollItemUnit.month;
   PayrollItemUnit _deductionUnit = PayrollItemUnit.month;
   final _unitPanelKey = GlobalKey();
   final _unitFooter = PayrollUnitEditorController();
-  bool get _busy => _saving || _unitFooter.saving;
+  bool get _busy => _saving || _unitFooter.saving || _allowanceSaveUncertain;
   final _scrollController = ScrollController();
   final _addedItemKey = GlobalKey();
   bool _paidLeaveWagesAvailable = false;
@@ -86,6 +99,8 @@ class _IndividualPayrollSettingsPageState
   void initState() {
     super.initState();
     _repository = widget.repository ?? IndividualPayrollSettingsRepository.maybeCreate();
+    _registeredAllowanceSource = widget.registeredAllowanceSource ??
+        SupabaseCompanyAllowanceLabelRepository.maybeCreate();
     for (final field in _amountFields) {
       _controllers[field.$1] = TextEditingController();
     }
@@ -190,9 +205,23 @@ class _IndividualPayrollSettingsPageState
     final generation = ++_loadGeneration;
     final repository = _repository;
     if (repository == null) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _registeredAllowanceNames = null;
+      _registeredAllowanceReadFailed = false;
+    });
+    final usesLiveSession = SupabaseBackend.isInitialized;
+    final actor = usesLiveSession ? SupabaseBackend.client.auth.currentUser?.id : null;
     try {
       final setting = await repository.loadSetting(workerId);
+      final expectedCompany = _workspace?.companyId;
+      if (expectedCompany != null && setting.values['company_id'] is String &&
+          setting.values['company_id'] != expectedCompany) {
+        throw StateError('給与設定の会社が一致しません');
+      }
+      if (usesLiveSession && (actor == null || SupabaseBackend.client.auth.currentUser?.id != actor)) {
+        throw StateError('ログイン状態が変わりました');
+      }
       if (!mounted || generation != _loadGeneration) return;
       for (final field in _amountFields) {
         _controllers[field.$1]!.text = setting
@@ -236,13 +265,20 @@ class _IndividualPayrollSettingsPageState
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _workerId = workerId;
+        _allowanceUsesLiveSession = usesLiveSession;
+        _allowanceActorAtLoad = actor;
         _updatedAt = setting.updatedAt;
         _settingValues = hydratePayrollRateSettings(setting.values);
         _rateDraft = null;
         _initialRateSignature = null;
         _loading = false;
         _error = null;
+        _allowanceSaveUncertain = false;
       });
+      final company = _workspace?.companyId ?? setting.values['company_id'];
+      if (company is String && company.isNotEmpty) {
+        unawaited(_loadRegisteredAllowanceNames(company, workerId, generation));
+      }
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -252,7 +288,7 @@ class _IndividualPayrollSettingsPageState
     }
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool registerUnitDrafts = true}) async {
     final repository = _repository;
     final workerId = _workerId;
     final workspace = _workspace;
@@ -263,6 +299,25 @@ class _IndividualPayrollSettingsPageState
       return;
     }
 
+    if (!_allowanceScopeCurrent()) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:
+        Text('ログイン状態が変わりました。画面を開き直してください。')));
+      return;
+    }
+    if (_allowanceSaveUncertain) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:
+        Text('手当の保存結果を確認するまで、保存し直せません。')));
+      return;
+    }
+    if (!_unitFooter.validate()) return;
+    try {
+      splitIndividualAllowanceRows(individualAllowanceRows(_individualAllowanceValues));
+    } on FormatException catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      return;
+    }
+
+    final preparedUnits = registerUnitDrafts ? _unitFooter.prepareRegistration() : null;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -287,6 +342,11 @@ class _IndividualPayrollSettingsPageState
       ),
     );
     if (confirmed != true || !mounted) return;
+    if (!_allowanceScopeCurrent() || _workerId != workerId) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:
+        Text('本人または対象が変わりました。保存していません。')));
+      return;
+    }
 
     final values = <String, dynamic>{};
     final rateDraft = _rateDraft;
@@ -419,14 +479,32 @@ class _IndividualPayrollSettingsPageState
     values['custom_deductions'] = customDeductions;
 
     setState(() => _saving = true);
+    var settingsWriteStarted = false;
     try {
+      settingsWriteStarted = true;
       await repository.saveSetting(workerId: workerId, values: values);
+      if (!_allowanceScopeCurrent() || _workerId != workerId) {
+        setState(() => _allowanceSaveUncertain = true);
+        throw StateError('保存後に本人または対象が変わりました');
+      }
+      // The original worker settings are now acknowledged. A prepared unit
+      // operation uses the values captured before confirmation, not later input.
+      _settingValues = {..._settingValues, ...values};
+      if (preparedUnits != null && !await preparedUnits()) {
+        if (mounted) setState(() => _allowanceSaveUncertain = true);
+        return;
+      }
+      if (!_allowanceScopeCurrent() || _workerId != workerId) {
+        setState(() => _allowanceSaveUncertain = true);
+        return;
+      }
       await _loadWorker(workerId);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(SkoLanguageController.tr('個別給与設定を保存しました'))));
     } catch (error) {
       if (!mounted) return;
+      if (settingsWriteStarted) setState(() => _allowanceSaveUncertain = true);
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(SkoLanguageController.trParams('保存できませんでした: {error}', {'error': error}))));
     } finally {
@@ -453,7 +531,12 @@ class _IndividualPayrollSettingsPageState
           SkoLanguageController.tr('個別給与設定'),
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: const [SkoNotificationBell()],
+        actions: [IconButton(tooltip: '使い方', icon: const Icon(Icons.help_outline),
+          onPressed: () => showDialog<void>(context: context, builder: (context) =>
+            AlertDialog(title: const Text('手当の登録'),
+              content: const Text('時間・日・月の単位ごとに、追加ボタンから手当を登録します。登録済みの手当も同じ一覧で編集・削除できます。会社共通の定義や確定済み明細は、この社員の手当編集では削除しません。保存結果を確認できない場合は入力を保持し、再送せず保存済みの状態を確認します。'),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]))),
+          const SkoNotificationBell()],
         bottom: _updatedAt == null
             ? null
             : PreferredSize(
@@ -556,6 +639,12 @@ class _IndividualPayrollSettingsPageState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                  if (_allowanceSaveUncertain) Card(child: Padding(
+                    padding: const EdgeInsets.all(12), child: Column(children: [
+                      const Text('手当の保存結果を確認するまで、保存し直せません。入力を保持しています。'),
+                      TextButton(onPressed: _saving ? null : _confirmAllowanceStateReload,
+                        child: const Text('保存済みの状態を確認')),
+                    ]))),
                   DropdownButtonFormField<String>(
                     initialValue: _workerId,
                     decoration: InputDecoration(
@@ -654,39 +743,6 @@ class _IndividualPayrollSettingsPageState
                       child: _moneySection(
                         title: '支給',
                         icon: Icons.add_circle_outline,
-                        dailyChildren: [
-                          _sectionTitle(SkoLanguageController.tr('手当')),
-                          for (var i = 1; i <= 3; i++) ...[
-                            TextFormField(
-                              controller: _controllers['allowance_name_$i'],
-                              enabled: workspace.canEdit,
-                              maxLength: 100,
-                              decoration: InputDecoration(
-                                labelText: SkoLanguageController.trParams(
-                                  '手当{number} 名称',
-                                  {'number': i},
-                                ),
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                            _amountField(
-                              'allowance_$i',
-                              SkoLanguageController.trParams('手当{number} 金額', {
-                                'number': i,
-                              }),
-                              suffixText: '円／日',
-                            ),
-                          ],
-                          Text(SkoLanguageController.tr(
-                            '勤怠でこの手当を選択した日数に応じて支給します。',
-                          )),
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: workspace.canEdit && !_saving ? _save : null,
-                            icon: const Icon(Icons.save_outlined),
-                            label: Text(SkoLanguageController.tr('手当1〜3を登録')),
-                          ),
-                        ],
                         children: [
                           SizedBox(height: 12),
                           _sectionTitle(SkoLanguageController.tr('追加支給')),
@@ -1063,11 +1119,134 @@ class _IndividualPayrollSettingsPageState
     );
   }
 
+  Future<void> _confirmAllowanceStateReload() async {
+    final worker = _workerId;
+    if (worker == null) return;
+    final accepted = await showDialog<bool>(context: context, builder: (context) =>
+      AlertDialog(title: const Text('保存済みの状態を確認'),
+        content: const Text('保存し直さず、保存済みの設定を読み直します。表示中の未保存入力は置き換わります。'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('入力を保持')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存済みの状態を確認'))]));
+    if (mounted && worker == _workerId && accepted == true) await _loadWorker(worker);
+  }
+
+  Future<void> _loadRegisteredAllowanceNames(String company, String worker, int generation) async {
+    final source = _registeredAllowanceSource;
+    if (source == null) return;
+    try {
+      final value = await source.read(company);
+      if (!mounted || generation != _loadGeneration || _workerId != worker ||
+          !_allowanceScopeCurrent() || value.companyId != company ||
+          (_workspace?.companyId ?? _settingValues['company_id']) != company) return;
+      setState(() { _registeredAllowanceNames = value; _registeredAllowanceReadFailed = false; });
+    } catch (_) {
+      if (mounted && generation == _loadGeneration && _workerId == worker) {
+        setState(() { _registeredAllowanceNames = null; _registeredAllowanceReadFailed = true; });
+      }
+    }
+  }
+
+  List<PayrollRegisteredAllowanceName> get _registeredNameRows {
+    if (!_allowanceScopeCurrent()) return const [];
+    final type = _settingValues['pay_type']?.toString() ?? 'daily';
+    return [for (final item in _registeredAllowanceNames?.items ?? <CompanyAllowanceLabel>[])
+      if (item.payrollType == 'all' || item.payrollType == type)
+        PayrollRegisteredAllowanceName(
+          key: '${item.origin}/${item.id ?? item.legacySlot}', itemId: item.id,
+          name: item.name, legacySlot: item.legacySlot,
+          section: PayrollItemSection.values.byName(item.section),
+          unit: PayrollItemUnit.values.byName(item.unit)),
+    ];
+  }
+
+  Map<String, dynamic> get _individualAllowanceValues => {
+    for (var slot = 1; slot <= 3; slot++) ...{
+      'allowance_name_$slot': _controllers['allowance_name_$slot']!.text,
+      'allowance_$slot': _controllers['allowance_$slot']!.text,
+    },
+  };
+
+  void _rememberAllowanceDraft(List<PayrollUnitItemDraft> items) {
+    // Preserve incomplete input too. Validation happens before either save.
+    final rows = {for (final item in items)
+      if (individualAllowanceSlot(item.id) != null)
+        individualAllowanceSlot(item.id)!: item};
+    for (var slot = 1; slot <= 3; slot++) {
+      _controllers['allowance_name_$slot']!.text = rows[slot]?.name ?? '';
+      _controllers['allowance_$slot']!.text = rows[slot]?.rate ?? '0';
+    }
+  }
+
+  bool _allowanceScopeCurrent() => !_allowanceUsesLiveSession ||
+      (_allowanceActorAtLoad != null &&
+       SupabaseBackend.client.auth.currentUser?.id == _allowanceActorAtLoad);
+
+  Future<bool> _saveAllowanceRows(List<PayrollUnitItemDraft> items) async {
+    final worker = _workerId;
+    final company = _workspace?.companyId ?? _settingValues['company_id'];
+    final generation = _loadGeneration;
+    if (worker == null || company is! String || _repository == null ||
+        _workspace?.canEdit != true || _allowanceSaveUncertain || !_allowanceScopeCurrent()) throw StateError('手当の保存対象を確認できません');
+    final values = splitIndividualAllowanceRows(items).workerValues;
+    final changed = values.entries.any((entry) {
+      final previous = _settingValues[entry.key];
+      return entry.key.startsWith('allowance_name_')
+          ? (previous?.toString() ?? '') != entry.value
+          : (previous as num? ?? 0) != entry.value;
+    });
+    if (!changed) return false;
+    await _repository!.saveSetting(workerId: worker, values: values);
+    if (!mounted || generation != _loadGeneration || _workerId != worker || !_allowanceScopeCurrent() ||
+        (_workspace?.companyId ?? _settingValues['company_id']) != company) {
+      throw StateError('手当の保存後に対象が変わりました');
+    }
+    setState(() => _settingValues = {..._settingValues, ...values});
+    return true;
+  }
+
+  Future<void> _reloadAllowanceRows() async {
+    final worker = _workerId;
+    final generation = _loadGeneration;
+    if (worker == null || _repository == null) throw StateError('社員を確認できません');
+    final saved = await _repository!.loadSetting(worker);
+    final expectedCompany = _workspace?.companyId ?? _settingValues['company_id'];
+    if (saved.values['company_id'] is String && saved.values['company_id'] != expectedCompany) {
+      throw StateError('給与設定の会社が一致しません');
+    }
+    if (!mounted || generation != _loadGeneration || worker != _workerId || !_allowanceScopeCurrent()) {
+      throw StateError('社員が変わりました');
+    }
+    for (var slot = 1; slot <= 3; slot++) {
+      _controllers['allowance_name_$slot']!.text = saved.text('allowance_name_$slot');
+      _controllers['allowance_$slot']!.text = saved.amount('allowance_$slot').toStringAsFixed(0);
+    }
+    _settingValues = {..._settingValues, ...{
+      for (var slot = 1; slot <= 3; slot++) ...{
+        'allowance_name_$slot': saved.text('allowance_name_$slot'),
+        'allowance_$slot': saved.amount('allowance_$slot'),
+      },
+    }};
+    setState(() {});
+  }
+
   Widget _inlineUnitSettings(String title) {
     final worker = _workerId;
     final company = _workspace?.companyId ?? _settingValues['company_id'];
+    Widget fallback() => title == '支給' && _earningUnit == PayrollItemUnit.day
+        ? PayrollUnitItemEditor(
+            key: ValueKey('individual-allowance-fallback-$worker-$_loadGeneration'),
+            embedded: true, showFooter: false, allowAdding: false,
+            showDailyReportOption: false,
+            quantityExplanation: (_) => '退勤で選択した日数に応じて支給します',
+            controller: _unitFooter, section: PayrollItemSection.earning,
+            unit: PayrollItemUnit.day,
+            initialItems: individualAllowanceRows(_individualAllowanceValues),
+            canEdit: _workspace?.canEdit == true && !_saving,
+            onDraftChanged: _rememberAllowanceDraft,
+            onRegister: (_) => _save(registerUnitDrafts: false),
+          ) : const SizedBox.shrink();
     if (worker == null || company is! String || _repository == null) {
-      return const SizedBox.shrink();
+      return fallback();
     }
     try {
       return PayrollUnitConditionsPage(
@@ -1079,6 +1258,20 @@ class _IndividualPayrollSettingsPageState
         companyId: company, workerId: worker,
         section: title == '支給' ? PayrollItemSection.earning : PayrollItemSection.deduction,
         unit: title == '支給' ? _earningUnit : _deductionUnit,
+        canEditIndividualAllowances: _workspace?.canEdit == true && !_saving,
+        individualSaveUncertain: _allowanceSaveUncertain,
+        registeredAllowanceNames: _registeredNameRows,
+        registeredAllowanceNamesUnavailable: _registeredAllowanceReadFailed,
+        individualAllowanceItems: individualAllowanceRows(_individualAllowanceValues),
+        onIndividualAllowanceDraftChanged: _rememberAllowanceDraft,
+        onSaveIndividualAllowances: _saveAllowanceRows,
+        onReloadIndividualAllowances: _reloadAllowanceRows,
+        individualAllowanceScopeCurrent: _allowanceScopeCurrent,
+        onIndividualSaveUncertain: (value) {
+          if (mounted && _allowanceSaveUncertain != value) {
+            setState(() => _allowanceSaveUncertain = value);
+          }
+        },
         onValidationSelection: (section, unit) => setState(() {
           _showDeductions = section == PayrollItemSection.deduction;
           if (_showDeductions) { _deductionUnit = unit; }
@@ -1086,8 +1279,9 @@ class _IndividualPayrollSettingsPageState
         }),
       );
     } catch (_) {
-      // An injected legacy-only repository keeps its existing monthly fields.
-      return const SizedBox.shrink();
+      // Older servers retain editable registered rows without creating a new
+      // unit-condition item or offering an unsupported extra save path.
+      return fallback();
     }
   }
 
@@ -1095,7 +1289,6 @@ class _IndividualPayrollSettingsPageState
     required String title,
     required IconData icon,
     required List<Widget> children,
-    List<Widget> dailyChildren = const [],
   }) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
@@ -1145,14 +1338,6 @@ class _IndividualPayrollSettingsPageState
           offstage: (title == '支給' ? _earningUnit : _deductionUnit) != PayrollItemUnit.month,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
         ),
-        if (dailyChildren.isNotEmpty)
-          Offstage(
-            offstage: (title == '支給' ? _earningUnit : _deductionUnit) != PayrollItemUnit.day,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: dailyChildren,
-            ),
-          ),
         if ((title == '控除') == _showDeductions) _inlineUnitSettings(title),
 
       ],

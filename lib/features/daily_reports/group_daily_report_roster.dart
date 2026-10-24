@@ -16,7 +16,7 @@ List<DailyReportWorkerDraft> mergeAnchoredGroupRoster({
     workerId: worker.workerId, workerName: worker.workerName,
     overtimeHours: worker.overtimeHours, earlyHours: worker.earlyHours,
     nightHours: worker.nightHours, allowanceAmount: worker.allowanceAmount,
-    allowanceLabel: worker.allowanceLabel, vehicleId: worker.vehicleId,
+    allowanceLabel: worker.allowanceLabel,\n    companyAllowanceSelections: worker.companyAllowanceSelections, vehicleId: worker.vehicleId,
     vehicleName: worker.vehicleName, routeId: worker.routeId, routeName: worker.routeName,
     odometerKm: worker.odometerKm, meterManaged: worker.meterManaged,
     meterEventId: worker.meterEventId, meterSourceClockInId: worker.meterSourceClockInId,

@@ -23,6 +23,9 @@ import 'daily_report_month_page.dart';
 import '../operations/vehicle_driver_meter_page.dart';
 import 'daily_report_pending_notice.dart';
 import 'daily_report_repository.dart';
+import 'daily_report_allowance_name_field.dart';
+import 'daily_report_company_allowance_selection.dart';
+import '../shared/company_allowance_label_repository.dart';
 import 'daily_report_edit_session.dart';
 import 'signature_capture_page.dart';
 import 'daily_report_zoom_pages.dart';
@@ -71,6 +74,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
   String? _routeAssignmentId;
   String? _siteName;
   List<DailyReportWorkerDraft> _workers = [];
+  List<CompanyAllowanceLabel> _companyAllowanceItems = const [];
+  String? _companyAllowanceActor;
+  bool _companyAllowanceNamesLoading = false;
+  bool _companyAllowanceNamesUnavailable = false;
   DailyReportRecord? _report;
   List<DailyReportEvidenceRecord> _evidence = const [];
   bool _loading = true;
@@ -228,6 +235,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _loadSelectedSite() async {
     final generation = ++_loadGeneration;
+    setState(() {
+      _companyAllowanceItems = const [];
+      _companyAllowanceActor = null;
+      _companyAllowanceNamesLoading = false;
+      _companyAllowanceNamesUnavailable = false;
+    });
     final date = _date;
     final repository = _repository;
     final siteId = _siteId;
@@ -277,6 +290,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         });
         _resetWorkerControllers();
         _savedDraftFingerprint = _draftFingerprint();
+        await _loadCompanyAllowanceNames(generation);
         return;
       }
       final existing = await repository.loadReport(
@@ -381,11 +395,41 @@ class _DailyReportPageState extends State<DailyReportPage> {
       });
       _resetWorkerControllers();
       _savedDraftFingerprint = _draftFingerprint();
+      await _loadCompanyAllowanceNames(generation);
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _loadCompanyAllowanceNames(int generation) async {
+    final repository = _repository;
+    // These are explicitly current registered names, not names effective on
+    // the report date. Backdated unsigned entry may select them intentionally;
+    // discovery never replaces existing text or edits a signed report.
+    if (repository == null || !_editable || _workers.isEmpty || _visitReport) { return; }
+    final actor = repository.currentActorId;
+    setState(() => _companyAllowanceNamesLoading = true);
+    try {
+      final snapshot = await repository.loadCompanyAllowanceLabels(
+        workerIds: _workers.map((worker) => worker.workerId),
+        expectedCompanyId: _report?.companyId);
+      if (!mounted || generation != _loadGeneration ||
+          repository.currentActorId != actor) return;
+      setState(() {
+        _companyAllowanceActor = actor;
+        _companyAllowanceItems = List.unmodifiable(snapshot.items);
+        _companyAllowanceNamesLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _companyAllowanceItems = const [];
+        _companyAllowanceNamesLoading = false;
+        _companyAllowanceNamesUnavailable = true;
       });
     }
   }
@@ -1297,7 +1341,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     );
   }
 
-  static const _helpText = "報告者サインの後、責任者サインで日報を確定します。保存した日報は「保存済み一覧」から閲覧・印刷できます。\n\n複数現場の請求は退勤時の正式日報のサインを根拠にします。途中の訪問日報だけでは確定しません。同じ日に同じ取引会社を複数現場で訪問しても1人工、異なる取引会社は会社ごとに1人工です。別の請求数量申請・承認は不要です。退勤署名・訪問先・登録単価を確認できない場合は請求額を未確定と表示します。\n\n給与や出勤表の人工は変更しません。請求書の承認印は別の確認操作です。";
+  static const _helpText = "報告者サインの後、責任者サインで日報を確定します。保存した日報は「保存済み一覧」から閲覧・印刷できます。\n\n正式な退勤日報の未署名下書きでは、会社共通の時間・日単位の項目を各メンバーの欄から選べます。月単位は退勤に出さず、個別給料設定で確認します。過去日付の入力でも候補は現在の登録名です。候補を開くだけでは登録しません。退勤では会社に登録された項目だけを選び、単価や新しい手当名を入力し直しません。選んだ名前は改行区切りで保存し、従来の保存済み入力も保持します。保存済みの名前を自動で置き換えません。署名済み日報は正規の編集承認なしに変更できません。選択は登録IDと版を付けて保存し、単価や数量をアプリで推測しません。給与への反映は正式な退勤日報の確定を起点に、対象月の未確定給与で確認します。途中の訪問日報は給与確定の代わりにはなりません。\n\n複数現場の請求は退勤時の正式日報のサインを根拠にします。途中の訪問日報だけでは確定しません。同じ日に同じ取引会社を複数現場で訪問しても1人工、異なる取引会社は会社ごとに1人工です。別の請求数量申請・承認は不要です。退勤署名・訪問先・登録単価を確認できない場合は請求額を未確定と表示します。\n\n給与や出勤表の人工は変更しません。請求書の承認印は別の確認操作です。";
 
   void _showHelp() => showDialog<void>(
     context: context,
@@ -1459,6 +1503,16 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             _WorkerDetailCard(
                               worker: worker,
                               editable: _editable,
+                              companyAllowanceItems:
+                                  _repository?.currentActorId == _companyAllowanceActor
+                                      ? _companyAllowanceItems : const [],
+                              companyAllowanceSelectionMode: !_visitReport,
+                              onCompanyAllowanceSelections: (selected) {
+                                _invalidatePendingSignature();
+                                setState(() => worker.companyAllowanceSelections = selected);
+                              },
+                              companyAllowanceNamesLoading: _companyAllowanceNamesLoading,
+                              companyAllowanceNamesUnavailable: _companyAllowanceNamesUnavailable,
                               overtime: _overtime[worker.workerId]!,
                               early: _early[worker.workerId]!,
                               night: _night[worker.workerId]!,
@@ -1612,6 +1666,11 @@ class _WorkerDetailCard extends StatelessWidget {
   const _WorkerDetailCard({
     required this.worker,
     required this.editable,
+    required this.companyAllowanceItems,
+    required this.companyAllowanceSelectionMode,
+    required this.onCompanyAllowanceSelections,
+    required this.companyAllowanceNamesLoading,
+    required this.companyAllowanceNamesUnavailable,
     required this.overtime,
     required this.early,
     required this.night,
@@ -1622,6 +1681,10 @@ class _WorkerDetailCard extends StatelessWidget {
 
   final DailyReportWorkerDraft worker;
   final bool editable;
+  final List<CompanyAllowanceLabel> companyAllowanceItems;
+  final bool companyAllowanceSelectionMode;
+  final ValueChanged<DailyReportCompanyAllowanceSelections> onCompanyAllowanceSelections;
+  final bool companyAllowanceNamesLoading, companyAllowanceNamesUnavailable;
   final TextEditingController overtime;
   final TextEditingController early;
   final TextEditingController night;
@@ -1742,16 +1805,15 @@ class _WorkerDetailCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          TextField(
-            controller: allowanceLabel,
-            enabled: editable,
-            decoration: InputDecoration(
-              labelText: SkoLanguageController.tr('手当名'),
-              hintText: SkoLanguageController.isEnglish
-                  ? 'e.g. Steel, PC'
-                  : SkoLanguageController.tr('例：鉄骨、PC'),
-            ),
-          ),
+          if (companyAllowanceSelectionMode)
+            DailyReportAllowanceNameField(controller: allowanceLabel,
+              enabled: editable, registeredItems: companyAllowanceItems,
+              selections: worker.companyAllowanceSelections,
+              onSelectionsChanged: onCompanyAllowanceSelections,
+              loading: companyAllowanceNamesLoading,
+              unavailable: companyAllowanceNamesUnavailable)
+          else TextField(controller: allowanceLabel, enabled: editable,
+            decoration: InputDecoration(labelText: SkoLanguageController.tr('手当名'))),
         ],
       ),
     );
