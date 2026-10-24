@@ -1,0 +1,25 @@
+-- REVIEW ONLY. Not a migration or production installer.
+-- Preserve the existing shared invoice/payment finalizer contract.
+-- The pre-existing row_data JSON safely exposes payment-only revision without
+-- PostgreSQL resolving a nonexistent invoice record field in an IF expression.
+do $invoice_revision_compat$
+declare
+ target regprocedure:='private.expense_cost_finalize()'::regprocedure;
+ definition text;
+ before_attributes jsonb;
+ after_attributes jsonb;
+begin
+ if (select md5(prosrc) from pg_proc where oid=target) is distinct from '22ff4377666ec56ccc4b261cf380e9c0'
+ then raise exception 'expense finalizer source differs';end if;
+ select to_jsonb(p)-'prosrc' into before_attributes from pg_proc p where oid=target;
+ definition:=pg_get_functiondef(target);
+ if (length(definition)-length(replace(definition,'new.revision','')))/length('new.revision')<>2
+ then raise exception 'expense finalizer revision anchors differ';end if;
+ definition:=replace(definition,'new.revision','(row_data->>''revision'')::integer');
+ execute definition;
+ select to_jsonb(p)-'prosrc' into after_attributes from pg_proc p where oid=target;
+ if after_attributes is distinct from before_attributes
+ then raise exception 'expense finalizer attributes changed';end if;
+ if (select md5(prosrc) from pg_proc where oid=target) is distinct from '26d214245ad95159dab04059710840bd'
+ then raise exception 'expense finalizer patched source differs';end if;
+end $invoice_revision_compat$;
