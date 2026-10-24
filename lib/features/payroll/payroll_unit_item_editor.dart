@@ -35,10 +35,12 @@ class PayrollUnitItemDraft {
 @immutable
 class PayrollRegisteredAllowanceName {
   const PayrollRegisteredAllowanceName({required this.key, required this.name,
-    required this.section, required this.unit, this.legacySlot, this.itemId});
+    required this.section, required this.unit, this.legacySlot, this.itemId, this.currentRateYen, this.displayUnit = ''});
   final String key, name;
   final String? itemId;
   final int? legacySlot;
+  final int? currentRateYen;
+  final String displayUnit;
   final PayrollItemSection section;
   final PayrollItemUnit unit;
 }
@@ -565,3 +567,4 @@ class _RowDraft {
     focus.dispose();
   }
 }
+

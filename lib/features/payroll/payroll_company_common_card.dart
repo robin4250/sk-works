@@ -4,7 +4,7 @@ import 'payroll_unit_item_editor.dart';
 import 'company_common_calculation_resolution.dart';
 
 /// Current company registration names, independent of a worker's payroll history.
-/// This deliberately does not infer a current price or effective payroll amount.
+/// Current prices come only from a matching privileged catalog read, never history.
 class PayrollCompanyRegisteredNamesCard extends StatelessWidget {
   const PayrollCompanyRegisteredNamesCard({super.key, required this.items,
     this.loaded = true, this.unavailable = false, this.unit, this.onOpenSettings});
@@ -33,7 +33,13 @@ class PayrollCompanyRegisteredNamesCard extends StatelessWidget {
       for (final item in loaded && !unavailable ? items : <PayrollRegisteredAllowanceName>[])
         ListTile(key: ValueKey('current-company-registered-${item.key}'),
           dense: true, leading: const Icon(Icons.business_outlined),
-          title: Text(item.name)),
+          title: Text(item.name),
+          subtitle: Text(item.currentRateYen == null ? tr('単価未確認')
+                            : SkoLanguageController.trParams('{amount}円／{unit}', {
+                  'amount': '${item.currentRateYen}',
+                  'unit': item.displayUnit.isNotEmpty ? item.displayUnit :
+                    tr({PayrollItemUnit.hour: '時間', PayrollItemUnit.day: '日', PayrollItemUnit.month: '月'}[item.unit]!),
+                }))),
     ]));
   }
 }
@@ -175,3 +181,4 @@ class _PayrollCompanyCommonCardState extends State<PayrollCompanyCommonCard> {
     );
   }
 }
+
