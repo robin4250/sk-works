@@ -12,6 +12,7 @@ import 'japan_holiday.dart';
 import 'attendance_week_date_label.dart';
 import 'paid_leave_page.dart';
 import 'worker_attendance_sheet_repository.dart';
+import 'checkout_report_resume_action.dart';
 
 class WorkerAttendanceSheetPage extends StatefulWidget {
   const WorkerAttendanceSheetPage({
@@ -99,6 +100,18 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
     if (repository == null) return;
     final workerId = widget.workerId ?? await repository.ensureCurrentWorkerId();
     if (!mounted) return;
+    try {
+      final handled = await offerCheckoutReportResumeForDay(context,
+        workerId: workerId, workDate: date);
+      if (!mounted) return;
+      if (handled) { await _load(); return; }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${SkoLanguageController.tr('日報の作成状況を確認できません')}: $error')));
+      }
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => DailyReportMonthPage(
@@ -195,6 +208,10 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          IconButton(key: const ValueKey('checkout-report-resume-help'),
+            tooltip: SkoLanguageController.tr('退勤後の日報'),
+            onPressed: () => showCheckoutReportResumeHelp(context),
+            icon: const Icon(Icons.help_outline)),
           IconButton(
             tooltip: SkoLanguageController.tr('月間カレンダー'),
             onPressed: _loading ? null : _showMonthCalendar,
@@ -703,6 +720,18 @@ class _WorkerAttendanceMonthPageState
     if (repository == null) return;
     final workerId = widget.workerId ?? await repository.ensureCurrentWorkerId();
     if (!mounted) return;
+    try {
+      final handled = await offerCheckoutReportResumeForDay(context,
+        workerId: workerId, workDate: date);
+      if (!mounted) return;
+      if (handled) { await _changeMonth(0); return; }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${SkoLanguageController.tr('日報の作成状況を確認できません')}: $error')));
+      }
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => DailyReportMonthPage(
@@ -781,6 +810,10 @@ class _WorkerAttendanceMonthPageState
                   : '${_month.year}年${_month.month}月'),
         ),
         actions: [
+          IconButton(key: const ValueKey('checkout-report-resume-help'),
+            tooltip: SkoLanguageController.tr('退勤後の日報'),
+            onPressed: () => showCheckoutReportResumeHelp(context),
+            icon: const Icon(Icons.help_outline)),
           IconButton(
             tooltip: SkoLanguageController.tr('A4印刷プレビュー'),
             onPressed: _loading || _error != null ? null : _openPrintPreview,

@@ -23,6 +23,8 @@ import 'group_checkout_dialog.dart';
 import 'bulk_attendance_page.dart';
 import 'gps_auto_attendance_service.dart';
 import 'gps_auto_schedule_dialog.dart';
+import 'checkout_report_resume_repository.dart';
+import 'checkout_report_resume_action.dart';
 
 /// Today's explicit destination wins over a saved GPS schedule, including nulls.
 ({String? siteId, String? routeId}) resolveAttendanceClockInDestination({
@@ -74,11 +76,13 @@ class AttendanceVerificationPage extends StatefulWidget {
     this.initialEventType,
     @visibleForTesting this.repository,
     @visibleForTesting this.openSavedReport,
+    @visibleForTesting this.reportResumeRepository,
   });
 
   final String? initialEventType;
   final AttendanceVerificationRepository? repository;
   final Future<void> Function(BuildContext, Map<String, dynamic>)? openSavedReport;
+  final CheckoutReportResumeRepository? reportResumeRepository;
 
   @override
   State<AttendanceVerificationPage> createState() =>
@@ -312,6 +316,10 @@ class _AttendanceVerificationPageState
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          IconButton(key: const ValueKey('checkout-report-resume-help'),
+            tooltip: SkoLanguageController.tr('退勤後の日報'),
+            onPressed: () => showCheckoutReportResumeHelp(context),
+            icon: const Icon(Icons.help_outline)),
           const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
@@ -501,7 +509,7 @@ class _AttendanceVerificationPageState
                       _saving
                           ? '確認中…'
                           : _savedCaptureVerification != null
-                              ? SkoLanguageController.tr('登録済みの日報を開く')
+                              ? SkoLanguageController.tr('日報を再開')
                               : _pendingCaptureDraft != null
                               ? SkoLanguageController.tr('同じ撮影記録で再確認')
                               : isClockOut
@@ -924,7 +932,7 @@ class _AttendanceVerificationPageState
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_savedCaptureVerification != null
-            ? '勤怠は登録済みです。日報を開けませんでした: $error'
+            ? '退勤は記録済みです。日報を開けませんでした: $error'
             : '確認を登録できませんでした: $error')),
       );
     } finally {
@@ -949,6 +957,9 @@ class _AttendanceVerificationPageState
         final reportOverride = widget.openSavedReport;
         if (reportOverride != null) {
           await reportOverride(context, saved);
+          // The legacy override is test-only. Production always verifies the
+          // saved server state below, never the Navigator return value.
+          if (widget.reportResumeRepository != null && !await _confirmSavedReporter(saved)) { return; }
           if (mounted) Navigator.of(context).pop(true);
           return;
         }
@@ -973,6 +984,17 @@ class _AttendanceVerificationPageState
         if (!mounted) return;
         if (_repository?.userId != _savedVerificationActor) {
           throw StateError('操作したアカウントを再確認してください');
+        }
+        if (!await _confirmSavedReporter(saved)) { return; }
+        if (!mounted) return;
+        final reportState = await (widget.reportResumeRepository ?? CheckoutReportResumeRepository.maybeCreate())!.inspectSavedCheckout(saved);
+        if (!mounted) return;
+        if (_repository?.userId != _savedVerificationActor) {
+          throw StateError('操作したアカウントを再確認してください');
+        }
+        if (!reportState.responsibleSignatureSaved) {
+          Navigator.of(context).pop(true);
+          return;
         }
         var signedCheckoutBilling = false;
         if (routeId != null) {
@@ -1001,6 +1023,26 @@ class _AttendanceVerificationPageState
       } else {
         Navigator.of(context).pop(true);
       }
+  }
+
+  Future<bool> _confirmSavedReporter(Map<String, dynamic> saved) async {
+    final reader = widget.reportResumeRepository ?? CheckoutReportResumeRepository.maybeCreate();
+    if (reader == null) throw StateError('日報の保存状態を確認できません。');
+    final state = await reader.inspectSavedCheckout(saved);
+    if (!mounted) return false;
+    if (_repository?.userId != _savedVerificationActor) {
+      throw StateError('操作したアカウントを再確認してください');
+    }
+    if (!state.reporterSignatureSaved) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('退勤は記録済みです。日報の登録と報告者サインを完了してください。出勤し直す必要はありません。'))));
+      return false;
+    }
+    if (!state.responsibleSignatureSaved) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.tr('現場責任者のサインがないため、給与に未反映です。'))));
+    }
+    return true;
   }
 
   Future<CaptureDecision> _promptCaptureFailure(CaptureFailure failure) async {
