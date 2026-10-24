@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../daily_reports/daily_report_page.dart';
 import 'checkout_report_gate_repository.dart';
+import 'group_checkout_dialog.dart';
 
 /// Activation means onboarding/authentication completed, never permission to
 /// bypass an outstanding server registration. Auth recovery stays outside it.
@@ -87,11 +88,12 @@ class _CheckoutReportGateActivationState extends State<CheckoutReportGateActivat
 /// The hidden Navigator is retained to preserve its state and unsaved drafts.
 class CheckoutReportGate extends StatefulWidget {
   const CheckoutReportGate({super.key, required this.child,
-    this.repository, this.controller, this.reportBuilder});
+    this.repository, this.controller, this.reportBuilder, this.beforeRegistration});
   final Widget child;
   final CheckoutReportGateRepository? repository;
   final CheckoutReportGateController? controller;
   @visibleForTesting final Widget Function(PendingCheckoutRegistration, VoidCallback)? reportBuilder;
+  @visibleForTesting final Future<void> Function(BuildContext, PendingCheckoutRegistration)? beforeRegistration;
   @override State<CheckoutReportGate> createState() => _CheckoutReportGateState();
 }
 class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBindingObserver {
@@ -198,18 +200,51 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
           child: HeroControllerScope.none(child: Navigator(key: _navigator, onGenerateRoute: (_) {
             final target = _pending.first;
             return MaterialPageRoute<void>(settings: RouteSettings(name: target.identity), builder: (_) =>
-              widget.reportBuilder?.call(target, _changed) ?? DailyReportPage(
+              _BeforeReportRegistration(
+                key: ValueKey('$_actor/${target.identity}/group'),
+                before: target.siteId != null && target.routeId == null &&
+                    (widget.beforeRegistration != null || widget.reportBuilder == null)
+                  ? (context) => widget.beforeRegistration?.call(context, target) ??
+                      showGroupCheckoutAfterPersonalSave(context,
+                        anchorId: target.sourceClockInId, workDate: target.workDate)
+                  : null,
+                child: widget.reportBuilder?.call(target, _changed) ?? DailyReportPage(
                 key: ValueKey('$_actor/${target.identity}'),
                 initialDate: target.workDate, initialSiteId: target.siteId,
                 initialRouteAssignmentId: target.routeId, initialReportId: target.reportId,
                 vehicleClockInId: target.sourceClockInId, groupClockInAnchorId: target.sourceClockInId,
                 restrictedReporterRegistration: true, registrationActorId: _actor,
                 registrationCompanyId: target.companyId, registrationWorkerId: target.workerId,
-                onRegistrationSaved: _changed));
+                onRegistrationSaved: _changed)));
           })),
         )),
         if (_pending.isEmpty || _checking || _error != null || _pending.first.state == 'source_conflict') Positioned.fill(child: _status()),
       ]))),
     ]);
   }
+}
+
+/// The existing optional group checkout belongs to the restricted Navigator:
+/// members can finish checkout before the reporter signs the shared report,
+/// while ordinary pages remain inaccessible. Restart safely reloads candidates
+/// from the saved personal anchor instead of repeating the personal checkout.
+class _BeforeReportRegistration extends StatefulWidget {
+  const _BeforeReportRegistration({super.key, required this.before, required this.child});
+  final Future<void> Function(BuildContext)? before;
+  final Widget child;
+  @override State<_BeforeReportRegistration> createState() => _BeforeReportRegistrationState();
+}
+class _BeforeReportRegistrationState extends State<_BeforeReportRegistration> {
+  bool _ready = false;
+  @override void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) { return; }
+      await widget.before?.call(context);
+      if (mounted) { setState(() => _ready = true); }
+    });
+  }
+  @override Widget build(BuildContext context) => widget.before == null || _ready
+      ? widget.child
+      : const PopScope(canPop: false, child: Scaffold(body: Center(child: CircularProgressIndicator())));
 }

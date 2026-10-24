@@ -32,11 +32,13 @@ void main() {
   late CheckoutReportGateController controller;
   setUp(() { repository = _Repository(); controller = CheckoutReportGateController(); });
   late GlobalKey<NavigatorState> normalNavigator;
-  Future<void> mount(WidgetTester tester) async {
+  Future<void> mount(WidgetTester tester, {
+    Future<void> Function(BuildContext, PendingCheckoutRegistration)? beforeRegistration,
+  }) async {
     normalNavigator = GlobalKey<NavigatorState>();
     controller.activate(_actor, () async {});
     await tester.pumpWidget(CheckoutReportBackBoundary(controller: controller, child: MaterialApp(navigatorKey: normalNavigator, builder: (_, child) => CheckoutReportGate(
-      controller: controller, repository: repository,
+      controller: controller, repository: repository, beforeRegistration: beforeRegistration,
       reportBuilder: (target, saved) => PopScope(canPop: false, child: Scaffold(body: Column(children: [
         Text('report-${target.sourceClockInId}'),
         TextButton(onPressed: saved, child: const Text('server-recheck')),
@@ -118,5 +120,40 @@ void main() {
     await tester.pump();
     expect(find.text('ordinary-home'), findsNothing);
     expect(find.text('report-in'), findsOneWidget);
+  });
+  testWidgets('group checkout stays inside the restricted flow before reporter registration', (tester) async {
+    final sources = <String>[];
+    await mount(tester, beforeRegistration: (context, target) async {
+      sources.add(target.sourceClockInId);
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (context) =>
+        PopScope(canPop: false, child: Scaffold(body: Column(children: [
+          const Text('scoped-group-checkout'),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('group-to-report')),
+        ])))));
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('scoped-group-checkout'), findsOneWidget);
+    expect(find.text('ordinary-home'), findsNothing);
+    expect(find.text('report-in'), findsNothing);
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.text('scoped-group-checkout'), findsOneWidget);
+    normalNavigator.currentState!.pushReplacement(MaterialPageRoute<void>(
+      builder: (_) => const Scaffold(body: Text('ordinary-deep-link'))));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('ordinary-deep-link'), findsNothing);
+    await tester.tap(find.text('group-to-report'));
+    await tester.pumpAndSettle();
+    expect(find.text('report-in'), findsOneWidget);
+    expect(find.text('ordinary-deep-link'), findsNothing);
+    await tester.tap(find.text('server-recheck'));
+    await tester.pump();
+    expect(sources, ['in']);
+    expect(find.text('report-in'), findsOneWidget);
+    repository.rows = [];
+    await tester.tap(find.text('server-recheck'));
+    await tester.pumpAndSettle();
+    expect(find.text('ordinary-deep-link'), findsOneWidget);
   });
 }
