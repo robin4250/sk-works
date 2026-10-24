@@ -23,6 +23,7 @@ class PayrollUnitConditionsPage extends StatefulWidget {
     this.canEditIndividualAllowances = false,
     this.onIndividualAllowanceDraftChanged,
     this.onSaveIndividualAllowances,
+    this.individualAllowancesNeedSave,
     this.onReloadIndividualAllowances,
     this.individualAllowanceScopeCurrent,
     this.onIndividualSaveUncertain,
@@ -40,6 +41,7 @@ class PayrollUnitConditionsPage extends StatefulWidget {
   final bool canEditIndividualAllowances;
   final ValueChanged<List<PayrollUnitItemDraft>>? onIndividualAllowanceDraftChanged;
   final Future<bool> Function(List<PayrollUnitItemDraft>)? onSaveIndividualAllowances;
+  final bool Function(List<PayrollUnitItemDraft>)? individualAllowancesNeedSave;
   final Future<void> Function()? onReloadIndividualAllowances;
   final bool Function()? individualAllowanceScopeCurrent;
   final ValueChanged<bool>? onIndividualSaveUncertain;
@@ -189,7 +191,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
     if (mounted && accepted == true) await _load();
   }
 
-  Future<void> _registerItems(List<PayrollUnitItemDraft> items) async {
+  Future<void> _registerItems(List<PayrollUnitItemDraft> items, {bool onlyChangedUnits = false}) async {
     final generation = _generation;
     final company = widget.companyId, worker = widget.workerId;
     final current = _value;
@@ -206,12 +208,15 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
       throw StateError('追加手当の保存先を確認できません');
     }
     final saveUnitConditions = current != null &&
-        (split == null || current.items.isNotEmpty || unitItems.isNotEmpty);
+        (onlyChangedUnits ? !samePayrollUnitItems(current.items, unitItems)
+            : split == null || current.items.isNotEmpty || unitItems.isNotEmpty);
+    final saveIndividual = split != null && widget.onSaveIndividualAllowances != null &&
+        (widget.individualAllowancesNeedSave?.call(items) ?? true);
     var individualSaved = false;
     var writeStarted = false;
     setState(() { _saving = true; _registrationMessage = null; });
     try {
-      if (split != null && widget.onSaveIndividualAllowances != null) {
+      if (saveIndividual) {
         writeStarted = true;
         individualSaved = await widget.onSaveIndividualAllowances!(items);
       }
@@ -284,6 +289,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                       canEdit: _showCurrentRegisteredNames && widget.canEditIndividualAllowances && !_saving && !_hasUncertainSave && widget.onSaveIndividualAllowances != null,
                       onDraftChanged: _showCurrentRegisteredNames ? widget.onIndividualAllowanceDraftChanged : null,
                       onRegister: _registerItems,
+                    onRegisterPrepared: (items) => _registerItems(items, onlyChangedUnits: true),
                     ),
                 ],
               ),
@@ -397,6 +403,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                     enableQuantitySources: true,
                     showDailyReportOption: false,
                     onRegister: _registerItems,
+                    onRegisterPrepared: (items) => _registerItems(items, onlyChangedUnits: true),
                   ),
                 ),
               ],

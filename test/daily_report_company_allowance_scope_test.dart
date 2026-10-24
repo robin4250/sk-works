@@ -59,7 +59,7 @@ void main() {
       } else if (request.url.path == '/rest/v1/workers') {
         expect(request.method, 'GET');
         expect(request.url.queryParameters['select'], 'id,company_id');
-        expect(request.url.queryParameters['id'], 'in.(one,two)');
+        expect(request.url.queryParameters['id'], 'in.("one","two")');
         result = rows;
       } else if (request.url.path.endsWith('/save_daily_report_destination_draft')) {
         result = 'report';
@@ -76,7 +76,7 @@ void main() {
           request.url.path.endsWith('/link_daily_report_attendance_evidence')) {
         result = null;
       } else { throw StateError('Unexpected fixture route: ${request.url.path}'); }
-      return http.Response(jsonEncode(result), 200,
+      return http.Response(jsonEncode(result), 200, request: request,
         headers: {'content-type': 'application/json'});
     });
     client = SupabaseClient('https://report.invalid', 'synthetic-public',

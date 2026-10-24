@@ -91,6 +91,7 @@ class PayrollUnitItemEditor extends StatefulWidget {
     required this.initialItems,
     required this.canEdit,
     this.onRegister,
+    this.onRegisterPrepared,
     this.enableQuantitySources = false,
     this.showDailyReportOption = true,
     this.embedded = false,
@@ -122,6 +123,7 @@ class PayrollUnitItemEditor extends StatefulWidget {
   final bool enableQuantitySources;
   final bool showDailyReportOption;
   final Future<void> Function(List<PayrollUnitItemDraft> items)? onRegister;
+  final Future<void> Function(List<PayrollUnitItemDraft> items)? onRegisterPrepared;
 
   @override
   State<PayrollUnitItemEditor> createState() => _PayrollUnitItemEditorState();
@@ -254,7 +256,8 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
     });
     widget.controller?._changed();
     try {
-      await widget.onRegister!(values);
+      final register = prepared ? widget.onRegisterPrepared ?? widget.onRegister! : widget.onRegister!;
+      await register(values);
       return true;
     } catch (_) {
       if (mounted) setState(() => _error = '登録できませんでした。入力内容を保持しています');

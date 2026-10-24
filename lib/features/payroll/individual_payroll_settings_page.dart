@@ -590,7 +590,7 @@ class _IndividualPayrollSettingsPageState
                             : null,
                         icon: const Icon(Icons.save_outlined),
                         label: Text(
-                          _busy
+                          _saving || _unitFooter.saving
                               ? SkoLanguageController.tr('保存中…')
                               : SkoLanguageController.tr('登録'),
                         ),
@@ -1183,6 +1183,14 @@ class _IndividualPayrollSettingsPageState
       (_allowanceActorAtLoad != null &&
        SupabaseBackend.client.auth.currentUser?.id == _allowanceActorAtLoad);
 
+  bool _individualAllowanceValuesChanged(Map<String, dynamic> values) =>
+      values.entries.any((entry) {
+        final previous = _settingValues[entry.key];
+        return entry.key.startsWith('allowance_name_')
+            ? (previous?.toString() ?? '') != entry.value
+            : (previous as num? ?? 0) != entry.value;
+      });
+
   Future<bool> _saveAllowanceRows(List<PayrollUnitItemDraft> items) async {
     final worker = _workerId;
     final company = _workspace?.companyId ?? _settingValues['company_id'];
@@ -1192,12 +1200,7 @@ class _IndividualPayrollSettingsPageState
       throw StateError('手当の保存対象を確認できません');
     }
     final values = splitIndividualAllowanceRows(items).workerValues;
-    final changed = values.entries.any((entry) {
-      final previous = _settingValues[entry.key];
-      return entry.key.startsWith('allowance_name_')
-          ? (previous?.toString() ?? '') != entry.value
-          : (previous as num? ?? 0) != entry.value;
-    });
+    final changed = _individualAllowanceValuesChanged(values);
     if (!changed) return false;
     await _repository.saveSetting(workerId: worker, values: values);
     if (!mounted || generation != _loadGeneration || _workerId != worker || !_allowanceScopeCurrent() ||
@@ -1269,6 +1272,8 @@ class _IndividualPayrollSettingsPageState
         individualAllowanceItems: individualAllowanceRows(_individualAllowanceValues),
         onIndividualAllowanceDraftChanged: _rememberAllowanceDraft,
         onSaveIndividualAllowances: _saveAllowanceRows,
+        individualAllowancesNeedSave: (items) =>
+            _individualAllowanceValuesChanged(splitIndividualAllowanceRows(items).workerValues),
         onReloadIndividualAllowances: _reloadAllowanceRows,
         individualAllowanceScopeCurrent: _allowanceScopeCurrent,
         onIndividualSaveUncertain: (value) {

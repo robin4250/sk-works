@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'payroll_unit_item_editor.dart';
 
 /// UI-only IDs retain the original worker setting slot. They are never sent to
@@ -56,3 +58,11 @@ IndividualAllowanceRows splitIndividualAllowanceRows(List<PayrollUnitItemDraft> 
   return IndividualAllowanceRows(Map.unmodifiable(values), List.unmodifiable(unit));
 }
 
+
+bool samePayrollUnitItems(List<PayrollUnitItemDraft> a, List<PayrollUnitItemDraft> b) {
+  List<String> values(List<PayrollUnitItemDraft> items) => items.map((item) => jsonEncode([
+    item.id, item.section.name, item.unit.name, item.name.trim(),
+    int.tryParse(item.rate.trim()), item.source, item.quantity.trim(),
+  ])).toList()..sort();
+  return jsonEncode(values(a)) == jsonEncode(values(b));
+}
