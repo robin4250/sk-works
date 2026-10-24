@@ -5,7 +5,9 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-const {Client}=await import(process.argv[2]);
+const imported=await import(process.argv[2]);
+const {Client}=imported.default??imported;
+if(typeof Client!=='function')throw Error('Pinned PostgreSQL adapter unavailable');
 const url=process.env.SKO_COLLECTOR_DEPLOYMENT_FIXTURE_URL;
 if(!url||!/^postgresql:\/\/postgres:collector-fixture-only@127\.0\.0\.1:\d+\/collector_deployment_fixture$/.test(url))throw Error('Isolated localhost fixture required');
 const db=new Client({connectionString:url});await db.connect();
@@ -62,6 +64,11 @@ try{
  await db.query('alter function public.master_security_collector_events(text) security definer');
  await refusal(post,/routine contract differs/);
  await db.query('alter function public.master_security_collector_events(text) security invoker');
+ await db.query(post);
+ await db.query('begin');
+ await db.query('grant select(proof_hash) on private.reauthentication_proofs to service_role');
+ const postBody=post.replace(/^begin read only;/,'').replace(/commit;\s*$/,'');
+ await refusal(postBody,/table security/); // rollback also restores exact NULL attacl
  await db.query(post);
  await db.query("alter table private.reauthentication_rollout drop constraint reauthentication_rollout_scope_check;alter table private.reauthentication_rollout add constraint reauthentication_rollout_scope_check check(scope in ('secondary_password','master_feature','master_security','unexpected'))");
  await refusal(post,/exact CHECK/);
