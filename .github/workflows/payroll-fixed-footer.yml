@@ -5,6 +5,9 @@ on:
   pull_request:
     paths:
       - 'lib/features/payroll/**'
+      - 'lib/features/daily_reports/**'
+      - 'test/daily_report_common_allowance_names_test.dart'
+      - 'test/daily_report_company_allowance_scope_test.dart'
       - 'lib/features/settings/settings_page.dart'
       - 'test/*payroll*test.dart'
       - 'test/individual_allowance_unification_test.dart'
@@ -28,4 +31,4 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
       - run: flutter analyze
-      - run: flutter test test/individual_allowance_unification_test.dart test/individual_payroll_fixed_footer_test.dart test/company_common_fixed_footer_test.dart test/company_common_allowance_entry_test.dart test/company_common_allowance_connected_test.dart test/company_common_payroll_page_test.dart test/individual_payroll_ui_tabs_test.dart test/individual_payroll_settings_contract_test.dart test/payroll_inline_unit_sections_test.dart test/payroll_unit_item_editor_test.dart test/payroll_unit_conditions_editor_test.dart test/payroll_unit_conditions_repository_test.dart test/individual_payroll_company_scope_test.dart test/company_rate_settings_contract_test.dart test/settings_permission_contract_test.dart test/settings_payroll_rates_entry_outline_test.dart --reporter expanded
+      - run: flutter test test/daily_report_common_allowance_names_test.dart test/daily_report_company_allowance_scope_test.dart test/individual_allowance_unification_test.dart test/individual_payroll_fixed_footer_test.dart test/company_common_fixed_footer_test.dart test/company_common_allowance_entry_test.dart test/company_common_allowance_connected_test.dart test/company_common_payroll_page_test.dart test/individual_payroll_ui_tabs_test.dart test/individual_payroll_settings_contract_test.dart test/payroll_inline_unit_sections_test.dart test/payroll_unit_item_editor_test.dart test/payroll_unit_conditions_editor_test.dart test/payroll_unit_conditions_repository_test.dart test/individual_payroll_company_scope_test.dart test/company_rate_settings_contract_test.dart test/settings_permission_contract_test.dart test/settings_payroll_rates_entry_outline_test.dart --reporter expanded
