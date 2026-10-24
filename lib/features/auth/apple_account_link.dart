@@ -56,7 +56,9 @@ class AppleAccountLink {
       request.followRedirects = false;
       request.headers.set('apikey', publicKey);
       final response = await request.close().timeout(const Duration(seconds: 10));
-      if (response.statusCode != 200 || response.contentLength > 65536) return AppleLinkProviderStatus.unavailable;
+      if (response.statusCode != 200 || response.contentLength > 65536) {
+        return AppleLinkProviderStatus.unavailable;
+      }
       final bytes = await response.timeout(const Duration(seconds: 10))
           .fold<List<int>>(<int>[], (bytes, chunk) {
         if (bytes.length + chunk.length > 65536) {
@@ -82,13 +84,17 @@ class AppleAccountLink {
   /// A fresh verified token is still required again by begin().
   Future<AppleLinkReadiness> readiness() async {
     final initial = client.auth.currentSession;
-    if (initial == null || initial.isExpired) return AppleLinkReadiness.loginRequired;
+    if (initial == null || initial.isExpired) {
+      return AppleLinkReadiness.loginRequired;
+    }
     final actor = initial.user.id, token = initial.accessToken;
     var revoked = false;
     final subscription = changes.listen((event) {
       if (event.event == AuthChangeEvent.signedOut ||
           client.auth.currentSession?.accessToken != token ||
-          client.auth.currentSession?.user.id != actor) revoked = true;
+          client.auth.currentSession?.user.id != actor) {
+        revoked = true;
+      }
     }, onError: (Object _) { revoked = true; });
     void check() {
       if (revoked || client.auth.currentSession?.user.id != actor ||
@@ -104,18 +110,30 @@ class AppleAccountLink {
       if (user == null || user.id != actor || user.toJson()['is_anonymous'] == true) {
         return AppleLinkReadiness.unavailable;
       }
-      if (!_has(user, 'google')) return AppleLinkReadiness.googleRequired;
-      if (_has(user, 'apple')) return AppleLinkReadiness.linked;
+      if (!_has(user, 'google')) {
+        return AppleLinkReadiness.googleRequired;
+      }
+      if (_has(user, 'apple')) {
+        return AppleLinkReadiness.linked;
+      }
       final provider = await providerStatus();
       check();
-      if (provider == AppleLinkProviderStatus.unavailable) return AppleLinkReadiness.unavailable;
-      if (provider == AppleLinkProviderStatus.disabled) return AppleLinkReadiness.providerDisabled;
-      if (!_recentOAuth(token)) return AppleLinkReadiness.recentOAuthRequired;
+      if (provider == AppleLinkProviderStatus.unavailable) {
+        return AppleLinkReadiness.unavailable;
+      }
+      if (provider == AppleLinkProviderStatus.disabled) {
+        return AppleLinkReadiness.providerDisabled;
+      }
+      if (!_recentOAuth(token)) {
+        return AppleLinkReadiness.recentOAuthRequired;
+      }
       final rows = await client.from('company_members').select('company_id,role')
           .eq('user_id', actor).setHeader('Authorization', 'Bearer $token')
           .timeout(const Duration(seconds: 10));
       check();
-      if (rows.isEmpty) return AppleLinkReadiness.unavailable;
+      if (rows.isEmpty) {
+        return AppleLinkReadiness.unavailable;
+      }
       return AppleLinkReadiness.ready;
     }
     AppleLinkReadiness result;
