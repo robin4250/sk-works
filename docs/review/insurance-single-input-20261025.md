@@ -125,3 +125,18 @@ than a painted Container between Material and ListTile. This preserves ink and
 ListTile assertions; no assertion was suppressed. Existing operation tests now
 explicitly open a detail before operating it. Existing one-input page tests also
 assert a collapsed period field is still mounted before save/reload tests.
+
+
+## Review: optional birth date remains correctable
+
+A nonempty birth date now remains visible even after nursing is unchecked.
+Nonempty dates always validate their exact Gregorian calendar date (including
+invalid day/month and year zero), because the existing backend stores/parses
+that field regardless of nursing selection. Empty optional date is unchanged;
+no saved draft value is silently cleared. Regression tests: nursing ON, enter
+`abc` or February 30, OFF, field visible/value retained/save write count zero;
+normal valid nursing date saves and reloads unchanged.
+
+Existing test fixture adjustments: dropdown initial-state inspection includes
+mounted collapsed controls; permission-error screens have no ListView and the
+fixture no longer attempts to drag one. These do not alter production behavior.

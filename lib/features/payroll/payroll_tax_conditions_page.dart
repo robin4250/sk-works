@@ -790,18 +790,24 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                       _amount('pension_base_yen', '厚生年金の標準報酬月額（円）'),
                     ],
                   ),
-                  Offstage(offstage: !_flags['nursing']!, child: TextFormField(
+                  Offstage(offstage: !_flags['nursing']! && _birth.text.trim().isEmpty, child: TextFormField(
                     controller: _birth,
                     enabled: _canEdit && !_busy && !_uncertain,
                     decoration: const InputDecoration(
                       labelText: '生年月日（YYYY-MM-DD）',
                     ),
-                    validator: (v) =>
-                        _flags['nursing']! &&
-                            (v == null ||
-                                !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(v))
-                        ? '生年月日を入力してください'
-                        : null,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return _flags['nursing']! ? '生年月日を入力してください' : null;
+                      }
+                      final date = DateTime.tryParse(value);
+                      if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value) ||
+                          date == null || date.year < 1 ||
+                          '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}' != value) {
+                        return '生年月日をYYYY-MM-DDの正しい日付で入力してください';
+                      }
+                      return null;
+                    },
                   )),
                 ],
                 ]),

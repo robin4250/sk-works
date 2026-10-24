@@ -47,8 +47,10 @@ void main() {
         await t.tap(tile); await t.pumpAndSettle();
       }
     }
-    await t.drag(find.byType(ListView), const Offset(0, 4000));
-    await t.pumpAndSettle();
+    if (find.byType(ListView).evaluate().isNotEmpty) {
+      await t.drag(find.byType(ListView), const Offset(0, 4000));
+      await t.pumpAndSettle();
+    }
   }
 
   Future<void> tapSave(WidgetTester t) async {
@@ -162,7 +164,7 @@ void main() {
     )));
     await t.pumpAndSettle();
     final selector = t.widget<DropdownButtonFormField<String>>(
-      find.byType(DropdownButtonFormField<String>).first);
+      find.byType(DropdownButtonFormField<String>, skipOffstage: false).first);
     expect(selector.initialValue, '2026-04-01');
     expect(find.text('2026-04'), findsWidgets);
     expect(calls, ['read_worker_payroll_tax_conditions']);
@@ -187,10 +189,10 @@ void main() {
     }
     await showMonth(10);
     expect(t.widget<DropdownButtonFormField<String>>(
-      find.byType(DropdownButtonFormField<String>).first).initialValue, '2026-04-01');
+      find.byType(DropdownButtonFormField<String>, skipOffstage: false).first).initialValue, '2026-04-01');
     await showMonth(12);
     expect(t.widget<DropdownButtonFormField<String>>(
-      find.byType(DropdownButtonFormField<String>).first).initialValue, '2026-12-01');
+      find.byType(DropdownButtonFormField<String>, skipOffstage: false).first).initialValue, '2026-12-01');
     expect(find.text('2026-12'), findsWidgets);
     expect(calls, ['read_worker_payroll_tax_conditions', 'read_worker_payroll_tax_conditions']);
   });
@@ -209,7 +211,7 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('2026-10分に適用される税計算条件は未登録です。表示中の登録済み条件は将来分です。'), findsOneWidget);
     expect(t.widget<DropdownButtonFormField<String>>(
-      find.byType(DropdownButtonFormField<String>).first).initialValue, '2026-12-01');
+      find.byType(DropdownButtonFormField<String>, skipOffstage: false).first).initialValue, '2026-12-01');
     expect(find.text('はじめての自動計算設定'), findsNothing);
     expect(calls, ['read_worker_payroll_tax_conditions']);
   });
@@ -225,7 +227,7 @@ void main() {
     expect(find.text('はじめての自動計算設定'), findsOneWidget);
     final modes = t
         .widgetList<DropdownButtonFormField<String>>(
-          find.byType(DropdownButtonFormField<String>),
+          find.byType(DropdownButtonFormField<String>, skipOffstage: false),
         )
         .map((field) => field.initialValue);
     expect(modes, ['koh', 'rates', 'kenpo']);
@@ -305,7 +307,7 @@ void main() {
     expect(find.text('はじめての自動計算設定'), findsNothing);
     final modes = t
         .widgetList<DropdownButtonFormField<String>>(
-          find.byType(DropdownButtonFormField<String>),
+          find.byType(DropdownButtonFormField<String>, skipOffstage: false),
         )
         .map((field) => field.initialValue);
     expect(modes, ['2026-04-01', 'fixed', 'fixed']);
@@ -346,7 +348,7 @@ void main() {
     expect(
       t
           .widgetList<DropdownButtonFormField<String>>(
-            find.byType(DropdownButtonFormField<String>),
+            find.byType(DropdownButtonFormField<String>, skipOffstage: false),
           )
           .map((field) => field.initialValue),
       ['koh', 'rates', 'kenpo'],
@@ -590,4 +592,60 @@ void main() {
     expect(find.byType(FilledButton), findsNothing);
     expect(find.textContaining('税計算条件を取得できません'), findsOneWidget);
   });
+  for (final invalidDate in ['abc', '2026-02-30']) {
+    testWidgets('nursing off keeps invalid birth date visible and refuses save: $invalidDate', (t) async {
+      var writes = 0;
+      await open(t, (name, params) async {
+        if (!name.startsWith('read_')) writes++;
+        return state(items: [{'starts_on': '2026-10-01', 'version': 1, 'value': {
+          ...value, 'insurance_mode': 'rates', 'health': true, 'pension': true,
+          'health_base_yen': 300000, 'pension_base_yen': 300000,
+        }}]);
+      });
+      final nursing = find.widgetWithText(CheckboxListTile, '介護保険（40〜64歳を自動判定）');
+      await t.ensureVisible(nursing); await t.pumpAndSettle();
+      await t.tap(nursing); await t.pumpAndSettle();
+      final birth = find.widgetWithText(TextFormField, '生年月日（YYYY-MM-DD）');
+      await t.ensureVisible(birth); await t.pumpAndSettle();
+      await t.enterText(birth, invalidDate);
+      t.testTextInput.hide(); await t.pumpAndSettle();
+      await t.ensureVisible(nursing); await t.pumpAndSettle();
+      await t.tap(nursing); await t.pumpAndSettle();
+      expect(birth, findsOneWidget);
+      expect(t.widget<TextFormField>(birth).controller!.text, invalidDate);
+      await tapSave(t);
+      expect(writes, 0); expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('生年月日をYYYY-MM-DDの正しい日付で入力してください'), findsOneWidget);
+      expect(t.widget<TextFormField>(birth).controller!.text, invalidDate);
+    });
+  }
+
+  testWidgets('valid nursing birth date still saves the explicit date', (t) async {
+    var version = 1, writes = 0;
+    var saved = <String, dynamic>{...value, 'insurance_mode': 'rates',
+      'health': true, 'pension': true, 'health_base_yen': 300000, 'pension_base_yen': 300000};
+    await open(t, (name, params) async {
+      if (!name.startsWith('read_')) {
+        writes++;
+        saved = Map<String, dynamic>.from(params['p_value'] as Map);
+        version++;
+      }
+      return state(items: [{'starts_on': '2026-10-01', 'version': version, 'value': saved}]);
+    });
+    final nursing = find.widgetWithText(CheckboxListTile, '介護保険（40〜64歳を自動判定）');
+    await t.ensureVisible(nursing); await t.pumpAndSettle();
+    await t.tap(nursing); await t.pumpAndSettle();
+    final birth = find.widgetWithText(TextFormField, '生年月日（YYYY-MM-DD）');
+    await t.ensureVisible(birth); await t.pumpAndSettle();
+    await t.enterText(birth, '1990-01-01');
+    t.testTextInput.hide(); await t.pumpAndSettle();
+    await tapSave(t);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await t.tap(find.widgetWithText(FilledButton, '確認して保存').last);
+    await t.pumpAndSettle();
+    expect(writes, 1);
+    expect(saved['nursing'], true); expect(saved['birth_date'], '1990-01-01');
+    expect(find.textContaining('保存しました。対象の未確定給与へ反映しました。'), findsOneWidget);
+  });
+
 }
