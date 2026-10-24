@@ -1,0 +1,34 @@
+name: Expense finalizer bounded installer proof
+on:
+  pull_request:
+    paths:
+      - 'tool/security/expense_finalizer_compat/**'
+      - '.github/workflows/expense-finalizer-bounded-native.yml'
+      - 'docs/review/expense-finalizer-bounded-preparation-20261024.md'
+permissions:
+  contents: read
+jobs:
+  native-bounded-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/security/expense_finalizer_compat/verify_native.mjs
+      - name: Generated binder, read-only postflight, restore and failure atomicity
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+        run: node tool/security/expense_finalizer_compat/verify_native.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
