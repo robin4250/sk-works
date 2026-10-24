@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -45,6 +46,7 @@ void main() {
 
   testWidgets('empty monthly individual panel exposes unregistered application without a write', (tester) async {
     final requests = <http.Request>[];
+    final conditionsServed = Completer<void>();
     final now = DateTime.now();
     final month = '${now.year}-${now.month.toString().padLeft(2, '0')}-01';
     final transport = MockClient((request) async {
@@ -53,25 +55,45 @@ void main() {
         return http.Response('1', 200, headers: {'content-type': 'application/json'});
       }
       expect(request.url.path.endsWith('/payroll_unit_conditions'), isTrue);
-      return http.Response(jsonEncode({
+      final response = http.Response(jsonEncode({
         'version': 0, 'month': month, 'can_edit': false, 'items': <Object>[],
         'company_common': {'contract_version': 1, 'history_missing': false,
           'frozen': false, 'items': <Object>[], 'source': jsonDecode(source())},
       }), 200, headers: {'content-type': 'application/json'});
+      conditionsServed.complete();
+      return response;
     });
-    final client = SupabaseClient('https://fixture.invalid', 'fixture-key', httpClient: transport);
-    addTearDown(client.dispose);
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
-      child: PayrollUnitConditionsPage(
-        repository: PayrollUnitConditionsRepository.forTesting(client, () => 'fixture-actor'),
-        companyId: 'fixture-company', workerId: 'fixture-worker', embedded: true,
-        section: PayrollItemSection.earning, unit: PayrollItemUnit.month,
-      ),
-    ))));
-    await tester.pumpAndSettle();
+    final client = SupabaseClient('https://fixture.invalid', 'fixture-key',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: transport);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(() => client.dispose().timeout(const Duration(seconds: 2)));
+    });
+    // Complete the SDK's HTTP futures outside the widget fake clock. A settled
+    // frame alone does not prove that both RPC responses have been consumed.
+    await tester.runAsync(() async {
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+        child: PayrollUnitConditionsPage(
+          repository: PayrollUnitConditionsRepository.forTesting(client, () => 'fixture-actor'),
+          companyId: 'fixture-company', workerId: 'fixture-worker', embedded: true,
+          section: PayrollItemSection.earning, unit: PayrollItemUnit.month,
+        ),
+      ))));
+      await conditionsServed.future.timeout(const Duration(seconds: 2));
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle(const Duration(milliseconds: 100),
+      EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
     expect(find.byKey(const ValueKey('company-common-application-status')), findsOneWidget);
     expect(find.text('この給与形態の適用開始月は未登録です。社内共通手当で対象を確認して反映してください。'), findsOneWidget);
-    expect(requests.length, 2);
+    expect(requests.map((request) => request.url.path), [
+      '/rest/v1/rpc/payroll_unit_conditions_contract_version',
+      '/rest/v1/rpc/payroll_unit_conditions',
+    ]);
+    expect(jsonDecode(requests.last.body), {
+      'p_company_id': 'fixture-company', 'p_worker_id': 'fixture-worker', 'p_month': month,
+    });
     expect(tester.takeException(), isNull);
-  });
+  }, timeout: const Timeout(Duration(seconds: 15)));
 }
