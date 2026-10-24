@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sk_works/features/daily_reports/daily_report_page.dart';
+import 'package:sk_works/features/daily_reports/signature_capture_page.dart';
 import 'package:sk_works/features/attendance/group_checkout_repository.dart';
 import 'package:sk_works/features/daily_reports/daily_report_allowance_name_field.dart';
 import 'package:sk_works/features/daily_reports/daily_report_company_allowance_selection.dart';
@@ -14,7 +18,80 @@ CompanyAllowanceLabel registered(int number, String name, {String unit = 'day',
     registrationVersion: ready ? 7 : null, origin: origin, payrollType: payrollType,
     displayUnit: unit == 'hour' ? '時間' : unit == 'month' ? '月' : '日');
 
+class _CheckoutFlowRepository extends DailyReportRepository {
+  _CheckoutFlowRepository(this.client) : super.forTesting(client);
+  final SupabaseClient client;
+  DailyReportRecord? saved;
+  final saves = <List<DailyReportWorkerDraft>>[];
+  int eligibilityReads = 0;
+  @override
+  String? get currentActorId => 'synthetic-actor';
+  @override
+  String? get notificationRetryUserId => null;
+  @override
+  Future<List<DailyReportSiteGroup>> loadClockedInGroups(DateTime date) async => [
+    DailyReportSiteGroup(siteId: 'site', siteName: '合成現場', workers: [
+      DailyReportWorkerDraft(workerId: 'worker', workerName: '合成社員')])];
+  @override
+  Future<DailyReportRecord?> loadReport({required DateTime date, String? siteId,
+    String? routeAssignmentId, String? vehicleClockInAnchorId, String? reportId}) async => saved;
+  @override
+  Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({String? reportId,
+    required DateTime date, String? siteId, String? routeAssignmentId}) async => [];
+  @override
+  Future<bool> vehicleMeterEnabledForAnchor(String? anchor) async => false;
+  @override
+  Future<CompanyAllowanceLabelSnapshot> loadCompanyAllowanceLabels({
+    required Iterable<String> workerIds, String? expectedCompanyId}) async =>
+      CompanyAllowanceLabelSnapshot(companyId: 'own', version: 1, items: [registered(1, 'PC手当')]);
+  @override
+  Future<Map<String, Set<String>>> loadCompanyAllowanceEligibility({required String reportId,
+    required Iterable<String> workerIds, required CompanyAllowanceLabelSnapshot snapshot}) async {
+    eligibilityReads++;
+    return {'worker': {'company_legacy/${snapshot.items.single.id}'}};
+  }
+  @override
+  Future<String> saveDraft({String? reportId, String? siteId, String? routeAssignmentId,
+    required DateTime date, required String workDescription,
+    required List<DailyReportWorkerDraft> workers, String? groupClockInAnchorId,
+    String? vehicleClockInAnchorId}) async {
+    final copy = [for (final worker in workers) DailyReportWorkerDraft(
+      workerId: worker.workerId, workerName: worker.workerName,
+      allowanceLabel: worker.allowanceLabel, companyAllowanceSelections: worker.companyAllowanceSelections)];
+    saves.add(copy);
+    saved = DailyReportRecord(id: 'report', companyId: 'own', siteId: 'site',
+      siteName: '合成現場', date: date, workDescription: workDescription, status: 'draft', workers: copy);
+    return 'report';
+  }
+}
+
 void main() {
+  testWidgets('first draft save stays on report and selected allowance is saved before signature page', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final client = SupabaseClient('https://synthetic.invalid', 'synthetic-public');
+    addTearDown(client.dispose);
+    final repository = _CheckoutFlowRepository(client);
+    await tester.pumpWidget(MaterialApp(home: DailyReportPage(
+      initialDate: DateTime(2026, 10, 1), initialSiteId: 'site', repositoryForTesting: repository)));
+    await tester.pumpAndSettle();
+    expect(repository.eligibilityReads, 0);
+    expect(tester.widget<FilterChip>(find.widgetWithText(FilterChip, 'PC手当')).onSelected, isNull);
+    final register = find.widgetWithText(FilledButton, '登録');
+    await tester.ensureVisible(register); await tester.tap(register); await tester.pumpAndSettle();
+    expect(find.byType(DailyReportPage), findsOneWidget);
+    expect(repository.saves, hasLength(1));
+    expect(repository.eligibilityReads, 1);
+    final chip = find.widgetWithText(FilterChip, 'PC手当');
+    await tester.ensureVisible(chip); await tester.tap(chip); await tester.pump();
+    final reporter = find.text('報告者サイン').first;
+    await tester.ensureVisible(reporter); await tester.tap(reporter); await tester.pumpAndSettle();
+    expect(repository.saves, hasLength(2));
+    expect(repository.saves.last.single.allowanceLabel, 'PC手当');
+    expect(repository.saves.last.single.companyAllowanceSelections!.items.single.nameSnapshot, 'PC手当');
+    expect(find.byType(SignatureCapturePage), findsOneWidget);
+    await tester.pageBack(); await tester.pumpAndSettle();
+  });
+
   test('labels use every selected worker and report company, never first membership', () {
     expect(dailyReportAllowanceCompanyScope([
       {'id': 'two', 'company_id': 'own'}, {'id': 'one', 'company_id': 'own'},

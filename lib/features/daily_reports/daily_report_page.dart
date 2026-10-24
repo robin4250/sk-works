@@ -412,7 +412,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     // These are explicitly current registered names, not names effective on
     // the report date. Backdated unsigned entry may select them intentionally;
     // discovery never replaces existing text or edits a signed report.
-    if (repository == null || !_editable || _workers.isEmpty || _visitReport) { return; }
+    if (repository == null || _signed || _visitReporterLocked || _workers.isEmpty || _visitReport) { return; }
     final actor = repository.currentActorId;
     setState(() => _companyAllowanceNamesLoading = true);
     try {
