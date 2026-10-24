@@ -1,0 +1,73 @@
+name: Reciprocal trade business gate review
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/trade-reciprocal-business-gate.yml'
+      - 'docs/candidates/trade_reciprocal_business_gate_20261024*'
+      - 'docs/review/trade-reciprocal-business-gate-20261024.md'
+      - 'tool/prepare_trade_reciprocal_business_gate.py'
+      - 'tool/verify_trade_reciprocal_business_gate.mjs'
+      - 'tool/security/test_trade_reciprocal_business_gate.py'
+      - 'tool/fixtures/trade_reciprocal_gate/**'
+      - 'tool/security/fixture_dependencies/package*.json'
+      - 'docs/candidates/trade_document_*seal*'
+      - 'docs/candidates/trade_document_confirmation_api_20261022.sql.review-only'
+      - 'docs/candidates/trade_document_invoice_confirmation_20261021.sql.review-only'
+      - 'docs/candidates/trade_document_monthly_review_20261022.sql.review-only'
+      - 'tool/trade_document_*fixture.mjs'
+      - 'tool/trade_document_*races.mjs'
+      - 'tool/verify_trade_document_bound_seal_consent.mjs'
+permissions:
+  contents: read
+jobs:
+  source-bound-fixture:
+    name: Source-bound trade gate (${{ matrix.runtime }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [pglite, postgres]
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_document_consent_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing locked fixture dependencies
+        run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Generator source tests (not SQL execution)
+        run: python3 -m unittest discover -s tool/security -p test_trade_reciprocal_business_gate.py -v
+      - name: Reproduce exact review SQL
+        run: |
+          python3 tool/prepare_trade_reciprocal_business_gate.py
+          git diff --exit-code -- docs/candidates/trade_reciprocal_business_gate_20261024.sql.review-only docs/candidates/trade_reciprocal_business_gate_20261024.manifest.json
+      - name: Node and private generated module syntax (not SQL execution)
+        run: |
+          node --check tool/verify_trade_reciprocal_business_gate.mjs
+          node tool/verify_trade_reciprocal_business_gate.mjs --check-generated
+      - name: Execute PGlite source-bound business/API fixture
+        if: matrix.runtime == 'pglite'
+        run: node tool/verify_trade_reciprocal_business_gate.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - name: Execute Native PostgreSQL 17 business/API fixture and lock wait
+        if: matrix.runtime == 'postgres'
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
+        run: node tool/verify_trade_reciprocal_business_gate.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
