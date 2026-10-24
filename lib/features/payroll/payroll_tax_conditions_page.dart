@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
+import 'payroll_insurance_basis_reference.dart';
+import 'payroll_insurance_basis_section.dart';
 
 typedef PayrollTaxRpc = Future<dynamic> Function(String, Map<String, dynamic>);
 
@@ -22,8 +24,13 @@ bool validManualPayrollInsurance(Map value) {
   }
   if (premiums.values.fold<int>(0, (sum, amount) => sum + (amount as int)) > 2147483647) return false;
   const allowed = {'insurance_mode', 'manual_insurance_premiums', 'income_mode',
-    'dependents', 'non_taxable_yen', 'additional_social_deduction_yen', 'deduction_overrides'};
+    'dependents', 'non_taxable_yen', 'additional_social_deduction_yen', 'deduction_overrides',
+    'insurance_basis_reference'};
   if (value.keys.any((key) => !allowed.contains(key))) return false;
+  if (value['insurance_basis_reference'] != null) {
+    try { PayrollInsuranceBasisReference.fromJson(value['insurance_basis_reference']); }
+    on FormatException { return false; }
+  }
   final overrides = value['deduction_overrides'];
   return overrides == null || (overrides is Map && overrides.keys.every((key) => key == 'income_tax') &&
     overrides.values.every((amount) => amount is int && amount >= 0 && amount <= 2147483647));
@@ -68,6 +75,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     for (final key in manualPayrollInsuranceLabels.keys) key: TextEditingController(),
   };
   bool _manualSupported = false;
+  bool _basisSupported = false;
+  PayrollInsuranceBasisReference? _basisReference, _loadedBasisReference;
+  int _basisEditorRevision = 0;
   final _flags = <String, bool>{
     for (final key in const [
       'health',
@@ -175,18 +185,28 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
           (value['birth_date'] != null && value['birth_date'] is! String)) {
         throw const FormatException('税計算条件の内容を確認できません');
       }
+      if (value['insurance_basis_reference'] != null) {
+        PayrollInsuranceBasisReference.fromJson(value['insurance_basis_reference']);
+      }
       items.add(Map<String, dynamic>.from(row));
     }
     items.sort((a, b) =>
         (b['starts_on'] as String).compareTo(a['starts_on'] as String));
     _items = items;
     _manualSupported = raw['manual_insurance_contract_version'] == 1;
-    _canEdit = raw['can_edit'] == true && (_manualSupported || !items.any((row) => (row['value'] as Map)['insurance_mode'] == 'manual'));
+    _basisSupported = raw['insurance_basis_reference_contract_version'] == 1;
+    _canEdit = raw['can_edit'] == true &&
+        (_manualSupported || !items.any((row) => (row['value'] as Map)['insurance_mode'] == 'manual')) &&
+        (_basisSupported || !items.any((row) => (row['value'] as Map)['insurance_basis_reference'] != null));
   }
 
   void _fill(Map<String, dynamic> row) {
     final value = row['value'] as Map;
     _month.text = (row['starts_on'] as String).substring(0, 7);
+    _basisReference = value['insurance_basis_reference'] == null ? null :
+        PayrollInsuranceBasisReference.fromJson(value['insurance_basis_reference']);
+    _loadedBasisReference = _basisReference;
+    _basisEditorRevision++;
     _insurance = value['insurance_mode'] as String;
     _income = value['income_mode'] as String;
     _birth.text = value['birth_date'] as String? ?? '';
@@ -207,6 +227,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
 
   void _resetInitialConditions() {
     _month.text = _targetMonth;
+    _basisReference = null;
+    _loadedBasisReference = null;
+    _basisEditorRevision++;
     _deductionOverrides = {};
     for (final c in _manualPremiums.values) { c.clear(); }
     _insurance = 'rates';
@@ -241,7 +264,13 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       _canEdit = false;
     });
     try {
-      final raw = await _rpc('read_worker_payroll_tax_conditions', _scope);
+      final raw = await readPayrollTaxConditionsWithInsuranceReference((name, params) async {
+        final response = await _rpc(name, params);
+        if (widget.rpc == null && SupabaseBackend.client.auth.currentUser?.id != _actor) {
+          throw StateError('ログイン状態が変わりました');
+        }
+        return response;
+      }, _scope);
       if (!mounted || generation != _generation) return;
       _accept(raw);
       if (_items.isNotEmpty) {
@@ -276,9 +305,12 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     final generation = _generation;
     if (!_form.currentState!.validate()) return;
     final start = '${_month.text}-01';
+    final referenceToSave = _basisReference ?? _loadedBasisReference;
     final value = <String, dynamic>{
       'insurance_mode': _insurance,
       'income_mode': _income,
+      if (_basisSupported && referenceToSave != null)
+        'insurance_basis_reference': referenceToSave.toJson(),
       if (_insurance == 'manual') ...{
         'manual_insurance_premiums': {for (final e in _manualPremiums.entries) e.key: int.parse(e.value.text)},
         for (final key in const ['dependents', 'non_taxable_yen', 'additional_social_deduction_yen']) key: int.parse(_amounts[key]!.text),
@@ -308,6 +340,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
         content: SingleChildScrollView(
           child: Text(
             '${_month.text}分から適用します。\n'
+            '${referenceToSave == null ? '' : _basisSupported
+                ? '参考期間：${referenceToSave.from.substring(0, 7)}〜${referenceToSave.to.substring(0, 7)}\n平均月収（参考額）：${referenceToSave.averageMonthlyIncomeYen}円\n標準報酬月額へ自動換算しません。\n'
+                : '対象期間・平均月収は未保存です。この保存では標準報酬月額など既存条件だけを保存します。\n'}'
             '所得税：${_income == 'fixed'
                 ? '個別設定の固定月額'
                 : _income == 'koh'
@@ -358,7 +393,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
           !_same(saved['value'], value)) {
         throw const FormatException('保存結果が一致しません');
       }
-      _message = '保存しました。対象の未確定給与へ反映しました。';
+      if (_basisSupported || referenceToSave == null) _fill(saved);
+      _message = '保存しました。対象の未確定給与へ反映しました。'
+          '${!_basisSupported && referenceToSave != null ? '対象期間・平均月収は未保存です。' : ''}';
     } catch (e) {
       if (!mounted || generation != _generation) return;
       _uncertain = true;
@@ -401,7 +438,15 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('給与の税計算'), toolbarHeight: kToolbarHeight),
+    appBar: AppBar(title: const Text('保険料の基準・税計算'), toolbarHeight: kToolbarHeight,
+      actions: [IconButton(key: const ValueKey('insurance-basis-help'),
+        tooltip: '設定ヘルプ', icon: const Icon(Icons.help_outline),
+        onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(
+          title: const Text('対象期間・平均月収・標準報酬月額'),
+          content: const SingleChildScrollView(child: Text('平均月収は、指定した給与対象月の控除前支給総額を確認する参考額です。未登録月を0円として平均しません。支給日は明細の記録を表示し、記録が無い場合は勤務月で代用しません。\n\n平均月収から法定の標準報酬月額への自動換算は行いません。健康保険と厚生年金の標準報酬月額は、確認した額をそれぞれ入力してください。\n\n適用開始月から対象の未確定給与へ既存計算で反映します。確定済み給与は変更しません。')),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
+        )))],
+    ),
     body: _loading
         ? const Center(child: CircularProgressIndicator())
         : _error != null && !_uncertain
@@ -501,6 +546,25 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                           RegExp(r'^20\d{2}-(0[1-9]|1[0-2])$').hasMatch(v)
                       ? null
                       : '年月を入力してください',
+                ),
+                PayrollInsuranceBasisSection(
+                  key: ValueKey('insurance-basis-${widget.companyId}/${widget.workerId}/$_basisEditorRevision'),
+                  month: '$_targetMonth-01', supported: _basisSupported,
+                  enabled: _canEdit && !_busy && !_uncertain,
+                  initialReference: _basisReference,
+                  readHistory: (from, to) async {
+                    final generation = _generation;
+                    final result = await PayrollInsuranceIncomeHistoryRepository((name, params) async {
+                      final raw = await _rpc(name, params);
+                      if (widget.rpc == null && SupabaseBackend.client.auth.currentUser?.id != _actor) {
+                        throw StateError('ログイン状態が変わりました');
+                      }
+                      return raw;
+                    }).read(companyId: widget.companyId, workerId: widget.workerId, from: from, to: to);
+                    if (!mounted || generation != _generation) throw StateError('対象が変わりました');
+                    return result;
+                  },
+                  onChanged: (value) { _basisReference = value; },
                 ),
                 DropdownButtonFormField<String>(
                   key: ValueKey('income-$_income'),

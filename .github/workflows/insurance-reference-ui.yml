@@ -1,0 +1,29 @@
+name: Individual insurance reference UI
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payroll_insurance_basis_*.dart'
+      - 'lib/features/payroll/payroll_tax_conditions_page.dart'
+      - 'lib/features/payroll/payroll_fixed_deductions.dart'
+      - 'test/payroll_insurance_basis_*test.dart'
+      - 'test/payroll_fixed_deductions_test.dart'
+      - '.github/workflows/insurance-reference-ui.yml'
+permissions:
+  contents: read
+jobs:
+  insurance-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze
+      - run: flutter test test/payroll_insurance_basis_reference_test.dart test/payroll_insurance_basis_section_test.dart test/payroll_insurance_basis_page_test.dart test/payroll_insurance_basis_fixed_test.dart test/payroll_fixed_deductions_test.dart --reporter expanded

@@ -477,7 +477,7 @@ void main() {
   testWidgets('returning from initial conditions reloads generated deductions', (t) async {
     final b = _Backend()..hasConditions = false;
     await _mount(t, b, conditions: (_) async { b.hasConditions = true; });
-    final setup = find.widgetWithText(TextButton, '本人の計算条件を確認');
+    final setup = find.widgetWithText(TextButton, '保険料の基準・適用月');
     await t.ensureVisible(setup);
     await t.pumpAndSettle();
     await t.tap(setup);
@@ -492,7 +492,7 @@ void main() {
     final b = _Backend()..hasConditions = false;
     String? inspected;
     await _mount(t, b, conditions: (month) async { inspected = month; });
-    final setup = find.widgetWithText(TextButton, '本人の計算条件を確認');
+    final setup = find.widgetWithText(TextButton, '保険料の基準・適用月');
     await t.ensureVisible(setup);
     await t.pumpAndSettle();
     await t.tap(setup);
@@ -618,7 +618,7 @@ void main() {
     expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1500');
     expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, isEmpty);
     expect(find.text('住民税2500円'), findsOneWidget);
-    final link = find.widgetWithText(TextButton, '本人の計算条件を確認');
+    final link = find.widgetWithText(TextButton, '保険料の基準・適用月');
     await t.ensureVisible(link);
     await t.tap(link);
     await t.pumpAndSettle();
@@ -634,7 +634,7 @@ void main() {
     });
     expect(find.byKey(const ValueKey('deduction-conditions-missing')), findsNothing);
     expect(find.textContaining('計算結果を取得できません'), findsOneWidget);
-    expect(find.text('本人の計算条件を確認'), findsNothing);
+    expect(find.text('保険料の基準・適用月'), findsNothing);
     expect(b.writes, 0);
   });
 
@@ -664,8 +664,3 @@ void main() {
   }
 
 }
-
-
-
-
-
