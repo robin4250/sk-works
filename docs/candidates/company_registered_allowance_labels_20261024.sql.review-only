@@ -1,0 +1,97 @@
+-- REVIEW ONLY. New names-only reader, not a payroll/activation migration.
+begin;
+set local search_path='';
+do $registered_labels_preflight$
+begin
+ if current_user<>'postgres' then raise exception 'reviewed installer owner required';end if;
+ if exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where
+   (n.nspname='company_common_allowance_private' and p.proname='registered_labels') or
+   (n.nspname='public' and p.proname='read_company_registered_allowance_labels')) then
+  raise exception 'registered label reader already exists; inspect instead of retry';end if;
+ if not has_schema_privilege('authenticated','company_common_allowance_private','USAGE') then
+  raise exception 'existing private schema access prerequisite missing';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('company_common_allowance_private.session_id()')
+   and md5(p.prosrc)='68c68f275c23a22ba06d060c2923b9b9' and p.proowner='postgres'::regrole
+   and p.prosecdef and p.provolatile='s' and p.proconfig=array['search_path=""']
+   and p.proacl=array['postgres=X/postgres']::aclitem[]) then
+  raise exception 'strict existing session prerequisite differs';end if;
+ if (select count(*) from pg_class c where c.oid in(
+   to_regclass('public.company_rate_settings'),to_regclass('company_allowance_identity_private.identities'),
+   to_regclass('company_allowance_identity_private.state'),to_regclass('company_common_allowance_private.items'),
+   to_regclass('company_common_allowance_private.state')) and c.relowner='postgres'::regrole and c.relrowsecurity)<>5 then
+  raise exception 'registered source table security prerequisite differs';end if;
+ if (select jsonb_agg(jsonb_build_object('name',n.nspname||'.'||c.relname,'owner',pg_get_userbyid(c.relowner),'rls',c.relrowsecurity,
+   'acl',case when c.relacl is null then null else to_jsonb(array(select a::text from unnest(c.relacl) a order by a::text)) end,
+   'columns',(select jsonb_agg(jsonb_build_object('name',attname,'type',atttypid::regtype::text,'not_null',attnotnull) order by attnum) from pg_attribute where attrelid=c.oid and attnum>0 and not attisdropped)) order by n.nspname||'.'||c.relname)
+  from pg_class c join pg_namespace n on n.oid=c.relnamespace where c.oid in(
+   'public.company_rate_settings'::regclass,'company_allowance_identity_private.identities'::regclass,
+   'company_allowance_identity_private.state'::regclass,'company_common_allowance_private.items'::regclass,
+   'company_common_allowance_private.state'::regclass)) is distinct from '[{"acl":["postgres=arwdDxtm/postgres"],"rls":true,"name":"company_allowance_identity_private.identities","owner":"postgres","columns":[{"name":"id","type":"uuid","not_null":true},{"name":"company_id","type":"uuid","not_null":true},{"name":"slot","type":"integer","not_null":true},{"name":"generation","type":"bigint","not_null":true},{"name":"created_by","type":"uuid","not_null":true},{"name":"created_at","type":"timestamp with time zone","not_null":true},{"name":"retired_by","type":"uuid","not_null":false},{"name":"retired_at","type":"timestamp with time zone","not_null":false}]},{"acl":["postgres=arwdDxtm/postgres"],"rls":true,"name":"company_allowance_identity_private.state","owner":"postgres","columns":[{"name":"company_id","type":"uuid","not_null":true},{"name":"version","type":"bigint","not_null":true},{"name":"adopted_by","type":"uuid","not_null":true},{"name":"adopted_at","type":"timestamp with time zone","not_null":true}]},{"acl":["postgres=arwdDxtm/postgres"],"rls":true,"name":"company_common_allowance_private.items","owner":"postgres","columns":[{"name":"id","type":"uuid","not_null":true},{"name":"company_id","type":"uuid","not_null":true},{"name":"payroll_type","type":"text","not_null":true},{"name":"section","type":"text","not_null":true},{"name":"unit","type":"text","not_null":true},{"name":"name","type":"text","not_null":true},{"name":"amount_yen","type":"integer","not_null":true},{"name":"position","type":"integer","not_null":true},{"name":"created_by","type":"uuid","not_null":true},{"name":"created_at","type":"timestamp with time zone","not_null":true},{"name":"updated_by","type":"uuid","not_null":true},{"name":"updated_at","type":"timestamp with time zone","not_null":true},{"name":"retired_by","type":"uuid","not_null":false},{"name":"retired_at","type":"timestamp with time zone","not_null":false}]},{"acl":["postgres=arwdDxtm/postgres"],"rls":true,"name":"company_common_allowance_private.state","owner":"postgres","columns":[{"name":"company_id","type":"uuid","not_null":true},{"name":"version","type":"bigint","not_null":true},{"name":"created_by","type":"uuid","not_null":true},{"name":"created_at","type":"timestamp with time zone","not_null":true}]},{"acl":["postgres=arwdDxtm/postgres","service_role=arwdDxtm/postgres"],"rls":true,"name":"public.company_rate_settings","owner":"postgres","columns":[{"name":"company_id","type":"uuid","not_null":true},{"name":"overtime_hour_rate_yen","type":"integer","not_null":true},{"name":"early_hour_rate_yen","type":"integer","not_null":true},{"name":"night_hour_rate_yen","type":"integer","not_null":true},{"name":"holiday_day_rate_yen","type":"integer","not_null":true},{"name":"allowance_1_name","type":"text","not_null":false},{"name":"allowance_1_amount_yen","type":"integer","not_null":true},{"name":"allowance_2_name","type":"text","not_null":false},{"name":"allowance_2_amount_yen","type":"integer","not_null":true},{"name":"allowance_3_name","type":"text","not_null":false},{"name":"allowance_3_amount_yen","type":"integer","not_null":true},{"name":"updated_by","type":"uuid","not_null":false},{"name":"updated_at","type":"timestamp with time zone","not_null":true},{"name":"allowance_1_unit","type":"text","not_null":true},{"name":"allowance_2_unit","type":"text","not_null":true},{"name":"allowance_3_unit","type":"text","not_null":true}]}]'::jsonb then
+  raise exception 'complete registered source table catalog differs';end if;
+end $registered_labels_preflight$;
+create function company_common_allowance_private.registered_labels(cid uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $registered_labels$
+declare legacy_version bigint;common_version bigint;registered jsonb;total integer;
+begin
+ perform company_common_allowance_private.session_id();
+ if cid is null or not exists(select 1 from public.companies c
+   join public.company_members m on m.company_id=c.id where c.id=cid and m.user_id=auth.uid()) then
+  raise exception 'company registered allowance access denied' using errcode='42501';end if;
+ select s.version into legacy_version from company_allowance_identity_private.state s where s.company_id=cid;
+ select s.version into common_version from company_common_allowance_private.state s where s.company_id=cid;
+ if exists(select 1 from company_common_allowance_private.items i where i.company_id=cid and i.retired_at is null)
+   and common_version is null then raise exception 'registered common source version missing' using errcode='55000';end if;
+ if exists(select 1 from company_allowance_identity_private.identities i where i.company_id=cid and i.retired_at is null group by i.slot having count(*)>1) then
+  raise exception 'registered legacy identity ambiguous' using errcode='55000';end if;
+ with legacy_slots as (
+  select slot.name,slot.display_unit,slot.slot from public.company_rate_settings r
+  cross join lateral(values(1,r.allowance_1_name,r.allowance_1_unit),
+    (2,r.allowance_2_name,r.allowance_2_unit),(3,r.allowance_3_name,r.allowance_3_unit))slot(slot,name,display_unit)
+  where r.company_id=cid and nullif(btrim(slot.name),'') is not null
+ ), all_registered as (
+  -- These existing three slots are already classified as all-types/day/earning
+  -- by the admin_state legacy_refs contract. Display units remain separate.
+  select 0 ordering,'all'::text payroll_type,l.slot position,i.id,
+   jsonb_build_object('id',i.id,'name',l.name,'origin','company_legacy','payroll_type','all',
+    'section','earning','unit','day','display_unit',coalesce(nullif(btrim(l.display_unit),''),'回'),
+    'legacy_slot',l.slot,'generation',i.generation,'registration_version',legacy_version) item
+  from legacy_slots l left join company_allowance_identity_private.identities i
+   on i.company_id=cid and i.slot=l.slot and i.retired_at is null
+  union all
+  select 1,i.payroll_type,i.position,i.id,
+   jsonb_build_object('id',i.id,'name',i.name,'origin','company_common','payroll_type',i.payroll_type,
+    'section',i.section,'unit',i.unit,'display_unit',i.unit,'legacy_slot',null,
+    'generation',null,'registration_version',common_version)
+  from company_common_allowance_private.items i where i.company_id=cid and i.retired_at is null
+ ) select count(*),coalesce(jsonb_agg(item order by ordering,payroll_type,position,id),'[]'::jsonb)
+ into total,registered from all_registered;
+ if total>303 then raise exception 'registered allowance inventory exceeds reviewed bound' using errcode='54000';end if;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'registration_scope','current',
+  'source_versions',jsonb_build_object('legacy_version',legacy_version,'common_version',coalesce(common_version,0)),
+  'items',registered);
+end $registered_labels$;
+revoke all on function company_common_allowance_private.registered_labels(uuid) from public,anon,authenticated,service_role;
+grant execute on function company_common_allowance_private.registered_labels(uuid) to authenticated;
+create function public.read_company_registered_allowance_labels(p_company_id uuid)
+returns jsonb language sql stable security invoker set search_path='' as $registered_public$
+ select company_common_allowance_private.registered_labels(p_company_id)
+$registered_public$;
+revoke all on function public.read_company_registered_allowance_labels(uuid) from public,anon,authenticated,service_role;
+grant execute on function public.read_company_registered_allowance_labels(uuid) to authenticated;
+do $registered_labels_postflight$
+begin
+ if not exists(select 1 from pg_proc where oid='company_common_allowance_private.registered_labels(uuid)'::regprocedure and prosecdef and provolatile='s' and proowner='postgres'::regrole and proconfig=array['search_path=""']) or
+ not exists(select 1 from pg_proc where oid='public.read_company_registered_allowance_labels(uuid)'::regprocedure and not prosecdef and provolatile='s' and proowner='postgres'::regrole and proconfig=array['search_path=""']) then
+  raise exception 'registered reader attributes differ';end if;
+ if exists(select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a
+   where p.oid in('company_common_allowance_private.registered_labels(uuid)'::regprocedure,'public.read_company_registered_allowance_labels(uuid)'::regprocedure)
+   and (a.grantee not in('postgres'::regrole,'authenticated'::regrole) or a.grantor<>'postgres'::regrole or a.privilege_type<>'EXECUTE' or a.is_grantable)) then
+  raise exception 'registered reader grants differ';end if;
+ if exists(select 1 from pg_proc p where p.oid in('company_common_allowance_private.registered_labels(uuid)'::regprocedure,'public.read_company_registered_allowance_labels(uuid)'::regprocedure) and
+   (has_function_privilege('anon',p.oid,'EXECUTE') or has_function_privilege('service_role',p.oid,'EXECUTE'))) then
+  raise exception 'registered reader API role inheritance differs';end if;
+ if not has_function_privilege('authenticated','public.read_company_registered_allowance_labels(uuid)','EXECUTE') or
+ not has_function_privilege('authenticated','company_common_allowance_private.registered_labels(uuid)','EXECUTE') then
+  raise exception 'registered reader authenticated grant missing';end if;
+end $registered_labels_postflight$;
+commit;
