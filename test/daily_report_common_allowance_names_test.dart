@@ -86,6 +86,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.eligibilityReads, 0);
     final reportScroll = find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first;
+    final member = find.text('合成社員');
+    await tester.scrollUntilVisible(member, 250, scrollable: reportScroll);
+    await tester.tap(member); await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.widgetWithText(FilterChip, 'PC手当'), 250, scrollable: reportScroll);
     expect(tester.widget<FilterChip>(find.widgetWithText(FilterChip, 'PC手当')).onSelected, isNull);
     final register = find.text('登録');
