@@ -1,0 +1,37 @@
+name: Company rate defaults compact install parity
+on:
+  pull_request:
+    paths:
+      - 'tool/security/prepare_company_rate_defaults_compact_install.py'
+      - 'tool/security/verify_company_rate_defaults_compact_install.py'
+      - '.github/workflows/company-rate-defaults-compact-install.yml'
+permissions:
+  contents: read
+jobs:
+  native-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic-fixture-only
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify compact and complete checkpoint installation parity
+        env:
+          FIXTURE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tool/security/company_rate_defaults.fixture.sql
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/20261009201229_company_allowance_identity_lifecycle.sql
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tool/security/company_rate_defaults.runtime.fixture.sql
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < docs/candidates/company_rate_defaults_20261024.sql.review-only
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tool/security/company_rate_defaults.assertions.sql
+          python3 tool/security/verify_company_rate_defaults_compact_install.py
