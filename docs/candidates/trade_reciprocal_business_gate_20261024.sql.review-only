@@ -1,0 +1,298 @@
+-- REVIEW ONLY. Requires complete canonical trade units and phase A OFF.
+-- No central toggle, proof lifecycle, stored stamp, PDF or application grant changes.
+begin;
+do $baseline$
+begin
+ if exists(select 1 from (values ('trade_document_consent_private.prepare_document(uuid,uuid,uuid,integer,jsonb,text,uuid,text,integer)','a609aebf840b34a6e576a5fe2428e439',array['postgres=X/postgres']::text[]),
+('trade_document_consent_private.decide(uuid,integer,uuid,integer,text,text,text,boolean,uuid)','15b5a7a4a961cfee60da6be237c180ec',array['postgres=X/postgres']::text[]),
+('trade_document_consent_private.confirm_local_document(uuid,uuid,integer,jsonb,uuid,boolean,boolean)','db1cff0846ed41ae1dd9b8a437b810ca',array['postgres=X/postgres']::text[]),
+('trade_document_consent_private.confirm_monthly_review(uuid,uuid,integer,jsonb,uuid,boolean,boolean)','4a43c7ec090882d384de11b451318cd8',array['postgres=X/postgres']::text[]),
+('trade_document_confirmation_api_private.workspace(text,uuid,text)','487f5a174cf7c1d76fc4a750b8bb78ca',array['authenticated=X/postgres','postgres=X/postgres']::text[]),
+('trade_document_confirmation_api_private.confirm(jsonb,uuid,boolean,boolean)','1e92c0750bafc5e78b6dcadd4d4b16e1',array['authenticated=X/postgres','postgres=X/postgres']::text[])) expected(signature,body_md5,acl)
+ left join pg_proc p on p.oid=to_regprocedure(expected.signature)
+ where p.oid is null or md5(p.prosrc) is distinct from expected.body_md5
+ or pg_get_userbyid(p.proowner) is distinct from 'postgres' or not p.prosecdef
+ or p.prorettype<>'jsonb'::regtype or p.proretset or p.prokind<>'f' or p.prolang<>(select oid from pg_language where lanname='plpgsql')
+ or p.proisstrict or p.proleakproof or p.provolatile<>'v' or p.proconfig is distinct from array['search_path=""']::text[]
+ or array(select a::text from unnest(coalesce(p.proacl,acldefault('f',p.proowner))) a order by a::text) is distinct from expected.acl)
+ then raise exception 'trade business baseline differs';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.require_trade_document_reciprocal_seals()')
+ and md5(p.prosrc)='fda823bd0baae732b550fcca20b9e9d1' and pg_get_userbyid(p.proowner)='postgres' and not p.prosecdef
+ and p.prorettype='void'::regtype and not p.proretset and p.prokind='f' and p.prolang=(select oid from pg_language where lanname='plpgsql')
+ and not p.proisstrict and not p.proleakproof and p.provolatile='v' and p.proconfig=array['search_path=""']::text[]
+ and array(select a::text from unnest(coalesce(p.proacl,acldefault('f',p.proowner))) a order by a::text)=array['postgres=X/postgres']::text[])
+ or not exists(select 1 from private.master_feature_settings where feature_key='trade_document_reciprocal_seals' and enabled is false)
+ or to_regprocedure('trade_document_consent_private.require_gated_write_pair(uuid,uuid,boolean)') is not null then
+ raise exception 'exact phase A OFF prerequisite required';end if;
+end $baseline$;
+create function trade_document_consent_private.require_gated_write_pair(cid uuid,peer uuid,require_connection boolean)
+returns void language plpgsql security definer set search_path='' as $$
+begin
+ perform trade_document_consent_private.require_actor(cid);
+ if cid is null or peer is null or cid=peer or require_connection is null
+ or (select count(*) from public.companies where id in(cid,peer))<>2 then raise exception 'exact company pair required' using errcode='42501';end if;
+ if require_connection and (select count(*) from private.company_connections where status='accepted'
+ and ((parent_company_id=cid and child_company_id=peer)or(parent_company_id=peer and child_company_id=cid)))<>1 then
+ raise exception 'formal unique accepted company connection required' using errcode='42501';end if;
+ perform private.require_trade_document_reciprocal_seals();
+end $$;
+revoke all on function trade_document_consent_private.require_gated_write_pair(uuid,uuid,boolean) from public,anon,authenticated,service_role;
+create or replace function trade_document_consent_private.prepare_document(doc uuid,own_company uuid,peer_company uuid,expected_revision int,body jsonb,
+ parent_kind text default null,parent_id uuid default null,expected_parent_revision text default null,expected_attachment_version int default null) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare d trade_document_consent_private.documents%rowtype;binding jsonb;rev int;canonical jsonb;tx uuid;
+begin
+ perform trade_document_consent_private.require_actor(own_company);
+ perform trade_document_consent_private.require_gated_write_pair(own_company,peer_company,true);
+ perform trade_document_consent_private.lock_pair(own_company,peer_company);
+ if doc is null or expected_revision is null or expected_revision<0 or jsonb_typeof(body) is distinct from 'object' or octet_length(body::text)>32768
+ or coalesce(body->>'kind','') not in('order','acceptance') or body ?| array['company_seal_snapshot','company_seal_enabled','seals','approved_by','actor_id']
+ or body->>'issuer_company_id' is distinct from own_company::text or body->>'counterparty_company_id' is distinct from peer_company::text
+ or coalesce(body->>'transaction_id','')!~'^[0-9a-fA-F-]{36}$' then raise exception 'exact directional document identity required';end if;
+ tx:=(body->>'transaction_id')::uuid;
+ if parent_kind is null then
+ if parent_id is not null or expected_parent_revision is not null or expected_attachment_version is not null then raise exception 'standalone has no fabricated financial parent';end if;
+ if body#>>'{issuer,name}' is distinct from(select name from public.companies where id=own_company)
+ or body#>>'{counterparty,name}' is distinct from(select name from public.companies where id=peer_company) then raise exception 'registered company names required';end if;
+ else
+ if parent_kind not in('invoice','payment_certificate') or parent_id is null then raise exception 'parent kind required';end if;
+ binding:=trade_document_consent_private.parent_binding(parent_kind,parent_id,own_company,peer_company);
+ if binding->>'parent_revision' is distinct from expected_parent_revision or (binding->>'attachment_version')::int is distinct from expected_attachment_version then raise exception 'parent or attachment revision changed' using errcode='40001';end if;
+ canonical:=(binding->'attachment_payload')||jsonb_build_object('issuer_company_id',own_company,'counterparty_company_id',peer_company,'transaction_id',tx);
+ if canonical is distinct from body then raise exception 'saved attachment content differs' using errcode='40001';end if;
+ binding:=(binding-'attachment_payload')||jsonb_build_object('parent_kind',parent_kind,'parent_id',parent_id);end if;
+ perform pg_advisory_xact_lock(hashtextextended('trade-document-consent:'||doc::text,0));
+ select * into d from trade_document_consent_private.documents where id=doc for update;
+ if found then
+ if(d.issuer_company_id,d.counterparty_company_id,d.transaction_id,d.document_kind,d.current_revision) is distinct from(own_company,peer_company,tx,body->>'kind',expected_revision) then raise exception 'document revision or directional identity changed' using errcode='40001';end if;
+ rev:=d.current_revision+1;update trade_document_consent_private.documents set current_revision=rev where id=doc;
+ else
+ if expected_revision<>0 then raise exception 'document revision changed' using errcode='40001';end if;
+ rev:=1;insert into trade_document_consent_private.documents values(doc,own_company,peer_company,tx,body->>'kind',rev);end if;
+ insert into trade_document_consent_private.revisions(document_id,revision,body,body_hash,binding,created_by)
+ values(doc,rev,body,encode(sha256(convert_to(body::text,'UTF8')),'hex'),binding,auth.uid());
+ perform trade_document_consent_private.require_actor(own_company);
+ return jsonb_build_object('document_id',doc,'revision',rev,'state','open','epoch',0);end $$;
+
+create or replace function trade_document_consent_private.decide(doc uuid,rev int,cid uuid,expected_epoch int,expected_body_hash text,action text,expected_seal_hash text,confirmed boolean,rid uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;seal jsonb;binding jsonb;payload jsonb;receipt trade_document_consent_private.receipts%rowtype;result jsonb;next_state text;
+begin
+ perform trade_document_consent_private.require_local(doc,cid);
+ if confirmed is distinct from true or rid is null or action is null or action not in('approve','reject','return','cancel') then raise exception 'explicit document and seal consent required';end if;
+ select * into d from trade_document_consent_private.documents where id=doc;
+ if d.id is null or cid not in(d.issuer_company_id,d.counterparty_company_id) then raise exception 'document access denied';end if;
+ if cid<>d.issuer_company_id then raise exception 'issuer stamp owner approval required' using errcode='42501';end if;
+ perform trade_document_consent_private.require_gated_write_pair(cid,d.counterparty_company_id,action<>'cancel');
+ if action='cancel' then perform 1 from public.companies where id in(d.issuer_company_id,d.counterparty_company_id) order by id for share;
+ else perform trade_document_consent_private.lock_pair(d.issuer_company_id,d.counterparty_company_id);end if;
+ select * into r from trade_document_consent_private.revisions where document_id=doc and revision=rev;
+ if r.binding is not null then
+ binding:=trade_document_consent_private.parent_binding(r.binding->>'parent_kind',(r.binding->>'parent_id')::uuid,d.issuer_company_id,d.counterparty_company_id);
+ binding:=(binding-'attachment_payload')||jsonb_build_object('parent_kind',r.binding->>'parent_kind','parent_id',r.binding->'parent_id');end if;
+ select * into d from trade_document_consent_private.documents where id=doc for update;
+ select * into r from trade_document_consent_private.revisions where document_id=doc and revision=rev for update;
+ payload:=jsonb_build_object('document_id',doc,'revision',rev,'company_id',cid,'epoch',expected_epoch,'body_hash',expected_body_hash,'action',action,'seal_hash',expected_seal_hash);
+ select * into receipt from trade_document_consent_private.receipts where request_id=rid;
+ if found then if receipt.actor_id is distinct from auth.uid() or receipt.payload is distinct from payload then raise exception 'consent request mismatch';end if;
+ return receipt.result||jsonb_build_object('current_state',r.state);end if;
+ if d.current_revision is distinct from rev or r.epoch is distinct from expected_epoch or r.body_hash is distinct from expected_body_hash
+ or(action<>'cancel' and r.state<>'open')or(action='cancel' and r.state not in('open','approved')) then raise exception 'consent revision or state changed' using errcode='40001';end if;
+ if r.binding is not null then
+ if (action='cancel' and trade_document_consent_private.binding_matches_approval(doc,rev,r.binding,binding) is not true) or(action<>'cancel' and binding is distinct from r.binding) then raise exception 'parent confirmation binding changed' using errcode='40001';end if;end if;
+ if action='approve' then
+ seal:=trade_document_consent_private.own_seal(cid);
+ if expected_seal_hash is null or expected_seal_hash is distinct from seal->>'seal_hash' then raise exception 'registered seal changed' using errcode='40001';end if;
+ insert into trade_document_consent_private.consents values(doc,rev,cid,auth.uid(),seal->'snapshot',seal->>'seal_hash',(seal->>'version_id')::uuid,seal->>'asset_hash',seal->>'version_key',seal->>'renderer_contract')
+ on conflict(document_id,revision,company_id) do update set actor_id=excluded.actor_id,seal_snapshot=excluded.seal_snapshot,seal_hash=excluded.seal_hash,seal_version_id=excluded.seal_version_id,seal_asset_hash=excluded.seal_asset_hash,seal_version_key=excluded.seal_version_key,renderer_contract=excluded.renderer_contract;
+ next_state:='approved';
+ else next_state:=case action when 'reject' then 'rejected' when 'return' then 'returned' else 'cancelled' end;end if;
+ update trade_document_consent_private.revisions set state=next_state,epoch=epoch+1 where document_id=doc and revision=rev;
+ perform trade_document_consent_private.require_actor(cid);
+ insert into trade_document_consent_private.events(document_id,revision,company_id,actor_id,action,value)values(doc,rev,cid,auth.uid(),action,jsonb_build_object('body_hash',r.body_hash,'binding',r.binding,'seal',seal,'state',next_state));
+ result:=jsonb_build_object('document_id',doc,'revision',rev,'request_outcome',action,'state_after_request',next_state,'current_state',next_state,'epoch',r.epoch+1);
+ insert into trade_document_consent_private.receipts values(rid,auth.uid(),payload,result);return result;end $$;
+
+create or replace function trade_document_consent_private.confirm_local_document(local_id uuid,cid uuid,rev int,expected jsonb,rid uuid,financial_confirmed boolean,seal_confirmed boolean) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare doc uuid;d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;
+ current_preview jsonb;receipt trade_document_consent_private.financial_receipts%rowtype;payload jsonb;seal_result jsonb;
+ approved_binding jsonb;final boolean;result jsonb;parent_id uuid;
+begin
+ perform trade_document_consent_private.require_actor(cid);
+ if financial_confirmed is not true or seal_confirmed is not true or rid is null or expected is null then raise exception 'both explicit confirmations required';end if;
+ select document_id into doc from trade_document_consent_private.local_links where company_id=cid and local_document_id=local_id;
+ select * into d from trade_document_consent_private.documents where id=doc;
+ if d.id is null or d.issuer_company_id<>cid then raise exception 'issuer own financial approval required' using errcode='42501';end if;
+ -- Existing approval APIs acquire company FOR UPDATE. Take both ordered company
+ -- locks up front, avoiding SHARE-to-UPDATE upgrade after consent-row locks.
+ perform trade_document_consent_private.require_gated_write_pair(cid,d.counterparty_company_id,true);
+ perform 1 from public.companies where id in(d.issuer_company_id,d.counterparty_company_id) order by id for update;
+ perform trade_document_consent_private.lock_pair(d.issuer_company_id,d.counterparty_company_id);
+ payload:=jsonb_build_object('local_id',local_id,'company_id',cid,'revision',rev,'expected',expected,'financial_confirmed',true,'seal_confirmed',true);
+ select * into receipt from trade_document_consent_private.financial_receipts where request_id=rid;
+ if found then if receipt.actor_id is distinct from auth.uid() or receipt.payload is distinct from payload then raise exception 'integrated request mismatch';end if;return receipt.result;end if;
+ select * into r from trade_document_consent_private.revisions where document_id=doc and revision=rev;
+ if r.binding->>'parent_kind' is distinct from 'invoice' then raise exception 'monthly payment confirmation adapter is not connected' using errcode='0A000';end if;
+ parent_id:=(r.binding->>'parent_id')::uuid;
+ perform 1 from public.invoices where id=parent_id and company_id=cid for update;
+ perform 1 from private.trade_document_attachments where subject_kind='invoice' and subject_id=parent_id and company_id=cid for share;
+ perform 1 from public.invoice_approvers where company_id=cid order by position for share;
+ perform 1 from private.invoice_stamp_surname_rollout where company_id=cid for share;
+ perform 1 from private.invoice_stamp_surname_drafts where invoice_id=parent_id and approver_user_id=auth.uid() for share;
+ perform 1 from public.invoice_approvals where invoice_id=parent_id order by position for update;
+ perform 1 from trade_document_consent_private.documents where id=doc for update;
+ perform 1 from trade_document_consent_private.revisions where document_id=doc and revision=rev for update;
+ current_preview:=trade_document_consent_private.preview_confirmation(local_id,cid,rev);
+ if current_preview is distinct from expected then raise exception 'integrated approval source changed' using errcode='40001';end if;
+ -- Both mutations share this transaction; any later failure rolls both back.
+ seal_result:=trade_document_consent_private.decide(doc,rev,cid,(expected->>'epoch')::int,expected->>'body_hash','approve',expected#>>'{own_seal,seal_hash}',true,rid);
+ if expected->>'approval_function'='approve_invoice_with_stamp_surname' then final:=public.approve_invoice_with_stamp_surname(parent_id);
+ else final:=public.approve_invoice(parent_id);end if;
+ if final is not true then raise exception 'financial approval did not complete';end if;
+ approved_binding:=trade_document_consent_private.parent_binding('invoice',parent_id,cid,d.counterparty_company_id);
+ approved_binding:=(approved_binding-'attachment_payload')||jsonb_build_object('parent_kind','invoice','parent_id',parent_id);
+ if approved_binding->'content_fingerprint' is distinct from r.binding->'content_fingerprint'
+ or (approved_binding-array['parent_revision','parent_fingerprint','internal_confirmation']) is distinct from (r.binding-array['parent_revision','parent_fingerprint','internal_confirmation'])
+ or approved_binding#>>'{internal_confirmation,approval_finalized_at}' is null then raise exception 'approved invoice content or attachment changed' using errcode='40001';end if;
+ if not exists(select 1 from public.invoice_approvals where invoice_id=parent_id and company_id=cid and approver_user_id=auth.uid() and status='approved' and approved_at is not null)then raise exception 'own approval result unavailable';end if;
+ perform trade_document_consent_private.require_actor(cid);
+ if private.has_company_feature(cid,'can_manage_invoices') is not true then raise exception 'invoice permission changed';end if;
+ result:=jsonb_build_object('document_id',doc,'revision',rev,'local_document_id',local_id,'request_id',rid,'financial_approved',true,'seal_consent_recorded',true,'parent_kind','invoice','parent_id',parent_id,
+ 'parent_revision_before',r.binding->'parent_revision','parent_revision_after',approved_binding->'parent_revision','attachment_version',r.binding->'attachment_version','body_hash',r.body_hash);
+ insert into trade_document_consent_private.financial_receipts values(rid,doc,rev,cid,auth.uid(),payload,r.binding,approved_binding,result);
+ return result;
+end $$;
+
+create or replace function trade_document_consent_private.confirm_monthly_review(local_id uuid,cid uuid,rev integer,expected jsonb,rid uuid,monthly_confirmed boolean,seal_confirmed boolean) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;
+ receipt trade_document_consent_private.monthly_review_receipts%rowtype;payload jsonb;current_preview jsonb;seal_result jsonb;result jsonb;binding jsonb;
+begin
+ perform trade_document_consent_private.require_actor(cid);
+ if rid is null or jsonb_typeof(expected) is distinct from 'object' or octet_length(expected::text)>2097152 then raise exception 'exact original request required' using errcode='22023';end if;
+ select x.* into d from trade_document_consent_private.documents x join trade_document_consent_private.local_links l on l.document_id=x.id
+ where l.company_id=cid and l.local_document_id=local_id;
+ if d.id is null or d.issuer_company_id<>cid or d.document_kind<>'order' then raise exception 'own monthly order required' using errcode='42501';end if;
+ perform trade_document_consent_private.require_gated_write_pair(cid,d.counterparty_company_id,true);
+ perform 1 from public.companies where id in(d.issuer_company_id,d.counterparty_company_id) order by id for update;
+ payload:=jsonb_build_object('local_document_id',local_id,'company_id',cid,'revision',rev,'expected',expected,'monthly_confirmed',monthly_confirmed,'seal_confirmed',seal_confirmed);
+ select * into receipt from trade_document_consent_private.monthly_review_receipts where company_id=cid and request_id=rid for update;
+ if found then
+ if receipt.actor_id<>auth.uid() or receipt.payload is distinct from payload then raise exception 'monthly request payload or actor mismatch' using errcode='22023';end if;
+ return receipt.result;end if;
+ if monthly_confirmed is distinct from true or seal_confirmed is distinct from true then raise exception 'both explicit monthly review and own seal choices required' using errcode='22023';end if;
+ select * into r from trade_document_consent_private.revisions where document_id=d.id and revision=rev;
+ if r.binding->>'parent_kind' is distinct from 'payment_certificate' then raise exception 'saved monthly parent required' using errcode='22023';end if;
+ perform 1 from public.payment_certificates where id=(r.binding->>'parent_id')::uuid and company_id=cid for update;
+ perform 1 from private.trade_document_attachments where subject_kind='payment_certificate' and subject_id=(r.binding->>'parent_id')::uuid for update;
+ perform pg_advisory_xact_lock(hashtextextended('trade-document-consent:'||d.id::text,0));
+ current_preview:=trade_document_consent_private.preview_monthly_review(local_id,cid,rev);
+ if current_preview is distinct from expected then raise exception 'monthly review source changed' using errcode='40001';end if;
+ seal_result:=trade_document_consent_private.decide(d.id,rev,cid,(expected->>'epoch')::integer,expected->>'body_hash','approve',expected#>>'{own_seal,seal_hash}',true,rid);
+ binding:=trade_document_consent_private.monthly_binding((r.binding->>'parent_id')::uuid,cid,d.counterparty_company_id);
+ binding:=(binding-'attachment_payload')||jsonb_build_object('parent_kind','payment_certificate','parent_id',r.binding->'parent_id');
+ if binding is distinct from r.binding then raise exception 'monthly parent changed during review' using errcode='40001';end if;
+ result:=jsonb_build_object('contract','monthly_content_review_v1','request_id',rid,'company_id',cid,'document_id',d.id,'revision',rev,
+ 'monthly_review_recorded',true,'seal_consent_recorded',true,'financial_finalized',false,'financial_parent_unchanged',true,'seal_result',seal_result);
+ insert into trade_document_consent_private.monthly_review_receipts(company_id,request_id,actor_id,local_document_id,document_id,revision,payload,parent_binding,result)
+ values(cid,rid,auth.uid(),local_id,d.id,rev,payload,binding,result);
+ return result;
+end $$;
+
+create or replace function trade_document_confirmation_api_private.workspace(kind text,parent_id uuid,source_revision text) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare uid uuid:=trade_document_confirmation_api_private.actor();cid uuid;counter_id uuid;peer uuid;mapping_count integer;mapping_role text;mapping_status text;
+ source jsonb;base jsonb;att private.trade_document_attachments%rowtype;l trade_document_confirmation_api_private.parent_links%rowtype;
+ body jsonb;h text;doc uuid;local_id uuid;tx uuid;prepared jsonb;newrev integer;state text;reason text;
+begin
+ if kind='invoice' then select company_id,customer_id into cid,counter_id from public.invoices where id=parent_id;
+ elsif kind='payment_certificate' then select company_id,partner_company_id into cid,counter_id from public.payment_certificates where id=parent_id;
+ else raise exception 'exact financial subject kind required' using errcode='22023';end if;
+ base:=jsonb_build_object('contract_version',1,'kind',kind,'company_id',cid,'actor_id',uid,'parent_id',parent_id,'source_revision',source_revision,
+ 'side','issued','document_id',null,'document_revision',null,'local_document_id',null,'attachment_version',null,
+ 'integration_required',false,'can_integrated_confirm',false,'unavailable_reason',null,'can_render',false);
+ -- Existing assigned non-final or non-stamp approvers keep the ordinary approval
+ -- transaction. This branch neither prepares evidence nor grants seal authority.
+ if kind='invoice' and private.has_company_feature(cid,'can_view_invoices') is true
+ and exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=uid)
+ and exists(select 1 from public.invoice_approvals a where a.invoice_id=parent_id and a.company_id=cid and a.approver_user_id=uid and a.status='pending')
+ and (not exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=uid and m.role::text in('owner','admin'))
+ or exists(select 1 from public.invoice_approvals a where a.invoice_id=parent_id and a.company_id=cid and a.approver_user_id<>uid and a.status<>'approved')) then
+ return base||jsonb_build_object('unavailable_reason','ordinary_assigned_approval');end if;
+ perform trade_document_consent_private.require_actor(cid);
+ if kind='invoice' and private.has_company_feature(cid,'can_view_invoices') is not true then raise exception 'invoice view permission required' using errcode='42501';end if;
+ select count(*),min(t.linked_company_id::text)::uuid,min(t.trade_role),min(t.link_status) into mapping_count,peer,mapping_role,mapping_status
+ from public.trade_companies t where t.company_id=cid and (case kind when 'invoice' then t.customer_id=counter_id else t.partner_company_id=counter_id end);
+ base:=jsonb_build_object('contract_version',1,'kind',kind,'company_id',cid,'actor_id',uid,'parent_id',parent_id,'source_revision',source_revision,
+ 'side','issued','document_id',null,'document_revision',null,'local_document_id',null,'attachment_version',null,
+ 'integration_required',false,'can_integrated_confirm',false,'unavailable_reason',null,'can_render',false);
+ if mapping_count<>1 or peer is null or mapping_status is distinct from 'linked' or mapping_role is null
+ or (kind='invoice' and mapping_role not in('customer','both')) or (kind='payment_certificate' and mapping_role not in('subcontractor','both')) then
+ return base||jsonb_build_object('integration_required',mapping_count>1,'unavailable_reason','formal_link_unavailable');end if;
+ begin perform trade_document_consent_private.require_gated_write_pair(cid,peer,true);
+ exception when insufficient_privilege then return base||jsonb_build_object('integration_required',true,'unavailable_reason','connection_not_accepted');
+ when object_not_in_prerequisite_state then
+  return base||trade_document_confirmation_api_private.resolve(kind,parent_id)||jsonb_build_object('can_integrated_confirm',false,'unavailable_reason','reciprocal_feature_disabled');
+ end;
+ perform 1 from public.companies where id in(cid,peer) order by id for update;
+ begin perform trade_document_consent_private.lock_pair(cid,peer);
+ exception when insufficient_privilege then return base||jsonb_build_object('integration_required',true,'unavailable_reason','connection_not_accepted');end;
+ source:=private.trade_document_source(kind,parent_id,source_revision);
+ if source->>'company_id' is distinct from cid::text then raise exception 'financial parent company changed' using errcode='40001';end if;
+ base:=base||jsonb_build_object('integration_required',true,'source_revision',source->>'source_revision');
+ select * into l from trade_document_confirmation_api_private.parent_links x where x.company_id=cid and x.kind=workspace.kind and x.parent_id=workspace.parent_id for update;
+ if l.document_id is not null then base:=base||jsonb_build_object('document_id',l.document_id,'document_revision',l.document_revision,'local_document_id',l.local_document_id,
+ 'can_render',exists(select 1 from trade_document_confirmation_api_private.receipts z where z.document_id=l.document_id and z.document_revision=l.document_revision));end if;
+ if source->'source_locked'='true'::jsonb then return base||jsonb_build_object('unavailable_reason','parent_locked');end if;
+ if source->'source_blocked'='true'::jsonb then return base||jsonb_build_object('unavailable_reason','calculation_blocked');end if;
+ select * into att from private.trade_document_attachments where subject_kind=kind and subject_id=parent_id and company_id=cid for update;
+ if att.subject_id is null then return base||jsonb_build_object('unavailable_reason','attachment_missing');end if;
+ if att.source_revision is distinct from source->>'source_revision' or att.source_fingerprint is distinct from source->>'source_fingerprint' then
+ return base||jsonb_build_object('unavailable_reason','attachment_changed');end if;
+ tx:=coalesce(l.transaction_id,gen_random_uuid());doc:=coalesce(l.document_id,gen_random_uuid());local_id:=coalesce(l.local_document_id,gen_random_uuid());
+ body:=(att.payload-array['company_seal_snapshot','company_seal_enabled'])||jsonb_build_object('issuer_company_id',cid,'counterparty_company_id',peer,'transaction_id',tx);
+ h:=encode(sha256(convert_to(jsonb_build_object('body',body,'source_revision',source->>'source_revision','source_fingerprint',source->>'source_fingerprint','attachment_version',att.version)::text,'UTF8')),'hex');
+ if l.document_id is null or l.prepare_hash is distinct from h then
+ prepared:=trade_document_consent_private.prepare_document(doc,cid,peer,coalesce(l.document_revision,0),body,kind,parent_id,source->>'source_revision',att.version);
+ newrev:=(prepared->>'revision')::integer;
+ perform trade_document_consent_private.bind_local(doc,cid,local_id);
+ insert into trade_document_confirmation_api_private.parent_links values(cid,kind,parent_id,local_id,doc,tx,newrev,h)
+ on conflict on constraint parent_links_pkey do update set document_revision=excluded.document_revision,prepare_hash=excluded.prepare_hash;
+ else newrev:=l.document_revision;end if;
+ select r.state into state from trade_document_consent_private.revisions r where r.document_id=doc and r.revision=newrev;
+ if state<>'open' then reason:='already_confirmed';
+ elsif kind='invoice' and not exists(select 1 from public.invoice_approvals a where a.invoice_id=parent_id and a.company_id=cid and a.approver_user_id=uid and a.status='pending') then reason:='not_assigned_approver';
+ elsif kind='invoice' and exists(select 1 from public.invoice_approvals a where a.invoice_id=parent_id and a.approver_user_id<>uid and a.status<>'approved') then reason:='prior_confirmations_pending';end if;
+ return base||jsonb_build_object('document_id',doc,'document_revision',newrev,'local_document_id',local_id,'attachment_version',att.version,
+ 'can_integrated_confirm',reason is null,'unavailable_reason',reason,'can_render',exists(select 1 from trade_document_confirmation_api_private.receipts z where z.document_id=doc and z.document_revision=newrev));
+end $$;
+
+create or replace function trade_document_confirmation_api_private.confirm(command jsonb,rid uuid,document_confirmed boolean,seal_confirmed boolean) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare uid uuid:=trade_document_confirmation_api_private.actor();cid uuid;kind text;local_id uuid;rev integer;s jsonb;current jsonb;raw_result jsonb;result jsonb;receipt trade_document_confirmation_api_private.receipts%rowtype;
+begin
+ if rid is null or not trade_document_confirmation_api_private.valid_command(command,uid) then raise exception 'exact saved confirmation command required' using errcode='22023';end if;
+ cid:=(command->>'company_id')::uuid;kind:=command->>'kind';local_id:=(command->>'local_document_id')::uuid;rev:=(command->>'document_revision')::integer;
+ perform trade_document_consent_private.require_actor(cid);
+ s:=trade_document_confirmation_api_private.scope(cid,local_id,rev,kind);
+ if s->>'issuer_company_id' is distinct from cid::text then raise exception 'issuer confirmation required' using errcode='42501';end if;
+ perform trade_document_consent_private.require_gated_write_pair(cid,(s->>'counterparty_company_id')::uuid,true);
+ perform 1 from public.companies where id in(cid,(s->>'counterparty_company_id')::uuid) order by id for update;
+ select * into receipt from trade_document_confirmation_api_private.receipts where company_id=cid and request_id=rid for update;
+ if found then if receipt.actor_id<>uid or receipt.command is distinct from command or document_confirmed is distinct from true or seal_confirmed is distinct from true then raise exception 'request payload changed' using errcode='22023';end if;return receipt.result;end if;
+ if document_confirmed is distinct from true or seal_confirmed is distinct from true then raise exception 'document confirmation and issuer seal consent required' using errcode='22023';end if;
+ current:=trade_document_confirmation_api_private.preview(cid,local_id,rev,kind);
+ if current->'expected_command' is distinct from command then raise exception 'confirmation preview changed' using errcode='40001';end if;
+ -- Pass a freshly computed full private preview; images never enter the public command.
+ if kind='invoice' then
+ raw_result:=trade_document_consent_private.confirm_local_document(local_id,cid,rev,(current->'display_preview')-array['body'],rid,true,true);
+ else raw_result:=trade_document_consent_private.confirm_monthly_review(local_id,cid,rev,(current->'display_preview')-array['body'],rid,true,true);end if;
+ result:=jsonb_build_object('contract_version',1,'kind',kind,'company_id',cid,'actor_id',uid,'local_document_id',local_id,'document_id',command->'document_id',
+ 'document_revision',rev,'request_id',rid,'operation',case kind when 'invoice' then 'invoice_final_approval_with_seal' else 'monthly_content_review_with_seal' end,
+ 'seal_consent_recorded',true,'result',raw_result);
+ insert into trade_document_confirmation_api_private.receipts(company_id,request_id,actor_id,command,document_id,document_revision,result)
+ values(cid,rid,uid,command,(command->>'document_id')::uuid,rev,result);
+ return result;
+end $$;
+commit;

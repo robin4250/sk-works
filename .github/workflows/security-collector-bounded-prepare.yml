@@ -1,0 +1,33 @@
+name: Collector bounded preparation
+on:
+  pull_request:
+    paths:
+      - 'tool/security_collector_deployment/**'
+      - '.github/workflows/security-collector-bounded-prepare.yml'
+permissions:
+  contents: read
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: collector-fixture-only
+          POSTGRES_DB: collector_deployment_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d collector_deployment_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SKO_COLLECTOR_DEPLOYMENT_FIXTURE_URL: postgresql://postgres:collector-fixture-only@127.0.0.1:5432/collector_deployment_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: python3 -m py_compile tool/security_collector_deployment/prepare.py tool/security_collector_deployment/prepare_role.py
+      - run: node tool/security_collector_deployment/verify.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
