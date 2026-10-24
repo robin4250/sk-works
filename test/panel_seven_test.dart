@@ -16,6 +16,7 @@ PanelSevenSnapshot snapshot() => const PanelSevenSnapshot(
 class FakeRepository implements PanelSevenSource {
   bool current = true;
   int loads = 0;
+  PanelSevenSnapshot? value;
   Future<PanelSevenSnapshot>? nextLoad;
   final events = StreamController<AuthState>.broadcast();
   @override
@@ -29,7 +30,7 @@ class FakeRepository implements PanelSevenSource {
     nextLoad = null;
     if (pending != null) return pending;
     if (!current) throw StateError('changed');
-    return snapshot();
+    return value ?? snapshot();
   }
 }
 
@@ -145,6 +146,40 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.loads, 2);
     expect(find.text('Google'), findsOneWidget);
+  });
+
+  testWidgets('confirmed Google email has collapsed next-login guidance without pretending password is set', (tester) async {
+    final repository = FakeRepository();
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.events.close();
+    });
+    await tester.pumpWidget(MaterialApp(home: PanelSevenPage(repository: repository)));
+    await tester.pumpAndSettle();
+    final guide = find.byKey(const ValueKey('account-email-login-guide'));
+    await tester.scrollUntilVisible(guide, 100);
+    expect(tester.widget<ExpansionTile>(guide).initiallyExpanded, false);
+    await tester.tap(find.text('メールでログインするには')); await tester.pumpAndSettle();
+    expect(find.textContaining('現在のGoogleログインをログアウトする必要はありません。'), findsOneWidget);
+    expect(find.textContaining('この確認済みメールと保存した第一パスワードを使います。'), findsOneWidget);
+    expect(find.textContaining('この画面で第一パスワードの保存を確認しました。'), findsNothing);
+    expect(repository.loads, 1);
+  });
+
+  testWidgets('unconfirmed email never shows confirmed-email login guidance', (tester) async {
+    final repository = FakeRepository()..value = const PanelSevenSnapshot(
+      actorId: 'a', providers: ['google'], email: 'owner@example.test', phone: null,
+      emailConfirmed: false, phoneConfirmed: false, sessionMethods: ['oauth'],
+      secondaryConfigured: true, accessToken: 'synthetic');
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.events.close();
+    });
+    await tester.pumpWidget(MaterialApp(home: PanelSevenPage(repository: repository)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('account-email-login-guide')), findsNothing);
+    expect(find.textContaining('この画面で第一パスワードの保存を確認しました。'), findsNothing);
+    expect(repository.loads, 1);
   });
 
 }
