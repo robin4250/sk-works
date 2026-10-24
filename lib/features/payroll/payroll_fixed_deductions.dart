@@ -25,12 +25,13 @@ class PayrollFixedDeductions extends StatefulWidget {
     this.residentTaxBuilder,
     this.openConditions, this.openRates, this.rpc, this.month,
     this.refreshRevision = 0, this.canEdit = false,
-    this.legacySocialAmount = 0,
+    this.legacySocialAmount = 0, this.showAmounts = true,
   });
   final String companyId, workerId;
   final String? month;
   final int refreshRevision;
   final bool canEdit;
+  final bool showAmounts;
   final num legacySocialAmount;
   final PayrollDeductionStatementReader readStatement;
   final Widget residentTax;
@@ -54,6 +55,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   final _savedSnapshot = <String, int>{};
   bool _residentEditing = false;
   bool _savedCalculation = false;
+  bool _conditionsKnown = false;
   bool _busy = true, _allowed = false, _dirty = false, _uncertain = false;
   String? _error, _actor;
   late String _month;
@@ -157,7 +159,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
 
   Future<void> _load() async {
     final generation = ++_generation;
-    setState(() { _busy = true; _allowed = false; _error = null; _basisReference = null; });
+    setState(() { _busy = true; _allowed = false; _error = null; _basisReference = null; _conditionsKnown = false; });
     try {
       final supported = await _rpc('payroll_deduction_overrides_contract_version', {});
       _checkActor();
@@ -201,6 +203,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       _checkActor();
       if (!mounted || generation != _generation) return;
       _profile = profile;
+      _conditionsKnown = true;
       _basisReference = profile?['insurance_basis_reference'] == null ? null :
           PayrollInsuranceBasisReference.fromJson(profile!['insurance_basis_reference']);
       _version = version;
@@ -257,6 +260,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       _uncertain = false;
     } catch (_) {
       if (!mounted || generation != _generation) return;
+      _conditionsKnown = false;
       // A failed refresh must not present an old calculated amount as current.
       // Keep explicit corrections so an uncertain save never loses user input.
       _automatic.clear();
@@ -376,7 +380,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       content: Text('$formula\n\n金額は給料明細と同じ給与計算結果です。'
           '保存済みの計算結果は、現在の条件と照合できなくても読取専用で表示します。'
           '表示のための再登録・再計算は行わず、PDF・印刷・共有も同じ保存済み金額を使います。'
-          '対象期間・平均月収は「保険料の基準・適用月」で確認できます。平均月収を標準報酬へ自動換算しません。'
+          '控除欄の上部にある「保険料を設定」から、加入条件・初回の平均月収・適用開始月を設定できます。入力した平均月収は2026年の一般被保険者の等級表で標準報酬月額へ換算します。既存設定を開いただけでは変更しません。'
           '${key == 'child_support' ? 'この欄は読取専用です。' : '手入力した項目は修正額を優先し、「自動計算に戻す」で解除できます。'}'
           '${key == 'health_insurance' || key == 'nursing_insurance' || key == 'child_support' ? '\n健康保険・介護保険・支援金は給与計算側の共通の端数処理を使います。' : ''}'),
       actions: [
@@ -407,6 +411,32 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      if (widget.openConditions != null)
+        Card(
+          key: const ValueKey('insurance-settings-entry'),
+          child: Padding(padding: const EdgeInsets.all(10), child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton.icon(
+                key: const ValueKey('insurance-settings-open'),
+                onPressed: _busy || _dirty || _uncertain || _residentEditing ? null : _openConditions,
+                icon: const Icon(Icons.settings_outlined),
+                label: const Text('保険料を設定'),
+              ),
+              Text(_busy ? '設定状況を確認中'
+                  : !_conditionsKnown ? '設定状況を確認できません'
+                  : _profile == null ? '未設定（この月に適用する設定なし）'
+                  : '設定済み（${_month.substring(0, 7)}に適用）',
+                key: const ValueKey('insurance-settings-status')),
+              const Text('加入条件・平均月収・適用開始月を設定します。'),
+              if (_dirty || _residentEditing)
+                const Text('入力中の修正を保存してから設定を開いてください。'),
+            ],
+          )),
+        ),
+      Offstage(offstage: !widget.showAmounts, child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
       Row(children: [
         if (widget.month == null)
           IconButton(key: const ValueKey('deductions-previous-month'),
@@ -459,7 +489,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         TextButton(onPressed: _dirty || _uncertain || _residentEditing ? null : _openConditions,
           child: const Text('保険料の基準・適用月')),
       if (!_busy && _basisReference != null)
-        Text('参考期間 ${_basisReference!.from.substring(0, 7)}〜${_basisReference!.to.substring(0, 7)}・平均月収 ${_basisReference!.averageMonthlyIncomeYen}円（標準報酬への自動換算なし）'),
+        Text('対象期間 ${_basisReference!.from.substring(0, 7)}〜${_basisReference!.to.substring(0, 7)}・平均月収 ${_basisReference!.averageMonthlyIncomeYen}円'),
       for (final item in fixedPayrollDeductions)
         Card(
           key: ValueKey('fixed-deduction-${item.$1}'),
@@ -512,6 +542,8 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
           ],
         )),
       ),
+        ],
+      )),
     ],
   );
 }

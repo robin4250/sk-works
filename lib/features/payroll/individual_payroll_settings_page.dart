@@ -765,10 +765,11 @@ class _IndividualPayrollSettingsPageState
                       child: _moneySection(
                         title: '控除',
                         icon: Icons.remove_circle_outline,
-                        children: [
+                        leadingChildren: [
                           if (_workerId != null)
                             PayrollFixedDeductions(
                               key: ValueKey('fixed-deductions-$_workerId'),
+                              showAmounts: _deductionUnit == PayrollItemUnit.month,
                               companyId: companyId ?? '',
                               workerId: _workerId!,
                               canEdit: workspace.canEdit && !_saving,
@@ -834,6 +835,8 @@ class _IndividualPayrollSettingsPageState
                                 ],
                               ),
                             ),
+                        ],
+                        children: [
                           const SizedBox(height: 12),
                           _sectionTitle(SkoLanguageController.tr('その他の控除')),
                           for (var i = 0; i < _customDeductions.length; i++)
@@ -1298,6 +1301,7 @@ class _IndividualPayrollSettingsPageState
     required String title,
     required IconData icon,
     required List<Widget> children,
+    List<Widget> leadingChildren = const [],
   }) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
@@ -1343,6 +1347,7 @@ class _IndividualPayrollSettingsPageState
               ))),
         ]),
         const Divider(height: 20),
+        ...leadingChildren,
         Offstage(
           offstage: (title == '支給' ? _earningUnit : _deductionUnit) != PayrollItemUnit.month,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),

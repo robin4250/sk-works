@@ -40,6 +40,17 @@ void main() {
       ),
     );
     await t.pumpAndSettle();
+    for (final key in ['insurance-income-details', 'insurance-enrollment-details']) {
+      final tile = find.byKey(ValueKey(key));
+      if (tile.evaluate().isNotEmpty) {
+        await t.ensureVisible(tile); await t.pumpAndSettle();
+        await t.tap(tile); await t.pumpAndSettle();
+      }
+    }
+    if (find.byType(ListView).evaluate().isNotEmpty) {
+      await t.drag(find.byType(ListView), const Offset(0, 4000));
+      await t.pumpAndSettle();
+    }
   }
 
   Future<void> tapSave(WidgetTester t) async {
@@ -121,6 +132,8 @@ void main() {
     }
     final confirmation = find.widgetWithText(CheckboxListTile, '本人負担の各月額・該当なしの0円・適用月を確認しました');
     await t.scrollUntilVisible(confirmation, 250, scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(confirmation);
+    await t.pumpAndSettle();
     await t.tap(confirmation); await t.pumpAndSettle();
     await tapSave(t);
     expect(find.byType(AlertDialog), findsOneWidget);
@@ -151,7 +164,7 @@ void main() {
     )));
     await t.pumpAndSettle();
     final selector = t.widget<DropdownButtonFormField<String>>(
-      find.byType(DropdownButtonFormField<String>).first);
+      find.byType(DropdownButtonFormField<String>, skipOffstage: false).first);
     expect(selector.initialValue, '2026-04-01');
     expect(find.text('2026-04'), findsWidgets);
     expect(calls, ['read_worker_payroll_tax_conditions']);
@@ -176,10 +189,10 @@ void main() {
     }
     await showMonth(10);
     expect(t.widget<DropdownButtonFormField<String>>(
-      find.byType(DropdownButtonFormField<String>).first).initialValue, '2026-04-01');
+      find.byType(DropdownButtonFormField<String>, skipOffstage: false).first).initialValue, '2026-04-01');
     await showMonth(12);
     expect(t.widget<DropdownButtonFormField<String>>(
-      find.byType(DropdownButtonFormField<String>).first).initialValue, '2026-12-01');
+      find.byType(DropdownButtonFormField<String>, skipOffstage: false).first).initialValue, '2026-12-01');
     expect(find.text('2026-12'), findsWidgets);
     expect(calls, ['read_worker_payroll_tax_conditions', 'read_worker_payroll_tax_conditions']);
   });
@@ -198,7 +211,7 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('2026-10分に適用される税計算条件は未登録です。表示中の登録済み条件は将来分です。'), findsOneWidget);
     expect(t.widget<DropdownButtonFormField<String>>(
-      find.byType(DropdownButtonFormField<String>).first).initialValue, '2026-12-01');
+      find.byType(DropdownButtonFormField<String>, skipOffstage: false).first).initialValue, '2026-12-01');
     expect(find.text('はじめての自動計算設定'), findsNothing);
     expect(calls, ['read_worker_payroll_tax_conditions']);
   });
@@ -214,7 +227,7 @@ void main() {
     expect(find.text('はじめての自動計算設定'), findsOneWidget);
     final modes = t
         .widgetList<DropdownButtonFormField<String>>(
-          find.byType(DropdownButtonFormField<String>),
+          find.byType(DropdownButtonFormField<String>, skipOffstage: false),
         )
         .map((field) => field.initialValue);
     expect(modes, ['koh', 'rates', 'kenpo']);
@@ -240,17 +253,10 @@ void main() {
         ],
       );
     });
-    for (final label in ['健康保険の標準報酬月額（円）', '厚生年金の標準報酬月額（円）']) {
-      final field = find.widgetWithText(TextFormField, label);
-      await t.scrollUntilVisible(
-        field,
-        350,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await t.enterText(field, '300000');
-      t.testTextInput.hide();
-      await t.pumpAndSettle();
-    }
+    final income = find.byKey(const ValueKey('insurance-reference-average'));
+    await t.ensureVisible(income); await t.pumpAndSettle();
+    await t.enterText(income, '300000');
+    t.testTextInput.hide(); await t.pumpAndSettle();
     final confirmation = find.widgetWithText(
       CheckboxListTile,
       '扶養人数・保険の加入／未加入・標準報酬月額を確認しました',
@@ -260,6 +266,8 @@ void main() {
       400,
       scrollable: find.byType(Scrollable).first,
     );
+    await t.ensureVisible(confirmation);
+    await t.pumpAndSettle();
     await t.tap(confirmation);
     await t.pumpAndSettle();
     await tapSave(t);
@@ -299,7 +307,7 @@ void main() {
     expect(find.text('はじめての自動計算設定'), findsNothing);
     final modes = t
         .widgetList<DropdownButtonFormField<String>>(
-          find.byType(DropdownButtonFormField<String>),
+          find.byType(DropdownButtonFormField<String>, skipOffstage: false),
         )
         .map((field) => field.initialValue);
     expect(modes, ['2026-04-01', 'fixed', 'fixed']);
@@ -336,11 +344,16 @@ void main() {
       ),
     );
     await t.pumpAndSettle();
+    for (final key in ['insurance-income-details', 'insurance-enrollment-details']) {
+      final details = find.byKey(ValueKey(key));
+      await t.ensureVisible(details); await t.pumpAndSettle();
+      await t.tap(details); await t.pumpAndSettle();
+    }
     expect(find.text('はじめての自動計算設定'), findsOneWidget);
     expect(
       t
           .widgetList<DropdownButtonFormField<String>>(
-            find.byType(DropdownButtonFormField<String>),
+            find.byType(DropdownButtonFormField<String>, skipOffstage: false),
           )
           .map((field) => field.initialValue),
       ['koh', 'rates', 'kenpo'],
@@ -376,7 +389,7 @@ void main() {
     );
     expect(
       t
-          .widgetList<TextFormField>(find.byType(TextFormField))
+          .widgetList<TextFormField>(find.byType(TextFormField, skipOffstage: false))
           .any((field) => field.controller?.text == '300000'),
       isFalse,
     );
@@ -468,11 +481,15 @@ void main() {
       );
       await t.ensureVisible(confirmation);
       await t.pumpAndSettle();
-      await t.tap(confirmation);
+      await t.ensureVisible(confirmation);
+    await t.pumpAndSettle();
+    await t.tap(confirmation);
       await t.pumpAndSettle();
       await tapSave(t);
       expect(find.byType(AlertDialog), findsNothing);
-      expect(find.text('加入している保険の標準報酬月額を入力してください'), findsNWidgets(2));
+      expect(find.byKey(const ValueKey('insurance-base-input-error')), findsOneWidget);
+      expect(find.text('平均月収を入力するか、「通知書の金額で手動修正」から加入している保険の標準報酬月額を入力してください。'), findsOneWidget);
+      expect(find.byKey(const ValueKey('insurance-base-input-error')).hitTestable(), findsOneWidget);
       expect(writes, 0);
     },
   );
@@ -580,4 +597,68 @@ void main() {
     expect(find.byType(FilledButton), findsNothing);
     expect(find.textContaining('税計算条件を取得できません'), findsOneWidget);
   });
+  for (final invalidDate in ['abc', '2026-02-30']) {
+    for (final fixedMode in [false, true]) {
+    testWidgets('nursing off keeps invalid birth date visible and refuses save: $invalidDate fixed=$fixedMode', (t) async {
+      var writes = 0;
+      await open(t, (name, params) async {
+        if (!name.startsWith('read_')) writes++;
+        return state(items: [{'starts_on': '2026-10-01', 'version': 1, 'value': {
+          ...value, 'insurance_mode': 'rates', 'health': true, 'pension': true,
+          'health_base_yen': 300000, 'pension_base_yen': 300000,
+        }}]);
+      });
+      final nursing = find.widgetWithText(CheckboxListTile, '介護保険（40〜64歳を自動判定）');
+      await t.ensureVisible(nursing); await t.pumpAndSettle();
+      await t.tap(nursing); await t.pumpAndSettle();
+      final birth = find.widgetWithText(TextFormField, '生年月日（YYYY-MM-DD）');
+      await t.ensureVisible(birth); await t.pumpAndSettle();
+      await t.enterText(birth, invalidDate);
+      t.testTextInput.hide(); await t.pumpAndSettle();
+      await t.ensureVisible(nursing); await t.pumpAndSettle();
+      await t.tap(nursing); await t.pumpAndSettle();
+      if (fixedMode) {
+        final mode = find.byKey(const ValueKey('insurance-rates'));
+        await t.ensureVisible(mode); await t.pumpAndSettle();
+        await t.tap(mode); await t.pumpAndSettle();
+        await t.tap(find.text('個別設定の固定月額').last); await t.pumpAndSettle();
+      }
+      expect(birth, findsOneWidget);
+      expect(t.widget<TextFormField>(birth).controller!.text, invalidDate);
+      await tapSave(t);
+      expect(writes, 0); expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('生年月日をYYYY-MM-DDの正しい日付で入力してください'), findsOneWidget);
+      expect(t.widget<TextFormField>(birth).controller!.text, invalidDate);
+    });
+    }
+  }
+
+  testWidgets('valid nursing birth date still saves the explicit date', (t) async {
+    var version = 1, writes = 0;
+    var saved = <String, dynamic>{...value, 'insurance_mode': 'rates',
+      'health': true, 'pension': true, 'health_base_yen': 300000, 'pension_base_yen': 300000};
+    await open(t, (name, params) async {
+      if (!name.startsWith('read_')) {
+        writes++;
+        saved = Map<String, dynamic>.from(params['p_value'] as Map);
+        version++;
+      }
+      return state(items: [{'starts_on': '2026-10-01', 'version': version, 'value': saved}]);
+    });
+    final nursing = find.widgetWithText(CheckboxListTile, '介護保険（40〜64歳を自動判定）');
+    await t.ensureVisible(nursing); await t.pumpAndSettle();
+    await t.tap(nursing); await t.pumpAndSettle();
+    final birth = find.widgetWithText(TextFormField, '生年月日（YYYY-MM-DD）');
+    await t.ensureVisible(birth); await t.pumpAndSettle();
+    await t.enterText(birth, '1990-01-01');
+    t.testTextInput.hide(); await t.pumpAndSettle();
+    await tapSave(t);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await t.tap(find.widgetWithText(FilledButton, '確認して保存').last);
+    await t.pumpAndSettle();
+    expect(writes, 1);
+    expect(saved['nursing'], true); expect(saved['birth_date'], '1990-01-01');
+    expect(find.textContaining('保存しました。対象の未確定給与へ反映しました。'), findsOneWidget);
+  });
+
 }

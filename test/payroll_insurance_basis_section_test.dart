@@ -27,6 +27,9 @@ void main() {
     final average = find.byKey(const ValueKey('insurance-reference-average'));
     expect(t.widget<TextFormField>(average).controller!.text, '480000');
     expect(changed, isNull);
+    final details = find.byKey(const ValueKey('insurance-reference-details'));
+    await t.ensureVisible(details); await t.pumpAndSettle();
+    await t.tap(details); await t.pumpAndSettle();
     final use = find.byKey(const ValueKey('insurance-use-period-average'));
     await t.ensureVisible(use); await t.pumpAndSettle(); await t.tap(use); await t.pump();
     expect(changed!.source, 'actual_complete'); expect(changed!.historyFingerprint, fingerprint);
