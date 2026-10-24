@@ -1,0 +1,49 @@
+name: Company PNG bounded deployment review
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/company_seal_uploaded_png_20261020.sql.review-only'
+      - 'tool/security/prepare_company_png_deployment_review.py'
+      - 'tool/security/test_prepare_company_png_deployment_review.py'
+      - 'tool/verify_company_png_deployment_review.mjs'
+      - 'tool/verify_company_seal_uploaded_png.mjs'
+      - '.github/workflows/company-png-deployment-review.yml'
+permissions:
+  contents: read
+jobs:
+  native-png:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        proof: [backend, deployment]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_trade_fixture
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SKO_TRADE_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_trade_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: python3 -m unittest discover -s tool/security -p 'test_prepare_company_png_deployment_review.py' -v
+      - if: matrix.proof == 'backend'
+        run: node tool/verify_company_seal_uploaded_png.mjs "$PWD/tool/trade_document_pg_adapter.mjs"
+      - if: matrix.proof == 'deployment'
+        run: node tool/verify_company_png_deployment_review.mjs "$PWD/tool/trade_document_pg_adapter.mjs"
