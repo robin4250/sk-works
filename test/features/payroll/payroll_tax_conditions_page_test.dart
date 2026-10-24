@@ -396,6 +396,8 @@ void main() {
         300,
         scrollable: find.byType(Scrollable).first,
       );
+      await t.ensureVisible(plan);
+      await t.pumpAndSettle();
       await t.tap(plan);
       await t.pumpAndSettle();
       await t.tap(find.text('国保・社会保険未加入').last);
@@ -464,6 +466,8 @@ void main() {
         400,
         scrollable: find.byType(Scrollable).first,
       );
+      await t.ensureVisible(confirmation);
+      await t.pumpAndSettle();
       await t.tap(confirmation);
       await t.pumpAndSettle();
       await tapSave(t);
@@ -560,6 +564,8 @@ void main() {
       400,
       scrollable: find.byType(Scrollable).first,
     );
+    await t.ensureVisible(reload);
+    await t.pumpAndSettle();
     await t.tap(reload);
     await t.pumpAndSettle();
     expect(find.byType(Form), findsNothing);
@@ -575,4 +581,3 @@ void main() {
     expect(find.textContaining('税計算条件を取得できません'), findsOneWidget);
   });
 }
-
