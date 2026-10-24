@@ -17,6 +17,19 @@ try{
    const finish=' if(process.env.SKO_TRADE_DOCUMENT_API_EXPORT){';
    if(source.split(finish).length!==2)throw Error('canonical fixture final anchor changed');
    source=source.replace(finish,await fs.readFile(new URL('./fixtures/trade_reciprocal_gate/assertions.mjs.fragment',import.meta.url),'utf8')+'\n'+finish);
+   const nativeAnchor=" if(c.openNativePeer)await (await import('./trade_document_confirmation_api_races.mjs')).verifyPublicConfirmationApiRaces(db,c);";
+   if(source.split(nativeAnchor).length!==2)throw Error('canonical Native race anchor changed');
+   // OFF diagnostics precede the unchanged ON Native regression suite. Restore
+   // ON only as fixture owner; always finish OFF, including a failed race suite.
+   source=source.replace(nativeAnchor,`
+ if(c.openNativePeer)await db.exec("update private.master_feature_settings set enabled=true where feature_key='trade_document_reciprocal_seals'");
+ try{${nativeAnchor}}
+ finally{
+  await db.exec("reset role;update private.master_feature_settings set enabled=false where feature_key='trade_document_reciprocal_seals'");
+  check(await q("select enabled v from private.master_feature_settings where feature_key='trade_document_reciprocal_seals'"),false);
+  console.log('PASS reciprocal fixture final feature OFF after canonical ON Native phase');
+ }
+ `);
   }
   await fs.writeFile(path.join(temp,'tool',name),source);
  }

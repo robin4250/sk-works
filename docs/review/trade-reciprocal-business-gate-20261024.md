@@ -45,3 +45,10 @@ SKO_CONSENT_FIXTURE_URL=postgresql://postgres:fixture-only@127.0.0.1:5432/sko_do
 ```
 
 The existing authenticated fixture uses synthetic claims/session rows; real issued-token proof is still a separate stage. Runtime failures must be reported as failures, not represented by the passing source-generation tests. Production checkpoint/bounded installation/unused restore, Phase-B completion, real-company reciprocal approval and iPhone PNG selection/reopen/PDF/print verification remain unfinished.
+
+
+## Remote Native fixture phase correction
+
+The first remote PGlite run passed. The Native run passed the six write/OFF diagnostics, then failed in the unchanged canonical **ON** API race setup because the preceding diagnostics intentionally left the fixture gate OFF. This is a fixture phase collision, not evidence that the server gate should accept OFF writes.
+
+The temporary wrapper now restores ON as fixture owner immediately before that existing Native ON regression phase. A `finally` block resets the role to fixture owner, writes OFF and asserts it for both runtimes, including a failed Native regression. Product SQL, source guards, permissions and enabled-state refusal are unchanged. The corrected Native SQL result remains pending remote CI; source syntax checks alone are not that result.
