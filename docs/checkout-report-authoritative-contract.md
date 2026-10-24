@@ -56,7 +56,11 @@ save/sign/vehicle writer functions and triggers remain untouched.
 500 actor accounts per call. It returns next_actor, has_more, failures and actual
 sent/deduplicated counts. Membership and active worker filtering are reapplied.
 Receipt key is company/worker/source/recipient/JST-day/reason, independent of
-app_notifications.read_at. Receipt and enqueue are atomic per actor. Failures
+app_notifications.read_at. Receipt and enqueue are atomic per actor. Before enqueue, all report roster
+worker/month scopes are locked with the existing exact-pinned canonical scope
+helper, then report/roster/source rows are share-locked and the state re-read.
+The routine has a 100ms lock timeout; contention is an explicit retryable actor
+failure, and the scheduler retains that cursor rather than falsely succeeding. Failures
 roll back that actor's receipts and notifications and remain visible.
 
 After reporter save, the missing-supervisor reason uses exactly:
@@ -110,6 +114,14 @@ vehicle attachment migration, and calls original draft save, reporter signature,
 vehicle attachment and supervisor signature APIs. It asserts the existing guard
 rejects a missing event, then a committed event attachment allows reporter-only
 unlock, daily reminder delivery, and normal formal/payroll projection completion.
+The fixture replaces only its explicitly synthetic lock helper with the
+existing actual scope-lock source, whose owner/ACL/config/body are pinned.
+A second connection holds an uncommitted real supervisor-signature write while
+the notification runner must return retryable 55P03 and enqueue nothing. A
+transaction-only negative control removes just the new lock block, demonstrates
+stale enqueue, and rolls back both the unsafe definition and notification; its
+hardened source hash is then checked. After the real writer commits, retry must
+observe completed projection and enqueue nothing.
 Source writer definitions are not edited; all existing producer-body hashes are
 checked again by the original suite. Both Native results remain pending remote CI. No local Flutter or
 replacement dependency installation was performed.

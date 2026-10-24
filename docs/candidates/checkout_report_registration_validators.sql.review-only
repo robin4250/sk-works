@@ -10,6 +10,15 @@ do $$ begin
    and f.proconfig=array['search_path=""']) then
   raise exception 'vehicle meter guard source prerequisite differs';
  end if;
+ if not exists(select 1 from pg_proc f join pg_roles o on o.oid=f.proowner
+  where f.oid=to_regprocedure('payroll_scope_private.lock_scopes(jsonb,boolean)')
+   and md5(f.prosrc)='1bce36e2e59eeb8e0144c5743b8ea800'
+   and o.rolname='postgres' and f.prosecdef and f.prorettype='void'::regtype
+   and f.prokind='f' and f.provolatile='v' and f.pronargs=2
+   and f.proacl=array[makeaclitem(f.proowner,f.proowner,'EXECUTE',false)]
+   and f.proconfig=array['search_path=""']) then
+  raise exception 'payroll scope lock source prerequisite differs';
+ end if;
 end $$;
 create function checkout_report_registration_private.inputs_complete(rid uuid)
 returns boolean language sql stable security invoker set search_path='' as $$

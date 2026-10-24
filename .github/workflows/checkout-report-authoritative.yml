@@ -6,6 +6,7 @@ on:
       - 'tool/verify_checkout_registration.mjs'
       - 'tool/verify_checkout_registration_source_chain.mjs'
       - 'supabase/migrations/20261008162618_attach_vehicle_meter_to_report.sql'
+      - 'supabase/migrations/20261009171504_payroll_refresh_scope_order.sql'
       - 'tool/verify_company_checkout_integration.mjs'
       - 'tool/fixtures/company_checkout_*'
       - '.github/workflows/checkout-report-authoritative.yml'

@@ -34,6 +34,10 @@ try {
  const meterSource=await readFile('supabase/migrations/20261008162618_attach_vehicle_meter_to_report.sql','utf8');
  const originalGuard=/create function private\.guard_linked_vehicle_meter_report\(\)[\s\S]*?end \$\$;/.exec(meterSource)?.[0];assert.ok(originalGuard);
  await db.query(originalGuard);
+ const scopeSource=await readFile('supabase/migrations/20261009171504_payroll_refresh_scope_order.sql','utf8');
+ const originalLock=/create function payroll_scope_private\.lock_scopes\([\s\S]*?end \$\$;/.exec(scopeSource)?.[0];assert.ok(originalLock);
+ await db.query('create schema payroll_scope_private');await db.query(originalLock);
+ await db.query('revoke all on function payroll_scope_private.lock_scopes(jsonb,boolean) from public,anon,authenticated');
  await db.query('revoke all on function private.guard_linked_vehicle_meter_report() from public,anon,authenticated');
  await db.query('create trigger linked_vehicle_meter_report_guard before update on daily_reports for each row execute function private.guard_linked_vehicle_meter_report()');
  await db.query(await readFile('docs/candidates/checkout_report_registration.sql.review-only','utf8'));

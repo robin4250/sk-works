@@ -12,11 +12,12 @@ create table checkout_report_registration_private.daily_deliveries(
 revoke all on checkout_report_registration_private.daily_deliveries from public,anon,authenticated;
 
 create function checkout_report_registration_private.deliver_daily(p_after_actor uuid default null,p_limit integer default 100)
-returns jsonb language plpgsql security definer set search_path='' as $$
+returns jsonb language plpgsql security definer set search_path='' set lock_timeout='100ms' as $$
 declare a record; item jsonb; outcome jsonb; reason_value text; notice uuid;
  today date:=(current_timestamp at time zone 'Asia/Tokyo')::date;
  sent integer:=0; skipped integer:=0; actors integer:=0; last_actor uuid; inserted integer;
  failures jsonb:='[]'::jsonb; body_value text; actor_sent integer; actor_skipped integer;
+ original_items jsonb; scopes jsonb; report_ids uuid[]; source_ids uuid[];
 begin
  if p_limit is null or p_limit not between 1 and 500 then raise exception 'invalid batch limit'; end if;
  -- Deterministic cursor covers all active recipient actors; callers must follow
@@ -30,7 +31,33 @@ begin
   begin
    actor_sent:=0; actor_skipped:=0;
    outcome:=checkout_report_registration_private.read_for_actor(a.user_id);
-   for item in select value from jsonb_array_elements(outcome->'items') loop
+   select coalesce(jsonb_agg(x),'[]'::jsonb) into original_items
+    from jsonb_array_elements(outcome->'items') x
+    where x->>'registration_state' in('reporter_saved_waiting_supervisor','signed_projection_unverified');
+   select array_agg(distinct (x->>'report_id')::uuid) into report_ids from jsonb_array_elements(original_items) x;
+   select array_agg(distinct source) into source_ids from (
+    select (x->>'source_clock_in_id')::uuid source from jsonb_array_elements(original_items) x
+    union select (x->>'clock_out_id')::uuid from jsonb_array_elements(original_items) x) selected;
+   select coalesce(jsonb_agg(jsonb_build_object('cid',cid,'wid',wid,'day',day) order by cid,wid,day),'[]'::jsonb)
+    into scopes from(select distinct r.company_id cid,w.worker_id wid,r.report_date day
+     from public.daily_reports r join public.daily_report_workers w on w.report_id=r.id
+     where r.id=any(report_ids)) all_report_workers;
+   -- Match the existing signature writer order: all parent/worker/month scopes
+   -- before report, roster and source rows. Short lock timeout makes contention
+   -- a retryable actor failure instead of an unbounded batch lock inversion.
+   perform payroll_scope_private.lock_scopes(scopes,false);
+   perform 1 from public.daily_reports where id=any(report_ids) order by id for share;
+   perform 1 from public.daily_report_workers where report_id=any(report_ids) order by report_id,worker_id for share;
+   perform 1 from public.attendance_verifications where id=any(source_ids) order by id for share;
+   -- A supervisor may have committed since the first read. Re-evaluate under
+   -- these locks; never enqueue a stale missing-signature reason from before it.
+   outcome:=checkout_report_registration_private.read_for_actor(a.user_id);
+   for item in select x from jsonb_array_elements(outcome->'items') x where exists(
+    select 1 from jsonb_array_elements(original_items) old where
+     row(x->>'company_id',x->>'worker_id',x->>'work_date',x->>'site_id',x->>'route_assignment_id',
+      x->>'source_clock_in_id',x->>'clock_out_id',x->>'report_id') is not distinct from
+     row(old->>'company_id',old->>'worker_id',old->>'work_date',old->>'site_id',old->>'route_assignment_id',
+      old->>'source_clock_in_id',old->>'clock_out_id',old->>'report_id')) loop
     reason_value:=case item->>'registration_state'
      when 'reporter_saved_waiting_supervisor' then 'supervisor_signature_missing'
      when 'signed_projection_unverified' then 'signed_projection_unverified' else null end;
