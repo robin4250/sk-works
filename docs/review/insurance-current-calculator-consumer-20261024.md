@@ -1,0 +1,9 @@
+# Current saved insurance calculator contract
+
+The saved-insurance fallback introduced in PR1333 accepted only `payroll-tax-20261010-v1`. Main's `20261014033249_payroll_fixed_deduction_overrides.sql` replaces the calculator and returns `payroll-tax-20261014-overrides-v1`; the manual-insurance candidate preserves that version. A saved statement with the current producer metadata was therefore rejected by the fallback when its current conditions were newer or unavailable, even when its saved named amounts existed.
+
+This change adds the second exact known producer version to the display-only reader. Both contracts retain `condition_version`, `conditions_start`, `conditions`, and post-correction `premiums`. No unknown version, blocked result, invalid month/version or fixed aggregate is accepted. Explicit scalar zero and invalid explicit scalars keep their precedence. In the current contract, `premiums` contains the chosen correction and `automatic_premiums` is only the original calculation; the saved display must not replace a zero correction with that automatic amount.
+
+The normal SQL producer writes the same post-correction `premiums` at both the named detail keys and the nested snapshot. A positive nested value masked by a synthetic default top-level zero was not found in this normal producer path. No speculative zero replacement is implemented.
+
+Existing helper and current-profile mismatch widget tests now cover both exact versions. The actual PDF reconciliation adds a current-calculator calculation-only variant with saved totals/net and input immutability checks. The existing isolated actual-SQL producer verification explicitly asserts its generated calculator version. No new calculation, settings registration, financial write, rate change or account change is introduced. Actual iPhone resolution and the exact affected user statement remain unverified.

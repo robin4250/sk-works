@@ -101,6 +101,7 @@ try {
  const automatic={...profile,insurance_mode:'rates',health:true,pension:true,employment:true,child_support:true,nursing:true,birth_date:'1986-10-01',health_base_yen:300000,pension_base_yen:300000};
  await actor(editor);await saveTax(1,automatic);
  const rated=await statement(month);
+ assert.equal(rated.detail.tax_calculation.calculator_version,'payroll-tax-20261014-overrides-v1','saved insurance display must accept the current SQL calculator contract');
  assert.equal(rated.detail.tax_calculation.social_yen,46725);
  assert.equal(rated.detail['介護保険料'],2430,'40th birthday on first day starts in prior month');
  assert.equal(rated.detail['所得税'],6220);
