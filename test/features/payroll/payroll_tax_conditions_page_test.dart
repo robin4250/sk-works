@@ -121,6 +121,8 @@ void main() {
     }
     final confirmation = find.widgetWithText(CheckboxListTile, '本人負担の各月額・該当なしの0円・適用月を確認しました');
     await t.scrollUntilVisible(confirmation, 250, scrollable: find.byType(Scrollable).first);
+    await t.ensureVisible(confirmation);
+    await t.pumpAndSettle();
     await t.tap(confirmation); await t.pumpAndSettle();
     await tapSave(t);
     expect(find.byType(AlertDialog), findsOneWidget);
@@ -253,6 +255,8 @@ void main() {
       400,
       scrollable: find.byType(Scrollable).first,
     );
+    await t.ensureVisible(confirmation);
+    await t.pumpAndSettle();
     await t.tap(confirmation);
     await t.pumpAndSettle();
     await tapSave(t);
@@ -461,7 +465,9 @@ void main() {
       );
       await t.ensureVisible(confirmation);
       await t.pumpAndSettle();
-      await t.tap(confirmation);
+      await t.ensureVisible(confirmation);
+    await t.pumpAndSettle();
+    await t.tap(confirmation);
       await t.pumpAndSettle();
       await tapSave(t);
       expect(find.byType(AlertDialog), findsNothing);

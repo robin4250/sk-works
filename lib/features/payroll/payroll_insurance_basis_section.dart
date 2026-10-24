@@ -169,7 +169,11 @@ class _PayrollInsuranceBasisSectionState extends State<PayrollInsuranceBasisSect
       const SizedBox(height: 8),
       TextFormField(key: const ValueKey('insurance-reference-average'),
         controller: _average, enabled: enabled, keyboardType: TextInputType.number,
-        decoration: InputDecoration(labelText: '平均月収（初回はここに入力）', suffixText: '円', helperText: _sourceLabel),
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+        decoration: InputDecoration(labelText: '平均月収（初回はここに入力）',
+          suffixText: '円', helperText: _sourceLabel,
+          filled: true, fillColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.35),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
         validator: (value) {
           if ((value ?? '').trim().isEmpty) return null;
           try { _reference(); return null; }

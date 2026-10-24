@@ -83,3 +83,22 @@ reload, and the exact month passed to the existing callback.
   tests now use the single income field and assert visible refusal / no writes.
 - New regressions cover period change after a health override and rates → fixed
   → income edit → rates → refused save → explicit apply → correct distinct bases.
+
+
+## Appearance-only follow-up
+
+User clarified this request is appearance, not a new calculation or workflow.
+
+1. One long undivided form is now grouped into rounded SKO-primary-color bordered
+   cards: effective month, income, income tax, insurance/enrollment, supplemental
+   deductions. Existing fields, order, initial expansion and validators remain.
+2. The one income input has a larger amount and a subtle primary-color fill;
+   other form content retains the existing scale. The title is `保険料の設定`.
+3. A final read-only summary makes the effective month, insurance method and
+   calculation bases easy to review above the existing confirmation/save action.
+   The effective-month line listens to the existing controller (no new save).
+
+Help updated. No calculation, scope, enrollment, save/confirmation or default
+changes in this visual follow-up. Existing operation tests remain the checks;
+no style-mirroring test added. The existing initial-setup test now ensures its
+confirmation checkbox is on-screen before tapping (no warning suppression).
