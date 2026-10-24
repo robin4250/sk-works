@@ -594,15 +594,15 @@ class PayrollPdfService {
             ),
           ),
           if (leaveAllocation.isNotEmpty)
-            at(20, 655, width, 28,
+            at(20, 655, width, 14,
               pw.Padding(
                 padding: const pw.EdgeInsets.symmetric(horizontal: 10),
                 child: text(leaveAllocation, size: 7),
               ),
             ),
           if (pageIndex == 0 && !insuranceEvidence.isEmpty)
-            at(20, leaveAllocation.isEmpty ? 655 : 686, width,
-              leaveAllocation.isEmpty ? 68 : 39,
+            at(20, leaveAllocation.isEmpty ? 655 : 672, width,
+              leaveAllocation.isEmpty ? 68 : 55,
               _insuranceEvidenceBox(insuranceEvidence, blue, paleBlue)),
           at(
             20,
@@ -1033,7 +1033,7 @@ class PayrollPdfService {
       pw.SizedBox(height: .5),
       pw.Text(evidence.referenceText, style: const pw.TextStyle(fontSize: 5)),
       for (var i = 0; i < evidence.rows.length; i += 2)
-        pw.Row(children: [
+        pw.SizedBox(height: 10, child: pw.Row(children: [
           for (var j = i; j < i + 2 && j < evidence.rows.length; j++)
             pw.Expanded(child: pw.Padding(
               padding: const pw.EdgeInsets.only(top: .6, right: 4),
@@ -1042,7 +1042,7 @@ class PayrollPdfService {
                   style: const pw.TextStyle(fontSize: 5.2))),
             )),
           if (i + 1 == evidence.rows.length) pw.Expanded(child: pw.SizedBox()),
-        ]),
+        ])),
     ]),
   );
 

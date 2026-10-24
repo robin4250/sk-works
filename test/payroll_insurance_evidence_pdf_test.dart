@@ -34,11 +34,15 @@ pdf=fitz.open(sys.argv[1]);p=pdf[0]
 spans=[s for b in p.get_text('dict')['blocks'] for l in b.get('lines',[]) for s in l['spans']]
 rows=[s for s in spans if 321<=s['bbox'][1]<541]
 deductions=sum(int(s['text'].replace(',','')) for s in rows if 490<=s['bbox'][0] and s['bbox'][2]<=558 and re.fullmatch(r'[0-9,]+',s['text']))
-evidence=[s for s in spans if 670<=s['bbox'][1]<749]
-report={'pages':len(pdf),'text':p.get_text(),'deductions':deductions,'evidence_bottom':max((s['bbox'][3] for s in evidence),default=0)}
+band_top=690 if sys.argv[2]=='paid_leave' else 673
+band_bottom=745 if sys.argv[2]=='paid_leave' else 741
+evidence=[s for s in spans if band_top<=s['bbox'][1]<749]
+names=['健康保険料','厚生年金保険','介護保険料','雇用保険料','子ども・子育て支援金']
+visible_names=[name for name in names if any(s['text'].startswith(name+'：') and s['bbox'][3]<=band_bottom for s in evidence)]
+report={'pages':len(pdf),'text':p.get_text(),'deductions':deductions,'evidence_bottom':max((s['bbox'][3] for s in evidence),default=0),'visible_evidence_names':visible_names}
 p.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(sys.argv[1]+'.png')
 print(json.dumps(report,ensure_ascii=False))
-''', file.path]);
+''', file.path, paidLeave ? 'paid_leave' : 'standard']);
       expect(result.exitCode, 0, reason: result.stderr.toString());
       final report = jsonDecode(result.stdout.toString()) as Map;
       expect(report['pages'], 1);
@@ -49,7 +53,8 @@ print(json.dumps(report,ensure_ascii=False))
       expect(report['text'], contains('9.15%'));
       expect(report['text'], contains('431,470'));
       if (paidLeave) expect(report['text'], contains('有給内訳'));
-      expect(report['evidence_bottom'] as num, lessThan(750), reason: 'Evidence must stay above remarks/bank boxes');
+      expect(report['visible_evidence_names'], containsAll(['健康保険料', '厚生年金保険', '介護保険料', '雇用保険料', '子ども・子育て支援金']));
+      expect(report['evidence_bottom'] as num, lessThan(749), reason: 'Evidence must stay above remarks/bank boxes');
     }
   }, skip: fontPath == null ? 'Uses the existing remote PDF/font verification environment' : false);
 }

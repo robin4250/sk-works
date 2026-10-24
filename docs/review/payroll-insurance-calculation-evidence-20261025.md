@@ -79,3 +79,17 @@ restriction. `git diff --check` / workflow syntax are checked locally. Remote CI
 and visual inspection of its PNG remain required before merge. The previously
 successful PR1371 actual UI→PG17→payslip→PDF proof remains intact; this change does
 not repeat or invalidate that calculation proof.
+
+
+## Paid-leave band clipping correction
+
+The first remote PDF extraction/totals passed, but visual review of artifact
+12575897567 proved the 39-point paid-leave band clipped after its first row.
+That is not accepted as complete. The existing one-line paid-leave note keeps
+its position/font and now reserves 14 points; the basis band starts at 672 and
+has 55 points before the unchanged remarks/bank region. Each two-column formula
+row has an explicit 10-point height instead of accepting unbounded row sizing.
+The regression now requires all five insurance formula labels specifically in
+the basis-band coordinates, within the band bottom, rather than merely finding
+the same labels elsewhere in the money table. One-page/totals/source immutability
+checks remain. Remote regeneration and PNG review are still required.
