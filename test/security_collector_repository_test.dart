@@ -9,13 +9,13 @@ Map<String, dynamic> snapshot() => {'version':1,
   'coverage':'collector_observations_only','attack_confirmed':false,'events':[]};
 
 void main() {
-  late StreamController<void> changes;
+  late StreamController<String?> changes;
   late String? key;
   late int issued, reads;
   late bool allowed, active;
   late SecurityCollectorRepository repository;
   setUp(() {
-    changes = StreamController<void>.broadcast(sync:true);
+    changes = StreamController<String?>.broadcast(sync:true);
     key = 'master/session-a'; issued = 0; reads = 0; allowed = true; active = true;
     repository = SecurityCollectorRepository(sessionKey: () => key,
       sessionChanges: changes.stream,
@@ -44,8 +44,8 @@ void main() {
     final work = repository.load('password');
     final result = expectLater(work, throwsA(isA<SecurityCollectorUnavailable>()));
     await Future<void>.delayed(Duration.zero);
-    key = 'other/session-b'; changes.add(null);
-    key = 'master/session-a'; changes.add(null);
+    key = 'other/session-b'; changes.add(key);
+    key = 'master/session-a'; changes.add(key);
     proof.complete('a' * 64); await result; expect(reads,0);
   });
   test('cancelled caller refuses consume after issuance', () async {
@@ -58,6 +58,28 @@ void main() {
     await Future<void>.delayed(Duration.zero); active = false;
     proof.complete('a' * 64); await result; expect(reads,0);
   });
+  for(final transition in ['same-user-session-hop','signed-out-and-restored']) {
+    test('async $transition cannot be collapsed into the current restored session', () async {
+      final events=StreamController<String?>.broadcast(); // SDK default is async
+      final issuing=Completer<void>(),proof=Completer<String>();
+      repository=SecurityCollectorRepository(sessionKey:()=>key,sessionChanges:events.stream,
+        availableCheck:() async=>true,
+        issueProof:(_) {issuing.complete();return proof.future;},
+        readWithProof:(_) async {reads++;return snapshot();});
+      final work=repository.load('password');
+      final denied=expectLater(work,throwsA(isA<SecurityCollectorUnavailable>()));
+      await issuing.future;
+      if(transition=='same-user-session-hop') {
+        key='master/session-b';events.add(key);
+      } else { key=null;events.add(null); }
+      key='master/session-a';events.add(key);
+      // Both queued callbacks observe current A. Only each emitted event key
+      // can prove that session B (or signed-out null) was crossed in between.
+      await Future<void>.delayed(Duration.zero);
+      proof.complete('a'*64);await denied;
+      expect(reads,0);await events.close();
+    });
+  }
   test('missing public RPC is unavailable and never retries the proof', () async {
     repository = SecurityCollectorRepository(sessionKey: () => key, sessionChanges: changes.stream,
       availableCheck: () async => true, issueProof: (_) async { issued++; return 'a' * 64; },

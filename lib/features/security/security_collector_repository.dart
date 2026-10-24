@@ -54,11 +54,20 @@ class SecurityCollectorRepository {
   final Future<bool> Function() availableCheck;
   final Future<String> Function(String password) issueProof;
   final Future<dynamic> Function(String proof) readWithProof;
-  final Stream<void> sessionChanges;
+  final Stream<String?> sessionChanges;
 
   static String? _key(SupabaseClient client) {
     final session = client.auth.currentSession;
     if (session == null || session.isExpired) return null;
+    return _eventKey(session);
+  }
+
+  // Preserve the identity IN each event: an async callback must not replace
+  // an A→B→A sequence with the already-restored current session A. Historical
+  // token expiry does not change a session identity; current expiry is checked
+  // separately by _key before/after work. No bearer token leaves this helper.
+  static String? _eventKey(Session? session) {
+    if (session == null) return null;
     try {
       final parts = session.accessToken.split('.');
       final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
@@ -73,7 +82,8 @@ class SecurityCollectorRepository {
     final client = SupabaseBackend.client;
     return SecurityCollectorRepository(
       sessionKey: () => _key(client),
-      sessionChanges: client.auth.onAuthStateChange.map((_) {}),
+      sessionChanges: client.auth.onAuthStateChange.map((event) =>
+        event.event == AuthChangeEvent.signedOut ? null : _eventKey(event.session)),
       availableCheck: () async {
         final master = await client.rpc('is_current_user_master_admin');
         if (master != true) return false;
@@ -92,8 +102,8 @@ class SecurityCollectorRepository {
     final initial = sessionKey();
     if (initial == null) throw SecurityCollectorUnavailable();
     var revoked = false;
-    final subscription = sessionChanges.listen((_) {
-      if (sessionKey() != initial) revoked = true;
+    final subscription = sessionChanges.listen((eventKey) {
+      if (eventKey != initial || sessionKey() != initial) revoked = true;
     }, onError: (Object _) { revoked = true; });
     void check() {
       if (revoked || sessionKey() != initial || isActive?.call() == false) throw SecurityCollectorUnavailable();

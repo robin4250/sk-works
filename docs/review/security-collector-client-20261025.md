@@ -42,7 +42,11 @@ New remote Flutter tests cover proof-per-read, authorization denied before issue
 session switch-away-and-back, cancellation before consume, unavailable public RPC,
 malformed/wrong-scope/extra-field response refusal, unavailable UI and lifecycle
 clearing. Local Flutter was not run because the session's prior restriction
-continues. Remote SDK 3.47.5 analysis/tests are pending, not described as passed.
+continues. Exact PR1372 head `99e663f72b821018891adb6441daa4e2ab61eb5d`
+passed the dedicated SDK3.47.5 analysis (No issues) and all 13 tests (repository8,
+widget5) in run `40134201068`, job `120992127086`. Platform monitor UI and security
+PDF checks also passed. Whole-app Flutter/iOS checks were still running when this
+receipt was recorded; they are separate from the dedicated success.
 
 Widget fixtures explicitly create and await their read-stage witness in the same
 real async zone, then drain the repository's nested subscription-cleanup boundaries
@@ -50,6 +54,36 @@ before normal frame settling. The paused scheduler cannot paint a replacement
 tree, so lifecycle tests assert stale/late response discard and no old record or
 password after resume. They do not prove an iOS app-switcher screenshot cover.
 Native privacy-cover behavior, if required, is a separate device/platform task.
+
+## Async session-event correction after the 13-test receipt
+
+The original successful head used void session notifications and reread the live
+session when a notification arrived. Independent review identified a P2: an async
+same-user session A→B→A queue can already have returned to A before callbacks run,
+so the intervening session was lost. The upper actor-only boundary cannot detect
+same-user session changes, and a still-live original session is not a substitute
+for this sticky cancellation rule. No production exploit or collector operation
+is asserted; the backend remains undeployed/default OFF.
+
+The locked package is gotrue 2.27.2. Its official
+[tagged client source](https://github.com/supabase/supabase-flutter/blob/gotrue-v2.27.2/packages/gotrue/lib/src/gotrue_client.dart)
+(Git blob `225f928ac7ada94bb3cf53c37a3717035b3f5dd4`) uses the default async
+ReplaySubject. The same tag's
+[ReplaySubject implementation](https://github.com/supabase/supabase-flutter/blob/gotrue-v2.27.2/packages/supabase_common/lib/src/replay_subject.dart)
+preserves event values through an asynchronous broadcast by default.
+
+The correction emits each event's own user/session identity instead of void,
+preserves signed-out null, and compares both that emitted identity and the current
+session in repository/page listeners. Current-session before/after checks and
+current expiry checks remain; only historical event identity avoids consulting
+an already-restored current session. No raw bearer token is retained in the
+signal, returned to the UI, persisted or logged. Revocation remains sticky.
+
+Two default-async repository regressions cover same-user SID A→B→A and signed-out
+null→restored A during proof issuance, both requiring zero consumer reads. One
+default-async widget regression clears already displayed records and keeps the
+route locked after same-user SID A→B→A. These three additional tests and the source
+correction require fresh remote CI; the earlier 13 successes do not validate them.
 
 The existing isolated real GoTrue tests do not prove production RLS or deployment.
 PRs 1345/1346 are separate dependencies; this page on current production remains

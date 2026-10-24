@@ -15,7 +15,7 @@ class SecurityCollectorPage extends StatefulWidget {
 class _SecurityCollectorPageState extends State<SecurityCollectorPage> with WidgetsBindingObserver {
   final _password = TextEditingController();
   late final SecurityCollectorRepository? _repository;
-  StreamSubscription<void>? _subscription;
+  StreamSubscription<String?>? _subscription;
   String? _initialSession;
   SecurityCollectorSnapshot? _snapshot;
   bool _checking = true, _available = false, _busy = false, _revoked = false;
@@ -30,8 +30,8 @@ class _SecurityCollectorPageState extends State<SecurityCollectorPage> with Widg
     _initialSession = _repository?.sessionKey();
     _lifecycle = WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
-    _subscription = _repository?.sessionChanges.listen((_) {
-      if (_repository.sessionKey() != _initialSession) _revoke();
+    _subscription = _repository?.sessionChanges.listen((eventKey) {
+      if (eventKey != _initialSession || _repository.sessionKey() != _initialSession) _revoke();
     }, onError: (Object _) => _revoke());
     if (_lifecycle == AppLifecycleState.resumed) { _check(); }
     else { _checking = false; }
