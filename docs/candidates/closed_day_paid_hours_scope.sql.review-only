@@ -1,0 +1,89 @@
+-- REVIEW-ONLY candidate: server-side closed-day evidence reader.
+-- No public RPC, no payroll/report writer patches, no daily-hours ledger.
+create schema checkout_paid_hours_candidate_private;
+revoke all on schema checkout_paid_hours_candidate_private from public,anon,authenticated,service_role;
+create function checkout_paid_hours_candidate_private.read_closed_day_scope(
+ cid uuid,wid uuid,day date,rid uuid
+) returns jsonb language plpgsql stable security invoker set search_path='' as $scope$
+declare r public.daily_reports%rowtype; s public.attendance_verifications%rowtype;
+ e public.attendance_verifications%rowtype; final_start public.attendance_verifications%rowtype;
+ final_end public.attendance_verifications%rowtype; n integer; total integer:=0;
+ pairs jsonb:='[]'; visits jsonb; reasons jsonb:='[]'; basis jsonb;
+begin
+ if auth.uid() is null or private.account_access_allowed() is distinct from true
+ or not exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid())
+ or not exists(select 1 from public.workers where id=wid and company_id=cid)
+ then raise exception 'paid-hours scope unavailable' using errcode='42501';end if;
+ select * into r from public.daily_reports where id=rid and company_id=cid and report_date=day
+ and exists(select 1 from public.daily_report_workers where report_id=rid and worker_id=wid);
+ if not found then raise exception 'paid-hours report scope unavailable' using errcode='42501';end if;
+ if day is null or day>(current_timestamp at time zone 'Asia/Tokyo')::date then
+  raise exception 'actual work date required' using errcode='22023';end if;
+ for s in select * from public.attendance_verifications a where a.company_id=cid and a.worker_id=wid
+ and a.event_type='clock_in' and coalesce(a.work_date,(a.confirmed_at at time zone 'Asia/Tokyo')::date)=day
+ order by a.confirmed_at,a.id loop
+  total:=total+1;
+  if s.work_date is null then reasons:=reasons||'"canonical_work_date_missing"'::jsonb;end if;
+  select count(*) into n from public.attendance_verifications where source_clock_in_id=s.id and event_type='clock_out';
+  if n<>1 then
+   reasons:=reasons||to_jsonb(case when n=0 then 'open_shift' else 'ambiguous_shift_end' end);
+   pairs:=pairs||jsonb_build_array(jsonb_build_object('start',to_jsonb(s),'end',null));
+   continue;
+  end if;
+  select * into e from public.attendance_verifications where source_clock_in_id=s.id and event_type='clock_out';
+  if row(e.company_id,e.worker_id,e.site_id,e.route_assignment_id,e.vehicle_id,e.work_date)
+    is distinct from row(s.company_id,s.worker_id,s.site_id,s.route_assignment_id,s.vehicle_id,s.work_date)
+   or not isfinite(e.confirmed_at) or not isfinite(s.confirmed_at) or e.confirmed_at<s.confirmed_at then
+   reasons:=reasons||'"inconsistent_shift_end"'::jsonb;
+  end if;
+  visits:='[]';
+  if s.route_assignment_id is not null then
+   select coalesce(jsonb_agg(jsonb_build_object('capture',to_jsonb(c),'event',to_jsonb(v)) order by c.id),'[]')
+    into visits from private.route_journey_captures c
+    left join private.route_journey_visit_events v on v.capture_id=c.id
+    where c.source_clock_in_id=s.id;
+   if visits='[]'::jsonb then reasons:=reasons||'"route_evidence_missing"'::jsonb;end if;
+   if exists(select 1 from private.route_journey_visit_events v where v.source_clock_in_id=s.id and v.kind='start'
+    and not exists(select 1 from private.route_journey_visit_events z where z.start_capture_id=v.capture_id and z.kind='end')) then
+    reasons:=reasons||'"route_visit_open"'::jsonb;
+   end if;
+   if exists(select 1 from public.route_stops rs where rs.route_assignment_id=s.route_assignment_id and not exists(
+    select 1 from private.route_journey_visit_events v where v.source_clock_in_id=s.id and v.route_stop_id=rs.id and v.kind='start')) then
+    reasons:=reasons||'"route_stops_incomplete"'::jsonb;
+   end if;
+   if not exists(select 1 from private.route_journey_captures c join private.route_journey_visit_events v on v.capture_id=c.id
+    where c.id=e.id and c.source_clock_in_id=s.id and v.kind='end') then
+    reasons:=reasons||'"route_final_end_not_clock_out_bound"'::jsonb;
+   end if;
+  end if;
+  pairs:=pairs||jsonb_build_array(jsonb_build_object('start',to_jsonb(s),'end',to_jsonb(e),'route_visits',visits));
+  if final_end.id is null or e.confirmed_at>final_end.confirmed_at then final_start:=s;final_end:=e;
+  elsif e.confirmed_at=final_end.confirmed_at then reasons:=reasons||'"ambiguous_final_end"'::jsonb;end if;
+ end loop;
+ if total=0 then reasons:=reasons||'"no_clocked_shift"'::jsonb;end if;
+ -- A legacy end with no exact start pointer cannot silently disappear.
+ if exists(select 1 from public.attendance_verifications a where a.company_id=cid and a.worker_id=wid
+  and a.event_type='clock_out' and coalesce(a.work_date,(a.confirmed_at at time zone 'Asia/Tokyo')::date)=day
+  and a.source_clock_in_id is null) then reasons:=reasons||'"legacy_unbound_shift_end"'::jsonb;end if;
+ if exists(select 1 from public.attendance_verifications a join public.attendance_verifications b
+  on a.id<b.id and a.company_id=b.company_id and a.worker_id=b.worker_id and b.event_type='clock_in'
+  join public.attendance_verifications az on az.source_clock_in_id=a.id and az.event_type='clock_out'
+  join public.attendance_verifications bz on bz.source_clock_in_id=b.id and bz.event_type='clock_out'
+  where a.company_id=cid and a.worker_id=wid and a.event_type='clock_in' and a.work_date=day and b.work_date=day
+   and a.confirmed_at<bz.confirmed_at and b.confirmed_at<az.confirmed_at) then
+  reasons:=reasons||'"overlapping_shift_evidence"'::jsonb;
+ end if;
+ if final_end.id is null then reasons:=reasons||'"final_shift_missing"'::jsonb;
+ elsif final_start.daily_report_id is distinct from rid or final_end.daily_report_id is distinct from rid
+  or row(final_start.site_id,final_start.route_assignment_id) is distinct from row(r.site_id,r.route_assignment_id) then
+  reasons:=reasons||'"report_is_not_final_closed_shift"'::jsonb;
+ end if;
+ basis:=jsonb_build_object('version',1,'company_id',cid,'worker_id',wid,'work_date',day,'report_id',rid,
+  'report_destination',jsonb_build_object('site_id',r.site_id,'route_assignment_id',r.route_assignment_id),
+  'closed_shift_set',pairs,'final_clock_out_id',final_end.id);
+ return basis||jsonb_build_object('source_fingerprint',encode(sha256(convert_to(basis::text,'UTF8')),'hex'),
+  'blocked',jsonb_array_length(reasons)>0,'reasons',reasons,
+  'paid_hours_calculated',false,'daily_quantity_connected',false);
+end $scope$;
+revoke all on function checkout_paid_hours_candidate_private.read_closed_day_scope(uuid,uuid,date,uuid)
+ from public,anon,authenticated,service_role;
