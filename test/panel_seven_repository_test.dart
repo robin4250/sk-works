@@ -66,10 +66,12 @@ void main() {
     expect(value.biometricAvailable, isTrue);
     expect(value.phone, isNull);
     expect(value.secondaryConfigured, isTrue);
+    expect(value.primaryConfigured, isTrue);
     expect(value.sessionMethods, ['oauth']);
     expect(repository.isCurrent(value), isTrue);
     expect(paths, ['GET /auth/v1/user',
-      'POST /rest/v1/rpc/secondary_password_configured']);
+      'POST /rest/v1/rpc/secondary_password_configured',
+      'POST /rest/v1/rpc/primary_password_configured']);
     expect(headers, everyElement('Bearer $token'));
     expect(identical(client.auth.currentSession, before), isTrue);
   });
@@ -169,12 +171,91 @@ void main() {
       expect(native, contains('getAvailableBiometrics'));
       expect(native, isNot(contains('authenticate')));
       expect(paths, ['GET /auth/v1/user',
-        'POST /rest/v1/rpc/secondary_password_configured']);
+        'POST /rest/v1/rpc/secondary_password_configured',
+      'POST /rest/v1/rpc/primary_password_configured']);
       expect(value.providers, ['google']);
       expect(value.sessionMethods, ['oauth']);
       expect(value.secondaryConfigured, isTrue);
+    expect(value.primaryConfigured, isTrue);
     });
   }
+
+  for (final item in <({int status, Object? body, bool? expected})>[
+    (status: 200, body: true, expected: true),
+    (status: 200, body: false, expected: false),
+    (status: 200, body: 'false', expected: null),
+    (status: 200, body: null, expected: null),
+    (status: 200, body: <String, Object>{'configured': true}, expected: null),
+    (status: 404, body: <String, Object>{'message': 'PRIVATE_REPLY'}, expected: null),
+    (status: 403, body: <String, Object>{'message': 'PRIVATE_REPLY'}, expected: null),
+    (status: 503, body: <String, Object>{'message': 'PRIVATE_REPLY'}, expected: null),
+  ]) {
+    test('self primary status ${item.status}/${item.body.runtimeType} preserves exact boolean only', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final paths = <String>[];
+      final auth = <String?>[];
+      server.listen((request) async {
+        paths.add('${request.method} ${request.uri.path}');
+        auth.add(request.headers.value('Authorization'));
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path.endsWith('/user')) {
+          request.response.write(jsonEncode(user('a')));
+        } else if (request.uri.path.endsWith('/primary_password_configured')) {
+          request.response.statusCode = item.status;
+          request.response.write(jsonEncode(item.body));
+        } else {
+          request.response.write('true');
+        }
+        await request.response.close();
+      });
+      final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic',
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+        httpClient: IOClient(_LoopbackHttpOverrides().createHttpClient(null)));
+      addTearDown(client.dispose);
+      await client.auth.setInitialSession(session('a'));
+      final original = client.auth.currentSession;
+      final value = await PanelSevenRepository(client, biometricAvailability: () async => true).load();
+      expect(value.primaryConfigured, item.expected);
+      expect(value.secondaryConfigured, true); expect(value.emailConfirmed, true);
+      expect(value.phone, isNull); expect(value.providers, ['google']);
+      expect(identical(client.auth.currentSession, original), true);
+      expect(auth, everyElement('Bearer ${original!.accessToken}'));
+      expect(paths, ['GET /auth/v1/user', 'POST /rest/v1/rpc/secondary_password_configured',
+        'POST /rest/v1/rpc/primary_password_configured']);
+    });
+  }
+
+  test('actor change during primary status RPC rejects old result and preserves new login', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final received = Completer<void>(), release = Completer<void>();
+    server.listen((request) async {
+      request.response.headers.contentType = ContentType.json;
+      if (request.uri.path.endsWith('/user')) {
+        request.response.write(jsonEncode(user('a')));
+      } else {
+        if (request.uri.path.endsWith('/primary_password_configured')) {
+          received.complete(); await release.future;
+        }
+        request.response.write('true');
+      }
+      await request.response.close();
+    });
+    final client = SupabaseClient('http://127.0.0.1:${server.port}', 'synthetic',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: IOClient(_LoopbackHttpOverrides().createHttpClient(null)));
+    addTearDown(client.dispose);
+    await client.auth.setInitialSession(session('a'));
+    final pending = PanelSevenRepository(client, biometricAvailability: () async => true).load();
+    final rejected = expectLater(pending, throwsStateError);
+    try {
+      await received.future.timeout(const Duration(seconds: 5));
+      await client.auth.setInitialSession(session('b'));
+    } finally { release.complete(); }
+    await rejected;
+    expect(client.auth.currentUser!.id, 'b');
+  });
 
 }
 
