@@ -1,5 +1,8 @@
 -- REVIEW ONLY: no activation, cron registration or production application.
 begin;
+do $$ begin
+ if current_user<>'postgres' then raise exception 'postgres owner required'; end if;
+end $$;
 create schema if not exists checkout_report_registration_private;
 revoke all on schema checkout_report_registration_private from public, anon, authenticated;
 create table checkout_report_registration_private.rollout (

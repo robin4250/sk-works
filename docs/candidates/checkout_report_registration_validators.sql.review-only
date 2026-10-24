@@ -1,5 +1,16 @@
 -- REVIEW ONLY. Install after registration schema/helper, before reader use.
 begin;
+do $$ begin
+ if not exists(select 1 from pg_proc f join pg_roles o on o.oid=f.proowner
+  where f.oid=to_regprocedure('private.guard_linked_vehicle_meter_report()')
+   and md5(f.prosrc)='86933b3fc8c066edfba981a202fe98b4'
+   and o.rolname='postgres' and f.prosecdef and f.prorettype='trigger'::regtype
+   and f.prokind='f' and f.provolatile='v' and f.pronargs=0
+   and f.proacl=array[makeaclitem(f.proowner,f.proowner,'EXECUTE',false)]
+   and f.proconfig=array['search_path=""']) then
+  raise exception 'vehicle meter guard source prerequisite differs';
+ end if;
+end $$;
 create function checkout_report_registration_private.inputs_complete(rid uuid)
 returns boolean language sql stable security invoker set search_path='' as $$
  select exists(select 1 from public.daily_reports r where r.id=rid
@@ -51,7 +62,10 @@ returns boolean language sql stable security invoker set search_path='' as $$
   and p.period_start=date_trunc('month',r.report_date)::date
   and p.period_end=(date_trunc('month',r.report_date)+interval '1 month - 1 day')::date
  where r.id=rid and r.status='signed' and r.signed_at is not null
-  and p.automatic_calculation and p.workflow_state='draft' and p.updated_at>=r.signed_at
+  and r.signature_json=jsonb_build_object('version',3,
+   'representative',r.representative_signature_json,'supervisor',r.supervisor_signature_json)
+  and p.automatic_calculation and p.workflow_state='draft' and not p.calculation_blocked
+  and p.updated_at>=r.signed_at
   and (select count(*) from public.attendance_entries a where a.source_report_id=r.id and a.worker_id=wid)=1
   and (select count(*) from public.attendance_entries a where a.source_report_id=r.id
    and a.company_id=r.company_id and a.worker_id=wid and a.work_date=r.report_date

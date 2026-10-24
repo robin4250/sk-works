@@ -17,7 +17,10 @@ begin
  if s.notification_day is distinct from today then
   s.next_actor:=null;s.complete:=false;
  end if;
- if s.complete then return jsonb_build_object('schema',1,'notification_day',today,'complete',true,'already_processed',true);end if;
+ -- Start a new bounded scan after a completed cycle even on the same day.
+ -- Reports registered later today must not wait until tomorrow's cursor reset.
+ -- Existing delivery keys make repeated scans read-idempotent for notifications.
+ if s.complete then s.next_actor:=null;s.complete:=false;end if;
  result:=checkout_report_registration_private.deliver_daily(s.next_actor,500);
  -- Keep failed batches visible/retryable. Successful deliveries remain deduped.
  -- A failed actor cannot be silently advanced past and forgotten for the day.

@@ -81,9 +81,10 @@ begin
   join checkout_report_registration_private.rollout p on p.company_id=r.company_id and p.enabled and r.report_date>=p.starts_on
   join public.workers w on w.company_id=r.company_id and w.user_id=actor
   join public.attendance_verifications o on o.worker_id=w.id and o.company_id=w.company_id
-   and o.event_type='clock_out' and o.daily_report_id=r.id
+   and o.event_type='clock_out'
+  join public.attendance_verifications i on i.id=o.source_clock_in_id and i.event_type='clock_in'
   where n.recipient_user_id=actor and n.action_key='checkout_report_registration'
-   and n.action_id=p_report_id) then
+   and n.action_id=p_report_id and coalesce(o.daily_report_id,i.daily_report_id)=r.id) then
   raise exception 'notification_target_unavailable' using errcode='42501'; end if;
  envelope:=checkout_report_registration_private.read_for_actor(actor);
  select coalesce(jsonb_agg(x),'[]'::jsonb) into selected

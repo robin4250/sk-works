@@ -45,6 +45,8 @@ valid work category and vehicle odometer are checked. For managed vehicle claims
 the existing committed meter invariants are reproduced from
 `20261008162618_attach_vehicle_meter_to_report.sql`: ended exact-scope claim,
 immutable event, report link and all saved meter snapshot fields must agree.
+The existing guard is exact-pinned at installation (body MD5, postgres owner,
+SECDEF, return type, volatility, empty search path and owner-only execute ACL).
 No optional legacy vehicle selection is guessed to be a managed claim. Existing
 save/sign/vehicle writer functions and triggers remain untouched.
 
@@ -64,7 +66,8 @@ message change; the system no longer says the supervisor signature is missing.
 Completed attendance/payroll projection stops further deliveries, without
 rewriting old notifications or making read_at a completion signal.
 
-Projection verification requires a signed report, the exact positive formal
+Projection verification requires a signed report with its exact dual-signature
+version3 envelope, an unblocked normal calculation, the exact positive formal
 attendance row with matching saved hours/category, and an automatic draft
 statement updated after signing with standard month attendance/hours detail
 matching authoritative attendance totals. Manual/finalized statements are never
@@ -72,7 +75,8 @@ rewritten or falsely certified as newly refreshed. This verifies normal detail
 projection, not the correctness of every tax, price or insurance amount.
 
 `run_daily_step()` is an owner-only scheduler target with a JST daily cursor and
-500-actor batches. A failed batch stays retryable; successful deliveries are
+500-actor batches. Completed cycles restart on the same day so later-created
+reports can receive their first daily reminder. A failed batch stays retryable; successful deliveries are
 deduped. Root may separately review a five-minute cron registration. This source
 registers no cron job. Persistent failures remain operational work, not success.
 
@@ -98,9 +102,16 @@ Dedicated workflow `.github/workflows/checkout-report-authoritative.yml` uses
 PostgreSQL17 loopback and existing locked pg8.16.3 dependencies. It does not use
 live Supabase credentials. Node syntax, YAML parse and delimiter checks passed;
 Native execution remains pending remote CI. This is not real GoTrue/JWT proof.
-The fixture uses synthetic authorization and manual synthetic report/projection
-rows; source-bound end-to-end save/sign/vehicle/payroll integration remains a
-separate required check before production activation. No local Flutter or
+The first fixture uses synthetic authorization and manually prepared report/
+projection rows. A second Native matrix runs
+`verify_checkout_registration_source_chain.mjs`: it extends only a temporary copy
+of the existing immutable report/signature/payroll fixture, installs the actual
+vehicle attachment migration, and calls original draft save, reporter signature,
+vehicle attachment and supervisor signature APIs. It asserts the existing guard
+rejects a missing event, then a committed event attachment allows reporter-only
+unlock, daily reminder delivery, and normal formal/payroll projection completion.
+Source writer definitions are not edited; all existing producer-body hashes are
+checked again by the original suite. Both Native results remain pending remote CI. No local Flutter or
 replacement dependency installation was performed.
 
 Remaining product proof: remote Native results, current live catalog prerequisite
