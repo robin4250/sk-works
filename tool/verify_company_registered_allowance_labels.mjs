@@ -70,7 +70,7 @@ try{
  await db.query("insert into company_rate_settings(company_id,allowance_1_name,allowance_1_unit,allowance_2_name,allowance_2_unit,allowance_3_name,allowance_3_unit,allowance_1_amount_yen,allowance_2_amount_yen) values($1,'旧登録A','回','旧登録B','件',null,'回',87654321,0),($2,'OTHER-COMPANY-NAME','回',null,'回',null,'回',123,0)",[cid,other]);
  await db.query('insert into company_allowance_identity_private.state(company_id,version) values($1,2)',[cid]);
  await db.query('insert into company_common_allowance_private.state(company_id,version) values($1,3)',[cid]);
- for(const n of [1,2])await db.query('insert into company_allowance_identity_private.identities(id,company_id,slot,generation,retired_at) values($1,$2,$3,$3,null)',[item(n),cid,n]);
+ for(const n of [1,2])await db.query('insert into company_allowance_identity_private.identities(id,company_id,slot,generation,retired_at) values($1,$2,$3,$4,null)',[item(n),cid,n,n]);
  let n=10;
  for(const type of ['daily','hourly','monthly'])for(const unitName of ['hour','day','month']){
   await db.query('insert into company_common_allowance_private.items(id,company_id,payroll_type,section,unit,name,amount_yen,position,retired_at) values($1,$2,$3,$4,$5,$6,87654321,$7,null)',[item(n++),cid,type,unitName==='month'?'deduction':'earning',unitName,`${type}/${unitName}`,n]);
