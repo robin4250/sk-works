@@ -1,3 +1,7 @@
+do $$begin
+ assert (select value=private.fixture_rate_originals() from private.fixture_rate_install_before),
+ 'function-only installation changed original data or triggered history';
+end $$;
 do $$declare
   cid uuid:='10000000-0000-0000-0000-000000000001';
   before_all jsonb;after_all jsonb;before_legacy jsonb;after_legacy jsonb;before_stamp timestamptz;
@@ -76,3 +80,16 @@ do $$begin
   exception when insufficient_privilege then null;end;
 end $$;
 reset role;
+
+do $$begin
+ assert (select version>1 from company_allowance_identity_private.state
+   where company_id='10000000-0000-0000-0000-000000000001'),'existing identity trigger was disabled';
+ assert (select count(*)=3 from company_allowance_identity_private.identities
+   where company_id='10000000-0000-0000-0000-000000000001' and retired_at is null),
+   'old allowance identities changed';
+ assert (select count(*)>0 and bool_and(company_id='10000000-0000-0000-0000-000000000001')
+   from private.fixture_invoice_refresh_calls),'invoice refresh escaped selected company or did not run';
+ assert (select count(*)=2 and sum(total_yen)=25000 from public.invoices),'fixture invoice originals changed';
+ assert (select units=company_common_allowance_private.current_units(company_id)
+   from company_common_allowance_private.unit_aliases),'existing unit compatibility trigger changed aliases';
+end $$;

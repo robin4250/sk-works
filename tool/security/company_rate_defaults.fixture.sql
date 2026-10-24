@@ -3,6 +3,10 @@ create role anon;
 create role authenticated;
 create role service_role;
 create schema auth;
+create schema private;
+create function private.account_access_allowed() returns boolean language sql stable as $$
+  select coalesce(current_setting('fixture.account_blocked',true),'')<>'true'
+$$;
 create function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('fixture.actor',true),'')::uuid
 $$;
