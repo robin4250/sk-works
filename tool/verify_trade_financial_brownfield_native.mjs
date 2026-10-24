@@ -88,8 +88,9 @@ try {
     alter table customers add column notes text default '';
     alter table invoices add column subtotal numeric default 0,add column automatic_calculation boolean default true,
       add column invoice_number text,add column issue_date date;
-    alter table payment_certificates add column deductions integer default 0,add column net_amount integer,
-      add column automatic_calculation boolean default true,add column updated_at timestamptz;
+    -- The unchanged monthly-review child already supplies deductions, net_amount
+    -- and automatic_calculation. Add only the missing timestamp here.
+    alter table payment_certificates add column updated_at timestamptz;
     create table private.expense_claims(id uuid primary key,company_id uuid,applicant_id uuid,applicant_name text,
       created_by uuid,incurred_on date,submitted_at timestamptz,description text,amount_yen integer,
       revision integer,approval text,withdrawn boolean default false,allocation text,counterparty_id uuid);

@@ -55,7 +55,11 @@ operation; no external producer, push, email, SMS or invitation is connected.
 
 ## Limits and status
 
-Node syntax checks passed locally. Native execution is required before claiming
+Node syntax checks passed locally. The first Native run reached the unchanged
+child fixture, then failed in synthetic schema setup because this harness
+redeclared the three payment columns already supplied by the monthly-review
+child. The harness now adds only the missing timestamp; the child and its
+source pins remain unchanged. A fresh Native run is required before claiming
 the assertions above passed. The existing real-GoTrue proof remains separate;
 this harness uses explicitly synthetic claims/session predicates and does not
 claim real provider or production RLS/delegation behavior.
