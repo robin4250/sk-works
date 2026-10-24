@@ -19,12 +19,13 @@ class _Units extends PayrollUnitConditionsRepository {
   List<PayrollUnitItemDraft> items = [_typed];
   int saves = 0, version = 1;
   bool fail = false, availableValue = true;
+  bool canEditValue = true, frozen = false, historyMissing = false;
   List<PayrollUnitItemDraft>? submitted;
   @override Future<bool> available() async => availableValue;
   @override Future<PayrollUnitConditions> load(String company, String worker, String month) async {
     expect(company, 'company-a'); expect(worker, 'worker-a');
-    return PayrollUnitConditions(version: version, month: month, canEdit: true,
-      items: items);
+    return PayrollUnitConditions(version: version, month: month, canEdit: canEditValue,
+      items: items, companyCommonFrozen: frozen, companyCommonHistoryMissing: historyMissing);
   }
   @override Future<PayrollUnitConditions> save(String company, String worker,
       PayrollUnitConditions current, List<PayrollUnitItemDraft> next) async {
@@ -310,6 +311,87 @@ void main() {
     expect(repository.units.items.single.id, 'typed-day-item');
     expect(repository.units.items.single.rate, '500');
     expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '追加')).onPressed, isNull);
+    expect(t.takeException(), isNull);
+  });
+
+  Future<void> mountMonthPage(WidgetTester t, _Units units,
+      {Future<bool> Function(List<PayrollUnitItemDraft>)? saveWorker}) async {
+    t.view.physicalSize = const Size(800, 1600);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.resetPhysicalSize);
+    addTearDown(t.view.resetDevicePixelRatio);
+    await t.pumpWidget(MaterialApp(home: PayrollUnitConditionsPage(
+      repository: units, companyId: 'company-a', workerId: 'worker-a',
+      section: PayrollItemSection.earning, unit: PayrollItemUnit.day,
+      individualAllowanceItems: const [PayrollUnitItemDraft(
+        id: 'worker-allowance-slot-1', section: PayrollItemSection.earning,
+        unit: PayrollItemUnit.day, name: 'PC', rate: '2500')],
+      canEditIndividualAllowances: true, onSaveIndividualAllowances: saveWorker,
+    )));
+    await t.pumpAndSettle();
+  }
+  Future<void> moveMonth(WidgetTester t, int direction) async {
+    await t.tap(find.byIcon(direction > 0 ? Icons.chevron_right : Icons.chevron_left));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(TextButton, '月を変更'));
+    await t.pumpAndSettle();
+  }
+  testWidgets('next two months retain ongoing worker allowance without registering it again', (t) async {
+    final units = _Units(client);
+    var workerSaves = 0;
+    await mountMonthPage(t, units, saveWorker: (_) async { workerSaves++; return true; });
+    expect(find.byKey(const ValueKey('worker-allowance-slot-1-rate')), findsOneWidget);
+    for (var month = 0; month < 2; month++) {
+      await moveMonth(t, 1);
+      expect(find.byKey(const ValueKey('continuing-worker-allowance-slot-1')), findsOneWidget);
+      expect(find.text('PC'), findsOneWidget);
+      expect(find.text('日単位・支給　2500円'), findsOneWidget);
+      expect(find.byKey(const ValueKey('worker-allowance-slot-1-rate')), findsNothing);
+    }
+    expect(workerSaves, 0);
+    expect(units.saves, 0);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('future typed item edit never writes the ongoing worker setting', (t) async {
+    final units = _Units(client);
+    var workerSaves = 0;
+    await mountMonthPage(t, units, saveWorker: (_) async { workerSaves++; return true; });
+    await moveMonth(t, 1);
+    await t.enterText(find.byKey(const ValueKey('typed-day-item-rate')), '800');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.tap(find.widgetWithText(FilledButton, '登録'));
+    await t.pumpAndSettle();
+    expect(workerSaves, 0);
+    expect(units.saves, 1);
+    expect(units.submitted!.single.id, 'typed-day-item');
+    expect(units.submitted!.single.rate, '800');
+    expect(find.byKey(const ValueKey('continuing-worker-allowance-slot-1')), findsOneWidget);
+    await moveMonth(t, -1);
+    expect(find.byKey(const ValueKey('continuing-worker-allowance-slot-1')), findsNothing);
+    expect(find.byKey(const ValueKey('worker-allowance-slot-1-rate')), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
+  for (final blockedState in ['frozen', 'history-missing', 'noneditable']) {
+    testWidgets('future $blockedState never substitutes current worker values', (t) async {
+      final units = _Units(client)
+        ..frozen = blockedState == 'frozen'
+        ..historyMissing = blockedState == 'history-missing'
+        ..canEditValue = blockedState != 'noneditable';
+      await mountMonthPage(t, units);
+      await moveMonth(t, 1);
+      expect(find.byKey(const ValueKey('continuing-worker-allowance-slot-1')), findsNothing);
+      expect(find.byKey(const ValueKey('worker-allowance-slot-1-rate')), findsNothing);
+      expect(units.saves, 0);
+      expect(t.takeException(), isNull);
+    });
+  }
+  testWidgets('past month does not substitute current worker allowance', (t) async {
+    final units = _Units(client);
+    await mountMonthPage(t, units);
+    await moveMonth(t, -1);
+    expect(find.byKey(const ValueKey('continuing-worker-allowance-slot-1')), findsNothing);
+    expect(find.byKey(const ValueKey('worker-allowance-slot-1-rate')), findsNothing);
+    expect(units.saves, 0);
     expect(t.takeException(), isNull);
   });
 
