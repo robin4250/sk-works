@@ -30,6 +30,8 @@ class PayrollUnitConditionsPage extends StatefulWidget {
     this.individualSaveUncertain = false,
     this.registeredAllowanceNames = const [],
     this.registeredAllowanceNamesUnavailable = false,
+    this.registeredAllowanceNamesLoaded = false,
+    this.onOpenCompanyCommonSettings,
   });
   final PayrollUnitConditionsRepository repository;
   final String companyId;
@@ -48,6 +50,8 @@ class PayrollUnitConditionsPage extends StatefulWidget {
   final bool individualSaveUncertain;
   final List<PayrollRegisteredAllowanceName> registeredAllowanceNames;
   final bool registeredAllowanceNamesUnavailable;
+  final bool registeredAllowanceNamesLoaded;
+  final Future<void> Function()? onOpenCompanyCommonSettings;
   final PayrollItemSection? section;
   final PayrollItemUnit? unit;
   final void Function(PayrollItemSection, PayrollItemUnit)? onValidationSelection;
@@ -185,7 +189,40 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
       if (!_individualCommonIds.contains(item['id'])) item,
   ];
 
+  bool get _currentRegistrationContext {
+    final now = DateTime.now();
+    return !_month.isBefore(DateTime(now.year, now.month)) &&
+        _value?.companyCommonFrozen != true;
+  }
+
+  bool get _displayCurrentRegistration => _currentRegistrationContext &&
+      widget.registeredAllowanceNamesLoaded && !widget.registeredAllowanceNamesUnavailable;
+
+  List<PayrollRegisteredAllowanceName> get _currentRegistrationItems => [
+    for (final item in widget.registeredAllowanceNames)
+      if ((widget.section == null || item.section == widget.section) &&
+          (widget.unit == null || item.unit == widget.unit)) item,
+  ];
+
+  bool _matchesCurrentRegistration(Map<String, dynamic> item) =>
+      widget.registeredAllowanceNames.any((row) => row.itemId != null &&
+          row.itemId == item['id'] && row.name == item['name'] &&
+          row.section.name == item['section'] && row.unit.name == item['unit']);
+
+  List<Map<String, dynamic>> get _registeredPayrollItems =>
+      _displayCurrentRegistration
+          ? [for (final item in _value!.companyCommonItems)
+              if (_matchesCurrentRegistration(item)) item]
+          : _visibleCommonItems;
+
+  List<Map<String, dynamic>> get _previousPayrollItems =>
+      !_displayCurrentRegistration ? const [] : [
+        for (final item in _value!.companyCommonItems)
+          if (!_matchesCurrentRegistration(item)) item,
+      ];
+
   List<PayrollRegisteredAllowanceName> get _referenceNames {
+    if (_displayCurrentRegistration) return const [];
     if (!_showCurrentRegisteredNames) return const [];
     final active = {for (final item in _value?.companyCommonItems ?? <Map<String, dynamic>>[]) item['id']};
     return [for (final row in widget.registeredAllowanceNames)
@@ -272,6 +309,32 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
       if (mounted && generation == _generation) setState(() => _saving = false);
     }
   }
+
+  Widget _commonPayrollCard(List<Map<String, dynamic>> items, {
+    String? title, String? message, bool readOnly = false, bool showResolution = true,
+  }) => PayrollCompanyCommonCard(
+    key: ValueKey('${widget.companyId}/${widget.workerId}/${_value!.month}/${_value!.companyCommonSourceJson}/$title/${items.map((item) => item['id']).join(',')}'),
+    items: items, title: title, message: message,
+    frozen: _value!.companyCommonFrozen,
+    resolution: showResolution ? _value!.companyCommonResolution : null,
+    canEdit: !readOnly && _value!.canEdit && !_saving,
+    section: widget.section, unit: widget.unit, onReload: _load,
+    onSave: (hours) async {
+      final generation = _generation;
+      final company = widget.companyId;
+      final worker = widget.workerId;
+      final current = _value!;
+      setState(() => _saving = true);
+      try {
+        final saved = await widget.repository.saveCommonHours(company, worker, current, hours);
+        if (!mounted || !context.mounted || generation != _generation || widget.companyId != company || widget.workerId != worker) return;
+        setState(() => _value = saved);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(SkoLanguageController.tr('共通手当の時間数を保存し、対象月の給与を再計算しました'))));
+      } finally {
+        if (mounted && generation == _generation) setState(() => _saving = false);
+      }
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -360,7 +423,8 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                     padding: const EdgeInsets.all(12),
                     child: Text(tr('社内共通手当の適用月が未登録のため、給与計算を保留しています。社内共通手当の適用月を確認してください。')),
                   ),
-                if (applicationStatus != null && widget.individualAllowanceItems != null)
+                if (applicationStatus != null && widget.individualAllowanceItems != null &&
+                    (!_displayCurrentRegistration || _currentRegistrationItems.isNotEmpty))
                   Padding(padding: const EdgeInsets.all(12), child: Text(tr(
                     '会社共通手当は給与への適用前です。登録済みの個別手当はこの一覧で保持しています。'))),
                 if (applicationStatus != null && widget.individualAllowanceItems == null)
@@ -371,31 +435,24 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                         ? 'この給与形態の適用開始月は未登録です。社内共通手当で対象を確認して反映してください。'
                         : 'この対象月は社内共通手当の適用開始前です。')),
                   )),
-                if (_visibleCommonItems.isNotEmpty || _value!.companyCommonResolution?.blocked == true)
-                  PayrollCompanyCommonCard(
-                    key: ValueKey('${widget.companyId}/${widget.workerId}/${_value!.month}/${_value!.companyCommonSourceJson}'),
-                    items: _visibleCommonItems,
-                    frozen: _value!.companyCommonFrozen,
-                    resolution: _value!.companyCommonResolution,
-                    canEdit: _value!.canEdit && !_saving,
-                    section: widget.section, unit: widget.unit,
-                    onReload: _load,
-                    onSave: (hours) async {
-                      final generation = _generation;
-                      final company = widget.companyId;
-                      final worker = widget.workerId;
-                      final current = _value!;
-                      setState(() => _saving = true);
-                      try {
-                        final saved = await widget.repository.saveCommonHours(company, worker, current, hours);
-                        if (!mounted || !context.mounted || generation != _generation || widget.companyId != company || widget.workerId != worker) return;
-                        setState(() => _value = saved);
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('共通手当の時間数を保存し、対象月の給与を再計算しました'))));
-                      } finally {
-                        if (mounted && generation == _generation) setState(() => _saving = false);
-                      }
-                    },
+                if (_currentRegistrationContext)
+                  PayrollCompanyRegisteredNamesCard(
+                    key: const ValueKey('current-company-registration'),
+                    items: _currentRegistrationItems,
+                    loaded: widget.registeredAllowanceNamesLoaded,
+                    unavailable: widget.registeredAllowanceNamesUnavailable,
+                    unit: widget.unit,
+                    onOpenSettings: widget.onOpenCompanyCommonSettings,
                   ),
+                if (_registeredPayrollItems.isNotEmpty ||
+                    (_previousPayrollItems.isEmpty && _value!.companyCommonResolution?.blocked == true))
+                  _commonPayrollCard(_registeredPayrollItems,
+                    title: _displayCurrentRegistration ? '会社共通手当の給与用条件' : null),
+                if (_previousPayrollItems.isNotEmpty)
+                  _commonPayrollCard(_previousPayrollItems,
+                    title: '登録変更前の給与用手当', readOnly: true,
+                    message: '現在の会社登録から削除・変更された項目です。この月の給与計算用の記録は保持しています。会社の登録変更だけでは、この記録は変更しません。',
+                    showResolution: _registeredPayrollItems.isEmpty),
                 if (widget.registeredAllowanceNamesUnavailable && _showCurrentRegisteredNames)
                   const Padding(padding: EdgeInsets.all(12), child: Text(
                     '会社共通の登録名を確認できません。登録済みの個別設定は保持しています。')),
@@ -406,6 +463,10 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                       TextButton(onPressed: _saving ? null : _confirmSavedStateReload,
                       child: Text(tr('保存済みの状態を確認'))),
                   ])),
+                Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Align(alignment: Alignment.centerLeft,
+                    child: Text(tr('個別手当（この社員だけ）'),
+                      style: Theme.of(context).textTheme.titleSmall))),
                 Flexible(
                   fit: widget.embedded ? FlexFit.loose : FlexFit.tight,
                   child: PayrollUnitItemEditor(
@@ -441,13 +502,13 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
               ],
             );
     if (widget.embedded) {
-      final hasRegisteredNames = _referenceNames.any((item) =>
+      final hasRegisteredNames = (_displayCurrentRegistration ? widget.registeredAllowanceNames : _referenceNames).any((item) =>
           item.section == widget.section && item.unit == widget.unit);
       final hasMonthlyItems = _value?.items.any((item) =>
           item.section == widget.section && item.unit == PayrollItemUnit.month) ?? false;
       return Offstage(
         offstage: widget.unit == PayrollItemUnit.month && !_loading &&
-            _error == null && applicationStatus == null && _value?.companyCommonHistoryMissing != true && _value?.companyCommonResolution?.blocked != true && !hasMonthlyItems && !hasRegisteredNames && !(_value?.companyCommonItems.any((item) => item['unit'] == 'month' && item['section'] == widget.section?.name) ?? false),
+            !_currentRegistrationContext && _error == null && applicationStatus == null && _value?.companyCommonHistoryMissing != true && _value?.companyCommonResolution?.blocked != true && !hasMonthlyItems && !hasRegisteredNames && !(_value?.companyCommonItems.any((item) => item['unit'] == 'month' && item['section'] == widget.section?.name) ?? false),
         child: body,
       );
     }
@@ -464,7 +525,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                 content: SingleChildScrollView(
                   child: Text(
                     tr(
-                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。名称・単価は変更するまで翌月以降も継続し、毎月の再登録は不要です。追加した単位別条件は選択した月から有効です。元からある個別手当は今月の設定で編集し、翌月以降は継続中の手当として確認します。月別の時間数は翌月へ複製しません。元の保存先は保持し、同じ手当を重複計上しません。未入力の時間数は計算保留になります。確定済み給与は変更しません。社内共通手当は会社の設定を自動参照します。共通の時間単位手当は対象月の時間数を入力して保存すると給与を再計算します。会社で適用開始月を設定する前は共通項目を給与に加えません。適用対象の会社で適用月の履歴が未登録の場合は給与計算を保留します。会社の編集値と、適用月を登録した給与用の条件は別に管理されます。個別設定の社内共通手当に適用開始月の未登録や開始前の表示がある場合は、その対象月にはまだ加算・控除していません。社内共通手当で給与形態と適用月を確認します。',
+                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。名称・単価は変更するまで翌月以降も継続し、毎月の再登録は不要です。追加した単位別条件は選択した月から有効です。元からある個別手当は今月の設定で編集し、翌月以降は継続中の手当として確認します。月別の時間数は翌月へ複製しません。元の保存先は保持し、同じ手当を重複計上しません。未入力の時間数は計算保留になります。確定済み給与は変更しません。会社共通手当は「現在の会社共通手当」、この社員だけの設定は「個別手当」で区別します。共通の変更は「共通設定」から行います。同名でも元のIDと保存先を保ち、共通項目を個別へコピーして重複加算しません。現在の会社共通手当は会社の最新登録名を表示し、給与用の適用条件とは別です。登録変更前の給与用手当は折りたたんで保持します。共通の時間単位手当は対象月の時間数を入力して保存すると給与を再計算します。会社で適用開始月を設定する前は共通項目を給与に加えません。適用対象の会社で適用月の履歴が未登録の場合は給与計算を保留します。会社の編集値と、適用月を登録した給与用の条件は別に管理されます。個別設定の社内共通手当に適用開始月の未登録や開始前の表示がある場合は、その対象月にはまだ加算・控除していません。社内共通手当で給与形態と適用月を確認します。',
                     ),
                   ),
                 ),
