@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "review_only": true,
+  "production_changes": false,
+  "native_postgres": false,
+  "unit_tests": 12,
+  "http_sql_integration_checks": 14,
+  "collector_sha256": "b96f6e4365e2e992886f38dad0f777e55665f18b03525cddf4edbdf746348207",
+  "files": [
+    {
+      "path": "REVIEW.md",
+      "sha256": "b17bced31d4c808a666bfce3adcad2595e7197630d1c2b3780ee9d4a1bad9221"
+    },
+    {
+      "path": "collector_signed_transport.mjs",
+      "sha256": "beb8ce3361d656d7c85e35eb77c9fb3a94ecbcb4b8f8e869474dcfeb8290d45a"
+    },
+    {
+      "path": "collector_signed_transport_test.mjs",
+      "sha256": "5263fb7b7af5753ee9945548ef1627bc579cb9972180d0c0a1e2f1cdd8293bc9"
+    },
+    {
+      "path": "integration.mjs",
+      "sha256": "d18ceabd91a64824294e783c08c4d93eb76c759ed7d9f6d915feb543ea13ceac"
+    }
+  ]
+}
