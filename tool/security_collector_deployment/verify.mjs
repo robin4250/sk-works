@@ -1,0 +1,114 @@
+// New lifecycle/locking proof only; existing real GoTrue tests are not rerun.
+import assert from 'node:assert/strict';
+import {readFile,mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const imported=await import(process.argv[2]);
+const {Client}=imported.default??imported;
+if(typeof Client!=='function')throw Error('Pinned PostgreSQL adapter unavailable');
+const url=process.env.SKO_COLLECTOR_DEPLOYMENT_FIXTURE_URL;
+if(!url||!/^postgresql:\/\/postgres:collector-fixture-only@127\.0\.0\.1:\d+\/collector_deployment_fixture$/.test(url))throw Error('Isolated localhost fixture required');
+const db=new Client({connectionString:url});await db.connect();
+const root=await mkdtemp(join(tmpdir(),'collector-deployment-'));
+const run=promisify(execFile);let checks=0;
+const ok=(a,b,msg)=>{assert.deepEqual(a,b,msg);checks++;};
+const sql=path=>readFile('tool/security_collector_deployment/'+path,'utf8');
+const inventory=async()=> (await db.query(await sql('inventory.read-only.sql'))).rows[0].inventory;
+const roleInventory=async()=> (await db.query(await sql('role_inventory.read-only.sql'))).rows[0].inventory;
+const prepare=async(script,snapshot,name)=>{
+ const file=join(root,name+'.json'),out=join(root,name);await writeFile(file,JSON.stringify(snapshot));
+ await run('python3',['tool/security_collector_deployment/'+script,file,out]);
+ return {out,status:JSON.parse(await readFile(join(out,'prepare-status.json'),'utf8'))};
+};
+const refusal=async(sql,pattern)=>{await assert.rejects(db.query(sql),pattern);await db.query('rollback');checks++;};
+try{
+ await db.query(await sql('foundation.sql'));
+ // Public flags mirror production; no password/login or hosted session is used.
+ await db.query('create role collector_fixture_operator LOGIN NOSUPERUSER CREATEROLE CREATEDB INHERIT REPLICATION BYPASSRLS');
+ await db.query('set role collector_fixture_operator');
+ await db.query('begin');
+ await db.query('create role sko_security_collector_ingest NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS');
+ const creatorMembership=(await db.query("select admin_option,inherit_option,set_option from pg_auth_members where roleid='sko_security_collector_ingest'::regrole and member='collector_fixture_operator'::regrole")).rows;
+ ok(creatorMembership.length,1,'Non-super CREATEROLE automatically gains a creator membership');
+ ok(creatorMembership[0].admin_option,true,'Non-super creator membership carries ADMIN');
+ await db.query('rollback');
+ let catalogueLockDenied=false;
+ try{await db.query('begin;lock table pg_catalog.pg_authid,pg_catalog.pg_auth_members,pg_catalog.pg_shdepend in share row exclusive mode');}
+ catch(error){ok(error.code,'42501','Non-super operator cannot assume system-catalog lock permission');catalogueLockDenied=true;}
+ await db.query('rollback');await db.query('reset role');
+ console.log(JSON.stringify({managed_like_creator_membership:creatorMembership,managed_like_catalog_lock_denied:catalogueLockDenied,actual_managed_ddl_permission_proven:false,production_connected:false}));
+ const absent=await roleInventory();ok(absent.role,null,'No bridge role silently precreated');
+ const role=await prepare('prepare_role.py',absent,'role');
+ const roleInstall=await readFile(join(role.out,'private-role-install.sql.review-only'),'utf8');
+ const roleUndo=await readFile(join(role.out,'private-role-unused-restore.sql.review-only'),'utf8');
+ await db.query(roleInstall);await db.query(await readFile(join(role.out,'private-role-postflight.read-only.sql'),'utf8'));
+ ok((await roleInventory()).credential_absent,true,'No bridge credential');
+ ok((await roleInventory()).memberships,0,'No bridge membership');
+ await db.query(roleUndo);ok(await roleInventory(),absent,'Unused role restore exact');
+ await db.query(roleInstall);
+ await db.query('grant sko_security_collector_ingest to authenticated');
+ await refusal(roleUndo,/differs/);
+ await db.query('revoke sko_security_collector_ingest from authenticated');
+ const before=await inventory();
+ const bundle=await prepare('prepare.py',before,'bundle');ok(bundle.status.blockers,[],'After separate role stage prepare may proceed');
+ const install=await readFile(join(bundle.out,'private-install.sql.review-only'),'utf8');
+ const undo=await readFile(join(bundle.out,'private-unused-restore.sql.review-only'),'utf8');
+ const post=await readFile(join(bundle.out,'private-postflight.read-only.sql'),'utf8');
+ await db.query('alter function public.set_secondary_password(text) stable');
+ await refusal(install,/inventory differs/);
+ await db.query('alter function public.set_secondary_password(text) volatile');
+ await db.query(install);await db.query(post);
+ ok((await inventory()).business,before.business,'All protected business hashes unchanged');
+ await db.query('alter function public.master_security_collector_events(text) security definer');
+ await refusal(post,/routine contract differs/);
+ await db.query('alter function public.master_security_collector_events(text) security invoker');
+ await db.query(post);
+ await db.query('begin');
+ await db.query('grant select(proof_hash) on private.reauthentication_proofs to service_role');
+ const postBody=post.replace(/^begin read only;/,'').replace(/commit;\s*$/,'');
+ await refusal(postBody,/table security/); // rollback also restores exact NULL attacl
+ await db.query(post);
+ await db.query("alter table private.reauthentication_rollout drop constraint reauthentication_rollout_scope_check;alter table private.reauthentication_rollout add constraint reauthentication_rollout_scope_check check(scope in ('secondary_password','master_feature','master_security','unexpected'))");
+ await refusal(post,/exact CHECK/);
+ await db.query("alter table private.reauthentication_rollout drop constraint reauthentication_rollout_scope_check;alter table private.reauthentication_rollout add constraint reauthentication_rollout_scope_check check(scope in ('secondary_password','master_feature','master_security'))");
+ await db.query(post);
+ await db.query('drop index private.security_collector_received;create index security_collector_received on private.security_collector_events(received_at,event_id)');
+ await refusal(post,/index shape/);
+ await db.query('drop index private.security_collector_received;create index security_collector_received on private.security_collector_events(received_at desc,event_id)');
+ await db.query(post);
+ await refusal(roleUndo,/differs/);
+ await refusal(install,/inventory differs|already exists/);
+ await db.query(undo);ok(await inventory(),before,'Unused SQL restore returns exact catalogs and business hashes');
+ await db.query(install);await db.query(post);
+ await db.query("select nextval('private.security_collector_read_audit_audit_id_seq')");
+ await refusal(undo,/audit sequence used/);
+ await db.query('alter sequence private.security_collector_read_audit_audit_id_seq restart with 1');
+ await db.query(post);
+ const writer=new Client({connectionString:url});await writer.connect();
+ const mainPid=(await db.query('select pg_backend_pid() pid')).rows[0].pid;
+ const writerPid=(await writer.query('select pg_backend_pid() pid')).rows[0].pid;
+ const witness="insert into private.reauthentication_proofs values(repeat('b',64),'00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','master.security_collector.read','{\"scope\":\"decoy_collector\"}',now(),now()+interval '120 seconds',null)";
+ const awaitLock=async(observer,pid)=>{let waiting=false;for(let n=0;n<80;n++){waiting=(await observer.query("select wait_event_type='Lock' waiting from pg_stat_activity where pid=$1",[pid])).rows[0]?.waiting;if(waiting)break;await new Promise(resolve=>setTimeout(resolve,10));}ok(waiting,true,'Competing transaction is blocked before unused decision');};
+ try{
+  const boundary=undo.indexOf('do $security_guard$');assert.ok(boundary>0);
+  await db.query(undo.slice(0,boundary));
+  const lateWriter=writer.query(witness).then(()=>({ok:true}),error=>({ok:false,error}));
+  await awaitLock(db,writerPid);await db.query(undo.slice(boundary));
+  const result=await lateWriter;ok(result.ok,false,'Restore-first writer cannot commit a dropped proof');
+  ok(await inventory(),before,'Restore-first race retains original business state');
+  await db.query(install);await db.query(post);
+  await writer.query('begin');await writer.query(witness);
+  const lateRestore=db.query(undo).then(()=>({ok:true}),error=>({ok:false,error}));
+  await awaitLock(writer,mainPid);await writer.query('commit');
+  const refused=await lateRestore;ok(refused.ok,false,'Writer-first restore is refused');
+  assert.match(refused.error.message,/has been used/);checks++;await db.query('rollback');
+  ok(Number((await db.query('select count(*) n from private.reauthentication_proofs')).rows[0].n),1,'Writer-first proof is retained');
+  await db.query('delete from private.reauthentication_proofs');
+ }finally{await writer.query('rollback').catch(()=>{});await writer.end();}
+ await db.query("insert into private.reauthentication_proofs values(repeat('a',64),'00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','master.security_collector.read','{\"scope\":\"decoy_collector\"}',now(),now()+interval '120 seconds',null)");
+ await refusal(undo,/has been used/);
+ ok(Number((await db.query('select count(*) n from private.reauthentication_proofs')).rows[0].n),1,'Used proof survives refused restore');
+ console.log(JSON.stringify({checks,prepared_lifecycle:true,restore_first_blocks_writer:true,writer_first_preserves_proof:true,production_connected:false,real_gotrue:false,synthetic_authorization:true,application_data_mutations:false}));
+}finally{await db.end();await rm(root,{recursive:true,force:true});}
