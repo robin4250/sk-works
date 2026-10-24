@@ -1,0 +1,11 @@
+{
+  "source_ref": "6775bad9d2e7b808bda12d5275c6d8c1945b90f8",
+  "signature": "private.account_access_allowed()",
+  "definition": "CREATE OR REPLACE FUNCTION private.account_access_allowed()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and not exists(\n  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())\n$function$\n",
+  "body_md5": "aeca25db212c043c472334026bd98724",
+  "prosecdef": true,
+  "provolatile": "s",
+  "proconfig": [
+    "search_path=\"\""
+  ]
+}
