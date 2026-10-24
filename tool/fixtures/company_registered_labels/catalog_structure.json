@@ -1,0 +1,287 @@
+{
+  "schema": 1,
+  "session_source_md5": "68c68f275c23a22ba06d060c2923b9b9",
+  "relations": [
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "company_allowance_identity_private.identities",
+      "owner": "postgres",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "company_id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "slot",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "generation",
+          "type": "bigint",
+          "not_null": true
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "not_null": true
+        },
+        {
+          "name": "retired_by",
+          "type": "uuid",
+          "not_null": false
+        },
+        {
+          "name": "retired_at",
+          "type": "timestamp with time zone",
+          "not_null": false
+        }
+      ]
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "company_allowance_identity_private.state",
+      "owner": "postgres",
+      "columns": [
+        {
+          "name": "company_id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "version",
+          "type": "bigint",
+          "not_null": true
+        },
+        {
+          "name": "adopted_by",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "adopted_at",
+          "type": "timestamp with time zone",
+          "not_null": true
+        }
+      ]
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "company_common_allowance_private.items",
+      "owner": "postgres",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "company_id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "payroll_type",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "section",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "unit",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "amount_yen",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "position",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "not_null": true
+        },
+        {
+          "name": "updated_by",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "not_null": true
+        },
+        {
+          "name": "retired_by",
+          "type": "uuid",
+          "not_null": false
+        },
+        {
+          "name": "retired_at",
+          "type": "timestamp with time zone",
+          "not_null": false
+        }
+      ]
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "company_common_allowance_private.state",
+      "owner": "postgres",
+      "columns": [
+        {
+          "name": "company_id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "version",
+          "type": "bigint",
+          "not_null": true
+        },
+        {
+          "name": "created_by",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "not_null": true
+        }
+      ]
+    },
+    {
+      "acl": [
+        "postgres=arwdDxtm/postgres",
+        "service_role=arwdDxtm/postgres"
+      ],
+      "rls": true,
+      "name": "public.company_rate_settings",
+      "owner": "postgres",
+      "columns": [
+        {
+          "name": "company_id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "overtime_hour_rate_yen",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "early_hour_rate_yen",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "night_hour_rate_yen",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "holiday_day_rate_yen",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "allowance_1_name",
+          "type": "text",
+          "not_null": false
+        },
+        {
+          "name": "allowance_1_amount_yen",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "allowance_2_name",
+          "type": "text",
+          "not_null": false
+        },
+        {
+          "name": "allowance_2_amount_yen",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "allowance_3_name",
+          "type": "text",
+          "not_null": false
+        },
+        {
+          "name": "allowance_3_amount_yen",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "updated_by",
+          "type": "uuid",
+          "not_null": false
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "not_null": true
+        },
+        {
+          "name": "allowance_1_unit",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "allowance_2_unit",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "allowance_3_unit",
+          "type": "text",
+          "not_null": true
+        }
+      ]
+    }
+  ]
+}

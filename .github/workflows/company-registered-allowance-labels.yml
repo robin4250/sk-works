@@ -1,0 +1,37 @@
+name: Company registered allowance names
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/company_registered_allowance_labels_20261024.sql.review-only'
+      - 'lib/features/shared/company_allowance_label_repository.dart'
+      - 'test/company_allowance_label_repository_test.dart'
+      - 'tool/verify_company_registered_allowance_labels.mjs'
+      - 'tool/fixtures/company_registered_labels/**'
+      - '.github/workflows/company-registered-allowance-labels.yml'
+permissions:
+  contents: read
+jobs:
+  native-registered-labels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_registered_allowance_labels_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/verify_company_registered_allowance_labels.mjs
+      - name: Price-free same-company reader and actual PostgREST authorization
+        env:
+          SKO_REGISTERED_LABELS_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_registered_allowance_labels_fixture
+        run: node tool/verify_company_registered_allowance_labels.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
