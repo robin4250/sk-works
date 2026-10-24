@@ -65,7 +65,9 @@ class _PaidWorkHoursInputCardState extends State<PaidWorkHoursInputCard> {
       final current = widget.snapshot;
       if (current.actorId != before.actorId || current.companyId != before.companyId ||
           current.workerId != before.workerId || current.reportId != before.reportId ||
-          current.scopeFingerprint != before.scopeFingerprint || current.revision != before.revision) return;
+          current.scopeFingerprint != before.scopeFingerprint || current.revision != before.revision) {
+        return;
+      }
       widget.onSaved(saved);
       if (mounted) setState(() => _message = '保存しました。変更した場合は、報告者・現場責任者の署名を取り直してください。');
     } catch (_) {

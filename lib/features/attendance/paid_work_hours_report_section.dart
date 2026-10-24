@@ -38,7 +38,9 @@ class _PaidWorkHoursReportSectionState extends State<PaidWorkHoursReportSection>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.companyId != widget.companyId || oldWidget.reportId != widget.reportId ||
         oldWidget.workerNames.keys.join(',') != widget.workerNames.keys.join(',') ||
-        !identical(oldWidget.sourceRevision, widget.sourceRevision)) _future = _load();
+        !identical(oldWidget.sourceRevision, widget.sourceRevision)) {
+      _future = _load();
+    }
   }
 
   void _reload() => setState(() => _future = _load());
