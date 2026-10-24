@@ -154,6 +154,23 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
   List<PayrollUnitItemDraft> get _visibleIndividualItems => _showCurrentRegisteredNames
       ? widget.individualAllowanceItems ?? const [] : const [];
 
+  // Worker allowance slots are ongoing settings, not month-owned values.
+  // Show their continuation in future automatic drafts without feeding them
+  // into the month editor: its legacy save callback updates the worker's
+  // current settings and cannot schedule a future-only change.
+  List<PayrollUnitItemDraft> get _continuingIndividualItems {
+    final now = DateTime.now();
+    final future = _month.isAfter(DateTime(now.year, now.month));
+    if (!future || _value?.canEdit != true ||
+        _value?.companyCommonFrozen == true ||
+        _value?.companyCommonHistoryMissing == true) {
+      return const [];
+    }
+    return [for (final item in widget.individualAllowanceItems ?? <PayrollUnitItemDraft>[])
+      if ((widget.section == null || item.section == widget.section) &&
+          (widget.unit == null || item.unit == widget.unit)) item];
+  }
+
   Set<int> get _individualSlots => {for (final row in _visibleIndividualItems)
     if (individualAllowanceSlot(row.id) != null) individualAllowanceSlot(row.id)!};
 
@@ -312,7 +329,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                         ),
                       Expanded(
                         child: Text(
-                          '${_month.year}/${_month.month} ${tr('対象月')}',
+                          '${_month.year}/${_month.month} ${tr('給与の確認月')}',
                           textAlign: TextAlign.center,
                         ),
                       ),
@@ -323,6 +340,21 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                     ],
                   ),
                 ),
+                if (_continuingIndividualItems.isNotEmpty)
+                  Padding(
+                    key: const ValueKey('continuing-individual-allowances'),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('継続中の手当'),
+                      const Text('登録済みの名称・単価は翌月以降も継続します。毎月の再登録は不要です。変更は今月の設定で行います。'),
+                      for (final item in _continuingIndividualItems)
+                          Card(child: ListTile(
+                            key: ValueKey('continuing-${item.id}'),
+                            title: Text(item.name),
+                            subtitle: Text('日単位・${item.section == PayrollItemSection.earning ? '支給' : '控除'}　${item.rate}円'),
+                          )),
+                    ]),
+                  ),
                 if (_value!.companyCommonHistoryMissing)
                   Padding(
                     padding: const EdgeInsets.all(12),
@@ -432,7 +464,7 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
                 content: SingleChildScrollView(
                   child: Text(
                     tr(
-                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。選択した月から条件が有効になり、登録済みの手当も同じ追加式の一覧で編集します。元の保存先は保持し、同じ手当を重複計上しません。未入力の時間数は計算保留になります。確定済み給与は変更しません。社内共通手当は会社の設定を自動参照します。共通の時間単位手当は対象月の時間数を入力して保存すると給与を再計算します。会社で適用開始月を設定する前は共通項目を給与に加えません。適用対象の会社で適用月の履歴が未登録の場合は給与計算を保留します。会社の編集値と、適用月を登録した給与用の条件は別に管理されます。個別設定の社内共通手当に適用開始月の未登録や開始前の表示がある場合は、その対象月にはまだ加算・控除していません。社内共通手当で給与形態と適用月を確認します。',
+                      '支給・控除ごとに時間・日・月の単価を登録します。時間数は対象月に明示入力するか、登録済みの残業・早出・夜間時間を選びます。日単位は実出勤日数で、同じ日の複数現場は1日です。月単位は月1回で日割りしません。名称・単価は変更するまで翌月以降も継続し、毎月の再登録は不要です。追加した単位別条件は選択した月から有効です。元からある個別手当は今月の設定で編集し、翌月以降は継続中の手当として確認します。月別の時間数は翌月へ複製しません。元の保存先は保持し、同じ手当を重複計上しません。未入力の時間数は計算保留になります。確定済み給与は変更しません。社内共通手当は会社の設定を自動参照します。共通の時間単位手当は対象月の時間数を入力して保存すると給与を再計算します。会社で適用開始月を設定する前は共通項目を給与に加えません。適用対象の会社で適用月の履歴が未登録の場合は給与計算を保留します。会社の編集値と、適用月を登録した給与用の条件は別に管理されます。個別設定の社内共通手当に適用開始月の未登録や開始前の表示がある場合は、その対象月にはまだ加算・控除していません。社内共通手当で給与形態と適用月を確認します。',
                     ),
                   ),
                 ),
