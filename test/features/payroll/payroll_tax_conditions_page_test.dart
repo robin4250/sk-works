@@ -344,6 +344,11 @@ void main() {
       ),
     );
     await t.pumpAndSettle();
+    for (final key in ['insurance-income-details', 'insurance-enrollment-details']) {
+      final details = find.byKey(ValueKey(key));
+      await t.ensureVisible(details); await t.pumpAndSettle();
+      await t.tap(details); await t.pumpAndSettle();
+    }
     expect(find.text('はじめての自動計算設定'), findsOneWidget);
     expect(
       t
@@ -384,7 +389,7 @@ void main() {
     );
     expect(
       t
-          .widgetList<TextFormField>(find.byType(TextFormField))
+          .widgetList<TextFormField>(find.byType(TextFormField, skipOffstage: false))
           .any((field) => field.controller?.text == '300000'),
       isFalse,
     );
@@ -593,7 +598,8 @@ void main() {
     expect(find.textContaining('税計算条件を取得できません'), findsOneWidget);
   });
   for (final invalidDate in ['abc', '2026-02-30']) {
-    testWidgets('nursing off keeps invalid birth date visible and refuses save: $invalidDate', (t) async {
+    for (final fixedMode in [false, true]) {
+    testWidgets('nursing off keeps invalid birth date visible and refuses save: $invalidDate fixed=$fixedMode', (t) async {
       var writes = 0;
       await open(t, (name, params) async {
         if (!name.startsWith('read_')) writes++;
@@ -611,6 +617,12 @@ void main() {
       t.testTextInput.hide(); await t.pumpAndSettle();
       await t.ensureVisible(nursing); await t.pumpAndSettle();
       await t.tap(nursing); await t.pumpAndSettle();
+      if (fixedMode) {
+        final mode = find.byKey(const ValueKey('insurance-rates'));
+        await t.ensureVisible(mode); await t.pumpAndSettle();
+        await t.tap(mode); await t.pumpAndSettle();
+        await t.tap(find.text('個別設定の固定月額').last); await t.pumpAndSettle();
+      }
       expect(birth, findsOneWidget);
       expect(t.widget<TextFormField>(birth).controller!.text, invalidDate);
       await tapSave(t);
@@ -618,6 +630,7 @@ void main() {
       expect(find.text('生年月日をYYYY-MM-DDの正しい日付で入力してください'), findsOneWidget);
       expect(t.widget<TextFormField>(birth).controller!.text, invalidDate);
     });
+    }
   }
 
   testWidgets('valid nursing birth date still saves the explicit date', (t) async {
