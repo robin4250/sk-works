@@ -1275,9 +1275,27 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     }
   }
 
+  VoidCallback _returnToChatRoute() {
+    final chatRoute = ModalRoute.of(context);
+    final navigator = Navigator.of(context);
+    var returning = false;
+    return () {
+      if (!mounted || chatRoute == null || returning) return;
+      returning = true;
+      try {
+        navigator.popUntil((route) => identical(route, chatRoute));
+        if (_selectedGroupId != null) unawaited(_closeConversation());
+      } finally {
+        returning = false;
+      }
+    };
+  }
+
   Future<void> _openFriendManagement() async {
     await Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const ChatFriendsPage()));
+        .push(MaterialPageRoute(builder: (_) => ChatFriendsPage(
+          onReturnToChats: _returnToChatRoute(),
+        )));
     if (!mounted) return;
     await _load();
   }
@@ -1290,6 +1308,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         builder: (_) => ChatFriendsPage(
           repository: _repository,
           selectForChat: true,
+          onReturnToChats: _returnToChatRoute(),
           existingGroups: [
             for (final group in _groups)
               if (group['group_type'] == 'direct' &&
