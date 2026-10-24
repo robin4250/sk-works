@@ -62,6 +62,17 @@ if data.get("UISupportedInterfaceOrientations") != [
 ]:
     raise SystemExit("iPhone signature orientation capability is missing")
 
+# Preparation must install the same native reminder implementation on new and
+# reused projects while keeping existing Flutter plugin/deep-link handling.
+native = Path("ios/Runner/AppDelegate.swift").read_text()
+fragment = Path("tool/ios/checkout_reminders.swift").read_text()
+if not native.endswith(fragment) or native.count("final class SkoCheckoutReminders:") != 1:
+    raise SystemExit("native checkout reminder fragment is missing or duplicated")
+if 'SkoCheckoutReminders(messenger: registrar.messenger())' not in native:
+    raise SystemExit("native checkout reminder channel is not registered")
+if 'sko.notification_settings' not in native or 'GeneratedPluginRegistrant.register(with: self)' not in native:
+    raise SystemExit("existing native channels or Flutter plugin registration were lost")
+
 project = Path("ios/Runner.xcodeproj/project.pbxproj").read_text()
 if f"PRODUCT_BUNDLE_IDENTIFIER = {expected_bundle_id};" not in project:
     raise SystemExit(f"unexpected Runner bundle identifier: expected {expected_bundle_id}")

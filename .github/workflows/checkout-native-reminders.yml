@@ -1,0 +1,48 @@
+name: Checkout native reminder bridge
+on:
+  pull_request:
+    paths:
+      - 'tool/prepare_ios.sh'
+      - 'tool/check_ios_generated_contract.sh'
+      - 'tool/ios/checkout_reminders.swift'
+      - 'tool/verify_checkout_native_contract.py'
+      - 'lib/features/attendance/checkout_native_reminder_bridge.dart'
+      - 'test/checkout_native_reminder_bridge_test.dart'
+      - '.github/workflows/checkout-native-reminders.yml'
+permissions:
+  contents: read
+jobs:
+  ios-sdk-typecheck:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check exact generated native source and emit SDK test unit
+        run: python3 tool/verify_checkout_native_contract.py --emit-swift /tmp/SkoCheckoutReminders.swift
+      - name: Typecheck real UserNotifications delegate and scheduling APIs
+        shell: bash
+        run: |
+          sdk_path=$(xcrun --sdk iphoneos --show-sdk-path)
+          xcrun swiftc -typecheck -swift-version 5 -target arm64-apple-ios15.5 -sdk "$sdk_path" /tmp/SkoCheckoutReminders.swift
+  flutter-channel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Install exact dependency pins
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze the independent bridge and tests
+        run: flutter analyze lib/features/attendance/checkout_native_reminder_bridge.dart test/checkout_native_reminder_bridge_test.dart
+      - name: Verify native channel state, cancellation and untrusted payload handling
+        run: timeout 240s flutter test --reporter expanded --timeout 45s test/checkout_native_reminder_bridge_test.dart
+      - name: Preserve existing dependency pins
+        run: git diff --exit-code -- pubspec.yaml pubspec.lock
