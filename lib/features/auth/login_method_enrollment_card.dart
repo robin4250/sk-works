@@ -18,7 +18,7 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
   LoginMethodEnrollmentState? _state;
   bool _busy = false, _loading = true, _awaitingPhone = false;
   bool _passwordNeedsCode = false, _passwordCodeSent = false;
-  String? _message;
+  String? _message, _loadError;
   int _generation = 0;
 
   @override
@@ -30,18 +30,24 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
 
   Future<void> _load() async {
     final generation = ++_generation;
+    setState(() { _loading = true; _state = null; _loadError = null; });
     try {
-      final state = await _source?.load();
+      final source = _source;
+      if (source == null) throw StateError('login_enrollment_unavailable');
+      final state = await source.load();
       if (!mounted || generation != _generation) return;
       setState(() {
         _state = state; _loading = false;
-        _awaitingPhone = state?.phoneConfirmationPending ?? false;
-        _passwordNeedsCode = state?.primaryPasswordCodeRequired ?? false;
-        _passwordCodeSent = state?.primaryPasswordCodeSent ?? false;
+        _awaitingPhone = state.phoneConfirmationPending;
+        _passwordNeedsCode = state.primaryPasswordCodeRequired;
+        _passwordCodeSent = state.primaryPasswordCodeSent;
       });
     } catch (_) {
       if (!mounted || generation != _generation) return;
-      setState(() { _loading = false; _message = '登録方法を確認できませんでした。再読み込みしてください。'; });
+      setState(() {
+        _state = null; _loading = false;
+        _loadError = '登録状況と提供状態を確認できませんでした。再読み込みしてください。';
+      });
     }
   }
 
@@ -147,6 +153,11 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
           OutlinedButton(onPressed: _busy || !state.phoneAvailable || state.phoneConfirmed || _awaitingPhone ? null : _phone,
             child: const Text('電話番号を登録')),
           if (state.phoneConfirmed) const Text('電話番号は登録確認済みです。'),
+          if (!state.phoneConfirmed && !_awaitingPhone && state.phone.isEmpty)
+            const Text('電話番号は未登録です。'),
+          if (!state.phoneConfirmed && !_awaitingPhone && state.phone.isNotEmpty)
+            const Text('電話番号の登録確認は未完了です。'),
+          if (_awaitingPhone) const Text('電話番号はSMSの確認待ちです。'),
           if (!state.phoneAvailable) const Text('電話番号ログインは提供準備中です。現在はSMSを送信できません。'),
           if (_awaitingPhone) ...[
             FilledButton(onPressed: _busy ? null : _confirmPhone, child: const Text('SMSコードを入力')),
@@ -160,7 +171,15 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
             child: const Text('メールアドレスを登録')),
           if (!state.emailAvailable) const Text('メールログインは提供準備中です。'),
         ],
+        if (_loadError != null) Text(_loadError!, key: const ValueKey('login-enrollment-load-error')),
         if (_message != null) Text(_message!, key: const ValueKey('login-enrollment-message')),
+        const ExpansionTile(title: Text('？ 登録状況の見方'), children: [
+          Padding(padding: EdgeInsets.all(8), child: Text(
+            '電話番号の登録状況と、SMSを送れる提供状態は別です。'
+            'SMS送信後はコードの確認が完了するまで登録確認済みになりません。'
+            '電話番号が未登録でも、利用可能な確認済みメールがあれば第一パスワードを設定できます。'
+            '取得に失敗した場合は登録状況を推測せず、再読み込みしてください。')),
+        ]),
         if (_busy) const LinearProgressIndicator(),
         TextButton(onPressed: _busy ? null : _load, child: const Text('登録方法を再読み込み')),
       ])));
