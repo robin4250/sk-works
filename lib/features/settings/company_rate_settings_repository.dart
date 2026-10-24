@@ -120,7 +120,8 @@ class CompanyRateSettingsRepository {
       final value = raw[key];
       final rate = key == 'tax_rate' || key == 'welfare_rate';
       if (value is! num || !value.isFinite || value < 0 ||
-          (rate ? value > 100 : value > 2147483647 || value != value.round())) {
+          (rate ? value > 100 || value != double.parse(value.toStringAsFixed(key == 'tax_rate' ? 2 : 3))
+              : value > 2147483647 || value != value.round())) {
         throw StateError('会社の設定値を確認できません。');
       }
     }
@@ -151,6 +152,9 @@ class CompanyRateSettingsRepository {
       'night_hour_rate_yen': nightHourRateYen,
       'holiday_day_rate_yen': holidayDayRateYen,
     };
+    // Match the existing numeric(5,2) / numeric(6,3) columns exactly. Never
+    // silently round and then report an uncertain save after the DB changed.
+    _defaultsResult({'contract_version': 1, 'company_id': companyId, ...values}, companyId);
     final saved = _defaultsResult(await _defaultsCall('save_company_rate_defaults', {
       'p_company_id': companyId, 'p_expected': expected.defaultsValues,
       'p_values': values,

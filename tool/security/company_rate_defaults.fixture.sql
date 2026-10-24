@@ -6,7 +6,7 @@ create schema auth;
 create function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('fixture.actor',true),'')::uuid
 $$;
-create table public.companies(id uuid primary key,tax_rate numeric,default_welfare_rate numeric,updated_at timestamptz);
+create table public.companies(id uuid primary key,tax_rate numeric(5,2),default_welfare_rate numeric(6,3),updated_at timestamptz);
 create table public.company_members(company_id uuid,user_id uuid,role text);
 create table public.company_rate_settings(company_id uuid primary key,overtime_hour_rate_yen int,
   early_hour_rate_yen int,night_hour_rate_yen int,holiday_day_rate_yen int,

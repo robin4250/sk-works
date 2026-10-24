@@ -26,6 +26,10 @@ begin
     raise exception 'hidden allowance accepted';
   exception when invalid_parameter_value then null;end;
   begin
+    perform public.save_company_rate_defaults(cid,wanted,wanted||'{"tax_rate":8.001}');
+    raise exception 'silent database rounding accepted';
+  exception when invalid_parameter_value then null;end;
+  begin
     perform public.save_company_rate_defaults(cid,wanted,wanted||'{"tax_rate":101}');
     raise exception 'invalid rate accepted';
   exception when invalid_parameter_value then null;end;

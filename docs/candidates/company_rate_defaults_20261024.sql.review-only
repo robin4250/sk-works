@@ -45,6 +45,8 @@ begin
     if jsonb_typeof(p_values->field)<>'number' or length(p_values->>field)>32
        or (p_values->>field)::numeric<0
        or (field in ('tax_rate','welfare_rate') and (p_values->>field)::numeric>100)
+       or (field='tax_rate' and (p_values->>field)::numeric<>round((p_values->>field)::numeric,2))
+       or (field='welfare_rate' and (p_values->>field)::numeric<>round((p_values->>field)::numeric,3))
        or (field not in ('tax_rate','welfare_rate') and
           ((p_values->>field)::numeric>2147483647 or p_values->>field !~ '^[0-9]+$')) then
       raise exception 'invalid rate default value' using errcode='22023';

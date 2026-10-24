@@ -14,7 +14,7 @@ Map<String, dynamic> values() => {
 };
 
 void main() {
-  for (final mode in ['saved', 'missing_rpc', 'wrong_company', 'wrong_result', 'invalid_money', 'actor_changed']) {
+  for (final mode in ['saved', 'missing_rpc', 'wrong_company', 'wrong_result', 'invalid_money', 'excess_precision', 'actor_changed']) {
     test('partial company defaults RPC preserves allowance ownership: $mode', () async {
       final user = {'id': actor, 'aud': 'authenticated', 'email': 'fixture@example.invalid',
         'created_at': '2026-01-01T00:00:00Z', 'app_metadata': {}, 'user_metadata': {}};
@@ -64,7 +64,7 @@ void main() {
         return;
       }
       final before = await repo.loadDefaults(company);
-      final result = repo.saveDefaults(expected:before,taxRate:8,welfareRate:15,
+      final result = repo.saveDefaults(expected:before,taxRate:mode == 'excess_precision' ? 8.001 : 8,welfareRate:15,
         overtimeHourRateYen:1400,earlyHourRateYen:1100,nightHourRateYen:1200,holidayDayRateYen:1300);
       if (mode == 'saved') {
         final after = await result;
@@ -72,6 +72,11 @@ void main() {
         expect(after.companyId, company);
       } else {
         await expectLater(result, throwsStateError);
+      }
+      if (mode == 'excess_precision') {
+        expect(calls, ['/rest/v1/rpc/read_company_rate_defaults']);
+        expect(sent, isNull);
+        return;
       }
       expect(calls, ['/rest/v1/rpc/read_company_rate_defaults','/rest/v1/rpc/save_company_rate_defaults']);
       expect(sent!['p_expected'],values());
