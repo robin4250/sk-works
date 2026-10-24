@@ -207,16 +207,17 @@ returns boolean language sql stable security invoker set search_path='' as $cove
  and r.work_date=a.work_date and r.report_id=a.source_report_id
  cross join lateral jsonb_array_elements(r.snapshot->'items') i
  where a.company_id=cid and a.worker_id=wid and a.work_date=work_day
- and i->>'origin'='company_legacy' and (i->>'legacy_slot')::integer=slot)
+ and i->>'origin'='company_legacy' and i->>'name'=(select nullif(btrim(to_jsonb(s)->>('allowance_name_'||slot)),'')
+  from public.worker_payroll_settings s where s.company_id=cid and s.worker_id=wid))
 $covers$;
 revoke all on function company_checkout_allowance_private.covers_legacy(uuid,uuid,date,integer) from public,anon,authenticated,service_role;
 
-create function company_checkout_allowance_private.covers_item(cid uuid,wid uuid,work_day date,item_id uuid)
+create function company_checkout_allowance_private.covers_item(cid uuid,wid uuid,work_day date,item_id uuid,item_origin text)
 returns boolean language sql stable security invoker set search_path='' as $covers_item$
  select exists(select 1 from public.attendance_entries a join company_checkout_allowance_private.receipts r
  on r.id=a.company_allowance_receipt_id and r.company_id=a.company_id and r.worker_id=a.worker_id
  and r.work_date=a.work_date and r.report_id=a.source_report_id
  cross join lateral jsonb_array_elements(r.snapshot->'items') i
- where a.company_id=cid and a.worker_id=wid and a.work_date=work_day and (i->>'id')::uuid=item_id)
+ where a.company_id=cid and a.worker_id=wid and a.work_date=work_day and i->>'origin'=item_origin and (i->>'id')::uuid=item_id)
 $covers_item$;
-revoke all on function company_checkout_allowance_private.covers_item(uuid,uuid,date,uuid) from public,anon,authenticated,service_role;
+revoke all on function company_checkout_allowance_private.covers_item(uuid,uuid,date,uuid,text) from public,anon,authenticated,service_role;

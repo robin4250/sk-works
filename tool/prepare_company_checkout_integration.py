@@ -105,12 +105,12 @@ def legacy_patch(source):
     source = once(source, "where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date order by name loop",
         "where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date and a.company_allowance_receipt_id is null order by name loop")
     return once(source, "and item->>'name'=any(coalesce(a.allowance_names,'{}'::text[]));",
-        "and a.company_allowance_receipt_id is null and not company_checkout_allowance_private.covers_item(cid,wid,a.work_date,(item->>'id')::uuid) and item->>'name'=any(coalesce(a.allowance_names,'{}'::text[]));")
+        "and a.company_allowance_receipt_id is null and not company_checkout_allowance_private.covers_item(cid,wid,a.work_date,(item->>'id')::uuid,'company_legacy') and item->>'name'=any(coalesce(a.allowance_names,'{}'::text[]));")
 
 def published_copy(source):
     source = once(source, 'FUNCTION payroll_unit_private.resolve_company_common(', 'FUNCTION company_checkout_allowance_private.resolve_published(')
     return once(source, 'and ae.base_man_days>0;',
-        "and ae.base_man_days>0 and ae.company_allowance_receipt_id is null and not company_checkout_allowance_private.covers_item(cid,wid,ae.work_date,(item->>'id')::uuid);")
+        "and ae.base_man_days>0 and ae.company_allowance_receipt_id is null and not company_checkout_allowance_private.covers_item(cid,wid,ae.work_date,(item->>'id')::uuid,'company_common');")
 
 def detail_patch(source):
     source = once(source, "  settings jsonb := '{}'::jsonb;", "  settings jsonb := '{}'::jsonb; checkout_common jsonb; allowance_settings jsonb;")
