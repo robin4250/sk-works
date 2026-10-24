@@ -1,0 +1,53 @@
+name: Trade document bound seal consent review
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/trade_document_bound_seal_consent_20261021.sql.review-only'
+      - 'docs/candidates/trade_document_invoice_confirmation_20261021.sql.review-only'
+      - 'tool/trade_document_invoice_confirmation_fixture.mjs'
+      - 'tool/trade_document_invoice_confirmation_races.mjs'
+      - 'tool/verify_trade_document_bound_seal_consent.mjs'
+      - 'docs/candidates/trade_document_monthly_review_20261022.sql.review-only'
+      - 'docs/review/monthly-payment-confirmation-contract-20261022.md'
+      - 'docs/review/monthly-payment-review-proof-20261022.md'
+      - 'tool/trade_document_monthly_review_fixture.mjs'
+      - 'docs/candidates/trade_document_confirmation_api_20261022.sql.review-only'
+      - 'tool/trade_document_confirmation_api_fixture.mjs'
+      - 'tool/trade_document_confirmation_api_races.mjs'
+      - 'tool/fixtures/trade_document_confirmation_api_synthetic.json'
+      - '.github/workflows/trade-document-bound-seal-consent.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-sql:
+    env:
+      SKO_MONTHLY_PAYMENT_REVIEW_HOOK: contract-v1
+      SKO_TRADE_DOCUMENT_API_REVIEW_HOOK: contract-v1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [pglite, postgres]
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - if: matrix.runtime == 'pglite'
+        run: node tool/verify_trade_document_bound_seal_consent.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - if: matrix.runtime == 'postgres'
+        run: node tool/verify_trade_document_bound_seal_consent.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture

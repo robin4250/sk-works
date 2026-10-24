@@ -1,0 +1,305 @@
+-- REVIEW ONLY: newly proposed public API over existing private coordinators.
+-- Invoice uses the real assigned final-approval adapter; monthly is content review.
+begin;
+do $$ declare x record;p pg_proc; begin
+ for x in select * from (values
+ ('trade_document_consent_private.prepare_document(uuid,uuid,uuid,integer,jsonb,text,uuid,text,integer)','a609aebf840b34a6e576a5fe2428e439'),
+ ('trade_document_consent_private.preview_confirmation(uuid,uuid,integer)','6867023a6caa35ca95561f6efbaa3250'),
+ ('trade_document_consent_private.confirm_local_document(uuid,uuid,integer,jsonb,uuid,boolean,boolean)','db1cff0846ed41ae1dd9b8a437b810ca'),
+ ('trade_document_consent_private.preview_monthly_review(uuid,uuid,integer)','3ee47b2e98297ef2a48d1c5779cd7429'),
+ ('trade_document_consent_private.confirm_monthly_review(uuid,uuid,integer,jsonb,uuid,boolean,boolean)','4a43c7ec090882d384de11b451318cd8'),
+ ('trade_document_consent_private.render_approved(uuid,integer,uuid,boolean)','b53668611851ab0bc211660e6f6d1f86'),
+ ('private.trade_document_source(text,uuid,text)','ebcc70935938482054943560390038b2')
+ ) t(signature,hash) loop
+ select * into p from pg_proc where oid=to_regprocedure(x.signature);
+ if p.oid is null or md5(p.prosrc) is distinct from x.hash or pg_get_userbyid(p.proowner)<>'postgres' or not p.prosecdef
+ or p.proconfig is distinct from array['search_path=""']::text[] or p.provolatile<>'v'
+ or has_function_privilege('anon',p.oid,'EXECUTE') or has_function_privilege('authenticated',p.oid,'EXECUTE')
+ or has_function_privilege('service_role',p.oid,'EXECUTE') then raise exception 'confirmation API prerequisite changed: %',x.signature;end if;
+ end loop;
+ if to_regnamespace('trade_document_confirmation_api_private') is not null or to_regprocedure('auth.jwt()') is null or to_regclass('auth.sessions') is null then
+ raise exception 'confirmation API new namespace and real session prerequisites required';end if;
+end $$;
+
+create schema trade_document_confirmation_api_private;
+revoke all on schema trade_document_confirmation_api_private from public,anon,authenticated,service_role;
+create table trade_document_confirmation_api_private.parent_links(
+ company_id uuid not null references public.companies(id),kind text not null check(kind in('invoice','payment_certificate')),
+ parent_id uuid not null,local_document_id uuid not null,document_id uuid not null references trade_document_consent_private.documents(id),
+ transaction_id uuid not null,document_revision integer not null,prepare_hash text not null,
+ primary key(company_id,kind,parent_id),unique(company_id,local_document_id),unique(document_id));
+create table trade_document_confirmation_api_private.receipts(
+ company_id uuid not null references public.companies(id),request_id uuid not null,actor_id uuid not null,command jsonb not null,
+ document_id uuid not null,document_revision integer not null,result jsonb not null,recorded_at timestamptz not null default now(),
+ primary key(company_id,request_id),unique(document_id,document_revision),
+ foreign key(document_id,document_revision) references trade_document_consent_private.revisions(document_id,revision));
+alter table trade_document_confirmation_api_private.parent_links enable row level security;
+alter table trade_document_confirmation_api_private.receipts enable row level security;
+revoke all on all tables in schema trade_document_confirmation_api_private from public,anon,authenticated,service_role;
+create trigger immutable_api_receipt before update or delete on trade_document_confirmation_api_private.receipts
+for each row execute function trade_document_consent_private.immutable();
+
+create function trade_document_confirmation_api_private.actor() returns uuid language plpgsql stable security definer set search_path='' as $$
+declare uid uuid:=auth.uid();claims jsonb:=auth.jwt();sid uuid;
+begin
+ if uid is null or claims->>'sub' is distinct from uid::text or claims->>'role' is distinct from 'authenticated' or coalesce(claims->>'session_id','')!~'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+ or private.account_access_allowed() is not true then raise exception 'current signed-in account required' using errcode='42501';end if;
+ sid:=(claims->>'session_id')::uuid;
+ if not exists(select 1 from auth.sessions s where s.id=sid and s.user_id=uid) then raise exception 'current signed-in session required' using errcode='42501';end if;
+ return uid;
+end $$;
+
+create function trade_document_confirmation_api_private.scope(cid uuid,local_id uuid,rev integer,kind text) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;
+begin
+ perform trade_document_consent_private.require_actor(cid);
+ if kind is null or kind not in('invoice','payment_certificate') or rev is null or rev<=0 then raise exception 'exact document scope required' using errcode='22023';end if;
+ select x.* into d from trade_document_consent_private.documents x join trade_document_consent_private.local_links l on l.document_id=x.id where l.company_id=cid and l.local_document_id=local_id;
+ select * into r from trade_document_consent_private.revisions where document_id=d.id and revision=rev;
+ if d.id is null or cid not in(d.issuer_company_id,d.counterparty_company_id) or r.document_id is null
+ or r.binding->>'parent_kind' is distinct from kind or d.document_kind is distinct from (case kind when 'invoice' then 'acceptance' else 'order' end) then
+ raise exception 'company-specific document scope required' using errcode='42501';end if;
+ if kind='invoice' and cid=d.issuer_company_id and private.has_company_feature(cid,'can_view_invoices') is not true then raise exception 'invoice view permission required' using errcode='42501';end if;
+ return jsonb_build_object('document_id',d.id,'issuer_company_id',d.issuer_company_id,'counterparty_company_id',d.counterparty_company_id,
+ 'parent_id',r.binding->'parent_id','body',r.body,'body_hash',r.body_hash,'state',r.state,'binding',r.binding,'document_revision',rev);
+end $$;
+
+create function trade_document_confirmation_api_private.resolve(kind text,parent_id uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare uid uuid:=trade_document_confirmation_api_private.actor();cid uuid;l trade_document_confirmation_api_private.parent_links%rowtype;
+ rev integer;phase text;current_ok boolean:=false;archive_ok boolean:=false;ignored jsonb;
+begin
+ if kind='invoice' then select company_id into cid from public.invoices where id=parent_id;
+ elsif kind='payment_certificate' then select company_id into cid from public.payment_certificates where id=parent_id;
+ else raise exception 'exact financial subject kind required' using errcode='22023';end if;
+ perform trade_document_consent_private.require_actor(cid);
+ if kind='invoice' and private.has_company_feature(cid,'can_view_invoices') is not true then raise exception 'invoice view permission required' using errcode='42501';end if;
+ select * into l from trade_document_confirmation_api_private.parent_links x where x.company_id=cid and x.kind=resolve.kind and x.parent_id=resolve.parent_id;
+ if l.document_id is not null then
+ select max(a.document_revision) into rev from trade_document_confirmation_api_private.receipts a where a.document_id=l.document_id;
+ rev:=coalesce(rev,l.document_revision);
+ select r.state into phase from trade_document_consent_private.revisions r where r.document_id=l.document_id and r.revision=rev;
+ if phase='approved' and exists(select 1 from trade_document_confirmation_api_private.receipts a where a.document_id=l.document_id and a.document_revision=rev) then
+ ignored:=trade_document_consent_private.render_approved(l.document_id,rev,cid,true);archive_ok:=true;
+ begin ignored:=trade_document_consent_private.render_approved(l.document_id,rev,cid,false);current_ok:=true;
+ exception when serialization_failure then current_ok:=false;end;
+ end if;end if;
+ return jsonb_build_object('contract_version',1,'side','issued','kind',kind,'company_id',cid,'actor_id',uid,'parent_id',parent_id,
+ 'document_id',l.document_id,'document_revision',rev,'local_document_id',l.local_document_id,'current_document_revision',l.document_revision,
+ 'phase',coalesce(phase,'unavailable'),'integration_required',l.document_id is not null,'can_integrated_confirm',false,
+ 'unavailable_reason',case when l.document_id is null then 'not_prepared' when archive_ok and not current_ok then 'source_changed' else null end,
+ 'can_render',archive_ok,'can_render_current',current_ok,'can_render_archive',archive_ok,'source_changed',archive_ok and not current_ok);
+end $$;
+
+create function trade_document_confirmation_api_private.valid_command(command jsonb,uid uuid) returns boolean language plpgsql immutable set search_path='' as $$
+declare key text;begin
+ if command is null or jsonb_typeof(command)<>'object' or octet_length(command::text)>8192
+ or command-array['contract_version','kind','company_id','actor_id','parent_id','source_revision','attachment_version','local_document_id','document_id','document_revision','body_hash','preview_hash']<>'{}'::jsonb
+ or (select count(*) from jsonb_object_keys(command))<>12 or command->>'contract_version' is distinct from '1'
+ or command->>'actor_id' is distinct from uid::text or command->>'kind' is null or command->>'kind' not in('invoice','payment_certificate')
+ or jsonb_typeof(command->'source_revision') is distinct from 'string' or length(command->>'source_revision') not between 1 and 128 then return false;end if;
+ foreach key in array array['company_id','actor_id','parent_id','local_document_id','document_id'] loop
+ if jsonb_typeof(command->key) is distinct from 'string' or coalesce(command->>key,'')!~'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then return false;end if;end loop;
+ foreach key in array array['attachment_version','document_revision'] loop
+ if jsonb_typeof(command->key) is distinct from 'number' or coalesce(command->>key,'')!~'^[1-9][0-9]{0,8}$' then return false;end if;end loop;
+ foreach key in array array['body_hash','preview_hash'] loop
+ if jsonb_typeof(command->key) is distinct from 'string' or coalesce(command->>key,'')!~'^[0-9a-f]{64}$' then return false;end if;end loop;
+ return true;end $$;
+create function trade_document_confirmation_api_private.version() returns integer language plpgsql stable security definer set search_path='' as $$begin perform trade_document_confirmation_api_private.actor();return 1;end $$;
+
+create function trade_document_confirmation_api_private.workspace(kind text,parent_id uuid,source_revision text) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare uid uuid:=trade_document_confirmation_api_private.actor();cid uuid;counter_id uuid;peer uuid;mapping_count integer;mapping_role text;mapping_status text;
+ source jsonb;base jsonb;att private.trade_document_attachments%rowtype;l trade_document_confirmation_api_private.parent_links%rowtype;
+ body jsonb;h text;doc uuid;local_id uuid;tx uuid;prepared jsonb;newrev integer;state text;reason text;
+begin
+ if kind='invoice' then select company_id,customer_id into cid,counter_id from public.invoices where id=parent_id;
+ elsif kind='payment_certificate' then select company_id,partner_company_id into cid,counter_id from public.payment_certificates where id=parent_id;
+ else raise exception 'exact financial subject kind required' using errcode='22023';end if;
+ base:=jsonb_build_object('contract_version',1,'kind',kind,'company_id',cid,'actor_id',uid,'parent_id',parent_id,'source_revision',source_revision,
+ 'side','issued','document_id',null,'document_revision',null,'local_document_id',null,'attachment_version',null,
+ 'integration_required',false,'can_integrated_confirm',false,'unavailable_reason',null,'can_render',false);
+ -- Existing assigned non-final or non-stamp approvers keep the ordinary approval
+ -- transaction. This branch neither prepares evidence nor grants seal authority.
+ if kind='invoice' and private.has_company_feature(cid,'can_view_invoices') is true
+ and exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=uid)
+ and exists(select 1 from public.invoice_approvals a where a.invoice_id=parent_id and a.company_id=cid and a.approver_user_id=uid and a.status='pending')
+ and (not exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=uid and m.role::text in('owner','admin'))
+ or exists(select 1 from public.invoice_approvals a where a.invoice_id=parent_id and a.company_id=cid and a.approver_user_id<>uid and a.status<>'approved')) then
+ return base||jsonb_build_object('unavailable_reason','ordinary_assigned_approval');end if;
+ perform trade_document_consent_private.require_actor(cid);
+ if kind='invoice' and private.has_company_feature(cid,'can_view_invoices') is not true then raise exception 'invoice view permission required' using errcode='42501';end if;
+ select count(*),min(t.linked_company_id::text)::uuid,min(t.trade_role),min(t.link_status) into mapping_count,peer,mapping_role,mapping_status
+ from public.trade_companies t where t.company_id=cid and (case kind when 'invoice' then t.customer_id=counter_id else t.partner_company_id=counter_id end);
+ base:=jsonb_build_object('contract_version',1,'kind',kind,'company_id',cid,'actor_id',uid,'parent_id',parent_id,'source_revision',source_revision,
+ 'side','issued','document_id',null,'document_revision',null,'local_document_id',null,'attachment_version',null,
+ 'integration_required',false,'can_integrated_confirm',false,'unavailable_reason',null,'can_render',false);
+ if mapping_count<>1 or peer is null or mapping_status is distinct from 'linked' or mapping_role is null
+ or (kind='invoice' and mapping_role not in('customer','both')) or (kind='payment_certificate' and mapping_role not in('subcontractor','both')) then
+ return base||jsonb_build_object('integration_required',mapping_count>1,'unavailable_reason','formal_link_unavailable');end if;
+ perform 1 from public.companies where id in(cid,peer) order by id for update;
+ begin perform trade_document_consent_private.lock_pair(cid,peer);
+ exception when insufficient_privilege then return base||jsonb_build_object('integration_required',true,'unavailable_reason','connection_not_accepted');end;
+ source:=private.trade_document_source(kind,parent_id,source_revision);
+ if source->>'company_id' is distinct from cid::text then raise exception 'financial parent company changed' using errcode='40001';end if;
+ base:=base||jsonb_build_object('integration_required',true,'source_revision',source->>'source_revision');
+ select * into l from trade_document_confirmation_api_private.parent_links x where x.company_id=cid and x.kind=workspace.kind and x.parent_id=workspace.parent_id for update;
+ if l.document_id is not null then base:=base||jsonb_build_object('document_id',l.document_id,'document_revision',l.document_revision,'local_document_id',l.local_document_id,
+ 'can_render',exists(select 1 from trade_document_confirmation_api_private.receipts z where z.document_id=l.document_id and z.document_revision=l.document_revision));end if;
+ if source->'source_locked'='true'::jsonb then return base||jsonb_build_object('unavailable_reason','parent_locked');end if;
+ if source->'source_blocked'='true'::jsonb then return base||jsonb_build_object('unavailable_reason','calculation_blocked');end if;
+ select * into att from private.trade_document_attachments where subject_kind=kind and subject_id=parent_id and company_id=cid for update;
+ if att.subject_id is null then return base||jsonb_build_object('unavailable_reason','attachment_missing');end if;
+ if att.source_revision is distinct from source->>'source_revision' or att.source_fingerprint is distinct from source->>'source_fingerprint' then
+ return base||jsonb_build_object('unavailable_reason','attachment_changed');end if;
+ tx:=coalesce(l.transaction_id,gen_random_uuid());doc:=coalesce(l.document_id,gen_random_uuid());local_id:=coalesce(l.local_document_id,gen_random_uuid());
+ body:=(att.payload-array['company_seal_snapshot','company_seal_enabled'])||jsonb_build_object('issuer_company_id',cid,'counterparty_company_id',peer,'transaction_id',tx);
+ h:=encode(sha256(convert_to(jsonb_build_object('body',body,'source_revision',source->>'source_revision','source_fingerprint',source->>'source_fingerprint','attachment_version',att.version)::text,'UTF8')),'hex');
+ if l.document_id is null or l.prepare_hash is distinct from h then
+ prepared:=trade_document_consent_private.prepare_document(doc,cid,peer,coalesce(l.document_revision,0),body,kind,parent_id,source->>'source_revision',att.version);
+ newrev:=(prepared->>'revision')::integer;
+ perform trade_document_consent_private.bind_local(doc,cid,local_id);
+ insert into trade_document_confirmation_api_private.parent_links values(cid,kind,parent_id,local_id,doc,tx,newrev,h)
+ on conflict on constraint parent_links_pkey do update set document_revision=excluded.document_revision,prepare_hash=excluded.prepare_hash;
+ else newrev:=l.document_revision;end if;
+ select r.state into state from trade_document_consent_private.revisions r where r.document_id=doc and r.revision=newrev;
+ if state<>'open' then reason:='already_confirmed';
+ elsif kind='invoice' and not exists(select 1 from public.invoice_approvals a where a.invoice_id=parent_id and a.company_id=cid and a.approver_user_id=uid and a.status='pending') then reason:='not_assigned_approver';
+ elsif kind='invoice' and exists(select 1 from public.invoice_approvals a where a.invoice_id=parent_id and a.approver_user_id<>uid and a.status<>'approved') then reason:='prior_confirmations_pending';end if;
+ return base||jsonb_build_object('document_id',doc,'document_revision',newrev,'local_document_id',local_id,'attachment_version',att.version,
+ 'can_integrated_confirm',reason is null,'unavailable_reason',reason,'can_render',exists(select 1 from trade_document_confirmation_api_private.receipts z where z.document_id=doc and z.document_revision=newrev));
+end $$;
+
+create function trade_document_confirmation_api_private.preview(cid uuid,local_id uuid,rev integer,kind text) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare uid uuid:=trade_document_confirmation_api_private.actor();s jsonb;p jsonb;command jsonb;
+begin
+ s:=trade_document_confirmation_api_private.scope(cid,local_id,rev,kind);
+ if s->>'issuer_company_id' is distinct from cid::text then raise exception 'issuer confirmation required' using errcode='42501';end if;
+ if kind='invoice' then p:=trade_document_consent_private.preview_confirmation(local_id,cid,rev);
+ else p:=trade_document_consent_private.preview_monthly_review(local_id,cid,rev);end if;
+ command:=jsonb_build_object('contract_version',1,'kind',kind,'company_id',cid,'actor_id',uid,'parent_id',s->'parent_id',
+ 'source_revision',s#>'{binding,parent_revision}','attachment_version',s#>'{binding,attachment_version}',
+ 'local_document_id',local_id,'document_id',s->'document_id','document_revision',rev,'body_hash',s->'body_hash',
+ 'preview_hash',encode(sha256(convert_to(p::text,'UTF8')),'hex'));
+ return command||jsonb_build_object('expected_command',command,'display_preview',p||jsonb_build_object('body',s->'body','body_hash',s->'body_hash'));
+end $$;
+
+create function trade_document_confirmation_api_private.confirm(command jsonb,rid uuid,document_confirmed boolean,seal_confirmed boolean) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare uid uuid:=trade_document_confirmation_api_private.actor();cid uuid;kind text;local_id uuid;rev integer;s jsonb;current jsonb;raw_result jsonb;result jsonb;receipt trade_document_confirmation_api_private.receipts%rowtype;
+begin
+ if rid is null or not trade_document_confirmation_api_private.valid_command(command,uid) then raise exception 'exact saved confirmation command required' using errcode='22023';end if;
+ cid:=(command->>'company_id')::uuid;kind:=command->>'kind';local_id:=(command->>'local_document_id')::uuid;rev:=(command->>'document_revision')::integer;
+ perform trade_document_consent_private.require_actor(cid);
+ s:=trade_document_confirmation_api_private.scope(cid,local_id,rev,kind);
+ if s->>'issuer_company_id' is distinct from cid::text then raise exception 'issuer confirmation required' using errcode='42501';end if;
+ perform 1 from public.companies where id in(cid,(s->>'counterparty_company_id')::uuid) order by id for update;
+ select * into receipt from trade_document_confirmation_api_private.receipts where company_id=cid and request_id=rid for update;
+ if found then if receipt.actor_id<>uid or receipt.command is distinct from command or document_confirmed is distinct from true or seal_confirmed is distinct from true then raise exception 'request payload changed' using errcode='22023';end if;return receipt.result;end if;
+ if document_confirmed is distinct from true or seal_confirmed is distinct from true then raise exception 'document confirmation and issuer seal consent required' using errcode='22023';end if;
+ current:=trade_document_confirmation_api_private.preview(cid,local_id,rev,kind);
+ if current->'expected_command' is distinct from command then raise exception 'confirmation preview changed' using errcode='40001';end if;
+ -- Pass a freshly computed full private preview; images never enter the public command.
+ if kind='invoice' then
+ raw_result:=trade_document_consent_private.confirm_local_document(local_id,cid,rev,(current->'display_preview')-array['body'],rid,true,true);
+ else raw_result:=trade_document_consent_private.confirm_monthly_review(local_id,cid,rev,(current->'display_preview')-array['body'],rid,true,true);end if;
+ result:=jsonb_build_object('contract_version',1,'kind',kind,'company_id',cid,'actor_id',uid,'local_document_id',local_id,'document_id',command->'document_id',
+ 'document_revision',rev,'request_id',rid,'operation',case kind when 'invoice' then 'invoice_final_approval_with_seal' else 'monthly_content_review_with_seal' end,
+ 'seal_consent_recorded',true,'result',raw_result);
+ insert into trade_document_confirmation_api_private.receipts(company_id,request_id,actor_id,command,document_id,document_revision,result)
+ values(cid,rid,uid,command,(command->>'document_id')::uuid,rev,result);
+ return result;
+end $$;
+
+create function trade_document_confirmation_api_private.receipt(cid uuid,rid uuid,command jsonb) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare uid uuid:=trade_document_confirmation_api_private.actor();r trade_document_confirmation_api_private.receipts%rowtype;
+begin
+ perform trade_document_consent_private.require_actor(cid);
+ if command->>'company_id' is distinct from cid::text or not trade_document_confirmation_api_private.valid_command(command,uid) then raise exception 'exact original receipt scope required' using errcode='22023';end if;
+ select * into r from trade_document_confirmation_api_private.receipts where company_id=cid and request_id=rid;
+ if not found then return jsonb_build_object('contract_version',1,'found',false);end if;
+ if r.actor_id<>uid or r.command is distinct from command then raise exception 'receipt payload or actor mismatch' using errcode='42501';end if;
+ return jsonb_build_object('contract_version',1,'found',true,'result',r.result);
+end $$;
+
+create function trade_document_confirmation_api_private.received_list(trade_id uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare uid uuid:=trade_document_confirmation_api_private.actor();cid uuid;peer uuid;items jsonb;
+begin
+ select company_id,linked_company_id into cid,peer from public.trade_companies where id=trade_id;
+ perform trade_document_consent_private.require_actor(cid);
+ if peer is null then raise exception 'registered counterpart link required' using errcode='42501';end if;
+ select coalesce(jsonb_agg(item order by item->>'document_id'),'[]'::jsonb) into items from (
+ select jsonb_build_object('document_id',d.id,'document_revision',r.revision,'kind',r.binding->'parent_kind','issuer_company_id',d.issuer_company_id,
+ 'issuer_name',r.body#>'{issuer,name}','month',r.body->'month','body_hash',r.body_hash,'is_current',r.revision=d.current_revision) item
+ from trade_document_consent_private.documents d join lateral(
+ select r.* from trade_document_consent_private.revisions r where r.document_id=d.id and r.state='approved'
+ and exists(select 1 from trade_document_confirmation_api_private.receipts a where a.document_id=d.id and a.document_revision=r.revision)
+ order by r.revision desc limit 1) r on true
+ where d.counterparty_company_id=cid and d.issuer_company_id=peer and r.state='approved'
+ and exists(select 1 from trade_document_confirmation_api_private.receipts a where a.document_id=d.id and a.document_revision=r.revision)
+ order by d.id limit 201) listed;
+ if jsonb_array_length(items)>200 then raise exception 'received document list exceeds 200; use a narrower archive scope' using errcode='54000';end if;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'actor_id',uid,'trade_company_id',trade_id,'peer_company_id',peer,'items',items);
+end $$;
+
+create function trade_document_confirmation_api_private.received_workspace(trade_id uuid,doc uuid,rev integer) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare uid uuid:=trade_document_confirmation_api_private.actor();cid uuid;peer uuid;d trade_document_consent_private.documents%rowtype;r trade_document_consent_private.revisions%rowtype;local_id uuid;current_ok boolean:=false;ignored jsonb;
+begin
+ select company_id,linked_company_id into cid,peer from public.trade_companies where id=trade_id;perform trade_document_consent_private.require_actor(cid);
+ select * into d from trade_document_consent_private.documents where id=doc;
+ select * into r from trade_document_consent_private.revisions where document_id=doc and revision=rev;
+ if peer is null or d.issuer_company_id is distinct from peer or d.counterparty_company_id is distinct from cid or r.state is distinct from 'approved'
+ or not exists(select 1 from trade_document_confirmation_api_private.receipts where document_id=doc and document_revision=rev) then raise exception 'approved received document required' using errcode='42501';end if;
+ perform 1 from public.companies where id=cid for update;
+ select local_document_id into local_id from trade_document_consent_private.local_links where company_id=cid and document_id=doc;
+ if local_id is null then local_id:=gen_random_uuid();perform trade_document_consent_private.bind_local(doc,cid,local_id);end if;
+ ignored:=trade_document_consent_private.render_approved(doc,rev,cid,true);
+ begin ignored:=trade_document_consent_private.render_approved(doc,rev,cid,false);current_ok:=true;
+ exception when serialization_failure then current_ok:=false;end;
+ return jsonb_build_object('contract_version',1,'side','received','kind',r.binding->'parent_kind','company_id',cid,'actor_id',uid,
+ 'parent_id',r.binding->'parent_id','source_revision',r.binding->'parent_revision','attachment_version',r.binding->'attachment_version',
+ 'document_id',doc,'document_revision',rev,'local_document_id',local_id,'integration_required',false,'can_integrated_confirm',false,'unavailable_reason','received_copy','phase','approved',
+ 'can_render',true,'can_render_current',current_ok,'can_render_archive',true,'source_changed',not current_ok);
+end $$;
+
+create function trade_document_confirmation_api_private.render(cid uuid,local_id uuid,rev integer,kind text,archive boolean) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare uid uuid:=trade_document_confirmation_api_private.actor();s jsonb;evidence jsonb;
+begin
+ s:=trade_document_confirmation_api_private.scope(cid,local_id,rev,kind);
+ if not exists(select 1 from trade_document_confirmation_api_private.receipts where document_id=(s->>'document_id')::uuid and document_revision=rev) then raise exception 'integrated confirmation receipt required' using errcode='42501';end if;
+ evidence:=trade_document_consent_private.render_approved((s->>'document_id')::uuid,rev,cid,archive);
+ return jsonb_build_object('contract_version',1,'kind',kind,'company_id',cid,'actor_id',uid,'local_document_id',local_id,'document_id',s->'document_id','document_revision',rev,
+ 'side',case when s->>'issuer_company_id'=cid::text then 'issued' else 'received' end,'archive',archive,'evidence',evidence);
+end $$;
+
+revoke all on all functions in schema trade_document_confirmation_api_private from public,anon,authenticated,service_role;
+grant usage on schema trade_document_confirmation_api_private to authenticated;
+grant execute on function trade_document_confirmation_api_private.version(),trade_document_confirmation_api_private.workspace(text,uuid,text),trade_document_confirmation_api_private.resolve(text,uuid),
+ trade_document_confirmation_api_private.preview(uuid,uuid,integer,text),trade_document_confirmation_api_private.confirm(jsonb,uuid,boolean,boolean),
+ trade_document_confirmation_api_private.receipt(uuid,uuid,jsonb),trade_document_confirmation_api_private.received_list(uuid),
+ trade_document_confirmation_api_private.received_workspace(uuid,uuid,integer),trade_document_confirmation_api_private.render(uuid,uuid,integer,text,boolean) to authenticated;
+
+create function public.trade_document_confirmation_contract_version() returns integer language sql security invoker set search_path='' as $$select trade_document_confirmation_api_private.version()$$;
+create function public.trade_document_confirmation_workspace(p_kind text,p_parent_id uuid,p_source_revision text) returns jsonb language sql security invoker set search_path='' as $$select trade_document_confirmation_api_private.workspace(p_kind,p_parent_id,p_source_revision)$$;
+create function public.resolve_trade_document_confirmation(p_kind text,p_parent_id uuid) returns jsonb language sql security invoker set search_path='' as $$select trade_document_confirmation_api_private.resolve(p_kind,p_parent_id)$$;
+create function public.preview_trade_document_confirmation(p_company_id uuid,p_local_document_id uuid,p_document_revision integer,p_kind text) returns jsonb language sql security invoker set search_path='' as $$select trade_document_confirmation_api_private.preview(p_company_id,p_local_document_id,p_document_revision,p_kind)$$;
+create function public.confirm_trade_document_with_seal(p_expected_command jsonb,p_request_id uuid,p_document_confirmed boolean,p_seal_confirmed boolean) returns jsonb language sql security invoker set search_path='' as $$select trade_document_confirmation_api_private.confirm(p_expected_command,p_request_id,p_document_confirmed,p_seal_confirmed)$$;
+create function public.read_trade_document_confirmation_receipt(p_company_id uuid,p_request_id uuid,p_expected_command jsonb) returns jsonb language sql security invoker set search_path='' as $$select trade_document_confirmation_api_private.receipt(p_company_id,p_request_id,p_expected_command)$$;
+create function public.list_received_trade_document_confirmations(p_trade_company_id uuid) returns jsonb language sql security invoker set search_path='' as $$select trade_document_confirmation_api_private.received_list(p_trade_company_id)$$;
+create function public.received_trade_document_confirmation_workspace(p_trade_company_id uuid,p_document_id uuid,p_document_revision integer) returns jsonb language sql security invoker set search_path='' as $$select trade_document_confirmation_api_private.received_workspace(p_trade_company_id,p_document_id,p_document_revision)$$;
+create function public.render_confirmed_trade_document(p_company_id uuid,p_local_document_id uuid,p_document_revision integer,p_kind text,p_archive boolean) returns jsonb language sql security invoker set search_path='' as $$select trade_document_confirmation_api_private.render(p_company_id,p_local_document_id,p_document_revision,p_kind,p_archive)$$;
+revoke all on function public.trade_document_confirmation_contract_version(),public.trade_document_confirmation_workspace(text,uuid,text),public.resolve_trade_document_confirmation(text,uuid),
+ public.preview_trade_document_confirmation(uuid,uuid,integer,text),public.confirm_trade_document_with_seal(jsonb,uuid,boolean,boolean),
+ public.read_trade_document_confirmation_receipt(uuid,uuid,jsonb),public.list_received_trade_document_confirmations(uuid),
+ public.received_trade_document_confirmation_workspace(uuid,uuid,integer),public.render_confirmed_trade_document(uuid,uuid,integer,text,boolean) from public,anon,service_role;
+grant execute on function public.trade_document_confirmation_contract_version(),public.trade_document_confirmation_workspace(text,uuid,text),public.resolve_trade_document_confirmation(text,uuid),
+ public.preview_trade_document_confirmation(uuid,uuid,integer,text),public.confirm_trade_document_with_seal(jsonb,uuid,boolean,boolean),
+ public.read_trade_document_confirmation_receipt(uuid,uuid,jsonb),public.list_received_trade_document_confirmations(uuid),
+ public.received_trade_document_confirmation_workspace(uuid,uuid,integer),public.render_confirmed_trade_document(uuid,uuid,integer,text,boolean) to authenticated;
+commit;

@@ -1,3 +1,4 @@
+import '../shared/trade_document_confirmation_dialog.dart';
 import 'dart:typed_data';
 import '../shared/trade_document_actor_boundary.dart';
 import '../shared/trade_document_attachment_editor_page.dart';
@@ -318,6 +319,13 @@ class _PaymentCertificatePreviewPageState
                 subjectKind:'payment_certificate',subjectId:record.id,sourceRevision:record.revision.toString())));
               if(saved==true&&mounted)setState(()=>_pdfBytes.invalidate());
             },child:const Text('この注文書を確認・編集')),
+          if (!record.isPreview && !record.isAgreementSnapshot && RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(record.id))
+            Wrap(children: [
+              TradeConfirmationAction(kind: 'payment_certificate', parentId: record.id,
+                sourceRevision: record.revision.toString(), label: '注文書の内容確認・角印'),
+              TradeConfirmationAction(kind: 'payment_certificate', parentId: record.id,
+                sourceRevision: '', label: '承認済み注文書を開く', inspectOnly: true),
+            ]),
         Padding(padding: const EdgeInsets.all(8), child: Text(
           SkoLanguageController.isEnglish
               ? 'Pinch to zoom. Drag to move while zoomed.'
@@ -1075,4 +1083,5 @@ class _PaymentAllowanceDraft {
     amount.dispose();
   }
 }
+
 

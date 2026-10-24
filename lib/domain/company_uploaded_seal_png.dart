@@ -7,6 +7,11 @@ import 'package:crypto/crypto.dart' as crypto;
 class CompanyUploadedSealPng {
   CompanyUploadedSealPng._(this._bytes, this.width, this.height, this.sha256);
   static const maxBytes = 1024 * 1024;
+  static const maxBase64Characters = ((maxBytes + 2) ~/ 3) * 4;
+  // PostgreSQL wraps base64 at 76 columns. CRLF is the longest supported
+  // separator: 1 MiB -> 1,398,104 base64 characters + 18,396 * 2.
+  static const maxRawBase64Characters =
+      maxBase64Characters + ((maxBase64Characters - 1) ~/ 76) * 2;
   static const minDimension = 32;
   static const maxDimension = 2048;
   final Uint8List _bytes;
@@ -16,8 +21,43 @@ class CompanyUploadedSealPng {
   String get base64 => base64Encode(_bytes);
 
   factory CompanyUploadedSealPng.fromBase64(String value, {String? expectedSha256}) {
-    if (value.length > 1416500) throw const FormatException('角印PNGは1MB以下にしてください。');
-    return CompanyUploadedSealPng.fromBytes(base64Decode(value), expectedSha256: expectedSha256);
+    if (value.length > maxRawBase64Characters) {
+      throw const FormatException('角印PNGは1MB以下にしてください。');
+    }
+    var normalizedLength = 0;
+    for (var index = 0; index < value.length; index++) {
+      final code = value.codeUnitAt(index);
+      if (code == 13 || code == 10) {
+        continue;
+      }
+      if (!(code >= 65 && code <= 90 ||
+          code >= 97 && code <= 122 ||
+          code >= 48 && code <= 57 ||
+          code == 43 || code == 47 || code == 61)) {
+        throw const FormatException('角印PNGのBase64形式が不正です。');
+      }
+      if (++normalizedLength > maxBase64Characters) {
+        throw const FormatException('角印PNGは1MB以下にしてください。');
+      }
+    }
+    var normalized = value;
+    if (normalizedLength != value.length) {
+      // Allocate only after both raw and normalized bounds have been checked.
+      final characters = Uint8List(normalizedLength);
+      var offset = 0;
+      for (var index = 0; index < value.length; index++) {
+        final code = value.codeUnitAt(index);
+        if (code != 13 && code != 10) {
+          characters[offset++] = code;
+        }
+      }
+      normalized = ascii.decode(characters);
+    }
+    final decoded = base64Decode(normalized);
+    if (decoded.length > maxBytes) {
+      throw const FormatException('角印PNGは1MB以下にしてください。');
+    }
+    return CompanyUploadedSealPng.fromBytes(decoded, expectedSha256: expectedSha256);
   }
 
   factory CompanyUploadedSealPng.fromBytes(Uint8List value, {String? expectedSha256}) {

@@ -1,0 +1,28 @@
+name: Trade document confirmation client
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shared/trade_document_confirmation_*.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'lib/features/companies/trade_company_page.dart'
+      - 'lib/features/payroll/payment_certificates_page.dart'
+      - 'test/trade_document_confirmation_test.dart'
+      - 'test/fixtures/trade_document_confirmation_api_synthetic.json'
+      - '.github/workflows/trade-document-confirmation-client.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze
+      - run: timeout 240s flutter test --reporter expanded --timeout 60s test/trade_document_confirmation_test.dart

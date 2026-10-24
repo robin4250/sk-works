@@ -1,0 +1,639 @@
+{
+  "synthetic_fixture": true,
+  "ordinary_assigned_workspace": {
+    "kind": "invoice",
+    "side": "issued",
+    "actor_id": "00000000-0000-0000-0000-000000000013",
+    "parent_id": "00000000-0000-0000-0000-000000008300",
+    "can_render": false,
+    "company_id": "00000000-0000-0000-0000-000000000001",
+    "document_id": null,
+    "source_revision": "2026-10-22 14:09:39.372+00",
+    "contract_version": 1,
+    "document_revision": null,
+    "local_document_id": null,
+    "attachment_version": null,
+    "unavailable_reason": "ordinary_assigned_approval",
+    "integration_required": false,
+    "can_integrated_confirm": false
+  },
+  "issued_workspace": {
+    "kind": "payment_certificate",
+    "side": "issued",
+    "actor_id": "00000000-0000-0000-0000-000000000011",
+    "parent_id": "00000000-0000-0000-0000-000000002231",
+    "can_render": false,
+    "company_id": "00000000-0000-0000-0000-000000000001",
+    "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+    "source_revision": "1",
+    "contract_version": 1,
+    "document_revision": 1,
+    "local_document_id": "fa62f538-fc90-468b-b5ff-8ed5610bc35e",
+    "attachment_version": 1,
+    "unavailable_reason": null,
+    "integration_required": true,
+    "can_integrated_confirm": true
+  },
+  "issued_preview": {
+    "kind": "payment_certificate",
+    "actor_id": "00000000-0000-0000-0000-000000000011",
+    "body_hash": "7840a0b40753fcc54ab7b605046b0f3647351b8f17d2dff2a18a04950df8ae6f",
+    "parent_id": "00000000-0000-0000-0000-000000002231",
+    "company_id": "00000000-0000-0000-0000-000000000001",
+    "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+    "preview_hash": "61c5e4bca87bb7cd325e4e944266c7f464aa989e3d08898d06de65104fe6e008",
+    "display_preview": {
+      "body": {
+        "kind": "order",
+        "month": "2026-10",
+        "notes": "",
+        "issuer": {
+          "name": "甲会社",
+          "address": "甲住所",
+          "corporate_number": "1111111111111",
+          "representative_name": "甲代表"
+        },
+        "version": 1,
+        "work_name": "保存済月次確認",
+        "intro_text": "合成発注",
+        "issue_date": "2026-10-22",
+        "period_end": "2026-10-31",
+        "counterparty": {
+          "name": "乙会社",
+          "address": "登録乙住所",
+          "corporate_number": "2222222222222",
+          "representative_name": "登録乙代表"
+        },
+        "period_start": "2026-10-01",
+        "work_address": "東京都",
+        "tax_amount_yen": 10000,
+        "transaction_id": "688e031d-cfbf-455e-9bb2-25df855c5cfd",
+        "total_amount_yen": 110000,
+        "issuer_company_id": "00000000-0000-0000-0000-000000000001",
+        "payment_conditions": "翌月末",
+        "counterparty_company_id": "00000000-0000-0000-0000-000000000002"
+      },
+      "epoch": 0,
+      "binding": {
+        "parent_id": "00000000-0000-0000-0000-000000002231",
+        "parent_kind": "payment_certificate",
+        "finalized_at": null,
+        "parent_revision": "1",
+        "financial_status": "draft",
+        "attachment_version": 1,
+        "parent_fingerprint": "cad65422bfa4f1a63077715426a4ba1a",
+        "content_fingerprint": "cad65422bfa4f1a63077715426a4ba1a",
+        "monthly_review_only": true,
+        "attachment_fingerprint": "138019501b67ea5e684c6b48f9f98a35",
+        "attachment_source_revision": "1",
+        "attachment_source_fingerprint": "3f4ee34632b1ffd06f1ecc2dfa4154b5"
+      },
+      "own_seal": {
+        "snapshot": {
+          "name": "甲会社",
+          "style": "uploaded_png",
+          "version": 2,
+          "company_id": "00000000-0000-0000-0000-000000000001",
+          "png_base64": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALklEQVR4nO3OIQEAAAjAsEegf1mI\ngZmaXVNN7ZcJCAgICAgICAgICAgICAh8Bw5l8j4f8SdIgQAAAABJRU5ErkJggg==",
+          "png_sha256": "61c7d09fd81af9715fd717b1f4ab12f624c99acb1476ab72463312308f563098",
+          "png_version_id": "39ddf4c3-caf7-4875-84b3-dba2d3f0b793"
+        },
+        "seal_hash": "f944bf7339df21912feb6f546a490e72225566178bff2b3513c1c594e0e5d919",
+        "asset_hash": "61c7d09fd81af9715fd717b1f4ab12f624c99acb1476ab72463312308f563098",
+        "version_id": "39ddf4c3-caf7-4875-84b3-dba2d3f0b793",
+        "version_key": "png:39ddf4c3-caf7-4875-84b3-dba2d3f0b793",
+        "renderer_contract": "company-seal-pdf@2853e2d8d530f3fc65ce74ef307a1c63b21b0496"
+      },
+      "revision": 1,
+      "body_hash": "7840a0b40753fcc54ab7b605046b0f3647351b8f17d2dff2a18a04950df8ae6f",
+      "company_id": "00000000-0000-0000-0000-000000000001",
+      "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+      "local_document_id": "fa62f538-fc90-468b-b5ff-8ed5610bc35e",
+      "financial_finalized": false,
+      "monthly_review_only": true
+    },
+    "source_revision": "1",
+    "contract_version": 1,
+    "expected_command": {
+      "kind": "payment_certificate",
+      "actor_id": "00000000-0000-0000-0000-000000000011",
+      "body_hash": "7840a0b40753fcc54ab7b605046b0f3647351b8f17d2dff2a18a04950df8ae6f",
+      "parent_id": "00000000-0000-0000-0000-000000002231",
+      "company_id": "00000000-0000-0000-0000-000000000001",
+      "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+      "preview_hash": "61c5e4bca87bb7cd325e4e944266c7f464aa989e3d08898d06de65104fe6e008",
+      "source_revision": "1",
+      "contract_version": 1,
+      "document_revision": 1,
+      "local_document_id": "fa62f538-fc90-468b-b5ff-8ed5610bc35e",
+      "attachment_version": 1
+    },
+    "document_revision": 1,
+    "local_document_id": "fa62f538-fc90-468b-b5ff-8ed5610bc35e",
+    "attachment_version": 1
+  },
+  "confirmation": {
+    "kind": "payment_certificate",
+    "result": {
+      "contract": "monthly_content_review_v1",
+      "revision": 1,
+      "company_id": "00000000-0000-0000-0000-000000000001",
+      "request_id": "00000000-0000-0000-0000-000000008101",
+      "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+      "seal_result": {
+        "epoch": 1,
+        "revision": 1,
+        "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+        "current_state": "approved",
+        "request_outcome": "approve",
+        "state_after_request": "approved"
+      },
+      "financial_finalized": false,
+      "seal_consent_recorded": true,
+      "monthly_review_recorded": true,
+      "financial_parent_unchanged": true
+    },
+    "actor_id": "00000000-0000-0000-0000-000000000011",
+    "operation": "monthly_content_review_with_seal",
+    "company_id": "00000000-0000-0000-0000-000000000001",
+    "request_id": "00000000-0000-0000-0000-000000008101",
+    "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+    "contract_version": 1,
+    "document_revision": 1,
+    "local_document_id": "fa62f538-fc90-468b-b5ff-8ed5610bc35e",
+    "seal_consent_recorded": true
+  },
+  "received_list": {
+    "items": [
+      {
+        "kind": "payment_certificate",
+        "month": "2026-10",
+        "body_hash": "7840a0b40753fcc54ab7b605046b0f3647351b8f17d2dff2a18a04950df8ae6f",
+        "is_current": true,
+        "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+        "issuer_name": "甲会社",
+        "document_revision": 1,
+        "issuer_company_id": "00000000-0000-0000-0000-000000000001"
+      }
+    ],
+    "actor_id": "00000000-0000-0000-0000-000000000012",
+    "company_id": "00000000-0000-0000-0000-000000000002",
+    "peer_company_id": "00000000-0000-0000-0000-000000000001",
+    "contract_version": 1,
+    "trade_company_id": "00000000-0000-0000-0000-000000008200"
+  },
+  "received_workspace": {
+    "kind": "payment_certificate",
+    "side": "received",
+    "phase": "approved",
+    "actor_id": "00000000-0000-0000-0000-000000000012",
+    "parent_id": "00000000-0000-0000-0000-000000002231",
+    "can_render": true,
+    "company_id": "00000000-0000-0000-0000-000000000002",
+    "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+    "source_changed": false,
+    "source_revision": "1",
+    "contract_version": 1,
+    "document_revision": 1,
+    "local_document_id": "8ffe4a06-8b88-48a8-865f-3f013b459171",
+    "attachment_version": 1,
+    "can_render_archive": true,
+    "can_render_current": true,
+    "unavailable_reason": "received_copy",
+    "integration_required": false,
+    "can_integrated_confirm": false
+  },
+  "issued_render": {
+    "kind": "payment_certificate",
+    "side": "issued",
+    "archive": false,
+    "actor_id": "00000000-0000-0000-0000-000000000011",
+    "evidence": {
+      "body": {
+        "kind": "order",
+        "month": "2026-10",
+        "notes": "",
+        "issuer": {
+          "name": "甲会社",
+          "address": "甲住所",
+          "corporate_number": "1111111111111",
+          "representative_name": "甲代表"
+        },
+        "version": 1,
+        "work_name": "保存済月次確認",
+        "intro_text": "合成発注",
+        "issue_date": "2026-10-22",
+        "period_end": "2026-10-31",
+        "counterparty": {
+          "name": "乙会社",
+          "address": "登録乙住所",
+          "corporate_number": "2222222222222",
+          "representative_name": "登録乙代表"
+        },
+        "period_start": "2026-10-01",
+        "work_address": "東京都",
+        "tax_amount_yen": 10000,
+        "transaction_id": "688e031d-cfbf-455e-9bb2-25df855c5cfd",
+        "total_amount_yen": 110000,
+        "issuer_company_id": "00000000-0000-0000-0000-000000000001",
+        "payment_conditions": "翌月末",
+        "counterparty_company_id": "00000000-0000-0000-0000-000000000002"
+      },
+      "seals": [
+        {
+          "seal_hash": "f944bf7339df21912feb6f546a490e72225566178bff2b3513c1c594e0e5d919",
+          "asset_hash": "61c7d09fd81af9715fd717b1f4ab12f624c99acb1476ab72463312308f563098",
+          "company_id": "00000000-0000-0000-0000-000000000001",
+          "version_key": "png:39ddf4c3-caf7-4875-84b3-dba2d3f0b793",
+          "seal_snapshot": {
+            "name": "甲会社",
+            "style": "uploaded_png",
+            "version": 2,
+            "company_id": "00000000-0000-0000-0000-000000000001",
+            "png_base64": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALklEQVR4nO3OIQEAAAjAsEegf1mI\ngZmaXVNN7ZcJCAgICAgICAgICAgICAh8Bw5l8j4f8SdIgQAAAABJRU5ErkJggg==",
+            "png_sha256": "61c7d09fd81af9715fd717b1f4ab12f624c99acb1476ab72463312308f563098",
+            "png_version_id": "39ddf4c3-caf7-4875-84b3-dba2d3f0b793"
+          },
+          "seal_version_id": "39ddf4c3-caf7-4875-84b3-dba2d3f0b793",
+          "renderer_contract": "company-seal-pdf@2853e2d8d530f3fc65ce74ef307a1c63b21b0496"
+        }
+      ],
+      "binding": {
+        "parent_id": "00000000-0000-0000-0000-000000002231",
+        "parent_kind": "payment_certificate",
+        "finalized_at": null,
+        "parent_revision": "1",
+        "financial_status": "draft",
+        "attachment_version": 1,
+        "parent_fingerprint": "cad65422bfa4f1a63077715426a4ba1a",
+        "content_fingerprint": "cad65422bfa4f1a63077715426a4ba1a",
+        "monthly_review_only": true,
+        "attachment_fingerprint": "138019501b67ea5e684c6b48f9f98a35",
+        "attachment_source_revision": "1",
+        "attachment_source_fingerprint": "3f4ee34632b1ffd06f1ecc2dfa4154b5"
+      },
+      "consents": [
+        {
+          "actor_id": "00000000-0000-0000-0000-000000000011",
+          "seal_hash": "f944bf7339df21912feb6f546a490e72225566178bff2b3513c1c594e0e5d919",
+          "company_id": "00000000-0000-0000-0000-000000000001",
+          "version_key": "png:39ddf4c3-caf7-4875-84b3-dba2d3f0b793"
+        }
+      ],
+      "revision": 1,
+      "body_hash": "7840a0b40753fcc54ab7b605046b0f3647351b8f17d2dff2a18a04950df8ae6f",
+      "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+      "render_hash": "c125978156cef781666dd59bc38410d83fd7a1ae1bd224b85e4101ccace36521",
+      "document_role": "ordering_company",
+      "transaction_id": "688e031d-cfbf-455e-9bb2-25df855c5cfd",
+      "render_seal_company_id": "00000000-0000-0000-0000-000000000001"
+    },
+    "company_id": "00000000-0000-0000-0000-000000000001",
+    "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+    "contract_version": 1,
+    "document_revision": 1,
+    "local_document_id": "fa62f538-fc90-468b-b5ff-8ed5610bc35e"
+  },
+  "received_render": {
+    "kind": "payment_certificate",
+    "side": "received",
+    "archive": false,
+    "actor_id": "00000000-0000-0000-0000-000000000012",
+    "evidence": {
+      "body": {
+        "kind": "order",
+        "month": "2026-10",
+        "notes": "",
+        "issuer": {
+          "name": "甲会社",
+          "address": "甲住所",
+          "corporate_number": "1111111111111",
+          "representative_name": "甲代表"
+        },
+        "version": 1,
+        "work_name": "保存済月次確認",
+        "intro_text": "合成発注",
+        "issue_date": "2026-10-22",
+        "period_end": "2026-10-31",
+        "counterparty": {
+          "name": "乙会社",
+          "address": "登録乙住所",
+          "corporate_number": "2222222222222",
+          "representative_name": "登録乙代表"
+        },
+        "period_start": "2026-10-01",
+        "work_address": "東京都",
+        "tax_amount_yen": 10000,
+        "transaction_id": "688e031d-cfbf-455e-9bb2-25df855c5cfd",
+        "total_amount_yen": 110000,
+        "issuer_company_id": "00000000-0000-0000-0000-000000000001",
+        "payment_conditions": "翌月末",
+        "counterparty_company_id": "00000000-0000-0000-0000-000000000002"
+      },
+      "seals": [
+        {
+          "seal_hash": "f944bf7339df21912feb6f546a490e72225566178bff2b3513c1c594e0e5d919",
+          "asset_hash": "61c7d09fd81af9715fd717b1f4ab12f624c99acb1476ab72463312308f563098",
+          "company_id": "00000000-0000-0000-0000-000000000001",
+          "version_key": "png:39ddf4c3-caf7-4875-84b3-dba2d3f0b793",
+          "seal_snapshot": {
+            "name": "甲会社",
+            "style": "uploaded_png",
+            "version": 2,
+            "company_id": "00000000-0000-0000-0000-000000000001",
+            "png_base64": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALklEQVR4nO3OIQEAAAjAsEegf1mI\ngZmaXVNN7ZcJCAgICAgICAgICAgICAh8Bw5l8j4f8SdIgQAAAABJRU5ErkJggg==",
+            "png_sha256": "61c7d09fd81af9715fd717b1f4ab12f624c99acb1476ab72463312308f563098",
+            "png_version_id": "39ddf4c3-caf7-4875-84b3-dba2d3f0b793"
+          },
+          "seal_version_id": "39ddf4c3-caf7-4875-84b3-dba2d3f0b793",
+          "renderer_contract": "company-seal-pdf@2853e2d8d530f3fc65ce74ef307a1c63b21b0496"
+        }
+      ],
+      "binding": {
+        "parent_id": "00000000-0000-0000-0000-000000002231",
+        "parent_kind": "payment_certificate",
+        "finalized_at": null,
+        "parent_revision": "1",
+        "financial_status": "draft",
+        "attachment_version": 1,
+        "parent_fingerprint": "cad65422bfa4f1a63077715426a4ba1a",
+        "content_fingerprint": "cad65422bfa4f1a63077715426a4ba1a",
+        "monthly_review_only": true,
+        "attachment_fingerprint": "138019501b67ea5e684c6b48f9f98a35",
+        "attachment_source_revision": "1",
+        "attachment_source_fingerprint": "3f4ee34632b1ffd06f1ecc2dfa4154b5"
+      },
+      "consents": [
+        {
+          "actor_id": "00000000-0000-0000-0000-000000000011",
+          "seal_hash": "f944bf7339df21912feb6f546a490e72225566178bff2b3513c1c594e0e5d919",
+          "company_id": "00000000-0000-0000-0000-000000000001",
+          "version_key": "png:39ddf4c3-caf7-4875-84b3-dba2d3f0b793"
+        }
+      ],
+      "revision": 1,
+      "body_hash": "7840a0b40753fcc54ab7b605046b0f3647351b8f17d2dff2a18a04950df8ae6f",
+      "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+      "render_hash": "c125978156cef781666dd59bc38410d83fd7a1ae1bd224b85e4101ccace36521",
+      "document_role": "ordering_company",
+      "transaction_id": "688e031d-cfbf-455e-9bb2-25df855c5cfd",
+      "render_seal_company_id": "00000000-0000-0000-0000-000000000001"
+    },
+    "company_id": "00000000-0000-0000-0000-000000000002",
+    "document_id": "d0933893-fce9-46b3-9eae-155d848723d9",
+    "contract_version": 1,
+    "document_revision": 1,
+    "local_document_id": "8ffe4a06-8b88-48a8-865f-3f013b459171"
+  },
+  "invoice_render": {
+    "kind": "invoice",
+    "side": "issued",
+    "archive": false,
+    "actor_id": "00000000-0000-0000-0000-000000000011",
+    "evidence": {
+      "body": {
+        "kind": "acceptance",
+        "month": "2026-10",
+        "notes": "",
+        "issuer": {
+          "name": "甲会社",
+          "address": "甲住所",
+          "corporate_number": "1111111111111",
+          "representative_name": "登録甲代表"
+        },
+        "version": 1,
+        "work_name": "公開承認合成工事",
+        "intro_text": "合成請負",
+        "issue_date": "2026-10-22",
+        "order_date": "2026-10-21",
+        "period_end": "2026-10-31",
+        "counterparty": {
+          "name": "乙会社",
+          "address": "乙住所",
+          "corporate_number": "",
+          "representative_name": ""
+        },
+        "period_start": "2026-10-01",
+        "work_address": "東京都",
+        "tax_amount_yen": 10000,
+        "transaction_id": "2e12d190-37db-4b5f-ac43-4ff51d412937",
+        "acceptance_text": "上記注文内容を承諾します。",
+        "total_amount_yen": 110000,
+        "issuer_company_id": "00000000-0000-0000-0000-000000000001",
+        "payment_conditions": "翌月末",
+        "counterparty_company_id": "00000000-0000-0000-0000-000000000002"
+      },
+      "seals": [
+        {
+          "seal_hash": "796fe580d3db3366b8aead1755d48708a8c7a71cc3652807a6774f4b1696b7fc",
+          "asset_hash": "b45d092858a08996e1e73e40096f10d63c0965ebade501c9c8922b506b4a61b0",
+          "company_id": "00000000-0000-0000-0000-000000000001",
+          "version_key": "png:ddca889f-c16e-418b-b5f7-892ebae5ac6d",
+          "seal_snapshot": {
+            "name": "甲会社",
+            "style": "uploaded_png",
+            "version": 2,
+            "company_id": "00000000-0000-0000-0000-000000000001",
+            "png_base64": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALklEQVR4nO3OIQEAAAjAsEehf0mI\ngZmaXVNN7ZcJCAgICAgICAgICAgICAh8Bw7kLn4f6fMlUQAAAABJRU5ErkJggg==",
+            "png_sha256": "b45d092858a08996e1e73e40096f10d63c0965ebade501c9c8922b506b4a61b0",
+            "png_version_id": "ddca889f-c16e-418b-b5f7-892ebae5ac6d"
+          },
+          "seal_version_id": "ddca889f-c16e-418b-b5f7-892ebae5ac6d",
+          "renderer_contract": "company-seal-pdf@2853e2d8d530f3fc65ce74ef307a1c63b21b0496"
+        }
+      ],
+      "binding": {
+        "parent_id": "00000000-0000-0000-0000-000000008300",
+        "parent_kind": "invoice",
+        "parent_revision": "2026-10-22 14:09:39.372+00",
+        "attachment_version": 1,
+        "parent_fingerprint": "92cf969b09dce93e9b2318d65e0b63d6",
+        "content_fingerprint": "35e14728c52b0db261b0fc6d8480874f",
+        "internal_confirmation": {
+          "financial_status": "draft",
+          "approval_finalized_at": null,
+          "separate_from_explicit_seal_consent": true
+        },
+        "attachment_fingerprint": "2b96b4aab9e16e091b9cede084814670",
+        "attachment_source_revision": "2026-10-22 14:09:39.372+00",
+        "attachment_source_fingerprint": "bf18a1fd4604ab7d5c51b4679ebc4071"
+      },
+      "consents": [
+        {
+          "actor_id": "00000000-0000-0000-0000-000000000011",
+          "seal_hash": "796fe580d3db3366b8aead1755d48708a8c7a71cc3652807a6774f4b1696b7fc",
+          "company_id": "00000000-0000-0000-0000-000000000001",
+          "version_key": "png:ddca889f-c16e-418b-b5f7-892ebae5ac6d"
+        }
+      ],
+      "revision": 1,
+      "body_hash": "1a6d8f1e1dfdea33486199a05c93a63574c8c67c0a62137fe0b5054e49287ad3",
+      "document_id": "52a8ab78-fc11-4e93-b39d-ccf40f804fb2",
+      "render_hash": "a62fbc35779b7f5d9773f0040bae556bb8c442c4886e9a0ab5405333d5de3647",
+      "document_role": "accepting_company",
+      "transaction_id": "2e12d190-37db-4b5f-ac43-4ff51d412937",
+      "render_seal_company_id": "00000000-0000-0000-0000-000000000001"
+    },
+    "company_id": "00000000-0000-0000-0000-000000000001",
+    "document_id": "52a8ab78-fc11-4e93-b39d-ccf40f804fb2",
+    "contract_version": 1,
+    "document_revision": 1,
+    "local_document_id": "4b6a3db9-baef-4f20-973f-ae3db871ee3e"
+  },
+  "invoice_received_workspace": {
+    "kind": "invoice",
+    "side": "received",
+    "phase": "approved",
+    "actor_id": "00000000-0000-0000-0000-000000000012",
+    "parent_id": "00000000-0000-0000-0000-000000008300",
+    "can_render": true,
+    "company_id": "00000000-0000-0000-0000-000000000002",
+    "document_id": "52a8ab78-fc11-4e93-b39d-ccf40f804fb2",
+    "source_changed": false,
+    "source_revision": "2026-10-22 14:09:39.372+00",
+    "contract_version": 1,
+    "document_revision": 1,
+    "local_document_id": "c686a3d3-7ea0-45e7-aa7f-50dfa656758a",
+    "attachment_version": 1,
+    "can_render_archive": true,
+    "can_render_current": true,
+    "unavailable_reason": "received_copy",
+    "integration_required": false,
+    "can_integrated_confirm": false
+  },
+  "invoice_received_render": {
+    "kind": "invoice",
+    "side": "received",
+    "archive": false,
+    "actor_id": "00000000-0000-0000-0000-000000000012",
+    "evidence": {
+      "body": {
+        "kind": "acceptance",
+        "month": "2026-10",
+        "notes": "",
+        "issuer": {
+          "name": "甲会社",
+          "address": "甲住所",
+          "corporate_number": "1111111111111",
+          "representative_name": "登録甲代表"
+        },
+        "version": 1,
+        "work_name": "公開承認合成工事",
+        "intro_text": "合成請負",
+        "issue_date": "2026-10-22",
+        "order_date": "2026-10-21",
+        "period_end": "2026-10-31",
+        "counterparty": {
+          "name": "乙会社",
+          "address": "乙住所",
+          "corporate_number": "",
+          "representative_name": ""
+        },
+        "period_start": "2026-10-01",
+        "work_address": "東京都",
+        "tax_amount_yen": 10000,
+        "transaction_id": "2e12d190-37db-4b5f-ac43-4ff51d412937",
+        "acceptance_text": "上記注文内容を承諾します。",
+        "total_amount_yen": 110000,
+        "issuer_company_id": "00000000-0000-0000-0000-000000000001",
+        "payment_conditions": "翌月末",
+        "counterparty_company_id": "00000000-0000-0000-0000-000000000002"
+      },
+      "seals": [
+        {
+          "seal_hash": "796fe580d3db3366b8aead1755d48708a8c7a71cc3652807a6774f4b1696b7fc",
+          "asset_hash": "b45d092858a08996e1e73e40096f10d63c0965ebade501c9c8922b506b4a61b0",
+          "company_id": "00000000-0000-0000-0000-000000000001",
+          "version_key": "png:ddca889f-c16e-418b-b5f7-892ebae5ac6d",
+          "seal_snapshot": {
+            "name": "甲会社",
+            "style": "uploaded_png",
+            "version": 2,
+            "company_id": "00000000-0000-0000-0000-000000000001",
+            "png_base64": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALklEQVR4nO3OIQEAAAjAsEehf0mI\ngZmaXVNN7ZcJCAgICAgICAgICAgICAh8Bw7kLn4f6fMlUQAAAABJRU5ErkJggg==",
+            "png_sha256": "b45d092858a08996e1e73e40096f10d63c0965ebade501c9c8922b506b4a61b0",
+            "png_version_id": "ddca889f-c16e-418b-b5f7-892ebae5ac6d"
+          },
+          "seal_version_id": "ddca889f-c16e-418b-b5f7-892ebae5ac6d",
+          "renderer_contract": "company-seal-pdf@2853e2d8d530f3fc65ce74ef307a1c63b21b0496"
+        }
+      ],
+      "binding": {
+        "parent_id": "00000000-0000-0000-0000-000000008300",
+        "parent_kind": "invoice",
+        "parent_revision": "2026-10-22 14:09:39.372+00",
+        "attachment_version": 1,
+        "parent_fingerprint": "92cf969b09dce93e9b2318d65e0b63d6",
+        "content_fingerprint": "35e14728c52b0db261b0fc6d8480874f",
+        "internal_confirmation": {
+          "financial_status": "draft",
+          "approval_finalized_at": null,
+          "separate_from_explicit_seal_consent": true
+        },
+        "attachment_fingerprint": "2b96b4aab9e16e091b9cede084814670",
+        "attachment_source_revision": "2026-10-22 14:09:39.372+00",
+        "attachment_source_fingerprint": "bf18a1fd4604ab7d5c51b4679ebc4071"
+      },
+      "consents": [
+        {
+          "actor_id": "00000000-0000-0000-0000-000000000011",
+          "seal_hash": "796fe580d3db3366b8aead1755d48708a8c7a71cc3652807a6774f4b1696b7fc",
+          "company_id": "00000000-0000-0000-0000-000000000001",
+          "version_key": "png:ddca889f-c16e-418b-b5f7-892ebae5ac6d"
+        }
+      ],
+      "revision": 1,
+      "body_hash": "1a6d8f1e1dfdea33486199a05c93a63574c8c67c0a62137fe0b5054e49287ad3",
+      "document_id": "52a8ab78-fc11-4e93-b39d-ccf40f804fb2",
+      "render_hash": "a62fbc35779b7f5d9773f0040bae556bb8c442c4886e9a0ab5405333d5de3647",
+      "document_role": "accepting_company",
+      "transaction_id": "2e12d190-37db-4b5f-ac43-4ff51d412937",
+      "render_seal_company_id": "00000000-0000-0000-0000-000000000001"
+    },
+    "company_id": "00000000-0000-0000-0000-000000000002",
+    "document_id": "52a8ab78-fc11-4e93-b39d-ccf40f804fb2",
+    "contract_version": 1,
+    "document_revision": 1,
+    "local_document_id": "c686a3d3-7ea0-45e7-aa7f-50dfa656758a"
+  },
+  "invoice_expected_command": {
+    "kind": "invoice",
+    "actor_id": "00000000-0000-0000-0000-000000000011",
+    "body_hash": "1a6d8f1e1dfdea33486199a05c93a63574c8c67c0a62137fe0b5054e49287ad3",
+    "parent_id": "00000000-0000-0000-0000-000000008300",
+    "company_id": "00000000-0000-0000-0000-000000000001",
+    "document_id": "52a8ab78-fc11-4e93-b39d-ccf40f804fb2",
+    "preview_hash": "76e821fed536494ae1a2ee849ff83ffc0f7d1be5e2ca9eacebc37477e17c8627",
+    "source_revision": "2026-10-22 14:09:39.372+00",
+    "contract_version": 1,
+    "document_revision": 1,
+    "local_document_id": "4b6a3db9-baef-4f20-973f-ae3db871ee3e",
+    "attachment_version": 1
+  },
+  "invoice_confirmation": {
+    "kind": "invoice",
+    "result": {
+      "revision": 1,
+      "body_hash": "1a6d8f1e1dfdea33486199a05c93a63574c8c67c0a62137fe0b5054e49287ad3",
+      "parent_id": "00000000-0000-0000-0000-000000008300",
+      "request_id": "00000000-0000-0000-0000-000000008105",
+      "document_id": "52a8ab78-fc11-4e93-b39d-ccf40f804fb2",
+      "parent_kind": "invoice",
+      "local_document_id": "4b6a3db9-baef-4f20-973f-ae3db871ee3e",
+      "attachment_version": 1,
+      "financial_approved": true,
+      "parent_revision_after": "2026-10-22 14:09:39.45+00",
+      "seal_consent_recorded": true,
+      "parent_revision_before": "2026-10-22 14:09:39.372+00"
+    },
+    "actor_id": "00000000-0000-0000-0000-000000000011",
+    "operation": "invoice_final_approval_with_seal",
+    "company_id": "00000000-0000-0000-0000-000000000001",
+    "request_id": "00000000-0000-0000-0000-000000008105",
+    "document_id": "52a8ab78-fc11-4e93-b39d-ccf40f804fb2",
+    "contract_version": 1,
+    "document_revision": 1,
+    "local_document_id": "4b6a3db9-baef-4f20-973f-ae3db871ee3e",
+    "seal_consent_recorded": true
+  }
+}
