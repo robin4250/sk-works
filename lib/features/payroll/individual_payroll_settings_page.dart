@@ -1,3 +1,4 @@
+import 'payroll_insurance_settings_entry.dart';
 import 'payroll_tax_conditions_page.dart';
 import 'payroll_fixed_deductions.dart';
 import '../settings/company_payroll_rates_page.dart';
@@ -80,6 +81,7 @@ class _IndividualPayrollSettingsPageState
   bool _saving = false;
   bool _allowanceSaveUncertain = false;
   bool _showDeductions = false;
+  final _insuranceEntry = PayrollInsuranceEntryController();
   PayrollItemUnit _earningUnit = PayrollItemUnit.month;
   PayrollItemUnit _deductionUnit = PayrollItemUnit.month;
   final _unitPanelKey = GlobalKey();
@@ -114,6 +116,7 @@ class _IndividualPayrollSettingsPageState
 
   @override
   void dispose() {
+    _insuranceEntry.dispose();
     _unitFooter.dispose();
     for (final controller in _controllers.values) {
       controller.dispose();
@@ -705,6 +708,10 @@ class _IndividualPayrollSettingsPageState
                     ),
                   ),
                   SizedBox(height: 12),
+                  PayrollInsuranceSettingsEntry(
+                    key: const ValueKey('insurance-settings-global-entry'),
+                    controller: _insuranceEntry, enabled: !_busy,
+                  ),
                   SegmentedButton<bool>(
                     showSelectedIcon: false,
                     segments: [
@@ -769,6 +776,7 @@ class _IndividualPayrollSettingsPageState
                           if (_workerId != null)
                             PayrollFixedDeductions(
                               key: ValueKey('fixed-deductions-$_workerId'),
+                              entryController: _insuranceEntry,
                               showAmounts: _deductionUnit == PayrollItemUnit.month,
                               companyId: companyId ?? '',
                               workerId: _workerId!,
