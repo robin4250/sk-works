@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "review_only": true,
+  "production_executable": false,
+  "production_connected": false,
+  "owner_command_ready": false,
+  "mocked_tests_passed": 14,
+  "native_tls_verified": false,
+  "real_cli_maintenance_identity_verified": false,
+  "source_ref_helpers": "994342fc136045d8ce6769b55f606952111808e6",
+  "files": {
+    ".github/workflows/resident-annual-owner-runner-review.yml": "ef96f923370783d3930685ae70c002fc7a394014f7133dbbfa0ea95b05fb057f",
+    "docs/review/resident-annual-owner-runner-20261024.md": "ee911940242f9dca7bf182b6a02f7ffd668204554a5dd9ca60c64c225765bae4",
+    "tool/security/resident_annual_owner/owner_cli_database_capture.py": "e4f206b3dab91f98295f2f2a1688a02cc74adb80d00d6262a3f3ce4cc9a300e0",
+    "tool/security/resident_annual_owner/owner_database_capture.py": "15875c927d90364f8dec1973f5fb1661dc12b9f5242aee5175203f7cb8a8702d",
+    "tool/security/resident_annual_owner/runner.py": "393bf5d9385418a82fbc5d67d4174513181b51b6e89230fb87ba1e429505984f",
+    "tool/security/resident_annual_owner/test_runner.py": "eb7f318c1f7c4592eb5615657ce3f77f2c2b364d71314c8552cdc0234a7bb3fd"
+  }
+}

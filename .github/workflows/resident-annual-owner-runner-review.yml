@@ -1,0 +1,31 @@
+name: Resident annual owner runner review
+on:
+  pull_request:
+    paths:
+      - 'tool/security/resident_annual_owner/**'
+      - 'docs/review/resident-annual-owner-runner-20261024.md'
+      - '.github/workflows/resident-annual-owner-runner-review.yml'
+permissions:
+  contents: read
+jobs:
+  mocked-owner-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s tool/security/resident_annual_owner -p 'test_*.py' -v
+      - name: Verify unchanged original helper bytes
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, runpy
+          root=pathlib.Path('tool/security/resident_annual_owner')
+          source=runpy.run_path(str(root/'runner.py'))
+          for name,digest in source['HELPERS'].items():
+              assert hashlib.sha256((root/(name+'.py')).read_bytes()).hexdigest()==digest
+          print('Original helper hashes match; no connection or credentials used')
+          PY
