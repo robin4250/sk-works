@@ -89,7 +89,7 @@ void main() {
     expect(repository.eligibilityReads, 0);
     expect(repository.labelReads, 1);
     final reportScroll = find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first;
-    final member = find.text('合成社員');
+    final member = find.descendant(of: find.byType(ExpansionTile), matching: find.text('合成社員'));
     await tester.scrollUntilVisible(member, 250, scrollable: reportScroll);
     await tester.tap(member); await tester.pumpAndSettle();
     expect(find.byType(DailyReportAllowanceNameField), findsOneWidget,
