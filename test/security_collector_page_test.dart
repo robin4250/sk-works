@@ -6,13 +6,20 @@ import 'package:sk_works/features/security/security_collector_repository.dart';
 import 'package:sk_works/features/security/security_collector_page.dart';
 
 void main() {
+  Future<void> settle(WidgetTester t) async {
+    // Exercise the real repository's timeout/subscription-cleanup futures
+    // outside FakeAsync, then settle UI animation normally. No longer timeout
+    // or suppressed assertion; every test still checks the final guarded state.
+    await t.runAsync(() async { await Future<void>.delayed(Duration.zero); });
+    await t.pumpAndSettle();
+  }
   testWidgets('unavailable is not confused with zero records or safety', (t) async {
     final repository = SecurityCollectorRepository(sessionKey: () => 'master/a',
       sessionChanges: const Stream<void>.empty(), availableCheck: () async => false,
       issueProof: (_) async => throw StateError('not allowed'),
       readWithProof: (_) async => throw StateError('not allowed'));
     await t.pumpWidget(MaterialApp(home: SecurityCollectorPage(repository:repository)));
-    await t.pumpAndSettle();
+    await settle(t);
     expect(find.byKey(const ValueKey('collector-password')), findsNothing);
     expect(find.textContaining('未接続または提供準備中'),findsOneWidget);
     expect(find.textContaining('対象範囲の保存記録はありません'),findsNothing);
@@ -25,13 +32,13 @@ void main() {
       readWithProof: (_) async => {'version':1,'source_provenance':'trusted_collector_observation',
         'coverage':'collector_observations_only','attack_confirmed':false,'events':[]});
     await t.pumpWidget(MaterialApp(home: SecurityCollectorPage(repository:repository)));
-    await t.pumpAndSettle();
+    await settle(t);
     await t.enterText(find.byKey(const ValueKey('collector-password')),'password');
-    await t.tap(find.text('再認証して収集記録を表示')); await t.pumpAndSettle();
+    await t.tap(find.text('再認証して収集記録を表示')); await settle(t);
     expect(issued,1); expect(find.textContaining('対象範囲の保存記録はありません'),findsOneWidget);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused); await t.pump();
     expect(find.textContaining('対象範囲の保存記録はありません'),findsNothing);
-    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await t.pumpAndSettle();
+    t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); await settle(t);
     expect(issued,1);
     expect(t.widget<TextField>(find.byKey(const ValueKey('collector-password'))).controller!.text,isEmpty);
     await t.pumpWidget(const SizedBox());
@@ -42,11 +49,11 @@ void main() {
       sessionChanges:const Stream<void>.empty(),availableCheck:() async=>true,
       issueProof:(_)=>proof.future,readWithProof:(_) async { reads++; return {}; });
     await t.pumpWidget(MaterialApp(home:SecurityCollectorPage(repository:repository)));
-    await t.pumpAndSettle();
+    await settle(t);
     await t.enterText(find.byKey(const ValueKey('collector-password')),'password');
     await t.tap(find.text('再認証して収集記録を表示')); await t.pump(); await t.pump();
-    await t.tap(find.text('表示を取り消す')); await t.pumpAndSettle();
-    proof.complete('a'*64); await t.pumpAndSettle(); expect(reads,0);
+    await t.tap(find.text('表示を取り消す')); await settle(t);
+    proof.complete('a'*64); await settle(t); expect(reads,0);
     await t.pumpWidget(const SizedBox());
   });
   testWidgets('session replacement clears displayed records and remains locked after return', (t) async {
@@ -57,12 +64,12 @@ void main() {
       readWithProof:(_) async=>{'version':1,'source_provenance':'trusted_collector_observation',
         'coverage':'collector_observations_only','attack_confirmed':false,'events':[]});
     await t.pumpWidget(MaterialApp(home:SecurityCollectorPage(repository:repository)));
-    await t.pumpAndSettle();
+    await settle(t);
     await t.enterText(find.byKey(const ValueKey('collector-password')),'password');
-    await t.tap(find.text('再認証して収集記録を表示')); await t.pumpAndSettle();
+    await t.tap(find.text('再認証して収集記録を表示')); await settle(t);
     expect(find.textContaining('対象範囲の保存記録はありません'),findsOneWidget);
     key='other/b';changes.add(null);await t.pump();
-    key='master/a';changes.add(null);await t.pumpAndSettle();
+    key='master/a';changes.add(null);await settle(t);
     expect(find.byKey(const ValueKey('collector-password')),findsNothing);
     expect(find.textContaining('対象範囲の保存記録はありません'),findsNothing);
     expect(find.textContaining('本人確認が失効しました'),findsOneWidget);
