@@ -163,7 +163,9 @@ class _PayrollUnitConditionsPageState extends State<PayrollUnitConditionsPage> {
     final future = _month.isAfter(DateTime(now.year, now.month));
     if (!future || _value?.canEdit != true ||
         _value?.companyCommonFrozen == true ||
-        _value?.companyCommonHistoryMissing == true) return const [];
+        _value?.companyCommonHistoryMissing == true) {
+      return const [];
+    }
     return [for (final item in widget.individualAllowanceItems ?? <PayrollUnitItemDraft>[])
       if ((widget.section == null || item.section == widget.section) &&
           (widget.unit == null || item.unit == widget.unit)) item];
