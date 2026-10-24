@@ -17,7 +17,8 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
     with WidgetsBindingObserver {
   AppleAccountLink? _source;
   StreamSubscription<dynamic>? _events;
-  bool _enabled = false, _busy = false, _pending = false, _checking = false;
+  AppleLinkReadiness? _readiness;
+  bool _loading = true, _busy = false, _pending = false, _checking = false;
   bool _complete = false, _confirming = false;
   bool _foreground = true;
   int _generation = 0, _actionGeneration = 0;
@@ -46,6 +47,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
           Navigator.of(dialog).pop(false);
         }
         setState(() { _message = null; _complete = false; });
+        _load();
       }
       _verify();
     });
@@ -54,14 +56,17 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
 
   Future<void> _load() async {
     final generation = ++_generation;
-    final enabled = await _source?.providerEnabled() ?? false;
+    setState(() { _loading = true; _readiness = null; });
+    AppleLinkReadiness readiness;
+    try { readiness = await _source?.readiness() ?? AppleLinkReadiness.unavailable; }
+    catch (_) { readiness = AppleLinkReadiness.unavailable; }
     if (!mounted || generation != _generation) return;
-    setState(() { _enabled = enabled; });
+    setState(() { _readiness = readiness; _loading = false; });
   }
 
   Future<void> _start() async {
     final source = _source;
-    if (source == null || !_enabled || _busy || _pending || _confirming) return;
+    if (source == null || _readiness != AppleLinkReadiness.ready || _busy || _pending || _confirming) return;
     final original = source.client.auth.currentSession;
     if (original == null || original.isExpired) return;
     final confirmationGeneration = _actionGeneration;
@@ -97,8 +102,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
     } catch (_) {
       if (!mounted || action != _actionGeneration) return;
       setState(() { _busy = false; _pending = false;
-        _message = 'Appleを追加できませんでした。登録済みGoogleで直近にログインし、'
-          'Apple側とサーバー側の提供設定を確認してください。'; });
+        _message = 'Apple追加を完了できませんでした。現在のログイン方法を保持して、提供状態を再確認してください。'; });
     }
   }
 
@@ -148,11 +152,27 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Appleを追加'),
-      if (!_enabled) const Text('既存アカウントへのApple連携は準備中です。'
-        'Apple側・サーバー側の設定と本人再認証の確認が必要です。'
-        '今は登録済みの方法でログインしてください。'),
-      if (_enabled && !_pending && !_complete) TextButton(onPressed: _busy ? null : _start,
-        child: const Text('このアカウントにAppleを追加')),
+      if (_loading) const LinearProgressIndicator(),
+      if (!_loading && !_pending && !_complete) Text(switch (_readiness) {
+        AppleLinkReadiness.ready => '追加前の確認ができました。Appleの本人確認と連携はまだ完了していません。',
+        AppleLinkReadiness.linked => 'このアカウントへのApple連携は確認済みです。',
+        AppleLinkReadiness.providerDisabled => 'Apple連携は提供準備中です。現在のログイン方法を引き続き使えます。',
+        AppleLinkReadiness.recentOAuthRequired => '同じログインを保った追加の本人確認が必要です。この接続は準備中です。',
+        AppleLinkReadiness.loginRequired => '現在のログインを確認できません。Apple追加は開始できません。',
+        AppleLinkReadiness.googleRequired => '登録済みGoogleとの連携を確認できないため、Apple追加は開始できません。',
+        _ => 'Appleの提供状態または本人の登録状況を確認できませんでした。再確認してください。',
+      }),
+      if (_readiness == AppleLinkReadiness.ready && !_loading && !_pending && !_complete)
+        TextButton(onPressed: _busy ? null : _start,
+          child: const Text('このアカウントにAppleを追加')),
+      if (!_pending) TextButton(onPressed: _busy || _loading ? null : _load,
+        child: const Text('Apple追加の状態を再確認')),
+      const ExpansionTile(title: Text('？ Apple追加について'), children: [
+        Padding(padding: EdgeInsets.all(8), child: Text(
+          'Appleは現在のSKOアカウントへ追加します。Google・Face IDと会社の所属を保持します。'
+          '追加前の提供状態と本人確認、追加後の同じアカウントへの連携を確認します。'
+          '追加の本人確認が準備中の場合は開始できません。ログアウトせず、現在の方法を引き続き使えます。')),
+      ]),
       if (_pending) const Text('Appleの本人確認と同じアカウントへの連携を確認しています。'),
       if (_pending) TextButton(onPressed: () async {
         _actionGeneration++;
