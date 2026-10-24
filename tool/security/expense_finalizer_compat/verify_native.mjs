@@ -116,7 +116,7 @@ try {
   eq(await data(), originalData);
 
   phase = 'late-failure-rolls-back-body-and-data';
-  const late = install.replace(/commit;\s*$/, "do $$begin raise exception 'synthetic binder late failure';end$$;commit;\n");
+  const late = install.replace(/commit;\s*$/, () => "do $$begin raise exception 'synthetic binder late failure';end$$;commit;\n");
   await rejects(() => client.query(late), /synthetic binder late failure/);
   await rollback();
   eq(await source(), '22ff4377666ec56ccc4b261cf380e9c0');
