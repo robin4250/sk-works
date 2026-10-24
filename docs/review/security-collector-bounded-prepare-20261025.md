@@ -24,8 +24,17 @@ is tested only for credential absence; no credential value is selected.
    business privilege is generated. Catalog locks cover the unused decision.
    Undo drops only a newly created, still exact and unused role; it refuses any
    dependency/ACL/credential/membership change and never drops a pre-existing role.
-   Managed Supabase may disallow system-catalog locks or CREATE ROLE. Success as
-   an isolated postgres superuser does **not** prove these production permissions.
+   The actual read-only operator flags are `postgres` / `postgres`, non-superuser
+   with CREATEROLE, CREATEDB, INHERIT, LOGIN, REPLICATION and BYPASSRLS. PostgreSQL17
+   non-super CREATEROLE can add automatic creator ADMIN membership, so the current
+   generator deliberately emits **zero role SQL artifacts** for that operator.
+   A new Native case measures creator membership flags and system-catalog lock
+   access under the same public flags. It does not grant a SET/INHERIT exception,
+   elevate production, or claim managed permissions from a superuser fixture.
+   Root must separately review any minimal creator-only exception or managed
+   provisioning route before an executable production role artifact is prepared.
+   Earlier role-only artifacts without this operator guard are superseded and
+   must not be used. Production CREATE ROLE/locking remains unproven.
 2. **Fresh observation after role stage; add-only SQL PREPARE ONLY.** Missing role
    returns blockers and **zero SQL artifacts**, as verified against the actual
    absent-role observation. With a separately reviewed matching role, the second
@@ -73,9 +82,10 @@ fixed by the fresh observation. Auth session **schema only** is protected withou
 selecting session rows or blocking ordinary session-row writes. New functions
 pin source, language, return/argument types, full non-OID attributes, owner and
 exact ACL. New tables pin owner, RLS, absence of policies/extra grantees, exact
-column shape/default/identity and constraint count/validation class. Further
-strengthening to exact normalized CHECK/index expressions remains a review item
-before any production use; `production_ready` deliberately remains false.
+column shape/default/identity, exact normalized CHECK/PK definitions, constraint
+validation class and complete index count/key/direction/expression/predicate /
+validity/uniqueness shapes. These newly authored PostgreSQL17 expectations still
+require Native confirmation; `production_ready` deliberately remains false.
 
 Initial postflight and unused restore also demand all gates false and all proof,
 event/read-audit tables empty. The audit sequence must never have been used.
@@ -94,6 +104,10 @@ unused undo / retry / used undo denial, unexpected existing/new function securit
 drift refusal, connected-role undo refusal and both physical proof-writer/restore
 race orders (writer-first proof survives; restore-first writer cannot commit).
 The existing real GoTrue checks need not be rerun just for this offline wrapper.
-These new two-connection cases are prepared, not yet passed. Exact normalized
-new relation CHECK/index catalog pins must be complete
-before this candidate can become production-ready. No success is claimed yet.
+These new two-connection cases and exact CHECK/index drift refusal cases are
+prepared, not yet passed. The first remote attempt stopped during Docker service
+creation because single-quoted health-command arguments were split by the runner;
+SQL was not reached. Its workflow is corrected to the existing double-quoted
+health-command pattern. It is not classified as a SQL/test failure.
+All prepared cases must succeed before production readiness can be
+reviewed. No success is claimed yet.

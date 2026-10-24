@@ -21,7 +21,7 @@ def canonical(value):
 
 
 def validate(value):
-    if set(value) != {'schema','role','credential_absent','memberships','dependencies'} or value['schema'] != 1:
+    if set(value) != {'schema','operator','role','credential_absent','memberships','dependencies'} or value['schema'] != 1:
         raise ValueError('exact role observation required')
     if value['credential_absent'] is not True or value['memberships'] != 0 or value['dependencies'] != 0:
         raise ValueError('bridge role already credentialed, connected or used')
@@ -47,7 +47,7 @@ end $role_guard$;
 def prepare(snapshot, output):
     before = json.loads(Path(snapshot).read_text())
     validate(before)
-    after = dict(schema=1, role=SPEC, credential_absent=True, memberships=0, dependencies=0)
+    after = dict(schema=1, operator=before['operator'],role=SPEC, credential_absent=True, memberships=0, dependencies=0)
     # These locks also prevent GRANT/dependency races across unused checks.
     # Managed production may refuse system-catalog locks/CREATE ROLE: that is a
     # prerequisite failure, not permission to remove the lock or borrow an owner.
@@ -72,6 +72,13 @@ def prepare(snapshot, output):
         existing_role_preserved=before['role'] is not None,
         managed_production_permissions_proven=False,
         snapshot_sha256=hashlib.sha256(Path(snapshot).read_bytes()).hexdigest(), artifacts={})
+    if before['operator'].get('rolsuper') is not True:
+        # PostgreSQL17 CREATEROLE adds creator ADMIN membership; catalog locks
+        # may also require elevated managed privileges. Do not manufacture a
+        # membership exception or suggest SET/INHERIT to make production pass.
+        manifest['blockers']=['managed_non_superuser_role_provision_not_proven_membership_zero_required']
+        status=out/'prepare-status.json';status.write_text(json.dumps(manifest,indent=2)+'\n');status.chmod(0o600)
+        return manifest
     for name, content in contents.items():
         target=out/name;target.write_text(content);target.chmod(0o600)
         manifest['artifacts'][name]=hashlib.sha256(content.encode()).hexdigest()

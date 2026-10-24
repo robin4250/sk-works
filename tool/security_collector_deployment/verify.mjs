@@ -23,6 +23,20 @@ const prepare=async(script,snapshot,name)=>{
 const refusal=async(sql,pattern)=>{await assert.rejects(db.query(sql),pattern);await db.query('rollback');checks++;};
 try{
  await db.query(await sql('foundation.sql'));
+ // Public flags mirror production; no password/login or hosted session is used.
+ await db.query('create role collector_fixture_operator LOGIN NOSUPERUSER CREATEROLE CREATEDB INHERIT REPLICATION BYPASSRLS');
+ await db.query('set role collector_fixture_operator');
+ await db.query('begin');
+ await db.query('create role sko_security_collector_ingest NOLOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS');
+ const creatorMembership=(await db.query("select admin_option,inherit_option,set_option from pg_auth_members where roleid='sko_security_collector_ingest'::regrole and member='collector_fixture_operator'::regrole")).rows;
+ ok(creatorMembership.length,1,'Non-super CREATEROLE automatically gains a creator membership');
+ ok(creatorMembership[0].admin_option,true,'Non-super creator membership carries ADMIN');
+ await db.query('rollback');
+ let catalogueLockDenied=false;
+ try{await db.query('begin;lock table pg_catalog.pg_authid,pg_catalog.pg_auth_members,pg_catalog.pg_shdepend in share row exclusive mode');}
+ catch(error){ok(error.code,'42501','Non-super operator cannot assume system-catalog lock permission');catalogueLockDenied=true;}
+ await db.query('rollback');await db.query('reset role');
+ console.log(JSON.stringify({managed_like_creator_membership:creatorMembership,managed_like_catalog_lock_denied:catalogueLockDenied,actual_managed_ddl_permission_proven:false,production_connected:false}));
  const absent=await roleInventory();ok(absent.role,null,'No bridge role silently precreated');
  const role=await prepare('prepare_role.py',absent,'role');
  const roleInstall=await readFile(join(role.out,'private-role-install.sql.review-only'),'utf8');
@@ -49,10 +63,22 @@ try{
  await refusal(post,/routine contract differs/);
  await db.query('alter function public.master_security_collector_events(text) security invoker');
  await db.query(post);
+ await db.query("alter table private.reauthentication_rollout drop constraint reauthentication_rollout_scope_check;alter table private.reauthentication_rollout add constraint reauthentication_rollout_scope_check check(scope in ('secondary_password','master_feature','master_security','unexpected'))");
+ await refusal(post,/exact CHECK/);
+ await db.query("alter table private.reauthentication_rollout drop constraint reauthentication_rollout_scope_check;alter table private.reauthentication_rollout add constraint reauthentication_rollout_scope_check check(scope in ('secondary_password','master_feature','master_security'))");
+ await db.query(post);
+ await db.query('drop index private.security_collector_received;create index security_collector_received on private.security_collector_events(received_at,event_id)');
+ await refusal(post,/index shape/);
+ await db.query('drop index private.security_collector_received;create index security_collector_received on private.security_collector_events(received_at desc,event_id)');
+ await db.query(post);
  await refusal(roleUndo,/differs/);
  await refusal(install,/inventory differs|already exists/);
  await db.query(undo);ok(await inventory(),before,'Unused SQL restore returns exact catalogs and business hashes');
  await db.query(install);await db.query(post);
+ await db.query("select nextval('private.security_collector_read_audit_audit_id_seq')");
+ await refusal(undo,/audit sequence used/);
+ await db.query('alter sequence private.security_collector_read_audit_audit_id_seq restart with 1');
+ await db.query(post);
  const writer=new Client({connectionString:url});await writer.connect();
  const mainPid=(await db.query('select pg_backend_pid() pid')).rows[0].pid;
  const writerPid=(await writer.query('select pg_backend_pid() pid')).rows[0].pid;
