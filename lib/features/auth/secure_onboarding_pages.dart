@@ -338,8 +338,8 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                             : _passwordResetMode
                                 ? '本パスワードはログイン用で、第2パスワードとは別です。\n'
                                   'Face IDによる第2パスワードの再設定では、本パスワードは変わりません。\n'
-                                  'Googleで登録した方は「通常ログインへ戻る」から、登録済みのGoogleでログインしてください。\n'
-                                  '電話番号と本パスワードを登録済みの方は、端末に保存したログイン用パスワードを確認してください。\n'
+                                  'Googleでログインできる方は「通常ログインへ戻る」からログインし、アカウント設定で第一パスワードを設定・変更できます。\n'
+                                  '登録済みの電話番号または確認済みメールと、保存した本パスワードを使います。Google用のパスワードとは別です。\n'
                                   'この画面からの再設定・SMS復旧は利用できません。'
                                 : _registerMode
                                     ? '携帯電話番号をIDとして登録します。'
@@ -376,8 +376,16 @@ class _SecureAuthPageState extends State<SecureAuthPage> with WidgetsBindingObse
                           }),
                           child: Text(_emailLogin ? '電話番号でログインする' : '登録済みのメールでログインする'),
                         ),
-                        if (_emailLogin)
-                          const Text('SKOにメールアドレスと本パスワードを登録済みの方が利用できます。Googleで登録した方は、登録済みのGoogleでログインしてください。'),
+                        if (_emailLogin) ...[
+                          const Text('確認済みメールと、SKOに保存した第一パスワードでログインします。電話番号の登録は不要です。'),
+                          const ExpansionTile(title: Text('？ メールでログインするには'), children: [
+                            Padding(padding: EdgeInsets.all(8), child: Text(
+                              'Googleで使っている同じSKOアカウントでも、アカウント設定の「第一パスワードを設定・変更」で保存すれば、確認済みメールでログインできます。'
+                              'Google用のパスワードとは別です。現在ログイン中ならログアウトせずに設定できます。'
+                              '次回のログインで「登録済みのメールでログインする」を選びます。'
+                              'メールが未確認の場合は、先にメールの所有確認が必要です。')),
+                          ]),
+                        ],
                         const SizedBox(height: 10),
                       ],
                       if (!_passwordResetMode) ...[

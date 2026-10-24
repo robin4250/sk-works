@@ -140,4 +140,18 @@ void main() {
     expect(tester.widget<TextField>(find.byType(TextField).at(0)).controller!.text, isEmpty);
     expect(requests, isEmpty);
   });
+  testWidgets('Google account email guidance uses saved SKO password without signout', (tester) async {
+    await show(tester, () {});
+    await tester.tap(find.text('登録済みのメールでログインする'));
+    await tester.pumpAndSettle();
+    expect(find.text('確認済みメールと、SKOに保存した第一パスワードでログインします。電話番号の登録は不要です。'), findsOneWidget);
+    await tester.tap(find.text('？ メールでログインするには'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Googleで使っている同じSKOアカウントでも'), findsOneWidget);
+    expect(find.textContaining('現在ログイン中ならログアウトせずに設定できます。'), findsOneWidget);
+    expect(find.textContaining('Google用のパスワードとは別です。'), findsOneWidget);
+    expect(requests, isEmpty);
+    expect(client.auth.currentSession, isNull);
+  });
+
 }
