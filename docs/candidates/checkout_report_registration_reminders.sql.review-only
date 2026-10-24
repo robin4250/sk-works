@@ -38,8 +38,8 @@ begin
    select array_agg(distinct source) into source_ids from (
     select (x->>'source_clock_in_id')::uuid source from jsonb_array_elements(original_items) x
     union select (x->>'clock_out_id')::uuid from jsonb_array_elements(original_items) x) selected;
-   select coalesce(jsonb_agg(jsonb_build_object('cid',cid,'wid',wid,'day',day) order by cid,wid,day),'[]'::jsonb)
-    into scopes from(select distinct r.company_id cid,w.worker_id wid,r.report_date day
+   select coalesce(jsonb_agg(jsonb_build_object('cid',cid,'wid',wid,'day',work_day) order by cid,wid,work_day),'[]'::jsonb)
+    into scopes from(select distinct r.company_id cid,w.worker_id wid,r.report_date as work_day
      from public.daily_reports r join public.daily_report_workers w on w.report_id=r.id
      where r.id=any(report_ids)) all_report_workers;
    -- Match the existing signature writer order: all parent/worker/month scopes
