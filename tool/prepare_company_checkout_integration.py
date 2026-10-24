@@ -42,10 +42,12 @@ def draft_patch(source):
   select exists(select 1 from public.daily_report_workers where report_id=checkout_prior_report_id
     and company_allowance_selections is not null) into checkout_had_choices;
   if v_report_id is not null then""")
-    # Existing destination writer clears these even on an unchanged draft save.
-    # In typed reports approval invalidation is decided by the complete old/new basis.
+    # Preserve the original destination clear for untyped reports. Only typed
+    # old/new payloads defer approval invalidation to the complete basis compare.
     for field in ['representative_signature_json','representative_signer_name','supervisor_signature_json','supervisor_signer_name']:
-        source=re.sub(r'        '+field+r'=null,\n','',source)
+        source=source.replace('        '+field+'=null,', '        '+field+'=case when checkout_had_choices or exists('
+            "select 1 from jsonb_array_elements(coalesce(p_workers,'[]'::jsonb)) x where x?'company_allowance_selections') then "
+            +field+' else null end,')
     source = regex_once(source, r'  delete from public\.daily_report_workers\s+where report_id\s*=\s*v_report_id;',
         '''  select coalesce(jsonb_object_agg(worker_id::text,company_allowance_selections),'{}'),
     coalesce(jsonb_object_agg(worker_id::text,allowance_label),'{}'),
@@ -87,16 +89,19 @@ def refresh_patch(source):
         '''      if allowance_index is not null and not company_checkout_allowance_private.covers_legacy(cid,wid,a.work_date,allowance_index) then''')
 
 def legacy_patch(source):
-    source=once(source,' effective:=raw;',""" effective:=raw;
- publication_items:=(select coalesce(jsonb_agg(e),'[]'::jsonb) from jsonb_array_elements(publication_items) e
+    source=once(source,' select c.items into individual_items',""" publication_items:=(select coalesce(jsonb_agg(e),'[]'::jsonb) from jsonb_array_elements(publication_items) e
   where e->>'origin' is distinct from 'company_legacy' or not exists(
    select 1 from public.attendance_entries a join company_checkout_allowance_private.receipts r
     on r.id=a.company_allowance_receipt_id and r.company_id=a.company_id and r.worker_id=a.worker_id
      and r.report_id=a.source_report_id and r.work_date=a.work_date
    cross join lateral jsonb_array_elements(r.snapshot->'items') selected
    where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end
-    and selected->>'origin'='company_legacy' and selected->>'id'=e->>'id'));
-""")
+    and selected->>'origin'='company_legacy' and selected->>'id'=e->>'id'
+    and (select count(*) from generate_series(1,3) legacy_slot where nullif(btrim(raw->>('allowance_name_'||legacy_slot)),'')=e->>'name')=1
+    and exists(select 1 from generate_series(1,3) legacy_slot
+     where nullif(btrim(raw->>('allowance_name_'||legacy_slot)),'')=e->>'name'
+      and coalesce((raw->>('allowance_'||legacy_slot))::numeric,0) is distinct from (e->>'amount_yen')::numeric)));
+ select c.items into individual_items""")
     source = once(source, "where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date order by name loop",
         "where a.company_id=cid and a.worker_id=wid and a.work_date between p_start and p_end and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date and a.company_allowance_receipt_id is null order by name loop")
     return once(source, "and item->>'name'=any(coalesce(a.allowance_names,'{}'::text[]));",

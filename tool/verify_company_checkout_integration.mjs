@@ -12,7 +12,7 @@ const run=promisify(execFile);
 const root=await mkdtemp(join(tmpdir(),'company-checkout-proof-'));
 let client, phase='destination',checks=0;
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
-const A=id(1),B=id(2),U=id(10),OTHER=id(11),W=id(20),W2=id(21),W3=id(22),W4=id(23),SITE=id(30),SITE2=id(31),SITE3=id(32);
+const A=id(1),B=id(2),U=id(10),OTHER=id(11),W=id(20),W2=id(21),W3=id(22),W4=id(23),W5=id(24),SITE=id(30),SITE2=id(31),SITE3=id(32);
 const LEGACY=id(100),DAYS=[id(101),id(102),id(103),id(104)],HOUR=id(105),MONTH=id(106),FOREIGN=id(107);
 const dbBody=definition=>{const m=/\bAS\s+(\$[A-Za-z_0-9]*\$)([\s\S]*)\1\s*;?\s*$/i.exec(definition);assert.ok(m);return m[2];};
 const md5=s=>createHash('md5').update(s).digest('hex');
@@ -64,6 +64,8 @@ try{
  await client.query('insert into companies(id) values($1),($2)',[A,B]);
  await client.query('insert into company_members(company_id,user_id) values($1,$2),($3,$4)',[A,U,B,OTHER]);
  await client.query("insert into workers(id,company_id,name) values($1,$2,'合成社員A'),($3,$2,'合成社員B'),($4,$2,'合成社員C'),($5,$2,'合成社員D')",[W,A,W2,W3,W4]);
+ await client.query("insert into workers(id,company_id,name) values($1,$2,'合成社員E')",[W5,A]);
+ await client.query('insert into worker_payroll_settings(company_id,worker_id) values($1,$2)',[A,W5]);
  await client.query('insert into sites(id,company_id) values($1,$2),($3,$2),($4,$2)',[SITE,A,SITE2,SITE3]);
  await client.query("insert into worker_payroll_settings(company_id,worker_id,allowance_name_1,allowance_1) values($1,$2,'合成会社日手当',1700),($1,$3,'合成会社日手当',1700),($1,$4,'合成会社日手当',1700),($1,$5,'合成会社日手当',1700)",[A,W,W2,W3,W4]);
  await client.query("insert into company_rate_settings(company_id,allowance_1_name,allowance_1_amount_yen,allowance_1_unit) values($1,'合成会社日手当',3000,'回'),($2,'他社の手当',9999,'回')",[A,B]);
@@ -165,6 +167,12 @@ try{
  await client.query("update daily_reports set representative_signature_json=$2::jsonb,supervisor_signature_json=$2::jsonb where id=$1",[partial,signature]);
  await client.query('select public.save_daily_report_destination_draft($1,null,$2,$3,$4,$5::jsonb)',[partial,id(40),'2020-10-28','変更された作業',JSON.stringify([worker(W,[])])]);
  eq(await q('select representative_signature_json is null and supervisor_signature_json is null v from daily_reports where id=$1',[partial]),true,'Changed route clears both approvals');
+ phase='legacy-destination-approval-clear-preserved';
+ const untypedWorker={worker_id:W,allowance_label:legacy.name_snapshot,work_category:'day',allowance_amount:0,overtime_hours:0,early_hours:0,night_hours:0};
+ const untyped=await q("select public.save_daily_report_destination_draft(null,$1,null,'2020-10-29','旧形式日報',$2::jsonb) v",[SITE,JSON.stringify([untypedWorker])]);
+ await client.query("update daily_reports set representative_signature_json=$2::jsonb,supervisor_signature_json=$2::jsonb where id=$1",[untyped,signature]);
+ await client.query("select public.save_daily_report_destination_draft($1,$2,null,'2020-10-29','旧形式日報の編集',$3::jsonb)",[untyped,SITE,JSON.stringify([untypedWorker])]);
+ eq(await q('select representative_signature_json is null and supervisor_signature_json is null v from daily_reports where id=$1',[untyped]),true,'Untyped destination edit retains original approval clear');
  phase='actual-work-hours-not-invented';
  const hourReport=await draft('2020-10-23',W,[choice('company_common',HOUR,'合成時間手当','hour')]);await sign(hourReport);
  current=await statement(W);
@@ -183,7 +191,17 @@ try{
  eq((await statement(W2)).detail.custom_earnings_total,3000,'Active publication mixed month charges typed receipt only once');
  eq((await statement(W2)).detail['合成会社日手当'],1700,'Active publication leaves old untyped named detail at individual rate');
  eq((await statement(W2)).calculation_blocked,false,'Mixed typed and historical personal day is source-resolved');
+ const duplicatePublication=await q("select company_common_canonical_review_private.resolve_legacy($1,$2,'2020-10-01','2020-10-31',p.items||jsonb_build_array(p.items->1),1,'2020-10-01') v from company_common_allowance_private.payroll_publications p where p.company_id=$1",[A,W2]);
+ eq(duplicatePublication.reasons[0].code,'publication_source_collision','Typed source partition cannot hide malformed duplicate publication');
 
+
+ phase='active-legacy-without-individual-slot';
+ await client.query("insert into attendance_entries(company_id,worker_id,site_id,work_date,base_man_days,allowance_names) values($1,$2,$3,'2020-10-16',1,array['合成会社日手当'])",[A,W5,SITE]);
+ eq((await statement(W5)).gross_pay,13000,'Absent individual slot inherits active publication3000 on old untyped day');
+ const absentSlotTyped=await draft('2020-10-15',W5,[updatedLegacy]);await sign(absentSlotTyped);
+ eq((await statement(W5)).gross_pay,26500,'Absent slot preserves old publication3000 and adds new typed3500 on separate date');
+ eq((await statement(W5)).detail.custom_earnings_total,6500,'Absent slot old and typed authorities are independently counted once');
+ eq((await statement(W5)).calculation_blocked,false,'Absent slot historical untyped plus typed source remains resolved');
  phase='manual-and-finalized-payroll-preserved';
  await client.query("insert into payroll_statements(company_id,worker_id,period_start,period_end,gross_pay,deductions,net_pay,workflow_state,automatic_calculation) values($1,$2,'2020-10-01','2020-10-31',777,7,770,'finalized',true),($1,$3,'2020-10-01','2020-10-31',888,8,880,'draft',false)",[A,W3,W4]);
  const protectedBefore=[await statement(W3),await statement(W4)];
