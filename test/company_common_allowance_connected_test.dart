@@ -193,6 +193,9 @@ void main() {
   await tester.tap(find.widgetWithText(OutlinedButton, '日単位')); await tester.pumpAndSettle();
   expect(find.byKey(const ValueKey('legacy-1-name')), findsOneWidget);
   expect(find.byKey(const ValueKey('legacy-2-name')), findsNothing);
+  await tester.enterText(find.byKey(const ValueKey('legacy-1-name')), '削除前の編集名');
+  await tester.enterText(find.byKey(const ValueKey('legacy-1-amount')), '3000');
+  await tester.enterText(find.byKey(const ValueKey('legacy-1-unit')), '件');
   await tester.ensureVisible(find.byKey(const ValueKey('legacy-1-remove')));
   await tester.tap(find.byKey(const ValueKey('legacy-1-remove'))); await tester.pumpAndSettle();
   expect(find.byKey(const ValueKey('legacy-1-name')), findsNothing); expect(repo.writes, 0);
@@ -209,12 +212,17 @@ void main() {
   expect(find.byKey(const ValueKey('legacy-1-name')), findsNothing);expect(repo.writes, 1);
   await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
  });
- testWidgets('legacy deletion can be undone without issuing a save', (tester) async {
+ testWidgets('legacy deletion undo restores all unsaved fields without issuing a save', (tester) async {
   final repo = FakeRepository();await show(tester, repo, MemoryStore());
   await tester.tap(find.widgetWithText(OutlinedButton, '日単位')); await tester.pumpAndSettle();
+  await tester.enterText(find.byKey(const ValueKey('legacy-1-name')), '未保存の名称');
+  await tester.enterText(find.byKey(const ValueKey('legacy-1-amount')), '3000');
+  await tester.enterText(find.byKey(const ValueKey('legacy-1-unit')), '件');
   await tester.ensureVisible(find.byKey(const ValueKey('legacy-1-remove')));await tester.tap(find.byKey(const ValueKey('legacy-1-remove')));await tester.pumpAndSettle();
-  await tester.tap(find.text('削除を取り消す'));await tester.pumpAndSettle();
-  expect(tester.widget<TextField>(find.byKey(const ValueKey('legacy-1-name'))).controller!.text, '旧原値');expect(repo.writes, 0);
+  await tester.ensureVisible(find.text('削除を取り消す'));await tester.tap(find.text('削除を取り消す'));await tester.pumpAndSettle();
+  expect(tester.widget<TextField>(find.byKey(const ValueKey('legacy-1-name'))).controller!.text, '未保存の名称');
+  expect(tester.widget<TextField>(find.byKey(const ValueKey('legacy-1-amount'))).controller!.text, '3000');
+  expect(tester.widget<TextField>(find.byKey(const ValueKey('legacy-1-unit'))).controller!.text, '件');expect(repo.writes, 0);
   await tester.pumpWidget(const SizedBox());tester.view.resetPhysicalSize();tester.view.resetDevicePixelRatio();
  });
  testWidgets('in-flight registration cannot issue duplicate commands', (tester) async {

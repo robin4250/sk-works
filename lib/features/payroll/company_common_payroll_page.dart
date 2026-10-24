@@ -71,6 +71,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
   final _legacyAmounts = <int, TextEditingController>{};
   final _legacyUnits = <int, TextEditingController>{};
   final _removedLegacySlots = <int>{};
+  final _removedLegacyDrafts = <int, ({String name, String amount, String unit})>{};
   bool _confirming = false;
   bool _publishing = false;
   String _publicationType = 'hourly';
@@ -105,6 +106,8 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     if (!mounted || _revoked) return;
     _closeDialog();
     _generation++;
+    _removedLegacySlots.clear();
+    _removedLegacyDrafts.clear();
     for (final controller in [..._legacyNames.values, ..._legacyAmounts.values, ..._legacyUnits.values]) { controller.clear(); }
     setState(() { _revoked = true; _state = null; _pending = null; _items.clear(); _error = 'ログイン情報または会社が変更されました。画面を開き直してください。'; });
   }
@@ -148,6 +151,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     if (only != null) _publicationType = only.name;
     _state = value;
     _removedLegacySlots.clear();
+    _removedLegacyDrafts.clear();
     for (final slot in value.legacyRefs) {
       final number = slot['slot'] as int;
       (_legacyNames[number] ??= TextEditingController()).text = slot['name'] as String? ?? '';
@@ -166,6 +170,10 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     if (!_canEditLegacy) return;
     final number = slot['slot'] as int;
     setState(() {
+      _removedLegacyDrafts[number] = (
+        name: _legacyNames[number]!.text, amount: _legacyAmounts[number]!.text,
+        unit: _legacyUnits[number]!.text,
+      );
       _removedLegacySlots.add(number);
       _legacyNames[number]!.clear();
       // Retire the name through the existing identity-aware save contract.
@@ -178,9 +186,15 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     if (!_canEditLegacy) return;
     setState(() {
       for (final slot in _state!.legacyRefs.where((x) => _removedLegacySlots.contains(x['slot']))) {
-        _legacyNames[slot['slot']]!.text = slot['name'] as String? ?? '';
+        final draft = _removedLegacyDrafts[slot['slot']];
+        if (draft != null) {
+          _legacyNames[slot['slot']]!.text = draft.name;
+          _legacyAmounts[slot['slot']]!.text = draft.amount;
+          _legacyUnits[slot['slot']]!.text = draft.unit;
+        }
       }
       _removedLegacySlots.clear();
+      _removedLegacyDrafts.clear();
     });
   }
   Future<void> _load() async {
