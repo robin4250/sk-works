@@ -1,0 +1,56 @@
+name: Collector signed transport native PostgreSQL review
+on:
+  pull_request:
+    paths:
+      - 'tool/security/collector_signed_transport_candidate/**'
+      - 'tool/security/collector_signed_transport_native.mjs'
+      - 'tool/security/collector_storage_pg_adapter.mjs'
+      - 'tool/security/collector_fixture_guard*'
+      - 'tool/security/fixture_dependencies/**'
+      - 'docs/candidates/security_collector_storage_v1_20261020.sql.review-only'
+      - 'docs/review/collector_signed_transport_native_20261024.md'
+      - '.github/workflows/collector-signed-transport-native.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/security/collector_signed_transport_candidate/**'
+      - 'tool/security/collector_signed_transport_native.mjs'
+      - 'tool/security/collector_storage_pg_adapter.mjs'
+      - 'tool/security/collector_fixture_guard*'
+      - 'tool/security/fixture_dependencies/**'
+      - 'docs/candidates/security_collector_storage_v1_20261020.sql.review-only'
+      - 'docs/review/collector_signed_transport_native_20261024.md'
+      - '.github/workflows/collector-signed-transport-native.yml'
+permissions:
+  contents: read
+jobs:
+  native-signed-transport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_collector_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_collector_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Verify existing disposable destination guard
+        run: node tool/security/collector_fixture_guard_test.mjs
+      - name: Validate native wrapper syntax
+        run: node --check tool/security/collector_signed_transport_native.mjs
+      - name: Existing 14 HTTP and SQL checks with native PostgreSQL 17
+        run: node tool/security/collector_signed_transport_native.mjs
+        env:
+          SKO_COLLECTOR_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_collector_fixture
