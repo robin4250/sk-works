@@ -18,6 +18,11 @@ NEW = {
     'company_common_allowance_private.registered_labels(uuid)': ('44f58a1d685a9cf5e3928b02abccc289', True),
     'public.read_company_registered_allowance_labels(uuid)': ('ff5e008d239b23bb411cd750b0e8ab11', False),
 }
+TABLES = {
+    'public.companies', 'public.company_members', 'public.company_rate_settings',
+    'company_allowance_identity_private.identities', 'company_allowance_identity_private.state',
+    'company_common_allowance_private.items', 'company_common_allowance_private.state',
+}
 
 
 def comparable(snapshot):
@@ -82,7 +87,7 @@ def generate(snapshot, output):
         raise ValueError('reviewed candidate hash changed')
     after = after_snapshot(before, candidate)
     tables = sorted(before['tables'], key=lambda name: int(before['tables'][name]['oid']))
-    if len(tables) != 7 or any(not re.fullmatch(r'[a-z_]+\.[a-z_]+', name) for name in tables):
+    if set(tables) != TABLES or any(not re.fullmatch(r'[a-z_]+\.[a-z_]+', name) for name in tables):
         raise ValueError('protected relation inventory differs')
     begin = "begin;\nset local lock_timeout='5s';\nset local statement_timeout='30s';\n" + ''.join(
         'lock table ' + name + ' in share mode;\n' for name in tables)
