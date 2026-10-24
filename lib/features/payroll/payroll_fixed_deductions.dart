@@ -11,6 +11,7 @@ const fixedPayrollDeductions = <(String, String, String)>[
   ('health_insurance', '健康保険', '健康保険料'),
   ('pension_insurance', '厚生年金保険', '厚生年金保険'),
   ('nursing_insurance', '介護保険', '介護保険料'),
+  ('child_support', '子ども・子育て支援金', '子ども・子育て支援金'),
 ];
 
 /// Reads generated monthly amounts; corrections use the existing audited,
@@ -182,7 +183,8 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       }
       final storedOverrides = profile?['deduction_overrides'] ?? const {};
       if (storedOverrides is! Map || storedOverrides.entries.any((e) =>
-          !_controllers.containsKey(e.key) || _yen(e.value) == null)) {
+          !_controllers.containsKey(e.key) || e.key == 'child_support' ||
+          _yen(e.value) == null)) {
         throw const FormatException('控除の修正額を確認できません');
       }
       final statement = await widget.readStatement(widget.companyId, widget.workerId, _month);
@@ -341,13 +343,15 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       'employment_insurance' => '雇用保険の対象支給額 × 会社に登録した本人負担料率',
       'pension_insurance' => '厚生年金の標準報酬月額 × 会社に登録した本人負担料率',
       'nursing_insurance' => '加入条件・対象月の年齢条件を確認し、健康保険の標準報酬月額 × 会社に登録した本人負担料率',
+      'child_support' => '本人の加入条件と健康保険の標準報酬月額、会社に登録した支援金の本人負担料率から計算します。金額・加入条件の変更は「個別の計算条件」で行います。',
       'resident_tax' => '通知書に基づいて登録した月額と適用開始月を使います。対象月以前の最新設定を適用します。',
       _ => '健康保険の標準報酬月額 × 会社に登録した本人負担料率',
     };
     final action = await showDialog<String>(context: context, builder: (context) => AlertDialog(
       title: Text('$titleの計算式'),
-      content: Text('$formula\n\n金額は給料明細と同じ給与計算結果です。手入力した項目は修正額を優先し、「自動計算に戻す」で解除できます。'
-          '${key == 'health_insurance' || key == 'nursing_insurance' ? '\n健康保険・介護保険・支援金は給与計算側の共通の端数処理を使います。' : ''}'),
+      content: Text('$formula\n\n金額は給料明細と同じ給与計算結果です。'
+          '${key == 'child_support' ? 'この欄は読取専用です。' : '手入力した項目は修正額を優先し、「自動計算に戻す」で解除できます。'}'
+          '${key == 'health_insurance' || key == 'nursing_insurance' || key == 'child_support' ? '\n健康保険・介護保険・支援金は給与計算側の共通の端数処理を使います。' : ''}'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる')),
         if (key != 'resident_tax' && widget.openConditions != null)
@@ -432,7 +436,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
               TextFormField(
                 key: ValueKey('fixed-deduction-${item.$1}-amount'),
                 controller: _controllers[item.$1],
-                enabled: widget.canEdit && _allowed && !_busy && !_uncertain &&
+                enabled: item.$1 != 'child_support' && widget.canEdit && _allowed && !_busy && !_uncertain &&
                     (item.$1 == 'income_tax' || const ['rates', 'manual'].contains(_profile?['insurance_mode'])),
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(labelText: item.$2, suffixText: '円',
@@ -477,6 +481,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
     ],
   );
 }
+
 
 
 
