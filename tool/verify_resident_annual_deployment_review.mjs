@@ -37,7 +37,7 @@ async function observe(){
   await db.exec('rollback;');return result;
  }catch(e){await db.exec('rollback;');throw e;}
 }
-async function rejected(sql,args){let failed=false;try{await db.query(sql,args);}catch{failed=true;await db.exec('rollback;');}ok(failed);}
+async function rejected(sql,args,expected){let failed=false;try{await db.query(sql,args);}catch(error){failed=true;await db.exec('rollback;');if(expected)assert.match(error.message,expected);}ok(failed);}
 const cid='10000000-0000-0000-0000-000000000001',wid='40000000-0000-0000-0000-000000000001';
 const owner='00000000-0000-0000-0000-000000000001',viewer='00000000-0000-0000-0000-000000000003';
 async function actor(id){await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role authenticated');}
@@ -49,9 +49,9 @@ try{
  await db.exec('reset role;create role service_role nologin;');
  const before=await observe(),install=artifact('install',before);
  await db.exec('begin;');await db.query("update public.workers set name=name||'-stale' where id=$1",[wid]);
- await rejected(install);assert.deepEqual(await observe(),before);assertions++;
+ await rejected(install,undefined,/annual catalog\/data checkpoint changed/);assert.deepEqual(await observe(),before);assertions++;
  ok((await db.query("select to_regnamespace('resident_tax_annual_private') is null v")).rows[0].v);
- await rejected(install.replace(/commit;\s*$/i,"do $$begin raise exception 'fixture late postflight';end$$;commit;"));
+ await rejected(install.replace(/commit;\s*$/i,()=>"do $$begin raise exception 'fixture late postflight';end$$;commit;"),undefined,/fixture late postflight/);
  assert.deepEqual(await observe(),before);assertions++;
  await db.exec(install);
  const after=await observe(),restore=artifact('unused-restore',before,after);

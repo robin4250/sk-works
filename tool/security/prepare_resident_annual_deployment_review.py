@@ -142,7 +142,7 @@ def postflight(before,expected):
     sql=observer()+"do $resident_annual_postflight$ declare b jsonb:="+literal(json.dumps(before,separators=(',',':')))+"::jsonb; a jsonb:=current_setting('sko.resident_annual_observation')::jsonb; begin\n"
     sql+="if (a->'data')-array["+','.join(map(literal,NEW_TABLES))+"] is distinct from b->'data' or (a->'relations')-array["+','.join(map(literal,NEW_TABLES))+"] is distinct from b->'relations' or (a->'routines')-array["+','.join(map(literal,sorted(NEW_ROUTINES)))+"] is distinct from b->'routines' or (a->'namespaces')-'resident_tax_annual_private' is distinct from b->'namespaces' then raise exception 'annual installation changed originals';end if;\n"
     for section,expected_names in [('relations',set(PROTECTED_TABLES+NEW_TABLES)),('data',set(PROTECTED_TABLES+NEW_TABLES)),('routines',DEPENDENCIES|NEW_ROUTINES),('namespaces',EXISTING_NAMESPACES|{NEW_SCHEMA})]:
-        sql+="if (select array_agg(x order by x) from jsonb_object_keys(a->"+literal(section)+")x) is distinct from array["+','.join(map(literal,sorted(expected_names)))+"]::text[] then raise exception 'annual installed inventory differs';end if;\n"
+        sql+="if (select array_agg(x order by x collate \"C\") from jsonb_object_keys(a->"+literal(section)+")x) is distinct from array["+','.join(map(literal,sorted(expected_names)))+"]::text[] then raise exception 'annual installed inventory differs: "+section+"';end if;\n"
     return sql+new_object_guard(expected)+"end $resident_annual_postflight$;\n"
 
 
@@ -197,4 +197,3 @@ def main():
 
 
 if __name__=='__main__':main()
-
