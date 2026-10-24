@@ -1,0 +1,28 @@
+-- Synthetic authorization surroundings only. Not production RLS or real GoTrue.
+create role anon nologin;create role authenticated nologin;create role service_role nologin;
+create schema private;create schema auth;create schema extensions;
+grant usage on schema private to authenticated,service_role;
+create extension pgcrypto with schema extensions;
+alter default privileges in schema private,public grant execute on functions to service_role;
+alter default privileges in schema private grant all on tables to service_role;
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.actor',true),'')::uuid$$;
+create function auth.role() returns text language sql stable as $$select coalesce(nullif(current_setting('test.role',true),''),'authenticated')$$;
+create function auth.jwt() returns jsonb language sql stable as $$select jsonb_build_object('session_id',current_setting('test.session',true))$$;
+create function private.account_access_allowed() returns boolean language sql stable as $$select true$$;
+create function public.is_current_user_master_admin() returns boolean language sql stable as $$select true$$;
+create function private.account_deletion_barrier_key(uuid) returns bigint language sql immutable as $$select 12345::bigint$$;
+create function public.set_secondary_password(text) returns void language plpgsql as $$begin return;end$$;
+create function public.set_master_feature_enabled(text,boolean) returns void language plpgsql as $$begin return;end$$;
+create function public.set_master_device_locked(uuid,boolean) returns void language plpgsql as $$begin return;end$$;
+create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
+create table public.companies(id uuid primary key,payload text);
+create table public.company_members(id uuid primary key,payload text);
+create table public.workers(id uuid primary key,payload text);
+create table public.worker_payroll_settings(id uuid primary key,payload text);
+create table public.payroll_statements(id uuid primary key,payload text);
+create table public.payroll_adjustments(id uuid primary key,payload text);
+create table public.invoices(id uuid primary key,payload text);
+create table private.master_admins(user_id uuid primary key,enabled boolean default true);
+create table private.master_devices(id uuid primary key,payload text);
+create table private.account_deletion_access_restrictions(user_id uuid primary key);
+insert into public.payroll_statements values('00000000-0000-0000-0000-000000000001','frozen original financial sentinel');

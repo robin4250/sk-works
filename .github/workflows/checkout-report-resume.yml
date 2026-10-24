@@ -1,0 +1,27 @@
+name: Checkout report resume
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/checkout_report_resume*'
+      - 'lib/features/attendance/attendance_verification_page.dart'
+      - 'lib/features/attendance/worker_attendance_sheet_page.dart'
+      - 'test/checkout_report_resume*'
+      - 'test/attendance_checkout_completion_widgets_test.dart'
+      - '.github/workflows/checkout-report-resume.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checkout-report-resume:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/attendance/checkout_report_resume_repository.dart lib/features/attendance/checkout_report_resume_action.dart lib/features/attendance/attendance_verification_page.dart lib/features/attendance/worker_attendance_sheet_page.dart test/checkout_report_resume_repository_test.dart test/checkout_report_resume_action_test.dart test/attendance_checkout_completion_widgets_test.dart
+      - run: flutter test test/checkout_report_resume_repository_test.dart test/checkout_report_resume_action_test.dart test/attendance_checkout_completion_widgets_test.dart test/attendance_checkout_recovery_http_test.dart

@@ -64,6 +64,9 @@ class _PanelSevenPageState extends State<PanelSevenPage>
         throw StateError('session_changed');
       }
       setState(() {
+        if (snapshot.primaryConfigured == false) {
+          _primaryPasswordReceipt = null;
+        }
         _snapshot = snapshot;
         _loading = false;
       });
@@ -79,7 +82,12 @@ class _PanelSevenPageState extends State<PanelSevenPage>
       final snapshot = await widget.repository.load();
       if (!mounted || !_foreground || generation != _generation ||
           !widget.repository.isCurrent(snapshot)) { return; }
-      setState(() => _snapshot = snapshot);
+      setState(() {
+        if (snapshot.primaryConfigured == false) {
+          _primaryPasswordReceipt = null;
+        }
+        _snapshot = snapshot;
+      });
     } catch (_) {
       // Keep the operation receipt visible; explicit reload remains available.
     }
@@ -116,6 +124,25 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     super.dispose();
   }
 
+  String _primaryPasswordText(PanelSevenSnapshot snapshot) {
+    if (snapshot.primaryConfigured == true) {
+      return '設定済みです。ログインには保存した第一パスワードを使います。';
+    }
+    final receipt = _primaryPasswordReceipt;
+    if (receipt != null && widget.repository.isCurrent(receipt) &&
+        receipt.actorId == snapshot.actorId) {
+      return 'この画面で第一パスワードの保存を確認しました。'
+          '現在のログイン状態での保存確認です。最新の登録有無は取得できていません。';
+    }
+    if (snapshot.primaryConfigured == false) {
+      return '未設定です。下の「第一パスワードを設定・変更」から保存できます。'
+          '電話番号が未登録でも、利用可能な確認済みメールがあれば設定できます。';
+    }
+    return '登録の有無は取得できません（未設定・登録失敗を示すものではありません）。'
+        '下の「第一パスワードを設定・変更」から保存できます。'
+        '電話番号が未登録でも、利用可能な確認済みメールがあれば設定できます。';
+  }
+
   void _help() {
     showDialog<void>(context: context, builder: (context) => AlertDialog(
       title: const Text('アカウント設定について'),
@@ -123,13 +150,15 @@ class _PanelSevenPageState extends State<PanelSevenPage>
         'ログインと連絡先、重要情報を開く本人確認、ログイン方法の追加を分けて表示します。'
         '登録済みのログイン方法と本人の認証設定を確認します。'
         '連携済みの方法と、今回のログインに使った方法は別です。'
-        '第一パスワードの登録の有無は取得できません。未設定や登録失敗を示すものではありません。'
+        '第一パスワードの登録有無は本人専用の状態確認から表示します。取得できない場合は未設定と判断しません。'
         '第一パスワードを設定・変更から保存できます。既にある場合は変更します。'
         'この画面で保存に成功した場合だけ、同じログイン状態の間は保存確認を表示します。'
         '他のログイン状態や次回起動での登録有無を示すものではありません。'
         '利用可能な確認済みメールまたは確認済み電話番号があれば設定できます。電話番号の登録は必須ではありません。第二パスワードは変更しません。'
         '電話番号を登録からSMSコードを送り、コード確認後に登録を完了します。'
         'メール未登録の場合はメール確認後に第一パスワードを設定します。'
+        '確認済みメールに第一パスワードを保存した後は、次回のログイン画面で「登録済みのメールでログインする」を選べます。'
+        'Google用のパスワードとは別です。現在のGoogleログインをログアウトする必要はありません。'
         '提供準備中の方法は登録できません。サーバーが本人再確認を求める場合は、登録済みの連絡先へ確認コードを送って保存します。'
         '第二パスワードは重要情報用で、ログイン用とは別です。'
         '第二パスワードの設定済み表示は、マスター管理の権限や専用パスワードの設定状況を示しません。'
@@ -187,16 +216,17 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                               _ => '組織アカウント認証',
                             }).join('・'),
                     keyName: 'account-session-methods'),
-                  _item('第一パスワード（ログイン用）',
-                    _primaryPasswordReceipt != null &&
-                        widget.repository.isCurrent(_primaryPasswordReceipt!) &&
-                        _primaryPasswordReceipt!.actorId == snapshot.actorId
-                      ? 'この画面で第一パスワードの保存を確認しました。'
-                        '現在のログイン状態での保存確認です。'
-                      : '登録の有無は取得できません（未設定・登録失敗を示すものではありません）。'
-                      '下の「第一パスワードを設定・変更」から保存できます。'
-                      '電話番号が未登録でも、利用可能な確認済みメールがあれば設定できます。',
-                      keyName: 'account-primary-password'),
+                  _item('第一パスワード（ログイン用）', _primaryPasswordText(snapshot),
+                    keyName: 'account-primary-password'),
+                  if (snapshot.emailConfirmed && snapshot.email?.isNotEmpty == true)
+                    const ExpansionTile(
+                      key: ValueKey('account-email-login-guide'),
+                      title: Text('メールでログインするには'), children: [
+                        Padding(padding: EdgeInsets.all(8), child: Text(
+                          '「第一パスワードを設定・変更」で保存した後、次回のログイン画面で'
+                          '「登録済みのメールでログインする」を選び、この確認済みメールと保存した第一パスワードを使います。'
+                          '電話番号の登録は不要です。現在のGoogleログインをログアウトする必要はありません。')),
+                      ]),
                   _item('メールアドレス',
                       snapshot.email?.isNotEmpty == true
                           ? '${snapshot.email}\n${snapshot.emailConfirmed ? "登録確認済み" : "未確認"}'

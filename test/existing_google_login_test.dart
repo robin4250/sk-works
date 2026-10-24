@@ -54,7 +54,10 @@ void main() {
     await show(t, g, () => done++);
     await t.enterText(find.byType(TextField).at(1), 'synthetic-password');
     await t.tap(find.text('本パスワードを忘れた方')); await t.pumpAndSettle();
-    expect(find.textContaining('Googleで登録した方は'), findsOneWidget);
+    expect(find.textContaining('Googleでログインできる方は'), findsOneWidget);
+    expect(find.textContaining('アカウント設定で第一パスワードを設定・変更できます。'), findsOneWidget);
+    expect(find.textContaining('登録済みの電話番号または確認済みメールと、保存した本パスワードを使います。'), findsOneWidget);
+    expect(find.textContaining('Google用のパスワードとは別です。'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect(find.text('本人確認SMSを送信'), findsNothing);
     expect(g.launches, 0); expect(done, 0);
