@@ -1,3 +1,4 @@
+import '../payroll/resident_tax_annual_entry_card.dart';
 import '../payroll/resident_tax_annual_page.dart';
 import '../payroll/resident_tax_reminder_panel.dart';
 import 'dart:math';
@@ -539,22 +540,20 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
     return Scaffold(appBar: AppBar(toolbarHeight: kToolbarHeight, title: const Text('会社共通の税率・保険料率'), actions: [
       IconButton(tooltip: '税率設定の使い方', icon: const Icon(Icons.help_outline), onPressed: () => showDialog<void>(
         context: context, builder: (context) => AlertDialog(title: const Text('税率設定の使い方'),
-          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。未設定項目の編集には利用者指定の初期入力値を表示します。既存値は保持し、適用月・情報元の入力と確認後に保存します。支援金の負担内訳は資料確認が必要です。新規編集では被用者保険の標準折半値を選んで入力できます。会社条件と適用月を確認して「最新の公式料率を取得」を押すと、対応する公式資料の値を比較できます。取得だけでは設定を変更しません。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n保存結果が不明な場合は再送せず、再読み込みで保存値を確認してください。確認できるまで変更操作を停止します。\n\n「全員の住民税を更新」では通知額を従業員ごとに確認し、同額でも更新できます。前・現在の額と年度は表示専用で、記入枠と更新ボタンだけで操作します。元に戻す操作は直前の自分の更新を確認して実行します。個別の住民税入力も引き続き使えます。個別給与設定の「給与の税計算」で加入条件・標準報酬・適用開始月を確認して自動計算へ切り替えます。介護保険は登録した生年月日と保険適用月から判定します。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の取得・設定への適用は会社管理者が行います。給与への適用は個別給与設定で管理します。「全員の住民税を更新」から前・現在の通知額と年度、最終更新日を閲覧できます。変更は会社管理者が行います。'),
+          content: _canEdit ? const Text('会社の適用条件と資料を確認して料率を設定します。未設定項目の編集には利用者指定の初期入力値を表示します。既存値は保持し、適用月・情報元の入力と確認後に保存します。支援金の負担内訳は資料確認が必要です。新規編集では被用者保険の標準折半値を選んで入力できます。会社条件と適用月を確認して「最新の公式料率を取得」を押すと、対応する公式資料の値を比較できます。取得だけでは設定を変更しません。\n\n適用月・資料の詳細から情報元と給与対象月・支払月を確認できます。変更履歴は画面下で開けます。\n\n保存結果が不明な場合は再送せず、再読み込みで保存値を確認してください。確認できるまで変更操作を停止します。\n\n「住民税一括入力」では通知額を従業員ごとに確認し、同額でも更新できます。前・現在の額と年度は表示専用で、記入枠と更新ボタンだけで操作します。元に戻す操作は直前の自分の更新を確認して実行します。個別の住民税入力も引き続き使えます。個別給与設定の「給与の税計算」で加入条件・標準報酬・適用開始月を確認して自動計算へ切り替えます。介護保険は登録した生年月日と保険適用月から判定します。') : const Text('会社の料率・適用月・情報元と年度PDF資料を確認できます。設定の変更・適用は管理者が行います。確認値は登録済み資料の値です。公式資料の取得・設定への適用は会社管理者が行います。給与への適用は個別給与設定で管理します。「住民税一括入力」から前・現在の通知額と年度、最終更新日を閲覧できます。変更は会社管理者が行います。'),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
         ),
       )),
     ]),
       body: SafeArea(child: ListView(padding: const EdgeInsets.all(16), children: [
         const Text('会社共通の料率を管理します。給与への適用は個別給与設定の「給与の税計算」で確認します。'),
-        OutlinedButton.icon(
-          key: const ValueKey('resident-tax-annual-entry'),
-          onPressed: _busy ? null : () {
+        ResidentTaxAnnualEntryCard(
+          onOpen: _busy ? null : () {
             final fiscalYear = residentTaxAnnualInitialYear(DateTime.now());
             Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
               ResidentTaxAnnualUpdatePage(companyId: widget.companyId, fiscalYear: fiscalYear,
                 reminderPanel: ResidentTaxReminderPanel(companyId: widget.companyId))));
           },
-          icon: const Icon(Icons.people_outline), label: const Text('全員の住民税を更新'),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh),
@@ -935,3 +934,4 @@ int residentTaxAnnualInitialYear(DateTime instant) {
   final jst = instant.toUtc().add(const Duration(hours: 9));
   return jst.month >= 5 ? jst.year : jst.year - 1;
 }
+
