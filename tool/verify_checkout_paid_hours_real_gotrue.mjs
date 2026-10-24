@@ -55,7 +55,15 @@ const extension=String.raw`
  response=await rpc('read_checkout_paid_work_hours',hourRead);assert.ok(response.status>=400&&response.status<500);checks++;
  response=await request('/rest/v1/rpc/read_checkout_paid_work_hours',{service:true,body:hourRead});assert.ok(response.status>=400&&response.status<500);checks++;
  const hourSave={...hourRead,p_hours:7.25,p_expected_revision:initialHours.revision,p_expected_scope:initialHours.scope_fingerprint};
- response=await rpc('save_checkout_paid_work_hours',hourSave,owner);eq(response.status,200);eq((await response.json()).hours,7.25);
+ response=await rpc('save_checkout_paid_work_hours',hourSave,owner);
+ if(response.status!==200){
+  const failure=await response.clone().json().catch(()=>({}));
+  // Isolated synthetic fixture only: no headers, keys, JWTs or Auth rows.
+  console.error(JSON.stringify({paid_hours_save_diagnostic:{status:response.status,
+   sql_code:typeof failure.code==='string'?failure.code:null,
+   message:typeof failure.message==='string'?failure.message.slice(0,500):null},production_changed:false}));
+ }
+ eq(response.status,200);eq((await response.json()).hours,7.25);
  response=await rpc('save_checkout_paid_work_hours',{...hourSave,p_hours:8},owner);assert.ok(response.status>=400&&response.status<500);checks++;
  for(const role of ['representative','supervisor']){
   response=await rpc('save_daily_report_signature',{p_report_id:hourReport,p_role:role,p_signer_name:'Real JWT '+role,p_signature_json:signature},owner);assert.ok([200,204].includes(response.status));checks++;
