@@ -1,3 +1,4 @@
+import 'features/attendance/checkout_report_gate.dart';
 import 'features/auth/authenticated_navigation_boundary.dart';
 import 'features/payroll/company_common_allowance_entry_page.dart';
 import 'features/chat/line_release_access.dart';
@@ -118,7 +119,7 @@ class SkWorksApp extends StatelessWidget {
         return ValueListenableBuilder<SkoPalette>(
           valueListenable: SkoThemeController.palette,
           builder: (context, palette, _) {
-            return AuthenticatedNavigationBoundary(child: MaterialApp(
+            return AuthenticatedNavigationBoundary(child: CheckoutReportBackBoundary(child: MaterialApp(
               navigatorKey: SkoScrollChromeController.navigatorKey,
               debugShowCheckedModeBanner: false,
               title: ProductBrand.displayName,
@@ -126,7 +127,7 @@ class SkWorksApp extends StatelessWidget {
               supportedLocales: const [Locale('ja'), Locale('en')],
               localizationsDelegates: GlobalMaterialLocalizations.delegates,
               theme: SkoTheme.light(palette),
-              builder: (context, child) => Stack(
+              builder: (context, child) => CheckoutReportGate(child: Stack(
                 fit: StackFit.expand,
                 children: [
                   SkoGlobalScrollChrome(
@@ -134,7 +135,7 @@ class SkWorksApp extends StatelessWidget {
                   ),
                   const FloatingHelpOverlay(),
                 ],
-              ),
+              )),
               home: SupabaseBackend.isInitialized
                   ? SupabaseAuthGate(
                       homeBuilder: (onSignOut) => HomePage(onSignOut: onSignOut),
@@ -142,7 +143,7 @@ class SkWorksApp extends StatelessWidget {
                   : allowLocalFallback
                       ? const HomePage()
                       : const _BackendUnavailableScreen(),
-            ));
+            )));
           },
         );
       },
