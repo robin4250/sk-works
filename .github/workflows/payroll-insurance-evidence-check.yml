@@ -1,0 +1,46 @@
+name: Payroll insurance calculation evidence
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/features/payroll/payroll_insurance_calculation_evidence.dart'
+      - 'lib/features/payroll/payroll_insurance_evidence_card.dart'
+      - 'lib/features/payroll/payroll_pdf_service.dart'
+      - 'lib/features/payroll/payroll_statements_page.dart'
+      - 'test/payroll_insurance*evidence*test.dart'
+      - 'test/fixtures/payroll_insurance_evidence_fixture.dart'
+      - '.github/workflows/payroll-insurance-evidence-check.yml'
+permissions:
+  contents: read
+jobs:
+  evidence-ui-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
+      SKO_PDF_OUTPUT_DIR: build/pdf-fixtures
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Install existing pinned PDF proof dependencies
+        run: |
+          flutter pub get --enforce-lockfile
+          python3 -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
+          python3 tool/prepare_pdf_fixture_font.py
+      - name: Analyze the saved-evidence display
+        run: flutter analyze lib/features/payroll/payroll_insurance_calculation_evidence.dart lib/features/payroll/payroll_insurance_evidence_card.dart lib/features/payroll/payroll_pdf_service.dart lib/features/payroll/payroll_statements_page.dart test/payroll_insurance_calculation_evidence_test.dart test/payroll_insurance_evidence_card_test.dart test/payroll_insurance_evidence_pdf_test.dart
+      - name: Verify source provenance, screen values, adopted PDF totals and layout
+        run: flutter test --reporter expanded test/payroll_insurance_calculation_evidence_test.dart test/payroll_insurance_evidence_card_test.dart test/payroll_insurance_evidence_pdf_test.dart test/payroll_tax_pdf_test.dart
+      - name: Preserve actual rendered PDF comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: payroll-insurance-calculation-evidence-pdf
+          path: |
+            build/pdf-fixtures/payroll_insurance_evidence_*.pdf
+            build/pdf-fixtures/payroll_insurance_evidence_*.png
+          if-no-files-found: warn

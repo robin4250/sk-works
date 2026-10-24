@@ -20,6 +20,7 @@ import 'paid_leave_pay.dart';
 import 'payroll_draft_keep_alive.dart';
 import 'resident_tax_section.dart';
 import 'resident_tax_capability.dart';
+import 'company_common_allowance_entry_page.dart';
 import 'payroll_unit_conditions_page.dart';
 import 'payroll_unit_item_editor.dart';
 import 'individual_allowance_rows.dart';
@@ -537,7 +538,7 @@ class _IndividualPayrollSettingsPageState
         actions: [IconButton(tooltip: '使い方', icon: const Icon(Icons.help_outline),
           onPressed: () => showDialog<void>(context: context, builder: (context) =>
             AlertDialog(title: const Text('手当の登録'),
-              content: const Text('時間・日・月の単位ごとに、追加ボタンから手当を登録します。登録済みの手当も同じ一覧で編集・削除できます。会社共通の定義や確定済み明細は、この社員の手当編集では削除しません。保存結果を確認できない場合は入力を保持し、再送せず保存済みの状態を確認します。'),
+              content: const Text('時間・日・月の単位ごとに、追加ボタンから手当を登録します。登録済みの手当も同じ一覧で編集・削除できます。会社共通手当は共通の見出しから確認し、「共通設定」で編集します。「個別手当」はこの社員だけの設定です。同名でも保存元を分けて保持し、共通を個別へコピーしません。会社共通の定義や確定済み明細は、この社員の手当編集では削除しません。保存結果を確認できない場合は入力を保持し、再送せず保存済みの状態を確認します。'),
               actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]))),
           const SkoNotificationBell()],
         bottom: _updatedAt == null
@@ -1084,6 +1085,9 @@ class _IndividualPayrollSettingsPageState
         padding: const EdgeInsets.all(10),
         child: Column(
           children: [
+            Align(alignment: Alignment.centerLeft,
+              child: Text(SkoLanguageController.tr('個別手当（この社員だけ）'),
+                style: Theme.of(context).textTheme.labelSmall)),
             TextFormField(
               controller: item.name,
               enabled: enabled,
@@ -1279,6 +1283,19 @@ class _IndividualPayrollSettingsPageState
         canEditIndividualAllowances: _workspace?.canEdit == true && !_saving,
         individualSaveUncertain: _allowanceSaveUncertain,
         registeredAllowanceNames: _registeredNameRows,
+        registeredAllowanceNamesLoaded: _registeredAllowanceNames != null && _allowanceScopeCurrent(),
+        onOpenCompanyCommonSettings: () async {
+          if (!_allowanceScopeCurrent()) return;
+          final generation = _loadGeneration;
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => CompanyCommonAllowanceEntryPage(companyId: company)));
+          if (!mounted || generation != _loadGeneration || _workerId != worker ||
+              !_allowanceScopeCurrent() || (_workspace?.companyId ?? _settingValues['company_id']) != company) {
+            return;
+          }
+          // Refresh names only. Do not replace unsaved worker/unit drafts.
+          await _loadRegisteredAllowanceNames(company, worker, generation);
+        },
         registeredAllowanceNamesUnavailable: _registeredAllowanceReadFailed,
         individualAllowanceItems: individualAllowanceRows(_individualAllowanceValues),
         onIndividualAllowanceDraftChanged: _rememberAllowanceDraft,

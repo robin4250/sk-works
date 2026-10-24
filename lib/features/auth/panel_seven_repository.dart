@@ -13,6 +13,7 @@ class PanelSevenSnapshot {
     required this.phoneConfirmed,
     required this.sessionMethods,
     required this.secondaryConfigured,
+    this.primaryConfigured,
     this.biometricEnabled,
     this.biometricAvailable,
     required String accessToken,
@@ -25,6 +26,7 @@ class PanelSevenSnapshot {
   final bool phoneConfirmed;
   final List<String> sessionMethods;
   final bool? secondaryConfigured;
+  final bool? primaryConfigured;
   final bool? biometricEnabled;
   final bool? biometricAvailable;
   final String _accessToken;
@@ -86,6 +88,18 @@ class PanelSevenRepository implements PanelSevenSource {
       // Unknown stays unknown. Do not expose upstream errors or assume false.
     }
     if (!unchanged()) throw StateError('account_session_changed');
+    bool? primary;
+    try {
+      final raw = await client.rpc('primary_password_configured')
+          .setHeader('Authorization', 'Bearer $token')
+          .timeout(const Duration(seconds: 10));
+      if (raw is bool) {
+        primary = raw;
+      }
+    } catch (_) {
+      // An absent/rejected/unavailable status API never means unconfigured.
+    }
+    if (!unchanged()) throw StateError('account_session_changed');
     bool? biometricEnabled;
     bool? biometricAvailable;
     try {
@@ -140,6 +154,7 @@ class PanelSevenRepository implements PanelSevenSource {
       phoneConfirmed: json['phone_confirmed_at'] != null,
       sessionMethods: List.unmodifiable(methods.toList()..sort()),
       secondaryConfigured: secondary,
+      primaryConfigured: primary,
       biometricEnabled: biometricEnabled,
       biometricAvailable: biometricAvailable,
       accessToken: token,

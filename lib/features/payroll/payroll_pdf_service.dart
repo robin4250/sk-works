@@ -9,6 +9,7 @@ import 'package:printing/printing.dart';
 
 import 'payroll_statement_repository.dart';
 import 'payroll_recorded_tax_amounts.dart';
+import 'payroll_insurance_calculation_evidence.dart';
 import '../shared/company_seal_pdf.dart';
 
 class PayrollPdfService {
@@ -227,6 +228,8 @@ class PayrollPdfService {
     ];
     final remarks = _first(detail, const ['備考', 'remarks', 'notes']);
     final leaveAllocation = _monthlyPaidLeaveAllocationNote(detail);
+    final evidenceMonth = '${statement.periodStart.year.toString().padLeft(4, '0')}-${statement.periodStart.month.toString().padLeft(2, '0')}-01';
+    final insuranceEvidence = PayrollInsuranceCalculationEvidence.fromDetail(detail, month: evidenceMonth);
     final payType = _payTypeLabel(detail);
     return pw.Container(
       width: 559.275590551,
@@ -515,6 +518,7 @@ class PayrollPdfService {
               paleBlue,
               total: statement.grossPay,
               totalLabel: '支給合計（A）',
+              month: evidenceMonth,
               earnings: true,
             ),
           ),
@@ -531,6 +535,7 @@ class PayrollPdfService {
               paleRed,
               total: statement.deductions,
               totalLabel: '控除合計（B）',
+              month: evidenceMonth,
             ),
           ),
           at(
@@ -589,12 +594,16 @@ class PayrollPdfService {
             ),
           ),
           if (leaveAllocation.isNotEmpty)
-            at(20, 655, width, 28,
+            at(20, 655, width, 14,
               pw.Padding(
                 padding: const pw.EdgeInsets.symmetric(horizontal: 10),
                 child: text(leaveAllocation, size: 7),
               ),
             ),
+          if (pageIndex == 0 && !insuranceEvidence.isEmpty)
+            at(20, leaveAllocation.isEmpty ? 655 : 672, width,
+              leaveAllocation.isEmpty ? 68 : 55,
+              _insuranceEvidenceBox(insuranceEvidence, blue, paleBlue)),
           at(
             20,
             731.88976378,
@@ -862,6 +871,7 @@ class PayrollPdfService {
     PdfColor pale, {
     required int total,
     required String totalLabel,
+    required String month,
     bool earnings = false,
   }) {
     final visible = entries.entries.toList();
@@ -956,7 +966,7 @@ class PayrollPdfService {
                         pw.Expanded(
                           flex: earnings ? 39 : 43,
                           child: pw.Text(
-                            _moneyExplanation(visible[i].key, detail),
+                            _moneyExplanation(visible[i].key, detail, month),
                             textAlign: pw.TextAlign.center,
                             style: const pw.TextStyle(fontSize: 5),
                           ),
@@ -1011,6 +1021,31 @@ class PayrollPdfService {
     );
   }
 
+  static pw.Widget _insuranceEvidenceBox(PayrollInsuranceCalculationEvidence evidence,
+      PdfColor accent, PdfColor pale) => pw.Container(
+    padding: const pw.EdgeInsets.all(2),
+    decoration: pw.BoxDecoration(color: pale,
+      border: pw.Border.all(color: accent, width: .4),
+      borderRadius: pw.BorderRadius.circular(3)),
+    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+      pw.Text('保険料の計算根拠（保存値・端数処理後／平均との採用関係は未記録）',
+        style: pw.TextStyle(fontSize: 5.4, fontWeight: pw.FontWeight.bold, color: accent)),
+      pw.SizedBox(height: .5),
+      pw.Text(evidence.referenceText, style: const pw.TextStyle(fontSize: 5)),
+      for (var i = 0; i < evidence.rows.length; i += 2)
+        pw.SizedBox(height: 10, child: pw.Row(children: [
+          for (var j = i; j < i + 2 && j < evidence.rows.length; j++)
+            pw.Expanded(child: pw.Padding(
+              padding: const pw.EdgeInsets.only(top: .6, right: 4),
+              child: pw.FittedBox(fit: pw.BoxFit.scaleDown, alignment: pw.Alignment.centerLeft,
+                child: pw.Text('${evidence.rows[j].name}：${evidence.rows[j].formula}',
+                  style: const pw.TextStyle(fontSize: 5.2))),
+            )),
+          if (i + 1 == evidence.rows.length) pw.Expanded(child: pw.SizedBox()),
+        ])),
+    ]),
+  );
+
   static String _monthlyPaidLeaveAllocationNote(Map<String, dynamic> detail) {
     if (_payTypeLabel(detail) != '月給') return '';
     final unit = _asNumber(detail['有給単価']);
@@ -1039,10 +1074,17 @@ class PayrollPdfService {
     return '${detail[key]}${key.endsWith('日数') ? '日' : '時間'}';
   }
 
-  static String _moneyExplanation(String label, Map<String, dynamic> detail) {
+  static String _moneyExplanation(String label, Map<String, dynamic> detail, String month) {
     final direct = detail['$label計算内容'] ?? detail['$label備考'];
     if (direct != null && direct.toString().trim().isNotEmpty) {
       return direct.toString().trim();
+    }
+    if (recordedPayrollInsuranceNames.contains(label)) {
+      final evidence = PayrollInsuranceCalculationEvidence.fromDetail(detail, month: month);
+      for (final row in evidence.rows) {
+        if (row.name == label) return row.formula;
+      }
+      return '計算根拠の保存記録なし';
     }
     final tax = detail['tax_calculation'];
     if (tax is Map) {
