@@ -15,6 +15,7 @@ import 'security_actor_boundary.dart';
 import 'security_incident.dart';
 import 'security_incident_repository.dart';
 import 'platform_monitor_page.dart';
+import 'security_collector_page.dart';
 import 'security_incident_report.dart';
 
 import 'dart:convert';
@@ -107,6 +108,16 @@ class _SecurityIncidentPageState extends State<SecurityIncidentPage> {
         ),
       ),
       actions: [
+        IconButton(
+          tooltip: '収集されたアクセス記録',
+          icon: const Icon(Icons.radar),
+          onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute(
+            builder: (_) => const MasterProtectedPage(
+              title: '収集されたアクセス記録',
+              child: SecurityActorBoundary(child: SecurityCollectorPage()),
+            ),
+          )),
+        ),
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: Text(_text('閉じる', 'Close')),
@@ -449,4 +460,5 @@ class _SecurityIncidentExportActionState
     ),
   );
 }
+
 
