@@ -90,7 +90,10 @@ try {
  const owner=sessions.owner.access_token;
  const ownerSession=JSON.parse(Buffer.from(owner.split('.')[1],'base64url').toString('utf8')).session_id;
  const draftBody={p_report_id:null,p_site_id:SITE,p_route_assignment_id:null,p_report_date:'2020-10-20',p_work_description:'JWT正規日報',p_workers:workers};
- await db.query(`grant select on public.daily_reports,public.daily_report_workers,public.company_members to authenticated;
+ await db.query(`grant select on public.daily_reports,public.daily_report_workers,public.company_members,public.attendance_entries to authenticated;
+ grant update on public.daily_report_workers,public.attendance_entries to authenticated;
+ alter table public.attendance_entries enable row level security;
+ create policy fixture_attendance_scope on public.attendance_entries to authenticated using(exists(select 1 from public.company_members m where m.company_id=attendance_entries.company_id and m.user_id=auth.uid())) with check(exists(select 1 from public.company_members m where m.company_id=attendance_entries.company_id and m.user_id=auth.uid()));
  alter table public.daily_reports enable row level security;alter table public.daily_report_workers enable row level security;
  create policy fixture_report_scope on public.daily_reports to authenticated using(exists(select 1 from public.company_members m where m.company_id=daily_reports.company_id and m.user_id=auth.uid()));
  create policy fixture_worker_scope on public.daily_report_workers to authenticated using(exists(select 1 from public.daily_reports r where r.id=report_id));
@@ -104,9 +107,13 @@ try {
  for(const name of ['othercompany','outsider']){response=await rpc('read_daily_report_company_allowance_eligibility',{p_report_id:report},sessions[name].access_token);assert.ok(response.status>=400&&response.status<500);checks++;}
  response=await rpc('save_daily_report_destination_draft',{...draftBody,p_workers:[{...workers[0],worker_id:W2}]},owner);assert.ok(response.status>=400);checks++;
  response=await rpc('save_daily_report_destination_draft',{...draftBody,p_workers:[{...workers[0],company_allowance_selections:{...selection,items:[{...selection.items[0],rate_yen:99999}]}}]},owner);assert.ok(response.status>=400);checks++;
+ await db.query('insert into private.account_deletion_access_restrictions values($1)',[users.owner.id]);
+ response=await eligible();assert.ok(response.status>=400);checks++;
+ await db.query('delete from private.account_deletion_access_restrictions where user_id=$1',[users.owner.id]);
  eq((await db.query('select count(*)::int n from company_checkout_allowance_private.receipts')).rows[0].n,0);
  phase='real-jwt-two-signature-and-private-receipt';
  const signature={strokes:[[{x:0.1,y:0.1}]]};
+ for(const name of ['othercompany','outsider']){response=await rpc('save_daily_report_signature',{p_report_id:report,p_role:'representative',p_signer_name:'wrong actor',p_signature_json:signature},sessions[name].access_token);assert.ok(response.status>=400);checks++;}
  response=await rpc('sign_daily_report',{p_report_id:report,p_signer_name:'bypass',p_signature_json:signature},owner);assert.ok(response.status>=400);checks++;
  response=await rpc('save_daily_report_signature',{p_report_id:report,p_role:'representative',p_signer_name:'JWT代表',p_signature_json:signature},owner);assert.ok([200,204].includes(response.status));checks++;
  eq((await db.query('select count(*)::int n from company_checkout_allowance_private.receipts')).rows[0].n,0);
@@ -114,6 +121,9 @@ try {
  eq((await db.query('select count(*)::int n from company_checkout_allowance_private.receipts')).rows[0].n,1);
  eq((await db.query('select gross_pay v from payroll_statements where worker_id=$1',[W])).rows[0].v,13000);
  eq((await db.query('select captured_by v from company_checkout_allowance_private.receipts')).rows[0].v,users.owner.id);
+ response=await request('/rest/v1/daily_report_workers?report_id=eq.'+report,{method:'PATCH',token:owner,body:{company_allowance_selections:null}});assert.ok(response.status>=400);checks++;
+ response=await request('/rest/v1/attendance_entries?source_report_id=eq.'+report,{method:'PATCH',token:owner,body:{company_allowance_receipt_id:null}});assert.ok(response.status>=400);checks++;
+ eq((await db.query('select count(*)::int n from attendance_entries where source_report_id=$1 and company_allowance_receipt_id is not null',[report])).rows[0].n,1);
  response=await request('/rest/v1/receipts?select=*',{method:'GET',token:owner});assert.ok(response.status>=400);checks++;
  eq((await db.query("select has_schema_privilege('authenticated','company_checkout_allowance_private','USAGE') v")).rows[0].v,false);
  eq((await db.query('select count(*)::int n from auth.sessions where id=$1 and user_id=$2',[ownerSession,users.owner.id])).rows[0].n,1);
@@ -131,7 +141,9 @@ try {
   revoked_token_rpc_status:response.status,revoked_token_accepted_until_expiry:revokedTokenAcceptedUntilExpiry,
   real_uid_predicate_checks_session_id:false,production_changed:false}));
  const ownerClaims=JSON.parse(Buffer.from(owner.split('.')[1],'base64url').toString('utf8'));
- const waitMs=Math.max(0,(ownerClaims.exp+2)*1000-Date.now());assert.ok(waitMs<90000);
+ // PostgREST documents a 30-second JWT exp clock-skew allowance.
+ // https://docs.postgrest.org/en/latest/references/auth.html#time-based-claims-validation
+ const waitMs=Math.max(0,(ownerClaims.exp+32)*1000-Date.now());assert.ok(waitMs<125000);
  console.log('Waiting only for the isolated real owner JWT expiry; no production session affected');
  await new Promise(resolve=>setTimeout(resolve,waitMs));
  response=await rpc('read_daily_report_company_allowance_eligibility',{p_report_id:expiryReport},owner);eq(response.status,401);
