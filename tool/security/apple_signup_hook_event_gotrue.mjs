@@ -14,8 +14,14 @@ if(process.env.CI!=='true'||!process.env.RUNNER_TEMP||parent==='/'||
  throw Error('Dedicated disposable CI without hosted credentials required');
 const project=`sko-apple-event-${randomBytes(8).toString('hex')}`,workdir=path.join(parent,project);
 let phase='setup',db,started=false,owned=false,lastStatus;
-const cli=(args,timeout=120000)=>run('npx',['--yes','supabase@2.121.0',...args,'--workdir',workdir],
- {cwd:root,timeout,maxBuffer:1024*1024,env:process.env});
+const cli=(args,timeout=120000)=>{
+ const operation=run('npx',['--yes','supabase@2.121.0',...args,'--workdir',workdir],
+  {cwd:root,timeout,maxBuffer:1024*1024,env:process.env});
+ // migration new consumes non-TTY stdin as optional SQL. Close the empty pipe
+ // so it sees EOF instead of waiting until execFile's timeout.
+ operation.child.stdin.end();
+ return operation;
+};
 
 try {
  await fs.mkdir(workdir,{recursive:false,mode:0o700});owned=true;
@@ -107,6 +113,7 @@ try {
  console.error(JSON.stringify({result:'FAIL disposable signup hook event observation',phase,
   kind:error?.code==='ERR_ASSERTION'?'assertion':/^[0-9A-Z]{5}$/.test(error?.code??'')?'postgres':'other',
   sqlstate:/^[0-9A-Z]{5}$/.test(error?.code??'')?error.code:null,last_http_status:lastStatus,
+  command_killed:error?.killed===true,command_signal:['SIGTERM','SIGKILL'].includes(error?.signal)?error.signal:null,
   command_exit_code:typeof error?.code==='number'?error.code:null,
   file_error_code:['ENOENT','EACCES','EEXIST'].includes(error?.code)?error.code:null,
   private_stderr_markers:Object.fromEntries(['sms','provider','hook','config','migration','invalid','required','not found']
