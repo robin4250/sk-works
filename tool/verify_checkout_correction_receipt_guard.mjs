@@ -1,0 +1,98 @@
+// Safety regression candidate, extending the immutable source-bound 118-check fixture.
+// Loads exact observed approval source; surrounding request/notification tables
+// and actor/session are explicitly synthetic. Never accepts production endpoints.
+import {readFile,mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createHash} from 'node:crypto';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+let source=await readFile('tool/verify_company_checkout_integration.mjs','utf8');
+if(createHash('sha256').update(source).digest('hex')!=='a9588f8af73dee8c89cfcd81d7ba72e3f0f8d6208b736429f90b83da9449a73a')throw Error('Reviewed 118-check fixture changed');
+const once=(text,a,b)=>{if(text.split(a).length!==2)throw Error('Diagnostic anchor changed');return text.replace(a,()=>b);};
+source=once(source," phase='source-bound-review-unit';",` phase='exact-attendance-approval-source';
+ await exec(\`create table public.attendance_correction_requests(id uuid primary key,company_id uuid,status text,requested_by uuid,request_kind text,reviewed_by uuid,reviewed_at timestamptz,review_note text,updated_at timestamptz default now());
+ create table public.attendance_correction_items(id uuid primary key,request_id uuid,company_id uuid,attendance_entry_id uuid,proposed_snapshot jsonb,created_at timestamptz default now());
+ create table public.company_approval_assignees(company_id uuid,user_id uuid);
+ alter table public.sites add column name text;
+ alter table public.paid_leave_requests add column reviewed_by uuid,add column reviewed_at timestamptz,add column review_note text,add column updated_at timestamptz;
+ create function private.enqueue_notification(uuid,uuid,text,text,text,text,uuid) returns void language plpgsql as $$begin return;end$$;\`);
+ const correctionSource=JSON.parse(await readFile('tool/fixtures/checkout_attendance_correction_source.json','utf8'));
+ eq(md5(dbBody(correctionSource.definition)),correctionSource.source_md5,'Observed approval source exact');
+ eq(correctionSource.source_md5,'87b46c1df058ad8b455bcd843cf7f851','Pinned actual production approval body');
+ await exec(correctionSource.definition);
+ await exec("alter table public.daily_report_edit_requests add column company_id uuid,add column reason text,add column approvals_required integer;alter table public.daily_report_edit_requests alter column status set default 'pending';create table public.daily_report_edit_approvals(request_id uuid,approver_user_id uuid,decision text,decided_at timestamptz default now(),primary key(request_id,approver_user_id));");
+ const actualEdits=JSON.parse(await readFile('tool/fixtures/checkout_daily_report_edit_sources.json','utf8'));
+ for(const f of actualEdits.functions){eq(md5(dbBody(f.definition)),f.source_md5,'Actual canonical report-edit source');await exec(f.definition);}
+ phase='source-bound-review-unit';`);
+source=once(source," await exec(await readFile('docs/candidates/company_checkout_eligibility.sql.review-only','utf8'));"," await exec(await readFile('docs/candidates/company_checkout_eligibility.sql.review-only','utf8'));\n await exec(await readFile('docs/candidates/checkout_correction_receipt_guard.sql.review-only','utf8'));");
+source=once(source," const settingsBefore=await q(",` const CORRECTION_WORKER=id(27);
+ await client.query("insert into workers(id,company_id,name) values($1,$2,'勤怠修正診断専用社員')",[CORRECTION_WORKER,A]);
+ await client.query('insert into worker_payroll_settings(company_id,worker_id) values($1,$2)',[A,CORRECTION_WORKER]);
+ const OLD_PERSONAL_WORKER=id(28),MIXED_CORRECTION_WORKER=id(29);
+ await client.query("insert into workers(id,company_id,name) values($1,$3,'旧形式修正社員'),($2,$3,'会社名保持修正社員')",[OLD_PERSONAL_WORKER,MIXED_CORRECTION_WORKER,A]);
+ await client.query("insert into worker_payroll_settings(company_id,worker_id,allowance_name_1,allowance_1) values($1,$2,'旧個別手当',700),($1,$3,'旧個別手当',700)",[A,OLD_PERSONAL_WORKER,MIXED_CORRECTION_WORKER]);
+ const settingsBefore=await q(`);
+source=once(source," phase='source-and-settings-preservation';",` phase='approved-correction-safety-regressions';
+ await client.query("update public.sites set name='診断対象現場' where id=$1",[SITE]);
+ await client.query('insert into company_approval_assignees(company_id,user_id) values($1,$2)',[A,U]);
+ const makeCorrection=async(n,entry,proposed)=>{const rid=id(n);await client.query("insert into attendance_correction_requests(id,company_id,status,requested_by,request_kind) values($1,$2,'submitted',$3,'correction')",[rid,A,U]);await client.query('insert into attendance_correction_items(id,request_id,company_id,attendance_entry_id,proposed_snapshot) values($1,$2,$3,$4,$5::jsonb)',[id(n+100),rid,A,entry,JSON.stringify({siteName:'診断対象現場',...proposed})]);return rid;};
+ const approveCorrection=rid=>q("select public.decide_attendance_correction_request($1,'approve',null) v",[rid]);
+ const correctionState=async(entry,report,rid,wid)=>q("select jsonb_build_object('entry',(select to_jsonb(a) from attendance_entries a where id=$1),'worker',(select to_jsonb(w) from daily_report_workers w where report_id=$2 and worker_id=$4),'report',(select to_jsonb(r) from daily_reports r where id=$2),'request',(select to_jsonb(r) from attendance_correction_requests r where id=$3),'items',(select jsonb_agg(to_jsonb(i) order by id) from attendance_correction_items i where request_id=$3),'receipts',(select jsonb_agg(to_jsonb(r) order by id) from company_checkout_allowance_private.receipts r where worker_id=$4),'salary',(select to_jsonb(p) from payroll_statements p where worker_id=$4 and period_start='2020-10-01')) v",[entry,report,rid,wid]);
+ const correctionReport=await draft('2020-10-12',CORRECTION_WORKER,[days[0]]);await sign(correctionReport);
+ const correctionEntry=await q('select to_jsonb(a) v from attendance_entries a where source_report_id=$1',[correctionReport]);
+ const originalReceipt=await q('select snapshot v from company_checkout_allowance_private.receipts where id=$1',[correctionEntry.company_allowance_receipt_id]);
+ const removal=await makeCorrection(900,correctionEntry.id,{allowanceNames:[]});
+ const removalBefore=await correctionState(correctionEntry.id,correctionReport,removal,CORRECTION_WORKER);
+ await reject(()=>approveCorrection(removal),/日報の修正承認/);
+ eq(await correctionState(correctionEntry.id,correctionReport,removal,CORRECTION_WORKER),removalBefore,'Refused removal preserves request/history/report/entry/pointer/receipt/payroll atomically');
+ eq((await statement(CORRECTION_WORKER)).gross_pay,10100,'Refused removal does not pretend to remove company100');
+ const absent=await makeCorrection(901,correctionEntry.id,{overtimeHours:2});
+ eq(await approveCorrection(absent),'approved','Missing allowanceNames key preserves selections and permits other-field correction');
+ eq(await q('select allowance_names v from attendance_entries where id=$1',[correctionEntry.id]),[days[0].name_snapshot],'Missing key is not misread as empty');
+ const keep=await makeCorrection(902,correctionEntry.id,{allowanceNames:[days[0].name_snapshot],notes:'同じ会社手当を保持'});
+ eq(await approveCorrection(keep),'approved','Explicitly retaining all captured names is allowed');
+ await exec('set role authenticated');
+ try{await client.query("update attendance_entries set allowance_names='{}' where id=$1",[correctionEntry.id]);throw Error('Direct name removal unexpectedly succeeded');}catch(error){eq(error.code,'42501','Direct authenticated write denied before private table lookup');assert.match(error.message,/署名済みの会社共通手当/);checks++;}finally{await exec('reset role');}
+ phase='canonical-report-edit-and-two-new-signatures';
+ const edit=await q("select public.request_daily_report_edit($1,'会社手当の正規変更') v",[correctionReport]);
+ eq(await q("select public.decide_daily_report_edit($1,'approve') v",[edit]),'approved','Actual canonical report edit is approved');
+ await draft('2020-10-12',CORRECTION_WORKER,[],{reportId:correctionReport});
+ eq(await q('select status v from daily_report_edit_requests where id=$1',[edit]),'used','Authorized draft consumes approved edit');
+ await client.query("select public.save_daily_report_signature($1,'representative','再署名代表',$2::jsonb)",[correctionReport,signature]);
+ eq(await q('select company_allowance_receipt_id v from attendance_entries where id=$1',[correctionEntry.id]),correctionEntry.company_allowance_receipt_id,'One new signature cannot remove confirmed old receipt');
+ await client.query("select public.save_daily_report_signature($1,'supervisor','再署名責任',$2::jsonb)",[correctionReport,signature]);
+ const resignedEntry=await q('select to_jsonb(a) v from attendance_entries a where id=$1',[correctionEntry.id]);
+ eq(resignedEntry.allowance_names,[],'Canonical re-sign removes the selected name');
+ eq(resignedEntry.company_allowance_receipt_id!==correctionEntry.company_allowance_receipt_id,true,'New receipt pointer is swapped in the same attendance UPDATE');
+ eq((await statement(CORRECTION_WORKER)).gross_pay,10000,'Canonical re-sign removes company100 from automatic payroll');
+ eq(await q('select snapshot v from company_checkout_allowance_private.receipts where id=$1',[correctionEntry.company_allowance_receipt_id]),originalReceipt,'Original receipt history remains immutable');
+ phase='old-untyped-and-other-label-compatibility';
+ await client.query("insert into attendance_entries(company_id,worker_id,site_id,work_date,base_man_days,allowance_names) values($1,$2,$3,'2020-10-10',1,array['旧個別手当'])",[A,OLD_PERSONAL_WORKER,SITE]);
+ const oldEntry=await q('select id v from attendance_entries where worker_id=$1',[OLD_PERSONAL_WORKER]);
+ eq((await statement(OLD_PERSONAL_WORKER)).gross_pay,10700,'Old untyped source starts with700');
+ const oldRemoval=await makeCorrection(903,oldEntry,{allowanceNames:[]});eq(await approveCorrection(oldRemoval),'approved','Old untyped name removal retains existing approval behavior');
+ eq((await statement(OLD_PERSONAL_WORKER)).gross_pay,10000,'Old untyped removal still removes700');
+ const oldRaw={worker_id:MIXED_CORRECTION_WORKER,allowance_label:'旧個別手当',work_category:'day',allowance_amount:0};
+ const mixedReport=await q("select public.save_daily_report_destination_draft(null,$1,null,'2020-10-11','会社名を保持する修正',$2::jsonb) v",[SITE,JSON.stringify([oldRaw])]);
+ await draft('2020-10-11',MIXED_CORRECTION_WORKER,[days[0]],{reportId:mixedReport,extra:{allowance_label:'旧個別手当\\n'+days[0].name_snapshot}});await sign(mixedReport);
+ const mixedEntry=await q('select id v from attendance_entries where source_report_id=$1',[mixedReport]);
+ eq((await statement(MIXED_CORRECTION_WORKER)).gross_pay,10800,'Mixed typed100 and independent old label700 starts valid');
+ const otherRemoval=await makeCorrection(904,mixedEntry,{allowanceNames:[days[0].name_snapshot]});eq(await approveCorrection(otherRemoval),'approved','Removing unrelated old label while preserving company name is allowed');
+ eq((await statement(MIXED_CORRECTION_WORKER)).gross_pay,10100,'Unrelated700 removed while company100 remains once');
+ phase='finalized-payroll-preservation';
+ const frozenCorrectionReport=await draft('2020-10-09',CORRECTION_WORKER,[days[0]]);await sign(frozenCorrectionReport);
+ const frozenEntry=await q('select id v from attendance_entries where source_report_id=$1',[frozenCorrectionReport]);
+ await client.query("update payroll_statements set workflow_state='finalized' where worker_id=$1",[CORRECTION_WORKER]);
+ const frozenRemoval=await makeCorrection(905,frozenEntry,{allowanceNames:[]});
+ const frozenBefore=await correctionState(frozenEntry,frozenCorrectionReport,frozenRemoval,CORRECTION_WORKER);
+ await reject(()=>approveCorrection(frozenRemoval),/日報の修正承認/);
+ eq(await correctionState(frozenEntry,frozenCorrectionReport,frozenRemoval,CORRECTION_WORKER),frozenBefore,'Refusal preserves finalized salary and all receipt/request history');
+ eq(await q("select prosecdef v from pg_proc where oid='company_checkout_allowance_private.guard_receipt_pointer()'::regprocedure"),false,'Guard remains security invoker');
+ eq(await q("select has_table_privilege('authenticated','company_checkout_allowance_private.receipts','SELECT') v"),false,'No private price SELECT granted');
+ console.log(JSON.stringify({approved_correction_guard:true,removal_refused_atomically:true,missing_key_preserved:true,captured_names_retained_edit_allowed:true,old_untyped_removal_allowed:true,unrelated_label_removal_allowed:true,canonical_edit_and_two_signatures_remove_company_amount:true,original_receipt_history_preserved:true,finalized_payroll_preserved:true,security_invoker_retained:true,direct_authenticated_clear_denial:true,production_changed:false}));
+ phase='source-and-settings-preservation';`);
+const dir=await mkdtemp(join(tmpdir(),'sko-checkout-correction-diagnostic-'));
+try{const file=join(dir,'diagnostic.mjs');await writeFile(file,source);if(process.argv[2]==='--check-generated'){await promisify(execFile)(process.execPath,['--check',file]);process.stdout.write('Generated diagnostic syntax PASS\n');}else{const r=await promisify(execFile)(process.execPath,[file,process.argv[2]],{env:process.env,maxBuffer:1024*1024});process.stdout.write(r.stdout);process.stderr.write(r.stderr);}}
+catch(error){process.stdout.write(error.stdout??'');process.stderr.write(error.stderr??'');process.exitCode=1;}
+finally{await rm(dir,{recursive:true,force:true});}
