@@ -1,0 +1,51 @@
+name: Collector signed transport isolated review
+on:
+  pull_request:
+    paths:
+      - 'tool/security/collector_signed_transport_candidate/**'
+      - 'docs/candidates/security_collector_storage_v1_20261020.sql.review-only'
+      - 'docs/review/collector_signed_transport_readiness_20261024.md'
+      - 'tool/security/fixture_dependencies/**'
+      - '.github/workflows/collector-signed-transport-review.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tool/security/collector_signed_transport_candidate/**'
+      - 'docs/candidates/security_collector_storage_v1_20261020.sql.review-only'
+      - 'docs/review/collector_signed_transport_readiness_20261024.md'
+      - 'tool/security/fixture_dependencies/**'
+      - '.github/workflows/collector-signed-transport-review.yml'
+permissions:
+  contents: read
+jobs:
+  signed-transport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify preserved candidate manifest
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          import {createHash} from 'node:crypto';
+          const root='tool/security/collector_signed_transport_candidate/';
+          const manifest=JSON.parse(await readFile(root+'manifest.json','utf8'));
+          for (const file of manifest.files) {
+            assert.equal(createHash('sha256').update(await readFile(root+file.path)).digest('hex'),file.sha256,file.path);
+          }
+          NODE
+      - name: Existing 12 unit tests
+        run: node --test tool/security/collector_signed_transport_candidate/collector_signed_transport_test.mjs
+      - name: Install existing locked fixture dependencies
+        run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - name: Existing 14 loopback HTTP and SQL integration checks
+        run: >-
+          node tool/security/collector_signed_transport_candidate/integration.mjs
+          "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+          "$PWD/docs/candidates/security_collector_storage_v1_20261020.sql.review-only"
