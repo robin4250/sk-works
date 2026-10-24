@@ -178,6 +178,45 @@ void main() {
   await tester.ensureVisible(find.widgetWithText(OutlinedButton, '控除')); await tester.tap(find.widgetWithText(OutlinedButton, '控除')); await tester.pumpAndSettle(); expect(find.byKey(const ValueKey('legacy-1-name')), findsNothing);
   await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
  });
+ testWidgets('empty legacy reference slots are not rendered as fixed allowance inputs', (tester) async {
+  final repo = FakeRepository()..value = CompanyCommonAllowanceState.parse(state(legacyValues: [for (final x in legacy()) {...x, 'name': null}]), company);
+  await show(tester, repo, MemoryStore());
+  await tester.tap(find.widgetWithText(OutlinedButton, '日単位')); await tester.pumpAndSettle();
+  for (var slot = 1; slot <= 3; slot++) { expect(find.byKey(ValueKey('legacy-$slot-name')), findsNothing); }
+  expect(find.text('元からある手当（各給与形態で共通）'), findsNothing);
+  expect(find.text('追加した手当'), findsNothing);
+  expect(repo.writes, 0);
+  await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
+ });
+ testWidgets('registered legacy allowance deletes across types and stays removed after save and reload', (tester) async {
+  final repo = FakeRepository(), store = MemoryStore(); await show(tester, repo, store);
+  await tester.tap(find.widgetWithText(OutlinedButton, '日単位')); await tester.pumpAndSettle();
+  expect(find.byKey(const ValueKey('legacy-1-name')), findsOneWidget);
+  expect(find.byKey(const ValueKey('legacy-2-name')), findsNothing);
+  await tester.ensureVisible(find.byKey(const ValueKey('legacy-1-remove')));
+  await tester.tap(find.byKey(const ValueKey('legacy-1-remove'))); await tester.pumpAndSettle();
+  expect(find.byKey(const ValueKey('legacy-1-name')), findsNothing); expect(repo.writes, 0);
+  expect(find.text('削除は未保存です。「登録」で保存します。'), findsOneWidget);
+  await tester.ensureVisible(find.widgetWithText(OutlinedButton, '月給')); await tester.tap(find.widgetWithText(OutlinedButton, '月給')); await tester.pumpAndSettle();
+  expect(find.byKey(const ValueKey('legacy-1-name')), findsNothing);
+  await save(tester); await tester.tap(find.text('閉じる')); await tester.pumpAndSettle();
+  final sent = repo.last!;expect(sent.legacySlots.length, 3);expect(sent.legacySlots.first['name'], isNull);
+  expect(sent.legacySlots.first['id'], legacy().first['id']);expect(sent.legacySlots.first['generation'], legacy().first['generation']);
+  expect(sent.legacySlots.first['amount_yen'], legacy().first['amount_yen']);expect(sent.legacySlots.first['source_unit'], legacy().first['source_unit']);
+  expect(sent.items, isEmpty);expect(store.pending, isNull);
+  await tester.pumpWidget(const SizedBox()); await show(tester, repo, store);
+  await tester.tap(find.widgetWithText(OutlinedButton, '日単位')); await tester.pumpAndSettle();
+  expect(find.byKey(const ValueKey('legacy-1-name')), findsNothing);expect(repo.writes, 1);
+  await tester.pumpWidget(const SizedBox()); tester.view.resetPhysicalSize(); tester.view.resetDevicePixelRatio();
+ });
+ testWidgets('legacy deletion can be undone without issuing a save', (tester) async {
+  final repo = FakeRepository();await show(tester, repo, MemoryStore());
+  await tester.tap(find.widgetWithText(OutlinedButton, '日単位')); await tester.pumpAndSettle();
+  await tester.ensureVisible(find.byKey(const ValueKey('legacy-1-remove')));await tester.tap(find.byKey(const ValueKey('legacy-1-remove')));await tester.pumpAndSettle();
+  await tester.tap(find.text('削除を取り消す'));await tester.pumpAndSettle();
+  expect(tester.widget<TextField>(find.byKey(const ValueKey('legacy-1-name'))).controller!.text, '旧原値');expect(repo.writes, 0);
+  await tester.pumpWidget(const SizedBox());tester.view.resetPhysicalSize();tester.view.resetDevicePixelRatio();
+ });
  testWidgets('in-flight registration cannot issue duplicate commands', (tester) async {
   final repo = FakeRepository()..gate = Completer<void>(); final store = MemoryStore(); await show(tester, repo, store);
   await add(tester, '一回だけ'); await tester.ensureVisible(find.text('登録')); await tester.tap(find.text('登録')); await tester.pump(); await tester.pump();
