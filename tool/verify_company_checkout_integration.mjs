@@ -152,6 +152,19 @@ try{
  await draft('2020-10-22',W,[],{reportId:partial});
  eq(await q('select representative_signature_json is null and supervisor_signature_json is null v from daily_reports where id=$1',[partial]),true,'Changed selected allowances invalidate prior signatures');
  eq(await q('select company_allowance_selections v from daily_report_workers where report_id=$1',[partial]),choices([]),'Explicit empty set is retained');
+ phase='approval-header-basis';
+ await client.query("select public.save_daily_report_signature($1,'representative','合成報告者',$2::jsonb)",[partial,signature]);
+ await draft('2020-10-22',W,[],{reportId:partial});
+ eq(await q('select representative_signature_json is not null v from daily_reports where id=$1',[partial]),true,'Unchanged typed save preserves first approval');
+ for(const [date,site,description] of [['2020-10-28',SITE,'合成作業'],['2020-10-28',SITE2,'合成作業'],['2020-10-28',SITE2,'変更された作業']]){
+  await client.query("update daily_reports set representative_signature_json=$2::jsonb,supervisor_signature_json=$2::jsonb where id=$1",[partial,signature]);
+  await client.query('select public.save_daily_report_destination_draft($1,$2,null,$3,$4,$5::jsonb)',[partial,site,date,description,JSON.stringify([worker(W,[])])]);
+  eq(await q('select representative_signature_json is null and supervisor_signature_json is null v from daily_reports where id=$1',[partial]),true,'Changed report header clears both approvals');
+ }
+ await client.query('insert into route_assignments(id,company_id) values($1,$2)',[id(40),A]);
+ await client.query("update daily_reports set representative_signature_json=$2::jsonb,supervisor_signature_json=$2::jsonb where id=$1",[partial,signature]);
+ await client.query('select public.save_daily_report_destination_draft($1,null,$2,$3,$4,$5::jsonb)',[partial,id(40),'2020-10-28','変更された作業',JSON.stringify([worker(W,[])])]);
+ eq(await q('select representative_signature_json is null and supervisor_signature_json is null v from daily_reports where id=$1',[partial]),true,'Changed route clears both approvals');
  phase='actual-work-hours-not-invented';
  const hourReport=await draft('2020-10-23',W,[choice('company_common',HOUR,'合成時間手当','hour')]);await sign(hourReport);
  current=await statement(W);
@@ -161,9 +174,16 @@ try{
  phase='monthly-contract-remains-once-and-not-a-checkout-choice';
  await reject(()=>draft('2020-10-24',W,[choice('company_common',MONTH,'合成月控除','month')]),/invalid company allowance selection/);
  await client.query("insert into company_common_allowance_private.payroll_activation values($1,'2020-10-01')",[A]);
- await client.query("insert into company_common_allowance_private.payroll_publications values($1,1,'daily','2020-10-01',$2::jsonb)",[A,JSON.stringify([{origin:'company_common',id:MONTH,payroll_type:'daily',section:'deduction',unit:'month',name:'合成月控除',amount_yen:500}])]);
+ await client.query("insert into company_common_allowance_private.payroll_publications values($1,1,'daily','2020-10-01',$2::jsonb)",[A,JSON.stringify([{origin:'company_common',id:MONTH,payroll_type:'daily',section:'deduction',unit:'month',name:'合成月控除',amount_yen:500},{origin:'company_legacy',id:LEGACY,generation:1,payroll_type:'daily',section:'earning',unit:'day',name:legacy.name_snapshot,amount_yen:3000,quantity_basis:'attendance_selected_distinct_dates',individual_reconciliation:'inherit_absent_or_same_rate_otherwise_unresolved',selection_aliases:[legacy.name_snapshot]}])]);
  await client.query("select private.refresh_automatic_payroll($1,$2,'2020-10-20')",[A,W2]);
  eq((await statement(W2)).deductions,500,'Existing monthly item is applied once without checkout selection');
+ eq((await statement(W2)).calculation_blocked,false,'Active legacy publication does not block explicit company receipt differing from stored individual rate');
+ await client.query("insert into attendance_entries(company_id,worker_id,site_id,work_date,base_man_days,allowance_names) values($1,$2,$3,'2020-10-18',1,array['合成会社日手当'])",[A,W2,SITE3]);
+ eq((await statement(W2)).gross_pay,24700,'Active publication mixed month preserves old individual1700 and typed company3000');
+ eq((await statement(W2)).detail.custom_earnings_total,3000,'Active publication mixed month charges typed receipt only once');
+ eq((await statement(W2)).detail['合成会社日手当'],1700,'Active publication leaves old untyped named detail at individual rate');
+ eq((await statement(W2)).calculation_blocked,false,'Mixed typed and historical personal day is source-resolved');
+
  phase='manual-and-finalized-payroll-preserved';
  await client.query("insert into payroll_statements(company_id,worker_id,period_start,period_end,gross_pay,deductions,net_pay,workflow_state,automatic_calculation) values($1,$2,'2020-10-01','2020-10-31',777,7,770,'finalized',true),($1,$3,'2020-10-01','2020-10-31',888,8,880,'draft',false)",[A,W3,W4]);
  const protectedBefore=[await statement(W3),await statement(W4)];

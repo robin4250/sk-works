@@ -16,10 +16,13 @@ revoke all on table company_checkout_allowance_private.receipts from public,anon
 
 create function company_checkout_allowance_private.report_basis(rid uuid)
 returns jsonb language sql stable security invoker set search_path='' as $basis$
- select coalesce(jsonb_agg(jsonb_build_object('worker_id',w.worker_id,'overtime_hours',w.overtime_hours,
-  'early_hours',w.early_hours,'night_hours',w.night_hours,'allowance_amount',w.allowance_amount,
-  'allowance_label',w.allowance_label,'work_category',w.work_category,'company_allowance_selections',w.company_allowance_selections)
-  order by w.worker_id),'[]'::jsonb) from public.daily_report_workers w where w.report_id=rid
+ select jsonb_build_object('header',jsonb_build_object('company_id',r.company_id,'site_id',r.site_id,
+  'route_assignment_id',r.route_assignment_id,'report_date',r.report_date,'work_description',r.work_description),
+  'workers',(select coalesce(jsonb_agg(jsonb_build_object('worker_id',w.worker_id,'overtime_hours',w.overtime_hours,
+   'early_hours',w.early_hours,'night_hours',w.night_hours,'allowance_amount',w.allowance_amount,
+   'allowance_label',w.allowance_label,'work_category',w.work_category,'company_allowance_selections',w.company_allowance_selections)
+   order by w.worker_id),'[]'::jsonb) from public.daily_report_workers w where w.report_id=rid))
+ from public.daily_reports r where r.id=rid
 $basis$;
 revoke all on function company_checkout_allowance_private.report_basis(uuid) from public,anon,authenticated,service_role;
 
