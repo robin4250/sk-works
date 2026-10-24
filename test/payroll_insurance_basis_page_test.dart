@@ -34,7 +34,9 @@ void main() {
       companyId: 'company', workerId: 'worker', month: DateTime(2026, 10),
       rpc: (name, params) async {
         if (name == 'read_worker_payroll_tax_conditions' ||
-            name == 'read_worker_payroll_tax_conditions_with_insurance_reference') return response();
+            name == 'read_worker_payroll_tax_conditions_with_insurance_reference') {
+          return response();
+        }
         if (name == 'read_worker_payroll_insurance_income_history') {
           return {'contract_version': 1, 'company_id': 'company', 'worker_id': 'worker',
             'from': params['p_from'], 'to': params['p_to'], 'items': [],
