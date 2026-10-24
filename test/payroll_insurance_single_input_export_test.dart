@@ -49,5 +49,5 @@ void main() {
     await File('$folder/ui-save-request.json').writeAsString(const JsonEncoder.withIndent('  ').convert(captured));
     expect(t.takeException(), isNull);
     await t.pumpWidget(const SizedBox.shrink()); await t.pump();
-  }, skip: folder == null ? 'Dedicated disposable PG17 proof pipeline only' : false);
+  }, skip: folder == null);
 }
