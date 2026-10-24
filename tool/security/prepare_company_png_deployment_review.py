@@ -44,6 +44,8 @@ def observer():
 declare r record; data jsonb:='{{}}'; relations jsonb:='{{}}'; routines jsonb; namespaces jsonb; meta jsonb; row_count bigint; rows_hash text;
 begin
  if current_user <> 'postgres' then raise exception 'postgres owner observer required';end if;
+ -- pg_get_constraintdef/functiondef depend on search_path; normalize every observation.
+ perform set_config('search_path','',true);
  if exists(select 1 from unnest(array[{','.join(map(literal, PROTECTED_TABLES))}]::text[]) w(name) where to_regclass(w.name) is null) then raise exception 'protected PNG baseline relation missing';end if;
  for r in select n.nspname,c.relname,c.oid from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname||'.'||c.relname in ({relations}) and c.relkind in('r','p') order by n.nspname,c.relname loop
   execute format('select count(*),encode(sha256(convert_to(coalesce(jsonb_agg(v order by v::text)::text,''[]''),''UTF8'')),''hex'') from (select to_jsonb(t) v from %I.%I t) q',r.nspname,r.relname) into row_count,rows_hash;
