@@ -1,0 +1,29 @@
+name: Collector public read RPC isolated review
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/security_collector_public_read_v1_20261024.sql.review-only'
+      - 'tool/security/collector_public_read_gotrue.mjs'
+      - 'docs/review/collector-public-read-20261024.md'
+      - '.github/workflows/collector-public-read-review.yml'
+      - 'docs/candidates/security_collector_storage_v1_20261020.sql.review-only'
+      - 'supabase/functions/reauthenticate-operation/**'
+      - 'tool/staged/reauthentication_proofs.sql'
+      - 'tool/staged/master_device_lock_reauthentication.sql'
+permissions:
+  contents: read
+jobs:
+  real-gotrue-public-rpc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/security/collector_public_read_gotrue.mjs
+      - name: Actual new RPC through local GoTrue Edge and PostgREST
+        run: node tool/security/collector_public_read_gotrue.mjs
