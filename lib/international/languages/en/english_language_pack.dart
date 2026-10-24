@@ -649,6 +649,8 @@ const englishLanguagePack = LanguagePack(
     "会社共通の給料日": "Company Payday",
     "会社単価・手当設定": "Company Rates and Allowances",
     "消費税・福利厚生費・旧単価": "Consumption Tax, Welfare and Legacy Rates",
+    "消費税・福利厚生費・旧単価を保存しました": "Consumption tax, welfare and legacy rates saved",
+    "消費税率・福利厚生費率と登録済みの旧単価を設定します。共通手当は給料一覧の「社内共通手当」から設定します。": "Set consumption tax, welfare rates and existing legacy rates here. Manage common allowances from Company Common Allowances in the payroll list.",
     "住民税一括入力": "Bulk Resident Tax Entry",
     "会社単価・手当設定を保存しました": "Company rates and allowances saved",
     "会社単価設定を利用できません。": "Company rate settings are unavailable.",

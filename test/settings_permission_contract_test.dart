@@ -11,14 +11,13 @@ void main() {
       contains("_canManageCompany = role == 'owner' || role == 'admin';"),
     );
     expect(source, contains('if (_canManageCompany)'));
-    expect(
-      source,
-      contains(
-        'if (_canManageCompany && _companyId != null && _companyId!.trim().isNotEmpty)',
-      ),
-    );
-    expect(source, contains('CompanyAllowanceIdentityPage('));
-    expect(source, contains('CompanyCommonAllowanceEntryPage('));
+    expect(source, isNot(contains('CompanyAllowanceIdentityPage(')));
+    expect(source, isNot(contains('CompanyCommonAllowanceEntryPage(')));
+    final allowance = File('lib/features/payroll/company_common_allowance_entry_page.dart')
+        .readAsStringSync();
+    expect(allowance, contains('if (selected.canEdit)'));
+    expect(allowance, contains('CompanyAllowanceIdentityPage(companyId: selected.companyId)'));
+    expect(allowance, contains("row['role'] == 'owner' || row['role'] == 'admin'"));
     expect(source, isNot(contains(".from('companies').update(")));
     expect(source, isNot(contains('settings_company_name')));
     expect(source, isNot(contains('settings_invoice_detail_mode')));
