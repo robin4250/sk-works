@@ -1,0 +1,24 @@
+name: Apple guard real GoTrue signup event shape
+on:
+  pull_request:
+    paths:
+      - 'tool/security/apple_existing_account_signup_guard*'
+      - 'tool/security/apple_signup_hook_event*'
+      - '.github/workflows/apple-signup-hook-event-gotrue.yml'
+permissions:
+  contents: read
+jobs:
+  actual-email-phone-hook-events:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node --check tool/security/apple_signup_hook_event_gotrue.mjs
+      - name: Observe actual GoTrue events before creation and before message delivery
+        run: node tool/security/apple_signup_hook_event_gotrue.mjs
