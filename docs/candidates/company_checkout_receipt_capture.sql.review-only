@@ -207,7 +207,7 @@ returns boolean language sql stable security invoker set search_path='' as $cove
  and r.work_date=a.work_date and r.report_id=a.source_report_id
  cross join lateral jsonb_array_elements(r.snapshot->'items') i
  where a.company_id=cid and a.worker_id=wid and a.work_date=work_day
- and i->>'origin'='company_legacy' and i->>'name'=(select nullif(btrim(to_jsonb(s)->>('allowance_name_'||slot)),'')
+ and i->>'origin' in('company_legacy','company_common') and i->>'name'=(select nullif(btrim(to_jsonb(s)->>('allowance_name_'||slot)),'')
   from public.worker_payroll_settings s where s.company_id=cid and s.worker_id=wid))
 $covers$;
 revoke all on function company_checkout_allowance_private.covers_legacy(uuid,uuid,date,integer) from public,anon,authenticated,service_role;
