@@ -90,7 +90,7 @@ try{
   await db.exec('reset role;begin;');
   const def=(await db.query('select pg_get_functiondef($1::regprocedure) d',[sig])).rows[0].d;
   const body=/LANGUAGE plpgsql/i.test(def)?'BEGIN RETURN NULL; END;':'SELECT NULL::boolean';
-  const changed=def.replace(/\bAS\s+(\$[A-Za-z_0-9]*\$)[\s\S]*?\1;/i,(_all,tag)=>'AS '+tag+body+tag+';').replace(/^CREATE FUNCTION /i,'CREATE OR REPLACE FUNCTION ');
+  const changed=def.replace(/\bAS\s+(\$[A-Za-z_0-9]*\$)[\s\S]*?\1\s*;?\s*$/i,(_all,tag)=>'AS '+tag+body+tag+';').replace(/^CREATE FUNCTION /i,'CREATE OR REPLACE FUNCTION ');
   assert.notEqual(changed,def);await db.exec(changed);await actor(owner);
   if(sig.includes('payroll_settings_allowed')){
    const restricted=(await db.query('select public.read_company_resident_tax_annual($1,2026,null) v',[cid])).rows[0].v;
