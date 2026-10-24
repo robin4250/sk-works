@@ -9,7 +9,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 let source=await readFile('tool/verify_company_checkout_integration.mjs','utf8');
 if(createHash('sha256').update(source).digest('hex')!=='a9588f8af73dee8c89cfcd81d7ba72e3f0f8d6208b736429f90b83da9449a73a')throw Error('Reviewed 118-check fixture changed');
-const once=(text,a,b)=>{if(text.split(a).length!==2)throw Error('Diagnostic anchor changed');return text.replace(a,b);};
+const once=(text,a,b)=>{if(text.split(a).length!==2)throw Error('Diagnostic anchor changed');return text.replace(a,()=>b);};
 source=once(source," phase='source-bound-review-unit';",` phase='exact-attendance-approval-source';
  await exec(\`create table public.attendance_correction_requests(id uuid primary key,company_id uuid,status text,requested_by uuid,request_kind text,reviewed_by uuid,reviewed_at timestamptz,review_note text,updated_at timestamptz default now());
  create table public.attendance_correction_items(id uuid primary key,request_id uuid,company_id uuid,attendance_entry_id uuid,proposed_snapshot jsonb,created_at timestamptz default now());
