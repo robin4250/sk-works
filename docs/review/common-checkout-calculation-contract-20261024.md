@@ -97,7 +97,27 @@ checkout aggregation before claiming end-to-end payroll reflection.
 
 ## Validation status
 
-This document reports source/catalog findings, not a passed implementation.
-No new receipt schema, writer patch, resolver patch, production activation or
-Native execution is claimed here. The exact actual-hours source and old/new
-same-day partition must be resolved before a production installer is prepared.
+The low-level receipt aggregate passed 14 isolated PostgreSQL cases in PR 1352
+(head `bb876c6c65e0729357ca32b508ac4de4898e278c`). This is component proof only.
+
+A separate source-bound integration candidate now prepares both normal draft
+writers, two-signature capture, private immutable price receipts, attendance
+pointers, selective legacy/new payroll resolution and matching detail display.
+The public report metadata contains identities and labels only; captured prices
+remain in the owner-only private receipt store. Omitted metadata preserves a
+saved draft; an explicit empty selection clears it. Version and company/worker
+checks run again at confirmation, and stale prices are rejected atomically.
+
+The integration runner uses pinned observed function bodies with explicitly
+synthetic authorization, tax and surrounding tables. It checks old individual
+rates versus newly selected company rates, multi-site/day deduplication, separate
+workers, retries, renamed/versioned snapshots, manual/finalized preservation,
+private price access and direct metadata-write rejection. Python generation and
+Node syntax passed locally. Its Native execution has not yet run; source-bound
+integration success and real Auth/RLS completeness are not claimed.
+
+Hour items remain explicitly blocked without an authoritative actual-work-hours
+source. Route visits do not acquire new financial semantics. No production
+activation, installation, data conversion or existing signed-record rewrite has
+been performed. The review unit must not be deployed solely on the component
+proof or syntax checks.
