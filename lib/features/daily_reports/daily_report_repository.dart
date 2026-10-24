@@ -1,4 +1,6 @@
 import 'daily_report_edit_session.dart';
+import 'daily_report_company_allowance_selection.dart';
+import '../shared/company_allowance_label_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -22,6 +24,7 @@ class DailyReportWorkerDraft {
     this.nightHours = 0,
     this.allowanceAmount = 0,
     this.allowanceLabel = '',
+    this.companyAllowanceSelections,
     this.vehicleId,
     this.vehicleName,
     this.routeId,
@@ -43,6 +46,7 @@ class DailyReportWorkerDraft {
   double nightHours;
   int allowanceAmount;
   String allowanceLabel;
+  DailyReportCompanyAllowanceSelections? companyAllowanceSelections;
   String? vehicleId;
   String? vehicleName;
   String? routeId;
@@ -63,6 +67,8 @@ class DailyReportWorkerDraft {
         'night_hours': nightHours,
         'allowance_amount': allowanceAmount,
         'allowance_label': allowanceLabel,
+        if (companyAllowanceSelections != null)
+          'company_allowance_selections': companyAllowanceSelections!.toJson(),
       };
 }
 
@@ -195,11 +201,15 @@ class DailyReportActorChanged implements Exception {
 }
 
 class DailyReportRepository {
-  DailyReportRepository._(this._client);
+  DailyReportRepository._(this._client)
+      : _companyAllowanceLabels = SupabaseCompanyAllowanceLabelRepository.maybeCreate();
 
-  DailyReportRepository.forTesting(this._client);
+  DailyReportRepository.forTesting(this._client,
+      {CompanyAllowanceLabelSource? companyAllowanceLabels})
+      : _companyAllowanceLabels = companyAllowanceLabels;
 
   final SupabaseClient _client;
+  final CompanyAllowanceLabelSource? _companyAllowanceLabels;
 
   String? get currentActorId => _client.auth.currentUser?.id;
 
@@ -208,6 +218,127 @@ class DailyReportRepository {
     final client = SupabaseBackend.client;
     if (client.auth.currentUser == null) return null;
     return DailyReportRepository._(client);
+  }
+
+  Future<bool> companyCheckoutAllowancesEnabled() async {
+    final actor = currentActorId;
+    final token = _client.auth.currentSession?.accessToken;
+    if (actor == null || token == null) return false;
+    void check() {
+      if (currentActorId != actor || _client.auth.currentSession?.accessToken != token) {
+        throw const DailyReportActorChanged();
+      }
+    }
+    try {
+      final value = await _client.rpc('company_checkout_allowance_contract_version')
+        .setHeader('Authorization', 'Bearer $token').timeout(const Duration(seconds: 15));
+      check();
+      return value == 1;
+    } catch (_) { check(); return false; }
+  }
+
+  Future<(String, String)?> _selectionWriteBinding(List<DailyReportWorkerDraft> workers) async {
+    if (!workers.any((worker) => worker.companyAllowanceSelections != null)) return null;
+    final actor = currentActorId;
+    final token = _client.auth.currentSession?.accessToken;
+    if (actor == null || token == null || !await companyCheckoutAllowancesEnabled()) {
+      throw StateError('退勤手当の給与連動を確認できません。再読み込みしてください');
+    }
+    final binding = (actor, token);
+    _checkSelectionBinding(binding);
+    return binding;
+  }
+
+  void _checkSelectionBinding((String, String)? binding) {
+    if (binding != null && (currentActorId != binding.$1 ||
+        _client.auth.currentSession?.accessToken != binding.$2)) {
+      throw const DailyReportActorChanged();
+    }
+  }
+
+  Future<void> _verifySavedCompanySelections(String reportId,
+      List<DailyReportWorkerDraft> workers, (String, String)? binding) async {
+    final expected = {for (final worker in workers)
+      if (worker.companyAllowanceSelections != null)
+        worker.workerId: worker.companyAllowanceSelections!.toJson()};
+    if (expected.isEmpty) return;
+    _checkSelectionBinding(binding);
+    final rows = await _client.from('daily_report_workers')
+      .select('worker_id,company_allowance_selections').eq('report_id', reportId)
+      .inFilter('worker_id', expected.keys.toList())
+      .setHeader('Authorization', 'Bearer ${binding!.$2}').timeout(const Duration(seconds: 15));
+    _checkSelectionBinding(binding);
+    final seen = <String>{};
+    for (final row in rows) {
+      final id = row['worker_id'];
+      if (id is! String || !expected.containsKey(id) || !seen.add(id)) {
+        throw StateError('保存された退勤手当の対象を確認できません');
+      }
+      final saved = DailyReportCompanyAllowanceSelections.fromJson(row['company_allowance_selections']);
+      if (!dailyReportRpcValueEqual(saved.toJson(), expected[id])) {
+        throw StateError('保存された退勤手当が異なります。再送せず確認してください');
+      }
+    }
+    if (seen.length != expected.length) {
+      throw StateError('保存された退勤手当が不足しています。再送せず確認してください');
+    }
+  }
+
+  /// Resolve the selected roster's company through existing RLS before reading
+  /// current registered labels. Never chooses the actor's first membership.
+  Future<CompanyAllowanceLabelSnapshot> loadCompanyAllowanceLabels({
+    required Iterable<String> workerIds, String? expectedCompanyId,
+  }) async {
+    final ids = workerIds.toSet().toList()..sort();
+    final actor = currentActorId;
+    final token = _client.auth.currentSession?.accessToken;
+    final labels = _companyAllowanceLabels;
+    if (actor == null || token == null || labels == null ||
+        ids.isEmpty || ids.any((id) => id.isEmpty)) {
+      throw StateError('会社共通手当の対象を確認できません');
+    }
+    void checkActor() {
+      if (currentActorId != actor ||
+          _client.auth.currentSession?.accessToken != token) {
+        throw const DailyReportActorChanged();
+      }
+    }
+    final rows = await _client.from('workers').select('id,company_id')
+        .inFilter('id', ids).setHeader('Authorization', 'Bearer $token')
+        .timeout(const Duration(seconds: 15));
+    checkActor();
+    final companyId = dailyReportAllowanceCompanyScope(rows,
+        workerIds: ids, expectedCompanyId: expectedCompanyId);
+    if (!await companyCheckoutAllowancesEnabled()) {
+      throw StateError('退勤手当の給与連動を確認できません');
+    }
+    checkActor();
+    final snapshot = await labels.read(companyId);
+    checkActor();
+    if (snapshot.companyId != companyId) {
+      throw StateError('会社共通手当の対象が変わりました');
+    }
+    return snapshot;
+  }
+
+  Future<Map<String, Set<String>>> loadCompanyAllowanceEligibility({
+    required String reportId, required Iterable<String> workerIds,
+    required CompanyAllowanceLabelSnapshot snapshot,
+  }) async {
+    final actor = currentActorId;
+    final token = _client.auth.currentSession?.accessToken;
+    if (actor == null || token == null || reportId.isEmpty) {
+      throw StateError('保存済み日報の対象を確認できません');
+    }
+    final ids = workerIds.toList();
+    final raw = await _client.rpc('read_daily_report_company_allowance_eligibility',
+      params: {'p_report_id': reportId}).setHeader('Authorization', 'Bearer $token')
+      .timeout(const Duration(seconds: 15));
+    if (currentActorId != actor || _client.auth.currentSession?.accessToken != token) {
+      throw const DailyReportActorChanged();
+    }
+    return dailyReportCompanyAllowanceEligibility(raw,
+      reportId: reportId, workerIds: ids, snapshot: snapshot);
   }
 
   /// Only reads the selected destination; never substitutes another site's name.
@@ -435,6 +566,8 @@ class DailyReportRepository {
             nightHours: _number(raw['night_hours']),
             allowanceAmount: (raw['allowance_amount'] as num?)?.toInt() ?? 0,
             allowanceLabel: raw['allowance_label']?.toString() ?? '',
+            companyAllowanceSelections: raw['company_allowance_selections'] == null ? null
+              : DailyReportCompanyAllowanceSelections.fromJson(raw['company_allowance_selections']),
           ),
         );
       }
@@ -479,11 +612,13 @@ class DailyReportRepository {
     required String workDescription,
     required List<DailyReportWorkerDraft> workers,
   }) async {
+    final binding = await _selectionWriteBinding(workers);
     final row = await _visitRpc('save_route_visit_report_draft', {
       ...context.toRpcParams(),
       'p_work_description': workDescription.trim(),
       'p_workers': workers.map((worker) => worker.toRpcJson()).toList(),
     });
+    _checkSelectionBinding(binding);
     if (row == null || !context.matches(row) || row['id'] == null) {
       throw StateError('現場訪問の日報IDを確認できません');
     }
@@ -500,7 +635,7 @@ class DailyReportRepository {
         expected.keys.any((id) => id.trim().isEmpty) ||
         expected.length != actual.length || expected.entries.any((entry) =>
           actual[entry.key] == null || entry.value.entries.any((field) =>
-            actual[entry.key]![field.key] != field.value))) {
+            !dailyReportRpcValueEqual(actual[entry.key]![field.key], field.value)))) {
       throw StateError('保存された現場メンバーまたは数量が異なります。再読み込みしてください');
     }
     return record.id;
@@ -531,10 +666,11 @@ class DailyReportRepository {
     String? vehicleClockInAnchorId,
     String? reportId,
   }) async {
+    final companySelectionsEnabled = await companyCheckoutAllowancesEnabled();
     var query = _client
         .from('daily_reports')
         .select(
-          'id, company_id, created_by, updated_by, site_id, route_assignment_id, report_date, work_description, status, signer_name, signature_json, representative_signer_name, representative_signature_json, supervisor_signer_name, supervisor_signature_json, signed_at, sites(name), route_assignments(route_name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label, vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
+          'id, company_id, created_by, updated_by, site_id, route_assignment_id, report_date, work_description, status, signer_name, signature_json, representative_signer_name, representative_signature_json, supervisor_signer_name, supervisor_signature_json, signed_at, sites(name), route_assignments(route_name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label,${companySelectionsEnabled ? " company_allowance_selections," : ""} vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
         )
         .eq('report_date', _dbDate(date));
     query = siteId != null
@@ -579,6 +715,8 @@ class DailyReportRepository {
             allowanceAmount:
                 (detail['allowance_amount'] as num?)?.toInt() ?? 0,
             allowanceLabel: detail['allowance_label']?.toString() ?? '',
+            companyAllowanceSelections: detail['company_allowance_selections'] == null ? null
+              : DailyReportCompanyAllowanceSelections.fromJson(detail['company_allowance_selections']),
             vehicleId: detail['vehicle_id']?.toString(),
             vehicleName: detail['vehicles'] is Map
                 ? detail['vehicles']['display_name']?.toString()
@@ -675,11 +813,13 @@ class DailyReportRepository {
         throw StateError('対象勤務が変わりました。日報を再読み込みしてください');
       }
     }
+    final selectionBinding = await _selectionWriteBinding(workers);
     final meterEnabled = await vehicleMeterEnabledForAnchor(vehicleClockInAnchorId,
     );
     if (!meterEnabled && workers.any((worker) => worker.meterManaged)) {
       throw StateError('車両の勤務記録を再確認してください');
     }
+    _checkSelectionBinding(selectionBinding);
     final value = await _client.rpc(
       'save_daily_report_destination_draft',
       params: {
@@ -696,6 +836,9 @@ class DailyReportRepository {
     if (id == null || id.isEmpty) {
       throw StateError('日報IDを確認できません。');
     }
+
+    _checkSelectionBinding(selectionBinding);
+    await _verifySavedCompanySelections(id, workers, selectionBinding);
 
     if (meterEnabled) {
       final snapshots = await _vehicleReportContext(id, date);
@@ -1138,4 +1281,46 @@ bool groupReportSourcesAttached(Object? value, String reportId, List<String> sou
   return sources.length == expected.length &&
     List.generate(sources.length, (i) => sources[i] == expected[i],
       ).every((same) => same);
+}
+
+/// A partial, duplicated or mixed-company roster cannot select company labels.
+String dailyReportAllowanceCompanyScope(Object? raw, {
+  required Iterable<String> workerIds, String? expectedCompanyId,
+}) {
+  final expected = workerIds.toSet();
+  if (expected.isEmpty || expected.any((id) => id.isEmpty) ||
+      raw is! List || raw.length != expected.length) {
+    throw StateError('会社共通手当の対象を確認できません');
+  }
+  final seen = <String>{};
+  String? companyId;
+  for (final row in raw) {
+    if (row is! Map || row['id'] is! String ||
+        !expected.contains(row['id']) || !seen.add(row['id'] as String) ||
+        row['company_id'] is! String || (row['company_id'] as String).isEmpty) {
+      throw StateError('会社共通手当の対象を確認できません');
+    }
+    final current = row['company_id'] as String;
+    if ((companyId != null && companyId != current) ||
+        (expectedCompanyId != null && expectedCompanyId != current)) {
+      throw StateError('会社共通手当の会社が一致しません');
+    }
+    companyId = current;
+  }
+  return companyId!;
+}
+
+bool dailyReportRpcValueEqual(Object? a, Object? b) {
+  if (a is Map && b is Map) {
+    return a.length == b.length && a.keys.every((key) =>
+      b.containsKey(key) && dailyReportRpcValueEqual(a[key], b[key]));
+  }
+  if (a is List && b is List) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!dailyReportRpcValueEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  return a == b;
 }

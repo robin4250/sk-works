@@ -31,16 +31,38 @@ class PayrollUnitItemDraft {
   final String quantity;
 }
 
+/// Read-only current company name. It never becomes an individual payable row.
+@immutable
+class PayrollRegisteredAllowanceName {
+  const PayrollRegisteredAllowanceName({required this.key, required this.name,
+    required this.section, required this.unit, this.legacySlot, this.itemId});
+  final String key, name;
+  final String? itemId;
+  final int? legacySlot;
+  final PayrollItemSection section;
+  final PayrollItemUnit unit;
+}
+
 /// Routes a host footer to the mounted editor; never owns payroll data or saves.
 class PayrollUnitEditorController extends ChangeNotifier {
   _PayrollUnitItemEditorState? _editor;
   bool _disposed = false;
   bool _scheduled = false;
-  bool get canAdd => _editor?.mounted == true && _editor!._editable;
-  bool get canRegister => canAdd && _editor!.widget.onRegister != null;
+  bool get canAdd => _editor?.mounted == true && _editor!._editable && _editor!.widget.allowAdding;
+  bool get canRegister => _editor?.mounted == true && _editor!._editable && _editor!.widget.onRegister != null;
   bool get saving => _editor?._saving ?? false;
   void add() { if (canAdd) _editor!._add(); }
   Future<void> register() async { if (canRegister) await _editor!._register(); }
+  bool validate() => _editor?.mounted == true ? _editor!._validate() : true;
+  /// Capture validated values before the host saves other fields. The returned
+  /// operation cannot read later keystrokes or run after its editor is removed.
+  Future<bool> Function()? prepareRegistration() {
+    final editor = _editor;
+    if (!canRegister || editor == null || !editor._validate()) return null;
+    final values = List<PayrollUnitItemDraft>.unmodifiable(
+        editor._rows.map((row) => row.snapshot()));
+    return () => editor._registerValues(values, prepared: true);
+  }
   void invalidate() { _editor = null; _changed(); }
   void _attach(_PayrollUnitItemEditorState editor) {
     if (identical(_editor, editor)) return;
@@ -69,6 +91,7 @@ class PayrollUnitItemEditor extends StatefulWidget {
     required this.initialItems,
     required this.canEdit,
     this.onRegister,
+    this.onRegisterPrepared,
     this.enableQuantitySources = false,
     this.showDailyReportOption = true,
     this.embedded = false,
@@ -77,6 +100,11 @@ class PayrollUnitItemEditor extends StatefulWidget {
     this.onValidationSelection,
     this.controller,
     this.showFooter = true,
+    this.onDraftChanged,
+    this.allowAdding = true,
+    this.quantityExplanation,
+    this.registeredNames = const [],
+    this.registeredNameHints = const {},
   });
 
   final List<PayrollUnitItemDraft> initialItems;
@@ -84,12 +112,18 @@ class PayrollUnitItemEditor extends StatefulWidget {
   final bool embedded;
   final PayrollUnitEditorController? controller;
   final bool showFooter;
+  final bool allowAdding;
+  final String? Function(PayrollUnitItemDraft)? quantityExplanation;
+  final List<PayrollRegisteredAllowanceName> registeredNames;
+  final Map<String, String> registeredNameHints;
+  final ValueChanged<List<PayrollUnitItemDraft>>? onDraftChanged;
   final PayrollItemSection? section;
   final PayrollItemUnit? unit;
   final void Function(PayrollItemSection, PayrollItemUnit)? onValidationSelection;
   final bool enableQuantitySources;
   final bool showDailyReportOption;
   final Future<void> Function(List<PayrollUnitItemDraft> items)? onRegister;
+  final Future<void> Function(List<PayrollUnitItemDraft> items)? onRegisterPrepared;
 
   @override
   State<PayrollUnitItemEditor> createState() => _PayrollUnitItemEditorState();
@@ -125,7 +159,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) oldWidget.controller?._detach(this);
     widget.controller?._attach(this);
-    if (oldWidget.canEdit != widget.canEdit) widget.controller?._changed();
+    if (oldWidget.canEdit != widget.canEdit || oldWidget.allowAdding != widget.allowAdding) widget.controller?._changed();
     _section = widget.section ?? _section;
     _unit = widget.unit ?? _unit;
   }
@@ -140,8 +174,11 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
     super.dispose();
   }
 
+  void _notifyDraft() => widget.onDraftChanged?.call(
+      List.unmodifiable(_rows.map((row) => row.snapshot())));
+
   void _add() {
-    if (!_editable) return;
+    if (!_editable || !widget.allowAdding) return;
     String id;
     do {
       id = 'new-unit-item-${_nextId++}';
@@ -150,6 +187,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
       PayrollUnitItemDraft(id: id, section: _section, unit: _unit),
     );
     setState(() => _rows.add(row));
+    _notifyDraft();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_rows.contains(row)) return;
       final rowContext = row.key.currentContext;
@@ -162,8 +200,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
     });
   }
 
-  Future<void> _register() async {
-    if (!_editable || widget.onRegister == null) return;
+  bool _validate() {
     final seen = <String>{};
     for (final row in _rows) {
       final name = row.name.text.trim();
@@ -171,7 +208,9 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
       String? error;
       if (name.isEmpty) {
         error = '項目名を入力してください';
-      } else if (rate == null || rate < 0) {
+      } else if (name.length > 100) {
+        error = '項目名は100文字以内で入力してください';
+      } else if (rate == null || rate < 0 || rate > 2147483647) {
         error = '単価は0以上の整数で入力してください';
       } else if (!seen.add(
         '${row.value.section.name}/${row.value.unit.name}/$name',
@@ -181,7 +220,8 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
       if (widget.enableQuantitySources &&
           row.value.unit == PayrollItemUnit.hour &&
           row.source == 'manual_hours' &&
-          !RegExp(r'^\d+(?:\.\d{1,4})?$').hasMatch(row.quantity.text.trim())) {
+          (!RegExp(r'^\d+(?:\.\d{1,4})?$').hasMatch(row.quantity.text.trim()) ||
+              (num.tryParse(row.quantity.text.trim()) ?? 999999100) > 99999999)) {
         error = '対象月の時間数を入力してください';
       }
       if (error != null) {
@@ -197,20 +237,31 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
           if (context != null) Scrollable.ensureVisible(context);
           row.focus.requestFocus();
         });
-        return;
+        return false;
       }
     }
+    return true;
+  }
+
+  Future<void> _register() async {
+    if (!_editable || widget.onRegister == null || !_validate()) return;
+    await _registerValues(List.unmodifiable(_rows.map((row) => row.snapshot())));
+  }
+
+  Future<bool> _registerValues(List<PayrollUnitItemDraft> values, {bool prepared = false}) async {
+    if (!mounted || _saving || widget.onRegister == null || (!prepared && !_editable)) return false;
     setState(() {
       _saving = true;
       _error = null;
     });
     widget.controller?._changed();
     try {
-      await widget.onRegister!(
-        List.unmodifiable(_rows.map((row) => row.snapshot())),
-      );
+      final register = prepared ? widget.onRegisterPrepared ?? widget.onRegister! : widget.onRegister!;
+      await register(values);
+      return true;
     } catch (_) {
       if (mounted) setState(() => _error = '登録できませんでした。入力内容を保持しています');
+      return false;
     } finally {
       if (mounted) setState(() => _saving = false);
       widget.controller?._changed();
@@ -283,7 +334,15 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
             controller: _scroll,
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             children: [
-              if (visible.isEmpty)
+              for (final item in widget.registeredNames.where((item) =>
+                  item.section == _section && item.unit == _unit))
+                Card(key: ValueKey('company-registered-${item.key}'),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(title: Text(item.name),
+                    subtitle: Text(tr('会社共通で登録した手当')),
+                    trailing: const Icon(Icons.business_outlined))),
+              if (visible.isEmpty && !widget.registeredNames.any((item) =>
+                  item.section == _section && item.unit == _unit))
                 Padding(
                   padding: const EdgeInsets.all(24),
                   child: Text(tr('項目はありません'), textAlign: TextAlign.center),
@@ -312,18 +371,25 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
                           Expanded(child: Text('${tr(_unitLabel(_unit))} ${tr(_section == PayrollItemSection.earning ? '支給' : '控除')}',
                             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87))),
                         ]),
+                        if (widget.quantityExplanation?.call(row.snapshot()) != null)
+                          Padding(padding: const EdgeInsets.only(top: 8),
+                            child: Text(tr(widget.quantityExplanation!(row.snapshot())!))),
                         const SizedBox(height: 12),
                         TextField(
                           key: ValueKey('${row.value.id}-name'),
                           controller: row.name,
+                          onChanged: (_) => _notifyDraft(),
                           focusNode: row.focus,
                           enabled: _editable,
-                          decoration: InputDecoration(labelText: tr('項目名')),
+                          decoration: InputDecoration(labelText: tr('項目名'),
+                            helperText: widget.registeredNameHints[row.value.id] == null
+                                ? null : '会社の登録名：${widget.registeredNameHints[row.value.id]}'),
                         ),
                         const SizedBox(height: 10),
                         TextField(
                           key: ValueKey('${row.value.id}-rate'),
                           controller: row.rate,
+                          onChanged: (_) => _notifyDraft(),
                           enabled: _editable,
                           keyboardType: TextInputType.number,
                           decoration: InputDecoration(
@@ -394,6 +460,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
                                     _rows.remove(row);
                                     // Keep controllers alive through removal of focused fields.
                                     _retired.add(row);
+                                    _notifyDraft();
                                   })
                                 : null,
                             icon: const Icon(Icons.delete_outline),
@@ -415,7 +482,7 @@ class _PayrollUnitItemEditorState extends State<PayrollUnitItemEditor> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _editable ? _add : null,
+                    onPressed: _editable && widget.allowAdding ? _add : null,
                     icon: const Icon(Icons.add),
                     label: Text(tr('追加')),
                   ),
