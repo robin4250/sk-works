@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'panel_seven_repository.dart';
 import 'apple_account_link_card.dart';
+import 'login_method_enrollment_card.dart';
+import 'login_method_enrollment_repository.dart';
 
 class PanelSevenPage extends StatefulWidget {
   const PanelSevenPage({super.key, required this.repository});
@@ -15,6 +17,7 @@ class PanelSevenPage extends StatefulWidget {
 class _PanelSevenPageState extends State<PanelSevenPage>
     with WidgetsBindingObserver {
   StreamSubscription<AuthState>? _subscription;
+  LoginMethodEnrollmentRepository? _enrollment;
   PanelSevenSnapshot? _snapshot;
   bool _loading = true;
   bool _failed = false;
@@ -25,6 +28,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _enrollment = LoginMethodEnrollmentRepository.maybeCreate();
     _subscription = widget.repository.changes.listen((_) {
       final snapshot = _snapshot;
       // Never use the event's session: a delayed logout event may carry B.
@@ -59,6 +63,18 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     }
   }
 
+  Future<void> _refreshRegistration() async {
+    final generation = ++_generation;
+    try {
+      final snapshot = await widget.repository.load();
+      if (!mounted || !_foreground || generation != _generation ||
+          !widget.repository.isCurrent(snapshot)) { return; }
+      setState(() => _snapshot = snapshot);
+    } catch (_) {
+      // Keep the operation receipt visible; explicit reload remains available.
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
@@ -78,6 +94,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
   void dispose() {
     _generation++;
     _subscription?.cancel();
+    _enrollment?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -90,6 +107,11 @@ class _PanelSevenPageState extends State<PanelSevenPage>
         '登録済みのログイン方法と本人の認証設定を確認します。'
         '連携済みの方法と、今回のログインに使った方法は別です。'
         '第一パスワードの有無は安全に確認できるAPIがないため推測しません。'
+        '第一パスワードを設定・変更から保存できます。既にある場合は変更します。'
+        '確認済みメールまたは利用可能な電話番号が必要です。第二パスワードは変更しません。'
+        '電話番号を登録からSMSコードを送り、コード確認後に登録を完了します。'
+        'メール未登録の場合はメール確認後に第一パスワードを設定します。'
+        '提供準備中の方法は登録できません。サーバーが本人再確認を求める場合は、登録済みの連絡先へ確認コードを送って保存します。'
         '第二パスワードは重要情報用で、ログイン用とは別です。'
         '第二パスワードの設定済み表示は、マスター管理の権限や専用パスワードの設定状況を示しません。'
         'Face ID / Touch IDは端末内の本人確認で、'
@@ -122,7 +144,6 @@ class _PanelSevenPageState extends State<PanelSevenPage>
       appBar: AppBar(title: const Text('アカウント設定'),
         actions: [IconButton(tooltip: '使い方', onPressed: _help,
             icon: const Icon(Icons.help_outline))]),
-      bottomNavigationBar: const SafeArea(child: AppleAccountLinkCard()),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _failed || snapshot == null
@@ -173,15 +194,12 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                   const SizedBox(height: 12),
                   const Text('ログイン方法の追加', style: TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold)),
-                  _item('電話番号を追加', '番号の所有確認方法を準備中です。'
-                      '番号入力やFace IDだけで認証済みにはしません。'
-                      'SMS送信や別アカウント作成は行いません。'),
-                  _item('Google・メールを追加', '安全な追加手順を確認中です。'
-                      '既存アカウントとの紐付けを維持するため、'
-                      '新規登録から追加しないでください。'),
+                  LoginMethodEnrollmentCard(source: _enrollment, onChanged: _refreshRegistration),
+                  const AppleAccountLinkCard(),
                   TextButton(onPressed: _load, child: const Text('最新の状態を確認')),
                 ]),
     );
   }
 }
+
 
