@@ -92,11 +92,15 @@ p.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(sys.argv[1]+'.png')
                 ).readAsString(),
               )
               as Map<String, dynamic>;
-      for (final mode in ['automatic', 'calculation_only',
+      for (final mode in ['automatic', 'calculation_only', 'calculation_current',
         'calculation_legacy_allowance', 'calculation_mirrored_allowance',
         'calculation_unit_allowance', 'saved_named', 'manual_corrected']) {
         final variant = jsonDecode(jsonEncode(row)) as Map<String, dynamic>;
         final detail = variant['detail'] as Map<String, dynamic>;
+        if (mode == 'calculation_current') {
+          (detail['tax_calculation'] as Map)['calculator_version'] =
+              'payroll-tax-20261014-overrides-v1';
+        }
         if (mode.startsWith('calculation_')) {
           for (final label in const ['健康保険料', '介護保険料', '厚生年金保険', '雇用保険料', '子ども・子育て支援金']) {
             detail.remove(label);

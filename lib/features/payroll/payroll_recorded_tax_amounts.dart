@@ -4,6 +4,12 @@ const recordedPayrollInsuranceNames = <String>[
   '健康保険料', '介護保険料', '厚生年金保険', '雇用保険料', '子ども・子育て支援金',
 ];
 
+// Both persisted producer contracts have the same conditions/premiums fields.
+const _recordedPayrollTaxCalculators = {
+  'payroll-tax-20261010-v1',
+  'payroll-tax-20261014-overrides-v1',
+};
+
 int? _yen(Object? value) => value is num && value.isFinite &&
     value >= 0 && value <= 2147483647 && value == value.round()
     ? value.toInt() : null;
@@ -11,7 +17,7 @@ int? _yen(Object? value) => value is num && value.isFinite &&
 bool hasRecordedPayrollTaxCalculation(Map detail, {required String month}) {
   final tax = detail['tax_calculation'];
   if (tax is! Map || tax['blocked'] == true ||
-      tax['calculator_version'] != 'payroll-tax-20261010-v1' ||
+      !_recordedPayrollTaxCalculators.contains(tax['calculator_version']) ||
       tax['condition_version'] is! int || (tax['condition_version'] as int) < 1 ||
       tax['conditions_start'] is! String || tax['premiums'] is! Map ||
       tax['conditions'] is! Map) {
