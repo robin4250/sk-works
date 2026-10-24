@@ -30,6 +30,14 @@ const extension=String.raw`
  await exec(await readFile('docs/candidates/closed_day_paid_hours_scope.sql.review-only','utf8'));
  await exec(await readFile('docs/candidates/checkout_paid_hours_ledger.sql.review-only','utf8'));
  await exec(await readFile(process.env.SKO_PAID_HOURS_PATCHES,'utf8'));
+ await exec("create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);create table auth.users(id uuid primary key,is_anonymous boolean default false,banned_until timestamptz);create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('fixture.hour_claims',true),''),'{}')::jsonb$$;");
+ await exec(await readFile('tool/fixtures/checkout_paid_hours_session_helper.sql','utf8'));
+ await exec(await readFile('docs/candidates/checkout_paid_hours_api.sql.review-only','utf8'));
+ const hoursSession=id(930);
+ await client.query('insert into auth.sessions values($1,$2,null)',[hoursSession,U]);
+ await client.query('insert into auth.users values($1,false,null)',[U]);
+ const claims={role:'authenticated',sub:U,session_id:hoursSession,is_anonymous:false};
+ await client.query("select set_config('fixture.hour_claims',$1,false)",[JSON.stringify(claims)]);
  const fullSignatureSource=hourSources.functions.find(f=>f.signature==='private.save_daily_report_signature(uuid,text,text,jsonb)');
  eq(await q('select md5(prosrc) v from pg_proc where oid=$1::regprocedure',[fullSignatureSource.signature]),fullSignatureSource.source_md5,'Actual unmodified representative/supervisor writer');
  const hoursDate='2026-10-10';
@@ -46,7 +54,33 @@ const extension=String.raw`
  const hourReceiptBefore=await q('select jsonb_agg(to_jsonb(r) order by id) v from company_checkout_allowance_private.receipts r');
  const scope=await q('select checkout_paid_hours_candidate_private.read_closed_day_scope($1,$2,$3,$4) v',[A,W5,hoursDate,finalReport]);
  eq(scope.blocked,false,'Exact final saved clock source accepted');
- await q('select checkout_paid_hours_candidate_private.save_draft($1,$2,7.25,0,$3) v',[finalReport,W5,scope.source_fingerprint]);
+ await exec('set role authenticated');
+ try{
+  const readInput=()=>q('select public.read_checkout_paid_work_hours($1,$2) v',[finalReport,W5]);
+  const input=await readInput();
+  eq(input.actor_id,U,'Public reader binds live actor');eq(input.required,true,'Earlier site hour selection requests final-day input');
+  eq(input.hours,null,'Public input does not assume zero before first save');
+  await reject(()=>q('select public.read_checkout_paid_work_hours($1,$2) v',[finalReport,W3]),/access_unavailable/);
+  await reject(()=>q('select hours v from checkout_paid_hours_candidate_private.ledger limit 1'),/permission denied/);
+  await client.query("select set_config('fixture.hour_claims',$1,false)",[JSON.stringify({...claims,sub:OTHER})]);
+  await reject(readInput,/actor_access_unavailable/);
+  await client.query("select set_config('fixture.hour_claims',$1,false)",[JSON.stringify({...claims,is_anonymous:true})]);
+  await reject(readInput,/actor_access_unavailable/);
+  await client.query("select set_config('fixture.hour_claims',$1,false)",[JSON.stringify(claims)]);
+  const saved=await q('select public.save_checkout_paid_work_hours($1,$2,7.25,0,$3) v',[finalReport,W5,scope.source_fingerprint]);
+  eq(saved.hours,7.25,'Live-session public save/readback preserves explicit hours');
+  await reject(()=>q('select public.save_checkout_paid_work_hours($1,$2,8,0,$3) v',[finalReport,W5,scope.source_fingerprint]),/revision changed/);
+ }finally{await exec('reset role');}
+ await client.query('delete from auth.sessions where id=$1',[hoursSession]);
+ await exec('set role authenticated');
+ try{await reject(()=>q('select public.read_checkout_paid_work_hours($1,$2) v',[finalReport,W5]),/actor_access_unavailable/);}
+ finally{await exec('reset role');}
+ await client.query('insert into auth.sessions values($1,$2,null)',[hoursSession,U]);
+ for(const role of ['anon','service_role']){
+  await exec('set role '+role);
+  try{await reject(()=>q('select public.read_checkout_paid_work_hours($1,$2) v',[finalReport,W5]),/permission denied/);}
+  finally{await exec('reset role');}
+ }
  const finalBasis=await q('select company_checkout_allowance_private.report_basis($1) v',[finalReport]);
  eq(finalBasis.paid_work_hours[0].hours,7.25,'Time input is in same basis used by report edits');
  await client.query("select public.save_daily_report_signature($1,'representative','時間報告者',$2::jsonb)",[finalReport,signature]);
@@ -63,6 +97,12 @@ const extension=String.raw`
  eq(await q('select jsonb_agg(to_jsonb(r) order by id) v from company_checkout_allowance_private.receipts r where id=any($1::uuid[])',[hourReceiptBefore.map(r=>r.id)]),hourReceiptBefore,'Final report without hour selection leaves prior immutable price receipt untouched');
  eq([await statement(W3),await statement(W4)],protectedBefore,'Finalized and manual statement snapshots unchanged');
  eq(await q('select jsonb_agg(to_jsonb(s) order by worker_id) v from worker_payroll_settings s'),settingsBefore,'No individual rates or insurance values rewritten');
+ if(process.env.SKO_PAID_HOURS_EXPORT){
+  const {writeFile:writeHoursExport}=await import('node:fs/promises');
+  await writeHoursExport(process.env.SKO_PAID_HOURS_EXPORT,JSON.stringify({schema:1,synthetic_only:true,
+   saved_statement:after,client_rpc_row:{...after,worker_name:'合成社員E',company_name:'合成会社'},
+   expected:{hours:7.25,rate:1000,allowance:7250,gross_pay:27250,deductions:after.deductions,net_pay:after.net_pay}}));
+ }
  const reopening=id(924);
  await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at) values($1,$2,$3,$4,'clock_in',$5)",[reopening,A,W5,SITE2,hoursDate+'T18:00:00+09:00']);
  eq((await hourStatement()).calculation_blocked,true,'Actual later clock-in re-runs normal payroll and invalidates old signed hours');
@@ -71,7 +111,7 @@ const extension=String.raw`
 `;
 const temp=await mkdtemp(join(tmpdir(),'paid-hours-actual-chain-'));
 try{
- const file=join(temp,'proof.mjs');await writeFile(file,original.replace(marker,()=>extension+marker));
+ const file=join(temp,'proof.mjs');await writeFile(file,original.replace(marker,()=>extension+marker).replace('hour_source_connected:false','hour_source_connected:true'));
  const result=spawnSync(process.execPath,[file,process.argv[2]],{stdio:'inherit',env:process.env});
  if(result.error)throw result.error;process.exitCode=result.status??1;
 }finally{await rm(temp,{recursive:true,force:true});}

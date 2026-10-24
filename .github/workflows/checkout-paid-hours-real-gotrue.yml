@@ -1,0 +1,28 @@
+name: Checkout paid-hours real GoTrue public API
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/checkout-paid-hours-real-gotrue.yml'
+      - 'tool/verify_checkout_paid_hours_real_gotrue.mjs'
+      - 'tool/fixtures/checkout_paid_hours_session_helper.sql'
+      - 'tool/fixtures/checkout_paid_hours_actual_sources.json'
+      - 'tool/prepare_checkout_paid_hours.py'
+      - 'docs/candidates/checkout_paid_hours_ledger.sql.review-only'
+      - 'docs/candidates/checkout_paid_hours_api.sql.review-only'
+permissions:
+  contents: read
+jobs:
+  real-gotrue-paid-hours-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/verify_checkout_paid_hours_real_gotrue.mjs
+      - name: Actual local GoTrue issued sessions and public hours API
+        run: node tool/verify_checkout_paid_hours_real_gotrue.mjs

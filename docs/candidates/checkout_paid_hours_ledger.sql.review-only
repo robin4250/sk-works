@@ -133,33 +133,46 @@ end $read$;
 
 -- All new clock evidence uses the same lock as the existing report signature
 -- writer. This prevents a same-day new shift being inserted during capture.
+create function checkout_paid_hours_candidate_private.clock_scopes(p_evidence jsonb)
+returns jsonb language plpgsql stable security invoker set search_path='' as $scopes$
+declare shift_day date;e public.attendance_verifications%rowtype;scopes jsonb:='[]';
+begin
+ for e in select * from jsonb_populate_recordset(null::public.attendance_verifications,p_evidence) loop
+  shift_day:=coalesce(e.work_date,(e.confirmed_at at time zone 'Asia/Tokyo')::date);
+  if e.source_clock_in_id is not null then
+   select coalesce(a.work_date,(a.confirmed_at at time zone 'Asia/Tokyo')::date) into shift_day
+   from public.attendance_verifications a where a.id=e.source_clock_in_id;
+  end if;
+  if shift_day is null then raise exception 'clock source day unavailable' using errcode='40001';end if;
+  scopes:=scopes||jsonb_build_array(jsonb_build_object('cid',e.company_id,'wid',e.worker_id,'day',shift_day));
+ end loop;
+ return scopes;
+end $scopes$;
 create function checkout_paid_hours_candidate_private.lock_clock_scope()
 returns trigger language plpgsql volatile security definer set search_path='' as $lock$
-declare shift_day date;e public.attendance_verifications%rowtype;
+declare evidence jsonb;
 begin
- e:=case when tg_op='DELETE' then old else new end;
  if current_setting('transaction_isolation')<>'read committed' then raise exception 'paid hours clock scope requires read committed';end if;
- shift_day:=coalesce(e.work_date,(e.confirmed_at at time zone 'Asia/Tokyo')::date);
- if e.source_clock_in_id is not null then
-  select coalesce(a.work_date,(a.confirmed_at at time zone 'Asia/Tokyo')::date) into shift_day
-  from public.attendance_verifications a where a.id=e.source_clock_in_id;
- end if;
- if shift_day is null then raise exception 'clock source day unavailable' using errcode='40001';end if;
- perform payroll_scope_private.lock_scopes(jsonb_build_array(jsonb_build_object('cid',e.company_id,'wid',e.worker_id,'day',shift_day)));
- return e;
+ evidence:=case when tg_op<>'INSERT' then jsonb_build_array(to_jsonb(old)) else '[]'::jsonb end
+  ||case when tg_op<>'DELETE' then jsonb_build_array(to_jsonb(new)) else '[]'::jsonb end;
+ perform payroll_scope_private.lock_scopes(checkout_paid_hours_candidate_private.clock_scopes(evidence));
+ if tg_op='DELETE' then return old;end if;return new;
 end $lock$;
 
 create function checkout_paid_hours_candidate_private.refresh_clock_scope()
 returns trigger language plpgsql volatile security definer set search_path='' as $refresh$
-declare shift_day date;e public.attendance_verifications%rowtype;
+declare evidence jsonb;scope record;
 begin
- e:=case when tg_op='DELETE' then old else new end;
- shift_day:=coalesce(e.work_date,(e.confirmed_at at time zone 'Asia/Tokyo')::date);
+ evidence:=case when tg_op<>'INSERT' then jsonb_build_array(to_jsonb(old)) else '[]'::jsonb end
+  ||case when tg_op<>'DELETE' then jsonb_build_array(to_jsonb(new)) else '[]'::jsonb end;
  -- Only days with a previously captured quantity need payroll invalidation.
- if exists(select 1 from checkout_paid_hours_candidate_private.ledger where company_id=e.company_id and worker_id=e.worker_id and work_date=shift_day) then
-  perform private.refresh_automatic_payroll(e.company_id,e.worker_id,shift_day);
-  perform private.sync_payroll_attendance_detail(e.company_id,e.worker_id,shift_day);
- end if;
+ for scope in select distinct x.cid,x.wid,x.day from jsonb_to_recordset(
+  checkout_paid_hours_candidate_private.clock_scopes(evidence)) x(cid uuid,wid uuid,day date) order by x.cid,x.wid,x.day loop
+  if exists(select 1 from checkout_paid_hours_candidate_private.ledger where company_id=scope.cid and worker_id=scope.wid and work_date=scope.day) then
+   perform private.refresh_automatic_payroll(scope.cid,scope.wid,scope.day);
+   perform private.sync_payroll_attendance_detail(scope.cid,scope.wid,scope.day);
+  end if;
+ end loop;
  return null;
 end $refresh$;
 revoke all on all functions in schema checkout_paid_hours_candidate_private from public,anon,authenticated,service_role;

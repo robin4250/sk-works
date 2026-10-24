@@ -1,6 +1,6 @@
 # 退勤の時間手当：明示時間と二署名の接続候補
 
-これはreview-onlyの独立候補。本番更新・公開RPC・UI接続は行っていない。既存のclosed-day scope readerを再利用し、人工×8・生の経過時間・月別manual数量から勤務時間を推定しない。
+これはreview-onlyの独立候補。本番更新と共有DailyReportPageへのUI組込は行っていない。公開APIはreview-only候補である。既存のclosed-day scope readerを再利用し、人工×8・生の経過時間・月別manual数量から勤務時間を推定しない。
 
 ## 実装した契約
 
@@ -20,13 +20,15 @@ source producerは実際に観測したreport_basis/sign_daily_report/aggregate/
 
 検証対象は未入力/不正時間/旧revision/旧scope拒否、同値保存、片署名拒否、二署名の一度だけcapture、正式勤怠前の保留、7.25時間×200円=1450円、同日複数receipt一度のみ、日単位500円不変、価格receipt不変、価格衝突保留、明示0と不明null、署名とのnew-clock競合、変更で署名解除、後続証跡でquantity失効と再計算要求。
 
-**remote Nativeはこれから実行する。** localではNode構文とproducer生成のみを確認した。
+前段階root head `0efa9d55e279607fd0fa4965c005fba6cf9a79dd` でprivate ledger Native75項目と、既存保存/署名/正式勤怠/給与のsource chain140項目が成功した。後者は実1000円単価×7.25時間=7250円、支給27250円、保存差引一致、再出勤で保留へ戻ることを確認した。GoTrue/税の周辺は明示した合成/neutral fixtureである。
+
+その後、独立reviewに基づきclock UPDATEのOLD/NEW双方のscope lock/刷新を追加した。新しい公開API/Flutter/PDFテストと合わせてremote再検証が必要。localではNode構文、producer生成、YAML構文だけを確認し、Flutterはremote CIに限定する。
 
 ## Release前の残る接続
 
-- 公開RPCと既存session/account/attendance権限の実GoTrue/PostgREST検証。
-- DailyReportPageの明示時間入力と保存/再読込。現在の強制日報UI担当と同じfileを並走編集しない。
-- 既存の実sign→formal entry→給与保存計算→PDFまでを新ledgerと組み合わせたsource-bound flow proof。
+- 公開read/save RPC候補は既存registrationのlive-session helperを再利用する。新たな本人IDや認証方式は作らない。Nativeでlive session型契約・他worker/別sub/anonymous/削除session/anon/service role拒否を検証する。実GoTrue/PostgRESTは別途未検証。
+- standalone card/repository/section、入力/異常scope/0-null/session ABA/遅延応答のFlutter検証を追加した。共有DailyReportPageは変更せず、root用の最小hookを `checkout-paid-hours-page-hook.md` に記した。
+- 既存の実sign→formal entry→給与保存計算は前段Native成功。今回、その保存JSONを現在のmapper/PDFへ渡し文字/金額/はみ出しを確認する専用jobを追加した。
 - readerの物理証跡更新による失効条件、過去route互換、正規訂正と再署名の実確認。
 - production source再照合、bounded install/unused restore、rollout、管理者実機確認。
 

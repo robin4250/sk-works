@@ -55,6 +55,13 @@ const extension=String.raw`
  const paidHours=await q('select checkout_paid_hours_candidate_private.read_hours($1,$2,$3) v',[A,W,D]);
  eq(paidHours.available,true,'Matching two signatures and formal entry unlock signed explicit hours');
  eq(paidHours.hours,7.25,'Daily real quantity preserved');
+ const originalEvidence=await q('select to_jsonb(a) v from attendance_verifications a where id=$1',[id(100)]);
+ const scopePair=await q('select checkout_paid_hours_candidate_private.clock_scopes($1::jsonb) v',[
+  JSON.stringify([originalEvidence,{...originalEvidence,worker_id:WR}]),
+ ]);
+ eq(scopePair.map(s=>s.wid),[W,WR],'UPDATE scope derivation includes old and new workers');
+ await reject(()=>client.query('update attendance_verifications set worker_id=$1 where id=$2',[WR,id(100)]),/chronology is immutable/);
+ eq((await q('select checkout_paid_hours_candidate_private.read_hours($1,$2,$3) v',[A,W,D])).available,true,'Rejected scope move preserves original signed quantity');
  phase='shared-signature-clock-race';
  const raceClient=new pg.Client({connectionString:url.href,connectionTimeoutMillis:5000});
  await raceClient.connect();
