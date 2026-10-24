@@ -1,0 +1,42 @@
+-- REVIEW ONLY. Creates a scheduler target, not a pg_cron job or rollout.
+begin;
+create table checkout_report_registration_private.scheduler_state(
+ singleton boolean primary key default true check(singleton),
+ notification_day date, next_actor uuid, complete boolean not null default false,
+ last_result jsonb, updated_at timestamptz not null default now()
+);
+revoke all on checkout_report_registration_private.scheduler_state from public,anon,authenticated;
+insert into checkout_report_registration_private.scheduler_state(singleton) values(true);
+
+create function checkout_report_registration_private.run_daily_step()
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare s checkout_report_registration_private.scheduler_state%rowtype;
+ today date:=(current_timestamp at time zone 'Asia/Tokyo')::date; result jsonb;
+begin
+ select * into s from checkout_report_registration_private.scheduler_state where singleton for update;
+ if s.notification_day is distinct from today then
+  s.next_actor:=null;s.complete:=false;
+ end if;
+ -- Start a new bounded scan after a completed cycle even on the same day.
+ -- Reports registered later today must not wait until tomorrow's cursor reset.
+ -- Existing delivery keys make repeated scans read-idempotent for notifications.
+ if s.complete then s.next_actor:=null;s.complete:=false;end if;
+ result:=checkout_report_registration_private.deliver_daily(s.next_actor,500);
+ -- Keep failed batches visible/retryable. Successful deliveries remain deduped.
+ -- A failed actor cannot be silently advanced past and forgotten for the day.
+ if jsonb_array_length(result->'failures')=0 then
+  s.next_actor:=(result->>'next_actor')::uuid;
+  s.complete:=not (result->>'has_more')::boolean;
+ end if;
+ update checkout_report_registration_private.scheduler_state set notification_day=today,
+  next_actor=s.next_actor,complete=s.complete,last_result=result,updated_at=now() where singleton;
+ return result||jsonb_build_object('complete',s.complete);
+end $$;
+revoke all on function checkout_report_registration_private.run_daily_step() from public,anon,authenticated;
+commit;
+
+-- A separate root-reviewed deployment may register this private owner-only
+-- target on pg_cron every five minutes. Do not execute this comment as an
+-- instruction to install. Each JST day has its own cursor and delivery keys.
+-- select cron.schedule('checkout-report-registration-daily','*/5 * * * *',
+--  'select checkout_report_registration_private.run_daily_step()');

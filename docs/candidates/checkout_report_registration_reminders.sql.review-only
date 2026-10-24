@@ -1,0 +1,125 @@
+-- REVIEW ONLY. Owner-only scheduler entry point; does not install pg_cron.
+begin;
+create table checkout_report_registration_private.daily_deliveries(
+ company_id uuid not null, worker_id uuid not null,
+ source_clock_in_id uuid not null, recipient_user_id uuid not null,
+ notification_day date not null,
+ reason text not null check(reason in('supervisor_signature_missing','signed_projection_unverified')),
+ notification_id uuid references public.app_notifications(id),
+ created_at timestamptz not null default now(),
+ primary key(company_id,worker_id,source_clock_in_id,recipient_user_id,notification_day,reason)
+);
+revoke all on checkout_report_registration_private.daily_deliveries from public,anon,authenticated;
+
+create function checkout_report_registration_private.deliver_daily(p_after_actor uuid default null,p_limit integer default 100)
+returns jsonb language plpgsql security definer set search_path='' set lock_timeout='100ms' as $$
+declare a record; item jsonb; outcome jsonb; reason_value text; notice uuid;
+ today date:=(current_timestamp at time zone 'Asia/Tokyo')::date;
+ sent integer:=0; skipped integer:=0; actors integer:=0; last_actor uuid; inserted integer;
+ failures jsonb:='[]'::jsonb; body_value text; actor_sent integer; actor_skipped integer;
+ original_items jsonb; scopes jsonb; report_ids uuid[]; source_ids uuid[];
+begin
+ if p_limit is null or p_limit not between 1 and 500 then raise exception 'invalid batch limit'; end if;
+ -- Deterministic cursor covers all active recipient actors; callers must follow
+ -- has_more/next_actor. No client actor or company can execute this routine.
+ for a in select distinct w.user_id from public.workers w
+ join public.company_members m on m.company_id=w.company_id and m.user_id=w.user_id
+ join checkout_report_registration_private.rollout r on r.company_id=w.company_id and r.enabled
+ where w.user_id is not null and w.status='active' and (p_after_actor is null or w.user_id>p_after_actor)
+ order by w.user_id limit p_limit loop
+  actors:=actors+1; last_actor:=a.user_id;
+  begin
+   actor_sent:=0; actor_skipped:=0;
+   outcome:=checkout_report_registration_private.read_for_actor(a.user_id);
+   select coalesce(jsonb_agg(x),'[]'::jsonb) into original_items
+    from jsonb_array_elements(outcome->'items') x
+    where x->>'registration_state' in('reporter_saved_waiting_supervisor','signed_projection_unverified');
+   select array_agg(distinct (x->>'report_id')::uuid) into report_ids from jsonb_array_elements(original_items) x;
+   select array_agg(distinct source) into source_ids from (
+    select (x->>'source_clock_in_id')::uuid source from jsonb_array_elements(original_items) x
+    union select (x->>'clock_out_id')::uuid from jsonb_array_elements(original_items) x) selected;
+   select coalesce(jsonb_agg(jsonb_build_object('cid',cid,'wid',wid,'day',work_day) order by cid,wid,work_day),'[]'::jsonb)
+    into scopes from(select distinct r.company_id cid,w.worker_id wid,r.report_date as work_day
+     from public.daily_reports r join public.daily_report_workers w on w.report_id=r.id
+     where r.id=any(report_ids)) all_report_workers;
+   -- Match the existing signature writer order: all parent/worker/month scopes
+   -- before report, roster and source rows. Short lock timeout makes contention
+   -- a retryable actor failure instead of an unbounded batch lock inversion.
+   perform payroll_scope_private.lock_scopes(scopes,false);
+   perform 1 from public.daily_reports where id=any(report_ids) order by id for share;
+   perform 1 from public.daily_report_workers where report_id=any(report_ids) order by report_id,worker_id for share;
+   perform 1 from public.attendance_verifications where id=any(source_ids) order by id for share;
+   -- A supervisor may have committed since the first read. Re-evaluate under
+   -- these locks; never enqueue a stale missing-signature reason from before it.
+   outcome:=checkout_report_registration_private.read_for_actor(a.user_id);
+   for item in select x from jsonb_array_elements(outcome->'items') x where exists(
+    select 1 from jsonb_array_elements(original_items) old where
+     row(x->>'company_id',x->>'worker_id',x->>'work_date',x->>'site_id',x->>'route_assignment_id',
+      x->>'source_clock_in_id',x->>'clock_out_id',x->>'report_id') is not distinct from
+     row(old->>'company_id',old->>'worker_id',old->>'work_date',old->>'site_id',old->>'route_assignment_id',
+      old->>'source_clock_in_id',old->>'clock_out_id',old->>'report_id')) loop
+    reason_value:=case item->>'registration_state'
+     when 'reporter_saved_waiting_supervisor' then 'supervisor_signature_missing'
+     when 'signed_projection_unverified' then 'signed_projection_unverified' else null end;
+    if reason_value is null then continue; end if;
+    insert into checkout_report_registration_private.daily_deliveries(
+     company_id,worker_id,source_clock_in_id,recipient_user_id,notification_day,reason)
+    values((item->>'company_id')::uuid,(item->>'worker_id')::uuid,
+     (item->>'source_clock_in_id')::uuid,a.user_id,today,reason_value)
+    on conflict do nothing;
+    get diagnostics inserted=row_count;
+    if inserted=0 then actor_skipped:=actor_skipped+1; continue; end if;
+    body_value:=case reason_value when 'supervisor_signature_missing'
+     then '現場責任者サイン未完了のためこの日は給与未反映'
+     else '現場責任者サイン済みですが、この日の勤怠・給与反映を確認できません。管理者へ確認してください。' end;
+    notice:=private.enqueue_notification((item->>'company_id')::uuid,a.user_id,'daily_report',
+     (item->>'work_date')||' 日報の確認',body_value,'checkout_report_registration',(item->>'report_id')::uuid);
+    if notice is null then raise exception 'notification_not_persisted'; end if;
+    update checkout_report_registration_private.daily_deliveries set notification_id=notice
+     where company_id=(item->>'company_id')::uuid and worker_id=(item->>'worker_id')::uuid
+      and source_clock_in_id=(item->>'source_clock_in_id')::uuid and recipient_user_id=a.user_id
+      and notification_day=today and reason=reason_value;
+    actor_sent:=actor_sent+1;
+   end loop;
+   sent:=sent+actor_sent; skipped:=skipped+actor_skipped;
+  exception when others then
+   -- The actor subtransaction rolls back both delivery receipts and enqueue.
+   -- Return bounded machine reasons only, never signature data or SQL messages.
+   failures:=failures||jsonb_build_array(jsonb_build_object('actor_id',a.user_id,'sqlstate',sqlstate));
+  end;
+ end loop;
+ return jsonb_build_object('schema',1,'notification_day',today,'actors',actors,'sent',sent,'deduplicated',skipped,
+  'failures',failures,'next_actor',last_actor,'has_more',exists(
+   select 1 from public.workers w join public.company_members m on m.company_id=w.company_id and m.user_id=w.user_id
+   join checkout_report_registration_private.rollout r on r.company_id=w.company_id and r.enabled
+   where w.status='active' and w.user_id>last_actor));
+end $$;
+revoke all on function checkout_report_registration_private.deliver_daily(uuid,integer) from public,anon,authenticated;
+
+create function public.read_checkout_report_registration_notification(p_report_id uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid; envelope jsonb; selected jsonb;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ if not exists(select 1 from public.app_notifications n
+  join public.daily_reports r on r.id=n.action_id and r.company_id=n.company_id
+  join public.company_members m on m.company_id=r.company_id and m.user_id=actor
+  join checkout_report_registration_private.rollout p on p.company_id=r.company_id and p.enabled and r.report_date>=p.starts_on
+  join public.workers w on w.company_id=r.company_id and w.user_id=actor
+  join public.attendance_verifications o on o.worker_id=w.id and o.company_id=w.company_id
+   and o.event_type='clock_out'
+  join public.attendance_verifications i on i.id=o.source_clock_in_id and i.event_type='clock_in'
+  where n.recipient_user_id=actor and n.action_key='checkout_report_registration'
+   and n.action_id=p_report_id and coalesce(o.daily_report_id,i.daily_report_id)=r.id) then
+  raise exception 'notification_target_unavailable' using errcode='42501'; end if;
+ envelope:=checkout_report_registration_private.read_for_actor(actor);
+ select coalesce(jsonb_agg(x),'[]'::jsonb) into selected
+ from jsonb_array_elements(envelope->'items') x where x->>'report_id'=p_report_id::text;
+ return jsonb_build_object('schema',1,'actor_id',actor,'report_id',p_report_id,
+  'enforcement_enabled',envelope->'enforcement_enabled','effective_from',envelope->'effective_from',
+  'resolved',jsonb_array_length(selected)=0 and (envelope->>'enforcement_enabled')::boolean,
+  'items',selected);
+end $$;
+revoke all on function public.read_checkout_report_registration_notification(uuid) from public,anon,authenticated,service_role;
+grant execute on function public.read_checkout_report_registration_notification(uuid) to authenticated;
+commit;
