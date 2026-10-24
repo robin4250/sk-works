@@ -1,0 +1,26 @@
+name: Common allowance application status focused test
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/company_common_application_status.dart'
+      - 'lib/features/payroll/payroll_unit_conditions_page.dart'
+      - 'test/company_common_application_status_test.dart'
+      - '.github/workflows/common-application-status-test.yml'
+permissions:
+  contents: read
+jobs:
+  status-widget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/payroll/company_common_application_status.dart test/company_common_application_status_test.dart
+      - run: timeout 120s flutter test test/company_common_application_status_test.dart --reporter expanded --timeout 15s
