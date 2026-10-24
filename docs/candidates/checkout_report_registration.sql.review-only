@@ -1,0 +1,90 @@
+-- REVIEW ONLY: no activation, cron registration or production application.
+begin;
+create schema if not exists checkout_report_registration_private;
+revoke all on schema checkout_report_registration_private from public, anon, authenticated;
+create table checkout_report_registration_private.rollout (
+ company_id uuid primary key references public.companies(id),
+ starts_on date not null,
+ enabled boolean not null default false,
+ check (starts_on >= date '2026-01-01')
+);
+revoke all on checkout_report_registration_private.rollout from public, anon, authenticated;
+
+create function checkout_report_registration_private.has_signature(p_name text,p_value jsonb)
+returns boolean language sql immutable set search_path='' as $$
+ select coalesce(nullif(btrim(p_name),'') is not null and
+ case when jsonb_typeof(p_value->'strokes')='array' then exists
+ (select 1 from jsonb_array_elements(p_value->'strokes') x
+ where case when jsonb_typeof(x)='array' then jsonb_array_length(x)>0 else false end)
+ else false end,false)
+$$;
+revoke all on function checkout_report_registration_private.has_signature(text,jsonb) from public,anon,authenticated;
+
+-- Internal actor scope. No caller-supplied company/worker/date. The worker must
+-- still belong to the authenticated actor and the actor to that company.
+-- Proxy responsibility is intentionally not inferred from created_by.
+create function checkout_report_registration_private.read_for_actor(actor uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare result jsonb; active boolean; starts date;
+begin
+ if actor is null then raise exception 'actor_required'; end if;
+ select coalesce(bool_or(p.enabled),false),min(p.starts_on) filter(where p.enabled) into active,starts
+ from checkout_report_registration_private.rollout p join public.company_members m on m.company_id=p.company_id and m.user_id=actor;
+ with sources as (
+  select o.*, i.id in_id,i.daily_report_id in_report_id,
+   count(*) over(partition by o.source_clock_in_id) out_count,
+   (i.company_id=o.company_id and i.worker_id=o.worker_id
+    and i.site_id is not distinct from o.site_id
+    and i.route_assignment_id is not distinct from o.route_assignment_id
+    and i.work_date=o.work_date and i.confirmed_at<o.confirmed_at) source_valid
+  from public.attendance_verifications o
+  join public.workers w on w.id=o.worker_id and w.company_id=o.company_id and w.user_id=actor
+  join public.company_members cm on cm.company_id=o.company_id and cm.user_id=actor
+  join checkout_report_registration_private.rollout p on p.company_id=o.company_id and p.enabled and o.work_date>=p.starts_on
+  left join public.attendance_verifications i on i.id=o.source_clock_in_id and i.event_type='clock_in'
+  where o.event_type='clock_out'
+ ), evaluated as (
+  select s.*,r.id report_id,r.status report_status,r.updated_at report_updated_at,
+   case
+    when s.in_id is null or s.out_count<>1 or not coalesce(s.source_valid,false)
+      or (s.daily_report_id is not null and s.in_report_id is not null and s.daily_report_id<>s.in_report_id)
+      then 'source_conflict'
+    when r.id is null then 'report_missing'
+    when r.company_id<>s.company_id or r.report_date<>s.work_date
+      or r.site_id is distinct from s.site_id or r.route_assignment_id is distinct from s.route_assignment_id
+      or not exists(select 1 from public.daily_report_workers rw where rw.report_id=r.id and rw.worker_id=s.worker_id)
+      then 'source_conflict'
+    -- Work description is mandatory for this new registration gate. Numeric
+    -- zero values are valid; do not invent allowances, hours or signatures.
+    when not checkout_report_registration_private.inputs_complete(r.id) then 'report_input_incomplete'
+    when not checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json)
+      then 'reporter_signature_missing'
+    when not checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json)
+      then 'reporter_saved_waiting_supervisor'
+    -- This is deliberately not a payroll success assertion. A downstream
+    -- source-bound projection receipt is needed before stopping reminders.
+    when checkout_report_registration_private.projection_complete(r.id,s.worker_id) then 'completed'
+    else 'signed_projection_unverified' end state
+  from sources s left join public.daily_reports r on r.id=coalesce(s.daily_report_id,s.in_report_id)
+ )
+ select coalesce(jsonb_agg(jsonb_build_object(
+  'company_id',company_id,'worker_id',worker_id,'work_date',work_date,
+  'site_id',site_id,'route_assignment_id',route_assignment_id,
+  'report_id',report_id,'source_clock_in_id',source_clock_in_id,'clock_out_id',id,
+  'registration_state',state,
+  'blocking',state in('source_conflict','report_missing','report_input_incomplete','reporter_signature_missing'),
+  'scope_fingerprint',md5(jsonb_build_array(company_id,worker_id,work_date,site_id,route_assignment_id,source_clock_in_id,id,report_id,report_updated_at,state)::text)
+ ) order by work_date,confirmed_at,id),'[]'::jsonb) into result from evaluated where state<>'completed';
+ return jsonb_build_object('schema',1,'actor_id',actor,'enforcement_enabled',active,'effective_from',starts,'items',result);
+end $$;
+revoke all on function checkout_report_registration_private.read_for_actor(uuid) from public,anon,authenticated;
+create function public.read_pending_checkout_report_registration()
+returns jsonb language plpgsql security definer set search_path='' as $$
+begin
+ if auth.uid() is null then raise exception 'authentication_required' using errcode='28000'; end if;
+ if private.account_access_allowed() is not true then raise exception 'account_access_unavailable' using errcode='42501'; end if;
+ return checkout_report_registration_private.read_for_actor(auth.uid());
+end $$;
+revoke all on function public.read_pending_checkout_report_registration() from public,anon;
+grant execute on function public.read_pending_checkout_report_registration() to authenticated;
+commit;

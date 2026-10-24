@@ -1,0 +1,76 @@
+-- REVIEW ONLY. Install after registration schema/helper, before reader use.
+begin;
+create function checkout_report_registration_private.inputs_complete(rid uuid)
+returns boolean language sql stable security invoker set search_path='' as $$
+ select exists(select 1 from public.daily_reports r where r.id=rid
+ and nullif(btrim(r.work_description),'') is not null
+ and exists(select 1 from public.daily_report_workers w where w.report_id=r.id)
+ and not exists(select 1 from public.daily_report_workers w where w.report_id=r.id and (
+  w.overtime_hours is null or w.overtime_hours<0 or w.early_hours is null or w.early_hours<0
+  or w.night_hours is null or w.night_hours<0 or w.work_category is null
+  or w.work_category not in('day','night','holiday','holiday_night')
+  or (w.vehicle_id is not null and (w.odometer_km is null or w.odometer_km<0))))
+ -- Reuse the exact committed-meter snapshot invariant from the existing
+ -- guard_linked_vehicle_meter_report trigger; do not invoke a writer or infer
+ -- a managed claim from an optional legacy vehicle selection.
+ and not exists(
+ select 1 from public.daily_report_workers w
+ join public.attendance_verifications a on a.worker_id=w.worker_id and a.company_id=r.company_id
+  and a.event_type='clock_in' and a.work_date=r.report_date
+  and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id
+ join public.vehicle_usage_claims c on c.source_clock_in_id=a.id and c.company_id=a.company_id
+  and c.driver_worker_id=a.worker_id and c.vehicle_id=a.vehicle_id and c.work_date=a.work_date
+ left join public.vehicle_meter_events e on e.source_clock_in_id=c.source_clock_in_id
+ left join private.vehicle_meter_report_links l on l.report_id=r.id and l.worker_id=w.worker_id
+ where w.report_id=r.id and (
+  c.ended_at is null or e.id is null
+  or row(e.company_id,e.driver_worker_id,e.vehicle_id,e.work_date)
+    is distinct from row(c.company_id,c.driver_worker_id,c.vehicle_id,c.work_date)
+  or row(l.source_clock_in_id,l.event_id) is distinct from row(a.id,e.id)
+  or row(w.vehicle_meter_event_id,w.vehicle_meter_source_clock_in_id,w.vehicle_id,
+    w.route_assignment_id,w.previous_odometer_km,w.odometer_km,w.trip_distance_km)
+    is distinct from row(e.id,a.id,e.vehicle_id,a.route_assignment_id,e.previous_km,e.current_km,e.distance_km)))
+ and not exists(select 1 from private.vehicle_meter_report_links l
+ join public.vehicle_meter_events e on e.id=l.event_id
+ left join public.daily_report_workers w on w.report_id=l.report_id and w.worker_id=l.worker_id
+ where l.report_id=r.id and (w.worker_id is null or
+  row(w.vehicle_meter_event_id,w.vehicle_meter_source_clock_in_id,w.vehicle_id,
+    w.previous_odometer_km,w.odometer_km,w.trip_distance_km)
+   is distinct from row(e.id,l.source_clock_in_id,e.vehicle_id,e.previous_km,e.current_km,e.distance_km))))
+$$;
+revoke all on function checkout_report_registration_private.inputs_complete(uuid) from public,anon,authenticated;
+
+-- This verifies normal source-bound attendance and the standard attendance
+-- detail projection. It never recalculates, writes money or modifies history.
+-- Protected/manual statements are not silently certified as refreshed.
+create function checkout_report_registration_private.projection_complete(rid uuid,wid uuid)
+returns boolean language sql stable security invoker set search_path='' as $$
+ select exists(select 1 from public.daily_reports r
+ join public.daily_report_workers w on w.report_id=r.id and w.worker_id=wid
+ join public.payroll_statements p on p.company_id=r.company_id and p.worker_id=wid
+  and p.period_start=date_trunc('month',r.report_date)::date
+  and p.period_end=(date_trunc('month',r.report_date)+interval '1 month - 1 day')::date
+ where r.id=rid and r.status='signed' and r.signed_at is not null
+  and p.automatic_calculation and p.workflow_state='draft' and p.updated_at>=r.signed_at
+  and (select count(*) from public.attendance_entries a where a.source_report_id=r.id and a.worker_id=wid)=1
+  and (select count(*) from public.attendance_entries a where a.source_report_id=r.id
+   and a.company_id=r.company_id and a.worker_id=wid and a.work_date=r.report_date
+   and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id
+   and a.base_man_days>0 and a.overtime_hours=w.overtime_hours
+   and a.early_hours=w.early_hours and a.night_hours=w.night_hours
+   and a.work_category is not distinct from w.work_category)=1
+  and (p.detail->>'出勤日数')::numeric is not distinct from
+   (select coalesce(sum(coalesce(a.base_man_days,0)),0) from public.attendance_entries a
+    where a.company_id=r.company_id and a.worker_id=wid and a.work_date between p.period_start and p.period_end)
+  and (p.detail->>'残業時間')::numeric is not distinct from
+   (select coalesce(sum(coalesce(a.overtime_hours,0)),0) from public.attendance_entries a
+    where a.company_id=r.company_id and a.worker_id=wid and a.work_date between p.period_start and p.period_end)
+  and (p.detail->>'早出時間')::numeric is not distinct from
+   (select coalesce(sum(coalesce(a.early_hours,0)),0) from public.attendance_entries a
+    where a.company_id=r.company_id and a.worker_id=wid and a.work_date between p.period_start and p.period_end)
+  and (p.detail->>'夜間時間')::numeric is not distinct from
+   (select coalesce(sum(coalesce(a.night_hours,0)),0) from public.attendance_entries a
+    where a.company_id=r.company_id and a.worker_id=wid and a.work_date between p.period_start and p.period_end))
+$$;
+revoke all on function checkout_report_registration_private.projection_complete(uuid,uuid) from public,anon,authenticated;
+commit;
