@@ -1,0 +1,53 @@
+# Insurance single monthly income input — 2026-10-25
+
+Base: selected insurance UI source 2ac33cc (documentation 4a95a59), exact-main
+`a23d5d94e88d3d089def0a72c7239ea123cb32b7` checked through GitHub ref.
+Existing saved conditions/RPC value contract remain unchanged. No production SQL.
+
+## Behavior
+
+Entering the average monthly income once, or explicitly selecting an available
+history average, fills separate health/pension standard-remuneration fields via
+2026 general employee grade lookup. Company-provided premium rates remain used by
+the existing calculator. The two derived values are shown; notice-based manual
+correction is folded. Opening/reloading an existing profile never rebases it.
+Manual base edits remain authoritative until the user explicitly changes income
+again. Save still requires existing authorization, initial confirmation and final
+confirmation; fixed/manual-premium modes never derive bases.
+
+A positive income is required for conversion; unknown years refuse conversion.
+For another year the existing notice-based manual fields remain available.
+Empty reference input preserves previously saved reference and bases, consistent
+with the existing RPC metadata contract. No zero income minimum-base assumption.
+
+## Official sources checked 2026-10-25 JST
+
+- Japan Pension Service, 2026 edition effective September 2020 pension grades:
+  https://www.nenkin.go.jp/service/kounen/hokenryo/ryogaku/ryogakuhyo/20200825.files/R08ryougaku.pdf
+- Kyokai Kenpo Tokyo 2026 health/pension combined grade table (rates March 2026,
+  support levy April 2026; **no Tokyo rates copied into this implementation**):
+  https://www.kyoukaikenpo.or.jp/assets/R8_13tokyo.pdf
+- Determination by the competent pension institution, initial/regular/revision:
+  https://www.nenkin.go.jp/section/faq/kounen/hyoujunhoushu/20140602-02.html
+
+Lookup: health 50 grades 58,000–1,390,000; pension 32 grades 88,000–650,000,
+using distinct pension floor (<93,000 income) and cap (>=635,000 income).
+The lookup is scoped to the 2026 application month; it does not select a prefecture
+or insurer, replace company rates, cover national health insurance/voluntary
+continuation/day-worker exceptions, determine enrollment, decide statutory
+revision dates, or file a statutory notification. Those distinct conditions are
+not inferred from an average.
+
+Payroll-period gross history still lacks statutory payment-basis-day checks,
+excluded payment types and legal assessment-month determination. Its explicit
+selection is a user-confirmed input, not an automatic legal determination.
+The earlier request for unattended rolling average auto-revision remains outside
+this change; no existing saved basis changes just because new payroll appears.
+
+## Validation
+
+Local Flutter/Dart execution not performed (prior auto-review restriction).
+Remote CI required before integration. Tests added/updated: all 49 nonzero grade
+boundaries ±1, independent floors/caps, bad amounts/year/month, one-input save /
+reload, existing different bases preserved on open/save, manual override.
+Existing reference validation/auth failure tests retained.

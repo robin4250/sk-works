@@ -24,7 +24,7 @@ void main() {
     await t.pumpAndSettle();
   }
 
-  Future<void> scenario(WidgetTester t, {required bool supported}) async {
+  Future<void> scenario(WidgetTester t, {required bool supported, bool editIncome = true, bool manualOverride = false}) async {
     var version = 1;
     var saved = Map<String, dynamic>.from(original);
     Map<String, dynamic> response() => {'company_id': 'company', 'worker_id': 'worker',
@@ -50,12 +50,29 @@ void main() {
       },
     )));
     await t.pumpAndSettle();
+    if (!editIncome) {
+      await save(t);
+      expect(saved['health_base_yen'], 300000);
+      expect(saved['pension_base_yen'], 320000);
+      expect(saved.containsKey('insurance_basis_reference'), isFalse);
+      await t.pumpWidget(const SizedBox.shrink()); await t.pump();
+      return;
+    }
     await enter(t, 'insurance-reference-from', '2026-07');
     await enter(t, 'insurance-reference-to', '2026-09');
     await enter(t, 'insurance-reference-average', '480000');
+    if (manualOverride) {
+      final tile = find.byKey(const ValueKey('insurance-standard-base-overrides'));
+      await t.ensureVisible(tile); await t.pumpAndSettle();
+      await t.tap(find.descendant(of: tile, matching: find.text('通知書の金額で手動修正')));
+      await t.pumpAndSettle();
+      final health = find.widgetWithText(TextFormField, '健康保険の標準報酬月額（円）');
+      await t.ensureVisible(health); await t.pumpAndSettle();
+      await t.enterText(health, '440000'); await t.pump();
+    }
     await save(t);
-    expect(saved['health_base_yen'], 300000);
-    expect(saved['pension_base_yen'], 320000);
+    expect(saved['health_base_yen'], manualOverride ? 440000 : 470000);
+    expect(saved['pension_base_yen'], 470000);
     expect(saved['income_mode'], 'fixed');
     if (supported) {
       expect(saved['insurance_basis_reference'], {'schema': 1, 'from': '2026-07-01',
@@ -75,8 +92,12 @@ void main() {
     await t.pump();
   }
 
-  testWidgets('manual reference saves and reloads through existing RPC without rebasing',
+  testWidgets('single income input saves and reloads both derived standard bases',
       (t) => scenario(t, supported: true));
+  testWidgets('opening and saving does not overwrite existing different bases',
+      (t) => scenario(t, supported: true, editIncome: false));
+  testWidgets('notice amount override is saved instead of the derived health base',
+      (t) => scenario(t, supported: true, manualOverride: true));
   testWidgets('unprepared server preserves normal condition save and discloses unsaved reference',
       (t) => scenario(t, supported: false));
 

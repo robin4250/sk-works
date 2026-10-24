@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'payroll_insurance_basis_reference.dart';
 
-/// Collects an explicit reference only; it never writes standard-remuneration fields.
+/// Collects income and notifies the parent; the parent owns standard bases.
 class PayrollInsuranceBasisSection extends StatefulWidget {
   const PayrollInsuranceBasisSection({super.key, required this.month,
     required this.supported, required this.enabled, required this.readHistory,
@@ -161,14 +161,14 @@ class _PayrollInsuranceBasisSectionState extends State<PayrollInsuranceBasisSect
       const SizedBox(height: 8),
       TextFormField(key: const ValueKey('insurance-reference-average'),
         controller: _average, enabled: enabled, keyboardType: TextInputType.number,
-        decoration: InputDecoration(labelText: '平均月収（参考額）', suffixText: '円', helperText: _sourceLabel),
+        decoration: InputDecoration(labelText: '平均月収（初回はここに入力）', suffixText: '円', helperText: _sourceLabel),
         validator: (value) {
           if ((value ?? '').trim().isEmpty) return null;
           try { _reference(); return null; }
           on FormatException { return '平均月収は0〜2,147,483,647円の整数で入力してください'; }
         }, onChanged: (_) => _changed()),
       const ExpansionTile(title: Text('平均月収について'), children: [
-        Padding(padding: EdgeInsets.all(8), child: Text('指定した給与対象月の控除前支給総額を確認する参考額です。健康保険・厚生年金の標準報酬月額へ自動適用しません。保存済みの参考記録は、空欄にしただけでは削除しません。')),
+        Padding(padding: EdgeInsets.all(8), child: Text('手入力または選択した実績平均を、保険料の計算基準に使います。給与対象月の控除前支給総額の平均で、法定の算定基礎届の平均を自動判定するものではありません。手当や現物給与の対象範囲・支払基礎日数を確認してください。保存済みの記録や計算用の額は、空欄にしただけでは削除しません。')),
       ]),
       if (!widget.supported)
         const Text('対象期間・平均月収はこのサーバーでは未保存です。標準報酬月額・適用開始月は従来どおり保存できます。'),

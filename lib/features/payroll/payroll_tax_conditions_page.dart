@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'payroll_insurance_basis_reference.dart';
 import 'payroll_insurance_basis_section.dart';
+import 'payroll_standard_remuneration.dart';
 
 typedef PayrollTaxRpc = Future<dynamic> Function(String, Map<String, dynamic>);
 
@@ -78,6 +79,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   bool _basisSupported = false;
   PayrollInsuranceBasisReference? _basisReference, _loadedBasisReference;
   int _basisEditorRevision = 0;
+  bool _incomeConversionActive = false;
+  String? _incomeConversionError;
   final _flags = <String, bool>{
     for (final key in const [
       'health',
@@ -201,6 +204,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   }
 
   void _fill(Map<String, dynamic> row) {
+    _incomeConversionActive = false; _incomeConversionError = null;
     final value = row['value'] as Map;
     _month.text = (row['starts_on'] as String).substring(0, 7);
     _basisReference = value['insurance_basis_reference'] == null ? null :
@@ -226,6 +230,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   }
 
   void _resetInitialConditions() {
+    _incomeConversionActive = false; _incomeConversionError = null;
     _month.text = _targetMonth;
     _basisReference = null;
     _loadedBasisReference = null;
@@ -299,11 +304,39 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     }
   }
 
+  void _useMonthlyIncome(PayrollInsuranceBasisReference? reference) {
+    _basisReference = reference;
+    _incomeConversionError = null;
+    if (reference == null || _insurance != 'rates') return;
+    try {
+      final bases = PayrollStandardRemuneration.fromMonthlyIncome(
+          reference.averageMonthlyIncomeYen, _month.text);
+      setState(() {
+        _incomeConversionActive = true;
+        _amounts['health_base_yen']!.text = '${bases.healthYen}';
+        _amounts['pension_base_yen']!.text = '${bases.pensionYen}';
+        _message = '平均月収から標準報酬月額を設定しました。適用月と確認画面の金額を確認して保存してください。';
+      });
+    } on FormatException catch (error) {
+      setState(() { _incomeConversionError = error.message.toString(); _message = _incomeConversionError; });
+    }
+  }
+
   Future<void> _save() async {
     if (_needsInitialConfirmation && !_initialConditionsConfirmed) return;
     if (_insurance == 'manual' && !_manualSupported) return;
     final generation = _generation;
     if (!_form.currentState!.validate()) return;
+    if (_insurance == 'rates' && _incomeConversionActive && _basisReference != null) {
+      try {
+        PayrollStandardRemuneration.fromMonthlyIncome(
+            _basisReference!.averageMonthlyIncomeYen, _month.text);
+      } on FormatException catch (error) {
+        setState(() => _message = error.message.toString());
+        return;
+      }
+    }
+    if (_insurance == 'rates' && _incomeConversionError != null) return;
     final start = '${_month.text}-01';
     final referenceToSave = _basisReference ?? _loadedBasisReference;
     final value = <String, dynamic>{
@@ -341,7 +374,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
           child: Text(
             '${_month.text}分から適用します。\n'
             '${referenceToSave == null ? '' : _basisSupported
-                ? '参考期間：${referenceToSave.from.substring(0, 7)}〜${referenceToSave.to.substring(0, 7)}\n平均月収（参考額）：${referenceToSave.averageMonthlyIncomeYen}円\n標準報酬月額へ自動換算しません。\n'
+                ? '参考期間：${referenceToSave.from.substring(0, 7)}〜${referenceToSave.to.substring(0, 7)}\n入力した平均月収：${referenceToSave.averageMonthlyIncomeYen}円\n保険料は下記の標準報酬月額と会社の登録料率で計算します。\n'
                 : '対象期間・平均月収は未保存です。この保存では標準報酬月額など既存条件だけを保存します。\n'}'
             '所得税：${_income == 'fixed'
                 ? '個別設定の固定月額'
@@ -417,6 +450,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     padding: const EdgeInsets.symmetric(vertical: 5),
     child: TextFormField(
       controller: _amounts[key],
+      onChanged: key == 'health_base_yen' || key == 'pension_base_yen'
+          ? (_) => setState(() { _incomeConversionActive = false; _incomeConversionError = null; }) : null,
       enabled: _canEdit && !_busy && !_uncertain,
       keyboardType: TextInputType.number,
       decoration: InputDecoration(labelText: label),
@@ -443,7 +478,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
         tooltip: '設定ヘルプ', icon: const Icon(Icons.help_outline),
         onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(
           title: const Text('対象期間・平均月収・標準報酬月額'),
-          content: const SingleChildScrollView(child: Text('平均月収は、指定した給与対象月の控除前支給総額を確認する参考額です。未登録月を0円として平均しません。支給日は明細の記録を表示し、記録が無い場合は勤務月で代用しません。\n\n平均月収から法定の標準報酬月額への自動換算は行いません。健康保険と厚生年金の標準報酬月額は、確認した額をそれぞれ入力してください。\n\n適用開始月から対象の未確定給与へ既存計算で反映します。確定済み給与は変更しません。')),
+          content: const SingleChildScrollView(child: Text('平均月収は、指定した給与対象月の控除前支給総額を確認する参考額です。未登録月を0円として平均しません。支給日は明細の記録を表示し、記録が無い場合は勤務月で代用しません。\n\n平均月収を入力すると、2026年の一般被保険者の等級表で健康保険・厚生年金それぞれの標準報酬月額を設定します。保険料率は会社の税率設定を使います。任意継続・日雇特例・国保の換算には対応しません。通知書と異なる場合は手動修正してください。届出や定時・随時改定を自動で決定する機能ではありません。\n\n適用開始月から対象の未確定給与へ既存計算で反映します。確定済み給与は変更しません。')),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
         )))],
     ),
@@ -498,7 +533,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                           const Text(
                             '初期設定は自動計算です。次の内容を確認して保存すると、給与へ反映されます。\n'
                             '① 所得税の甲欄・乙欄と扶養人数を確認\n'
-                            '② けんぽ／国保を選び、加入している保険の標準報酬月額を入力\n'
+                            '② けんぽ／国保を選び、平均月収を1か所に入力\n'
                             '③ 適用開始月と会社の登録料率を確認して保存',
                           ),
                           const SizedBox(height: 6),
@@ -566,7 +601,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                     if (!mounted || generation != _generation) throw StateError('対象が変わりました');
                     return result;
                   },
-                  onChanged: (value) { _basisReference = value; },
+                  onChanged: _useMonthlyIncome,
                 ),
                 DropdownButtonFormField<String>(
                   key: ValueKey('income-$_income'),
@@ -666,8 +701,16 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                           ? (v) => setState(() => _flags[item.key] = v!)
                           : null,
                     ),
-                  _amount('health_base_yen', '健康保険の標準報酬月額（円）'),
-                  _amount('pension_base_yen', '厚生年金の標準報酬月額（円）'),
+                  Text('計算に使う標準報酬月額：健康保険 ${_amounts['health_base_yen']!.text}円・厚生年金 ${_amounts['pension_base_yen']!.text}円'),
+                  ExpansionTile(
+                    key: const ValueKey('insurance-standard-base-overrides'),
+                    maintainState: true,
+                    title: const Text('通知書の金額で手動修正'),
+                    children: [
+                      _amount('health_base_yen', '健康保険の標準報酬月額（円）'),
+                      _amount('pension_base_yen', '厚生年金の標準報酬月額（円）'),
+                    ],
+                  ),
                   TextFormField(
                     controller: _birth,
                     enabled: _canEdit && !_busy && !_uncertain,
