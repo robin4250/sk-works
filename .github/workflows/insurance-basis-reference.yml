@@ -4,6 +4,8 @@ on:
     paths:
       - 'docs/candidates/insurance_basis_reference_20261024.sql.review-only'
       - 'tool/verify_insurance_basis_reference.mjs'
+      - 'tool/prepare_insurance_basis_reference.py'
+      - 'tool/insurance_basis_reference_inventory.read-only.sql'
       - 'tool/fixtures/insurance_reference_*.sql'
       - '.github/workflows/insurance-basis-reference.yml'
 permissions:
