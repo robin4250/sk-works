@@ -70,6 +70,8 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
   final _legacyNames = <int, TextEditingController>{};
   final _legacyAmounts = <int, TextEditingController>{};
   final _legacyUnits = <int, TextEditingController>{};
+  final _removedLegacySlots = <int>{};
+  final _removedLegacyDrafts = <int, ({String name, String amount, String unit})>{};
   bool _confirming = false;
   bool _publishing = false;
   String _publicationType = 'hourly';
@@ -104,6 +106,8 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     if (!mounted || _revoked) return;
     _closeDialog();
     _generation++;
+    _removedLegacySlots.clear();
+    _removedLegacyDrafts.clear();
     for (final controller in [..._legacyNames.values, ..._legacyAmounts.values, ..._legacyUnits.values]) { controller.clear(); }
     setState(() { _revoked = true; _state = null; _pending = null; _items.clear(); _error = 'ログイン情報または会社が変更されました。画面を開き直してください。'; });
   }
@@ -146,6 +150,8 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
   void _accept(CompanyCommonAllowanceState value, {CompanyPayrollType? only}) {
     if (only != null) _publicationType = only.name;
     _state = value;
+    _removedLegacySlots.clear();
+    _removedLegacyDrafts.clear();
     for (final slot in value.legacyRefs) {
       final number = slot['slot'] as int;
       (_legacyNames[number] ??= TextEditingController()).text = slot['name'] as String? ?? '';
@@ -157,6 +163,39 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
       _items[type] = _drafts(value, type);
       _revisions[type] = (_revisions[type] ?? 0) + 1;
     }
+  }
+  bool get _canEditLegacy => _state?.canEdit == true && _active && _authorized &&
+      !_busy && !_publishing && !_confirming && _pending == null && !_conflict;
+  void _removeLegacy(Map<String, dynamic> slot) {
+    if (!_canEditLegacy) return;
+    final number = slot['slot'] as int;
+    setState(() {
+      _removedLegacyDrafts[number] = (
+        name: _legacyNames[number]!.text, amount: _legacyAmounts[number]!.text,
+        unit: _legacyUnits[number]!.text,
+      );
+      _removedLegacySlots.add(number);
+      _legacyNames[number]!.clear();
+      // Retire the name through the existing identity-aware save contract.
+      // Keep its observed amount/unit instead of converting or deleting history.
+      _legacyAmounts[number]!.text = '${slot['amount_yen']}';
+      _legacyUnits[number]!.text = slot['source_unit'] as String;
+    });
+  }
+  void _undoLegacyRemoval() {
+    if (!_canEditLegacy) return;
+    setState(() {
+      for (final slot in _state!.legacyRefs.where((x) => _removedLegacySlots.contains(x['slot']))) {
+        final draft = _removedLegacyDrafts[slot['slot']];
+        if (draft != null) {
+          _legacyNames[slot['slot']]!.text = draft.name;
+          _legacyAmounts[slot['slot']]!.text = draft.amount;
+          _legacyUnits[slot['slot']]!.text = draft.unit;
+        }
+      }
+      _removedLegacySlots.clear();
+      _removedLegacyDrafts.clear();
+    });
   }
   Future<void> _load() async {
     final repository = _repository;
@@ -186,7 +225,7 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
       setState(() => _confirming = true);
       final confirmed = await showDialog<bool>(context: context, builder: (context) {
         _dialogContext = context;
-        return AlertDialog(title: const Text('既存手当を引き継いで保存'), content: const Text('元からある3枠を、各給与形態の日単位・支給の先頭で共通利用します。同じ項目IDで管理し、3形態へ複製しません。表示した既存値と今回の編集内容を確認して保存します。'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('戻る')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('確認して保存'))]);
+        return AlertDialog(title: const Text('既存手当を引き継いで保存'), content: const Text('保存済みの共通手当を同じ項目IDで引き継ぎます。空の固定枠は追加しません。今回の編集・削除内容を確認して保存します。'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('戻る')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('確認して保存'))]);
       });
       _dialogContext = null;
       if (mounted) setState(() => _confirming = false);
@@ -259,15 +298,28 @@ class _ConnectedCompanyCommonPayrollPageState extends State<_ConnectedCompanyCom
     final page = CompanyCommonPayrollPage(embedded: widget.embedded, initialItems: _items, editorRevisions: _revisions, canEdit: _state!.canEdit && _active && !_busy && !_publishing && _pending == null && !_conflict,
       onRegister: _state!.canEdit ? _save : null, connectionMessage: '閲覧専用です。会社共通手当の登録・変更は管理者が行います。',
       legacyBuilder: (_, __, ___) => Column(children: [
-        const Padding(padding: EdgeInsets.all(8), child: Text('元からある手当（各給与形態で共通）')),
-        for (final slot in _state!.legacyRefs) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
-          Text('既存手当 ${slot['slot']}'),
-          TextField(key: ValueKey('legacy-${slot['slot']}-name'), controller: _legacyNames[slot['slot']], enabled: _state!.canEdit && !_busy && !_publishing && !_confirming && _pending == null && !_conflict, maxLength: 80, decoration: const InputDecoration(labelText: '項目名')),
-          TextField(key: ValueKey('legacy-${slot['slot']}-amount'), controller: _legacyAmounts[slot['slot']], enabled: _state!.canEdit && !_busy && !_publishing && !_confirming && _pending == null && !_conflict, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '日単位の金額（円）')),
-          TextField(key: ValueKey('legacy-${slot['slot']}-unit'), controller: _legacyUnits[slot['slot']], enabled: _state!.canEdit && !_busy && !_publishing && !_confirming && _pending == null && !_conflict, maxLength: 12, decoration: const InputDecoration(labelText: '表示単位', helperText: '元の単位を保持。日単位・支給の分類は変わりません。')),
-          TextButton(onPressed: _state!.canEdit && !_busy && !_publishing && !_confirming && _pending == null && !_conflict ? () { _legacyNames[slot['slot']]!.clear(); } : null, child: const Text('削除')),
-        ]))),
-        const Padding(padding: EdgeInsets.all(8), child: Text('追加した手当')),
+        // Registered legacy identities share the ordinary day/earning list.
+        // Empty backend reference slots remain serialization-only, never inputs.
+        for (final slot in _state!.legacyRefs.where((x) =>
+            (x['name'] as String? ?? '').trim().isNotEmpty && !_removedLegacySlots.contains(x['slot'])))
+          Card(key: ValueKey('legacy-${slot['slot']}-row'),
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+              const Align(alignment: Alignment.centerLeft, child: Text('日単位 支給')),
+              const SizedBox(height: 12),
+              TextField(key: ValueKey('legacy-${slot['slot']}-name'), controller: _legacyNames[slot['slot']], enabled: _canEditLegacy, maxLength: 80, decoration: const InputDecoration(labelText: '項目名')),
+              TextField(key: ValueKey('legacy-${slot['slot']}-amount'), controller: _legacyAmounts[slot['slot']], enabled: _canEditLegacy, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '日単位の金額（円）')),
+              TextField(key: ValueKey('legacy-${slot['slot']}-unit'), controller: _legacyUnits[slot['slot']], enabled: _canEditLegacy, maxLength: 12, decoration: const InputDecoration(labelText: '表示単位', helperText: '保存済みの単位を引き継ぎます。')),
+              Align(alignment: Alignment.centerRight, child: TextButton.icon(
+                key: ValueKey('legacy-${slot['slot']}-remove'),
+                onPressed: _canEditLegacy ? () => _removeLegacy(slot) : null,
+                icon: const Icon(Icons.delete_outline), label: const Text('削除'))),
+            ]))),
+        if (_removedLegacySlots.isNotEmpty) Padding(padding: const EdgeInsets.all(8), child: Column(children: [
+          const Text('削除は未保存です。「登録」で保存します。'),
+          TextButton(onPressed: _canEditLegacy ? _undoLegacyRemoval : null, child: const Text('削除を取り消す')),
+        ])),
       ]),
       header: Column(mainAxisSize: MainAxisSize.min, children: [
         if (widget.header != null) widget.header!,
@@ -368,7 +420,7 @@ class _CompanyCommonPayrollPageState extends State<CompanyCommonPayrollPage> {
             builder: (context) => AlertDialog(
               title: const Text('社内共通手当'),
               content: const Text(
-                '日給・時給・月給ごとに共通支給と共通控除を分けます。給与形態と、手当の時間・日・月単位は別の設定です。追加手当を保存した後、「給与への適用月」で給与形態と月を選ぶと、保存済みの条件を自動下書きへ反映します。未保存の編集内容、従来3枠、確定済み・手入力給与はこの適用操作で上書きしません。給与側の接続と会社の適用開始月が有効な場合に利用できます。',
+                '日給・時給・月給ごとに共通支給と共通控除を分けます。給与形態と、手当の時間・日・月単位は別の設定です。追加手当を保存した後、「給与への適用月」で給与形態と月を選ぶと、保存済みの条件を自動下書きへ反映します。登録済みの手当は日単位・支給の一覧から編集・削除できます。削除は「登録」で保存し、空の固定枠は表示しません。この登録操作では過去の給与や承認済み履歴を変更しません。確定済み・手入力給与は適用操作で上書きしません。給与側の接続と会社の適用開始月が有効な場合に利用できます。',
               ),
               actions: [
                 TextButton(

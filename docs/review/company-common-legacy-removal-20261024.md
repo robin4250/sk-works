@@ -1,0 +1,11 @@
+# Company common legacy-row removal
+
+Base: main `a23d5d94e88d3d089def0a72c7239ea123cb32b7`. The seven selected base files were checked against exact Git blob IDs before editing (base-blobs.json). Isolated work directory/branch; no existing checkout differences changed.
+
+The connected company-common page rendered every backend legacy reference as a fixed input, including blank slots. Its delete button only cleared a name controller, leaving the fixed row visible. The UI now shows only registered legacy names alongside the ordinary day/earning cards, removes the separate legacy/added headings, hides an explicitly removed row immediately across salary types, and shows that registration is still needed. Undo is available before saving. Successful save/reload keeps the retired row hidden. Empty serialization references are never editable fixed placeholders; new items use the normal Add flow.
+
+The existing save contract still receives exactly three observed references with their original slot/ID/generation and observed amount/display unit. Removal submits `name=null`; it does not copy the legacy item into the additional-items table, convert amounts, hard-delete identity/history, or invoke payroll publication. The existing backend validates those references before updating the name and invokes the established identity lifecycle/history. No backend SQL, data, financial calculation, permissions or publication logic changed.
+
+The existing “？” help and first-adoption explanation were updated to describe the visible rows and save-before-removal behavior. Tests cover blank fixed slots absent, registered removal shared across salary types, immutable command references/rate/unit, save then fresh read, and undo without saving. Existing unit-edit and durable pending/reconciliation tests remain in the same suite.
+
+Local Flutter was not executed because the earlier local execution rejection remains in force. `git diff --check` passed. Remote Flutter tests must run against the full repository using `test/company_common_allowance_connected_test.dart`, `test/company_common_payroll_page_test.dart`, and `test/company_common_fixed_footer_test.dart` (plus existing relevant common tests). No success is claimed until CI completes. Build 13/iPhone behavior remains unverified for this fix.
