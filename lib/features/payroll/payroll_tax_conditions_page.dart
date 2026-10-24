@@ -790,7 +790,8 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                       _amount('pension_base_yen', '厚生年金の標準報酬月額（円）'),
                     ],
                   ),
-                  Offstage(offstage: !_flags['nursing']! && _birth.text.trim().isEmpty, child: TextFormField(
+                ],
+                  Offstage(offstage: (_insurance != 'rates' || !_flags['nursing']!) && _birth.text.trim().isEmpty, child: TextFormField(
                     controller: _birth,
                     enabled: _canEdit && !_busy && !_uncertain,
                     decoration: const InputDecoration(
@@ -798,7 +799,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return _flags['nursing']! ? '生年月日を入力してください' : null;
+                        return _insurance == 'rates' && _flags['nursing']! ? '生年月日を入力してください' : null;
                       }
                       final date = DateTime.tryParse(value);
                       if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value) ||
@@ -809,7 +810,6 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                       return null;
                     },
                   )),
-                ],
                 ]),
                 _settingsCard('その他の控除条件', Icons.tune_outlined, [
                 ExpansionTile(key: const ValueKey('insurance-deduction-details'),
