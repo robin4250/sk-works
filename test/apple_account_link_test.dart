@@ -47,10 +47,10 @@ class MemoryPKCE extends GotrueAsyncStorage {
 // is deterministic; real preflight reads are covered in the dedicated source
 // tests. begin(), auth events, original client and security guards stay real.
 class WidgetReadinessAppleLink extends AppleAccountLink {
-  WidgetReadinessAppleLink(SupabaseClient client, {
+  WidgetReadinessAppleLink(super.client, {
     required Future<bool> Function() providerCheck,
     required Future<bool> Function(Uri) launch,
-  }) : super(client,
+  }) : super(
     settingsUrl: Uri.parse('https://apple-link.invalid/auth/v1/settings'),
     publicKey: 'public-synthetic', providerCheck: providerCheck, launch: launch);
 

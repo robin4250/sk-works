@@ -7,7 +7,7 @@ import 'package:sk_works/features/auth/apple_account_link_card.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ReadinessSource extends AppleAccountLink {
-  ReadinessSource(SupabaseClient client) : super(client,
+  ReadinessSource(super.client) : super(
     settingsUrl: Uri.parse('https://apple-card.invalid/auth/v1/settings'),
     publicKey: 'synthetic-public');
   AppleLinkReadiness result = AppleLinkReadiness.providerDisabled;
