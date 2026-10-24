@@ -76,6 +76,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   List<DailyReportWorkerDraft> _workers = [];
   List<CompanyAllowanceLabel> _companyAllowanceItems = const [];
   String? _companyAllowanceActor;
+  Map<String, Set<String>> _companyAllowanceEligibility = const {};
   bool _companyAllowanceNamesLoading = false;
   bool _companyAllowanceNamesUnavailable = false;
   DailyReportRecord? _report;
@@ -238,6 +239,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     setState(() {
       _companyAllowanceItems = const [];
       _companyAllowanceActor = null;
+      _companyAllowanceEligibility = const {};
       _companyAllowanceNamesLoading = false;
       _companyAllowanceNamesUnavailable = false;
     });
@@ -417,11 +419,18 @@ class _DailyReportPageState extends State<DailyReportPage> {
       final snapshot = await repository.loadCompanyAllowanceLabels(
         workerIds: _workers.map((worker) => worker.workerId),
         expectedCompanyId: _report?.companyId);
+      final reportId = _report?.id;
+      final eligibility = reportId == null || reportId.isEmpty
+          ? <String, Set<String>>{}
+          : await repository.loadCompanyAllowanceEligibility(reportId: reportId,
+              workerIds: _workers.map((worker) => worker.workerId), snapshot: snapshot);
       if (!mounted || generation != _loadGeneration ||
-          repository.currentActorId != actor) {
+          repository.currentActorId != actor || _report?.id != reportId) {
         return;
       }
       setState(() {
+        _companyAllowanceEligibility = eligibility;
+        _companyAllowanceNamesUnavailable = false;
         _companyAllowanceActor = actor;
         _companyAllowanceItems = List.unmodifiable(snapshot.items);
         _companyAllowanceNamesLoading = false;
@@ -1343,7 +1352,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     );
   }
 
-  static const _helpText = "報告者サインの後、責任者サインで日報を確定します。保存した日報は「保存済み一覧」から閲覧・印刷できます。\n\n正式な退勤日報の未署名下書きでは、会社共通の時間・日単位の項目を各メンバーの欄から選べます。月単位は退勤に出さず、個別給料設定で確認します。過去日付の入力でも候補は現在の登録名です。候補を開くだけでは登録しません。退勤では会社に登録された項目だけを選び、単価や新しい手当名を入力し直しません。選んだ名前は改行区切りで保存し、従来の保存済み入力も保持します。保存済みの名前を自動で置き換えません。署名済み日報は正規の編集承認なしに変更できません。選択は登録IDと版を付けて保存し、単価や数量をアプリで推測しません。給与への反映は正式な退勤日報の確定を起点に、対象月の未確定給与で確認します。途中の訪問日報は給与確定の代わりにはなりません。\n\n複数現場の請求は退勤時の正式日報のサインを根拠にします。途中の訪問日報だけでは確定しません。同じ日に同じ取引会社を複数現場で訪問しても1人工、異なる取引会社は会社ごとに1人工です。別の請求数量申請・承認は不要です。退勤署名・訪問先・登録単価を確認できない場合は請求額を未確定と表示します。\n\n給与や出勤表の人工は変更しません。請求書の承認印は別の確認操作です。";
+  static const _helpText = "報告者サインの後、責任者サインで日報を確定します。保存した日報は「保存済み一覧」から閲覧・印刷できます。\n\n日報を登録しても画面は閉じません。初回保存後、適用を確認できた会社手当を選び、再保存または報告者サインへ進みます。サイン前に変更内容を保存します。会社の登録内容が更新された場合は再読み込みしてください。正式な退勤日報の未署名下書きでは、会社共通の時間・日単位の項目を各メンバーの欄から選べます。月単位は退勤に出さず、個別給料設定で確認します。過去日付の入力でも候補は現在の登録名です。候補を開くだけでは登録しません。退勤では会社に登録された項目だけを選び、単価や新しい手当名を入力し直しません。選んだ名前は改行区切りで保存し、従来の保存済み入力も保持します。保存済みの名前を自動で置き換えません。署名済み日報は正規の編集承認なしに変更できません。選択は登録IDと版を付けて保存し、単価や数量をアプリで推測しません。給与への反映は正式な退勤日報の確定を起点に、対象月の未確定給与で確認します。途中の訪問日報は給与確定の代わりにはなりません。\n\n複数現場の請求は退勤時の正式日報のサインを根拠にします。途中の訪問日報だけでは確定しません。同じ日に同じ取引会社を複数現場で訪問しても1人工、異なる取引会社は会社ごとに1人工です。別の請求数量申請・承認は不要です。退勤署名・訪問先・登録単価を確認できない場合は請求額を未確定と表示します。\n\n給与や出勤表の人工は変更しません。請求書の承認印は別の確認操作です。";
 
   void _showHelp() => showDialog<void>(
     context: context,
@@ -1509,6 +1518,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   _repository?.currentActorId == _companyAllowanceActor
                                       ? _companyAllowanceItems : const [],
                               companyAllowanceSelectionMode: !_visitReport,
+                              eligibleCompanyAllowanceKeys: _repository?.currentActorId == _companyAllowanceActor
+                                  ? _companyAllowanceEligibility[worker.workerId] : null,
+                              needsSavedAllowanceReport: _report?.id.isNotEmpty != true,
                               onCompanyAllowanceSelections: (selected) {
                                 _invalidatePendingSignature();
                                 setState(() => worker.companyAllowanceSelections = selected);
@@ -1670,6 +1682,8 @@ class _WorkerDetailCard extends StatelessWidget {
     required this.editable,
     required this.companyAllowanceItems,
     required this.companyAllowanceSelectionMode,
+    required this.eligibleCompanyAllowanceKeys,
+    required this.needsSavedAllowanceReport,
     required this.onCompanyAllowanceSelections,
     required this.companyAllowanceNamesLoading,
     required this.companyAllowanceNamesUnavailable,
@@ -1685,6 +1699,8 @@ class _WorkerDetailCard extends StatelessWidget {
   final bool editable;
   final List<CompanyAllowanceLabel> companyAllowanceItems;
   final bool companyAllowanceSelectionMode;
+  final Set<String>? eligibleCompanyAllowanceKeys;
+  final bool needsSavedAllowanceReport;
   final ValueChanged<DailyReportCompanyAllowanceSelections> onCompanyAllowanceSelections;
   final bool companyAllowanceNamesLoading, companyAllowanceNamesUnavailable;
   final TextEditingController overtime;
@@ -1810,6 +1826,7 @@ class _WorkerDetailCard extends StatelessWidget {
           if (companyAllowanceSelectionMode)
             DailyReportAllowanceNameField(controller: allowanceLabel,
               enabled: editable, registeredItems: companyAllowanceItems,
+              eligibleKeys: eligibleCompanyAllowanceKeys, needsSavedReport: needsSavedAllowanceReport,
               selections: worker.companyAllowanceSelections,
               onSelectionsChanged: onCompanyAllowanceSelections,
               loading: companyAllowanceNamesLoading,

@@ -8,11 +8,13 @@ import 'daily_report_company_allowance_selection.dart';
 /// newline report text. Discovery never adopts or replaces a saved label.
 class DailyReportAllowanceNameField extends StatelessWidget {
   const DailyReportAllowanceNameField({super.key, required this.controller,
-    required this.enabled, this.registeredItems = const [], this.selections,
+    required this.enabled, this.registeredItems = const [], this.selections, this.eligibleKeys, this.needsSavedReport = false,
     this.onSelectionsChanged, this.loading = false, this.unavailable = false});
 
   final TextEditingController controller;
   final bool enabled;
+  final Set<String>? eligibleKeys;
+  final bool needsSavedReport;
   final List<CompanyAllowanceLabel> registeredItems;
   final DailyReportCompanyAllowanceSelections? selections;
   final ValueChanged<DailyReportCompanyAllowanceSelections>? onSelectionsChanged;
@@ -66,7 +68,7 @@ class DailyReportAllowanceNameField extends StatelessWidget {
                   }), style: Theme.of(context).textTheme.labelSmall),
               ]),
               selected: selected.any((value) => _matches(value, item)),
-              onSelected: enabled && item.selectable && counts[_key(item)] == 1 &&
+              onSelected: enabled && item.selectable && eligibleKeys?.contains(_key(item)) == true && counts[_key(item)] == 1 &&
                   onSelectionsChanged != null ? (choose) {
                 final next = DailyReportCompanyAllowanceSelections([
                   ...selected.where((value) => value.key != _key(item)),
@@ -90,11 +92,14 @@ class DailyReportAllowanceNameField extends StatelessWidget {
               } : null),
         ]),
         const SizedBox(height: 8),
+        if (!needsSavedReport && eligibleKeys != null && rendered.any((item) => !eligibleKeys!.contains(_key(item))))
+          Text(SkoLanguageController.tr('適用を確認できた項目だけ選択できます。保存済みの選択は明示的に解除できます。')),
       ],
       if (selected.any((saved) => visible.any((item) => saved.key == _key(item) && !_matches(saved, item))))
         Text(SkoLanguageController.tr('登録内容が更新された項目は、現在の内容を確認して選び直してください。')),
       for (final saved in selected.where((saved) =>
-          !visible.any((item) => saved.key == _key(item))))
+          !visible.any((item) => saved.key == _key(item)) ||
+          eligibleKeys?.contains(saved.key) != true))
         InputChip(label: Text('${saved.nameSnapshot}（${SkoLanguageController.tr('保存済み')}）'),
           onDeleted: enabled && onSelectionsChanged != null ? () {
             final next = DailyReportCompanyAllowanceSelections(selected.where((item) => item.key != saved.key));
@@ -106,6 +111,9 @@ class DailyReportAllowanceNameField extends StatelessWidget {
             controller.value = TextEditingValue(text: raw,
               selection: TextSelection.collapsed(offset: raw.length));
           } : null),
+      if (needsSavedReport) Text(SkoLanguageController.tr('日報を保存すると、各メンバーに適用できる手当を選択できます。')),
+      if (!needsSavedReport && !loading && !unavailable && visible.isNotEmpty && eligibleKeys == null)
+        Text(SkoLanguageController.tr('手当の適用対象を確認できないため選択できません。再読み込みしてください。')),
       if (unselectable) Text(SkoLanguageController.tr(
         '選択できない登録項目があります。会社の登録状態を確認してください。')),
       if (unavailable) Text(SkoLanguageController.tr(

@@ -321,6 +321,26 @@ class DailyReportRepository {
     return snapshot;
   }
 
+  Future<Map<String, Set<String>>> loadCompanyAllowanceEligibility({
+    required String reportId, required Iterable<String> workerIds,
+    required CompanyAllowanceLabelSnapshot snapshot,
+  }) async {
+    final actor = currentActorId;
+    final token = _client.auth.currentSession?.accessToken;
+    if (actor == null || token == null || reportId.isEmpty) {
+      throw StateError('保存済み日報の対象を確認できません');
+    }
+    final ids = workerIds.toList();
+    final raw = await _client.rpc('read_daily_report_company_allowance_eligibility',
+      params: {'p_report_id': reportId}).setHeader('Authorization', 'Bearer $token')
+      .timeout(const Duration(seconds: 15));
+    if (currentActorId != actor || _client.auth.currentSession?.accessToken != token) {
+      throw const DailyReportActorChanged();
+    }
+    return dailyReportCompanyAllowanceEligibility(raw,
+      reportId: reportId, workerIds: ids, snapshot: snapshot);
+  }
+
   /// Only reads the selected destination; never substitutes another site's name.
   Future<String> loadResponsibleName({
     String? siteId,

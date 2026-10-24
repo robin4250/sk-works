@@ -93,3 +93,25 @@ Shared dependency is now PR1353 latest head
 all-registered-name workstream. This client branch must not add its copied shared
 file independently. The backend candidate still owns schema/capture/receipt and
 is a separate required integration proof before claiming payroll reflection.
+
+
+## Report-bound applicability follow-up
+
+The company reader remains company-only. The UI additionally calls
+`read_daily_report_company_allowance_eligibility(p_report_id)` for a saved,
+editable normal report. It matches report/company, the exact worker set,
+both source versions and each allowed identity/generation/registration version
+against the names snapshot. No rates or worker payroll-setting values are read.
+Missing eligibility disables new selection, and month-unit candidates remain excluded.
+Saved typed choices can still be explicitly removed; history is never auto-rewritten.
+
+A new report uses the existing 日報を登録 button first. `_saveDraft` reloads the
+same selected report and does not pop the page. Then choices become available
+if eligibility is confirmed. Choosing an allowance changes the existing worker
+RPC fingerprint and invalidates pending signatures. A user may save again or
+use the reporter-sign action, whose existing `_saveBeforeSignature` saves dirty
+content before collecting a signature. This adds one initial save for a new
+report, no automatic save and no extra save stage for an existing draft.
+The field widget covers disabled-before/verified-after state and inapplicable
+choices; the full page navigation/sign flow is source-traced, not yet a passed
+full-page widget or device verification. Server save/sign CAS remains authoritative.

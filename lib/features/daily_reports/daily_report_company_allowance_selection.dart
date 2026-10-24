@@ -75,3 +75,39 @@ class DailyReportCompanyAllowanceSelections {
     'contract_version': 1, 'items': items.map((item) => item.toJson()).toList(),
   };
 }
+
+/// Report-bound eligibility contains no rates or employee payroll settings.
+Map<String, Set<String>> dailyReportCompanyAllowanceEligibility(Object? raw, {
+  required String reportId, required Iterable<String> workerIds,
+  required CompanyAllowanceLabelSnapshot snapshot,
+}) {
+  Never invalid() => throw const FormatException('退勤手当の適用対象を確認できません');
+  bool keys(Map value, Set<String> expected) => value.length == expected.length && value.keys.every(expected.contains);
+  if (raw is! Map || !keys(raw, {'contract_version', 'report_id', 'company_id', 'source_versions', 'workers'}) ||
+      raw['contract_version'] != 1 || raw['report_id'] != reportId || raw['company_id'] != snapshot.companyId) { invalid(); }
+  final versions = raw['source_versions'];
+  if (versions is! Map || !keys(versions, {'legacy_version', 'common_version'}) ||
+      versions['legacy_version'] != snapshot.legacyVersion || versions['common_version'] != snapshot.version) { invalid(); }
+  final workers = raw['workers'];
+  if (workers is! List) { invalid(); }
+  final expected = workerIds.toSet();
+  final registered = {for (final item in snapshot.items) if (item.id != null) '${item.origin}/${item.id}': item};
+  final result = <String, Set<String>>{};
+  for (final worker in workers) {
+    if (worker is! Map || !keys(worker, {'worker_id', 'items'}) ||
+        worker['worker_id'] is! String || !expected.contains(worker['worker_id']) ||
+        result.containsKey(worker['worker_id']) || worker['items'] is! List) { invalid(); }
+    final allowed = <String>{};
+    for (final identity in worker['items'] as List) {
+      if (identity is! Map || !keys(identity, {'origin', 'id', 'generation', 'registration_version'})) { invalid(); }
+      final key = '${identity['origin']}/${identity['id']}';
+      final item = registered[key];
+      if (item == null || !item.selectable || !const ['day', 'hour'].contains(item.unit) ||
+          identity['generation'] != item.generation || identity['registration_version'] != item.registrationVersion ||
+          !allowed.add(key)) { invalid(); }
+    }
+    result[worker['worker_id'] as String] = Set.unmodifiable(allowed);
+  }
+  if (result.length != expected.length) { invalid(); }
+  return Map.unmodifiable(result);
+}

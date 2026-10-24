@@ -56,6 +56,12 @@ void main() {
       Object? result;
       if (request.url.path.endsWith('/company_checkout_allowance_contract_version')) {
         result = capability ? 1 : 0;
+      } else if (request.url.path.endsWith('/read_daily_report_company_allowance_eligibility')) {
+        expect(jsonDecode(request.body), {'p_report_id': 'report'});
+        result = {'contract_version': 1, 'report_id': 'report', 'company_id': 'own',
+          'source_versions': {'legacy_version': null, 'common_version': 1},
+          'workers': [{'worker_id': 'one', 'items': [{'origin': 'company_legacy',
+            'id': '10000000-0000-0000-0000-000000000001', 'generation': 1, 'registration_version': 1}]}]};
       } else if (request.url.path == '/rest/v1/workers') {
         expect(request.method, 'GET');
         expect(request.url.queryParameters['select'], 'id,company_id');
@@ -86,6 +92,16 @@ void main() {
     repository = DailyReportRepository.forTesting(client, companyAllowanceLabels: labels);
   });
   tearDown(() async { await client.dispose(); network.close(); });
+
+  test('saved-report eligibility binds exact worker identities without salary data', () async {
+    final snapshot = await labels.read('own');
+    final allowed = await repository.loadCompanyAllowanceEligibility(reportId: 'report',
+      workerIds: ['one'], snapshot: snapshot);
+    expect(allowed['one'], {'company_legacy/10000000-0000-0000-0000-000000000001'});
+    final request = requests.single;
+    expect(request.headers['authorization'], 'Bearer ${client.auth.currentSession!.accessToken}');
+    expect(request.url.path, '/rest/v1/rpc/read_daily_report_company_allowance_eligibility');
+  });
 
   test('selected roster resolves one explicit company before names-only read', () async {
     final token = client.auth.currentSession!.accessToken;

@@ -74,15 +74,56 @@ void main() {
 
   Future<void> showField(WidgetTester tester, TextEditingController controller,
       {List<CompanyAllowanceLabel>? items, bool enabled = true, bool unavailable = false,
-      DailyReportCompanyAllowanceSelections? initial,
+      DailyReportCompanyAllowanceSelections? initial, bool eligibilityKnown = true, bool needsSavedReport = false, Set<String>? allowedKeys,
       ValueChanged<DailyReportCompanyAllowanceSelections>? onChanged}) async {
     var selected = initial;
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: StatefulBuilder(
       builder: (context, change) => DailyReportAllowanceNameField(controller: controller,
         enabled: enabled, registeredItems: items ?? [registered(1, '鉄骨手当'), registered(2, 'PC手当')],
+        eligibleKeys: eligibilityKnown ? allowedKeys ?? (items ?? [registered(1, '鉄骨手当'), registered(2, 'PC手当')])
+            .where((item) => item.id != null).map((item) => '${item.origin}/${item.id}').toSet() : null,
+        needsSavedReport: needsSavedReport,
         selections: selected, unavailable: unavailable,
         onSelectionsChanged: (value) { change(() => selected = value); onChanged?.call(value); })))));
   }
+
+  testWidgets('unsaved choices enable only after verified saved-report eligibility', (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    await showField(tester, controller, eligibilityKnown: false, needsSavedReport: true);
+    expect(find.text('日報を保存すると、各メンバーに適用できる手当を選択できます。'), findsOneWidget);
+    expect(tester.widget<FilterChip>(find.widgetWithText(FilterChip, 'PC手当')).onSelected, isNull);
+    expect(controller.text, isEmpty);
+    await showField(tester, controller);
+    await tester.tap(find.widgetWithText(FilterChip, 'PC手当')); await tester.pump();
+    expect(controller.text, 'PC手当');
+  });
+
+  testWidgets('known inapplicable company items cannot be selected', (tester) async {
+    final controller = TextEditingController(text: '過去名');
+    addTearDown(controller.dispose);
+    await showField(tester, controller, allowedKeys: {});
+    expect(tester.widget<FilterChip>(find.widgetWithText(FilterChip, 'PC手当')).onSelected, isNull);
+    expect(controller.text, '過去名');
+  });
+
+  test('report eligibility requires matching company, worker and both registration versions', () {
+    final item = registered(1, 'PC手当');
+    final snapshot = CompanyAllowanceLabelSnapshot(companyId: 'own', version: 7,
+      legacyVersion: 3, items: [item]);
+    Map<String, Object?> response() => {'contract_version': 1, 'report_id': 'report',
+      'company_id': 'own', 'source_versions': {'legacy_version': 3, 'common_version': 7},
+      'workers': [{'worker_id': 'one', 'items': [{'origin': item.origin, 'id': item.id,
+        'generation': item.generation, 'registration_version': item.registrationVersion}]}]};
+    expect(dailyReportCompanyAllowanceEligibility(response(), reportId: 'report',
+      workerIds: ['one'], snapshot: snapshot)['one'], {'${item.origin}/${item.id}'});
+    for (final invalid in [response()..['company_id'] = 'other',
+      response()..['source_versions'] = {'legacy_version': 3, 'common_version': 8},
+      response()..['workers'] = [], response()..['rate'] = 100]) {
+      expect(() => dailyReportCompanyAllowanceEligibility(invalid, reportId: 'report',
+        workerIds: ['one'], snapshot: snapshot), throwsFormatException);
+    }
+  });
 
   testWidgets('registered company choices never preselect or replace existing text', (tester) async {
     final controller = TextEditingController(text: '  保存済み個別名  ');
