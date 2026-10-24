@@ -23,6 +23,7 @@ try {
  create table attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,site_id uuid,route_assignment_id uuid,event_type text,confirmed_at timestamptz,work_date date,source_clock_in_id uuid,daily_report_id uuid,vehicle_id uuid);
  create table daily_reports(id uuid primary key,company_id uuid,site_id uuid,route_assignment_id uuid,report_date date,status text,updated_at timestamptz,work_description text,representative_signer_name text,representative_signature_json jsonb,supervisor_signer_name text,supervisor_signature_json jsonb,signed_at timestamptz,signature_json jsonb);
  create table daily_report_workers(report_id uuid,worker_id uuid,overtime_hours numeric default 0,early_hours numeric default 0,night_hours numeric default 0,work_category text default 'day',vehicle_id uuid,odometer_km numeric,vehicle_meter_event_id uuid,vehicle_meter_source_clock_in_id uuid,route_assignment_id uuid,previous_odometer_km numeric,trip_distance_km numeric);
+ create table vehicles(id uuid,company_id uuid,is_active boolean default true);
  create table vehicle_usage_claims(source_clock_in_id uuid,company_id uuid,driver_worker_id uuid,vehicle_id uuid,work_date date,ended_at timestamptz);
  create table vehicle_meter_events(id uuid,source_clock_in_id uuid,company_id uuid,driver_worker_id uuid,vehicle_id uuid,work_date date,previous_km numeric,current_km numeric,distance_km numeric);
  create table private.vehicle_usage_rollout(company_id uuid,enabled boolean);
@@ -48,6 +49,7 @@ try {
  for(const p of ['validators','reminders','schedule'])await db.query(await readFile(`docs/candidates/checkout_report_registration_${p}.sql.review-only`,'utf8'));
  await db.query('select set_config(\'fixture.actor\',$1,false)',[id(2)]);
  await db.query('insert into companies values($1);',[id(1)]);
+ await db.query('insert into private.vehicle_usage_rollout values($1,true)',[id(1)]);
  await db.query('insert into workers(id,company_id,user_id) values($1,$2,$3)',[id(3),id(1),id(2)]);
  await db.query('insert into company_members values($1,$2)',[id(1),id(2)]);
  await db.query("insert into checkout_report_registration_private.rollout values($1,'2026-10-01',false)",[id(1)]);
@@ -60,6 +62,13 @@ try {
  await db.query('insert into daily_report_workers(report_id,worker_id) values($1,$2)',[id(20),id(3)]);
  await db.query('update attendance_verifications set daily_report_id=$1',[id(20)]);
  assert.equal((await read()).items[0].registration_state,'reporter_signature_missing');
+ await db.query('alter function private.guard_linked_vehicle_meter_report() rename to fixture_temporarily_missing_guard');
+ assert.equal((await read()).items[0].registration_state,'report_input_incomplete','Enabled strong framework cannot fall back when guard absent');
+ await db.query('alter function private.fixture_temporarily_missing_guard() rename to guard_linked_vehicle_meter_report');
+ await db.query('alter table vehicle_meter_events rename to fixture_temporarily_missing_events');
+ assert.equal((await read()).items[0].registration_state,'report_input_incomplete','Enabled partial strong framework stays blocked');
+ await db.query('alter table fixture_temporarily_missing_events rename to vehicle_meter_events');
+
  await db.query(`update daily_reports set representative_signer_name='Synthetic reporter',representative_signature_json='{"strokes":[[{}]]}'`);
  let item=(await read()).items[0];assert.equal(item.registration_state,'reporter_saved_waiting_supervisor');assert.equal(item.blocking,false,'Reporter unlock while draft');
  await db.query("update daily_reports set work_description='' ");

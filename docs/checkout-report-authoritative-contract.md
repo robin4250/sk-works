@@ -131,3 +131,25 @@ pins, source-bound real save/sign chain, bounded rollout preview/recovery UI,
 notification UI route and deployed cron observation, then iPhone verification.
 Proxy-only checkout responsibility must be specified separately. A group with
 the actor as a real worker is still evaluated for that actor's own source.
+
+
+### Deployed vehicle contract compatibility (2026-10-25)
+
+The current production legacy vehicle writer is pinned at source MD5
+`f78e35bf948cc4702f9d65d28d0ac0e6` (postgres owner, SECURITY DEFINER,
+void five-argument API, empty search path). Its existing ACL is only observed;
+no new routine inherits its legacy PUBLIC default. When the company has no
+committed-meter rollout or rollout is OFF, required saved vehicle/odometer
+validation uses that existing writer contract, including same-company active
+vehicle and non-null clock-source vehicle agreement. No newer vehicle migration
+is installed merely to support this report gate.
+
+When company committed-meter rollout is ON, the exact stronger guard and all
+claim/event/link relations are mandatory; absent/partial/unknown shapes hold the
+gate. Dynamic SQL prevents optional absent relations from preventing deployment
+on the observed legacy installation. Missing/changed legacy writer also holds.
+Native source-chain proof now first calls the exact observed legacy vehicle
+writer plus original report signature APIs with no committed-meter framework,
+then installs the newer framework only in the disposable fixture to exercise
+strong ON attachment and existing concurrency proof. Diagnostic failure output
+contains synthetic fixture rows only; it must never be used against production.

@@ -1,7 +1,7 @@
 -- REVIEW ONLY. Install after registration schema/helper, before reader use.
 begin;
 do $$ begin
- if not exists(select 1 from pg_proc f join pg_roles o on o.oid=f.proowner
+ if to_regprocedure('private.guard_linked_vehicle_meter_report()') is not null and not exists(select 1 from pg_proc f join pg_roles o on o.oid=f.proowner
   where f.oid=to_regprocedure('private.guard_linked_vehicle_meter_report()')
    and md5(f.prosrc)='86933b3fc8c066edfba981a202fe98b4'
    and o.rolname='postgres' and f.prosecdef and f.prorettype='trigger'::regtype
@@ -20,20 +20,56 @@ do $$ begin
   raise exception 'payroll scope lock source prerequisite differs';
  end if;
 end $$;
+-- Legacy and committed-meter deployments are distinct contracts. A missing
+-- newer framework must not require installing unrelated vehicle migrations.
 create function checkout_report_registration_private.inputs_complete(rid uuid)
-returns boolean language sql stable security invoker set search_path='' as $$
- select exists(select 1 from public.daily_reports r where r.id=rid
- and nullif(btrim(r.work_description),'') is not null
- and exists(select 1 from public.daily_report_workers w where w.report_id=r.id)
- and not exists(select 1 from public.daily_report_workers w where w.report_id=r.id and (
-  w.overtime_hours is null or w.overtime_hours<0 or w.early_hours is null or w.early_hours<0
-  or w.night_hours is null or w.night_hours<0 or w.work_category is null
-  or w.work_category not in('day','night','holiday','holiday_night')
-  or (w.vehicle_id is not null and (w.odometer_km is null or w.odometer_km<0))))
- -- Reuse the exact committed-meter snapshot invariant from the existing
- -- guard_linked_vehicle_meter_report trigger; do not invoke a writer or infer
- -- a managed claim from an optional legacy vehicle selection.
- and not exists(
+returns boolean language plpgsql stable security invoker set search_path='' as $$
+declare cid uuid; strong_enabled boolean:=false; complete boolean;
+begin
+ select r.company_id into cid from public.daily_reports r where r.id=rid;
+ if cid is null then return false; end if;
+ if not exists(select 1 from public.daily_reports r where r.id=rid
+  and nullif(btrim(r.work_description),'') is not null
+  and exists(select 1 from public.daily_report_workers w where w.report_id=r.id)
+  and not exists(select 1 from public.daily_report_workers w where w.report_id=r.id and (
+   w.overtime_hours is null or w.overtime_hours<0 or w.early_hours is null or w.early_hours<0
+   or w.night_hours is null or w.night_hours<0 or w.work_category is null
+   or w.work_category not in('day','night','holiday','holiday_night')
+   or (w.vehicle_id is not null and (w.odometer_km is null or w.odometer_km<0
+    or not exists(select 1 from public.vehicles v where v.id=w.vehicle_id
+     and v.company_id=r.company_id and v.is_active=true)))))
+  and not exists(select 1 from public.daily_report_workers w
+   join public.attendance_verifications a on a.company_id=r.company_id and a.worker_id=w.worker_id
+    and a.event_type='clock_in' and a.work_date=r.report_date
+    and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id
+   where w.report_id=r.id and a.vehicle_id is not null and w.vehicle_id is distinct from a.vehicle_id))
+ then return false; end if;
+ if to_regclass('private.vehicle_usage_rollout') is not null then
+  execute 'select exists(select 1 from private.vehicle_usage_rollout where company_id=$1 and enabled=true)'
+   into strong_enabled using cid;
+ end if;
+ if not strong_enabled then
+  -- Exact observed production legacy writer. Its historical PUBLIC default is
+  -- observed, never copied to any new function. It writes no registration state.
+  return exists(select 1 from pg_proc f join pg_roles o on o.oid=f.proowner
+   where f.oid=to_regprocedure('private.save_daily_report_vehicle_usage(uuid,uuid,uuid,uuid,numeric)')
+    and md5(f.prosrc)='f78e35bf948cc4702f9d65d28d0ac0e6'
+    and o.rolname='postgres' and f.prosecdef and f.prorettype='void'::regtype
+    and f.prokind='f' and f.provolatile='v' and f.pronargs=5
+    and f.proconfig=array['search_path=""']);
+ end if;
+ -- An enabled/partially installed stronger rollout cannot fall back to legacy.
+ if to_regclass('public.vehicle_usage_claims') is null
+  or to_regclass('public.vehicle_meter_events') is null
+  or to_regclass('private.vehicle_meter_report_links') is null
+  or not exists(select 1 from pg_proc f join pg_roles o on o.oid=f.proowner
+   where f.oid=to_regprocedure('private.guard_linked_vehicle_meter_report()')
+    and md5(f.prosrc)='86933b3fc8c066edfba981a202fe98b4'
+    and o.rolname='postgres' and f.prosecdef and f.prorettype='trigger'::regtype
+    and f.prokind='f' and f.provolatile='v' and f.pronargs=0
+    and f.proacl=array[makeaclitem(f.proowner,f.proowner,'EXECUTE',false)]
+    and f.proconfig=array['search_path=""']) then return false; end if;
+ execute $meter$select exists(select 1 from public.daily_reports r where r.id=$1  and not exists(
  select 1 from public.daily_report_workers w
  join public.attendance_verifications a on a.worker_id=w.worker_id and a.company_id=r.company_id
   and a.event_type='clock_in' and a.work_date=r.report_date
@@ -56,7 +92,12 @@ returns boolean language sql stable security invoker set search_path='' as $$
  where l.report_id=r.id and (w.worker_id is null or
   row(w.vehicle_meter_event_id,w.vehicle_meter_source_clock_in_id,w.vehicle_id,
     w.previous_odometer_km,w.odometer_km,w.trip_distance_km)
-   is distinct from row(e.id,l.source_clock_in_id,e.vehicle_id,e.previous_km,e.current_km,e.distance_km))))
+   is distinct from row(e.id,l.source_clock_in_id,e.vehicle_id,e.previous_km,e.current_km,e.distance_km))))$meter$ into complete using rid;
+ return complete;
+exception when undefined_table or undefined_column or undefined_function then
+ -- Unknown enabled framework shapes must hold the gate, never unlock it.
+ return false;
+end
 $$;
 revoke all on function checkout_report_registration_private.inputs_complete(uuid) from public,anon,authenticated;
 
