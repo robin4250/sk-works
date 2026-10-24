@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'payroll_statement_repository.dart';
+import 'payroll_recorded_tax_amounts.dart';
 import '../shared/company_seal_pdf.dart';
 
 class PayrollPdfService {
@@ -36,7 +37,9 @@ class PayrollPdfService {
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
     );
 
-    final detail = statement.detail;
+    final detail = detailWithRecordedPayrollInsurance(statement.detail,
+      month: '${statement.periodStart.year.toString().padLeft(4, '0')}-'
+          '${statement.periodStart.month.toString().padLeft(2, '0')}-01');
     final earnings = _pick(detail, const ['基本給', '残業手当', '交通費', '出勤に基づく支給額']);
     final deductions = _pick(detail, const [
       '健康保険料',
@@ -1423,4 +1426,5 @@ class PayrollPdfService {
 
   static String _yen(int value) => '¥${_number(value)}';
 }
+
 

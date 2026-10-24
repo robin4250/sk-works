@@ -92,23 +92,53 @@ p.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(sys.argv[1]+'.png')
                 ).readAsString(),
               )
               as Map<String, dynamic>;
-      for (final mode in ['automatic', 'saved_named', 'manual_corrected']) {
+      for (final mode in ['automatic', 'calculation_only',
+        'calculation_legacy_allowance', 'calculation_mirrored_allowance',
+        'calculation_unit_allowance', 'saved_named', 'manual_corrected']) {
         final variant = jsonDecode(jsonEncode(row)) as Map<String, dynamic>;
         final detail = variant['detail'] as Map<String, dynamic>;
-        if (mode != 'automatic') detail.remove('tax_calculation');
+        if (mode.startsWith('calculation_')) {
+          for (final label in const ['健康保険料', '介護保険料', '厚生年金保険', '雇用保険料', '子ども・子育て支援金']) {
+            detail.remove(label);
+          }
+        } else if (mode != 'automatic') {
+          detail.remove('tax_calculation');
+        }
         if (mode == 'manual_corrected') {
           detail['雇用保険料'] = 1234;
           variant['deductions'] = (variant['deductions'] as int) - 266;
           variant['net_pay'] = (variant['net_pay'] as int) + 266;
         }
+        if (mode.endsWith('_allowance')) {
+          final independent = mode == 'calculation_unit_allowance';
+          final name = independent ? '交通費'
+              : mode == 'calculation_legacy_allowance' ? '旧共通手当' : '共通手当';
+          detail[name] = 5000;
+          if (mode != 'calculation_legacy_allowance') {
+            detail['custom_earnings'] = [
+              ...detail['custom_earnings'] as List,
+              {'name': name, 'amount_yen': 5000},
+            ];
+          }
+          if (independent) {
+            detail['unit_resolution'] = {'contract_version': 1, 'items': [
+              {'section': 'earning', 'name': name, 'amount_yen': 5000},
+            ]};
+          }
+          final increase = independent ? 10000 : 5000;
+          variant['gross_pay'] = (variant['gross_pay'] as int) + increase;
+          variant['net_pay'] = (variant['net_pay'] as int) + increase;
+        }
         final font = pw.Font.ttf(
           ByteData.sublistView(await File(fontPath!).readAsBytes()),
         );
+        final savedBefore = jsonEncode(variant);
         final bytes = await PayrollPdfService.buildPdf(
           record(variant),
           regularFont: font,
           boldFont: font,
         );
+        expect(jsonEncode(variant), savedBefore, reason: mode);
         final dir =
             Platform.environment['SKO_PDF_OUTPUT_DIR'] ??
             (await Directory.systemTemp.createTemp('sko-tax-pdf-')).path;
@@ -137,6 +167,10 @@ p.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(sys.argv[1]+'.png')
           reason: 'Insurance deductions must never become earnings',
         );
         expect(report['total'], variant['deductions']);
+        final net = (variant['net_pay'] as int).toString().replaceAllMapped(
+          RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',',
+        );
+        expect(report['text'], contains(net), reason: mode);
         expect(report['pages'], 1);
         for (final label in [
           '健康保険料',
@@ -156,3 +190,4 @@ p.get_pixmap(matrix=fitz.Matrix(1.5,1.5)).save(sys.argv[1]+'.png')
         : false,
   );
 }
+

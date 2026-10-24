@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/supabase_backend.dart';
 import 'payroll_tax_conditions_page.dart';
+import 'payroll_recorded_tax_amounts.dart';
 
 typedef PayrollDeductionStatementReader = Future<Map<String, dynamic>?> Function(
   String companyId, String workerId, String month);
@@ -11,6 +12,7 @@ const fixedPayrollDeductions = <(String, String, String)>[
   ('health_insurance', '健康保険', '健康保険料'),
   ('pension_insurance', '厚生年金保険', '厚生年金保険'),
   ('nursing_insurance', '介護保険', '介護保険料'),
+  ('child_support', '子ども・子育て支援金', '子ども・子育て支援金'),
 ];
 
 /// Reads generated monthly amounts; corrections use the existing audited,
@@ -49,6 +51,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
   int _version = 0, _generation = 0;
   final _savedSnapshot = <String, int>{};
   bool _residentEditing = false;
+  bool _savedCalculation = false;
   bool _busy = true, _allowed = false, _dirty = false, _uncertain = false;
   String? _error, _actor;
   late String _month;
@@ -182,7 +185,8 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       }
       final storedOverrides = profile?['deduction_overrides'] ?? const {};
       if (storedOverrides is! Map || storedOverrides.entries.any((e) =>
-          !_controllers.containsKey(e.key) || _yen(e.value) == null)) {
+          !_controllers.containsKey(e.key) || e.key == 'child_support' ||
+          _yen(e.value) == null)) {
         throw const FormatException('控除の修正額を確認できません');
       }
       final statement = await widget.readStatement(widget.companyId, widget.workerId, _month);
@@ -195,20 +199,28 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         ..addAll(storedOverrides.keys.cast<String>());
       final detail = statement?['detail'];
       final tax = detail is Map ? detail['tax_calculation'] : null;
-      // Named saved deductions remain visible when no automatic-tax profile
-      // applies. An old social-insurance aggregate is never split or inferred.
-      _savedSnapshot.clear();
-      if (profile == null && tax == null &&
-          statement?['calculation_blocked'] != true && detail is Map) {
-        for (final item in fixedPayrollDeductions) {
-          final amount = _savedNamedDeduction(detail, item.$3);
-          if (amount != null) _savedSnapshot[item.$1] = amount;
-        }
-      }
       final ready = statement?['calculation_blocked'] != true &&
           tax is Map && tax['blocked'] != true &&
           rows.isNotEmpty && tax['condition_version'] == rows.first['version'] &&
           tax['conditions_start'] == rows.first['starts_on'];
+      _savedCalculation = !ready && statement?['calculation_blocked'] != true &&
+          detail is Map && hasRecordedPayrollTaxCalculation(detail, month: _month);
+      if (_savedCalculation) { _manual.clear(); }
+      // Named saved deductions remain visible when no automatic-tax profile
+      // applies. An old social-insurance aggregate is never split or inferred.
+      _savedSnapshot.clear();
+      if (((profile == null && tax == null) || _savedCalculation) &&
+          statement?['calculation_blocked'] != true && detail is Map) {
+        final calculated = recordedPayrollInsuranceAmounts(detail, month: _month);
+        for (final item in fixedPayrollDeductions) {
+          final saved = _savedNamedDeduction(detail, item.$3);
+          final amount = _savedCalculation
+              ? item.$1 != 'income_tax' ? calculated[item.$3]
+                  : saved ?? (detail.containsKey(item.$3) ? null : _yen((tax as Map)['income_tax_yen']))
+              : saved;
+          if (amount != null) _savedSnapshot[item.$1] = amount;
+        }
+      }
       if (statement?['calculation_blocked'] == true ||
           (tax is Map && tax['blocked'] == true)) {
         _error = '給料明細の計算が保留中です。計算条件・料率を確認してください。';
@@ -220,7 +232,8 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
             ? (ready ? _yen(tax['automatic_income_tax_yen'] ?? tax['income_tax_yen']) : null)
             : (autoPremiums is Map ? _yen(autoPremiums[item.$3]) : null);
         _automatic[item.$1] = automatic;
-        final amount = profile?['insurance_mode'] == 'manual' && item.$1 != 'income_tax'
+        final amount = _savedCalculation ? _savedSnapshot[item.$1]
+            : profile?['insurance_mode'] == 'manual' && item.$1 != 'income_tax'
             ? _yen((profile!['manual_insurance_premiums'] as Map)[item.$1])
             : _manual.contains(item.$1) ? _yen(storedOverrides[item.$1])
             : item.$1 == 'income_tax'
@@ -228,7 +241,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
                 : (premiums is Map ? _yen(premiums[item.$3]) : _savedSnapshot[item.$1]);
         _controllers[item.$1]!.text = amount?.toString() ?? '';
       }
-      _allowed = supported == 1 && raw['can_edit'] == true && widget.canEdit && profile != null &&
+      _allowed = !_savedCalculation && supported == 1 && raw['can_edit'] == true && widget.canEdit && profile != null &&
           (profile['insurance_mode'] != 'manual' || raw['manual_insurance_contract_version'] == 1);
       _dirty = false;
       _uncertain = false;
@@ -238,6 +251,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       // Keep explicit corrections so an uncertain save never loses user input.
       _automatic.clear();
       _savedSnapshot.clear();
+      _savedCalculation = false;
       for (final entry in _controllers.entries) {
         if (!_manual.contains(entry.key)) entry.value.clear();
       }
@@ -319,6 +333,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
     if (_manual.contains(key)) return '手入力修正';
     if (_busy) return '計算結果を確認中';
     if (_error != null) return '計算結果未確認';
+    if (_savedCalculation) return '保存済みの計算結果（現在の設定とは未照合）';
     if (_profile?['insurance_mode'] == 'manual' && key != 'income_tax') return '個別手入力（月額）';
     if (_profile == null) {
       return _savedSnapshot.containsKey(key)
@@ -341,13 +356,17 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
       'employment_insurance' => '雇用保険の対象支給額 × 会社に登録した本人負担料率',
       'pension_insurance' => '厚生年金の標準報酬月額 × 会社に登録した本人負担料率',
       'nursing_insurance' => '加入条件・対象月の年齢条件を確認し、健康保険の標準報酬月額 × 会社に登録した本人負担料率',
+      'child_support' => '本人の加入条件と健康保険の標準報酬月額、会社に登録した支援金の本人負担料率から計算します。金額・加入条件の変更は「個別の計算条件」で行います。',
       'resident_tax' => '通知書に基づいて登録した月額と適用開始月を使います。対象月以前の最新設定を適用します。',
       _ => '健康保険の標準報酬月額 × 会社に登録した本人負担料率',
     };
     final action = await showDialog<String>(context: context, builder: (context) => AlertDialog(
       title: Text('$titleの計算式'),
-      content: Text('$formula\n\n金額は給料明細と同じ給与計算結果です。手入力した項目は修正額を優先し、「自動計算に戻す」で解除できます。'
-          '${key == 'health_insurance' || key == 'nursing_insurance' ? '\n健康保険・介護保険・支援金は給与計算側の共通の端数処理を使います。' : ''}'),
+      content: Text('$formula\n\n金額は給料明細と同じ給与計算結果です。'
+          '保存済みの計算結果は、現在の条件と照合できなくても読取専用で表示します。'
+          '表示のための再登録・再計算は行わず、PDF・印刷・共有も同じ保存済み金額を使います。'
+          '${key == 'child_support' ? 'この欄は読取専用です。' : '手入力した項目は修正額を優先し、「自動計算に戻す」で解除できます。'}'
+          '${key == 'health_insurance' || key == 'nursing_insurance' || key == 'child_support' ? '\n健康保険・介護保険・支援金は給与計算側の共通の端数処理を使います。' : ''}'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる')),
         if (key != 'resident_tax' && widget.openConditions != null)
@@ -393,7 +412,9 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
         const Text('月を切り替える前に修正額の保存・読込の完了を確認してください。'),
       if (_busy) const LinearProgressIndicator(),
       if (_error != null) Text(_error!),
-      if (!_busy && _error == null && _profile == null)
+      if (!_busy && _savedCalculation)
+        const Text('保存済み明細の計算結果を表示しています。現在の条件での再計算は行っていません。'),
+      if (!_busy && _error == null && _profile == null && !_savedCalculation)
         Card(
           key: const ValueKey('deduction-conditions-missing'),
           child: Padding(
@@ -432,7 +453,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
               TextFormField(
                 key: ValueKey('fixed-deduction-${item.$1}-amount'),
                 controller: _controllers[item.$1],
-                enabled: widget.canEdit && _allowed && !_busy && !_uncertain &&
+                enabled: item.$1 != 'child_support' && widget.canEdit && _allowed && !_busy && !_uncertain &&
                     (item.$1 == 'income_tax' || const ['rates', 'manual'].contains(_profile?['insurance_mode'])),
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(labelText: item.$2, suffixText: '円',
@@ -477,6 +498,7 @@ class _PayrollFixedDeductionsState extends State<PayrollFixedDeductions> {
     ],
   );
 }
+
 
 
 

@@ -102,6 +102,36 @@ Future<void> save(WidgetTester t) async {
 }
 
 void main() {
+  for (final conditionsPresent in [false, true]) {
+    testWidgets('saved calculated insurance remains visible when current conditions are ${conditionsPresent ? 'newer' : 'unavailable'}', (t) async {
+      final b = _Backend()..hasConditions = conditionsPresent;
+      if (conditionsPresent) {
+        b.version = 2;
+        b.value = {...initialProfile, 'deduction_overrides': {'health_insurance': 1234}};
+      }
+      Map<String, dynamic>? saved;
+      String? before;
+      await _mount(t, b, reader: (company, worker, period) async {
+        final row = (await b.statement(company, worker, period))!;
+        final tax = (row['detail'] as Map)['tax_calculation'] as Map;
+        tax['condition_version'] = 1;
+        tax['calculator_version'] = 'payroll-tax-20261010-v1';
+        tax['conditions'] = {'insurance_mode': 'rates'};
+        (tax['premiums'] as Map)['健康保険料'] = 5000;
+        saved = row;
+        before = jsonEncode(row);
+        return row;
+      });
+      expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5000');
+      expect(t.widget<TextFormField>(amount('pension_insurance')).controller!.text, '9000');
+      expect(t.widget<TextFormField>(amount('health_insurance')).enabled, isFalse);
+      expect(helper(t, 'health_insurance'), '保存済みの計算結果（現在の設定とは未照合）');
+      expect(find.byKey(const ValueKey('deduction-conditions-missing')), findsNothing);
+      expect(jsonEncode(saved), before);
+      expect(b.writes, 0);
+    });
+  }
+
   Map<String, dynamic> manualProfile() => {
     'insurance_mode': 'manual', 'income_mode': 'koh',
     'dependents': 2, 'non_taxable_yen': 100, 'additional_social_deduction_yen': 0,
@@ -109,6 +139,50 @@ void main() {
     'manual_insurance_premiums': {'health_insurance': 5000, 'pension_insurance': 9000,
       'employment_insurance': 100, 'nursing_insurance': 0, 'child_support': 200},
   };
+  for (final premium in <int?>[200, 0, null]) {
+    testWidgets('child support uses the statement amount without enabling unsupported overrides ($premium)', (t) async {
+      final b = _Backend();
+      await _mount(t, b, reader: (company, worker, period) async {
+        final row = (await b.statement(company, worker, period))!;
+        final tax = (row['detail'] as Map)['tax_calculation'] as Map;
+        if (premium != null) {
+          (tax['premiums'] as Map)['子ども・子育て支援金'] = premium;
+          (tax['automatic_premiums'] as Map)['子ども・子育て支援金'] = premium;
+        }
+        return row;
+      });
+      final field = t.widget<TextFormField>(amount('child_support'));
+      expect(field.controller!.text, premium?.toString() ?? '');
+      expect(field.enabled, isFalse);
+      expect(b.writes, 0);
+      expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, '5000');
+      expect(t.widget<TextFormField>(amount('pension_insurance')).controller!.text, '9000');
+    });
+  }
+
+  testWidgets('manual child support stays visible but is changed through existing conditions only', (t) async {
+    final b = _Backend()..manualSupported = true..value = manualProfile();
+    await _mount(t, b);
+    expect(t.widget<TextFormField>(amount('child_support')).controller!.text, '200');
+    expect(t.widget<TextFormField>(amount('child_support')).enabled, isFalse);
+    expect(helper(t, 'child_support'), '個別手入力（月額）');
+    expect(b.writes, 0);
+  });
+
+  testWidgets('blocked child support never displays a stale premium', (t) async {
+    final b = _Backend();
+    await _mount(t, b, reader: (company, worker, period) async {
+      final row = (await b.statement(company, worker, period))!;
+      row['calculation_blocked'] = true;
+      final tax = (row['detail'] as Map)['tax_calculation'] as Map;
+      (tax['premiums'] as Map)['子ども・子育て支援金'] = 200;
+      return row;
+    });
+    expect(t.widget<TextFormField>(amount('child_support')).controller!.text, isEmpty);
+    expect(helper(t, 'child_support'), '計算結果未確認');
+    expect(b.writes, 0);
+  });
+
   testWidgets('manual premium edit preserves other premiums, income override and profile', (t) async {
     final b = _Backend()..manualSupported = true..value = manualProfile();
     await _mount(t, b);
@@ -219,7 +293,7 @@ void main() {
     final b = _Backend()..hasConditions = false;
     final detail = <String, dynamic>{
       '所得税': 1500, '雇用保険料': 123, '健康保険料': 5000,
-      '厚生年金保険': 9000, '介護保険料': 0, '社会保険': 24000,
+      '厚生年金保険': 9000, '介護保険料': 0, '子ども・子育て支援金': 200, '社会保険': 24000,
     };
     await _mount(t, b, reader: (_, _, _) async =>
         {'calculation_blocked': false, 'detail': detail});
@@ -512,7 +586,9 @@ void main() {
     final b = _Backend();
     await _mount(t, b, reader: (_, _, _) async => null);
     expect(t.widget<TextFormField>(amount('health_insurance')).controller!.text, isEmpty);
-    expect(find.text('給与計算待ち'), findsNWidgets(5));
+    for (final item in fixedPayrollDeductions) {
+      expect(helper(t, item.$1), '給与計算待ち');
+    }
     await t.ensureVisible(amount('income_tax'));
     await t.enterText(amount('income_tax'), '1234');
     b.failSave = true;
@@ -584,6 +660,7 @@ void main() {
   }
 
 }
+
 
 
 
