@@ -10,6 +10,13 @@ void main() {
     'additional_social_deduction_yen': 0};
 
   Future<void> enter(WidgetTester t, String key, String value) async {
+    if (key == 'insurance-reference-from' || key == 'insurance-reference-to') {
+      final tile = find.byKey(const ValueKey('insurance-reference-details'));
+      if (find.byKey(ValueKey(key)).evaluate().isEmpty) {
+        await t.ensureVisible(tile); await t.pumpAndSettle();
+        await t.tap(tile); await t.pumpAndSettle();
+      }
+    }
     final field = find.byKey(ValueKey(key));
     await t.ensureVisible(field); await t.pumpAndSettle();
     await t.enterText(field, value); await t.pump();
@@ -51,6 +58,9 @@ void main() {
       },
     )));
     await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('insurance-reference-average')), findsOneWidget);
+    expect(find.byKey(const ValueKey('insurance-reference-from')), findsNothing);
+    expect(find.byKey(const ValueKey('insurance-reference-from'), skipOffstage: false), findsOneWidget);
     if (!editIncome) {
       await save(t);
       expect(saved['health_base_yen'], 300000);
@@ -106,7 +116,7 @@ void main() {
       await t.tap(reload); await t.pumpAndSettle();
       final field = t.widget<TextFormField>(find.byKey(const ValueKey('insurance-reference-average')));
       expect(field.controller!.text, modeRoundtrip ? '700000' : '480000');
-      expect(t.widget<TextFormField>(find.byKey(const ValueKey('insurance-reference-from'))).controller!.text, changePeriod ? '2026-06' : '2026-07');
+      expect(t.widget<TextFormField>(find.byKey(const ValueKey('insurance-reference-from'), skipOffstage: false)).controller!.text, changePeriod ? '2026-06' : '2026-07');
     } else {
       expect(saved.containsKey('insurance_basis_reference'), isFalse);
       expect(find.textContaining('対象期間・平均月収は未保存です。'), findsWidgets);

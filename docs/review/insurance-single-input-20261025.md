@@ -102,3 +102,26 @@ Help updated. No calculation, scope, enrollment, save/confirmation or default
 changes in this visual follow-up. Existing operation tests remain the checks;
 no style-mirroring test added. The existing initial-setup test now ensures its
 confirmation checkbox is on-screen before tapping (no warning suppression).
+
+
+## Genre-based details follow-up
+
+The user requested normally used settings to remain directly accessible and
+infrequent details to be collapsed by genre. This is presentation only.
+
+- Average income is the first always-visible control in its card. Its existing
+  reference period/history selection is inside `対象期間・実績から選ぶ`.
+- Income-tax details, enrollment exception checkboxes and supplemental deduction
+  conditions have separate detail panels. Insurance method/enrollment selector,
+  saved basis summary, effective month and save controls remain visible. Nursing
+  birth date stays visible when nursing is selected; otherwise it is Offstage.
+- Every detail form remains mounted (`maintainState: true`); validation does not
+  disappear when collapsed. Invalid detail input produces a footer instruction
+  identifying the relevant panels/birth field. Existing missing-base refusal
+  remains visible. No calculation, RPC or confirmation changes.
+
+Material fix: card surfaces now use a real Material with a rounded shape, rather
+than a painted Container between Material and ListTile. This preserves ink and
+ListTile assertions; no assertion was suppressed. Existing operation tests now
+explicitly open a detail before operating it. Existing one-input page tests also
+assert a collapsed period field is still mounted before save/reload tests.

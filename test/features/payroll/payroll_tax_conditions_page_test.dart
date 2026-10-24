@@ -40,6 +40,15 @@ void main() {
       ),
     );
     await t.pumpAndSettle();
+    for (final key in ['insurance-income-details', 'insurance-enrollment-details']) {
+      final tile = find.byKey(ValueKey(key));
+      if (tile.evaluate().isNotEmpty) {
+        await t.ensureVisible(tile); await t.pumpAndSettle();
+        await t.tap(tile); await t.pumpAndSettle();
+      }
+    }
+    await t.drag(find.byType(ListView), const Offset(0, 4000));
+    await t.pumpAndSettle();
   }
 
   Future<void> tapSave(WidgetTester t) async {

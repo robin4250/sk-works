@@ -340,7 +340,10 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
       setState(() => _baseInputError = '平均月収を入力するか、「通知書の金額で手動修正」から加入している保険の標準報酬月額を入力してください。');
       return;
     }
-    if (!_form.currentState!.validate()) return;
+    if (!_form.currentState!.validate()) {
+      setState(() => _baseInputError = '入力内容を確認してください。対象期間・所得税・控除条件の詳細や生年月日欄で、不足や入力形式を確認できます。');
+      return;
+    }
     if (_insurance == 'rates' && _incomeNeedsApplication) {
       setState(() => _baseInputError = '変更した平均月収は未適用です。「平均月収を計算に使う」で標準報酬月額を確認してください。');
       return;
@@ -491,23 +494,27 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
 
   Widget _settingsCard(String title, IconData icon, List<Widget> children) {
     final colors = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Material(
         color: colors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.primary.withValues(alpha: 0.25)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: colors.primary.withValues(alpha: 0.25)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [Icon(icon, color: colors.primary, size: 22),
+              const SizedBox(width: 8),
+              Expanded(child: Text(title, style: TextStyle(fontSize: 17,
+                fontWeight: FontWeight.w700, color: colors.primary))),
+            ]),
+            const SizedBox(height: 12),
+            ...children,
+          ]),
+        ),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [Icon(icon, color: colors.primary, size: 22),
-          const SizedBox(width: 8),
-          Expanded(child: Text(title, style: TextStyle(fontSize: 17,
-            fontWeight: FontWeight.w700, color: colors.primary))),
-        ]),
-        const SizedBox(height: 12),
-        ...children,
-      ]),
     );
   }
 
@@ -518,7 +525,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
         tooltip: '設定ヘルプ', icon: const Icon(Icons.help_outline),
         onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(
           title: const Text('対象期間・平均月収・標準報酬月額'),
-          content: const SingleChildScrollView(child: Text('適用月・平均月収・所得税・保険料のカードごとに確認し、最後に保存します。通知書の金額で手動修正する欄は必要な場合だけ開いてください。\n\n平均月収は、指定した給与対象月の控除前支給総額を確認する参考額です。未登録月を0円として平均しません。支給日は明細の記録を表示し、記録が無い場合は勤務月で代用しません。\n\n平均月収を入力すると、2026年の一般被保険者の等級表で健康保険・厚生年金それぞれの標準報酬月額を設定します。保険料率は会社の税率設定を使います。任意継続・日雇特例・国保の換算には対応しません。通知書と異なる場合は手動修正してください。届出や定時・随時改定を自動で決定する機能ではありません。\n\n適用開始月から対象の未確定給与へ既存計算で反映します。確定済み給与は変更しません。')),
+          content: const SingleChildScrollView(child: Text('適用月・平均月収・所得税・保険料のカードごとに確認し、最後に保存します。対象期間・実績、所得税、加入条件、非課税額などの詳細と、通知書の金額で手動修正する欄は必要な場合だけ開いてください。\n\n平均月収は、指定した給与対象月の控除前支給総額を確認する参考額です。未登録月を0円として平均しません。支給日は明細の記録を表示し、記録が無い場合は勤務月で代用しません。\n\n平均月収を入力すると、2026年の一般被保険者の等級表で健康保険・厚生年金それぞれの標準報酬月額を設定します。保険料率は会社の税率設定を使います。任意継続・日雇特例・国保の換算には対応しません。通知書と異なる場合は手動修正してください。届出や定時・随時改定を自動で決定する機能ではありません。\n\n適用開始月から対象の未確定給与へ既存計算で反映します。確定済み給与は変更しません。')),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
         )))],
     ),
@@ -655,6 +662,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                 ),
                 ]),
                 _settingsCard('所得税', Icons.receipt_long_outlined, [
+                Text(_income == 'fixed' ? '個別設定の固定月額' : _income == 'koh' ? '自動計算・月額表甲欄' : '自動計算・月額表乙欄'),
+                ExpansionTile(key: const ValueKey('insurance-income-details'),
+                  maintainState: true, title: const Text('所得税の詳細'), children: [
                 DropdownButtonFormField<String>(
                   key: ValueKey('income-$_income'),
                   initialValue: _income,
@@ -675,6 +685,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                       ? '従たる給与の申告書に記載した扶養人数'
                       : '申告書に基づく扶養親族等の人数（加算分を含む）',
                 ),
+                ]),
                 ]),
                 _settingsCard('保険料・加入条件', Icons.health_and_safety_outlined, [
                 DropdownButtonFormField<String>(
@@ -749,6 +760,10 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                         : null,
                   ),
                   const Text('国保へ切り替えると健康保険・厚生年金を外します。その他の項目は個別に確認してください。'),
+                  Text('健康保険：${_flags['health']! ? '加入' : '未加入'}・厚生年金：${_flags['pension']! ? '加入' : '未加入'}'),
+                  Text('雇用保険：${_flags['employment']! ? '加入' : '未加入'}・介護保険：${_flags['nursing']! ? '対象を確認' : '選択なし'}・支援金：${_flags['child_support']! ? '対象' : '選択なし'}'),
+                  ExpansionTile(key: const ValueKey('insurance-enrollment-details'),
+                    maintainState: true, title: const Text('加入条件の詳細'), children: [
                   for (final item in const {
                     'health': '健康保険',
                     'pension': '厚生年金',
@@ -764,6 +779,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                           ? (v) => setState(() => _flags[item.key] = v!)
                           : null,
                     ),
+                  ]),
                   Text('計算に使う標準報酬月額：健康保険 ${_amounts['health_base_yen']!.text}円・厚生年金 ${_amounts['pension_base_yen']!.text}円'),
                   ExpansionTile(
                     key: const ValueKey('insurance-standard-base-overrides'),
@@ -774,7 +790,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                       _amount('pension_base_yen', '厚生年金の標準報酬月額（円）'),
                     ],
                   ),
-                  TextFormField(
+                  Offstage(offstage: !_flags['nursing']!, child: TextFormField(
                     controller: _birth,
                     enabled: _canEdit && !_busy && !_uncertain,
                     decoration: const InputDecoration(
@@ -786,10 +802,12 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                                 !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(v))
                         ? '生年月日を入力してください'
                         : null,
-                  ),
+                  )),
                 ],
                 ]),
                 _settingsCard('その他の控除条件', Icons.tune_outlined, [
+                ExpansionTile(key: const ValueKey('insurance-deduction-details'),
+                  maintainState: true, title: const Text('非課税・控除済み額の詳細'), children: [
                 _amount('non_taxable_yen', '支給額のうち非課税分（月額・円）'),
                 if (_insurance != 'manual') _amount('employment_excluded_yen', '支給額のうち雇用保険対象外分（月額・円）'),
                 _amount(
@@ -799,6 +817,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                 const Text(
                   '自動計算へ切り替える税・保険料を自由控除にも登録している場合は、二重控除にならないよう確認してください。',
                 ),
+                ]),
                 ]),
                 _settingsCard('保存する内容', Icons.fact_check_outlined, [
                   ValueListenableBuilder<TextEditingValue>(
