@@ -1,0 +1,165 @@
+{
+  "schema": 1,
+  "mode": "prepared_catalog_only_not_installable",
+  "production_applied": false,
+  "unit_path": "docs/candidates/company_rate_defaults_20261024.sql.review-only",
+  "unit_sha256": "9f9a7d08e34047d9a7083545980c5036ac864f2b31462c440655b2ccc416612d",
+  "protected_tables": [
+    "public.companies",
+    "public.company_rate_settings"
+  ],
+  "protected_existing_routines": {
+    "company_allowance_identity_private.prevent_reinsert()": {
+      "source_md5": "13ce1c6eff6617e855f10e299716efb9",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "v"
+    },
+    "company_allowance_identity_private.prevent_settings_delete()": {
+      "source_md5": "ccc2d457a0ad85c4b4d02bcb14bec031",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "v"
+    },
+    "company_allowance_identity_private.track_settings()": {
+      "source_md5": "a518232a914a4b498a3a7a04a6e92bbd",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "v"
+    },
+    "company_common_allowance_private.authorize(uuid, boolean)": {
+      "source_md5": "cae5128564d93ecbada61cee2fd89231",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "s"
+    },
+    "company_common_allowance_private.protect_unit_aliases()": {
+      "source_md5": "e3c8da66a355ffb1f80cc8b04f186c47",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "v"
+    },
+    "company_common_allowance_private.session_id()": {
+      "source_md5": "68c68f275c23a22ba06d060c2923b9b9",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "s"
+    },
+    "private.account_access_allowed()": {
+      "source_md5": "aeca25db212c043c472334026bd98724",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "s"
+    },
+    "private.capture_company_profile_revision()": {
+      "source_md5": "564d8dc9f7610710365d7ec47f0aee67",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "v"
+    },
+    "private.company_refresh_generation_setting_issues_trigger()": {
+      "source_md5": "a94af4013b8a5cb400ba91573da1ba6c",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "v"
+    },
+    "private.company_tax_refresh_invoice()": {
+      "source_md5": "2e15dd3f5e40ae7efeb9ff6a810fb04c",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "v"
+    },
+    "private.provision_standard_company_chat()": {
+      "source_md5": "825f5457997a4a239c3cc4518de9f900",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "v"
+    },
+    "public.company_rate_settings_state()": {
+      "source_md5": "5db8e2c6d970a331b1de8b6337654fd7",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=public, pg_temp"
+      ],
+      "volatility": "s"
+    },
+    "public.save_company_allowance_units(text, text, text)": {
+      "source_md5": "6666c57cf48f24932db4b76cba8b4e27",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=public, pg_temp"
+      ],
+      "volatility": "v"
+    },
+    "public.save_company_rate_settings(numeric, numeric, integer, integer, integer, integer, text, integer, text, integer, text, integer)": {
+      "source_md5": "2d96537ca672e6fb92c5335363d10aeb",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": [
+        "search_path=public, pg_temp"
+      ],
+      "volatility": "v"
+    },
+    "public.save_company_rate_settings_with_units(numeric, numeric, integer, integer, integer, integer, text, integer, text, integer, text, integer, text, text, text)": {
+      "source_md5": "d4e6dd5cc14fa0f6a4c8b1f4cb760241",
+      "owner": "postgres",
+      "security_definer": false,
+      "search_path": [
+        "search_path=\"\""
+      ],
+      "volatility": "v"
+    }
+  },
+  "expected_new_functions_source_md5": {
+    "company_common_allowance_private.read_rate_defaults": "33a83423311cc79fc5d862ac28053ae3",
+    "company_common_allowance_private.save_rate_defaults": "94071bfdec4e52a7ba845739a432e22a",
+    "public.read_company_rate_defaults": "34f119098f6160236e15f8fe2902429d",
+    "public.save_company_rate_defaults": "36f4fb56356c0a66be555181b511418a"
+  },
+  "actual_namespace_observed": [
+    "public",
+    "company_common_allowance_private"
+  ],
+  "pending_namespace_observation": [
+    "private",
+    "company_allowance_identity_private"
+  ],
+  "financial_checkpoint_observed": false,
+  "runtime_trigger_side_effects": "existing identity history/unit observations and invoice refresh retained; installation writes no application rows",
+  "removal_semantics": "code removal only; never a financial rollback or proof API unused"
+}

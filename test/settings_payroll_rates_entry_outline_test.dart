@@ -15,24 +15,17 @@ void main() {
     expect(RegExp(r'side:\s*BorderSide\(').allMatches(entry), hasLength(1));
     expect(entry, isNot(contains('border: Border.all(')));
   });
-  test('common allowance entry preserves scoped legacy management and related rates', () {
+  test('company data retains rates but common allowances live in payroll entry', () {
     final source = File('lib/features/settings/settings_page.dart').readAsStringSync();
-    expect(source, isNot(contains("title: const Text('消費税・会社手当設定')")));
-    final start = source.indexOf('if (_canManageCompany && _companyId != null && _companyId!.trim().isNotEmpty)');
-    final end = source.indexOf('if (_canReadPayrollRates', start);
-    final allowance = source.substring(start, end);
-    expect(allowance, contains("title: const Text('会社共通手当')"));
-    expect(allowance, contains('SecondaryProtectedPage('));
-    expect(allowance, contains('CompanyCommonAllowanceEntryPage('));
-    expect(allowance, contains('CompanyAllowanceIdentityPage('));
-    expect(allowance, contains("child: const Text('登録済み項目管理')"));
-    expect(RegExp(r'companyId: _companyId!').allMatches(allowance), hasLength(2));
-    final related = source.substring(source.indexOf('child: ExpansionTile('), start);
-    expect(related, contains("title: const Text('関連設定')"));
-    expect(related, contains('CompanyRateSettingsPage()'));
-    expect(related, contains('消費税・福利厚生費・旧単価'));
+    expect(source, isNot(contains("title: const Text('会社共通手当')")));
+    expect(source, isNot(contains('CompanyCommonAllowanceEntryPage(')));
+    expect(source, isNot(contains('CompanyAllowanceIdentityPage(')));
+    expect(source, contains('CompanyRateSettingsPage(companyId: _companyId)'));
+    expect(source, contains('消費税・福利厚生費・旧単価'));
+    final entry = File('lib/features/payroll/company_common_allowance_entry_page.dart').readAsStringSync();
+    expect(entry, contains('CompanyAllowanceIdentityPage(companyId: selected.companyId)'));
+    expect(entry, contains('登録済み項目管理'));
     expect(source, contains("_canManageCompany = role == 'owner' || role == 'admin';"));
     expect(source, contains("_canReadPayrollRates = _canManageCompany || role == 'viewer';"));
   });
-
 }

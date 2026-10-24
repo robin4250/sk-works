@@ -16,9 +16,6 @@ import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
 import 'company_payroll_rates_page.dart';
-import 'company_allowance_identity_page.dart';
-import '../payroll/company_common_allowance_entry_page.dart';
-import '../auth/secondary_protected_page.dart';
 import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
 import 'master_feature_controls_page.dart';
@@ -392,50 +389,12 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ListTile(
                                   leading: const Icon(Icons.currency_yen_outlined),
                                   title: const Text('消費税・福利厚生費・旧単価'),
-                                  subtitle: const Text('登録済みの消費税率・福利厚生費率・残業・早出・夜勤・休日・旧手当3枠'),
+                                  subtitle: const Text('登録済みの消費税率・福利厚生費率・残業・早出・夜勤・休日'),
                                   trailing: const Icon(Icons.chevron_right),
                                   onTap: () => Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (_) => const CompanyRateSettingsPage(),
+                                      builder: (_) => CompanyRateSettingsPage(companyId: _companyId),
                                     ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        if (_canManageCompany && _companyId != null && _companyId!.trim().isNotEmpty) ...[
-                          Card(
-                            child: Column(
-                              children: [
-                                ListTile(
-                                  leading: const Icon(Icons.receipt_long_outlined),
-                                  title: const Text('会社共通手当'),
-                                  subtitle: const Text('日給・時給・月給の支給・控除'),
-                                  trailing: const Icon(Icons.chevron_right),
-                                  onTap: () => Navigator.of(context).push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => SecondaryProtectedPage(
-                                        title: '社内共通手当',
-                                        child: CompanyCommonAllowanceEntryPage(
-                                          companyId: _companyId!,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: TextButton(
-                                    onPressed: () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => CompanyAllowanceIdentityPage(
-                                          companyId: _companyId!,
-                                        ),
-                                      ),
-                                    ),
-                                    child: const Text('登録済み項目管理'),
                                   ),
                                 ),
                               ],
@@ -606,3 +565,4 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 }
+

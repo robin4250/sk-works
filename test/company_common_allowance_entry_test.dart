@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/payroll/company_common_allowance_entry_page.dart';
 import 'package:sk_works/features/payroll/company_common_allowance_repository.dart';
 import 'package:sk_works/features/payroll/company_common_payroll_page.dart';
+import 'package:sk_works/features/settings/company_allowance_identity_page.dart';
 
 import 'company_common_allowance_connected_test.dart' as fixture;
 
@@ -40,6 +41,25 @@ void main() {
     expect(find.text('selected:second'), findsOneWidget);
     expect(built.toSet(), {'second'});
   });
+
+  for (final editable in [true, false]) {
+    testWidgets('registered item management stays inside selected payroll scope: $editable', (tester) async {
+      await tester.pumpWidget(MaterialApp(home: CompanyCommonAllowanceEntryPage(
+        currentActor: () => 'actor',
+        scopeLoader: () async => [CompanyCommonAllowanceScope('first', '会社A', editable)],
+        allowancesBuilder: (_, id) => Text('selected:$id'),
+      )));
+      await tester.pumpAndSettle();
+      final entry = find.byKey(const ValueKey('common-allowance-registered-items'));
+      expect(entry, editable ? findsOneWidget : findsNothing);
+      if (editable) {
+        await tester.tap(entry);
+        await tester.pumpAndSettle();
+        expect(tester.widget<CompanyAllowanceIdentityPage>(find.byType(CompanyAllowanceIdentityPage)).companyId, 'first');
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 
   testWidgets('stale membership response cannot open previous actor company', (tester) async {
     var actor = 'actor';

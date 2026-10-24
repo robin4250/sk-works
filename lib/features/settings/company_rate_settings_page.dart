@@ -5,7 +5,9 @@ import '../notifications/notification_bell.dart';
 import 'company_rate_settings_repository.dart';
 
 class CompanyRateSettingsPage extends StatefulWidget {
-  const CompanyRateSettingsPage({super.key});
+  const CompanyRateSettingsPage({super.key, this.companyId});
+
+  final String? companyId;
 
   @override
   State<CompanyRateSettingsPage> createState() =>
@@ -21,20 +23,12 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
   final _early = TextEditingController();
   final _night = TextEditingController();
   final _holiday = TextEditingController();
-  final _allowance1 = TextEditingController();
-  final _allowance1Amount = TextEditingController();
-  final _allowance1Unit = TextEditingController(text: '回');
-  final _allowance2 = TextEditingController();
-  final _allowance2Amount = TextEditingController();
-  final _allowance2Unit = TextEditingController(text: '回');
-  final _allowance3 = TextEditingController();
-  final _allowance3Amount = TextEditingController();
-  final _allowance3Unit = TextEditingController(text: '回');
 
   bool _loading = true;
   bool _saving = false;
   String? _error;
   int _loadGeneration = 0;
+  CompanyRateSettings? _loaded;
 
   @override
   void initState() {
@@ -52,15 +46,6 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
       _early,
       _night,
       _holiday,
-      _allowance1,
-      _allowance1Amount,
-      _allowance1Unit,
-      _allowance2,
-      _allowance2Amount,
-      _allowance2Unit,
-      _allowance3,
-      _allowance3Amount,
-      _allowance3Unit,
     ]) {
       controller.dispose();
     }
@@ -85,7 +70,11 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
     });
 
     try {
-      final value = await repository.load();
+      final company = widget.companyId;
+      if (company == null || company.isEmpty) {
+        throw StateError('会社情報を確認できません。会社設定から開き直してください。');
+      }
+      final value = await repository.loadDefaults(company);
       if (!mounted || generation != _loadGeneration) return;
       _tax.text = value.taxRate.toString();
       _welfare.text = value.welfareRate.toString();
@@ -93,15 +82,7 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
       _early.text = value.earlyHourRateYen.toString();
       _night.text = value.nightHourRateYen.toString();
       _holiday.text = value.holidayDayRateYen.toString();
-      _allowance1.text = value.allowance1Name;
-      _allowance1Amount.text = value.allowance1AmountYen.toString();
-      _allowance1Unit.text = value.allowance1Unit;
-      _allowance2.text = value.allowance2Name;
-      _allowance2Amount.text = value.allowance2AmountYen.toString();
-      _allowance2Unit.text = value.allowance2Unit;
-      _allowance3.text = value.allowance3Name;
-      _allowance3Amount.text = value.allowance3AmountYen.toString();
-      _allowance3Unit.text = value.allowance3Unit;
+      _loaded = value;
       setState(() => _loading = false);
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
@@ -126,9 +107,6 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
       _yen(_early),
       _yen(_night),
       _yen(_holiday),
-      _yen(_allowance1Amount),
-      _yen(_allowance2Amount),
-      _yen(_allowance3Amount),
     ];
 
     if (tax == null ||
@@ -148,28 +126,20 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
     });
 
     try {
-      await repository.save(
-        CompanyRateSettings(
-          taxRate: tax,
-          welfareRate: welfare,
-          overtimeHourRateYen: values[0]!,
-          earlyHourRateYen: values[1]!,
-          nightHourRateYen: values[2]!,
-          holidayDayRateYen: values[3]!,
-          allowance1Name: _allowance1.text,
-          allowance1AmountYen: values[4]!,
-          allowance1Unit: _allowance1Unit.text,
-          allowance2Name: _allowance2.text,
-          allowance2AmountYen: values[5]!,
-          allowance2Unit: _allowance2Unit.text,
-          allowance3Name: _allowance3.text,
-          allowance3AmountYen: values[6]!,
-          allowance3Unit: _allowance3Unit.text,
-        ),
+      final loaded = _loaded;
+      if (loaded == null) { throw StateError('設定を読み直してください。'); }
+      _loaded = await repository.saveDefaults(
+        expected: loaded,
+        taxRate: tax,
+        welfareRate: welfare,
+        overtimeHourRateYen: values[0]!,
+        earlyHourRateYen: values[1]!,
+        nightHourRateYen: values[2]!,
+        holidayDayRateYen: values[3]!,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SkoLanguageController.tr('会社単価・手当設定を保存しました'))),
+        SnackBar(content: Text(SkoLanguageController.tr('消費税・福利厚生費・旧単価を保存しました'))),
       );
     } catch (error) {
       if (!mounted) return;
@@ -194,63 +164,24 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
     );
   }
 
-  Widget _allowanceBlock(
-    int number,
-    TextEditingController name,
-    TextEditingController amount,
-    TextEditingController unit,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          children: [
-            TextField(
-              controller: name,
-              decoration: InputDecoration(labelText: SkoLanguageController.trParams('手当{number} 名称', {'number': number})),
-            ),
-            SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: amount,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(labelText: SkoLanguageController.trParams('手当{number} 金額（円）', {'number': number})),
-                  ),
-                ),
-                SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: unit,
-                    maxLength: 6,
-                    decoration: InputDecoration(
-                      labelText: SkoLanguageController.trParams('手当{number} 単位', {'number': number}),
-                      hintText: SkoLanguageController.tr('回・日・時間・件など'),
-                      helperText: SkoLanguageController.tr('週間表示・カレンダー表示・月集計に反映'),
-                      counterText: '',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          SkoLanguageController.tr('会社単価・手当設定'),
+          SkoLanguageController.tr('消費税・福利厚生費・旧単価'),
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
-        actions: const [SkoNotificationBell()],
+        actions: [
+          IconButton(tooltip: '使い方', icon: const Icon(Icons.help_outline),
+            onPressed: () => showDialog<void>(context: context, builder: (context) => AlertDialog(
+              title: const Text('消費税・福利厚生費・旧単価の使い方'),
+              content: const Text('消費税率・福利厚生費率と登録済みの旧単価を設定します。共通手当は給料一覧の「社内共通手当」にまとめています。この保存では手当の名称・金額・単位を変更しません。'),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
+            ))),
+          const SkoNotificationBell(),
+        ],
       ),
       body: SafeArea(
         child: _loading
@@ -279,7 +210,7 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                         child: Padding(
                           padding: EdgeInsets.all(16),
                           child: Text(
-                            SkoLanguageController.tr('会社共通の税率・福利厚生費率・手当をここで設定します。社員ごとの給与は「個別給与設定」、現場ごとの請求単価は「管理者用現場データ」で設定します。登録した値を各画面で使用するため、同じ内容の再入力は不要です。'),
+                            SkoLanguageController.tr('消費税率・福利厚生費率と登録済みの旧単価を設定します。共通手当は給料一覧の「社内共通手当」から設定します。'),
                           ),
                         ),
                       ),
@@ -309,33 +240,6 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
                         ],
                       ),
                       SizedBox(height: 12),
-                      Text(
-                        SkoLanguageController.tr('任意手当（最大3つ）'),
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                      ),
-                      SizedBox(height: 10),
-                      _allowanceBlock(
-                        1,
-                        _allowance1,
-                        _allowance1Amount,
-                        _allowance1Unit,
-                      ),
-                      SizedBox(height: 10),
-                      _allowanceBlock(
-                        2,
-                        _allowance2,
-                        _allowance2Amount,
-                        _allowance2Unit,
-                      ),
-                      SizedBox(height: 10),
-                      _allowanceBlock(
-                        3,
-                        _allowance3,
-                        _allowance3Amount,
-                        _allowance3Unit,
-                      ),
                       if (_error != null) ...[
                         SizedBox(height: 12),
                         Text(
@@ -362,3 +266,4 @@ class _CompanyRateSettingsPageState extends State<CompanyRateSettingsPage> {
     );
   }
 }
+

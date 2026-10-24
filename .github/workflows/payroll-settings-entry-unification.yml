@@ -1,0 +1,65 @@
+name: Payroll settings entry unification
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/company_rate_settings*'
+      - 'lib/features/settings/company_payroll_rates_page.dart'
+      - 'lib/features/settings/settings_page.dart'
+      - 'lib/features/payroll/company_common_allowance_entry_page.dart'
+      - 'lib/features/payroll/resident_tax_annual_entry_card.dart'
+      - 'test/company_rate*'
+      - 'test/resident_tax_annual_entry_card_test.dart'
+      - 'test/settings_payroll_rates_entry_outline_test.dart'
+      - 'docs/candidates/company_rate_defaults_20261024.sql.review-only'
+      - 'tool/security/company_rate_defaults*'
+      - 'tool/security/prepare_company_rate_defaults_install.py'
+      - 'tool/security/verify_company_rate_defaults_install.py'
+      - 'tool/security/payroll_settings_entry_observation/**'
+      - 'docs/review/company-rate-defaults-observed-manifest-20261024.json'
+      - '.github/workflows/payroll-settings-entry-unification.yml'
+permissions:
+  contents: read
+jobs:
+  navigation-and-rpc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/settings/company_rate_settings_page.dart lib/features/settings/company_rate_settings_repository.dart lib/features/settings/company_payroll_rates_page.dart lib/features/settings/settings_page.dart lib/features/payroll/company_common_allowance_entry_page.dart lib/features/payroll/resident_tax_annual_entry_card.dart test/company_rate_defaults_repository_test.dart test/resident_tax_annual_entry_card_test.dart
+      - run: timeout 240s flutter test test/company_rate_defaults_repository_test.dart test/resident_tax_annual_entry_card_test.dart test/company_rate_settings_contract_test.dart test/company_rate_settings_slim_guidance_contract_test.dart test/settings_payroll_rates_entry_outline_test.dart test/settings_pages_language_test.dart test/company_common_allowance_entry_test.dart test/settings_page_test.dart --reporter expanded --timeout 30s
+  partial-save-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic-fixture-only
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Preserve original allowances while saving six unrelated defaults
+        env:
+          FIXTURE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tool/security/company_rate_defaults.fixture.sql
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/20261009201229_company_allowance_identity_lifecycle.sql
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tool/security/company_rate_defaults.runtime.fixture.sql
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < docs/candidates/company_rate_defaults_20261024.sql.review-only
+          docker exec -i "$FIXTURE_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tool/security/company_rate_defaults.assertions.sql
+          python3 tool/security/verify_company_rate_defaults_install.py
