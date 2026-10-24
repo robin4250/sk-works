@@ -49,8 +49,10 @@ void main() {
     await tester.tap(find.text('本パスワードを忘れた方')); await tester.pumpAndSettle();
     expect(find.textContaining('本パスワードはログイン用で、第2パスワードとは別です。'), findsOneWidget);
     expect(find.textContaining('本パスワードは変わりません。'), findsOneWidget);
-    expect(find.textContaining('Googleで登録した方は'), findsOneWidget);
-    expect(find.textContaining('電話番号と本パスワードを登録済みの方は'), findsOneWidget);
+    expect(find.textContaining('Googleでログインできる方は'), findsOneWidget);
+    expect(find.textContaining('アカウント設定で第一パスワードを設定・変更できます。'), findsOneWidget);
+    expect(find.textContaining('登録済みの電話番号または確認済みメールと、保存した本パスワードを使います。'), findsOneWidget);
+    expect(find.textContaining('Google用のパスワードとは別です。'), findsOneWidget);
     expect(find.textContaining('この画面からの再設定・SMS復旧は利用できません。'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect(find.text('本人確認SMSを送信'), findsNothing);

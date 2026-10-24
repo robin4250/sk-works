@@ -130,6 +130,8 @@ class _PanelSevenPageState extends State<PanelSevenPage>
         '利用可能な確認済みメールまたは確認済み電話番号があれば設定できます。電話番号の登録は必須ではありません。第二パスワードは変更しません。'
         '電話番号を登録からSMSコードを送り、コード確認後に登録を完了します。'
         'メール未登録の場合はメール確認後に第一パスワードを設定します。'
+        '確認済みメールに第一パスワードを保存した後は、次回のログイン画面で「登録済みのメールでログインする」を選べます。'
+        'Google用のパスワードとは別です。現在のGoogleログインをログアウトする必要はありません。'
         '提供準備中の方法は登録できません。サーバーが本人再確認を求める場合は、登録済みの連絡先へ確認コードを送って保存します。'
         '第二パスワードは重要情報用で、ログイン用とは別です。'
         '第二パスワードの設定済み表示は、マスター管理の権限や専用パスワードの設定状況を示しません。'
@@ -197,6 +199,15 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                       '下の「第一パスワードを設定・変更」から保存できます。'
                       '電話番号が未登録でも、利用可能な確認済みメールがあれば設定できます。',
                       keyName: 'account-primary-password'),
+                  if (snapshot.emailConfirmed && snapshot.email?.isNotEmpty == true)
+                    const ExpansionTile(
+                      key: ValueKey('account-email-login-guide'),
+                      title: Text('メールでログインするには'), children: [
+                        Padding(padding: EdgeInsets.all(8), child: Text(
+                          '「第一パスワードを設定・変更」で保存した後、次回のログイン画面で'
+                          '「登録済みのメールでログインする」を選び、この確認済みメールと保存した第一パスワードを使います。'
+                          '電話番号の登録は不要です。現在のGoogleログインをログアウトする必要はありません。')),
+                      ]),
                   _item('メールアドレス',
                       snapshot.email?.isNotEmpty == true
                           ? '${snapshot.email}\n${snapshot.emailConfirmed ? "登録確認済み" : "未確認"}'
