@@ -42,7 +42,7 @@ void main() {
       final detail = insuranceEvidenceFixture(); final rates = (detail['tax_calculation'] as Map)['rates'] as List;
       final first = rates.first as Map;
       switch (mutation) {
-        case 'duplicate': rates.add(Map.of(first)); break;
+        case 'duplicate': rates.add(Map<String, Object>.from(first)); break;
         case 'future': (first['value'] as Map)['payroll_month'] = '2026-12-01'; break;
         case 'wrong-month': first['insurance_month'] = '2026-09-01'; break;
         case 'missing-base': first.remove('base_yen'); break;
