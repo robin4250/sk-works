@@ -4,6 +4,7 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "個別手当（この社員だけ）": "Individual allowances (this employee only)",
     "同じPDFを印刷・共有します。登録した下請け会社は出勤なしでも支払証明書をプレビューできます。会社角印のON／OFFは会社データで設定し、3帳票へ共通反映します。確認印・承認印と履歴は保持します。連携会社との注文書・注文請書の確認機能が利用できる場合は、内容と自社角印の使用を確認して承認します。請求書は最終承認と同時に記録し、通常の担当者承認はそのまま行えます。支払証明書の「注文書の内容確認・角印」は内容確認であり、支払確定ではありません。取引会社・協力会社の「受領した承認済み書類」で相手からの書類を別ページで開き、同じ承認済みPDFを印刷・共有できます。通信結果が不明なときは「結果を確認」を使い、同じ申請を重ねて送らないでください。過去の承認済み書類は現在と内容が異なる場合があります。単体の書類生成・印刷はこれまでどおり利用できます。": "Print and share the same PDF. Registered subcontractors can preview a payment certificate without attendance. Company seal visibility is managed in Company Data; confirmation stamps and approval history are retained. When linked-company confirmation is available, review the document and explicitly approve use of your own registered company seal. This accompanies final invoice approval and preserves ordinary assigned approvals. Order content review on a payment certificate does not finalize payment. Open Received approved documents in customer or partner registration to view the other company's separate copy and print or share the same approved PDF. If delivery is uncertain, use Check result without sending another request. Archived approved content may differ from the current document. Existing standalone generation and printing remain available.",
     "承認済み注文請書を開く": "Open approved order acknowledgement",
     "注文書の内容確認・角印": "Review order and company seal",
