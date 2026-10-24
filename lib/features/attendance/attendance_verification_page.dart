@@ -1041,12 +1041,16 @@ class _AttendanceVerificationPageState
       throw StateError('操作したアカウントを再確認してください');
     }
     if (!state.reporterSignatureSaved) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.removeCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(content: Text(
         SkoLanguageController.tr('退勤は記録済みです。日報の登録と報告者サインを完了してください。出勤し直す必要はありません。'))));
       return false;
     }
     if (!state.responsibleSignatureSaved) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.removeCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(content: Text(
         SkoLanguageController.tr('現場責任者のサインがないため、給与に未反映です。'))));
     }
     return true;

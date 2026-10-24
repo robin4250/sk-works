@@ -48,7 +48,7 @@ class _Fixture {
         rows = [{'company_id': company, 'user_id': actorId, 'can_manage_attendance': false}];
       case 'attendance_verifications':
         if (failRead) { return http.Response('{"message":"fixture read failed","code":"42501"}',403,
-            headers: {'content-type':'application/json'}); }
+            headers: {'content-type':'application/json'}, request: request); }
         final start = {'id': id(1000+day), 'company_id': company, 'worker_id': worker,
           'work_date': text, 'event_type': 'clock_in', 'confirmed_at': '${text}T08:00:00+09:00',
           'source_clock_in_id': null, 'site_id': site, 'route_assignment_id': null,
@@ -76,7 +76,7 @@ class _Fixture {
           'finalized_at':frozen?'2026-10-25T00:00:00Z':null}];
       default: throw StateError('Unexpected path $path');
     }
-    return http.Response(jsonEncode(rows),200,headers:{'content-type':'application/json'});
+    return http.Response(jsonEncode(rows),200,headers:{'content-type':'application/json'}, request: request);
   }
 }
 
