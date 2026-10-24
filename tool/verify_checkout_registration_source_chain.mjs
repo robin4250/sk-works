@@ -10,8 +10,17 @@ const marker=" phase='source-and-settings-preservation';";
 assert.equal(original.split(marker).length,2,'Unique source-bound suite insertion point');
 const extension=String.raw`
  phase='authoritative-registration-source-chain';
+ // W deliberately has a conflicting individual1700/company3000 legacy rate
+ // in the original negative scenarios. Reusing it would certify blocked pay.
+ const conflict=await q("select payroll_unit_private.resolve_company_common($1,$2,'2026-10-01','2026-10-31') v",[A,W]);
+ eq(conflict.blocked,true,'Original conflicting individual/company fixture remains blocked');
+ assert.ok(conflict.legacy_resolution.reasons.some(x=>x.code==='individual_override_unresolved'));
+ // W5 has an existing clean salary setup without that deliberate override.
+ // Keep every original worker setting and protected statement unchanged.
+ const reportWorker=W5;
+
  await exec("alter table workers add column user_id uuid,add column status text default 'active';alter table daily_report_workers add column vehicle_id uuid,add column route_assignment_id uuid,add column odometer_km numeric;");
- await client.query('update workers set user_id=$1 where id=$2',[U,W]);
+ await client.query('update workers set user_id=$1 where id=$2',[U,reportWorker]);
  await exec("create table attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,site_id uuid,route_assignment_id uuid,event_type text,confirmed_at timestamptz,work_date date,source_clock_in_id uuid,daily_report_id uuid,vehicle_id uuid);create table vehicles(id uuid,company_id uuid,display_name text,odometer_km numeric,is_active boolean default true,updated_by uuid,updated_at timestamptz);");
  const scopeSource=await readFile('supabase/migrations/20261009171504_payroll_refresh_scope_order.sql','utf8');
  const originalLock=/create function payroll_scope_private\.lock_scopes\([\s\S]*?end \$\$;/.exec(scopeSource)?.[0];assert.ok(originalLock);
@@ -25,11 +34,11 @@ const extension=String.raw`
  eq(await q("select md5(prosrc) v from pg_proc where oid='private.save_daily_report_vehicle_usage(uuid,uuid,uuid,uuid,numeric)'::regprocedure"),'f78e35bf948cc4702f9d65d28d0ac0e6','Observed legacy vehicle writer exact source');
  const legacyIn=id(720),legacyOut=id(721),legacyVehicle=id(722);
  await client.query("insert into vehicles(id,company_id,display_name,odometer_km) values($1,$2,'Legacy test',100)",[legacyVehicle,A]);
- await client.query("insert into attendance_verifications values($1,$3,$4,$5,null,'clock_in','2026-10-22 08:00Z','2026-10-22',null,null,$6),($2,$3,$4,$5,null,'clock_out','2026-10-22 17:00Z','2026-10-22',$1,null,$6)",[legacyIn,legacyOut,A,W,SITE,legacyVehicle]);
- const legacyReport=await draft('2026-10-22',W,[]);
+ await client.query("insert into attendance_verifications values($1,$3,$4,$5,null,'clock_in','2026-10-22 08:00Z','2026-10-22',null,null,$6),($2,$3,$4,$5,null,'clock_out','2026-10-22 17:00Z','2026-10-22',$1,null,$6)",[legacyIn,legacyOut,A,reportWorker,SITE,legacyVehicle]);
+ const legacyReport=await draft('2026-10-22',reportWorker,[]);
  await client.query('update attendance_verifications set daily_report_id=$1 where id=any($2::uuid[])',[legacyReport,[legacyIn,legacyOut]]);
  eq(await q('select checkout_report_registration_private.inputs_complete($1) v',[legacyReport]),false,'Legacy clock vehicle requires saved same vehicle and odometer');
- await client.query('select private.save_daily_report_vehicle_usage($1,$2,$3,null,110)',[legacyReport,W,legacyVehicle]);
+ await client.query('select private.save_daily_report_vehicle_usage($1,$2,$3,null,110)',[legacyReport,reportWorker,legacyVehicle]);
  eq(await q('select checkout_report_registration_private.inputs_complete($1) v',[legacyReport]),true,'Legacy saved vehicle works without claims/framework');
  await exec('alter function private.save_daily_report_vehicle_usage(uuid,uuid,uuid,uuid,numeric) set search_path=public');
  eq(await q('select checkout_report_registration_private.inputs_complete($1) v',[legacyReport]),false,'Changed legacy writer contract cannot unlock');
@@ -39,22 +48,22 @@ const extension=String.raw`
  eq((await q('select public.read_pending_checkout_report_registration() v')).items.find(x=>x.report_id===legacyReport).blocking,false,'Legacy original save/sign unlocks reporter gate');
  await client.query("select public.save_daily_report_signature($1,'supervisor','Legacy supervisor',$2::jsonb)",[legacyReport,signature]);
  console.log(JSON.stringify({synthetic_projection_diagnostic:await q("select jsonb_build_object('report_signed',r.status='signed' and r.signed_at is not null,'signature_envelope',r.signature_json=jsonb_build_object('version',3,'representative',r.representative_signature_json,'supervisor',r.supervisor_signature_json),'attendance',(select jsonb_agg(jsonb_build_object('day',a.work_date,'days',a.base_man_days,'site_match',a.site_id is not distinct from r.site_id,'route_match',a.route_assignment_id is not distinct from r.route_assignment_id,'hours_match',row(a.overtime_hours,a.early_hours,a.night_hours,a.work_category) is not distinct from row(w.overtime_hours,w.early_hours,w.night_hours,w.work_category))) from attendance_entries a where a.source_report_id=r.id and a.worker_id=w.worker_id),'payroll',(select jsonb_agg(jsonb_build_object('start',p.period_start,'end',p.period_end,'auto',p.automatic_calculation,'workflow',p.workflow_state,'blocked',p.calculation_blocked,'fresh',p.updated_at>=r.signed_at,'detail_days',p.detail->'出勤日数','detail_ot',p.detail->'残業時間','detail_early',p.detail->'早出時間','detail_night',p.detail->'夜間時間')) from payroll_statements p where p.company_id=r.company_id and p.worker_id=w.worker_id and p.period_start=date_trunc('month',r.report_date)::date)) v from daily_reports r join daily_report_workers w on w.report_id=r.id where r.id=$1",[legacyReport])}));
- eq(await q('select checkout_report_registration_private.projection_complete($1,$2) v',[legacyReport,W]),true,'Legacy dual sign projection detail: '+JSON.stringify(await q("select jsonb_build_object('report',to_jsonb(r),'worker',to_jsonb(w),'attendance',(select jsonb_agg(to_jsonb(a)) from attendance_entries a where a.worker_id=w.worker_id and a.work_date between date_trunc('month',r.report_date)::date and (date_trunc('month',r.report_date)+interval '1 month - 1 day')::date),'payroll',(select jsonb_agg(to_jsonb(p)) from payroll_statements p where p.worker_id=w.worker_id and p.period_start=date_trunc('month',r.report_date)::date)) v from daily_reports r join daily_report_workers w on w.report_id=r.id where r.id=$1",[legacyReport])));
+ eq(await q('select checkout_report_registration_private.projection_complete($1,$2) v',[legacyReport,reportWorker]),true,'Legacy dual sign projection detail: '+JSON.stringify(await q("select jsonb_build_object('report',to_jsonb(r),'worker',to_jsonb(w),'attendance',(select jsonb_agg(to_jsonb(a)) from attendance_entries a where a.worker_id=w.worker_id and a.work_date between date_trunc('month',r.report_date)::date and (date_trunc('month',r.report_date)+interval '1 month - 1 day')::date),'payroll',(select jsonb_agg(to_jsonb(p)) from payroll_statements p where p.worker_id=w.worker_id and p.period_start=date_trunc('month',r.report_date)::date)) v from daily_reports r join daily_report_workers w on w.report_id=r.id where r.id=$1",[legacyReport])));
  await exec("create table private.vehicle_usage_rollout(company_id uuid,enabled boolean);create table vehicle_usage_claims(source_clock_in_id uuid,company_id uuid,driver_worker_id uuid,vehicle_id uuid,work_date date,ended_at timestamptz);create table vehicle_meter_events(id uuid primary key,source_clock_in_id uuid,company_id uuid,driver_worker_id uuid,vehicle_id uuid,work_date date,previous_km numeric,current_km numeric,distance_km numeric);");
  await exec(await readFile('supabase/migrations/20261008162618_attach_vehicle_meter_to_report.sql','utf8'));
 
  const sourceIn=id(700),sourceOut=id(701),vehicle=id(702),event=id(703);
- await client.query("insert into attendance_verifications values($1,$3,$4,$5,null,'clock_in','2026-10-24 08:00Z','2026-10-24',null,null,$6),($2,$3,$4,$5,null,'clock_out','2026-10-24 17:00Z','2026-10-24',$1,null,$6)",[sourceIn,sourceOut,A,W,SITE,vehicle]);
+ await client.query("insert into attendance_verifications values($1,$3,$4,$5,null,'clock_in','2026-10-24 08:00Z','2026-10-24',null,null,$6),($2,$3,$4,$5,null,'clock_out','2026-10-24 17:00Z','2026-10-24',$1,null,$6)",[sourceIn,sourceOut,A,reportWorker,SITE,vehicle]);
  const gate=()=>q('select public.read_pending_checkout_report_registration() v');
  eq((await gate()).items[0].registration_state,'report_missing','Source-chain report initially missing');
- const sourceReport=await draft('2026-10-24',W,[]);
+ const sourceReport=await draft('2026-10-24',reportWorker,[]);
  await client.query('update attendance_verifications set daily_report_id=$1',[sourceReport]);
  await client.query("insert into vehicles(id,company_id,display_name,odometer_km) values($1,$2,'Strong test',100)",[vehicle,A]);
  await client.query('insert into private.vehicle_usage_rollout values($1,true)',[A]);
- await client.query("insert into vehicle_usage_claims values($1,$2,$3,$4,'2026-10-24','2026-10-24 17:00Z')",[sourceIn,A,W,vehicle]);
+ await client.query("insert into vehicle_usage_claims values($1,$2,$3,$4,'2026-10-24','2026-10-24 17:00Z')",[sourceIn,A,reportWorker,vehicle]);
  await reject(()=>client.query("select public.save_daily_report_signature($1,'representative','Synthetic reporter',$2::jsonb)",[sourceReport,signature]),/complete committed vehicle/);
  eq((await gate()).items[0].registration_state,'report_input_incomplete','Existing meter trigger and reader both reject missing event');
- await client.query("insert into vehicle_meter_events values($1,$2,$3,$4,$5,'2026-10-24',100,110,10)",[event,sourceIn,A,W,vehicle]);
+ await client.query("insert into vehicle_meter_events values($1,$2,$3,$4,$5,'2026-10-24',100,110,10)",[event,sourceIn,A,reportWorker,vehicle]);
  const attached=await q('select public.attach_vehicle_meter_to_report($1,$2) v',[sourceReport,sourceIn]);
  eq(attached.attached,true,'Original vehicle writer attaches immutable event');
  await client.query("select public.save_daily_report_signature($1,'representative','Synthetic reporter',$2::jsonb)",[sourceReport,signature]);
@@ -62,13 +71,13 @@ const extension=String.raw`
  eq((await gate()).items[0].registration_state,'reporter_saved_waiting_supervisor','Original reporter save retains supervisor wait');
  eq((await q('select checkout_report_registration_private.deliver_daily() v')).sent,1,'Source-chain daily missing supervisor delivery');
  await client.query("select public.save_daily_report_signature($1,'supervisor','Synthetic supervisor',$2::jsonb)",[sourceReport,signature]);
- eq(await q('select checkout_report_registration_private.projection_complete($1,$2) v',[sourceReport,W]),true,'Original dual sign creates formal attendance and normal payroll detail: '+JSON.stringify(await q("select jsonb_build_object('report',to_jsonb(r),'worker',to_jsonb(w),'attendance',(select jsonb_agg(to_jsonb(a)) from attendance_entries a where a.worker_id=w.worker_id and a.work_date between date_trunc('month',r.report_date)::date and (date_trunc('month',r.report_date)+interval '1 month - 1 day')::date),'payroll',(select jsonb_agg(to_jsonb(p)) from payroll_statements p where p.worker_id=w.worker_id and p.period_start=date_trunc('month',r.report_date)::date)) v from daily_reports r join daily_report_workers w on w.report_id=r.id where r.id=$1",[sourceReport])));
+ eq(await q('select checkout_report_registration_private.projection_complete($1,$2) v',[sourceReport,reportWorker]),true,'Original dual sign creates formal attendance and normal payroll detail: '+JSON.stringify(await q("select jsonb_build_object('report',to_jsonb(r),'worker',to_jsonb(w),'attendance',(select jsonb_agg(to_jsonb(a)) from attendance_entries a where a.worker_id=w.worker_id and a.work_date between date_trunc('month',r.report_date)::date and (date_trunc('month',r.report_date)+interval '1 month - 1 day')::date),'payroll',(select jsonb_agg(to_jsonb(p)) from payroll_statements p where p.worker_id=w.worker_id and p.period_start=date_trunc('month',r.report_date)::date)) v from daily_reports r join daily_report_workers w on w.report_id=r.id where r.id=$1",[sourceReport])));
  eq((await gate()).items,[],'Original chain completes pending');
  eq((await q('select checkout_report_registration_private.deliver_daily() v')).sent,0,'Source-chain completion stops daily reminders');
  phase='actual-supervisor-versus-notification-race';
  const raceIn=id(710),raceOut=id(711);
- await client.query("insert into attendance_verifications values($1,$3,$4,$5,null,'clock_in','2026-10-23 08:00Z','2026-10-23',null,null,null),($2,$3,$4,$5,null,'clock_out','2026-10-23 17:00Z','2026-10-23',$1,null,null)",[raceIn,raceOut,A,W,SITE]);
- const raceReport=await draft('2026-10-23',W,[]);
+ await client.query("insert into attendance_verifications values($1,$3,$4,$5,null,'clock_in','2026-10-23 08:00Z','2026-10-23',null,null,null),($2,$3,$4,$5,null,'clock_out','2026-10-23 17:00Z','2026-10-23',$1,null,null)",[raceIn,raceOut,A,reportWorker,SITE]);
+ const raceReport=await draft('2026-10-23',reportWorker,[]);
  await client.query('update attendance_verifications set daily_report_id=$1 where id=any($2::uuid[])',[raceReport,[raceIn,raceOut]]);
  await client.query("select public.save_daily_report_signature($1,'representative','Synthetic reporter',$2::jsonb)",[raceReport,signature]);
  const raceClient=new pg.Client({connectionString:destination.href,connectionTimeoutMillis:5000});await raceClient.connect();
