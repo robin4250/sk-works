@@ -83,7 +83,7 @@ void main() {
     addTearDown(() => SharedPreferencesAsyncPlatform.instance = previousPreferences);
     final client = SupabaseClient('https://synthetic.invalid', 'synthetic-public',
       authOptions: const AuthClientOptions(autoRefreshToken: false));
-    addTearDown(client.dispose);
+    addTearDown(() async { await tester.runAsync(client.dispose); });
     final repository = _CheckoutFlowRepository(client);
     await tester.pumpWidget(MaterialApp(home: DailyReportPage(
       initialDate: DateTime(2026, 10, 1), initialSiteId: 'site', repositoryForTesting: repository)));
@@ -92,7 +92,7 @@ void main() {
     final reportScroll = find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first;
     await tester.scrollUntilVisible(find.widgetWithText(FilterChip, 'PC手当'), 250, scrollable: reportScroll);
     expect(tester.widget<FilterChip>(find.widgetWithText(FilterChip, 'PC手当')).onSelected, isNull);
-    final register = find.widgetWithText(FilledButton, '登録');
+    final register = find.text('登録');
     await tester.scrollUntilVisible(register, 250, scrollable: reportScroll); await tester.tap(register); await tester.pumpAndSettle();
     expect(find.byType(DailyReportPage), findsOneWidget);
     expect(repository.saves, hasLength(1));
