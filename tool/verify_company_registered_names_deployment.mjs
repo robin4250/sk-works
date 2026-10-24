@@ -11,10 +11,22 @@ const original=await fs.readFile('tool/verify_company_registered_allowance_label
 if(createHash('sha256').update(original).digest('hex')!== '8623b34750dc1ced8e4647a11aa34d672170ef5a26c67c735dfc5959a5aa7ae3')throw Error('Original 37-case reader proof changed');
 const once=(source,anchor,replacement)=>{if(source.split(anchor).length!==2)throw Error('Lifecycle anchor not unique');return source.replace(anchor,replacement);};
 let source=once(original," await db.query(unit);",` phase='bounded-install-postflight-restore';
+ // Match the production-only enum/default which qualified differently with an empty search_path.
+ await db.query("create type public.app_role as enum('owner','member','viewer');alter table public.company_members alter column role type public.app_role using role::public.app_role;alter table public.company_members alter column role set default 'viewer'::public.app_role");
  const directory=await fs.mkdtemp(join((await import('node:os')).tmpdir(),'sko-names-bounded-'));
  const inventory=await fs.readFile('tool/company_registered_names_deployment/inventory.read-only.sql','utf8');
- const readInventory=async()=>(await db.query(inventory)).rows[0].inventory;
+ const readInventory=async()=>{
+  await db.query("begin read only;set local search_path='';");
+  try{return (await db.query(inventory)).rows[0].inventory;}
+  finally{await db.query('rollback');}
+ };
+ const wrongContext=(await db.query(inventory)).rows[0].inventory;
+ await fs.writeFile(join(directory,'wrong-context.json'),JSON.stringify(wrongContext));
+ await rejects(()=>run('python3',['tool/company_registered_names_deployment/prepare.py',join(directory,'wrong-context.json'),join(directory,'wrong-context-output')]),/empty search_path required/);
+
  const snapshot=await readInventory();
+ equal(snapshot.catalog_search_path,'""','catalog formatting context explicitly pinned');
+ equal(snapshot.tables['public.company_members'].columns.find(x=>x.name==='role').type,'public.app_role','custom enum remains qualified in before/after contexts');
  await fs.writeFile(join(directory,'before.json'),JSON.stringify(snapshot));
  await run('python3',['tool/company_registered_names_deployment/prepare.py',join(directory,'before.json'),join(directory,'prepared')]);
  const install=await fs.readFile(join(directory,'prepared/private-install.sql.review-only'),'utf8');

@@ -73,6 +73,8 @@ end $names_guard$;
 
 def generate(snapshot, output):
     before = json.loads(snapshot.read_text())
+    if before.get('catalog_search_path') != '""':
+        raise ValueError('observe the catalog inside BEGIN READ ONLY; SET LOCAL search_path=\'\'; SELECT inventory; ROLLBACK: empty search_path required')
     if before.get('schema') != 1 or set(before['routines']) != set(NEW) | {
         'company_common_allowance_private.session_id()', 'private.account_access_allowed()', 'auth.uid()'}:
         raise ValueError('reviewed routine inventory differs')
@@ -89,7 +91,7 @@ def generate(snapshot, output):
     tables = sorted(before['tables'], key=lambda name: int(before['tables'][name]['oid']))
     if set(tables) != TABLES or any(not re.fullmatch(r'[a-z_]+\.[a-z_]+', name) for name in tables):
         raise ValueError('protected relation inventory differs')
-    begin = "begin;\nset local lock_timeout='5s';\nset local statement_timeout='30s';\n" + ''.join(
+    begin = "begin;\nset local search_path='';\nset local lock_timeout='5s';\nset local statement_timeout='30s';\n" + ''.join(
         'lock table ' + name + ' in share mode;\n' for name in tables)
     unit = re.sub(r'(?m)^begin;\s*$', '', candidate, count=1)
     unit = re.sub(r'(?m)^commit;\s*$', '', unit, count=1)
@@ -101,7 +103,7 @@ def generate(snapshot, output):
     output.mkdir(parents=True, exist_ok=False)
     contents = {
         'private-install.sql.review-only': install,
-        'private-postflight.read-only.sql': 'begin read only;\n' + guard(after, 'postflight') + 'commit;\n',
+        'private-postflight.read-only.sql': "begin read only;\nset local search_path='';\n" + guard(after, 'postflight') + 'commit;\n',
         'private-unchanged-state-restore.sql.review-only': restore,
         'private-expected-after.json': json.dumps(comparable(after), ensure_ascii=False, indent=2) + '\n',
     }
@@ -120,7 +122,13 @@ def generate(snapshot, output):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('snapshot', type=pathlib.Path)
-    parser.add_argument('output', type=pathlib.Path)
+    parser.add_argument('--observation-sql', action='store_true', help='Print the transaction-local read-only catalog observation SQL')
+    parser.add_argument('snapshot', type=pathlib.Path, nargs='?')
+    parser.add_argument('output', type=pathlib.Path, nargs='?')
     args = parser.parse_args()
-    generate(args.snapshot, args.output)
+    if args.observation_sql:
+        print("begin read only;\nset local search_path='';\n" + INVENTORY.read_text() + '\nrollback;')
+    elif args.snapshot is None or args.output is None:
+        parser.error('snapshot and output are required unless --observation-sql is used')
+    else:
+        generate(args.snapshot, args.output)

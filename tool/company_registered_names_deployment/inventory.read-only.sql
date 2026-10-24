@@ -40,7 +40,7 @@ with targets(identity,is_new) as (values
  union all select 'company_common_allowance_private.items' identity,count(*) row_count,encode(sha256(convert_to(coalesce(string_agg(h,'' order by h),''),'UTF8')),'hex') hash from (select encode(sha256(convert_to(to_jsonb(t)::text,'UTF8')),'hex') h from company_common_allowance_private.items t) q
  union all select 'company_common_allowance_private.state' identity,count(*) row_count,encode(sha256(convert_to(coalesce(string_agg(h,'' order by h),''),'UTF8')),'hex') hash from (select encode(sha256(convert_to(to_jsonb(t)::text,'UTF8')),'hex') h from company_common_allowance_private.state t) q
 )
-select jsonb_build_object('schema',1,
+select jsonb_build_object('schema',1,'catalog_search_path',current_setting('search_path'),
  'routines',(select jsonb_object_agg(identity,item) from routines),
  'tables',(select jsonb_object_agg(identity,item) from schemas),
  'data',(select jsonb_object_agg(identity,jsonb_build_object('count',row_count,'sha256',hash)) from data_hashes),
