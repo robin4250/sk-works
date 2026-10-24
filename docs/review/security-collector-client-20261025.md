@@ -44,6 +44,13 @@ malformed/wrong-scope/extra-field response refusal, unavailable UI and lifecycle
 clearing. Local Flutter was not run because the session's prior restriction
 continues. Remote SDK 3.47.5 analysis/tests are pending, not described as passed.
 
+Widget fixtures explicitly create and await their read-stage witness in the same
+real async zone, then drain the repository's nested subscription-cleanup boundaries
+before normal frame settling. The paused scheduler cannot paint a replacement
+tree, so lifecycle tests assert stale/late response discard and no old record or
+password after resume. They do not prove an iOS app-switcher screenshot cover.
+Native privacy-cover behavior, if required, is a separate device/platform task.
+
 The existing isolated real GoTrue tests do not prove production RLS or deployment.
 PRs 1345/1346 are separate dependencies; this page on current production remains
 unavailable until the issuer/public reader are correctly reviewed and deployed.
