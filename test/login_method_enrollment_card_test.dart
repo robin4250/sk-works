@@ -4,13 +4,14 @@ import 'package:sk_works/features/auth/login_method_enrollment_card.dart';
 import 'package:sk_works/features/auth/login_method_enrollment_repository.dart';
 
 class Source implements LoginMethodEnrollmentSource {
+  String email = 'existing@example.invalid';
   bool phoneAvailable = false;
   int loads = 0, passwords = 0, phoneRequests = 0, confirmations = 0, cancellations = 0;
   bool fail = false, pendingPhone = false;
   @override
   Future<LoginMethodEnrollmentState> load() async {
     loads++;
-    return LoginMethodEnrollmentState(email: 'existing@example.invalid', phone: '',
+    return LoginMethodEnrollmentState(email: email, phone: '',
       emailConfirmed: true, phoneConfirmed: false, emailAvailable: true,
       phoneAvailable: phoneAvailable, phoneConfirmationPending: pendingPhone);
   }
@@ -28,11 +29,13 @@ class Source implements LoginMethodEnrollmentSource {
 }
 
 void main() {
-  Future<void> show(WidgetTester tester, Source source) async {
+  Future<void> show(WidgetTester tester, Source source,
+      {VoidCallback? onPrimaryPasswordSaved}) async {
     await tester.binding.setSurfaceSize(const Size(700, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
-      child: LoginMethodEnrollmentCard(source: source)))));
+      child: LoginMethodEnrollmentCard(source: source,
+        onPrimaryPasswordSaved: onPrimaryPasswordSaved)))));
     await tester.pumpAndSettle();
   }
 
@@ -46,12 +49,14 @@ void main() {
 
   testWidgets('password cancellation never saves; matching confirmation saves and reloads', (t) async {
     final source = Source();
-    await show(t, source);
+    var receipts = 0;
+    await show(t, source, onPrimaryPasswordSaved: () => receipts++);
     await t.tap(find.text('第一パスワードを設定・変更'));
     await t.pumpAndSettle();
     await t.tap(find.text('キャンセル'));
     await t.pumpAndSettle();
     expect(source.passwords, 0);
+    expect(receipts, 0);
     await t.tap(find.text('第一パスワードを設定・変更'));
     await t.pumpAndSettle();
     await t.enterText(find.byType(TextField).at(0), 'New-primary-password');
@@ -63,13 +68,15 @@ void main() {
     await t.tap(find.text('保存'));
     await t.pumpAndSettle();
     expect(source.passwords, 1);
+    expect(receipts, 1);
     expect(source.loads, 2);
     expect(find.textContaining('第二パスワードは変更していません。'), findsOneWidget);
   });
 
   testWidgets('failed password save never displays success', (t) async {
     final source = Source()..fail = true;
-    await show(t, source);
+    var receipts = 0;
+    await show(t, source, onPrimaryPasswordSaved: () => receipts++);
     await t.tap(find.text('第一パスワードを設定・変更'));
     await t.pumpAndSettle();
     for (var i = 0; i < 2; i++) {
@@ -77,13 +84,15 @@ void main() {
     }
     await t.pump(); await t.tap(find.text('保存')); await t.pumpAndSettle();
     expect(source.passwords, 0);
+    expect(receipts, 0);
     expect(find.text('保存結果を確認できません。'), findsOneWidget);
     expect(find.textContaining('第一パスワードの保存と同じ'), findsNothing);
   });
 
   testWidgets('phone SMS request remains unconfirmed until code verification', (t) async {
     final source = Source()..phoneAvailable = true;
-    await show(t, source);
+    var receipts = 0;
+    await show(t, source, onPrimaryPasswordSaved: () => receipts++);
     await t.tap(find.text('電話番号を登録')); await t.pumpAndSettle();
     await t.enterText(find.byType(TextField), '09012345678'); await t.pump();
     await t.tap(find.text('確認へ')); await t.pumpAndSettle();
@@ -94,7 +103,18 @@ void main() {
     await t.enterText(find.byType(TextField), '123456'); await t.pump();
     await t.tap(find.text('確認へ')); await t.pumpAndSettle();
     expect(source.confirmations, 1);
+    expect(receipts, 0);
     expect(find.text('電話番号の所有確認と登録を確認しました。'), findsOneWidget);
+  });
+  testWidgets('email enrollment never emits a password-save receipt', (t) async {
+    final source = Source()..email = '';
+    var receipts = 0;
+    await show(t, source, onPrimaryPasswordSaved: () => receipts++);
+    await t.tap(find.text('メールアドレスを登録')); await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField), 'new@example.invalid');
+    await t.pump(); await t.tap(find.text('確認へ')); await t.pumpAndSettle();
+    expect(find.textContaining('確認メールを送信しました。'), findsOneWidget);
+    expect(receipts, 0);
   });
   testWidgets('page-owned pending SMS survives card teardown and rebuild', (t) async {
     final source = Source()..phoneAvailable = true;

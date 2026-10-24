@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'login_method_enrollment_repository.dart';
 
 class LoginMethodEnrollmentCard extends StatefulWidget {
-  const LoginMethodEnrollmentCard({super.key, this.source, this.onChanged});
+  const LoginMethodEnrollmentCard({super.key, this.source, this.onChanged,
+    this.onPrimaryPasswordSaved});
   final LoginMethodEnrollmentSource? source;
   final VoidCallback? onChanged;
+  /// Emitted only after the password update and same-account verification.
+  final VoidCallback? onPrimaryPasswordSaved;
   @override
   State<LoginMethodEnrollmentCard> createState() => _LoginMethodEnrollmentCardState();
 }
@@ -88,6 +91,7 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
     await _run(() async {
       await _source!.setPrimaryPassword(value, nonce: nonce);
       _passwordNeedsCode = false; _passwordCodeSent = false;
+      if (mounted) widget.onPrimaryPasswordSaved?.call();
     },
       '第一パスワードの保存と同じアカウントを確認しました。第二パスワードは変更していません。');
   }

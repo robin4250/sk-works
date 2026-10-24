@@ -19,6 +19,7 @@ class _PanelSevenPageState extends State<PanelSevenPage>
   StreamSubscription<AuthState>? _subscription;
   LoginMethodEnrollmentRepository? _enrollment;
   PanelSevenSnapshot? _snapshot;
+  PanelSevenSnapshot? _primaryPasswordReceipt;
   bool _loading = true;
   bool _failed = false;
   int _generation = 0;
@@ -29,7 +30,12 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _enrollment = LoginMethodEnrollmentRepository.maybeCreate();
-    _subscription = widget.repository.changes.listen((_) {
+    _subscription = widget.repository.changes.listen((event) {
+      final receipt = _primaryPasswordReceipt;
+      if (receipt != null && (event.event == AuthChangeEvent.signedOut ||
+          !widget.repository.isCurrent(receipt))) {
+        setState(() => _primaryPasswordReceipt = null);
+      }
       final snapshot = _snapshot;
       // Never use the event's session: a delayed logout event may carry B.
       if (_foreground && (snapshot == null || !widget.repository.isCurrent(snapshot))) {
@@ -43,6 +49,10 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     if (!_foreground || !mounted) return;
     final generation = ++_generation;
     setState(() {
+      final receipt = _primaryPasswordReceipt;
+      if (receipt != null && !widget.repository.isCurrent(receipt)) {
+        _primaryPasswordReceipt = null;
+      }
       _snapshot = null;
       _loading = true;
       _failed = false;
@@ -73,6 +83,13 @@ class _PanelSevenPageState extends State<PanelSevenPage>
     } catch (_) {
       // Keep the operation receipt visible; explicit reload remains available.
     }
+  }
+
+  void _recordPrimaryPasswordSave() {
+    final snapshot = _snapshot;
+    if (!mounted || !_foreground || snapshot == null ||
+        !widget.repository.isCurrent(snapshot)) { return; }
+    setState(() => _primaryPasswordReceipt = snapshot);
   }
 
   @override
@@ -106,9 +123,11 @@ class _PanelSevenPageState extends State<PanelSevenPage>
         'ログインと連絡先、重要情報を開く本人確認、ログイン方法の追加を分けて表示します。'
         '登録済みのログイン方法と本人の認証設定を確認します。'
         '連携済みの方法と、今回のログインに使った方法は別です。'
-        '第一パスワードの有無は安全に確認できるAPIがないため推測しません。'
+        '第一パスワードの登録の有無は取得できません。未設定や登録失敗を示すものではありません。'
         '第一パスワードを設定・変更から保存できます。既にある場合は変更します。'
-        '確認済みメールまたは利用可能な電話番号が必要です。第二パスワードは変更しません。'
+        'この画面で保存に成功した場合だけ、同じログイン状態の間は保存確認を表示します。'
+        '他のログイン状態や次回起動での登録有無を示すものではありません。'
+        '利用可能な確認済みメールまたは確認済み電話番号があれば設定できます。電話番号の登録は必須ではありません。第二パスワードは変更しません。'
         '電話番号を登録からSMSコードを送り、コード確認後に登録を完了します。'
         'メール未登録の場合はメール確認後に第一パスワードを設定します。'
         '提供準備中の方法は登録できません。サーバーが本人再確認を求める場合は、登録済みの連絡先へ確認コードを送って保存します。'
@@ -168,8 +187,15 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                               _ => '組織アカウント認証',
                             }).join('・'),
                     keyName: 'account-session-methods'),
-                  _item('第一パスワード（ログイン用）', '設定状況は確認できません。'
-                      'Google / Appleとの連携だけでは設定済みと判断しません。',
+                  _item('第一パスワード（ログイン用）',
+                    _primaryPasswordReceipt != null &&
+                        widget.repository.isCurrent(_primaryPasswordReceipt!) &&
+                        _primaryPasswordReceipt!.actorId == snapshot.actorId
+                      ? 'この画面で第一パスワードの保存を確認しました。'
+                        '現在のログイン状態での保存確認です。'
+                      : '登録の有無は取得できません（未設定・登録失敗を示すものではありません）。'
+                      '下の「第一パスワードを設定・変更」から保存できます。'
+                      '電話番号が未登録でも、利用可能な確認済みメールがあれば設定できます。',
                       keyName: 'account-primary-password'),
                   _item('メールアドレス',
                       snapshot.email?.isNotEmpty == true
@@ -194,12 +220,12 @@ class _PanelSevenPageState extends State<PanelSevenPage>
                   const SizedBox(height: 12),
                   const Text('ログイン方法の追加', style: TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold)),
-                  LoginMethodEnrollmentCard(source: _enrollment, onChanged: _refreshRegistration),
+                  LoginMethodEnrollmentCard(source: _enrollment,
+                    onChanged: _refreshRegistration,
+                    onPrimaryPasswordSaved: _recordPrimaryPasswordSave),
                   const AppleAccountLinkCard(),
                   TextButton(onPressed: _load, child: const Text('最新の状態を確認')),
                 ]),
     );
   }
 }
-
-

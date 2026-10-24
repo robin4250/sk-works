@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/auth/panel_seven_page.dart';
 import 'package:sk_works/features/auth/panel_seven_repository.dart';
+import 'package:sk_works/features/auth/login_method_enrollment_card.dart';
 
 PanelSevenSnapshot snapshot() => const PanelSevenSnapshot(
   actorId: 'a', providers: ['google'], email: 'owner@example.test',
@@ -45,7 +46,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Google'), findsOneWidget);
     expect(find.text('外部アカウント認証（提供元は特定できません）'), findsOneWidget);
-    expect(find.textContaining('設定状況は確認できません'), findsOneWidget);
+    expect(find.textContaining('登録の有無は取得できません'), findsOneWidget);
     expect(find.text('第一パスワード（ログイン用）'), findsOneWidget);
     await tester.scrollUntilVisible(
         find.byKey(const ValueKey('account-secondary-password')), 100);
@@ -70,6 +71,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('owner@example.test'), findsNothing);
     expect(find.text('本人のアカウント情報を確認できませんでした。'), findsOneWidget);
+  });
+
+  testWidgets('only password receipt changes status and session change clears it',
+      (tester) async {
+    final repository = FakeRepository();
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.events.close();
+    });
+    await tester.pumpWidget(MaterialApp(home: PanelSevenPage(
+        repository: repository)));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byType(LoginMethodEnrollmentCard), 200);
+    final card = tester.widget<LoginMethodEnrollmentCard>(
+        find.byType(LoginMethodEnrollmentCard));
+    // The generic phone/email refresh is not password-save evidence.
+    card.onChanged!();
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('account-primary-password')), -200);
+    expect(find.textContaining('この画面で第一パスワードの保存を確認しました'), findsNothing);
+    card.onPrimaryPasswordSaved!();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('この画面で第一パスワードの保存を確認しました'), findsOneWidget);
+    repository.current = false;
+    repository.events.add(const AuthState(AuthChangeEvent.signedOut, null));
+    await tester.pumpAndSettle();
+    repository.current = true;
+    await tester.tap(find.text('再読み込み'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('この画面で第一パスワードの保存を確認しました'), findsNothing);
+    expect(find.textContaining('登録の有無は取得できません'), findsOneWidget);
   });
 
   testWidgets('help explains local biometrics without claiming server MFA',
@@ -115,4 +148,3 @@ void main() {
   });
 
 }
-
