@@ -3,17 +3,56 @@ import '../../international/language_controller.dart';
 import 'payroll_unit_item_editor.dart';
 import 'company_common_calculation_resolution.dart';
 
+/// Current company registration names, independent of a worker's payroll history.
+/// This deliberately does not infer a current price or effective payroll amount.
+class PayrollCompanyRegisteredNamesCard extends StatelessWidget {
+  const PayrollCompanyRegisteredNamesCard({super.key, required this.items,
+    this.loaded = true, this.unavailable = false, this.unit, this.onOpenSettings});
+  final List<PayrollRegisteredAllowanceName> items;
+  final bool loaded, unavailable;
+  final PayrollItemUnit? unit;
+  final Future<void> Function()? onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    String tr(String value) => SkoLanguageController.tr(value);
+    return Card(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ListTile(title: Text(tr('現在の会社共通手当')),
+        trailing: onOpenSettings == null ? null : TextButton.icon(
+          key: const ValueKey('open-company-common-settings'),
+          onPressed: onOpenSettings, icon: const Icon(Icons.settings_outlined),
+          label: Text(tr('共通設定'))),
+        subtitle: Text(tr(unavailable
+            ? '会社共通の登録名を確認できません。'
+            : !loaded ? '会社共通の登録名を確認しています。'
+            : items.isEmpty ? 'この区分の会社共通手当は未登録です。'
+            : '会社に登録された共通の項目です。給与への適用状況は別に確認できます。'))),
+      if (loaded && !unavailable && unit == PayrollItemUnit.hour)
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Text(tr('退勤の実勤務時間との連動は準備中です。登録名の表示だけでは給与へ反映されません。'))),
+      for (final item in loaded && !unavailable ? items : <PayrollRegisteredAllowanceName>[])
+        ListTile(key: ValueKey('current-company-registered-${item.key}'),
+          dense: true, leading: const Icon(Icons.business_outlined),
+          title: Text(item.name)),
+    ]));
+  }
+}
+
 /// Common rates remain owned by the company; this form edits monthly hours only.
 class PayrollCompanyCommonCard extends StatefulWidget {
   const PayrollCompanyCommonCard({
     super.key, required this.items, required this.canEdit,
     required this.onSave, required this.onReload, this.section, this.unit, this.frozen = false,
     this.resolution,
+    this.title,
+    this.message,
   });
   final List<Map<String, dynamic>> items;
   final bool canEdit;
   final bool frozen;
   final CompanyCommonCalculationResolution? resolution;
+  final String? title;
+  final String? message;
   final PayrollItemSection? section;
   final PayrollItemUnit? unit;
   final Future<void> Function(Map<String, String>) onSave;
@@ -78,13 +117,15 @@ class _PayrollCompanyCommonCardState extends State<PayrollCompanyCommonCard> {
     if (items.isEmpty && widget.resolution?.blocked != true) return const SizedBox.shrink();
     return Card(
       child: ExpansionTile(
-        title: Text(tr('社内共通手当')),
+        title: Text(tr(widget.title ?? '社内共通手当')),
         subtitle: Text(tr(widget.resolution?.blocked == true
             ? '共通手当の設定を確認してください'
-            : widget.frozen ? '保存済み給与の共通手当' : '会社の設定を給与へ自動反映')),
+            : widget.frozen ? '保存済み給与の共通手当' : 'この月の給与計算に使う条件')),
         children: [ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 260),
           child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (widget.message != null)
+            Padding(padding: const EdgeInsets.all(12), child: Text(tr(widget.message!))),
           if (items.any((item) => item['source_origin'] == 'company_legacy'))
             Padding(padding: const EdgeInsets.all(12),
               child: Text(tr('日報で選んだ日数を反映しています。同じ日は1回、未選択の日は0回です。'))),

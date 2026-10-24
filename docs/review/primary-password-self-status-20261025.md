@@ -45,3 +45,23 @@ Node構文検査3件とgit diff --checkは成功。PGlite用runtime runnerも追
 本番導入前にはrootが上記catalog pinsを再照合し、2routine追加だけの原本/restore条件を確認して別工程で適用判断する。既同名routineが現れたら上書きせず再レビューする。unused撤回は新2routinesのexact definition/owner/ACLがこの候補のままかを確認した後だけpublic→private順で削除し、既helper/schema/tableには触れない。
 
 アプリでの三値表示接続はまだ含まない。RPC導入前/404/失敗を未設定falseへ落とさずunknown保持する必要がある。適用・接続・実機で本人の状態が判別できるまで、実登録機能完成とは扱わない。14配布をこの候補の待機条件にしない。
+
+
+## CI到達点の再確認と撤回候補
+
+2026-10-24 UTC再開時、PR1377 exact `d48ceb1fb24439ebb9b1b7e873a34217bcfca363` の10check全成功をGitHub read-onlyで確認した（synthetic-sql-runtime 120972605280、isolated-real-gotrue 120972605067、既isolated enrollment 120972605200を含む）。これは上記「ローカル未実行」を変更するものではなく、別のremote結果である。real provider/本人/本番導入の成功ではない。
+
+同headのinstall SQLは準備済みsourceと全文一致。撤回候補 `primary_password_self_status_restore_20261025.sql.review-only` は新2routineの引数0/boolean/非SETOF/STABLE/owner/SECINV対SECDEF/searchpath/prosrc MD5/EXECUTE ACLをexact照合し、いずれか不一致・欠落なら全体停止する。合致した場合だけpublic→privateを同TXでDROPし、CASCADEしない。他routine/schema/table/Auth行には触れない。DROPに外部依存があればエラーでTXを戻す。
+
+撤回SQLはローカル/remoteとも未実行で、適用済みとは扱わない。これはデータ変更のない新APIの撤回候補であり、実行済み金融操作のundoではない。rootがroutine DDLを直列化し、同時deployがないこととclientのAPI不在→unknown表示を確認してから別途実施判断する。メタデータguardだけで非協調の同時DDLを防げるとは主張しない。
+
+
+## 撤回runtime専用候補
+
+新 `tool/security/primary_password_self_status_restore.mjs` と専用workflowのPGlite step/nativePG17 jobを追加した。install/restore SQL本文、新2routine本文、既GoTrue proof本文は一切変更していない。runnerは既PGlite fixture内のpinned helper scaffoldをそのまま再利用し、固有の空fixture DBだけで実行する。native接続はloopback/専用DB名/fixture-only資格情報に限定する。
+
+6往復を予定する: 正常install→false読取→restore、STABLE属性改変拒否後の復元、余分なanon ACL拒否後の復元、合成body改変拒否後のexact原本復帰、依存viewによるDROP RESTRICT拒否後の復元、public routine欠落拒否後の原本再作成。5つの拒否ではTX rollback後に拒否直前の状態が不変であることを比較する。合成tamperと修復はfixture内だけで、製品関数の代替実装として採用しない。
+
+各正常往復後は元schema/relations/columns/routine definition・owner・ACL/configと元users/sessions/restrictionsのfingerprintをbeforeとexact比較し、新2routine不在を確認する。Auth raw行は結果に返さず、合成データも内部fingerprintだけを比較する。全catalogのOID採番状態や未列挙属性まで復元したとは主張しない。
+
+この新runnerはNode構文/git diffチェック成功、ローカル依存なしによりSQL runtime未実行。remoteCIをrootが公開して結果を確認する必要がある。既1377のgreen結果を新restore成功へ付け替えない。本番DDLは引き続きrootの別工程のみ。
