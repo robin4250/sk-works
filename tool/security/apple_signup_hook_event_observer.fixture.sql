@@ -28,3 +28,14 @@ begin
 end $$;
 revoke all on function private.fixture_apple_signup_hook_observer(jsonb) from public,anon,authenticated;
 grant execute on function private.fixture_apple_signup_hook_observer(jsonb) to supabase_auth_admin;
+
+-- Belt-and-braces local SMS replacement: never call a commercial endpoint,
+-- even if an unexpected request reaches the SMS dispatch phase.
+create function private.fixture_apple_signup_no_sms(event jsonb)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+begin
+  return jsonb_build_object('error',jsonb_build_object('http_code',403,
+    'message','External SMS is disabled in this disposable fixture.'));
+end $$;
+revoke all on function private.fixture_apple_signup_no_sms(jsonb) from public,anon,authenticated;
+grant execute on function private.fixture_apple_signup_no_sms(jsonb) to supabase_auth_admin;

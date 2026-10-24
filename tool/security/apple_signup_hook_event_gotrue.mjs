@@ -19,7 +19,9 @@ const cli=(args,timeout=120000)=>run('npx',['--yes','supabase@2.121.0',...args,'
 
 try {
  await fs.mkdir(workdir,{recursive:false,mode:0o700});owned=true;
+ phase='initialize-disposable-cli';
  await cli(['init']);
+ phase='configure-local-sms-hook';
  const configPath=path.join(workdir,'supabase/config.toml');
  let config=await fs.readFile(configPath,'utf8');
  config=config.replace(/^project_id = .*$/m,`project_id = "${project}"`)
@@ -31,9 +33,20 @@ try {
  assert.ok(sms.test(config));
  config=config.replace(sms,section=>section.replace('enable_signup = false','enable_signup = true'));
  assert.match(config,/\[auth\.sms\]\s*\n[^[]*enable_signup = true/);
+ const twilio=/\[auth\.sms\.twilio\][\s\S]*?(?=\n\[|$)/;
+ assert.ok(twilio.test(config));
+ // CLI requires one provider to expose phone. These are deliberately invalid
+ // synthetic values; the local no-send hook below replaces message dispatch.
+ config=config.replace(twilio,section=>section.replace('enabled = false','enabled = true')
+  .replace('account_sid = ""','account_sid = "AC00000000000000000000000000000000"')
+  .replace('message_service_sid = ""','message_service_sid = "MG00000000000000000000000000000000"')
+  .replace(/^auth_token = .*$/m,'auth_token = "synthetic-fixture-only-no-external-send"'));
+ config+='\n[auth.hook.send_sms]\nenabled = true\nuri = "pg-functions://postgres/private/fixture_apple_signup_no_sms"\n';
  config+='\n[auth.hook.before_user_created]\nenabled = true\nuri = "pg-functions://postgres/private/fixture_apple_signup_hook_observer"\n';
  await fs.writeFile(configPath,config,{mode:0o600});
+ phase='generate-observer-migration';
  await cli(['migration','new','fixture_apple_signup_hook_observer']);
+ phase='read-observer-source-files';
  const migrations=path.join(workdir,'supabase/migrations');
  const files=(await fs.readdir(migrations)).filter(name=>name.endsWith('.sql'));assert.equal(files.length,1);
  const guard=await fs.readFile(path.join(root,'tool/security/apple_existing_account_signup_guard.sql.review-only'),'utf8');
@@ -87,13 +100,17 @@ try {
  console.log(JSON.stringify({result:'PASS disposable real GoTrue signup hook event observation',
   auth_version:version,observed_providers:['email','phone'],providers_array_present:true,
   actual_guard_allowed_both:true,all_creations_intentionally_denied_by_observer:true,
-  actual_new_users:0,sms_sent:false,email_sent:false,google_oauth_observed:false,
+  actual_new_users:0,sms_transport:'local-reject-hook',sms_sent:false,email_sent:false,google_oauth_observed:false,
   google_source_contract_checked_separately:'v2.197.0 shared SignupParams.ToUserModel',
   production_changed:false,production_hook_ready:false}));
 } catch(error) {
  console.error(JSON.stringify({result:'FAIL disposable signup hook event observation',phase,
   kind:error?.code==='ERR_ASSERTION'?'assertion':/^[0-9A-Z]{5}$/.test(error?.code??'')?'postgres':'other',
   sqlstate:/^[0-9A-Z]{5}$/.test(error?.code??'')?error.code:null,last_http_status:lastStatus,
+  command_exit_code:typeof error?.code==='number'?error.code:null,
+  file_error_code:['ENOENT','EACCES','EEXIST'].includes(error?.code)?error.code:null,
+  private_stderr_markers:Object.fromEntries(['sms','provider','hook','config','migration','invalid','required','not found']
+    .map(value=>[value,typeof error?.stderr==='string'&&error.stderr.toLowerCase().includes(value)])),
   private_response_omitted:true}));process.exitCode=1;
 } finally {
  if(db)await db.end().catch(()=>{});
