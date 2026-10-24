@@ -9,9 +9,9 @@ Map<String, dynamic> common(int index, String type, String unit) => {
   'display_unit': unit, 'legacy_slot': null, 'generation': null, 'registration_version': 3,
 };
 Map<String, dynamic> labels() => {'contract_version': 1, 'company_id': company,
-  'registration_scope': 'current', 'source_versions': {'legacy_version': 2, 'common_version': 3},
+  'registration_scope': 'current', 'source_versions': <String, dynamic>{'legacy_version': 2, 'common_version': 3},
   'items': [
-    {'id': '30000000-0000-0000-0000-000000000001', 'name': ' 会社の登録名 ',
+    <String, dynamic>{'id': '30000000-0000-0000-0000-000000000001', 'name': ' 会社の登録名 ',
       'origin': 'company_legacy', 'payroll_type': 'all', 'section': 'earning',
       'unit': 'day', 'display_unit': '回', 'legacy_slot': 1, 'generation': 1,
       'registration_version': 2},
