@@ -173,8 +173,8 @@ begin
  execute replace(s,old,new);
 end $patch$;
 
-revoke all on function payroll_tax_private.validate_basis_reference(jsonb),payroll_tax_private.verify_basis_reference(uuid,uuid,jsonb),payroll_tax_private.conditions_save_reply(uuid,uuid,boolean),payroll_tax_private.insurance_income_history(uuid,uuid,date,date) from public,anon,authenticated;
+revoke all on function payroll_tax_private.validate_basis_reference(jsonb),payroll_tax_private.verify_basis_reference(uuid,uuid,jsonb),payroll_tax_private.conditions_save_reply(uuid,uuid,boolean),payroll_tax_private.insurance_income_history(uuid,uuid,date,date) from public,anon,authenticated,service_role;
 grant execute on function payroll_tax_private.insurance_income_history(uuid,uuid,date,date) to authenticated;
-revoke all on function public.read_worker_payroll_insurance_income_history(uuid,uuid,date,date),public.read_worker_payroll_tax_conditions_with_insurance_reference(uuid,uuid) from public,anon,authenticated;
+revoke all on function public.read_worker_payroll_insurance_income_history(uuid,uuid,date,date),public.read_worker_payroll_tax_conditions_with_insurance_reference(uuid,uuid) from public,anon,authenticated,service_role;
 grant execute on function public.read_worker_payroll_insurance_income_history(uuid,uuid,date,date),public.read_worker_payroll_tax_conditions_with_insurance_reference(uuid,uuid) to authenticated;
 commit;

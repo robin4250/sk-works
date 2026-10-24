@@ -1,5 +1,8 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
 const pg=await import(process.argv[2]);
 const {Client}=pg.default??pg;
 const url=process.env.SKO_INSURANCE_REFERENCE_FIXTURE_URL;
@@ -23,7 +26,19 @@ try{
  grant execute on function public.read_worker_payroll_tax_conditions(uuid,uuid) to service_role;
  grant execute on function public.read_worker_payroll_tax_conditions(uuid,uuid) to authenticated;`);
  const before=(await db.query("select oid::regprocedure::text id,proowner,proacl::text,proconfig,prosecdef,provolatile from pg_proc where oid in ('payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'payroll_tax_private.save_conditions(uuid,uuid,date,bigint,jsonb,boolean)'::regprocedure,'public.read_worker_payroll_tax_conditions(uuid,uuid)'::regprocedure) order by 1")).rows;
- await db.query(read('docs/candidates/insurance_basis_reference_20261024.sql.review-only'));
+ // Exercise the exact bounded installer, postflight and unused source-only restore.
+ const inventorySql=read('tool/insurance_basis_reference_inventory.read-only.sql');
+ const snapshot=(await db.query(inventorySql)).rows[0].inventory;
+ const preparation=fs.mkdtempSync(path.join(os.tmpdir(),'insurance-reference-fixture-'));
+ const snapshotPath=path.join(preparation,'snapshot.json'), preparedPath=path.join(preparation,'prepared');
+ fs.writeFileSync(snapshotPath,JSON.stringify(snapshot));
+ execFileSync('python3',['tool/prepare_insurance_basis_reference.py',snapshotPath,preparedPath]);
+ const preparedInstall=read(path.join(preparedPath,'private-prepared-install.sql.review-only'));
+ const unusedRestore=read(path.join(preparedPath,'private-unused-source-restore.sql.review-only'));
+ const postflight=read(path.join(preparedPath,'private-postflight.read-only.sql'));
+ await db.query(preparedInstall);await db.query(postflight);checks++;
+ await db.query(unusedRestore);ok((await db.query(inventorySql)).rows[0].inventory,snapshot);
+ await db.query(preparedInstall);await db.query(postflight);checks++;
  ok((await db.query("select oid::regprocedure::text id,proowner,proacl::text,proconfig,prosecdef,provolatile from pg_proc where oid in ('payroll_tax_private.validate_conditions(jsonb)'::regprocedure,'payroll_tax_private.read_conditions(uuid,uuid)'::regprocedure,'payroll_tax_private.save_conditions(uuid,uuid,date,bigint,jsonb,boolean)'::regprocedure,'public.read_worker_payroll_tax_conditions(uuid,uuid)'::regprocedure) order by 1")).rows,before);
  await db.query('insert into public.companies values($1);',[c]);await db.query('insert into public.workers values($1,$2)',[w,c]);
  const ids=[1,2,3,4,5].map(n=>`50000000-0000-0000-0000-${String(n).padStart(12,'0')}`);
@@ -67,6 +82,8 @@ try{
  await db.query('reset role');await db.query('update public.payroll_statements set calculation_blocked=false where id=$1',[ids[3]]);await insert(ids[4],'2026-06-01',1,'draft');await db.query('set role authenticated');ok((await history()).items.map(x=>x.month),['2026-04-01','2026-05-01']);
  await assert.rejects(save(6,{...base,insurance_basis_reference:{...actual,history_fingerprint:(await history()).history_fingerprint}}),/給与実績/);checks++;
  await db.query('reset role');ok((await db.query('select value from payroll_final_private.documents where statement_id=$1',[ids[1]])).rows[0].value.result.gross_pay,310000);
+ await assert.rejects(db.query(unusedRestore),/unused-restore-before inventory differs/);checks++;await db.query('rollback');
+ ok((await db.query('select value from payroll_tax_private.worker_conditions where company_id=$1 and worker_id=$2',[c,w])).rows[0].value.insurance_basis_reference,actual);
  await db.query('set role anon');await assert.rejects(history(),/permission denied/);checks++;
  console.log(JSON.stringify({checks,native:true,synthetic_authorization:true,production_connected:false,actual_premium_rebase:false}));
 }finally{await db.end();}

@@ -466,7 +466,9 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
             key: _form,
             child: ListView(
               padding: const EdgeInsets.all(16),
-              children: [
+              // Keep the complete small form mounted while scrolling so every
+              // condition/reference validator and draft remains authoritative.
+              children: [Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const Text('月払い給与の所得税と保険料を設定します。住民税は個別の月額設定を使います。'),
                 if (_items.isNotEmpty && !_items.any((e) =>
                     (e['starts_on'] as String).compareTo('$_targetMonth-01') <= 0))
@@ -714,6 +716,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                   onPressed: _busy ? null : _load,
                   child: const Text('再読み込み'),
                 ),
+              ]),
               ],
             ),
           ),

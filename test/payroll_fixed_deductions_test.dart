@@ -482,7 +482,8 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(setup);
     await t.pumpAndSettle();
-    expect(setup, findsNothing);
+    expect(find.byKey(const ValueKey('deduction-conditions-missing')), findsNothing);
+    expect(setup, findsOneWidget); // Existing conditions remain directly editable.
     expect(helper(t, 'income_tax'), '自動計算');
     expect(t.widget<TextFormField>(amount('income_tax')).controller!.text, '1000');
     expect(b.writes, 0);
