@@ -23,10 +23,12 @@ source=once(source," phase='immutable-rate-and-name-snapshot';",`
  // Two saved destinations stand for a route's intermediate/final reports.
  // No fictitious clock-out is fabricated: the fixture intentionally cannot
  // prove an actual final-shift link and reports that limitation explicitly.
- const intermediateReport=await draft('2020-10-22',ROUTE_HOUR_WORKER,[hourChoice],{site:SITE});
+ // Keep the report's company/site/date identity disjoint from the original
+ // partial-signature fixture on 2020-10-22; worker ID alone is not its key.
+ const intermediateReport=await draft('2020-10-18',ROUTE_HOUR_WORKER,[hourChoice],{site:SITE});
  await sign(intermediateReport);
  const intermediateReceipt=await q('select snapshot v from company_checkout_allowance_private.receipts where report_id=$1 and worker_id=$2',[intermediateReport,ROUTE_HOUR_WORKER]);
- const finalReport=await draft('2020-10-22',ROUTE_HOUR_WORKER,[hourChoice],{site:SITE2,extra:{paid_work_hours:'7.5'}});
+ const finalReport=await draft('2020-10-18',ROUTE_HOUR_WORKER,[hourChoice],{site:SITE2,extra:{paid_work_hours:'7.5'}});
  await sign(finalReport);
  const finalReceipt=await q('select snapshot v from company_checkout_allowance_private.receipts where report_id=$1 and worker_id=$2',[finalReport,ROUTE_HOUR_WORKER]);
  eq(finalReceipt,intermediateReceipt,'Current server does not bind the unsupported final-only input into the captured time basis');
