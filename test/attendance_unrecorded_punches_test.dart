@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/attendance/attendance_management_page.dart';
 import 'package:sk_works/features/attendance/attendance_management_repository.dart';
+import 'package:sk_works/features/attendance/attendance_management_company_allowances.dart';
 
 const actor = '11111111-1111-1111-1111-111111111111';
 const company = '22222222-2222-2222-2222-222222222222';
@@ -113,6 +114,19 @@ class Fixture {
 class PageFixture extends AttendanceManagementRepository {
   PageFixture(super.client) : super.forTesting();
   Future<AttendanceManagementCell> Function(String, DateTime)? onLoad;
+  // This fixture isolates attendance/time edits with the allowance rollout OFF.
+  // Registered-choice loading and failures have their own focused widget tests.
+  @override
+  Future<AttendanceManagementAllowanceOptions> loadCompanyAllowanceOptions(
+    Iterable<String> workerIds,
+  ) async => throw StateError('共通手当は準備中です。');
+
+  @override
+  Future<AttendanceManagementSavedAllowances> loadSavedCompanyAllowances({
+    required String workerId, required DateTime date,
+    String? reportId, String? siteId,
+  }) async => const AttendanceManagementSavedAllowances();
+
   @override
   Future<
     ({
