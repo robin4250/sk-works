@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "task": "checkout_off_deploy_prepare",
+  "status": "paused_for_thread_handoff",
+  "candidate_payload": "checkout-off-deploy-prepare-20261025/shared-checkout-unused-restore-a6-handoff-publish.json",
+  "base_commit": "a6a15d7be1edf140dfad4582dda82a122ecdf985",
+  "new_files": [
+    {
+      "path": "tool/security/shared_checkout_unused_restore.mjs",
+      "sha": "032a10dd1c99f2a655d9c4afa8ceb8d67d9029c4"
+    },
+    {
+      "path": "tool/verify_shared_checkout_unused_restore.mjs",
+      "sha": "519dba45df5ee839822f49658dc963b70d52e49f"
+    },
+    {
+      "path": ".github/workflows/shared-checkout-unused-restore.yml",
+      "sha": "2e2d7d6e8aea6e2ad66bf9b016e4cce7518b41e3"
+    }
+  ],
+  "static_checks": "Node --check succeeded on helper and wrapper before final handoff; no DB or CI execution",
+  "unfinished": [
+    "OFF module assembly currently executes the 14 files separately. Single outer transaction consolidation is NOT implemented.",
+    "Native restore workflow has NOT run; SQL catalog/dependency/drop ordering remain unverified.",
+    "No prepared production install or fully verified unused restore SQL exists.",
+    "Dedicated candidate helper/wrapper/workflow are current contents only; do not mark deployment-ready."
+  ],
+  "other_prepared_files": [
+    "source-inventory.not-frozen.json",
+    "missing-preflight.read-only.sql",
+    "postflight-counts-and-footprints.read-only.sql",
+    "unused-restore-baseline.read-only.sql",
+    "cron-preflight.read-only.sql",
+    "04_v1_connections.sql.review-only",
+    "08_v2_connections.sql.review-only"
+  ],
+  "existing_production_backup": "private-checkout-registration-deployment-20261025/shared-checkout-before-extra.private.json",
+  "verified_reference": "All 12 candidate SQL files, two generator sources and three fixture JSON inputs were Git-blob matched to a6a15d7; all16 production source pins confirmed by root readonly;7namespaces absent/20RPC collision0/schedule prereqs present.",
+  "scope": "No production/App/Auth row mutation, no publish, no install/restore action performed."
+}

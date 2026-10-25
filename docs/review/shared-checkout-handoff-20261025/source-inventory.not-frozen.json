@@ -1,0 +1,547 @@
+{
+  "schema": 1,
+  "review_only": true,
+  "production_connected": false,
+  "installation_performed": false,
+  "source_not_release_frozen": true,
+  "base_reference_only": "a6a15d7be1edf140dfad4582dda82a122ecdf985",
+  "modules": [
+    {
+      "order": "01_shared",
+      "source": "shared-report-contract-20261025/docs/candidates/shared_daily_report.sql.review-only",
+      "captured_local_commit": "e3ce92c6b8841de507735de42b2785812c11b081",
+      "sha256": "0cfa40134b5db1c381b1361d031c98f7c2dd6ac44b21e4d505f47575927c4831",
+      "bytes": 80775,
+      "generated": false,
+      "new_tables": [
+        "shared_daily_report_private.rollout",
+        "shared_daily_report_private.signature_events",
+        "shared_daily_report_private.work_protocol"
+      ],
+      "function_names": [
+        "shared_daily_report_private.enabled",
+        "shared_daily_report_private.report_enabled",
+        "shared_daily_report_private.strong_vehicle_enabled",
+        "shared_daily_report_private.has_legacy_projection",
+        "shared_daily_report_private.enrollment_supported",
+        "shared_daily_report_private.work_only_available",
+        "shared_daily_report_private.eligible_roster_snapshot",
+        "shared_daily_report_private.known_roster_snapshot",
+        "shared_daily_report_private.personal_out_snapshot",
+        "shared_daily_report_private.signature_scope",
+        "shared_daily_report_private.approved_request_id",
+        "shared_daily_report_private.safe_signature_scope",
+        "shared_daily_report_private.approved_editor",
+        "shared_daily_report_private.approved_session_open",
+        "shared_daily_report_private.signature_actor_allowed",
+        "shared_daily_report_private.enroll_work_report",
+        "shared_daily_report_private.begin_approved_reset",
+        "shared_daily_report_private.guard_report",
+        "shared_daily_report_private.approved_roster_permitted",
+        "shared_daily_report_private.guard_roster",
+        "shared_daily_report_private.resolve_own",
+        "shared_daily_report_private.read_context",
+        "shared_daily_report_private.can_read_roster",
+        "shared_daily_report_private.can_edit_draft_roster",
+        "shared_daily_report_private.can_confirm_own_hours_after_reporter",
+        "shared_daily_report_private.work_basis",
+        "shared_daily_report_private.reporter_work_evidence",
+        "shared_daily_report_private.work_signature_receipt",
+        "shared_daily_report_private.reuse_own",
+        "shared_daily_report_private.submit_report",
+        "shared_daily_report_private.collect_supervisor",
+        "shared_daily_report_private.manage_signature",
+        "shared_daily_report_private.record_signature",
+        "public.read_my_shared_daily_report",
+        "public.read_shared_daily_report_context",
+        "public.reuse_my_shared_daily_report",
+        "public.submit_shared_daily_report",
+        "public.collect_shared_report_supervisor_signature",
+        "public.manage_shared_report_supervisor_signature",
+        "public.manage_shared_report_signature"
+      ],
+      "new_triggers": [
+        "shared_report_preserve_signed_facts",
+        "shared_report_preserve_signed_roster",
+        "shared_report_signature_audit"
+      ],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/shared_daily_report.sql.review-only",
+      "git_blob_sha": "a7e7ccdfbb577d16ba2a83c2eeeb48e555b8953a",
+      "reference_git_blob_sha": "a7e7ccdfbb577d16ba2a83c2eeeb48e555b8953a",
+      "matches_final_reference": true
+    },
+    {
+      "order": "02_closed_scope",
+      "source": "checkout-paid-hours-ledger-20261025/docs/candidates/closed_day_paid_hours_scope.sql.review-only",
+      "captured_local_commit": "d1772b0ec99e35961f68fb686b416f4eaa078e89",
+      "sha256": "711e55a3fa67ce2ca99a5327ecad2dc265b31d620e1f286ee324ac9cae2cc757",
+      "bytes": 6664,
+      "generated": false,
+      "new_tables": [],
+      "function_names": [
+        "checkout_paid_hours_candidate_private.read_closed_day_scope"
+      ],
+      "new_triggers": [],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/closed_day_paid_hours_scope.sql.review-only",
+      "git_blob_sha": "ca0cae8506d2d6f2ca2dedaad46cddfb49192c45",
+      "reference_git_blob_sha": "ca0cae8506d2d6f2ca2dedaad46cddfb49192c45",
+      "matches_final_reference": true
+    },
+    {
+      "order": "03_v1_ledger",
+      "source": "checkout-paid-hours-ledger-20261025/docs/candidates/checkout_paid_hours_ledger.sql.review-only",
+      "captured_local_commit": "d1772b0ec99e35961f68fb686b416f4eaa078e89",
+      "sha256": "81b2ec44e252faf6f809e3b5f906295a2c3987238414049dc69a4a47a2b54e0d",
+      "bytes": 17823,
+      "generated": false,
+      "new_tables": [
+        "checkout_paid_hours_candidate_private.drafts",
+        "checkout_paid_hours_candidate_private.ledger"
+      ],
+      "function_names": [
+        "checkout_paid_hours_candidate_private.draft_basis",
+        "checkout_paid_hours_candidate_private.save_draft",
+        "checkout_paid_hours_candidate_private.capture_report",
+        "checkout_paid_hours_candidate_private.read_hours",
+        "checkout_paid_hours_candidate_private.clock_scopes",
+        "checkout_paid_hours_candidate_private.try_lock_clock_scopes",
+        "checkout_paid_hours_candidate_private.lock_clock_scope",
+        "checkout_paid_hours_candidate_private.refresh_clock_scope",
+        "checkout_paid_hours_candidate_private.month_quantities"
+      ],
+      "new_triggers": [
+        "ba_checkout_paid_hours_clock_scope",
+        "zz_checkout_paid_hours_clock_refresh"
+      ],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/checkout_paid_hours_ledger.sql.review-only",
+      "git_blob_sha": "922ef005153e79e7fb6fdb552836f94437520c5b",
+      "reference_git_blob_sha": "922ef005153e79e7fb6fdb552836f94437520c5b",
+      "matches_final_reference": true
+    },
+    {
+      "order": "04_v1_connections",
+      "source": "checkout-paid-hours-ledger-20261025/tool/prepare_checkout_paid_hours.py",
+      "captured_local_commit": "d1772b0ec99e35961f68fb686b416f4eaa078e89",
+      "sha256": "3bc4b5b7d9d2d177362d27f6f949d9cbb05d6a4fe391ddeb634ab3f091e0c632",
+      "bytes": 14548,
+      "generated": true,
+      "new_tables": [],
+      "function_names": [
+        "checkout_paid_hours_candidate_private.aggregate_with_hours",
+        "company_checkout_allowance_private.report_basis",
+        "public.sign_daily_report",
+        "company_checkout_allowance_private.resolve"
+      ],
+      "new_triggers": [],
+      "not_release_frozen": true
+    },
+    {
+      "order": "05_v1_api",
+      "source": "checkout-paid-hours-ledger-20261025/docs/candidates/checkout_paid_hours_api.sql.review-only",
+      "captured_local_commit": "d1772b0ec99e35961f68fb686b416f4eaa078e89",
+      "sha256": "1f802e87703ffe85c6c29ed5586feae14fae76298c0a1b5c857a88867b1b83be",
+      "bytes": 5322,
+      "generated": false,
+      "new_tables": [],
+      "function_names": [
+        "checkout_paid_hours_candidate_private.read_input",
+        "checkout_paid_hours_candidate_private.save_input",
+        "public.read_checkout_paid_work_hours",
+        "public.save_checkout_paid_work_hours"
+      ],
+      "new_triggers": [],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/checkout_paid_hours_api.sql.review-only",
+      "git_blob_sha": "c4bad6acadfc28471b2947d2de93d776e7611472",
+      "reference_git_blob_sha": "c4bad6acadfc28471b2947d2de93d776e7611472",
+      "matches_final_reference": true
+    },
+    {
+      "order": "06_worker_facts",
+      "source": "shared-worker-facts-20261025/docs/candidates/checkout_shared_worker_facts.sql.review-only",
+      "captured_local_commit": "2f6564a5ca7b3f93746a124d661b6b32adf0461b",
+      "sha256": "723e1f6f46b3508500a93f4c8a9fb0bf2408ca45e84fd0fdec5af005af8848a1",
+      "bytes": 15062,
+      "generated": false,
+      "new_tables": [],
+      "function_names": [
+        "shared_worker_facts_private.normalize_worker_facts",
+        "shared_worker_facts_private.propose_worker_facts",
+        "shared_worker_facts_private.matches_materialization",
+        "shared_worker_facts_private.materialize_confirmed_worker"
+      ],
+      "new_triggers": [],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/checkout_shared_worker_facts.sql.review-only",
+      "git_blob_sha": "3ac95d04af514159b3d9440bc372844c1a6aa36b",
+      "reference_git_blob_sha": "3ac95d04af514159b3d9440bc372844c1a6aa36b",
+      "matches_final_reference": true
+    },
+    {
+      "order": "07_v2_core",
+      "source": "checkout-paid-hours-ledger-20261025/docs/candidates/checkout_shared_hours_v2.sql.review-only",
+      "captured_local_commit": "d1772b0ec99e35961f68fb686b416f4eaa078e89",
+      "sha256": "ccd2c10c5443470c33c1826cb7d01fce9732911c698e6368c185c670a528ecca",
+      "bytes": 41580,
+      "generated": false,
+      "new_tables": [
+        "checkout_shared_hours_private.rollout",
+        "checkout_shared_hours_private.work_protocol",
+        "checkout_shared_hours_private.confirmations",
+        "checkout_shared_hours_private.supervisor_contexts",
+        "checkout_shared_hours_private.ledger",
+        "checkout_shared_hours_private.materialization_permits",
+        "checkout_shared_hours_private.approved_fact_copies"
+      ],
+      "function_names": [
+        "checkout_shared_hours_private.uses_contract",
+        "checkout_shared_hours_private.enrollment_available",
+        "checkout_shared_hours_private.begin_work_report",
+        "checkout_shared_hours_private.record_first_work_epoch",
+        "checkout_shared_hours_private.work_evidence",
+        "checkout_shared_hours_private.hour_required",
+        "checkout_shared_hours_private.confirmation_current",
+        "checkout_shared_hours_private.permits_worker_materialization",
+        "checkout_shared_hours_private.lock_report_scopes",
+        "checkout_shared_hours_private.source_scope",
+        "checkout_shared_hours_private.assert_materialization_permit",
+        "checkout_shared_hours_private.invalidate_worker_day",
+        "checkout_shared_hours_private.supervisor_snapshot",
+        "checkout_shared_hours_private.prepare_supervisor",
+        "checkout_shared_hours_private.read_input",
+        "checkout_shared_hours_private.confirm_facts",
+        "checkout_shared_hours_private.save_input",
+        "checkout_shared_hours_private.capture_report",
+        "checkout_shared_hours_private.read_hours",
+        "checkout_shared_hours_private.worker_registration_ready",
+        "checkout_shared_hours_private.copy_forward_approved_unchanged_facts"
+      ],
+      "new_triggers": [
+        "zz_checkout_shared_hours_work_epoch"
+      ],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/checkout_shared_hours_v2.sql.review-only",
+      "git_blob_sha": "f6d08bd0cf9e49abd2117f9099fccece73c616e0",
+      "reference_git_blob_sha": "f6d08bd0cf9e49abd2117f9099fccece73c616e0",
+      "matches_final_reference": true
+    },
+    {
+      "order": "08_v2_connections",
+      "source": "checkout-paid-hours-ledger-20261025/tool/prepare_checkout_shared_hours_v2.py",
+      "captured_local_commit": "d1772b0ec99e35961f68fb686b416f4eaa078e89",
+      "sha256": "1971eabbeaf1ec4c27d146419e49faedc10aeaf4010a64c957c71df619f8a2af",
+      "bytes": 32286,
+      "generated": true,
+      "new_tables": [],
+      "function_names": [
+        "checkout_shared_hours_private.read_source_scope",
+        "checkout_shared_hours_private.report_basis_legacy_v1",
+        "checkout_shared_hours_private.capture_report_legacy_v1",
+        "checkout_shared_hours_private.read_hours_legacy_v1",
+        "checkout_shared_hours_private.read_input_legacy_v1",
+        "checkout_shared_hours_private.save_input_legacy_v1",
+        "company_checkout_allowance_private.report_basis",
+        "checkout_paid_hours_candidate_private.capture_report",
+        "checkout_paid_hours_candidate_private.read_hours",
+        "checkout_paid_hours_candidate_private.read_input",
+        "checkout_paid_hours_candidate_private.save_input",
+        "checkout_paid_hours_candidate_private.aggregate_with_hours",
+        "checkout_paid_hours_candidate_private.refresh_clock_scope"
+      ],
+      "new_triggers": [],
+      "not_release_frozen": true
+    },
+    {
+      "order": "09_managed_adapter",
+      "source": "shared-managed-source-20261025/docs/candidates/checkout_shared_managed_source.sql.review-only",
+      "captured_local_commit": "75ed1066045e58247d49b0fcfeb5971ea65fd649",
+      "sha256": "25f392a36af1dccf009e8c5cd9be1914cba716e7af0c3bf6337684262a1e13c4",
+      "bytes": 32772,
+      "generated": false,
+      "new_tables": [
+        "checkout_shared_managed_private.manager_receipts",
+        "checkout_shared_managed_private.adoptions",
+        "checkout_shared_managed_private.adoption_events"
+      ],
+      "function_names": [
+        "checkout_shared_managed_private.immutable_audit",
+        "checkout_shared_managed_private.row_sha256",
+        "checkout_shared_managed_private.payroll_vector",
+        "checkout_shared_managed_private.financial_scope_protected",
+        "checkout_shared_managed_private.final_report_signed",
+        "checkout_shared_managed_private.eligible_managed_worker_ids",
+        "checkout_shared_managed_private.managed_source_scope",
+        "checkout_shared_managed_private.entry_matches_facts",
+        "checkout_shared_managed_private.validate_managed_facts",
+        "checkout_shared_managed_private.propose_worker_facts",
+        "checkout_shared_managed_private.record_manager_confirmation",
+        "checkout_shared_managed_private.prepare_managed_adoption",
+        "checkout_shared_managed_private.record_adoption_ae_stamp",
+        "checkout_shared_managed_private.assert_managed_adoption_unchanged",
+        "checkout_shared_managed_private.require_verified_commit",
+        "checkout_shared_managed_private.lock_attendance_scopes",
+        "checkout_shared_managed_private.invalidate_attendance_scopes"
+      ],
+      "new_triggers": [
+        "immutable_manager_receipt",
+        "immutable_adoption",
+        "immutable_adoption_event",
+        "shared_managed_adoption_commit_guard",
+        "aa_shared_managed_attendance_scope",
+        "ab_shared_managed_adoption_stamp",
+        "zz_shared_managed_attendance_refresh"
+      ],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/checkout_shared_managed_source.sql.review-only",
+      "git_blob_sha": "26d669b2faf31655ac838af41d30fe90352be008",
+      "reference_git_blob_sha": "26d669b2faf31655ac838af41d30fe90352be008",
+      "matches_final_reference": true
+    },
+    {
+      "order": "10_v2_api",
+      "source": "checkout-paid-hours-ledger-20261025/docs/candidates/checkout_shared_hours_v2_api.sql.review-only",
+      "captured_local_commit": "d1772b0ec99e35961f68fb686b416f4eaa078e89",
+      "sha256": "7d70b52f401f4f5de5bda10a5de8a12a32220683f82a9158c21ce2131b9a5dc0",
+      "bytes": 6414,
+      "generated": false,
+      "new_tables": [],
+      "function_names": [
+        "checkout_paid_hours_candidate_private.confirm_managed_shared_hours",
+        "public.confirm_managed_shared_work_hours",
+        "checkout_paid_hours_candidate_private.read_shared_worker_facts",
+        "checkout_paid_hours_candidate_private.confirm_shared_worker_facts",
+        "public.read_shared_worker_facts",
+        "public.confirm_shared_worker_facts",
+        "public.confirm_managed_shared_worker_facts"
+      ],
+      "new_triggers": [],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/checkout_shared_hours_v2_api.sql.review-only",
+      "git_blob_sha": "faf232f1cb02fb0c91b1d58e903d3863c37bcadd",
+      "reference_git_blob_sha": "faf232f1cb02fb0c91b1d58e903d3863c37bcadd",
+      "matches_final_reference": true
+    },
+    {
+      "order": "11_group_locks",
+      "source": "shared-report-contract-20261025/docs/candidates/shared_daily_report_group_lock.sql.review-only",
+      "captured_local_commit": "e3ce92c6b8841de507735de42b2785812c11b081",
+      "sha256": "55d847dab87a92db63e227b91875bab933334bf58da739ef78069fffe081a329",
+      "bytes": 5654,
+      "generated": false,
+      "new_tables": [
+        "shared_daily_report_private.clock_group_context"
+      ],
+      "function_names": [
+        "shared_daily_report_private.claim_clock_scope",
+        "shared_daily_report_private.lock_new_membership"
+      ],
+      "new_triggers": [
+        "az_shared_report_membership_scope"
+      ],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/shared_daily_report_group_lock.sql.review-only",
+      "git_blob_sha": "6b94533ba9b4997cf7fea5ef8a3da1be5c192313",
+      "reference_git_blob_sha": "6b94533ba9b4997cf7fea5ef8a3da1be5c192313",
+      "matches_final_reference": true
+    },
+    {
+      "order": "12_manager_prefix",
+      "source": "shared-report-contract-20261025/docs/candidates/shared_daily_report_management_locks.sql.review-only",
+      "captured_local_commit": "e3ce92c6b8841de507735de42b2785812c11b081",
+      "sha256": "d9109060e90e6c472f924746c1732af4a7604a0fd7e7561635e67c2a4b2994f7",
+      "bytes": 6469,
+      "generated": false,
+      "new_tables": [],
+      "function_names": [
+        "shared_daily_report_private.lock_management_batch"
+      ],
+      "new_triggers": [],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/shared_daily_report_management_locks.sql.review-only",
+      "git_blob_sha": "8fea4013733fd9801b0583b8dae07d19eb84c34b",
+      "reference_git_blob_sha": "8fea4013733fd9801b0583b8dae07d19eb84c34b",
+      "matches_final_reference": true
+    },
+    {
+      "order": "13_approved_sessions",
+      "source": "shared-report-contract-20261025/docs/candidates/shared_daily_report_approved_edit.sql.review-only",
+      "captured_local_commit": "e3ce92c6b8841de507735de42b2785812c11b081",
+      "sha256": "2c5b1008d1e4d2c107f7202c59ebd86ec0c7f016da8cbe55a302e693ca184caa",
+      "bytes": 13767,
+      "generated": false,
+      "new_tables": [
+        "shared_report_edit_private.sessions"
+      ],
+      "function_names": [
+        "shared_report_edit_private.current_session",
+        "shared_report_edit_private.has_active",
+        "shared_report_edit_private.approved_editor",
+        "shared_report_edit_private.can_read",
+        "shared_report_edit_private.capture_request",
+        "shared_report_edit_private.begin_reset",
+        "shared_report_edit_private.permits_roster",
+        "shared_report_edit_private.evidence",
+        "shared_report_edit_private.copy_unchanged_after_reporter",
+        "shared_report_edit_private.complete_edit",
+        "shared_report_edit_private.collect_supervisor",
+        "public.collect_approved_shared_report_supervisor_signature"
+      ],
+      "new_triggers": [
+        "shared_report_capture_approved_request",
+        "zzz_shared_report_copy_approved_facts",
+        "zzz_shared_report_close_approved_edit"
+      ],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/shared_daily_report_approved_edit.sql.review-only",
+      "git_blob_sha": "ae74f4b1913bfb0430b65ab8068c30de7c4e7512",
+      "reference_git_blob_sha": "ae74f4b1913bfb0430b65ab8068c30de7c4e7512",
+      "matches_final_reference": true
+    },
+    {
+      "order": "14_scheduled",
+      "source": "scheduled-checkout-candidate-20261025/docs/candidates/scheduled_checkout_reminders.sql.review-only",
+      "captured_local_commit": "f9b3cfab431e7aacf5e759b7e1ea97351b6a4cf2",
+      "sha256": "e7f66f18a9ba0463ee62d87977b07aa4cfcfcd361370c01cc5f7742ed1ab5fe6",
+      "bytes": 20978,
+      "generated": false,
+      "new_tables": [
+        "scheduled_checkout_private.rollout",
+        "scheduled_checkout_private.settings",
+        "scheduled_checkout_private.sources",
+        "scheduled_checkout_private.postponements"
+      ],
+      "function_names": [
+        "public.save_my_gps_work_schedule",
+        "public.read_my_gps_work_schedule",
+        "scheduled_checkout_private.ensure_sources",
+        "scheduled_checkout_private.read_actor",
+        "public.read_my_scheduled_checkout",
+        "public.postpone_my_scheduled_checkout",
+        "public.read_my_scheduled_checkout_notification_plan",
+        "public.disable_my_gps_work_schedule"
+      ],
+      "new_triggers": [],
+      "not_release_frozen": true,
+      "release_path": "docs/candidates/scheduled_checkout_reminders.sql.review-only",
+      "git_blob_sha": "990f6b7ec795100d714f2d674e52a933c0edefba",
+      "reference_git_blob_sha": "990f6b7ec795100d714f2d674e52a933c0edefba",
+      "matches_final_reference": true
+    }
+  ],
+  "new_schemas": [
+    "checkout_paid_hours_candidate_private",
+    "checkout_shared_hours_private",
+    "checkout_shared_managed_private",
+    "scheduled_checkout_private",
+    "shared_daily_report_private",
+    "shared_report_edit_private",
+    "shared_worker_facts_private"
+  ],
+  "new_tables": [
+    "checkout_paid_hours_candidate_private.drafts",
+    "checkout_paid_hours_candidate_private.ledger",
+    "checkout_shared_hours_private.approved_fact_copies",
+    "checkout_shared_hours_private.confirmations",
+    "checkout_shared_hours_private.ledger",
+    "checkout_shared_hours_private.materialization_permits",
+    "checkout_shared_hours_private.rollout",
+    "checkout_shared_hours_private.supervisor_contexts",
+    "checkout_shared_hours_private.work_protocol",
+    "checkout_shared_managed_private.adoption_events",
+    "checkout_shared_managed_private.adoptions",
+    "checkout_shared_managed_private.manager_receipts",
+    "scheduled_checkout_private.postponements",
+    "scheduled_checkout_private.rollout",
+    "scheduled_checkout_private.settings",
+    "scheduled_checkout_private.sources",
+    "shared_daily_report_private.clock_group_context",
+    "shared_daily_report_private.rollout",
+    "shared_daily_report_private.signature_events",
+    "shared_daily_report_private.work_protocol",
+    "shared_report_edit_private.sessions"
+  ],
+  "public_rpc_names": [
+    "collect_approved_shared_report_supervisor_signature",
+    "collect_shared_report_supervisor_signature",
+    "confirm_managed_shared_work_hours",
+    "confirm_managed_shared_worker_facts",
+    "confirm_shared_worker_facts",
+    "disable_my_gps_work_schedule",
+    "manage_shared_report_signature",
+    "manage_shared_report_supervisor_signature",
+    "postpone_my_scheduled_checkout",
+    "read_checkout_paid_work_hours",
+    "read_my_gps_work_schedule",
+    "read_my_scheduled_checkout",
+    "read_my_scheduled_checkout_notification_plan",
+    "read_my_shared_daily_report",
+    "read_shared_daily_report_context",
+    "read_shared_worker_facts",
+    "reuse_my_shared_daily_report",
+    "save_checkout_paid_work_hours",
+    "save_my_gps_work_schedule",
+    "submit_shared_daily_report"
+  ],
+  "expected_before_source_pins": {
+    "company_checkout_allowance_private.aggregate(jsonb)": "18f0e5b15f40e6281d6c3d90ffa5b6d3",
+    "company_checkout_allowance_private.report_basis(uuid)": "d9d5e378f6ab76d7f6f6a6be487abd10",
+    "company_checkout_allowance_private.resolve(uuid,uuid,date,date)": "c1f9bf82b91b1b430ca1b7e951af60cc",
+    "private.save_daily_report_signature(uuid,text,text,jsonb)": "40f29d53008e6bf5610ce25e5fa96ef3",
+    "public.sign_daily_report(uuid,text,jsonb)": "a433ab29499da6e50ba930a5d3243957",
+    "payroll_scope_private.lock_scopes(jsonb,boolean)": "1bce36e2e59eeb8e0144c5743b8ea800",
+    "private.validate_attendance_shift_evidence()": "e1d6e6a1b8da732d8bcf5f55d3f1374b",
+    "private.route_journey_visit_before_clock_out()": "7d52106e169225a400e5fef63841e7a8",
+    "private.account_access_allowed()": "aeca25db212c043c472334026bd98724",
+    "checkout_report_registration_private.current_actor()": "9ca270fa06ff48883705cea5d18a8f2f",
+    "private.save_daily_report_vehicle_usage(uuid,uuid,uuid,uuid,numeric)": "f78e35bf948cc4702f9d65d28d0ac0e6",
+    "private.enqueue_notification(uuid,uuid,text,text,text,text,uuid)": "260ef8dc60ec1917cc0c8dc85ea52872",
+    "public.save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)": "8c341bb00650cab35b1fa23b34e69eae",
+    "company_checkout_allowance_private.normalize_choices(uuid,uuid,jsonb)": "fc194da8e58428711eb7632eb83d959b",
+    "company_checkout_allowance_private.validate_labels(uuid,uuid,text,jsonb,text)": "8499555a09c3f4ecfe9d406a1eb8c2ad",
+    "public.force_manage_attendance(text,jsonb)": "077b4a1373689071c84e0a14f0a8d824"
+  },
+  "original_functions_intentionally_replaced": [
+    "public.sign_daily_report(uuid,text,jsonb)",
+    "company_checkout_allowance_private.report_basis(uuid)",
+    "company_checkout_allowance_private.resolve(uuid,uuid,date,date)",
+    "public.force_manage_attendance(text,jsonb)"
+  ],
+  "generator_inputs": [
+    {
+      "path": "tool/prepare_checkout_paid_hours.py",
+      "git_blob_sha": "e08ed5283d34c445a7fa483f782368d8796981c1",
+      "reference_git_blob_sha": "e08ed5283d34c445a7fa483f782368d8796981c1",
+      "matches_final_reference": true
+    },
+    {
+      "path": "tool/prepare_checkout_shared_hours_v2.py",
+      "git_blob_sha": "1cd948a75068470509ac2d122006728fda9e6621",
+      "reference_git_blob_sha": "1cd948a75068470509ac2d122006728fda9e6621",
+      "matches_final_reference": true
+    },
+    {
+      "path": "tool/fixtures/checkout_paid_hours_actual_sources.json",
+      "git_blob_sha": "308aa108bbb52abd7f2fdcbca9ed35bb490359e7",
+      "reference_git_blob_sha": "308aa108bbb52abd7f2fdcbca9ed35bb490359e7",
+      "matches_final_reference": true
+    },
+    {
+      "path": "tool/fixtures/checkout_shared_hours_v2_helpers.json",
+      "git_blob_sha": "9299edf2c3eb324e0aed5e22f3e377ccdcabe562",
+      "reference_git_blob_sha": "9299edf2c3eb324e0aed5e22f3e377ccdcabe562",
+      "matches_final_reference": true
+    },
+    {
+      "path": "tool/fixtures/closed_day_actual_clock_sources.json",
+      "git_blob_sha": "b5d9efa292edf720a65fbf9c23534a73a99d5833",
+      "reference_git_blob_sha": "b5d9efa292edf720a65fbf9c23534a73a99d5833",
+      "matches_final_reference": true
+    }
+  ],
+  "all_reference_blobs_match": true,
+  "source_frozen_for_deployment": false,
+  "reason_not_frozen": "Final CI and root deployment review pending; no production connection, install, restore proof or activation."
+}
