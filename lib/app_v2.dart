@@ -175,6 +175,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Map<String, bool> _moduleStates = const {};
   int _friendsRequest = 0;
+  int? _friendsReturnIndex;
+  String? _friendsReturnActor;
   String? _friendHomeActor;
   bool _friendHomeVisible = true;
   String? get _currentHomeActor => SupabaseBackend.isInitialized
@@ -1158,8 +1160,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         return;
       }
       setState(() {
+        if (key == 'friends') {
+          _friendsReturnIndex = _selectedIndex;
+          _friendsReturnActor = _currentHomeActor;
+          _friendsRequest++;
+        }
         _selectedIndex = 3;
-        if (key == 'friends') _friendsRequest++;
       });
       return;
     }
@@ -2145,7 +2151,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ? const SiteCloudPage()
           : _ModuleDisabledPage(label: SkoLanguageController.tr('現場')),
       _moduleEnabled('chat')
-          ? ChatCloudPage(viewerOnlyFriends: _isViewer, friendsRequest: _friendsRequest)
+          ? ChatCloudPage(viewerOnlyFriends: _isViewer, friendsRequest: _friendsRequest,
+              onFriendsDismissed: (request) {
+                final previous = _friendsReturnIndex;
+                if (!mounted || request != _friendsRequest || previous == null ||
+                    _friendsReturnActor != _currentHomeActor) { return; }
+                setState(() { _selectedIndex = previous; _friendsReturnIndex = null; });
+              })
           : _ModuleDisabledPage(label: SkoLanguageController.tr('チャット')),
       _menuPage(),
     ];

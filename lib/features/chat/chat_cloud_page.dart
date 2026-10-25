@@ -31,6 +31,7 @@ class ChatCloudPage extends StatefulWidget {
     this.viewerOnlyFriends = false,
     this.showGroupsInitially = false,
     this.friendsRequest = 0,
+    this.onFriendsDismissed,
     this.createGroupInitially = false,
     this.initialLineDirectoryId,
     this.initialGroupId,
@@ -44,6 +45,7 @@ class ChatCloudPage extends StatefulWidget {
   final bool showGroupsInitially;
   /// Opens the existing friend picker when the Home shortcut is requested.
   final int friendsRequest;
+  final ValueChanged<int>? onFriendsDismissed;
   final bool createGroupInitially;
   final String? initialLineDirectoryId;
   final String? initialGroupId;
@@ -190,12 +192,13 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     }
     final actor = _repository?.currentUserId;
     final epoch = _dispatchEpoch;
+    final request = widget.friendsRequest;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || actor == null || actor != _repository?.currentUserId ||
-          epoch != _dispatchEpoch) {
+          epoch != _dispatchEpoch || request != widget.friendsRequest) {
         return;
       }
-      unawaited(_openFriendsForChat());
+      unawaited(_openFriendsForChat(homeRequest: request));
     });
   }
 
@@ -1282,7 +1285,7 @@ class _ChatCloudPageState extends State<ChatCloudPage>
     await _load();
   }
 
-  Future<void> _openFriendsForChat() async {
+  Future<void> _openFriendsForChat({int? homeRequest}) async {
     final actor = _repository?.currentUserId;
     if (actor == null) return;
     final friend = await Navigator.of(context).push<Map<String, dynamic>>(
@@ -1300,7 +1303,13 @@ class _ChatCloudPageState extends State<ChatCloudPage>
         ),
       ),
     );
-    if (friend == null || !mounted || _repository?.currentUserId != actor) return;
+    if (!mounted || _repository?.currentUserId != actor) return;
+    if (friend == null) {
+      if (homeRequest != null && homeRequest == widget.friendsRequest) {
+        widget.onFriendsDismissed?.call(homeRequest);
+      }
+      return;
+    }
     await _startDirect(friend);
   }
 
