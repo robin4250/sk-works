@@ -280,5 +280,43 @@ begin
 end $prepare$;
 revoke all on function public.prepare_shared_report_financial_resigning(uuid,timestamptz,text,jsonb,text) from public,anon,authenticated,service_role;
 grant execute on function public.prepare_shared_report_financial_resigning(uuid,timestamptz,text,jsonb,text) to authenticated;
+-- Persistent context metadata prevents an app restart from invoking the legacy
+-- draft writer over explicitly staged financial facts. Existing read access runs first.
+create function document_finance_completion_private.context_metadata(rid uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $metadata$
+declare r public.daily_reports%rowtype;t document_finance_completion_private.transitions%rowtype;
+ actor uuid;current_workers jsonb;result jsonb;enabled boolean;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=actor) then
+  raise sqlstate '42501' using message='shared_report_unavailable';end if;
+ enabled:=exists(select 1 from document_finance_completion_private.rollout x
+  where x.company_id=r.company_id and x.report_id=r.id and x.enabled);
+ result:=jsonb_build_object('financial_resigning_supported',enabled and r.status='draft'
+  and shared_daily_report_private.document_mode(r.id)
+  and private.has_company_feature(r.company_id,'can_manage_attendance') is true);
+ select * into t from document_finance_completion_private.transitions
+  where report_id=r.id and company_id=r.company_id and state='ready_for_real_signatures'
+  order by id desc limit 1;
+ if t.id is not null and r.status='draft' then
+  select jsonb_agg(to_jsonb(w) order by worker_id) into current_workers from public.daily_report_workers w where report_id=r.id;
+  result:=result||jsonb_build_object('financial_transition_id',t.id,
+   'financial_transition_state','ready_for_real_signatures',
+   'financial_transition_valid',enabled and t.after_workers=current_workers and not shared_daily_report_private.document_mode(r.id),
+   'new_actual_reporter_and_supervisor_signatures_required',true);
+ end if;
+ return result;
+end $metadata$;
+revoke all on function document_finance_completion_private.context_metadata(uuid) from public,anon,authenticated,service_role;
+do $context_patch$
+declare original text;patched text;needle text:='||shared_daily_report_private.safe_signature_scope(r.id);';
+begin
+ original:=pg_get_functiondef('shared_daily_report_private.read_context(uuid)'::regprocedure);
+ if (length(original)-length(replace(original,needle,'')))/length(needle)<>1 then
+  raise exception 'document_finance_context_patch_anchor_changed';end if;
+ patched:=replace(original,needle,'||shared_daily_report_private.safe_signature_scope(r.id)||document_finance_completion_private.context_metadata(r.id);');
+ execute patched;
+end $context_patch$;
 commit;
 

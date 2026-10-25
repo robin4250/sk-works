@@ -23,6 +23,9 @@ try{
  await exec(await readFile(process.env.SKO_FINANCE_TRANSITION_CANDIDATE,'utf8'));
  eq(await snapshot(),transitionBeforeInstall,'Default OFF installation preserves all source/financial rows');
  eq(await q('select count(*)::int v from document_finance_completion_private.rollout'),0,'Installer activates nothing');
+ const initialContext=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
+ eq(initialContext.financial_resigning_supported,false,'Default OFF context cannot authorize signature reset');
+ eq(initialContext.financial_transition_id??null,null,'Unprepared report never claims staged facts');
  await exec("select set_config('fixture.manager','on',false)");
  const makeItem=async(wid,changes={})=>{
   const w=await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[rid,wid]);
@@ -41,6 +44,8 @@ try{
  await client.query("insert into shared_daily_report_private.document_rollout values($1,$2,'2026-10-01',true)",[A,rid]);
  await client.query('insert into document_finance_completion_private.rollout values($1,$2,true)',[A,rid]);
  let context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
+ eq(context.financial_resigning_supported,true,'Exact enabled manager/document context advertises deployed transition');
+ eq(context.financial_transition_id??null,null,'Capability does not imply a prepared transition');
  await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,'representative','旧日報の実報告者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
  context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,'supervisor','旧日報の実責任者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
@@ -78,6 +83,16 @@ try{
  const result=await prepare(payload);
  eq(result.new_actual_reporter_and_supervisor_signatures_required,true,'Transition explicitly requires new actual signatures');
  eq(result.document_only??false,false,'Transition returns normal v2, not document-only');
+ eq(result.financial_transition_valid,true,'Fresh transition exposes matching persisted facts');
+ const reopened=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
+ eq(reopened.financial_transition_id,result.financial_transition_id,'Reopened context retains transition after app restart');
+ eq(reopened.financial_transition_valid,true,'Reopened context validates exact staged rows');
+ eq(reopened.financial_resigning_supported,false,'Prepared normal report cannot reset document signatures again');
+ await client.query('update document_finance_completion_private.rollout set enabled=false where report_id=$1',[rid]);
+ const disabledPrepared=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
+ eq(disabledPrepared.financial_transition_id,result.financial_transition_id,'Disabling rollout cannot hide staged marker and re-enable legacy writer');
+ eq(disabledPrepared.financial_transition_valid,false,'Disabled prepared transition fails closed');
+ await client.query('update document_finance_completion_private.rollout set enabled=true where report_id=$1',[rid]);
  eq(await q("select representative_signature_json is null and supervisor_signature_json is null and signature_json is null and status='draft' v from daily_reports where id=$1",[rid]),true,'No signatures or financial status are fabricated');
  eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[rid]),0,'No financial projection before new real signatures');
  eq(await q('select count(*)::int v from checkout_shared_hours_private.ledger where report_id=$1',[rid]),0,'No ledger before new real signatures');
@@ -97,6 +112,8 @@ try{
  eq(await q("select bool_and(document_finance_completion_private.allow_identical_materialization(w.report_id,w.worker_id,to_jsonb(w),c.worker_facts)) v from daily_report_workers w join checkout_shared_hours_private.confirmations c on c.report_id=w.report_id and c.worker_id=w.worker_id where w.report_id=$1",[rid]),true,'Staged raw facts exactly qualify for scoped no-op materialization');
  await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,'supervisor','新たな実責任者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
  eq(await q('select status v from daily_reports where id=$1',[rid]),'signed','Existing writer performs actual finalization');
+ const finalizedContext=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
+ eq(finalizedContext.financial_transition_id??null,null,'Finalized normal report does not advertise pending re-sign');
  eq(await q('select representative_signature_json v from daily_reports where id=$1',[rid]),reporter,'Identical staged materialization does not trigger signature clearing');
  eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[rid]),2,'Exactly one formal attendance entry per actual roster member');
  eq(await q('select count(*)::int v from checkout_shared_hours_private.ledger where report_id=$1',[rid]),2,'Existing v2 writer creates actual confirmation-bound ledgers');

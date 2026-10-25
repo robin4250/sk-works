@@ -53,3 +53,9 @@ Executed successfully: dedicated PostgreSQL17 workflow; additional explicit sala
 
 Parent review and CI are required before any production rollout. Existing successful 91/96/255/331 broad suites are not replayed; loaders reuse only their installers.
 
+
+### Persistent UI transition metadata
+
+The exact-source guarded normal `read_context` now adds `financial_resigning_supported` (default false; same report rollout, draft document mode and attendance manager required). Clients check this before any explicit signature reset. Existing authorization and scope assembly run first.
+
+A staged unsigned report additionally returns `financial_transition_id`, `financial_transition_state: ready_for_real_signatures`, `financial_transition_valid`, and `new_actual_reporter_and_supervisor_signatures_required: true` on every reload. The marker remains present but invalid when rollout is disabled or staged raw workers differ. It must prevent the legacy draft writer after restart: that writer omits explicit work category and can overwrite freshly staged financial facts. It disappears only after actual finalization. No marker means no successful staged transition. These fields do not make readiness-only diagnosis a financial completion path.
