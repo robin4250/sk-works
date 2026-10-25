@@ -26,6 +26,9 @@ class SharedDailyReportContext {
     this.reporterName = '', this.reportStatus, this.signatureScopeFingerprint,
     this.hoursAnnex, this.workBasis, this.supervisorReady = false,
     this.firstReporterCoversWorkOnly = false,
+    this.documentOnly = false, this.documentComplete = false,
+    this.documentEditable = false, this.financialConfirmationRequired = false,
+    this.documentBasis,
     this.managementHoldReason, this.approvedEditRequestId,
     this.pendingWorkerIds = const [], this.supervisorPendingReasons = const [],
   });
@@ -36,8 +39,10 @@ class SharedDailyReportContext {
   final String? signatureScopeFingerprint;
   final Map<String, dynamic>? hoursAnnex;
   final Map<String, dynamic>? workBasis;
+  final Map<String, dynamic>? documentBasis;
   final bool supervisorReady;
   final bool firstReporterCoversWorkOnly;
+  final bool documentOnly, documentComplete, documentEditable, financialConfirmationRequired;
   final String? managementHoldReason;
   final String? approvedEditRequestId;
   bool get isManagementHold => state == 'managed_financial_hold';
@@ -51,8 +56,8 @@ class SharedDailyReportContext {
       (canManageAttendance || approvedEditRequestId != null || (reporterSaved && sourceClockInId != null));
   bool get canCollectSupervisor => canAccessSupervisorCollection && supervisorReady &&
       signatureScopeFingerprint != null &&
-      !(hoursAnnex?['required'] == true &&
-          (hoursAnnex?['enabled'] != true || hoursAnnex?['ready'] != true));
+      (documentOnly || !(hoursAnnex?['required'] == true &&
+          (hoursAnnex?['enabled'] != true || hoursAnnex?['ready'] != true)));
   bool get hoursAnnexRequired => hoursAnnex?['required'] == true;
   bool get hoursAnnexReady => hoursAnnex?['enabled'] == true && hoursAnnex?['ready'] == true;
   String get workDescription => (workBasis?['report'] as Map?)?['work_description'] as String? ?? '';
@@ -104,6 +109,18 @@ class SharedDailyReportContext {
     for (final key in ['enabled', 'can_manage_attendance', 'reporter_saved', 'supervisor_saved', 'source_attached', 'supervisor_ready', 'first_reporter_covers_work_only', 'management_hold']) {
       if (row[key] is! bool) { invalid(); }
     }
+    for (final key in ['document_only', 'document_complete', 'document_editable', 'financial_confirmation_required']) {
+      if (row.containsKey(key) && row[key] is! bool) { invalid(); }
+    }
+    final documentOnly = row['document_only'] == true;
+    final documentComplete = row['document_complete'] == true;
+    final documentEditable = row['document_editable'] == true;
+    final financialConfirmationRequired = row['financial_confirmation_required'] == true;
+    if (documentOnly && (row['enabled'] != true || row['first_reporter_covers_work_only'] != true ||
+        row['hours_annex'] != null || !financialConfirmationRequired) ||
+        !documentOnly && (documentComplete || documentEditable || financialConfirmationRequired) ||
+        documentComplete && (row['reporter_saved'] != true || row['supervisor_saved'] != true) ||
+        documentEditable && (row['report_status'] != 'draft' || row['reporter_saved'] != true)) { invalid(); }
     final state = row['state'];
     if (state is! String || !_states.contains(state) ||
         (state == 'disabled') != (row['enabled'] == false)) { invalid(); }
@@ -135,6 +152,21 @@ class SharedDailyReportContext {
       if (roster.isEmpty || roster.length > 100 || roster.any((e) => e is! Map || e['worker_id'] is! String || !_uuid.hasMatch(e['worker_id'] as String))) { invalid(); }
       if (roster.map((e) => (e as Map)['worker_id']).toSet().length != roster.length) { invalid(); }
       workBasis = freeze(work) as Map<String, dynamic>;
+    }
+    Map<String, dynamic>? documentBasis;
+    if (documentOnly) {
+      final basis = row['document_basis'];
+      if (basis is! Map || basis['report'] is! Map || basis['workers'] is! List) { invalid(); }
+      final header = basis['report'] as Map;
+      final workers = basis['workers'] as List;
+      if (header['id'] != report || header['company_id'] != company || header['report_date'] != dayRaw ||
+          header['work_description'] != (workBasis?['report'] as Map?)?['work_description'] ||
+          workers.length != (workBasis?['roster'] as List?)?.length ||
+          workers.any((w) => w is! Map || w['report_id'] != report || w['worker_id'] is! String ||
+            !_uuid.hasMatch(w['worker_id'] as String)) ||
+          workers.map((w) => (w as Map)['worker_id']).toSet().length != workers.length ||
+          workers.any((w) => !(workBasis!['roster'] as List).any((r) => (r as Map)['worker_id'] == (w as Map)['worker_id']))) { invalid(); }
+      documentBasis = freeze(basis) as Map<String, dynamic>;
     }
     final annex = row['hours_annex'];
     Map<String, dynamic>? hoursAnnex;
@@ -230,8 +262,10 @@ class SharedDailyReportContext {
       reporterName: row['reporter_name'] is String ? row['reporter_name'] as String : '',
       reportStatus: row['report_status'] as String?,
       signatureScopeFingerprint: fingerprint as String?, hoursAnnex: hoursAnnex,
-      workBasis: workBasis,
+      workBasis: workBasis, documentBasis: documentBasis,
       firstReporterCoversWorkOnly: row['first_reporter_covers_work_only'] as bool,
+      documentOnly: documentOnly, documentComplete: documentComplete,
+      documentEditable: documentEditable, financialConfirmationRequired: financialConfirmationRequired,
       managementHoldReason: row['management_hold_reason'] as String?, approvedEditRequestId: id('approved_edit_request_id'),
       supervisorReady: row['supervisor_ready'] as bool,
       pendingWorkerIds: List<String>.unmodifiable(pendingIds),
@@ -313,6 +347,45 @@ class SharedDailyReportRepository {
     return SharedDailyReportContext.parse(raw, actorId: before.actorId,
       companyId: before.companyId, workerId: before.workerId,
       workDate: before.workDate, sourceClockInId: before.sourceClockInId);
+  }
+  Future<SharedDailyReportContext> saveDocumentDraft({required SharedDailyReportContext before,
+    required String workDescription, required List<Map<String, dynamic>> workers,
+  }) async {
+    if (!before.documentOnly || before.reporterSaved || before.supervisorSaved || before.reportId == null ||
+        before.expectedUpdatedAt == null || before.signatureScopeFingerprint == null) {
+      throw StateError('手直しする日報の状態を確認できません。再読み込みしてください。');
+    }
+    final raw = await _rpc('save_shared_report_document_draft', {
+      'p_report_id': before.reportId,
+      'p_expected_updated_at': before.expectedUpdatedAt!.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint,
+      'p_work_description': workDescription, 'p_workers': workers,
+    }, expectedActor: before.actorId);
+    final after = SharedDailyReportContext.parse(raw, actorId: before.actorId,
+      companyId: before.companyId, reportId: before.reportId, workDate: before.workDate);
+    if (!after.documentOnly || after.reporterSaved || after.supervisorSaved) {
+      throw StateError('手直しの保存結果を確認できません。再読み込みしてください。');
+    }
+    return after;
+  }
+  Future<SharedDailyReportContext> startDocumentEdit({required SharedDailyReportContext before,
+    required String reason,
+  }) async {
+    if (!before.documentOnly || !before.documentEditable || before.reportId == null ||
+        before.expectedUpdatedAt == null || before.signatureScopeFingerprint == null) {
+      throw StateError('この日報を手直しできる状態を確認できません。再読み込みしてください。');
+    }
+    final raw = await _rpc('start_shared_report_document_edit', {
+      'p_report_id': before.reportId,
+      'p_expected_updated_at': before.expectedUpdatedAt!.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint, 'p_reason': reason,
+    }, expectedActor: before.actorId);
+    final after = SharedDailyReportContext.parse(raw, actorId: before.actorId,
+      companyId: before.companyId, reportId: before.reportId, workDate: before.workDate);
+    if (!after.documentOnly || after.reporterSaved || after.supervisorSaved || after.documentComplete) {
+      throw StateError('手直しの開始結果を確認できません。再読み込みしてください。');
+    }
+    return after;
   }
   Future<SharedDailyReportContext> collectApprovedSupervisor({required SharedDailyReportContext before,
     required String requestId, required String signerName, required Map<String, dynamic> signature,

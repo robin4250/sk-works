@@ -1,0 +1,833 @@
+-- REVIEW ONLY. Default OFF. Install AFTER verified document-only module.
+-- No company activation or production data operation is included.
+begin;
+do $pins$ begin
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('public.force_manage_attendance(text,jsonb)') and md5(p.prosrc)='7de4106cf653bb7b39ab0103ec462853' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef) then raise exception 'attendance_admin_source_mismatch: public.force_manage_attendance(text,jsonb)';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.guard_report()') and md5(p.prosrc)='32a4aabea93879115b0a4f6995fee2fe' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef) then raise exception 'attendance_admin_source_mismatch: shared_daily_report_private.guard_report()';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.guard_roster()') and md5(p.prosrc)='0371e52bc0de112f5172a59aa54dd56f' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef) then raise exception 'attendance_admin_source_mismatch: shared_daily_report_private.guard_roster()';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.clear_daily_report_signatures_on_draft()') and md5(p.prosrc)='8ff75a54758f5a40fdb57e94b95b3207') then raise exception 'attendance_admin_trigger_source_mismatch: private.clear_daily_report_signatures_on_draft()';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.clear_daily_report_signatures_on_workers()') and md5(p.prosrc)='16e44fa84d4855055a24cbc50c94afbe') then raise exception 'attendance_admin_trigger_source_mismatch: private.clear_daily_report_signatures_on_workers()';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.report_refresh_payroll()') and md5(p.prosrc)='de4b65bfde87a71776ebbd9c5fb538f4') then raise exception 'attendance_admin_trigger_source_mismatch: private.report_refresh_payroll()';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.report_refresh_invoice()') and md5(p.prosrc)='1e11279c7cddff816d34399ad155f9d7') then raise exception 'attendance_admin_trigger_source_mismatch: private.report_refresh_invoice()';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.reject_direct_attendance_delete()') and md5(p.prosrc)='0a43ed5f8484b6a1b01ae9b317a1b765') then raise exception 'attendance_admin_trigger_source_mismatch: private.reject_direct_attendance_delete()';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('company_checkout_allowance_private.guard_report_metadata()') and md5(p.prosrc)='9a9026ce08cdb5f6feed37456cc49605') then raise exception 'attendance_admin_trigger_source_mismatch: company_checkout_allowance_private.guard_report_metadata()';end if;
+end $pins$;
+create schema attendance_admin_override_private;
+revoke all on schema attendance_admin_override_private from public,anon,authenticated,service_role;
+create table attendance_admin_override_private.rollout(company_id uuid primary key references public.companies(id),enabled boolean not null default false);
+create table attendance_admin_override_private.operations(
+ id uuid primary key default gen_random_uuid(),company_id uuid not null,actor_id uuid not null,session_id uuid not null,
+ action text not null,items jsonb not null,before_state jsonb not null,after_state jsonb,protected_financial jsonb not null,
+ state text not null check(state in('prepared','committed')),requires_financial_review boolean not null default false,
+ created_at timestamptz not null default clock_timestamp(),completed_at timestamptz
+);
+create table attendance_admin_override_private.contexts(
+ backend_pid integer primary key,transaction_id bigint not null,operation_id uuid not null references attendance_admin_override_private.operations(id),
+ company_id uuid not null,actor_id uuid not null,session_id uuid not null,action text not null,items jsonb not null,report_ids uuid[] not null
+);
+create table attendance_admin_override_private.cancellations(
+ report_id uuid primary key references public.daily_reports(id),company_id uuid not null,
+ operation_id uuid not null references attendance_admin_override_private.operations(id),active boolean not null default true,
+ cancelled_at timestamptz not null default clock_timestamp(),cancelled_by uuid not null,
+ revived_at timestamptz,revived_by uuid,revive_operation_id uuid references attendance_admin_override_private.operations(id)
+);
+alter table attendance_admin_override_private.rollout enable row level security;
+alter table attendance_admin_override_private.operations enable row level security;
+alter table attendance_admin_override_private.contexts enable row level security;
+alter table attendance_admin_override_private.cancellations enable row level security;
+revoke all on all tables in schema attendance_admin_override_private from public,anon,authenticated,service_role;
+
+create function attendance_admin_override_private.enabled(cid uuid) returns boolean language sql stable security definer set search_path='' as $$
+ select exists(select 1 from attendance_admin_override_private.rollout where company_id=cid and enabled)
+$$;
+create function attendance_admin_override_private.require_manager(cid uuid) returns uuid language plpgsql stable security definer set search_path='' as $$
+declare actor uuid;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ if not exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=actor and m.role::text in('owner','admin','manager'))
+ or not coalesce((public.current_feature_permissions()->>'can_manage_attendance')::boolean,false) then
+  raise sqlstate '42501' using message='attendance_admin_current_management_required';end if;
+ return actor;
+end $$;
+create function attendance_admin_override_private.current_context() returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare c attendance_admin_override_private.contexts%rowtype;actor uuid;
+begin
+ select * into c from attendance_admin_override_private.contexts where backend_pid=pg_backend_pid() and transaction_id=txid_current();
+ if c.operation_id is null then return null;end if;
+ actor:=attendance_admin_override_private.require_manager(c.company_id);
+ if actor is distinct from c.actor_id or c.session_id is distinct from (auth.jwt()->>'session_id')::uuid
+ or not exists(select 1 from attendance_admin_override_private.operations o where o.id=c.operation_id and o.state='prepared'
+  and o.company_id=c.company_id and o.actor_id=c.actor_id and o.session_id=c.session_id and o.action=c.action and o.items=c.items) then
+  raise sqlstate '42501' using message='attendance_admin_exact_operation_context_required';end if;
+ return to_jsonb(c);
+end $$;
+
+-- Trusted internal snapshot list only. No caller can ask for another relation.
+create function attendance_admin_override_private.protected_financial(cid uuid,items jsonb) returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare name text;target regclass;rows jsonb;answer jsonb:='{}';
+begin
+ foreach name in array array['public.payroll_statements','payroll_final_private.documents','payroll_final_private.history','public.invoices','public.payment_certificates'] loop
+  target:=to_regclass(name);
+  if target is null then answer:=answer||jsonb_build_object(name,jsonb_build_object('relation_absent',true));continue;end if;
+  execute format($q$select coalesce(jsonb_agg(j order by j::text),'[]'::jsonb) from (select to_jsonb(x) j from %s x) s
+   where j->>'company_id'=$1::text and exists(select 1 from jsonb_array_elements($2) i
+    where (not j?'worker_id' or j->>'worker_id'=i->>'worker_id')
+    and (coalesce(j->>'work_date',j->>'period_start',j->>'billing_period_start',j#>>'{value,period_start}') is null
+      or left(coalesce(j->>'work_date',j->>'period_start',j->>'billing_period_start',j#>>'{value,period_start}'),7)=left(i->>'date',7)))
+    and ($3 or coalesce(j->>'workflow_state',j->>'status','unknown') not in('draft','pending'))$q$,target)
+    into rows using cid,items,name in('payroll_final_private.documents','payroll_final_private.history');
+  if jsonb_array_length(rows)>10000 or octet_length(rows::text)>67108864 then raise exception 'protected financial snapshot exceeds reviewed bound';end if;
+  answer:=answer||jsonb_build_object(name,rows);
+ end loop;
+ return answer;
+end $$;
+create function attendance_admin_override_private.evidence_dependencies(cid uuid,items jsonb,report_ids uuid[]) returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare source_ids uuid[];capture_ids uuid[]:='{}';target regclass;name text;rows jsonb;answer jsonb:='{}';
+begin
+ select coalesce(array_agg(id),'{}'::uuid[]) into source_ids from public.attendance_verifications a where a.company_id=cid and
+  (a.daily_report_id=any(report_ids) or exists(select 1 from jsonb_array_elements(items) i where a.worker_id=(i->>'worker_id')::uuid
+   and coalesce(a.work_date,(a.confirmed_at at time zone 'Asia/Tokyo')::date)=(i->>'date')::date));
+ target:=to_regclass('private.route_journey_captures');
+ if target is not null then execute format('select coalesce(array_agg((j->>''id'')::uuid),''{}''::uuid[]) from (select to_jsonb(x) j from %s x) s where j->>''source_clock_in_id''=any($1::text[])',target) into capture_ids using source_ids::text[];end if;
+ foreach name in array array['public.vehicle_usage_claims','public.vehicle_meter_events','private.route_journey_captures','private.route_journey_visit_events'] loop
+  target:=to_regclass(name);if target is null then answer:=answer||jsonb_build_object(name,jsonb_build_object('relation_absent',true));continue;end if;
+  execute format($q$select coalesce(jsonb_agg(j order by j::text),'[]'::jsonb) from (select to_jsonb(x) j from %s x) s
+   where (not j?'company_id' or j->>'company_id'=$1::text) and
+    (j->>'report_id'=any($2::text[]) or j->>'daily_report_id'=any($2::text[])
+     or j->>'source_clock_in_id'=any($3::text[]) or j->>'capture_id'=any($4::text[]) or j->>'start_capture_id'=any($4::text[]))$q$,target)
+   into rows using cid,report_ids::text[],source_ids::text[],capture_ids::text[];
+  if jsonb_array_length(rows)>10000 or octet_length(rows::text)>67108864 then raise exception 'management evidence snapshot exceeds reviewed bound';end if;
+  answer:=answer||jsonb_build_object(name,rows);
+ end loop;
+ return answer;
+end $$;
+
+create function attendance_admin_override_private.snapshot(cid uuid,action_value text,items jsonb) returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare reports jsonb;rec record;detail jsonb;answer jsonb:='[]';cells jsonb;
+begin
+ select coalesce(jsonb_agg(to_jsonb(r) order by r.id),'[]'::jsonb) into reports from public.daily_reports r where r.company_id=cid
+ and (exists(select 1 from jsonb_array_elements(items) i where r.report_date=(i->>'date')::date and
+  (exists(select 1 from public.daily_report_workers w where w.report_id=r.id and w.worker_id=(i->>'worker_id')::uuid)
+   or (action_value='upsert' and coalesce(i->>'mode','work')='work' and r.site_id=(i->>'site_id')::uuid)))
+  or exists(select 1 from attendance_admin_override_private.contexts c where c.backend_pid=pg_backend_pid() and c.transaction_id=txid_current() and c.company_id=cid and r.id=any(c.report_ids)));
+ for rec in select value j from jsonb_array_elements(reports) loop
+  select jsonb_build_object('report',rec.j,
+   'roster',coalesce((select jsonb_agg(to_jsonb(w) order by worker_id) from public.daily_report_workers w where report_id=(rec.j->>'id')::uuid),'[]'::jsonb),
+   'signature_events',coalesce((select jsonb_agg(to_jsonb(e) order by id) from shared_daily_report_private.signature_events e where report_id=(rec.j->>'id')::uuid),'[]'::jsonb),
+   'shared_protocol',(select to_jsonb(p) from shared_daily_report_private.work_protocol p where report_id=(rec.j->>'id')::uuid),
+   'hours_protocol',(select to_jsonb(p) from checkout_shared_hours_private.work_protocol p where report_id=(rec.j->>'id')::uuid),
+   'confirmations',coalesce((select jsonb_agg(to_jsonb(c) order by id) from checkout_shared_hours_private.confirmations c where report_id=(rec.j->>'id')::uuid),'[]'::jsonb),
+   'ledger',coalesce((select jsonb_agg(to_jsonb(l) order by id) from checkout_shared_hours_private.ledger l where report_id=(rec.j->>'id')::uuid),'[]'::jsonb),
+   'linked_entries',coalesce((select jsonb_agg(to_jsonb(a) order by id) from public.attendance_entries a where source_report_id=(rec.j->>'id')::uuid),'[]'::jsonb),
+   'linked_punches',coalesce((select jsonb_agg(to_jsonb(a) order by id) from public.attendance_verifications a where daily_report_id=(rec.j->>'id')::uuid),'[]'::jsonb),
+   'cancellation',(select to_jsonb(c) from attendance_admin_override_private.cancellations c where report_id=(rec.j->>'id')::uuid)) into detail;
+  answer:=answer||jsonb_build_array(detail);
+ end loop;
+ select jsonb_build_object('attendance',coalesce((select jsonb_agg(to_jsonb(a) order by a.id) from public.attendance_entries a where a.company_id=cid and exists(select 1 from jsonb_array_elements(items) i where a.worker_id=(i->>'worker_id')::uuid and a.work_date=(i->>'date')::date)),'[]'::jsonb),
+  'correction_items',coalesce((select jsonb_agg(to_jsonb(c) order by c.id) from public.attendance_correction_items c join public.attendance_entries a on a.id=c.attendance_entry_id where a.company_id=cid and exists(select 1 from jsonb_array_elements(items) i where a.worker_id=(i->>'worker_id')::uuid and a.work_date=(i->>'date')::date)),'[]'::jsonb),
+  'punches',coalesce((select jsonb_agg(to_jsonb(a) order by a.id) from public.attendance_verifications a where a.company_id=cid and exists(select 1 from jsonb_array_elements(items) i where a.worker_id=(i->>'worker_id')::uuid and coalesce(a.work_date,(a.confirmed_at at time zone 'Asia/Tokyo')::date)=(i->>'date')::date)),'[]'::jsonb),
+  'leave',coalesce((select jsonb_agg(to_jsonb(a) order by a.id) from public.paid_leave_requests a where a.company_id=cid and exists(select 1 from jsonb_array_elements(items) i where a.worker_id=(i->>'worker_id')::uuid and a.leave_date=(i->>'date')::date)),'[]'::jsonb)) into cells;
+ return jsonb_build_object('reports',answer,'cells',cells,'evidence_dependencies',attendance_admin_override_private.evidence_dependencies(cid,items,array(select (x->>'id')::uuid from jsonb_array_elements(reports) x)));
+end $$;
+
+create function attendance_admin_override_private.permit_report(before_row jsonb,after_row jsonb) returns boolean language plpgsql stable security definer set search_path='' as $$
+declare c jsonb;rid uuid;allowed text[]:=array['status','signer_name','signature_json','signed_at','representative_signer_name','representative_signature_json','supervisor_signer_name','supervisor_signature_json','updated_by','updated_at','work_description'];
+begin
+ c:=attendance_admin_override_private.current_context();if c is null then return false;end if;
+ rid:=(before_row->>'id')::uuid;
+ if not (c->'report_ids')?rid::text or before_row->>'company_id' is distinct from c->>'company_id'
+ or (before_row-allowed) is distinct from (after_row-allowed) or after_row->>'status'<>'draft'
+ or after_row->'representative_signature_json'<>'null'::jsonb or after_row->'supervisor_signature_json'<>'null'::jsonb
+ or after_row->'representative_signer_name'<>'null'::jsonb or after_row->'supervisor_signer_name'<>'null'::jsonb
+ or (after_row->'signature_json'<>'null'::jsonb and after_row->'signature_json' is distinct from before_row->'signature_json')
+ or (after_row->>'updated_by' is distinct from c->>'actor_id' and after_row->>'updated_by' is distinct from before_row->>'updated_by') then return false;end if;
+ if after_row->'work_description' is distinct from before_row->'work_description' and not exists(
+  select 1 from jsonb_array_elements(c->'items') i where c->>'action'='upsert' and coalesce(i->>'mode','work')='work'
+   and i->>'date'=before_row->>'report_date' and i->>'site_id'=before_row->>'site_id'
+   and nullif(btrim(coalesce(i->>'work_description','')),'')=after_row->>'work_description') then return false;end if;
+ return true;
+end $$;
+create function attendance_admin_override_private.permit_roster(operation text,before_row jsonb,after_row jsonb) returns boolean language plpgsql stable security definer set search_path='' as $$
+declare c jsonb;r public.daily_reports%rowtype;rid uuid;wid uuid;item jsonb;target jsonb;
+begin
+ c:=attendance_admin_override_private.current_context();if c is null then return false;end if;
+ target:=case when operation='DELETE' then before_row else after_row end;rid:=(target->>'report_id')::uuid;wid:=(target->>'worker_id')::uuid;
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null or r.company_id::text<>c->>'company_id' or not (c->'report_ids')?rid::text then return false;end if;
+ select i into item from jsonb_array_elements(c->'items') i where i->>'worker_id'=wid::text and i->>'date'=r.report_date::text;
+ if item is null then return false;end if;
+ if operation='DELETE' then
+  return exists(select 1 from attendance_admin_override_private.operations o,lateral jsonb_array_elements(o.before_state->'reports') d,
+   lateral jsonb_array_elements(d->'roster') w where o.id=(c->>'operation_id')::uuid and d#>>'{report,id}'=rid::text and w=before_row);
+ end if;
+ if operation not in('INSERT','UPDATE') or c->>'action'<>'upsert' or coalesce(item->>'mode','work')<>'work' or r.site_id::text is distinct from item->>'site_id'
+ or (operation='UPDATE' and row(before_row->>'report_id',before_row->>'worker_id') is distinct from row(after_row->>'report_id',after_row->>'worker_id')) then return false;end if;
+ return target->>'work_category'='day' and (target->>'allowance_amount')::numeric=0
+  and (target->>'overtime_hours')::numeric=greatest(coalesce((item->>'overtime_hours')::numeric,0),0)
+  and (target->>'early_hours')::numeric=greatest(coalesce((item->>'early_hours')::numeric,0),0)
+  and (target->>'night_hours')::numeric=greatest(coalesce((item->>'night_hours')::numeric,0),0)
+  and nullif(target->>'allowance_label','') is not distinct from nullif((select string_agg(value,'・') from jsonb_array_elements_text(coalesce(item->'allowance_names','[]'::jsonb))),'');
+end $$;
+
+create function attendance_admin_override_private.begin_batch(cid uuid,p_action text,p_items jsonb) returns uuid language plpgsql volatile security definer set search_path='' as $$
+declare actor uuid;sid uuid;state jsonb;oid uuid;report_ids uuid[];v_item jsonb;r record;
+begin
+ if not attendance_admin_override_private.enabled(cid) then return null;end if;
+ actor:=attendance_admin_override_private.require_manager(cid);sid:=(auth.jwt()->>'session_id')::uuid;
+ if p_action not in('upsert','delete') or jsonb_typeof(p_items) is distinct from 'array' or jsonb_array_length(p_items) not between 1 and 500 then raise exception 'invalid management batch';end if;
+ if exists(select 1 from jsonb_array_elements(p_items) i group by i->>'worker_id',i->>'date' having count(*)>1) then raise sqlstate '22023' using message='attendance_admin_duplicate_cell';end if;
+ for v_item in select value from jsonb_array_elements(p_items) loop
+  if nullif(v_item->>'worker_id','') is null or nullif(v_item->>'date','') is null or coalesce(v_item->>'mode','work') not in('work','paid_leave','off')
+  or not exists(select 1 from public.workers w where w.id=(v_item->>'worker_id')::uuid and w.company_id=cid and w.status='active')
+  or (coalesce(v_item->>'mode','work')='work' and not exists(select 1 from public.sites s where s.id=(v_item->>'site_id')::uuid and s.company_id=cid)) then
+   raise sqlstate '42501' using message='attendance_admin_cell_scope_invalid';end if;
+ end loop;
+ state:=attendance_admin_override_private.snapshot(cid,p_action,p_items);
+ select coalesce(array_agg((x#>>'{report,id}')::uuid),'{}'::uuid[]) into report_ids from jsonb_array_elements(state->'reports') x;
+ -- Context may not detach report-linked rows outside the declared worker/date batch.
+ if exists(select 1 from public.attendance_entries a where a.source_report_id=any(report_ids)
+  and not exists(select 1 from public.daily_report_workers w where w.report_id=a.source_report_id and w.worker_id=a.worker_id)) then
+  raise sqlstate '55000' using message='attendance_admin_orphan_financial_source_requires_review';end if;
+ insert into attendance_admin_override_private.operations(company_id,actor_id,session_id,action,items,before_state,protected_financial,state,requires_financial_review)
+ values(cid,actor,sid,p_action,p_items,state,attendance_admin_override_private.protected_financial(cid,p_items),'prepared',
+  true) returning id into oid;
+ insert into attendance_admin_override_private.contexts values(pg_backend_pid(),txid_current(),oid,cid,actor,sid,p_action,p_items,report_ids)
+ on conflict(backend_pid) do update set transaction_id=excluded.transaction_id,operation_id=excluded.operation_id,company_id=excluded.company_id,
+ actor_id=excluded.actor_id,session_id=excluded.session_id,action=excluded.action,items=excluded.items,report_ids=excluded.report_ids;
+ -- Capture BEFORE every actual signature clear and before any roster deletion.
+ for r in select value j from jsonb_array_elements(state->'reports') loop
+  update public.daily_reports set status='draft',signer_name=null,signature_json=null,signed_at=null,
+   representative_signer_name=null,representative_signature_json=null,supervisor_signer_name=null,supervisor_signature_json=null,
+   updated_by=actor,updated_at=clock_timestamp() where id=(r.j#>>'{report,id}')::uuid and
+   (status='signed' or representative_signature_json is not null or supervisor_signature_json is not null or signature_json is not null);
+ end loop;
+ return oid;
+end $$;
+create function attendance_admin_override_private.register_and_revive(rid uuid,oid uuid) returns void language plpgsql volatile security definer set search_path='' as $$
+declare c jsonb;r public.daily_reports%rowtype;
+begin
+ c:=attendance_admin_override_private.current_context();if c is null or (c->>'operation_id')::uuid is distinct from oid or c->>'action'<>'upsert' then raise sqlstate '42501' using message='attendance_admin_exact_operation_context_required';end if;
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null or r.company_id::text<>c->>'company_id' or not exists(select 1 from jsonb_array_elements(c->'items') i
+  where coalesce(i->>'mode','work')='work' and i->>'date'=r.report_date::text and i->>'site_id'=r.site_id::text) then raise sqlstate '42501' using message='attendance_admin_report_scope_invalid';end if;
+ update attendance_admin_override_private.contexts set report_ids=array(select distinct unnest(report_ids||array[rid]))
+  where backend_pid=pg_backend_pid() and transaction_id=txid_current() and operation_id=oid;
+ update attendance_admin_override_private.cancellations set active=false,revived_at=clock_timestamp(),revived_by=(c->>'actor_id')::uuid,revive_operation_id=oid
+  where report_id=rid and company_id=r.company_id and active;
+end $$;
+create function attendance_admin_override_private.cancel_empty_report(rid uuid,oid uuid) returns void language plpgsql volatile security definer set search_path='' as $$
+declare c jsonb;r public.daily_reports%rowtype;
+begin
+ c:=attendance_admin_override_private.current_context();
+ if c is null or (c->>'operation_id')::uuid is distinct from oid or not (c->'report_ids')?rid::text then raise sqlstate '42501' using message='attendance_admin_exact_operation_context_required';end if;
+ select * into r from public.daily_reports where id=rid for update;
+ if r.company_id::text is distinct from c->>'company_id' or exists(select 1 from public.daily_report_workers where report_id=rid) then raise sqlstate '55000' using message='attendance_admin_only_empty_report_can_cancel';end if;
+ update public.daily_reports set status='draft',signer_name=null,signature_json=null,signed_at=null,
+  representative_signer_name=null,representative_signature_json=null,supervisor_signer_name=null,supervisor_signature_json=null,
+  updated_by=(c->>'actor_id')::uuid,updated_at=clock_timestamp() where id=rid;
+ insert into attendance_admin_override_private.cancellations(report_id,company_id,operation_id,cancelled_by)
+ values(rid,r.company_id,oid,(c->>'actor_id')::uuid) on conflict(report_id) do update set active=true,
+ operation_id=excluded.operation_id,cancelled_at=clock_timestamp(),cancelled_by=excluded.cancelled_by,revived_at=null,revived_by=null,revive_operation_id=null;
+end $$;
+create function attendance_admin_override_private.finish_batch(oid uuid) returns void language plpgsql volatile security definer set search_path='' as $$
+declare c jsonb;o attendance_admin_override_private.operations%rowtype;
+begin
+ if oid is null then return;end if;
+ c:=attendance_admin_override_private.current_context();if c is null or (c->>'operation_id')::uuid is distinct from oid then raise sqlstate '42501' using message='attendance_admin_exact_operation_context_required';end if;
+ select * into o from attendance_admin_override_private.operations where id=oid for update;
+ if attendance_admin_override_private.protected_financial(o.company_id,o.items) is distinct from o.protected_financial then raise sqlstate '55000' using message='attendance_admin_finalized_financial_snapshot_changed';end if;
+ if exists(select 1 from public.daily_reports r where r.id=any(array(select jsonb_array_elements_text(c->'report_ids')::uuid))
+  and (r.status<>'draft' or r.representative_signature_json is not null or r.supervisor_signature_json is not null or r.signature_json is not null)) then
+  raise sqlstate '55000' using message='attendance_admin_cannot_reuse_prior_signature';end if;
+ update attendance_admin_override_private.operations set after_state=attendance_admin_override_private.snapshot(company_id,action,items),state='committed',completed_at=clock_timestamp() where id=oid;
+ delete from attendance_admin_override_private.contexts where backend_pid=pg_backend_pid() and transaction_id=txid_current() and operation_id=oid;
+end $$;
+revoke all on all functions in schema attendance_admin_override_private from public,anon,authenticated,service_role;
+
+-- Visibility filter only: false is deliberately indistinguishable for foreign
+-- company and cancelled IDs; true does not certify that an arbitrary ID exists.
+create function public.attendance_admin_report_visible(rid uuid,cid uuid) returns boolean language sql stable security definer set search_path='' as $$
+ select auth.uid() is not null and exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=auth.uid())
+  and not exists(select 1 from attendance_admin_override_private.cancellations c where c.report_id=rid and c.company_id=cid and c.active)
+$$;
+revoke all on function public.attendance_admin_report_visible(uuid,uuid) from public,anon,authenticated,service_role;
+grant execute on function public.attendance_admin_report_visible(uuid,uuid) to authenticated;
+create policy attendance_admin_hide_cancelled_reports on public.daily_reports as restrictive for select to authenticated
+ using(public.attendance_admin_report_visible(id,company_id));
+
+create or replace function shared_daily_report_private.guard_report()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+ if tg_op='UPDATE' and attendance_admin_override_private.permit_report(to_jsonb(old),to_jsonb(new)) then return new;end if;
+ if exists(select 1 from attendance_admin_override_private.cancellations c where c.report_id=old.id and c.company_id=old.company_id and c.active) then
+  raise sqlstate '55000' using message='attendance_admin_cancelled_report_requires_management';end if;
+ if not shared_daily_report_private.report_enabled(old.id) then return case when tg_op='DELETE' then old else new end;end if;
+ if tg_op='UPDATE' then
+  if shared_daily_report_private.document_mode(old.id) and old.status='draft' and new.status='signed' then
+   raise sqlstate '55000' using message='document_only_financial_finalization_not_supported';
+  end if;
+  if shared_report_edit_private.document_reset_permitted(to_jsonb(old),to_jsonb(new)) then return new;end if;
+  if row(new.id,new.company_id) is distinct from row(old.id,old.company_id) then
+   raise sqlstate '42501' using message='shared_report_identity_immutable';end if;
+  if old.status='signed' and new.status='draft' and exists(select 1 from shared_daily_report_private.work_protocol where report_id=old.id) then
+   if to_regprocedure('shared_report_edit_private.begin_reset(jsonb,jsonb)') is null then
+    raise sqlstate '55000' using message='approved_edit_session_module_unavailable';end if;
+   perform shared_daily_report_private.begin_approved_reset(to_jsonb(old),to_jsonb(new));
+  end if;
+  if shared_daily_report_private.approved_session_open(old.id) and not shared_daily_report_private.approved_editor(old.id) then
+   raise sqlstate '42501' using message='approved_edit_exact_actor_session_required';end if;
+  if row(new.representative_signer_name,new.representative_signature_json) is distinct from row(old.representative_signer_name,old.representative_signature_json)
+   and checkout_report_registration_private.has_signature(new.representative_signer_name,new.representative_signature_json)
+   and not shared_daily_report_private.signature_actor_allowed(old.id,'representative') then
+   raise sqlstate '42501' using message='shared_report_signature_actor_required';end if;
+  if row(new.supervisor_signer_name,new.supervisor_signature_json) is distinct from row(old.supervisor_signer_name,old.supervisor_signature_json)
+   and checkout_report_registration_private.has_signature(new.supervisor_signer_name,new.supervisor_signature_json)
+   and not shared_daily_report_private.signature_actor_allowed(old.id,'supervisor') then
+   raise sqlstate '42501' using message='shared_report_signature_actor_required';end if;
+  if ((not checkout_report_registration_private.has_signature(old.representative_signer_name,old.representative_signature_json)
+     and checkout_report_registration_private.has_signature(new.representative_signer_name,new.representative_signature_json))
+   or (not checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json)
+     and checkout_report_registration_private.has_signature(new.supervisor_signer_name,new.supervisor_signature_json))
+   or (old.status<>'signed' and new.status='signed'))
+   and exists(select 1 from shared_daily_report_private.rollout p where p.company_id=old.company_id and p.enabled
+    and old.created_at>=p.new_report_from)
+   and not exists(select 1 from shared_daily_report_private.work_protocol p where p.report_id=old.id and p.company_id=old.company_id) then
+   raise sqlstate '55000' using message='shared_report_updated_app_required';end if;
+  if exists(select 1 from shared_daily_report_private.work_protocol where report_id=old.id) then
+   if not checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json)
+    and checkout_report_registration_private.has_signature(new.supervisor_signer_name,new.supervisor_signature_json)
+    and (shared_daily_report_private.signature_scope(old.id)->>'supervisor_ready')::boolean is distinct from true then
+    raise sqlstate '55000' using message='shared_report_supervisor_not_ready';end if;
+   if old.status<>'signed' and new.status='signed' and (
+    not checkout_report_registration_private.has_signature(new.representative_signer_name,new.representative_signature_json)
+    or not checkout_report_registration_private.has_signature(new.supervisor_signer_name,new.supervisor_signature_json)
+    or new.signature_json is distinct from jsonb_build_object('version',3,'representative',new.representative_signature_json,'supervisor',new.supervisor_signature_json)) then
+    raise sqlstate '55000' using message='shared_report_canonical_signatures_required';end if;
+  end if;
+ end if;
+ if not checkout_report_registration_private.has_signature(old.representative_signer_name,old.representative_signature_json)
+ and not checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json) then
+  return case when tg_op='DELETE' then old else new end;end if;
+ if tg_op='DELETE' then raise sqlstate '55000' using message='shared_report_signed_facts_require_approved_edit';end if;
+ if shared_daily_report_private.approved_editor(old.id) then
+  if row(new.id,new.company_id) is distinct from row(old.id,old.company_id) then raise sqlstate '42501' using message='approved_edit_report_identity_changed';end if;
+  return new;end if;
+ if old.status='draft' and (
+  row(new.company_id,new.site_id,new.route_assignment_id,new.report_date,new.work_description)
+  is distinct from row(old.company_id,old.site_id,old.route_assignment_id,old.report_date,old.work_description)
+  or (checkout_report_registration_private.has_signature(old.representative_signer_name,old.representative_signature_json)
+      and row(new.representative_signer_name,new.representative_signature_json)
+       is distinct from row(old.representative_signer_name,old.representative_signature_json))
+  or (checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json)
+      and row(new.supervisor_signer_name,new.supervisor_signature_json)
+       is distinct from row(old.supervisor_signer_name,old.supervisor_signature_json))) then
+  raise sqlstate '55000' using message='shared_report_signed_facts_require_approved_edit';
+ end if;
+ return new;
+end $$;
+
+create or replace function shared_daily_report_private.guard_roster()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare rid uuid; r public.daily_reports%rowtype;materialization_allowed boolean:=false;fresh_contract boolean;
+begin
+ rid:=case when tg_op='INSERT' then new.report_id else old.report_id end;
+ select * into r from public.daily_reports where id=rid for share;
+ if attendance_admin_override_private.permit_roster(tg_op,to_jsonb(old),to_jsonb(new)) then return case when tg_op='DELETE' then old else new end;end if;
+ if shared_daily_report_private.document_mode(rid) then
+  if tg_op='UPDATE' and shared_report_edit_private.document_worker_write_permitted(to_jsonb(old),to_jsonb(new)) then return new;end if;
+  if tg_op='UPDATE' and to_jsonb(old)=to_jsonb(new) then return new;end if;
+  raise sqlstate '55000' using message='document_roster_requires_explicit_edit_writer';
+ end if;
+ if shared_daily_report_private.approved_session_open(rid) and not shared_daily_report_private.approved_editor(rid) then
+  raise sqlstate '42501' using message='approved_edit_exact_actor_session_required';end if;
+ if shared_daily_report_private.approved_editor(rid) and shared_daily_report_private.approved_roster_permitted(rid,tg_op,to_jsonb(old),to_jsonb(new)) then
+  return case when tg_op='DELETE' then old else new end;end if;
+ fresh_contract:=exists(select 1 from shared_daily_report_private.work_protocol where report_id=rid)
+  or exists(select 1 from shared_daily_report_private.rollout p where p.company_id=r.company_id and p.enabled
+   and r.report_date>=p.starts_on and r.created_at>=p.new_report_from);
+ if fresh_contract and ((tg_op='INSERT' and coalesce(new.allowance_amount,0)<>0)
+  or (tg_op='UPDATE' and (coalesce(new.allowance_amount,0)<>0 or coalesce(old.allowance_amount,0)<>0))
+  or (tg_op='DELETE' and coalesce(old.allowance_amount,0)<>0)) then
+  if tg_op='UPDATE' and row(new.report_id,new.worker_id) is not distinct from row(old.report_id,old.worker_id)
+   and to_regprocedure('checkout_shared_hours_private.permits_worker_materialization(uuid,uuid,jsonb,jsonb)') is not null then
+   execute 'select checkout_shared_hours_private.permits_worker_materialization($1,$2,$3,$4)'
+    into materialization_allowed using old.report_id,old.worker_id,to_jsonb(old),to_jsonb(new);
+  end if;
+  if materialization_allowed is distinct from true then
+   raise sqlstate '42501' using message='shared_report_manual_cash_requires_trusted_source';end if;
+ end if;
+ if shared_daily_report_private.report_enabled(r.id)
+ and (checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json)
+  or checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json))
+ and (tg_op<>'UPDATE' or to_jsonb(new) is distinct from to_jsonb(old)) then
+  if tg_op='UPDATE' and row(new.report_id,new.worker_id) is not distinct from row(old.report_id,old.worker_id)
+   and to_regprocedure('checkout_shared_hours_private.permits_worker_materialization(uuid,uuid,jsonb,jsonb)') is not null then
+   execute 'select checkout_shared_hours_private.permits_worker_materialization($1,$2,$3,$4)'
+    into materialization_allowed using old.report_id,old.worker_id,to_jsonb(old),to_jsonb(new);
+  end if;
+  if materialization_allowed is true then return new;end if;
+  raise sqlstate '55000' using message='shared_report_roster_requires_approved_edit';
+ end if;
+ return case when tg_op='DELETE' then old else new end;
+end $$;
+CREATE OR REPLACE FUNCTION public.force_manage_attendance(p_action text, p_items jsonb)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'private', 'pg_temp'
+AS $function$
+declare
+  v_actor uuid := auth.uid();
+  v_company_id uuid;
+  v_role text;
+  v_item jsonb;
+  v_worker_id uuid;
+  v_site_id uuid;
+  v_date date;
+  v_mode text;
+  v_report_id uuid;
+  v_count integer := 0;
+  v_clock_in timestamptz;
+  v_clock_out timestamptz;
+  v_report record;
+  v_entry_ids uuid[];
+  v_work_description text;
+  v_admin_operation uuid;
+  v_clock_delete_id uuid;
+begin
+  if v_actor is null then
+    raise exception 'authentication required';
+  end if;
+
+  select cm.company_id, cm.role::text
+  into v_company_id, v_role
+  from public.company_members cm
+  where cm.user_id = v_actor
+  limit 1;
+
+  if v_company_id is null
+     or v_role not in ('owner','admin','manager')
+     or not coalesce(
+       (public.current_feature_permissions()->>'can_manage_attendance')::boolean,
+       false
+     ) then
+    raise exception 'attendance management permission required';
+  end if;
+
+  if p_action not in ('upsert','delete') then
+    raise exception 'invalid attendance management action';
+  end if;
+
+  if p_items is null
+     or jsonb_typeof(p_items) <> 'array'
+     or jsonb_array_length(p_items) < 1
+     or jsonb_array_length(p_items) > 500 then
+    raise exception 'attendance management items must contain 1 to 500 rows';
+  end if;
+
+  perform shared_daily_report_private.lock_management_batch(v_company_id,p_action,p_items);
+  v_admin_operation:=attendance_admin_override_private.begin_batch(v_company_id,p_action,p_items);
+
+  for v_item in
+    select value from jsonb_array_elements(p_items)
+  loop
+    v_worker_id := nullif(v_item->>'worker_id','')::uuid;
+    v_date := nullif(v_item->>'date','')::date;
+    v_mode := coalesce(nullif(v_item->>'mode',''),'work');
+    v_site_id := nullif(v_item->>'site_id','')::uuid;
+    v_work_description := trim(coalesce(v_item->>'work_description',''));
+
+    if v_worker_id is null or v_date is null then
+      raise exception 'worker and date are required';
+    end if;
+
+    if not exists (
+      select 1 from public.workers w
+      where w.id = v_worker_id
+        and w.company_id = v_company_id
+        and w.status = 'active'
+    ) then
+      raise exception 'worker does not belong to company';
+    end if;
+
+    if v_mode not in ('work','paid_leave','off') then
+      raise exception 'invalid attendance mode';
+    end if;
+
+    if v_mode = 'work' then
+      if v_site_id is null or not exists (
+        select 1 from public.sites s
+        where s.id = v_site_id and s.company_id = v_company_id
+      ) then
+        raise exception 'site does not belong to company';
+      end if;
+    end if;
+
+    -- Keep correction audit snapshots, but detach FK so forced deletion can proceed.
+    select array_agg(ae.id)
+    into v_entry_ids
+    from public.attendance_entries ae
+    where ae.company_id = v_company_id
+      and ae.worker_id = v_worker_id
+      and ae.work_date = v_date;
+
+    if v_entry_ids is not null then
+      update public.attendance_correction_items
+      set attendance_entry_id = null
+      where attendance_entry_id = any(v_entry_ids);
+    end if;
+
+    -- Remove the worker from all daily reports on the target date.
+    for v_report in
+      select dr.id
+      from public.daily_reports dr
+      join public.daily_report_workers drw on drw.report_id = dr.id
+      where dr.company_id = v_company_id
+        and dr.report_date = v_date
+        and drw.worker_id = v_worker_id
+      for update of dr
+    loop
+      delete from public.daily_report_workers
+      where report_id = v_report.id
+        and worker_id = v_worker_id;
+
+      update public.attendance_entries
+      set source_report_id = null
+      where source_report_id = v_report.id
+        and worker_id = v_worker_id;
+
+      -- Delete the target worker's complete linked shift before report removal;
+      -- detaching would lose the next-day end timestamp's work-date ownership.
+      if v_admin_operation is null then
+      delete from public.attendance_verifications
+      where company_id = v_company_id and worker_id = v_worker_id
+        and (daily_report_id = v_report.id or work_date = v_date);
+      else
+        -- End punches must be removed before their source clock-in; real scope triggers stay active.
+        for v_clock_delete_id in select id from public.attendance_verifications
+      where company_id = v_company_id and worker_id = v_worker_id
+        and (daily_report_id = v_report.id or work_date = v_date)
+          order by (source_clock_in_id is null),confirmed_at desc,id
+        loop
+          delete from public.attendance_verifications where id=v_clock_delete_id;
+        end loop;
+      end if;
+
+      if not exists (
+        select 1 from public.daily_report_workers
+        where report_id = v_report.id
+      ) then
+        update public.attendance_entries
+        set source_report_id = null
+        where source_report_id = v_report.id;
+
+        if v_admin_operation is null then
+        delete from public.daily_reports
+        where id = v_report.id;
+        else
+          perform attendance_admin_override_private.cancel_empty_report(v_report.id,v_admin_operation);
+        end if;
+      else
+        update public.daily_reports
+        set status = 'draft',
+            signer_name = null,
+            signature_json = null,
+            signed_at = null,
+            representative_signature_json = null,
+            representative_signer_name = null,
+            supervisor_signature_json = null,
+            supervisor_signer_name = null,
+            updated_by = v_actor,
+            updated_at = now()
+        where id = v_report.id;
+      end if;
+    end loop;
+
+    if v_admin_operation is null then
+    delete from public.attendance_verifications
+    where company_id = v_company_id
+      and worker_id = v_worker_id
+      and (
+        exists (
+          select 1 from public.daily_reports dr
+          where dr.id = attendance_verifications.daily_report_id
+            and dr.company_id = v_company_id and dr.report_date = v_date
+        )
+        or (
+          daily_report_id is null
+          and coalesce(work_date,(confirmed_at at time zone 'Asia/Tokyo')::date)=v_date
+        )
+      );
+    else
+      -- End punches must be removed before their source clock-in; real scope triggers stay active.
+      for v_clock_delete_id in select id from public.attendance_verifications
+    where company_id = v_company_id
+      and worker_id = v_worker_id
+      and (
+        exists (
+          select 1 from public.daily_reports dr
+          where dr.id = attendance_verifications.daily_report_id
+            and dr.company_id = v_company_id and dr.report_date = v_date
+        )
+        or (
+          daily_report_id is null
+          and coalesce(work_date,(confirmed_at at time zone 'Asia/Tokyo')::date)=v_date
+        )
+      )
+        order by (source_clock_in_id is null),confirmed_at desc,id
+      loop
+        delete from public.attendance_verifications where id=v_clock_delete_id;
+      end loop;
+    end if;
+
+    delete from public.attendance_entries
+    where company_id = v_company_id
+      and worker_id = v_worker_id
+      and work_date = v_date;
+
+    update public.paid_leave_requests
+    set status = 'cancelled',
+        reviewed_by = v_actor,
+        reviewed_at = now(),
+        review_note = '勤怠管理から強制更新',
+        updated_at = now()
+    where company_id = v_company_id
+      and worker_id = v_worker_id
+      and leave_date = v_date
+      and status in ('pending','approved');
+
+    if p_action = 'delete' or v_mode = 'off' then
+      v_count := v_count + 1;
+      continue;
+    end if;
+
+    if v_mode = 'paid_leave' then
+      insert into public.paid_leave_requests(
+        batch_id,
+        company_id,
+        worker_id,
+        requested_by,
+        leave_date,
+        reason,
+        status,
+        reviewed_by,
+        reviewed_at,
+        review_note
+      ) values (
+        gen_random_uuid(),
+        v_company_id,
+        v_worker_id,
+        v_actor,
+        v_date,
+        nullif(trim(coalesce(v_item->>'notes','')),''),
+        'approved',
+        v_actor,
+        now(),
+        '勤怠管理から直接登録'
+      );
+      v_count := v_count + 1;
+      continue;
+    end if;
+
+    select dr.id
+    into v_report_id
+    from public.daily_reports dr
+    where dr.company_id = v_company_id
+      and dr.report_date = v_date
+      and dr.site_id = v_site_id
+    limit 1
+    for update;
+
+    if v_report_id is null then
+      insert into public.daily_reports(
+        company_id,
+        site_id,
+        report_date,
+        work_description,
+        status,
+        created_by,
+        updated_by
+      ) values (
+        v_company_id,
+        v_site_id,
+        v_date,
+        nullif(v_work_description,''),
+        'draft',
+        v_actor,
+        v_actor
+      )
+      returning id into v_report_id;
+    else
+      update public.daily_reports
+      set work_description = case
+            when v_work_description = '' then work_description
+            else v_work_description
+          end,
+          status = 'draft',
+          signer_name = null,
+          signature_json = null,
+          signed_at = null,
+          representative_signature_json = null,
+          representative_signer_name = null,
+          supervisor_signature_json = null,
+          supervisor_signer_name = null,
+          updated_by = v_actor,
+          updated_at = now()
+      where id = v_report_id;
+    end if;
+
+    if v_admin_operation is not null then
+      perform attendance_admin_override_private.register_and_revive(v_report_id,v_admin_operation);
+    end if;
+
+    insert into public.daily_report_workers(
+      report_id,
+      worker_id,
+      overtime_hours,
+      early_hours,
+      night_hours,
+      allowance_amount,
+      allowance_label,
+      work_category
+    ) values (
+      v_report_id,
+      v_worker_id,
+      greatest(coalesce((v_item->>'overtime_hours')::numeric,0),0),
+      greatest(coalesce((v_item->>'early_hours')::numeric,0),0),
+      greatest(coalesce((v_item->>'night_hours')::numeric,0),0),
+      0,
+      nullif(array_to_string(
+        array(
+          select jsonb_array_elements_text(
+            coalesce(v_item->'allowance_names','[]'::jsonb)
+          )
+        ),
+        '・'
+      ),''),
+      'day'
+    )
+    on conflict (report_id, worker_id)
+    do update set
+      overtime_hours = excluded.overtime_hours,
+      early_hours = excluded.early_hours,
+      night_hours = excluded.night_hours,
+      allowance_amount = excluded.allowance_amount,
+      allowance_label = excluded.allowance_label,
+      work_category = excluded.work_category;
+
+    insert into public.attendance_entries(
+      company_id,
+      work_date,
+      worker_id,
+      site_id,
+      base_man_days,
+      overtime_hours,
+      early_hours,
+      night_hours,
+      allowance_amount,
+      allowance_names,
+      notes,
+      created_by,
+      updated_by,
+      work_category,
+      source_report_id
+    ) values (
+      v_company_id,
+      v_date,
+      v_worker_id,
+      v_site_id,
+      greatest(coalesce((v_item->>'man_days')::numeric,1),0),
+      greatest(coalesce((v_item->>'overtime_hours')::numeric,0),0),
+      greatest(coalesce((v_item->>'early_hours')::numeric,0),0),
+      greatest(coalesce((v_item->>'night_hours')::numeric,0),0),
+      0,
+      array(
+        select jsonb_array_elements_text(
+          coalesce(v_item->'allowance_names','[]'::jsonb)
+        )
+      ),
+      nullif(trim(coalesce(v_item->>'notes','')),''),
+      v_actor,
+      v_actor,
+      'day',
+      v_report_id
+    );
+
+    v_clock_in := null;
+    v_clock_out := null;
+    if nullif(v_item->>'clock_in','') is not null then
+      v_clock_in := (v_date::text || ' ' || (v_item->>'clock_in'))::timestamp
+        at time zone 'Asia/Tokyo';
+    end if;
+    if nullif(v_item->>'clock_out','') is not null then
+      v_clock_out := (v_date::text || ' ' || (v_item->>'clock_out'))::timestamp
+        at time zone 'Asia/Tokyo';
+    end if;
+
+    -- Times are entered against one work date. An earlier end time is next day.
+    -- Equal times and an end time without a start retain their existing meaning.
+    if v_clock_in is not null and v_clock_out is not null
+       and v_clock_out < v_clock_in then
+      v_clock_out := v_clock_out + interval '1 day';
+    end if;
+
+    if v_clock_in is not null then
+      insert into public.attendance_verifications(
+        company_id,
+        worker_id,
+        site_id,
+        event_type,
+        verification_mode,
+        confirmed_at,
+        proximity_status,
+        note,
+        created_by,
+        daily_report_id
+      ) values (
+        v_company_id,
+        v_worker_id,
+        v_site_id,
+        'clock_in',
+        'manual',
+        v_clock_in,
+        'not_checked',
+        '勤怠管理から直接登録',
+        v_actor,
+        v_report_id
+      );
+    end if;
+
+    if v_clock_out is not null then
+      insert into public.attendance_verifications(
+        company_id,
+        worker_id,
+        site_id,
+        event_type,
+        verification_mode,
+        confirmed_at,
+        proximity_status,
+        note,
+        created_by,
+        daily_report_id
+      ) values (
+        v_company_id,
+        v_worker_id,
+        v_site_id,
+        'clock_out',
+        'manual',
+        v_clock_out,
+        'not_checked',
+        '勤怠管理から直接登録',
+        v_actor,
+        v_report_id
+      );
+    end if;
+
+    v_count := v_count + 1;
+  end loop;
+
+  perform attendance_admin_override_private.finish_batch(v_admin_operation);
+  return v_count;
+end;
+$function$;
+commit;

@@ -196,12 +196,8 @@ jobs:
       - name: Verify Personal Team bundle identifier
         run: grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.skworks.skWorks;' ios/Runner.xcodeproj/project.pbxproj
 
-      - name: Analyze
-        run: flutter analyze
-
-      - name: Test
-        run: flutter test
-
+      # Full Dart analysis/tests run in mandatory Flutter CI via pre_device_release_gate.sh.
+      # This job proves the native Release build and platform/signing contracts.
       - name: Register the official CocoaPods CDN explicitly
         run: |
           set -euo pipefail
@@ -211,9 +207,6 @@ jobs:
           # compatibility checks and subsequent network/build failures remain fatal.
           pod repo add-cdn trunk https://cdn.cocoapods.org/
           pod repo list
-
-      - name: Build iOS debug without codesigning
-        run: flutter build ios --debug --no-codesign
 
       - name: Build iOS release without codesigning
         run: flutter build ios --release --no-codesign

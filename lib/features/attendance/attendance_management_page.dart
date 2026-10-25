@@ -6,6 +6,18 @@ import 'attendance_management_repository.dart';
 import 'attendance_checkout_minute_guard.dart';
 import '../../international/language_controller.dart';
 
+String attendanceManagementActionErrorMessage(Object error) {
+  final raw = error.toString();
+  if (raw.contains('shared_report_roster_requires_approved_edit') ||
+      raw.contains('shared_report_signed_facts_require_approved_edit')) {
+    return 'サイン済み日報に紐づく出勤のため、この画面から削除・変更できません。対象日報のサインを確認してください。';
+  }
+  if (error is StateError || error is FormatException) {
+    return dailyReportActionErrorMessage(error);
+  }
+  return '処理結果を確認できませんでした。通信状態を確認して再読み込みしてください。';
+}
+
 class AttendanceManagementPage extends StatefulWidget {
   const AttendanceManagementPage({super.key, this.repository, this.initialWorkerId,
     this.initialDate, this.restrictedRecovery = false});
@@ -275,7 +287,7 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
       _show('この日の勤怠・有給・日報を直接更新しました');
       await _loadCell();
     } catch (error) {
-      if (mounted) _show('更新できませんでした: $error');
+      if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -303,7 +315,7 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
       _show('この日の勤怠・有給・日報を削除しました');
       await _loadCell();
     } catch (error) {
-      if (mounted) _show('削除できませんでした: $error');
+      if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -456,7 +468,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
       final count = await widget.repository.apply(action: 'delete', workerIds: _workerIds, dates: _dates, mode: 'off');
       if (mounted) _show('$count件を一括削除しました');
     } catch (error) {
-      if (mounted) _show('一括削除できませんでした: $error');
+      if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
