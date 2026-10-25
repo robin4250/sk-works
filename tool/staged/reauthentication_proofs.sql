@@ -25,6 +25,7 @@ revoke all on private.reauthentication_proofs from public,anon,authenticated;
 create function private.reauthentication_scope(p_operation text) returns text
 language sql immutable set search_path='' as $$
  select case p_operation when 'secondary_password.replace' then 'secondary_password'
+  when 'secondary_password.change' then 'secondary_password'
   when 'master.feature.set' then 'master_feature'
   when 'master.security_incidents.read' then 'master_security' end
 $$;
@@ -40,14 +41,39 @@ begin
 end $$;
 revoke all on function private.reauthentication_required(text) from public,anon,authenticated;
 
+-- Sensitive clients must present a live, non-anonymous, non-banned account/session.
+-- JWT validity at the API gateway is not a post-signout guarantee.
+create function private.require_reauthentication_session() returns uuid
+language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();sid uuid;
+begin
+ if actor is null or auth.jwt()->>'role' is distinct from 'authenticated'
+  or coalesce(auth.jwt()->>'is_anonymous','false')<>'false'
+  or not private.account_access_allowed() then
+  raise sqlstate '42501' using message='reauthentication_required';
+ end if;
+ begin sid:=(auth.jwt()->>'session_id')::uuid;
+ exception when invalid_text_representation then raise sqlstate '42501' using message='reauthentication_required';end;
+ if sid is null or not pg_try_advisory_xact_lock_shared(private.account_deletion_barrier_key(actor)) then
+  raise sqlstate '42501' using message='reauthentication_required';end if;
+ perform 1 from auth.users where id=actor and not coalesce(is_anonymous,false)
+  and (banned_until is null or banned_until<=clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='reauthentication_required';end if;
+ perform 1 from auth.sessions where id=sid and user_id=actor
+  and (not_after is null or not_after>clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='reauthentication_required';end if;
+ return sid;
+end $$;
+revoke all on function private.require_reauthentication_session() from public,anon,authenticated,service_role;
+
 create function public.reauthentication_capabilities() returns jsonb
 language plpgsql security definer set search_path='' as $$
 begin
- if auth.uid() is null or not private.account_access_allowed() then
-  raise sqlstate '42501' using message='reauthentication_unavailable';
- end if;
+ perform private.require_reauthentication_session();
  return jsonb_build_object('protocol','sko-reauthentication-v1',
   'secondary_password',private.reauthentication_required('secondary_password'),
+  'secondary_password_change_supported',private.reauthentication_required('secondary_password') and exists(select 1 from public.user_secondary_credentials where user_id=auth.uid()),
+  'secondary_password_recovery_supported',private.reauthentication_required('secondary_password') and exists(select 1 from auth.users where id=auth.uid() and coalesce(encrypted_password,'')<>''),
   'master_feature',private.reauthentication_required('master_feature'),
   'master_security',private.reauthentication_required('master_security'));
 end $$;
@@ -67,12 +93,22 @@ begin
   or not private.reauthentication_required(private.reauthentication_scope(p_operation)) then
   raise sqlstate '42501' using message='reauthentication_unavailable';
  end if;
- if p_operation='secondary_password.replace' and p_target<>jsonb_build_object('user_id',p_actor) then
+ if p_operation in('secondary_password.replace','secondary_password.change') and p_target<>jsonb_build_object('user_id',p_actor) then
   raise sqlstate '42501' using message='reauthentication_unavailable';
  elsif p_operation='master.feature.set' and (
   jsonb_typeof(p_target)<>'object' or p_target<>jsonb_build_object('feature_key',p_target->'feature_key','enabled',p_target->'enabled')
   or coalesce(p_target->>'feature_key','') not in ('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop')
   or coalesce(jsonb_typeof(p_target->'enabled'),'')<>'boolean') then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ elsif p_operation='attendance.manage' and (
+  not private.reauthentication_required('secondary_password') or
+  p_target is null or jsonb_typeof(p_target)<>'object'
+  or p_target<>jsonb_build_object('company_id',p_target->'company_id','action',p_target->'action','items_sha256',p_target->'items_sha256')
+  or coalesce(p_target->>'action','') not in ('upsert','delete')
+  or coalesce(p_target->>'items_sha256','') !~ '^[0-9a-f]{64}$'
+  or (select count(*) from public.company_members where user_id=p_actor)<>1
+  or not exists(select 1 from public.company_members where user_id=p_actor
+   and company_id::text=p_target->>'company_id' and role::text in ('owner','admin','manager'))) then
   raise sqlstate '42501' using message='reauthentication_unavailable';
  elsif p_operation='master.security_incidents.read' and p_target<>'{"scope":"platform"}'::jsonb then
   raise sqlstate '42501' using message='reauthentication_unavailable';
@@ -88,6 +124,9 @@ begin
  if exists(select 1 from private.account_deletion_access_restrictions where user_id=p_actor) then
   raise sqlstate '42501' using message='reauthentication_unavailable';
  end if;
+ perform 1 from auth.users where id=p_actor and not coalesce(is_anonymous,false)
+  and (banned_until is null or banned_until<=clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='reauthentication_unavailable';end if;
  perform 1 from auth.sessions where id=p_session and user_id=p_actor
   and (not_after is null or not_after>clock_timestamp()) for share;
  if not found then raise sqlstate '42501' using message='reauthentication_unavailable'; end if;
@@ -108,6 +147,7 @@ begin
   or not private.reauthentication_required(private.reauthentication_scope(p_operation)) then
   raise sqlstate '42501' using message='reauthentication_required';
  end if;
+ v_session:=private.require_reauthentication_session();
  begin v_session:=(auth.jwt()->>'session_id')::uuid;
  exception when invalid_text_representation then raise sqlstate '42501' using message='reauthentication_required'; end;
  if v_session is null then raise sqlstate '42501' using message='reauthentication_required'; end if;
@@ -147,13 +187,30 @@ end $$;
 revoke all on function public.replace_secondary_password_with_proof(text,text) from public,anon;
 grant execute on function public.replace_secondary_password_with_proof(text,text) to authenticated;
 
+create function public.change_secondary_password_with_proof(p_password text,p_proof text)
+returns void language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();
+begin
+ if actor is null or p_password is null or length(p_password)<8 then
+  raise sqlstate '22023' using message='secondary_password_invalid';
+ end if;
+ perform private.consume_reauthentication_proof('secondary_password.change',jsonb_build_object('user_id',actor),p_proof);
+ perform pg_advisory_xact_lock(hashtextextended('sko-secondary-password:'||actor::text,0));
+ update public.user_secondary_credentials set
+  password_hash=extensions.crypt(p_password,extensions.gen_salt('bf',12)),failed_attempts=0,locked_until=null,updated_at=now()
+ where user_id=actor;
+ if not found then raise sqlstate '42501' using message='secondary_password_not_configured'; end if;
+end $$;
+revoke all on function public.change_secondary_password_with_proof(text,text) from public,anon;
+grant execute on function public.change_secondary_password_with_proof(text,text) to authenticated;
+
 -- Legacy OFF behavior is preserved; ON allows first setup but forbids replacing
 -- an existing credential through the old unproven RPC. No token/GUC bypass.
 create or replace function public.set_secondary_password(p_password text)
 returns void language plpgsql security definer set search_path='' as $$
 declare actor uuid:=auth.uid(); required boolean;
 begin
- if actor is null or not private.account_access_allowed() then raise sqlstate '42501' using message='authentication_required'; end if;
+ perform private.require_reauthentication_session();
  if p_password is null or length(p_password)<8 then raise sqlstate '22023' using message='secondary_password_invalid'; end if;
  required:=private.reauthentication_required('secondary_password');
  perform pg_advisory_xact_lock(hashtextextended('sko-secondary-password:'||actor::text,0));

@@ -21,7 +21,7 @@ try {
  create function auth.uid() returns uuid language sql stable as $$select (auth.jwt()->>'sub')::uuid$$;
  create function auth.role() returns text language sql stable as $$select auth.jwt()->>'role'$$;
  create table auth.sessions(id uuid primary key,user_id uuid not null,not_after timestamptz);
- create table auth.users(id uuid primary key,provider text not null);
+ create table auth.users(id uuid primary key,provider text not null,is_anonymous boolean not null default false,banned_until timestamptz,encrypted_password text);
  create table public.companies(id uuid primary key,name text not null);
  create table public.company_members(company_id uuid not null,user_id uuid not null,role text not null,primary key(company_id,user_id));
  create table private.account_deletion_access_restrictions(user_id uuid primary key);
@@ -41,7 +41,7 @@ try {
  await admin.query(await fs.readFile(new URL('../../supabase/tests/fixtures/reauthentication_master_before.sql',import.meta.url),'utf8'));
  await admin.query('insert into auth.sessions values($1,$4,null),($2,$4,null),($3,$5,null)',[sa,sa2,sb,a,b]);
  await admin.query('insert into private.master_admins values($1,true)',[a]);
- await admin.query("insert into auth.users values($1,'phone'),($2,'phone'),('10000000-0000-0000-0000-000000000003','apple'),('10000000-0000-0000-0000-000000000004','google')",[a,b]);
+ await admin.query("insert into auth.users(id,provider) values($1,'phone'),($2,'phone'),('10000000-0000-0000-0000-000000000003','apple'),('10000000-0000-0000-0000-000000000004','google')",[a,b]);
  await admin.query("insert into public.companies values('30000000-0000-0000-0000-000000000001','synthetic company')");
  await admin.query(`insert into public.company_members values('30000000-0000-0000-0000-000000000001',$1,'owner'),('30000000-0000-0000-0000-000000000001',$2,'admin'),('30000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000003','manager'),('30000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000004','viewer')`,[a,b]);
  await admin.query('revoke all on function public.set_secondary_password(text),public.set_master_feature_enabled(text,boolean) from public,anon;grant execute on function public.set_secondary_password(text),public.set_master_feature_enabled(text,boolean) to authenticated,service_role');
@@ -50,6 +50,7 @@ try {
   'companies',(select jsonb_agg(to_jsonb(c) order by id) from public.companies c),
   'members',(select jsonb_agg(to_jsonb(m) order by company_id,user_id) from public.company_members m),
   'masters',(select jsonb_agg(to_jsonb(m) order by user_id) from private.master_admins m)) snapshot`)).rows[0].snapshot;
+ await admin.query("update auth.users set encrypted_password='synthetic-primary-hash-marker' where id=$1",[a]);
  const originalIdentity=await identitySnapshot();
  const legacyDefinitions=(await admin.query(`select p.proname,pg_get_functiondef(p.oid) definition,p.proacl::text acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('set_secondary_password','set_master_feature_enabled') order by p.proname`)).rows;
  await admin.query(await fs.readFile(new URL('../staged/reauthentication_proofs.sql',import.meta.url),'utf8'));
@@ -64,6 +65,25 @@ try {
  }
  const replace=(c,proof,password='synthetic-new-password')=>c.query('select public.replace_secondary_password_with_proof($1,$2)',[password,proof]);
  const feature=(proof,enabled)=>user.query('select public.set_master_feature_enabled_with_proof($1,$2,$3)',['route_assignment',enabled,proof]);
+ // OFF compatibility is limited to an actual current authenticated session.
+ const boundary=await connection();
+ for(const claims of [
+  {sub:a,role:'authenticated'},
+  {sub:a,role:'authenticated',session_id:sb},
+  {sub:a,role:'authenticated',session_id:'bad'},
+  {sub:a,role:'anon',session_id:sa},
+  {sub:a,role:'authenticated',session_id:sa,is_anonymous:true},
+ ]){
+  await boundary.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify(claims)]);await boundary.query('set role authenticated');
+  await deny(boundary.query('select public.reauthentication_capabilities()'));
+  await deny(boundary.query("select public.set_secondary_password('synthetic-refused')"));
+  await boundary.query('reset role');
+ }
+ await admin.query('update auth.users set is_anonymous=true where id=$1',[a]);
+ await deny(user.query('select public.reauthentication_capabilities()'));
+ await admin.query("update auth.users set is_anonymous=false,banned_until=clock_timestamp()+interval '1 hour' where id=$1",[a]);
+ await deny(user.query('select public.reauthentication_capabilities()'));
+ await admin.query('update auth.users set banned_until=null where id=$1',[a]);
  // OFF preserves current callers; new issue/consume cannot be used accidentally.
  await user.query("select public.set_secondary_password('synthetic-initial-password')");
  await user.query("select public.set_secondary_password('synthetic-off-compatible')");
@@ -77,6 +97,19 @@ try {
  const normalAdminProof=await issue('secondary_password.replace',{user_id:b},b,sb);
  await replace(other,normalAdminProof,'synthetic-normal-admin-recovery');
  await deny(user.query('select public.issue_reauthentication_proof($1,$2,$3,$4,$5)',[a,sa,'secondary_password.replace',JSON.stringify(target),hash('synthetic') ]));
+ // Google-only users keep their identity and known-secondary path; forgotten
+ // secondary recovery is explicitly unavailable rather than legacy fallback.
+ const google=await connection(),g='10000000-0000-0000-0000-000000000004',gs='20000000-0000-0000-0000-000000000004';
+ await admin.query('insert into auth.sessions values($1,$2,null)',[gs,g]);await actor(google,g,gs);
+ await google.query("select public.set_secondary_password('synthetic-google-first-secondary')");
+ let caps=(await google.query('select public.reauthentication_capabilities() value')).rows[0].value;
+ assert.equal(caps.secondary_password_recovery_supported,false);assert.equal(caps.secondary_password_change_supported,true);
+ assert.equal((await user.query('select public.reauthentication_capabilities() value')).rows[0].value.secondary_password_recovery_supported,true);
+ await deny(google.query("select public.set_secondary_password('synthetic-google-old-bypass')"));
+ const change=await issue('secondary_password.change',{user_id:g},g,gs);
+ await google.query('select public.change_secondary_password_with_proof($1,$2)',['synthetic-google-changed-secondary',change]);
+ await deny(google.query('select public.change_secondary_password_with_proof($1,$2)',['synthetic-google-replay',change]));
+ assert.equal((await admin.query("select provider='google' and encrypted_password is null ok from auth.users where id=$1",[g])).rows[0].ok,true);
  const proof=await issue();
  await deny(replace(other,proof));await deny(replace(secondSession,proof));
  await deny(feature(proof,true));
@@ -136,8 +169,8 @@ try {
  // only this lane's new objects. This is not a production rollback script.
  await admin.query('begin');
  for(const original of legacyDefinitions)await admin.query(original.definition);
- await admin.query(`drop function public.replace_secondary_password_with_proof(text,text),public.set_master_feature_enabled_with_proof(text,boolean,text),public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text),public.reauthentication_capabilities();
- drop function private.consume_reauthentication_proof(text,jsonb,text),private.reauthentication_required(text),private.reauthentication_scope(text);
+ await admin.query(`drop function public.change_secondary_password_with_proof(text,text),public.replace_secondary_password_with_proof(text,text),public.set_master_feature_enabled_with_proof(text,boolean,text),public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text),public.reauthentication_capabilities();
+ drop function private.consume_reauthentication_proof(text,jsonb,text),private.require_reauthentication_session(),private.reauthentication_required(text),private.reauthentication_scope(text);
  drop table private.reauthentication_proofs,private.reauthentication_rollout;`);
  await admin.query('commit');
  const restored=(await admin.query(`select p.proname,pg_get_functiondef(p.oid) definition,p.proacl::text acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('set_secondary_password','set_master_feature_enabled') order by p.proname`)).rows;
