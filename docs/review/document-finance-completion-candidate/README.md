@@ -1,6 +1,6 @@
 # Financial readiness and explicit document-to-financial re-signing
 
-REVIEW ONLY. DEFAULT OFF. NOT DEPLOYED. NATIVE EXECUTION PENDING.
+REVIEW ONLY. DEFAULT OFF. NOT DEPLOYED. Readiness71 and explicit re-signing86 Native checks passed at 74625c1b1a8f548419e622fa32dfc6b2c90ddcd2 / run40231886886 (jobs121285176600/121285176727). Subsequent proof-only changes add explicit salary day-count assertions; see the latest PR check. Product SQL is unchanged since b3a7fe71 terminator repair.
 
 These candidates do not make six displayed clock-in days into six paid days. They do not invent a missing report, its work, a category, money, a confirmation or a signature. No production write was performed while preparing them.
 
@@ -49,7 +49,7 @@ Correcting only this one report would create that report's real financial source
 
 Completed locally: source pin capture using read-only catalog queries; Node syntax checks of both loaders and their generated focused proofs. No local Flutter/Dart, local PG execution, GitHub mutation, production DDL/DML, actual employee deletion or fake real signature.
 
-Pending: dedicated PostgreSQL17 workflow. The readiness proof tests OFF/invariance, real synthetic signatures, missing category/registration/confirmation/open-source holds, foreign/session privacy and an exact valid diagnosis that still cannot write. The transition proof includes actual observed clear triggers, default OFF, signed-document refusal, history-protected reset, explicit invalid-input/source/CAS holds, manager confirmation, epoch transition, fresh real re-signing, actual existing finalizer/attendance/ledger and retry invariance. The authentication/invoice producer surroundings inherited from the reviewed admin harness remain explicitly synthetic; invoice refresh body is actual, full invoice producer is neutral. Do not claim real production payroll/invoice totals were verified here.
+Executed successfully: dedicated PostgreSQL17 workflow; additional explicit salary day-count assertions are in the current proof revision. The readiness proof tests OFF/invariance, real synthetic signatures, missing category/registration/confirmation/open-source holds, foreign/session privacy and an exact valid diagnosis that still cannot write. The transition proof includes actual observed clear triggers, default OFF, signed-document refusal, history-protected reset, explicit invalid-input/source/CAS holds, manager confirmation, epoch transition, fresh real re-signing, actual existing finalizer/attendance/ledger and retry invariance. The authentication/invoice producer surroundings inherited from the reviewed admin harness remain explicitly synthetic; invoice refresh body is actual, full invoice producer is neutral. Do not claim real production payroll/invoice totals were verified here.
 
 Parent review and CI are required before any production rollout. Existing successful 91/96/255/331 broad suites are not replayed; loaders reuse only their installers.
 

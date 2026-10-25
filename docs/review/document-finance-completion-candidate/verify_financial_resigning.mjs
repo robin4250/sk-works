@@ -100,6 +100,8 @@ try{
  eq(await q('select representative_signature_json v from daily_reports where id=$1',[rid]),reporter,'Identical staged materialization does not trigger signature clearing');
  eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[rid]),2,'Exactly one formal attendance entry per actual roster member');
  eq(await q('select count(*)::int v from checkout_shared_hours_private.ledger where report_id=$1',[rid]),2,'Existing v2 writer creates actual confirmation-bound ledgers');
+ eq(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,reportWorker]),'1','Existing salary projection counts the explicitly repaired monthly worker day once');
+ eq(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,W2]),'1','Existing salary projection counts the other roster member day once');
  const completeBefore=await snapshot();
  context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,'supervisor','新たな実責任者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
