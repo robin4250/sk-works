@@ -44,6 +44,16 @@ Future<String?> _requestManagementPassword(BuildContext context) async {
 
 String attendanceManagementActionErrorMessage(Object error) {
   final raw = error.toString();
+  if (raw.contains('reauthentication_failed')) {
+    return '第2パスワードを確認してください。繰り返し失敗した場合は、5分以上おいてからやり直してください。';
+  }
+  if (raw.contains('reauthentication_required')) {
+    return '第二認証の有効期限が切れたか、操作内容が変わりました。内容を確認して、もう一度認証してください。';
+  }
+  if (raw.contains('reauthentication_unavailable') || raw.contains('reauthentication_disabled')) {
+    return '第二認証を利用できません。ログイン状態と通信を確認して、再読み込みしてください。';
+  }
+
   if (raw.contains('shared_report_roster_requires_approved_edit') ||
       raw.contains('shared_report_signed_facts_require_approved_edit')) {
     return 'サイン済み日報に紐づく出勤のため、この画面から削除・変更できません。対象日報のサインを確認してください。';
@@ -496,7 +506,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
       if (mounted) _show('$count件を管理者登録として保存しました');
     } catch (error) {
       if (_managementVerificationCancelled(error)) return;
-      if (mounted) _show('一括更新できませんでした: $error');
+      if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
