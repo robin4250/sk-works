@@ -30,11 +30,13 @@ class LoginMethodEnrollmentState {
   const LoginMethodEnrollmentState({required this.email, required this.phone,
     required this.emailConfirmed, required this.phoneConfirmed,
     required this.emailAvailable, required this.phoneAvailable,
-    this.phoneConfirmationPending = false, this.primaryPasswordCodeRequired = false,
+    this.phoneConfirmationPending = false, this.phoneRegistrationReady = false,
+    this.primaryPasswordCodeRequired = false,
     this.primaryPasswordCodeSent = false});
   final String email, phone;
   final bool emailConfirmed, phoneConfirmed, emailAvailable, phoneAvailable;
-  final bool phoneConfirmationPending, primaryPasswordCodeRequired, primaryPasswordCodeSent;
+  final bool phoneConfirmationPending, phoneRegistrationReady, primaryPasswordCodeRequired, primaryPasswordCodeSent;
+  bool get canRegisterPhone => phoneRegistrationReady && phoneAvailable;
   bool get canSetPassword =>
       (emailAvailable && emailConfirmed && email.isNotEmpty) ||
       (phoneAvailable && phoneConfirmed && phone.isNotEmpty);
@@ -55,8 +57,9 @@ abstract interface class LoginMethodEnrollmentSource {
 /// password recovery, identity unlinking or secondary-password RPC is used.
 class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
   LoginMethodEnrollmentRepository(this.client, {required this.authUrl,
-    required this.publicKey, http.Client? transport})
+    required this.publicKey, http.Client? transport, bool enablePhoneEnrollment = false})
       : _http = transport ?? http.Client(), _ownsHttp = transport == null,
+        _phoneEnrollmentEnabled = enablePhoneEnrollment,
         _actorAtCreation = client.auth.currentUser?.id {
     _lifetime = client.auth.onAuthStateChange.listen((event) {
       if (event.event == AuthChangeEvent.signedOut ||
@@ -70,6 +73,9 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
   final Uri authUrl;
   final String publicKey;
   final http.Client _http;
+  // New phone enrollment stays OFF until real SMS delivery is operationally released.
+  // Provider advertised as enabled alone is not proof that OTP delivery works.
+  final bool _phoneEnrollmentEnabled;
   final bool _ownsHttp;
   final String? _actorAtCreation;
   late final StreamSubscription<AuthState> _lifetime;
@@ -176,6 +182,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
       phoneConfirmed: json['phone_confirmed_at'] != null,
       emailAvailable: external['email'] == true, phoneAvailable: external['phone'] == true,
       phoneConfirmationPending: _pendingActor == user.id && _pendingPhone != null,
+      phoneRegistrationReady: _phoneEnrollmentEnabled,
       primaryPasswordCodeRequired: _passwordChallengeNeeded, primaryPasswordCodeSent: _passwordCodeRequested);
   }
 
@@ -224,6 +231,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
 
   @override
   Future<void> requestPhone(String phone) => _bound((token, user, check) async {
+    if (!_phoneEnrollmentEnabled) throw StateError('電話番号の新規登録は準備中です。');
     if (!JapanPhoneRules.isSupportedMobile(phone)) throw StateError('携帯電話番号を確認してください。');
     final state = await _state(token, user, check);
     if (!state.phoneAvailable) throw StateError('電話番号ログインは現在準備中です。');
@@ -239,6 +247,7 @@ class LoginMethodEnrollmentRepository implements LoginMethodEnrollmentSource {
 
   @override
   Future<void> confirmPhone(String code) => _bound((token, user, check) async {
+    if (!_phoneEnrollmentEnabled) throw StateError('電話番号の新規登録は準備中です。');
     final phone = _pendingPhone;
     if (_pendingActor != user.id || phone == null || !RegExp(r'^\d{6}$').hasMatch(code.trim())) {
       throw StateError('SMSの6桁コードを確認してください。');
