@@ -65,6 +65,13 @@ class CheckoutNativeReminderCoordinator {
   static Future<void> _deviceQueue = Future<void>.value();
   static CheckoutNativeReminderCoordinator? _owner;
 
+  /// Saved settings/clockout hooks can refresh the authenticated shell's plan.
+  /// Never invoke from the gate read callback itself.
+  static Future<void> refreshCurrent() async {
+    final owner = _owner;
+    if (owner != null) await owner.refresh();
+  }
+
   Future<void> _serial(Future<void> Function() action) {
     final task = _deviceQueue.then((_) => action());
     _deviceQueue = task.then<void>((_) {}, onError: (Object _, StackTrace __) {});
