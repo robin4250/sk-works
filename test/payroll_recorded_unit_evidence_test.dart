@@ -2,10 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/payroll/payroll_recorded_unit_evidence.dart';
 
 Map<String, dynamic> detail() => {
-  'unit_resolution': {
+  'unit_resolution': <String, dynamic>{
     'contract_version': 1, 'blocked': false,
-    'items': [
-      {'id': 'saved-hour', 'name': '時間手当', 'section': 'earning',
+    'items': <Map<String, dynamic>>[
+      <String, dynamic>{'id': 'saved-hour', 'name': '時間手当', 'section': 'earning',
        'unit': 'hour', 'quantity': 7.25, 'rate_yen': 1000, 'amount_yen': 7250},
     ],
   },
