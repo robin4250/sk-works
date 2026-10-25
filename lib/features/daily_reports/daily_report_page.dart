@@ -239,14 +239,22 @@ class _DailyReportPageState extends State<DailyReportPage> {
     // Saved report rows do not carry clock-in IDs. A verified shared-source
     // response supplies that binding independently of optional group checkout.
     // Never assign a guessed source ID or change the saved/signed roster.
-    final header = shared?.workBasis?['report'];
-    return shared != null && shared.enabled &&
-        shared.actorId == widget.registrationActorId &&
-        shared.actorId == _repository?.currentActorId &&
-        shared.companyId == widget.registrationCompanyId &&
-        shared.workerId == workerId && shared.sourceClockInId == source &&
-        shared.clockOutId != null && reportId != null && shared.reportId == reportId &&
-        shared.workDate == DateTime(_date.year, _date.month, _date.day) &&
+    if (shared == null || !shared.enabled ||
+        shared.actorId != widget.registrationActorId ||
+        shared.actorId != _repository?.currentActorId ||
+        shared.companyId != widget.registrationCompanyId ||
+        shared.workerId != workerId || shared.sourceClockInId != source ||
+        shared.workDate != DateTime(_date.year, _date.month, _date.day)) { return false; }
+    // resolve_own emits report_missing only after checking the unique exact
+    // clock-out pair. That response intentionally has no report/clock-out ID.
+    // The immutable destination came from the authoritative pending target.
+    if (reportId == null) {
+      return widget.initialReportId == null && shared.reportId == null &&
+          shared.state == 'report_missing' && _siteId == widget.initialSiteId &&
+          _routeAssignmentId == widget.initialRouteAssignmentId;
+    }
+    final header = shared.workBasis?['report'];
+    return shared.clockOutId != null && shared.reportId == reportId &&
         const {'reporter_required', 'reporter_saved_waiting_supervisor',
           'supervisor_saved'}.contains(shared.state) &&
         shared.workRosterIds.contains(workerId) && header is Map &&
@@ -361,7 +369,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
-        _error = error.toString();
+        _error = dailyReportActionErrorMessage(error);
       });
     }
   }
@@ -561,7 +569,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
-        _error = error.toString();
+        _error = dailyReportActionErrorMessage(error);
       });
     }
   }
