@@ -46,19 +46,34 @@ void main(){
   await expectLater(GpsWorkScheduleSelection.load(repository:repo,siteId:site),throwsStateError);
  });
  testWidgets('editing the popup preserves saved revision and both values',(tester)async{
-  final repo=Repo([cfg()]);addTearDown(repo.client.dispose);
-  final loaded=await GpsWorkScheduleSelection.load(repository:repo,siteId:site);
-  GpsWorkScheduleSelection? edited;
-  await tester.pumpWidget(MaterialApp(home:Builder(builder:(context)=>Scaffold(body:TextButton(
-   onPressed:()async{edited=await loaded.choose(context);},child:const Text('edit'))))));
-  await tester.tap(find.text('edit'));await tester.pumpAndSettle();expect(find.text('06:00（翌日）'),findsOneWidget);
-  await tester.tap(find.text('保存'));await tester.pumpAndSettle();expect(edited?.expectedRevision,7);expect(edited?.draft.checkoutDatabase,'06:00:00');
+  late Repo repo;
+  final loaded=(await tester.runAsync(()async{
+   repo=Repo([cfg()]);return GpsWorkScheduleSelection.load(repository:repo,siteId:site);
+  }))!;
+  try{
+   GpsWorkScheduleSelection? edited;
+   await tester.pumpWidget(MaterialApp(home:Builder(builder:(context)=>Scaffold(body:TextButton(
+    onPressed:()async{edited=await loaded.choose(context);},child:const Text('edit'))))));
+   await tester.tap(find.text('edit'));await tester.pumpAndSettle();expect(find.text('06:00（翌日）'),findsOneWidget);
+   await tester.tap(find.text('保存'));await tester.pumpAndSettle();expect(edited?.expectedRevision,7);expect(edited?.draft.checkoutDatabase,'06:00:00');
+  }finally{
+   await tester.pumpWidget(const SizedBox());
+   await tester.runAsync(()async{await repo.client.dispose();});
+  }
  });
  testWidgets('missing destination fails before requesting any device permission',(tester)async{
-  final repo=Repo([cfg()]);addTearDown(repo.client.dispose);
-  final loaded=await GpsWorkScheduleSelection.load(repository:repo,siteId:site);
-  late BuildContext context;
-  await tester.pumpWidget(MaterialApp(home:Builder(builder:(c){context=c;return const Scaffold();})));
-  await expectLater(loaded.save(context),throwsStateError);
+  late Repo repo;
+  final loaded=(await tester.runAsync(()async{
+   repo=Repo([cfg()]);return GpsWorkScheduleSelection.load(repository:repo,siteId:site);
+  }))!;
+  try{
+   late BuildContext context;
+   await tester.pumpWidget(MaterialApp(home:Builder(builder:(c){context=c;return const Scaffold();})));
+   await expectLater(loaded.save(context),throwsStateError);
+  }finally{
+   await tester.pumpWidget(const SizedBox());
+   await tester.runAsync(()async{await repo.client.dispose();});
+  }
  });
+
 }
