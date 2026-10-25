@@ -83,10 +83,31 @@ void main() {
       authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: network);
     await client.auth.setInitialSession(session(actor));
     repository = LoginMethodEnrollmentRepository(client,
-      authUrl: Uri.parse('https://enroll.invalid/auth/v1/'), publicKey: 'synthetic-public', transport: network);
+      authUrl: Uri.parse('https://enroll.invalid/auth/v1/'), publicKey: 'synthetic-public',
+      transport: network, enablePhoneEnrollment: true);
   });
   tearDown(() async { repository.dispose(); await client.dispose(); network.close(); });
 
+  test('default paused phone registration refuses SMS writes even when provider advertises enabled', () async {
+    repository.dispose();
+    repository=LoginMethodEnrollmentRepository(client,
+      authUrl:Uri.parse('https://enroll.invalid/auth/v1/'),publicKey:'synthetic-public',transport:network);
+    phoneEnabled=true;
+    final original=client.auth.currentSession!.accessToken;
+    final state=await repository.load();
+    expect(state.phoneAvailable,true);expect(state.phoneRegistrationReady,false);
+    expect(state.canRegisterPhone,false);expect(state.canSetPassword,true);
+    await expectLater(repository.requestPhone('09012345678'),throwsStateError);
+    await expectLater(repository.confirmPhone('123456'),throwsStateError);
+    expect(requests.every((r)=>r.method=='GET'),true);
+    expect(client.auth.currentSession!.accessToken,original);
+    expect(client.auth.currentUser!.id,actor);
+  });
+  test('existing confirmed phone can still qualify password setup while registration is paused', () {
+    const state=LoginMethodEnrollmentState(email:'',phone:'819012345678',
+      emailConfirmed:false,phoneConfirmed:true,emailAvailable:false,phoneAvailable:true);
+    expect(state.canRegisterPhone,false);expect(state.canSetPassword,true);
+  });
   test('server-confirmed email enables primary password; unavailable phone stays unavailable', () async {
     final state = await repository.load();
     expect(state.canSetPassword, true);

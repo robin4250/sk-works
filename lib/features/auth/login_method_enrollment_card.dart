@@ -104,6 +104,7 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
   }
 
   Future<void> _phone() async {
+    if (_state?.canRegisterPhone != true || _busy) return;
     final value = await _input('電話番号を登録', '携帯電話番号',
       keyboard: TextInputType.phone,
       explanation: '入力した番号へSMSの確認コードを送ります。番号の確認後、第一パスワードと組み合わせてログインできます。');
@@ -113,6 +114,7 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
   }
 
   Future<void> _confirmPhone() async {
+    if (_state?.canRegisterPhone != true || _busy) return;
     final value = await _input('SMSコードを確認', '6桁の確認コード', keyboard: TextInputType.number);
     if (value == null || !mounted) return;
     await _run(() => _source!.confirmPhone(value), '電話番号の所有確認と登録を確認しました。');
@@ -151,17 +153,17 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
             }, '登録済みの連絡先へ確認コードを送信しました。第一パスワードをもう一度入力して保存してください。');
           }, child: const Text('第一パスワードの確認コードを送信')),
           if (!state.canSetPassword) const Text('先に利用可能なメール・電話番号の確認を完了してください。'),
-          OutlinedButton(onPressed: _busy || !state.phoneAvailable || state.phoneConfirmed || _awaitingPhone ? null : _phone,
-            child: const Text('電話番号を登録')),
+          OutlinedButton(onPressed: _busy || !state.canRegisterPhone || state.phoneConfirmed || _awaitingPhone ? null : _phone,
+            child: Text(state.canRegisterPhone ? '電話番号を登録' : '電話番号登録（準備中）')),
           if (state.phoneConfirmed) const Text('電話番号は登録確認済みです。'),
           if (!state.phoneConfirmed && !_awaitingPhone && state.phone.isEmpty)
             const Text('電話番号は未登録です。'),
           if (!state.phoneConfirmed && !_awaitingPhone && state.phone.isNotEmpty)
             const Text('電話番号の登録確認は未完了です。'),
           if (_awaitingPhone) const Text('電話番号はSMSの確認待ちです。'),
-          if (!state.phoneAvailable) const Text('電話番号ログインは提供準備中です。現在はSMSを送信できません。'),
+          if (!state.canRegisterPhone) const Text('電話番号の新規登録は準備中です。SMS認証の準備が完了するまで、新しい電話番号は登録できません。'),
           if (_awaitingPhone) ...[
-            FilledButton(onPressed: _busy ? null : _confirmPhone, child: const Text('SMSコードを入力')),
+            FilledButton(onPressed: _busy || !state.canRegisterPhone ? null : _confirmPhone, child: const Text('SMSコードを入力')),
             TextButton(onPressed: _busy ? null : () {
               _source?.cancelPhone();
               setState(() { _awaitingPhone = false; _message = 'SMS確認を中止しました。電話番号は未確認のままです。'; });
@@ -177,6 +179,8 @@ class _LoginMethodEnrollmentCardState extends State<LoginMethodEnrollmentCard> {
         const ExpansionTile(title: Text('？ 登録状況の見方'), children: [
           Padding(padding: EdgeInsets.all(8), child: Text(
             '電話番号の登録状況と、SMSを送れる提供状態は別です。'
+            '新規登録はSMS認証の準備が完了するまで利用できません。'
+            '連絡先として保存した電話番号だけでは、ログイン用の番号所有確認にはなりません。'
             'SMS送信後はコードの確認が完了するまで登録確認済みになりません。'
             '電話番号が未登録でも、利用可能な確認済みメールがあれば第一パスワードを設定できます。'
             '取得に失敗した場合は登録状況を推測せず、再読み込みしてください。'
