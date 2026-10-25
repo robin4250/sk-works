@@ -1,0 +1,661 @@
+-- REVIEW ONLY. Default OFF, no activation or employee changes.
+-- Install after the audited attendance override. Does not change signature/normal financial writers.
+begin;
+do $pins$ begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.force_manage_attendance(text,jsonb)') and md5(prosrc)='0e5cee91af53cc09e212e620394785f6' and pg_get_userbyid(proowner)='postgres' and prosecdef) then raise exception 'management_allowance_force_source_mismatch';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('attendance_admin_override_private.permit_roster(text,jsonb,jsonb)') and md5(prosrc)='e77df23eee8e665c428923d9c12b27ea') then raise exception 'management_allowance_roster_source_mismatch';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('company_checkout_allowance_private.registered_item(uuid,uuid,jsonb)') and md5(prosrc)='8522fba99b37015028f92e2560b026d1') then raise exception 'management_allowance_registry_source_mismatch';end if;
+end $pins$;
+create schema management_registered_allowance_private;
+revoke all on schema management_registered_allowance_private from public,anon,authenticated,service_role;
+create table management_registered_allowance_private.rollout(company_id uuid primary key references public.companies(id),enabled boolean not null default false);
+alter table management_registered_allowance_private.rollout enable row level security;
+revoke all on management_registered_allowance_private.rollout from public,anon,authenticated,service_role;
+create function management_registered_allowance_private.enabled(cid uuid) returns boolean language sql stable security definer set search_path='' as $$
+ select attendance_admin_override_private.enabled(cid) and exists(select 1 from management_registered_allowance_private.rollout where company_id=cid and enabled)
+$$;
+create function management_registered_allowance_private.check_payload(cid uuid,action_name text,items jsonb) returns void language plpgsql stable security definer set search_path='' as $$
+declare x jsonb;
+begin
+ for x in select value from jsonb_array_elements(items) loop
+  if x?'company_allowance_selections' or x?'company_allowance_legacy_labels' then
+   if not management_registered_allowance_private.enabled(cid) then raise sqlstate '42501' using message='management_registered_allowances_disabled';end if;
+   if action_name<>'upsert' or coalesce(x->>'mode','work')<>'work' then raise sqlstate '22023' using message='management_allowances_require_work';end if;
+   if x?'company_allowance_selections' and (x->'company_allowance_selections'='null'::jsonb or jsonb_typeof(x->'company_allowance_selections') is distinct from 'object') then raise sqlstate '22023' using message='management_allowances_use_explicit_empty_selection';end if;
+   if x?'company_allowance_legacy_labels' and jsonb_typeof(x->'company_allowance_legacy_labels') not in('string','null') then raise sqlstate '22023' using message='management_allowance_legacy_text_invalid';end if;
+  end if;
+ end loop;
+end $$;
+
+-- A plan is derived from the private BEFORE audit, never from caller-supplied old snapshots.
+create function management_registered_allowance_private.plan(cid uuid,wid uuid,day_value date,site_value uuid,item jsonb) returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare context jsonb;old_worker jsonb;old_report jsonb;old_entry jsonb;old_count integer;choices jsonb;legacy text;label text;
+ selected_names text[];free_names text[];names text[];prior_receipt uuid;changed boolean;
+begin
+ if not management_registered_allowance_private.enabled(cid) then return null;end if;
+ context:=attendance_admin_override_private.current_context();
+ if context is null or context->>'company_id'<>cid::text or context->>'action'<>'upsert'
+ or not exists(select 1 from jsonb_array_elements(context->'items') x where x=item and x->>'worker_id'=wid::text and x->>'date'=day_value::text and x->>'site_id'=site_value::text) then raise sqlstate '42501' using message='management_allowance_exact_operation_required';end if;
+ select count(*) into old_count from attendance_admin_override_private.operations o,
+ lateral jsonb_array_elements(o.before_state->'reports') d,lateral jsonb_array_elements(d->'roster') w
+ where o.id=(context->>'operation_id')::uuid and d#>>'{report,company_id}'=cid::text and d#>>'{report,site_id}'=site_value::text and d#>>'{report,report_date}'=day_value::text and w->>'worker_id'=wid::text;
+ if old_count>1 then raise sqlstate '55000' using message='management_allowance_ambiguous_previous_report';end if;
+ select d->'report',w into old_report,old_worker from attendance_admin_override_private.operations o,
+ lateral jsonb_array_elements(o.before_state->'reports') d,lateral jsonb_array_elements(d->'roster') w
+ where o.id=(context->>'operation_id')::uuid and d#>>'{report,company_id}'=cid::text and d#>>'{report,site_id}'=site_value::text and d#>>'{report,report_date}'=day_value::text and w->>'worker_id'=wid::text;
+ if old_worker is not null then
+  select a into old_entry from attendance_admin_override_private.operations o,
+   lateral jsonb_array_elements(o.before_state->'reports') d,lateral jsonb_array_elements(d->'linked_entries') a
+   where o.id=(context->>'operation_id')::uuid and d#>>'{report,id}'=old_report->>'id' and a->>'worker_id'=wid::text
+    and a->>'company_id'=cid::text and a->>'work_date'=day_value::text and a->>'company_allowance_receipt_id' is not null limit 1;
+  prior_receipt:=nullif(old_entry->>'company_allowance_receipt_id','')::uuid;
+ end if;
+ choices:=nullif(old_worker->'company_allowance_selections','null'::jsonb);
+ if item?'company_allowance_selections' then choices:=item->'company_allowance_selections';end if;
+ changed:=choices is distinct from nullif(old_worker->'company_allowance_selections','null'::jsonb);
+ if changed and not item?'company_allowance_legacy_labels' then raise sqlstate '22023' using message='management_allowance_explicit_legacy_labels_required';end if;
+ if changed then choices:=company_checkout_allowance_private.normalize_choices(cid,wid,choices);prior_receipt:=null;end if;
+ if choices is not null and (choices->>'contract_version' is distinct from '1' or jsonb_typeof(choices->'items') is distinct from 'array') then raise sqlstate '55000' using message='management_allowance_previous_selection_invalid';end if;
+ if item?'company_allowance_legacy_labels' then legacy:=item->>'company_allowance_legacy_labels';
+ elsif old_worker is not null and (choices is not null or old_worker->>'company_allowance_legacy_labels' is not null) then legacy:=old_worker->>'company_allowance_legacy_labels';
+ else select string_agg(value,E'\n') into legacy from jsonb_array_elements_text(coalesce(item->'allowance_names','[]'::jsonb));end if;
+ if length(coalesce(legacy,''))>1048576 then raise sqlstate '22023' using message='management_allowance_legacy_text_exceeds_range';end if;
+ if choices is null then
+  if prior_receipt is not null then raise sqlstate '55000' using message='management_allowance_receipt_without_selection_requires_review';end if;
+  if item?'company_allowance_legacy_labels' or legacy is not null then
+   select coalesce(array_agg(distinct btrim(x) order by btrim(x)) filter(where btrim(x)<>''),'{}') into names from unnest(string_to_array(coalesce(legacy,''),E'\n')) x;
+   label:=nullif(array_to_string(names,E'\n'),'');
+  else
+   select array_agg(value) into names from jsonb_array_elements_text(coalesce(item->'allowance_names','[]'::jsonb));
+   label:=nullif(array_to_string(names,'・'),'');legacy:=null;
+  end if;
+ else
+  select coalesce(array_agg(x->>'name_snapshot' order by ord),'{}') into selected_names from jsonb_array_elements(choices->'items') with ordinality t(x,ord);
+  select coalesce(array_agg(distinct btrim(x) order by btrim(x)) filter(where btrim(x)<>''),'{}') into free_names from unnest(string_to_array(coalesce(legacy,''),E'\n')) x;
+  select coalesce(array_agg(distinct x order by x),'{}') into names from unnest(selected_names||free_names) x;
+  if not changed and not item?'company_allowance_legacy_labels' and old_worker is not null then label:=old_worker->>'allowance_label';
+  else label:=nullif(array_to_string(names,E'\n'),'');end if;
+  if changed or prior_receipt is null then
+   perform company_checkout_allowance_private.validate_labels(cid,wid,label,choices,legacy);
+  end if;
+ end if;
+ return jsonb_build_object('choices',choices,'legacy_labels',legacy,'label',label,'names',coalesce(to_jsonb(names),'[]'::jsonb),
+  'prior_receipt_id',prior_receipt,'prior_report_id',old_report->>'id','changed',changed);
+end $$;
+
+create function management_registered_allowance_private.matches(rid uuid,wid uuid,target jsonb,item jsonb) returns boolean language plpgsql stable security definer set search_path='' as $$
+declare r public.daily_reports%rowtype;p jsonb;
+begin
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null or not management_registered_allowance_private.enabled(r.company_id) then return false;end if;
+ p:=management_registered_allowance_private.plan(r.company_id,wid,r.report_date,r.site_id,item);
+ return target->'company_allowance_selections' is not distinct from coalesce(p->'choices','null'::jsonb)
+  and target->'company_allowance_legacy_labels' is not distinct from coalesce(p->'legacy_labels','null'::jsonb)
+  and target->'allowance_label' is not distinct from coalesce(p->'label','null'::jsonb);
+end $$;
+
+-- This is an actual administrative authorization receipt, explicitly NOT a handwritten-signature receipt.
+-- Existing capture_report retains its both-real-signatures requirement unchanged.
+create function management_registered_allowance_private.capture(rid uuid,wid uuid,p jsonb) returns uuid language plpgsql volatile security definer set search_path='' as $$
+declare context jsonb;r public.daily_reports%rowtype;w public.daily_report_workers%rowtype;receipt company_checkout_allowance_private.receipts%rowtype;
+ item jsonb;registered jsonb;items jsonb:='[]';body jsonb;digest text;answer uuid;
+begin
+ context:=attendance_admin_override_private.current_context();
+ select * into r from public.daily_reports where id=rid;
+ select * into w from public.daily_report_workers where report_id=rid and worker_id=wid;
+ if context is null or r.id is null or r.status<>'draft' or r.representative_signature_json is not null or r.supervisor_signature_json is not null or context->>'company_id'<>r.company_id::text or not (context->'report_ids')?rid::text
+ or w.worker_id is null or to_jsonb(w)->'company_allowance_selections' is distinct from coalesce(p->'choices','null'::jsonb)
+ or to_jsonb(w)->'company_allowance_legacy_labels' is distinct from coalesce(p->'legacy_labels','null'::jsonb)
+ or to_jsonb(w)->'allowance_label' is distinct from coalesce(p->'label','null'::jsonb) then raise sqlstate '42501' using message='management_allowance_exact_saved_row_required';end if;
+ if w.company_allowance_selections is null then return null;end if;
+ if p->>'prior_receipt_id' is not null then
+  select * into receipt from company_checkout_allowance_private.receipts where id=(p->>'prior_receipt_id')::uuid;
+  if receipt.id is null or receipt.company_id<>r.company_id or receipt.worker_id<>wid or receipt.report_id<>rid or receipt.work_date<>r.report_date
+   or receipt.snapshot->>'contract_version'<>'1' or receipt.snapshot->>'work_date'<>r.report_date::text
+   or receipt.snapshot_sha256 is distinct from encode(sha256(convert_to(receipt.snapshot::text,'UTF8')),'hex') then raise sqlstate '55000' using message='management_allowance_previous_receipt_scope_changed';end if;
+  if jsonb_array_length(receipt.snapshot->'items')<>jsonb_array_length(w.company_allowance_selections->'items')
+   or exists(select 1 from jsonb_array_elements(w.company_allowance_selections->'items') x where not exists(
+    select 1 from jsonb_array_elements(receipt.snapshot->'items') y where y->>'origin'=x->>'origin' and (y->>'id')::uuid=(x->>'id')::uuid
+    and y->'generation' is not distinct from x->'generation' and y->'registration_version'=x->'registration_version'
+    and y->>'name'=x->>'name_snapshot' and y->>'unit'=x->>'unit')) then raise sqlstate '55000' using message='management_allowance_previous_receipt_identity_changed';end if;
+  return receipt.id;
+ end if;
+ perform company_checkout_allowance_private.validate_labels(r.company_id,wid,w.allowance_label,w.company_allowance_selections,w.company_allowance_legacy_labels);
+ for item in select value from jsonb_array_elements(w.company_allowance_selections->'items') order by value->>'origin',value->>'id' loop
+  registered:=company_checkout_allowance_private.registered_item(r.company_id,wid,item);items:=items||jsonb_build_array(registered);
+ end loop;
+ body:=jsonb_build_object('contract_version',1,'work_date',r.report_date,'items',items,
+  'authority',jsonb_build_object('kind','attendance_management','operation_id',context->'operation_id','actor_id',context->'actor_id','session_id',context->'session_id'));
+ digest:=encode(sha256(convert_to(body::text,'UTF8')),'hex');
+ insert into company_checkout_allowance_private.receipts(company_id,worker_id,report_id,work_date,snapshot,snapshot_sha256,captured_by)
+ values(r.company_id,wid,rid,r.report_date,body,digest,auth.uid()) on conflict(company_id,worker_id,report_id,work_date,snapshot_sha256) do nothing;
+ select id into answer from company_checkout_allowance_private.receipts where company_id=r.company_id and worker_id=wid and report_id=rid and work_date=r.report_date and snapshot_sha256=digest and snapshot=body;
+ if answer is null then raise sqlstate '55000' using message='management_allowance_receipt_unavailable';end if;
+ return answer;
+end $$;
+revoke all on all functions in schema management_registered_allowance_private from public,anon,authenticated,service_role;
+
+create function public.read_management_company_allowance_options(p_worker_ids uuid[]) returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare cid uuid;actor uuid;wid uuid;labels jsonb;label jsonb;candidate jsonb;validated jsonb;items jsonb;answer jsonb:='[]';typ text;
+begin
+ select company_id into cid from public.company_members where user_id=auth.uid() limit 1;
+ actor:=attendance_admin_override_private.require_manager(cid);
+ if not management_registered_allowance_private.enabled(cid) then raise sqlstate '42501' using message='management_registered_allowances_disabled';end if;
+ if p_worker_ids is null or cardinality(p_worker_ids) not between 1 and 500 or cardinality(p_worker_ids)<>(select count(distinct x) from unnest(p_worker_ids) x)
+ or exists(select 1 from unnest(p_worker_ids) x where x is null or not exists(select 1 from public.workers w where w.id=x and w.company_id=cid and w.status='active')) then raise sqlstate '42501' using message='management_allowance_worker_scope_invalid';end if;
+ labels:=public.read_company_registered_allowance_labels(cid);
+ foreach wid in array p_worker_ids loop
+  items:='[]';select pay_type into typ from public.worker_payroll_settings where company_id=cid and worker_id=wid;
+  if typ is not null then
+   for label in select value from jsonb_array_elements(labels->'items') loop
+    if label->>'unit' not in('day','hour') or label->>'id' is null or label->>'registration_version' is null
+     or(label->>'origin'='company_common' and label->>'payroll_type'<>typ) then continue;end if;
+    candidate:=jsonb_build_object('origin',label->'origin','id',label->'id','generation',label->'generation','registration_version',label->'registration_version','name_snapshot',label->'name','unit',label->'unit');
+    validated:=company_checkout_allowance_private.registered_item(cid,wid,candidate);
+    items:=items||jsonb_build_array(jsonb_build_object('origin',validated->'origin','id',validated->'id','generation',validated->'generation','registration_version',validated->'registration_version'));
+   end loop;
+  end if;
+  answer:=answer||jsonb_build_array(jsonb_build_object('worker_id',wid,'items',items));
+ end loop;
+ return jsonb_build_object('contract_version',1,'company_id',cid,'labels',labels,'workers',answer);
+end $$;
+revoke all on function public.read_management_company_allowance_options(uuid[]) from public,anon,authenticated,service_role;
+grant execute on function public.read_management_company_allowance_options(uuid[]) to authenticated;
+
+CREATE OR REPLACE FUNCTION attendance_admin_override_private.permit_roster(operation text, before_row jsonb, after_row jsonb)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare c jsonb;r public.daily_reports%rowtype;rid uuid;wid uuid;item jsonb;target jsonb;
+begin
+ c:=attendance_admin_override_private.current_context();if c is null then return false;end if;
+ target:=case when operation='DELETE' then before_row else after_row end;rid:=(target->>'report_id')::uuid;wid:=(target->>'worker_id')::uuid;
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null or r.company_id::text<>c->>'company_id' or not (c->'report_ids')?rid::text then return false;end if;
+ select i into item from jsonb_array_elements(c->'items') i where i->>'worker_id'=wid::text and i->>'date'=r.report_date::text;
+ if item is null then return false;end if;
+ if operation='DELETE' then
+  return exists(select 1 from attendance_admin_override_private.operations o,lateral jsonb_array_elements(o.before_state->'reports') d,
+   lateral jsonb_array_elements(d->'roster') w where o.id=(c->>'operation_id')::uuid and d#>>'{report,id}'=rid::text and w=before_row);
+ end if;
+ if operation not in('INSERT','UPDATE') or c->>'action'<>'upsert' or coalesce(item->>'mode','work')<>'work' or r.site_id::text is distinct from item->>'site_id'
+ or (operation='UPDATE' and row(before_row->>'report_id',before_row->>'worker_id') is distinct from row(after_row->>'report_id',after_row->>'worker_id')) then return false;end if;
+ return target->>'work_category'='day' and (target->>'allowance_amount')::numeric=0
+  and (target->>'overtime_hours')::numeric=greatest(coalesce((item->>'overtime_hours')::numeric,0),0)
+  and (target->>'early_hours')::numeric=greatest(coalesce((item->>'early_hours')::numeric,0),0)
+  and (target->>'night_hours')::numeric=greatest(coalesce((item->>'night_hours')::numeric,0),0)
+  and case when management_registered_allowance_private.enabled(r.company_id) then management_registered_allowance_private.matches(rid,wid,target,item) else nullif(target->>'allowance_label','') is not distinct from nullif((select string_agg(value,'・') from jsonb_array_elements_text(coalesce(item->'allowance_names','[]'::jsonb))),'') end;
+end $function$;
+CREATE OR REPLACE FUNCTION public.force_manage_attendance(p_action text, p_items jsonb)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'private', 'pg_temp'
+AS $function$
+declare
+  v_actor uuid := auth.uid();
+  v_company_id uuid;
+  v_role text;
+  v_item jsonb;
+  v_worker_id uuid;
+  v_site_id uuid;
+  v_date date;
+  v_mode text;
+  v_report_id uuid;
+  v_count integer := 0;
+  v_clock_in timestamptz;
+  v_clock_out timestamptz;
+  v_report record;
+  v_entry_ids uuid[];
+  v_work_description text;
+  v_admin_operation uuid;
+  v_clock_delete_id uuid;
+  v_allowance_plan jsonb;
+  v_registered_receipt uuid;
+begin
+  if v_actor is null then
+    raise exception 'authentication required';
+  end if;
+
+  select cm.company_id, cm.role::text
+  into v_company_id, v_role
+  from public.company_members cm
+  where cm.user_id = v_actor
+  limit 1;
+
+  if v_company_id is null
+     or v_role not in ('owner','admin','manager')
+     or not coalesce(
+       (public.current_feature_permissions()->>'can_manage_attendance')::boolean,
+       false
+     ) then
+    raise exception 'attendance management permission required';
+  end if;
+
+  if p_action not in ('upsert','delete') then
+    raise exception 'invalid attendance management action';
+  end if;
+
+  if p_items is null
+     or jsonb_typeof(p_items) <> 'array'
+     or jsonb_array_length(p_items) < 1
+     or jsonb_array_length(p_items) > 500 then
+    raise exception 'attendance management items must contain 1 to 500 rows';
+  end if;
+
+  perform management_registered_allowance_private.check_payload(v_company_id,p_action,p_items);
+  perform shared_daily_report_private.lock_management_batch(v_company_id,p_action,p_items);
+  v_admin_operation:=attendance_admin_override_private.begin_batch(v_company_id,p_action,p_items);
+
+  for v_item in
+    select value from jsonb_array_elements(p_items)
+  loop
+    v_worker_id := nullif(v_item->>'worker_id','')::uuid;
+    v_date := nullif(v_item->>'date','')::date;
+    v_mode := coalesce(nullif(v_item->>'mode',''),'work');
+    v_site_id := nullif(v_item->>'site_id','')::uuid;
+    v_work_description := trim(coalesce(v_item->>'work_description',''));
+
+    if v_worker_id is null or v_date is null then
+      raise exception 'worker and date are required';
+    end if;
+
+    if not exists (
+      select 1 from public.workers w
+      where w.id = v_worker_id
+        and w.company_id = v_company_id
+        and w.status = 'active'
+    ) then
+      raise exception 'worker does not belong to company';
+    end if;
+
+    if v_mode not in ('work','paid_leave','off') then
+      raise exception 'invalid attendance mode';
+    end if;
+
+    if v_mode = 'work' then
+      if v_site_id is null or not exists (
+        select 1 from public.sites s
+        where s.id = v_site_id and s.company_id = v_company_id
+      ) then
+        raise exception 'site does not belong to company';
+      end if;
+    end if;
+
+    v_allowance_plan:=null;v_registered_receipt:=null;
+    if p_action='upsert' and v_mode='work' then
+      v_allowance_plan:=management_registered_allowance_private.plan(v_company_id,v_worker_id,v_date,v_site_id,v_item);
+    end if;
+
+    -- Keep correction audit snapshots, but detach FK so forced deletion can proceed.
+    select array_agg(ae.id)
+    into v_entry_ids
+    from public.attendance_entries ae
+    where ae.company_id = v_company_id
+      and ae.worker_id = v_worker_id
+      and ae.work_date = v_date;
+
+    if v_entry_ids is not null then
+      update public.attendance_correction_items
+      set attendance_entry_id = null
+      where attendance_entry_id = any(v_entry_ids);
+    end if;
+
+    -- Remove the worker from all daily reports on the target date.
+    for v_report in
+      select dr.id
+      from public.daily_reports dr
+      join public.daily_report_workers drw on drw.report_id = dr.id
+      where dr.company_id = v_company_id
+        and dr.report_date = v_date
+        and drw.worker_id = v_worker_id
+      for update of dr
+    loop
+      delete from public.daily_report_workers
+      where report_id = v_report.id
+        and worker_id = v_worker_id;
+
+      update public.attendance_entries
+      set source_report_id = null
+      where source_report_id = v_report.id
+        and worker_id = v_worker_id;
+
+      -- Delete the target worker's complete linked shift before report removal;
+      -- detaching would lose the next-day end timestamp's work-date ownership.
+      if v_admin_operation is null then
+      delete from public.attendance_verifications
+      where company_id = v_company_id and worker_id = v_worker_id
+        and (daily_report_id = v_report.id or work_date = v_date);
+      else
+        -- End punches must be removed before their source clock-in; real scope triggers stay active.
+        for v_clock_delete_id in select id from public.attendance_verifications
+      where company_id = v_company_id and worker_id = v_worker_id
+        and (daily_report_id = v_report.id or work_date = v_date)
+          order by (source_clock_in_id is null),confirmed_at desc,id
+        loop
+          delete from public.attendance_verifications where id=v_clock_delete_id;
+        end loop;
+      end if;
+
+      if not exists (
+        select 1 from public.daily_report_workers
+        where report_id = v_report.id
+      ) then
+        update public.attendance_entries
+        set source_report_id = null
+        where source_report_id = v_report.id;
+
+        if v_admin_operation is null then
+        delete from public.daily_reports
+        where id = v_report.id;
+        else
+          perform attendance_admin_override_private.cancel_empty_report(v_report.id,v_admin_operation);
+        end if;
+      else
+        update public.daily_reports
+        set status = 'draft',
+            signer_name = null,
+            signature_json = null,
+            signed_at = null,
+            representative_signature_json = null,
+            representative_signer_name = null,
+            supervisor_signature_json = null,
+            supervisor_signer_name = null,
+            updated_by = v_actor,
+            updated_at = now()
+        where id = v_report.id;
+      end if;
+    end loop;
+
+    if v_admin_operation is null then
+    delete from public.attendance_verifications
+    where company_id = v_company_id
+      and worker_id = v_worker_id
+      and (
+        exists (
+          select 1 from public.daily_reports dr
+          where dr.id = attendance_verifications.daily_report_id
+            and dr.company_id = v_company_id and dr.report_date = v_date
+        )
+        or (
+          daily_report_id is null
+          and coalesce(work_date,(confirmed_at at time zone 'Asia/Tokyo')::date)=v_date
+        )
+      );
+    else
+      -- End punches must be removed before their source clock-in; real scope triggers stay active.
+      for v_clock_delete_id in select id from public.attendance_verifications
+    where company_id = v_company_id
+      and worker_id = v_worker_id
+      and (
+        exists (
+          select 1 from public.daily_reports dr
+          where dr.id = attendance_verifications.daily_report_id
+            and dr.company_id = v_company_id and dr.report_date = v_date
+        )
+        or (
+          daily_report_id is null
+          and coalesce(work_date,(confirmed_at at time zone 'Asia/Tokyo')::date)=v_date
+        )
+      )
+        order by (source_clock_in_id is null),confirmed_at desc,id
+      loop
+        delete from public.attendance_verifications where id=v_clock_delete_id;
+      end loop;
+    end if;
+
+    delete from public.attendance_entries
+    where company_id = v_company_id
+      and worker_id = v_worker_id
+      and work_date = v_date;
+
+    update public.paid_leave_requests
+    set status = 'cancelled',
+        reviewed_by = v_actor,
+        reviewed_at = now(),
+        review_note = '勤怠管理から強制更新',
+        updated_at = now()
+    where company_id = v_company_id
+      and worker_id = v_worker_id
+      and leave_date = v_date
+      and status in ('pending','approved');
+
+    if p_action = 'delete' or v_mode = 'off' then
+      v_count := v_count + 1;
+      continue;
+    end if;
+
+    if v_mode = 'paid_leave' then
+      insert into public.paid_leave_requests(
+        batch_id,
+        company_id,
+        worker_id,
+        requested_by,
+        leave_date,
+        reason,
+        status,
+        reviewed_by,
+        reviewed_at,
+        review_note
+      ) values (
+        gen_random_uuid(),
+        v_company_id,
+        v_worker_id,
+        v_actor,
+        v_date,
+        nullif(trim(coalesce(v_item->>'notes','')),''),
+        'approved',
+        v_actor,
+        now(),
+        '勤怠管理から直接登録'
+      );
+      v_count := v_count + 1;
+      continue;
+    end if;
+
+    select dr.id
+    into v_report_id
+    from public.daily_reports dr
+    where dr.company_id = v_company_id
+      and dr.report_date = v_date
+      and dr.site_id = v_site_id
+    limit 1
+    for update;
+
+    if v_report_id is null then
+      insert into public.daily_reports(
+        company_id,
+        site_id,
+        report_date,
+        work_description,
+        status,
+        created_by,
+        updated_by
+      ) values (
+        v_company_id,
+        v_site_id,
+        v_date,
+        nullif(v_work_description,''),
+        'draft',
+        v_actor,
+        v_actor
+      )
+      returning id into v_report_id;
+    else
+      update public.daily_reports
+      set work_description = case
+            when v_work_description = '' then work_description
+            else v_work_description
+          end,
+          status = 'draft',
+          signer_name = null,
+          signature_json = null,
+          signed_at = null,
+          representative_signature_json = null,
+          representative_signer_name = null,
+          supervisor_signature_json = null,
+          supervisor_signer_name = null,
+          updated_by = v_actor,
+          updated_at = now()
+      where id = v_report_id;
+    end if;
+
+    if v_admin_operation is not null then
+      perform attendance_admin_override_private.register_and_revive(v_report_id,v_admin_operation);
+    end if;
+
+    insert into public.daily_report_workers(
+      report_id,
+      worker_id,
+      overtime_hours,
+      early_hours,
+      night_hours,
+      allowance_amount,
+      allowance_label,
+      work_category,
+      company_allowance_selections,
+      company_allowance_legacy_labels
+    ) values (
+      v_report_id,
+      v_worker_id,
+      greatest(coalesce((v_item->>'overtime_hours')::numeric,0),0),
+      greatest(coalesce((v_item->>'early_hours')::numeric,0),0),
+      greatest(coalesce((v_item->>'night_hours')::numeric,0),0),
+      0,
+      case when v_allowance_plan is not null then v_allowance_plan->>'label' else nullif(array_to_string(
+        array(select jsonb_array_elements_text(coalesce(v_item->'allowance_names','[]'::jsonb))), '・'), '') end,
+      'day',
+      nullif(v_allowance_plan->'choices','null'::jsonb),
+      v_allowance_plan->>'legacy_labels'
+    )
+    on conflict (report_id, worker_id)
+    do update set
+      overtime_hours = excluded.overtime_hours,
+      early_hours = excluded.early_hours,
+      night_hours = excluded.night_hours,
+      allowance_amount = excluded.allowance_amount,
+      allowance_label = excluded.allowance_label,
+      work_category = excluded.work_category,
+      company_allowance_selections = excluded.company_allowance_selections,
+      company_allowance_legacy_labels = excluded.company_allowance_legacy_labels;
+
+    if v_allowance_plan is not null then
+      v_registered_receipt:=management_registered_allowance_private.capture(v_report_id,v_worker_id,v_allowance_plan);
+    end if;
+
+    insert into public.attendance_entries(
+      company_id,
+      work_date,
+      worker_id,
+      site_id,
+      base_man_days,
+      overtime_hours,
+      early_hours,
+      night_hours,
+      allowance_amount,
+      allowance_names,
+      notes,
+      created_by,
+      updated_by,
+      work_category,
+      source_report_id,
+      company_allowance_receipt_id
+    ) values (
+      v_company_id,
+      v_date,
+      v_worker_id,
+      v_site_id,
+      greatest(coalesce((v_item->>'man_days')::numeric,1),0),
+      greatest(coalesce((v_item->>'overtime_hours')::numeric,0),0),
+      greatest(coalesce((v_item->>'early_hours')::numeric,0),0),
+      greatest(coalesce((v_item->>'night_hours')::numeric,0),0),
+      0,
+      array(select jsonb_array_elements_text(case when v_allowance_plan is not null then v_allowance_plan->'names' else coalesce(v_item->'allowance_names','[]'::jsonb) end)),
+      nullif(trim(coalesce(v_item->>'notes','')),''),
+      v_actor,
+      v_actor,
+      'day',
+      v_report_id,
+      v_registered_receipt
+    );
+
+    v_clock_in := null;
+    v_clock_out := null;
+    if nullif(v_item->>'clock_in','') is not null then
+      v_clock_in := (v_date::text || ' ' || (v_item->>'clock_in'))::timestamp
+        at time zone 'Asia/Tokyo';
+    end if;
+    if nullif(v_item->>'clock_out','') is not null then
+      v_clock_out := (v_date::text || ' ' || (v_item->>'clock_out'))::timestamp
+        at time zone 'Asia/Tokyo';
+    end if;
+
+    -- Times are entered against one work date. An earlier end time is next day.
+    -- Equal times and an end time without a start retain their existing meaning.
+    if v_clock_in is not null and v_clock_out is not null
+       and v_clock_out < v_clock_in then
+      v_clock_out := v_clock_out + interval '1 day';
+    end if;
+
+    if v_clock_in is not null then
+      insert into public.attendance_verifications(
+        company_id,
+        worker_id,
+        site_id,
+        event_type,
+        verification_mode,
+        confirmed_at,
+        proximity_status,
+        note,
+        created_by,
+        daily_report_id
+      ) values (
+        v_company_id,
+        v_worker_id,
+        v_site_id,
+        'clock_in',
+        'manual',
+        v_clock_in,
+        'not_checked',
+        '勤怠管理から直接登録',
+        v_actor,
+        v_report_id
+      );
+    end if;
+
+    if v_clock_out is not null then
+      insert into public.attendance_verifications(
+        company_id,
+        worker_id,
+        site_id,
+        event_type,
+        verification_mode,
+        confirmed_at,
+        proximity_status,
+        note,
+        created_by,
+        daily_report_id
+      ) values (
+        v_company_id,
+        v_worker_id,
+        v_site_id,
+        'clock_out',
+        'manual',
+        v_clock_out,
+        'not_checked',
+        '勤怠管理から直接登録',
+        v_actor,
+        v_report_id
+      );
+    end if;
+
+    v_count := v_count + 1;
+  end loop;
+
+  perform attendance_admin_override_private.finish_batch(v_admin_operation);
+  return v_count;
+end;
+$function$;
+commit;
