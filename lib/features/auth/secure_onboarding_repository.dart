@@ -197,11 +197,12 @@ class SecureOnboardingRepository {
     return value == true;
   }
 
-  Future<void> setSecondaryPassword(String password) async {
-    await _client.rpc(
-      'set_secondary_password',
-      params: {'p_password': password},
-    );
+  Future<void> setSecondaryPassword(String password, {String? accessToken}) async {
+    if (accessToken != null && accessToken.isEmpty) throw StateError('Missing captured session');
+    final request = _client.rpc('set_secondary_password',
+      params: {'p_password': password});
+    await (accessToken == null ? request :
+      request.setHeader('Authorization', 'Bearer $accessToken'));
   }
 
   Future<bool> verifySecondaryPassword(String password, {String? accessToken}) async {
@@ -277,4 +278,5 @@ class SecureOnboardingRepository {
     return text.isEmpty ? null : text;
   }
 }
+
 

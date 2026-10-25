@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../auth/operation_reauthentication_repository.dart';
 import 'checkout_report_gate.dart';
 import 'attendance_management_company_allowances.dart';
 import '../daily_reports/daily_report_company_allowance_selection.dart';
@@ -430,6 +431,7 @@ class AttendanceManagementRepository {
     String workDescription = '',
     String? clockIn,
     String? clockOut,
+    Future<String?> Function()? requestSecondaryPassword,
   }) async {
     final workers = workerIds.toSet().where((id) => id.isNotEmpty).toList();
     final selectedDates = dates.map((date) => DateTime(date.year, date.month, date.day)).toSet().toList()..sort();
@@ -456,7 +458,10 @@ class AttendanceManagementRepository {
           },
     ];
     final actor = _client.auth.currentUser?.id;
-    final raw = await _client.rpc('force_manage_attendance', params: {'p_action': action, 'p_items': items});
+    final raw = requestSecondaryPassword == null
+        ? await _client.rpc('force_manage_attendance', params: {'p_action': action, 'p_items': items})
+        : await OperationReauthenticationRepository(_client).manageAttendance(
+            action: action, items: items, requestPassword: requestSecondaryPassword);
     final gate = CheckoutReportGateController.instance;
     // The server decides whether the affected worker is this actor and has a
     // new obligation. A proxy write is never itself a reporter obligation.

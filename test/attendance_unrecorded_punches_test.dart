@@ -16,6 +16,7 @@ const site = '44444444-4444-4444-4444-444444444444';
 
 class Fixture {
   final calls = <http.Request>[];
+  bool managementProof = false;
   bool recorded = false;
   bool leave = false;
   bool allowed = true;
@@ -48,7 +49,7 @@ class Fixture {
                 .replaceAll('=', '');
             body = {
               'access_token':
-                  '${enc({'alg': 'HS256'})}.${enc({'sub': actor, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.c3ludGhldGlj',
+                  '${enc({'alg': 'HS256'})}.${enc({'sub': actor, 'session_id': actor, 'role': 'authenticated', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.c3ludGhldGlj',
               'refresh_token': 'synthetic',
               'token_type': 'bearer',
               'expires_in': 3600,
@@ -63,6 +64,14 @@ class Fixture {
             body = [
               {'company_id': company, 'role': 'owner'},
             ];
+          case '/rest/v1/rpc/reauthentication_capabilities':
+            body = {
+              'protocol': 'sko-reauthentication-v1',
+              'secondary_password': managementProof, 'master_feature': false,
+              'master_security': false, 'attendance_management': managementProof,
+              'secondary_password_change_supported': false,
+              'secondary_password_recovery_supported': false,
+            };
           case '/rest/v1/rpc/current_feature_permissions':
             body = {'can_manage_attendance': allowed};
           case '/rest/v1/workers':
@@ -73,6 +82,18 @@ class Fixture {
             body = [
               {'id': site, 'name': '検証現場'},
             ];
+          case '/rest/v1/rpc/attendance_management_reauthentication_target':
+            body = {'company_id': company,
+              'action': (jsonDecode(request.body) as Map)['p_action'],
+              'items_sha256': List.filled(64, 'a').join()};
+          case '/functions/v1/reauthenticate-operation':
+            final input = jsonDecode(request.body) as Map;
+            body = {'protocol': 'sko-reauthentication-v1',
+              'operation': input['operation'], 'target': input['target'],
+              'proof': List.filled(64, 'b').join(),
+              'expiresAt': DateTime.now().add(const Duration(seconds: 60)).toUtc().toIso8601String()};
+          case '/rest/v1/rpc/force_manage_attendance_with_proof':
+            body = 1;
           case '/rest/v1/rpc/force_manage_attendance':
             body = 1;
           case '/rest/v1/attendance_entries':
@@ -338,3 +359,4 @@ void main() {
     expect(find.textContaining('出勤：08:13'), findsNothing);
   });
 }
+

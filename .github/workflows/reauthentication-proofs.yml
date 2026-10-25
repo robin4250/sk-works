@@ -8,6 +8,9 @@ on:
       - 'tool/security/*reauthentication*'
       - 'lib/features/auth/operation_reauthentication_repository.dart'
       - 'lib/features/auth/secondary_password_reset_page.dart'
+      - 'lib/features/auth/secondary_reset_session_guard.dart'
+      - 'lib/features/auth/secondary_password_primary_verifier.dart'
+      - 'test/secondary_password_primary_verifier_test.dart'
       - 'test/server_secondary_password_reset_test.dart'
       - 'test/operation_reauthentication_repository_test.dart'
       - '.github/workflows/reauthentication-proofs.yml'
@@ -49,5 +52,6 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter analyze lib/features/auth/operation_reauthentication_repository.dart lib/features/auth/secondary_password_reset_page.dart test/server_secondary_password_reset_test.dart test/operation_reauthentication_repository_test.dart
+      - run: flutter analyze lib/features/auth/secondary_reset_session_guard.dart lib/features/auth/secondary_password_primary_verifier.dart test/secondary_password_primary_verifier_test.dart lib/features/auth/operation_reauthentication_repository.dart lib/features/auth/secondary_password_reset_page.dart test/server_secondary_password_reset_test.dart test/operation_reauthentication_repository_test.dart
       - run: flutter test test/operation_reauthentication_repository_test.dart test/server_secondary_password_reset_test.dart test/secondary_password_reset_page_test.dart test/secondary_password_primary_verifier_test.dart test/secondary_auth_lifecycle_contract_test.dart
+
