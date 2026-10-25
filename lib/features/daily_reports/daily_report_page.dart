@@ -205,6 +205,32 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
+  bool _hasRegistrationSource(List<DailyReportWorkerDraft> workers,
+      SharedDailyReportContext? shared, String? reportId) {
+    final source = widget.vehicleClockInId;
+    final workerId = widget.registrationWorkerId;
+    final own = workers.where((worker) => worker.workerId == workerId).toList();
+    if (source == null || workerId == null || own.length != 1) return false;
+    if (own.single.sourceClockInId != null) {
+      return own.single.sourceClockInId == source;
+    }
+    // Saved report rows do not carry clock-in IDs. A verified shared-source
+    // response supplies that binding independently of optional group checkout.
+    // Never assign a guessed source ID or change the saved/signed roster.
+    final header = shared?.workBasis?['report'];
+    return shared != null && shared.enabled &&
+        shared.actorId == widget.registrationActorId &&
+        shared.actorId == _repository?.currentActorId &&
+        shared.companyId == widget.registrationCompanyId &&
+        shared.workerId == workerId && shared.sourceClockInId == source &&
+        shared.clockOutId != null && reportId != null && shared.reportId == reportId &&
+        shared.workDate == DateTime(_date.year, _date.month, _date.day) &&
+        const {'reporter_required', 'reporter_saved_waiting_supervisor',
+          'supervisor_saved'}.contains(shared.state) &&
+        shared.workRosterIds.contains(workerId) && header is Map &&
+        header['site_id'] == _siteId && header['route_assignment_id'] == _routeAssignmentId;
+  }
+
   Future<SharedDailyReportContext?> _readSharedContext({String? reportId}) async {
     if (_visitReport) return null;
     final repository = _sharedReportRepository;
@@ -473,8 +499,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
       if (widget.restrictedReporterRegistration &&
           (repository.currentActorId != widget.registrationActorId ||
-           !workers.any((worker) => worker.workerId == widget.registrationWorkerId &&
-             worker.sourceClockInId == widget.vehicleClockInId))) {
+           !_hasRegistrationSource(workers, shared, existing?.id))) {
         throw StateError('退勤した本人の勤務原本を確認できません。');
       }
       final meterEnabled = await repository.vehicleMeterEnabledForAnchor(_currentVehicleAnchor,
@@ -1061,8 +1086,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (widget.restrictedReporterRegistration &&
         (repository.currentActorId != widget.registrationActorId ||
          _siteId != widget.initialSiteId || _routeAssignmentId != widget.initialRouteAssignmentId ||
-         !_workers.any((worker) => worker.workerId == widget.registrationWorkerId &&
-           worker.sourceClockInId == widget.vehicleClockInId))) {
+         !_hasRegistrationSource(_workers, _sharedContext, _report?.id))) {
       throw StateError('退勤した本人の勤務原本を確認できません。');
     }
     _applyControllers();

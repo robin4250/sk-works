@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../daily_reports/daily_report_page.dart';
 import 'attendance_management_repository.dart';
 import 'attendance_checkout_minute_guard.dart';
 import '../../international/language_controller.dart';
@@ -234,6 +235,45 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
     }
   }
 
+  Future<void> _openReport() async {
+    final workerId = _workerId;
+    final date = _date;
+    if (workerId == null || _busy || _loadingCell) return;
+    setState(() => _busy = true);
+    try {
+      final reports = await widget.repository.loadReports(workerId: workerId, date: date);
+      if (!mounted || workerId != _workerId || date != _date) return;
+      if (reports.isEmpty) {
+        _show('選択した従業員・日付の保存済み日報はありません。勤怠の登録だけではサインは作成されません。');
+        return;
+      }
+      final selected = reports.length == 1 ? reports.single :
+        await showDialog<AttendanceManagementReport>(context: context, builder: (dialogContext) =>
+          SimpleDialog(title: const Text('確認する日報'), children: [
+            for (var i = 0; i < reports.length; i++)
+              SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, reports[i]),
+                child: Text('${i + 1}. ${reports[i].siteId == null ? 'ルート日報' : widget.sites.where((site) => site.id == reports[i].siteId).firstOrNull?.name ?? '現場日報'}')),
+          ]));
+      if (selected == null || !mounted) return;
+      // Recheck access and membership after an arbitrarily long selection dialog.
+      final fresh = await widget.repository.loadReports(workerId: workerId, date: date);
+      if (!mounted || workerId != _workerId || date != _date) return;
+      if (!fresh.any((report) => report.id == selected.id &&
+          report.companyId == selected.companyId && report.siteId == selected.siteId &&
+          report.routeId == selected.routeId)) {
+        throw StateError('対象の日報が変わりました。読み込み直してください。');
+      }
+      await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => DailyReportPage(
+        initialReportId: selected.id, initialDate: selected.date,
+        initialSiteId: selected.siteId, initialRouteAssignmentId: selected.routeId)));
+      if (mounted) await _loadCell();
+    } catch (error) {
+      if (mounted) _show('日報を開けませんでした: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   void _show(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 
   @override
@@ -256,6 +296,10 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
           label: Text(_dateText(_date)),
         ),
         if (_loadingCell) ...[const SizedBox(height: 8), const LinearProgressIndicator()],
+        const SizedBox(height: 12),
+        OutlinedButton.icon(onPressed: _busy || _loadingCell ? null : _openReport,
+          icon: const Icon(Icons.draw_outlined), label: const Text('この日の日報・サインを開く')),
+        const Text('保存済み日報を確認します。署名済み内容は保持し、変更には既存の編集承認が必要です。'),
         const SizedBox(height: 12),
         _ManagementForm(form: _form, sites: widget.sites, enabled: !_busy),
         const SizedBox(height: 16),

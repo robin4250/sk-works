@@ -25,10 +25,11 @@ final _date = DateTime(2026, 10, 25);
 
 class _Reports implements DailyReportRepository {
   bool reporterSaved = false, supervisorSaved = false, peerOpen = false;
+  bool omitSource = false;
   int draftWrites = 0, ordinaryReporterWrites = 0;
   List<DailyReportWorkerDraft> get workers => [
     DailyReportWorkerDraft(workerId: _worker, workerName: '報告者',
-      sourceClockInId: _source, sourceClockOutAt: DateTime(2026, 10, 25, 17)),
+      sourceClockInId: omitSource ? null : _source, sourceClockOutAt: DateTime(2026, 10, 25, 17)),
     if (peerOpen) DailyReportWorkerDraft(workerId: _peer, workerName: '勤務継続中',
       sourceClockInId: '00000000-0000-0000-0000-000000000051'),
   ];
@@ -84,10 +85,11 @@ class _Shared implements SharedDailyReportRepository {
   final _Reports reports;
   final bool enabled;
   bool hold = false;
+  String source = _source;
   bool workOnly = true;
   int supervisorWrites = 0;
   SharedDailyReportContext get state => SharedDailyReportContext(actorId: _actor,
-    companyId: _company, workerId: _worker, reportId: _report, sourceClockInId: _source,
+    companyId: _company, workerId: _worker, reportId: _report, sourceClockInId: source,
     clockOutId: '00000000-0000-0000-0000-000000000060', workDate: _date,
     state: hold ? 'managed_financial_hold' : !enabled ? 'disabled' : reports.supervisorSaved ? 'supervisor_saved' :
       reports.reporterSaved ? 'reporter_saved_waiting_supervisor' : 'reporter_required',
@@ -101,6 +103,7 @@ class _Shared implements SharedDailyReportRepository {
       'work_date': '2026-10-25', 'site_id': _site, 'route_assignment_id': null,
       'work_description': '保存済みの作業'},
       'roster': [for (final worker in reports.workers) {'worker_id': worker.workerId}]});
+  @override Future<SharedDailyReportContext> loadForSource(String sourceClockInId) async => state;
   @override Future<SharedDailyReportContext> loadReport(String reportId, {String? expectedActor}) async => state;
   @override Future<SharedDailyReportContext> collectSupervisor({required SharedDailyReportContext before,
     required String signerName, required Map<String, dynamic> signature}) async {
@@ -168,6 +171,28 @@ void main() {
     await tester.scrollUntilVisible(finder, 220, scrollable: scrollable, maxScrolls: 40);
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
+  }
+
+  for (final valid in [true, false]) {
+    testWidgets('restricted saved report uses verified shared source, match=$valid', (tester) async {
+      final reports = _Reports()..reporterSaved = true..omitSource = true;
+      final shared = _Shared(reports);
+      if (!valid) shared.source = '00000000-0000-0000-0000-000000000099';
+      await tester.pumpWidget(MaterialApp(home: DailyReportPage(
+        initialDate: _date, initialSiteId: _site, initialReportId: _report,
+        vehicleClockInId: _source, groupClockInAnchorId: _source,
+        restrictedReporterRegistration: true, registrationActorId: _actor,
+        registrationCompanyId: _company, registrationWorkerId: _worker,
+        repositoryForTesting: reports, paidHoursRepositoryForTesting: _Hours(),
+        sharedReportRepositoryForTesting: shared)));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('退勤した本人の勤務原本を確認できません'),
+        valid ? findsNothing : findsOneWidget);
+      if (valid) expect(find.text('最初の報告者さんが日報を登録しました'), findsOneWidget);
+      expect(reports.draftWrites, 0);
+      expect(reports.ordinaryReporterWrites, 0);
+      expect(reports.workers.first.sourceClockInId, isNull);
+    });
   }
 
   testWidgets('saved shared reporter facts are read-only and opening never rewrites the report', (tester) async {

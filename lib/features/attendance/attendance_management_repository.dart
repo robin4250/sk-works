@@ -9,6 +9,14 @@ class AttendanceManagementOption {
   final String name;
 }
 
+class AttendanceManagementReport {
+  const AttendanceManagementReport({required this.id, required this.companyId,
+    required this.date, this.siteId, this.routeId});
+  final String id, companyId;
+  final DateTime date;
+  final String? siteId, routeId;
+}
+
 class AttendanceManagementCell {
   const AttendanceManagementCell({
     required this.mode,
@@ -58,13 +66,65 @@ class AttendanceManagementRepository {
   Future<({String companyId, bool allowed})> _access() async {
     final user = _client.auth.currentUser;
     if (user == null) throw StateError('SKOへのログインが必要です。');
+    final token = _client.auth.currentSession?.accessToken;
+    void current() {
+      if (_client.auth.currentUser?.id != user.id ||
+          _client.auth.currentSession?.accessToken != token) {
+        throw StateError('ログイン状態が変わりました。読み込み直してください。');
+      }
+    }
     final rows = await _client.from('company_members').select('company_id,role').eq('user_id', user.id).limit(1);
+    current();
     if (rows.isEmpty) throw StateError('会社情報が見つかりません。');
     final companyId = rows.first['company_id']?.toString() ?? '';
     final role = rows.first['role']?.toString() ?? '';
     final permissions = await _client.rpc('current_feature_permissions');
+    current();
     final canManage = permissions is Map && Map<String, dynamic>.from(permissions)['can_manage_attendance'] == true;
     return (companyId: companyId, allowed: const {'owner', 'admin', 'manager'}.contains(role) && canManage);
+  }
+
+  /// Existing reports only: membership, company and date are all server filters.
+  /// Opening this list never creates work, a report or a signature.
+  Future<List<AttendanceManagementReport>> loadReports({required String workerId,
+      required DateTime date}) async {
+    final actor = _client.auth.currentUser?.id;
+    final token = _client.auth.currentSession?.accessToken;
+    void current() {
+      if (actor == null || _client.auth.currentUser?.id != actor ||
+          _client.auth.currentSession?.accessToken != token) {
+        throw StateError('ログイン状態が変わりました。読み込み直してください。');
+      }
+    }
+    current();
+    final access = await _access();
+    current();
+    if (!access.allowed) throw StateError('勤怠管理を利用する権限がありません。');
+    final day = _dbDate(date);
+    final rows = await _client.from('daily_reports')
+        .select('id,company_id,report_date,site_id,route_assignment_id,daily_report_workers!inner(worker_id)')
+        .eq('company_id', access.companyId).eq('report_date', day)
+        .eq('daily_report_workers.worker_id', workerId).order('id');
+    current();
+    final latest = await _access();
+    current();
+    if (!latest.allowed || latest.companyId != access.companyId) {
+      throw StateError('勤怠管理の権限が変わりました。読み込み直してください。');
+    }
+    return List.unmodifiable(rows.map((row) {
+      final members = row['daily_report_workers'];
+      final site = row['site_id'] as String?;
+      final route = row['route_assignment_id'] as String?;
+      if (row['company_id'] != access.companyId || row['report_date'] != day ||
+          row['id'] is! String || (row['id'] as String).isEmpty ||
+          (site == null) == (route == null) || members is! List ||
+          !members.any((member) => member is Map && member['worker_id'] == workerId)) {
+        throw StateError('選択した従業員・日付の日報を確認できません。');
+      }
+      return AttendanceManagementReport(id: row['id'] as String,
+        companyId: access.companyId, date: DateTime(date.year, date.month, date.day),
+        siteId: site, routeId: route);
+    }));
   }
 
   Future<({List<AttendanceManagementOption> workers, List<AttendanceManagementOption> sites})> loadOptions() async {
