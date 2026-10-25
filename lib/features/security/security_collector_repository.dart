@@ -12,6 +12,35 @@ class SecurityCollectorSnapshot {
   SecurityCollectorSnapshot._(this.events);
   final List<Map<String, dynamic>> events;
 
+  // DateTime.tryParse normalizes impossible dates (for example February 31).
+  // Audit evidence must keep the calendar/time the server actually supplied.
+  static bool _calendarDate(String value) {
+    final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
+    if (match == null || match.end != value.length) return false;
+    final year = int.parse(match[1]!);
+    final month = int.parse(match[2]!);
+    final day = int.parse(match[3]!);
+    if (year < 1) return false;
+    final date = DateTime.utc(year, month, day);
+    return date.year == year && date.month == month && date.day == day;
+  }
+
+  static bool _timestamp(String value) {
+    final match = RegExp(r'^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$')
+        .firstMatch(value);
+    if (match == null || match.end != value.length || !_calendarDate(match[1]!) ||
+        int.parse(match[2]!) > 23 || int.parse(match[3]!) > 59 ||
+        int.parse(match[4]!) > 59) {
+      return false;
+    }
+    final zone = match[5]!;
+    if (zone != 'Z' && (int.parse(zone.substring(1, 3)) > 23 ||
+        int.parse(zone.substring(4, 6)) > 59)) {
+      return false;
+    }
+    return DateTime.tryParse(value) != null;
+  }
+
   static SecurityCollectorSnapshot parse(dynamic raw) {
     const keys = {'version', 'source_provenance', 'coverage', 'attack_confirmed', 'events'};
     if (raw is! Map || raw.length != keys.length || !raw.keys.every(keys.contains) ||
@@ -35,9 +64,8 @@ class SecurityCollectorSnapshot {
           !const {'current_lure_touched','retired_lure_touched'}.contains(row['event_kind']) ||
           row['correlation_key'] is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(row['correlation_key'] as String) ||
           row['source_provenance'] != 'trusted_collector_observation' ||
-          row['key_epoch'] is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(row['key_epoch'] as String) ||
-          DateTime.tryParse(row['key_epoch'] as String) == null ||
-          ['occurred_at','received_at'].any((key) => row[key] is! String || DateTime.tryParse(row[key] as String) == null)) {
+          row['key_epoch'] is! String || !_calendarDate(row['key_epoch'] as String) ||
+          ['occurred_at','received_at'].any((key) => row[key] is! String || !_timestamp(row[key] as String))) {
         throw const FormatException('Collector event unavailable');
       }
       rows.add(Map<String, dynamic>.unmodifiable(Map<String, dynamic>.from(row)));

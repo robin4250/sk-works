@@ -7,7 +7,7 @@ import 'package:sk_works/features/auth/login_method_enrollment_repository.dart';
 
 class Source implements LoginMethodEnrollmentSource {
   String email = 'existing@example.invalid';
-  bool phoneAvailable = false;
+  bool phoneAvailable = false, phoneRegistrationReady = true;
   int loads = 0, passwords = 0, phoneRequests = 0, confirmations = 0, cancellations = 0;
   bool fail = false, pendingPhone = false, failLoad = false, failLoadAfterPassword = false;
   String phone = '';
@@ -24,7 +24,8 @@ class Source implements LoginMethodEnrollmentSource {
     if (failLoad) throw StateError('synthetic settings unavailable');
     return LoginMethodEnrollmentState(email: email, phone: phone,
       emailConfirmed: true, phoneConfirmed: phoneConfirmed, emailAvailable: true,
-      phoneAvailable: phoneAvailable, phoneConfirmationPending: pendingPhone);
+      phoneAvailable: phoneAvailable, phoneRegistrationReady: phoneRegistrationReady,
+      phoneConfirmationPending: pendingPhone);
   }
   @override
   Future<void> setPrimaryPassword(String value, {String? nonce}) async {
@@ -54,7 +55,7 @@ void main() {
   testWidgets('provider OFF disables phone sending while primary password remains available', (t) async {
     final source = Source();
     await show(t, source);
-    expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '電話番号を登録')).onPressed, isNull);
+    expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '電話番号登録（準備中）')).onPressed, isNull);
     expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '第一パスワードを設定・変更')).onPressed, isNotNull);
     expect(source.phoneRequests, 0);
   });
@@ -101,6 +102,24 @@ void main() {
     expect(find.textContaining('第一パスワードの保存と同じ'), findsNothing);
   });
 
+  testWidgets('advertised phone provider cannot enable unreleased SMS registration', (t) async {
+    final source=Source()..phoneAvailable=true..phoneRegistrationReady=false;
+    await show(t,source);
+    final button=find.widgetWithText(OutlinedButton,'電話番号登録（準備中）');
+    expect(t.widget<OutlinedButton>(button).onPressed,isNull);
+    expect(find.textContaining('電話番号の新規登録は準備中'),findsOneWidget);
+    expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton,'第一パスワードを設定・変更')).onPressed,isNotNull);
+    expect(source.phoneRequests,0);expect(source.confirmations,0);
+    expect(find.text('電話番号は登録確認済みです。'),findsNothing);
+  });
+  testWidgets('paused registration preserves previously verified phone evidence', (t) async {
+    final source=Source()..phoneAvailable=true..phoneRegistrationReady=false
+      ..phone='819012345678'..phoneConfirmed=true;
+    await show(t,source);
+    expect(find.text('電話番号は登録確認済みです。'),findsOneWidget);
+    expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton,'電話番号登録（準備中）')).onPressed,isNull);
+    expect(source.phoneRequests,0);expect(source.confirmations,0);
+  });
   testWidgets('phone SMS request remains unconfirmed until code verification', (t) async {
     final source = Source()..phoneAvailable = true;
     var receipts = 0;
@@ -145,7 +164,7 @@ void main() {
     final source = Source();
     await show(t, source);
     expect(find.text('電話番号は未登録です。'), findsOneWidget);
-    expect(find.textContaining('電話番号ログインは提供準備中'), findsOneWidget);
+    expect(find.textContaining('電話番号の新規登録は準備中'), findsOneWidget);
     expect(find.text('電話番号は登録確認済みです。'), findsNothing);
     await t.tap(find.text('？ 登録状況の見方')); await t.pumpAndSettle();
     expect(find.textContaining('電話番号の登録状況と、SMSを送れる提供状態は別です。'), findsOneWidget);
@@ -170,14 +189,14 @@ void main() {
     await t.tap(find.text('登録方法を再読み込み')); await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('login-enrollment-load-error')), findsOneWidget);
     expect(find.text('電話番号は未登録です。'), findsNothing);
-    expect(find.textContaining('電話番号ログインは提供準備中'), findsNothing);
+    expect(find.textContaining('電話番号の新規登録は準備中'), findsNothing);
     expect(find.text('電話番号を登録'), findsNothing);
     expect(find.text('第一パスワードを設定・変更'), findsNothing);
     source.failLoad = false; source.phoneAvailable = false;
     await t.tap(find.text('登録方法を再読み込み')); await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('login-enrollment-load-error')), findsNothing);
     expect(find.text('電話番号は未登録です。'), findsOneWidget);
-    expect(find.textContaining('電話番号ログインは提供準備中'), findsOneWidget);
+    expect(find.textContaining('電話番号の新規登録は準備中'), findsOneWidget);
     expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '第一パスワードを設定・変更')).onPressed, isNotNull);
     expect(receipts, 0); expect(source.phoneRequests, 0);
   });
@@ -194,8 +213,8 @@ void main() {
     older.complete(const LoginMethodEnrollmentState(email: 'old@example.invalid', phone: '',
       emailConfirmed: true, phoneConfirmed: false, emailAvailable: true, phoneAvailable: true));
     await t.pumpAndSettle();
-    expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '電話番号を登録')).onPressed, isNull);
-    expect(find.textContaining('電話番号ログインは提供準備中'), findsOneWidget);
+    expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '電話番号登録（準備中）')).onPressed, isNull);
+    expect(find.textContaining('電話番号の新規登録は準備中'), findsOneWidget);
     expect(source.phoneRequests, 0);
   });
 
@@ -203,7 +222,7 @@ void main() {
     final source = Source()..failLoad = true;
     await show(t, source);
     expect(find.byKey(const ValueKey('login-enrollment-load-error')), findsOneWidget);
-    expect(find.textContaining('電話番号ログインは提供準備中'), findsNothing);
+    expect(find.textContaining('電話番号の新規登録は準備中'), findsNothing);
     expect(find.text('電話番号は未登録です。'), findsNothing);
     expect(find.text('電話番号は登録確認済みです。'), findsNothing);
     expect(source.phoneRequests, 0);
@@ -235,14 +254,14 @@ void main() {
       expect(find.text('電話番号を登録'), findsNothing);
       expect(find.text('電話番号は未登録です。'), findsNothing);
       expect(find.text('電話番号は登録確認済みです。'), findsNothing);
-      expect(find.textContaining('電話番号ログインは提供準備中'), findsNothing);
+      expect(find.textContaining('電話番号の新規登録は準備中'), findsNothing);
       expect(find.text('第一パスワードを設定・変更'), findsNothing);
     }
     source.readFailure = null;
     await t.tap(find.text('登録方法を再読み込み')); await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('login-enrollment-load-error')), findsNothing);
     expect(find.text('電話番号は未登録です。'), findsOneWidget);
-    expect(find.textContaining('電話番号ログインは提供準備中'), findsOneWidget);
+    expect(find.textContaining('電話番号の新規登録は準備中'), findsOneWidget);
     expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '第一パスワードを設定・変更')).onPressed, isNotNull);
     expect(source.phoneRequests, 0); expect(source.passwords, 0); expect(receipts, 0);
   });
@@ -271,7 +290,7 @@ void main() {
     await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('login-enrollment-load-error')), findsNothing);
     expect(find.text('電話番号は未登録です。'), findsOneWidget);
-    expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '電話番号を登録')).onPressed, isNull);
+    expect(t.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '電話番号登録（準備中）')).onPressed, isNull);
     expect(source.phoneRequests, 0); expect(t.takeException(), isNull);
   });
 
