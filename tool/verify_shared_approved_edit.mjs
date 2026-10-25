@@ -10,7 +10,7 @@ const base=await readFile('tool/verify_shared_daily_report.mjs','utf8');
 const marker=" // A real recorded-hours basis hashes source links; it must not silently change.";
 assert.equal(base.split(marker).length,2);
 const unit=String.raw`
- await exec("create table if not exists public.daily_report_edit_requests(id uuid primary key,report_id uuid,company_id uuid,requested_by uuid,reason text,status text,approvals_required integer default 2,created_at timestamptz default now(),resolved_at timestamptz);revoke insert,update,delete on public.daily_report_edit_requests from authenticated,anon;");
+ await exec("create table if not exists public.daily_report_edit_requests(id uuid primary key,report_id uuid,company_id uuid,requested_by uuid,reason text,status text,approvals_required integer default 2,created_at timestamptz default now(),resolved_at timestamptz);alter table public.daily_report_edit_requests add column if not exists company_id uuid;revoke insert,update,delete on public.daily_report_edit_requests from authenticated,anon;");
  await exec(await readFile('docs/candidates/shared_daily_report_approved_edit.sql.review-only','utf8'));
  const approvedRequest=id(8600);
  await client.query("insert into public.daily_report_edit_requests(id,report_id,company_id,requested_by,status) values($1,$2,$3,$4,'approved')",[approvedRequest,sharedRid,A,memberC]);

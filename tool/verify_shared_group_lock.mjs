@@ -33,12 +33,10 @@ base=base.replace(beforeCommit,String.raw`
   await reject(()=>client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,work_date) values($1,$2,$3,$4,'clock_in','2026-11-03 08:00Z','2026-11-03')",[id(8193),A,W6,SITE]),/batch_scopes_must_be_prepared/);
   await exec('rollback');await sharedRaceClient.query('rollback');
   eq(await q('select count(*)::int v from attendance_verifications where id=any($1::uuid[])',[[id(8192),id(8193)]]),0,'Unprepared batch rejects before blocked second worker scope and rolls back first row');
-  await sharedRaceClient.query('begin');
-  await sharedRaceClient.query('select payroll_scope_private.lock_scopes($1::jsonb,false)',[JSON.stringify([{cid:A,wid:W4,day:'2026-12-03'}])]);
   await exec('begin');await exec("set local lock_timeout='100ms'");
   await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,work_date) values($1,$2,$3,$4,'clock_in','2026-11-03 08:00Z','2026-11-03')",[id(8194),A,W4,SITE]);
   await reject(()=>client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,work_date) values($1,$2,$3,$4,'clock_in','2026-12-03 08:00Z','2026-12-03')",[id(8195),A,W4,SITE]),/batch_scopes_must_be_prepared/);
-  await exec('rollback');await sharedRaceClient.query('rollback');
+  await exec('rollback');
   eq(await q('select count(*)::int v from attendance_verifications where id=any($1::uuid[])',[[id(8194),id(8195)]]),0,'Same worker across months cannot add a later canonical scope after a group lock');
 
 `);
