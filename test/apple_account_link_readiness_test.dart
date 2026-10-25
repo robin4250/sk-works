@@ -28,6 +28,16 @@ String session(String id, {int age = 0}) {
     'refresh_token':'synthetic', 'token_type':'bearer', 'expires_in':3600, 'user':user(id)});
 }
 
+class ReadinessEventAppleLink extends AppleAccountLink {
+  ReadinessEventAppleLink(super.client, this.events, {
+    required Future<bool> Function() providerCheck,
+  }) : super(settingsUrl: Uri.parse('https://apple-readiness.invalid/auth/v1/settings'),
+    publicKey: 'synthetic-public', providerCheck: providerCheck,
+    launch: (_) async => throw StateError('readiness must never launch OAuth'));
+  final Stream<AuthState> events;
+  @override Stream<AuthState> get changes => events;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late SupabaseClient client;
@@ -159,5 +169,41 @@ void main() {
     holdProvider!.complete();
     expect(await pending, AppleLinkReadiness.unavailable);
     noAuthMutation(newToken);
+  });
+
+  test('historical other-actor auth event invalidates readiness after current actor returns', () async {
+    final events = StreamController<AuthState>();
+    addTearDown(events.close);
+    holdProvider = Completer<void>(); reachedProvider = Completer<void>();
+    source = ReadinessEventAppleLink(client, events.stream, providerCheck: () async {
+      reachedProvider!.complete(); await holdProvider!.future; return true;
+    });
+    final original = client.auth.currentSession!;
+    final pending = source.readiness(); await reachedProvider!.future;
+    events.add(AuthState(AuthChangeEvent.signedIn,
+      Session.fromJson(jsonDecode(session(other)) as Map<String, dynamic>)));
+    events.add(AuthState(AuthChangeEvent.signedIn, original));
+    await Future<void>.delayed(Duration.zero);
+    holdProvider!.complete();
+    expect(await pending, AppleLinkReadiness.unavailable);
+    noAuthMutation(original.accessToken);
+  });
+
+  test('historical same-actor token change invalidates readiness after old token returns', () async {
+    final events = StreamController<AuthState>();
+    addTearDown(events.close);
+    holdProvider = Completer<void>(); reachedProvider = Completer<void>();
+    source = ReadinessEventAppleLink(client, events.stream, providerCheck: () async {
+      reachedProvider!.complete(); await holdProvider!.future; return true;
+    });
+    final original = client.auth.currentSession!;
+    final pending = source.readiness(); await reachedProvider!.future;
+    events.add(AuthState(AuthChangeEvent.tokenRefreshed,
+      Session.fromJson(jsonDecode(session(actor, age: 1)) as Map<String, dynamic>)));
+    events.add(AuthState(AuthChangeEvent.signedIn, original));
+    await Future<void>.delayed(Duration.zero);
+    holdProvider!.complete();
+    expect(await pending, AppleLinkReadiness.unavailable);
+    noAuthMutation(original.accessToken);
   });
 }
