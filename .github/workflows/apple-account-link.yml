@@ -1,11 +1,12 @@
 name: Apple existing account linking
 on:
   pull_request:
-    branches: [main]
     paths:
       - 'lib/features/auth/apple_account_link*.dart'
       - 'lib/features/auth/panel_seven_page.dart'
       - 'test/apple_account_link_test.dart'
+      - 'test/apple_account_link_readiness_test.dart'
+      - 'test/apple_account_link_card_readiness_test.dart'
       - '.github/workflows/apple-account-link.yml'
 permissions:
   contents: read
@@ -23,6 +24,6 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
       - name: Analyze Apple linking flow
-        run: dart analyze lib/features/auth/apple_account_link.dart lib/features/auth/apple_account_link_card.dart lib/features/auth/panel_seven_page.dart test/apple_account_link_test.dart
+        run: dart analyze lib/features/auth/apple_account_link.dart lib/features/auth/apple_account_link_card.dart lib/features/auth/panel_seven_page.dart test/apple_account_link_test.dart test/apple_account_link_readiness_test.dart test/apple_account_link_card_readiness_test.dart
       - name: Verify existing-account linking and account settings
-        run: flutter test test/apple_account_link_test.dart test/panel_seven_repository_test.dart test/panel_seven_test.dart --reporter expanded
+        run: flutter test test/apple_account_link_test.dart test/apple_account_link_readiness_test.dart test/apple_account_link_card_readiness_test.dart test/panel_seven_repository_test.dart test/panel_seven_test.dart --reporter expanded

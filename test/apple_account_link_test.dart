@@ -58,6 +58,14 @@ class WidgetReadinessAppleLink extends AppleAccountLink {
       await providerEnabled() ? AppleLinkReadiness.ready : AppleLinkReadiness.providerDisabled;
 }
 
+class EventAppleLink extends AppleAccountLink {
+  EventAppleLink(super.client, this.events, {required Future<bool> Function(Uri) launch})
+      : super(settingsUrl: Uri.parse('https://apple-link.invalid/auth/v1/settings'),
+          publicKey: 'public-synthetic', providerCheck: () async => true, launch: launch);
+  final Stream<AuthState> events;
+  @override Stream<AuthState> get changes => events;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late SupabaseClient client;
@@ -72,9 +80,11 @@ void main() {
   String authorizeUrl = 'https://appleid.apple.com/auth/authorize?synthetic=true';
   Completer<void>? holdAuthorize;
   Completer<void>? gotAuthorize;
+  Completer<void>? holdProvider, gotProvider;
   setUp(() async {
     paths=[]; enabled=true; apple=false; google=true; launches=0; role='owner';
     responseActor=actor; holdAuthorize=null; gotAuthorize=null;
+    holdProvider=null; gotProvider=null;
     authorizeUrl='https://appleid.apple.com/auth/authorize?synthetic=true';
     network=MockClient((request) async {
       paths.add('${request.method} ${request.url.path}');
@@ -102,7 +112,8 @@ void main() {
     await client.auth.setInitialSession(session(actor));
     source=AppleAccountLink(client,
       settingsUrl:Uri.parse('https://apple-link.invalid/auth/v1/settings'),
-      publicKey:'public-synthetic',providerCheck:() async => enabled,
+      publicKey:'public-synthetic',providerCheck:() async {
+        gotProvider?.complete(); await holdProvider?.future; return enabled; },
       launch:(uri) async { launches++; return true; });
   });
   tearDown(() async { await source.dispose(); await client.dispose(); });
@@ -189,6 +200,62 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     await client.auth.setInitialSession(session(actor));
     holdAuthorize!.complete(); await rejected; expect(launches,0);
+  });
+  test('same actor token replacement during provider read blocks Apple authorization',() async {
+    holdProvider=Completer<void>(); gotProvider=Completer<void>();
+    final operation=source.begin();
+    final rejected=expectLater(operation,throwsA(isA<StateError>()
+      .having((e)=>e.message,'reason','apple_link_session_changed')));
+    await gotProvider!.future;
+    await client.auth.setInitialSession(session(actor,age:1));
+    final replacement=client.auth.currentSession!.accessToken;
+    holdProvider!.complete(); await rejected;
+    expect(launches,0); expect(source.pending,false);
+    expect(paths,isNot(contains('GET /auth/v1/user/identities/authorize')));
+    expect(client.auth.currentSession!.accessToken,replacement);
+    expect(paths.any((p)=>p.startsWith('POST')),false);
+  });
+  test('same actor token replacement during authorize never opens old Apple URL',() async {
+    holdAuthorize=Completer<void>(); gotAuthorize=Completer<void>();
+    final operation=source.begin();
+    final rejected=expectLater(operation,throwsA(isA<StateError>()
+      .having((e)=>e.message,'reason','apple_link_session_changed')));
+    await gotAuthorize!.future;
+    await client.auth.setInitialSession(session(actor,age:1));
+    final replacement=client.auth.currentSession!.accessToken;
+    holdAuthorize!.complete(); await rejected;
+    expect(launches,0); expect(source.pending,false);
+    expect(client.auth.currentSession!.accessToken,replacement);
+    expect(paths.any((p)=>p.startsWith('POST')),false);
+  });
+  test('historical other-actor event refuses old Apple URL after current actor returns',() async {
+    final events=StreamController<AuthState>();
+    final value=EventAppleLink(client,events.stream,
+      launch:(uri) async {launches++;return true;});
+    addTearDown(events.close); addTearDown(value.dispose);
+    holdAuthorize=Completer<void>(); gotAuthorize=Completer<void>();
+    final operation=value.begin();
+    final rejected=expectLater(operation,throwsA(isA<StateError>()
+      .having((e)=>e.message,'reason','apple_link_session_changed')));
+    await gotAuthorize!.future;
+    final original=client.auth.currentSession!;
+    // Current session is already A while the queued historical B event arrives.
+    events.add(AuthState(AuthChangeEvent.signedIn,
+      Session.fromJson(jsonDecode(session(other)) as Map<String,dynamic>)));
+    events.add(AuthState(AuthChangeEvent.signedIn,original));
+    await Future<void>.delayed(Duration.zero);
+    holdAuthorize!.complete(); await rejected;
+    expect(launches,0);expect(value.pending,false);
+    expect(client.auth.currentSession!.accessToken,original.accessToken);
+  });
+  test('same-account token update after Apple handoff can complete normally',() async {
+    await source.begin();
+    await client.auth.setInitialSession(session(actor,age:1));
+    await Future<void>.delayed(Duration.zero);
+    apple=true;
+    expect(await source.verifyCompletion(),true);
+    expect(launches,1);expect(client.auth.currentUser!.id,actor);
+    expect(paths.any((p)=>p.startsWith('POST')),false);
   });
   test('untrusted authorization host cannot receive a browser launch',() async {
     authorizeUrl='https://example.invalid/steal';
