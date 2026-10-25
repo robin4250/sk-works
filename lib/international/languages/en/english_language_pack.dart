@@ -4,6 +4,7 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "この日報の内容と報告者サインは保存済みです。重複登録は不要です。責任者本人のサインは対象メンバーが取得できます。内容の変更には編集承認が必要です。": "The report content and reporter signature are saved. No duplicate report is needed. Any report member can collect the supervisor's own signature. Changes require edit approval.",
     "{name}さんが日報を登録しました": "{name} registered the daily report",
     "退勤後の日報登録": "Daily report after checkout",
     "退勤後の日報通知について": "About report registration reminders",

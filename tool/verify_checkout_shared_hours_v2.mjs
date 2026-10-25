@@ -79,7 +79,7 @@ const addition=String.raw`
  const v2Before=await sharedCall(memberB,sidB,'select public.read_shared_daily_report_context($1) v',[v2Rid]);
  eq(v2Before.hours_annex.ready,true,'All explicit personal confirmations make final annex ready');
  eq(v2Before.hours_annex.inputs.every(i=>i.hours_required),true,'Confirmed private choices create hour requirement before public work-row materialization');
- await reject(()=>sharedCall(memberB,sidB,"select public.save_daily_report_signature($1,'supervisor',$2,$3::jsonb) v",[v2Rid,'旧経路の責任者',signature]),/shared_report_signature_actor_required/);
+ await reject(()=>sharedCall(memberB,sidB,"select public.save_daily_report_signature($1,'supervisor',$2,$3::jsonb) v",[v2Rid,'旧経路の責任者',signature]),/shared_hours_supervisor_confirmation_required/);
  const v2PeerSaved=await sharedCall(memberB,sidB,'select public.read_shared_worker_facts($1,$2) v',[v2Rid,W2]);
  await sharedCall(memberB,sidB,'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,null,$4,$5) v',
   [v2Rid,W2,JSON.stringify({...v2FactsB,allowance_label:null,company_allowance_selections:{contract_version:1,items:[]}}),v2PeerSaved.revision,v2PeerSaved.scope_fingerprint]);
