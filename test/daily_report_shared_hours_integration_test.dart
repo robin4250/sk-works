@@ -245,7 +245,7 @@ void main() {
     expect(find.textContaining('勤務実績の連携は準備中'), findsOneWidget);
   });
   testWidgets('explicit category batch stages facts only then actual new reporter capture without old writer', (tester) async {
-    final reports = _Reports()..reporterSaved = true..supervisorSaved = true..documentMode = true;
+    final reports = _Reports()..reporterSaved = true..supervisorSaved = true..documentMode = true..recoveryChoices = true;
     final shared = _Shared(reports)..documentOnly = true..manager = true..financialSupported = true;
     final facts = _Facts()..manageAll = true..missingProposal = true..requireHours = false..frozen = false;
     await open(tester, reports, _Hours()..versionTwo = true, shared, facts: facts);
@@ -263,6 +263,15 @@ void main() {
     expect(shared.financialPreparations, 0); expect(facts.confirmations, 0);
     final category = find.byType(DropdownButtonFormField<String>).last;
     await tester.ensureVisible(category); await tester.tap(category); await tester.pumpAndSettle();
+    await tester.tap(find.text('夜勤').last); await tester.pumpAndSettle();
+    await reveal(tester, 'この人の勤務実績を確認');
+    await tester.tap(find.text('この人の勤務実績を確認')); await tester.pumpAndSettle();
+    expect(find.text('1 / 1 人の内容を確認済み'), findsOneWidget);
+    // Any subsequent change must invalidate that person's explicit review.
+    await tester.ensureVisible(category); await tester.tap(category); await tester.pumpAndSettle();
+    await tester.tap(find.text('日勤').last); await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('prepare-financial-resigning'))).onPressed, isNull);
+    await tester.tap(category); await tester.pumpAndSettle();
     await tester.tap(find.text('夜勤').last); await tester.pumpAndSettle();
     await reveal(tester, 'この人の勤務実績を確認');
     await tester.tap(find.text('この人の勤務実績を確認')); await tester.pumpAndSettle();
