@@ -85,6 +85,53 @@ returns boolean language sql stable security definer set search_path='' as $$
   and not checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json))
 $$;
 revoke all on function shared_daily_report_private.enrollment_supported(uuid) from public,anon,authenticated,service_role;
+create function shared_daily_report_private.work_only_available(rid uuid)
+returns boolean language plpgsql stable security definer set search_path='' as $$
+declare available boolean:=false;
+begin
+ if exists(select 1 from shared_daily_report_private.work_protocol where report_id=rid) then return true;end if;
+ if not shared_daily_report_private.enrollment_supported(rid) then return false;end if;
+ if to_regprocedure('checkout_shared_hours_private.enrollment_available(uuid)') is not null then
+  execute 'select checkout_shared_hours_private.enrollment_available($1)' into available using rid;
+ end if;
+ return coalesce(available,false);
+end $$;
+revoke all on function shared_daily_report_private.work_only_available(uuid) from public,anon,authenticated,service_role;
+create function shared_daily_report_private.eligible_roster_snapshot(cid uuid,day_value date,site uuid,route uuid)
+returns jsonb language sql stable security definer set search_path='' as $$
+ with sources as(select a.* from public.attendance_verifications a where a.company_id=cid and a.work_date=day_value
+  and a.site_id is not distinct from site and a.route_assignment_id is not distinct from route)
+ select jsonb_build_object('worker_ids',coalesce((select jsonb_agg(wid order by wid) from
+  (select distinct worker_id wid from sources where event_type='clock_in') w),'[]'::jsonb),
+  'source_fingerprint',encode(sha256(convert_to(coalesce((select jsonb_agg(to_jsonb(s) order by s.id)::text from sources s),'[]'),'UTF8')),'hex'))
+$$;
+revoke all on function shared_daily_report_private.eligible_roster_snapshot(uuid,date,uuid,uuid) from public,anon,authenticated,service_role;
+
+create function shared_daily_report_private.known_roster_snapshot(rid uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare r public.daily_reports%rowtype;answer jsonb;managed uuid[]:='{}'::uuid[];manual_rows jsonb;
+begin
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null then raise sqlstate '42501' using message='shared_report_unavailable';end if;
+ answer:=shared_daily_report_private.eligible_roster_snapshot(r.company_id,r.report_date,r.site_id,r.route_assignment_id);
+ -- Discover formal manual identities only before the common work receipt. The
+ -- source owner validates ambiguity; salary readiness must not erase a member.
+ if not checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json)
+ and exists(select 1 from public.attendance_entries a where a.company_id=r.company_id and a.work_date=r.report_date
+  and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id
+  and a.base_man_days>0 and a.source_report_id is null) then
+  if to_regprocedure('checkout_shared_managed_private.eligible_managed_worker_ids(uuid)') is null then
+   raise sqlstate '55000' using message='shared_report_managed_roster_adapter_unavailable';end if;
+  execute 'select checkout_shared_managed_private.eligible_managed_worker_ids($1)' into managed using rid;
+ end if;
+ select coalesce(jsonb_agg(to_jsonb(a) order by a.id),'[]'::jsonb) into manual_rows from public.attendance_entries a
+ where a.company_id=r.company_id and a.work_date=r.report_date and a.worker_id=any(managed)
+  and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id;
+ return jsonb_build_object('worker_ids',(select coalesce(jsonb_agg(wid order by wid),'[]'::jsonb)
+  from(select value::uuid wid from jsonb_array_elements_text(answer->'worker_ids') union select unnest(managed)) x),
+  'source_fingerprint',encode(sha256(convert_to(jsonb_build_array(answer,manual_rows)::text,'UTF8')),'hex'));
+end $$;
+revoke all on function shared_daily_report_private.known_roster_snapshot(uuid) from public,anon,authenticated,service_role;
 
 create function shared_daily_report_private.personal_out_snapshot(rid uuid)
 returns jsonb language sql stable security definer set search_path='' as $$
@@ -147,13 +194,39 @@ begin
   reasons:=reasons||'"hours_annex_unconfirmed"'::jsonb;end if;
  if exists(select 1 from shared_daily_report_private.work_protocol where report_id=rid) and (hours->>'enabled')::boolean is distinct from true then
   raise sqlstate '55000' using message='shared_report_enrolled_closing_facts_unavailable';end if;
+ if checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json)
+ and (exists(select 1 from public.attendance_verifications a where a.company_id=r.company_id and a.work_date=r.report_date
+  and a.event_type='clock_in' and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id
+  and not exists(select 1 from public.daily_report_workers w where w.report_id=rid and w.worker_id=a.worker_id))
+ or exists(select 1 from public.attendance_entries a where a.company_id=r.company_id and a.work_date=r.report_date
+  and a.base_man_days>0 and a.source_report_id is null and a.site_id is not distinct from r.site_id
+  and a.route_assignment_id is not distinct from r.route_assignment_id
+  and not exists(select 1 from public.daily_report_workers w where w.report_id=rid and w.worker_id=a.worker_id))) then
+  ready:=false;reasons:=reasons||'"work_roster_correction_required"'::jsonb;
+ end if;
  value:=jsonb_build_object('work_basis',shared_daily_report_private.work_basis(rid),
   'representative_signature',r.representative_signature_json,'supervisor_signature',r.supervisor_signature_json,
-  'report_updated_at',r.updated_at,'hours_annex',hours,'personal_outs',outs,'required_inputs_ready',inputs_ready);
+  'report_updated_at',r.updated_at,'hours_annex',hours,'personal_outs',outs,'required_inputs_ready',inputs_ready,
+  'eligible_roster',shared_daily_report_private.known_roster_snapshot(rid));
  return jsonb_build_object('signature_scope_fingerprint',encode(sha256(convert_to(value::text,'UTF8')),'hex'),'work_basis',value->'work_basis','hours_annex',hours,
-  'supervisor_ready',ready,'pending_members',outs->'pending_members','supervisor_pending_reasons',reasons);
+  'supervisor_ready',ready,'pending_members',outs->'pending_members','supervisor_pending_reasons',reasons,
+  'eligible_worker_ids',value#>'{eligible_roster,worker_ids}');
 end $$;
 revoke all on function shared_daily_report_private.signature_scope(uuid) from public,anon,authenticated,service_role;
+create function shared_daily_report_private.safe_signature_scope(rid uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare error_message text;
+begin
+ return shared_daily_report_private.signature_scope(rid)||jsonb_build_object('management_hold',false,'management_hold_reason',null);
+exception when sqlstate 'PT409' then
+ get stacked diagnostics error_message=message_text;
+ if error_message not in ('managed_attendance_financial_vector_changed_pending','managed_roster_manual_worker_scope_mismatch','managed_roster_existing_projection_pending','managed_roster_manual_source_ambiguous') then raise;end if;
+ return jsonb_build_object('state','managed_financial_hold','signature_scope_fingerprint',null,
+  'work_basis',shared_daily_report_private.work_basis(rid),'hours_annex',null,'supervisor_ready',false,
+  'pending_members','[]'::jsonb,'supervisor_pending_reasons',jsonb_build_array('managed_financial_review_required'),
+  'management_hold',true,'management_hold_reason',error_message);
+end $$;
+revoke all on function shared_daily_report_private.safe_signature_scope(uuid) from public,anon,authenticated,service_role;
 
 create function shared_daily_report_private.signature_actor_allowed(rid uuid,role_value text)
 returns boolean language plpgsql stable security definer set search_path='' as $$
@@ -271,7 +344,9 @@ begin
  fresh_contract:=exists(select 1 from shared_daily_report_private.work_protocol where report_id=rid)
   or exists(select 1 from shared_daily_report_private.rollout p where p.company_id=r.company_id and p.enabled
    and r.report_date>=p.starts_on and r.created_at>=p.new_report_from);
- if tg_op in ('INSERT','UPDATE') and fresh_contract and coalesce(new.allowance_amount,0)<>0 then
+ if fresh_contract and ((tg_op='INSERT' and coalesce(new.allowance_amount,0)<>0)
+  or (tg_op='UPDATE' and (coalesce(new.allowance_amount,0)<>0 or coalesce(old.allowance_amount,0)<>0))
+  or (tg_op='DELETE' and coalesce(old.allowance_amount,0)<>0)) then
   if tg_op='UPDATE' and row(new.report_id,new.worker_id) is not distinct from row(old.report_id,old.worker_id)
    and to_regprocedure('checkout_shared_hours_private.permits_worker_materialization(uuid,uuid,jsonb,jsonb)') is not null then
    execute 'select checkout_shared_hours_private.permits_worker_materialization($1,$2,$3,$4)'
@@ -313,7 +388,7 @@ begin
  if i.id is null then
   raise sqlstate '42501' using message='shared_report_source_unavailable';end if;
  base:=jsonb_build_object('schema',1,'actor_id',actor,'enabled',true,'company_id',i.company_id,'worker_id',i.worker_id,
-  'work_date',i.work_date,'source_clock_in_id',i.id,'source_attached',false,'reporter_saved',false,'supervisor_saved',false,'supervisor_ready',false,'pending_members','[]'::jsonb,'supervisor_pending_reasons','[]'::jsonb,'can_manage_attendance',private.has_company_feature(i.company_id,'can_manage_attendance') is true);
+  'work_date',i.work_date,'source_clock_in_id',i.id,'source_attached',false,'reporter_saved',false,'supervisor_saved',false,'supervisor_ready',false,'first_reporter_covers_work_only',false,'management_hold',false,'management_hold_reason',null,'pending_members','[]'::jsonb,'supervisor_pending_reasons','[]'::jsonb,'can_manage_attendance',private.has_company_feature(i.company_id,'can_manage_attendance') is true);
  select * into r from public.daily_reports d where d.company_id=i.company_id and d.report_date=i.work_date
   and d.site_id is not distinct from i.site_id and d.route_assignment_id is not distinct from i.route_assignment_id;
  if not shared_daily_report_private.enabled(i.company_id,i.work_date) and (r.id is null or not shared_daily_report_private.report_enabled(r.id)) then return base||jsonb_build_object('state','disabled','enabled',false);end if;
@@ -338,8 +413,9 @@ begin
     then 'supervisor_saved' when checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json)
     then 'reporter_saved_waiting_supervisor' else 'reporter_required' end,
   'source_attached',coalesce(i.daily_report_id=r.id and o.daily_report_id=r.id,false),
+  'first_reporter_covers_work_only',shared_daily_report_private.work_only_available(r.id),
   'enabled',true,'reporter_saved',checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json),
-  'supervisor_saved',checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json),'reporter_name',r.representative_signer_name,'report_updated_at',r.updated_at,'report_status',r.status)||shared_daily_report_private.signature_scope(r.id);
+  'supervisor_saved',checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json),'reporter_name',r.representative_signer_name,'report_updated_at',r.updated_at,'report_status',r.status)||shared_daily_report_private.safe_signature_scope(r.id);
 end $$;
 revoke all on function shared_daily_report_private.resolve_own(uuid) from public,anon,authenticated,service_role;
 
@@ -363,12 +439,7 @@ begin
    and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id
    and (a.daily_report_id is null or a.daily_report_id=r.id) order by a.confirmed_at,a.id limit 1;
  capability:=shared_daily_report_private.report_enabled(r.id);
- work_only:=exists(select 1 from shared_daily_report_private.work_protocol p where p.report_id=r.id and p.company_id=r.company_id);
- if not work_only and shared_daily_report_private.enrollment_supported(r.id)
- and to_regprocedure('checkout_shared_hours_private.enrollment_available(uuid)') is not null then
-  execute 'select checkout_shared_hours_private.enrollment_available($1)' into work_only using rid;
-  work_only:=coalesce(work_only,false);
- end if;
+ work_only:=shared_daily_report_private.work_only_available(r.id);
  reporter_saved:=checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json);
  supervisor_saved:=checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json);
  return jsonb_build_object('schema',1,'actor_id',actor,'enabled',capability,'company_id',r.company_id,
@@ -381,7 +452,7 @@ begin
   'can_collect_supervisor',capability and (manager or i.id is not null),
   'source_attached',coalesce(i.daily_report_id=r.id and exists(select 1 from public.attendance_verifications o where o.source_clock_in_id=i.id and o.event_type='clock_out' and o.daily_report_id=r.id),false),
   'state',case when not capability then 'disabled' when supervisor_saved then 'supervisor_saved'
-   when reporter_saved then 'reporter_saved_waiting_supervisor' else 'reporter_required' end)||shared_daily_report_private.signature_scope(r.id);
+   when reporter_saved then 'reporter_saved_waiting_supervisor' else 'reporter_required' end)||shared_daily_report_private.safe_signature_scope(r.id);
 end $$;
 revoke all on function shared_daily_report_private.read_context(uuid) from public,anon,authenticated,service_role;
 
@@ -522,7 +593,7 @@ revoke all on function shared_daily_report_private.reuse_own(uuid) from public,a
 -- Save + first reporter signature are ONE transaction. A concurrent second
 -- submit reads the winner instead of clearing signatures or replacing roster.
 create function shared_daily_report_private.submit_report(p_source_clock_in_id uuid,p_expected_updated_at timestamptz,
- p_work_description text,p_workers jsonb,p_signer_name text,p_signature jsonb)
+ p_work_description text,p_workers jsonb,p_signer_name text,p_signature jsonb,p_expected_signature_scope text)
 returns jsonb language plpgsql volatile security definer set search_path='' as $$
 declare actor uuid;i public.attendance_verifications%rowtype;r public.daily_reports%rowtype;
  state jsonb;scopes jsonb;rid uuid;peer uuid;
@@ -530,6 +601,8 @@ begin
  actor:=checkout_report_registration_private.current_actor();
  state:=shared_daily_report_private.resolve_own(p_source_clock_in_id);
  if state->>'state'='own_checkout_required' then return state;end if;
+ if state->>'state' in('reporter_saved_waiting_supervisor','supervisor_saved') then
+  return shared_daily_report_private.reuse_own(p_source_clock_in_id);end if;
  select a.* into i from public.attendance_verifications a join public.workers w
   on w.id=a.worker_id and w.company_id=a.company_id and w.user_id=actor
   where a.id=p_source_clock_in_id and a.event_type='clock_in';
@@ -561,6 +634,8 @@ begin
  end loop;
  if exists(select 1 from jsonb_array_elements(p_workers) w where coalesce((w->>'allowance_amount')::numeric,0)<>0) then
   raise sqlstate '42501' using message='shared_report_manual_cash_requires_trusted_source';end if;
+ if shared_daily_report_private.strong_vehicle_enabled(i.company_id) then
+  raise sqlstate '55000' using message='shared_report_strong_vehicle_scope_not_supported';end if;
  perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(i.company_id,i.work_date,i.site_id,i.route_assignment_id)::text,0));
  select jsonb_agg(jsonb_build_object('cid',i.company_id,'wid',ids.wid,'day',i.work_date) order by ids.wid)
   into scopes from (select distinct (w->>'worker_id')::uuid wid from jsonb_array_elements(p_workers) w
@@ -576,7 +651,19 @@ begin
   raise sqlstate '55000' using message='shared_report_existing_signature_requires_review';end if;
  if r.id is not null and r.updated_at is distinct from p_expected_updated_at then
   raise sqlstate '40001' using message='shared_report_reload_required';end if;
- rid:=public.save_daily_report_destination_draft(r.id,i.site_id,i.route_assignment_id,i.work_date,p_work_description,p_workers);
+ if r.id is null then raise sqlstate '55000' using message='shared_report_draft_preview_required';end if;
+ if shared_daily_report_private.signature_scope(r.id)->>'signature_scope_fingerprint' is distinct from p_expected_signature_scope then
+  raise sqlstate '40001' using message='shared_report_eligible_roster_or_source_changed';end if;
+ if exists(select 1 from jsonb_array_elements_text(shared_daily_report_private.known_roster_snapshot(r.id)->'worker_ids') known
+  where not exists(select 1 from jsonb_array_elements(p_workers) w where (w->>'worker_id')::uuid=known.value::uuid)) then
+  raise sqlstate '40001' using message='shared_report_known_roster_incomplete';end if;
+ if r.work_description is distinct from p_work_description
+ or (select coalesce(jsonb_agg(wid order by wid),'[]'::jsonb) from(select (w->>'worker_id')::uuid wid from jsonb_array_elements(p_workers) w) p)
+  is distinct from (select coalesce(jsonb_agg(worker_id order by worker_id),'[]'::jsonb) from public.daily_report_workers where report_id=r.id) then
+  raise sqlstate '40001' using message='shared_report_common_preview_changed';end if;
+ -- The draft was explicitly saved and reviewed before capture. Do not re-run
+ -- the legacy delete/reinsert writer or silently change the reviewed work facts.
+ rid:=r.id;
  if not exists(select 1 from public.daily_reports d where d.id=rid and d.company_id=i.company_id and d.report_date=i.work_date
   and d.site_id is not distinct from i.site_id and d.route_assignment_id is not distinct from i.route_assignment_id) then
   raise sqlstate '42501' using message='shared_report_company_context_unavailable';end if;
@@ -592,7 +679,7 @@ begin
  perform private.save_daily_report_signature(rid,'representative',p_signer_name,p_signature);
  return shared_daily_report_private.resolve_own(p_source_clock_in_id);
 end $$;
-revoke all on function shared_daily_report_private.submit_report(uuid,timestamptz,text,jsonb,text,jsonb) from public,anon,authenticated,service_role;
+revoke all on function shared_daily_report_private.submit_report(uuid,timestamptz,text,jsonb,text,jsonb,text) from public,anon,authenticated,service_role;
 
 create function shared_daily_report_private.collect_supervisor(p_report_id uuid,p_source_clock_in_id uuid,p_signer_name text,p_signature jsonb,p_management boolean,p_expected_updated_at timestamptz,p_expected_signature_scope text)
 returns jsonb language plpgsql volatile security definer set search_path='' as $$
@@ -686,6 +773,9 @@ begin
   raise sqlstate '40001' using message='shared_report_signature_scope_changed';end if;
  if p_role='supervisor' and (signature_scope->>'supervisor_ready')::boolean is distinct from true then
   raise sqlstate '55000' using message='shared_report_supervisor_not_ready';end if;
+ if p_role='representative' and (select coalesce(jsonb_agg(worker_id order by worker_id),'[]'::jsonb) from public.daily_report_workers where report_id=r.id)
+  is distinct from (shared_daily_report_private.known_roster_snapshot(r.id)->'worker_ids') then
+  raise sqlstate '40001' using message='shared_report_known_roster_incomplete';end if;
  if p_role='representative' and (nullif(btrim(r.work_description),'') is null or not exists(select 1 from public.daily_report_workers where report_id=r.id)) then
   raise sqlstate '55000' using message='shared_report_required_input_incomplete';end if;
  if p_role='supervisor' and (signature_scope#>>'{hours_annex,enabled}')::boolean is true then
@@ -751,9 +841,9 @@ create function public.reuse_my_shared_daily_report(p_source_clock_in_id uuid)
 returns jsonb language sql volatile security definer set search_path='' as $$
  select shared_daily_report_private.reuse_own(p_source_clock_in_id)
 $$;
-create function public.submit_shared_daily_report(p_source_clock_in_id uuid,p_expected_updated_at timestamptz,p_work_description text,p_workers jsonb,p_signer_name text,p_signature jsonb)
+create function public.submit_shared_daily_report(p_source_clock_in_id uuid,p_expected_updated_at timestamptz,p_work_description text,p_workers jsonb,p_signer_name text,p_signature jsonb,p_expected_signature_scope text default null)
 returns jsonb language sql volatile security definer set search_path='' as $$
- select shared_daily_report_private.submit_report(p_source_clock_in_id,p_expected_updated_at,p_work_description,p_workers,p_signer_name,p_signature)
+ select shared_daily_report_private.submit_report(p_source_clock_in_id,p_expected_updated_at,p_work_description,p_workers,p_signer_name,p_signature,p_expected_signature_scope)
 $$;
 create function public.collect_shared_report_supervisor_signature(p_report_id uuid,p_source_clock_in_id uuid,p_signer_name text,p_signature jsonb,p_expected_updated_at timestamptz,p_expected_signature_scope text)
 returns jsonb language sql volatile security definer set search_path='' as $$
@@ -770,14 +860,14 @@ $$;
 revoke all on function public.read_my_shared_daily_report(uuid) from public,anon,authenticated,service_role;
 revoke all on function public.read_shared_daily_report_context(uuid) from public,anon,authenticated,service_role;
 revoke all on function public.reuse_my_shared_daily_report(uuid) from public,anon,authenticated,service_role;
-revoke all on function public.submit_shared_daily_report(uuid,timestamptz,text,jsonb,text,jsonb) from public,anon,authenticated,service_role;
+revoke all on function public.submit_shared_daily_report(uuid,timestamptz,text,jsonb,text,jsonb,text) from public,anon,authenticated,service_role;
 revoke all on function public.collect_shared_report_supervisor_signature(uuid,uuid,text,jsonb,timestamptz,text) from public,anon,authenticated,service_role;
 revoke all on function public.manage_shared_report_supervisor_signature(uuid,text,jsonb,timestamptz,text) from public,anon,authenticated,service_role;
 revoke all on function public.manage_shared_report_signature(uuid,text,text,jsonb,timestamptz,text) from public,anon,authenticated,service_role;
 grant execute on function public.read_my_shared_daily_report(uuid) to authenticated;
 grant execute on function public.read_shared_daily_report_context(uuid) to authenticated;
 grant execute on function public.reuse_my_shared_daily_report(uuid) to authenticated;
-grant execute on function public.submit_shared_daily_report(uuid,timestamptz,text,jsonb,text,jsonb) to authenticated;
+grant execute on function public.submit_shared_daily_report(uuid,timestamptz,text,jsonb,text,jsonb,text) to authenticated;
 grant execute on function public.collect_shared_report_supervisor_signature(uuid,uuid,text,jsonb,timestamptz,text) to authenticated;
 grant execute on function public.manage_shared_report_supervisor_signature(uuid,text,jsonb,timestamptz,text) to authenticated;
 grant execute on function public.manage_shared_report_signature(uuid,text,text,jsonb,timestamptz,text) to authenticated;

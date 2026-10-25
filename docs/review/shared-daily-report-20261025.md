@@ -8,10 +8,15 @@ global gate are owned by the integration task.
 
 The existing company/site/date and company/route/date uniqueness is retained.
 `submit_shared_daily_report` serializes a destination/day, locks all affected
-worker/month scopes in the established order and combines the existing draft
-writer and first reporter signature in one transaction. The second completed
+worker/month scopes and signs an explicitly saved, reviewed draft. It never
+re-runs the destructive legacy draft writer during first signature capture. The second completed
 participant reads/reuses the winner; it never replaces its roster or clears a
-signature. Existing unsigned drafts require the exact displayed updated-at CAS.
+signature. Existing unsigned drafts require the exact displayed updated-at and composite
+work/source-set CAS. Every server-known clock-in or validated manual attendance
+identity in the same destination/day belongs to the initial common roster; the
+client cannot omit a known coworker. A new member after the first receipt is an
+explicit roster-correction hold, never an invisible append. Concurrent AV group
+serialization still requires the separate lock-order proof before activation.
 
 An eligible ordinary member belongs to the saved report roster, company and real
 matching clock-in scope. A roster member can open supervisor collection readiness even while working;
@@ -34,7 +39,9 @@ already-saved signature is idempotent; different saved signatures are rejected.
 server `can_manage_attendance`. It can collect reporter or supervisor signatures
 without the manager's own clock/GPS/schedule/roster. It still requires actual
 signature strokes and name, preserves actor versus actual signer in an append-
-only private audit, and uses the existing finalized edit approval workflow.
+only private audit. Finalized edits must use the existing approval workflow;
+exact approved-session continuation through the new v2 final wrapper remains
+unverified and must be completed before claiming that workflow supported.
 Management recovery must be reachable from a blocked gate only with the server
 capability flag, and the management backend rechecks authority.
 
@@ -64,6 +71,14 @@ An ordinary already-signed roster member may append their own real source links
 without altering signed work content. A recorded v1 paid-hours draft/ledger
 hashes full source rows, so that separate basis cannot silently change; this
 returns an explicit correction state. No quantity is invented or normalized.
+
+Managed financial differences and ambiguous manual roster sources are persistent
+management holds. Authorized read contexts preserve the server management
+capability and safe reason-specific Japanese explanation. Signature writes roll
+back; neither the UI nor repository automatically retries the same hold.
+
+Per-stop `private.route_visit_reports` and their legacy RPCs are separate and
+untouched. These guards and adapters apply only to canonical whole-day reports.
 
 ## UI hooks
 

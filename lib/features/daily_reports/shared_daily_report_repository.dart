@@ -2,6 +2,20 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 
+class SharedReportManagementHold implements Exception {
+  const SharedReportManagementHold({this.reasonCode = 'managed_attendance_financial_vector_changed_pending'});
+  final String reasonCode;
+  static const reasons = {'managed_attendance_financial_vector_changed_pending',
+    'managed_roster_manual_worker_scope_mismatch', 'managed_roster_existing_projection_pending',
+    'managed_roster_manual_source_ambiguous'};
+  String get message => reasonCode == 'managed_attendance_financial_vector_changed_pending'
+      ? '手入力済み勤怠・給与との差異があるため、サインの保存を保留しています。勤怠管理で確認してください。'
+      : '手入力された勤務原本の対象・重複・既存日報との関連を勤怠管理で確認してください。';
+  bool get retryAllowed => false;
+  @override
+  String toString() => message;
+}
+
 class SharedDailyReportContext {
   const SharedDailyReportContext({
     required this.actorId, required this.companyId, required this.workDate,
@@ -12,6 +26,7 @@ class SharedDailyReportContext {
     this.reporterName = '', this.reportStatus, this.signatureScopeFingerprint,
     this.hoursAnnex, this.workBasis, this.supervisorReady = false,
     this.firstReporterCoversWorkOnly = false,
+    this.managementHoldReason,
     this.pendingWorkerIds = const [], this.supervisorPendingReasons = const [],
   });
   final String actorId, companyId, state, reporterName;
@@ -23,6 +38,10 @@ class SharedDailyReportContext {
   final Map<String, dynamic>? workBasis;
   final bool supervisorReady;
   final bool firstReporterCoversWorkOnly;
+  final String? managementHoldReason;
+  bool get isManagementHold => state == 'managed_financial_hold';
+  String get managementHoldMessage => SharedReportManagementHold(
+      reasonCode: managementHoldReason ?? 'managed_attendance_financial_vector_changed_pending').message;
   final List<String> pendingWorkerIds, supervisorPendingReasons;
   final bool enabled, canManageAttendance, reporterSaved, supervisorSaved,
       sourceAttached;
@@ -51,6 +70,7 @@ class SharedDailyReportContext {
     'roster_membership_required', 'reporter_required',
     'reporter_saved_waiting_supervisor', 'supervisor_saved',
     'recorded_hours_basis_requires_approved_edit',
+    'managed_financial_hold',
   };
   factory SharedDailyReportContext.parse(Object? raw, {
     required String actorId, String? sourceClockInId, String? reportId,
@@ -80,7 +100,7 @@ class SharedDailyReportContext {
     final day = DateTime.tryParse(dayRaw);
     if (day == null || day.toIso8601String().substring(0, 10) != dayRaw ||
         (workDate != null && DateTime(workDate.year, workDate.month, workDate.day) != day)) { invalid(); }
-    for (final key in ['enabled', 'can_manage_attendance', 'reporter_saved', 'supervisor_saved', 'source_attached', 'supervisor_ready']) {
+    for (final key in ['enabled', 'can_manage_attendance', 'reporter_saved', 'supervisor_saved', 'source_attached', 'supervisor_ready', 'first_reporter_covers_work_only', 'management_hold']) {
       if (row[key] is! bool) { invalid(); }
     }
     final state = row['state'];
@@ -101,11 +121,11 @@ class SharedDailyReportContext {
     }
     final work = row['work_basis'];
     Map<String, dynamic>? workBasis;
-    if (fingerprint != null) {
+    if (fingerprint != null || work != null) {
       if (work is! Map || work['contract_version'] != 2 || work['report'] is! Map || work['roster'] is! List) { invalid(); }
       final header = work['report'] as Map;
       if (header['id'] != report || header['company_id'] != company || header['work_date'] != dayRaw ||
-          header['work_description'] is! String) { invalid(); }
+          (header['work_description'] != null && header['work_description'] is! String)) { invalid(); }
       for (final key in ['site_id', 'route_assignment_id']) {
         if (header[key] != null && (header[key] is! String || !_uuid.hasMatch(header[key] as String))) { invalid(); }
       }
@@ -195,6 +215,9 @@ class SharedDailyReportContext {
       pendingIds.add(value['worker_id'] as String);
     }
     if (row['supervisor_ready'] == true && (pendingIds.isNotEmpty || reasons.isNotEmpty)) { invalid(); }
+    if ((row['management_hold'] == true) != (state == 'managed_financial_hold') ||
+        (row['management_hold'] == false && row['management_hold_reason'] != null) ||
+        (state == 'managed_financial_hold' && (!SharedReportManagementHold.reasons.contains(row['management_hold_reason']) || row['supervisor_ready'] != false))) { invalid(); }
     return SharedDailyReportContext(
       actorId: actorId, companyId: company, workerId: worker, reportId: report,
       sourceClockInId: source, clockOutId: out, workDate: day, state: state,
@@ -207,7 +230,8 @@ class SharedDailyReportContext {
       reportStatus: row['report_status'] as String?,
       signatureScopeFingerprint: fingerprint as String?, hoursAnnex: hoursAnnex,
       workBasis: workBasis,
-      firstReporterCoversWorkOnly: row['first_reporter_covers_work_only'] == true,
+      firstReporterCoversWorkOnly: row['first_reporter_covers_work_only'] as bool,
+      managementHoldReason: row['management_hold_reason'] as String?,
       supervisorReady: row['supervisor_ready'] as bool,
       pendingWorkerIds: List<String>.unmodifiable(pendingIds),
       supervisorPendingReasons: List<String>.unmodifiable(reasons.cast<String>()),
@@ -247,6 +271,13 @@ class SharedDailyReportRepository {
         throw StateError('共同日報の応答を確認できません。');
       }
       return raw;
+    } on PostgrestException catch (error) {
+      await Future<void>.delayed(Duration.zero);
+      check();
+      if (error.code == 'PT409' && SharedReportManagementHold.reasons.contains(error.message)) {
+        throw SharedReportManagementHold(reasonCode: error.message);
+      }
+      rethrow;
     } finally { await subscription.cancel(); }
   }
 
@@ -270,10 +301,11 @@ class SharedDailyReportRepository {
     required String workDescription, required List<Map<String, dynamic>> workers,
     required String signerName, required Map<String, dynamic> signature,
   }) async {
-    if (!before.enabled || before.sourceClockInId == null) { throw StateError('共同日報の登録条件を確認してください。'); }
+    if (!before.enabled || before.sourceClockInId == null || before.reportId == null || before.expectedUpdatedAt == null || before.signatureScopeFingerprint == null) { throw StateError('共同日報の登録条件を確認してください。'); }
     final raw = await _rpc('submit_shared_daily_report', {
       'p_source_clock_in_id': before.sourceClockInId,
       'p_expected_updated_at': before.expectedUpdatedAt?.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint,
       'p_work_description': workDescription, 'p_workers': workers,
       'p_signer_name': signerName, 'p_signature': signature,
     }, expectedActor: before.actorId);
