@@ -78,7 +78,12 @@ const unit=String.raw`
  await reject(()=>sharedCall(OTHER,foreignSid,'select public.read_shared_daily_report_context($1) v',[rid]),{code:'42501',message:'shared_report_unavailable'});
  await reject(()=>sharedCall(memberB,sidB,'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,context.report_updated_at,context.signature_scope_fingerprint,'他の作業者による変更']),/reporter_or_manager/);
  await reject(()=>sharedCall(U,id(80),'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,context.report_updated_at,'stale-scope','理由']),/signature_scope_changed/);
- await reject(()=>client.query("update daily_report_workers set overtime_hours=2 where report_id=$1 and worker_id=$2",[rid,reportWorker]),/explicit_edit_writer|approved_edit/);
+ // Owner SQL is not an authenticated application call; assert that boundary separately.
+ await reject(()=>client.query("update daily_report_workers set overtime_hours=2 where report_id=$1 and worker_id=$2",[rid,reportWorker]),{code:'42501',message:'checkout_report_actor_access_unavailable'});
+ // Isolated SECURITY DEFINER surrounding models a legacy trusted writer without
+ // granting direct table UPDATE or changing any production guard/ACL.
+ await exec("create function public.fixture_document_roster_attempt(rid uuid,wid uuid) returns void language sql security definer set search_path='' as $$update public.daily_report_workers set overtime_hours=2 where report_id=rid and worker_id=wid$$;revoke all on function public.fixture_document_roster_attempt(uuid,uuid) from public;grant execute on function public.fixture_document_roster_attempt(uuid,uuid) to authenticated;");
+ await reject(()=>sharedCall(U,id(80),'select public.fixture_document_roster_attempt($1,$2) v',[rid,reportWorker]),{code:'55000',message:'document_roster_requires_explicit_edit_writer'});
  await sharedCall(U,id(80),'select public.collect_shared_report_supervisor_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,docStart,'実現場責任者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
  let completed=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  eq(completed.document_complete,true,'Actual supervisor strokes complete the document');
