@@ -11,6 +11,7 @@ on:
       - 'lib/features/attendance/checkout_native_reminder*'
       - 'lib/features/daily_reports/daily_report_page.dart'
       - 'lib/widgets/input_step_heading.dart'
+      - 'lib/features/attendance/route_journey_capture_page.dart'
       - 'lib/features/operations/vehicle_driver_meter_page.dart'
       - 'lib/features/daily_reports/shared_daily_report_repository.dart'
       - 'lib/features/daily_reports/shared_worker_facts_repository.dart'
@@ -38,6 +39,7 @@ jobs:
       - run: git diff --exit-code -- pubspec.lock
       - run: >-
           flutter analyze
+          lib/features/attendance/route_journey_capture_page.dart
           lib/widgets/input_step_heading.dart
           lib/features/operations/vehicle_driver_meter_page.dart
           lib/features/daily_reports/daily_report_page.dart
