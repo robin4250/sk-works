@@ -1,6 +1,8 @@
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const scopes = new Map([
  ['secondary_password.replace', 'secondary_password'],
+ ['secondary_password.change', 'secondary_password'],
+ ['attendance.manage', 'attendance_management'],
  ['master.feature.set', 'master_feature'],
  ['master.security_incidents.read', 'master_security'],
  ['master.device.lock', 'master_device_lock'],
@@ -40,6 +42,19 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
  }
  const serviceHeaders=()=>({'Content-Type':'application/json',apikey:serviceKey,
   ...(!serviceKey.startsWith('sb_secret_')?{Authorization:'Bearer '+serviceKey}:{})});
+ async function issue(actor,session,operation,target,secondary) {
+   const nonce=Array.from(random(new Uint8Array(32)),x=>x.toString(16).padStart(2,'0')).join('');
+   const hash=Array.from(new Uint8Array(await digest('SHA-256',new TextEncoder().encode(nonce))),x=>x.toString(16).padStart(2,'0')).join('');
+   const issued=await request(secondary?'/rest/v1/rpc/issue_secondary_reauthentication_proof':'/rest/v1/rpc/issue_reauthentication_proof',{method:'POST',
+    headers:secondary?{apikey:publicKey,Authorization:secondary.authorization,'Content-Type':'application/json'}:serviceHeaders(),
+    body:JSON.stringify(secondary?{p_operation:operation,p_target:target,p_proof_hash:hash,p_password:secondary.password}:
+      {p_actor:actor,p_session:session,p_operation:operation,p_target:target,p_proof_hash:hash})});
+   if(!issued.ok)return reply(issued.status===429?429:issued.status===401||issued.status===403||secondary&&issued.status===400?403:503,{error:'reauthentication_unavailable'});
+   const expiresAt=await issued.json();
+   if(secondary&&expiresAt===null)return reply(403,{error:'reauthentication_failed'});
+   if(typeof expiresAt!=='string'||!Number.isFinite(Date.parse(expiresAt))||Date.parse(expiresAt)<=Date.now()||Date.parse(expiresAt)>Date.now()+125000)return reply(503,{error:'reauthentication_unavailable'});
+   return reply(200,{protocol:'sko-reauthentication-v1',proof:nonce,expiresAt,operation:operation,target});
+ }
  return async req => {
   if(req.method!=='POST')return reply(405,{error:'method_not_allowed'});
   if(!base||!publicKey||!serviceKey)return reply(503,{error:'reauthentication_unavailable'});
@@ -51,7 +66,7 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
    const response=await request('/auth/v1/user',{headers:{apikey:publicKey,Authorization:authorization}});
    if(!response.ok)return reply(response.status===401||response.status===403?401:503,{error:'reauthentication_unavailable'});
    const user=await response.json(), token=claims(authorization.slice(7));
-   if(!uuid.test(user?.id??'')||token.sub!==user.id||token.role!=='authenticated'||!uuid.test(token.session_id??'')||!Number.isFinite(token.exp)||token.exp*1000<=Date.now())return reply(401,{error:'authentication_required'});
+   if(user?.is_anonymous===true||token.is_anonymous===true||!uuid.test(user?.id??'')||token.sub!==user.id||token.role!=='authenticated'||!uuid.test(token.session_id??'')||!Number.isFinite(token.exp)||token.exp*1000<=Date.now())return reply(401,{error:'authentication_required'});
    verifiedAccess={user,session:token.session_id};
   }catch{return reply(503,{error:'reauthentication_unavailable'});}
   let payload;
@@ -62,7 +77,8 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
   if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).sort().join(',')!=='operation,password,target'||!scopes.has(payload.operation)||typeof payload.password!=='string'||payload.password.length===0||payload.password.length>1024)return reply(400,{error:'invalid_request'});
   const target=payload.target;
   if(!target||typeof target!=='object'||Array.isArray(target))return reply(400,{error:'invalid_request'});
-  if(payload.operation==='secondary_password.replace'&&(Object.keys(target).join(',')!=='user_id'||target.user_id!==user.id))return reply(400,{error:'invalid_request'});
+  if(payload.operation==='attendance.manage'&&(Object.keys(target).sort().join(',')!=='action,company_id,items_sha256'||!uuid.test(target.company_id??'')||!['upsert','delete'].includes(target.action)||!/^[0-9a-f]{64}$/.test(target.items_sha256??'')))return reply(400,{error:'invalid_request'});
+  if(['secondary_password.replace','secondary_password.change'].includes(payload.operation)&&(Object.keys(target).join(',')!=='user_id'||target.user_id!==user.id))return reply(400,{error:'invalid_request'});
   if(payload.operation==='master.feature.set'&&(Object.keys(target).sort().join(',')!=='enabled,feature_key'||!featureKeys.has(target.feature_key)||typeof target.enabled!=='boolean'))return reply(400,{error:'invalid_request'});
   if(payload.operation==='master.device.lock'&&(Object.keys(target).sort().join(',')!=='device_id,locked'||typeof target.device_id!=='string'||!uuid.test(target.device_id)||target.device_id!==target.device_id.toLowerCase()||typeof target.locked!=='boolean'))return reply(400,{error:'invalid_request'});
   if(payload.operation==='master.security_incidents.read'&&(Object.keys(target).join(',')!=='scope'||target.scope!=='platform'))return reply(400,{error:'invalid_request'});
@@ -74,6 +90,12 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
    if(deviceOperation ? (value?.protocol!=='sko-master-device-lock-v1'||value.enabled!==true)
      : (value?.protocol!=='sko-reauthentication-v1'||value[scopes.get(payload.operation)]!==true))return reply(403,{error:'reauthentication_disabled'});
   }catch{return reply(503,{error:'reauthentication_unavailable'});}
+  if(payload.operation==='attendance.manage'||payload.operation==='secondary_password.change') {
+   try {
+    // Verification/counter commit, fingerprint and issue are atomic in the DB.
+    return await issue(user.id,session,payload.operation,target,{password:payload.password,authorization});
+   }catch{return reply(503,{error:'reauthentication_unavailable'});}
+  }
   let temporaryAccess,temporaryActor;
   try {
    // The identifier comes from the authenticated user, never the request body.
@@ -91,13 +113,7 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
    const cleanup=await request('/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:publicKey,Authorization:'Bearer '+temporaryAccess}});
    if(!cleanup.ok)return reply(503,{error:'reauthentication_unavailable'});
    temporaryAccess=null;
-   const nonce=Array.from(random(new Uint8Array(32)),x=>x.toString(16).padStart(2,'0')).join('');
-   const hash=Array.from(new Uint8Array(await digest('SHA-256',new TextEncoder().encode(nonce))),x=>x.toString(16).padStart(2,'0')).join('');
-   const issued=await request('/rest/v1/rpc/issue_reauthentication_proof',{method:'POST',headers:serviceHeaders(),body:JSON.stringify({p_actor:user.id,p_session:session,p_operation:payload.operation,p_target:target,p_proof_hash:hash})});
-   if(!issued.ok)return reply(issued.status===401||issued.status===403?403:503,{error:'reauthentication_unavailable'});
-   const expiresAt=await issued.json();
-   if(typeof expiresAt!=='string'||!Number.isFinite(Date.parse(expiresAt))||Date.parse(expiresAt)<=Date.now()||Date.parse(expiresAt)>Date.now()+125000)return reply(503,{error:'reauthentication_unavailable'});
-   return reply(200,{protocol:'sko-reauthentication-v1',proof:nonce,expiresAt,operation:payload.operation,target});
+   return await issue(user.id,session,payload.operation,target);
   }catch{return reply(503,{error:'reauthentication_unavailable'});}
   finally {
    if(temporaryAccess) {

@@ -1,0 +1,33 @@
+# Secondary credential and attendance server proof candidate
+
+Review only; default OFF; no production deployment or Auth/provider changes.
+Dependency: PR1422 `f26d76111d2b44f4b5597366c47c62210fb485ed` exact force body MD5 `840b139fd78b9e9c2542db100f3232a7`. Client dependency: PR1421 latest reviewed head, including no legacy reset fallback and the preparing state. Main is unchanged.
+
+## Order and capabilities
+
+1. Keep current source definitions, owners and ACLs backed up and compare exact pins.
+2. Reuse `tool/staged/reauthentication_proofs.sql`; all scopes default false. Live authenticated/non-anonymous/non-banned account and SID checks also protect OFF setter/first setup. Existing unregistered credentials can still be initially set; existing credentials cannot use old overwrite after `secondary_password` is enabled.
+3. Install `tool/staged/attendance_reauthentication.sql` only after the exact allowance writer above. Its attendance flag defaults false. It preserves the old public function OID and captures exact source/ACL for unused restoration; the unproven writer copy has no caller grants/schema access.
+4. Deploy the reviewed existing `reauthenticate-operation` Edge candidate with actual config, then the matching client. Do not enable a scope merely because its source is present. Current production lacks the core proof objects/Edge.
+5. `secondary_password_change_supported` enables a known-secondary change. `secondary_password_recovery_supported` depends on the current user's actual existing primary password. Google-only forgotten-secondary recovery is preparing; this does not disable Google or Face ID login. Never interpret a refresh/account chooser/Google consent timestamp as fresh primary proof.
+6. Attendance capability, target derivation and issuer require both attendance and secondary-password enforcement; old setter fallback cannot remain an alternate secondary credential override while attendance proof is ON. Direct verify retains its actual DB row lock and 5-failure/5-minute lockout. Failed-attempt counters are not a complete immutable security-event audit, and this candidate does not claim they are.
+
+The unconfigured/default-OFF secondary reset client is preparing and never invokes the old bearer-only reset or native-reset write. Existing ordinary login/Face unlock are unchanged. An actor who knows the existing secondary password can change it with `secondary_password.change`, the same proof store and `change_secondary_password_with_proof`. Primary-password users can recover via the existing `secondary_password.replace`; OAuth-only forgotten recovery stays unavailable until a real fresh Google proof acquisition mechanism is verified.
+
+## Attendance API
+
+- `attendance_management_reauthentication_target(p_action text,p_items jsonb)` returns exactly `{company_id,action,items_sha256}`. The hash is server SHA256 of UTF8 canonical `jsonb::text`, including every item field. Client object-key ordering is immaterial; item order/values are part of the target.
+- POST existing Edge `reauthenticate-operation` with `{operation:'attendance.manage',password:actualSecondaryPassword,target:returnedTarget}`. The atomic issue_secondary_reauthentication_proof RPC receives the exact original bearer and password, not a client boolean/Face ID assertion; the DB verifies the actual password and snapshots its private credential fingerprint in the same transaction as proof issue. The old service issuer refuses these secondary operations.
+- `force_manage_attendance_with_proof(p_action,p_items,p_proof)` rederives target, consumes the actor/SID/op/target/expiry/single-use proof and invokes the exact private writer in one transaction. A late writer failure rolls back source/audit and proof consumption. Secondary-backed grants carry a private SHA256 fingerprint of the salted credential hash; any credential change invalidates old grants, and NULL fingerprints are rejected. Only expiry is returned from issuance; neither hash nor fingerprint reaches the API/log. ON rejects old 2arg calls, including dependency callers and service-role callers; private implementation access is denied.
+- A second current company membership fails closed with `attendance_reauthentication_single_company_required`. A SHARE lock on membership is acquired before unchanged business writer locks and retained through execution so a concurrent company insertion/reassignment cannot change the legacy LIMIT1 company selection. Target-read locks are not relied on across requests. This briefly serializes membership writes and should remain a rare management operation.
+- Client `OperationReauthenticationRepository.manageAttendance(action,items,requestPassword)` deep-copies items and keeps actual auth event history/SID through capabilities, target, dialog, proof and mutation. OFF/missing RPC alone retains old attendance behavior; errors/unknown contract/ON cancellation never fall back. Cancel is `attendance_reauthentication_cancelled`.
+
+## Verification and limits
+
+Node handler tests use synthetic transport only. Native PG17 uses the exact current source installers and force body, without replaying old broad day/payroll/admin suites. It verifies default OFF, exact unused restore, old OID/ACL, target changes, SID/actor/role/feature/anonymous-service access, direct lockout, failed-batch rollback, two actual concurrent management writes and concurrent membership insertion ordering. No real credentials, signatures or financial records are used or mutated.
+
+`attendance_reauthentication_restore_unused.sql` refuses restoration after any attendance proof has been issued or while enabled; it is not an activated rollout rollback. Restore unused attendance before unused core. The existing core Native test separately restores exact old definitions/ACL and drops its own new objects. No blanket production teardown is supplied.
+
+The independent uninstalled master-device proof candidate overrides scope/issuer/rollout definitions. Composing it with this candidate is not verified and is outside this release scope; do not install it afterwards and silently remove these operations. Existing Google primary verifier ports remain OFF and require a trusted challenge lifecycle plus actual fresh `auth_time` acquisition; they are not activated here and do not constitute a completed Google broker.
+
+Only set/change proof wrappers and the legacy setter write the secondary hash in the inspected repository source. `verify_secondary_password` updates counters only; authenticated/anonymous direct table grants were already denied in the live audit. Trusted service/owner capabilities are administrative, not a client bypass. No claim is made about uninspected later modules or provider configuration.
