@@ -91,6 +91,7 @@ class AppleAccountLink {
     var revoked = false;
     final subscription = changes.listen((event) {
       if (event.event == AuthChangeEvent.signedOut ||
+          event.session?.user.id != actor || event.session?.accessToken != token ||
           client.auth.currentSession?.accessToken != token ||
           client.auth.currentSession?.user.id != actor) {
         revoked = true;
@@ -137,8 +138,12 @@ class AppleAccountLink {
       return AppleLinkReadiness.ready;
     }
     AppleLinkReadiness result;
-    try { result = await inspect(); }
-    catch (_) { result = AppleLinkReadiness.unavailable; }
+    try {
+      result = await inspect();
+      // Observe queued event payloads even if currentSession has already returned to A.
+      await Future<void>.delayed(Duration.zero);
+      check();
+    } catch (_) { result = AppleLinkReadiness.unavailable; }
     finally { await subscription.cancel(); }
     try { check(); return result; }
     catch (_) { return AppleLinkReadiness.unavailable; }
