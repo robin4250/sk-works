@@ -45,6 +45,60 @@ class FixtureRepository extends AttendanceManagementRepository {
 }
 
 void main() {
+  test('catalog rejects A to B to A auth history even with the original token restored', () async {
+    const actor = '00000000-0000-0000-0000-000000000041';
+    const other = '00000000-0000-0000-0000-000000000042';
+    final expiry = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
+    var user = actor;
+    var switchDuringRead = false;
+    late SupabaseClient client;
+    Future<void> login(String id) async {
+      user = id;
+      await client.auth.signInWithPassword(email: 'fixture@example.invalid', password: 'fixture-only');
+      await Future<void>.delayed(Duration.zero);
+    }
+    client = SupabaseClient('https://synthetic.invalid', 'fixture-only',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: MockClient((request) async {
+        Object? body;
+        switch (request.url.path) {
+          case '/auth/v1/token':
+            String enc(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+            body = {
+              'access_token': '${enc({'alg': 'HS256'})}.${enc({'sub': user, 'role': 'authenticated', 'session_id': user, 'exp': expiry})}.fixture',
+              'refresh_token': 'fixture-only', 'token_type': 'bearer', 'expires_in': 3600,
+              'user': {'id': user, 'aud': 'authenticated', 'role': 'authenticated', 'created_at': '2026-01-01T00:00:00Z'},
+            };
+            break;
+          case '/rest/v1/company_members':
+            body = [{'company_id': company, 'role': 'owner'}];
+            break;
+          case '/rest/v1/rpc/current_feature_permissions':
+            body = {'can_manage_attendance': true};
+            break;
+          case '/rest/v1/rpc/read_management_company_allowance_options':
+            if (switchDuringRead) {
+              switchDuringRead = false;
+              await login(other);
+              await login(actor);
+            }
+            body = response();
+            break;
+          default:
+            throw StateError('Unexpected fixture path');
+        }
+        return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'});
+      }));
+    addTearDown(client.dispose);
+    await login(actor);
+    final repository = AttendanceManagementRepository.forTesting(client);
+    expect((await repository.loadCompanyAllowanceOptions([first])).companyId, company);
+    final original = client.auth.currentSession!.accessToken;
+    switchDuringRead = true;
+    await expectLater(repository.loadCompanyAllowanceOptions([first]), throwsStateError);
+    expect(client.auth.currentSession!.accessToken, original);
+  });
+
   test('bulk selection uses the intersection without changing registered identities', () {
     final value = AttendanceManagementAllowanceOptions.parse(response(bulk: true), companyId: company, workerIds: [first, second]);
     expect(value.sharedEligibleKeys, {'company_common/$item2'});
