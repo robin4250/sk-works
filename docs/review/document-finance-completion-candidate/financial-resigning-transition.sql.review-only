@@ -3,6 +3,7 @@
 -- Actual reporter and supervisor must sign again through existing normal v2 APIs.
 begin;
 do $pins$ begin
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.resolve_own(uuid)') and md5(p.prosrc)='54799a72c102c13fd2e3e6205ac28a3f' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.proconfig=array['search_path=""']) then raise exception 'document_finance_dependency_changed: shared_daily_report_private.resolve_own(uuid)';end if;
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.guard_roster()') and md5(p.prosrc)='5e277b9dc8c11991518a115e1ee9dd9b' and pg_get_userbyid(p.proowner)='postgres' and p.proconfig=array['search_path=""']) then raise exception 'document_finance_transition_source_changed: shared_daily_report_private.guard_roster()';end if;
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_worker_facts_private.materialize_confirmed_worker(uuid,uuid,jsonb)') and md5(p.prosrc)='c1dd554c49f88eaee4324ecdc4838dc0' and pg_get_userbyid(p.proowner)='postgres' and p.proconfig=array['search_path=""']) then raise exception 'document_finance_transition_source_changed: shared_worker_facts_private.materialize_confirmed_worker(uuid,uuid,jsonb)';end if;
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('company_checkout_allowance_private.registered_item(uuid,uuid,jsonb)') and md5(p.prosrc)='8522fba99b37015028f92e2560b026d1' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=false and p.proconfig=array['search_path=""']) then raise exception 'document_finance_dependency_changed: company_checkout_allowance_private.registered_item(uuid,uuid,jsonb)';end if;
@@ -310,13 +311,15 @@ begin
 end $metadata$;
 revoke all on function document_finance_completion_private.context_metadata(uuid) from public,anon,authenticated,service_role;
 do $context_patch$
-declare original text;patched text;needle text:='||shared_daily_report_private.safe_signature_scope(r.id);';
+declare original text;patched text;signature text;needle text:='||shared_daily_report_private.safe_signature_scope(r.id);';
 begin
- original:=pg_get_functiondef('shared_daily_report_private.read_context(uuid)'::regprocedure);
+ foreach signature in array array['shared_daily_report_private.read_context(uuid)','shared_daily_report_private.resolve_own(uuid)'] loop
+ original:=pg_get_functiondef(signature::regprocedure);
  if (length(original)-length(replace(original,needle,'')))/length(needle)<>1 then
   raise exception 'document_finance_context_patch_anchor_changed';end if;
  patched:=replace(original,needle,'||shared_daily_report_private.safe_signature_scope(r.id)||document_finance_completion_private.context_metadata(r.id);');
  execute patched;
+ end loop;
 end $context_patch$;
 commit;
 

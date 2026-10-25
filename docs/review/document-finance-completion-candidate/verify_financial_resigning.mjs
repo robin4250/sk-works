@@ -87,6 +87,10 @@ try{
  const reopened=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  eq(reopened.financial_transition_id,result.financial_transition_id,'Reopened context retains transition after app restart');
  eq(reopened.financial_transition_valid,true,'Reopened context validates exact staged rows');
+ const sourceReopened=await sharedCall(U,id(80),'select public.read_my_shared_daily_report($1) v',[docStart]);
+ eq(sourceReopened.financial_transition_id,result.financial_transition_id,'Source-anchor reopen retains the same staged transition');
+ eq(sourceReopened.financial_transition_valid,true,'Source-anchor context validates exact staged facts');
+ eq(sourceReopened.source_clock_in_id,docStart,'Source-anchor context preserves actual own-source identity');
  eq(reopened.financial_resigning_supported,false,'Prepared normal report cannot reset document signatures again');
  const unrelatedRid=await draft('2026-10-19',reportWorker,[]);
  const unrelatedContext=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[unrelatedRid]);

@@ -1,6 +1,6 @@
 # Financial readiness and explicit document-to-financial re-signing
 
-REVIEW ONLY. DEFAULT OFF. NOT DEPLOYED. Dedicated PG17 readiness71 and explicit re-signing101 checks passed at 2ad9a2e06f55c875348762fac8e3ca1a8e1fc81f / run40234776802 (jobs121293879829/121293879567), including persistent context metadata and other-report isolation. The original read_context body is retained with its exact source MD5 alongside the two other replaced routines.
+REVIEW ONLY. DEFAULT OFF. NOT DEPLOYED. Dedicated PG17 readiness71 and explicit re-signing101 checks passed at 2ad9a2e06f55c875348762fac8e3ca1a8e1fc81f / run40234776802 (jobs121293879829/121293879567), including persistent context metadata and other-report isolation. Original read_context and source-anchor resolve_own bodies are retained with exact source MD5s alongside the two other replaced routines. The source-anchor metadata extension has focused Native checks in the latest revision.
 
 These candidates do not make six displayed clock-in days into six paid days. They do not invent a missing report, its work, a category, money, a confirmation or a signature. No production write was performed while preparing them.
 
@@ -56,6 +56,6 @@ Parent review and CI are required before any production rollout. Existing succes
 
 ### Persistent UI transition metadata
 
-The exact-source guarded normal `read_context` now adds `financial_resigning_supported` (default false; same report rollout, draft document mode and attendance manager required). Clients check this before any explicit signature reset. Existing authorization and scope assembly run first.
+The exact-source guarded normal `read_context` and source-anchor `resolve_own` now add `financial_resigning_supported` (default false; same report rollout, draft document mode and attendance manager required). Clients check this before any explicit signature reset. Existing authorization and scope assembly run first.
 
 A staged unsigned report additionally returns `financial_transition_id`, `financial_transition_state: ready_for_real_signatures`, `financial_transition_valid`, and `new_actual_reporter_and_supervisor_signatures_required: true` on every reload. The marker remains present but invalid when rollout is disabled or staged raw workers differ. It must prevent the legacy draft writer after restart: that writer omits explicit work category and can overwrite freshly staged financial facts. It disappears only after actual finalization. No marker means no successful staged transition. These fields do not make readiness-only diagnosis a financial completion path.
