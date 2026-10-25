@@ -11,6 +11,7 @@ assert.equal(source.split(marker).length,2,'One original shared install hook');
 const addition=String.raw`
  {
  phase='complete-shared-checkout-off-install-and-unused-restore';
+ const {writeFile}=await import('node:fs/promises');
  const restoreTools=await import('file://'+process.cwd()+'/tool/security/shared_checkout_unused_restore.mjs');
  // Missing surroundings of this existing minimal fixture are completed BEFORE
  // its baseline. These are not production changes or GPS/Auth feature proofs.
