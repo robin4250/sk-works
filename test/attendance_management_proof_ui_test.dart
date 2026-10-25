@@ -42,8 +42,20 @@ void main() {
         await tester.tap(find.widgetWithText(TextButton, 'キャンセル'));
       }
       await tester.pumpAndSettle();
+      if (confirm) {
+        // Functions SDK JSON decoding may complete on its real isolate.
+        // Drain that work as well as Flutter's fake-clock route animation.
+        for (var attempt = 0; attempt < 40 &&
+            !f.calls.any((r) => r.url.path.endsWith('/force_manage_attendance_with_proof')) &&
+            find.byType(SnackBar).evaluate().isEmpty; attempt++) {
+          await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        await tester.pumpAndSettle();
+      }
       final writes = f.calls.where((r) => r.url.path.endsWith('/force_manage_attendance_with_proof')).toList();
-      expect(writes, hasLength(confirm ? 1 : 0));
+      expect(writes, hasLength(confirm ? 1 : 0),
+        reason: 'paths=${f.calls.map((r) => r.url.path).toList()}; messages=${tester.widgetList<Text>(find.descendant(of: find.byType(SnackBar), matching: find.byType(Text))).map((t) => t.data).toList()}');
       if (confirm) {
         final targetRequest = f.calls.singleWhere((r) => r.url.path.endsWith('/attendance_management_reauthentication_target'));
         final targetPayload = jsonDecode(targetRequest.body) as Map;
