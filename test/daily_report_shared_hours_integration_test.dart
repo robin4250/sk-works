@@ -29,7 +29,7 @@ class _Reports implements DailyReportRepository {
   bool recoveryChoices = false, documentMode = false;
   String description = '保存済みの作業';
   bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
-  int draftWrites = 0, ordinaryReporterWrites = 0;
+  int draftWrites = 0, ordinaryReporterWrites = 0, anchorReads = 0;
   List<DailyReportWorkerDraft> get workers => [
     DailyReportWorkerDraft(workerId: _worker, workerName: '報告者',
       companyAllowanceSelections: recoveryChoices ? DailyReportCompanyAllowanceSelections([]) : null,
@@ -55,7 +55,7 @@ class _Reports implements DailyReportRepository {
     required DateTime date, String? siteId, String? routeAssignmentId}) async => [];
   @override Future<List<DailyReportWorkerDraft>> loadAnchoredWorkers({required String anchorId,
     required DateTime workDate, required List<DailyReportWorkerDraft> existing,
-    required List<DailyReportWorkerDraft> fallback, required bool allowNewMembers}) async => existing;
+    required List<DailyReportWorkerDraft> fallback, required bool allowNewMembers}) async { anchorReads++; return existing; }
   @override Future<bool> vehicleMeterEnabledForAnchor(String? anchor) async => false;
   @override Future<CompanyAllowanceLabelSnapshot> loadCompanyAllowanceLabels({
     required Iterable<String> workerIds, String? expectedCompanyId}) async =>
@@ -91,7 +91,9 @@ class _Shared implements SharedDailyReportRepository {
   _Shared(this.reports, {this.enabled = true});
   final _Reports reports;
   final bool enabled;
-  bool hold = false;
+  bool hold = false, manager = false, financialSupported = false, prepared = false, preparedValid = true;
+  int financialPreparations = 0, freshReporterWrites = 0;
+  List<SharedWorkerFactsTransitionInput>? financialInputs;
   String source = _source;
   bool workOnly = true, ready = false, documentOnly = false;
   int documentEdits = 0, documentSaves = 0;
@@ -101,7 +103,7 @@ class _Shared implements SharedDailyReportRepository {
     clockOutId: '00000000-0000-0000-0000-000000000060', workDate: _date,
     state: hold ? 'managed_financial_hold' : !enabled ? 'disabled' : reports.supervisorSaved ? 'supervisor_saved' :
       reports.reporterSaved ? 'reporter_saved_waiting_supervisor' : 'reporter_required',
-    enabled: enabled, canManageAttendance: false, reporterSaved: reports.reporterSaved,
+    enabled: enabled, canManageAttendance: manager, reporterSaved: reports.reporterSaved,
     supervisorSaved: reports.supervisorSaved, sourceAttached: true,
     reporterName: reports.reporterSaved ? '最初の報告者' : '',
     reportStatus: reports.supervisorSaved ? 'signed' : 'draft',
@@ -110,6 +112,8 @@ class _Shared implements SharedDailyReportRepository {
     documentOnly: documentOnly, documentComplete: documentOnly && reports.persistedSupervisor,
     documentEditable: documentOnly && reports.reporterSaved,
     financialConfirmationRequired: documentOnly,
+    financialResigningSupported: financialSupported && documentOnly,
+    financialTransitionId: prepared ? 7 : null, financialTransitionValid: prepared && preparedValid,
     documentBasis: documentOnly ? {'report': {'id': _report, 'company_id': _company, 'report_date': '2026-10-25',
       'work_description': reports.description}, 'workers': [for (final w in reports.workers) {
       'report_id': _report, 'worker_id': w.workerId, 'worker_name': w.workerName,
@@ -130,6 +134,23 @@ class _Shared implements SharedDailyReportRepository {
     expect(signature['strokes'], isA<List>());
     supervisorWrites++;
     reports.supervisorSaved = true;
+    if (prepared) prepared = false;
+    return state;
+  }
+  @override Future<SharedDailyReportContext> submit({required SharedDailyReportContext before,
+    required String workDescription, required List<Map<String, dynamic>> workers,
+    required String signerName, required Map<String, dynamic> signature}) async {
+    expect(before.financialTransitionValid, isTrue);
+    expect(before.reporterSaved, isFalse); expect(signature['strokes'], isNotEmpty);
+    freshReporterWrites++; reports.reporterSaved = true; ready = true;
+    return state;
+  }
+  @override Future<SharedDailyReportContext> prepareFinancialResigning({required SharedDailyReportContext before,
+    required List<SharedWorkerFactsTransitionInput> workers, required String reason}) async {
+    expect(before.reporterSaved, isFalse); expect(before.supervisorSaved, isFalse);
+    expect(reason, isNotEmpty); expect(workers.single.before.actorId, _actor);
+    financialPreparations++; financialInputs = workers;
+    prepared = true; documentOnly = false; reports.documentMode = false;
     return state;
   }
   @override Future<SharedDailyReportContext> saveDocumentDraft({required SharedDailyReportContext before,
@@ -164,7 +185,7 @@ class _MissingShared extends _Shared {
 }
 
 class _Facts implements SharedWorkerFactsRepository {
-  bool requireHours = true, managePeer = false;
+  bool requireHours = true, managePeer = false, manageAll = false, frozen = true;
   bool? outsideCurrentReport;
   int confirmations = 0, reads = 0;
   bool missingProposal = false;
@@ -181,11 +202,11 @@ class _Facts implements SharedWorkerFactsRepository {
       revision: savedFacts == null ? 0 : 1, scopeFingerprint: _scope,
       hoursRequired: requireHours, editable: workerId == _worker,
       sourceBlocked: false, inputScopeCurrent: true, sourceReasons: [],
-      hours: savedHours, contractVersion: 2, workReportFrozen: true,
+      hours: savedHours, contractVersion: 2, workReportFrozen: frozen,
       firstReporterCoversWorkOnly: true, workBasisHash: _scope),
     facts: savedFacts, proposedFacts: missingProposal ? null : proposed(),
     confirmed: savedFacts != null, current: savedFacts != null,
-    isOwnWorker: workerId == _worker, canManageAttendance: managePeer && workerId == _peer,
+    isOwnWorker: workerId == _worker, canManageAttendance: manageAll || managePeer && workerId == _peer,
     hoursRequiredOutsideCurrentReport: outsideCurrentReport ?? requireHours);
   @override Future<SharedWorkerFactsSnapshot> load({required String companyId,
     required String reportId, required String workerId}) async { reads++; return snapshot(workerId); }
@@ -219,6 +240,97 @@ void main() {
     await tester.scrollUntilVisible(finder, 220, scrollable: scrollable, maxScrolls: 40);
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
+  }
+
+  testWidgets('financial capability unavailable preserves both actual signatures', (tester) async {
+    final reports = _Reports()..reporterSaved = true..supervisorSaved = true..documentMode = true;
+    final shared = _Shared(reports)..documentOnly = true..manager = true;
+    await open(tester, reports, _Hours(), shared, facts: _Facts());
+    await reveal(tester, '勤務実績を確認して給与・請求へ進む');
+    await tester.tap(find.byKey(const ValueKey('daily-report-financial-resigning')));
+    await tester.pumpAndSettle();
+    expect(shared.documentEdits, 0); expect(shared.financialPreparations, 0);
+    expect(reports.reporterSaved, isTrue); expect(reports.supervisorSaved, isTrue);
+    expect(find.textContaining('勤務実績の連携は準備中'), findsOneWidget);
+  });
+  testWidgets('explicit category batch stages facts only then actual new reporter capture without old writer', (tester) async {
+    final reports = _Reports()..reporterSaved = true..supervisorSaved = true..documentMode = true..recoveryChoices = true;
+    final shared = _Shared(reports)..documentOnly = true..manager = true..financialSupported = true;
+    final facts = _Facts()..manageAll = true..missingProposal = true..requireHours = false..frozen = false;
+    await open(tester, reports, _Hours()..versionTwo = true, shared, facts: facts);
+    await reveal(tester, '勤務実績を確認して給与・請求へ進む');
+    await tester.tap(find.byKey(const ValueKey('daily-report-financial-resigning')));
+    await tester.pumpAndSettle();
+    expect(shared.documentEdits, 0);
+    await tester.tap(find.text('履歴に残して確認を始める'));
+    await tester.pumpAndSettle();
+    expect(shared.documentEdits, 1); expect(reports.reporterSaved, isFalse);
+    await reveal(tester, 'この人の勤務実績を確認');
+    await tester.tap(find.text('この人の勤務実績を確認'));
+    await tester.pumpAndSettle();
+    expect(find.text('勤務区分（日勤・夜勤など）を選んでください。'), findsOneWidget);
+    expect(shared.financialPreparations, 0); expect(facts.confirmations, 0);
+    final category = find.byType(DropdownButtonFormField<String>).last;
+    await tester.ensureVisible(category); await tester.tap(category); await tester.pumpAndSettle();
+    await tester.tap(find.text('夜勤').last); await tester.pumpAndSettle();
+    await reveal(tester, 'この人の勤務実績を確認');
+    await tester.tap(find.text('この人の勤務実績を確認')); await tester.pumpAndSettle();
+    expect(find.text('1 / 1 人の内容を確認済み'), findsOneWidget);
+    // Any subsequent change must invalidate that person's explicit review.
+    await tester.ensureVisible(category); await tester.tap(category); await tester.pumpAndSettle();
+    await tester.tap(find.text('日勤').last); await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('prepare-financial-resigning'))).onPressed, isNull);
+    await tester.tap(category); await tester.pumpAndSettle();
+    await tester.tap(find.text('夜勤').last); await tester.pumpAndSettle();
+    await reveal(tester, 'この人の勤務実績を確認');
+    await tester.tap(find.text('この人の勤務実績を確認')); await tester.pumpAndSettle();
+    await reveal(tester, '確認した勤務実績を保存してサインへ');
+    await tester.enterText(find.byKey(const ValueKey('financial-transition-reason')), '実際の夜勤と適用手当を管理者が確認');
+    await tester.ensureVisible(find.byKey(const ValueKey('prepare-financial-resigning')));
+    await tester.tap(find.byKey(const ValueKey('prepare-financial-resigning'))); await tester.pumpAndSettle();
+    expect(shared.financialPreparations, 1); expect(shared.financialInputs!.single.facts.workCategory, 'night');
+    expect(facts.confirmations, 0); expect(reports.draftWrites, 0); expect(shared.documentSaves, 0);
+    expect(reports.reporterSaved, isFalse); expect(reports.supervisorSaved, isFalse);
+    await reveal(tester, '報告者サイン'); await tester.tap(find.text('報告者サイン').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(SignatureCapturePage), findsOneWidget); expect(reports.draftWrites, 0);
+    Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+      const SignatureResult(signerName: '新たな報告者', strokes: [[Offset(0.2, 0.3)]]));
+    await tester.pumpAndSettle();
+    expect(shared.freshReporterWrites, 1); expect(reports.reporterSaved, isTrue);
+    expect(reports.supervisorSaved, isFalse); expect(reports.draftWrites, 0);
+    await reveal(tester, '責任者サイン'); await tester.tap(find.text('責任者サイン'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('この内容で責任者サインへ')); await tester.pumpAndSettle();
+    expect(find.byType(SignatureCapturePage), findsOneWidget);
+    Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+      const SignatureResult(signerName: '新たな現場責任者', strokes: [[Offset(0.3, 0.4)]]));
+    await tester.pumpAndSettle();
+    expect(shared.supervisorWrites, 1); expect(reports.supervisorSaved, isTrue);
+    expect(shared.prepared, isFalse); expect(shared.financialPreparations, 1);
+    expect(reports.draftWrites, 0); expect(shared.documentSaves, 0);
+  });
+  for (final valid in [false, true]) {
+    for (final sourceAnchor in [false, true]) {
+    testWidgets('reopened staged report avoids old draft writer, valid=$valid, source=$sourceAnchor', (tester) async {
+      final reports = _Reports();
+      final shared = _Shared(reports)..prepared = true..preparedValid = valid;
+      if (sourceAnchor) {
+        await tester.pumpWidget(MaterialApp(home: DailyReportPage(initialDate: _date,
+          initialSiteId: _site, initialReportId: _report, groupClockInAnchorId: _source,
+          repositoryForTesting: reports, paidHoursRepositoryForTesting: _Hours()..versionTwo = true,
+          sharedReportRepositoryForTesting: shared, workerFactsRepositoryForTesting: _Facts())));
+        await tester.pumpAndSettle();
+      } else {
+        await open(tester, reports, _Hours()..versionTwo = true, shared, facts: _Facts());
+      }
+      expect(reports.anchorReads, 0);
+      await reveal(tester, '報告者サイン'); await tester.tap(find.text('報告者サイン').first);
+      await tester.pumpAndSettle();
+      expect(reports.draftWrites, 0); expect(shared.documentSaves, 0);
+      expect(find.byType(SignatureCapturePage), valid ? findsOneWidget : findsNothing);
+    });
+    }
   }
 
   testWidgets('missing category proposal permits explicit confirmation without replacing reporter signature', (tester) async {
@@ -562,3 +674,4 @@ void main() {
     expect(reports.draftWrites, 0);
   });
 }
+
