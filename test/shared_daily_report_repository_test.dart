@@ -156,6 +156,7 @@ void main() {
 
   test('exact approved editor can collect without a management or own-source grant', () {
     final value = row()..['worker_id'] = null..['source_clock_in_id'] = null
+      ..['source_attached'] = false
       ..['approved_edit_request_id'] = '00000000-0000-0000-0000-000000000050';
     final context = SharedDailyReportContext.parse(value, actorId: actor, companyId: company, reportId: report);
     expect(context.approvedEditRequestId, '00000000-0000-0000-0000-000000000050');

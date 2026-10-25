@@ -20,7 +20,7 @@ create table checkout_shared_hours_private.confirmations(
  source_fingerprint text not null check(source_fingerprint~'^[0-9a-f]{64}$'),
  work_basis_sha256 text not null check(work_basis_sha256~'^[0-9a-f]{64}$'),
  confirmed_by uuid not null,confirmed_at timestamptz not null default clock_timestamp(),
- confirmation_kind text not null check(confirmation_kind in('self','group_before_reporter','management')),
+ confirmation_kind text not null check(confirmation_kind in('self','group_before_reporter','management','approved_editor')),
  management_reason text,unique(report_id,worker_id,revision),
  check((confirmation_kind='management')=(nullif(btrim(management_reason),'') is not null)),
  check(source_kind<>'managed_attendance' or confirmation_kind='management')
@@ -470,6 +470,75 @@ begin
 exception when sqlstate '55000' then
  -- A cleared/revised work receipt is pending, never an unlocked registration.
  return false;
+end $$;
+
+-- The approving editor preserves a prior worker attestation, never impersonates
+-- its author and never creates management authority for a manual source.
+create table checkout_shared_hours_private.approved_fact_copies(
+ request_id uuid not null,report_id uuid not null,worker_id uuid not null,
+ prior_confirmation_id bigint not null references checkout_shared_hours_private.confirmations(id),
+ new_confirmation_id bigint not null references checkout_shared_hours_private.confirmations(id),
+ prior_actor_id uuid not null,editor_actor_id uuid not null,editor_session_id uuid not null,
+ prior_work_event_id bigint not null,new_work_event_id bigint not null,
+ source_fingerprint text not null,worker_facts_sha256 text not null,
+ copied_at timestamptz not null default clock_timestamp(),
+ primary key(request_id,worker_id),unique(new_confirmation_id)
+);
+revoke all on table checkout_shared_hours_private.approved_fact_copies from public,anon,authenticated,service_role;
+
+create function checkout_shared_hours_private.copy_forward_approved_unchanged_facts(rid uuid,request uuid)
+returns void language plpgsql volatile security invoker set search_path='' as $$
+declare proof jsonb;r public.daily_reports%rowtype;work jsonb;input jsonb;old_worker jsonb;current_facts jsonb;source jsonb;
+ prior checkout_shared_hours_private.confirmations%rowtype;next_id bigint;actor uuid;sid uuid;
+begin
+ actor:=checkout_report_registration_private.current_actor();sid:=(auth.jwt()->>'session_id')::uuid;
+ if to_regprocedure('shared_report_edit_private.evidence(uuid,uuid)') is null then
+  raise sqlstate '42501' using message='approved_edit_exact_session_required';end if;
+ execute 'select shared_report_edit_private.evidence($1,$2)' into proof using rid,request;
+ if proof is null or proof->>'state'<>'active' or (proof->>'actor_id')::uuid is distinct from actor
+  or (proof->>'session_id')::uuid is distinct from sid or (proof->>'request_id')::uuid is distinct from request then
+  raise sqlstate '42501' using message='approved_edit_exact_session_required';end if;
+ select * into r from public.daily_reports where id=rid;
+ if not checkout_shared_hours_private.uses_contract(rid) or r.status<>'draft'
+  or r.representative_signature_json is null or r.supervisor_signature_json is not null then
+  raise sqlstate '55000' using message='approved_copy_new_work_receipt_required';end if;
+ work:=checkout_shared_hours_private.work_evidence(rid);
+ -- Changed destination/date and a previously stale annex cannot carry facts.
+ if work->>'event_id' is null or proof#>>'{old_report,status}'<>'signed'
+  or row(proof#>>'{old_report,id}',proof#>>'{old_report,company_id}',proof#>>'{old_report,report_date}',
+    proof#>>'{old_report,site_id}',proof#>>'{old_report,route_assignment_id}')
+   is distinct from row(r.id::text,r.company_id::text,r.report_date::text,r.site_id::text,r.route_assignment_id::text)
+  or proof#>>'{old_annex,ready}' is distinct from 'true' then return;end if;
+ for input in select value from jsonb_array_elements(coalesce(proof#>'{old_annex,inputs}','[]'::jsonb)) loop
+  if input->>'facts_current' is distinct from 'true' or input->>'source_current' is distinct from 'true'
+   or input->>'source_kind' is distinct from 'clocked_shift' then continue;end if;
+  select * into prior from checkout_shared_hours_private.confirmations c where c.id=(input->>'confirmation_id')::bigint
+   and c.report_id=rid and c.worker_id=(input->>'worker_id')::uuid;
+  if prior.id is null or prior.source_kind<>'clocked_shift' or prior.work_event_id is null
+   or exists(select 1 from checkout_shared_hours_private.confirmations c where c.report_id=rid and c.worker_id=prior.worker_id and c.revision>prior.revision)
+   or exists(select 1 from checkout_shared_hours_private.approved_fact_copies where request_id=request and worker_id=prior.worker_id)
+   or not exists(select 1 from checkout_shared_hours_private.ledger l where l.report_id=rid and l.worker_id=prior.worker_id
+    and l.confirmation_id=prior.id and l.work_event_id=prior.work_event_id and l.worker_facts=prior.worker_facts
+    and l.source_fingerprint=prior.source_fingerprint) then continue;end if;
+  select value into old_worker from jsonb_array_elements(proof->'old_roster') where value->>'worker_id'=prior.worker_id::text;
+  if old_worker is null or exists(select 1 from jsonb_each(prior.worker_facts) f
+   where f.key<>'schema' and old_worker->f.key is distinct from f.value) then continue;end if;
+  current_facts:=shared_worker_facts_private.propose_worker_facts(rid,prior.worker_id);
+  if current_facts is distinct from prior.worker_facts then continue;end if;
+  source:=checkout_shared_hours_private.source_scope(rid,prior.worker_id);
+  if source->>'blocked' is distinct from 'false' or source->>'source_kind' is distinct from 'clocked_shift'
+   or source->>'source_fingerprint' is distinct from prior.source_fingerprint
+   or (checkout_shared_hours_private.hour_required(rid,prior.worker_id,current_facts) and prior.hours is null) then continue;end if;
+  insert into checkout_shared_hours_private.confirmations(report_id,worker_id,company_id,work_date,revision,hours,worker_facts,
+   work_event_id,source_kind,source_fingerprint,work_basis_sha256,confirmed_by,confirmation_kind,management_reason)
+  values(rid,prior.worker_id,r.company_id,r.report_date,prior.revision+1,prior.hours,current_facts,
+   (work->>'event_id')::bigint,'clocked_shift',source->>'source_fingerprint',work->>'work_basis_sha256',actor,'approved_editor',null)
+  returning id into next_id;
+  insert into checkout_shared_hours_private.approved_fact_copies(request_id,report_id,worker_id,prior_confirmation_id,new_confirmation_id,
+   prior_actor_id,editor_actor_id,editor_session_id,prior_work_event_id,new_work_event_id,source_fingerprint,worker_facts_sha256)
+  values(request,rid,prior.worker_id,prior.id,next_id,prior.confirmed_by,actor,sid,prior.work_event_id,
+   (work->>'event_id')::bigint,source->>'source_fingerprint',encode(sha256(convert_to(current_facts::text,'UTF8')),'hex'));
+ end loop;
 end $$;
 
 revoke all on all functions in schema checkout_shared_hours_private from public,anon,authenticated,service_role;

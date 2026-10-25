@@ -42,3 +42,17 @@ first-reporter/peer-still-working sequence, late own confirmation preserving the
 first signature, another member's supervisor collection, stale-dialog and direct
 endpoint refusals, manager audit, old/new source invalidation, v1 history equality,
 real GoTrue/PostgREST, DTO/card integration and rendered PDF evidence.
+
+Approved corrections retain the original worker confirmation as immutable
+history. After the exact approved editor obtains a new reporter signature, the
+optional correction adapter may copy a previous **clocked** attestation to the
+new work epoch only when the original finalized ledger, old signed roster,
+current normalized worker facts, date/destination and raw clock-source hash all
+agree. The new confirmation kind is `approved_editor`; the private copy receipt
+records the request, exact editor session, original actor and both confirmation
+and work-event IDs. It never labels the editor as the worker or as a manager.
+Changed facts or sources are not copied. Manual management sources require the
+existing authorized manager to confirm again. A client has no direct execute
+permission on the copy routine. The additional Native wrapper exercises the
+original approved-draft and signature writers with this actual hours module;
+its approval/Auth surroundings are synthetic, not a real GoTrue proof.
