@@ -1,0 +1,127 @@
+-- REVIEW ONLY. Read-only diagnosis; does NOT complete payroll/invoice projection.
+-- Per-report default OFF. No existing function, employee data or signature is changed.
+begin;
+do $pins$ begin
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('company_checkout_allowance_private.registered_item(uuid,uuid,jsonb)') and md5(p.prosrc)='8522fba99b37015028f92e2560b026d1' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=false and p.proconfig=array['search_path=""']) then raise exception 'document_finance_readiness_source_changed: company_checkout_allowance_private.registered_item(uuid,uuid,jsonb)';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.read_context(uuid)') and md5(p.prosrc)='2e291c11037c2b0845bac182706fb544' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.proconfig=array['search_path=""']) then raise exception 'document_finance_readiness_source_changed: shared_daily_report_private.read_context(uuid)';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_worker_facts_private.normalize_worker_facts(uuid,uuid,jsonb)') and md5(p.prosrc)='3644d4bed6d2b9cb3ebd5c83eec4e696' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=false and p.proconfig=array['search_path=""']) then raise exception 'document_finance_readiness_source_changed: shared_worker_facts_private.normalize_worker_facts(uuid,uuid,jsonb)';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('checkout_shared_hours_private.work_evidence(uuid)') and md5(p.prosrc)='cae657a4f9177f930fd9409f85b2ce27' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=false and p.proconfig=array['search_path=""']) then raise exception 'document_finance_readiness_source_changed: checkout_shared_hours_private.work_evidence(uuid)';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('checkout_shared_hours_private.confirmation_current(checkout_shared_hours_private.confirmations,jsonb,jsonb)') and md5(p.prosrc)='26ad6aba1955cf39fa097c4c15315aaf' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=false and p.proconfig=array['search_path=""']) then raise exception 'document_finance_readiness_source_changed: checkout_shared_hours_private.confirmation_current(checkout_shared_hours_private.confirmations,jsonb,jsonb)';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('checkout_shared_hours_private.source_scope(uuid,uuid,boolean)') and md5(p.prosrc)='9eff0d97d1ee59b3b557f2431c169555' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=false and p.proconfig=array['search_path=""']) then raise exception 'document_finance_readiness_source_changed: checkout_shared_hours_private.source_scope(uuid,uuid,boolean)';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.document_snapshot(uuid)') and md5(p.prosrc)='2ab19ffc6ff4b23edd7da73af9a862fc' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.proconfig=array['search_path=""']) then raise exception 'document_finance_readiness_source_changed: shared_daily_report_private.document_snapshot(uuid)';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.document_complete(uuid)') and md5(p.prosrc)='82b8ddfdb6888b4704220a4399735525' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.proconfig=array['search_path=""']) then raise exception 'document_finance_readiness_source_changed: shared_daily_report_private.document_complete(uuid)';end if;
+end $pins$;
+create schema document_finance_readiness_private;
+revoke all on schema document_finance_readiness_private from public,anon,authenticated,service_role;
+create table document_finance_readiness_private.rollout(
+ company_id uuid not null references public.companies(id),
+ report_id uuid not null references public.daily_reports(id),
+ enabled boolean not null default false,primary key(company_id,report_id)
+);
+alter table document_finance_readiness_private.rollout enable row level security;
+revoke all on document_finance_readiness_private.rollout from public,anon,authenticated,service_role;
+
+create function document_finance_readiness_private.reason(code text) returns text
+language sql immutable set search_path='' as $message$
+ select case code
+  when 'document_signature_not_complete' then '報告者・責任者のサインと保存済み日報の内容を確認してください。'
+  when 'work_category_required' then '勤務区分が未設定です。実際の勤務区分を確認してください。'
+  when 'allowance_registration_changed' then '選択済みの共通手当が現在の給与形態または登録内容と一致しません。給与設定と手当を確認してください。'
+  when 'worker_facts_invalid' then '日報の勤務実績・手当・車両情報を確認してください。'
+  when 'worker_confirmation_missing' then '本人または権限のある管理者による勤務実績の確認が必要です。'
+  when 'worker_confirmation_stale' then '出退勤または日報が変更されています。勤務実績をもう一度確認してください。'
+  when 'signed_worker_facts_differ' then '確認済み実績とサイン済みの日報が一致しません。手直しと再サインが必要です。'
+  when 'source_unavailable' then '元の出退勤・現場・勤務情報を確認してください。'
+  when 'validation_unavailable' then '連携状態を確認できません。再読み込みしてください。'
+  when 'financial_completion_path_required' then '給与・請求への反映処理はまだ完了していません。'
+  else '勤務実績の連携状態を確認してください。' end
+$message$;
+
+create function public.read_shared_report_financial_readiness(p_report_id uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $read$
+declare actor uuid;r public.daily_reports%rowtype;context jsonb;w public.daily_report_workers%rowtype;
+ c checkout_shared_hours_private.confirmations%rowtype;source jsonb;work jsonb;normalized jsonb;proposal jsonb;
+ reason_codes text[]:='{}';global_codes text[]:='{}';all_workers jsonb:='[]';workers_ready boolean:=true;
+ signature_complete boolean;item jsonb;registration_ok boolean;source_ok boolean;current_confirmation boolean;
+ validation_basis jsonb;row_count integer:=0;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ -- Existing read context performs company/actor/source checks and conceals foreign reports.
+ context:=shared_daily_report_private.read_context(p_report_id);
+ select * into r from public.daily_reports where id=p_report_id;
+ if not exists(select 1 from document_finance_readiness_private.rollout x
+  where x.company_id=r.company_id and x.report_id=r.id and x.enabled) then
+  return jsonb_build_object('schema',1,'enabled',false,'actor_id',actor,'report_id',r.id,
+   'financial_complete',r.status='signed','can_finalize',false,'validation_ready',false,
+   'workers','[]'::jsonb,'reasons','[]'::jsonb);
+ end if;
+ signature_complete:=shared_daily_report_private.document_complete(r.id) is true;
+ if not signature_complete then global_codes:=array_append(global_codes,'document_signature_not_complete');end if;
+ begin work:=checkout_shared_hours_private.work_evidence(r.id);
+ exception when others then
+  work:=null;global_codes:=array_append(global_codes,'validation_unavailable');
+ end;
+ for w in select * from public.daily_report_workers where report_id=r.id order by worker_id loop
+  row_count:=row_count+1;reason_codes:='{}';registration_ok:=true;normalized:=null;source:=null;
+  if w.work_category is null or w.work_category not in('day','night','holiday','holiday_night') then
+   reason_codes:=array_append(reason_codes,'work_category_required');
+  end if;
+  begin
+   for item in select value from jsonb_array_elements(coalesce(w.company_allowance_selections->'items','[]')) loop
+    perform company_checkout_allowance_private.registered_item(r.company_id,w.worker_id,item);
+   end loop;
+  exception when serialization_failure or insufficient_privilege or invalid_parameter_value then
+   registration_ok:=false;reason_codes:=array_append(reason_codes,'allowance_registration_changed');
+  when others then
+   registration_ok:=false;reason_codes:=array_append(reason_codes,'validation_unavailable');
+  end;
+  if w.work_category in('day','night','holiday','holiday_night') and registration_ok then
+   proposal:=jsonb_build_object('schema',1,'overtime_hours',w.overtime_hours,'early_hours',w.early_hours,
+    'night_hours',w.night_hours,'work_category',w.work_category,'allowance_amount',w.allowance_amount,
+    'allowance_label',w.allowance_label,'company_allowance_selections',w.company_allowance_selections,
+    'vehicle_id',w.vehicle_id,'route_assignment_id',w.route_assignment_id,'odometer_km',w.odometer_km);
+   begin normalized:=shared_worker_facts_private.normalize_worker_facts(r.id,w.worker_id,proposal);
+   exception when others then reason_codes:=array_append(reason_codes,'worker_facts_invalid');end;
+  end if;
+  begin source:=checkout_shared_hours_private.source_scope(r.id,w.worker_id);
+   source_ok:=source->>'blocked'='false';
+  exception when others then source_ok:=false;end;
+  if source_ok is distinct from true then reason_codes:=array_append(reason_codes,'source_unavailable');end if;
+  select * into c from checkout_shared_hours_private.confirmations
+   where report_id=r.id and worker_id=w.worker_id order by revision desc limit 1;
+  current_confirmation:=false;
+  if c.id is null then reason_codes:=array_append(reason_codes,'worker_confirmation_missing');
+  else
+   begin current_confirmation:=checkout_shared_hours_private.confirmation_current(c,work,source)
+    and(not checkout_shared_hours_private.hour_required(r.id,w.worker_id,c.worker_facts) or c.hours is not null);
+   exception when others then current_confirmation:=false;end;
+   if current_confirmation is distinct from true then reason_codes:=array_append(reason_codes,'worker_confirmation_stale');end if;
+   -- EXACT raw row identity only. Never silently canonicalize NULL/empty/category or
+   -- overwrite a signed worker row by materializing a different financial snapshot.
+   if normalized is null or c.worker_facts is distinct from normalized
+    or (to_jsonb(w)||(c.worker_facts-'schema')) is distinct from to_jsonb(w) then
+    reason_codes:=array_append(reason_codes,'signed_worker_facts_differ');
+   end if;
+  end if;
+  workers_ready:=workers_ready and cardinality(reason_codes)=0;
+  all_workers:=all_workers||jsonb_build_array(jsonb_build_object('worker_id',w.worker_id,
+   'validation_ready',cardinality(reason_codes)=0,'confirmation_id',c.id,'confirmation_current',current_confirmation,
+   'reasons',(select coalesce(jsonb_agg(jsonb_build_object('code',code,'message',document_finance_readiness_private.reason(code))),'[]')
+    from unnest(reason_codes) code)));
+ end loop;
+ if row_count=0 then global_codes:=array_append(global_codes,'source_unavailable');workers_ready:=false;end if;
+ validation_basis:=jsonb_build_object('document',shared_daily_report_private.document_snapshot(r.id),
+  'work',work,'workers',all_workers);
+ return jsonb_build_object('schema',1,'enabled',true,'actor_id',actor,'report_id',r.id,
+  'company_id',r.company_id,'report_updated_at',r.updated_at,'financial_complete',false,
+  'signature_complete',signature_complete,'validation_ready',signature_complete and workers_ready and cardinality(global_codes)=0,
+  'can_finalize',false,'completion_supported',false,'workers',all_workers,
+  'reasons',(select coalesce(jsonb_agg(jsonb_build_object('code',code,'message',document_finance_readiness_private.reason(code))),'[]')
+   from unnest(global_codes||array['financial_completion_path_required']) code),
+  'readiness_fingerprint',encode(sha256(convert_to(validation_basis::text,'UTF8')),'hex'));
+end $read$;
+revoke all on all functions in schema document_finance_readiness_private from public,anon,authenticated,service_role;
+revoke all on function public.read_shared_report_financial_readiness(uuid) from public,anon,authenticated,service_role;
+grant execute on function public.read_shared_report_financial_readiness(uuid) to authenticated;
+commit;
+
