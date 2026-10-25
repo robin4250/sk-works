@@ -19,6 +19,11 @@ class PaidWorkHoursSnapshot {
     required this.inputScopeCurrent,
     required this.sourceReasons,
     this.hours,
+    this.contractVersion = 1,
+    this.workReportFrozen = false,
+    this.firstReporterCoversWorkOnly = false,
+    this.workBasisHash,
+    this.supervisorFinalized = false,
   });
 
   final String actorId, companyId, workerId, reportId, scopeFingerprint;
@@ -27,6 +32,10 @@ class PaidWorkHoursSnapshot {
   final bool hoursRequired, editable, sourceBlocked, inputScopeCurrent;
   final List<String> sourceReasons;
   final double? hours;
+  final int contractVersion;
+  final bool workReportFrozen, firstReporterCoversWorkOnly;
+  final String? workBasisHash;
+  final bool supervisorFinalized;
 
   static final _uuid = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
@@ -72,6 +81,14 @@ class PaidWorkHoursSnapshot {
     if (reasons is! List || reasons.length > 100 || reasons.any((e) => e is! String || e.length > 100)) invalid();
     if (row['editable'] == true && row['source_blocked'] == true) invalid();
     if ((row['source_blocked'] == true) != reasons.isNotEmpty) invalid();
+    final contractVersion = row['contract_version'] ?? 1;
+    if (contractVersion is! int || (contractVersion != 1 && contractVersion != 2)) invalid();
+    if (contractVersion == 2 && (row['work_report_frozen'] is! bool ||
+        row['first_reporter_covers_work_only'] != true || row['work_basis_sha256'] is! String ||
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(row['work_basis_sha256'] as String) ||
+        !const ['draft', 'signed'].contains(row['report_status']))) {
+      invalid();
+    }
     return PaidWorkHoursSnapshot(
       actorId: actorId, companyId: companyId, workerId: workerId,
       reportId: reportId, workDate: day, revision: revision,
@@ -80,6 +97,11 @@ class PaidWorkHoursSnapshot {
       sourceBlocked: row['source_blocked'] as bool,
       inputScopeCurrent: row['input_scope_current'] as bool,
       sourceReasons: List<String>.unmodifiable(reasons.cast<String>()), hours: hours,
+      contractVersion: contractVersion,
+      workReportFrozen: contractVersion == 2 && row['work_report_frozen'] == true,
+      firstReporterCoversWorkOnly: contractVersion == 2,
+      workBasisHash: contractVersion == 2 ? row['work_basis_sha256'] as String : null,
+      supervisorFinalized: contractVersion == 2 && row['report_status'] == 'signed',
     );
   }
 }

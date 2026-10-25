@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "application_rows_read": false,
+  "functions": [
+    {
+      "signature": "shared_daily_report_private.enabled(uuid,date)",
+      "source_md5": "2548c6ca971cbc0d62ad4e46fcaa0691",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": "",
+      "owner_only_execute": true
+    },
+    {
+      "signature": "shared_daily_report_private.work_basis(uuid)",
+      "source_md5": "a241fa35c86731949dc94a10004cec78",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": "",
+      "owner_only_execute": true
+    },
+    {
+      "signature": "shared_daily_report_private.work_signature_receipt(uuid)",
+      "source_md5": "97286756573fb8152ea544da50d7b610",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": "",
+      "owner_only_execute": true
+    },
+    {
+      "signature": "shared_daily_report_private.can_read_roster(uuid)",
+      "source_md5": "84b7da3c494b856fac42418b8e5b3eda",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": "",
+      "owner_only_execute": true
+    },
+    {
+      "signature": "shared_daily_report_private.can_edit_draft_roster(uuid)",
+      "source_md5": "7de1a9da139e82452f6f8d30f6742091",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": "",
+      "owner_only_execute": true
+    },
+    {
+      "signature": "shared_daily_report_private.can_confirm_own_hours_after_reporter(uuid,uuid)",
+      "source_md5": "22102367759ba7a0e7d1faefa655d926",
+      "owner": "postgres",
+      "security_definer": true,
+      "search_path": "",
+      "owner_only_execute": true
+    },
+    {
+      "signature": "shared_daily_report_private.report_enabled(uuid)",
+      "owner": "postgres",
+      "search_path": "",
+      "owner_only_execute": true,
+      "source_md5": "9bf6803590de93151ebd878cb90b9256",
+      "security_definer": true
+    },
+    {
+      "signature": "shared_daily_report_private.enrollment_supported(uuid)",
+      "owner": "postgres",
+      "search_path": "",
+      "owner_only_execute": true,
+      "source_md5": "e80c2e8551abb08048c07ed7bec9541e",
+      "security_definer": true
+    }
+  ]
+}

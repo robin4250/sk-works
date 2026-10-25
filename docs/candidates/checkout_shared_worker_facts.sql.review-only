@@ -1,0 +1,193 @@
+-- REVIEW ONLY. Owner-only validation/materialization for explicitly enrolled v2.
+-- No activation, caller grants, historical conversion or application-row DML.
+begin;
+create schema shared_worker_facts_private;
+revoke all on schema shared_worker_facts_private from public,anon,authenticated,service_role;
+do $$begin
+ if not exists(select 1 from pg_proc p join pg_roles o on o.oid=p.proowner
+  where p.oid=to_regprocedure('company_checkout_allowance_private.normalize_choices(uuid,uuid,jsonb)')
+  and md5(p.prosrc)='fc194da8e58428711eb7632eb83d959b' and o.rolname='postgres'
+  and not p.prosecdef and p.provolatile='s' and p.prorettype='jsonb'::regtype
+  and p.proacl=array[makeaclitem(p.proowner,p.proowner,'EXECUTE',false)] and p.proconfig=array['search_path=""'])
+ or not exists(select 1 from pg_proc p join pg_roles o on o.oid=p.proowner
+  where p.oid=to_regprocedure('company_checkout_allowance_private.validate_labels(uuid,uuid,text,jsonb,text)')
+  and md5(p.prosrc)='8499555a09c3f4ecfe9d406a1eb8c2ad' and o.rolname='postgres'
+  and not p.prosecdef and p.provolatile='s' and p.prorettype='void'::regtype
+  and p.proacl=array[makeaclitem(p.proowner,p.proowner,'EXECUTE',false)] and p.proconfig=array['search_path=""']) then
+  raise exception 'shared_worker_facts_validation_source_changed';end if;
+end $$;
+
+create function shared_worker_facts_private.normalize_worker_facts(rid uuid,wid uuid,p_facts jsonb)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare r public.daily_reports%rowtype;w public.daily_report_workers%rowtype;
+ k text;v numeric;vehicle uuid;route uuid;distance numeric;labels text;legacy text;choices jsonb;
+ strong_enabled boolean:=false;
+begin
+ select * into r from public.daily_reports where id=rid;
+ select * into w from public.daily_report_workers where report_id=rid and worker_id=wid;
+ if r.id is null or w.worker_id is null or not exists(select 1 from public.workers x
+  where x.id=wid and x.company_id=r.company_id) then
+  raise sqlstate '42501' using message='shared_worker_facts_target_unavailable';end if;
+ if p_facts is null or jsonb_typeof(p_facts)<>'object'
+  or (select count(*) from jsonb_object_keys(p_facts))<>11
+  or not p_facts ?& array['schema','overtime_hours','early_hours','night_hours','work_category',
+   'allowance_amount','allowance_label','company_allowance_selections','vehicle_id','route_assignment_id','odometer_km']
+  or p_facts->'schema' is distinct from '1'::jsonb then
+  raise sqlstate '22023' using message='explicit_shared_worker_facts_required';end if;
+ foreach k in array array['overtime_hours','early_hours','night_hours'] loop
+  if jsonb_typeof(p_facts->k) is distinct from 'number' then
+   raise sqlstate '22023' using message='explicit_shared_worker_hours_required';end if;
+  v:=(p_facts->>k)::numeric;
+  if v<0 or v>24 or scale(v)>4 or v::text in('NaN','Infinity','-Infinity') then
+   raise sqlstate '22023' using message='shared_worker_hours_out_of_range';end if;
+ end loop;
+ if p_facts->>'work_category' is null or p_facts->>'work_category' not in('day','night','holiday','holiday_night')
+  or jsonb_typeof(p_facts->'work_category') is distinct from 'string' then
+  raise sqlstate '22023' using message='explicit_shared_worker_category_required';end if;
+ if jsonb_typeof(p_facts->'allowance_amount') is distinct from 'number' then
+  raise sqlstate '22023' using message='explicit_shared_worker_amount_required';end if;
+ v:=(p_facts->>'allowance_amount')::numeric;
+ if v<0 or v>2147483647 or trunc(v)<>v or v::text in('NaN','Infinity','-Infinity') then
+  raise sqlstate '22023' using message='shared_worker_amount_out_of_range';end if;
+ if w.allowance_amount is null or v is distinct from w.allowance_amount::numeric then
+  -- Attendance confirmation is not authority to create a manual salary item.
+  -- A manager must use the existing authorized monetary-adjustment workflow.
+  raise sqlstate '42501' using message='shared_worker_manual_amount_change_not_allowed';end if;
+ if p_facts->'allowance_label'<>'null'::jsonb and jsonb_typeof(p_facts->'allowance_label') is distinct from 'string' then
+  raise sqlstate '22023' using message='shared_worker_labels_invalid';end if;
+ labels:=nullif(btrim(p_facts->>'allowance_label'),'');
+ if length(labels)>1048576 then raise sqlstate '22023' using message='shared_worker_labels_invalid';end if;
+ if jsonb_typeof(p_facts->'company_allowance_selections') is distinct from 'object' then
+  raise sqlstate '22023' using message='explicit_shared_worker_choices_required';end if;
+ choices:=company_checkout_allowance_private.normalize_choices(r.company_id,wid,p_facts->'company_allowance_selections');
+ -- Canonical order and UUID spelling keep equivalent confirmed choices stable.
+ choices:=jsonb_build_object('contract_version',1,'items',(select coalesce(jsonb_agg(
+  jsonb_set(i,'{id}',to_jsonb((i->>'id')::uuid::text)) order by i->>'origin',(i->>'id')::uuid),'[]'::jsonb)
+  from jsonb_array_elements(choices->'items') i));
+ legacy:=nullif(btrim(case when w.company_allowance_selections is null
+  then w.allowance_label else w.company_allowance_legacy_labels end),'');
+ perform company_checkout_allowance_private.validate_labels(r.company_id,wid,labels,choices,legacy);
+ foreach k in array array['vehicle_id','route_assignment_id'] loop
+  if p_facts->k<>'null'::jsonb and (jsonb_typeof(p_facts->k) is distinct from 'string'
+   or coalesce(p_facts->>k,'')!~'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') then
+   raise sqlstate '22023' using message='shared_worker_vehicle_identity_invalid';end if;
+ end loop;
+ vehicle:=(p_facts->>'vehicle_id')::uuid;route:=(p_facts->>'route_assignment_id')::uuid;
+ if p_facts->'odometer_km'<>'null'::jsonb then
+  if jsonb_typeof(p_facts->'odometer_km') is distinct from 'number' then
+   raise sqlstate '22023' using message='shared_worker_odometer_invalid';end if;
+  distance:=(p_facts->>'odometer_km')::numeric;
+  if distance<0 or distance>999999999 or scale(distance)>4 or distance::text in('NaN','Infinity','-Infinity') then
+   raise sqlstate '22023' using message='shared_worker_odometer_invalid';end if;
+ end if;
+ if (vehicle is null and distance is not null) or (vehicle is not null and distance is null) then
+  raise sqlstate '22023' using message='explicit_shared_worker_vehicle_distance_required';end if;
+ if vehicle is not null and not exists(select 1 from public.vehicles x
+  where x.id=vehicle and x.company_id=r.company_id and x.is_active=true) then
+  raise sqlstate '22023' using message='shared_worker_vehicle_unavailable';end if;
+ if route is not null and not exists(select 1 from public.route_assignments x
+  where x.id=route and x.company_id=r.company_id and x.is_active=true) then
+  raise sqlstate '22023' using message='shared_worker_route_unavailable';end if;
+ if exists(select 1 from public.attendance_verifications a where a.company_id=r.company_id
+  and a.worker_id=wid and a.work_date=r.report_date and a.event_type='clock_in'
+  and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id
+  and a.vehicle_id is not null and a.vehicle_id is distinct from vehicle) then
+  raise sqlstate '22023' using message='shared_worker_vehicle_source_changed';end if;
+ if to_regclass('private.vehicle_usage_rollout') is not null then
+  execute 'select exists(select 1 from private.vehicle_usage_rollout where company_id=$1 and enabled=true)'
+   into strong_enabled using r.company_id;
+ end if;
+ -- A stronger committed meter capture is not reconstructed from three fields.
+ -- Complete its existing attachment workflow, reload and confirm that evidence.
+ if strong_enabled and row(vehicle,route,distance) is distinct from row(w.vehicle_id,w.route_assignment_id,w.odometer_km) then
+  raise sqlstate '55000' using message='shared_worker_committed_meter_attachment_required';end if;
+ return jsonb_build_object('schema',1,'overtime_hours',(p_facts->>'overtime_hours')::numeric,
+  'early_hours',(p_facts->>'early_hours')::numeric,'night_hours',(p_facts->>'night_hours')::numeric,
+  'work_category',p_facts->>'work_category','allowance_amount',(p_facts->>'allowance_amount')::integer,
+  'allowance_label',labels,'company_allowance_selections',choices,'company_allowance_legacy_labels',legacy,
+  'vehicle_id',vehicle,'route_assignment_id',route,'odometer_km',distance);
+end $$;
+
+create function shared_worker_facts_private.propose_worker_facts(rid uuid,wid uuid)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare w public.daily_report_workers%rowtype;
+begin
+ select * into w from public.daily_report_workers where report_id=rid and worker_id=wid;
+ if w.worker_id is null then return null;end if;
+ return shared_worker_facts_private.normalize_worker_facts(rid,wid,jsonb_build_object(
+  'schema',1,'overtime_hours',w.overtime_hours,'early_hours',w.early_hours,'night_hours',w.night_hours,
+  'work_category',w.work_category,'allowance_amount',w.allowance_amount,'allowance_label',w.allowance_label,
+  'company_allowance_selections',w.company_allowance_selections,'vehicle_id',w.vehicle_id,
+  'route_assignment_id',w.route_assignment_id,'odometer_km',w.odometer_km));
+exception when data_exception or serialization_failure or insufficient_privilege or object_not_in_prerequisite_state then
+ -- A proposal is never an attestation; incomplete/obsolete saved input is not 0.
+ return null;
+end $$;
+
+create function shared_worker_facts_private.matches_materialization(old_row jsonb,new_row jsonb,facts jsonb)
+returns boolean language sql immutable security invoker set search_path='' as $$
+ select coalesce(jsonb_typeof(old_row)='object' and jsonb_typeof(new_row)='object'
+  and jsonb_typeof(facts)='object' and facts->'schema'='1'::jsonb
+  and (select count(*) from jsonb_object_keys(facts))=12
+  and old_row ?& array['report_id','worker_id'] and new_row ?& array['report_id','worker_id']
+  and jsonb_typeof(old_row->'report_id')='string' and jsonb_typeof(old_row->'worker_id')='string'
+  and row(old_row->'report_id',old_row->'worker_id') is not distinct from row(new_row->'report_id',new_row->'worker_id')
+  and (old_row-array['overtime_hours','early_hours','night_hours','work_category','allowance_amount',
+    'allowance_label','company_allowance_selections','company_allowance_legacy_labels','vehicle_id','route_assignment_id','odometer_km'])
+   = (new_row-array['overtime_hours','early_hours','night_hours','work_category','allowance_amount',
+    'allowance_label','company_allowance_selections','company_allowance_legacy_labels','vehicle_id','route_assignment_id','odometer_km'])
+  and (select bool_and(new_row ? k and facts ? k and new_row->k is not distinct from facts->k)
+   from unnest(array['overtime_hours','early_hours','night_hours','work_category','allowance_amount',
+    'allowance_label','company_allowance_selections','company_allowance_legacy_labels','vehicle_id','route_assignment_id','odometer_km']) as keys(k)),false)
+$$;
+
+create function shared_worker_facts_private.materialize_confirmed_worker(rid uuid,wid uuid,facts jsonb)
+returns void language plpgsql volatile security invoker set search_path='' as $$
+declare r public.daily_reports%rowtype;w public.daily_report_workers%rowtype;after_row jsonb;
+ normalized jsonb;permitted boolean:=false;vehicle_changed boolean;
+begin
+ -- Outer prepare_supervisor already holds sorted canonical worker/month locks.
+ select * into r from public.daily_reports where id=rid for update;
+ select * into w from public.daily_report_workers where report_id=rid and worker_id=wid for update;
+ if r.id is null or w.worker_id is null or r.status<>'draft' then
+  raise sqlstate '55000' using message='shared_worker_materialization_unavailable';end if;
+ normalized:=shared_worker_facts_private.normalize_worker_facts(rid,wid,facts-'company_allowance_legacy_labels');
+ if normalized is distinct from facts then raise sqlstate 'PT409' using message='shared_worker_confirmed_facts_changed';end if;
+ after_row:=to_jsonb(w)||(facts-'schema');
+ if not shared_worker_facts_private.matches_materialization(to_jsonb(w),after_row,facts)
+  or to_regprocedure('checkout_shared_hours_private.permits_worker_materialization(uuid,uuid,jsonb,jsonb)') is null then
+  raise sqlstate '42501' using message='shared_worker_materialization_context_required';end if;
+ execute 'select checkout_shared_hours_private.permits_worker_materialization($1,$2,$3,$4)'
+  into permitted using rid,wid,to_jsonb(w),after_row;
+ if permitted is distinct from true then
+  raise sqlstate '42501' using message='shared_worker_materialization_context_required';end if;
+ vehicle_changed:=row(w.vehicle_id,w.route_assignment_id,w.odometer_km) is distinct from
+  row((facts->>'vehicle_id')::uuid,(facts->>'route_assignment_id')::uuid,(facts->>'odometer_km')::numeric);
+ if vehicle_changed and not exists(select 1 from pg_proc p join pg_roles o on o.oid=p.proowner
+  where p.oid=to_regprocedure('private.save_daily_report_vehicle_usage(uuid,uuid,uuid,uuid,numeric)')
+  and md5(p.prosrc)='f78e35bf948cc4702f9d65d28d0ac0e6' and o.rolname='postgres'
+  and p.prosecdef and p.proconfig=array['search_path=""']) then
+  raise sqlstate '55000' using message='shared_worker_vehicle_writer_changed';end if;
+ update public.daily_report_workers set overtime_hours=(facts->>'overtime_hours')::numeric,
+  early_hours=(facts->>'early_hours')::numeric,night_hours=(facts->>'night_hours')::numeric,
+  work_category=facts->>'work_category',allowance_amount=(facts->>'allowance_amount')::integer,
+  allowance_label=facts->>'allowance_label',company_allowance_selections=facts->'company_allowance_selections',
+  company_allowance_legacy_labels=facts->>'company_allowance_legacy_labels',vehicle_id=(facts->>'vehicle_id')::uuid,
+  route_assignment_id=(facts->>'route_assignment_id')::uuid,odometer_km=(facts->>'odometer_km')::numeric
+ where report_id=rid and worker_id=wid;
+ if vehicle_changed then
+  -- Same transaction: its normal odometer/source checks must succeed or the
+  -- whole RW update and finalization are rolled back. No raw vehicle UPDATE.
+  perform private.save_daily_report_vehicle_usage(rid,wid,(facts->>'vehicle_id')::uuid,
+   (facts->>'route_assignment_id')::uuid,(facts->>'odometer_km')::numeric);
+ end if;
+ if not exists(select 1 from public.daily_report_workers x where x.report_id=rid and x.worker_id=wid
+  and shared_worker_facts_private.matches_materialization(to_jsonb(w),to_jsonb(x),facts)) then
+  raise sqlstate 'PT409' using message='shared_worker_materialization_result_changed';end if;
+end $$;
+
+revoke all on function shared_worker_facts_private.normalize_worker_facts(uuid,uuid,jsonb) from public,anon,authenticated,service_role;
+revoke all on function shared_worker_facts_private.propose_worker_facts(uuid,uuid) from public,anon,authenticated,service_role;
+revoke all on function shared_worker_facts_private.matches_materialization(jsonb,jsonb,jsonb) from public,anon,authenticated,service_role;
+revoke all on function shared_worker_facts_private.materialize_confirmed_worker(uuid,uuid,jsonb) from public,anon,authenticated,service_role;
+commit;

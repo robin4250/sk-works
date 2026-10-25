@@ -1,0 +1,77 @@
+-- REVIEW ONLY: management is explicit and audited, never an ordinary peer bypass.
+create function checkout_paid_hours_candidate_private.confirm_managed_shared_hours(
+ p_report_id uuid,p_worker_id uuid,p_hours numeric,p_expected_revision bigint,p_expected_scope text,p_reason text
+) returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare actor uuid;cid uuid;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ select company_id into cid from public.daily_reports where id=p_report_id;
+ if cid is null or not checkout_shared_hours_private.uses_contract(p_report_id)
+  or not exists(select 1 from public.company_members where company_id=cid and user_id=actor)
+  or private.has_company_feature(cid,'can_manage_attendance') is distinct from true
+  or nullif(btrim(p_reason),'') is null or length(p_reason)>1000 then
+  raise sqlstate '42501' using message='shared_hours_audited_management_required';end if;
+ return checkout_shared_hours_private.save_input(p_report_id,p_worker_id,p_hours,p_expected_revision,p_expected_scope,p_reason);
+end $$;
+revoke all on function checkout_paid_hours_candidate_private.confirm_managed_shared_hours(uuid,uuid,numeric,bigint,text,text)
+ from public,anon,authenticated,service_role;
+grant execute on function checkout_paid_hours_candidate_private.confirm_managed_shared_hours(uuid,uuid,numeric,bigint,text,text) to authenticated;
+create function public.confirm_managed_shared_work_hours(
+ p_report_id uuid,p_worker_id uuid,p_hours numeric,p_expected_revision bigint,p_expected_scope text,p_reason text
+) returns jsonb language sql volatile security invoker set search_path='' as $$
+ select checkout_paid_hours_candidate_private.confirm_managed_shared_hours(
+  p_report_id,p_worker_id,p_hours,p_expected_revision,p_expected_scope,p_reason)
+$$;
+revoke all on function public.confirm_managed_shared_work_hours(uuid,uuid,numeric,bigint,text,text)
+ from public,anon,authenticated,service_role;
+grant execute on function public.confirm_managed_shared_work_hours(uuid,uuid,numeric,bigint,text,text) to authenticated;
+
+create function checkout_paid_hours_candidate_private.read_shared_worker_facts(p_report_id uuid,p_worker_id uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+begin
+ perform checkout_report_registration_private.current_actor();
+ if not(checkout_shared_hours_private.uses_contract(p_report_id) or checkout_shared_hours_private.enrollment_available(p_report_id)) then
+  raise sqlstate '55000' using message='shared_worker_facts_contract_unavailable';end if;
+ return checkout_shared_hours_private.read_input(p_report_id,p_worker_id);
+end $$;
+create function checkout_paid_hours_candidate_private.confirm_shared_worker_facts(
+ p_report_id uuid,p_worker_id uuid,p_facts jsonb,p_hours numeric,p_expected_revision bigint,p_expected_scope text,p_reason text default null
+) returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare actor uuid;cid uuid;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ if not checkout_shared_hours_private.uses_contract(p_report_id) then
+  raise sqlstate '55000' using message='shared_worker_facts_contract_unavailable';end if;
+ if p_reason is not null then
+  select company_id into cid from public.daily_reports where id=p_report_id;
+  if cid is null or not exists(select 1 from public.company_members where company_id=cid and user_id=actor)
+   or private.has_company_feature(cid,'can_manage_attendance') is distinct from true
+   or nullif(btrim(p_reason),'') is null or length(p_reason)>1000 then
+   raise sqlstate '42501' using message='shared_hours_audited_management_required';end if;
+ end if;
+ return checkout_shared_hours_private.confirm_facts(p_report_id,p_worker_id,p_facts,p_hours,p_expected_revision,p_expected_scope,p_reason);
+end $$;
+revoke all on function checkout_paid_hours_candidate_private.read_shared_worker_facts(uuid,uuid) from public,anon,authenticated,service_role;
+revoke all on function checkout_paid_hours_candidate_private.confirm_shared_worker_facts(uuid,uuid,jsonb,numeric,bigint,text,text) from public,anon,authenticated,service_role;
+grant execute on function checkout_paid_hours_candidate_private.read_shared_worker_facts(uuid,uuid) to authenticated;
+grant execute on function checkout_paid_hours_candidate_private.confirm_shared_worker_facts(uuid,uuid,jsonb,numeric,bigint,text,text) to authenticated;
+create function public.read_shared_worker_facts(p_report_id uuid,p_worker_id uuid)
+returns jsonb language sql stable security invoker set search_path='' as $$
+ select checkout_paid_hours_candidate_private.read_shared_worker_facts(p_report_id,p_worker_id)
+$$;
+create function public.confirm_shared_worker_facts(p_report_id uuid,p_worker_id uuid,p_facts jsonb,p_hours numeric,p_expected_revision bigint,p_expected_scope text)
+returns jsonb language sql volatile security invoker set search_path='' as $$
+ select checkout_paid_hours_candidate_private.confirm_shared_worker_facts(p_report_id,p_worker_id,p_facts,p_hours,p_expected_revision,p_expected_scope,null)
+$$;
+create function public.confirm_managed_shared_worker_facts(p_report_id uuid,p_worker_id uuid,p_facts jsonb,p_hours numeric,p_expected_revision bigint,p_expected_scope text,p_reason text)
+returns jsonb language plpgsql volatile security invoker set search_path='' as $$
+begin
+ if nullif(btrim(p_reason),'') is null then raise sqlstate '42501' using message='shared_hours_audited_management_required';end if;
+ return checkout_paid_hours_candidate_private.confirm_shared_worker_facts(p_report_id,p_worker_id,p_facts,p_hours,p_expected_revision,p_expected_scope,p_reason);
+end $$;
+revoke all on function public.read_shared_worker_facts(uuid,uuid) from public,anon,authenticated,service_role;
+revoke all on function public.confirm_shared_worker_facts(uuid,uuid,jsonb,numeric,bigint,text) from public,anon,authenticated,service_role;
+revoke all on function public.confirm_managed_shared_worker_facts(uuid,uuid,jsonb,numeric,bigint,text,text) from public,anon,authenticated,service_role;
+grant execute on function public.read_shared_worker_facts(uuid,uuid) to authenticated;
+grant execute on function public.confirm_shared_worker_facts(uuid,uuid,jsonb,numeric,bigint,text) to authenticated;
+grant execute on function public.confirm_managed_shared_worker_facts(uuid,uuid,jsonb,numeric,bigint,text,text) to authenticated;

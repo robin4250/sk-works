@@ -69,7 +69,11 @@ class _PaidWorkHoursInputCardState extends State<PaidWorkHoursInputCard> {
         return;
       }
       widget.onSaved(saved);
-      if (mounted) setState(() => _message = '保存しました。変更した場合は、報告者・現場責任者の署名を取り直してください。');
+      if (mounted) {
+        setState(() => _message = saved.contractVersion == 2
+            ? '実勤務時間を保存しました。日報の内容・報告者サインは変更していません。'
+            : '保存しました。変更した場合は、報告者・現場責任者の署名を取り直してください。');
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _message = '保存状態を確認できませんでした。再読込してから確認してください。');
@@ -93,9 +97,17 @@ class _PaidWorkHoursInputCardState extends State<PaidWorkHoursInputCard> {
           Text('${value.workDate.year}年${value.workDate.month}月${value.workDate.day}日・1日合計'),
           const SizedBox(height: 12),
           if (value.sourceBlocked)
-            const Text('当日の最後の退勤に対応した日報で入力します。勤務記録を確認してください。')
+            Text(value.contractVersion == 2
+                ? '本人の退勤後に、休憩を除く実勤務時間を確認してください。'
+                : '当日の最後の退勤に対応した日報で入力します。勤務記録を確認してください。')
           else if (!value.editable)
-            const Text('署名済みです。変更する場合は、日報の訂正と再署名が必要です。'),
+            Text(value.contractVersion == 2
+                ? value.supervisorFinalized
+                    ? '現場責任者の最終確認まで保存されています。変更する場合は承認付き訂正が必要です。'
+                    : value.hours != null && value.inputScopeCurrent
+                        ? '実勤務時間は保存済みです。現場責任者の最終確認を待ちます。'
+                        : '対象メンバー本人の実勤務時間の確認を待っています。'
+                : '署名済みです。変更する場合は、日報の訂正と再署名が必要です。'),
           if (!value.inputScopeCurrent)
             Text('勤務記録が変わりました。実勤務時間を確認し直してください。', style: TextStyle(color: color.error)),
           const SizedBox(height: 8),
@@ -112,7 +124,7 @@ class _PaidWorkHoursInputCardState extends State<PaidWorkHoursInputCard> {
           const SizedBox(height: 8),
           Row(children: [
             FilledButton(onPressed: value.editable && !value.sourceBlocked && !_saving ? _save : null,
-              child: Text(_saving ? '保存中…' : '実勤務時間を保存')),
+              child: Text(_saving ? '保存中…' : value.contractVersion == 2 ? '実勤務時間を確認して保存' : '実勤務時間を保存')),
             if (widget.onReload != null) TextButton(onPressed: _saving ? null : widget.onReload, child: const Text('再読込')),
           ]),
           if (_message != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_message!)),
