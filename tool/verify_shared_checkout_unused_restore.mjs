@@ -21,8 +21,9 @@ const addition=String.raw`
  eq(await q("select md5(prosrc) v from pg_proc where oid='public.force_manage_attendance(text,jsonb)'::regprocedure"),restoreManagementFixture.source_md5,'Exact observed original management writer');
  await exec("create table if not exists private.route_journey_captures(id uuid,source_clock_in_id uuid);create table if not exists private.route_journey_visit_events(capture_id uuid,source_clock_in_id uuid,start_capture_id uuid,kind text,route_stop_id uuid);create table if not exists route_stops(id uuid,route_assignment_id uuid);");
  await exec("create table if not exists public.daily_report_edit_requests(id uuid primary key,report_id uuid,company_id uuid,requested_by uuid,reason text,status text,approvals_required integer default 2,created_at timestamptz default now(),resolved_at timestamptz);alter table public.daily_report_edit_requests add column if not exists company_id uuid;revoke insert,update,delete on public.daily_report_edit_requests from authenticated,anon;");
- await exec("create table public.gps_auto_attendance_schedules(company_id uuid,worker_id uuid primary key,site_id uuid,route_assignment_id uuid,weekdays smallint[],local_time time,timezone text,enabled boolean,updated_by uuid,updated_at timestamptz);create table public.work_attendance_selections(company_id uuid,worker_id uuid,work_date date,mode text,site_id uuid,route_assignment_id uuid,updated_by uuid,updated_at timestamptz);create table public.work_vehicle_route_selections(company_id uuid,worker_id uuid,work_date date,vehicle_id uuid,route_assignment_id uuid,updated_by uuid,updated_at timestamptz);");
+ await exec("create table public.gps_auto_attendance_schedules(company_id uuid,worker_id uuid primary key,site_id uuid,route_assignment_id uuid,weekdays smallint[],local_time time,timezone text,enabled boolean,updated_by uuid,updated_at timestamptz);create table public.work_attendance_selections(company_id uuid,worker_id uuid,work_date date,verification_mode text,site_id uuid,route_assignment_id uuid,updated_by uuid,updated_at timestamptz);create table public.work_vehicle_route_selections(company_id uuid,worker_id uuid,work_date date,vehicle_id uuid,route_assignment_id uuid,updated_by uuid,updated_at timestamptz);");
  await exec("create schema cron;create table cron.job(jobid bigint primary key,command text);");
+ await exec('alter table public.attendance_verifications add column verification_mode text');
  const restoreBefore=await restoreTools.collectSnapshot(client,{nativeAuth:true});
  const installFiles=[
   'docs/candidates/shared_daily_report.sql.review-only',
@@ -69,6 +70,7 @@ const addition=String.raw`
  const restoreAfter=await restoreTools.collectSnapshot(client,{nativeAuth:true});
  eq(restoreAfter,restoreBefore,'Unused restore returns the entire observed catalog and existing application/Auth/foundation state exactly');
  for(const name of restoreTools.schemas)eq(await q('select to_regnamespace($1) is null v',[name]),true,'Only reviewed new schema removed: '+name);
+ await exec('alter table public.attendance_verifications drop column verification_mode');
  // A fresh install is deliberately NOT left behind. The unchanged parent
  // shared suite below creates its own candidates and executes its old cases.
  if(process.env.SKO_RESTORE_PROOF_OUTPUT){
