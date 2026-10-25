@@ -88,6 +88,10 @@ try{
  eq(reopened.financial_transition_id,result.financial_transition_id,'Reopened context retains transition after app restart');
  eq(reopened.financial_transition_valid,true,'Reopened context validates exact staged rows');
  eq(reopened.financial_resigning_supported,false,'Prepared normal report cannot reset document signatures again');
+ const unrelatedRid=await draft('2026-10-19',reportWorker,[]);
+ const unrelatedContext=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[unrelatedRid]);
+ eq(unrelatedContext.financial_transition_id??null,null,'Other report never inherits the staged transition marker');
+ eq(unrelatedContext.financial_resigning_supported,false,'Other report never inherits enabled completion rollout');
  await client.query('update document_finance_completion_private.rollout set enabled=false where report_id=$1',[rid]);
  const disabledPrepared=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  eq(disabledPrepared.financial_transition_id,result.financial_transition_id,'Disabling rollout cannot hide staged marker and re-enable legacy writer');
