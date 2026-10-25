@@ -1,0 +1,122 @@
+// Isolated PG17. Reuses installers only, never replays existing 91/255/331 suites.
+import assert from 'node:assert/strict';
+import {readFile,writeFile,mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
+const here=fileURLToPath(new URL('.',import.meta.url));
+const doc=resolve(here,'../supervisor-document-candidate');
+const folder=await mkdtemp(join(tmpdir(),'attendance-admin-native-'));
+try {
+ const staged=join(folder,'document-bootstrap.mjs');
+ const emitted=spawnSync(process.execPath,[resolve(doc,'verify_document_signatures.mjs')],{stdio:'inherit',env:{...process.env,SKO_DOCUMENT_EMIT_ONLY:staged}});
+ assert.equal(emitted.status,0,'Reuse the verified exact source installer');
+ const full=await readFile(staged,'utf8');
+ const marker=" eq(await q('select count(*)::int v from shared_daily_report_private.document_rollout'),0,";
+ assert.equal(full.split(marker).length,2,'Exact installer completion boundary, before all existing document tests');
+ const prefix=full.slice(0,full.indexOf(marker));
+ const tail=full.slice(full.indexOf('}catch(error){'));
+ const unit=String.raw`
+ phase='attendance-admin-actual-force-and-trigger-fixtures';
+ await exec(await readFile(process.env.SKO_ADMIN_ORIGINALS,'utf8'));
+ await exec('revoke all on function public.force_manage_attendance(text,jsonb) from public,anon,authenticated,service_role;grant execute on function public.force_manage_attendance(text,jsonb) to authenticated,service_role');
+ // Complete the source-observed table/default shape without changing writers.
+ await exec("alter table company_members add column if not exists role text default 'owner';alter table attendance_verifications add column if not exists verification_mode text,add column if not exists proximity_status text,add column if not exists note text,add column if not exists created_by uuid;alter table attendance_verifications alter column id set default gen_random_uuid();create table attendance_correction_items(id uuid default gen_random_uuid(),attendance_entry_id uuid);alter table paid_leave_requests add column if not exists id uuid default gen_random_uuid(),add column if not exists batch_id uuid,add column if not exists requested_by uuid,add column if not exists reason text,add column if not exists reviewed_by uuid,add column if not exists reviewed_at timestamptz,add column if not exists review_note text,add column if not exists updated_at timestamptz,add column if not exists created_at timestamptz default now();create function public.current_feature_permissions() returns jsonb language sql stable as $$select jsonb_build_object('can_manage_attendance',current_setting('fixture.manager',true)='on')$$;");
+ const clockSources=JSON.parse(await readFile('tool/fixtures/closed_day_actual_clock_sources.json','utf8'));
+ const normalizer=clockSources.functions.find(f=>f.signature==='private.validate_attendance_shift_evidence()');
+ eq(md5(dbBody(normalizer.definition)),normalizer.source_md5,'Observed actual clock normalizer source');await exec(normalizer.definition);
+ await exec('create trigger attendance_shift_evidence_guard before insert or update on public.attendance_verifications for each row execute function private.validate_attendance_shift_evidence()');
+ await exec(await readFile('docs/candidates/shared_daily_report_group_lock.sql.review-only','utf8'));
+ const lockModule=await readFile('docs/candidates/shared_daily_report_management_locks.sql.review-only','utf8');
+ const lockDef=/create function shared_daily_report_private\.lock_management_batch\([\s\S]*?end \$\$;/.exec(lockModule)?.[0];assert.ok(lockDef);
+ await exec(lockDef);await exec('revoke all on function shared_daily_report_private.lock_management_batch(uuid,text,jsonb) from public,anon,authenticated,service_role');
+ eq(await q("select md5(prosrc) v from pg_proc where oid='public.force_manage_attendance(text,jsonb)'::regprocedure"),'7de4106cf653bb7b39ab0103ec462853','Fresh observed force source, including original lock prefix');
+ // Actual refresh trigger bodies, with explicit neutral invoice-producer surroundings.
+ await exec("alter table sites add column if not exists customer_id uuid;create function private.refresh_automatic_invoice(uuid,uuid,date) returns void language sql as $$select null::void$$;create trigger fixture_actual_report_refresh_payroll after update on public.daily_reports for each row execute function private.report_refresh_payroll();create trigger fixture_actual_report_refresh_invoice after update on public.daily_reports for each row execute function private.report_refresh_invoice();create trigger fixture_actual_direct_attendance_delete before delete on public.attendance_entries for each row execute function private.reject_direct_attendance_delete();");
+ // Model the existing ordinary report SELECT access, then verify the new restrictive policy.
+ await exec("alter table daily_reports enable row level security;create policy fixture_company_report_select on daily_reports for select to authenticated using(exists(select 1 from company_members m where m.company_id=daily_reports.company_id and m.user_id=auth.uid()));grant select on daily_reports,company_members to authenticated;");
+ await exec(await readFile(process.env.SKO_ADMIN_CANDIDATE,'utf8'));
+ eq(await q('select count(*)::int v from attendance_admin_override_private.rollout'),0,'Admin installation never activates a company');
+ eq(await q('select count(*)::int v from attendance_admin_override_private.operations'),0,'OFF installation creates no audit claims or application changes');
+ await exec("select set_config('fixture.manager','on',false)");
+ const item=(wid,day,extra={})=>({worker_id:wid,date:day,mode:'work',site_id:SITE,man_days:1,overtime_hours:0,early_hours:0,night_hours:0,allowance_names:[],work_description:'管理者が明示入力した作業',clock_in:'08:00',clock_out:'17:00',...extra});
+ const force=async(actor,sid,action,items)=>sharedCall(actor,sid,'select public.force_manage_attendance($1,$2::jsonb) v',[action,JSON.stringify(items)]);
+ eq(await force(U,id(80),'upsert',[item(W3,'2026-10-27')]),1,'OFF mode preserves the actual existing ordinary management writer');
+ eq(await q('select count(*)::int v from attendance_admin_override_private.operations'),0,'OFF call does not claim an override audit');
+ // True document signatures on the inherited two-person real report.
+ await client.query("insert into shared_daily_report_private.document_rollout values($1,$2,'2026-10-01',true)",[A,rid]);
+ let context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
+ await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,'representative','管理変更前の実報告者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
+ context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
+ await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,'supervisor','管理変更前の実責任者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
+ const signedBefore=await q('select to_jsonb(r) v from daily_reports r where id=$1',[rid]);
+ eq(signedBefore.representative_signature_json!==null&&signedBefore.supervisor_signature_json!==null,true,'Native prerequisite has actual captured signatures, never synthetic database signature insertion');
+ const peerBefore=await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[rid,W2]);
+ await reject(()=>force(U,id(80),'upsert',[item(reportWorker,docDay)]),{code:'55000',message:'document_roster_requires_explicit_edit_writer'});
+ eq(await q('select to_jsonb(r) v from daily_reports r where id=$1',[rid]),signedBefore,'OFF mode retains existing signed-fact refusal and original signatures');
+ // Immutable financial artifacts are explicit synthetic fixture originals.
+ await exec("create table public.invoices(id uuid primary key,company_id uuid,billing_period_start date,billing_period_end date,status text,snapshot jsonb,grand_total integer);create table public.payment_certificates(id uuid primary key,company_id uuid,period_start date,status text,snapshot jsonb);create schema payroll_final_private;create table payroll_final_private.documents(statement_id uuid,company_id uuid,worker_id uuid,period_start date,value jsonb);create table payroll_final_private.history(statement_id uuid,company_id uuid,worker_id uuid,value jsonb);");
+ await client.query("insert into invoices values($1,$2,'2026-10-01','2026-10-31','approved',$3::jsonb,12345)",[id(9600),A,JSON.stringify({source:'immutable confirmed invoice fixture',report_id:rid})]);
+ await client.query("insert into payment_certificates values($1,$2,'2026-10-01','approved',$3::jsonb)",[id(9601),A,JSON.stringify({source:'immutable payment certificate fixture',report_id:rid})]);
+ await client.query("insert into payroll_statements(company_id,worker_id,period_start,period_end,gross_pay,deductions,net_pay,workflow_state,automatic_calculation,detail) values($1,$2,'2026-10-01','2026-10-31',100000,10000,90000,'finalized',false,'{\"fixed\":true}') on conflict(company_id,worker_id,period_start,period_end) do update set workflow_state='finalized',automatic_calculation=false,gross_pay=100000,deductions=10000,net_pay=90000,detail='{\"fixed\":true}'",[A,reportWorker]);
+ await client.query("insert into payroll_final_private.documents values($1,$2,$3,'2026-10-01','{\"fixed\":true}');",[id(9602),A,reportWorker]);
+ const protection=await q('select attendance_admin_override_private.protected_financial($1,$2::jsonb) v',[A,JSON.stringify([item(reportWorker,docDay),item(W2,docDay)])]);
+ await client.query('insert into attendance_admin_override_private.rollout values($1,true)',[A]);
+ phase='attendance-admin-audited-signed-edit';
+ eq(await force(U,id(80),'upsert',[item(reportWorker,docDay,{work_description:'管理権限による明示修正',overtime_hours:1.5})]),1,'Authorized manager edits a signed report without approval application');
+ const editedReport=await q('select to_jsonb(r) v from daily_reports r where id=$1',[rid]);
+ eq(editedReport.status,'draft','Manager change leaves current report unsigned');
+ eq(editedReport.representative_signature_json,null,'Prior reporter signature is not reused');eq(editedReport.supervisor_signature_json,null,'Prior supervisor signature is not reused');
+ eq(await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[rid,W2]),peerBefore,'Other employee report row stays byte-identical');
+ const audit=await q("select to_jsonb(o) v from attendance_admin_override_private.operations o order by created_at desc limit 1");
+ eq(audit.state,'committed','Audit and source change commit atomically');eq(audit.requires_financial_review,true,'Signed-source change explicitly requires separate financial review');
+ eq(audit.before_state.reports.find(d=>d.report.id===rid).report,signedBefore,'Audit preserves the entire original signed report');
+ eq(audit.before_state.reports.find(d=>d.report.id===rid).roster.length,2,'Audit captures all original workers before first deletion');
+ eq(await q('select attendance_admin_override_private.protected_financial($1,$2::jsonb) v',[A,JSON.stringify([item(reportWorker,docDay),item(W2,docDay)])]),protection,'Finalized salary and confirmed document snapshots are unchanged');
+ eq(await q('select count(*)::int v from attendance_admin_override_private.contexts'),0,'No reusable permit remains after success');
+ phase='attendance-admin-last-worker-cancellation-and-revival';
+ eq(await force(U,id(80),'delete',[item(reportWorker,docDay,{mode:'off'})]),1,'Selected attendance deletion succeeds');
+ eq(await q('select count(*)::int v from daily_report_workers where report_id=$1',[rid]),1,'Other worker remains after first deletion');
+ eq(await force(U,id(80),'delete',[item(W2,docDay,{mode:'off'})]),1,'Last worker deletion is an audited cancellation, not parent destruction');
+ eq(await q('select count(*)::int v from daily_reports where id=$1',[rid]),1,'Original report FK parent retained');
+ eq(await q('select count(*)::int v from shared_daily_report_private.work_protocol where report_id=$1',[rid]),1,'Original enrollment parent/receipt retained');
+ eq(await q('select active v from attendance_admin_override_private.cancellations where report_id=$1',[rid]),true,'Cancelled report is explicitly marked');
+ eq(await sharedCall(U,id(80),'select count(*)::int v from public.daily_reports where id=$1',[rid]),0,'Cancelled report is absent from normal authenticated list, even manager list');
+ eq(await sharedCall(memberB,sidB,'select public.attendance_admin_report_visible($1,$2) v',[rid,B]),false,'Foreign-company visibility filter does not expose existence');
+ eq(await force(U,id(80),'upsert',[item(reportWorker,docDay,{work_description:'取消後の明示再登録'})]),1,'Manager can explicitly register the same cell again');
+ eq(await q('select active v from attendance_admin_override_private.cancellations where report_id=$1',[rid]),false,'Explicit re-registration records revival');
+ eq(await sharedCall(U,id(80),'select count(*)::int v from public.daily_reports where id=$1',[rid]),1,'Revived current report is visible normally');
+ eq(await q('select count(*)::int v from daily_report_workers where report_id=$1 and worker_id=$2',[rid,reportWorker]),1,'Re-registration creates only the requested current employee row');
+ eq(await q('select representative_signature_json is null and supervisor_signature_json is null v from daily_reports where id=$1',[rid]),true,'Revival never restores historical signatures');
+ phase='attendance-admin-scope-and-transaction-denials';
+ await exec("select set_config('fixture.manager','off',false)");
+ await reject(()=>force(memberB,sidB,'delete',[item(reportWorker,docDay,{mode:'off'})]),/attendance management permission required/);
+ await exec("select set_config('fixture.manager','on',false)");
+ await client.query("update company_members set role='employee' where company_id=$1 and user_id=$2",[A,memberB]);
+ await reject(()=>force(memberB,sidB,'delete',[item(reportWorker,docDay,{mode:'off'})]),/attendance management permission required/);
+ await client.query('insert into auth.users(id) values($1)',[OTHER]);const foreignSid=id(9680);await client.query('insert into auth.sessions(id,user_id) values($1,$2)',[foreignSid,OTHER]);
+ await reject(()=>force(OTHER,foreignSid,'delete',[item(reportWorker,docDay,{mode:'off'})]),/worker does not belong|cell_scope_invalid/);
+ const beforeRollback=await q('select attendance_admin_override_private.snapshot($1,$2,$3::jsonb) v',[A,'upsert',JSON.stringify([item(reportWorker,docDay)])]);
+ const auditCount=await q('select count(*)::int v from attendance_admin_override_private.operations');
+ await reject(()=>force(U,id(80),'upsert',[item(reportWorker,docDay),item(W3,'2026-10-30',{clock_in:'not-a-time'})]),/time zone "not-a-time" not recognized/);
+ eq(await q('select attendance_admin_override_private.snapshot($1,$2,$3::jsonb) v',[A,'upsert',JSON.stringify([item(reportWorker,docDay)])]),beforeRollback,'Late invalid clock input rolls back earlier cells, signatures and cancellation changes');
+ eq(await q('select count(*)::int v from attendance_admin_override_private.operations'),auditCount,'Failed mutation cannot commit a success audit');
+ eq(await q('select count(*)::int v from attendance_admin_override_private.contexts'),0,'Failed mutation leaves no live permit');
+ eq(await force(U,id(80),'upsert',[item(reportWorker,'2026-10-30'),item(W2,'2026-10-30')]),2,'Two-worker management batch retains original int result and sorted group lock preparation');
+ eq(await q('select count(*)::int v from attendance_entries where company_id=$1 and work_date=$2',[A,'2026-10-30']),2,'Batch creates exactly its two explicit manual attendance rows');
+ eq(await q('select attendance_admin_override_private.protected_financial($1,$2::jsonb) v',[A,JSON.stringify([item(reportWorker,docDay),item(W2,docDay)])]),protection,'All CRUD and rollback paths preserve finalized source snapshots');
+ eq(await q("select has_table_privilege('authenticated','attendance_admin_override_private.contexts','insert,update,delete') v"),false,'Normal API caller cannot forge administrative scope permits');
+ eq(await force(U,id(80),'upsert',[item(W3,'2026-10-29',{mode:'paid_leave',site_id:null,man_days:1})]),1,'Manager can explicitly register paid leave');
+ eq(await q("select status v from paid_leave_requests where company_id=$1 and worker_id=$2 and leave_date='2026-10-29'",[A,W3]),'approved','Management paid leave remains explicit approved attendance, not a captured signature');
+ eq(await force(U,id(80),'upsert',[item(W3,'2026-10-29',{mode:'off',site_id:null})]),1,'Manager can change an existing day to off');
+ eq(await q("select count(*)::int v from attendance_entries where company_id=$1 and worker_id=$2 and work_date='2026-10-29'",[A,W3]),0,'Off removes current attendance without a fake work row');
+ await reject(()=>force(U,id(80),'upsert',[item(W3,'2026-10-28'),item(W3,'2026-10-28')]),{code:'22023',message:'attendance_admin_duplicate_cell'});
+ console.log(JSON.stringify({pass:true,checks,native_pg17:true,actual_force_md5_before:'7de4106cf653bb7b39ab0103ec462853',actual_observed_trigger_bodies:true,synthetic_auth_and_neutral_invoice_producer:true,unchanged_old_suites_replayed:false,production_changed:false}));
+`;
+ const proof=join(folder,'proof.mjs');await writeFile(proof,prefix+unit+tail);
+ if(process.env.SKO_ADMIN_EMIT_ONLY){await writeFile(process.env.SKO_ADMIN_EMIT_ONLY,prefix+unit+tail);}else{
+  const result=spawnSync(process.execPath,[proof,process.argv[2]],{stdio:'inherit',env:{...process.env,SKO_DOCUMENT_CANDIDATE:resolve(doc,'document-signature-and-edit.sql.review-only'),SKO_DOCUMENT_TRIGGER_PINS:resolve(doc,'trigger-source-pins.json'),SKO_ADMIN_CANDIDATE:resolve(here,'attendance-admin-override.sql.review-only'),SKO_ADMIN_ORIGINALS:resolve(here,'native-original-sources.sql')}});
+  if(result.error)throw result.error;process.exitCode=result.status??1;
+ }
+}finally{await rm(folder,{recursive:true,force:true});}
