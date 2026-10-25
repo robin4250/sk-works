@@ -306,6 +306,9 @@ void main() {
     final description = find.byKey(const ValueKey('daily-report-work-description'));
     await tester.ensureVisible(description);
     await tester.enterText(description, '手直しした作業内容');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
     await reveal(tester, '登録');
     await tester.tap(find.text('登録'));
     await tester.pumpAndSettle();
