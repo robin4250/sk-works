@@ -105,6 +105,44 @@ void main() {
     expect(() => parsed.events.clear(),throwsUnsupportedError);
     expect(() => parsed.events.single['password']='secret',throwsUnsupportedError);
   });
+  Map<String,dynamic> calendarEvent() => {
+    'event_id':'00000000-0000-0000-0000-000000000001',
+    'collector_id':'00000000-0000-0000-0000-000000000002',
+    'occurred_at':'2026-10-25T00:01:00+00:00',
+    'received_at':'2026-10-25T00:01:01.123456Z',
+    'event_kind':'current_lure_touched','generation':1,'correlation_key':'b'*64,
+    'key_epoch':'2026-10-25','source_provenance':'trusted_collector_observation',
+  };
+  test('audit key epoch refuses normalized nonexistent calendar dates', () {
+    for(final value in ['2026-02-29','2026-02-31','2026-04-31',
+      '2026-00-25','2026-13-01','2026-10-00','0000-10-25','2026-10-25\n']) {
+      expect(()=>SecurityCollectorSnapshot.parse({...snapshot(),
+        'events':[{...calendarEvent(),'key_epoch':value}]}),throwsFormatException,
+        reason:value);
+    }
+  });
+  test('audit timestamps require real calendar, clock and explicit zone', () {
+    for(final field in ['occurred_at','received_at']) {
+      for(final value in ['2026-02-31T00:00:00Z','2026-02-29T00:00:00Z',
+        '2026-13-01T00:00:00Z','2026-10-25T24:00:00Z',
+        '2026-10-25T00:60:00Z','2026-10-25T00:00:60Z',
+        '2026-10-25T00:00:00+24:00','2026-10-25T00:00:00+00:60',
+        '2026-10-25T00:00:00','2026-10-25','2026-10-25T00:00:00Z\n','PRIVATE_VALUE']) {
+        expect(()=>SecurityCollectorSnapshot.parse({...snapshot(),
+          'events':[{...calendarEvent(),field:value}]}),throwsFormatException,
+          reason:'$field $value');
+      }
+    }
+  });
+  test('real leap date and PostgreSQL timestamps keep original evidence', () {
+    for(final zone in ['Z','+00:00','+09:00','-05:30']) {
+      final event={...calendarEvent(),'key_epoch':'2024-02-29',
+        'occurred_at':'2024-02-29T23:59:59.123456$zone',
+        'received_at':'2024-03-01T00:01:00$zone'};
+      final parsed=SecurityCollectorSnapshot.parse({...snapshot(),'events':[event]});
+      expect(parsed.events.single,event);
+    }
+  });
   test('malformed event including secret fields is refused', () {
     expect(() => SecurityCollectorSnapshot.parse({...snapshot(),'events':[{'password':'secret'}]}), throwsFormatException);
   });

@@ -1,0 +1,7 @@
+# Reauthentication proof issuance keeps session history
+
+Separate follow-up to pinned build15 main `045169174188262f05b17c38495359e1059ea03b`. The collector reader already rejects an async A→B→A session hop in its outer scope. The shared operation-proof client only compared current UID/session_id after the Edge response; it could miss the same history for other callers.
+
+A per-request auth subscription now latches sign-out, other actor/session, and stream failure from each emitted event. Restoring the original current session does not revive the old response. A fresh explicit request after refusal is independent. JWT renewal inside the same server session remains valid; the original bearer is still sent and the server remains responsible for verifying identity, credentials, operation, target and one-use proof consumption. Empty session IDs/expired current sessions fail before invocation. The Edge wait is bounded to30 seconds and the subscription is cancelled on every exit.
+
+Regressions cover same-actor session B→A, other-actor B→A, no automatic retry, fresh request recovery and actual synthetic JWT replacement in the same session. Existing secondary-password, Master feature/device and collector consumers are reused in remote CI. Static diff validation passed; no local Flutter/Dart is used. No real password, session, provider, Edge, role, proof gate, consumer SQL or business data changes are made. This is not deployment of the missing collector backend.

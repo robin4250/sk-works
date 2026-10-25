@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "base_main": "7e6eda88513f1becc673b25e9871abf279ff3303",
+  "intended_build": 17,
+  "source_heads": [
+    "c1f4c525048e70096bf35f9b11a59fd863a08a3f",
+    "880b31fe67dd5a5f1f2a508f59ebceb4c00b600d",
+    "15f6d670f46b11839b5b63ca77e6b07fe39dda8b"
+  ],
+  "prs": [
+    1404,
+    1407,
+    1408,
+    1409
+  ],
+  "files": [
+    {
+      "path": ".github/workflows/authenticated-navigation-reset.yml",
+      "sha": "28e47ef1e8b147c093bceeee56483334845f57b4"
+    },
+    {
+      "path": ".github/workflows/chat-display-regressions.yml",
+      "sha": "50488454d5b47bf2caab177fa34e69fb6f5948ab"
+    },
+    {
+      "path": "lib/app_v2.dart",
+      "sha": "cb4d025d480844072541d81c9e7fc8d857cbe298"
+    },
+    {
+      "path": "lib/features/attendance/attendance_protected_routes.dart",
+      "sha": "f505a81841aade7c8f2391ebbf839df78b4191f0"
+    },
+    {
+      "path": "lib/features/attendance/checkout_report_gate.dart",
+      "sha": "f9d0424d023945c6ad777a3009a9e4a5462888b5"
+    },
+    {
+      "path": "lib/features/chat/chat_cloud_page.dart",
+      "sha": "6c2f59c5b1d37bbefbc8f43fddaabcdc23555501"
+    },
+    {
+      "path": "lib/features/payroll/payroll_pending_attendance_panel.dart",
+      "sha": "00258f86129f81a657eeec5b615e2e47874d054d"
+    },
+    {
+      "path": "lib/features/people/people_cloud_page.dart",
+      "sha": "8c5a6ef1bf353cca345907fb2f2080c46531de47"
+    },
+    {
+      "path": "test/attendance_secondary_entry_test.dart",
+      "sha": "d17346ebd40aae7e37280e0e77e4ab859664b174"
+    },
+    {
+      "path": "test/checkout_combined_gate_integration_test.dart",
+      "sha": "dce2769a0fd7b85fbac3cf875f6ffd41580e8a70"
+    },
+    {
+      "path": "test/payroll_pending_attendance_panel_test.dart",
+      "sha": "5201691a3bb21b3fb9ace5adb573ec4760f9ff99"
+    },
+    {
+      "path": "lib/features/daily_reports/daily_report_page.dart",
+      "sha": "421d7227ee87bd562f7b519bacd8c9677a119b0a"
+    },
+    {
+      "path": "test/daily_report_shared_hours_integration_test.dart",
+      "sha": "b08948a53ebfd414343a3272a209719c564fa909"
+    },
+    {
+      "path": ".github/workflows/apple-account-link.yml",
+      "sha": "0481de3b5042b674d3132954e9441db9029ed7e1"
+    },
+    {
+      "path": "docs/review/apple-link-preparation-session-boundary-20261025.md",
+      "sha": "ef3db7b52350b6bdb2f9ce618a7813479dcf0c9b"
+    },
+    {
+      "path": "docs/review/login-security-integration-20261025/README.md",
+      "sha": "3b6a30b99cf958a8895bbd637314df40f6c3fc68"
+    },
+    {
+      "path": "docs/review/login-security-integration-20261025/production-closure.md",
+      "sha": "ea1d28c0d0a2a01068cf6e2ebacdea192efa199f"
+    },
+    {
+      "path": "docs/review/login-security-integration-20261025/source-manifest.json",
+      "sha": "532d08b60c5685cf24da238ffecbdbff881e188f"
+    },
+    {
+      "path": "docs/review/operation-proof-session-history-20261025.md",
+      "sha": "1107f2cca4c1fe6766504f19cdb7297f6d18e6ab"
+    },
+    {
+      "path": "docs/review/phone-enrollment-preparing-20261025.md",
+      "sha": "0a63f5261cb68c12860149a2a0f0540882f1416f"
+    },
+    {
+      "path": "docs/review/security-collector-calendar-evidence-20261025.md",
+      "sha": "2e780f55cb36045183eb9a3cc2853694b0bb5ee1"
+    },
+    {
+      "path": "lib/features/auth/apple_account_link.dart",
+      "sha": "31ba2d819e49f6ab756c50acdbb02555fb0f8d49"
+    },
+    {
+      "path": "lib/features/auth/login_method_enrollment_card.dart",
+      "sha": "6522b2fc74d3a7373358246e2076b4e67a637b45"
+    },
+    {
+      "path": "lib/features/auth/login_method_enrollment_repository.dart",
+      "sha": "1395d9ce8edb9ded0973346d92967a7e4fa65920"
+    },
+    {
+      "path": "lib/features/auth/operation_reauthentication_repository.dart",
+      "sha": "7617edc571c37dc93a8579c3b2a4a1fbb20a16af"
+    },
+    {
+      "path": "lib/features/auth/panel_seven_page.dart",
+      "sha": "3bdb1e67c27d6cce9fea9fe2effcafb0b64aa9f5"
+    },
+    {
+      "path": "lib/features/security/security_collector_repository.dart",
+      "sha": "e16ba107a7129f55e058ffd754ef352de3a6065e"
+    },
+    {
+      "path": "test/apple_account_link_test.dart",
+      "sha": "f331b46625393b00336c14a63ad837438755e063"
+    },
+    {
+      "path": "test/login_method_enrollment_card_test.dart",
+      "sha": "c32be8690145d17adb1c341828a0c20ca471aa5a"
+    },
+    {
+      "path": "test/login_method_enrollment_repository_test.dart",
+      "sha": "35955cd0c8de2ba2a2b0ce801ecbc5ae63819166"
+    },
+    {
+      "path": "test/operation_reauthentication_repository_test.dart",
+      "sha": "af349bb899343d31d3d6122f719c4c5798e07637"
+    },
+    {
+      "path": "test/security_collector_repository_test.dart",
+      "sha": "2036ea80210f7dcf0236417b500cad6a9d6ea15d"
+    }
+  ],
+  "production_data_changes": false,
+  "registration_gate_enabled": false,
+  "build16_checkpoint": "tf-candidate-tt0_5xt8",
+  "build16_upload_status": "not_confirmed",
+  "build17_created": false
+}

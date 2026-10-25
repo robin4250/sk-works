@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "build15_main": "045169174188262f05b17c38495359e1059ea03b",
+  "source_prs": [
+    {
+      "number": 1400,
+      "head": "7041133dea30598f9e65896c4b8cc8476c0a6145",
+      "files": [
+        {
+          "path": ".github/workflows/apple-account-link.yml",
+          "blob": "0481de3b5042b674d3132954e9441db9029ed7e1"
+        },
+        {
+          "path": "docs/review/apple-link-preparation-session-boundary-20261025.md",
+          "blob": "ef3db7b52350b6bdb2f9ce618a7813479dcf0c9b"
+        },
+        {
+          "path": "lib/features/auth/apple_account_link.dart",
+          "blob": "31ba2d819e49f6ab756c50acdbb02555fb0f8d49"
+        },
+        {
+          "path": "test/apple_account_link_test.dart",
+          "blob": "f331b46625393b00336c14a63ad837438755e063"
+        }
+      ]
+    },
+    {
+      "number": 1401,
+      "head": "69a235fa1b2469ab9e169043f630f8f6bdf651f3",
+      "files": [
+        {
+          "path": "docs/review/security-collector-calendar-evidence-20261025.md",
+          "blob": "2e780f55cb36045183eb9a3cc2853694b0bb5ee1"
+        },
+        {
+          "path": "lib/features/security/security_collector_repository.dart",
+          "blob": "e16ba107a7129f55e058ffd754ef352de3a6065e"
+        },
+        {
+          "path": "test/security_collector_repository_test.dart",
+          "blob": "2036ea80210f7dcf0236417b500cad6a9d6ea15d"
+        }
+      ]
+    },
+    {
+      "number": 1402,
+      "head": "3e0632adeb40e547ac65b27ae392579d83d1df3a",
+      "files": [
+        {
+          "path": "docs/review/phone-enrollment-preparing-20261025.md",
+          "blob": "0a63f5261cb68c12860149a2a0f0540882f1416f"
+        },
+        {
+          "path": "lib/features/auth/login_method_enrollment_card.dart",
+          "blob": "6522b2fc74d3a7373358246e2076b4e67a637b45"
+        },
+        {
+          "path": "lib/features/auth/login_method_enrollment_repository.dart",
+          "blob": "1395d9ce8edb9ded0973346d92967a7e4fa65920"
+        },
+        {
+          "path": "lib/features/auth/panel_seven_page.dart",
+          "blob": "3bdb1e67c27d6cce9fea9fe2effcafb0b64aa9f5"
+        },
+        {
+          "path": "test/login_method_enrollment_card_test.dart",
+          "blob": "c32be8690145d17adb1c341828a0c20ca471aa5a"
+        },
+        {
+          "path": "test/login_method_enrollment_repository_test.dart",
+          "blob": "35955cd0c8de2ba2a2b0ce801ecbc5ae63819166"
+        }
+      ]
+    },
+    {
+      "number": 1403,
+      "head": "d931b639bf4b850263dbf2961ae6b5d2c5b03f50",
+      "files": [
+        {
+          "path": "docs/review/operation-proof-session-history-20261025.md",
+          "blob": "1107f2cca4c1fe6766504f19cdb7297f6d18e6ab"
+        },
+        {
+          "path": "lib/features/auth/operation_reauthentication_repository.dart",
+          "blob": "7617edc571c37dc93a8579c3b2a4a1fbb20a16af"
+        },
+        {
+          "path": "test/operation_reauthentication_repository_test.dart",
+          "blob": "af349bb899343d31d3d6122f719c4c5798e07637"
+        }
+      ]
+    }
+  ],
+  "source_blobs_reused": true,
+  "production_changed": false,
+  "merged_into_main": false
+}

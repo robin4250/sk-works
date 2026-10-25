@@ -48,29 +48,49 @@ class OperationReauthenticationRepository {
     final session = _client.auth.currentSession;
     final actor = session?.user.id;
     final originalSession = session == null ? null : _sessionId(session.accessToken);
-    if (session == null || actor == null || originalSession == null || password.isEmpty) {
+    if (session == null || session.isExpired || actor == null ||
+        originalSession == null || originalSession.isEmpty || password.isEmpty) {
       throw StateError('ログイン用の本パスワードで本人確認してください。');
     }
-    final response = await _client.functions.invoke('reauthenticate-operation',
-      headers: {'Authorization': 'Bearer ${session.accessToken}'},
-      body: {'password': password, 'operation': operation, 'target': target});
-    final current = _client.auth.currentSession;
-    if (current?.user.id != actor || current == null ||
-        _sessionId(current.accessToken) != originalSession) {
-      throw StateError('ログイン状態が変わりました。本人確認をやり直してください。');
+    var revoked = false;
+    bool matches(Session? value) => value != null && value.user.id == actor &&
+        _sessionId(value.accessToken) == originalSession;
+    final subscription = _client.auth.onAuthStateChange.listen((event) {
+      // Do not collapse queued A→B→A events into the current restored A.
+      // JWT refresh in the same server session remains allowed.
+      if (event.event == AuthChangeEvent.signedOut || !matches(event.session) ||
+          !matches(_client.auth.currentSession)) {
+        revoked = true;
+      }
+    }, onError: (Object _) { revoked = true; });
+    void check() {
+      if (revoked || !matches(_client.auth.currentSession) ||
+          _client.auth.currentSession?.isExpired != false) {
+        throw StateError('ログイン状態が変わりました。本人確認をやり直してください。');
+      }
     }
-    final data = response.data;
-    final proof = data is Map ? data['proof'] : null;
-    final expiry = data is Map ? DateTime.tryParse(data['expiresAt']?.toString() ?? '') : null;
-    if (response.status != 200 || data is! Map ||
-        data['protocol'] != 'sko-reauthentication-v1' ||
-        data['operation'] != operation || jsonEncode(data['target']) != jsonEncode(target) ||
-        proof is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(proof) ||
-        expiry == null || !expiry.isAfter(DateTime.now()) ||
-        expiry.isAfter(DateTime.now().add(const Duration(seconds: 125)))) {
-      throw StateError('本人確認を完了できませんでした。もう一度お試しください。');
+    try {
+      check();
+      final response = await _client.functions.invoke('reauthenticate-operation',
+        headers: {'Authorization': 'Bearer ${session.accessToken}'},
+        body: {'password': password, 'operation': operation, 'target': target})
+          .timeout(const Duration(seconds: 30));
+      check();
+      final data = response.data;
+      final proof = data is Map ? data['proof'] : null;
+      final expiry = data is Map ? DateTime.tryParse(data['expiresAt']?.toString() ?? '') : null;
+      if (response.status != 200 || data is! Map ||
+          data['protocol'] != 'sko-reauthentication-v1' ||
+          data['operation'] != operation || jsonEncode(data['target']) != jsonEncode(target) ||
+          proof is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(proof) ||
+          expiry == null || !expiry.isAfter(DateTime.now()) ||
+          expiry.isAfter(DateTime.now().add(const Duration(seconds: 125)))) {
+        throw StateError('本人確認を完了できませんでした。もう一度お試しください。');
+      }
+      return proof;
+    } finally {
+      await subscription.cancel();
     }
-    return proof;
   }
 
   Future<void> replaceSecondaryPassword(String password, String proof) async {
