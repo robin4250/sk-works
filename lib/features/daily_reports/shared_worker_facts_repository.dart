@@ -109,6 +109,19 @@ class SharedWorkerFacts {
   }
 }
 
+/// Explicit reviewed input for one atomic document-to-financial transition.
+/// Reuses the source snapshot and normalized facts; never derives a category.
+class SharedWorkerFactsTransitionInput {
+  const SharedWorkerFactsTransitionInput({required this.before, required this.facts, this.hours});
+  final SharedWorkerFactsSnapshot before;
+  final SharedWorkerFacts facts;
+  final double? hours;
+  Map<String, dynamic> toJson() => {
+    'worker_id': before.workerId, 'facts': facts.toConfirmationJson(), 'hours': hours,
+    'expected_revision': before.revision, 'expected_scope': before.scopeFingerprint,
+  };
+}
+
 class SharedWorkerFactsSnapshot {
   const SharedWorkerFactsSnapshot({required this.scope, required this.facts,
     required this.proposedFacts, required this.confirmed, required this.current,
@@ -236,3 +249,4 @@ class SharedWorkerFactsRepository {
         if (managed) 'p_reason': reason});
   }
 }
+

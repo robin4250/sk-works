@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'shared_worker_facts_repository.dart';
 
 class SharedReportManagementHold implements Exception {
   const SharedReportManagementHold({this.reasonCode = 'managed_attendance_financial_vector_changed_pending'});
@@ -28,7 +29,8 @@ class SharedDailyReportContext {
     this.firstReporterCoversWorkOnly = false,
     this.documentOnly = false, this.documentComplete = false,
     this.documentEditable = false, this.financialConfirmationRequired = false,
-    this.documentBasis,
+    this.documentBasis, this.financialResigningSupported = false,
+    this.financialTransitionId, this.financialTransitionValid = false,
     this.managementHoldReason, this.approvedEditRequestId,
     this.pendingWorkerIds = const [], this.supervisorPendingReasons = const [],
   });
@@ -43,6 +45,9 @@ class SharedDailyReportContext {
   final bool supervisorReady;
   final bool firstReporterCoversWorkOnly;
   final bool documentOnly, documentComplete, documentEditable, financialConfirmationRequired;
+  final bool financialResigningSupported, financialTransitionValid;
+  final int? financialTransitionId;
+  bool get financialTransitionPending => financialTransitionId != null;
   final String? managementHoldReason;
   final String? approvedEditRequestId;
   bool get isManagementHold => state == 'managed_financial_hold';
@@ -109,9 +114,18 @@ class SharedDailyReportContext {
     for (final key in ['enabled', 'can_manage_attendance', 'reporter_saved', 'supervisor_saved', 'source_attached', 'supervisor_ready', 'first_reporter_covers_work_only', 'management_hold']) {
       if (row[key] is! bool) { invalid(); }
     }
-    for (final key in ['document_only', 'document_complete', 'document_editable', 'financial_confirmation_required']) {
+    for (final key in ['document_only', 'document_complete', 'document_editable', 'financial_confirmation_required', 'financial_resigning_supported', 'financial_transition_valid', 'new_actual_reporter_and_supervisor_signatures_required']) {
       if (row.containsKey(key) && row[key] is! bool) { invalid(); }
     }
+    final transitionId = row['financial_transition_id'];
+    if (transitionId != null && (transitionId is! int || transitionId <= 0 ||
+        row['financial_transition_state'] != 'ready_for_real_signatures' ||
+        row['financial_transition_valid'] is! bool ||
+        row['new_actual_reporter_and_supervisor_signatures_required'] != true ||
+        row['report_status'] != 'draft' || row['document_only'] == true) ||
+        transitionId == null && (row.containsKey('financial_transition_state') ||
+          row.containsKey('financial_transition_valid') ||
+          row.containsKey('new_actual_reporter_and_supervisor_signatures_required'))) { invalid(); }
     final documentOnly = row['document_only'] == true;
     final documentComplete = row['document_complete'] == true;
     final documentEditable = row['document_editable'] == true;
@@ -264,6 +278,8 @@ class SharedDailyReportContext {
       signatureScopeFingerprint: fingerprint as String?, hoursAnnex: hoursAnnex,
       workBasis: workBasis, documentBasis: documentBasis,
       firstReporterCoversWorkOnly: row['first_reporter_covers_work_only'] as bool,
+      financialResigningSupported: row['financial_resigning_supported'] == true,
+      financialTransitionId: transitionId as int?, financialTransitionValid: row['financial_transition_valid'] == true,
       documentOnly: documentOnly, documentComplete: documentComplete,
       documentEditable: documentEditable, financialConfirmationRequired: financialConfirmationRequired,
       managementHoldReason: row['management_hold_reason'] as String?, approvedEditRequestId: id('approved_edit_request_id'),
@@ -387,6 +403,39 @@ class SharedDailyReportRepository {
     }
     return after;
   }
+  Future<SharedDailyReportContext> prepareFinancialResigning({
+    required SharedDailyReportContext before,
+    required List<SharedWorkerFactsTransitionInput> workers, required String reason,
+  }) async {
+    if (!before.financialResigningSupported || !before.canManageAttendance ||
+        !before.documentOnly || before.reporterSaved || before.supervisorSaved ||
+        before.reportId == null || before.expectedUpdatedAt == null || before.signatureScopeFingerprint == null) {
+      throw StateError('勤務実績の連携は準備中です。サインを変更せず、管理者に確認してください。');
+    }
+    final ids = workers.map((item) => item.before.workerId).toSet();
+    if (workers.isEmpty || workers.length > 100 || ids.length != workers.length ||
+        ids.length != before.workRosterIds.length || !ids.containsAll(before.workRosterIds) ||
+        reason.trim().isEmpty || reason.trim().length > 1000 ||
+        workers.any((item) => item.before.actorId != before.actorId ||
+          item.before.companyId != before.companyId || item.before.reportId != before.reportId ||
+          !item.before.canManageAttendance || item.before.sourceBlocked ||
+          (item.hours != null && (!item.hours!.isFinite || item.hours! < 0 || item.hours! > 24)))) {
+      throw StateError('対象者全員の実際の勤務実績と確認理由を確認してください。');
+    }
+    final raw = await _rpc('prepare_shared_report_financial_resigning', {
+      'p_report_id': before.reportId,
+      'p_expected_updated_at': before.expectedUpdatedAt!.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint,
+      'p_workers': workers.map((item) => item.toJson()).toList(), 'p_reason': reason.trim(),
+    }, expectedActor: before.actorId);
+    final after = SharedDailyReportContext.parse(raw, actorId: before.actorId,
+      companyId: before.companyId, reportId: before.reportId, workDate: before.workDate);
+    if (!after.financialTransitionPending || !after.financialTransitionValid ||
+        after.documentOnly || after.reporterSaved || after.supervisorSaved || after.reportStatus != 'draft') {
+      throw StateError('勤務実績の保存結果を確認できません。再読み込みしてください。');
+    }
+    return after;
+  }
   Future<SharedDailyReportContext> collectApprovedSupervisor({required SharedDailyReportContext before,
     required String requestId, required String signerName, required Map<String, dynamic> signature,
   }) async {
@@ -435,3 +484,4 @@ class SharedDailyReportRepository {
     return loadReport(before.reportId!, expectedActor: before.actorId);
   }
 }
+

@@ -77,6 +77,28 @@ void main() {
     expect(() => parse(documentRow()..['hours_annex'] = {'required': false}), throwsStateError);
   });
 
+  test('old deployment has no financial transition capability or pending marker', () {
+    final value = parse(row());
+    expect(value.financialResigningSupported, isFalse);
+    expect(value.financialTransitionPending, isFalse);
+  });
+  test('persisted marker remains pending when invalid rather than unlocking old draft writer', () {
+    final value = parse(row()..addAll({'financial_transition_id': 7,
+      'financial_transition_state': 'ready_for_real_signatures', 'financial_transition_valid': false,
+      'new_actual_reporter_and_supervisor_signatures_required': true}));
+    expect(value.financialTransitionPending, isTrue); expect(value.financialTransitionValid, isFalse);
+  });
+  for (final bad in [0, -1, '7', true]) {
+    test('malformed transition id $bad fails closed', () {
+      expect(() => parse(row()..addAll({'financial_transition_id': bad,
+        'financial_transition_state': 'ready_for_real_signatures', 'financial_transition_valid': true,
+        'new_actual_reporter_and_supervisor_signatures_required': true})), throwsStateError);
+    });
+  }
+  test('partial transition response cannot claim safe financial facts', () {
+    expect(() => parse(row()..['financial_transition_id'] = 7), throwsStateError);
+    expect(() => parse(row()..['financial_transition_valid'] = true), throwsStateError);
+  });
   test('reporter saved means readonly facts and supervisor collection', () {
     final value = parse(row());
     expect(value.signedFactsReadOnly, isTrue);
@@ -205,3 +227,4 @@ void main() {
   });
 
 }
+
