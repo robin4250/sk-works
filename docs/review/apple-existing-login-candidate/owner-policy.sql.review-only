@@ -1,4 +1,5 @@
 -- REVIEW ONLY. Supported Custom Access Token PostgreSQL hook; NOT an auth-table trigger.
+-- NOT complete protection: PKCE commits identity before token hook; see enablement-review.md.
 -- Never configure this hook in production before same-version GoTrue proof and enrollment review.
 begin;
 create schema apple_owner_policy;
