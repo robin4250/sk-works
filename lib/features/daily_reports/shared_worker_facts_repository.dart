@@ -213,6 +213,11 @@ class SharedWorkerFactsRepository {
 
   Future<SharedWorkerFactsSnapshot> confirm(SharedWorkerFactsSnapshot before,
     SharedWorkerFacts facts, {double? hours, String? managementReason}) {
+    // Prospective selection replaces this report's prior selections; the server
+    // independently resolves registered units and quantities.
+    final valid = SharedWorkerFacts.parse(facts.toJson());
+    final requiresHours = before.hoursRequiredOutsideCurrentReport ||
+        valid.companyAllowanceSelections.items.any((item) => item.unit == 'hour');
     final reason = managementReason?.trim();
     final managed = reason != null && reason.isNotEmpty;
     if (managementReason != null && !managed ||
@@ -220,11 +225,9 @@ class SharedWorkerFactsRepository {
         !managed && !before.editable || before.sourceBlocked ||
         hours != null && (!hours.isFinite || hours < 0 || hours > 24 ||
           (hours * 10000 - (hours * 10000).round()).abs() > 0.000001) ||
-        before.hoursRequired && hours == null) {
+        requiresHours && hours == null) {
       throw const FormatException('退勤記録と本人の勤務実績を確認してください。');
     }
-    // Re-parse caller-created models; public constructors cannot bypass input validation.
-    final valid = SharedWorkerFacts.parse(facts.toJson());
     return _request(companyId: before.companyId, workerId: before.workerId,
       reportId: before.reportId, rpc: managed ? 'confirm_managed_shared_worker_facts' : 'confirm_shared_worker_facts',
       parameters: {'p_report_id': before.reportId, 'p_worker_id': before.workerId,
