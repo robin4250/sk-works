@@ -2197,14 +2197,29 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
   @override void initState() { super.initState(); _seed(); }
   void _seed() {
     final seed = _snapshot.current ? _snapshot.facts : _snapshot.proposedFacts;
+    final template = widget.template;
+    // A missing server proposal can mean an unset work category. Keep the
+    // saved report values as unconfirmed input; never invent a category or
+    // bypass the server's source, permission, revision or validation checks.
     _draft = seed?.toDraft(workerId: _snapshot.workerId,
-      workerName: widget.template.workerName, template: widget.template);
+      workerName: template.workerName, template: template) ??
+      DailyReportWorkerDraft(workerId: template.workerId, workerName: template.workerName,
+        overtimeHours: template.overtimeHours, earlyHours: template.earlyHours,
+        nightHours: template.nightHours, allowanceAmount: template.allowanceAmount,
+        allowanceLabel: template.allowanceLabel,
+        companyAllowanceSelections: template.companyAllowanceSelections,
+        vehicleId: template.vehicleId, vehicleName: template.vehicleName,
+        routeId: template.routeId, routeName: template.routeName, odometerKm: template.odometerKm,
+        sourceClockInId: template.sourceClockInId, sourceClockOutAt: template.sourceClockOutAt,
+        meterManaged: template.meterManaged, meterEventId: template.meterEventId,
+        meterSourceClockInId: template.meterSourceClockInId,
+        previousOdometerKm: template.previousOdometerKm, tripDistanceKm: template.tripDistanceKm);
     _category = seed?.workCategory;
-    _overtime.text = seed == null ? '' : _number(seed.overtimeHours);
-    _early.text = seed == null ? '' : _number(seed.earlyHours);
-    _night.text = seed == null ? '' : _number(seed.nightHours);
-    _allowance.text = seed?.allowanceLabel ?? '';
-    final odometer = seed?.odometerKm;
+    _overtime.text = _number(_draft!.overtimeHours);
+    _early.text = _number(_draft!.earlyHours);
+    _night.text = _number(_draft!.nightHours);
+    _allowance.text = _draft!.allowanceLabel;
+    final odometer = _draft!.odometerKm;
     _odometer.text = odometer == null ? '' : _number(odometer);
     _hours.text = !_snapshot.current || _snapshot.hours == null ? '' : _number(_snapshot.hours!);
     _reason.clear();
@@ -2229,7 +2244,11 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
   }
   Future<void> _confirm() async {
     final draft = _draft;
-    if (!_editable || draft == null || _category == null) return;
+    if (!_editable || draft == null) return;
+    if (_category == null) {
+      setState(() => _error = '勤務区分（日勤・夜勤など）を選んでください。');
+      return;
+    }
     final before = _snapshot;
     setState(() { _saving = true; _error = null; });
     try {
@@ -2275,6 +2294,8 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
           const Text('表示は未確認の入力候補です。0の項目も含めて内容を確認し、確認ボタンで保存してください。'),
         if (_snapshot.sourceBlocked) const Text('本人の退勤と勤務原本を確認してから、実績を保存してください。'),
         if (!_snapshot.scope.workReportFrozen) const Text('作業報告の報告者サインを保存してから、本人の勤務実績を確認します。'),
+        if (_snapshot.proposedFacts == null && !_snapshot.current)
+          const Text('入力候補を作成できなかったため、保存済み日報の値を表示しています。勤務区分を選び、各項目を確認して保存してください。'),
         if (draft == null) TextButton(onPressed: widget.onReload, child: const Text('入力候補を再読み込み'))
         else ...[
           DropdownButtonFormField<String>(

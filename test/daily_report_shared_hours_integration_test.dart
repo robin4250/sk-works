@@ -26,10 +26,12 @@ final _date = DateTime(2026, 10, 25);
 class _Reports implements DailyReportRepository {
   bool reporterSaved = false, supervisorSaved = false, peerOpen = false;
   bool omitSource = false, staleSupervisorRead = false, missingReport = false;
+  bool recoveryChoices = false;
   bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
   int draftWrites = 0, ordinaryReporterWrites = 0;
   List<DailyReportWorkerDraft> get workers => [
     DailyReportWorkerDraft(workerId: _worker, workerName: '報告者',
+      companyAllowanceSelections: recoveryChoices ? DailyReportCompanyAllowanceSelections([]) : null,
       sourceClockInId: omitSource ? null : _source, sourceClockOutAt: DateTime(2026, 10, 25, 17)),
     if (peerOpen) DailyReportWorkerDraft(workerId: _peer, workerName: '勤務継続中',
       sourceClockInId: '00000000-0000-0000-0000-000000000051'),
@@ -135,6 +137,7 @@ class _Facts implements SharedWorkerFactsRepository {
   bool requireHours = true, managePeer = false;
   bool? outsideCurrentReport;
   int confirmations = 0;
+  bool missingProposal = false;
   SharedWorkerFacts? savedFacts;
   double? savedHours;
   String? reason;
@@ -150,7 +153,7 @@ class _Facts implements SharedWorkerFactsRepository {
       sourceBlocked: false, inputScopeCurrent: true, sourceReasons: [],
       hours: savedHours, contractVersion: 2, workReportFrozen: true,
       firstReporterCoversWorkOnly: true, workBasisHash: _scope),
-    facts: savedFacts, proposedFacts: proposed(),
+    facts: savedFacts, proposedFacts: missingProposal ? null : proposed(),
     confirmed: savedFacts != null, current: savedFacts != null,
     isOwnWorker: workerId == _worker, canManageAttendance: managePeer && workerId == _peer,
     hoursRequiredOutsideCurrentReport: outsideCurrentReport ?? requireHours);
@@ -187,6 +190,31 @@ void main() {
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
   }
+
+  testWidgets('missing category proposal permits explicit confirmation without replacing reporter signature', (tester) async {
+    final reports = _Reports()..reporterSaved = true..recoveryChoices = true;
+    final facts = _Facts()..missingProposal = true..requireHours = false;
+    await open(tester, reports, _Hours(), _Shared(reports), facts: facts);
+    await reveal(tester, 'この勤務実績を確認して保存');
+    await tester.tap(find.text('この勤務実績を確認して保存'));
+    await tester.pumpAndSettle();
+    expect(find.text('勤務区分（日勤・夜勤など）を選んでください。'), findsOneWidget);
+    expect(facts.confirmations, 0);
+    final category = find.byType(DropdownButtonFormField<String>).last;
+    await tester.ensureVisible(category);
+    await tester.tap(category);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('日勤').last);
+    await tester.pumpAndSettle();
+    await reveal(tester, 'この勤務実績を確認して保存');
+    await tester.tap(find.text('この勤務実績を確認して保存'));
+    await tester.pumpAndSettle();
+    expect(facts.confirmations, 1);
+    expect(facts.savedFacts!.workCategory, 'day');
+    expect(reports.draftWrites, 0);
+    expect(reports.ordinaryReporterWrites, 0);
+    expect(reports.reporterSaved, isTrue);
+  });
 
   test('report guidance removes technical StateError wrapper', () {
     expect(dailyReportActionErrorMessage(StateError('日報を再読み込みしてください。')),
