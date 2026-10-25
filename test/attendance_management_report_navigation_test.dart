@@ -103,22 +103,25 @@ void main() {
       await tester.runAsync(f.client.dispose);
     });
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-    final repository = _CalendarFixture(f.client);
-    await tester.pumpWidget(MaterialApp(home: AttendanceManagementPage(
-      repository: repository, initialWorkerId: fixture.worker,
-      initialDate: DateTime(2026, 10, 25))));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(OutlinedButton, '2026/10/25'));
-    await tester.pumpAndSettle();
-    expect(repository.worker, fixture.worker);
-    expect(find.bySemanticsLabel(RegExp(r'10月25日 出勤')), findsOneWidget);
-    expect(find.bySemanticsLabel(RegExp(r'10月26日 打刻のみ')), findsOneWidget);
-    expect(find.bySemanticsLabel(RegExp(r'10月27日 承認済み有給')), findsOneWidget);
-    await tester.tap(find.bySemanticsLabel(RegExp(r'10月26日 打刻のみ')));
-    await tester.pumpAndSettle();
-    expect(find.widgetWithText(OutlinedButton, '2026/10/26'), findsOneWidget);
-    expect(f.calls.where((r) => r.url.path.endsWith('/force_manage_attendance')), isEmpty);
+    try {
+      final repository = _CalendarFixture(f.client);
+      await tester.pumpWidget(MaterialApp(home: AttendanceManagementPage(
+        repository: repository, initialWorkerId: fixture.worker,
+        initialDate: DateTime(2026, 10, 25))));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(OutlinedButton, '2026/10/25'));
+      await tester.pumpAndSettle();
+      expect(repository.worker, fixture.worker);
+      expect(find.bySemanticsLabel(RegExp(r'10月25日 出勤')), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp(r'10月26日 打刻のみ')), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp(r'10月27日 承認済み有給')), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel(RegExp(r'10月26日 打刻のみ')));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(OutlinedButton, '2026/10/26'), findsOneWidget);
+      expect(f.calls.where((r) => r.url.path.endsWith('/force_manage_attendance')), isEmpty);
+    } finally {
+      semantics.dispose();
+    }
   });
   testWidgets('leaving management releases the focused input', (tester) async {
     final f = fixture.Fixture();

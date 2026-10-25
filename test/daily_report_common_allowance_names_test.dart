@@ -88,6 +88,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.eligibilityReads, 0);
     expect(repository.labelReads, 1);
+    await tester.enterText(find.byKey(const ValueKey('daily-report-work-description')), '合成の作業内容');
     final reportScroll = find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first;
     final member = find.descendant(of: find.byType(ExpansionTile), matching: find.text('合成社員'));
     await tester.scrollUntilVisible(member, 250, scrollable: reportScroll);
