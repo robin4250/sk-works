@@ -129,6 +129,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   DailyReportEditSession? _editSession;
   bool _editSessionUnverified = false;
   SignatureResult? _pendingResponsibleSignature;
+  SharedDailyReportContext? _pendingSharedSignatureContext;
   String? _pendingSignatureFingerprint;
   String? _pendingReporterFingerprint;
 
@@ -142,6 +143,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
     setState(() {
       _pendingResponsibleSignature = null;
+      _pendingSharedSignatureContext = null;
       _pendingSignatureFingerprint = null;
       _pendingReporterFingerprint = null;
     });
@@ -1034,10 +1036,19 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
-  Future<String?> _saveDraft({bool ownsBusyState = true}) async {
+  Future<String?> _saveDraft({bool ownsBusyState = true,
+      DailyReportEditSession? approvedReset}) async {
     if (_managementHold) return null;
     if (ownsBusyState && _saving) return null;
-    if (_sharedFactsReadOnly) return _report?.id;
+    final resettingApprovedReport = approvedReset != null && !_visitReport &&
+        _signed && _approvedEditAvailable &&
+        approvedReset.actorId == _repository?.currentActorId &&
+        approvedReset.reportId == _report?.id &&
+        approvedReset.companyId == _report?.companyId;
+    if (approvedReset != null && !resettingApprovedReport) {
+      throw StateError('承認済みの編集と対象日報を確認できません。');
+    }
+    if (_sharedFactsReadOnly && !resettingApprovedReport) return _report?.id;
     if (_visitReport && (_signed || _visitReporterLocked)) return null;
     final repository = _repository;
     final siteId = _siteId;
@@ -1255,6 +1266,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (!mounted) return;
       checkSigningContext();
       if (sharedBefore?.isManagementHold == true) return;
+      if (_editingApprovedReport && sharedBefore?.firstReporterCoversWorkOnly == true &&
+          sharedBefore?.approvedEditRequestId != _editSession?.requestId) {
+        throw StateError('現在の編集申請とサイン対象を確認できません。日報を開き直してください。');
+      }
       if (sharedBefore?.enabled == true && !await _reviewSupervisorFacts(sharedBefore!)) return;
       if (!mounted) return;
       checkSigningContext();
@@ -1302,6 +1317,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (_editingApprovedReport) {
         setState(() {
           _pendingResponsibleSignature = result;
+          _pendingSharedSignatureContext = sharedBefore?.firstReporterCoversWorkOnly == true
+              ? sharedBefore : null;
           _pendingSignatureFingerprint = _draftFingerprint();
           _pendingReporterFingerprint = _signatureFingerprint(_report?.reporterSignatureJson);
         });
@@ -1398,7 +1415,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       }
       // This RPC consumes only the current actor's approved request and clears
       // obsolete signatures in the same existing transaction.
-      final id = await _saveDraft(ownsBusyState: false);
+      final id = await _saveDraft(ownsBusyState: false, approvedReset: session);
       if (!mounted || repository.currentActorId != actor) return;
       if (id != report.id || _report?.id != report.id || _signed ||
           _report?.reporterSignatureJson != null ||
@@ -1447,7 +1464,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final session = _editSession;
     final signature = _pendingResponsibleSignature;
     final report = _report;
-    if (_saving || !_editingApprovedReport || repository == null ||
+    if (_managementHold || _saving || !_editingApprovedReport || repository == null ||
         session == null || signature == null || report == null) {
       return;
     }
@@ -1496,8 +1513,24 @@ class _DailyReportPageState extends State<DailyReportPage> {
             _signatureFingerprint(latest.reporterSignatureJson) != _pendingReporterFingerprint) {
           throw StateError('日報またはサインが変更されています。再読み込みしてください。');
         }
-        await repository.sign(reportId: session.reportId,
-          signerName: signature.signerName, signatureJson: signature.toJson());
+        final captured = _pendingSharedSignatureContext;
+        if (_sharedContext?.firstReporterCoversWorkOnly == true || captured != null) {
+          if (captured == null || captured.reportId != session.reportId ||
+              captured.actorId != session.actorId || captured.approvedEditRequestId != session.requestId ||
+              !captured.canCollectSupervisor || _sharedReportRepository == null) {
+            throw StateError('編集申請と確認済みのサイン内容を再確認してください。');
+          }
+          final saved = await _sharedReportRepository.collectApprovedSupervisor(
+            before: captured, requestId: session.requestId, signerName: signature.signerName,
+            signature: {'strokes': signature.toJson()});
+          checkContext();
+          _verifySharedContext(saved, reportId: session.reportId);
+          if (!saved.supervisorSaved) throw StateError('編集後の責任者サインを確認できません。');
+          _sharedContext = saved;
+        } else {
+          await repository.sign(reportId: session.reportId,
+            signerName: signature.signerName, signatureJson: signature.toJson());
+        }
         checkContext();
         latest = await reloadExact();
         if (!matchesSignature(latest)) {
@@ -1511,6 +1544,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         _report = latest;
         _editSession = null;
         _pendingResponsibleSignature = null;
+        _pendingSharedSignatureContext = null;
       });
       if (!mounted) return;
       await Navigator.of(context).push<void>(MaterialPageRoute(
@@ -1532,6 +1566,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ),
       ));
     } catch (error) {
+      _rememberManagementHold(error);
       if (mounted && repository.currentActorId == actor) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('編集完了を確認できませんでした。サインを保持しています: $error')));

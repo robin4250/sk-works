@@ -15,6 +15,7 @@ on:
       - 'test/*shared*integration_test.dart'
       - 'test/checkout_combined_gate_integration_test.dart'
       - 'test/scheduled_checkout_source_binding_test.dart'
+      - 'test/daily_report_approved_edit_start_test.dart'
       - '.github/workflows/shared-checkout-ui-integration.yml'
   workflow_dispatch:
 permissions:
@@ -41,6 +42,7 @@ jobs:
           test/daily_report_shared_hours_integration_test.dart
           test/checkout_combined_gate_integration_test.dart
           test/scheduled_checkout_source_binding_test.dart
+          test/daily_report_approved_edit_start_test.dart
       - run: >-
           flutter test
           test/daily_report_shared_hours_integration_test.dart

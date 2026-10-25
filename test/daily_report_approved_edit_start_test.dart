@@ -7,6 +7,7 @@ import 'package:sk_works/features/daily_reports/daily_report_page.dart';
 import 'package:sk_works/features/daily_reports/daily_report_edit_session.dart';
 import 'package:sk_works/features/daily_reports/signature_capture_page.dart';
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
+import 'package:sk_works/features/daily_reports/shared_daily_report_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class EditableReports extends DailyReportRepository {
@@ -85,6 +86,46 @@ class EditableReports extends DailyReportRepository {
   }
 }
 
+class ApprovedSharedReports implements SharedDailyReportRepository {
+  ApprovedSharedReports(this.reports);
+  final EditableReports reports;
+  String scope = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  String requestId = 'request-a';
+  bool commitThenThrow = false;
+  int approvedWrites = 0;
+  final submittedScopes = <String?>[];
+  SharedDailyReportContext get state => SharedDailyReportContext(
+    actorId: 'owner', companyId: 'company-a', reportId: 'report-a',
+    workDate: DateTime(2026, 10, 15),
+    state: reports.signed ? 'supervisor_saved' : 'reporter_saved_waiting_supervisor',
+    enabled: true, canManageAttendance: false, reporterSaved: true,
+    supervisorSaved: reports.signed, sourceAttached: false,
+    expectedUpdatedAt: DateTime.utc(2026, 10, 15, 8), signatureScopeFingerprint: scope,
+    firstReporterCoversWorkOnly: true, approvedEditRequestId: requestId,
+    supervisorReady: true, hoursAnnex: {'enabled': true, 'required': false,
+      'ready': true, 'inputs': <Map<String, dynamic>>[]},
+    workBasis: {'report': {'work_description': '保存済み内容',
+      'site_id': 'site-a', 'route_assignment_id': null},
+      'roster': <Map<String, dynamic>>[]});
+  @override Future<SharedDailyReportContext> loadReport(String reportId, {String? expectedActor}) async => state;
+  @override Future<SharedDailyReportContext> collectApprovedSupervisor({
+    required SharedDailyReportContext before, required String requestId,
+    required String signerName, required Map<String, dynamic> signature}) async {
+    approvedWrites++;
+    submittedScopes.add(before.signatureScopeFingerprint);
+    expect(requestId, 'request-a');
+    expect(before.approvedEditRequestId, requestId);
+    expect(before.canManageAttendance, isFalse);
+    if (before.signatureScopeFingerprint != scope) throw StateError('signature scope changed');
+    reports.signed = true;
+    reports.responsible = signature;
+    reports.responsibleName = signerName;
+    if (commitThenThrow) throw StateError('response lost');
+    return state;
+  }
+  @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   late SupabaseClient client;
   setUp(() {
@@ -96,10 +137,11 @@ void main() {
   });
   tearDown(() async { await client.dispose(); });
 
-  Future<void> open(WidgetTester tester, EditableReports repo) async {
+  Future<void> open(WidgetTester tester, EditableReports repo, {ApprovedSharedReports? shared}) async {
     await tester.pumpWidget(MaterialApp(home: DailyReportPage(
       initialDate: DateTime(2026, 10, 15), initialSiteId: 'site-a',
-      initialReportId: 'report-a', repositoryForTesting: repo)));
+      initialReportId: 'report-a', repositoryForTesting: repo,
+      sharedReportRepositoryForTesting: shared)));
     await tester.pumpAndSettle();
   }
   Future<void> reveal(WidgetTester tester, Finder finder) async {
@@ -140,6 +182,35 @@ void main() {
         find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)));
       expect(supervisor.onTap, isNotNull);
     });
+  testWidgets('signed shared v2 explicitly consumes approval before enabling correction', (tester) async {
+    final repo = EditableReports(client);
+    final shared = ApprovedSharedReports(repo);
+    await open(tester, repo, shared: shared);
+    expect(repo.saves, 0);
+    expect(repo.signed, isTrue);
+    await begin(tester);
+    expect(repo.saves, 0);
+    await tester.tap(find.text('編集を開始').last);
+    await tester.pumpAndSettle();
+    expect(repo.saves, 1);
+    expect(repo.signed, isFalse);
+    expect(repo.approved, isFalse);
+    expect(shared.approvedWrites, 0);
+    expect(find.byKey(const ValueKey('daily-report-begin-approved-edit')), findsNothing);
+    expect(find.text('編集できる状態になりました。編集後は報告者・責任者のサインを登録してください。'), findsOneWidget);
+  });
+  testWidgets('revoked shared v2 approval cannot bypass frozen report', (tester) async {
+    final repo = EditableReports(client);
+    final shared = ApprovedSharedReports(repo);
+    await open(tester, repo, shared: shared);
+    repo.approved = false;
+    await begin(tester);
+    await tester.tap(find.text('編集を開始').last);
+    await tester.pumpAndSettle();
+    expect(repo.saves, 0);
+    expect(repo.signed, isTrue);
+    expect(shared.approvedWrites, 0);
+  });
   testWidgets('no approved request keeps signed report locked', (tester) async {
     final repo = EditableReports(client)..approved = false;
     await open(tester, repo);
@@ -191,6 +262,79 @@ void main() {
         strokes: [[Offset(0.3, 0.4), Offset(0.5, 0.6)]]));
     await tester.pumpAndSettle();
   }
+
+  Future<void> prepareV2Completion(WidgetTester tester, EditableReports repo,
+      ApprovedSharedReports shared, {VoidCallback? whileDrawing}) async {
+    repo.signed = false;
+    repo.approved = false;
+    repo.reporterSigned = true;
+    await DailyReportEditSessionStore().remember(const DailyReportEditSession(
+      actorId: 'owner', companyId: 'company-a', reportId: 'report-a',
+      requestId: 'request-a', confirmed: true));
+    await open(tester, repo, shared: shared);
+    final tile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile));
+    await reveal(tester, tile);
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+    expect(find.text('責任者サインで確認する内容'), findsOneWidget);
+    await tester.tap(find.text('この内容で責任者サインへ'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SignatureCapturePage), findsOneWidget);
+    whileDrawing?.call();
+    Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+      const SignatureResult(signerName: '責任者',
+        strokes: [[Offset(0.3, 0.4), Offset(0.5, 0.6)]]));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('approved v2 completion uses exact session wrapper without granting manager or ordinary signing', (tester) async {
+    final repo = EditableReports(client);
+    final shared = ApprovedSharedReports(repo);
+    await prepareV2Completion(tester, repo, shared);
+    final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
+    await reveal(tester, finish);
+    await tester.tap(finish);
+    await tester.pumpAndSettle();
+    expect(shared.approvedWrites, 1);
+    expect(repo.signCalls, 0);
+    expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsOneWidget);
+  });
+
+  testWidgets('approved v2 drawing keeps its original evidence scope on explicit retries', (tester) async {
+    final repo = EditableReports(client);
+    final shared = ApprovedSharedReports(repo);
+    final reviewedScope = shared.scope;
+    await prepareV2Completion(tester, repo, shared, whileDrawing: () {
+      shared.scope = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    });
+    final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
+    await reveal(tester, finish);
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await tester.tap(finish);
+      await tester.pumpAndSettle();
+    }
+    expect(shared.submittedScopes, [reviewedScope, reviewedScope]);
+    expect(repo.signCalls, 0);
+    expect(repo.signed, isFalse);
+    expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsNothing);
+  });
+
+  testWidgets('approved v2 lost response reloads the exact final receipt without signing twice', (tester) async {
+    final repo = EditableReports(client);
+    final shared = ApprovedSharedReports(repo)..commitThenThrow = true;
+    await prepareV2Completion(tester, repo, shared);
+    final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
+    await reveal(tester, finish);
+    await tester.tap(finish);
+    await tester.pumpAndSettle();
+    expect(shared.approvedWrites, 1);
+    expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsNothing);
+    await tester.tap(finish);
+    await tester.pumpAndSettle();
+    expect(shared.approvedWrites, 1);
+    expect(repo.signCalls, 0);
+    expect(find.text('日報の編集を完了しました。保存して確定しました。'), findsOneWidget);
+  });
 
   testWidgets('restored edit stages responsible signature and finalizes only on explicit completion',
     (tester) async {

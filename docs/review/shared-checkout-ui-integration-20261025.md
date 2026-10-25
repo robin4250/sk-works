@@ -49,7 +49,7 @@ personal evidence, including outstanding members. It captures the immutable
 updated-at plus composite signature scope before drawing and submits that same
 scope afterward. Incomplete actual facts cannot become zero/ready. A competing
 change must cause a server CAS refusal and a new review. Existing approved-edit
-sessions keep the original authorized correction path. A server-reported manual-attendance/financial mismatch is a persistent management hold: normal draft/signature/fact writes remain blocked, no generic retry is offered, and the isolated recovery route requires the server management capability. A typed write refusal also persists on the report page; it never triggers conversion or an automatic retry.
+sessions keep the original authorized correction path. V2 final completion uses the exact stored request ID and the immutable scope reviewed before drawing through the approved-session wrapper; it never falls back to the ordinary signing RPC. A lost response first checks the exact final signature and report before any explicit retry, and a scope change cannot silently replace the captured evidence. A server-reported manual-attendance/financial mismatch is a persistent management hold: normal draft/signature/fact writes remain blocked, no generic retry is offered, and the isolated recovery route requires the server management capability. A typed write refusal also persists on the report page; it never triggers conversion or an automatic retry.
 
 ## GPS settings and device reminders
 
@@ -69,6 +69,9 @@ unrelated capture preservation, explicit-OFF legacy group flow, report-over-
 schedule priority, system back/deeplink isolation, authorized management, shared
 read-only state, v2 work-first behavior and explicit personal fact confirmation.
 Existing checkout/recovery/GPS/approval/common-allowance regressions run alongside.
+Signed v2 correction starts only through the freshly verified exact approved
+session; ordinary frozen-report saves remain blocked. Approved completion keeps
+the pre-drawing signature scope and confirms the saved result after lost replies.
 Local diff validation only; Flutter/Dart execution is delegated to remote CI.
 No production apply, activation, cron, real notification or iPhone installation
 has been performed by this candidate.
