@@ -14,32 +14,53 @@ bool _managementVerificationCancelled(Object error) =>
 
 Future<String?> _requestManagementPassword(BuildContext context) async {
   if (!context.mounted) return null;
-  final controller = TextEditingController();
   try {
     return await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('勤怠操作の第二認証'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('今回の登録・編集・削除を実行するため、第2パスワードを入力してください。'),
-          const SizedBox(height: 12),
-          TextField(controller: controller, obscureText: true, autofocus: true,
-            enableSuggestions: false, autocorrect: false,
-            decoration: const InputDecoration(labelText: '第2パスワード'),
-            onSubmitted: (value) => Navigator.pop(dialogContext, value)),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('キャンセル')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('認証して実行')),
-        ],
-      ),
-    );
+      context: context, builder: (_) => const _ManagementPasswordDialog());
   } finally {
-    controller.clear();
-    controller.dispose();
     FocusManager.instance.primaryFocus?.unfocus();
   }
+}
+
+class _ManagementPasswordDialog extends StatefulWidget {
+  const _ManagementPasswordDialog();
+  @override
+  State<_ManagementPasswordDialog> createState() => _ManagementPasswordDialogState();
+}
+
+class _ManagementPasswordDialogState extends State<_ManagementPasswordDialog> {
+  final _password = TextEditingController();
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  void _complete(String? value) {
+    FocusScope.of(context).unfocus();
+    Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text('勤怠操作の第二認証'),
+    content: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Text('今回の登録・編集・削除を実行するため、第2パスワードを入力してください。'),
+      const SizedBox(height: 12),
+      TextField(controller: _password, obscureText: true, autofocus: true,
+        enableSuggestions: false, autocorrect: false,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(labelText: '第2パスワード'),
+        onSubmitted: _complete),
+    ]),
+    actions: [
+      TextButton(onPressed: () => _complete(null), child: const Text('キャンセル')),
+      FilledButton(onPressed: () => _complete(_password.text),
+        child: const Text('認証して実行')),
+    ],
+  );
 }
 
 String attendanceManagementActionErrorMessage(Object error) {
