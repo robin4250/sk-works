@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
 import 'secure_onboarding_repository.dart';
 import 'operation_reauthentication_repository.dart';
 import 'secondary_password_primary_verifier.dart';
+import 'secondary_reset_session_guard.dart';
+import '../../data/supabase_backend.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 abstract class SecondaryPasswordResetAccess {
   String? get currentUserId;
@@ -12,73 +16,165 @@ abstract class SecondaryPasswordResetAccess {
   Future<void> save(String password);
 }
 
-class DeviceSecondaryPasswordResetAccess implements SecondaryPasswordResetAccess {
+class DeviceSecondaryPasswordResetAccess extends ChangeNotifier
+    implements SecondaryPasswordResetAccess {
   DeviceSecondaryPasswordResetAccess({
     @visibleForTesting OperationReauthenticationRepository? reauthenticationRepository,
     @visibleForTesting String? Function()? currentActor,
-  }) : _injectedReauthentication = reauthenticationRepository, _currentActor = currentActor;
+    @visibleForTesting Session? Function()? currentSession,
+    @visibleForTesting Stream<AuthState>? authChanges,
+  }) : _injectedReauthentication = reauthenticationRepository,
+       _currentActor = currentActor, _currentSession = currentSession,
+       _authChanges = authChanges;
   final OperationReauthenticationRepository? _injectedReauthentication;
   final String? Function()? _currentActor;
+  final Session? Function()? _currentSession;
+  final Stream<AuthState>? _authChanges;
   OperationReauthenticationRepository? get _reauthentication =>
       _injectedReauthentication ?? OperationReauthenticationRepository.maybeCreate();
+  SecureOnboardingRepository? get _repository => SecureOnboardingRepository.maybeCreate();
+  Session? get _session => _currentSession != null ? _currentSession() :
+      SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentSession : null;
+  Stream<AuthState> get _changes => _authChanges ?? (SupabaseBackend.isInitialized
+      ? SupabaseBackend.client.auth.onAuthStateChange : const Stream<AuthState>.empty());
   final _auth = LocalAuthentication();
   bool? serverRequired;
   String? _proof;
   int _generation = 0;
-  void invalidateProof() { _generation++; _proof = null; }
+  bool _verified = false;
+  bool _saveInProgress = false;
+  SecondaryResetSessionGuard? _verification;
+
+  void invalidateProof() {
+    _generation++;
+    _proof = null;
+    _verified = false;
+    final previous = _verification;
+    _verification = null;
+    if (previous != null) unawaited(previous.close());
+  }
+
+  (int, SecondaryResetSessionGuard) _beginVerification() {
+    if (_saveInProgress) throw StateError('保存結果の確認が必要です。');
+    invalidateProof();
+    final actor = currentUserId;
+    if (actor == null || _session?.user.id != actor) {
+      throw StateError('ログイン状態を確認してください。');
+    }
+    final guard = SecondaryResetSessionGuard(currentSession: () => _session,
+      changes: _changes, onInvalidated: () {
+        _generation++;
+        _proof = null;
+        _verified = false;
+        notifyListeners();
+      });
+    _verification = guard;
+    return (_generation, guard);
+  }
+
+  bool _current(int generation, SecondaryResetSessionGuard guard) =>
+      generation == _generation && identical(_verification, guard) && guard.isCurrent;
+
   Future<bool> loadRequirement() async {
     final repository = _reauthentication;
     if (repository == null) throw StateError('Authentication required');
     serverRequired = (await repository.capabilities())['secondary_password'] == true;
     return serverRequired!;
   }
-  SecureOnboardingRepository? get _repository =>
-      SecureOnboardingRepository.maybeCreate();
+
   @override
-  String? get currentUserId => _currentActor?.call() ?? _repository?.currentUser?.id;
+  String? get currentUserId => _currentActor != null ? _currentActor() : _repository?.currentUser?.id;
+
   @override
-  Future<bool> authenticate() => _auth.authenticate(
-    localizedReason: '第2パスワードを再設定するため本人確認します',
-    options: const AuthenticationOptions(
-      biometricOnly: true,
-      stickyAuth: false,
-    ),
-  );
+  Future<bool> authenticate() async {
+    if (serverRequired != false) throw StateError('本パスワードで本人確認してください。');
+    final (generation, guard) = _beginVerification();
+    try {
+    final ok = await _auth.authenticate(
+      localizedReason: '第2パスワードを再設定するため本人確認します',
+      options: const AuthenticationOptions(biometricOnly: true, stickyAuth: false),
+    );
+    await guard.checkAfterQueuedEvents();
+    if (!_current(generation, guard)) throw StateError('Authentication changed');
+    _verified = ok;
+    if (!ok) invalidateProof();
+    return ok;
+    } catch (_) {
+      if (identical(_verification, guard)) invalidateProof();
+      else await guard.close();
+      rethrow;
+    }
+  }
+
   @override
   Future<bool> authenticateWithPassword(String password) async {
     if (serverRequired == null) throw StateError('Authentication unavailable');
+    final (generation, guard) = _beginVerification();
+    final actor = currentUserId!;
+    try {
+    bool ok;
     if (serverRequired!) {
-      final generation = _generation;
-      final actor = currentUserId;
       final repository = _reauthentication;
-      if (repository == null || actor == null) throw StateError('Authentication required');
+      if (repository == null) throw StateError('Authentication required');
       final proof = await repository.requestProof(password: password,
         operation: 'secondary_password.replace', target: {'user_id': actor});
-      if (_generation != generation || currentUserId != actor) {
-        throw StateError('Authentication changed');
-      }
+      await guard.checkAfterQueuedEvents();
+      if (!_current(generation, guard)) throw StateError('Authentication changed');
       _proof = proof;
-      return true;
+      ok = true;
+    } else {
+      ok = await SecondaryPasswordPrimaryVerifier(currentUser: () => _repository?.currentUser,
+        currentSession: () => _session, authChanges: _changes).verify(password);
+      await guard.checkAfterQueuedEvents();
+      if (!_current(generation, guard)) throw StateError('Authentication changed');
     }
-    return SecondaryPasswordPrimaryVerifier(
-      currentUser: () => _repository?.currentUser).verify(password);
+    _verified = ok;
+    if (!ok) invalidateProof();
+    return ok;
+    } catch (_) {
+      if (identical(_verification, guard)) invalidateProof();
+      else await guard.close();
+      rethrow;
+    }
   }
 
   @override
   Future<void> save(String password) async {
-    if (serverRequired == null) throw StateError('Authentication unavailable');
-    if (serverRequired!) {
-      final proof = _proof;
-      _proof = null;
-      if (proof == null) throw StateError('Reauthentication required');
-      final verified = _reauthentication;
-      if (verified == null) throw StateError('Authentication required');
-      await verified.replaceSecondaryPassword(password, proof);
-    } else {
-      final repository = _repository;
-      if (repository == null) throw StateError('Authentication required');
-      await repository.setSecondaryPassword(password);
+    final guard = _verification;
+    if (serverRequired == null || !_verified || guard == null || _saveInProgress) {
+      throw StateError('Reauthentication required');
     }
+    final generation = _generation;
+    _verified = false; // A verification authorizes at most one save attempt.
+    _saveInProgress = true;
+    try {
+      await guard.checkAfterQueuedEvents();
+      if (!_current(generation, guard)) throw StateError('Authentication changed');
+      final token = _session!.accessToken;
+      if (serverRequired!) {
+        final proof = _proof;
+        _proof = null;
+        final repository = _reauthentication;
+        if (proof == null || repository == null) throw StateError('Reauthentication required');
+        await repository.replaceSecondaryPassword(password, proof);
+      } else {
+        final repository = _repository;
+        if (repository == null) throw StateError('Authentication required');
+        await repository.setSecondaryPassword(password, accessToken: token);
+      }
+      await guard.checkAfterQueuedEvents();
+      if (!_current(generation, guard)) throw StateError('Authentication changed');
+    } finally {
+      _saveInProgress = false;
+      if (identical(_verification, guard)) invalidateProof();
+      else await guard.close();
+    }
+  }
+
+  @override
+  void dispose() {
+    invalidateProof();
+    super.dispose();
   }
 }
 
@@ -121,9 +217,18 @@ class _ResetState extends State<SecondaryPasswordResetPage>
         WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     if (_access is DeviceSecondaryPasswordResetAccess) {
+      (_access as DeviceSecondaryPasswordResetAccess).addListener(_verificationChanged);
       _requirementsLoading = true;
       _loadRequirement();
     }
+  }
+
+  void _verificationChanged() {
+    if (!mounted) return;
+    setState(() {
+      _clear();
+      _message = 'ログイン状態が変わりました。本人確認をやり直してください。';
+    });
   }
 
   Future<void> _loadRequirement() async {
@@ -290,7 +395,13 @@ class _ResetState extends State<SecondaryPasswordResetPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (_access is DeviceSecondaryPasswordResetAccess) {
+      (_access as DeviceSecondaryPasswordResetAccess).removeListener(_verificationChanged);
+    }
     _clear();
+    if (widget.access == null && _access is DeviceSecondaryPasswordResetAccess) {
+      (_access as DeviceSecondaryPasswordResetAccess).dispose();
+    }
     _password.dispose();
     _confirm.dispose();
     _primaryPassword.dispose();
@@ -404,4 +515,5 @@ class _ResetState extends State<SecondaryPasswordResetPage>
     ),
   );
 }
+
 
