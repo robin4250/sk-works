@@ -32,6 +32,7 @@ Map<String, dynamic> response() => <String, dynamic>{
   'report_status': 'draft', 'work_report_frozen': true, 'first_reporter_covers_work_only': true,
   'work_basis_sha256': List.filled(64, 'b').join(), 'own_worker': true,
   'management_confirmation_available': false, 'facts_confirmed': false,
+  'hours_required_outside_current_report': false,
   'facts_current': false, 'worker_facts': null, 'proposed_worker_facts': facts(),
 };
 
@@ -146,6 +147,9 @@ void main() {
   test('proposal is not an actual confirmation and unknown hours stay null', () {
     final value = parse(response());
     expect(value.confirmed, false); expect(value.current, false);
+    expect(value.hoursRequiredOutsideCurrentReport, false);
+    expect(parse(response()..['hours_required_outside_current_report'] = true)
+      .hoursRequiredOutsideCurrentReport, true);
     expect(value.facts, isNull); expect(value.proposedFacts, isNotNull); expect(value.hours, isNull);
   });
   test('all actor and document identities are bound', () {
@@ -154,7 +158,8 @@ void main() {
     }
   });
   test('missing confirmation and role flags cannot be inferred', () {
-    for (final key in ['facts_confirmed', 'facts_current', 'own_worker', 'management_confirmation_available']) {
+    for (final key in ['facts_confirmed', 'facts_current', 'own_worker', 'management_confirmation_available',
+      'hours_required_outside_current_report']) {
       expect(() => parse(response()..remove(key)), throwsFormatException);
     }
   });

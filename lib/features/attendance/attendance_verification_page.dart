@@ -382,8 +382,8 @@ class _AttendanceVerificationPageState
       _gpsTwoTimesConfirmed = true;
     });
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('出退勤時刻の設定を確認できません: $error')));
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('出退勤時刻の設定を確認できません: $error'))); }
     }
   }
 
@@ -497,12 +497,9 @@ class _AttendanceVerificationPageState
                         leading: const Icon(Icons.schedule_outlined),
                         title: const Text('GPS出勤・退勤確認の設定'),
                         subtitle: Text(
-                          GpsAutoScheduleDraft(
-                            weekdays: _gpsWeekdays,
-                            time: _gpsTime,
-                          ).label + '\n退勤確認：' + (_gpsTwoTimesConfirmed
+                          '${GpsAutoScheduleDraft(weekdays: _gpsWeekdays, time: _gpsTime).label}\n退勤確認：${_gpsTwoTimesConfirmed
                               ? '${_gpsCheckoutTime.hour.toString().padLeft(2, '0')}:${_gpsCheckoutTime.minute.toString().padLeft(2, '0')}'
-                              : '未設定'),
+                              : '未設定'}',
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: _editingLocked || isClockOut
@@ -782,6 +779,7 @@ class _AttendanceVerificationPageState
             requireActor();
             if (!_gpsTwoTimesConfirmed || !mounted) return;
           }
+          if (!mounted) return;
           final selection = _gpsSelection;
           if (selection == null) throw StateError('出退勤時刻の保存機能を確認できません。');
           if (!await selection.save(context, siteId: siteId, routeId: _routeId)) return;
@@ -814,6 +812,7 @@ class _AttendanceVerificationPageState
           unawaited(CheckoutNativeReminderCoordinator.refreshCurrent());
           requireActor();
         }
+        if (!mounted) return;
         final message = switch (status) {
           'clocked_in' => 'GPS自動出勤で出勤を記録しました',
           'outside_site' => '現場にいないようなのでGPS自動出勤は出勤を登録しませんでした',

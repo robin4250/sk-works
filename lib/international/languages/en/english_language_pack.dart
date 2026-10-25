@@ -4,6 +4,7 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "{name}さんが日報を登録しました": "{name} registered the daily report",
     "退勤後の日報登録": "Daily report after checkout",
     "退勤後の日報通知について": "About report registration reminders",
     "対象の日報を再開": "Resume this report",

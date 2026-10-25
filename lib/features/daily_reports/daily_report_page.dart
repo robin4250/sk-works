@@ -199,7 +199,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (_visitReport) return null;
     final repository = _sharedReportRepository;
     if (repository == null && widget.repositoryForTesting != null &&
-        widget.sharedReportRepositoryForTesting == null) return null;
+        widget.sharedReportRepositoryForTesting == null) { return null; }
     if (repository == null) throw StateError('共同日報の提供状態を確認できません。');
     final source = _currentGroupAnchor ?? _currentVehicleAnchor;
     if (source == null && reportId == null) return null;
@@ -497,7 +497,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       _savedDraftFingerprint = _draftFingerprint();
       await _loadCompanyAllowanceNames(generation);
       if (mounted && generation == _loadGeneration && shared?.sourceAttached == true &&
-          shared?.reporterSaved == true) widget.onRegistrationSaved?.call();
+          shared?.reporterSaved == true) { widget.onRegistrationSaved?.call(); }
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -680,6 +680,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       }
       if (_sharedFactsReadOnly) return _report?.id;
     }
+    if (!mounted) return null;
     if (_sharedContext?.firstReporterCoversWorkOnly != true && _workers.any((worker) => worker.sourceClockInId != null && worker.sourceClockOutAt == null,
     )) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
@@ -734,7 +735,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (_visitReport) return;
     final repository = _paidHoursRepository;
     if (repository == null && widget.repositoryForTesting != null &&
-        widget.paidHoursRepositoryForTesting == null) return;
+        widget.paidHoursRepositoryForTesting == null) { return; }
     final companyId = _report?.companyId;
     if (repository == null || companyId == null || companyId.isEmpty) {
       throw StateError('実勤務時間の設定状況を確認できません。日報を再読み込みしてください。');
@@ -2013,12 +2014,12 @@ class _WorkerFactsConfirmationSectionState extends State<_WorkerFactsConfirmatio
     super.didUpdateWidget(oldWidget);
     if (oldWidget.reportId != widget.reportId || oldWidget.companyId != widget.companyId ||
         oldWidget.workers.map((worker) => worker.workerId).join(',') != widget.workers.map((worker) => worker.workerId).join(',') ||
-        !identical(oldWidget.sourceRevision, widget.sourceRevision)) _future = _load();
+        !identical(oldWidget.sourceRevision, widget.sourceRevision)) { _future = _load(); }
   }
   void _reload() => setState(() => _future = _load());
   @override Widget build(BuildContext context) => FutureBuilder<List<SharedWorkerFactsSnapshot>>(
     future: _future, builder: (context, result) {
-      if (result.connectionState != ConnectionState.done) return const LinearProgressIndicator();
+      if (result.connectionState != ConnectionState.done) { return const LinearProgressIndicator(); }
       if (result.hasError || result.data == null) return Card(child: ListTile(
         title: const Text('本人の勤務実績を確認できません。'),
         subtitle: const Text('未確認を0として扱わず、再読み込みしてください。'),
@@ -2066,7 +2067,7 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
   bool get _managed => !_snapshot.isOwnWorker && _snapshot.canManageAttendance;
   bool get _editable => !_saving && !_snapshot.sourceBlocked && _snapshot.scope.workReportFrozen && !_snapshot.scope.supervisorFinalized &&
       (_snapshot.editable || _managed);
-  bool get _requiresHours => _snapshot.hoursRequired ||
+  bool get _requiresHours => _snapshot.hoursRequiredOutsideCurrentReport ||
       _draft?.companyAllowanceSelections?.items.any((item) => item.unit == 'hour') == true;
   String _number(double value) => value == value.roundToDouble() ? value.toInt().toString() : value.toString();
   @override void initState() { super.initState(); _seed(); }
@@ -2091,7 +2092,7 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
         oldWidget.snapshot.revision != _snapshot.revision ||
         oldWidget.snapshot.scopeFingerprint != _snapshot.scopeFingerprint ||
         oldWidget.snapshot.workBasisHash != _snapshot.workBasisHash ||
-        oldWidget.snapshot.current != _snapshot.current) _seed();
+        oldWidget.snapshot.current != _snapshot.current) { _seed(); }
   }
   double _readNumber(TextEditingController controller, String label) {
     final text = controller.text.trim();
@@ -2134,7 +2135,7 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
     } finally { if (mounted) setState(() => _saving = false); }
   }
   @override void dispose() {
-    for (final controller in [_overtime, _early, _night, _allowance, _odometer, _hours, _reason]) controller.dispose();
+    for (final controller in [_overtime, _early, _night, _allowance, _odometer, _hours, _reason]) { controller.dispose(); }
     super.dispose();
   }
   @override Widget build(BuildContext context) {

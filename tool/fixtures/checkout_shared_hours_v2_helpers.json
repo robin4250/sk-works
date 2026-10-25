@@ -57,6 +57,14 @@
       "owner_only_execute": true,
       "source_md5": "9bf6803590de93151ebd878cb90b9256",
       "security_definer": true
+    },
+    {
+      "signature": "shared_daily_report_private.enrollment_supported(uuid)",
+      "owner": "postgres",
+      "search_path": "",
+      "owner_only_execute": true,
+      "source_md5": "e80c2e8551abb08048c07ed7bec9541e",
+      "security_definer": true
     }
   ]
 }

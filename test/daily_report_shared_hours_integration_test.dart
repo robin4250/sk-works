@@ -112,6 +112,7 @@ class _Shared implements SharedDailyReportRepository {
 
 class _Facts implements SharedWorkerFactsRepository {
   bool requireHours = true, managePeer = false;
+  bool? outsideCurrentReport;
   int confirmations = 0;
   SharedWorkerFacts? savedFacts;
   double? savedHours;
@@ -130,7 +131,8 @@ class _Facts implements SharedWorkerFactsRepository {
       firstReporterCoversWorkOnly: true, workBasisHash: _scope),
     facts: savedFacts, proposedFacts: proposed(),
     confirmed: savedFacts != null, current: savedFacts != null,
-    isOwnWorker: workerId == _worker, canManageAttendance: managePeer && workerId == _peer);
+    isOwnWorker: workerId == _worker, canManageAttendance: managePeer && workerId == _peer,
+    hoursRequiredOutsideCurrentReport: outsideCurrentReport ?? requireHours);
   @override Future<SharedWorkerFactsSnapshot> load({required String companyId,
     required String reportId, required String workerId}) async => snapshot(workerId);
   @override Future<SharedWorkerFactsSnapshot> confirm(SharedWorkerFactsSnapshot before,
@@ -257,6 +259,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(facts.confirmations, 0);
     expect(find.textContaining('残業時間を0〜24'), findsOneWidget);
+    expect(reports.draftWrites, 0);
+  });
+  testWidgets('prospective no-hour choices do not reuse the previous target hour quantity', (tester) async {
+    final reports = _Reports()..reporterSaved = true;
+    final facts = _Facts()..outsideCurrentReport = false;
+    await open(tester, reports, _Hours(), _Shared(reports), facts: facts);
+    final button = find.byKey(const ValueKey('confirm-worker-facts/$_worker'));
+    await tester.scrollUntilVisible(button, 220, scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+    expect(find.byWidgetPredicate((widget) => widget is TextField &&
+      widget.decoration?.labelText == '実勤務時間（休憩を除く）'), findsNothing);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(facts.confirmations, 1);
+    expect(facts.savedHours, isNull);
     expect(reports.draftWrites, 0);
   });
 }

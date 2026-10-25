@@ -182,7 +182,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
       final pending = rows.where((row) => row.blocking).toList();
       var canManage = false;
       if (pending.isNotEmpty && _sharedReports != null) {
-        final context = await _sharedReports!.loadForSource(pending.first.sourceClockInId);
+        final context = await _sharedReports.loadForSource(pending.first.sourceClockInId);
         if (context.actorId != actor || context.companyId != pending.first.companyId ||
             context.workerId != pending.first.workerId || context.workDate != pending.first.workDate) {
           throw StateError('日報の勤務原本を確認できません。');
@@ -227,7 +227,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
     await previous?.dispose();
     final repository = _scheduledRepository;
     if (!mounted || epoch != _nativeEpoch || actor == null || repository == null ||
-        _controller.actorId != actor || repository.actorId != actor || widget.repository != null) return;
+        _controller.actorId != actor || repository.actorId != actor || widget.repository != null) { return; }
     final coordinator = CheckoutNativeReminderCoordinator(
       currentActorId: () => repository.actorId,
       currentSessionIdentity: () => repository.currentSessionIdentity,
@@ -254,7 +254,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
         if (identity == null || repository.actorId != actor || _controller.actorId != actor) return false;
         final fresh = await repository.read();
         if (!mounted || fresh.actorId != actor || repository.actorId != actor ||
-            repository.currentSessionIdentity != identity || _controller.actorId != actor) return false;
+            repository.currentSessionIdentity != identity || _controller.actorId != actor) { return false; }
         // A native cue only requests authoritative reads. It is never a route
         // target or a local completion flag; absent sources are stale cues.
         _controller.requestCheck();
