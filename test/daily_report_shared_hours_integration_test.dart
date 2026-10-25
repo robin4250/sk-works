@@ -29,7 +29,7 @@ class _Reports implements DailyReportRepository {
   bool recoveryChoices = false, documentMode = false;
   String description = '保存済みの作業';
   bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
-  int draftWrites = 0, ordinaryReporterWrites = 0;
+  int draftWrites = 0, ordinaryReporterWrites = 0, anchorReads = 0;
   List<DailyReportWorkerDraft> get workers => [
     DailyReportWorkerDraft(workerId: _worker, workerName: '報告者',
       companyAllowanceSelections: recoveryChoices ? DailyReportCompanyAllowanceSelections([]) : null,
@@ -55,7 +55,7 @@ class _Reports implements DailyReportRepository {
     required DateTime date, String? siteId, String? routeAssignmentId}) async => [];
   @override Future<List<DailyReportWorkerDraft>> loadAnchoredWorkers({required String anchorId,
     required DateTime workDate, required List<DailyReportWorkerDraft> existing,
-    required List<DailyReportWorkerDraft> fallback, required bool allowNewMembers}) async => existing;
+    required List<DailyReportWorkerDraft> fallback, required bool allowNewMembers}) async { anchorReads++; return existing; }
   @override Future<bool> vehicleMeterEnabledForAnchor(String? anchor) async => false;
   @override Future<CompanyAllowanceLabelSnapshot> loadCompanyAllowanceLabels({
     required Iterable<String> workerIds, String? expectedCompanyId}) async =>
@@ -311,15 +311,26 @@ void main() {
     expect(reports.draftWrites, 0); expect(shared.documentSaves, 0);
   });
   for (final valid in [false, true]) {
-    testWidgets('reopened staged report avoids old draft writer, valid=$valid', (tester) async {
+    for (final sourceAnchor in [false, true]) {
+    testWidgets('reopened staged report avoids old draft writer, valid=$valid, source=$sourceAnchor', (tester) async {
       final reports = _Reports();
       final shared = _Shared(reports)..prepared = true..preparedValid = valid;
-      await open(tester, reports, _Hours()..versionTwo = true, shared, facts: _Facts());
+      if (sourceAnchor) {
+        await tester.pumpWidget(MaterialApp(home: DailyReportPage(initialDate: _date,
+          initialSiteId: _site, initialReportId: _report, groupClockInAnchorId: _source,
+          repositoryForTesting: reports, paidHoursRepositoryForTesting: _Hours()..versionTwo = true,
+          sharedReportRepositoryForTesting: shared, workerFactsRepositoryForTesting: _Facts())));
+        await tester.pumpAndSettle();
+      } else {
+        await open(tester, reports, _Hours()..versionTwo = true, shared, facts: _Facts());
+      }
+      expect(reports.anchorReads, 0);
       await reveal(tester, '報告者サイン'); await tester.tap(find.text('報告者サイン').first);
       await tester.pumpAndSettle();
       expect(reports.draftWrites, 0); expect(shared.documentSaves, 0);
       expect(find.byType(SignatureCapturePage), valid ? findsOneWidget : findsNothing);
     });
+    }
   }
 
   testWidgets('missing category proposal permits explicit confirmation without replacing reporter signature', (tester) async {
