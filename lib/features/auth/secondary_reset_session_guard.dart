@@ -60,6 +60,10 @@ class SecondaryResetSessionGuard {
   }
 
   Future<void> checkAfterQueuedEvents() async {
+    if (!isCurrent) {
+      _invalidate();
+      throw StateError('ログイン状態が変わりました。本人確認をやり直してください。');
+    }
     // Auth broadcasts are asynchronous; currentSession may already be back at A.
     await Future<void>.delayed(Duration.zero);
     if (!isCurrent) {
