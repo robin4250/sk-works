@@ -2,6 +2,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import 'checkout_report_gate.dart';
+import 'attendance_management_company_allowances.dart';
+import '../daily_reports/daily_report_company_allowance_selection.dart';
 
 class AttendanceManagementOption {
   const AttendanceManagementOption({required this.id, required this.name});
@@ -33,6 +35,7 @@ class AttendanceManagementCell {
     this.clockIn,
     this.clockOut,
     this.hasUnrecordedPunches = false,
+    this.reportId,
   });
   final String mode;
   final DateTime date;
@@ -48,6 +51,7 @@ class AttendanceManagementCell {
   final DateTime? clockIn;
   final DateTime? clockOut;
   final bool hasUnrecordedPunches;
+  final String? reportId;
 }
 
 class AttendanceManagementRepository {
@@ -83,6 +87,63 @@ class AttendanceManagementRepository {
     final canManage = permissions is Map && Map<String, dynamic>.from(permissions)['can_manage_attendance'] == true;
     return (companyId: companyId, allowed: const {'owner', 'admin', 'manager'}.contains(role) && canManage);
   }
+
+  Future<T> _registeredAllowanceRead<T>(Future<T> Function(String companyId) read) async {
+    final session = _client.auth.currentSession;
+    final actor = _client.auth.currentUser?.id;
+    final token = session?.accessToken;
+    if (actor == null || token == null || session?.isExpired != false) {
+      throw StateError('ログイン状態を確認してください。');
+    }
+    var changed = false;
+    final subscription = _client.auth.onAuthStateChange.listen((event) {
+      if (event.session?.user.id != actor || event.session?.accessToken != token) changed = true;
+    });
+    try {
+      final access = await _access();
+      if (!access.allowed) throw StateError('勤怠管理を利用する権限がありません。');
+      final result = await read(access.companyId);
+      await Future<void>.delayed(Duration.zero);
+      if (changed || _client.auth.currentUser?.id != actor ||
+          _client.auth.currentSession?.accessToken != token || _client.auth.currentSession?.isExpired != false) {
+        throw StateError('ログイン状態が変わりました。共通手当を再読み込みしてください。');
+      }
+      return result;
+    } finally {
+      await subscription.cancel();
+    }
+  }
+
+  Future<AttendanceManagementAllowanceOptions> loadCompanyAllowanceOptions(Iterable<String> workerIds) {
+    final ids = workerIds.toSet().toList()..sort();
+    if (ids.isEmpty || ids.any((id) => id.isEmpty)) throw StateError('従業員を選択してください。');
+    return _registeredAllowanceRead((companyId) async {
+      final raw = await _client.rpc('read_management_company_allowance_options',
+        params: {'p_worker_ids': ids}).timeout(const Duration(seconds: 15));
+      return AttendanceManagementAllowanceOptions.parse(raw, companyId: companyId, workerIds: ids);
+    });
+  }
+
+  Future<AttendanceManagementSavedAllowances> loadSavedCompanyAllowances({
+    required String workerId, required DateTime date, String? reportId, String? siteId,
+  }) => _registeredAllowanceRead((companyId) async {
+    var query = _client.from('daily_report_workers').select(
+      'report_id,company_allowance_selections,company_allowance_legacy_labels,daily_reports!inner(company_id,report_date,site_id)',
+    ).eq('worker_id', workerId).eq('daily_reports.company_id', companyId)
+      .eq('daily_reports.report_date', _dbDate(date));
+    if (reportId != null) query = query.eq('report_id', reportId);
+    if (siteId != null) query = query.eq('daily_reports.site_id', siteId);
+    final rows = await query.limit(2);
+    if (rows.isEmpty) return const AttendanceManagementSavedAllowances();
+    if (rows.length != 1) throw StateError('同日に複数の日報があります。対象の日報で共通手当を確認してください。');
+    final row = rows.single;
+    final raw = row['company_allowance_selections'];
+    final legacy = row['company_allowance_legacy_labels'];
+    if (legacy != null && legacy is! String) throw const FormatException('保存済みの手当名を確認できません。');
+    return AttendanceManagementSavedAllowances(reportId: row['report_id'] as String?,
+      selections: raw == null ? null : DailyReportCompanyAllowanceSelections.fromJson(raw),
+      legacyLabels: legacy as String?);
+  });
 
   /// Existing reports only: membership, company and date are all server filters.
   /// Opening this list never creates work, a report or a signature.
@@ -307,7 +368,7 @@ class AttendanceManagementRepository {
         if (raw['event_type'] == 'clock_out' && (clockOut == null || time.isAfter(clockOut))) clockOut = time;
       }
       return AttendanceManagementCell(
-        mode: 'work', date: date, workerId: workerId,
+        mode: 'work', date: date, workerId: workerId, reportId: reportId,
         siteId: row['site_id']?.toString(),
         manDays: _number(row['base_man_days']),
         overtimeHours: _number(row['overtime_hours']),
@@ -363,6 +424,8 @@ class AttendanceManagementRepository {
     double earlyHours = 0,
     double nightHours = 0,
     List<String> allowanceNames = const [],
+    DailyReportCompanyAllowanceSelections? companyAllowanceSelections,
+    String? companyAllowanceLegacyLabels,
     String notes = '',
     String workDescription = '',
     String? clockIn,
@@ -384,6 +447,8 @@ class AttendanceManagementRepository {
             'early_hours': earlyHours,
             'night_hours': nightHours,
             'allowance_names': allowanceNames,
+            if (companyAllowanceSelections != null) 'company_allowance_selections': companyAllowanceSelections.toJson(),
+            if (companyAllowanceLegacyLabels != null) 'company_allowance_legacy_labels': companyAllowanceLegacyLabels,
             'notes': notes.trim(),
             'work_description': workDescription.trim(),
             'clock_in': clockIn,
@@ -411,3 +476,4 @@ class PayrollPendingAttendance {
   final String workerId;
   final List<DateTime> dates;
 }
+
