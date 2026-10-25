@@ -208,5 +208,5 @@ oldnames="""      array(
 newnames="""      array(select jsonb_array_elements_text(case when v_allowance_plan is not null then v_allowance_plan->'names' else coalesce(v_item->'allowance_names','[]'::jsonb) end)),"""
 assert oldnames in force;force=force.replace(oldnames,newnames)
 force=force.replace("      'day',\n      v_report_id\n    );","      'day',\n      v_report_id,\n      v_registered_receipt\n    );")
-(root/'management-registered-allowances.sql.review-only').write_text(prefix+options+'\n'+roster+'\n'+force+'\ncommit;\n')
+(root/'management-registered-allowances.sql.review-only').write_text(prefix+options+'\n'+roster.rstrip().rstrip(';')+';\n'+force.rstrip().rstrip(';')+';\ncommit;\n')
 print({'bytes':(root/'management-registered-allowances.sql.review-only').stat().st_size,'force_patch_verified':True})
