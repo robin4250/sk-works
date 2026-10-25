@@ -1,6 +1,6 @@
 # Attendance management: registered company allowances
 
-Review-only candidate. Not deployed, not activated and not yet PG17-proven. Node syntax validation of the focused loader and generated proof passed. All production reads used to pin function definitions were read-only; no business rows are included.
+Review-only candidate. Not deployed or activated. Actual disposable PostgreSQL 17 verification passed 109 assertions at commit `c23d5e8101b5d00fc9e5859d76a13e6c293c21cb`, workflow run `40232138606` / job `121285927317`. Node syntax validation of the focused loader and generated proof also passed. All production reads used to pin function definitions were read-only; no business rows are included.
 
 The SQL is one transaction, depends on the audited attendance administrator override, and installs a separate company rollout with no enabled rows. It preserves the current force-management guards, operation audit, live-session checks and protected finalized-document checks. It source-checks the exact force, roster permit and registered-item implementations before replacement. It does not replace normal signature capture, registry normalization or financial formulas.
 
@@ -20,4 +20,4 @@ Existing financial consumers calculate day quantities. Hour quantities remain he
 
 `management-registered-allowances-native.yml` runs only the new focused tests on disposable PostgreSQL 17. The loader reuses predecessor installer prefixes, then cuts before their old broad tests. It checks OFF gates, exact names/eligibility, scoped authorization, typed save, explicit administrative authority, no fake signatures, old API preservation, old real-signature receipt preservation, stale registration refusal, no free-name masquerade, hour hold and complete late-batch rollback. No production credentials or data are used.
 
-Install this directory under `docs/review/management-registered-allowances-candidate/` and its workflow under `.github/workflows/management-registered-allowances-native.yml`. Run CI before treating this candidate as finished. No activation SQL is included. `generate_candidate.py` deterministically rebuilds the SQL from saved function definitions; `source-pins.json`, `live-contract-source.json` and `native-reader-sources.json` retain the reviewed source evidence.
+Install this directory under `docs/review/management-registered-allowances-candidate/` and its workflow under `.github/workflows/management-registered-allowances-native.yml`. Keep the dedicated CI green after any later changes. No activation SQL is included. `generate_candidate.py` deterministically rebuilds the SQL from saved function definitions; `source-pins.json`, `live-contract-source.json` and `native-reader-sources.json` retain the reviewed source evidence.
