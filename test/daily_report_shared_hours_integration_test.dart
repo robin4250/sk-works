@@ -173,6 +173,30 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  test('report guidance removes technical StateError wrapper', () {
+    expect(dailyReportActionErrorMessage(StateError('日報を再読み込みしてください。')),
+      '日報を再読み込みしてください。');
+    expect(dailyReportActionErrorMessage(Exception('shared_report_reporter_signature_required')),
+      '先に報告者サインを登録してください。');
+    expect(dailyReportActionErrorMessage(Exception('private network details')),
+      isNot(contains('private network details')));
+  });
+
+  testWidgets('blank description explains required input before saving or opening signature', (tester) async {
+    final reports = _Reports();
+    await open(tester, reports, _Hours(), _Shared(reports));
+    final description = find.byKey(const ValueKey('daily-report-work-description'));
+    await tester.ensureVisible(description);
+    await tester.enterText(description, '   ');
+    await reveal(tester, '報告者サイン');
+    await tester.tap(find.text('報告者サイン'));
+    await tester.pumpAndSettle();
+    expect(find.text('作業内容を入力してから報告者サインへ進んでください。'), findsOneWidget);
+    expect(find.byType(SignatureCapturePage), findsNothing);
+    expect(reports.draftWrites, 0);
+    expect(reports.ordinaryReporterWrites, 0);
+  });
+
   for (final valid in [true, false]) {
     testWidgets('restricted saved report uses verified shared source, match=$valid', (tester) async {
       final reports = _Reports()..reporterSaved = true..omitSource = true;

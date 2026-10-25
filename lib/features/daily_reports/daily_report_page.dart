@@ -37,6 +37,25 @@ import 'daily_report_checkout_navigation.dart';
 import 'shared_daily_report_repository.dart';
 import 'shared_worker_facts_repository.dart';
 
+/// Keep technical exception wrappers out of report/save guidance.
+String dailyReportActionErrorMessage(Object error) {
+  if (error is SharedReportManagementHold) return error.message;
+  if (error is StateError && RegExp(r'[ぁ-んァ-ヶ一-龠]').hasMatch(error.message.toString())) {
+    return error.message.toString();
+  }
+  final raw = error.toString();
+  const messages = {
+    'shared_report_reporter_signature_required': '先に報告者サインを登録してください。',
+    'shared_report_supervisor_not_ready': '全員の退勤と勤務実績の確認がそろってから責任者サインへ進んでください。',
+    'shared_hours_supervisor_basis_changed_or_pending': '勤務実績が更新されたか、未確認のメンバーがいます。日報を再読み込みして確認してください。',
+    'shared_report_signed_facts_require_approved_edit': 'サイン済みの内容を変更するには編集承認が必要です。',
+  };
+  for (final entry in messages.entries) {
+    if (raw.contains(entry.key)) return entry.value;
+  }
+  return '保存を確認できませんでした。通信状態を確認し、日報を再読み込みしてください。';
+}
+
 class DailyReportPage extends StatefulWidget {
   const DailyReportPage({
     super.key,
@@ -1139,7 +1158,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       _rememberManagementHold(error);
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: $error'),
+        SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: ${dailyReportActionErrorMessage(error)}'),
         ),
       );
       return null;
@@ -1150,6 +1169,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _signReporter() async {
     if (_managementHold || _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly) return;
+    if (_workDescription.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('作業内容を入力してから報告者サインへ進んでください。')));
+      return;
+    }
+    FocusScope.of(context).unfocus();
     _invalidatePendingSignature();
     final signingActor = _repository?.currentActorId;
     final signingDate = _date;
@@ -1238,7 +1263,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       _rememberManagementHold(error);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(SkoLanguageController.trParams('報告者サインを保存できませんでした: {error}', {'error': error,
+          content: Text(SkoLanguageController.trParams('報告者サインを保存できませんでした: {error}', {'error': dailyReportActionErrorMessage(error),
               }),
             ),
           ),
@@ -1386,7 +1411,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       _rememberManagementHold(error);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(SkoLanguageController.trParams('確定できませんでした: {error}', {'error': error,
+          content: Text(SkoLanguageController.trParams('確定できませんでした: {error}', {'error': dailyReportActionErrorMessage(error),
               }),
             ),
           ),

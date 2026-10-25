@@ -214,6 +214,63 @@ class AttendanceManagementRepository {
 
   Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
 
+  /// Calendar evidence is read-only; punches are not completed attendance.
+  Future<Map<int, Set<String>>> loadMonthMarks({required String workerId,
+      required DateTime month}) async {
+    final actor = _client.auth.currentUser?.id;
+    final token = _client.auth.currentSession?.accessToken;
+    void current() {
+      if (actor == null || _client.auth.currentUser?.id != actor ||
+          _client.auth.currentSession?.accessToken != token) {
+        throw StateError('ログイン状態が変わりました。読み込み直してください。');
+      }
+    }
+    current();
+    final access = await _access();
+    current();
+    if (!access.allowed) throw StateError('勤怠管理を利用する権限がありません。');
+    final from = _dbDate(DateTime(month.year, month.month));
+    final until = _dbDate(DateTime(month.year, month.month + 1));
+    final values = await Future.wait([
+      _client.from('attendance_entries').select('work_date')
+        .eq('company_id', access.companyId).eq('worker_id', workerId)
+        .gte('work_date', from).lt('work_date', until),
+      _client.from('paid_leave_requests').select('leave_date')
+        .eq('company_id', access.companyId).eq('worker_id', workerId).eq('status', 'approved')
+        .gte('leave_date', from).lt('leave_date', until),
+      _client.from('attendance_verifications').select('work_date,event_type')
+        .eq('company_id', access.companyId).eq('worker_id', workerId)
+        .gte('work_date', from).lt('work_date', until),
+    ]);
+    current();
+    final latest = await _access();
+    current();
+    if (!latest.allowed || latest.companyId != access.companyId) {
+      throw StateError('勤怠管理の権限が変わりました。読み込み直してください。');
+    }
+    final marks = <int, Set<String>>{};
+    void add(Object? value, String kind) {
+      final text = value?.toString();
+      final day = DateTime.tryParse(text ?? '');
+      if (day == null || _dbDate(day) != text || day.year != month.year || day.month != month.month) {
+        throw StateError('勤務日の記録を確認できません。');
+      }
+      marks.putIfAbsent(day.day, () => <String>{}).add(kind);
+    }
+    for (final row in values[0]) { add(row['work_date'], 'work'); }
+    for (final row in values[1]) { add(row['leave_date'], 'leave'); }
+    for (final row in values[2]) {
+      if (const {'clock_in', 'clock_out'}.contains(row['event_type'])) {
+        add(row['work_date'], 'punch');
+      }
+    }
+    for (final kinds in marks.values) {
+      if (kinds.contains('work')) kinds.remove('punch');
+    }
+    return Map.unmodifiable({for (final entry in marks.entries)
+      entry.key: Set<String>.unmodifiable(entry.value)});
+  }
+
   Future<AttendanceManagementCell> loadCell({required String workerId, required DateTime date}) async {
     final access = await _access();
     if (!access.allowed) throw StateError('勤怠管理を利用する権限がありません。');

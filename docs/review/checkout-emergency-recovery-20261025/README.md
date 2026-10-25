@@ -46,3 +46,29 @@ Local Flutter/Dart were not run. Focused remote CI is required for this new
 candidate; the already successful build15 checks do not validate this patch.
 Build15/main 045169174188262f05b17c38495359e1059ea03b is retained until a newly
 validated Release is deliberately integrated. No build15 IPA is relabeled.
+
+## Additional device findings after recovery
+
+IMG_4511–4519 show registered company allowances, a blank work description with
+an inaccurate changed-roster error, an unmarked management date picker, and a
+numeric keyboard retained after returning home. These screenshots do not prove
+an actual successful signature or payroll projection.
+
+Blank work description now gives a specific Japanese prompt before any report
+write or signature navigation. Known signature precondition errors are presented
+in Japanese; StateError's English wrapper is removed. Source/roster drift checks
+remain active for filled reports, and no failure is converted into completion.
+
+Management date selection now reads month-scoped actual attendance entries,
+canonical work_date punches and approved leave, displays distinct marks and
+identifies unavailable evidence. Uncertain dates are not inferred from names or
+clock timestamps. Back/dispose/drag release input focus. New tests cover scoped
+reads, marker classification/date selection and returning without a keyboard.
+
+The current force_manage_attendance payload accepts free allowance_names, not
+structured company_allowance_selections. The management page explicitly opens
+the selected day's existing report/common-allowance/signature UI. This patch does
+not pretend that free names are registered selections and does not add a new
+payroll writer. Direct structured allowance editing within the management form
+remains a separate backend/client requirement. No production business rows or
+rollout flags were changed by these follow-ups. The emergency gate remains OFF.
