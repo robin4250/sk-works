@@ -92,7 +92,7 @@ class _Shared implements SharedDailyReportRepository {
   final _Reports reports;
   final bool enabled;
   bool hold = false, manager = false, financialSupported = false, prepared = false, preparedValid = true;
-  int financialPreparations = 0;
+  int financialPreparations = 0, freshReporterWrites = 0;
   List<SharedWorkerFactsTransitionInput>? financialInputs;
   String source = _source;
   bool workOnly = true, ready = false, documentOnly = false;
@@ -134,6 +134,15 @@ class _Shared implements SharedDailyReportRepository {
     expect(signature['strokes'], isA<List>());
     supervisorWrites++;
     reports.supervisorSaved = true;
+    if (prepared) prepared = false;
+    return state;
+  }
+  @override Future<SharedDailyReportContext> submit({required SharedDailyReportContext before,
+    required String workDescription, required List<Map<String, dynamic>> workers,
+    required String signerName, required Map<String, dynamic> signature}) async {
+    expect(before.financialTransitionValid, isTrue);
+    expect(before.reporterSaved, isFalse); expect(signature['strokes'], isNotEmpty);
+    freshReporterWrites++; reports.reporterSaved = true; ready = true;
     return state;
   }
   @override Future<SharedDailyReportContext> prepareFinancialResigning({required SharedDailyReportContext before,
@@ -285,6 +294,21 @@ void main() {
     await reveal(tester, '報告者サイン'); await tester.tap(find.text('報告者サイン').first);
     await tester.pumpAndSettle();
     expect(find.byType(SignatureCapturePage), findsOneWidget); expect(reports.draftWrites, 0);
+    Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+      const SignatureResult(signerName: '新たな報告者', strokes: [[Offset(0.2, 0.3)]]));
+    await tester.pumpAndSettle();
+    expect(shared.freshReporterWrites, 1); expect(reports.reporterSaved, isTrue);
+    expect(reports.supervisorSaved, isFalse); expect(reports.draftWrites, 0);
+    await reveal(tester, '責任者サイン'); await tester.tap(find.text('責任者サイン'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('この内容で責任者サインへ')); await tester.pumpAndSettle();
+    expect(find.byType(SignatureCapturePage), findsOneWidget);
+    Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+      const SignatureResult(signerName: '新たな現場責任者', strokes: [[Offset(0.3, 0.4)]]));
+    await tester.pumpAndSettle();
+    expect(shared.supervisorWrites, 1); expect(reports.supervisorSaved, isTrue);
+    expect(shared.prepared, isFalse); expect(shared.financialPreparations, 1);
+    expect(reports.draftWrites, 0); expect(shared.documentSaves, 0);
   });
   for (final valid in [false, true]) {
     testWidgets('reopened staged report avoids old draft writer, valid=$valid', (tester) async {
