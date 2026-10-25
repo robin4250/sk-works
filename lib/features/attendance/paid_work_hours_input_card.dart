@@ -69,9 +69,11 @@ class _PaidWorkHoursInputCardState extends State<PaidWorkHoursInputCard> {
         return;
       }
       widget.onSaved(saved);
-      if (mounted) setState(() => _message = saved.contractVersion == 2
-          ? '実勤務時間を保存しました。日報の内容・報告者サインは変更していません。'
-          : '保存しました。変更した場合は、報告者・現場責任者の署名を取り直してください。');
+      if (mounted) {
+        setState(() => _message = saved.contractVersion == 2
+            ? '実勤務時間を保存しました。日報の内容・報告者サインは変更していません。'
+            : '保存しました。変更した場合は、報告者・現場責任者の署名を取り直してください。');
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _message = '保存状態を確認できませんでした。再読込してから確認してください。');

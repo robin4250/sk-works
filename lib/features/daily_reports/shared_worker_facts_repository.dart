@@ -30,34 +30,34 @@ class SharedWorkerFacts {
       'work_category', 'allowance_amount', 'allowance_label',
       'company_allowance_selections', 'company_allowance_legacy_labels',
       'vehicle_id', 'route_assignment_id', 'odometer_km'};
-    if (raw is! Map || raw.length != keys.length || !raw.keys.every(keys.contains) || raw['schema'] != 1) invalid();
+    if (raw is! Map || raw.length != keys.length || !raw.keys.every(keys.contains) || raw['schema'] != 1) { invalid(); }
     final row = Map<String, dynamic>.from(raw);
     double hours(String key) {
       final value = row[key];
       if (value is! num || !value.isFinite || value < 0 || value > 24 ||
-          (value * 10000 - (value * 10000).round()).abs() > 0.000001) invalid();
+          (value * 10000 - (value * 10000).round()).abs() > 0.000001) { invalid(); }
       return value.toDouble();
     }
     final category = row['work_category'];
-    if (!const ['day', 'night', 'holiday', 'holiday_night'].contains(category)) invalid();
+    if (!const ['day', 'night', 'holiday', 'holiday_night'].contains(category)) { invalid(); }
     final amount = row['allowance_amount'];
-    if (amount is! int || amount < 0 || amount > 2147483647) invalid();
+    if (amount is! int || amount < 0 || amount > 2147483647) { invalid(); }
     String? text(String key) {
       final value = row[key];
-      if (value == null) return null;
-      if (value is! String || value.length > 1048576 || value.trim() != value || value.isEmpty) invalid();
+      if (value == null) { return null; }
+      if (value is! String || value.length > 1048576 || value.trim() != value || value.isEmpty) { invalid(); }
       return value;
     }
     String? id(String key) {
       final value = row[key];
-      if (value == null) return null;
-      if (value is! String || !_uuid.hasMatch(value)) invalid();
+      if (value == null) { return null; }
+      if (value is! String || !_uuid.hasMatch(value)) { invalid(); }
       return value;
     }
     final vehicle = id('vehicle_id'), route = id('route_assignment_id');
     final distance = row['odometer_km'];
-    if (distance != null && (distance is! num || !distance.isFinite || distance < 0 || distance > 999999999)) invalid();
-    if (vehicle == null && distance != null || vehicle != null && distance == null) invalid();
+    if (distance != null && (distance is! num || !distance.isFinite || distance < 0 || distance > 999999999)) { invalid(); }
+    if (vehicle == null && distance != null || vehicle != null && distance == null) { invalid(); }
     return SharedWorkerFacts(overtimeHours: hours('overtime_hours'), earlyHours: hours('early_hours'),
       nightHours: hours('night_hours'), workCategory: category as String, allowanceAmount: amount,
       allowanceLabel: text('allowance_label'), legacyLabels: text('company_allowance_legacy_labels'),
@@ -133,13 +133,13 @@ class SharedWorkerFactsSnapshot {
     final scope = PaidWorkHoursSnapshot.parse(raw, actorId: actorId, companyId: companyId,
       workerId: workerId, reportId: reportId);
     Never invalid() => throw const FormatException('本人の勤務実績の確認状態を取得できません。');
-    if (scope.contractVersion != 2 || raw is! Map) invalid();
+    if (scope.contractVersion != 2 || raw is! Map) { invalid(); }
     for (final key in ['facts_confirmed', 'facts_current', 'own_worker', 'management_confirmation_available']) {
-      if (raw[key] is! bool) invalid();
+      if (raw[key] is! bool) { invalid(); }
     }
     final facts = raw['worker_facts'] == null ? null : SharedWorkerFacts.parse(raw['worker_facts']);
     final proposed = raw['proposed_worker_facts'] == null ? null : SharedWorkerFacts.parse(raw['proposed_worker_facts']);
-    if (raw['facts_confirmed'] == true && facts == null || raw['facts_current'] == true && raw['facts_confirmed'] != true) invalid();
+    if (raw['facts_confirmed'] == true && facts == null || raw['facts_current'] == true && raw['facts_confirmed'] != true) { invalid(); }
     return SharedWorkerFactsSnapshot(scope: scope, facts: facts, proposedFacts: proposed,
       confirmed: raw['facts_confirmed'] as bool, current: raw['facts_current'] as bool,
       isOwnWorker: raw['own_worker'] as bool, canManageAttendance: raw['management_confirmation_available'] as bool);
@@ -154,13 +154,13 @@ class SharedWorkerFactsRepository {
           ? null : SharedWorkerFactsRepository(SupabaseBackend.client);
 
   static String? _sessionKey(Session? session) {
-    if (session == null) return null;
+    if (session == null) { return null; }
     try {
       final parts = session.accessToken.split('.');
-      if (parts.length != 3) return null;
+      if (parts.length != 3) { return null; }
       final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
       if (claims is! Map || claims['sub'] != session.user.id || claims['session_id'] is! String ||
-          !SharedWorkerFacts._uuid.hasMatch(claims['session_id'] as String)) return null;
+          !SharedWorkerFacts._uuid.hasMatch(claims['session_id'] as String)) { return null; }
       return '${session.user.id}/${claims['session_id']}';
     } on Object {
       return null;
@@ -172,10 +172,10 @@ class SharedWorkerFactsRepository {
     required Map<String, dynamic> parameters}) async {
     final session = _client.auth.currentSession;
     final actor = session?.user.id, key = _sessionKey(session);
-    if (actor == null || key == null) throw StateError('ログインが必要です。');
+    if (actor == null || key == null) { throw StateError('ログインが必要です。'); }
     var invalidated = false;
     final subscription = _client.auth.onAuthStateChange.listen((event) {
-      if (_sessionKey(event.session) != key) invalidated = true;
+      if (_sessionKey(event.session) != key) { invalidated = true; }
     });
     void check() {
       if (invalidated || _sessionKey(_client.auth.currentSession) != key) {
@@ -212,7 +212,7 @@ class SharedWorkerFactsRepository {
     final reason = managementReason?.trim();
     final managed = reason != null && reason.isNotEmpty;
     if (managementReason != null && !managed ||
-        managed && (!before.canManageAttendance || (reason?.length ?? 0) > 2000) ||
+        managed && (!before.canManageAttendance || reason.length > 2000) ||
         !managed && !before.editable || before.sourceBlocked ||
         hours != null && (!hours.isFinite || hours < 0 || hours > 24 ||
           (hours * 10000 - (hours * 10000).round()).abs() > 0.000001) ||
@@ -226,6 +226,6 @@ class SharedWorkerFactsRepository {
       parameters: {'p_report_id': before.reportId, 'p_worker_id': before.workerId,
         'p_facts': valid.toConfirmationJson(), 'p_hours': hours,
         'p_expected_revision': before.revision, 'p_expected_scope': before.scopeFingerprint,
-        if (managed) 'p_reason': reason});
+        if (managed) { 'p_reason': reason}); }
   }
 }

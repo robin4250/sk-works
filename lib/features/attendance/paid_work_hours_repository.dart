@@ -86,7 +86,9 @@ class PaidWorkHoursSnapshot {
     if (contractVersion == 2 && (row['work_report_frozen'] is! bool ||
         row['first_reporter_covers_work_only'] != true || row['work_basis_sha256'] is! String ||
         !RegExp(r'^[0-9a-f]{64}$').hasMatch(row['work_basis_sha256'] as String) ||
-        !const ['draft', 'signed'].contains(row['report_status']))) invalid();
+        !const ['draft', 'signed'].contains(row['report_status']))) {
+      invalid();
+    }
     return PaidWorkHoursSnapshot(
       actorId: actorId, companyId: companyId, workerId: workerId,
       reportId: reportId, workDate: day, revision: revision,
