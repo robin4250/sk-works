@@ -149,7 +149,13 @@ void main() {
   });
 
   testWidgets('a late old-worker catalog cannot replace the selected worker catalog', (tester) async {
-    final client = SupabaseClient('https://synthetic.invalid', 'fixture-only', authOptions: const AuthClientOptions(autoRefreshToken: false));
+    final client = (await tester.runAsync(() async {
+      final value = SupabaseClient('https://synthetic.invalid', 'fixture-only',
+        authOptions: const AuthClientOptions(autoRefreshToken: false));
+      // Initialize SDK lifecycle timers on the real clock, as the page fixtures do.
+      await Future<void>.delayed(Duration.zero);
+      return value;
+    }))!;
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.runAsync(client.dispose);
