@@ -150,7 +150,10 @@ void main() {
 
   testWidgets('a late old-worker catalog cannot replace the selected worker catalog', (tester) async {
     final client = SupabaseClient('https://synthetic.invalid', 'fixture-only', authOptions: const AuthClientOptions(autoRefreshToken: false));
-    addTearDown(client.dispose);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(client.dispose);
+    });
     final a = Completer<AttendanceManagementAllowanceOptions>();
     final b = Completer<AttendanceManagementAllowanceOptions>();
     final repository = FixtureRepository(client, (ids) => ids.single == first ? a.future : b.future);
