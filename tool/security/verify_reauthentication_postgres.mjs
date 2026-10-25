@@ -57,8 +57,13 @@ try {
  assert.deepEqual(await identitySnapshot(),originalIdentity,'install cannot change auth IDs/providers/company/member/master records');
  const user=await connection(),other=await connection(),secondSession=await connection(),issuer=await connection();
  await actor(user);await actor(other,b,sb);await actor(secondSession,a,sa2);
- async function issue(operation='secondary_password.replace',t=target,id=a,sid=sa){
+ async function issue(operation='secondary_password.replace',t=target,id=a,sid=sa,password='synthetic-google-first-secondary'){
   const proof=randomBytes(32).toString('hex');
+  if(operation==='secondary_password.change'){
+   await actor(issuer,id,sid);
+   try{const result=await issuer.query('select public.issue_secondary_reauthentication_proof($1,$2,$3,$4) expiry',[operation,JSON.stringify(t),hash(proof),password]);assert.ok(result.rows[0].expiry);return proof;}
+   finally{await issuer.query('reset role');}
+  }
   await issuer.query("select set_config('request.jwt.claims','{\"role\":\"service_role\"}',false);set role service_role");
   try {await issuer.query('select public.issue_reauthentication_proof($1,$2,$3,$4,$5)',[id,sid,operation,JSON.stringify(t),hash(proof)]);return proof;}
   finally{await issuer.query('reset role');}
@@ -109,6 +114,10 @@ try {
  const change=await issue('secondary_password.change',{user_id:g},g,gs);
  await google.query('select public.change_secondary_password_with_proof($1,$2)',['synthetic-google-changed-secondary',change]);
  await deny(google.query('select public.change_secondary_password_with_proof($1,$2)',['synthetic-google-replay',change]));
+ const staleChange=await issue('secondary_password.change',{user_id:g},g,gs,'synthetic-google-changed-secondary');
+ const rotation=await issue('secondary_password.change',{user_id:g},g,gs,'synthetic-google-changed-secondary');
+ await google.query('select public.change_secondary_password_with_proof($1,$2)',['synthetic-google-rotated-secondary',rotation]);
+ await deny(google.query('select public.change_secondary_password_with_proof($1,$2)',['synthetic-stale-credential-grant',staleChange]));
  assert.equal((await admin.query("select provider='google' and encrypted_password is null ok from auth.users where id=$1",[g])).rows[0].ok,true);
  const proof=await issue();
  await deny(replace(other,proof));await deny(replace(secondSession,proof));
@@ -169,8 +178,8 @@ try {
  // only this lane's new objects. This is not a production rollback script.
  await admin.query('begin');
  for(const original of legacyDefinitions)await admin.query(original.definition);
- await admin.query(`drop function public.change_secondary_password_with_proof(text,text),public.replace_secondary_password_with_proof(text,text),public.set_master_feature_enabled_with_proof(text,boolean,text),public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text),public.reauthentication_capabilities();
- drop function private.consume_reauthentication_proof(text,jsonb,text),private.require_reauthentication_session(),private.reauthentication_required(text),private.reauthentication_scope(text);
+ await admin.query(`drop function public.issue_secondary_reauthentication_proof(text,jsonb,text,text),public.change_secondary_password_with_proof(text,text),public.replace_secondary_password_with_proof(text,text),public.set_master_feature_enabled_with_proof(text,boolean,text),public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text),public.reauthentication_capabilities();
+ drop function private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text),private.consume_reauthentication_proof(text,jsonb,text),private.require_reauthentication_session(),private.reauthentication_required(text),private.reauthentication_scope(text);
  drop table private.reauthentication_proofs,private.reauthentication_rollout;`);
  await admin.query('commit');
  const restored=(await admin.query(`select p.proname,pg_get_functiondef(p.oid) definition,p.proacl::text acl from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('set_secondary_password','set_master_feature_enabled') order by p.proname`)).rows;

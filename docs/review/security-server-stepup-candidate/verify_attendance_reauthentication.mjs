@@ -44,8 +44,9 @@ try {
  await reject(()=>old('upsert',[cell()]),{code:'42501',message:'reauthentication_required'});
  await reject(()=>getTarget('upsert',[cell()]),{code:'42501',message:'attendance_reauthentication_recovery_dependency_missing'});
  await client.query("update private.reauthentication_rollout set enabled=true where scope='secondary_password'");
+ const failedIssue=password=>sharedCall(U,id(80),'select public.issue_secondary_reauthentication_proof($1,$2::jsonb,$3,$4) v',['attendance.manage',JSON.stringify({company_id:A,action:'upsert',items_sha256:'a'.repeat(64)}),'b'.repeat(64),password]);
  const verifySecondary=password=>sharedCall(U,id(80),'select public.verify_secondary_password($1) v',[password]);
- for(let i=0;i<5;i++)eq(await verifySecondary('synthetic-wrong'),false,'Direct verifier records failure');
+ for(let i=0;i<5;i++)eq(await failedIssue('synthetic-wrong'),null,'Direct atomic issue commits verifier failure');
  await reject(()=>verifySecondary('synthetic-known-secondary'),/secondary password temporarily locked/);
  await reject(()=>sharedCall(U,id(80),"select public.set_secondary_password('synthetic-bypass-lock') v"),{code:'42501',message:'reauthentication_required'});
  eq(await q('select failed_attempts v from user_secondary_credentials where user_id=$1',[U]),5,'Blocked setter cannot reset lockout');
@@ -55,8 +56,9 @@ try {
  const second=[];
  const connect=async()=>{const c=new pg.Client({connectionString:destination.href});await c.connect();second.push(c);await c.query("set statement_timeout='6s';select set_config('fixture.manager','on',false)");return c;};
  try {
- const issuer=await connect();await issuer.query("select set_config('fixture.role','service_role',false);set role service_role");
- const issue=async target=>{const nonce=createHash('sha256').update(String(Math.random())+Date.now()).digest('hex');await issuer.query('select public.issue_reauthentication_proof($1,$2,$3,$4::jsonb,$5)',[U,id(80),'attendance.manage',JSON.stringify(target),createHash('sha256').update(nonce).digest('hex')]);return nonce;};
+ const issuer=await connect();await issuer.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false);",[U,id(80)]);await issuer.query('set role authenticated');
+ let currentSecondary='synthetic-known-secondary';
+ const issue=async(target,operation='attendance.manage')=>{const nonce=createHash('sha256').update(String(Math.random())+Date.now()).digest('hex');const result=await issuer.query('select public.issue_secondary_reauthentication_proof($1,$2::jsonb,$3,$4) expiry',[operation,JSON.stringify(target),createHash('sha256').update(nonce).digest('hex'),currentSecondary]);assert.ok(result.rows[0].expiry);return nonce;};
  const items=[cell()];const target=await getTarget('upsert',items),proof=await issue(target);
  eq(target.company_id,A,'Actual actor company');eq(target.action,'upsert','Exact action');
  eq(await getTarget('upsert',[Object.fromEntries(Object.entries(items[0]).reverse())]),target,'JSON object order canonicalized by server');
@@ -68,6 +70,30 @@ try {
  eq(await perform('upsert',items,proof),1,'Actual writer succeeds only with exact proof');
  await reject(()=>perform('upsert',items,proof),{code:'42501',message:'reauthentication_required'});
  const expired=await issue(target);await client.query("update private.reauthentication_proofs set issued_at=clock_timestamp()-interval '3 minutes',expires_at=clock_timestamp()-interval '1 minute' where proof_hash=$1",[createHash('sha256').update(expired).digest('hex')]);await reject(()=>perform('upsert',items,expired),{code:'42501',message:'reauthentication_required'});
+ // Existing secondary grants are invalid after any actual credential change.
+ const oldCredentialGrant=await issue(target),rotationProof=await issue({user_id:U},'secondary_password.change');
+ await sharedCall(U,id(80),'select public.change_secondary_password_with_proof($1,$2) v',['synthetic-rotated-secondary',rotationProof]);
+ currentSecondary='synthetic-rotated-secondary';
+ await reject(()=>perform('upsert',items,oldCredentialGrant),{code:'42501',message:'reauthentication_required'});
+ // Verification/issue holds the credential row until commit. A concurrent
+ // credential change waits, then invalidates the grant just issued under old PW.
+ const atomicIssuer=await connect(),atomicChanger=await connect();
+ for(const c of [atomicIssuer,atomicChanger]){await c.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);await c.query('set role authenticated');}
+ const atomicNonce=createHash('sha256').update('atomic-verify-issue-fixture').digest('hex');
+ const atomicRotation=await issue({user_id:U},'secondary_password.change');
+ await atomicIssuer.query('begin');
+ await atomicIssuer.query('select public.issue_secondary_reauthentication_proof($1,$2::jsonb,$3,$4)',['attendance.manage',JSON.stringify(target),createHash('sha256').update(atomicNonce).digest('hex'),currentSecondary]);
+ const changerPid=(await atomicChanger.query('select pg_backend_pid() pid')).rows[0].pid;
+ const changing=atomicChanger.query('select public.change_secondary_password_with_proof($1,$2)',['synthetic-after-concurrent-rotation',atomicRotation]);
+ let credentialBlocked=false;for(let i=0;i<100;i++){if(await q('select cardinality(pg_blocking_pids($1))>0 v',[changerPid])){credentialBlocked=true;break;}await new Promise(r=>setTimeout(r,10));}eq(credentialBlocked,true,'Credential change demonstrably waits for atomic verify+issue');
+ await atomicIssuer.query('commit');await changing;currentSecondary='synthetic-after-concurrent-rotation';
+ await reject(()=>perform('upsert',items,atomicNonce),{code:'42501',message:'reauthentication_required'});
+ const nullSnapshot=await issue(target);await client.query('update private.reauthentication_proofs set secondary_credential_fingerprint=null where proof_hash=$1',[createHash('sha256').update(nullSnapshot).digest('hex')]);
+ await reject(()=>perform('upsert',items,nullSnapshot),{code:'42501',message:'reauthentication_required'});
+ eq(await perform('upsert',items,await issue(target)),1,'Fresh changed credential obtains usable new grant');
+ // Service issuer cannot bypass actual secondary verification.
+ await exec("select set_config('fixture.role','service_role',false);set role service_role");
+ try{for(const operation of ['attendance.manage','secondary_password.change'])await reject(()=>q('select public.issue_reauthentication_proof($1,$2,$3,$4::jsonb,$5) v',[U,id(80),operation,JSON.stringify(operation==='attendance.manage'?target:{user_id:U}),'c'.repeat(64)]),{code:'42501'});}finally{await exec("reset role;select set_config('fixture.role','',false)");}
  const snapshot=()=>q("select jsonb_build_object('reports',(select jsonb_agg(to_jsonb(r) order by id) from daily_reports r),'workers',(select jsonb_agg(to_jsonb(w) order by report_id,worker_id) from daily_report_workers w),'audit',(select jsonb_agg(to_jsonb(o) order by id) from attendance_admin_override_private.operations o)) v");
  const badItems=[cell(W3,'2026-10-27'),cell(W7,'2026-10-26',{clock_in:'not-a-time'})],badProof=await issue(await getTarget('upsert',badItems)),before=await snapshot();
  await reject(()=>perform('upsert',badItems,badProof),/time zone "not-a-time" not recognized/);eq(await snapshot(),before,'Failed actual batch restores all source and audit state');

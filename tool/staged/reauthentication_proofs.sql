@@ -17,6 +17,7 @@ create table private.reauthentication_proofs (
   issued_at timestamptz not null default clock_timestamp(),
   expires_at timestamptz not null,
   consumed_at timestamptz,
+  secondary_credential_fingerprint text,
   check (expires_at > issued_at and expires_at <= issued_at + interval '120 seconds')
 );
 alter table private.reauthentication_proofs enable row level security;
@@ -82,12 +83,12 @@ grant execute on function public.reauthentication_capabilities() to authenticate
 
 -- Only the credential-verifying Edge service may issue proofs. No user RPC
 -- accepts a boolean, JWT refresh timestamp, client actor or biometric assertion.
-create function public.issue_reauthentication_proof(
+create function private.issue_reauthentication_proof(
  p_actor uuid,p_session uuid,p_operation text,p_target jsonb,p_proof_hash text
 ) returns timestamptz language plpgsql security definer set search_path='' as $$
-declare expiry timestamptz; issued timestamptz;
+declare expiry timestamptz; issued timestamptz;fingerprint text;
 begin
- if coalesce(auth.role(),'') <> 'service_role' or p_actor is null or p_session is null
+ if p_actor is null or p_session is null
   or p_proof_hash is null or p_proof_hash !~ '^[0-9a-f]{64}$'
   or private.reauthentication_scope(p_operation) is null
   or not private.reauthentication_required(private.reauthentication_scope(p_operation)) then
@@ -130,17 +131,48 @@ begin
  perform 1 from auth.sessions where id=p_session and user_id=p_actor
   and (not_after is null or not_after>clock_timestamp()) for share;
  if not found then raise sqlstate '42501' using message='reauthentication_unavailable'; end if;
+ if p_operation in('secondary_password.change','attendance.manage') then
+  select encode(extensions.digest(password_hash,'sha256'),'hex') into fingerprint
+  from public.user_secondary_credentials where user_id=p_actor for share;
+  if not found then raise sqlstate '42501' using message='reauthentication_unavailable';end if;
+ end if;
  issued:=clock_timestamp(); expiry:=issued+interval '120 seconds';
- insert into private.reauthentication_proofs(proof_hash,actor_id,session_id,operation,target,issued_at,expires_at)
- values(p_proof_hash,p_actor,p_session,p_operation,p_target,issued,expiry);
+ insert into private.reauthentication_proofs(proof_hash,actor_id,session_id,operation,target,issued_at,expires_at,secondary_credential_fingerprint)
+ values(p_proof_hash,p_actor,p_session,p_operation,p_target,issued,expiry,fingerprint);
  return expiry;
+end $$;
+revoke all on function private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text) from public,anon,authenticated,service_role;
+
+create function public.issue_reauthentication_proof(
+ p_actor uuid,p_session uuid,p_operation text,p_target jsonb,p_proof_hash text
+) returns timestamptz language plpgsql security definer set search_path='' as $$begin
+ if coalesce(auth.role(),'')<>'service_role' or p_operation in('secondary_password.change','attendance.manage') then
+  raise sqlstate '42501' using message='reauthentication_unavailable';end if;
+ return private.issue_reauthentication_proof(p_actor,p_session,p_operation,p_target,p_proof_hash);
 end $$;
 revoke all on function public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text) from public,anon,authenticated;
 grant execute on function public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text) to service_role;
 
+-- Verification, current credential fingerprint and issue are one transaction.
+-- FALSE must return NULL, not raise: throwing would roll back failure counters.
+create function public.issue_secondary_reauthentication_proof(
+ p_operation text,p_target jsonb,p_proof_hash text,p_password text
+) returns timestamptz language plpgsql security definer set search_path='' as $$
+declare sid uuid;begin
+ sid:=private.require_reauthentication_session();
+ if p_operation is null or p_operation not in('secondary_password.change','attendance.manage')
+  or p_password is null or length(p_password)>1024
+  or not private.reauthentication_required(private.reauthentication_scope(p_operation)) then
+  raise sqlstate '42501' using message='reauthentication_unavailable';end if;
+ if public.verify_secondary_password(p_password) is distinct from true then return null;end if;
+ return private.issue_reauthentication_proof(auth.uid(),sid,p_operation,p_target,p_proof_hash);
+end $$;
+revoke all on function public.issue_secondary_reauthentication_proof(text,jsonb,text,text) from public,anon,service_role;
+grant execute on function public.issue_secondary_reauthentication_proof(text,jsonb,text,text) to authenticated;
+
 create function private.consume_reauthentication_proof(p_operation text,p_target jsonb,p_proof text)
 returns void language plpgsql security definer set search_path='' as $$
-declare actor uuid:=auth.uid(); v_session uuid; consumed text;
+declare actor uuid:=auth.uid(); v_session uuid; consumed text;fingerprint text;
 begin
  if actor is null or not private.account_access_allowed() or p_proof is null or p_proof !~ '^[0-9a-f]{64}$'
   or private.reauthentication_scope(p_operation) is null
@@ -161,10 +193,21 @@ begin
  perform 1 from auth.sessions s where s.id=v_session and s.user_id=actor
   and (s.not_after is null or s.not_after>clock_timestamp()) for share;
  if not found then raise sqlstate '42501' using message='reauthentication_required'; end if;
+ -- Credential changes use one lock order, including primary recovery.
+ if p_operation in('secondary_password.replace','secondary_password.change') then
+  perform pg_advisory_xact_lock(hashtextextended('sko-secondary-password:'||actor::text,0));
+  perform 1 from public.user_secondary_credentials where user_id=actor for update;
+ end if;
+ if p_operation in('secondary_password.change','attendance.manage') then
+  select encode(extensions.digest(password_hash,'sha256'),'hex') into fingerprint
+  from public.user_secondary_credentials where user_id=actor for share;
+  if not found then raise sqlstate '42501' using message='reauthentication_required';end if;
+ end if;
  update private.reauthentication_proofs p set consumed_at=clock_timestamp()
  where p.proof_hash=encode(extensions.digest(p_proof,'sha256'),'hex')
   and p.actor_id=actor and p.session_id=v_session and p.operation=p_operation
-  and p.target=p_target and p.consumed_at is null and p.expires_at>clock_timestamp()
+  and p.target=p_target and p.secondary_credential_fingerprint is not distinct from fingerprint
+  and p.consumed_at is null and p.expires_at>clock_timestamp()
  returning proof_hash into consumed;
  if consumed is null then raise sqlstate '42501' using message='reauthentication_required'; end if;
 end $$;

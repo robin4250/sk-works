@@ -13,7 +13,12 @@ function fixture(overrides={}) {
   if(overrides.throwAt===path)throw Error('synthetic sensitive upstream details');
   if(path==='/auth/v1/user')return Response.json(overrides.user??{id:actor,phone:'synthetic-phone'},{status:overrides.authStatus??200});
   if(path==='/rest/v1/rpc/reauthentication_capabilities')return Response.json({protocol:'sko-reauthentication-v1',secondary_password:overrides.enabled??true,master_feature:true,master_security:true,attendance_management:overrides.enabled??true},{status:overrides.capStatus??200});
-  if(path==='/rest/v1/rpc/verify_secondary_password')return Response.json(overrides.secondaryResult??true,{status:overrides.secondaryStatus??200});
+  if(path==='/rest/v1/rpc/issue_secondary_reauthentication_proof'){
+   if((overrides.secondaryStatus??200)!==200)return Response.json({error:'synthetic denied'},{status:overrides.secondaryStatus});
+   if(overrides.secondaryResult===false)return Response.json(null);
+   const body=JSON.parse(options.body);issued={...body,p_actor:actor,p_session:session};
+   return Response.json(new Date(Date.now()+120000).toISOString());
+  }
   if(path==='/auth/v1/token?grant_type=password')return Response.json({user:{id:overrides.verifiedActor??actor},access_token:jwt(overrides.verifiedActor??actor,overrides.tempSession??temporary),refresh_token:'NEVER_RETURN_THIS'},{status:overrides.passwordStatus??200});
   if(path==='/auth/v1/logout?scope=local')return new Response(null,{status:overrides.logoutStatus??204});
   if(path==='/rest/v1/rpc/issue_reauthentication_proof') {issued=JSON.parse(options.body);return Response.json(new Date(Date.now()+120000).toISOString(),{status:overrides.issueStatus??200});}
@@ -84,10 +89,11 @@ const attendanceTarget={company_id:'30000000-0000-0000-0000-000000000001',action
 test('attendance proof verifies actual secondary password with exact bearer, without primary Auth mutation',async()=>{
  const f=fixture();const r=await f.invoke({operation:'attendance.manage',password:'synthetic-secondary',target:attendanceTarget});
  assert.equal(r.status,200);assert.deepEqual(f.issued.p_target,attendanceTarget);assert.equal(f.issued.p_operation,'attendance.manage');
- const check=f.calls.find(x=>x.path.endsWith('/verify_secondary_password'));
- assert.equal(check.options.headers.Authorization,'Bearer '+jwt());assert.deepEqual(JSON.parse(check.options.body),{p_password:'synthetic-secondary'});
+ const check=f.calls.find(x=>x.path.endsWith('/issue_secondary_reauthentication_proof'));
+ assert.equal(check.options.headers.Authorization,'Bearer '+jwt());assert.equal(JSON.parse(check.options.body).p_password,'synthetic-secondary');
+ assert.equal(JSON.parse(check.options.body).p_actor,undefined);assert.equal(JSON.parse(check.options.body).p_session,undefined);
  assert.equal(f.calls.some(x=>x.path.includes('/token')||x.path.includes('/logout')),false);
- assert.ok(f.calls.indexOf(check)<f.calls.findIndex(x=>x.path.endsWith('/issue_reauthentication_proof')));
+ assert.equal(f.calls.some(x=>x.path.endsWith('/issue_reauthentication_proof')),false);
  assert.equal(JSON.stringify(await r.json()).includes('synthetic-secondary'),false);
 });
 for(const [label,settings,status] of [['wrong secondary',{secondaryResult:false},403],['locked secondary',{secondaryStatus:403},403],['secondary unavailable',{secondaryStatus:500},503],['disabled attendance',{enabled:false},403]])test(label+' never issues proof',async()=>{
@@ -96,7 +102,7 @@ for(const [label,settings,status] of [['wrong secondary',{secondaryResult:false}
 test('attendance malformed action/digest/company and extra target data fail before secondary verification',async()=>{
  for(const changed of [{action:'read'},{items_sha256:'bad'},{company_id:'bad'},{extra:true}]){
   const f=fixture();assert.equal((await f.invoke({operation:'attendance.manage',password:'synthetic-secondary',target:{...attendanceTarget,...changed}})).status,400);
-  assert.equal(f.calls.some(x=>x.path.endsWith('/verify_secondary_password')),false);assert.equal(f.issued,undefined);
+  assert.equal(f.calls.some(x=>x.path.endsWith('/issue_secondary_reauthentication_proof')),false);assert.equal(f.issued,undefined);
  }
 });
 test('anonymous Auth user cannot obtain any proof',async()=>{
@@ -106,6 +112,6 @@ test('anonymous Auth user cannot obtain any proof',async()=>{
 test('known secondary password change uses secondary verifier and exact existing user target',async()=>{
  const f=fixture();assert.equal((await f.invoke({operation:'secondary_password.change',password:'synthetic-secondary',target})).status,200);
  assert.equal(f.issued.p_operation,'secondary_password.change');assert.deepEqual(f.issued.p_target,target);
- assert.equal(f.calls.some(x=>x.path.endsWith('/verify_secondary_password')),true);assert.equal(f.calls.some(x=>x.path.includes('/token')),false);
+ assert.equal(f.calls.some(x=>x.path.endsWith('/issue_secondary_reauthentication_proof')),true);assert.equal(f.calls.some(x=>x.path.includes('/token')),false);
  const denied=fixture({secondaryResult:false});assert.equal((await denied.invoke({operation:'secondary_password.change',password:'synthetic-wrong',target})).status,403);assert.equal(denied.issued,undefined);
 });

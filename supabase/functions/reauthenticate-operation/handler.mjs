@@ -42,12 +42,16 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
  }
  const serviceHeaders=()=>({'Content-Type':'application/json',apikey:serviceKey,
   ...(!serviceKey.startsWith('sb_secret_')?{Authorization:'Bearer '+serviceKey}:{})});
- async function issue(actor,session,operation,target) {
+ async function issue(actor,session,operation,target,secondary) {
    const nonce=Array.from(random(new Uint8Array(32)),x=>x.toString(16).padStart(2,'0')).join('');
    const hash=Array.from(new Uint8Array(await digest('SHA-256',new TextEncoder().encode(nonce))),x=>x.toString(16).padStart(2,'0')).join('');
-   const issued=await request('/rest/v1/rpc/issue_reauthentication_proof',{method:'POST',headers:serviceHeaders(),body:JSON.stringify({p_actor:actor,p_session:session,p_operation:operation,p_target:target,p_proof_hash:hash})});
-   if(!issued.ok)return reply(issued.status===401||issued.status===403?403:503,{error:'reauthentication_unavailable'});
+   const issued=await request(secondary?'/rest/v1/rpc/issue_secondary_reauthentication_proof':'/rest/v1/rpc/issue_reauthentication_proof',{method:'POST',
+    headers:secondary?{apikey:publicKey,Authorization:secondary.authorization,'Content-Type':'application/json'}:serviceHeaders(),
+    body:JSON.stringify(secondary?{p_operation:operation,p_target:target,p_proof_hash:hash,p_password:secondary.password}:
+      {p_actor:actor,p_session:session,p_operation:operation,p_target:target,p_proof_hash:hash})});
+   if(!issued.ok)return reply(issued.status===429?429:issued.status===401||issued.status===403||secondary&&issued.status===400?403:503,{error:'reauthentication_unavailable'});
    const expiresAt=await issued.json();
+   if(secondary&&expiresAt===null)return reply(403,{error:'reauthentication_failed'});
    if(typeof expiresAt!=='string'||!Number.isFinite(Date.parse(expiresAt))||Date.parse(expiresAt)<=Date.now()||Date.parse(expiresAt)>Date.now()+125000)return reply(503,{error:'reauthentication_unavailable'});
    return reply(200,{protocol:'sko-reauthentication-v1',proof:nonce,expiresAt,operation:operation,target});
  }
@@ -88,12 +92,8 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
   }catch{return reply(503,{error:'reauthentication_unavailable'});}
   if(payload.operation==='attendance.manage'||payload.operation==='secondary_password.change') {
    try {
-    // Actual secondary password verification, bound to the exact caller token.
-    // Neither a client boolean nor a native biometric result is accepted.
-    const checked=await request('/rest/v1/rpc/verify_secondary_password',{method:'POST',headers:{apikey:publicKey,Authorization:authorization,'Content-Type':'application/json'},body:JSON.stringify({p_password:payload.password})});
-    if(!checked.ok)return reply(checked.status===429?429:checked.status>=500?503:403,{error:'reauthentication_failed'});
-    if(await checked.json()!==true)return reply(403,{error:'reauthentication_failed'});
-    return await issue(user.id,session,payload.operation,target);
+    // Verification/counter commit, fingerprint and issue are atomic in the DB.
+    return await issue(user.id,session,payload.operation,target,{password:payload.password,authorization});
    }catch{return reply(503,{error:'reauthentication_unavailable'});}
   }
   let temporaryAccess,temporaryActor;
