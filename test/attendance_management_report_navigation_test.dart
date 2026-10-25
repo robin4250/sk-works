@@ -40,7 +40,7 @@ void main() {
             throw StateError('Unexpected request ${request.url.path}');
           }
           return http.Response(jsonEncode(body), 200,
-            headers: {'content-type': 'application/json'});
+            headers: {'content-type': 'application/json'}, request: request);
         }));
       addTearDown(client.dispose);
       // Reuse the established synthetic authentication fixture, no real auth.
