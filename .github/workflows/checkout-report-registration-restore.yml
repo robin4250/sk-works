@@ -1,0 +1,35 @@
+name: Checkout registration unused OFF restore proof
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/checkout-report-registration-restore.yml'
+      - 'tool/verify_checkout_registration_restore.mjs'
+      - 'docs/candidates/checkout_report_registration_restore_unused.sql.review-only'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-pg17-unused-off-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_report_registration_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/verify_checkout_registration_restore.mjs
+      - name: Verify used refusal and unused RESTRICT restore preserve application and Auth data
+        env:
+          SKO_REPORT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_report_registration_fixture
+        run: node tool/verify_checkout_registration_restore.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

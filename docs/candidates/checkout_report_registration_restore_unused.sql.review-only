@@ -1,0 +1,56 @@
+-- REVIEW ONLY: unused OFF-install rollback. Never erases activated history.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='20s';
+do $$begin
+ if current_user<>'postgres' then raise exception 'postgres_required';end if;
+ if to_regnamespace('checkout_report_registration_private') is null then raise exception 'new_namespace_missing';end if;
+ if exists(select 1 from checkout_report_registration_private.rollout)
+ or exists(select 1 from checkout_report_registration_private.daily_deliveries) then
+  raise exception 'rollout_or_delivery_used_stop_unused_rollback';end if;
+ if (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='checkout_report_registration_private')<>7 then
+  raise exception 'namespace_inventory_changed';end if;
+ if exists(select 1 from (values
+('checkout_report_registration_private.has_signature(text,jsonb)','ed912d8e9bff5f6ac316d40e60762236',false,'i',array['search_path=""']::text[],false),
+('checkout_report_registration_private.current_actor()','9ca270fa06ff48883705cea5d18a8f2f',false,'s',array['search_path=""']::text[],false),
+('checkout_report_registration_private.read_for_actor(uuid)','c01b3c1a9a6aec82f0da7fd9e83b7364',true,'v',array['search_path=""']::text[],false),
+('public.read_pending_checkout_report_registration()','2e3d434979563b2c2b82319237ea221f',true,'v',array['search_path=""']::text[],true),
+('checkout_report_registration_private.inputs_complete(uuid)','278a322638bd80ac55c3055cf0e119fb',false,'s',array['search_path=""']::text[],false),
+('checkout_report_registration_private.projection_complete(uuid,uuid)','718d81b8719133ddf90b80931b57ade6',false,'s',array['search_path=""']::text[],false),
+('checkout_report_registration_private.deliver_daily(uuid,integer)','15ba7c3521d7d5d18d4af02e9ddda112',true,'v',array['search_path=""','lock_timeout=100ms']::text[],false),
+('public.read_checkout_report_registration_notification(uuid)','830af7c372f3caf04fcd6a68235e430a',true,'v',array['search_path=""']::text[],true),
+('checkout_report_registration_private.run_daily_step()','0a01d23a2f958d6be4bc7b2273045b41',true,'v',array['search_path=""']::text[],false)
+ ) e(signature,source_md5,security_definer,volatility,config,public_reader)
+ left join pg_proc p on p.oid=to_regprocedure(e.signature)
+ where p.oid is null or md5(p.prosrc) is distinct from e.source_md5
+ or pg_get_userbyid(p.proowner) is distinct from 'postgres'
+ or p.prosecdef is distinct from e.security_definer or p.provolatile::text is distinct from e.volatility
+ or p.proconfig is distinct from e.config
+ or array(select a::text from unnest(coalesce(p.proacl,acldefault('f',p.proowner))) a order by a::text)
+   is distinct from case when e.public_reader then array['authenticated=X/postgres','postgres=X/postgres']::text[] else array['postgres=X/postgres']::text[] end) then
+  raise exception 'new_routine_source_or_acl_changed';end if;
+ if to_regclass('cron.job') is not null then
+  if exists(select 1 from pg_proc where oid=to_regprocedure('cron.unschedule(bigint)')) then
+   -- Do not unschedule by name or ID here. A registered job requires its own
+   -- captured, exact-ID rollback; this unused-OFF rollback stops instead.
+   declare used boolean;begin
+    execute 'select exists(select 1 from cron.job where command like ''%checkout_report_registration_private%'')' into used;
+    if used then raise exception 'cron_job_present_stop_unused_rollback';end if;
+   end;
+  else raise exception 'cron_catalog_present_but_unexpected_contract';end if;
+ end if;
+end$$;
+drop function public.read_checkout_report_registration_notification(uuid);
+drop function public.read_pending_checkout_report_registration();
+drop function checkout_report_registration_private.run_daily_step();
+drop function checkout_report_registration_private.deliver_daily(uuid,integer);
+drop function checkout_report_registration_private.read_for_actor(uuid);
+drop function checkout_report_registration_private.current_actor();
+drop function checkout_report_registration_private.inputs_complete(uuid);
+drop function checkout_report_registration_private.projection_complete(uuid,uuid);
+drop function checkout_report_registration_private.has_signature(text,jsonb);
+drop table checkout_report_registration_private.scheduler_state;
+drop table checkout_report_registration_private.daily_deliveries;
+drop table checkout_report_registration_private.rollout;
+drop schema checkout_report_registration_private; -- RESTRICT (no CASCADE).
+commit;
