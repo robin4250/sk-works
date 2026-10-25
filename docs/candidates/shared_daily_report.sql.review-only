@@ -213,21 +213,52 @@ begin
   'eligible_worker_ids',value#>'{eligible_roster,worker_ids}');
 end $$;
 revoke all on function shared_daily_report_private.signature_scope(uuid) from public,anon,authenticated,service_role;
+create function shared_daily_report_private.approved_request_id(rid uuid)
+returns uuid language plpgsql stable security definer set search_path='' as $$
+declare result uuid;
+begin
+ if to_regprocedure('shared_report_edit_private.current_session(uuid,boolean)') is not null then
+  execute 'select (shared_report_edit_private.current_session($1,true)->>''request_id'')::uuid' into result using rid;
+ end if;
+ return result;
+end $$;
+revoke all on function shared_daily_report_private.approved_request_id(uuid) from public,anon,authenticated,service_role;
 create function shared_daily_report_private.safe_signature_scope(rid uuid)
 returns jsonb language plpgsql stable security definer set search_path='' as $$
 declare error_message text;
 begin
- return shared_daily_report_private.signature_scope(rid)||jsonb_build_object('management_hold',false,'management_hold_reason',null);
+ return shared_daily_report_private.signature_scope(rid)||jsonb_build_object('management_hold',false,'management_hold_reason',null,'approved_edit_request_id',shared_daily_report_private.approved_request_id(rid));
 exception when sqlstate 'PT409' then
  get stacked diagnostics error_message=message_text;
  if error_message not in ('managed_attendance_financial_vector_changed_pending','managed_roster_manual_worker_scope_mismatch','managed_roster_existing_projection_pending','managed_roster_manual_source_ambiguous') then raise;end if;
  return jsonb_build_object('state','managed_financial_hold','signature_scope_fingerprint',null,
   'work_basis',shared_daily_report_private.work_basis(rid),'hours_annex',null,'supervisor_ready',false,
   'pending_members','[]'::jsonb,'supervisor_pending_reasons',jsonb_build_array('managed_financial_review_required'),
-  'management_hold',true,'management_hold_reason',error_message);
+  'management_hold',true,'management_hold_reason',error_message,'approved_edit_request_id',shared_daily_report_private.approved_request_id(rid));
 end $$;
 revoke all on function shared_daily_report_private.safe_signature_scope(uuid) from public,anon,authenticated,service_role;
 
+create function shared_daily_report_private.approved_editor(rid uuid,read_only boolean default false)
+returns boolean language plpgsql stable security definer set search_path='' as $$
+declare allowed boolean:=false;
+begin
+ if read_only and to_regprocedure('shared_report_edit_private.can_read(uuid)') is not null then
+  execute 'select shared_report_edit_private.can_read($1)' into allowed using rid;
+ elsif to_regprocedure('shared_report_edit_private.approved_editor(uuid)') is not null then
+  execute 'select shared_report_edit_private.approved_editor($1)' into allowed using rid;
+ end if;
+ return coalesce(allowed,false);
+end $$;
+revoke all on function shared_daily_report_private.approved_editor(uuid,boolean) from public,anon,authenticated,service_role;
+create function shared_daily_report_private.approved_session_open(rid uuid)
+returns boolean language plpgsql stable security definer set search_path='' as $$
+declare result boolean:=false;
+begin
+ if to_regprocedure('shared_report_edit_private.has_active(uuid)') is not null then
+  execute 'select shared_report_edit_private.has_active($1)' into result using rid;end if;
+ return coalesce(result,false);
+end $$;
+revoke all on function shared_daily_report_private.approved_session_open(uuid) from public,anon,authenticated,service_role;
 create function shared_daily_report_private.signature_actor_allowed(rid uuid,role_value text)
 returns boolean language plpgsql stable security definer set search_path='' as $$
 declare actor uuid;r public.daily_reports%rowtype;
@@ -235,7 +266,7 @@ begin
  actor:=checkout_report_registration_private.current_actor();
  select * into r from public.daily_reports where id=rid;
  if not exists(select 1 from public.company_members where company_id=r.company_id and user_id=actor) then return false;end if;
- if private.has_company_feature(r.company_id,'can_manage_attendance') is true then return true;end if;
+ if private.has_company_feature(r.company_id,'can_manage_attendance') is true or shared_daily_report_private.approved_editor(rid) then return true;end if;
  return exists(select 1 from public.daily_report_workers rw join public.workers w
   on w.id=rw.worker_id and w.company_id=r.company_id and w.user_id=actor
   join public.attendance_verifications i on i.company_id=r.company_id and i.worker_id=w.id and i.event_type='clock_in'
@@ -280,11 +311,26 @@ revoke all on function shared_daily_report_private.enroll_work_report(uuid) from
 -- Freeze the reporter's signed facts even when an older client calls the old
 -- save RPC. Existing approved edits reset a fully signed report first; that
 -- original writer still owns its approved-request check and audit trail.
+create function shared_daily_report_private.begin_approved_reset(before_row jsonb,after_row jsonb)
+returns void language plpgsql volatile security definer set search_path='' as $$
+begin
+ execute 'select shared_report_edit_private.begin_reset($1,$2)' using before_row,after_row;
+end $$;
+revoke all on function shared_daily_report_private.begin_approved_reset(jsonb,jsonb) from public,anon,authenticated,service_role;
 create function shared_daily_report_private.guard_report()
 returns trigger language plpgsql security definer set search_path='' as $$
 begin
  if not shared_daily_report_private.report_enabled(old.id) then return case when tg_op='DELETE' then old else new end;end if;
  if tg_op='UPDATE' then
+  if row(new.id,new.company_id) is distinct from row(old.id,old.company_id) then
+   raise sqlstate '42501' using message='shared_report_identity_immutable';end if;
+  if old.status='signed' and new.status='draft' and exists(select 1 from shared_daily_report_private.work_protocol where report_id=old.id) then
+   if to_regprocedure('shared_report_edit_private.begin_reset(jsonb,jsonb)') is null then
+    raise sqlstate '55000' using message='approved_edit_session_module_unavailable';end if;
+   perform shared_daily_report_private.begin_approved_reset(to_jsonb(old),to_jsonb(new));
+  end if;
+  if shared_daily_report_private.approved_session_open(old.id) and not shared_daily_report_private.approved_editor(old.id) then
+   raise sqlstate '42501' using message='approved_edit_exact_actor_session_required';end if;
   if row(new.representative_signer_name,new.representative_signature_json) is distinct from row(old.representative_signer_name,old.representative_signature_json)
    and checkout_report_registration_private.has_signature(new.representative_signer_name,new.representative_signature_json)
    and not shared_daily_report_private.signature_actor_allowed(old.id,'representative') then
@@ -318,6 +364,9 @@ begin
  and not checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json) then
   return case when tg_op='DELETE' then old else new end;end if;
  if tg_op='DELETE' then raise sqlstate '55000' using message='shared_report_signed_facts_require_approved_edit';end if;
+ if shared_daily_report_private.approved_editor(old.id) then
+  if row(new.id,new.company_id) is distinct from row(old.id,old.company_id) then raise sqlstate '42501' using message='approved_edit_report_identity_changed';end if;
+  return new;end if;
  if old.status='draft' and (
   row(new.company_id,new.site_id,new.route_assignment_id,new.report_date,new.work_description)
   is distinct from row(old.company_id,old.site_id,old.route_assignment_id,old.report_date,old.work_description)
@@ -335,12 +384,26 @@ revoke all on function shared_daily_report_private.guard_report() from public,an
 create trigger shared_report_preserve_signed_facts before update or delete on public.daily_reports
  for each row execute function shared_daily_report_private.guard_report();
 
+create function shared_daily_report_private.approved_roster_permitted(rid uuid,operation text,before_row jsonb,after_row jsonb)
+returns boolean language plpgsql stable security definer set search_path='' as $$
+declare allowed boolean:=false;
+begin
+ if to_regprocedure('shared_report_edit_private.permits_roster(uuid,text,jsonb,jsonb)') is not null then
+  execute 'select shared_report_edit_private.permits_roster($1,$2,$3,$4)' into allowed using rid,operation,before_row,after_row;
+ end if;
+ return coalesce(allowed,false);
+end $$;
+revoke all on function shared_daily_report_private.approved_roster_permitted(uuid,text,jsonb,jsonb) from public,anon,authenticated,service_role;
 create function shared_daily_report_private.guard_roster()
 returns trigger language plpgsql security definer set search_path='' as $$
 declare rid uuid; r public.daily_reports%rowtype;materialization_allowed boolean:=false;fresh_contract boolean;
 begin
  rid:=case when tg_op='INSERT' then new.report_id else old.report_id end;
  select * into r from public.daily_reports where id=rid for share;
+ if shared_daily_report_private.approved_session_open(rid) and not shared_daily_report_private.approved_editor(rid) then
+  raise sqlstate '42501' using message='approved_edit_exact_actor_session_required';end if;
+ if shared_daily_report_private.approved_editor(rid) and shared_daily_report_private.approved_roster_permitted(rid,tg_op,to_jsonb(old),to_jsonb(new)) then
+  return case when tg_op='DELETE' then old else new end;end if;
  fresh_contract:=exists(select 1 from shared_daily_report_private.work_protocol where report_id=rid)
   or exists(select 1 from shared_daily_report_private.rollout p where p.company_id=r.company_id and p.enabled
    and r.report_date>=p.starts_on and r.created_at>=p.new_report_from);
@@ -429,7 +492,7 @@ begin
  if r.id is null or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=actor) then
   raise sqlstate '42501' using message='shared_report_unavailable';end if;
  manager:=private.has_company_feature(r.company_id,'can_manage_attendance') is true;
- if not manager and not exists(select 1 from public.daily_report_workers rw join public.workers w
+ if not manager and not shared_daily_report_private.approved_editor(rid,true) and not exists(select 1 from public.daily_report_workers rw join public.workers w
   on w.id=rw.worker_id and w.company_id=r.company_id and w.user_id=actor where rw.report_id=r.id) then
   raise sqlstate '42501' using message='shared_report_member_required';end if;
  select a.* into i from public.attendance_verifications a join public.workers w
@@ -463,6 +526,7 @@ returns boolean language plpgsql stable security definer set search_path='' as $
 declare actor uuid;
 begin
  actor:=checkout_report_registration_private.current_actor();
+ if shared_daily_report_private.approved_editor(rid,true) then return true;end if;
  return exists(select 1 from public.daily_reports r join public.company_members m
   on m.company_id=r.company_id and m.user_id=actor
   join public.daily_report_workers rw on rw.report_id=r.id
@@ -636,13 +700,13 @@ begin
   raise sqlstate '42501' using message='shared_report_manual_cash_requires_trusted_source';end if;
  if shared_daily_report_private.strong_vehicle_enabled(i.company_id) then
   raise sqlstate '55000' using message='shared_report_strong_vehicle_scope_not_supported';end if;
- perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(i.company_id,i.work_date,i.site_id,i.route_assignment_id)::text,0));
  select jsonb_agg(jsonb_build_object('cid',i.company_id,'wid',ids.wid,'day',i.work_date) order by ids.wid)
   into scopes from (select distinct (w->>'worker_id')::uuid wid from jsonb_array_elements(p_workers) w
    union select rw.worker_id from public.daily_report_workers rw join public.daily_reports d on d.id=rw.report_id
     where d.company_id=i.company_id and d.report_date=i.work_date and d.site_id is not distinct from i.site_id
      and d.route_assignment_id is not distinct from i.route_assignment_id) ids;
  perform payroll_scope_private.lock_scopes(scopes,false);
+ perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(i.company_id,i.work_date,i.site_id,i.route_assignment_id)::text,0));
  select * into r from public.daily_reports d where d.company_id=i.company_id and d.report_date=i.work_date
   and d.site_id is not distinct from i.site_id and d.route_assignment_id is not distinct from i.route_assignment_id for update;
  if r.id is not null and checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json) then
@@ -705,6 +769,7 @@ begin
  end if;
  before_scope:=payroll_scope_private.report_sources(r.id);
  perform payroll_scope_private.lock_scopes(before_scope->'scopes');
+ perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(r.company_id,r.report_date,r.site_id,r.route_assignment_id)::text,0));
  select * into r from public.daily_reports where id=p_report_id for update;
  perform 1 from public.daily_report_workers where report_id=r.id order by worker_id for share;
  if payroll_scope_private.report_sources(r.id) is distinct from before_scope then
@@ -759,6 +824,7 @@ begin
  if p_role not in ('representative','supervisor') or p_role is null then raise exception 'invalid signature role';end if;
  before_scope:=payroll_scope_private.report_sources(r.id);
  perform payroll_scope_private.lock_scopes(before_scope->'scopes');
+ perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(r.company_id,r.report_date,r.site_id,r.route_assignment_id)::text,0));
  select * into r from public.daily_reports where id=p_report_id for update;
  perform 1 from public.daily_report_workers where report_id=r.id order by worker_id for share;
  if payroll_scope_private.report_sources(r.id) is distinct from before_scope then raise sqlstate '40001' using message='shared_report_scope_changed';end if;
