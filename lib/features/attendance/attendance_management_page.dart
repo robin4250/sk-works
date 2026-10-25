@@ -4,10 +4,77 @@ import '../notifications/notification_bell.dart';
 import '../daily_reports/daily_report_page.dart';
 import 'attendance_management_repository.dart';
 import 'attendance_checkout_minute_guard.dart';
+import 'attendance_management_company_allowances.dart';
+import 'attendance_management_company_allowance_field.dart';
+import '../daily_reports/daily_report_company_allowance_selection.dart';
 import '../../international/language_controller.dart';
+
+bool _managementVerificationCancelled(Object error) =>
+    error is StateError && error.message == 'attendance_reauthentication_cancelled';
+
+Future<String?> _requestManagementPassword(BuildContext context) async {
+  if (!context.mounted) return null;
+  try {
+    return await showDialog<String>(
+      context: context, builder: (_) => const _ManagementPasswordDialog());
+  } finally {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+}
+
+class _ManagementPasswordDialog extends StatefulWidget {
+  const _ManagementPasswordDialog();
+  @override
+  State<_ManagementPasswordDialog> createState() => _ManagementPasswordDialogState();
+}
+
+class _ManagementPasswordDialogState extends State<_ManagementPasswordDialog> {
+  final _password = TextEditingController();
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  void _complete(String? value) {
+    FocusScope.of(context).unfocus();
+    Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text('勤怠操作の第二認証'),
+    content: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Text('今回の登録・編集・削除を実行するため、第2パスワードを入力してください。'),
+      const SizedBox(height: 12),
+      TextField(controller: _password, obscureText: true, autofocus: true,
+        enableSuggestions: false, autocorrect: false,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(labelText: '第2パスワード'),
+        onSubmitted: _complete),
+    ]),
+    actions: [
+      TextButton(onPressed: () => _complete(null), child: const Text('キャンセル')),
+      FilledButton(onPressed: () => _complete(_password.text),
+        child: const Text('認証して実行')),
+    ],
+  );
+}
 
 String attendanceManagementActionErrorMessage(Object error) {
   final raw = error.toString();
+  if (raw.contains('reauthentication_failed')) {
+    return '第2パスワードを確認してください。繰り返し失敗した場合は、5分以上おいてからやり直してください。';
+  }
+  if (raw.contains('reauthentication_required')) {
+    return '第二認証の有効期限が切れたか、操作内容が変わりました。内容を確認して、もう一度認証してください。';
+  }
+  if (raw.contains('reauthentication_unavailable') || raw.contains('reauthentication_disabled')) {
+    return '第二認証を利用できません。ログイン状態と通信を確認して、再読み込みしてください。';
+  }
+
   if (raw.contains('shared_report_roster_requires_approved_edit') ||
       raw.contains('shared_report_signed_facts_require_approved_edit')) {
     return 'サイン済み日報に紐づく出勤のため、この画面から削除・変更できません。対象日報のサインを確認してください。';
@@ -213,6 +280,8 @@ class _IndividualManagementPanel extends StatefulWidget {
 }
 
 class _IndividualManagementPanelState extends State<_IndividualManagementPanel> {
+  @override
+  void dispose() { _form.dispose(); super.dispose(); }
   final _form = _ManagementFormState();
   String? _workerId;
   DateTime _date = DateTime.now();
@@ -240,8 +309,13 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
     setState(() { _loadingCell = true; _cellReady = false; });
     try {
       final cell = await widget.repository.loadCell(workerId: workerId, date: date);
+      AttendanceManagementSavedAllowances? saved;
+      try {
+        saved = await widget.repository.loadSavedCompanyAllowances(workerId: workerId,
+          date: date, reportId: cell.reportId, siteId: cell.siteId);
+      } catch (_) { /* A failed optional read never clears server selections. */ }
       if (!mounted || generation != _cellGeneration || workerId != _workerId || date != _date) return;
-      setState(() { _form.load(cell); _loadingCell = false; _cellReady = true; });
+      setState(() { _form.load(cell); _form.loadRegistered(saved); _loadingCell = false; _cellReady = true; });
     } catch (error) {
       if (!mounted || generation != _cellGeneration) return;
       setState(() => _loadingCell = false);
@@ -268,6 +342,7 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
     setState(() => _busy = true);
     try {
       await widget.repository.apply(
+        requestSecondaryPassword: () => _requestManagementPassword(context),
         action: 'upsert',
         workerIds: [workerId],
         dates: [_date],
@@ -278,15 +353,18 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
         earlyHours: values.earlyHours,
         nightHours: values.nightHours,
         allowanceNames: values.allowanceNames,
+        companyAllowanceSelections: values.companyAllowanceSelections,
+        companyAllowanceLegacyLabels: values.companyAllowanceLegacyLabels,
         notes: values.notes,
         workDescription: values.workDescription,
         clockIn: values.clockIn,
         clockOut: values.clockOut,
       );
       if (!mounted) return;
-      _show('この日の勤怠・有給・日報を直接更新しました');
+      _show('この日の勤務内容を管理者登録として保存しました');
       await _loadCell();
     } catch (error) {
+      if (_managementVerificationCancelled(error)) return;
       if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -310,11 +388,13 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
-      await widget.repository.apply(action: 'delete', workerIds: [workerId], dates: [_date], mode: 'off');
+      await widget.repository.apply(
+        requestSecondaryPassword: () => _requestManagementPassword(context),action: 'delete', workerIds: [workerId], dates: [_date], mode: 'off');
       if (!mounted) return;
       _show('この日の勤怠・有給・日報を削除しました');
       await _loadCell();
     } catch (error) {
+      if (_managementVerificationCancelled(error)) return;
       if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -386,9 +466,9 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
         const SizedBox(height: 12),
         OutlinedButton.icon(onPressed: _busy || _loadingCell ? null : _openReport,
           icon: const Icon(Icons.draw_outlined), label: const Text('この日の日報・共通手当・サインを開く')),
-        const Text('社内共通手当は日報内の登録済み手当から選択します。ここで入力する自由名称とは別に保存されます。署名済み内容は保持し、変更には既存の編集承認が必要です。'),
+        const Text('社内共通手当は登録済み一覧から選択します。自由入力の手当とは別に保存されます。変更前の内容とサインは履歴に保存され、変更後は再サインが必要です。'),
         const SizedBox(height: 12),
-        _ManagementForm(form: _form, sites: widget.sites, enabled: !_busy),
+        _ManagementForm(form: _form, sites: widget.sites, enabled: !_busy, repository: widget.repository, workerIds: [if (_workerId != null) _workerId!]),
         const SizedBox(height: 16),
         FilledButton.icon(onPressed: _busy || _loadingCell ? null : _apply, icon: const Icon(Icons.save_outlined), label: const Text('登録・編集を直接反映')),
         const SizedBox(height: 8),
@@ -413,6 +493,8 @@ class _BulkManagementPanel extends StatefulWidget {
 }
 
 class _BulkManagementPanelState extends State<_BulkManagementPanel> {
+  @override
+  void dispose() { _form.dispose(); super.dispose(); }
   final _form = _ManagementFormState();
   final Set<String> _workerIds = {};
   final Set<DateTime> _dates = {};
@@ -434,14 +516,18 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
     setState(() => _busy = true);
     try {
       final count = await widget.repository.apply(
+        requestSecondaryPassword: () => _requestManagementPassword(context),
         action: 'upsert', workerIds: _workerIds, dates: _dates, mode: values.mode, siteId: values.siteId,
         manDays: values.manDays, overtimeHours: values.overtimeHours, earlyHours: values.earlyHours, nightHours: values.nightHours,
-        allowanceNames: values.allowanceNames, notes: values.notes, workDescription: values.workDescription,
+        allowanceNames: values.allowanceNames,
+        companyAllowanceSelections: values.companyAllowanceSelections,
+        companyAllowanceLegacyLabels: values.companyAllowanceLegacyLabels, notes: values.notes, workDescription: values.workDescription,
         clockIn: values.clockIn, clockOut: values.clockOut,
       );
-      if (mounted) _show('$count件を一括で直接更新しました');
+      if (mounted) _show('$count件を管理者登録として保存しました');
     } catch (error) {
-      if (mounted) _show('一括更新できませんでした: $error');
+      if (_managementVerificationCancelled(error)) return;
+      if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -465,9 +551,11 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
-      final count = await widget.repository.apply(action: 'delete', workerIds: _workerIds, dates: _dates, mode: 'off');
+      final count = await widget.repository.apply(
+        requestSecondaryPassword: () => _requestManagementPassword(context),action: 'delete', workerIds: _workerIds, dates: _dates, mode: 'off');
       if (mounted) _show('$count件を一括削除しました');
     } catch (error) {
+      if (_managementVerificationCancelled(error)) return;
       if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -535,7 +623,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
           ),
         ),
         const SizedBox(height: 12),
-        _ManagementForm(form: _form, sites: widget.sites, enabled: !_busy),
+        _ManagementForm(form: _form, sites: widget.sites, enabled: !_busy, repository: widget.repository, workerIds: List.unmodifiable(_workerIds)),
         const SizedBox(height: 14),
         Text('選択: ${_workerIds.length}人 × ${_dates.length}日 = ${_workerIds.length * _dates.length}件', style: const TextStyle(fontWeight: FontWeight.w900)),
         const SizedBox(height: 10),
@@ -568,6 +656,7 @@ class _ManagementValues {
   const _ManagementValues({
     required this.mode, required this.siteId, required this.manDays, required this.overtimeHours,
     required this.earlyHours, required this.nightHours, required this.allowanceNames, required this.notes,
+    this.companyAllowanceSelections, this.companyAllowanceLegacyLabels,
     required this.workDescription, required this.clockIn, required this.clockOut,
   });
   final String mode;
@@ -577,6 +666,8 @@ class _ManagementValues {
   final double earlyHours;
   final double nightHours;
   final List<String> allowanceNames;
+  final DailyReportCompanyAllowanceSelections? companyAllowanceSelections;
+  final String? companyAllowanceLegacyLabels;
   final String notes;
   final String workDescription;
   final String? clockIn;
@@ -598,6 +689,26 @@ class _ManagementFormState {
   final notes = TextEditingController();
   final workDescription = TextEditingController();
   final List<TextEditingController> allowances = [];
+  final registeredAllowanceNames = TextEditingController();
+  DailyReportCompanyAllowanceSelections? companyAllowanceSelections;
+  bool companyAllowanceChanged = false;
+  bool registeredOptionsReady = false;
+  bool registeredStateAvailable = true;
+  String _initialLegacy = '';
+
+  void loadRegistered(AttendanceManagementSavedAllowances? saved) {
+    companyAllowanceChanged = false;
+    registeredStateAvailable = saved != null;
+    companyAllowanceSelections = saved?.selections;
+    registeredAllowanceNames.text = saved?.selections?.items.map((item) => item.nameSnapshot).join('\n') ?? '';
+    if (saved?.selections != null) {
+      final selectedNames = saved!.selections!.items.map((item) => item.nameSnapshot).toSet();
+      final legacy = saved.legacyLabels?.split('\n') ?? allowances.map((c) => c.text).where((name) => !selectedNames.contains(name)).toList();
+      for (final c in allowances) { c.dispose(); }
+      allowances..clear()..addAll(legacy.where((name) => name.trim().isNotEmpty).map((name) => TextEditingController(text: name)));
+    }
+    _initialLegacy = allowances.map((c) => c.text.trim()).where((name) => name.isNotEmpty).join('\n');
+  }
 
   void load(AttendanceManagementCell cell) {
     mode = cell.mode;
@@ -619,7 +730,22 @@ class _ManagementFormState {
       ..addAll(cell.allowanceNames.map((name) => TextEditingController(text: name)));
   }
 
+  void dispose() {
+    for (final controller in [manDays, overtime, early, night, clockIn, clockOut,
+        notes, workDescription, registeredAllowanceNames, ...allowances]) {
+      controller.dispose();
+    }
+  }
+
+  String get clockOutLabel => _loadedClockIn != null && _loadedClockOut != null &&
+      DateUtils.dateOnly(_loadedClockOut!).isAfter(DateUtils.dateOnly(_loadedClockIn!))
+      ? '退勤時刻（翌日）' : '退勤時刻';
+
   _ManagementValues? values(BuildContext context, List<AttendanceManagementOption> sites) {
+    if (companyAllowanceChanged && (!registeredOptionsReady || !registeredStateAvailable)) {
+      _message(context, '共通手当の読取が完了していません。再読み込みしてから保存してください。');
+      return null;
+    }
     if (hasUnrecordedPunches && mode != 'work') {
       _message(context, '出退勤の打刻があります。勤務内容を確認して出勤として登録してください。削除する場合は削除ボタンで確認してください。');
       return null;
@@ -648,6 +774,9 @@ class _ManagementFormState {
     return _ManagementValues(
       mode: mode, siteId: siteId, manDays: parsedManDays, overtimeHours: parsedOvertime, earlyHours: parsedEarly, nightHours: parsedNight,
       allowanceNames: [for (final c in allowances) if (c.text.trim().isNotEmpty) c.text.trim()],
+      companyAllowanceSelections: companyAllowanceChanged ? companyAllowanceSelections : null,
+      companyAllowanceLegacyLabels: companyAllowanceChanged || allowances.map((c) => c.text.trim()).where((name) => name.isNotEmpty).join('\n') != _initialLegacy
+          ? allowances.map((c) => c.text.trim()).where((name) => name.isNotEmpty).join('\n') : null,
       notes: notes.text.trim(), workDescription: workDescription.text.trim(),
       clockIn: _submittedTime(clockIn.text, _loadedClockIn),
       clockOut: _submittedTime(clockOut.text, _loadedClockOut),
@@ -678,8 +807,10 @@ class _ManagementFormState {
 }
 
 class _ManagementForm extends StatefulWidget {
-  const _ManagementForm({required this.form, required this.sites, required this.enabled});
+  const _ManagementForm({required this.form, required this.sites, required this.enabled, required this.repository, required this.workerIds});
   final _ManagementFormState form;
+  final AttendanceManagementRepository repository;
+  final List<String> workerIds;
   final List<AttendanceManagementOption> sites;
   final bool enabled;
 
@@ -733,21 +864,28 @@ class _ManagementFormWidgetState extends State<_ManagementForm> {
           Row(children: [
             Expanded(child: TextField(enabled: widget.enabled, controller: form.clockIn, keyboardType: TextInputType.datetime, decoration: const InputDecoration(labelText: '出勤時刻', hintText: '08:00', border: OutlineInputBorder()))),
             const SizedBox(width: 8),
-            Expanded(child: TextField(enabled: widget.enabled, controller: form.clockOut, keyboardType: TextInputType.datetime, decoration: const InputDecoration(labelText: '退勤時刻', hintText: '17:00', border: OutlineInputBorder()))),
+            Expanded(child: TextField(enabled: widget.enabled, controller: form.clockOut, keyboardType: TextInputType.datetime, decoration: InputDecoration(labelText: form.clockOutLabel, hintText: '17:00', border: const OutlineInputBorder()))),
           ]),
           const SizedBox(height: 10),
+          AttendanceManagementCompanyAllowanceField(repository: widget.repository,
+            workerIds: widget.workerIds, controller: form.registeredAllowanceNames,
+            selections: form.companyAllowanceSelections, enabled: widget.enabled && form.registeredStateAvailable,
+            onReady: (ready) => form.registeredOptionsReady = ready,
+            onChanged: (value) => setState(() { form.companyAllowanceSelections = value; form.companyAllowanceChanged = true; })),
+          if (!form.registeredStateAvailable) const Text('保存済みの共通手当を確認できません。勤務日を選び直して再読み込みしてください。'),
+          const SizedBox(height: 10),
           Row(children: [
-            const Expanded(child: Text('手当', style: TextStyle(fontWeight: FontWeight.w900))),
+            const Expanded(child: Text('自由入力の手当', style: TextStyle(fontWeight: FontWeight.w900))),
             TextButton.icon(
               onPressed: widget.enabled ? () => setState(() => form.allowances.add(TextEditingController())) : null,
               icon: const Icon(Icons.add),
               label: const Text('手当を追加'),
             ),
           ]),
-          if (form.allowances.isEmpty) const Text('手当なし') else
+          if (form.allowances.isEmpty) const Text('自由入力の手当なし') else
             for (var i = 0; i < form.allowances.length; i++) ...[
               Row(children: [
-                Expanded(child: TextField(enabled: widget.enabled, controller: form.allowances[i], decoration: InputDecoration(labelText: '手当${i + 1}', border: const OutlineInputBorder()))),
+                Expanded(child: TextField(enabled: widget.enabled, controller: form.allowances[i], decoration: InputDecoration(labelText: '自由入力の手当${i + 1}', border: const OutlineInputBorder()))),
                 IconButton(onPressed: widget.enabled ? () => setState(() => form.allowances.removeAt(i).dispose()) : null, icon: const Icon(Icons.remove_circle_outline)),
               ]),
               const SizedBox(height: 6),
@@ -769,4 +907,5 @@ class _ManagementFormWidgetState extends State<_ManagementForm> {
 
 String _dateText(DateTime value) =>
     '${value.year}/${value.month.toString().padLeft(2, '0')}/${value.day.toString().padLeft(2, '0')}';
+
 

@@ -46,6 +46,14 @@ String dailyReportActionErrorMessage(Object error) {
   }
   final raw = error.toString();
   const messages = {
+    'document_finance_transition_disabled': '勤務実績の連携は準備中です。サインせず管理者に確認してください。',
+    'document_finance_audited_manager_required': '勤怠管理権限と、実績を確認する理由を確認してください。',
+    'document_finance_closed_clocked_source_required': '対象者全員の実際の出退勤と、この日報への関連を確認してください。',
+    'document_finance_explicit_unsigned_revision_required': '現在のサインと手直し状態を確認できません。日報を開き直してください。',
+    'explicit_shared_worker_category_required': '勤務区分（日勤・夜勤など）を選んでください。',
+    'company allowance registration changed': '選択済み手当と現在の登録・給与区分が一致しません。適用手当を選び直してください。',
+    'paid_hours_input_conflict': '勤務原本が更新されました。入力内容を確認して再読み込みしてください。',
+    'shared_report_signature_scope_changed': '日報またはサインの対象が更新されました。日報を開き直してください。',
     'shared_report_reporter_signature_required': '先に報告者サインを登録してください。',
     'shared_report_supervisor_not_ready': '全員の退勤と勤務実績の確認がそろってから責任者サインへ進んでください。',
     'shared_hours_supervisor_basis_changed_or_pending': '勤務実績が更新されたか、未確認のメンバーがいます。日報を再読み込みして確認してください。',
@@ -212,7 +220,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   bool get _visitReporterLocked => _visitReport &&
       (_report?.status == 'reporter_signed' || _report?.reporterSignatureJson != null);
-  bool get _editable => !_managementHold && !_signed && !_visitReporterLocked && !_sharedFactsReadOnly && !_saving;
+  bool get _editable => _sharedContext?.financialTransitionPending != true && !_managementHold && !_signed && !_visitReporterLocked && !_sharedFactsReadOnly && !_saving;
 
   void _verifySharedContext(SharedDailyReportContext state, {String? reportId}) {
     if (state.actorId != _repository?.currentActorId ||
@@ -521,7 +529,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
           ? existing!.workers
           : List<DailyReportWorkerDraft>.from(group?.workers ?? const []);
       final anchor = _currentGroupAnchor;
-      if (anchor != null && !(shared?.enabled == true && shared!.signedFactsReadOnly)) {
+      if (anchor != null && shared?.financialTransitionPending != true &&
+          !(shared?.enabled == true && shared!.signedFactsReadOnly)) {
         workers = await repository.loadAnchoredWorkers(anchorId: anchor, workDate: date,
           existing: workers, fallback: List<DailyReportWorkerDraft>.from(group?.workers ?? const [],
           ),
@@ -719,6 +728,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<String?> _saveBeforeSignature() async {
+    if (_sharedContext?.financialTransitionPending == true) { return _preparedFinancialReportId(); }
     if (_sharedFactsReadOnly) return _report?.id;
     if (_signed || _visitReporterLocked) return _report?.id;
     if (!_visitReport && _report?.id.isNotEmpty != true &&
@@ -1097,6 +1107,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<String?> _saveDraft({bool ownsBusyState = true,
       DailyReportEditSession? approvedReset}) async {
+    if (_sharedContext?.financialTransitionPending == true) { return _preparedFinancialReportId(); }
     if (_managementHold) return null;
     if (ownsBusyState && _saving) return null;
     final resettingApprovedReport = approvedReset != null && !_visitReport &&
@@ -1714,6 +1725,80 @@ class _DailyReportPageState extends State<DailyReportPage> {
     return lines.join('\n');
   }
 
+  String _preparedFinancialReportId() {
+    final state = _sharedContext;
+    // A reload must retain this marker. Never send staged rows through the old
+    // draft writer, which omits category and can invalidate the actual facts.
+    _applyControllers();
+    if (state == null || !state.financialTransitionPending || !state.financialTransitionValid ||
+        state.reportId != _report?.id || state.actorId != _repository?.currentActorId ||
+        _savedDraftFingerprint != _draftFingerprint()) {
+      throw StateError('確認済み勤務実績と日報が一致しません。保存せず、日報を開き直してください。');
+    }
+    return state.reportId!;
+  }
+
+  Future<void> _prepareFinancialResigning() async {
+    final repository = _sharedReportRepository;
+    final initial = _sharedContext;
+    final factsRepository = _workerFactsRepository;
+    if (_saving || factsRepository == null || repository == null || initial == null || initial.reportId == null ||
+        !initial.canManageAttendance || !initial.documentOnly) { return; }
+    setState(() => _saving = true);
+    try {
+      var current = await repository.loadReport(initial.reportId!, expectedActor: initial.actorId);
+      if (!mounted) return;
+      if (!current.financialResigningSupported || !current.canManageAttendance || !current.documentOnly ||
+          current.reportId != initial.reportId || current.companyId != initial.companyId) {
+        throw StateError('勤務実績の連携は準備中です。現在のサインは変更していません。');
+      }
+      if (current.reporterSaved || current.supervisorSaved) {
+        final accepted = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+          title: const Text('勤務実績を確認して再サイン'),
+          content: const Text('現在の日報とサインを履歴に残し、今回のサインを解除します。実際の勤務区分・適用手当・必要な時間を確認した後、報告者と現場責任者に改めてサインしてもらいます。'),
+          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('戻る')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('履歴に残して確認を始める'))]));
+        if (accepted != true || !mounted) return;
+        current = await repository.startDocumentEdit(before: current,
+          reason: '管理者が実際の勤務実績と適用手当を確認し、報告者・現場責任者のサインを取り直す');
+      }
+      if (!mounted) return;
+      if (current.reporterSaved || current.supervisorSaved || !current.financialResigningSupported) {
+        throw StateError('勤務実績を確認する状態を再読み込みしてください。');
+      }
+      _invalidatePendingSignature();
+      await _loadSelectedSite();
+      if (!mounted) return;
+      final before = _sharedContext;
+      if (before == null || before.reportId != current.reportId || before.actorId != current.actorId ||
+          !before.documentOnly || before.reporterSaved || before.supervisorSaved ||
+          !before.financialResigningSupported || _error != null) {
+        throw StateError('手直しを始めた日報を再確認できません。日報を開き直してください。');
+      }
+      final prepared = await Navigator.of(context).push<SharedDailyReportContext>(MaterialPageRoute(
+        builder: (_) => _FinancialResigningReviewPage(
+          before: before, reportRepository: repository, factsRepository: factsRepository,
+          workers: _workers, companyAllowanceItems: _repository?.currentActorId == _companyAllowanceActor
+            ? _companyAllowanceItems : const [],
+          companyAllowanceEligibility: _repository?.currentActorId == _companyAllowanceActor
+            ? _companyAllowanceEligibility : const {},
+          companyAllowanceNamesLoading: _companyAllowanceNamesLoading,
+          companyAllowanceNamesUnavailable: _companyAllowanceNamesUnavailable)));
+      if (!mounted) return;
+      await _loadSelectedSite();
+      if (!mounted || prepared == null) return;
+      if (_sharedContext?.financialTransitionId != prepared.financialTransitionId ||
+          _sharedContext?.financialTransitionValid != true || _report?.reporterSignatureJson != null ||
+          _report?.responsibleSignatureJson != null || _error != null) {
+        throw StateError('保存済み勤務実績を再確認できません。再読み込みしてください。');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('勤務実績を保存しました。報告者、現場責任者の順に新しいサインをもらってください。')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(dailyReportActionErrorMessage(error))));
+    } finally { if (mounted) setState(() => _saving = false); }
+  }
+
   Future<void> _startDocumentEdit() async {
     final repository = _sharedReportRepository;
     final before = _sharedContext;
@@ -2071,6 +2156,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               final section = _WorkerFactsConfirmationSection(
                               repository: _workerFactsRepository,
                               independentSignature: _sharedContext?.documentOnly == true,
+                              readOnly: _sharedContext?.financialTransitionPending == true,
                               companyId: _report!.companyId!, reportId: _report!.id,
                               workers: _workers, sourceRevision: _report,
                               companyAllowanceItems: _repository?.currentActorId == _companyAllowanceActor
@@ -2157,7 +2243,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 ),
                               ]),
                             ),
-                          if (!_managementHold && !_signed && !_visitReporterLocked && !_sharedFactsReadOnly)
+                          if (!_managementHold && !_signed && !_visitReporterLocked && !_sharedFactsReadOnly && _sharedContext?.financialTransitionPending != true)
                             FilledButton.icon(
                               onPressed: _saving ? null : _register,
                               icon: const Icon(Icons.save_outlined),
@@ -2168,9 +2254,20 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               key: const ValueKey('daily-report-start-document-edit'),
                               onPressed: _saving ? null : _startDocumentEdit,
                               icon: const Icon(Icons.edit_outlined), label: const Text('手直し')),
+                          if (_sharedContext?.documentOnly == true && _sharedContext?.canManageAttendance == true)
+                            OutlinedButton.icon(key: const ValueKey('daily-report-financial-resigning'),
+                              onPressed: _saving ? null : _prepareFinancialResigning,
+                              icon: const Icon(Icons.fact_check_outlined),
+                              label: const Text('勤務実績を確認して給与・請求へ進む')),
+                          if (_sharedContext?.financialTransitionPending == true)
+                            Text(_sharedContext?.financialTransitionValid == true
+                              ? (_sharedContext?.reporterSaved == true
+                                ? '報告者の新しいサインは保存済みです。現場責任者のサインをもらってください。'
+                                : '勤務実績は保存済みです。報告者と現場責任者の新しいサインをもらってください。')
+                              : '確認済み勤務実績の状態を確認できません。サインせず管理者に確認してください。'),
                           if (_documentComplete)
                             const Padding(padding: EdgeInsets.symmetric(vertical: 8),
-                              child: Text('日報は完了しました。勤務実績・手当の確認は別に行えます。')),
+                              child: Text('日報のサインは保存済みです。給与・請求への反映には、勤務実績の確認と新しいサインが必要です。')),
                           if (_signed && !_visitReport && _approvedEditAvailable)
                             FilledButton.icon(
                               key: const ValueKey('daily-report-begin-approved-edit'),
@@ -2232,21 +2329,95 @@ class _DeferredDocumentFactsState extends State<_DeferredDocumentFacts> {
   bool _opened = false;
   @override Widget build(BuildContext context) => Card(child: ExpansionTile(
     maintainState: true,
-    title: const Text('勤務実績・手当の確認（後から可）'),
+    title: const Text('勤務実績・手当（給与・請求への反映は別途確認）'),
     onExpansionChanged: (expanded) { if (expanded && !_opened) setState(() => _opened = true); },
     children: _opened ? [widget.child] : const <Widget>[],
   ));
 }
 
+class _FinancialResigningReviewPage extends StatefulWidget {
+  const _FinancialResigningReviewPage({required this.before, required this.reportRepository,
+    required this.factsRepository, required this.workers, required this.companyAllowanceItems,
+    required this.companyAllowanceEligibility, required this.companyAllowanceNamesLoading,
+    required this.companyAllowanceNamesUnavailable});
+  final SharedDailyReportContext before;
+  final SharedDailyReportRepository reportRepository;
+  final SharedWorkerFactsRepository factsRepository;
+  final List<DailyReportWorkerDraft> workers;
+  final List<CompanyAllowanceLabel> companyAllowanceItems;
+  final Map<String, Set<String>> companyAllowanceEligibility;
+  final bool companyAllowanceNamesLoading, companyAllowanceNamesUnavailable;
+  @override State<_FinancialResigningReviewPage> createState() => _FinancialResigningReviewPageState();
+}
+class _FinancialResigningReviewPageState extends State<_FinancialResigningReviewPage> {
+  final _reason = TextEditingController();
+  final _inputs = <String, SharedWorkerFactsTransitionInput>{};
+  late Future<List<SharedWorkerFactsSnapshot>> _future;
+  bool _saving = false;
+  String? _error;
+  @override void initState() { super.initState(); _future = _load(); }
+  Future<List<SharedWorkerFactsSnapshot>> _load() => Future.wait([
+    for (final worker in widget.workers) widget.factsRepository.load(
+      companyId: widget.before.companyId, reportId: widget.before.reportId!, workerId: worker.workerId),
+  ]);
+  void _reload() => setState(() { _inputs.clear(); _error = null; _future = _load(); });
+  Future<void> _save() async {
+    if (_saving || _inputs.length != widget.workers.length) { return; }
+    setState(() { _saving = true; _error = null; });
+    try {
+      final after = await widget.reportRepository.prepareFinancialResigning(before: widget.before,
+        workers: [for (final worker in widget.workers) _inputs[worker.workerId]!], reason: _reason.text);
+      if (mounted) Navigator.of(context).pop(after);
+    } catch (error) {
+      if (mounted) setState(() => _error = dailyReportActionErrorMessage(error));
+    } finally { if (mounted) setState(() => _saving = false); }
+  }
+  @override void dispose() { _reason.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) => PopScope(
+    canPop: !_saving,
+    child: Scaffold(appBar: AppBar(title: const Text('勤務実績を確認して再サイン')),
+      body: FutureBuilder<List<SharedWorkerFactsSnapshot>>(future: _future, builder: (context, result) {
+        if (result.connectionState != ConnectionState.done) { return const Center(child: CircularProgressIndicator()); }
+        if (result.hasError || result.data == null) { return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('勤務原本を確認できません。未確認のまま進めません。'),
+          TextButton(onPressed: _reload, child: const Text('再読み込み'))])); }
+        return ListView(padding: const EdgeInsets.all(16), children: [
+          const Text('① 全員の実際の勤務区分・適用手当・必要な時間を確認してください。\n② 理由を入力して勤務実績を保存します。\n③ 元の日報で報告者と現場責任者の新しいサインをもらいます。'),
+          const Text('古いサインは履歴に残っています。勤務区分を推測したり、選択済み手当を自動で消すことはありません。車両・既存調整額はこの手順では変更できません。'),
+          for (final snapshot in result.data!) _WorkerFactsConfirmationCard(
+            key: ValueKey('financial-review/${snapshot.actorId}/${snapshot.reportId}/${snapshot.workerId}/${snapshot.revision}/${snapshot.scopeFingerprint}'),
+            repository: widget.factsRepository, snapshot: snapshot,
+            template: widget.workers.singleWhere((worker) => worker.workerId == snapshot.workerId),
+            companyAllowanceItems: widget.companyAllowanceItems,
+            eligibleCompanyAllowanceKeys: widget.companyAllowanceEligibility[snapshot.workerId],
+            companyAllowanceNamesLoading: widget.companyAllowanceNamesLoading,
+            companyAllowanceNamesUnavailable: widget.companyAllowanceNamesUnavailable,
+            readOnly: _saving,
+            stageInput: (input) => setState(() => _inputs[snapshot.workerId] = input),
+            onInputChanged: () => setState(() => _inputs.remove(snapshot.workerId)),
+            onSaved: () {}, onReload: _reload),
+          Text('${_inputs.length} / ${widget.workers.length} 人の内容を確認済み'),
+          TextField(key: const ValueKey('financial-transition-reason'), controller: _reason,
+            enabled: !_saving, maxLength: 1000, minLines: 2, maxLines: 4,
+            decoration: const InputDecoration(labelText: '管理者が実績を確認・手直しする理由（必須）')),
+          if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          FilledButton.icon(key: const ValueKey('prepare-financial-resigning'),
+            onPressed: _saving || _inputs.length != widget.workers.length ? null : _save,
+            icon: const Icon(Icons.fact_check_outlined),
+            label: Text(_saving ? '保存中…' : '確認した勤務実績を保存してサインへ')),
+        ]);
+      })));
+}
+
 class _WorkerFactsConfirmationSection extends StatefulWidget {
-  const _WorkerFactsConfirmationSection({required this.repository,
+  const _WorkerFactsConfirmationSection({this.readOnly = false, required this.repository,
     required this.companyId, required this.reportId, required this.workers,
     required this.sourceRevision, required this.companyAllowanceItems,
     required this.companyAllowanceEligibility, required this.companyAllowanceNamesLoading,
     required this.companyAllowanceNamesUnavailable, required this.onSaved,
     this.independentSignature = false});
   final SharedWorkerFactsRepository repository;
-  final bool independentSignature;
+  final bool independentSignature, readOnly;
   final String companyId, reportId;
   final List<DailyReportWorkerDraft> workers;
   final Object? sourceRevision;
@@ -2285,7 +2456,7 @@ class _WorkerFactsConfirmationSectionState extends State<_WorkerFactsConfirmatio
           : '作業報告のサインとは別に、各自の退勤後の実績を確認します。本人の確認・必要な時間がそろってから、責任者本人にサインしてもらいます。'),
         for (final snapshot in result.data!) _WorkerFactsConfirmationCard(
           key: ValueKey('facts/${snapshot.actorId}/${snapshot.reportId}/${snapshot.workerId}'),
-          repository: widget.repository, snapshot: snapshot,
+          repository: widget.repository, snapshot: snapshot, readOnly: widget.readOnly,
           template: widget.workers.singleWhere((worker) => worker.workerId == snapshot.workerId),
           companyAllowanceItems: widget.companyAllowanceItems,
           eligibleCompanyAllowanceKeys: widget.companyAllowanceEligibility[snapshot.workerId],
@@ -2300,7 +2471,8 @@ class _WorkerFactsConfirmationCard extends StatefulWidget {
   const _WorkerFactsConfirmationCard({super.key, required this.repository,
     required this.snapshot, required this.template, required this.companyAllowanceItems,
     required this.eligibleCompanyAllowanceKeys, required this.companyAllowanceNamesLoading,
-    required this.companyAllowanceNamesUnavailable, required this.onSaved, required this.onReload});
+    required this.companyAllowanceNamesUnavailable, required this.onSaved, required this.onReload,
+    this.stageInput, this.onInputChanged, this.readOnly = false});
   final SharedWorkerFactsRepository repository;
   final SharedWorkerFactsSnapshot snapshot;
   final DailyReportWorkerDraft template;
@@ -2308,6 +2480,9 @@ class _WorkerFactsConfirmationCard extends StatefulWidget {
   final Set<String>? eligibleCompanyAllowanceKeys;
   final bool companyAllowanceNamesLoading, companyAllowanceNamesUnavailable;
   final VoidCallback onSaved, onReload;
+  final ValueChanged<SharedWorkerFactsTransitionInput>? stageInput;
+  final VoidCallback? onInputChanged;
+  final bool readOnly;
   @override State<_WorkerFactsConfirmationCard> createState() => _WorkerFactsConfirmationCardState();
 }
 class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCard> {
@@ -2317,16 +2492,28 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
       _reason = TextEditingController();
   DailyReportWorkerDraft? _draft;
   String? _category, _error;
-  bool _saving = false;
+  bool _saving = false, _staged = false, _seeding = false;
+  bool get _staging => widget.stageInput != null;
   SharedWorkerFactsSnapshot get _snapshot => widget.snapshot;
   bool get _managed => !_snapshot.isOwnWorker && _snapshot.canManageAttendance;
-  bool get _editable => !_saving && !_snapshot.sourceBlocked && _snapshot.scope.workReportFrozen && !_snapshot.scope.supervisorFinalized &&
-      (_snapshot.editable || _managed);
+  bool get _editable => !widget.readOnly && !_saving && !_snapshot.sourceBlocked &&
+      (_staging ? _snapshot.canManageAttendance : _snapshot.scope.workReportFrozen &&
+        !_snapshot.scope.supervisorFinalized && (_snapshot.editable || _managed));
   bool get _requiresHours => _snapshot.hoursRequiredOutsideCurrentReport ||
       _draft?.companyAllowanceSelections?.items.any((item) => item.unit == 'hour') == true;
   String _number(double value) => value == value.roundToDouble() ? value.toInt().toString() : value.toString();
-  @override void initState() { super.initState(); _seed(); }
+  @override void initState() {
+    super.initState(); _seed();
+    for (final controller in [_overtime, _early, _night, _allowance, _odometer, _hours]) {
+      controller.addListener(_inputChanged);
+    }
+  }
+  void _inputChanged() {
+    if (!_staging || _seeding) return;
+    _staged = false; widget.onInputChanged?.call();
+  }
   void _seed() {
+    _seeding = true; _staged = false;
     final seed = _snapshot.current ? _snapshot.facts : _snapshot.proposedFacts;
     final template = widget.template;
     // A missing server proposal can mean an unset work category. Keep the
@@ -2354,7 +2541,7 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
     _odometer.text = odometer == null ? '' : _number(odometer);
     _hours.text = !_snapshot.current || _snapshot.hours == null ? '' : _number(_snapshot.hours!);
     _reason.clear();
-    _error = null;
+    _error = null; _seeding = false;
   }
   @override void didUpdateWidget(_WorkerFactsConfirmationCard oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -2394,7 +2581,7 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
         draft.odometerKm = value;
       }
       final hours = _requiresHours ? _readNumber(_hours, '実勤務時間') : null;
-      if (_managed && _reason.text.trim().isEmpty) throw const FormatException('管理者が確認する理由を入力してください。');
+      if (!_staging && _managed && _reason.text.trim().isEmpty) throw const FormatException('管理者が確認する理由を入力してください。');
       final choices = draft.companyAllowanceSelections?.items ?? const <DailyReportCompanyAllowanceSelection>[];
       final allowed = widget.eligibleCompanyAllowanceKeys;
       if (choices.isNotEmpty && (widget.companyAllowanceNamesLoading || widget.companyAllowanceNamesUnavailable || allowed == null)) {
@@ -2405,6 +2592,11 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
         throw StateError('保存済みの「${unavailable.map((item) => item.nameSnapshot).join('、')}」は現在の給与区分に適用できません。手当の選択を見直してください。');
       }
       final facts = SharedWorkerFacts.fromDraft(draft, workCategory: _category!);
+      if (_staging) {
+        widget.stageInput!(SharedWorkerFactsTransitionInput(before: before, facts: facts, hours: hours));
+        if (mounted) setState(() => _staged = true);
+        return;
+      }
       final saved = await widget.repository.confirm(before, facts, hours: hours,
         managementReason: _managed ? _reason.text.trim() : null);
       if (!mounted) return;
@@ -2433,7 +2625,7 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
         if (!_snapshot.confirmed || !_snapshot.current)
           const Text('表示は未確認の入力候補です。0の項目も含めて内容を確認し、確認ボタンで保存してください。'),
         if (_snapshot.sourceBlocked) const Text('本人の退勤と勤務原本を確認してから、実績を保存してください。'),
-        if (!_snapshot.scope.workReportFrozen) const Text('作業報告の報告者サインを保存してから、本人の勤務実績を確認します。'),
+        if (!_staging && !_snapshot.scope.workReportFrozen) const Text('作業報告の報告者サインを保存してから、本人の勤務実績を確認します。'),
         if (_snapshot.proposedFacts == null && !_snapshot.current)
           const Text('入力候補を作成できなかったため、保存済み日報の値を表示しています。勤務区分を選び、各項目を確認して保存してください。'),
         if (draft == null) TextButton(onPressed: widget.onReload, child: const Text('入力候補を再読み込み'))
@@ -2445,13 +2637,14 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
               DropdownMenuItem(value: 'night', child: Text('夜勤')),
               DropdownMenuItem(value: 'holiday', child: Text('休日勤務')),
               DropdownMenuItem(value: 'holiday_night', child: Text('休日夜勤'))],
-            onChanged: _editable ? (value) => setState(() => _category = value) : null),
+            onChanged: _editable ? (value) => setState(() { _category = value; _inputChanged(); }) : null),
           const SizedBox(height: 10),
           if (draft.allowanceAmount != 0) Text('既存の調整額：${draft.allowanceAmount}円（この画面では変更しません）'),
           _WorkerDetailCard(worker: draft, editable: _editable, inlineFields: true, allowOdometerCamera: false,
+            allowVehicleEdits: !_staging,
             companyAllowanceItems: widget.companyAllowanceItems, companyAllowanceSelectionMode: true,
             eligibleCompanyAllowanceKeys: widget.eligibleCompanyAllowanceKeys, needsSavedAllowanceReport: false,
-            onCompanyAllowanceSelections: (value) => setState(() => draft.companyAllowanceSelections = value),
+            onCompanyAllowanceSelections: (value) => setState(() { draft.companyAllowanceSelections = value; _inputChanged(); }),
             companyAllowanceNamesLoading: widget.companyAllowanceNamesLoading,
             companyAllowanceNamesUnavailable: widget.companyAllowanceNamesUnavailable,
             overtime: _overtime, early: _early, night: _night, allowanceLabel: _allowance,
@@ -2461,7 +2654,7 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(labelText: '実勤務時間（休憩を除く）', suffixText: '時間',
               helperText: '出退勤の差から推測せず、実際に働いた時間を確認します。'))),
-          if (_managed) TextField(controller: _reason, enabled: _editable,
+          if (!_staging && _managed) TextField(controller: _reason, enabled: _editable,
             decoration: const InputDecoration(labelText: '管理者が本人に代わって確認する理由')),
           if (_error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(_error!,
             style: TextStyle(color: Theme.of(context).colorScheme.error))),
@@ -2469,7 +2662,7 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
             key: ValueKey('confirm-worker-facts/${_snapshot.workerId}'),
             onPressed: _saving ? null : _confirm,
             icon: const Icon(Icons.fact_check_outlined),
-            label: Text(_saving ? '保存中…' : _managed ? '理由を記録して勤務実績を確認' : 'この勤務実績を確認して保存')),
+            label: Text(_saving ? '保存中…' : _staging ? (_staged ? 'この内容を確認済み' : 'この人の勤務実績を確認') : _managed ? '理由を記録して勤務実績を確認' : 'この勤務実績を確認して保存')),
         ],
       ]));
   }
@@ -2493,7 +2686,7 @@ class _WorkerDetailCard extends StatelessWidget {
     required this.odometer,
     required this.onCaptureOdometer,
     this.inlineFields = false,
-    this.allowOdometerCamera = true,
+    this.allowOdometerCamera = true, this.allowVehicleEdits = true,
   });
 
   final DailyReportWorkerDraft worker;
@@ -2510,7 +2703,7 @@ class _WorkerDetailCard extends StatelessWidget {
   final TextEditingController allowanceLabel;
   final TextEditingController odometer;
   final VoidCallback onCaptureOdometer;
-  final bool inlineFields, allowOdometerCamera;
+  final bool inlineFields, allowOdometerCamera, allowVehicleEdits;
 
   @override
   Widget build(BuildContext context) {
@@ -2582,7 +2775,7 @@ class _WorkerDetailCard extends StatelessWidget {
           if (worker.vehicleId != null && !worker.meterManaged) ...[
             TextField(
               controller: odometer,
-              enabled: editable,
+              enabled: editable && allowVehicleEdits,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true,
               ),
@@ -3152,3 +3345,4 @@ class _ReportStepBadge extends StatelessWidget {
       color: Theme.of(context).colorScheme.primary,
       fontSize: 28, fontWeight: FontWeight.w800))));
 }
+

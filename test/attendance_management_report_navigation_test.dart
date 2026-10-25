@@ -92,7 +92,7 @@ void main() {
       initialDate: DateTime(2026, 10, 25), restrictedRecovery: true))));
     await tester.pumpAndSettle();
     expect(find.text('この日の日報・共通手当・サインを開く'), findsOneWidget);
-    expect(find.textContaining('署名済み内容は保持'), findsOneWidget);
+    expect(find.textContaining('変更前の内容とサインは履歴に保存'), findsOneWidget);
     expect(f.calls.where((r) => r.url.path.endsWith('/force_manage_attendance')), isEmpty);
   });
   testWidgets('calendar distinguishes authoritative work, pending punches and approved leave', (tester) async {

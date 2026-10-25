@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "findings": [
+    {
+      "id": "SEC-01",
+      "priority": "high",
+      "status": "confirmed_source_and_acl_not_exploited",
+      "scope": "Existing secondary-password replacement",
+      "evidence": "Authenticated callers can execute set_secondary_password(text). Its current body checks auth.uid and password length, then INSERT ON CONFLICT UPDATE replaces an existing password hash and resets failed-attempt/lock fields. It requires no previous password, primary reauthentication proof, or live auth.sessions row.",
+      "source_md5": "186836f47904e471514d8150e89951f0",
+      "impact": "A valid primary bearer token can replace its own account's secondary credential directly; the UI's verification is not an enforceable server replacement boundary. This does not demonstrate an unauthenticated or different-user write.",
+      "recommendation": "Reuse staged operation-proof protocol, close legacy overwrite when an equivalent usable recovery path is ready, and cover live-session and OAuth-only users before activation."
+    },
+    {
+      "id": "SEC-02",
+      "priority": "high",
+      "status": "confirmed_catalogue_absence",
+      "scope": "Server proof deployment",
+      "evidence": "reauthentication_capabilities, issue_reauthentication_proof, replace_secondary_password_with_proof, and both private proof/rollout tables are absent. reauthenticate-operation is absent from deployed Edge names.",
+      "impact": "Staged client code falls back on PGRST202; source implementation and prior isolated tests are not a deployed server guarantee.",
+      "recommendation": "Review and reuse staged SQL/Edge/client artifacts; do not invent a second proof scheme or mark a nonexistent backend merely OFF."
+    },
+    {
+      "id": "SEC-03",
+      "priority": "high",
+      "status": "confirmed_contract_gap",
+      "scope": "Attendance management secondary authentication",
+      "evidence": "verify_secondary_password(text) returns boolean and updates only credential failure counters. New admin require_manager validates live actor/session, company role and feature, but consumes no secondary-success receipt.",
+      "impact": "SecondaryProtectedPage guards app navigation; directly calling an authenticated management RPC does not prove that secondary authentication occurred.",
+      "recommendation": "Introduce a server-issued current-session/action/target-bound step-up receipt before describing the management action as server-enforced second authentication. Native Face ID alone is not server proof."
+    },
+    {
+      "id": "SEC-04",
+      "priority": "medium",
+      "status": "source_boundary_not_runtime_reproduced",
+      "scope": "Legacy secondary reset client",
+      "evidence": "SecondaryPasswordPrimaryVerifier compares currentUser().id at start and finish. The reset page stores an actor ID after verification but does not subscribe to auth history or bind that result to session_id through save.",
+      "impact": "An A->B->A or same-actor different-session transition can satisfy final actor equality. Server proof mode would independently constrain SID, but that mode is not deployed.",
+      "recommendation": "Capture session identity plus auth-event history from verification through save; preserve same-session token refresh rules and invalidate on logout/other session. Coordinate exclusive file ownership before editing."
+    },
+    {
+      "id": "DATA-01",
+      "priority": "high",
+      "status": "confirmed_writer_source_loss_risk_not_executed_on_real_data",
+      "scope": "Registered allowance identity preservation",
+      "evidence": "Current force_manage_attendance body deletes daily_report_workers then inserts replacement rows without mentioning company_allowance_selections or company_allowance_legacy_labels. The before_state audit preserves old rows, but the current row is not reconstructed from those typed values.",
+      "source_md5": "0e5cee91af53cc09e212e620394785f6",
+      "impact": "An unrelated force upsert can remove registered selection identity/current-row metadata while retaining only free allowance_names. An audit copy is not current financial-source preservation.",
+      "recommendation": "Parent-owned fix must preserve unchanged typed values exactly, keep free names separate, validate explicit registered changes by ID/version/unit, and add one focused Native unrelated-edit preservation regression."
+    },
+    {
+      "id": "SEC-05",
+      "priority": "medium",
+      "status": "current_advisor",
+      "scope": "Leaked-password protection",
+      "evidence": "Current security advisor reports auth_leaked_password_protection disabled.",
+      "impact": "Password-service breach-list defense is not enabled; this says nothing about strength or exposure of a specific user's password.",
+      "recommendation": "Review current Auth settings and plan eligibility, then make a concrete reviewed configuration change. Do not alter Google/Apple/Face ID identities or lock OAuth-only recovery."
+    }
+  ]
+}

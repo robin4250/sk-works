@@ -41,6 +41,8 @@ class Fixture {
     'secondary_password': true, 'master_feature': false, 'master_security': false};
   Map<String, dynamic>? proofResponse;
   Future<void> Function()? duringProof;
+  final mutations = <http.Request>[];
+  final targets = <http.Request>[];
   final bodies = <Map<String, dynamic>>[];
   final headers = <String>[];
   Future<void> login() => client.auth.signInWithPassword(phone: '+810000000000', password: 'synthetic')
@@ -56,6 +58,14 @@ class Fixture {
       if (capabilityNetworkFailure) throw StateError('synthetic connection failed');
       return jsonResponse(capability, capabilityStatus);
     }
+    if (request.url.path.endsWith('/attendance_management_reauthentication_target')) {
+      targets.add(request);
+      return jsonResponse({'company_id': '30000000-0000-0000-0000-000000000001',
+        'action': (jsonDecode(request.body) as Map)['p_action'], 'items_sha256': List.filled(64, 'a').join()});
+    }
+    if (request.url.path.endsWith('/force_manage_attendance') || request.url.path.endsWith('/force_manage_attendance_with_proof')) {
+      mutations.add(request);return jsonResponse(1);
+    }
     if (request.url.path == '/functions/v1/reauthenticate-operation') {
       bodies.add(Map<String, dynamic>.from(jsonDecode(request.body) as Map));
       headers.add(request.headers['authorization'] ?? '');
@@ -63,7 +73,8 @@ class Fixture {
       return jsonResponse(proofResponse ?? {'protocol': 'sko-reauthentication-v1',
         'proof': List.filled(64, 'a').join(),
         'expiresAt': DateTime.now().add(const Duration(seconds: 120)).toIso8601String(),
-        'operation': 'secondary_password.replace', 'target': {'user_id': actorA}});
+        'operation': (jsonDecode(request.body) as Map)['operation'],
+        'target': (jsonDecode(request.body) as Map)['target']});
     }
     throw StateError('Unexpected fixture endpoint ${request.url.path}');
   }
@@ -139,4 +150,54 @@ void main() {
       {'expiresAt': DateTime.now().add(const Duration(minutes: 10)).toIso8601String()},
     ]) {f.proofResponse = {...valid, ...change};await expectLater(f.proof(), throwsStateError);}
   }, timeout: const Timeout(Duration(seconds: 30)));
+  Future<int> manage(Fixture f, Future<String?> Function() password,
+      {List<Map<String,dynamic>>? items}) => f.repository.manageAttendance(
+        action: 'upsert', items: items ?? [{'worker_id': actorA, 'date': '2026-10-26'}],
+        requestPassword: password);
+  test('attendance OFF and missing RPC preserve old writer without password dialog', () async {
+    for (final missing in [false,true]) {
+      final f=Fixture();addTearDown(f.client.dispose);await f.login();
+      if(missing){f.capabilityStatus=404;f.capability={'code':'PGRST202','message':'synthetic missing RPC'};}
+      expect(await manage(f,() async => throw StateError('no dialog')),1);
+      expect(f.mutations.single.url.path.endsWith('/force_manage_attendance'),true);
+      expect(f.targets,isEmpty);expect(f.bodies,isEmpty);
+    }
+  });
+  test('attendance ON uses exact target/second password/proof and immutable items', () async {
+    final f=Fixture();addTearDown(f.client.dispose);await f.login();
+    (f.capability as Map)['attendance_management']=true;
+    final items=<Map<String,dynamic>>[{'worker_id':actorA,'date':'2026-10-26'}];
+    expect(await manage(f,() async {items.single['date']='2026-10-27';return 'synthetic-secondary';},items:items),1);
+    expect(f.bodies.single['operation'],'attendance.manage');
+    expect(f.bodies.single['password'],'synthetic-secondary');
+    expect(f.mutations.single.url.path.endsWith('/force_manage_attendance_with_proof'),true);
+    expect((jsonDecode(f.mutations.single.body) as Map)['p_items'],[{'worker_id':actorA,'date':'2026-10-26'}]);
+    expect(f.mutations.single.headers['authorization'],'Bearer ${f.client.auth.currentSession!.accessToken}');
+  });
+  test('attendance ON cancel and capability failure never fall back to old mutation', () async {
+    final f=Fixture();addTearDown(f.client.dispose);await f.login();
+    (f.capability as Map)['attendance_management']=true;
+    await expectLater(manage(f,() async => null),throwsStateError);
+    expect(f.bodies,isEmpty);expect(f.mutations,isEmpty);
+    f.capabilityNetworkFailure=true;
+    await expectLater(manage(f,() async => 'synthetic'),throwsA(anything));
+    expect(f.mutations,isEmpty);
+  });
+  test('attendance whole dialog history rejects A-B-A before requesting proof', () async {
+    final f=Fixture();addTearDown(f.client.dispose);await f.login();
+    (f.capability as Map)['attendance_management']=true;
+    await expectLater(manage(f,() async {
+      f.actor=actorB;f.session=sessionB;await f.login();
+      f.actor=actorA;f.session=sessionA;await f.login();return 'synthetic-secondary';
+    }),throwsStateError);
+    expect(f.bodies,isEmpty);expect(f.mutations,isEmpty);
+  });
+  test('attendance same-session token refresh uses refreshed bearer and one proof mutation', () async {
+    final f=Fixture();addTearDown(f.client.dispose);await f.login();
+    (f.capability as Map)['attendance_management']=true;
+    expect(await manage(f,() async {await f.login();return 'synthetic-secondary';}),1);
+    expect(f.mutations.single.headers['authorization'],'Bearer ${f.client.auth.currentSession!.accessToken}');
+  });
+
 }
+
