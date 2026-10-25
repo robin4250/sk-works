@@ -39,16 +39,22 @@ const addition=String.raw`
   const definitions=/^create(?: or replace)? function\s+([a-z0-9_.]+)\([\s\S]*?\bAS\s+(\$[a-z0-9_]*\$)([\s\S]*?)\2\s*;/gmi;
   for(const definition of sql.matchAll(definitions))v2ExpectedBodies.set(definition[1].toLowerCase(),md5(definition[3]));
  }
- const v2AllowedConnections=new Set(['public.sign_daily_report','company_checkout_allowance_private.report_basis','company_checkout_allowance_private.resolve']);
- let v2UpdatedPins=0;
+ const v2ConnectionSignatures=['public.sign_daily_report(uuid,text,jsonb)','company_checkout_allowance_private.report_basis(uuid)','company_checkout_allowance_private.resolve(uuid,uuid,date,date)'];
+ for(const signature of v2ConnectionSignatures){
+  const name=signature.split('(')[0];
+  assert.ok(v2ExpectedBodies.has(name),'Every intended connection has an independently generated exact body');
+  eq(await q('select md5(prosrc) v from pg_proc where oid=$1::regprocedure',[signature]),v2ExpectedBodies.get(name),'All three installed connection bodies match exact generated SQL');
+ }
+ const v2AllowedConnections=new Set(v2ConnectionSignatures.map(s=>s.split('(')[0]));
+ const v2UpdatedPins=[];
  for(const signature of Object.keys(pins.after_source_md5)){
   const rawName=signature.split('(')[0],name=rawName.includes('.')?rawName:'public.'+rawName;
   if(!v2AllowedConnections.has(name))continue;
   assert.ok(v2ExpectedBodies.has(name),'Every allowed connection has an independently generated exact body');
   eq(await q('select md5(prosrc) v from pg_proc where oid=$1::regprocedure',[signature]),v2ExpectedBodies.get(name),'Installed intended connection matches exact generated SQL');
-  pins.after_source_md5[signature]=v2ExpectedBodies.get(name);v2UpdatedPins++;
+  pins.after_source_md5[signature]=v2ExpectedBodies.get(name);v2UpdatedPins.push(name);
  }
- eq(v2UpdatedPins,3,'Only the three intentional original connection functions receive new expected pins');
+ eq(v2UpdatedPins.sort(),['public.sign_daily_report'],'Only the original signer belongs to the parent source manifest; new private basis/resolve are independently asserted above');
  eq(await q('select count(*)::int v from checkout_shared_hours_private.work_protocol'),0,'V2 installation never converts v1 or shared history');
  await client.query("insert into checkout_shared_hours_private.rollout(company_id,starts_on,enabled) values($1,'2026-10-01',true)",[A]);
  const v2Day='2026-10-20';
