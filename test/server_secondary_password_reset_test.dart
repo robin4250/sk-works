@@ -20,6 +20,10 @@ class _Transport extends OperationReauthenticationRepository {
   int replacements = 0;
   int capabilityCalls = 0;
   bool failCapability = false;
+  bool changeSupported = false;
+  bool recoverySupported = true;
+  bool enabled = true;
+  int changes = 0;
   bool failProof = false;
   bool failSave = false;
   Completer<String>? pending;
@@ -31,7 +35,9 @@ class _Transport extends OperationReauthenticationRepository {
   Future<Map<String, bool>> capabilities() async {
     capabilityCalls++;
     if (failCapability) throw StateError('synthetic unavailable');
-    return const {'secondary_password': true, 'master_feature': false, 'master_security': false};
+    return {'secondary_password': enabled, 'master_feature': false, 'master_security': false,
+      'secondary_password_change_supported': changeSupported,
+      'secondary_password_recovery_supported': recoverySupported};
   }
   @override
   Future<String> requestProof({required String password, required String operation,
@@ -39,6 +45,11 @@ class _Transport extends OperationReauthenticationRepository {
     requests++; primary = password; this.operation = operation; this.target = target;
     if (failProof) throw StateError('synthetic denied');
     return pending == null ? 'synthetic-single-use-proof' : await pending!.future;
+  }
+  @override
+  Future<void> changeSecondaryPassword(String password, String proof) async {
+    changes++;
+    await replaceSecondaryPassword(password, proof);
   }
   @override
   Future<void> replaceSecondaryPassword(String password, String proof) async {
@@ -98,8 +109,7 @@ void main() {
     final access = _accessFor(transport);
     await open(tester, access);
     expect(find.byKey(const Key('primary-password')), findsOneWidget);
-    final segmented = tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>));
-    expect(segmented.segments.first.enabled, false);
+    expect(find.byType(SegmentedButton<bool>), findsNothing);
     await authenticate(tester); await replacement(tester);
     expect(transport.requests, 1); expect(transport.replacements, 1);
     expect(transport.operation, 'secondary_password.replace');
@@ -201,6 +211,27 @@ void main() {
     expect(find.byKey(const Key('reset-password')), findsNothing);
     expect(find.text('ログイン状態が変わりました。本人確認をやり直してください。'), findsOneWidget);
     expect(transport.replacements, 0);
+  });
+
+  testWidgets('known secondary change works while Google-only forgotten recovery is preparing', (tester) async {
+    final transport = _Transport()..changeSupported = true..recoverySupported = false;
+    await open(tester, _accessFor(transport));
+    expect(find.text('現在の第2パスワード'), findsOneWidget);
+    await tester.tap(find.text('第2パスワードを忘れた場合'));await tester.pumpAndSettle();
+    expect(find.textContaining('第2パスワードを忘れた場合の再設定は準備中'), findsOneWidget);
+    await authenticate(tester);await replacement(tester);
+    expect(transport.operation, 'secondary_password.change');expect(transport.changes, 1);
+  });
+  testWidgets('server OFF never offers native reset or legacy bearer fallback', (tester) async {
+    final transport = _Transport()..enabled = false;
+    final access = _accessFor(transport);
+    await open(tester, access);
+    expect(find.textContaining('第2パスワードの再設定は準備中'), findsOneWidget);
+    expect(find.byKey(const Key('primary-password')), findsNothing);
+    expect(find.byKey(const Key('reset-password')), findsNothing);
+    await expectLater(access.authenticateWithPassword('synthetic-primary'), throwsStateError);
+    await expectLater(access.save('synthetic-replacement'), throwsStateError);
+    expect(transport.requests, 0);expect(transport.replacements, 0);
   });
 
 }

@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:local_auth/local_auth.dart';
 
 import 'secure_onboarding_repository.dart';
 import 'operation_reauthentication_repository.dart';
-import 'secondary_password_primary_verifier.dart';
 import 'secondary_reset_session_guard.dart';
 import '../../data/supabase_backend.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -37,8 +35,19 @@ class DeviceSecondaryPasswordResetAccess extends ChangeNotifier
       SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentSession : null;
   Stream<AuthState> get _changes => _authChanges ?? (SupabaseBackend.isInitialized
       ? SupabaseBackend.client.auth.onAuthStateChange : const Stream<AuthState>.empty());
-  final _auth = LocalAuthentication();
   bool? serverRequired;
+  bool changeSupported = false;
+  bool recoverySupported = false;
+  bool preparing = false;
+  bool usingSecondaryPassword = false;
+
+  void selectRecovery(bool recover) {
+    if (recover && !recoverySupported || !recover && !changeSupported) {
+      throw StateError('secondary_password_recovery_preparing');
+    }
+    invalidateProof();
+    usingSecondaryPassword = !recover;
+  }
   String? _proof;
   int _generation = 0;
   bool _verified = false;
@@ -78,8 +87,15 @@ class DeviceSecondaryPasswordResetAccess extends ChangeNotifier
   Future<bool> loadRequirement() async {
     final repository = _reauthentication;
     if (repository == null) throw StateError('Authentication required');
-    serverRequired = (await repository.capabilities())['secondary_password'] == true;
-    return serverRequired!;
+    final capabilities = await repository.capabilities();
+    final enabled = capabilities['secondary_password'] == true;
+    changeSupported = enabled && capabilities['secondary_password_change_supported'] == true;
+    recoverySupported = enabled && capabilities['secondary_password_recovery_supported'] == true;
+    preparing = !changeSupported && !recoverySupported;
+    usingSecondaryPassword = changeSupported;
+    // A missing/OFF server never authorizes the old bearer-only reset fallback.
+    serverRequired = true;
+    return true;
   }
 
   @override
@@ -87,53 +103,28 @@ class DeviceSecondaryPasswordResetAccess extends ChangeNotifier
 
   @override
   Future<bool> authenticate() async {
-    if (serverRequired != false) throw StateError('本パスワードで本人確認してください。');
-    final (generation, guard) = _beginVerification();
-    try {
-    final ok = await _auth.authenticate(
-      localizedReason: '第2パスワードを再設定するため本人確認します',
-      options: const AuthenticationOptions(biometricOnly: true, stickyAuth: false),
-    );
-    await guard.checkAfterQueuedEvents();
-    if (!_current(generation, guard)) throw StateError('Authentication changed');
-    _verified = ok;
-    if (!ok) invalidateProof();
-    return ok;
-    } catch (_) {
-      if (identical(_verification, guard)) {
-        invalidateProof();
-      } else {
-        await guard.close();
-      }
-      rethrow;
-    }
+    throw StateError('第2パスワードの変更には現在のパスワードで本人確認してください。');
   }
 
   @override
   Future<bool> authenticateWithPassword(String password) async {
-    if (serverRequired == null) throw StateError('Authentication unavailable');
+    if (serverRequired == null || preparing ||
+        !(usingSecondaryPassword ? changeSupported : recoverySupported)) {
+      throw StateError('secondary_password_recovery_preparing');
+    }
     final (generation, guard) = _beginVerification();
     final actor = currentUserId!;
     try {
-    bool ok;
-    if (serverRequired!) {
-      final repository = _reauthentication;
-      if (repository == null) throw StateError('Authentication required');
-      final proof = await repository.requestProof(password: password,
-        operation: 'secondary_password.replace', target: {'user_id': actor});
-      await guard.checkAfterQueuedEvents();
-      if (!_current(generation, guard)) throw StateError('Authentication changed');
-      _proof = proof;
-      ok = true;
-    } else {
-      ok = await SecondaryPasswordPrimaryVerifier(currentUser: () => _repository?.currentUser,
-        currentSession: () => _session, authChanges: _changes).verify(password);
-      await guard.checkAfterQueuedEvents();
-      if (!_current(generation, guard)) throw StateError('Authentication changed');
-    }
-    _verified = ok;
-    if (!ok) invalidateProof();
-    return ok;
+    final repository = _reauthentication;
+    if (repository == null) throw StateError('Authentication required');
+    final proof = await repository.requestProof(password: password,
+      operation: usingSecondaryPassword ? 'secondary_password.change' : 'secondary_password.replace',
+      target: {'user_id': actor});
+    await guard.checkAfterQueuedEvents();
+    if (!_current(generation, guard)) throw StateError('Authentication changed');
+    _proof = proof;
+    _verified = true;
+    return true;
     } catch (_) {
       if (identical(_verification, guard)) {
         invalidateProof();
@@ -156,17 +147,14 @@ class DeviceSecondaryPasswordResetAccess extends ChangeNotifier
     try {
       await guard.checkAfterQueuedEvents();
       if (!_current(generation, guard)) throw StateError('Authentication changed');
-      final token = _session!.accessToken;
-      if (serverRequired!) {
-        final proof = _proof;
-        _proof = null;
-        final repository = _reauthentication;
-        if (proof == null || repository == null) throw StateError('Reauthentication required');
-        await repository.replaceSecondaryPassword(password, proof);
+      final proof = _proof;
+      _proof = null;
+      final repository = _reauthentication;
+      if (proof == null || repository == null) throw StateError('Reauthentication required');
+      if (usingSecondaryPassword) {
+        await repository.changeSecondaryPassword(password, proof);
       } else {
-        final repository = _repository;
-        if (repository == null) throw StateError('Authentication required');
-        await repository.setSecondaryPassword(password, accessToken: token);
+        await repository.replaceSecondaryPassword(password, proof);
       }
       await guard.checkAfterQueuedEvents();
       if (!_current(generation, guard)) throw StateError('Authentication changed');
@@ -209,6 +197,10 @@ class _ResetState extends State<SecondaryPasswordResetPage>
   bool _nativePrompt = false;
   bool _requirementsLoading = false;
   bool _serverRequired = false;
+  bool _secondaryChange = false;
+  bool _recoverySupported = false;
+  bool _knownSecondaryAvailable = false;
+  bool _resetPreparing = false;
   bool _requirementsFailed = false;
   String? _actor;
   String? _pendingActor;
@@ -217,7 +209,7 @@ class _ResetState extends State<SecondaryPasswordResetPage>
   bool _saving = false;
   int _generation = 0;
   AppLifecycleState _lifecycle = AppLifecycleState.resumed;
-  bool get _busy => _authenticating || _saving || _requirementsLoading || _requirementsFailed;
+  bool get _busy => _authenticating || _saving || _requirementsLoading || _requirementsFailed || _resetPreparing;
 
   @override
   void initState() {
@@ -246,6 +238,11 @@ class _ResetState extends State<SecondaryPasswordResetPage>
       if (!mounted) return;
       setState(() {
         _serverRequired = required;
+        final device = _access as DeviceSecondaryPasswordResetAccess;
+        _secondaryChange = device.usingSecondaryPassword;
+        _knownSecondaryAvailable = device.changeSupported;
+        _recoverySupported = device.recoverySupported;
+        _resetPreparing = device.preparing;
         if (required) _usePassword = true;
         _requirementsLoading = false;
         _requirementsFailed = false;
@@ -337,7 +334,7 @@ class _ResetState extends State<SecondaryPasswordResetPage>
       if (mounted && generation == _generation) {
         setState(
           () => _message = primary
-              ? '本パスワードで本人確認できませんでした。入力内容を確認してもう一度お試しください。'
+              ? (_secondaryChange ? '現在の第2パスワードで本人確認できませんでした。入力内容を確認してください。' : '本パスワードで本人確認できませんでした。入力内容を確認してもう一度お試しください。')
               : '生体認証を利用できません。もう一度お試しください。',
         );
       }
@@ -432,7 +429,11 @@ class _ResetState extends State<SecondaryPasswordResetPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(_serverRequired
+                Text(_resetPreparing
+                    ? '第2パスワードの再設定は準備中です。GoogleやFace IDによるログインは引き続き利用できます。'
+                    : _secondaryChange
+                    ? '現在の第2パスワードで本人確認した後、2分以内に新しい第2パスワードを設定してください。'
+                    : _serverRequired
                     ? 'ログイン用の本パスワードで本人確認した後、2分以内に新しい第2パスワードを設定してください。'
                     : '本人確認した後、新しい第2パスワードを設定します。'),
                 if (_requirementsFailed)
@@ -441,8 +442,8 @@ class _ResetState extends State<SecondaryPasswordResetPage>
                     _loadRequirement();
                   }, child: const Text('再読み込み')),
                 const SizedBox(height: 16),
-                if (_actor == null) ...[
-                  SegmentedButton<bool>(
+                if (_actor == null && !_resetPreparing) ...[
+                  if (!_serverRequired) SegmentedButton<bool>(
                     segments: [
                       ButtonSegment(
                         value: false,
@@ -469,10 +470,24 @@ class _ResetState extends State<SecondaryPasswordResetPage>
                       obscureText: true,
                       enableSuggestions: false,
                       autocorrect: false,
-                      decoration: const InputDecoration(
-                        labelText: 'ログイン用の本パスワード',
+                      decoration: InputDecoration(
+                        labelText: _secondaryChange ? '現在の第2パスワード' : 'ログイン用の本パスワード',
                       ),
                     ),
+                  if (_serverRequired && _knownSecondaryAvailable && _access is DeviceSecondaryPasswordResetAccess)
+                    TextButton(onPressed: _busy ? null : () {
+                      if (_secondaryChange && !_recoverySupported) {
+                        setState(() => _message = '第2パスワードを忘れた場合の再設定は準備中です。GoogleやFace IDによるログインは引き続き利用できます。');
+                        return;
+                      }
+                      setState(() {
+                        _clear();
+                        final device = _access as DeviceSecondaryPasswordResetAccess;
+                        device.selectRecovery(_secondaryChange);
+                        _secondaryChange = device.usingSecondaryPassword;
+                        _message = null;
+                      });
+                    }, child: Text(_secondaryChange ? '第2パスワードを忘れた場合' : '現在の第2パスワードで変更する')),
                   OutlinedButton.icon(
                     onPressed: _busy ? null : _authenticate,
                     icon: const Icon(Icons.fingerprint),
