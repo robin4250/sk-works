@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:sk_works/features/attendance/paid_work_hours_repository.dart';
+import 'package:sk_works/features/attendance/paid_work_hours_report_section.dart';
 import 'package:sk_works/features/daily_reports/daily_report_page.dart';
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
 import 'package:sk_works/features/daily_reports/shared_daily_report_repository.dart';
@@ -82,18 +83,20 @@ class _Shared implements SharedDailyReportRepository {
   _Shared(this.reports, {this.enabled = true});
   final _Reports reports;
   final bool enabled;
+  bool hold = false;
+  bool workOnly = true;
   int supervisorWrites = 0;
   SharedDailyReportContext get state => SharedDailyReportContext(actorId: _actor,
     companyId: _company, workerId: _worker, reportId: _report, sourceClockInId: _source,
     clockOutId: '00000000-0000-0000-0000-000000000060', workDate: _date,
-    state: !enabled ? 'disabled' : reports.supervisorSaved ? 'supervisor_saved' :
+    state: hold ? 'managed_financial_hold' : !enabled ? 'disabled' : reports.supervisorSaved ? 'supervisor_saved' :
       reports.reporterSaved ? 'reporter_saved_waiting_supervisor' : 'reporter_required',
     enabled: enabled, canManageAttendance: false, reporterSaved: reports.reporterSaved,
     supervisorSaved: reports.supervisorSaved, sourceAttached: true,
     reporterName: reports.reporterSaved ? '最初の報告者' : '',
     reportStatus: reports.supervisorSaved ? 'signed' : 'draft',
     expectedUpdatedAt: DateTime.utc(2026, 10, 25, 8), signatureScopeFingerprint: _scope,
-    firstReporterCoversWorkOnly: enabled,
+    firstReporterCoversWorkOnly: enabled && workOnly,
     workBasis: {'contract_version': 2, 'report': {'id': _report, 'company_id': _company,
       'work_date': '2026-10-25', 'site_id': _site, 'route_assignment_id': null,
       'work_description': '保存済みの作業'},
@@ -180,6 +183,30 @@ void main() {
     expect(find.text('登録'), findsNothing);
     expect(reports.draftWrites, 0);
     expect(reports.ordinaryReporterWrites, 0);
+  });
+  testWidgets('financial hold blocks draft and signature edits without retrying writes', (tester) async {
+    final reports = _Reports();
+    await open(tester, reports, _Hours(), _Shared(reports)..hold = true);
+    expect(find.textContaining('手入力済み勤怠・給与との差異'), findsOneWidget);
+    expect(find.text('登録'), findsNothing);
+    await reveal(tester, '報告者サイン');
+    final tile = tester.widget<ListTile>(find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile)));
+    expect(tile.onTap, isNull);
+    expect(find.byType(SignatureCapturePage), findsNothing);
+    expect(reports.draftWrites, 0);
+    expect(reports.ordinaryReporterWrites, 0);
+  });
+  testWidgets('a signed legacy shared report retains its original hours editor', (tester) async {
+    final reports = _Reports()..reporterSaved = true;
+    final hours = _Hours()..required = true;
+    await open(tester, reports, hours, _Shared(reports)..workOnly = false);
+    final section = find.byType(PaidWorkHoursReportSection);
+    await tester.scrollUntilVisible(section, 220, scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+    await tester.pumpAndSettle();
+    expect(section, findsOneWidget);
+    expect(hours.workersRead, contains(_worker));
+    expect(find.text('本人の勤務実績を確認'), findsNothing);
+    expect(reports.draftWrites, 0);
   });
   for (final unavailable in [false, true]) {
     testWidgets('missing or unavailable hours cannot open a legacy reporter signature ($unavailable)', (tester) async {

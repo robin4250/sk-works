@@ -96,6 +96,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
   late final _workerFactsRepository = widget.workerFactsRepositoryForTesting ??
       (widget.repositoryForTesting == null ? SharedWorkerFactsRepository.maybeCreate() : null);
   SharedDailyReportContext? _sharedContext;
+  bool _managementHoldWrite = false;
+  String? _managementHoldWriteMessage;
+  bool get _managementHold => _managementHoldWrite || _sharedContext?.isManagementHold == true;
+  String get _managementHoldMessage => _managementHoldWriteMessage ??
+      _sharedContext?.managementHoldMessage ?? '勤怠管理での確認が必要です。';
+  void _rememberManagementHold(Object error) {
+    if (mounted && error is SharedReportManagementHold) { setState(() { _managementHoldWrite = true; _managementHoldWriteMessage = error.message; }); }
+  }
   String? _evidenceAttachmentFingerprint;
   final _workDescription = TextEditingController();
   final _picker = ImagePicker();
@@ -179,7 +187,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   bool get _visitReporterLocked => _visitReport &&
       (_report?.status == 'reporter_signed' || _report?.reporterSignatureJson != null);
-  bool get _editable => !_signed && !_visitReporterLocked && !_sharedFactsReadOnly && !_saving;
+  bool get _editable => !_managementHold && !_signed && !_visitReporterLocked && !_sharedFactsReadOnly && !_saving;
 
   void _verifySharedContext(SharedDailyReportContext state, {String? reportId}) {
     if (state.actorId != _repository?.currentActorId ||
@@ -207,6 +215,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
         ? await repository.loadReport(reportId!, expectedActor: _repository?.currentActorId)
         : await repository.loadForSource(source);
     _verifySharedContext(state, reportId: reportId);
+    if (state.isManagementHold) { _sharedContext = state; }
+    if (!state.isManagementHold) { _managementHoldWrite = false; _managementHoldWriteMessage = null; }
     return state;
   }
 
@@ -790,6 +800,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
       factsLines.add(Padding(padding: const EdgeInsets.only(top: 8), child: Text(
         '$name：${categoryNames[facts.workCategory]} / 残業 ${facts.overtimeHours}h / 早出 ${facts.earlyHours}h / 夜間 ${facts.nightHours}h')));
       if (input['hours_required'] == true) factsLines.add(Text('実勤務時間：${input['hours']}時間'));
+      final choices = facts.companyAllowanceSelections.items;
+      factsLines.add(Text(choices.isEmpty ? '会社手当：選択なし' :
+        '会社手当：${choices.map((item) => '${item.nameSnapshot}（${item.unit == 'hour' ? '時間' : '日'}単位）').join('、')}'));
       if (facts.allowanceLabel?.isNotEmpty == true) factsLines.add(Text('手当：${facts.allowanceLabel}'));
       if (facts.allowanceAmount != 0) factsLines.add(Text('既存の調整額：${facts.allowanceAmount}円'));
       if (facts.vehicleId != null) factsLines.add(Text('退勤時の走行距離：${facts.odometerKm}km'));
@@ -1022,6 +1035,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<String?> _saveDraft({bool ownsBusyState = true}) async {
+    if (_managementHold) return null;
     if (ownsBusyState && _saving) return null;
     if (_sharedFactsReadOnly) return _report?.id;
     if (_visitReport && (_signed || _visitReporterLocked)) return null;
@@ -1087,6 +1101,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       widget.onRegistrationSaved?.call();
       return id;
     } catch (error) {
+      _rememberManagementHold(error);
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: $error'),
@@ -1099,7 +1114,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _signReporter() async {
-    if (_saving || _signed || _visitReporterLocked || _sharedFactsReadOnly) return;
+    if (_managementHold || _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly) return;
     _invalidatePendingSignature();
     final signingActor = _repository?.currentActorId;
     final signingDate = _date;
@@ -1185,6 +1200,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       await _loadSelectedSite();
       widget.onRegistrationSaved?.call();
     } catch (error) {
+      _rememberManagementHold(error);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(SkoLanguageController.trParams('報告者サインを保存できませんでした: {error}', {'error': error,
@@ -1199,7 +1215,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _sign() async {
-    if (_saving) return;
+    if (_managementHold || _saving) return;
     if (!_visitReport && _editSessionUnverified) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('編集申請の状態を確認できません。日報を再読み込みしてください。'))));
@@ -1227,6 +1243,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       var sharedBefore = await _readSharedContext(reportId: reportId);
       if (!mounted) return;
       checkSigningContext();
+      if (sharedBefore?.isManagementHold == true) return;
       if (sharedBefore?.enabled == true && !sharedBefore!.supervisorReady) {
         await _reviewSupervisorFacts(sharedBefore);
         return;
@@ -1237,6 +1254,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       sharedBefore = await _readSharedContext(reportId: reportId);
       if (!mounted) return;
       checkSigningContext();
+      if (sharedBefore?.isManagementHold == true) return;
       if (sharedBefore?.enabled == true && !await _reviewSupervisorFacts(sharedBefore!)) return;
       if (!mounted) return;
       checkSigningContext();
@@ -1324,6 +1342,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         Navigator.of(context).pop(true);
       }
     } catch (error) {
+      _rememberManagementHold(error);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(SkoLanguageController.trParams('確定できませんでした: {error}', {'error': error,
@@ -1338,6 +1357,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   Future<void> _beginApprovedEdit() async {
+    if (_managementHold) return;
     final repository = _repository;
     final report = _report;
     final actor = repository?.currentActorId;
@@ -1618,7 +1638,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     );
   }
 
-  static const _helpText = "GPSの退勤確認時刻は自動退勤ではありません。本人が退勤を確定してから、日報の作業報告と報告者サインへ進みます。まだ勤務中なら30分延期できます。通知だけで退勤や日報完了にはなりません。\n\n同じ会社・勤務日・現場の日報は、対象メンバーの最初の1人が作業報告を保存します。他の対象メンバーは重複して作成せず、自分の退勤は別に確定します。作業報告のサイン後も、各自の残業・早出・夜間・手当・必要な実勤務時間は、本人の確認欄で明示して保存します。未確認を0として扱いません。会社手当は登録済みの候補から選び、既存の調整額はこの画面では変更しません。\n\n責任者サインは、同じ日報の対象メンバーが責任者本人に取得できます。全員の退勤と勤務実績がそろうまでは、未確認メンバーを表示します。サイン前に表示した作業内容・実績と同じ保存記録へサインし、入力中に記録が変わった場合は再確認します。管理者の代行確認には権限と理由が必要です。作業報告や既存の署名内容を直す場合は、正規の編集承認を使います。\n\n退勤後は必須項目と報告者サインをサーバーへ保存するまで、日報登録を続けてください。現場責任者の記入・サインは後から取得できます。通信が失敗しても退勤し直さず、保存内容を保持して再確認します。報告者の登録後も、責任者サインと正規の給与反映が済むまで未完了です。\n\n報告者サインの後、責任者サインで日報を確定します。保存した日報は「保存済み一覧」から閲覧・印刷できます。\n\n日報を登録しても画面は閉じません。初回保存後、適用を確認できた会社手当を選び、再保存または報告者サインへ進みます。サイン前に変更内容を保存します。会社の登録内容が更新された場合は再読み込みしてください。正式な退勤日報の未署名下書きでは、会社共通の時間・日単位の項目を各メンバーの欄から選べます。月単位は退勤に出さず、個別給料設定で確認します。過去日付の入力でも候補は現在の登録名です。候補を開くだけでは登録しません。退勤では会社に登録された項目だけを選び、単価や新しい手当名を入力し直しません。選んだ名前は改行区切りで保存し、従来の保存済み入力も保持します。保存済みの名前を自動で置き換えません。署名済み日報は正規の編集承認なしに変更できません。選択は登録IDと版を付けて保存し、単価や数量をアプリで推測しません。給与への反映は正式な退勤日報の確定を起点に、対象月の未確定給与で確認します。途中の訪問日報は給与確定の代わりにはなりません。\n\n複数現場の請求は退勤時の正式日報のサインを根拠にします。途中の訪問日報だけでは確定しません。同じ日に同じ取引会社を複数現場で訪問しても1人工、異なる取引会社は会社ごとに1人工です。別の請求数量申請・承認は不要です。退勤署名・訪問先・登録単価を確認できない場合は請求額を未確定と表示します。\n\n給与や出勤表の人工は変更しません。請求書の承認印は別の確認操作です。";
+  static const _helpText = "GPSの退勤確認時刻は自動退勤ではありません。本人が退勤を確定してから、日報の作業報告と報告者サインへ進みます。まだ勤務中なら30分延期できます。通知だけで退勤や日報完了にはなりません。\n\n同じ会社・勤務日・現場の日報は、対象メンバーの最初の1人が作業報告を保存します。他の対象メンバーは重複して作成せず、自分の退勤は別に確定します。作業報告のサイン後も、各自の残業・早出・夜間・手当・必要な実勤務時間は、本人の確認欄で明示して保存します。未確認を0として扱いません。会社手当は登録済みの候補から選び、既存の調整額はこの画面では変更しません。手入力済み勤怠・給与との差異がある場合は保留し、勤怠管理で確認します。再試行や自動変換で差異を消しません。\n\n責任者サインは、同じ日報の対象メンバーが責任者本人に取得できます。全員の退勤と勤務実績がそろうまでは、未確認メンバーを表示します。サイン前に表示した作業内容・実績と同じ保存記録へサインし、入力中に記録が変わった場合は再確認します。管理者の代行確認には権限と理由が必要です。作業報告や既存の署名内容を直す場合は、正規の編集承認を使います。\n\n退勤後は必須項目と報告者サインをサーバーへ保存するまで、日報登録を続けてください。現場責任者の記入・サインは後から取得できます。通信が失敗しても退勤し直さず、保存内容を保持して再確認します。報告者の登録後も、責任者サインと正規の給与反映が済むまで未完了です。\n\n報告者サインの後、責任者サインで日報を確定します。保存した日報は「保存済み一覧」から閲覧・印刷できます。\n\n日報を登録しても画面は閉じません。初回保存後、適用を確認できた会社手当を選び、再保存または報告者サインへ進みます。サイン前に変更内容を保存します。会社の登録内容が更新された場合は再読み込みしてください。正式な退勤日報の未署名下書きでは、会社共通の時間・日単位の項目を各メンバーの欄から選べます。月単位は退勤に出さず、個別給料設定で確認します。過去日付の入力でも候補は現在の登録名です。候補を開くだけでは登録しません。退勤では会社に登録された項目だけを選び、単価や新しい手当名を入力し直しません。選んだ名前は改行区切りで保存し、従来の保存済み入力も保持します。保存済みの名前を自動で置き換えません。署名済み日報は正規の編集承認なしに変更できません。選択は登録IDと版を付けて保存し、単価や数量をアプリで推測しません。給与への反映は正式な退勤日報の確定を起点に、対象月の未確定給与で確認します。途中の訪問日報は給与確定の代わりにはなりません。\n\n複数現場の請求は退勤時の正式日報のサインを根拠にします。途中の訪問日報だけでは確定しません。同じ日に同じ取引会社を複数現場で訪問しても1人工、異なる取引会社は会社ごとに1人工です。別の請求数量申請・承認は不要です。退勤署名・訪問先・登録単価を確認できない場合は請求額を未確定と表示します。\n\n給与や出勤表の人工は変更しません。請求書の承認印は別の確認操作です。";
 
   void _showHelp() => showDialog<void>(
     context: context,
@@ -1722,7 +1742,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           ),
                           const SizedBox(height: 16),
                           _MemberSummary(workers: _workers),
-                          if (_sharedFactsReadOnly)
+                          if (_managementHold) Card(child: ListTile(
+                            leading: const Icon(Icons.pause_circle_outline),
+                            title: const Text('勤怠管理での確認が必要です'),
+                            subtitle: Text(_managementHoldMessage))),
+                          if (_sharedFactsReadOnly && !_managementHold)
                             Card(child: ListTile(
                               leading: const Icon(Icons.group_outlined),
                               title: Text(SkoLanguageController.trParams('{name}さんが日報を登録しました',
@@ -1826,7 +1850,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             const SizedBox(height: 8),
                           ],
                           const SizedBox(height: 8),
-                          if (!_visitReport && _sharedContext?.enabled == true &&
+                          if (!_managementHold && !_visitReport && _sharedContext?.enabled == true &&
+                              _sharedContext?.firstReporterCoversWorkOnly == true &&
                               _sharedContext?.reporterSaved == true &&
                               _report?.companyId != null && _workerFactsRepository != null)
                             _WorkerFactsConfirmationSection(
@@ -1841,7 +1866,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               companyAllowanceNamesUnavailable: _companyAllowanceNamesUnavailable,
                               onSaved: () => unawaited(_afterPaidHoursSaved()),
                             ),
-                          if (!_visitReport && _sharedContext?.enabled != true && _report?.id.isNotEmpty == true &&
+                          if (!_managementHold && !_visitReport && _sharedContext?.firstReporterCoversWorkOnly != true && _report?.id.isNotEmpty == true &&
                               _report?.companyId != null && _paidHoursRepository != null)
                             PaidWorkHoursReportSection(
                               repository: _paidHoursRepository,
@@ -1868,10 +1893,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                     ? SkoLanguageController.tr('日報を作成した報告者がサインします')
                                     : _report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み'),
                               ),
-                              trailing: _signed || _visitReporterLocked || _sharedFactsReadOnly
+                              trailing: _managementHold || _signed || _visitReporterLocked || _sharedFactsReadOnly
                                   ? null
                                   : const Icon(Icons.chevron_right),
-                              onTap: _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly ? null : _signReporter,
+                              onTap: _managementHold || _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly ? null : _signReporter,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -1909,7 +1934,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           ),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: _saving || widget.restrictedReporterRegistration ? null : _sign,
+                                onTap: _managementHold || _saving || widget.restrictedReporterRegistration ? null : _sign,
                               ),
                             ),
                           const SizedBox(height: 16),
@@ -1929,7 +1954,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 ),
                               ]),
                             ),
-                          if (!_signed && !_visitReporterLocked && !_sharedFactsReadOnly)
+                          if (!_managementHold && !_signed && !_visitReporterLocked && !_sharedFactsReadOnly)
                             FilledButton.icon(
                               onPressed: _saving ? null : _register,
                               icon: const Icon(Icons.save_outlined),
@@ -1938,7 +1963,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           if (_signed && !_visitReport && _approvedEditAvailable)
                             FilledButton.icon(
                               key: const ValueKey('daily-report-begin-approved-edit'),
-                              onPressed: _saving ? null : _beginApprovedEdit,
+                              onPressed: _managementHold || _saving ? null : _beginApprovedEdit,
                               icon: const Icon(Icons.edit_outlined),
                               label: Text(SkoLanguageController.tr('承認済みの編集を開始')),
                             ),

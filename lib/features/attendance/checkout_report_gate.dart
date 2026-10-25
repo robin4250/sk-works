@@ -130,6 +130,8 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
   var _navigator = GlobalKey<NavigatorState>();
   String? _renderedIdentity;
   bool _canManageCurrent = false;
+  bool _managementHold = false;
+  String? _managementHoldText;
   CheckoutNativeReminderCoordinator? _nativeReminders;
   int _nativeEpoch = 0;
 
@@ -159,6 +161,8 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
       _pending = const [];
       _registrations = const [];
       _canManageCurrent = false;
+      _managementHold = false;
+      _managementHoldText = null;
       _renderedIdentity = null;
       _navigator = GlobalKey<NavigatorState>();
       _actor = actor;
@@ -181,6 +185,8 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
       if (!mounted || generation != _generation || _controller.actorId != actor || repository.actorId != actor) { return; }
       final pending = rows.where((row) => row.blocking).toList();
       var canManage = false;
+      var managementHold = false;
+      String? managementHoldText;
       if (pending.isNotEmpty && _sharedReports != null) {
         final context = await _sharedReports.loadForSource(pending.first.sourceClockInId);
         if (context.actorId != actor || context.companyId != pending.first.companyId ||
@@ -188,9 +194,11 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
           throw StateError('日報の勤務原本を確認できません。');
         }
         canManage = context.canManageAttendance;
+        managementHold = context.isManagementHold;
+        if (managementHold) { managementHoldText = context.managementHoldMessage; }
       }
       if (!mounted || generation != _generation || _controller.actorId != actor || repository.actorId != actor) { return; }
-      final identity = pending.isEmpty ? null : pending.first.identity;
+      final identity = pending.isEmpty ? null : '${pending.first.identity}/hold:$managementHold';
       setState(() {
         if (identity != _renderedIdentity) {
           _navigator = GlobalKey<NavigatorState>();
@@ -199,6 +207,8 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
         _pending = pending;
         _registrations = rows;
         _canManageCurrent = canManage;
+        _managementHold = managementHold;
+        _managementHoldText = managementHoldText;
         _checking = false;
       });
     } catch (error) {
@@ -286,7 +296,8 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
     final actor = _actor;
     await _navigator.currentState?.push<void>(MaterialPageRoute(builder: (_) =>
       widget.managementBuilder?.call(target) ?? AttendanceManagementPage(
-        initialWorkerId: target.workerId, initialDate: target.workDate)));
+        initialWorkerId: target.workerId, initialDate: target.workDate,
+        restrictedRecovery: true)));
     if (mounted && actor != null && _actor == actor && _controller.actorId == actor) {
       _changed();
       await ScheduledCheckoutGateController.instance.requestCheck();
@@ -320,7 +331,8 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
         initialEventType: 'clock_out', initialSourceClockInId: target.sourceId,
         scheduledCheckoutTarget: target),
       managementBuilder: (_, target) => AttendanceManagementPage(
-        initialWorkerId: target.workerId, initialDate: DateTime.parse(target.workDate)),
+        initialWorkerId: target.workerId, initialDate: DateTime.parse(target.workDate),
+        restrictedRecovery: true),
       onReauthenticate: _controller.reauthenticate,
       onServerChanged: CheckoutNativeReminderCoordinator.refreshCurrent,
       child: child);
@@ -329,12 +341,13 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
     padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
       if (_checking) const CircularProgressIndicator(),
       const SizedBox(height: 12),
-      Text(_error == null && _pending.isNotEmpty && _pending.first.state == 'source_conflict'
+      Text(_managementHold ? (_managementHoldText ?? '勤怠管理での確認が必要です。') :
+        _error == null && _pending.isNotEmpty && _pending.first.state == 'source_conflict'
           ? '勤務原本を確認できないため日報を登録できません。管理者へ確認してください。'
           : _error == null ? '日報の登録状況を確認しています' : '日報の登録状況を確認できません。保存内容は保持しています。'),
-      if (_error != null || (!_checking && _pending.isNotEmpty && _pending.first.state == 'source_conflict')) ...[
+      if (_managementHold || _error != null || (!_checking && _pending.isNotEmpty && _pending.first.state == 'source_conflict')) ...[
         const SizedBox(height: 12),
-        FilledButton(onPressed: _changed, child: const Text('再試行')),
+        if (!_managementHold) FilledButton(onPressed: _changed, child: const Text('再試行')),
         TextButton(onPressed: _controller.reauthenticate, child: const Text('ログインし直す')),
         if (_canManageCurrent && _error == null)
           OutlinedButton(onPressed: _openManagement, child: const Text('管理者の勤怠管理で確認')),
@@ -353,7 +366,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
           child: HeroControllerScope.none(child: Navigator(key: _navigator, onGenerateRoute: (_) {
             final target = _pending.first;
             return MaterialPageRoute<void>(settings: RouteSettings(name: target.identity), builder: (_) =>
-              target.state == 'source_conflict' ? _status() :
+              target.state == 'source_conflict' || _managementHold ? _status() :
               _BeforeReportRegistration(
                 key: ValueKey('$_actor/${target.identity}/group'),
                 before: target.siteId != null && target.routeId == null &&

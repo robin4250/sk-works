@@ -25,7 +25,7 @@ fresh async saved-source check returns to the existing optional group/report
 flow when the server explicitly reports OFF or no applicable obligation. Unknown
 state and failed reads remain protected. Group checkout still precedes first
 reporter registration in the restricted flow. Scoped management recovery is
-available only after a fresh server permission check, never ordinary navigation.
+available only after a fresh server permission check, never ordinary navigation. Both report and scheduled-checkout recovery constructors pass restrictedRecovery to the real management page; this suppresses its notification bell while preserving the ordinary management entry and existing worker/date recovery target. Management date and confirmation dialogs remain internal to the authorized management route.
 
 ## Work report and personal facts
 
@@ -49,7 +49,7 @@ personal evidence, including outstanding members. It captures the immutable
 updated-at plus composite signature scope before drawing and submits that same
 scope afterward. Incomplete actual facts cannot become zero/ready. A competing
 change must cause a server CAS refusal and a new review. Existing approved-edit
-sessions keep the original authorized correction path.
+sessions keep the original authorized correction path. A server-reported manual-attendance/financial mismatch is a persistent management hold: normal draft/signature/fact writes remain blocked, no generic retry is offered, and the isolated recovery route requires the server management capability. A typed write refusal also persists on the report page; it never triggers conversion or an automatic retry.
 
 ## GPS settings and device reminders
 
