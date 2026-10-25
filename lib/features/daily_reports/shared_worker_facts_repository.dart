@@ -112,10 +112,12 @@ class SharedWorkerFacts {
 class SharedWorkerFactsSnapshot {
   const SharedWorkerFactsSnapshot({required this.scope, required this.facts,
     required this.proposedFacts, required this.confirmed, required this.current,
-    required this.isOwnWorker, required this.canManageAttendance});
+    required this.isOwnWorker, required this.canManageAttendance,
+    required this.hoursRequiredOutsideCurrentReport});
   final PaidWorkHoursSnapshot scope;
   final SharedWorkerFacts? facts, proposedFacts;
   final bool confirmed, current, isOwnWorker, canManageAttendance;
+  final bool hoursRequiredOutsideCurrentReport;
   String get actorId => scope.actorId;
   String get companyId => scope.companyId;
   String get workerId => scope.workerId;
@@ -134,7 +136,8 @@ class SharedWorkerFactsSnapshot {
       workerId: workerId, reportId: reportId);
     Never invalid() => throw const FormatException('本人の勤務実績の確認状態を取得できません。');
     if (scope.contractVersion != 2 || raw is! Map) { invalid(); }
-    for (final key in ['facts_confirmed', 'facts_current', 'own_worker', 'management_confirmation_available']) {
+    for (final key in ['facts_confirmed', 'facts_current', 'own_worker', 'management_confirmation_available',
+      'hours_required_outside_current_report']) {
       if (raw[key] is! bool) { invalid(); }
     }
     final facts = raw['worker_facts'] == null ? null : SharedWorkerFacts.parse(raw['worker_facts']);
@@ -142,7 +145,8 @@ class SharedWorkerFactsSnapshot {
     if (raw['facts_confirmed'] == true && facts == null || raw['facts_current'] == true && raw['facts_confirmed'] != true) { invalid(); }
     return SharedWorkerFactsSnapshot(scope: scope, facts: facts, proposedFacts: proposed,
       confirmed: raw['facts_confirmed'] as bool, current: raw['facts_current'] as bool,
-      isOwnWorker: raw['own_worker'] as bool, canManageAttendance: raw['management_confirmation_available'] as bool);
+      isOwnWorker: raw['own_worker'] as bool, canManageAttendance: raw['management_confirmation_available'] as bool,
+      hoursRequiredOutsideCurrentReport: raw['hours_required_outside_current_report'] as bool);
   }
 }
 

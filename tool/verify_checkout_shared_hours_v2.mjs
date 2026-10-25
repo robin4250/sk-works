@@ -39,6 +39,7 @@ const addition=String.raw`
  const v2Roster=JSON.stringify([worker(reportWorker,[]),worker(W2,[])]);
  const v2Draft=await sharedCall(U,id(80),'select public.save_daily_report_destination_draft(null,$1,null,$2,$3,$4::jsonb) v',[SITE,v2Day,'凍結する共同作業',v2Roster]);
  const v2Preview=await sharedCall(U,id(80),'select public.read_checkout_paid_work_hours($1,$2) v',[v2Draft,W2]);
+ const v2OwnPreview=await sharedCall(U,id(80),'select public.read_checkout_paid_work_hours($1,$2) v',[v2Draft,reportWorker]);
  eq(v2Preview.contract_version,2,'Authoritative preview avoids missing-hours/first-work-sign cycle');
  eq(v2Preview.enrollment_pending,true,'Preview is not a consent enrollment');
  eq(v2Preview.first_reporter_covers_work_only,true,'Preview explicitly names limited work consent');
@@ -56,13 +57,17 @@ const addition=String.raw`
  const v2Own=await sharedCall(U,id(80),'select public.read_shared_worker_facts($1,$2) v',[v2Rid,reportWorker]);
  eq(v2Own.contract_version,2,'Reader never mistakes work-only consent for v1 complete consent');
  eq(v2Own.editable,true,'Reporter confirms only their completed personal hours after work sign');
+ eq(v2Own.hours_required_outside_current_report,false,'Prospective own choice editing receives explicit server other-report requirement');
  const v2FactsInput=value=>{const facts={...value.proposed_worker_facts};delete facts.company_allowance_legacy_labels;return facts;};
  const v2SelectedHours={contract_version:1,items:[choice('company_common',HOUR,'合成時間手当','hour')]};
  const v2FactsA={...v2FactsInput(v2Own),allowance_label:'合成時間手当',company_allowance_selections:v2SelectedHours};
  await reject(()=>sharedCall(U,id(80),'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,7.25,0,$4) v',
+  [v2Rid,reportWorker,JSON.stringify(v2FactsA),v2OwnPreview.scope_fingerprint]),/paid_hours_input_conflict/);
+ eq(await q('select count(*)::int v from checkout_shared_hours_private.confirmations where report_id=$1',[v2Rid]),0,'A pre-sign scope cannot attest to an unseen later first-work receipt');
+ await reject(()=>sharedCall(U,id(80),'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,7.25,0,$4) v',
   [v2Rid,reportWorker,JSON.stringify({...v2FactsA,allowance_amount:100000}),v2Own.scope_fingerprint]),/allowance|monetary|cash/);
  await sharedCall(U,id(80),'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,7.25,0,$4) v',[v2Rid,reportWorker,JSON.stringify(v2FactsA),v2Own.scope_fingerprint]);
- await reject(()=>sharedCall(U,id(80),'select public.save_checkout_paid_work_hours($1,$2,7,0,$3) v',[v2Rid,W2,v2Own.scope_fingerprint]),/not_editable/);
+ await reject(()=>sharedCall(U,id(80),'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,7,0,$4) v',[v2Rid,W2,JSON.stringify(v2FactsA),v2Own.scope_fingerprint]),/not_editable/);
  await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,source_clock_in_id) values($1,$2,$3,$4,'clock_out',$5::timestamptz,$6)",[v2EndB,A,W2,SITE,v2Day+'T17:30:00+09:00',v2StartB]);
  await sharedCall(memberB,sidB,'select public.reuse_my_shared_daily_report($1) v',[v2StartB]);
  const v2Peer=await sharedCall(memberB,sidB,'select public.read_shared_worker_facts($1,$2) v',[v2Rid,W2]);
