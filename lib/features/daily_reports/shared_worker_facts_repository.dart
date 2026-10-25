@@ -226,6 +226,6 @@ class SharedWorkerFactsRepository {
       parameters: {'p_report_id': before.reportId, 'p_worker_id': before.workerId,
         'p_facts': valid.toConfirmationJson(), 'p_hours': hours,
         'p_expected_revision': before.revision, 'p_expected_scope': before.scopeFingerprint,
-        if (managed) { 'p_reason': reason}); }
+        if (managed) 'p_reason': reason});
   }
 }
