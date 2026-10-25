@@ -393,6 +393,7 @@ declare
   v_entry_ids uuid[];
   v_work_description text;
   v_admin_operation uuid;
+  v_clock_delete_id uuid;
 begin
   if v_actor is null then
     raise exception 'authentication required';
@@ -497,9 +498,20 @@ begin
 
       -- Delete the target worker's complete linked shift before report removal;
       -- detaching would lose the next-day end timestamp's work-date ownership.
+      if v_admin_operation is null then
       delete from public.attendance_verifications
       where company_id = v_company_id and worker_id = v_worker_id
         and (daily_report_id = v_report.id or work_date = v_date);
+      else
+        -- End punches must be removed before their source clock-in; real scope triggers stay active.
+        for v_clock_delete_id in select id from public.attendance_verifications
+      where company_id = v_company_id and worker_id = v_worker_id
+        and (daily_report_id = v_report.id or work_date = v_date)
+          order by (source_clock_in_id is null),confirmed_at desc,id
+        loop
+          delete from public.attendance_verifications where id=v_clock_delete_id;
+        end loop;
+      end if;
 
       if not exists (
         select 1 from public.daily_report_workers
@@ -531,6 +543,7 @@ begin
       end if;
     end loop;
 
+    if v_admin_operation is null then
     delete from public.attendance_verifications
     where company_id = v_company_id
       and worker_id = v_worker_id
@@ -545,6 +558,27 @@ begin
           and coalesce(work_date,(confirmed_at at time zone 'Asia/Tokyo')::date)=v_date
         )
       );
+    else
+      -- End punches must be removed before their source clock-in; real scope triggers stay active.
+      for v_clock_delete_id in select id from public.attendance_verifications
+    where company_id = v_company_id
+      and worker_id = v_worker_id
+      and (
+        exists (
+          select 1 from public.daily_reports dr
+          where dr.id = attendance_verifications.daily_report_id
+            and dr.company_id = v_company_id and dr.report_date = v_date
+        )
+        or (
+          daily_report_id is null
+          and coalesce(work_date,(confirmed_at at time zone 'Asia/Tokyo')::date)=v_date
+        )
+      )
+        order by (source_clock_in_id is null),confirmed_at desc,id
+      loop
+        delete from public.attendance_verifications where id=v_clock_delete_id;
+      end loop;
+    end if;
 
     delete from public.attendance_entries
     where company_id = v_company_id
