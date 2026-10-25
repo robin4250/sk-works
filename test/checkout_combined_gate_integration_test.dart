@@ -1,3 +1,4 @@
+import 'package:sk_works/features/auth/secondary_protected_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/attendance/checkout_report_gate.dart';
@@ -74,7 +75,7 @@ void main() {
     });
   }
 
-  testWidgets('report recovery uses the real restricted management page and returns to the block', (tester) async {
+  testWidgets('report recovery authenticates before restricted management and returns to the block', (tester) async {
     final reports = _Reports()..pending = [_report(conflict: true)];
     final controller = CheckoutReportGateController()..activate(_actor, () async {});
     await tester.pumpWidget(CheckoutReportBackBoundary(controller: controller,
@@ -85,7 +86,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('管理者の勤怠管理で確認'));
     await tester.pumpAndSettle();
-    final page = tester.widget<AttendanceManagementPage>(find.byType(AttendanceManagementPage));
+    final protected = tester.widget<SecondaryProtectedPage>(find.byType(SecondaryProtectedPage));
+    final page = protected.child as AttendanceManagementPage;
+    expect(find.byType(AttendanceManagementPage), findsNothing);
+    expect(find.textContaining('ログイン状態を確認できません'), findsOneWidget);
     expect(page.restrictedRecovery, isTrue);
     expect(page.initialWorkerId, 'worker');
     expect(page.initialDate, DateTime(2026, 10, 25));

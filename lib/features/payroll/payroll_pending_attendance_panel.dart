@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../attendance/attendance_management_page.dart';
+import '../attendance/attendance_protected_routes.dart';
 import '../attendance/attendance_management_repository.dart';
 
 /// Management-only guidance. This never creates work quantities or payroll rows.
@@ -67,7 +67,7 @@ class _PayrollPendingAttendancePanelState extends State<PayrollPendingAttendance
         return;
       }
       await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
-        AttendanceManagementPage(repository: _repository, initialWorkerId: current.workerId, initialDate: date)));
+        attendanceManagementDestination(repository: _repository, initialWorkerId: current.workerId, initialDate: date)));
       if (!mounted || generation != _generation) return;
       await widget.onReturn();
       if (mounted) await _load();

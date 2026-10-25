@@ -6,6 +6,12 @@ on:
       - 'lib/features/auth/auth_gate.dart'
       - 'lib/features/auth/authenticated_navigation_boundary.dart'
       - 'test/authenticated_navigation_boundary_test.dart'
+      - 'lib/features/attendance/attendance_protected_routes.dart'
+      - 'lib/features/attendance/checkout_report_gate.dart'
+      - 'lib/features/people/people_cloud_page.dart'
+      - 'lib/features/payroll/payroll_pending_attendance_panel.dart'
+      - 'test/attendance_secondary_entry_test.dart'
+      - 'test/payroll_pending_attendance_panel_test.dart'
       - '.github/workflows/authenticated-navigation-reset.yml'
 permissions:
   contents: read
@@ -21,5 +27,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter analyze lib/app_v2.dart lib/features/auth/auth_gate.dart lib/features/auth/authenticated_navigation_boundary.dart test/authenticated_navigation_boundary_test.dart
-      - run: flutter test test/authenticated_navigation_boundary_test.dart test/secondary_password_reset_page_test.dart test/security_actor_boundary_test.dart
+      - run: flutter analyze lib/features/attendance/attendance_protected_routes.dart test/attendance_secondary_entry_test.dart test/payroll_pending_attendance_panel_test.dart lib/app_v2.dart lib/features/auth/auth_gate.dart lib/features/auth/authenticated_navigation_boundary.dart test/authenticated_navigation_boundary_test.dart
+      - run: flutter test test/attendance_secondary_entry_test.dart test/payroll_pending_attendance_panel_test.dart test/authenticated_navigation_boundary_test.dart test/secondary_password_reset_page_test.dart test/security_actor_boundary_test.dart
