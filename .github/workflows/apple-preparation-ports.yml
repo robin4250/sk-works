@@ -1,0 +1,33 @@
+name: Apple and Google preparation ports
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/apple_native_credential_preparation.dart'
+      - 'test/apple_native_credential_preparation_test.dart'
+      - 'docs/review/apple-existing-login-candidate/google_primary*'
+      - '.github/workflows/apple-preparation-ports.yml'
+permissions:
+  contents: read
+jobs:
+  google-verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test docs/review/apple-existing-login-candidate/google_primary_verifier.test.mjs
+  flutter-native-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: dart analyze lib/features/auth/apple_native_credential_preparation.dart test/apple_native_credential_preparation_test.dart
+      - run: flutter test test/apple_native_credential_preparation_test.dart --reporter expanded
