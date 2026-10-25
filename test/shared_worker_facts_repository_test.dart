@@ -187,8 +187,28 @@ void main() {
     expect((body['p_facts'] as Map).containsKey('company_allowance_legacy_labels'), false);
   });
   test('unknown required hours are not submitted as zero', () async {
-    await fixture.login(); final before = await load();
+    await fixture.login();
+    final before = parse(response()..['hours_required_outside_current_report'] = true);
     expect(() => fixture.repository.confirm(before, before.proposedFacts!), throwsFormatException);
+    expect(fixture.rpcNames, isEmpty);
+  });
+  test('last current-report hour selection can be removed without hours', () async {
+    await fixture.login(); final before = await load();
+    expect(before.hoursRequired, true);
+    expect(before.hoursRequiredOutsideCurrentReport, false);
+    final saved = await fixture.repository.confirm(before, before.proposedFacts!);
+    expect(saved.hours, isNull);
+    expect(fixture.rpcRequests.last['p_hours'], isNull);
+  });
+  test('prospective hourly selection requires explicit hours', () async {
+    await fixture.login(); final before = await load();
+    final prospective = SharedWorkerFacts.parse(facts()..['company_allowance_selections'] = {
+      'contract_version': 1, 'items': [{
+        'origin': 'company_common', 'id': other, 'generation': null,
+        'registration_version': 0, 'name_snapshot': '合成時間手当', 'unit': 'hour',
+      }],
+    });
+    expect(() => fixture.repository.confirm(before, prospective), throwsFormatException);
     expect(fixture.rpcNames, ['read_shared_worker_facts']);
   });
   test('manager reason does not create a role the server did not return', () async {

@@ -45,8 +45,8 @@ const addition=String.raw`
  eq(v2Preview.first_reporter_covers_work_only,true,'Preview explicitly names limited work consent');
  eq(v2Preview.editable,false,'Preview cannot confirm facts before actual enrollment');
  eq(await q('select count(*)::int v from checkout_shared_hours_private.work_protocol'),0,'Reading preview never creates protocol state');
- const v2DraftUpdated=await q('select updated_at v from daily_reports where id=$1',[v2Draft]);
- const v2First=await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$2,$3,$4::jsonb,$5,$6::jsonb) v',[v2StartA,v2DraftUpdated,'凍結する共同作業',v2Roster,'先着作業報告者',signature]);
+ const v2FirstContext=await sharedCall(U,id(80),'select public.read_my_shared_daily_report($1) v',[v2StartA]);
+ const v2First=await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$2::timestamptz,$3,$4::jsonb,$5,$6::jsonb,$7) v',[v2StartA,v2FirstContext.report_updated_at,'凍結する共同作業',v2Roster,'先着作業報告者',signature,v2FirstContext.signature_scope_fingerprint]);
  const v2Rid=v2First.report_id;
  eq(await q('select checkout_shared_hours_private.uses_contract($1) v',[v2Rid]),true,'Only newly submitted report explicitly enrolls v2 before first signature');
  const v2Frozen=await q("select jsonb_build_object('report',to_jsonb(r),'roster',(select jsonb_agg(to_jsonb(w) order by worker_id) from daily_report_workers w where report_id=r.id)) v from daily_reports r where id=$1",[v2Rid]);
@@ -65,7 +65,7 @@ const addition=String.raw`
   [v2Rid,reportWorker,JSON.stringify(v2FactsA),v2OwnPreview.scope_fingerprint]),/paid_hours_input_conflict/);
  eq(await q('select count(*)::int v from checkout_shared_hours_private.confirmations where report_id=$1',[v2Rid]),0,'A pre-sign scope cannot attest to an unseen later first-work receipt');
  await reject(()=>sharedCall(U,id(80),'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,7.25,0,$4) v',
-  [v2Rid,reportWorker,JSON.stringify({...v2FactsA,allowance_amount:100000}),v2Own.scope_fingerprint]),/allowance|monetary|cash/);
+  [v2Rid,reportWorker,JSON.stringify({...v2FactsA,allowance_amount:100000}),v2Own.scope_fingerprint]),/shared_worker_manual_amount_change_not_allowed/);
  await sharedCall(U,id(80),'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,7.25,0,$4) v',[v2Rid,reportWorker,JSON.stringify(v2FactsA),v2Own.scope_fingerprint]);
  await reject(()=>sharedCall(U,id(80),'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,7,0,$4) v',[v2Rid,W2,JSON.stringify(v2FactsA),v2Own.scope_fingerprint]),/not_editable/);
  await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,source_clock_in_id) values($1,$2,$3,$4,'clock_out',$5::timestamptz,$6)",[v2EndB,A,W2,SITE,v2Day+'T17:30:00+09:00',v2StartB]);
@@ -79,7 +79,7 @@ const addition=String.raw`
  const v2Before=await sharedCall(memberB,sidB,'select public.read_shared_daily_report_context($1) v',[v2Rid]);
  eq(v2Before.hours_annex.ready,true,'All explicit personal confirmations make final annex ready');
  eq(v2Before.hours_annex.inputs.every(i=>i.hours_required),true,'Confirmed private choices create hour requirement before public work-row materialization');
- await reject(()=>sharedCall(memberB,sidB,"select public.save_daily_report_signature($1,'supervisor',$2,$3::jsonb) v",[v2Rid,'旧経路の責任者',signature]),/supervisor_confirmation_required/);
+ await reject(()=>sharedCall(memberB,sidB,"select public.save_daily_report_signature($1,'supervisor',$2,$3::jsonb) v",[v2Rid,'旧経路の責任者',signature]),/shared_hours_supervisor_confirmation_required/);
  const v2PeerSaved=await sharedCall(memberB,sidB,'select public.read_shared_worker_facts($1,$2) v',[v2Rid,W2]);
  await sharedCall(memberB,sidB,'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,null,$4,$5) v',
   [v2Rid,W2,JSON.stringify({...v2FactsB,allowance_label:null,company_allowance_selections:{contract_version:1,items:[]}}),v2PeerSaved.revision,v2PeerSaved.scope_fingerprint]);
@@ -92,8 +92,8 @@ const addition=String.raw`
  const v2Latest=await sharedCall(memberB,sidB,'select public.read_shared_daily_report_context($1) v',[v2Rid]);
  await sharedCall(memberB,sidB,'select public.collect_shared_report_supervisor_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[v2Rid,v2StartB,'実際の現場責任者',signature,v2Latest.report_updated_at,v2Latest.signature_scope_fingerprint]);
  eq(await q('select count(*)::int v from checkout_shared_hours_private.ledger where report_id=$1',[v2Rid]),2,'Final actual supervisor signature captures two separate version2 confirmations');
- eq(await q('select overtime_hours v from daily_report_workers where report_id=$1 and worker_id=$2',[v2Rid,W2]),1.5,'Final normal materialization uses peer-confirmed overtime instead of initial zero');
- eq(await q('select early_hours v from attendance_entries where source_report_id=$1 and worker_id=$2',[v2Rid,W2]),0.25,'Peer facts reach original formal attendance writer');
+ eq(await q('select to_jsonb(overtime_hours) v from daily_report_workers where report_id=$1 and worker_id=$2',[v2Rid,W2]),1.5,'Final normal materialization uses peer-confirmed overtime instead of initial zero');
+ eq(await q('select to_jsonb(early_hours) v from attendance_entries where source_report_id=$1 and worker_id=$2',[v2Rid,W2]),0.25,'Peer facts reach original formal attendance writer');
  const v2Amounts=await q("select jsonb_agg(jsonb_build_object('worker_id',p.worker_id,'line',i) order by p.worker_id) v from payroll_statements p cross join lateral jsonb_array_elements(p.detail#>'{unit_resolution,items}') i where p.company_id=$1 and p.period_start='2026-10-01' and p.worker_id=any($2::uuid[]) and i->>'id'=$3",[A,[reportWorker,W2],HOUR]);
  eq(v2Amounts.map(x=>x.line.amount_yen).sort((a,b)=>a-b),[6750,7250],'Normal payroll receives each exact separately confirmed quantity');
  eq(v2Amounts.every(x=>x.line.quantity_basis==='shared_work_report_individual_hours_annex_v2'),true,'Saved evidence explicitly distinguishes v2 consent from legacy dual-signature basis');

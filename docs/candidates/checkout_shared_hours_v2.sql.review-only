@@ -294,7 +294,7 @@ end $$;
 create function checkout_shared_hours_private.read_input(rid uuid,wid uuid)
 returns jsonb language plpgsql stable security invoker set search_path='' as $$
 declare actor uuid;r public.daily_reports%rowtype;source jsonb;work jsonb;
- c checkout_shared_hours_private.confirmations%rowtype;editable boolean;frozen boolean;current_facts boolean;enrolling boolean;input_fingerprint text;
+ c checkout_shared_hours_private.confirmations%rowtype;editable boolean;frozen boolean;current_facts boolean;enrolling boolean;input_fingerprint text;proposed_facts jsonb;
 begin
  actor:=checkout_report_registration_private.current_actor();
  select * into r from public.daily_reports where id=rid;
@@ -306,6 +306,10 @@ begin
   or not(shared_daily_report_private.can_read_roster(rid) or private.has_company_feature(r.company_id,'can_manage_attendance'))
  then raise sqlstate '42501' using message='paid_hours_input_access_unavailable';end if;
  source:=checkout_shared_hours_private.source_scope(rid,wid,private.has_company_feature(r.company_id,'can_manage_attendance'));
+ if source->>'source_kind'='managed_attendance' then
+  if to_regprocedure('checkout_shared_managed_private.propose_worker_facts(uuid,uuid)') is not null then
+   execute 'select checkout_shared_managed_private.propose_worker_facts($1,$2)' into proposed_facts using rid,wid;end if;
+ else proposed_facts:=shared_worker_facts_private.propose_worker_facts(rid,wid);end if;
  work:=checkout_shared_hours_private.work_evidence(rid);
  frozen:=r.representative_signature_json is not null;
  select * into c from checkout_shared_hours_private.confirmations where report_id=rid and worker_id=wid order by revision desc limit 1;
@@ -327,7 +331,7 @@ begin
   'input_scope_current',c.id is null or current_facts,
   'work_report_frozen',frozen,'first_reporter_covers_work_only',true,'enrollment_pending',enrolling,
   'work_basis_sha256',work->>'work_basis_sha256','confirmation_id',c.id,
-  'worker_facts',c.worker_facts,'proposed_worker_facts',shared_worker_facts_private.propose_worker_facts(rid,wid),
+  'worker_facts',c.worker_facts,'proposed_worker_facts',proposed_facts,
   'facts_confirmed',c.id is not null,'facts_current',current_facts,
   'own_worker',exists(select 1 from public.workers where id=wid and user_id=actor),
   'management_confirmation_available',private.has_company_feature(r.company_id,'can_manage_attendance'));

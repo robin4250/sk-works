@@ -13,6 +13,7 @@ void main() {
     'state': 'reporter_saved_waiting_supervisor', 'enabled': true,
     'can_manage_attendance': false, 'reporter_saved': true,
     'supervisor_saved': false, 'source_attached': true, 'supervisor_ready': true,
+    'first_reporter_covers_work_only': true, 'management_hold': false, 'management_hold_reason': null,
     'pending_members': <dynamic>[], 'supervisor_pending_reasons': <String>[],
     'reporter_name': '報告者', 'report_status': 'draft',
     'report_updated_at': '2026-10-25T08:00:00.123456Z',
@@ -128,4 +129,29 @@ void main() {
     expect(value.canCollectSupervisor, isFalse);
     expect(value.pendingWorkerIds, [worker]);
   });
+  test('managed financial hold preserves scoped management permission and never allows signatures', () {
+    final value = row()..['state'] = 'managed_financial_hold'
+      ..['management_hold'] = true
+      ..['management_hold_reason'] = 'managed_attendance_financial_vector_changed_pending'
+      ..['can_manage_attendance'] = true
+      ..['signature_scope_fingerprint'] = null
+      ..['supervisor_ready'] = false;
+    final result = parse(value);
+    expect(result.isManagementHold, isTrue);
+    expect(result.canManageAttendance, isTrue);
+    expect(result.canCollectSupervisor, isFalse);
+    expect(const SharedReportManagementHold().retryAllowed, isFalse);
+  });
+
+  test('manual source ambiguity remains a persistent management hold', () {
+    final value = row()..['state'] = 'managed_financial_hold'
+      ..['management_hold'] = true
+      ..['management_hold_reason'] = 'managed_roster_manual_source_ambiguous'
+      ..['signature_scope_fingerprint'] = null
+      ..['supervisor_ready'] = false;
+    expect(parse(value).isManagementHold, isTrue);
+    expect(const SharedReportManagementHold(reasonCode: 'managed_roster_manual_source_ambiguous').message,
+      contains('重複'));
+  });
+
 }
