@@ -26,7 +26,7 @@ class SharedDailyReportContext {
     this.reporterName = '', this.reportStatus, this.signatureScopeFingerprint,
     this.hoursAnnex, this.workBasis, this.supervisorReady = false,
     this.firstReporterCoversWorkOnly = false,
-    this.managementHoldReason,
+    this.managementHoldReason, this.approvedEditRequestId,
     this.pendingWorkerIds = const [], this.supervisorPendingReasons = const [],
   });
   final String actorId, companyId, state, reporterName;
@@ -39,6 +39,7 @@ class SharedDailyReportContext {
   final bool supervisorReady;
   final bool firstReporterCoversWorkOnly;
   final String? managementHoldReason;
+  final String? approvedEditRequestId;
   bool get isManagementHold => state == 'managed_financial_hold';
   String get managementHoldMessage => SharedReportManagementHold(
       reasonCode: managementHoldReason ?? 'managed_attendance_financial_vector_changed_pending').message;
@@ -47,7 +48,7 @@ class SharedDailyReportContext {
       sourceAttached;
   bool get signedFactsReadOnly => reporterSaved || supervisorSaved;
   bool get canAccessSupervisorCollection => enabled && !supervisorSaved &&
-      (canManageAttendance || (reporterSaved && sourceClockInId != null));
+      (canManageAttendance || approvedEditRequestId != null || (reporterSaved && sourceClockInId != null));
   bool get canCollectSupervisor => canAccessSupervisorCollection && supervisorReady &&
       signatureScopeFingerprint != null &&
       !(hoursAnnex?['required'] == true &&
@@ -231,7 +232,7 @@ class SharedDailyReportContext {
       signatureScopeFingerprint: fingerprint as String?, hoursAnnex: hoursAnnex,
       workBasis: workBasis,
       firstReporterCoversWorkOnly: row['first_reporter_covers_work_only'] as bool,
-      managementHoldReason: row['management_hold_reason'] as String?,
+      managementHoldReason: row['management_hold_reason'] as String?, approvedEditRequestId: id('approved_edit_request_id'),
       supervisorReady: row['supervisor_ready'] as bool,
       pendingWorkerIds: List<String>.unmodifiable(pendingIds),
       supervisorPendingReasons: List<String>.unmodifiable(reasons.cast<String>()),
@@ -312,6 +313,20 @@ class SharedDailyReportRepository {
     return SharedDailyReportContext.parse(raw, actorId: before.actorId,
       companyId: before.companyId, workerId: before.workerId,
       workDate: before.workDate, sourceClockInId: before.sourceClockInId);
+  }
+  Future<SharedDailyReportContext> collectApprovedSupervisor({required SharedDailyReportContext before,
+    required String requestId, required String signerName, required Map<String, dynamic> signature,
+  }) async {
+    if (before.reportId == null || before.approvedEditRequestId != requestId || !before.canCollectSupervisor) {
+      throw StateError('承認された編集と責任者サインの対象を確認してください。');
+    }
+    await _rpc('collect_approved_shared_report_supervisor_signature', {
+      'p_report_id': before.reportId, 'p_request_id': requestId,
+      'p_signer_name': signerName, 'p_signature': signature,
+      'p_expected_updated_at': before.expectedUpdatedAt?.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint,
+    }, expectedActor: before.actorId);
+    return loadReport(before.reportId!, expectedActor: before.actorId);
   }
   Future<SharedDailyReportContext> collectSupervisor({required SharedDailyReportContext before,
     required String signerName, required Map<String, dynamic> signature,
