@@ -18,7 +18,10 @@ rejected. Minutes only, Asia/Tokyo only, unique weekdays.
 
 Actual GPS clock-ins are captured to reminder-only source snapshots. Updating
 future settings first captures any current open source and never moves its old
-reminder deadline. Initial setup does not activate old clock-ins from days before the
+reminder deadline. Settings save first locks the same GPS schedule row as
+the existing clock-in writer, then captures sources; an uncommitted old clock-in
+cannot be skipped while future settings replace its destination. This adds no
+payroll-scope lock and changes no existing GPS writer body. Initial setup does not activate old clock-ins from days before the
 first configuration. Real clock-out existence resolves the source; notification
 payload, navigation return, local clock or shared-report entry cannot resolve it.
 Thirty-minute postponement is server persisted with source fingerprint CAS.

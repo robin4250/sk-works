@@ -136,5 +136,24 @@ try{
  eq(await q('select md5(to_jsonb(s)::text) v from scheduled_checkout_private.settings s where worker_id=$1',[W]),settingsHash);
  eq(await q('select md5(to_jsonb(s)::text) v from scheduled_checkout_private.sources s where source_clock_in_id=$1',[routeSource]),otherSourceHash);
  eq(await q('select md5(to_jsonb(v)::text) v from route_visit_log v where source_clock_in_id=$1',[routeSource]),routeProofHash);
+ // Model the exact schedule-row serialization used by the existing GPS writer.
+ // Its uncommitted old-destination source must be captured before settings move.
+ await db.query('insert into auth.sessions values($1,$2,null)',[id(80),A]);
+ const raceSource=id(43),raceOut=id(44);
+ await db.query("insert into attendance_verifications values($1,$2,$3,null,$4,'clock_out','manual',now(),((now() at time zone 'Asia/Tokyo')::date-1),$5)",[raceOut,C,W,R,routeSource]);
+ const blocker=new pg.Client({connectionString:url.href});await blocker.connect();let pending;
+ try{
+  await blocker.query('begin');
+  await blocker.query('select 1 from gps_auto_attendance_schedules where company_id=$1 and worker_id=$2 for update',[C,W]);
+  await blocker.query("insert into attendance_verifications values($1,$2,$3,$4,null,'clock_in','gps_auto',now()-interval '1 day',((now() at time zone 'Asia/Tokyo')::date-1),null)",[raceSource,C,W,S]);
+  let settled=false;pending=save(null,R,'00:00','00:01',5).finally(()=>{settled=true;});pending.catch(()=>{});
+  await new Promise(resolve=>setTimeout(resolve,75));eq(settled,false);
+  await blocker.query('commit');eq((await pending).revision,6);
+  const preserved=(await read()).items.find(v=>v.source_clock_in_id===raceSource);
+  eq(preserved.site_id,S);eq(preserved.route_assignment_id,null);eq(preserved.due,true);
+  eq(await q('select count(*)::int v from attendance_verifications where id=$1 and site_id=$2',[raceSource,S]),1);
+ }finally{
+  await blocker.query('rollback').catch(()=>{});if(pending)await pending.catch(()=>{});await blocker.end();
+ }
  console.log(JSON.stringify({pass:true,checks,synthetic_auth:true,real_gotrue:false,automatic_clock_out:false,production_changed:false}));
 }finally{await db.end();}

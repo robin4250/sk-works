@@ -58,6 +58,10 @@ begin
   or exists(select 1 from public.route_assignments r where r.id=p_route_assignment_id and r.company_id=w.company_id and r.is_active));
  if matches<>1 then raise sqlstate '42501' using message='gps_work_schedule_actor_unavailable';end if;
  perform pg_advisory_xact_lock(hashtextextended('scheduled-checkout:'||wid::text,0));
+ -- Existing GPS clock-in locks this same schedule row before writing its
+ -- source. Serialize first so a just-committed old source is captured before
+ -- replacing its future settings. No payroll-scope lock is introduced.
+ perform 1 from public.gps_auto_attendance_schedules where company_id=cid and worker_id=wid for update;
  perform scheduled_checkout_private.ensure_sources(actor);
  select revision into prior from scheduled_checkout_private.settings where worker_id=wid for update;
  if coalesce(prior,0)<>p_expected_revision then raise sqlstate '40001' using message='gps_work_schedule_changed';end if;
