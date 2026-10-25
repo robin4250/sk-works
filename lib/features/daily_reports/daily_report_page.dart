@@ -1675,12 +1675,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
           row['night_hours'] != worker.nightHours || row['allowance_amount'] != worker.allowanceAmount ||
           (row['allowance_label'] ?? '') != worker.allowanceLabel ||
           row['vehicle_id'] != worker.vehicleId || row['route_assignment_id'] != worker.routeId ||
-          row['odometer_km'] != worker.odometerKm) return false;
+          row['odometer_km'] != worker.odometerKm) { return false; }
       final savedChoices = row['company_allowance_selections'];
       final shownChoices = worker.companyAllowanceSelections;
       if ((savedChoices == null) != (shownChoices == null)) return false;
       if (savedChoices != null && jsonEncode(DailyReportCompanyAllowanceSelections.fromJson(savedChoices).toJson()) !=
-          jsonEncode(shownChoices!.toJson())) return false;
+          jsonEncode(shownChoices!.toJson())) { return false; }
     }
     return true;
   }
