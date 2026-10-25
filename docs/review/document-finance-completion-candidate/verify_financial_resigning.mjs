@@ -16,7 +16,7 @@ try{
  const setup=original.slice(0,original.indexOf(marker)),tail=original.slice(original.indexOf('}catch(error){'));
  const unit=String.raw`
  phase='document-finance-resigning-default-off';
- const snapshot=()=>q("select jsonb_build_object('reports',(select jsonb_agg(to_jsonb(r) order by id) from daily_reports r),'workers',(select jsonb_agg(to_jsonb(w) order by report_id,worker_id) from daily_report_workers w),'events',(select jsonb_agg(to_jsonb(e) order by id) from shared_daily_report_private.signature_events e),'protocol',(select jsonb_agg(to_jsonb(p) order by report_id) from checkout_shared_hours_private.work_protocol p),'confirmations',(select jsonb_agg(to_jsonb(c) order by id) from checkout_shared_hours_private.confirmations c),'ledger',(select jsonb_agg(to_jsonb(l) order by id) from checkout_shared_hours_private.ledger l),'entries',(select jsonb_agg(to_jsonb(a) order by id) from attendance_entries a),'payroll',(select jsonb_agg(to_jsonb(s) order by worker_id,period_start) from payroll_statements s),'settings',(select jsonb_agg(to_jsonb(s) order by worker_id) from worker_payroll_settings s)) v");
+ const snapshot=()=>q("select jsonb_build_object('clocks',(select jsonb_agg(to_jsonb(a) order by id) from attendance_verifications a),'reports',(select jsonb_agg(to_jsonb(r) order by id) from daily_reports r),'workers',(select jsonb_agg(to_jsonb(w) order by report_id,worker_id) from daily_report_workers w),'events',(select jsonb_agg(to_jsonb(e) order by id) from shared_daily_report_private.signature_events e),'protocol',(select jsonb_agg(to_jsonb(p) order by report_id) from checkout_shared_hours_private.work_protocol p),'confirmations',(select jsonb_agg(to_jsonb(c) order by id) from checkout_shared_hours_private.confirmations c),'ledger',(select jsonb_agg(to_jsonb(l) order by id) from checkout_shared_hours_private.ledger l),'entries',(select jsonb_agg(to_jsonb(a) order by id) from attendance_entries a),'payroll',(select jsonb_agg(to_jsonb(s) order by worker_id,period_start) from payroll_statements s),'settings',(select jsonb_agg(to_jsonb(s) order by worker_id) from worker_payroll_settings s)) v");
  const transitionBeforeInstall=await snapshot();
  await exec(await readFile(process.env.SKO_FINANCE_TRANSITION_CANDIDATE,'utf8'));
  eq(await snapshot(),transitionBeforeInstall,'Default OFF installation preserves all source/financial rows');
@@ -46,6 +46,10 @@ try{
  await reject(async()=>prepare([await makeItem(reportWorker),await makeItem(W2)]),{code:'55000',message:'document_finance_explicit_unsigned_revision_required'});
  eq(await snapshot(),signedBefore,'No hidden reuse of old document signatures');
  eq(await q('select count(*)::int v from document_finance_completion_private.transitions'),0,'Rejected signed conversion has no success audit');
+ await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,work_date,source_clock_in_id) values($1,$2,$3,$4,'clock_out',$5::date+time '17:00',$5,$6)",[id(9303),A,W2,SITE,docDay,id(9302)]);
+ // Bind each synthetic owner's exact completed source using the original app API.
+ await sharedCall(U,id(80),'select public.reuse_my_shared_daily_report($1) v',[docStart]);
+ await sharedCall(memberB,sidB,'select public.reuse_my_shared_daily_report($1) v',[id(9302)]);
  phase='explicit-real-revision-and-typed-input-holds';
  context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  await sharedCall(U,id(80),'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,context.report_updated_at,context.signature_scope_fingerprint,'金融連携前に実際の勤務区分と手当を手直しする']);
@@ -57,12 +61,12 @@ try{
  // The SYNTHETIC manager explicitly removes an inapplicable choice in input.
  // Production does not perform that choice; the user must select actual data.
  const explicitChanges={work_category:'day',company_allowance_selections:{contract_version:1,items:[]},allowance_label:null};
+ // A synthetic lost source-link scenario must hold the whole writer, independently of UI readiness.
+ await client.query('update attendance_verifications set daily_report_id=null where id=$1',[id(9303)]);
+ const unboundBefore=await snapshot();
  await reject(async()=>prepare([await makeItem(reportWorker,explicitChanges),await makeItem(W2,{allowance_label:null})]),{code:'55000',message:'document_finance_closed_clocked_source_required'});
- eq(await snapshot(),unsignedBefore,'Open peer source holds entire batch before any worker update');
- await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,work_date,source_clock_in_id) values($1,$2,$3,$4,'clock_out',$5::date+time '17:00',$5,$6)",[id(9303),A,W2,SITE,docDay,id(9302)]);
- // Bind each synthetic owner's exact completed source using the original app API.
- await sharedCall(U,id(80),'select public.reuse_my_shared_daily_report($1) v',[docStart]);
- await sharedCall(memberB,sidB,'select public.reuse_my_shared_daily_report($1) v',[id(9302)]);
+ eq(await snapshot(),unboundBefore,'Unbound peer source holds entire batch before any worker update');
+ await client.query('update attendance_verifications set daily_report_id=$1 where id=$2',[rid,id(9303)]);
  const payload=[await makeItem(reportWorker,explicitChanges),await makeItem(W2,{allowance_label:null})];
  const beforeTransition=await snapshot();
  await reject(()=>prepare(payload,{scope:'stale-document-scope'}),{code:'40001',message:'shared_report_signature_scope_changed'});
