@@ -1,0 +1,53 @@
+name: Shared checkout UI integration
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/attendance_verification_page.dart'
+      - 'lib/features/attendance/checkout_report_gate.dart'
+      - 'lib/features/attendance/scheduled_checkout_gate.dart'
+      - 'lib/features/attendance/scheduled_checkout_repository.dart'
+      - 'lib/features/attendance/paid_work_hours*'
+      - 'lib/features/attendance/checkout_native_reminder*'
+      - 'lib/features/daily_reports/daily_report_page.dart'
+      - 'lib/features/daily_reports/shared_daily_report_repository.dart'
+      - 'lib/features/daily_reports/shared_worker_facts_repository.dart'
+      - 'test/*shared*integration_test.dart'
+      - 'test/checkout_combined_gate_integration_test.dart'
+      - 'test/scheduled_checkout_source_binding_test.dart'
+      - '.github/workflows/shared-checkout-ui-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  combined-checkout-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: >-
+          flutter analyze
+          lib/features/daily_reports/daily_report_page.dart
+          lib/features/attendance/checkout_report_gate.dart
+          lib/features/attendance/attendance_verification_page.dart
+          test/daily_report_shared_hours_integration_test.dart
+          test/checkout_combined_gate_integration_test.dart
+          test/scheduled_checkout_source_binding_test.dart
+      - run: >-
+          flutter test
+          test/daily_report_shared_hours_integration_test.dart
+          test/checkout_combined_gate_integration_test.dart
+          test/scheduled_checkout_source_binding_test.dart
+          test/checkout_report_gate_test.dart
+          test/checkout_report_gate_repository_test.dart
+          test/attendance_checkout_completion_widgets_test.dart
+          test/attendance_checkout_recovery_http_test.dart
+          test/attendance_gps_auto_restore_contract_test.dart
+          test/daily_report_approved_edit_start_test.dart
+          test/daily_report_common_allowance_names_test.dart
