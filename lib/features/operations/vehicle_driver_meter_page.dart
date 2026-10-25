@@ -1,3 +1,4 @@
+import '../../widgets/input_step_heading.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -224,7 +225,9 @@ class _VehicleDriverMeterPageState extends State<VehicleDriverMeterPage> {
               const SizedBox(height: 12), Text(_label('退勤後に登録してください。基準値がない場合は管理者へ確認してください。', 'Save after checkout. Ask your administrator if the previous reading is unavailable.')),
             ] else ...[
               const SizedBox(height: 16),
+              const InputStepHeading(number: '①', title: 'メーターを撮影（手入力もできます）'),
               OutlinedButton.icon(onPressed: _busy ? null : _capture, icon: const Icon(Icons.camera_alt_outlined), label: Text(_label('写真から読み取る', 'Read from photo'))),
+              const InputStepHeading(number: '②', title: '読み取った数値を確認・修正'),
               TextField(controller: _current, enabled: !_busy, keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: _label('今回のメーター値', 'Current meter reading'), suffixText: 'km')),
               if (_decreased) ...[
@@ -232,6 +235,7 @@ class _VehicleDriverMeterPageState extends State<VehicleDriverMeterPage> {
                 TextField(controller: _manual, enabled: !_busy, keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(labelText: _label('当日の走行距離（必須）', 'Trip distance (required)'), suffixText: 'km')),
               ],
+              const InputStepHeading(number: '③', title: '確認した数値を登録'),
               const SizedBox(height: 20), FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? _label('登録中…', 'Saving…') : _label('確認して登録', 'Check and save'))),
             ],
           ]),

@@ -95,7 +95,13 @@ void main() {
     await tester.pumpAndSettle();
   }
   Future<void> confirm(WidgetTester tester) async {
+    await tester.scrollUntilVisible(find.text('退勤を確定'), 180,
+      scrollable: find.descendant(of: find.byType(ListView).first,
+        matching: find.byType(Scrollable)).first);
     await tester.ensureVisible(find.text('退勤を確定'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+    await tester.pumpAndSettle();
+    expect(find.text('退勤を確定').hitTestable(), findsOneWidget);
     await tester.tap(find.text('退勤を確定'));
     await tester.pumpAndSettle();
   }
@@ -191,7 +197,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('退勤を確定'), 180,
+      scrollable: find.descendant(of: find.byType(ListView).first,
+        matching: find.byType(Scrollable)).first);
     await tester.ensureVisible(find.text('退勤を確定'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+    await tester.pumpAndSettle();
+    expect(find.text('退勤を確定').hitTestable(), findsOneWidget);
     await tester.tap(find.text('退勤を確定'));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('group-checkout-dialog'), findsOneWidget);

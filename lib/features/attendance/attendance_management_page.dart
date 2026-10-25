@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../notifications/notification_bell.dart';
+import '../daily_reports/daily_report_page.dart';
 import 'attendance_management_repository.dart';
 import 'attendance_checkout_minute_guard.dart';
 import '../../international/language_controller.dart';
@@ -60,9 +61,17 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
   }
 
   @override
+  void dispose() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final repository = _repository;
-    return DefaultTabController(
+    return PopScope(
+      onPopInvokedWithResult: (_, _) => FocusManager.instance.primaryFocus?.unfocus(),
+      child: DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(
@@ -108,7 +117,74 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
                         ),
         ),
       ),
-    );
+    ));
+  }
+}
+
+class _ManagementDatePicker extends StatefulWidget {
+  const _ManagementDatePicker({required this.repository, required this.workerId, required this.initialDate});
+  final AttendanceManagementRepository repository;
+  final String workerId;
+  final DateTime initialDate;
+  @override State<_ManagementDatePicker> createState() => _ManagementDatePickerState();
+}
+class _ManagementDatePickerState extends State<_ManagementDatePicker> {
+  late DateTime _month = DateTime(widget.initialDate.year, widget.initialDate.month);
+  Map<int, Set<String>> _marks = const {};
+  bool _loading = true;
+  Object? _error;
+  int _generation = 0;
+  @override void initState() { super.initState(); _load(); }
+  Future<void> _load() async {
+    final generation = ++_generation;
+    setState(() { _loading = true; _error = null; _marks = const {}; });
+    try {
+      final marks = await widget.repository.loadMonthMarks(workerId: widget.workerId, month: _month);
+      if (mounted && generation == _generation) setState(() { _marks = marks; _loading = false; });
+    } catch (error) {
+      if (mounted && generation == _generation) setState(() { _error = error; _loading = false; });
+    }
+  }
+  void _move(int delta) {
+    setState(() => _month = DateTime(_month.year, _month.month + delta));
+    _load();
+  }
+  @override Widget build(BuildContext context) {
+    final offset = _month.weekday % 7;
+    final days = DateUtils.getDaysInMonth(_month.year, _month.month);
+    return AlertDialog(title: const Text('勤務日を選択'), content: SizedBox(width: 340,
+      child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          IconButton(tooltip: '前の月', onPressed: _month.year > 2020 || _month.month > 1 ? () => _move(-1) : null, icon: const Icon(Icons.chevron_left)),
+          Text('${_month.year}年${_month.month}月'),
+          IconButton(tooltip: '次の月', onPressed: _month.year < DateTime.now().year + 5 || _month.month < 12 ? () => _move(1) : null, icon: const Icon(Icons.chevron_right)),
+        ]),
+        const Text('青● 出勤　橙● 打刻のみ　緑● 承認済み有給', style: TextStyle(fontSize: 11)),
+        if (_loading) const LinearProgressIndicator(),
+        if (_error != null) ...[
+          const Text('勤務日の目印を取得できません。日付は選択できます。'),
+          TextButton(onPressed: _load, child: const Text('再読み込み')),
+        ],
+        Row(children: [for (final day in ['日', '月', '火', '水', '木', '金', '土'])
+          Expanded(child: Center(child: Text(day)))]),
+        GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, childAspectRatio: .85),
+          itemCount: ((offset + days + 6) ~/ 7) * 7,
+          itemBuilder: (_, index) {
+            final day = index - offset + 1;
+            if (day < 1 || day > days) return const SizedBox.shrink();
+            final marks = _marks[day] ?? const <String>{};
+            final label = [if (marks.contains('work')) '出勤', if (marks.contains('punch')) '打刻のみ', if (marks.contains('leave')) '承認済み有給'].join('・');
+            return Semantics(label: '${_month.month}月$day日 $label', button: true,
+              child: InkWell(onTap: () => Navigator.pop(context, DateTime(_month.year, _month.month, day)),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Text('$day'),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    for (final entry in {'work': Colors.blue, 'punch': Colors.orange, 'leave': Colors.green}.entries)
+                      if (marks.contains(entry.key)) Text('●', style: TextStyle(color: entry.value, fontSize: 10)),
+                  ]),
+                ])));
+          }),
+      ]))), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル'))]);
   }
 }
 
@@ -162,12 +238,11 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
   }
 
   Future<void> _pickDate() async {
-    final value = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(DateTime.now().year + 5, 12, 31),
-    );
+    FocusManager.instance.primaryFocus?.unfocus();
+    final worker = _workerId;
+    if (worker == null) return;
+    final value = await showDialog<DateTime>(context: context, builder: (_) =>
+      _ManagementDatePicker(repository: widget.repository, workerId: worker, initialDate: _date));
     if (value == null || !mounted) return;
     setState(() => _date = value);
     await _loadCell();
@@ -234,11 +309,51 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
     }
   }
 
+  Future<void> _openReport() async {
+    final workerId = _workerId;
+    final date = _date;
+    if (workerId == null || _busy || _loadingCell) return;
+    setState(() => _busy = true);
+    try {
+      final reports = await widget.repository.loadReports(workerId: workerId, date: date);
+      if (!mounted || workerId != _workerId || date != _date) return;
+      if (reports.isEmpty) {
+        _show('選択した従業員・日付の保存済み日報はありません。勤怠の登録だけではサインは作成されません。');
+        return;
+      }
+      final selected = reports.length == 1 ? reports.single :
+        await showDialog<AttendanceManagementReport>(context: context, builder: (dialogContext) =>
+          SimpleDialog(title: const Text('確認する日報'), children: [
+            for (var i = 0; i < reports.length; i++)
+              SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, reports[i]),
+                child: Text('${i + 1}. ${reports[i].siteId == null ? 'ルート日報' : widget.sites.where((site) => site.id == reports[i].siteId).firstOrNull?.name ?? '現場日報'}')),
+          ]));
+      if (selected == null || !mounted) return;
+      // Recheck access and membership after an arbitrarily long selection dialog.
+      final fresh = await widget.repository.loadReports(workerId: workerId, date: date);
+      if (!mounted || workerId != _workerId || date != _date) return;
+      if (!fresh.any((report) => report.id == selected.id &&
+          report.companyId == selected.companyId && report.siteId == selected.siteId &&
+          report.routeId == selected.routeId)) {
+        throw StateError('対象の日報が変わりました。読み込み直してください。');
+      }
+      await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => DailyReportPage(
+        initialReportId: selected.id, initialDate: selected.date,
+        initialSiteId: selected.siteId, initialRouteAssignmentId: selected.routeId)));
+      if (mounted) await _loadCell();
+    } catch (error) {
+      if (mounted) _show('日報を開けませんでした: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   void _show(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 
   @override
   Widget build(BuildContext context) {
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
       children: [
         const _DirectEditWarning(),
@@ -256,6 +371,10 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
           label: Text(_dateText(_date)),
         ),
         if (_loadingCell) ...[const SizedBox(height: 8), const LinearProgressIndicator()],
+        const SizedBox(height: 12),
+        OutlinedButton.icon(onPressed: _busy || _loadingCell ? null : _openReport,
+          icon: const Icon(Icons.draw_outlined), label: const Text('この日の日報・共通手当・サインを開く')),
+        const Text('社内共通手当は日報内の登録済み手当から選択します。ここで入力する自由名称とは別に保存されます。署名済み内容は保持し、変更には既存の編集承認が必要です。'),
         const SizedBox(height: 12),
         _ManagementForm(form: _form, sites: widget.sites, enabled: !_busy),
         const SizedBox(height: 16),
@@ -349,6 +468,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
   Widget build(BuildContext context) {
     final days = DateUtils.getDaysInMonth(_month.year, _month.month);
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
       children: [
         const _DirectEditWarning(),

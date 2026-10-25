@@ -25,10 +25,12 @@ final _date = DateTime(2026, 10, 25);
 
 class _Reports implements DailyReportRepository {
   bool reporterSaved = false, supervisorSaved = false, peerOpen = false;
+  bool omitSource = false, staleSupervisorRead = false;
+  bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
   int draftWrites = 0, ordinaryReporterWrites = 0;
   List<DailyReportWorkerDraft> get workers => [
     DailyReportWorkerDraft(workerId: _worker, workerName: '報告者',
-      sourceClockInId: _source, sourceClockOutAt: DateTime(2026, 10, 25, 17)),
+      sourceClockInId: omitSource ? null : _source, sourceClockOutAt: DateTime(2026, 10, 25, 17)),
     if (peerOpen) DailyReportWorkerDraft(workerId: _peer, workerName: '勤務継続中',
       sourceClockInId: '00000000-0000-0000-0000-000000000051'),
   ];
@@ -41,11 +43,11 @@ class _Reports implements DailyReportRepository {
     String? siteId, String? routeAssignmentId, String? vehicleClockInAnchorId,
     String? reportId}) async => DailyReportRecord(id: _report, companyId: _company,
       date: date, siteId: _site, siteName: '対象現場', workDescription: '保存済みの作業',
-      status: supervisorSaved ? 'signed' : 'draft', workers: workers,
+      status: persistedSupervisor ? 'signed' : 'draft', workers: workers,
       reporterSignerName: reporterSaved ? '最初の報告者' : null,
       reporterSignatureJson: reporterSaved ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null,
-      responsibleSignerName: supervisorSaved ? '責任者' : null,
-      responsibleSignatureJson: supervisorSaved ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null);
+      responsibleSignerName: persistedSupervisor ? '責任者' : null,
+      responsibleSignatureJson: persistedSupervisor ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null);
   @override Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({String? reportId,
     required DateTime date, String? siteId, String? routeAssignmentId}) async => [];
   @override Future<bool> vehicleMeterEnabledForAnchor(String? anchor) async => false;
@@ -84,10 +86,11 @@ class _Shared implements SharedDailyReportRepository {
   final _Reports reports;
   final bool enabled;
   bool hold = false;
-  bool workOnly = true;
+  String source = _source;
+  bool workOnly = true, ready = false;
   int supervisorWrites = 0;
   SharedDailyReportContext get state => SharedDailyReportContext(actorId: _actor,
-    companyId: _company, workerId: _worker, reportId: _report, sourceClockInId: _source,
+    companyId: _company, workerId: _worker, reportId: _report, sourceClockInId: source,
     clockOutId: '00000000-0000-0000-0000-000000000060', workDate: _date,
     state: hold ? 'managed_financial_hold' : !enabled ? 'disabled' : reports.supervisorSaved ? 'supervisor_saved' :
       reports.reporterSaved ? 'reporter_saved_waiting_supervisor' : 'reporter_required',
@@ -96,11 +99,13 @@ class _Shared implements SharedDailyReportRepository {
     reporterName: reports.reporterSaved ? '最初の報告者' : '',
     reportStatus: reports.supervisorSaved ? 'signed' : 'draft',
     expectedUpdatedAt: DateTime.utc(2026, 10, 25, 8), signatureScopeFingerprint: _scope,
+    supervisorReady: ready,
     firstReporterCoversWorkOnly: enabled && workOnly,
     workBasis: {'contract_version': 2, 'report': {'id': _report, 'company_id': _company,
       'work_date': '2026-10-25', 'site_id': _site, 'route_assignment_id': null,
       'work_description': '保存済みの作業'},
       'roster': [for (final worker in reports.workers) {'worker_id': worker.workerId}]});
+  @override Future<SharedDailyReportContext> loadForSource(String sourceClockInId) async => state;
   @override Future<SharedDailyReportContext> loadReport(String reportId, {String? expectedActor}) async => state;
   @override Future<SharedDailyReportContext> collectSupervisor({required SharedDailyReportContext before,
     required String signerName, required Map<String, dynamic> signature}) async {
@@ -168,6 +173,52 @@ void main() {
     await tester.scrollUntilVisible(finder, 220, scrollable: scrollable, maxScrolls: 40);
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
+  }
+
+  test('report guidance removes technical StateError wrapper', () {
+    expect(dailyReportActionErrorMessage(StateError('日報を再読み込みしてください。')),
+      '日報を再読み込みしてください。');
+    expect(dailyReportActionErrorMessage(Exception('shared_report_reporter_signature_required')),
+      '先に報告者サインを登録してください。');
+    expect(dailyReportActionErrorMessage(Exception('private network details')),
+      isNot(contains('private network details')));
+  });
+
+  testWidgets('blank description explains required input before saving or opening signature', (tester) async {
+    final reports = _Reports();
+    await open(tester, reports, _Hours(), _Shared(reports));
+    final description = find.byKey(const ValueKey('daily-report-work-description'));
+    await tester.ensureVisible(description);
+    await tester.enterText(description, '   ');
+    await reveal(tester, '報告者サイン');
+    await tester.tap(find.text('報告者サイン'));
+    await tester.pumpAndSettle();
+    expect(find.text('作業内容を入力してから報告者サインへ進んでください。'), findsOneWidget);
+    expect(find.byType(SignatureCapturePage), findsNothing);
+    expect(reports.draftWrites, 0);
+    expect(reports.ordinaryReporterWrites, 0);
+  });
+
+  for (final valid in [true, false]) {
+    testWidgets('restricted saved report uses verified shared source, match=$valid', (tester) async {
+      final reports = _Reports()..reporterSaved = true..omitSource = true;
+      final shared = _Shared(reports);
+      if (!valid) shared.source = '00000000-0000-0000-0000-000000000099';
+      await tester.pumpWidget(MaterialApp(home: DailyReportPage(
+        initialDate: _date, initialSiteId: _site, initialReportId: _report,
+        vehicleClockInId: _source, groupClockInAnchorId: _source,
+        restrictedReporterRegistration: true, registrationActorId: _actor,
+        registrationCompanyId: _company, registrationWorkerId: _worker,
+        repositoryForTesting: reports, paidHoursRepositoryForTesting: _Hours(),
+        sharedReportRepositoryForTesting: shared)));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('退勤した本人の勤務原本を確認できません'),
+        valid ? findsNothing : findsOneWidget);
+      if (valid) expect(find.text('最初の報告者さんが日報を登録しました'), findsOneWidget);
+      expect(reports.draftWrites, 0);
+      expect(reports.ordinaryReporterWrites, 0);
+      expect(reports.workers.first.sourceClockInId, isNull);
+    });
   }
 
   testWidgets('saved shared reporter facts are read-only and opening never rewrites the report', (tester) async {
@@ -250,6 +301,40 @@ void main() {
     await tester.tap(find.text('閉じる'));
     await tester.pumpAndSettle();
   });
+  for (final staleRead in [false, true]) {
+    testWidgets('restricted supervisor signs only server-ready facts and verifies persisted final state stale=$staleRead', (tester) async {
+      final reports = _Reports()..reporterSaved = true..omitSource = true
+        ..staleSupervisorRead = staleRead;
+      final shared = _Shared(reports)..ready = true;
+      var notified = 0;
+      await tester.pumpWidget(MaterialApp(home: DailyReportPage(
+        initialDate: _date, initialSiteId: _site, initialReportId: _report,
+        vehicleClockInId: _source, groupClockInAnchorId: _source,
+        restrictedReporterRegistration: true, registrationActorId: _actor,
+        registrationCompanyId: _company, registrationWorkerId: _worker,
+        onRegistrationSaved: () => notified++, repositoryForTesting: reports,
+        paidHoursRepositoryForTesting: _Hours()..versionTwo = true,
+        sharedReportRepositoryForTesting: shared)));
+      await tester.pumpAndSettle();
+      await reveal(tester, '責任者サイン');
+      await tester.tap(find.text('責任者サイン'));
+      await tester.pumpAndSettle();
+      expect(find.text('責任者サインで確認する内容'), findsOneWidget);
+      await tester.tap(find.text('この内容で責任者サインへ'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SignatureCapturePage), findsOneWidget);
+      // Synthetic isolated UI result only; no production signature is created.
+      Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.1, 0.2)]]));
+      await tester.pumpAndSettle();
+      expect(shared.supervisorWrites, 1);
+      expect(reports.draftWrites, 0);
+      expect(find.text('責任者サインで日報を確定しました'), staleRead ? findsNothing : findsOneWidget);
+      if (staleRead) expect(find.textContaining('保存・確定を再確認できませんでした'), findsOneWidget);
+      if (!staleRead) expect(notified, greaterThan(0));
+    });
+  }
+
   testWidgets('facts candidates never confirm themselves and missing hours never become zero', (tester) async {
     final reports = _Reports()..reporterSaved = true;
     final facts = _Facts();

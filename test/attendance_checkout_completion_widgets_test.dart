@@ -86,6 +86,19 @@ class _Repository implements AttendanceVerificationRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+Future<void> revealControl(WidgetTester tester, Finder control) async {
+  final vertical = find.descendant(of: find.byType(ListView).first,
+    matching: find.byWidgetPredicate((widget) => widget is Scrollable &&
+      widget.axisDirection == AxisDirection.down)).first;
+  if (control.evaluate().isEmpty) {
+    tester.state<ScrollableState>(vertical).position.jumpTo(0);
+    await tester.pumpAndSettle();
+  }
+  await tester.scrollUntilVisible(control, 180, scrollable: vertical, maxScrolls: 30);
+  await tester.ensureVisible(control);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
     'manual saved checkout survives failed report opening and then returns home without reinsertion',
@@ -120,13 +133,13 @@ void main() {
       );
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('退勤を確定'));
+      await revealControl(tester, find.text('退勤を確定'));
       await tester.tap(find.text('退勤を確定'));
       await tester.pumpAndSettle();
       expect(repository.inserts, 1);
       expect(reports, 1);
       expect(find.textContaining('退勤は記録済みです'), findsOneWidget);
-      await tester.ensureVisible(find.text('日報を再開'));
+      await revealControl(tester, find.text('日報を再開'));
       await tester.tap(find.text('日報を再開'));
       await tester.pumpAndSettle();
       expect(repository.inserts, 1);
@@ -143,13 +156,13 @@ void main() {
           repository: repository, reportResumeRepository: reportReader,
           openSavedReport: (_, saved) async {}))), child: const Text('Open'))))));
     await tester.tap(find.text('Open')); await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('退勤を確定')); await tester.tap(find.text('退勤を確定'));
+    await revealControl(tester, find.text('退勤を確定')); await tester.tap(find.text('退勤を確定'));
     await tester.pumpAndSettle();
     expect(repository.inserts, 1); expect(reportReader.reads, 1);
     expect(find.text('日報を再開'), findsOneWidget);
     expect(find.textContaining('日報の登録と報告者サインを完了してください'), findsOneWidget);
     reportReader.reporter = true;
-    await tester.ensureVisible(find.text('日報を再開')); await tester.tap(find.text('日報を再開'));
+    await revealControl(tester, find.text('日報を再開')); await tester.tap(find.text('日報を再開'));
     await tester.pumpAndSettle();
     expect(repository.inserts, 1); expect(reportReader.reads, 2);
     expect(find.text('Open'), findsOneWidget);
@@ -163,7 +176,7 @@ void main() {
       repository: repository, reportResumeRepository: reportReader,
       openSavedReport: (_, saved) async {})));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('退勤を確定')); await tester.tap(find.text('退勤を確定'));
+    await revealControl(tester, find.text('退勤を確定')); await tester.tap(find.text('退勤を確定'));
     await tester.pumpAndSettle();
     expect(repository.inserts, 1); expect(find.text('日報を再開'), findsOneWidget);
     expect(find.textContaining('退勤は記録済みです。日報を開けませんでした'), findsOneWidget);
@@ -182,6 +195,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await revealControl(tester, find.text('退勤を確定'));
     final button = tester.widget<ButtonStyleButton>(
       find.ancestor(
         of: find.text('退勤を確定'),
@@ -204,7 +218,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('同じ撮影記録で再確認'));
+      await revealControl(tester, find.text('同じ撮影記録で再確認'));
       await tester.pump();
       expect(find.text('同じ撮影記録で再確認').hitTestable(), findsOneWidget);
       await tester.tap(find.text('同じ撮影記録で再確認'));
@@ -216,7 +230,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.acknowledged, isFalse);
       expect(repository.inserts, 0);
-      await tester.ensureVisible(find.text('同じ撮影記録で再確認'));
+      await revealControl(tester, find.text('同じ撮影記録で再確認'));
       await tester.pump();
       expect(find.text('同じ撮影記録で再確認').hitTestable(), findsOneWidget);
       await tester.tap(find.text('同じ撮影記録で再確認'));

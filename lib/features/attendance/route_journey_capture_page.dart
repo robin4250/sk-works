@@ -1,3 +1,4 @@
+import '../../widgets/input_step_heading.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
@@ -518,7 +519,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
           barrierDismissible: false,
           builder: (dialogContext) => AlertDialog(
             title: Text(SkoLanguageController.tr('この現場の日報')),
-            content: Text(SkoLanguageController.tr('この現場の日報を作成しますか？')),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              const InputStepHeading(number: '④', title: '日報を作成する／しないを選択'),
+              Text(SkoLanguageController.tr('この現場の日報を作成しますか？')),
+            ]),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, 'skip'),
@@ -694,6 +698,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                       _pendingReport == null &&
                       enabled) ...[
                     const SizedBox(height: 12),
+                    const InputStepHeading(number: '①', title: '途中現場を確認'),
                     DropdownButtonFormField<String>(
                       key: ValueKey(_generation),
                       initialValue: _stopId,
@@ -730,6 +735,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                     ),
                   ],
                   if (_pendingReport != null) ...[
+                    const InputStepHeading(number: '④', title: 'この現場の日報を完了'),
                     const SizedBox(height: 16),
                     Text(
                       SkoLanguageController.tr(
@@ -748,6 +754,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                   if (_visitsEnabled &&
                       _pending == null &&
                       workspace?['archived'] != true) ...[
+                    const InputStepHeading(number: '②', title: '到着・写真を記録'),
                     // A shift starts with arrival enabled. After arrival,
                     // only the move/leave action is enabled for this visit.
                     FilledButton.icon(
@@ -768,6 +775,8 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                       label: Text(SkoLanguageController.tr('現場到着')),
                     ),
                     const SizedBox(height: 8),
+                    InputStepHeading(number: '③', title: _progress?.isFinalVisit == true
+                      ? '最後の現場：ホームから退勤' : '作業終了後、次の現場へ移動'),
                     FilledButton.icon(
                       onPressed:
                           !_busy &&
@@ -792,7 +801,9 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                       icon: const Icon(Icons.directions_walk_outlined),
                       label: Text(SkoLanguageController.tr('現場移動')),
                     ),
-                  ] else if (workspace?['archived'] != true || _pending != null)
+                  ] else if (workspace?['archived'] != true || _pending != null) ...[
+                    InputStepHeading(number: '②', title: _pending != null
+                      ? '同じ現場記録の保存状況を再確認' : '途中現場の写真・位置情報を記録'),
                     FilledButton.icon(
                       onPressed:
                           _busy ||
@@ -812,6 +823,7 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                         ),
                       ),
                     ),
+                  ],
                   if (_visitsEnabled) ...[
                     const SizedBox(height: 16),
                     Text(

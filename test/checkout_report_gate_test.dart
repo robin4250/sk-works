@@ -10,6 +10,10 @@ PendingCheckoutRegistration _pending(String source) => PendingCheckoutRegistrati
   companyId: 'company', workerId: 'worker', workDate: DateTime(2026,10,21),
   sourceClockInId: source, clockOutId: 'out-$source', siteId: 'site',
   state: 'reporter_signature_missing', blocking: true, scopeFingerprint: 'fingerprint');
+PendingCheckoutRegistration _waiting({String source = 'in', String site = 'site'}) => PendingCheckoutRegistration(
+  companyId: 'company', workerId: 'worker', workDate: DateTime(2026,10,21),
+  sourceClockInId: source, clockOutId: 'out-$source', siteId: site, reportId: 'saved-report',
+  state: 'reporter_saved_waiting_supervisor', blocking: false, scopeFingerprint: 'fresh-fingerprint');
 
 class _Repository implements CheckoutReportGateRepository {
   @override String? actorId = _actor;
@@ -34,11 +38,13 @@ void main() {
   late GlobalKey<NavigatorState> normalNavigator;
   Future<void> mount(WidgetTester tester, {
     Future<void> Function(BuildContext, PendingCheckoutRegistration)? beforeRegistration,
+    void Function(PendingCheckoutRegistration)? onContinueSavedReport,
   }) async {
     normalNavigator = GlobalKey<NavigatorState>();
     controller.activate(_actor, () async {});
     await tester.pumpWidget(CheckoutReportBackBoundary(controller: controller, child: MaterialApp(navigatorKey: normalNavigator, builder: (_, child) => CheckoutReportGate(
       controller: controller, repository: repository, beforeRegistration: beforeRegistration,
+      onContinueSavedReport: onContinueSavedReport,
       reportBuilder: (target, saved) => PopScope(canPop: false, child: Scaffold(body: Column(children: [
         Text('report-${target.sourceClockInId}'),
         TextButton(onPressed: saved, child: const Text('server-recheck')),
@@ -47,6 +53,60 @@ void main() {
           child: const Text('open-signature'))),
       ]))), child: child!), home: const Scaffold(body: Text('ordinary-home')))));
     await tester.pump();
+  }
+  testWidgets('fresh exact reporter completion hands off once and leaves normal home available', (tester) async {
+    final handed = <PendingCheckoutRegistration>[];
+    await mount(tester, onContinueSavedReport: handed.add);
+    final saved = tester.widget<TextButton>(find.widgetWithText(TextButton, 'server-recheck')).onPressed!;
+    repository.rows = [_waiting()];
+    saved();
+    saved();
+    await tester.pumpAndSettle();
+    expect(handed, hasLength(1));
+    expect(handed.single.reportId, 'saved-report');
+    expect(handed.single.sourceClockInId, 'in');
+    expect(find.text('ordinary-home'), findsOneWidget);
+    saved();
+    await tester.pumpAndSettle();
+    expect(handed, hasLength(1));
+    expect(repository.reads, 2);
+  });
+  testWidgets('actor change during the authoritative saved read discards the old handoff', (tester) async {
+    final handed = <PendingCheckoutRegistration>[];
+    await mount(tester, onContinueSavedReport: handed.add);
+    final read = Completer<List<PendingCheckoutRegistration>>();
+    repository.next = read;
+    tester.widget<TextButton>(find.widgetWithText(TextButton, 'server-recheck')).onPressed!();
+    repository.actorId = 'next-actor';
+    repository.rows = [];
+    controller.activate('next-actor', () async {});
+    read.complete([_waiting()]);
+    await tester.pumpAndSettle();
+    expect(handed, isEmpty);
+    expect(find.text('ordinary-home'), findsOneWidget);
+  });
+  for (final reason in ['other-pending', 'changed-source', 'changed-site', 'read-error', 'actor-change']) {
+    testWidgets('report continuation refuses $reason', (tester) async {
+      final handed = <PendingCheckoutRegistration>[];
+      await mount(tester, onContinueSavedReport: handed.add);
+      final saved = tester.widget<TextButton>(find.widgetWithText(TextButton, 'server-recheck')).onPressed!;
+      repository.rows = switch (reason) {
+        'other-pending' => [_waiting(), _pending('second')],
+        'changed-source' => [_waiting(source: 'replacement')],
+        'changed-site' => [_waiting(site: 'other-site')],
+        _ => [_waiting()],
+      };
+      if (reason == 'read-error') repository.fail = true;
+      if (reason == 'actor-change') repository.actorId = 'other-actor';
+      saved();
+      await tester.pumpAndSettle();
+      expect(handed, isEmpty);
+      if (reason == 'other-pending') {
+        expect(find.text('report-second'), findsOneWidget);
+        expect(find.text('ordinary-home'), findsNothing);
+      }
+      if (reason == 'read-error') expect(find.text('ordinary-home'), findsNothing);
+    });
   }
   testWidgets('dedicated Navigator has an isolated Hero scope while ordinary Navigator stays mounted', (tester) async {
     await mount(tester);

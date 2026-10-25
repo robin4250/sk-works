@@ -37,6 +37,25 @@ import 'daily_report_checkout_navigation.dart';
 import 'shared_daily_report_repository.dart';
 import 'shared_worker_facts_repository.dart';
 
+/// Keep technical exception wrappers out of report/save guidance.
+String dailyReportActionErrorMessage(Object error) {
+  if (error is SharedReportManagementHold) return error.message;
+  if (error is StateError && RegExp(r'[ぁ-んァ-ヶ一-龠]').hasMatch(error.message.toString())) {
+    return error.message.toString();
+  }
+  final raw = error.toString();
+  const messages = {
+    'shared_report_reporter_signature_required': '先に報告者サインを登録してください。',
+    'shared_report_supervisor_not_ready': '全員の退勤と勤務実績の確認がそろってから責任者サインへ進んでください。',
+    'shared_hours_supervisor_basis_changed_or_pending': '勤務実績が更新されたか、未確認のメンバーがいます。日報を再読み込みして確認してください。',
+    'shared_report_signed_facts_require_approved_edit': 'サイン済みの内容を変更するには編集承認が必要です。',
+  };
+  for (final entry in messages.entries) {
+    if (raw.contains(entry.key)) return entry.value;
+  }
+  return '保存を確認できませんでした。通信状態を確認し、日報を再読み込みしてください。';
+}
+
 class DailyReportPage extends StatefulWidget {
   const DailyReportPage({
     super.key,
@@ -203,6 +222,35 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (work is Map && (work['site_id'] != _siteId || work['route_assignment_id'] != _routeAssignmentId)) {
       throw StateError('共同日報の現場・ルートが変わりました。開き直してください。');
     }
+  }
+
+  String _dailyStep(int step) => const ['①', '②', '③', '④', '⑤'][
+    step - 1 + (step > 1 && _evidence.isNotEmpty ? 1 : 0)];
+
+  bool _hasRegistrationSource(List<DailyReportWorkerDraft> workers,
+      SharedDailyReportContext? shared, String? reportId) {
+    final source = widget.vehicleClockInId;
+    final workerId = widget.registrationWorkerId;
+    final own = workers.where((worker) => worker.workerId == workerId).toList();
+    if (source == null || workerId == null || own.length != 1) return false;
+    if (own.single.sourceClockInId != null) {
+      return own.single.sourceClockInId == source;
+    }
+    // Saved report rows do not carry clock-in IDs. A verified shared-source
+    // response supplies that binding independently of optional group checkout.
+    // Never assign a guessed source ID or change the saved/signed roster.
+    final header = shared?.workBasis?['report'];
+    return shared != null && shared.enabled &&
+        shared.actorId == widget.registrationActorId &&
+        shared.actorId == _repository?.currentActorId &&
+        shared.companyId == widget.registrationCompanyId &&
+        shared.workerId == workerId && shared.sourceClockInId == source &&
+        shared.clockOutId != null && reportId != null && shared.reportId == reportId &&
+        shared.workDate == DateTime(_date.year, _date.month, _date.day) &&
+        const {'reporter_required', 'reporter_saved_waiting_supervisor',
+          'supervisor_saved'}.contains(shared.state) &&
+        shared.workRosterIds.contains(workerId) && header is Map &&
+        header['site_id'] == _siteId && header['route_assignment_id'] == _routeAssignmentId;
   }
 
   Future<SharedDailyReportContext?> _readSharedContext({String? reportId}) async {
@@ -473,8 +521,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
       if (widget.restrictedReporterRegistration &&
           (repository.currentActorId != widget.registrationActorId ||
-           !workers.any((worker) => worker.workerId == widget.registrationWorkerId &&
-             worker.sourceClockInId == widget.vehicleClockInId))) {
+           !_hasRegistrationSource(workers, shared, existing?.id))) {
         throw StateError('退勤した本人の勤務原本を確認できません。');
       }
       final meterEnabled = await repository.vehicleMeterEnabledForAnchor(_currentVehicleAnchor,
@@ -1061,8 +1108,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (widget.restrictedReporterRegistration &&
         (repository.currentActorId != widget.registrationActorId ||
          _siteId != widget.initialSiteId || _routeAssignmentId != widget.initialRouteAssignmentId ||
-         !_workers.any((worker) => worker.workerId == widget.registrationWorkerId &&
-           worker.sourceClockInId == widget.vehicleClockInId))) {
+         !_hasRegistrationSource(_workers, _sharedContext, _report?.id))) {
       throw StateError('退勤した本人の勤務原本を確認できません。');
     }
     _applyControllers();
@@ -1115,7 +1161,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       _rememberManagementHold(error);
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: $error'),
+        SnackBar(content: Text('${SkoLanguageController.tr('登録できませんでした')}: ${dailyReportActionErrorMessage(error)}'),
         ),
       );
       return null;
@@ -1126,6 +1172,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _signReporter() async {
     if (_managementHold || _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly) return;
+    if (_workDescription.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('作業内容を入力してから報告者サインへ進んでください。')));
+      return;
+    }
+    FocusScope.of(context).unfocus();
     _invalidatePendingSignature();
     final signingActor = _repository?.currentActorId;
     final signingDate = _date;
@@ -1214,7 +1266,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       _rememberManagementHold(error);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(SkoLanguageController.trParams('報告者サインを保存できませんでした: {error}', {'error': error,
+          content: Text(SkoLanguageController.trParams('報告者サインを保存できませんでした: {error}', {'error': dailyReportActionErrorMessage(error),
               }),
             ),
           ),
@@ -1227,6 +1279,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _sign() async {
     if (_managementHold || _saving) return;
+    if (_report?.reporterSignatureJson == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('先に作業内容を保存し、報告者サインを登録してください。')));
+      return;
+    }
+    FocusScope.of(context).unfocus();
     if (!_visitReport && _editSessionUnverified) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('編集申請の状態を確認できません。日報を再読み込みしてください。'))));
@@ -1343,10 +1401,17 @@ class _DailyReportPageState extends State<DailyReportPage> {
         );
       }
       if (!mounted) return;
+      await _loadSelectedSite();
+      if (!mounted) return;
+      checkSigningContext();
+      if (_error != null || !_signed || _report?.id != reportId ||
+          _report?.reporterSignatureJson == null || _report?.responsibleSignatureJson == null) {
+        throw StateError('責任者サインの保存・確定を再確認できませんでした。日報を再読み込みしてください。再サインは確認後に行ってください。');
+      }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('責任者サインで日報を確定しました'))),
       );
-      await _loadSelectedSite();
+      widget.onRegistrationSaved?.call();
       if (mounted && _error == null && shouldFinishCheckoutReport(
         signed: _signed,
         isVisitReport: _visitReport,
@@ -1362,7 +1427,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       _rememberManagementHold(error);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(SkoLanguageController.trParams('確定できませんでした: {error}', {'error': error,
+          content: Text(SkoLanguageController.trParams('確定できませんでした: {error}', {'error': dailyReportActionErrorMessage(error),
               }),
             ),
           ),
@@ -1782,12 +1847,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             title: const Text('勤怠管理での確認が必要です'),
                             subtitle: Text(_managementHoldMessage))),
                           if (_sharedFactsReadOnly && !_managementHold)
-                            Card(child: ListTile(
+                            Card(child: ExpansionTile(
                               leading: const Icon(Icons.group_outlined),
                               title: Text(SkoLanguageController.trParams('{name}さんが日報を登録しました',
                                 {'name': _sharedContext!.reporterName})),
-                              subtitle: Text(SkoLanguageController.tr(
-                                'この日報の内容と報告者サインは保存済みです。重複登録は不要です。責任者本人のサインは対象メンバーが取得できます。内容の変更には編集承認が必要です。')),
+                              children: [Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                child: Text(SkoLanguageController.tr(
+                                  'この日報の内容と報告者サインは保存済みです。重複登録は不要です。責任者本人のサインは対象メンバーが取得できます。内容の変更には編集承認が必要です。')))],
                             )),
                           DailyReportPendingNotice(
                             hasClockedInWorkers: _groups.any((group) =>
@@ -1797,13 +1863,41 @@ class _DailyReportPageState extends State<DailyReportPage> {
                     ),
                             isSigned: _signed,
                           ),
+                          const SizedBox(height: 16),
+                          if (widget.vehicleClockInId != null)
+                            VehicleDriverMeterEntry(
+                              sourceClockInId: widget.vehicleClockInId!,
+                              expectedSiteId: _siteId,
+                              expectedRouteId: _routeAssignmentId,
+                              requireDestinationMatch: true,
+                              expectedWorkDate: '${_date.year.toString().padLeft(4, '0')}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}',
+                            ),
+                          Card(child: ExpansionTile(
+                            leading: const Icon(Icons.help_outline),
+                            title: const Text('入力の流れ・サインの説明'),
+                            children: [Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              child: Text('① 作業内容を入力\n${_evidence.isNotEmpty ? '② 保存済みの写真・現場記録を確認\n' : ''}${_dailyStep(2)} メンバー別の勤務実績・手当を確認\n${_dailyStep(3)} 報告者がサイン\n${_dailyStep(4)} 責任者本人がサインして確定'))],
+                          )),
+                          const SizedBox(height: 8),
+                          TextField(
+                            key: const ValueKey('daily-report-work-description'),
+                            controller: _workDescription,
+                            enabled: _editable,
+                            minLines: 6,
+                            maxLines: 12,
+                            decoration: InputDecoration(
+                              labelText: SkoLanguageController.tr('作業内容'),
+                              prefixIcon: const _ReportStepBadge('①'),
+                              alignLabelWithHint: true,
+                              hintText: SkoLanguageController.tr('本日の作業内容を入力'),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
                           if (_evidence.isNotEmpty) ...[
                             const SizedBox(height: 10),
                             Card(
                               child: ListTile(
-                                leading: const CircleAvatar(
-                                  child: Icon(Icons.photo_camera_outlined),
-                                ),
+                                leading: const _ReportStepBadge('②'),
                                 title: Text(
                                   SkoLanguageController.tr('勤怠・現場記録'),
                                   style: TextStyle(
@@ -1826,35 +1920,15 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               ),
                             ),
                           ],
-                          const SizedBox(height: 16),
-                          if (widget.vehicleClockInId != null)
-                            VehicleDriverMeterEntry(
-                              sourceClockInId: widget.vehicleClockInId!,
-                              expectedSiteId: _siteId,
-                              expectedRouteId: _routeAssignmentId,
-                              requireDestinationMatch: true,
-                              expectedWorkDate: '${_date.year.toString().padLeft(4, '0')}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}',
-                            ),
-                          TextField(
-                            key: const ValueKey('daily-report-work-description'),
-                            controller: _workDescription,
-                            enabled: _editable,
-                            minLines: 6,
-                            maxLines: 12,
-                            decoration: InputDecoration(
-                              labelText: SkoLanguageController.tr('作業内容'),
-                              alignLabelWithHint: true,
-                              hintText: SkoLanguageController.tr('本日の作業内容を入力'),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          if (!_sharedFactsReadOnly) Text(
-                            SkoLanguageController.tr('メンバー別 残業・早出・手当'),
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w900),
-                          ),
+                          if (!_sharedFactsReadOnly) Row(children: [
+                            _ReportStepBadge(_dailyStep(2)),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(
+                              SkoLanguageController.tr('メンバー別 残業・早出・手当'),
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w900),
+                            )),
+                          ]),
                           const SizedBox(height: 8),
                           if (!_sharedFactsReadOnly) for (final worker in _workers) ...[
                             _WorkerDetailCard(
@@ -1912,22 +1986,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                           Card(
                             child: ListTile(
-                              leading: CircleAvatar(
-                                child: Icon(
-                                  _report?.reporterSignatureJson == null
-                                      ? Icons.draw_outlined
-                                      : Icons.check,
-                                ),
-                              ),
+                              leading: _ReportStepBadge(_dailyStep(3)),
                               title: Text(
                                 SkoLanguageController.tr('報告者サイン'),
                                 style: TextStyle(fontWeight: FontWeight.w900),
                               ),
-                              subtitle: Text(
-                                _report?.reporterSignatureJson == null
-                                    ? SkoLanguageController.tr('日報を作成した報告者がサインします')
-                                    : _report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み'),
-                              ),
+                              subtitle: _report?.reporterSignatureJson == null ? null : Text(
+                                _report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み')),
                               trailing: _managementHold || _signed || _visitReporterLocked || _sharedFactsReadOnly
                                   ? null
                                   : const Icon(Icons.chevron_right),
@@ -1938,8 +2003,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           if (_signed)
                             Card(
                               child: ListTile(
-                                leading: const CircleAvatar(
-                                  child: Icon(Icons.check)),
+                                leading: _ReportStepBadge(_dailyStep(4)),
                                 title: Text(
                                   SkoLanguageController.tr('責任者サイン済み・確定'),
                                   style: TextStyle(fontWeight: FontWeight.w900),
@@ -1954,22 +2018,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           else
                             Card(
                               child: ListTile(
-                                leading: const CircleAvatar(
-                                  child: Icon(Icons.draw_outlined),
-                                ),
+                                leading: _ReportStepBadge(_dailyStep(4)),
                                 title: Text(
                                   SkoLanguageController.tr('責任者サイン'),
                                   style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
-                                subtitle: Text(
-                                  SkoLanguageController.tr(
-                            _visitReport
-                                ? '報告者サインの後、責任者サインでこの訪問の日報を確定します'
-                                : '報告者サインの後、責任者サインで日報と出勤データを確定します',
-                          ),
-                                ),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: _managementHold || _saving || widget.restrictedReporterRegistration ? null : _sign,
+                                onTap: _managementHold || _saving || (widget.restrictedReporterRegistration &&
+                                    _sharedContext?.canAccessSupervisorCollection != true) ? null : _sign,
                               ),
                             ),
                           const SizedBox(height: 16),
@@ -2917,3 +2973,13 @@ String _captureStatusLabel(String? status) => SkoLanguageController.tr(switch (s
   _ => '未登録',
 });
 
+
+class _ReportStepBadge extends StatelessWidget {
+  const _ReportStepBadge(this.number);
+  final String number;
+  @override
+  Widget build(BuildContext context) => SizedBox(width: 40, height: 40,
+    child: Center(child: Text(number, style: TextStyle(
+      color: Theme.of(context).colorScheme.primary,
+      fontSize: 28, fontWeight: FontWeight.w800))));
+}
