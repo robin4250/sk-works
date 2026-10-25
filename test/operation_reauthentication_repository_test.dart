@@ -10,10 +10,10 @@ const actorA = '10000000-0000-0000-0000-000000000001';
 const actorB = '10000000-0000-0000-0000-000000000002';
 const sessionA = '20000000-0000-0000-0000-000000000001';
 const sessionB = '20000000-0000-0000-0000-000000000002';
-String token(String actor, String session) {
+String token(String actor, String session, {int revision = 0}) {
   String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
   return '${part({'alg': 'HS256', 'typ': 'JWT'})}.${part({
-    'sub': actor, 'session_id': session, 'role': 'authenticated',
+    'sub': actor, 'session_id': session, 'role': 'authenticated', 'fixture_revision':revision,
     'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600,
   })}.synthetic';
 }
@@ -35,6 +35,7 @@ class Fixture {
   String actor = actorA;
   String session = sessionA;
   int capabilityStatus = 200;
+  int tokenRevision = 0;
   bool capabilityNetworkFailure = false;
   Object capability = {'protocol': 'sko-reauthentication-v1',
     'secondary_password': true, 'master_feature': false, 'master_security': false};
@@ -46,7 +47,7 @@ class Fixture {
       .then((_) {});
   Future<http.Response> handle(http.Request request) async {
     if (request.url.path == '/auth/v1/token') {
-      return jsonResponse({'access_token': token(actor, session), 'refresh_token': 'synthetic-refresh',
+      return jsonResponse({'access_token': token(actor, session,revision:++tokenRevision), 'refresh_token': 'synthetic-refresh',
         'expires_in': 3600, 'token_type': 'bearer', 'user': {'id': actor,
           'aud': 'authenticated', 'app_metadata': {}, 'user_metadata': {},
           'created_at': '2026-10-16T00:00:00Z'}});
@@ -103,6 +104,30 @@ void main() {
       await expectLater(f.proof(), throwsStateError);
     }, timeout: const Timeout(Duration(seconds: 30)));
   }
+  for(final sameActor in [true,false]) {
+    test('session history cannot restore an old pending proof ($sameActor)', () async {
+      final f=Fixture();addTearDown(f.client.dispose);await f.login();
+      f.duringProof=() async {
+        f.actor=sameActor?actorA:actorB;f.session=sessionB;await f.login();
+        f.actor=actorA;f.session=sessionA;await f.login();
+      };
+      await expectLater(f.proof(),throwsStateError);
+      expect(f.client.auth.currentUser!.id,actorA);
+      expect(f.bodies,hasLength(1)); // no automatic issuance retry
+      f.duringProof=null;
+      expect(await f.proof(),'a'*64); // a fresh explicit operation is independent
+      expect(f.bodies,hasLength(2));
+    },timeout:const Timeout(Duration(seconds:30)));
+  }
+  test('same server session JWT renewal keeps a pending proof valid', () async {
+    final f=Fixture();addTearDown(f.client.dispose);await f.login();
+    final original=f.client.auth.currentSession!.accessToken;
+    f.duringProof=() async {await f.login();};
+    expect(await f.proof(),'a'*64);
+    expect(f.client.auth.currentSession!.accessToken,isNot(original));
+    expect(f.headers.single,'Bearer $original');
+    expect(f.bodies,hasLength(1));
+  },timeout:const Timeout(Duration(seconds:30)));
   test('malformed, expired, overlong, other operation and target proofs rejected', () async {
     final f = Fixture();addTearDown(f.client.dispose);await f.login();
     final valid = {'protocol': 'sko-reauthentication-v1', 'proof': List.filled(64, 'a').join(),

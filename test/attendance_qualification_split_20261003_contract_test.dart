@@ -16,7 +16,11 @@ void main() {
             .readAsStringSync();
 
     expect(app, contains("key: 'attendance_list'"));
-    expect(app, contains('builder: (_) => AttendanceWorkerListPage('));
+    final protectedRoutes = File('lib/features/attendance/attendance_protected_routes.dart').readAsStringSync();
+    expect(app, contains('builder: (_) => attendanceWorkerListDestination('));
+    expect(protectedRoutes, contains('SecondaryProtectedPage('));
+    expect(protectedRoutes, contains('child: AttendanceWorkerListPage('));
+    expect(app, isNot(contains('builder: (_) => AttendanceWorkerListPage(')));
     expect(app, contains("? () => _openHomeAction('attendance_management')"));
     expect(list, contains('RelatedActionFooter('));
     expect(list, contains("'出勤表一覧'"));

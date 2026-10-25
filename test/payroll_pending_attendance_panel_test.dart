@@ -1,3 +1,4 @@
+import 'package:sk_works/features/auth/secondary_protected_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/attendance/attendance_management_repository.dart';
@@ -18,7 +19,7 @@ class PanelFixture extends existing.PageFixture {
 }
 
 void main() {
-  testWidgets('payroll date opens the existing editor with exact employee and date, no automatic quantity', (tester) async {
+  testWidgets('payroll date requires secondary authentication before loading the exact employee editor', (tester) async {
     final f = existing.Fixture();
     await tester.runAsync(f.start);
     addTearDown(() async {
@@ -40,8 +41,13 @@ void main() {
     expect(find.text('未確定の勤務 1日'), findsOneWidget);
     await tester.tap(find.text('未確定の勤務 1日')); await tester.pumpAndSettle();
     await tester.tap(find.text('10/13 勤務を確認')); await tester.pumpAndSettle();
-    expect(loaded, [(existing.actor,DateTime(2026,10,13))]);
-    expect(find.text('未確定'), findsOneWidget);
+    expect(loaded, isEmpty);
+    final protected = tester.widget<SecondaryProtectedPage>(find.byType(SecondaryProtectedPage));
+    final editor = protected.child as AttendanceManagementPage;
+    expect(editor.initialWorkerId, existing.actor);
+    expect(editor.initialDate, DateTime(2026,10,13));
+    expect(find.byType(AttendanceManagementPage), findsNothing);
+    expect(find.textContaining('ログイン状態を確認できません'), findsOneWidget);
     expect(repository.reads, greaterThanOrEqualTo(2));
     repository.pending = false;
     await tester.pageBack(); await tester.pumpAndSettle();

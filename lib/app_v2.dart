@@ -20,9 +20,8 @@ import 'features/albums/albums_cloud_page.dart';
 import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
-import 'features/attendance/attendance_worker_list_page.dart';
 import 'features/attendance/attendance_selection_page.dart';
-import 'features/attendance/attendance_management_page.dart';
+import 'features/attendance/attendance_protected_routes.dart';
 import 'features/attendance/work_destination_selection_page.dart';
 import 'features/attendance/route_journey_capture_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
@@ -175,6 +174,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Map<String, bool> _moduleStates = const {};
   int _friendsRequest = 0;
+  int? _friendsReturnIndex;
+  String? _friendsReturnActor;
   String? _friendHomeActor;
   bool _friendHomeVisible = true;
   String? get _currentHomeActor => SupabaseBackend.isInitialized
@@ -1107,7 +1108,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (key == 'attendance_list') {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => AttendanceWorkerListPage(
+          builder: (_) => attendanceWorkerListDestination(
             onOpenManagement:
                 _nestedActionKeys.contains('attendance_management')
                 ? () => _openHomeAction('attendance_management')
@@ -1158,8 +1159,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         return;
       }
       setState(() {
+        if (key == 'friends') {
+          _friendsReturnIndex = _selectedIndex;
+          _friendsReturnActor = _currentHomeActor;
+          _friendsRequest++;
+        }
         _selectedIndex = 3;
-        if (key == 'friends') _friendsRequest++;
       });
       return;
     }
@@ -1403,7 +1408,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         page = const CompanySubmittedDocumentsPage();
         break;
       case 'attendance_management':
-        page = const AttendanceManagementPage();
+        page = attendanceManagementDestination();
         break;
       case 'line_talk':
         page = const LineTalkHubPage();
@@ -2145,7 +2150,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ? const SiteCloudPage()
           : _ModuleDisabledPage(label: SkoLanguageController.tr('現場')),
       _moduleEnabled('chat')
-          ? ChatCloudPage(viewerOnlyFriends: _isViewer, friendsRequest: _friendsRequest)
+          ? ChatCloudPage(viewerOnlyFriends: _isViewer, friendsRequest: _friendsRequest,
+              onFriendsDismissed: (request) {
+                final previous = _friendsReturnIndex;
+                if (!mounted || request != _friendsRequest || previous == null ||
+                    _friendsReturnActor != _currentHomeActor) { return; }
+                setState(() { _selectedIndex = previous; _friendsReturnIndex = null; });
+              })
           : _ModuleDisabledPage(label: SkoLanguageController.tr('チャット')),
       _menuPage(),
     ];
