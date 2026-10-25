@@ -16,6 +16,8 @@ try{
  const setup=original.slice(0,original.indexOf(marker)),tail=original.slice(original.indexOf('}catch(error){'));
  const unit=String.raw`
  phase='document-finance-resigning-default-off';
+ const vehicleSource=JSON.parse(await readFile('tool/fixtures/shared_worker_facts_sources.json','utf8')).functions.find(f=>f.signature==='private.save_daily_report_vehicle_usage(uuid,uuid,uuid,uuid,numeric)');
+ eq(md5(dbBody(vehicleSource.definition)),vehicleSource.source_md5,'Exact observed legacy vehicle validator dependency');await exec(vehicleSource.definition);
  const snapshot=()=>q("select jsonb_build_object('clocks',(select jsonb_agg(to_jsonb(a) order by id) from attendance_verifications a),'reports',(select jsonb_agg(to_jsonb(r) order by id) from daily_reports r),'workers',(select jsonb_agg(to_jsonb(w) order by report_id,worker_id) from daily_report_workers w),'events',(select jsonb_agg(to_jsonb(e) order by id) from shared_daily_report_private.signature_events e),'protocol',(select jsonb_agg(to_jsonb(p) order by report_id) from checkout_shared_hours_private.work_protocol p),'confirmations',(select jsonb_agg(to_jsonb(c) order by id) from checkout_shared_hours_private.confirmations c),'ledger',(select jsonb_agg(to_jsonb(l) order by id) from checkout_shared_hours_private.ledger l),'entries',(select jsonb_agg(to_jsonb(a) order by id) from attendance_entries a),'payroll',(select jsonb_agg(to_jsonb(s) order by worker_id,period_start) from payroll_statements s),'settings',(select jsonb_agg(to_jsonb(s) order by worker_id) from worker_payroll_settings s)) v");
  const transitionBeforeInstall=await snapshot();
  await exec(await readFile(process.env.SKO_FINANCE_TRANSITION_CANDIDATE,'utf8'));
@@ -91,6 +93,8 @@ try{
  const reporter=await q('select representative_signature_json v from daily_reports where id=$1',[rid]);
  context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  eq(context.hours_annex.ready,true,'New reporter epoch adopts the newly explicit confirmations');
+ eq(await q('select checkout_report_registration_private.inputs_complete($1) v',[rid]),true,'Actual complete-input validator retains all legacy source dependency checks');
+ eq(await q("select bool_and(document_finance_completion_private.allow_identical_materialization(w.report_id,w.worker_id,to_jsonb(w),c.worker_facts)) v from daily_report_workers w join checkout_shared_hours_private.confirmations c on c.report_id=w.report_id and c.worker_id=w.worker_id where w.report_id=$1",[rid]),true,'Staged raw facts exactly qualify for scoped no-op materialization');
  await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,'supervisor','新たな実責任者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
  eq(await q('select status v from daily_reports where id=$1',[rid]),'signed','Existing writer performs actual finalization');
  eq(await q('select representative_signature_json v from daily_reports where id=$1',[rid]),reporter,'Identical staged materialization does not trigger signature clearing');
