@@ -23,10 +23,14 @@ create function shared_report_edit_private.current_session(rid uuid,closed_allow
 returns jsonb language plpgsql stable security definer set search_path='' as $$
 declare actor uuid;sid uuid;s shared_report_edit_private.sessions%rowtype;
 begin
- actor:=checkout_report_registration_private.current_actor();sid:=(auth.jwt()->>'session_id')::uuid;
- select * into s from shared_report_edit_private.sessions x where x.report_id=rid and x.actor_id=actor and x.session_id=sid
+ select * into s from shared_report_edit_private.sessions x where x.report_id=rid
   and (x.state='active' or (closed_allowed and x.state='closed'));
- if s.report_id is null or not exists(select 1 from public.daily_report_edit_requests q where q.id=s.request_id
+ -- Reports outside this protocol retain their existing authentication path.
+ -- A real continuation always revalidates its current actor and live session.
+ if s.report_id is null then return null;end if;
+ actor:=checkout_report_registration_private.current_actor();sid:=(auth.jwt()->>'session_id')::uuid;
+ if s.actor_id is distinct from actor or s.session_id is distinct from sid
+ or not exists(select 1 from public.daily_report_edit_requests q where q.id=s.request_id
   and q.report_id=s.report_id and q.company_id=s.company_id and q.requested_by=actor and q.status='used')
  or not exists(select 1 from public.company_members where company_id=s.company_id and user_id=actor) then return null;end if;
  return to_jsonb(s);

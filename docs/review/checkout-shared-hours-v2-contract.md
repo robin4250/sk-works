@@ -56,3 +56,15 @@ existing authorized manager to confirm again. A client has no direct execute
 permission on the copy routine. The additional Native wrapper exercises the
 original approved-draft and signature writers with this actual hours module;
 its approval/Auth surroundings are synthetic, not a real GoTrue proof.
+
+Clock INSERT lock order is normalized work date, shared-group canonical lock,
+then the reentrant `ba_checkout_paid_hours_clock_scope` lock, before route
+source-row locks. PostgreSQL takes an UPDATE/DELETE row lock before its ROW
+BEFORE trigger, so that path acquires the exact existing canonical company
+KEY SHARE, worker FOR UPDATE and monthly advisory scope with NOWAIT/try only.
+Contention rolls the whole statement back as 55P03; it never waits in reverse
+order or proceeds with only part of the scope set. The AFTER invalidation uses
+only the OLD/NEW worker-day scope subset already held, without adding peers.
+The unified release Native job runs the original canonical parent suite once,
+followed by each normal, manual-management and approved-edit v2 unit once.
+Standalone new-feature Native workflows remain available via manual dispatch.

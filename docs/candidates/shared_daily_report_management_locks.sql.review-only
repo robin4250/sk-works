@@ -21,10 +21,10 @@ begin
  select coalesce(jsonb_agg(jsonb_build_object('id',a.id,'sources',payroll_scope_private.report_sources(a.id)) order by a.id),'[]'::jsonb)
  into before_reports from affected a;
  with inputs as(select (x->>'worker_id')::uuid wid,(x->>'date')::date day_value from jsonb_array_elements(p_items) x),
- scope_values as(select p_company_id cid,i.wid,i.day_value day from inputs i
+ scope_values as(select p_company_id cid,i.wid,i.day_value as scope_day from inputs i
   union select x.cid,x.wid,x.day from jsonb_array_elements(before_reports) r,
-   lateral jsonb_to_recordset(r#>'{sources,scopes}') x(cid uuid,wid uuid,day date))
- select coalesce(jsonb_agg(jsonb_build_object('cid',cid,'wid',wid,'day',day) order by cid,wid,day),'[]'::jsonb) into scopes from scope_values;
+   lateral jsonb_to_recordset(r#>'{sources,scopes}') x(cid uuid,wid uuid,"day" date))
+ select coalesce(jsonb_agg(jsonb_build_object('cid',cid,'wid',wid,'day',scope_day) order by cid,wid,scope_day),'[]'::jsonb) into scopes from scope_values;
  perform payroll_scope_private.lock_scopes(scopes,false);
  with inputs as(select (x->>'worker_id')::uuid wid,(x->>'date')::date day_value,nullif(x->>'site_id','')::uuid site from jsonb_array_elements(p_items) x),
  affected as(select distinct r.id from public.daily_reports r join inputs i on r.company_id=p_company_id and r.report_date=i.day_value

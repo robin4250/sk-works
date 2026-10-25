@@ -122,6 +122,28 @@ const addition=String.raw`
  for(const fn of ['begin_work_report(uuid)','prepare_supervisor(uuid,text)','capture_report(uuid,jsonb)','supervisor_snapshot(uuid)']){
   eq(await q("select has_function_privilege('authenticated',$1,'execute') v",['checkout_shared_hours_private.'+fn]),false,'Authenticated cannot call internal consent capability directly');
  }
+
+ phase='clock-row-canonical-contention-is-nonblocking';
+ const v2ClockOriginal=await q('select to_jsonb(a) v from attendance_verifications a where id=$1',[v2StartA]);
+ const v2ClockContender=new pg.Client({connectionString:destination.href,connectionTimeoutMillis:5000});await v2ClockContender.connect();
+ await exec("set statement_timeout='2000ms'");
+ try{
+  await v2ClockContender.query('begin');
+  await v2ClockContender.query('select 1 from workers where company_id=$1 and id=$2 for update',[A,reportWorker]);
+  await assert.rejects(()=>client.query('update attendance_verifications set daily_report_id=daily_report_id where id=$1',[v2StartA]),error=>{eq(error.code,'55P03','A row-first update refuses held worker scope without waiting for deadlock/statement timeout');return true;});
+  await v2ClockContender.query('rollback');
+  await v2ClockContender.query('begin');
+  await v2ClockContender.query("select pg_advisory_xact_lock(hashtextextended($1::uuid::text||$2::uuid::text||date_trunc('month',$3::date)::date::text,0))",[A,reportWorker,v2Day]);
+  await assert.rejects(()=>client.query('update attendance_verifications set daily_report_id=daily_report_id where id=$1',[v2StartA]),error=>{eq(error.code,'55P03','A row-first update refuses held canonical month advisory without blocking');eq(error.message,'paid_hours_clock_scope_busy_retry','Contended advisory is an explicit safe retry');return true;});
+  await v2ClockContender.query('select 1 from workers where company_id=$1 and id=$2 for update nowait',[A,reportWorker]);
+  await v2ClockContender.query('rollback');
+  eq(await q('select to_jsonb(a) v from attendance_verifications a where id=$1',[v2StartA]),v2ClockOriginal,'Rejected contention never changes source evidence');
+  await exec('begin');
+  await client.query('select payroll_scope_private.lock_scopes(jsonb_build_array(jsonb_build_object(\'cid\',$1::uuid,\'wid\',$2::uuid,\'day\',$3::date)))',[A,reportWorker,v2Day]);
+  await client.query('update attendance_verifications set daily_report_id=daily_report_id where id=$1',[v2StartA]);
+  eq(await q('select to_jsonb(a) v from attendance_verifications a where id=$1',[v2StartA]),v2ClockOriginal,'Uncontended no-op evidence update remains compatible and preserves source');
+  await exec('commit');
+ }finally{await exec('rollback');await exec('set statement_timeout=0');await v2ClockContender.query('rollback');await v2ClockContender.end();}
  console.log(JSON.stringify({pass:true,versioned_work_report_then_individual_hours:true,first_work_signature_preserved:true,stale_and_direct_supervisor_bypass_denied:true,actual_payroll_quantities:[7.25,6.75],legacy_reports_preserved:true,real_gotrue:false,production_changed:false}));
 `;
 const folder=await mkdtemp(join(tmpdir(),'shared-hours-v2-proof-'));

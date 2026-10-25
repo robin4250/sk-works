@@ -34,6 +34,7 @@ const managerUnit=String.raw\u0060
   const blockedWrite=sharedCall(memberC,sidC,'select public.force_manage_attendance($1,$2::jsonb) v',['upsert',JSON.stringify([{worker_id:reportWorker,date:'2026-11-04',mode:'work',site_id:SITE,man_days:1,clock_in:'08:00',clock_out:'17:00',allowance_names:[]}])]).then(value=>({value}),error=>({error}));
   let waiting=false;
   for(let attempt=0;attempt<50;attempt++){
+   await managerRace.query('select pg_stat_clear_snapshot()');
    const state=await managerRace.query("select wait_event_type='Lock' as waiting from pg_stat_activity where pid=$1",[waitingPid]);
    if(state.rows[0]?.waiting===true){waiting=true;break;}
    await new Promise(resolve=>setTimeout(resolve,20));

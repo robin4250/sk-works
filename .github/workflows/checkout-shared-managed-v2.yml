@@ -1,15 +1,6 @@
 name: Shared managed attendance actual v2 composition
 on:
-  pull_request:
-    paths:
-      - 'docs/candidates/checkout_shared_hours_v2*.sql.review-only'
-      - 'docs/candidates/shared_daily_report.sql.review-only'
-      - 'tool/fixtures/checkout_shared_hours_v2_helpers.json'
-      - 'tool/prepare_checkout_shared_hours_v2.py'
-      - 'tool/verify_checkout_shared_hours_v2.mjs'
-      - 'docs/candidates/checkout_shared_managed_source.sql.review-only'
-      - 'tool/verify_checkout_shared_managed_v2.mjs'
-      - '.github/workflows/checkout-shared-managed-v2.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:

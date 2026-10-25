@@ -148,6 +148,32 @@ begin
  end loop;
  return scopes;
 end $scopes$;
+-- UPDATE/DELETE row locks are acquired by PostgreSQL before a ROW BEFORE
+-- trigger. Never wait here for a canonical scope already held by a signer that
+-- may itself need this evidence row. Exact canonical strengths/order/key are
+-- retained, but contention rolls the entire statement back with 55P03.
+create function checkout_paid_hours_candidate_private.try_lock_clock_scopes(p_scopes jsonb)
+returns void language plpgsql volatile security invoker set search_path='' as $try_lock$
+declare r record;
+begin
+ for r in select distinct x.cid from jsonb_to_recordset(p_scopes) x(cid uuid,wid uuid,day date)
+  where x.cid is not null and x.wid is not null and x.day is not null order by x.cid loop
+  perform 1 from public.companies where id=r.cid for key share nowait;
+  if not found then raise sqlstate '40001' using message='payroll scope company unavailable';end if;
+ end loop;
+ for r in select distinct x.cid,x.wid from jsonb_to_recordset(p_scopes) x(cid uuid,wid uuid,day date)
+  where x.cid is not null and x.wid is not null and x.day is not null order by x.cid,x.wid loop
+  perform 1 from public.workers where company_id=r.cid and id=r.wid for update nowait;
+  if not found then raise sqlstate '40001' using message='payroll scope worker unavailable';end if;
+ end loop;
+ for r in select distinct x.cid,x.wid,date_trunc('month',x.day)::date scope_month
+  from jsonb_to_recordset(p_scopes) x(cid uuid,wid uuid,day date)
+  where x.cid is not null and x.wid is not null and x.day is not null order by x.cid,x.wid,scope_month loop
+  if not pg_try_advisory_xact_lock(hashtextextended(r.cid::text||r.wid::text||r.scope_month::text,0)) then
+   raise sqlstate '55P03' using message='paid_hours_clock_scope_busy_retry';end if;
+ end loop;
+end $try_lock$;
+
 create function checkout_paid_hours_candidate_private.lock_clock_scope()
 returns trigger language plpgsql volatile security definer set search_path='' as $lock$
 declare evidence jsonb;
@@ -155,7 +181,11 @@ begin
  if current_setting('transaction_isolation')<>'read committed' then raise exception 'paid hours clock scope requires read committed';end if;
  evidence:=case when tg_op<>'INSERT' then jsonb_build_array(to_jsonb(old)) else '[]'::jsonb end
   ||case when tg_op<>'DELETE' then jsonb_build_array(to_jsonb(new)) else '[]'::jsonb end;
- perform payroll_scope_private.lock_scopes(checkout_paid_hours_candidate_private.clock_scopes(evidence));
+ if tg_op='INSERT' then
+  perform payroll_scope_private.lock_scopes(checkout_paid_hours_candidate_private.clock_scopes(evidence));
+ else
+  perform checkout_paid_hours_candidate_private.try_lock_clock_scopes(checkout_paid_hours_candidate_private.clock_scopes(evidence));
+ end if;
  if tg_op='DELETE' then return old;end if;return new;
 end $lock$;
 
@@ -176,7 +206,7 @@ begin
  return null;
 end $refresh$;
 revoke all on all functions in schema checkout_paid_hours_candidate_private from public,anon,authenticated,service_role;
-create trigger aa_checkout_paid_hours_clock_scope before insert or update or delete on public.attendance_verifications
+create trigger ba_checkout_paid_hours_clock_scope before insert or update or delete on public.attendance_verifications
  for each row execute function checkout_paid_hours_candidate_private.lock_clock_scope();
 create trigger zz_checkout_paid_hours_clock_refresh after insert or update or delete on public.attendance_verifications
  for each row execute function checkout_paid_hours_candidate_private.refresh_clock_scope();

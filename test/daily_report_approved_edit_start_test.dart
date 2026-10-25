@@ -197,7 +197,14 @@ void main() {
     expect(repo.approved, isFalse);
     expect(shared.approvedWrites, 0);
     expect(find.byKey(const ValueKey('daily-report-begin-approved-edit')), findsNothing);
-    expect(find.text('編集できる状態になりました。編集後は報告者・責任者のサインを登録してください。'), findsOneWidget);
+    // The registration snackbar may still precede the success snackbar. Verify
+    // the durable confirmed session and unlocked correction controls instead.
+    final session = await DailyReportEditSessionStore().load('owner', 'report-a');
+    expect(session?.confirmed, isTrue);
+    expect(session?.requestId, 'request-a');
+    final reporterTile = find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile));
+    await reveal(tester, reporterTile);
+    expect(tester.widget<ListTile>(reporterTile).onTap, isNotNull);
   });
   testWidgets('revoked shared v2 approval cannot bypass frozen report', (tester) async {
     final repo = EditableReports(client);

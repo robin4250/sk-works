@@ -28,7 +28,7 @@
     },
     {
       "signature": "shared_daily_report_private.can_read_roster(uuid)",
-      "source_md5": "84b7da3c494b856fac42418b8e5b3eda",
+      "source_md5": "8cc4ac9158faf688132c9e48780d3b85",
       "owner": "postgres",
       "security_definer": true,
       "search_path": "",
