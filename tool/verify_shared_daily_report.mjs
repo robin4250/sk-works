@@ -46,6 +46,13 @@ const addition=String.raw`
  // OFF company setting without modifying the existing strong guard function.
  await client.query('update private.vehicle_usage_rollout set enabled=false where company_id=$1',[A]);
  eq(await q("select md5(prosrc) v from pg_proc where oid='private.guard_linked_vehicle_meter_report()'::regprocedure"),strongGuardBefore,'Strong vehicle guard is not weakened');
+ const absentRoster=JSON.stringify([worker(reportWorker,[]),worker(W4,[])]);
+ await reject(()=>sharedCall(U,id(80),'select public.submit_shared_daily_report($1,null,$2,$3::jsonb,$4,$5::jsonb) v',[id(8100),'実出勤のない社員',absentRoster,'報告者',signature]),/peer_source_unavailable/);
+ await client.query("insert into attendance_verifications values($1,$2,$3,$4,null,'clock_in','2026-10-25 08:00Z','2026-10-25',null,null,null)",[id(8150),A,W6,SITE2]);
+ const otherSiteRoster=JSON.stringify([worker(reportWorker,[]),worker(W6,[])]);
+ await reject(()=>sharedCall(U,id(80),'select public.submit_shared_daily_report($1,null,$2,$3::jsonb,$4,$5::jsonb) v',[id(8100),'別現場の社員',otherSiteRoster,'報告者',signature]),/peer_source_unavailable/);
+ const duplicatedRoster=JSON.stringify([worker(reportWorker,[]),worker(reportWorker,[])]);
+ await reject(()=>sharedCall(U,id(80),'select public.submit_shared_daily_report($1,null,$2,$3::jsonb,$4,$5::jsonb) v',[id(8100),'二重登録',duplicatedRoster,'報告者',signature]),/duplicate_roster/);
 
  const first=await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,null,$2,$3::jsonb,$4,$5::jsonb) v',[id(8100),'共同作業',roster,'最初の報告者',signature]);
  eq(first.state,'reporter_saved_waiting_supervisor','First reporter commits content and own signature atomically');

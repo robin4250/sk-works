@@ -298,7 +298,9 @@ class SharedDailyReportRepository {
     required String role, required String signerName, required Map<String, dynamic> signature,
   }) {
     if (!before.enabled || !before.canManageAttendance || before.reportId == null ||
-        !const ['representative', 'supervisor'].contains(role)) throw StateError('勤怠管理の権限を確認してください。');
+        !const ['representative', 'supervisor'].contains(role)) {
+      throw StateError('勤怠管理の権限を確認してください。');
+    }
     return _sign(before, 'manage_shared_report_signature', {
       'p_report_id': before.reportId, 'p_role': role, 'p_signer_name': signerName, 'p_signature': signature,
       'p_expected_updated_at': before.expectedUpdatedAt?.toUtc().toIso8601String(),

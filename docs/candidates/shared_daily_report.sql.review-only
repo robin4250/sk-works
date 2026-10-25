@@ -212,6 +212,14 @@ returns trigger language plpgsql security definer set search_path='' as $$
 begin
  if not shared_daily_report_private.report_enabled(old.id) then return case when tg_op='DELETE' then old else new end;end if;
  if tg_op='UPDATE' then
+  if row(new.representative_signer_name,new.representative_signature_json) is distinct from row(old.representative_signer_name,old.representative_signature_json)
+   and checkout_report_registration_private.has_signature(new.representative_signer_name,new.representative_signature_json)
+   and not shared_daily_report_private.signature_actor_allowed(old.id,'representative') then
+   raise sqlstate '42501' using message='shared_report_signature_actor_required';end if;
+  if row(new.supervisor_signer_name,new.supervisor_signature_json) is distinct from row(old.supervisor_signer_name,old.supervisor_signature_json)
+   and checkout_report_registration_private.has_signature(new.supervisor_signer_name,new.supervisor_signature_json)
+   and not shared_daily_report_private.signature_actor_allowed(old.id,'supervisor') then
+   raise sqlstate '42501' using message='shared_report_signature_actor_required';end if;
   if ((not checkout_report_registration_private.has_signature(old.representative_signer_name,old.representative_signature_json)
      and checkout_report_registration_private.has_signature(new.representative_signer_name,new.representative_signature_json))
    or (not checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json)
@@ -232,14 +240,6 @@ begin
     or new.signature_json is distinct from jsonb_build_object('version',3,'representative',new.representative_signature_json,'supervisor',new.supervisor_signature_json)) then
     raise sqlstate '55000' using message='shared_report_canonical_signatures_required';end if;
   end if;
-  if row(new.representative_signer_name,new.representative_signature_json) is distinct from row(old.representative_signer_name,old.representative_signature_json)
-   and checkout_report_registration_private.has_signature(new.representative_signer_name,new.representative_signature_json)
-   and not shared_daily_report_private.signature_actor_allowed(old.id,'representative') then
-   raise sqlstate '42501' using message='shared_report_signature_actor_required';end if;
-  if row(new.supervisor_signer_name,new.supervisor_signature_json) is distinct from row(old.supervisor_signer_name,old.supervisor_signature_json)
-   and checkout_report_registration_private.has_signature(new.supervisor_signer_name,new.supervisor_signature_json)
-   and not shared_daily_report_private.signature_actor_allowed(old.id,'supervisor') then
-   raise sqlstate '42501' using message='shared_report_signature_actor_required';end if;
  end if;
  if not checkout_report_registration_private.has_signature(old.representative_signer_name,old.representative_signature_json)
  and not checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json) then
@@ -525,7 +525,7 @@ create function shared_daily_report_private.submit_report(p_source_clock_in_id u
  p_work_description text,p_workers jsonb,p_signer_name text,p_signature jsonb)
 returns jsonb language plpgsql volatile security definer set search_path='' as $$
 declare actor uuid;i public.attendance_verifications%rowtype;r public.daily_reports%rowtype;
- state jsonb;scopes jsonb;rid uuid;
+ state jsonb;scopes jsonb;rid uuid;peer uuid;
 begin
  actor:=checkout_report_registration_private.current_actor();
  state:=shared_daily_report_private.resolve_own(p_source_clock_in_id);
@@ -539,6 +539,26 @@ begin
  or exists(select 1 from jsonb_array_elements(p_workers) w where not exists(select 1 from public.workers worker
    where worker.id=(w->>'worker_id')::uuid and worker.company_id=i.company_id)) then
   raise sqlstate '42501' using message='shared_report_roster_unavailable';end if;
+ if (select count(distinct (w->>'worker_id')::uuid) from jsonb_array_elements(p_workers) w)<>jsonb_array_length(p_workers) then
+  raise sqlstate '22023' using message='shared_report_duplicate_roster';end if;
+ for peer in select (w->>'worker_id')::uuid from jsonb_array_elements(p_workers) w loop
+  if not exists(select 1 from public.attendance_verifications a where a.company_id=i.company_id and a.worker_id=peer
+    and a.work_date=i.work_date and a.event_type='clock_in' and a.confirmed_at is not null
+    and a.site_id is not distinct from i.site_id and a.route_assignment_id is not distinct from i.route_assignment_id)
+   or (select count(*) from public.attendance_verifications a where a.company_id=i.company_id and a.worker_id=peer
+    and a.work_date=i.work_date and a.event_type='clock_in' and a.site_id is not distinct from i.site_id
+    and a.route_assignment_id is not distinct from i.route_assignment_id
+    and not exists(select 1 from public.attendance_verifications o where o.source_clock_in_id=a.id and o.event_type='clock_out'))>1
+   or exists(select 1 from public.attendance_verifications a where a.company_id=i.company_id and a.worker_id=peer
+    and a.work_date=i.work_date and a.event_type='clock_in' and a.site_id is not distinct from i.site_id
+    and a.route_assignment_id is not distinct from i.route_assignment_id and
+    ((a.daily_report_id is not null and a.daily_report_id is distinct from (state->>'report_id')::uuid)
+     or (select count(*) from public.attendance_verifications o where o.source_clock_in_id=a.id and o.event_type='clock_out')>1
+     or exists(select 1 from public.attendance_verifications o where o.source_clock_in_id=a.id and o.event_type='clock_out'
+      and (o.confirmed_at<=a.confirmed_at or row(o.company_id,o.worker_id,o.work_date,o.site_id,o.route_assignment_id)
+       is distinct from row(a.company_id,a.worker_id,a.work_date,a.site_id,a.route_assignment_id))))) then
+   raise sqlstate '42501' using message='shared_report_peer_source_unavailable';end if;
+ end loop;
  if exists(select 1 from jsonb_array_elements(p_workers) w where coalesce((w->>'allowance_amount')::numeric,0)<>0) then
   raise sqlstate '42501' using message='shared_report_manual_cash_requires_trusted_source';end if;
  perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(i.company_id,i.work_date,i.site_id,i.route_assignment_id)::text,0));
