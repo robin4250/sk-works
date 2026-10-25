@@ -13,7 +13,7 @@ insert into auth.identities values
  ('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000001','apple','registered','{"sub":"registered","email":"same@example.test"}'),
  ('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000001','google','existing-google','{"sub":"existing-google"}');
 insert into company_members values('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000099','owner');
-select set_config('request.jwt.claims','{"role":"service_role"}',false);
+select set_config('request.jwt.claims',jsonb_build_object('role','service_role')::text,false);
 select expect(resolve_existing_apple_login('registered') is null,'default OFF');
 select expect(not has_function_privilege('anon','public.resolve_existing_apple_login(text)','EXECUTE'),'anon denied');
 select expect(not has_function_privilege('authenticated','public.consume_existing_apple_login(text,text)','EXECUTE'),'authenticated denied');
