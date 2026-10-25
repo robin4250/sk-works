@@ -200,7 +200,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
       PendingCheckoutRegistration? eligible() {
         if (!mounted || _actor != actor || _controller.actorId != actor ||
             _repository?.actorId != actor || _generation != expectedGeneration ||
-            _checking || _error != null || _pending.isNotEmpty) return null;
+            _checking || _error != null || _pending.isNotEmpty) { return null; }
         return _registrations.where((row) => _sameRegistration(target, row) &&
           !row.blocking && row.state == 'reporter_saved_waiting_supervisor' &&
           row.reportId != null).firstOrNull;
