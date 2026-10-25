@@ -30,10 +30,14 @@ class SecurityCollectorSnapshot {
         .firstMatch(value);
     if (match == null || match.end != value.length || !_calendarDate(match[1]!) ||
         int.parse(match[2]!) > 23 || int.parse(match[3]!) > 59 ||
-        int.parse(match[4]!) > 59) return false;
+        int.parse(match[4]!) > 59) {
+      return false;
+    }
     final zone = match[5]!;
     if (zone != 'Z' && (int.parse(zone.substring(1, 3)) > 23 ||
-        int.parse(zone.substring(4, 6)) > 59)) return false;
+        int.parse(zone.substring(4, 6)) > 59)) {
+      return false;
+    }
     return DateTime.tryParse(value) != null;
   }
 
