@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'notification_open_session.dart';
+import 'checkout_report_notification_repository.dart';
+import 'checkout_report_notification_page.dart';
 import 'notification_explanation_page.dart';
 import 'notification_target_policy.dart';
 import '../../international/language_controller.dart';
@@ -280,6 +282,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
         final saved = await repository.target(target.id, target.actionId!);
         _session?.requireCurrent();
         destination = residentTaxReminderDestination(target, saved);
+      } else if (target.actionKey == checkoutReportRegistrationAction && target.actionId != null) {
+        final reader = CheckoutReportNotificationRepository.maybeCreate();
+        if (reader == null) { throw StateError('通知の日報を確認できません'); }
+        await reader.load(target.actionId!); // Authorize before marking the link read.
+        _session?.requireCurrent();
+        destination = CheckoutReportNotificationPage(reportId: target.actionId!, source: reader);
       } else if (target.actionKey == 'daily_report_edit_request' && target.actionId != null) {
         final client = SupabaseBackend.client;
         final actor = client.auth.currentUser?.id;
@@ -563,6 +571,7 @@ Widget? notificationDestination(
   'site_information_request' || 'site_information_request_result' =>
     SiteInformationApprovalsPage(initialRequestId: item.actionId),
   'vehicle_documents' => VehicleRoutePage(initialVehicleId: item.actionId ?? ''),
+  'checkout_report_registration' => CheckoutReportNotificationPage(reportId: item.actionId!),
   'daily_report_edit_request' => DailyReportApprovalsPage(
     initialRequestId: item.actionId,
   ),

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'notification_business_status.dart';
 import 'source_notification_target.dart';
+import 'checkout_report_notification_repository.dart';
 import '../payroll/resident_tax_reminder_repository.dart';
 
 class AppNotificationRecord {
@@ -31,7 +32,7 @@ class AppNotificationRecord {
   bool get hasBusinessTarget => (kind == 'resident_tax_reminder' && actionKey == 'payroll_settings') || const {
     'payroll_review', 'invoice_approval', 'daily_report_edit_request',
     'paid_leave_request', 'worker_personnel_change', 'attendance_correction_request',
-    'expense_review_request',
+    'expense_review_request', 'checkout_report_registration',
   }.contains(actionKey);
 
   AppNotificationRecord withBusinessStatus(NotificationBusinessStatus status) =>
@@ -56,6 +57,8 @@ class AppNotificationRecord {
 
 class AppNotificationRepository {
   AppNotificationRepository._(this._client);
+  /// Isolated client injection; production continues through maybeCreate().
+  AppNotificationRepository.forTesting(this._client);
 
   final SupabaseClient _client;
 
@@ -122,6 +125,16 @@ class AppNotificationRepository {
           targetName: '${target.fiscalYear}年度 住民税', targetDate: DateTime(target.fiscalYear, 6, 1),
         );
       } catch (_) {return const NotificationBusinessStatus();}
+    }
+    if (item.actionKey == checkoutReportRegistrationAction) {
+      try {
+        final target = await CheckoutReportNotificationRepository(_client).load(id);
+        return NotificationBusinessStatus(
+          state: !target.enabled ? NotificationBusinessState.unknown
+              : target.resolved ? NotificationBusinessState.completed : NotificationBusinessState.pending,
+          targetDate: target.items.isEmpty ? null : target.items.first.workDate,
+        );
+      } catch (_) { return const NotificationBusinessStatus(); }
     }
     if (item.actionKey == 'expense_review_request') {
       final actor = _client.auth.currentUser?.id;
