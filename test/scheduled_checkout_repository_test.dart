@@ -23,11 +23,13 @@ Map<String,dynamic> config()=>{'company_id':company,'worker_id':worker,'site_id'
 Map<String,dynamic> plan()=>{'schema':1,'actor_id':actor,'state':state(due:false),'configurations':[config()],
  'planned_notifications':[{'source_id':'$actor:$source','worker_id':worker,'work_date':'2026-10-25',
  'source_clock_in_id':source,'fire_at':'2026-10-25T09:00:00+00:00'}]};
-String token(String uid){
+String token(String uid,int expiresAt){
  String p(Object o)=>base64Url.encode(utf8.encode(jsonEncode(o))).replaceAll('=','');
- return '${p({'alg':'HS256','typ':'JWT'})}.${p({'sub':uid,'role':'authenticated','session_id':uid,'exp':DateTime.now().millisecondsSinceEpoch~/1000+3600})}.fixture';
+ return '${p({'alg':'HS256','typ':'JWT'})}.${p({'sub':uid,'role':'authenticated','session_id':uid,'exp':expiresAt})}.fixture';
 }
 class Fixture{
+ // Keep the same actor JWT byte-identical across A -> B -> A, even across a second boundary.
+ final tokenExpiresAt=DateTime.now().millisecondsSinceEpoch~/1000+3600;
  String user=actor;bool switchDuringRead=false;final requests=<String>[];final parameters=<Map<String,dynamic>>[];
  late final client=SupabaseClient('https://synthetic.invalid','fixture-only',
   authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient(handle));
@@ -35,7 +37,7 @@ class Fixture{
  Future<void> login([String uid=actor])async{user=uid;await client.auth.signInWithPassword(email:'synthetic@example.invalid',password:'fixture-only');await Future<void>.delayed(Duration.zero);}
  Future<http.Response> handle(http.Request req)async{
   Object? value;
-  if(req.url.path.endsWith('/token')){value={'access_token':token(user),'refresh_token':'fixture-only','token_type':'bearer','expires_in':3600,
+  if(req.url.path.endsWith('/token')){value={'access_token':token(user,tokenExpiresAt),'refresh_token':'fixture-only','token_type':'bearer','expires_in':3600,
    'user':{'id':user,'aud':'authenticated','role':'authenticated','email':'synthetic@example.invalid','app_metadata':{'provider':'email'},'user_metadata':<String,dynamic>{},'created_at':'2026-10-01T00:00:00Z'}};}
   else{
    requests.add(req.url.path.split('/').last);final decoded=jsonDecode(req.body);parameters.add(decoded is Map?Map<String,dynamic>.from(decoded):<String,dynamic>{});
