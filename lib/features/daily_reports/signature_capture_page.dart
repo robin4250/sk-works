@@ -248,9 +248,10 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
                           children: [
                             const Positioned(
                               left: 16,
+                              right: 16,
                               top: 14,
                               child: Text(
-                                'この枠内に指またはペンでサインしてください',
+                                '画面を横向きにしてサインしてください',
                                 style: TextStyle(fontSize: 13),
                               ),
                             ),

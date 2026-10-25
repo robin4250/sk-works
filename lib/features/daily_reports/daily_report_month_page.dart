@@ -229,7 +229,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
 
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(
     title: Text(SkoLanguageController.tr('日報一覧の使い方')),
-    content: SingleChildScrollView(child: Text(SkoLanguageController.tr('現場名一覧から現場を選ぶと、上下にスクロールする月の日付一覧を開きます。日付・曜日は土曜日が青文字、日曜日と日本の祝日が赤文字です。祝日が土曜日と重なる場合は赤文字を優先します。◀・▶で月を切り替え、ヘッダーの「月まとめて共有・保存」で全現場または開いている現場の保存済み日報をZIPにまとめます。各日の「写真無し」「写真付き」は実際に保存した日報の枚数です。同じ日が複数枚なら古い順に選べます。プレビューは通常表示で右スライドすると次の日報登録日、左スライドすると古い日報へ進み、矢印でも切り替えできます。ダブルタップで帳票を拡大中は横移動で帳票内を確認します。再度ダブルタップで通常表示へ戻すと日報をスライド切替できます。拡大中も下の矢印で日報を変更できます。「編集」から選択した日報を開きます。署名済み日報の変更制限はそのままです。「＋」で新規日報を作成します。訪問先ごとの日報と、退勤時のルート日報を別々に表示します。日報を選ぶと、保存済みの内容とサインでプレビューを開きます。下の印刷ボタンで1件ずつ印刷でき、共有ボタンから「ファイルに保存」を選べます。同じ日に同じ現場の日報が複数ある場合は件目の番号で区別できます。作成時刻は日本時間です。まとめて保存はZIP形式です。ルートの日別一覧では「請求数量を申請」から、退勤済みの訪問日報を取引会社ごとにまとめて数量を申請できます。管理者の承認後に請求書の下書きへ反映し、給与や出勤表の人工は変更しません。'))),
+    content: SingleChildScrollView(child: Text(SkoLanguageController.tr('現場名一覧から現場を選ぶと、上下にスクロールする月の日付一覧を開きます。日付・曜日は土曜日が青文字、日曜日と日本の祝日が赤文字です。祝日が土曜日と重なる場合は赤文字を優先します。◀・▶で月を切り替え、ヘッダーの「月まとめて共有・保存」で全現場または開いている現場の保存済み日報をZIPにまとめます。日報は面表紙のある帳票を1件と数え、添付写真の枚数は含みません。「写真無し」「写真付き」は日報の区分です。同じ日に複数の日報があれば古い順に選べます。プレビューは通常表示で右スライドすると次の日報登録日、左スライドすると古い日報へ進み、矢印でも切り替えできます。ダブルタップで帳票を拡大中は横移動で帳票内を確認します。再度ダブルタップで通常表示へ戻すと日報をスライド切替できます。拡大中も下の矢印で日報を変更できます。「編集」から選択した日報を開きます。署名済み日報の変更制限はそのままです。「＋」で新規日報を作成します。訪問先ごとの日報と、退勤時のルート日報を別々に表示します。日報を選ぶと、保存済みの内容とサインでプレビューを開きます。下の印刷ボタンで1件ずつ印刷でき、共有ボタンから「ファイルに保存」を選べます。同じ日に同じ現場の日報が複数ある場合は件目の番号で区別できます。作成時刻は日本時間です。まとめて保存はZIP形式です。ルートの日別一覧では「請求数量を申請」から、退勤済みの訪問日報を取引会社ごとにまとめて数量を申請できます。管理者の承認後に請求書の下書きへ反映し、給与や出勤表の人工は変更しません。'))),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる')))],
   ));
 
@@ -343,7 +343,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
                   key: ValueKey('daily-report-site-${destination.key}'),
                   title: Text(destination.value.first.name,
                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  subtitle: Text(SkoLanguageController.trParams('保存済み日報 {count}枚', {'count': destination.value.length}),
+                  subtitle: Text(SkoLanguageController.trParams('保存済み日報 {count}件', {'count': destination.value.length}),
                     style: const TextStyle(fontSize: 17)),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _exporting ? null : () => setState(() {
@@ -379,6 +379,8 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
           Text(SkoLanguageController.trParams('{day}日（{weekday}）', {'day': date.day, 'weekday': SkoLanguageController.tr(weekdays[date.weekday - 1])}),
             key: ValueKey('daily-report-date-label-${date.day}'),
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: dateColor)),
+          if (entries.isNotEmpty) Text(SkoLanguageController.trParams('日報 {count}件', {'count': entries.length}),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           if (entries.isEmpty) Text(SkoLanguageController.tr('日報なし'), style: TextStyle(fontSize: 16))
           else FutureBuilder<List<(DailyReportMonthEntry, bool)>>(
             future: _dayPresence.putIfAbsent(entries.map((entry) => entry.id).join('|'), () => _classify(entries)), builder: (context, snapshot) {
@@ -401,7 +403,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
                     onPressed: _exporting ? null : () => _chooseReport(records
                       .where((record) => record.$2 == photos).map((record) => record.$1).toList()),
                     icon: Icon(photos ? Icons.photo_outlined : Icons.description_outlined),
-                    label: Text(SkoLanguageController.trParams(photos ? '写真付き {count}枚' : '写真無し {count}枚', {'count': records.where((record) => record.$2 == photos).length}),
+                    label: Text(SkoLanguageController.trParams(photos ? '写真付き {count}件' : '写真無し {count}件', {'count': records.where((record) => record.$2 == photos).length}),
                       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold))),
               ]);
             }),
@@ -418,7 +420,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
           Flexible(child: ListView(shrinkWrap: true, children: [
             for (var i = 0; i < entries.length; i++) ListTile(
               key: ValueKey('daily-report-select-${entries[i].id}'),
-              title: Text(SkoLanguageController.trParams('{number}枚目 / {kind}', {'number': i + 1, 'kind': SkoLanguageController.tr(entries[i].kindLabel)}), style: const TextStyle(fontSize: 18)),
+              title: Text(SkoLanguageController.trParams('{number}件目 / {kind}', {'number': i + 1, 'kind': SkoLanguageController.tr(entries[i].kindLabel)}), style: const TextStyle(fontSize: 18)),
               subtitle: Text(entries[i].createdAt == null ? SkoLanguageController.tr('作成時刻未取得') : _createdTime(entries[i].createdAt!),
                 style: const TextStyle(fontSize: 17)),
               trailing: const Icon(Icons.chevron_right),
