@@ -32,13 +32,21 @@ const addition=String.raw`
  // Explicit synthetic closing-facts adapter. This proof establishes shared
  // role/locking/freeze/CAS boundaries; the actual per-worker confirmation and
  // final fact materializer are tested by the separately composed v2 suite.
- await exec("create schema checkout_shared_hours_private;create table checkout_shared_hours_private.fixture_confirmations(report_id uuid,worker_id uuid,confirmed_by uuid,primary key(report_id,worker_id));create function checkout_shared_hours_private.begin_work_report(rid uuid) returns void language plpgsql as $$begin if not exists(select 1 from shared_daily_report_private.work_protocol where report_id=rid) then raise exception 'fixture protocol missing';end if;end$$;create function checkout_shared_hours_private.supervisor_snapshot(rid uuid) returns jsonb language plpgsql stable as $$declare active boolean;ready_value boolean;begin active:=exists(select 1 from shared_daily_report_private.work_protocol where report_id=rid);ready_value:=active and (shared_daily_report_private.personal_out_snapshot(rid)->>'ready')::boolean and checkout_report_registration_private.inputs_complete(rid) and not exists(select 1 from daily_report_workers rw where rw.report_id=rid and not exists(select 1 from checkout_shared_hours_private.fixture_confirmations c where c.report_id=rid and c.worker_id=rw.worker_id));return jsonb_build_object('schema',2,'enabled',active,'required',active,'ready',ready_value,'fingerprint',repeat('a',64),'inputs','[]'::jsonb);end$$;create function checkout_shared_hours_private.prepare_supervisor(rid uuid,expectedhash text) returns void language plpgsql as $$begin if expectedhash<>repeat('a',64) or (checkout_shared_hours_private.supervisor_snapshot(rid)->>'ready')::boolean is distinct from true then raise exception 'fixture annex not ready';end if;end$$;");
+ await exec("create schema checkout_shared_hours_private;create table checkout_shared_hours_private.fixture_confirmations(report_id uuid,worker_id uuid,confirmed_by uuid,primary key(report_id,worker_id));create function checkout_shared_hours_private.enrollment_available(rid uuid) returns boolean language sql stable as $$select shared_daily_report_private.enrollment_supported(rid)$$;create function checkout_shared_hours_private.begin_work_report(rid uuid) returns void language plpgsql as $$begin if not exists(select 1 from shared_daily_report_private.work_protocol where report_id=rid) then raise exception 'fixture protocol missing';end if;end$$;create function checkout_shared_hours_private.supervisor_snapshot(rid uuid) returns jsonb language plpgsql stable as $$declare active boolean;ready_value boolean;begin active:=exists(select 1 from shared_daily_report_private.work_protocol where report_id=rid);ready_value:=active and (shared_daily_report_private.personal_out_snapshot(rid)->>'ready')::boolean and checkout_report_registration_private.inputs_complete(rid) and not exists(select 1 from public.daily_report_workers rw where rw.report_id=rid and not exists(select 1 from checkout_shared_hours_private.fixture_confirmations c where c.report_id=rid and c.worker_id=rw.worker_id));return jsonb_build_object('schema',2,'enabled',active,'required',active,'ready',ready_value,'fingerprint',repeat('a',64),'inputs','[]'::jsonb);end$$;create function checkout_shared_hours_private.prepare_supervisor(rid uuid,expectedhash text) returns void language plpgsql as $$begin if expectedhash<>repeat('a',64) or (checkout_shared_hours_private.supervisor_snapshot(rid)->>'ready')::boolean is distinct from true then raise exception 'fixture annex not ready';end if;end$$;");
 
  eq((await sharedCall(U,id(80),'select public.read_my_shared_daily_report($1) v',[id(8100)])).state,'disabled','Explicit OFF is distinct from missing/error');
  await client.query("insert into shared_daily_report_private.rollout(company_id,starts_on,enabled) values($1,'2026-10-01',true)",[A]);
  eq(await q('select to_jsonb(r) v from daily_reports r where id=$1',[historical]),historicalBefore,'Existing signed v1 report is unchanged after rollout');
  eq(await q('select count(*)::int v from shared_daily_report_private.work_protocol where report_id=$1',[historical]),0,'Historical signed report is never enrolled by date');
  const roster=JSON.stringify([worker(reportWorker,[]),worker(W2,[])]);
+ const strongGuardBefore=await q("select md5(prosrc) v from pg_proc where oid='private.guard_linked_vehicle_meter_report()'::regprocedure");
+ await reject(()=>sharedCall(U,id(80),'select public.submit_shared_daily_report($1,null,$2,$3::jsonb,$4,$5::jsonb) v',[id(8100),'強化車両環境の拒否',roster,'報告者',signature]),/strong_vehicle_scope_not_supported/);
+ eq(await q("select count(*)::int v from daily_reports where company_id=$1 and site_id=$2 and report_date='2026-10-25'",[A,SITE]),0,'Unsupported strong rollout leaves no first-report draft/signature');
+ // The actual target uses the observed legacy vehicle contract. Simulate its
+ // OFF company setting without modifying the existing strong guard function.
+ await client.query('update private.vehicle_usage_rollout set enabled=false where company_id=$1',[A]);
+ eq(await q("select md5(prosrc) v from pg_proc where oid='private.guard_linked_vehicle_meter_report()'::regprocedure"),strongGuardBefore,'Strong vehicle guard is not weakened');
+
  const first=await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,null,$2,$3::jsonb,$4,$5::jsonb) v',[id(8100),'共同作業',roster,'最初の報告者',signature]);
  eq(first.state,'reporter_saved_waiting_supervisor','First reporter commits content and own signature atomically');
  const sharedRid=first.report_id;
@@ -121,6 +129,12 @@ const addition=String.raw`
  eq(secondRace.report_id,firstRace.report_id,'Concurrent loser reuses first report');
  eq(await q('select work_description v from daily_reports where id=$1',[firstRace.report_id]),'先着の本文','Concurrent retry does not alter work facts');
  eq(await q("select count(*)::int v from shared_daily_report_private.signature_events where report_id=$1 and role='representative'",[firstRace.report_id]),1,'First-report race creates one reporter event');
+ const taintedRoster=JSON.stringify([worker(reportWorker,[],{allowance_amount:100000})]);
+ await mkShift(8160,reportWorker,'2026-10-31');
+ await reject(()=>sharedCall(U,id(80),'select public.submit_shared_daily_report($1,null,$2,$3::jsonb,$4,$5::jsonb) v',[id(8160),'不正な現金手当',taintedRoster,'報告者',signature]),/manual_cash_requires_trusted_source/);
+ await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);
+ await reject(()=>q("select public.save_daily_report_destination_draft(null,$1,null,'2026-10-31','旧APIからの現金',$2::jsonb) v",[SITE,taintedRoster]),/manual_cash_requires_trusted_source/);
+ eq(await q("select count(*)::int v from daily_reports where company_id=$1 and site_id=$2 and report_date='2026-10-31'",[A,SITE]),0,'Rejected normal cash creates no payroll source report');
  // Fresh reports cannot bypass protocol enrollment through the old API.
  await mkShift(8140,reportWorker,'2026-10-30');
  await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);
@@ -131,7 +145,7 @@ const addition=String.raw`
   eq(await q('select has_function_privilege(\'service_role\',$1,\'execute\') v',['public.'+signatureName]),false,'Default service role cannot call shared APIs');
  }
  await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);
- await exec('drop function checkout_shared_hours_private.prepare_supervisor(uuid,text);drop function checkout_shared_hours_private.supervisor_snapshot(uuid);drop function checkout_shared_hours_private.begin_work_report(uuid);drop table checkout_shared_hours_private.fixture_confirmations;drop schema checkout_shared_hours_private;');
+ await exec('drop function checkout_shared_hours_private.prepare_supervisor(uuid,text);drop function checkout_shared_hours_private.supervisor_snapshot(uuid);drop function checkout_shared_hours_private.begin_work_report(uuid);drop function checkout_shared_hours_private.enrollment_available(uuid);drop table checkout_shared_hours_private.fixture_confirmations;drop schema checkout_shared_hours_private;');
  console.log(JSON.stringify({pass:true,shared_report_actual_save_sign:true,normal_member_and_management_separate:true,real_gotrue:false,production_changed:false}));
 `;
 const generated=base.replace(marker,()=>addition+marker);
