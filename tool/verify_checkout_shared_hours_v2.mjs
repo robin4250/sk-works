@@ -10,6 +10,7 @@ const marker=' console.log(JSON.stringify({pass:true,shared_report_actual_save_s
 assert.equal(original.split(marker).length,2,'Exact end of independent shared-report suite');
 const addition=String.raw`
  phase='versioned-work-consent-and-individual-hours-annex';
+ for(const [signature,expected]of Object.entries(pins.after_source_md5))eq(await q('select md5(prosrc) v from pg_proc where oid=$1::regprocedure',[signature]),expected,'Original parent source pins hold before explicit hours-v2 composition');
  const v2HoursSources=JSON.parse(await readFile('tool/fixtures/checkout_paid_hours_actual_sources.json','utf8'));
  const v2ClockSources=JSON.parse(await readFile('tool/fixtures/closed_day_actual_clock_sources.json','utf8'));
  const v2Protected=await q("select jsonb_build_object('settings',(select jsonb_agg(to_jsonb(s) order by worker_id) from worker_payroll_settings s),'old_reports',(select jsonb_agg(to_jsonb(r) order by id) from daily_reports r),'old_roster',(select jsonb_agg(to_jsonb(w) order by report_id,worker_id) from daily_report_workers w)) v");
@@ -29,6 +30,25 @@ const addition=String.raw`
  await exec(await readFile('docs/candidates/checkout_shared_hours_v2.sql.review-only','utf8'));
  await exec(await readFile(process.env.SKO_SHARED_HOURS_V2_PATCHES,'utf8'));
  await exec(await readFile('docs/candidates/checkout_shared_hours_v2_api.sql.review-only','utf8'));
+ // The parent proof resumes after this extension. Keep its complete source
+ // preservation check, replacing only the three source-pinned, intentional
+ // connection bodies with hashes independently derived from exact generated SQL.
+ const v2ExpectedBodies=new Map();
+ for(const script of [process.env.SKO_PAID_HOURS_PATCHES,process.env.SKO_SHARED_HOURS_V2_PATCHES]){
+  const sql=await readFile(script,'utf8');
+  const definitions=/^create(?: or replace)? function\s+([a-z0-9_.]+)\([\s\S]*?\bAS\s+(\$[a-z0-9_]*\$)([\s\S]*?)\2\s*;/gmi;
+  for(const definition of sql.matchAll(definitions))v2ExpectedBodies.set(definition[1].toLowerCase(),md5(definition[3]));
+ }
+ const v2AllowedConnections=new Set(['public.sign_daily_report','company_checkout_allowance_private.report_basis','company_checkout_allowance_private.resolve']);
+ let v2UpdatedPins=0;
+ for(const signature of Object.keys(pins.after_source_md5)){
+  const rawName=signature.split('(')[0],name=rawName.includes('.')?rawName:'public.'+rawName;
+  if(!v2AllowedConnections.has(name))continue;
+  assert.ok(v2ExpectedBodies.has(name),'Every allowed connection has an independently generated exact body');
+  eq(await q('select md5(prosrc) v from pg_proc where oid=$1::regprocedure',[signature]),v2ExpectedBodies.get(name),'Installed intended connection matches exact generated SQL');
+  pins.after_source_md5[signature]=v2ExpectedBodies.get(name);v2UpdatedPins++;
+ }
+ eq(v2UpdatedPins,3,'Only the three intentional original connection functions receive new expected pins');
  eq(await q('select count(*)::int v from checkout_shared_hours_private.work_protocol'),0,'V2 installation never converts v1 or shared history');
  await client.query("insert into checkout_shared_hours_private.rollout(company_id,starts_on,enabled) values($1,'2026-10-01',true)",[A]);
  const v2Day='2026-10-20';
