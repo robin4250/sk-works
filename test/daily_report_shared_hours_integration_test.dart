@@ -25,7 +25,7 @@ final _date = DateTime(2026, 10, 25);
 
 class _Reports implements DailyReportRepository {
   bool reporterSaved = false, supervisorSaved = false, peerOpen = false;
-  bool omitSource = false, staleSupervisorRead = false;
+  bool omitSource = false, staleSupervisorRead = false, missingReport = false;
   bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
   int draftWrites = 0, ordinaryReporterWrites = 0;
   List<DailyReportWorkerDraft> get workers => [
@@ -41,7 +41,7 @@ class _Reports implements DailyReportRepository {
   ];
   @override Future<DailyReportRecord?> loadReport({required DateTime date,
     String? siteId, String? routeAssignmentId, String? vehicleClockInAnchorId,
-    String? reportId}) async => DailyReportRecord(id: _report, companyId: _company,
+    String? reportId}) async => missingReport ? null : DailyReportRecord(id: _report, companyId: _company,
       date: date, siteId: _site, siteName: '対象現場', workDescription: '保存済みの作業',
       status: persistedSupervisor ? 'signed' : 'draft', workers: workers,
       reporterSignerName: reporterSaved ? '最初の報告者' : null,
@@ -50,6 +50,9 @@ class _Reports implements DailyReportRepository {
       responsibleSignatureJson: persistedSupervisor ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null);
   @override Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({String? reportId,
     required DateTime date, String? siteId, String? routeAssignmentId}) async => [];
+  @override Future<List<DailyReportWorkerDraft>> loadAnchoredWorkers({required String anchorId,
+    required DateTime workDate, required List<DailyReportWorkerDraft> existing,
+    required List<DailyReportWorkerDraft> fallback, required bool allowNewMembers}) async => existing;
   @override Future<bool> vehicleMeterEnabledForAnchor(String? anchor) async => false;
   @override Future<CompanyAllowanceLabelSnapshot> loadCompanyAllowanceLabels({
     required Iterable<String> workerIds, String? expectedCompanyId}) async =>
@@ -116,6 +119,16 @@ class _Shared implements SharedDailyReportRepository {
     return state;
   }
   @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _MissingShared extends _Shared {
+  _MissingShared(super.reports, this.phase);
+  final String phase;
+  @override SharedDailyReportContext get state => SharedDailyReportContext(
+    actorId: _actor, companyId: _company, workerId: _worker,
+    sourceClockInId: _source, workDate: _date, state: phase,
+    enabled: phase != 'disabled', canManageAttendance: false,
+    reporterSaved: false, supervisorSaved: false, sourceAttached: false);
 }
 
 class _Facts implements SharedWorkerFactsRepository {
@@ -198,6 +211,25 @@ void main() {
     expect(reports.draftWrites, 0);
     expect(reports.ordinaryReporterWrites, 0);
   });
+
+  for (final phase in ['report_missing', 'own_checkout_required', 'source_conflict', 'disabled']) {
+    testWidgets('new individual report accepts only verified report_missing source ($phase)', (tester) async {
+      final reports = _Reports()..missingReport = true..omitSource = true;
+      await tester.pumpWidget(MaterialApp(home: DailyReportPage(
+        initialDate: _date, initialSiteId: _site,
+        vehicleClockInId: _source, groupClockInAnchorId: _source,
+        restrictedReporterRegistration: true, registrationActorId: _actor,
+        registrationCompanyId: _company, registrationWorkerId: _worker,
+        repositoryForTesting: reports, paidHoursRepositoryForTesting: _Hours(),
+        sharedReportRepositoryForTesting: _MissingShared(reports, phase))));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('退勤した本人の勤務原本を確認できません'),
+        phase == 'report_missing' ? findsNothing : findsOneWidget);
+      expect(reports.draftWrites, 0);
+      expect(reports.ordinaryReporterWrites, 0);
+      expect(reports.workers.single.sourceClockInId, isNull);
+    });
+  }
 
   for (final valid in [true, false]) {
     testWidgets('restricted saved report uses verified shared source, match=$valid', (tester) async {
