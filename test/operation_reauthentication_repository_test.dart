@@ -106,8 +106,7 @@ void main() {
     expect(await f.proof(), List.filled(64, 'a').join());
     expect(f.headers.single, 'Bearer $original');
     expect(f.bodies.single, {'password': 'synthetic-primary',
-      'operation': (jsonDecode(request.body) as Map)['operation'],
-        'target': (jsonDecode(request.body) as Map)['target']});
+      'operation': 'secondary_password.replace', 'target': {'user_id': actorA}});
   }, timeout: const Timeout(Duration(seconds: 30)));
   for (final sameActor in [true, false]) {
     test('actor/session switch during proof rejects response ($sameActor)', () async {

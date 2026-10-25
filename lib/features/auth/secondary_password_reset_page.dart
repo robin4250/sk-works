@@ -238,7 +238,7 @@ class _ResetState extends State<SecondaryPasswordResetPage>
       if (!mounted) return;
       setState(() {
         _serverRequired = required;
-        final device = _access as DeviceSecondaryPasswordResetAccess;
+        final device = _access;
         _secondaryChange = device.usingSecondaryPassword;
         _knownSecondaryAvailable = device.changeSupported;
         _recoverySupported = device.recoverySupported;
@@ -482,7 +482,7 @@ class _ResetState extends State<SecondaryPasswordResetPage>
                       }
                       setState(() {
                         _clear();
-                        final device = _access as DeviceSecondaryPasswordResetAccess;
+                        final device = _access;
                         device.selectRecovery(_secondaryChange);
                         _secondaryChange = device.usingSecondaryPassword;
                         _message = null;
