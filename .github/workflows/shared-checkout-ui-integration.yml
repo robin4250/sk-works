@@ -10,6 +10,8 @@ on:
       - 'lib/features/attendance/paid_work_hours*'
       - 'lib/features/attendance/checkout_native_reminder*'
       - 'lib/features/daily_reports/daily_report_page.dart'
+      - 'lib/widgets/input_step_heading.dart'
+      - 'lib/features/operations/vehicle_driver_meter_page.dart'
       - 'lib/features/daily_reports/shared_daily_report_repository.dart'
       - 'lib/features/daily_reports/shared_worker_facts_repository.dart'
       - 'test/*shared*integration_test.dart'
@@ -36,6 +38,8 @@ jobs:
       - run: git diff --exit-code -- pubspec.lock
       - run: >-
           flutter analyze
+          lib/widgets/input_step_heading.dart
+          lib/features/operations/vehicle_driver_meter_page.dart
           lib/features/daily_reports/daily_report_page.dart
           lib/features/attendance/checkout_report_gate.dart
           lib/features/attendance/attendance_verification_page.dart

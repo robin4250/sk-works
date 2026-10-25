@@ -1,3 +1,4 @@
+import '../../widgets/input_step_heading.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -462,6 +463,7 @@ class _AttendanceVerificationPageState
                     ),
                     const SizedBox(height: 12),
                   ],
+                  const InputStepHeading(number: '①', title: '出勤方法を確認'),
                   DropdownButtonFormField<String>(
                     key: ValueKey('method:$_mode'),
                     initialValue: _mode,
@@ -509,6 +511,7 @@ class _AttendanceVerificationPageState
                     ),
                   ],
                   const SizedBox(height: 12),
+                  const InputStepHeading(number: '②', title: '勤務先を確認'),
                   AttendanceDestinationSiteField(
                     siteId: _siteId,
                     routeId: _routeId,
@@ -561,6 +564,10 @@ class _AttendanceVerificationPageState
                     ),
                   ),
                   const SizedBox(height: 18),
+                  InputStepHeading(number: '③', title: _savedCaptureVerification != null
+                    ? '登録状況を確認して日報へ' : _pendingCaptureDraft != null
+                    ? '同じ写真・記録の保存状況を再確認' : _mode == 'location_photo'
+                    ? '写真を撮影し、位置情報と一緒に登録' : '内容を確認して登録'),
                   FilledButton.icon(
                     onPressed: _saving || (_pendingCaptureDraft == null && _savedCaptureVerification == null && (
                             _workerId == null ||

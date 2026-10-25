@@ -145,7 +145,8 @@ void main() {
     await tester.pumpAndSettle();
   }
   Future<void> reveal(WidgetTester tester, Finder finder) async {
-    final scrollable = find.byType(Scrollable).first;
+    final scrollable = find.byWidgetPredicate((widget) =>
+      widget is Scrollable && widget.axisDirection == AxisDirection.down).first;
     if (finder.evaluate().isEmpty) {
       tester.state<ScrollableState>(scrollable).position.jumpTo(0);
       await tester.pumpAndSettle();
@@ -175,11 +176,13 @@ void main() {
       expect(repo.saves, 1);
       expect(repo.signed, isFalse);
       expect(find.byKey(const ValueKey('daily-report-begin-approved-edit')), findsNothing);
-      final reporter = tester.widget<ListTile>(
-        find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile)));
+      final reporterTile = find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile));
+      await reveal(tester, reporterTile);
+      final reporter = tester.widget<ListTile>(reporterTile);
       expect(reporter.onTap, isNotNull);
-      final supervisor = tester.widget<ListTile>(
-        find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile)));
+      final supervisorTile = find.ancestor(of: find.text('責任者サイン'), matching: find.byType(ListTile));
+      await reveal(tester, supervisorTile);
+      final supervisor = tester.widget<ListTile>(supervisorTile);
       expect(supervisor.onTap, isNotNull);
     });
   testWidgets('signed shared v2 explicitly consumes approval before enabling correction', (tester) async {
@@ -223,8 +226,9 @@ void main() {
     await open(tester, repo);
     expect(find.byKey(const ValueKey('daily-report-begin-approved-edit')), findsNothing);
     expect(repo.saves, 0);
-    final reporter = tester.widget<ListTile>(
-      find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile)));
+    final reporterTile = find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile));
+    await reveal(tester, reporterTile);
+    final reporter = tester.widget<ListTile>(reporterTile);
     expect(reporter.onTap, isNull);
   });
   testWidgets('cancel or save failure never reports successful edit start', (tester) async {
@@ -377,11 +381,12 @@ void main() {
     (tester) async {
       final repo = EditableReports(client);
       await prepareCompletion(tester, repo);
-      final description = find.byType(TextField);
+      final description = find.byKey(const ValueKey('daily-report-work-description'));
       await reveal(tester, description);
       await tester.enterText(description, '変更した作業');
       await tester.pumpAndSettle();
       final finish = find.byKey(const ValueKey('daily-report-finish-approved-edit'));
+      await reveal(tester, finish);
       expect(tester.widget<FilledButton>(finish).onPressed, isNull);
       expect(repo.signCalls, 0);
     });
