@@ -30,7 +30,7 @@ try{
  create table workers(id uuid primary key,company_id uuid,user_id uuid);
  create table company_members(company_id uuid,user_id uuid,can_manage boolean);
  create function private.has_company_feature(cid uuid,feature text) returns boolean language sql stable as $$
-  select exists(select 1 from company_members where company_id=cid and user_id=auth.uid() and can_manage and feature='can_manage_attendance')$$;
+  select exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid() and can_manage and feature='can_manage_attendance')$$;
  create table daily_reports(id uuid primary key,company_id uuid,site_id uuid,route_assignment_id uuid,report_date date,
   status text default 'draft',signer_name text,signature_json jsonb,signed_at timestamptz,updated_by uuid,
   updated_at timestamptz default clock_timestamp(),representative_signer_name text,representative_signature_json jsonb,
@@ -62,7 +62,7 @@ try{
  create table invalidation_log(cid uuid,wid uuid,day_value date);
  create function checkout_shared_hours_private.invalidate_worker_day(cid uuid,wid uuid,day_value date)
   returns void language plpgsql as $$declare d record;begin
-   insert into invalidation_log values(cid,wid,day_value);
+   insert into public.invalidation_log values(cid,wid,day_value);
    for d in select * from checkout_shared_managed_private.adoptions a where a.company_id=cid and a.worker_id=wid
     and a.work_date=day_value and a.transaction_id=txid_current() and a.actor_id=auth.uid() loop
     if checkout_shared_managed_private.managed_source_scope(d.report_id,wid)->>'source_fingerprint' is distinct from d.source_fingerprint then
@@ -73,7 +73,7 @@ try{
  create table company_checkout_allowance_private.receipts(id uuid primary key,company_id uuid,worker_id uuid,work_date date,report_id uuid);
  create function payroll_scope_private.report_sources(rid uuid) returns jsonb language sql stable as $$
   select jsonb_build_object('scopes',coalesce(jsonb_agg(jsonb_build_object('cid',r.company_id,'wid',w.worker_id,'day',r.report_date) order by w.worker_id),'[]'))
-  from daily_reports r join daily_report_workers w on w.report_id=r.id where r.id=rid$$;
+  from public.daily_reports r join public.daily_report_workers w on w.report_id=r.id where r.id=rid$$;
  `);
  const sources=JSON.parse(await readFile('tool/fixtures/shared_managed_actual_writers.json','utf8'));
  for(const f of sources.functions){await db.query(f.definition);eq(await q('select md5(prosrc) v from pg_proc where oid=to_regprocedure($1)',[f.signature]),f.source_md5,'Exact observed deployed writer body');}
@@ -82,6 +82,15 @@ try{
  await db.query('insert into workers values($1,$2,null),($3,$2,null)',[W,C,W2]);
  await db.query('insert into company_members values($1,$2,true),($1,$3,false)',[C,MANAGER,MEMBER]);
  await db.query("select set_config('request.jwt.claim.sub',$1,false)",[MANAGER]);
+ await db.query("insert into daily_reports(id,company_id,site_id,report_date) values($1,$2,$3,'2026-10-26')",[id(700),C,SITE]);
+ await db.query("insert into attendance_entries(id,company_id,worker_id,work_date,site_id,base_man_days) values($1,$2,$3,'2026-10-26',$4,0.5)",[id(701),C,W2,SITE]);
+ eq(await q('select checkout_shared_managed_private.eligible_managed_worker_ids($1) v',[id(700)]),[W2],'Known positive manual crew discovery needs neither RW, employee UID nor salary readiness');
+ await db.query("insert into attendance_entries(id,company_id,worker_id,work_date,site_id) values($1,$2,$3,'2026-10-26',$4)",[id(702),C,W2,SITE]);
+ await reject(()=>db.query('select checkout_shared_managed_private.eligible_managed_worker_ids($1)',[id(700)]),/manual_source_ambiguous/);
+ await db.query('delete from attendance_entries where id=$1',[id(702)]);
+ await db.query('update attendance_entries set source_report_id=$2 where id=$1',[id(701),id(999)]);
+ await reject(()=>db.query('select checkout_shared_managed_private.eligible_managed_worker_ids($1)',[id(700)]),/existing_projection_pending/);
+ await db.query('update attendance_entries set source_report_id=null where id=$1',[id(701)]);
  const facts={schema:1,overtime_hours:0,early_hours:0,night_hours:0,work_category:'day',allowance_amount:0,
   allowance_label:null,company_allowance_selections:{contract_version:1,items:[]},company_allowance_legacy_labels:null,
   vehicle_id:null,route_assignment_id:null,odometer_km:null};
@@ -100,6 +109,9 @@ try{
  const first=await setup(100,'2026-10-21');
  eq(first.source.blocked,false,'A genuine manager manual entry without GPS or employee auth UID is eligible');
  eq(await q('select count(*)::int v from attendance_verifications'),0,'No fabricated AV');
+ await db.query('update attendance_entries set company_allowance_receipt_id=$2 where id=$1',[first.ae,id(909)]);
+ eq((await q('select checkout_shared_managed_private.managed_source_scope($1,$2) v',[first.rid,W])).blocked,true,'A consumed receipt pointer is not an unconsumed manual source');
+ await db.query('update attendance_entries set company_allowance_receipt_id=null where id=$1',[first.ae]);
  await reject(()=>db.query('select checkout_shared_managed_private.validate_managed_facts($1,$2,$3)',[first.rid,W,JSON.stringify({...facts,overtime_hours:1})]),/confirmed_facts_differ/);
  await reject(()=>db.query('select checkout_shared_managed_private.prepare_managed_adoption($1,$2,$3,$4)',[first.rid,W,first.source.source_fingerprint,JSON.stringify(facts)]),/permit_required/);
  const prepare=async(item)=>{
@@ -159,7 +171,7 @@ try{
  eq(await q('select jsonb_agg(jsonb_build_array(wid,day_value) order by wid,day_value) v from invalidation_log'),[[W,'2026-10-22'],[W2,'2026-10-24']],'OLD and NEW canonical scopes both invalidate');
  await db.query("select set_config('request.jwt.claim.sub',$1,false)",[MEMBER]);
  await reject(()=>db.query('select checkout_shared_managed_private.record_manager_confirmation($1,$2,$3,$4,$5)',[drift.rid,W,drift.cid,drift.source.source_fingerprint,JSON.stringify(facts)]),/manager_receipt_required/);
- for(const name of ['managed_source_scope(uuid,uuid)','prepare_managed_adoption(uuid,uuid,text,jsonb)','record_manager_confirmation(uuid,uuid,bigint,text,jsonb)','assert_managed_adoption_unchanged(uuid)']){
+ for(const name of ['eligible_managed_worker_ids(uuid)','managed_source_scope(uuid,uuid)','prepare_managed_adoption(uuid,uuid,text,jsonb)','record_manager_confirmation(uuid,uuid,bigint,text,jsonb)','assert_managed_adoption_unchanged(uuid)']){
   for(const role of ['anon','authenticated','service_role'])eq(await q('select has_function_privilege($1,$2,\'execute\') v',[role,'checkout_shared_managed_private.'+name]),false,'No caller may mint private adoption authority');
  }
  for(const f of sources.functions)eq(await q('select md5(prosrc) v from pg_proc where oid=to_regprocedure($1)',[f.signature]),f.source_md5,'All existing writer definitions unchanged');

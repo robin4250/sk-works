@@ -93,6 +93,37 @@ returns boolean language sql stable security invoker set search_path='' as $$
    'supervisor',r.supervisor_signature_json))
 $$;
 
+-- Identity discovery for the first work-report roster, not adoption readiness.
+-- A positive partial day is still a known crew member. No salary/UID/RW field
+-- is needed to discover that fact; unsupported financial conversion holds later.
+create function checkout_shared_managed_private.eligible_managed_worker_ids(rid uuid)
+returns uuid[] language plpgsql stable security invoker set search_path='' as $$
+declare r public.daily_reports%rowtype;answer uuid[];
+begin
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null then raise sqlstate '42501' using message='managed_roster_report_unavailable';end if;
+ if exists(select 1 from public.attendance_entries a where a.company_id=r.company_id
+  and a.work_date=r.report_date and a.site_id is not distinct from r.site_id
+  and a.route_assignment_id is not distinct from r.route_assignment_id and a.base_man_days>0
+  and not exists(select 1 from public.workers w where w.id=a.worker_id and w.company_id=r.company_id)) then
+  raise sqlstate 'PT409' using message='managed_roster_manual_worker_scope_mismatch';end if;
+ if exists(select 1 from public.attendance_entries a where a.company_id=r.company_id
+  and a.work_date=r.report_date and a.site_id is not distinct from r.site_id
+  and a.route_assignment_id is not distinct from r.route_assignment_id and a.base_man_days>0
+  and a.source_report_id is not null) then
+  raise sqlstate 'PT409' using message='managed_roster_existing_projection_pending';end if;
+ if exists(select 1 from public.attendance_entries a where a.company_id=r.company_id
+  and a.work_date=r.report_date and a.site_id is not distinct from r.site_id
+  and a.route_assignment_id is not distinct from r.route_assignment_id
+  group by a.worker_id having count(*)<>1 and bool_or(a.base_man_days>0)) then
+  raise sqlstate 'PT409' using message='managed_roster_manual_source_ambiguous';end if;
+ select coalesce(array_agg(a.worker_id order by a.worker_id),'{}'::uuid[]) into answer
+ from public.attendance_entries a where a.company_id=r.company_id and a.work_date=r.report_date
+  and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id
+  and a.base_man_days>0 and a.source_report_id is null;
+ return answer;
+end $$;
+
 -- No actor parameter or authorization impersonation. This owner-only source is
 -- evidence, not permission: public v2 confirmation separately requires manager.
 create function checkout_shared_managed_private.managed_source_scope(rid uuid,wid uuid)
@@ -127,6 +158,8 @@ begin
   end if;
   if a.base_man_days is distinct from 1::numeric then
    reasons:=reasons||jsonb_build_array('managed_attendance_fractional_or_nonpositive_day');end if;
+  if before_image->>'company_allowance_receipt_id' is not null then
+   reasons:=reasons||jsonb_build_array('managed_attendance_receipt_already_consumed');end if;
  end if;
  select coalesce(jsonb_agg(to_jsonb(x) order by x.id),'[]') into av_set
   from public.attendance_verifications x where x.company_id=r.company_id and x.worker_id=wid and x.work_date=r.report_date;

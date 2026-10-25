@@ -5,10 +5,21 @@ old report conversion, direct salary repair or existing writer replacement.
 
 ## Evidence and authority are separate
 
+`eligible_managed_worker_ids(report)` discovers the exact destination/day's
+unique positive NULL-source manual crew identities before a work roster exists.
+It needs neither RW membership, an employee UID, current actor nor salary
+readiness and returns IDs only. Positive partial days remain known crew even
+though adoption readiness later rejects conversion to a full day. Ambiguous
+rows, cross-company worker identity or an existing report projection explicitly
+hold discovery rather than silently hiding known crew. The shared first-sign
+API must enforce its own actor/rollout permission and all-known roster floor;
+this helper does not authorize an old report conversion.
+
 `checkout_shared_managed_private.managed_source_scope(report,worker)` is a pure
 owner-only evidence reader. It requires exactly one formal attendance entry for
 the report's company/worker/day/destination, with a full one-day quantity. A NULL
-`source_report_id` is eligible; a different report is never overwritten. No
+`source_report_id` with no already-consumed company receipt is eligible; a
+different report or consumed receipt is never overwritten. No
 employee authentication UID or clock record is invented. Its SHA256 basis binds
 the exact manual row, revision, all same-day attendance and all actual clock
 evidence, including an empty real clock set.
