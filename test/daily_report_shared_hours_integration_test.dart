@@ -166,7 +166,7 @@ class _MissingShared extends _Shared {
 class _Facts implements SharedWorkerFactsRepository {
   bool requireHours = true, managePeer = false;
   bool? outsideCurrentReport;
-  int confirmations = 0;
+  int confirmations = 0, reads = 0;
   bool missingProposal = false;
   SharedWorkerFacts? savedFacts;
   double? savedHours;
@@ -188,7 +188,7 @@ class _Facts implements SharedWorkerFactsRepository {
     isOwnWorker: workerId == _worker, canManageAttendance: managePeer && workerId == _peer,
     hoursRequiredOutsideCurrentReport: outsideCurrentReport ?? requireHours);
   @override Future<SharedWorkerFactsSnapshot> load({required String companyId,
-    required String reportId, required String workerId}) async => snapshot(workerId);
+    required String reportId, required String workerId}) async { reads++; return snapshot(workerId); }
   @override Future<SharedWorkerFactsSnapshot> confirm(SharedWorkerFactsSnapshot before,
     SharedWorkerFacts facts, {double? hours, String? managementReason}) async {
     confirmations++;
@@ -251,13 +251,16 @@ void main() {
       final reports = _Reports()..reporterSaved = true..documentMode = true..staleSupervisorRead = stale;
       final shared = _Shared(reports)..documentOnly = true;
       final hours = _Hours()..fail = true;
-      await open(tester, reports, hours, shared);
+      final facts = _Facts()..missingProposal = true;
+      await open(tester, reports, hours, shared, facts: facts);
+      expect(facts.reads, 0);
       await reveal(tester, '責任者サイン');
       await tester.tap(find.text('責任者サイン'));
       await tester.pumpAndSettle();
       expect(find.byType(SignatureCapturePage), findsOneWidget);
       expect(find.text('この内容で責任者サインへ'), findsNothing);
       expect(hours.workersRead, isEmpty);
+      expect(facts.reads, 0);
       expect(reports.draftWrites, 0);
       expect(find.byTooltip('サインする日報を確認'), findsOneWidget);
       Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(

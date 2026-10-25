@@ -2082,9 +2082,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               onSaved: () => unawaited(_afterPaidHoursSaved()),
                             );
                               return _sharedContext?.documentOnly == true
-                                  ? Card(child: ExpansionTile(maintainState: true,
-                                      title: const Text('勤務実績・手当の確認（後から可）'),
-                                      children: [section]))
+                                  ? _DeferredDocumentFacts(
+                                      key: ValueKey('document-facts/${_repository?.currentActorId}/${_report!.id}'),
+                                      child: section)
                                   : section;
                             }),
                           if (!_managementHold && !_visitReport && _sharedContext?.firstReporterCoversWorkOnly != true && _report?.id.isNotEmpty == true &&
@@ -2221,6 +2221,21 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   static String _two(int value) => value.toString().padLeft(2, '0');
+}
+
+class _DeferredDocumentFacts extends StatefulWidget {
+  const _DeferredDocumentFacts({super.key, required this.child});
+  final Widget child;
+  @override State<_DeferredDocumentFacts> createState() => _DeferredDocumentFactsState();
+}
+class _DeferredDocumentFactsState extends State<_DeferredDocumentFacts> {
+  bool _opened = false;
+  @override Widget build(BuildContext context) => Card(child: ExpansionTile(
+    maintainState: true,
+    title: const Text('勤務実績・手当の確認（後から可）'),
+    onExpansionChanged: (expanded) { if (expanded && !_opened) setState(() => _opened = true); },
+    children: _opened ? [widget.child] : const <Widget>[],
+  ));
 }
 
 class _WorkerFactsConfirmationSection extends StatefulWidget {
