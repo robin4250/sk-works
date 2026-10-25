@@ -1143,7 +1143,23 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
     if (ownsBusyState) setState(() => _saving = true);
     try {
-      final id = _visitReport
+      final documentBefore = _sharedContext;
+      final String id;
+      if (!_visitReport && documentBefore?.documentOnly == true && !resettingApprovedReport) {
+        final sharedRepository = _sharedReportRepository;
+        if (sharedRepository == null || documentBefore!.reportId != _report?.id) {
+          throw StateError('手直しする日報の保存先を確認できません。');
+        }
+        final saved = await sharedRepository.saveDocumentDraft(before: documentBefore,
+          workDescription: _workDescription.text,
+          workers: [for (final worker in _workers) worker.toRpcJson()]);
+        if (repository.currentActorId != documentBefore.actorId || _report?.id != saved.reportId) {
+          throw const DailyReportActorChanged();
+        }
+        _sharedContext = saved;
+        id = saved.reportId!;
+      } else {
+        id = _visitReport
           ? await repository.saveVisitDraft(
               context: widget.routeVisitContext!,
               expectedReportId: _report?.id.isNotEmpty == true ? _report!.id : null,
@@ -1160,6 +1176,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         groupClockInAnchorId: _currentGroupAnchor,
         vehicleClockInAnchorId: _currentVehicleAnchor,
       );
+      }
       if (!mounted) return id;
       _evidenceAttachmentFingerprint = _draftFingerprint();
       ScaffoldMessenger.of(context).showSnackBar(

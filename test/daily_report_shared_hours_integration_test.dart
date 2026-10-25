@@ -27,6 +27,7 @@ class _Reports implements DailyReportRepository {
   bool reporterSaved = false, supervisorSaved = false, peerOpen = false;
   bool omitSource = false, staleSupervisorRead = false, missingReport = false;
   bool recoveryChoices = false, documentMode = false;
+  String description = '保存済みの作業';
   bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
   int draftWrites = 0, ordinaryReporterWrites = 0;
   List<DailyReportWorkerDraft> get workers => [
@@ -44,7 +45,7 @@ class _Reports implements DailyReportRepository {
   @override Future<DailyReportRecord?> loadReport({required DateTime date,
     String? siteId, String? routeAssignmentId, String? vehicleClockInAnchorId,
     String? reportId}) async => missingReport ? null : DailyReportRecord(id: _report, companyId: _company,
-      date: date, siteId: _site, siteName: '対象現場', workDescription: '保存済みの作業',
+      date: date, siteId: _site, siteName: '対象現場', workDescription: description,
       status: persistedSupervisor && !documentMode ? 'signed' : 'draft', workers: workers,
       reporterSignerName: reporterSaved ? '最初の報告者' : null,
       reporterSignatureJson: reporterSaved ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null,
@@ -93,7 +94,7 @@ class _Shared implements SharedDailyReportRepository {
   bool hold = false;
   String source = _source;
   bool workOnly = true, ready = false, documentOnly = false;
-  int documentEdits = 0;
+  int documentEdits = 0, documentSaves = 0;
   int supervisorWrites = 0;
   SharedDailyReportContext get state => SharedDailyReportContext(actorId: _actor,
     companyId: _company, workerId: _worker, reportId: _report, sourceClockInId: source,
@@ -110,7 +111,7 @@ class _Shared implements SharedDailyReportRepository {
     documentEditable: documentOnly && reports.reporterSaved,
     financialConfirmationRequired: documentOnly,
     documentBasis: documentOnly ? {'report': {'id': _report, 'company_id': _company, 'report_date': '2026-10-25',
-      'work_description': '保存済みの作業'}, 'workers': [for (final w in reports.workers) {
+      'work_description': reports.description}, 'workers': [for (final w in reports.workers) {
       'report_id': _report, 'worker_id': w.workerId, 'worker_name': w.workerName,
       'overtime_hours': w.overtimeHours, 'early_hours': w.earlyHours, 'night_hours': w.nightHours,
       'allowance_amount': w.allowanceAmount, 'allowance_label': w.allowanceLabel,
@@ -129,6 +130,15 @@ class _Shared implements SharedDailyReportRepository {
     expect(signature['strokes'], isA<List>());
     supervisorWrites++;
     reports.supervisorSaved = true;
+    return state;
+  }
+  @override Future<SharedDailyReportContext> saveDocumentDraft({required SharedDailyReportContext before,
+    required String workDescription, required List<Map<String, dynamic>> workers}) async {
+    expect(before.documentOnly, isTrue);
+    expect(before.reporterSaved, isFalse);
+    expect(workers.single['worker_id'], _worker);
+    documentSaves++;
+    reports.description = workDescription;
     return state;
   }
   @override Future<SharedDailyReportContext> startDocumentEdit({required SharedDailyReportContext before,
@@ -283,6 +293,28 @@ void main() {
       expect(find.text('日報を手直しできます。保存後にサインを取り直してください。'), findsOneWidget);
     });
   }
+
+  testWidgets('document correction saves changed text through document writer without legacy roster rewrite', (tester) async {
+    final reports = _Reports()..reporterSaved = true..documentMode = true;
+    final shared = _Shared(reports)..documentOnly = true;
+    await open(tester, reports, _Hours(), shared);
+    await reveal(tester, '手直し');
+    await tester.tap(find.text('手直し'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('手直しを始める'));
+    await tester.pumpAndSettle();
+    final description = find.byKey(const ValueKey('daily-report-work-description'));
+    await tester.ensureVisible(description);
+    await tester.enterText(description, '手直しした作業内容');
+    await reveal(tester, '登録');
+    await tester.tap(find.text('登録'));
+    await tester.pumpAndSettle();
+    expect(shared.documentSaves, 1);
+    expect(reports.description, '手直しした作業内容');
+    expect(reports.draftWrites, 0);
+    expect(reports.reporterSaved, isFalse);
+    expect(reports.supervisorSaved, isFalse);
+  });
 
   test('report guidance removes technical StateError wrapper', () {
     expect(dailyReportActionErrorMessage(StateError('日報を再読み込みしてください。')),

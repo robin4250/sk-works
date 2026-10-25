@@ -348,6 +348,26 @@ class SharedDailyReportRepository {
       companyId: before.companyId, workerId: before.workerId,
       workDate: before.workDate, sourceClockInId: before.sourceClockInId);
   }
+  Future<SharedDailyReportContext> saveDocumentDraft({required SharedDailyReportContext before,
+    required String workDescription, required List<Map<String, dynamic>> workers,
+  }) async {
+    if (!before.documentOnly || before.reporterSaved || before.supervisorSaved || before.reportId == null ||
+        before.expectedUpdatedAt == null || before.signatureScopeFingerprint == null) {
+      throw StateError('手直しする日報の状態を確認できません。再読み込みしてください。');
+    }
+    final raw = await _rpc('save_shared_report_document_draft', {
+      'p_report_id': before.reportId,
+      'p_expected_updated_at': before.expectedUpdatedAt!.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint,
+      'p_work_description': workDescription, 'p_workers': workers,
+    }, expectedActor: before.actorId);
+    final after = SharedDailyReportContext.parse(raw, actorId: before.actorId,
+      companyId: before.companyId, reportId: before.reportId, workDate: before.workDate);
+    if (!after.documentOnly || after.reporterSaved || after.supervisorSaved) {
+      throw StateError('手直しの保存結果を確認できません。再読み込みしてください。');
+    }
+    return after;
+  }
   Future<SharedDailyReportContext> startDocumentEdit({required SharedDailyReportContext before,
     required String reason,
   }) async {

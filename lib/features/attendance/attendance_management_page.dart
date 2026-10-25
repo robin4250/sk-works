@@ -10,7 +10,7 @@ String attendanceManagementActionErrorMessage(Object error) {
   final raw = error.toString();
   if (raw.contains('shared_report_roster_requires_approved_edit') ||
       raw.contains('shared_report_signed_facts_require_approved_edit')) {
-    return 'サイン済み日報に紐づく出勤のため、削除・変更できません。先に対象日報の手直し手続きを確認してください。';
+    return 'サイン済み日報に紐づく出勤のため、この画面から削除・変更できません。対象日報のサインを確認してください。';
   }
   if (error is StateError || error is FormatException) {
     return dailyReportActionErrorMessage(error);

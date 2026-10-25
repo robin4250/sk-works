@@ -6,7 +6,7 @@ void main() {
     final message = attendanceManagementActionErrorMessage(
       Exception('PostgrestException(message: shared_report_roster_requires_approved_edit, code: 55000, details: Internal Server Error)'));
     expect(message, contains('サイン済み日報'));
-    expect(message, contains('手直し'));
+    expect(message, contains('サインを確認'));
     expect(message, isNot(contains('PostgrestException')));
     expect(message, isNot(contains('55000')));
   });
