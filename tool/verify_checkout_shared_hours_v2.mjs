@@ -45,7 +45,7 @@ const addition=String.raw`
  eq(v2Preview.first_reporter_covers_work_only,true,'Preview explicitly names limited work consent');
  eq(v2Preview.editable,false,'Preview cannot confirm facts before actual enrollment');
  eq(await q('select count(*)::int v from checkout_shared_hours_private.work_protocol'),0,'Reading preview never creates protocol state');
- const v2DraftUpdated=await q('select updated_at v from daily_reports where id=$1',[v2Draft]);
+ const v2DraftUpdated=await q('select updated_at::text v from daily_reports where id=$1',[v2Draft]);
  const v2First=await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$2,$3,$4::jsonb,$5,$6::jsonb) v',[v2StartA,v2DraftUpdated,'凍結する共同作業',v2Roster,'先着作業報告者',signature]);
  const v2Rid=v2First.report_id;
  eq(await q('select checkout_shared_hours_private.uses_contract($1) v',[v2Rid]),true,'Only newly submitted report explicitly enrolls v2 before first signature');
