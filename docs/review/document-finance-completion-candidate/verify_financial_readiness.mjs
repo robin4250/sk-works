@@ -52,15 +52,17 @@ try{
  await reject(()=>sharedCall(U,foreignSid,'select public.read_shared_report_financial_readiness($1) v',[rid]),{code:'42501',message:'checkout_report_actor_access_unavailable'});
  // A second real synthetic report tests the exact eligible boundary, still without a finance writer.
  phase='document-finance-exact-valid-boundary';
- const goodDay='2026-10-20';await mkShift(9580,W3,goodDay);
- const goodId=await q('select public.save_daily_report_destination_draft(null,$1,null,$2,$3,$4::jsonb) v',[SITE,goodDay,'確認対象の実作業',JSON.stringify([worker(W3,[],{allowance_label:null})])]);
+ const goodDay='2026-10-20';await mkShift(9580,reportWorker,goodDay);
+ const goodRoster=JSON.stringify([worker(reportWorker,[],{allowance_label:null})]);
+ const goodId=await q('select public.save_daily_report_destination_draft(null,$1,null,$2,$3,$4::jsonb) v',[SITE,goodDay,'確認対象の実作業',goodRoster]);
+ await client.query("update daily_report_workers set work_category='day',allowance_label=null where report_id=$1",[goodId]);
  await client.query("insert into shared_daily_report_private.document_rollout values($1,$2,'2026-10-01',true)",[A,goodId]);
  await client.query('insert into document_finance_readiness_private.rollout values($1,$2,true)',[A,goodId]);
  context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[goodId]);
- await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[goodId,'representative','実報告者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
- const input=await sharedCall(U,id(80),'select public.read_shared_worker_facts($1,$2) v',[goodId,W3]);
+ await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$2::timestamptz,$3,$4::jsonb,$5,$6::jsonb,$7) v',[id(9580),context.report_updated_at,'確認対象の実作業',goodRoster,'実報告者',signature,context.signature_scope_fingerprint]);
+ const input=await sharedCall(U,id(80),'select public.read_shared_worker_facts($1,$2) v',[goodId,reportWorker]);
  assert.ok(input.proposed_worker_facts,'Existing normalizer supplies valid explicit facts');
- await sharedCall(U,id(80),'select public.confirm_managed_shared_worker_facts($1,$2,$3::jsonb,$4::numeric,$5::bigint,$6,$7) v',[goodId,W3,JSON.stringify(Object.fromEntries(Object.entries(input.proposed_worker_facts).filter(([k])=>k!=='company_allowance_legacy_labels'))),null,input.revision,input.scope_fingerprint,'実際の勤務実績を管理者が確認']);
+ await sharedCall(U,id(80),'select public.confirm_managed_shared_worker_facts($1,$2,$3::jsonb,$4::numeric,$5::bigint,$6,$7) v',[goodId,reportWorker,JSON.stringify(Object.fromEntries(Object.entries(input.proposed_worker_facts).filter(([k])=>k!=='company_allowance_legacy_labels'))),null,input.revision,input.scope_fingerprint,'実際の勤務実績を管理者が確認']);
  context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[goodId]);
  await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[goodId,'supervisor','実責任者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
  const goodBefore=await snapshot();

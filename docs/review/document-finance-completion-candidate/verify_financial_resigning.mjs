@@ -60,6 +60,9 @@ try{
  await reject(async()=>prepare([await makeItem(reportWorker,explicitChanges),await makeItem(W2,{allowance_label:null})]),{code:'55000',message:'document_finance_closed_clocked_source_required'});
  eq(await snapshot(),unsignedBefore,'Open peer source holds entire batch before any worker update');
  await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,work_date,source_clock_in_id) values($1,$2,$3,$4,'clock_out',$5::date+time '17:00',$5,$6)",[id(9303),A,W2,SITE,docDay,id(9302)]);
+ // Bind each synthetic owner's exact completed source using the original app API.
+ await sharedCall(U,id(80),'select public.reuse_my_shared_daily_report($1) v',[docStart]);
+ await sharedCall(memberB,sidB,'select public.reuse_my_shared_daily_report($1) v',[id(9302)]);
  const payload=[await makeItem(reportWorker,explicitChanges),await makeItem(W2,{allowance_label:null})];
  const beforeTransition=await snapshot();
  await reject(()=>prepare(payload,{scope:'stale-document-scope'}),{code:'40001',message:'shared_report_signature_scope_changed'});
