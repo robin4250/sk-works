@@ -59,8 +59,30 @@ try{
  await exec("select set_config('fixture.manager','off',false)");await reject(()=>options(),{code:'42501',message:'attendance_admin_current_management_required'});await exec("select set_config('fixture.manager','on',false)");eq(await q("select has_schema_privilege('authenticated','management_registered_allowance_private','usage') v"),false,'Private helpers inaccessible');eq(await q("select has_function_privilege('anon','public.read_management_company_allowance_options(uuid[])','execute') v"),false,'Anonymous API unavailable');
  console.log(JSON.stringify({pass:true,checks,native_pg17:true,management_authority_explicit:true,signature_writers_unchanged:true,old_broad_suites_replayed:false,production_changed:false}));
 `;
- const proof=join(folder,'proof.mjs');await writeFile(proof,prefix+unit+tail);
- if(process.env.SKO_MANAGEMENT_REGISTERED_EMIT_ONLY){await writeFile(process.env.SKO_MANAGEMENT_REGISTERED_EMIT_ONLY,prefix+unit+tail);}else{
- const execution=spawnSync(process.execPath,[proof,process.argv[2]],{stdio:'inherit',env:{...process.env,SKO_DOCUMENT_CANDIDATE:resolve(doc,'document-signature-and-edit.sql.review-only'),SKO_DOCUMENT_TRIGGER_PINS:resolve(doc,'trigger-source-pins.json'),SKO_ADMIN_CANDIDATE:resolve(admin,'attendance-admin-override.sql.review-only'),SKO_ADMIN_ORIGINALS:resolve(admin,'native-original-sources.sql'),SKO_MANAGEMENT_REGISTERED_SQL:resolve(here,'management-registered-allowances.sql.review-only'),SKO_MANAGEMENT_READER_SOURCES:resolve(here,'native-reader-sources.json')}});if(execution.error)throw execution.error;process.exitCode=execution.status??1;
+
+ const restoreUnit=String.raw`
+ phase='independent-unused-install-restore';
+ const signatures=['public.force_manage_attendance(text,jsonb)','attendance_admin_override_private.permit_roster(text,jsonb,jsonb)'];
+ const metadata=async()=>Promise.all(signatures.map(sig=>q("select jsonb_build_object('definition',pg_get_functiondef(oid),'body',prosrc,'owner',pg_get_userbyid(proowner),'acl',proacl::text,'config',proconfig,'definer',prosecdef) v from pg_proc where oid=to_regprocedure($1)",[sig])));
+ const originals=await metadata();
+ const business=()=>q("select jsonb_build_object('reports',(select jsonb_agg(to_jsonb(x) order by id) from daily_reports x),'workers',(select jsonb_agg(to_jsonb(x) order by report_id,worker_id) from daily_report_workers x),'entries',(select jsonb_agg(to_jsonb(x) order by id) from attendance_entries x),'receipts',(select jsonb_agg(to_jsonb(x) order by id) from company_checkout_allowance_private.receipts x),'operations',(select jsonb_agg(to_jsonb(x) order by id) from attendance_admin_override_private.operations x)) v");
+ const before=await business();
+ await exec(await readFile(process.env.SKO_MANAGEMENT_REGISTERED_SQL,'utf8'));
+ eq(await q('select count(*)::int v from management_registered_allowance_private.rollout'),0,'New independent module stays default OFF');
+ const restore=await readFile(process.env.SKO_MANAGEMENT_UNUSED_RESTORE_SQL,'utf8');
+ await client.query('insert into management_registered_allowance_private.rollout values($1,false)',[A]);
+ await reject(()=>exec(restore),/management_allowance_restore_requires_never_enabled/);await exec('rollback');
+ eq(await q("select to_regprocedure('public.read_management_company_allowance_options(uuid[])') is not null v"),true,'Rejected restore keeps module installed');
+ await client.query('delete from management_registered_allowance_private.rollout where company_id=$1',[A]);
+ await exec(restore);
+ eq(await metadata(),originals,'Exact original definitions, bodies, owners, ACL, config and security mode restored');
+ eq(await q("select to_regnamespace('management_registered_allowance_private') is null and to_regprocedure('public.read_management_company_allowance_options(uuid[])') is null v"),true,'Only unused module objects removed');
+ eq(await business(),before,'Independent unused restore changes no business rows or audit/receipt history');
+ console.log(JSON.stringify({pass:true,checks,native_pg17:true,independent_unused_fixture:true,exact_original_routines_restored:true,production_changed:false}));
+ `;
+ const selected=process.env.SKO_MANAGEMENT_UNUSED_RESTORE==='true'?restoreUnit:unit;
+ const proof=join(folder,'proof.mjs');await writeFile(proof,prefix+selected+tail);
+ if(process.env.SKO_MANAGEMENT_REGISTERED_EMIT_ONLY){await writeFile(process.env.SKO_MANAGEMENT_REGISTERED_EMIT_ONLY,prefix+selected+tail);}else{
+ const execution=spawnSync(process.execPath,[proof,process.argv[2]],{stdio:'inherit',env:{...process.env,SKO_DOCUMENT_CANDIDATE:resolve(doc,'document-signature-and-edit.sql.review-only'),SKO_DOCUMENT_TRIGGER_PINS:resolve(doc,'trigger-source-pins.json'),SKO_ADMIN_CANDIDATE:resolve(admin,'attendance-admin-override.sql.review-only'),SKO_ADMIN_ORIGINALS:resolve(admin,'native-original-sources.sql'),SKO_MANAGEMENT_REGISTERED_SQL:resolve(here,'management-registered-allowances.sql.review-only'),SKO_MANAGEMENT_READER_SOURCES:resolve(here,'native-reader-sources.json'),SKO_MANAGEMENT_UNUSED_RESTORE_SQL:resolve(here,'management-registered-allowances.unused-restore.sql.review-only')}});if(execution.error)throw execution.error;process.exitCode=execution.status??1;
  }
 }finally{await rm(folder,{recursive:true,force:true});}
