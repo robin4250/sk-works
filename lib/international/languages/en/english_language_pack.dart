@@ -4,6 +4,12 @@ const englishLanguagePack = LanguagePack(
   languageCode: 'en',
   fallbackLanguageCode: 'ja',
   strings: <String, String>{
+    "保存済み日報 {count}件": "{count} saved reports",
+    "写真付き {count}件": "With photos: {count}",
+    "写真無し {count}件": "Without photos: {count}",
+    "{number}件目 / {kind}": "Report {number} / {kind}",
+    "日報 {count}件": "Reports: {count}",
+    "画面を横向きにしてサインしてください": "Rotate your screen to landscape to sign.",
     "この日報の内容と報告者サインは保存済みです。重複登録は不要です。責任者本人のサインは対象メンバーが取得できます。内容の変更には編集承認が必要です。": "The report content and reporter signature are saved. No duplicate report is needed. Any report member can collect the supervisor's own signature. Changes require edit approval.",
     "{name}さんが日報を登録しました": "{name} registered the daily report",
     "退勤後の日報登録": "Daily report after checkout",
