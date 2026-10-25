@@ -84,14 +84,23 @@ final class SkoCheckoutReminders: NSObject, UNUserNotificationCenterDelegate {
       let previous = Array(identifiers)
       identifiers.removeAll()
       saveIdentifiers()
-      UserDefaults.standard.removeObject(forKey: Self.tapKey)
+      let preserveTap = (call.arguments as? [String: Any])?["preservePendingTap"] as? Bool == true
+      if !preserveTap { UserDefaults.standard.removeObject(forKey: Self.tapKey) }
       center.removePendingNotificationRequests(withIdentifiers: previous)
       center.removeDeliveredNotifications(withIdentifiers: previous)
       removeUntrackedRequests(prefix: Self.prefix, result: result)
     case "consumePendingTap":
       let source = UserDefaults.standard.string(forKey: Self.tapKey)
-      UserDefaults.standard.removeObject(forKey: Self.tapKey)
+      // Peek only: a failed server read must not lose a cold-start tap.
       result(source.flatMap { Self.validSource($0) ? $0 : nil })
+    case "acknowledgePendingTap":
+      guard let args = call.arguments as? [String: Any], let source = args["sourceId"] as? String, Self.validSource(source) else {
+        result(FlutterError(code: "bad_args", message: "Invalid reminder source", details: nil)); return
+      }
+      if UserDefaults.standard.string(forKey: Self.tapKey) == source {
+        UserDefaults.standard.removeObject(forKey: Self.tapKey)
+        result(true)
+      } else { result(false) }
     default: result(FlutterMethodNotImplemented)
     }
   }
@@ -214,11 +223,7 @@ final class SkoCheckoutReminders: NSObject, UNUserNotificationCenterDelegate {
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
               let source = self.ownSource(response.notification) else { completionHandler(); return }
         UserDefaults.standard.set(source, forKey: Self.tapKey)
-        self.channel.invokeMethod("notificationTapped", arguments: source) { ack in
-          if ack as? Bool == true, UserDefaults.standard.string(forKey: Self.tapKey) == source {
-            UserDefaults.standard.removeObject(forKey: Self.tapKey)
-          }
-        }
+        self.channel.invokeMethod("notificationTapped", arguments: source)
         completionHandler()
       }
     } else if let previous = previousDelegate, previous.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))) {

@@ -106,6 +106,14 @@ void main() {
     expect(calls.last.method, 'cancelAll');
     expect(calls.last.arguments, isNull);
   });
+  test('replanning preserves pending tap until explicit server acknowledgment', () async {
+    response = true;
+    expect(await bridge.cancelAll(preservePendingTap: true), true);
+    expect(calls.last.arguments, <String, Object>{'preservePendingTap': true});
+    expect(await bridge.acknowledgePendingTap('source'), true);
+    expect(calls.last.method, 'acknowledgePendingTap');
+    expect(calls.last.arguments, <String, String>{'sourceId': 'source'});
+  });
   test('cancel failure is not presented as successful cleanup', () async {
     failure = PlatformException(code: 'unavailable');
     expect(await bridge.cancelAll(), false);
@@ -119,7 +127,7 @@ void main() {
   test('tap only emits source to caller and invokes no checkout RPC', () async {
     final seen = <String>[];
     final subscription = bridge.taps.listen(seen.add);
-    expect(await nativeEvent('notificationTapped', 'source'), true);
+    expect(await nativeEvent('notificationTapped', 'source'), false);
     expect(seen, <String>['source']);
     expect(calls, isEmpty);
     await subscription.cancel();

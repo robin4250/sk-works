@@ -7,7 +7,9 @@ on:
       - 'tool/ios/checkout_reminders.swift'
       - 'tool/verify_checkout_native_contract.py'
       - 'lib/features/attendance/checkout_native_reminder_bridge.dart'
+      - 'lib/features/attendance/checkout_native_reminder_coordinator.dart'
       - 'test/checkout_native_reminder_bridge_test.dart'
+      - 'test/checkout_native_reminder_coordinator_test.dart'
       - '.github/workflows/checkout-native-reminders.yml'
 permissions:
   contents: read
@@ -41,8 +43,8 @@ jobs:
       - name: Install exact dependency pins
         run: flutter pub get --enforce-lockfile
       - name: Analyze the independent bridge and tests
-        run: flutter analyze lib/features/attendance/checkout_native_reminder_bridge.dart test/checkout_native_reminder_bridge_test.dart
+        run: flutter analyze lib/features/attendance/checkout_native_reminder_bridge.dart lib/features/attendance/checkout_native_reminder_coordinator.dart test/checkout_native_reminder_bridge_test.dart test/checkout_native_reminder_coordinator_test.dart
       - name: Verify native channel state, cancellation and untrusted payload handling
-        run: timeout 240s flutter test --reporter expanded --timeout 45s test/checkout_native_reminder_bridge_test.dart
+        run: timeout 240s flutter test --reporter expanded --timeout 45s test/checkout_native_reminder_bridge_test.dart test/checkout_native_reminder_coordinator_test.dart
       - name: Preserve existing dependency pins
         run: git diff --exit-code -- pubspec.yaml pubspec.lock

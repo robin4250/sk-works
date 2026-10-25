@@ -31,6 +31,8 @@ assert 'UUID().uuidString' in fragment, 'late cleanup must not delete a newer at
 assert 'skoCheckoutSourceId' in fragment and 'content.userInfo = ["skoCheckoutSourceId": source]' in fragment
 assert 'UNNotificationDefaultActionIdentifier' in fragment
 assert 'consumePendingTap' in fragment and 'requestAuthorization' in fragment
+assert 'acknowledgePendingTap' in fragment and 'preservePendingTap' in fragment
+assert 'result(source.flatMap' in fragment and 'a failed server read must not lose a cold-start tap' in fragment
 assert 'repeats: false' in fragment and '8 * 24 * 60 * 60' in fragment
 assert 'clock_out' not in fragment and 'save_daily_report' not in fragment
 assert (app_delegate + fragment).count('final class SkoCheckoutReminders:') == 1
@@ -57,4 +59,4 @@ final class FlutterMethodChannel {
 '''
     args.emit_swift.parent.mkdir(parents=True, exist_ok=True)
     args.emit_swift.write_text(header + fragment)
-print('checkout native generation/source contract: 19 checks passed; device delivery unverified')
+print('checkout native generation/source contract: 21 checks passed; device delivery unverified')

@@ -52,7 +52,7 @@ class CheckoutNativeReminderBridge {
       case 'notificationTapped':
         if (!_taps.hasListener) return false; // Native retains a cold-start tap.
         _taps.add(source);
-        return true;
+        return false; // A fresh server check must explicitly acknowledge it.
       case 'notificationDue':
         if (!_due.hasListener) return false;
         _due.add(source);
@@ -113,9 +113,15 @@ class CheckoutNativeReminderBridge {
 
   /// Must be awaited at logout/account switch before scheduling the next actor.
   /// This feature's native cancellation never deletes unrelated notifications.
-  Future<bool> cancelAll() => _cancel('cancelAll', null);
+  Future<bool> cancelAll({bool preservePendingTap = false}) =>
+      _cancel('cancelAll', preservePendingTap ? <String, Object>{'preservePendingTap': true} : null);
 
-  Future<bool> _cancel(String method, Map<String, String>? arguments) async {
+  Future<bool> acknowledgePendingTap(String sourceId) async {
+    if (!validSourceId(sourceId)) throw ArgumentError.value(sourceId, 'sourceId');
+    return _cancel('acknowledgePendingTap', <String, String>{'sourceId': sourceId});
+  }
+
+  Future<bool> _cancel(String method, Map<String, Object>? arguments) async {
     if (!isSupported) return false;
     try {
       return await _channel.invokeMethod<Object?>(method, arguments) == true;
@@ -126,7 +132,8 @@ class CheckoutNativeReminderBridge {
     }
   }
 
-  /// Read after attaching [taps]. Revalidate the returned source on the server.
+  /// Peek after attaching [taps]. Revalidate on the server, then call
+  /// [acknowledgePendingTap]. Same-actor replanning must preserve the pending tap.
   Future<String?> consumePendingTap() async {
     if (!isSupported) return null;
     try {
