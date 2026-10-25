@@ -55,7 +55,7 @@ const unit=String.raw`
  eq(await q("select jsonb_build_object('r',(select to_jsonb(r) from daily_reports r where id=$1),'w',(select jsonb_agg(to_jsonb(w) order by worker_id) from daily_report_workers w where report_id=$1),'settings',(select jsonb_agg(to_jsonb(s) order by worker_id) from worker_payroll_settings s)) v",[rid]),beforeInstall,'OFF install preserves source records and settings');
  // Reproduce monthly pay type versus an already-saved daily selection exactly.
  await client.query("update worker_payroll_settings set pay_type='monthly' where company_id=$1 and worker_id=$2",[A,reportWorker]);
- await reject(()=>client.query('select company_checkout_allowance_private.registered_item($1,$2,$3::jsonb)',[A,reportWorker,JSON.stringify(days[0])]),/registration changed/);
+ await reject(()=>client.query('select company_checkout_allowance_private.registered_item($1,$2,$3::jsonb)',[A,reportWorker,JSON.stringify(days[0])]),{code:'40001',message:'company allowance registration changed; reload report choices'});
  const financial=()=>q("select jsonb_build_object('attendance',(select coalesce(jsonb_agg(to_jsonb(a) order by id),'[]') from attendance_entries a),'payroll',(select coalesce(jsonb_agg(to_jsonb(s) order by worker_id,period_start),'[]') from payroll_statements s),'hours_ledger',(select coalesce(jsonb_agg(to_jsonb(l) order by id),'[]') from checkout_shared_hours_private.ledger l),'confirmations',(select coalesce(jsonb_agg(to_jsonb(c) order by id),'[]') from checkout_shared_hours_private.confirmations c),'settings',(select coalesce(jsonb_agg(to_jsonb(s) order by worker_id),'[]') from worker_payroll_settings s)) v");
  const financialBefore=await financial();
  const foreignSid=id(9399),otherEditorSid=id(9398);
@@ -76,8 +76,8 @@ const unit=String.raw`
  eq(await q('select count(*)::int v from checkout_shared_hours_private.confirmations where report_id=$1',[rid]),0,'No self confirmation fabricated');
  // Existing read_context intentionally conceals cross-company report existence.
  await reject(()=>sharedCall(OTHER,foreignSid,'select public.read_shared_daily_report_context($1) v',[rid]),{code:'42501',message:'shared_report_unavailable'});
- await reject(()=>sharedCall(memberB,sidB,'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,context.report_updated_at,context.signature_scope_fingerprint,'他の作業者による変更']),/reporter_or_manager/);
- await reject(()=>sharedCall(U,id(80),'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,context.report_updated_at,'stale-scope','理由']),/signature_scope_changed/);
+ await reject(()=>sharedCall(memberB,sidB,'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,context.report_updated_at,context.signature_scope_fingerprint,'他の作業者による変更']),{code:'42501',message:'document_edit_reporter_or_manager_required'});
+ await reject(()=>sharedCall(U,id(80),'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,context.report_updated_at,'stale-scope','理由']),{code:'40001',message:'shared_report_signature_scope_changed'});
  // Owner SQL is not an authenticated application call; assert that boundary separately.
  await reject(()=>client.query("update daily_report_workers set overtime_hours=2 where report_id=$1 and worker_id=$2",[rid,reportWorker]),{code:'42501',message:'checkout_report_actor_access_unavailable'});
  // Isolated SECURITY DEFINER surrounding models a legacy trusted writer without
@@ -93,7 +93,7 @@ const unit=String.raw`
  const eventCount=await q('select count(*)::int v from shared_daily_report_private.signature_events where report_id=$1',[rid]);
  eq((await sharedCall(U,id(80),'select public.collect_shared_report_supervisor_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,docStart,'実現場責任者',signature,context.report_updated_at,context.signature_scope_fingerprint])).state,'already_saved','Exact duplicate saves no new signature');
  eq(await q('select count(*)::int v from shared_daily_report_private.signature_events where report_id=$1',[rid]),eventCount,'Duplicate retry does not append a second event');
- await reject(()=>sharedCall(U,id(80),"select public.sign_daily_report($1,'偽の給与確定',$2::jsonb) v",[rid,signature]),/document_only|confirmation|pending|registration changed/);
+ await reject(()=>sharedCall(U,id(80),"select public.sign_daily_report($1,'偽の給与確定',$2::jsonb) v",[rid,signature]),{code:'40001',message:'company allowance registration changed; reload report choices'});
  eq(await financial(),financialBefore,'Old financial entry point cannot bypass confirmations');
  const historyBefore=await q('select jsonb_agg(to_jsonb(e) order by id) v from shared_daily_report_private.signature_events e where report_id=$1',[rid]);
  const edited=await sharedCall(U,id(80),'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,completed.report_updated_at,completed.signature_scope_fingerprint,'作業内容を手直しして再署名']);
@@ -105,18 +105,20 @@ const unit=String.raw`
  eq(cleared.every(e=>e.signature_snapshot!==null&&e.prior_report.supervisor_signature_json!==null&&e.prior_roster.length===2&&e.edit_reason==='作業内容を手直しして再署名'),true,'Original strokes, report, roster and reason preserved');
  eq(await q('select jsonb_agg(to_jsonb(e) order by id) v from shared_daily_report_private.signature_events e where report_id=$1 and id=any($2::bigint[])',[rid,historyBefore.map(e=>e.id)]),historyBefore,'Prior audit rows remain byte-identical');
  eq(await financial(),financialBefore,'Editing permission resets no financial source or attestation');
- await reject(()=>sharedCall(U,id(80),'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,completed.report_updated_at,completed.signature_scope_fingerprint,'再送']),/reporter_or_manager|scope_changed/);
+ await reject(()=>sharedCall(U,id(80),'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,completed.report_updated_at,completed.signature_scope_fingerprint,'再送']),{code:'42501',message:'document_edit_reporter_or_manager_required'});
  eq(await q("select has_table_privilege('authenticated','shared_report_edit_private.document_edit_permits','insert,update,delete') v"),false,'Client cannot forge reset permits');
  // A corrected report must receive new actual signatures. No old signature copy.
- const correctedRoster=JSON.stringify([worker(reportWorker,[days[0]],{overtime_hours:1.25}),worker(W2,[])]);
- await reject(()=>sharedCall(U,otherEditorSid,'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,edited.report_updated_at,edited.signature_scope_fingerprint,'別sessionでは編集不可',correctedRoster]),/actor/);
+ // Exactly the current Dart toRpcJson; old worker() also sends work_category.
+ const documentWorker=(wid,items,extra={})=>{const row={...worker(wid,items,extra)};delete row.work_category;return row;};
+ const correctedRoster=JSON.stringify([documentWorker(reportWorker,[days[0]],{overtime_hours:1.25}),documentWorker(W2,[])]);
+ await reject(()=>sharedCall(U,otherEditorSid,'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,edited.report_updated_at,edited.signature_scope_fingerprint,'別sessionでは編集不可',correctedRoster]),{code:'42501',message:'document_draft_edit_actor_or_payload_required'});
  const savedDoc=await sharedCall(U,id(80),'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,edited.report_updated_at,edited.signature_scope_fingerprint,'明示的に手直しした本文',correctedRoster]);
  eq(savedDoc.document_basis.report.work_description,'明示的に手直しした本文','Document writer persists explicit corrected description');
  eq(savedDoc.document_basis.workers.find(w=>w.worker_id===reportWorker).overtime_hours,1.25,'Explicit quantity persists without changing existing pay category');
  eq(savedDoc.document_basis.workers.find(w=>w.worker_id===reportWorker).company_allowance_selections.items[0].id,DAYS[0],'Unchanged stale selection stays a raw saved value, never repriced');
- await reject(()=>sharedCall(U,id(80),'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,savedDoc.report_updated_at,savedDoc.signature_scope_fingerprint,'手当を変えた場合は再検証',JSON.stringify([worker(reportWorker,[days[1]]),worker(W2,[])])]),/registration changed/);
- await reject(()=>sharedCall(U,id(80),'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,savedDoc.report_updated_at,savedDoc.signature_scope_fingerprint,'数量範囲の拒否',JSON.stringify([worker(reportWorker,[days[0]],{overtime_hours:25}),worker(W2,[])])]),/quantity_out_of_range/);
- await reject(()=>sharedCall(U,id(80),'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,savedDoc.report_updated_at,savedDoc.signature_scope_fingerprint,'金額変更拒否',JSON.stringify([worker(reportWorker,[days[0]],{allowance_amount:1000}),worker(W2,[])])]),/amount_or_label/);
+ await reject(()=>sharedCall(U,id(80),'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,savedDoc.report_updated_at,savedDoc.signature_scope_fingerprint,'手当を変えた場合は再検証',JSON.stringify([documentWorker(reportWorker,[days[1]]),documentWorker(W2,[])])]),{code:'40001',message:'company allowance registration changed; reload report choices'});
+ await reject(()=>sharedCall(U,id(80),'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,savedDoc.report_updated_at,savedDoc.signature_scope_fingerprint,'数量範囲の拒否',JSON.stringify([documentWorker(reportWorker,[days[0]],{overtime_hours:25}),documentWorker(W2,[])])]),{code:'22023',message:'document_draft_quantity_out_of_range'});
+ await reject(()=>sharedCall(U,id(80),'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,savedDoc.report_updated_at,savedDoc.signature_scope_fingerprint,'金額変更拒否',JSON.stringify([documentWorker(reportWorker,[days[0]],{allowance_amount:1000}),documentWorker(W2,[])])]),{code:'22023',message:'document_draft_amount_or_label_invalid'});
  await exec("select set_config('fixture.manager','on',false)");
  context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$2::timestamptz,$3,$4::jsonb,$5,$6::jsonb,$7) v',[docStart,context.report_updated_at,'明示的に手直しした本文',correctedRoster,'再署名報告者',signature,context.signature_scope_fingerprint]);
