@@ -87,7 +87,7 @@ void main() {
           default:
             throw StateError('Unexpected fixture path');
         }
-        return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'});
+        return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'}, request: request);
       }));
     addTearDown(client.dispose);
     await login(actor);
@@ -130,7 +130,7 @@ void main() {
       authOptions: const AuthClientOptions(autoRefreshToken: false),
       httpClient: MockClient((request) async {
         payloads.add(jsonDecode(request.body) as Map<String, dynamic>);
-        return http.Response('1', 200, headers: {'content-type': 'application/json'});
+        return http.Response('1', 200, headers: {'content-type': 'application/json'}, request: request);
       }));
     addTearDown(client.dispose);
     final repository = AttendanceManagementRepository.forTesting(client);
