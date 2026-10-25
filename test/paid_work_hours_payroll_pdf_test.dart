@@ -52,6 +52,8 @@ print(json.dumps({'pages':len(doc),'text':text,'outside':bad},ensure_ascii=False
     expect(RegExp('合成時間手当').allMatches(text), hasLength(1),
       reason: 'One signed daily quantity prints one allowance row.');
     expect(text, contains('7,250'));
+    expect(text, contains('7.25時間'));
+    expect(text, contains('1,000円'));
     expect(text, contains('27,250'));
     expect(jsonEncode(data), original, reason: 'PDF generation must not rewrite signed calculation evidence.');
   }, skip: source == null || fontPath == null ? 'Dedicated native-to-PDF job supplies actual synthetic source and font.' : false);
