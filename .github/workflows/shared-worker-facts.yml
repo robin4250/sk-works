@@ -1,0 +1,53 @@
+name: Shared worker actual-facts candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/checkout_shared_worker_facts.sql.review-only'
+      - 'tool/fixtures/shared_worker_facts_sources.json'
+      - 'tool/verify_shared_worker_facts.mjs'
+      - 'lib/features/daily_reports/shared_worker_facts_repository.dart'
+      - 'test/shared_worker_facts_repository_test.dart'
+      - '.github/workflows/shared-worker-facts.yml'
+permissions:
+  contents: read
+jobs:
+  native-worker-facts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_shared_worker_facts_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/verify_shared_worker_facts.mjs
+      - name: Exact normalizers, protected cash, scoped context and legacy vehicle writer
+        env:
+          SKO_SHARED_WORKER_FACTS_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_shared_worker_facts_fixture
+        run: node tool/verify_shared_worker_facts.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+  worker-facts-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/daily_reports/shared_worker_facts_repository.dart test/shared_worker_facts_repository_test.dart
+      - run: flutter test --reporter expanded test/shared_worker_facts_repository_test.dart

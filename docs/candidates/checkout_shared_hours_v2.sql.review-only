@@ -1,0 +1,395 @@
+-- REVIEW ONLY: explicit work-report consent and later individual-hours annex.
+-- Install beside v1; never convert an existing signed v1 report or ledger.
+create schema checkout_shared_hours_private;
+revoke all on schema checkout_shared_hours_private from public,anon,authenticated,service_role;
+create table checkout_shared_hours_private.rollout(
+ company_id uuid primary key references public.companies(id),starts_on date not null,
+ enabled boolean not null default false
+);
+create table checkout_shared_hours_private.work_protocol(
+ report_id uuid primary key references public.daily_reports(id),company_id uuid not null,
+ work_date date not null,contract_version integer not null check(contract_version=2),
+ enrolled_by uuid not null,enrolled_at timestamptz not null default clock_timestamp(),first_work_event_id bigint
+);
+create table checkout_shared_hours_private.confirmations(
+ id bigint generated always as identity primary key,report_id uuid not null,worker_id uuid not null,
+ company_id uuid not null,work_date date not null,revision bigint not null,
+ hours numeric check(hours is null or(hours>=0 and hours<=24 and scale(hours)<=4 and hours::text not in('NaN','Infinity','-Infinity'))),
+ worker_facts jsonb not null check(jsonb_typeof(worker_facts)='object'),work_event_id bigint,
+ source_kind text not null default 'clocked_shift' check(source_kind in('clocked_shift','managed_attendance')),
+ source_fingerprint text not null check(source_fingerprint~'^[0-9a-f]{64}$'),
+ work_basis_sha256 text not null check(work_basis_sha256~'^[0-9a-f]{64}$'),
+ confirmed_by uuid not null,confirmed_at timestamptz not null default clock_timestamp(),
+ confirmation_kind text not null check(confirmation_kind in('self','group_before_reporter','management')),
+ management_reason text,unique(report_id,worker_id,revision),
+ check((confirmation_kind='management')=(nullif(btrim(management_reason),'') is not null))
+);
+create table checkout_shared_hours_private.supervisor_contexts(
+ id bigint generated always as identity primary key,report_id uuid not null,
+ transaction_id bigint not null,actor_id uuid not null,annex_fingerprint text not null,
+ prepared_at timestamptz not null default clock_timestamp(),unique(report_id,transaction_id,actor_id)
+);
+create table checkout_shared_hours_private.ledger(
+ id bigint generated always as identity primary key,report_id uuid not null,worker_id uuid not null,
+ company_id uuid not null,work_date date not null,contract_version integer not null check(contract_version=2),
+ confirmation_id bigint not null references checkout_shared_hours_private.confirmations(id),
+ hours numeric,worker_facts jsonb not null,source_kind text not null,
+ source_fingerprint text not null,work_receipt jsonb not null,
+ work_basis_sha256 text not null,work_event_id bigint not null,
+ supervisor_context_id bigint not null references checkout_shared_hours_private.supervisor_contexts(id),
+ supervisor_signature jsonb not null,supervisor_signature_md5 text not null,
+ annex_fingerprint text not null,captured_by uuid not null,captured_at timestamptz not null default clock_timestamp(),
+ unique(report_id,worker_id,confirmation_id,work_event_id,supervisor_signature_md5)
+);
+create table checkout_shared_hours_private.materialization_permits(
+ report_id uuid not null,worker_id uuid not null,transaction_id bigint not null,actor_id uuid not null,
+ supervisor_context_id bigint not null references checkout_shared_hours_private.supervisor_contexts(id),
+ expected_facts jsonb not null,expected_facts_sha256 text not null,
+ primary key(report_id,worker_id,transaction_id,actor_id)
+);
+revoke all on all tables in schema checkout_shared_hours_private from public,anon,authenticated,service_role;
+revoke all on all sequences in schema checkout_shared_hours_private from public,anon,authenticated,service_role;
+
+create function checkout_shared_hours_private.uses_contract(rid uuid)
+returns boolean language sql stable security invoker set search_path='' as $$
+ select exists(select 1 from checkout_shared_hours_private.work_protocol where report_id=rid and contract_version=2)
+$$;
+
+create function checkout_shared_hours_private.enrollment_available(rid uuid)
+returns boolean language sql stable security invoker set search_path='' as $$
+ select exists(select 1 from public.daily_reports r join checkout_shared_hours_private.rollout p on p.company_id=r.company_id
+  where r.id=rid and p.enabled and r.report_date>=p.starts_on
+   and shared_daily_report_private.report_enabled(r.id)
+   and r.status='draft' and r.representative_signature_json is null and r.supervisor_signature_json is null)
+$$;
+
+create function checkout_shared_hours_private.begin_work_report(rid uuid)
+returns void language plpgsql volatile security invoker set search_path='' as $$
+declare r public.daily_reports%rowtype;actor uuid;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ select * into r from public.daily_reports where id=rid for update;
+ if not found then raise sqlstate '42501' using message='shared_hours_report_unavailable';end if;
+ if checkout_shared_hours_private.uses_contract(rid) then return;end if;
+ if not exists(select 1 from checkout_shared_hours_private.rollout p where p.company_id=r.company_id
+  and p.enabled and r.report_date>=p.starts_on) then return;end if;
+ if not shared_daily_report_private.report_enabled(r.id)
+  or r.status<>'draft' or r.representative_signature_json is not null or r.supervisor_signature_json is not null
+  or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=actor)
+ then raise sqlstate '55000' using message='shared_hours_existing_consent_not_convertible';end if;
+ insert into checkout_shared_hours_private.work_protocol(report_id,company_id,work_date,contract_version,enrolled_by)
+ values(rid,r.company_id,r.report_date,2,actor);
+end $$;
+
+create function checkout_shared_hours_private.record_first_work_epoch()
+returns trigger language plpgsql volatile security definer set search_path='' as $$
+declare receipt jsonb;
+begin
+ if checkout_shared_hours_private.uses_contract(new.id) and old.representative_signature_json is null
+  and new.representative_signature_json is not null then
+  receipt:=shared_daily_report_private.work_signature_receipt(new.id);
+  update checkout_shared_hours_private.work_protocol set first_work_event_id=(receipt->>'event_id')::bigint
+   where report_id=new.id and first_work_event_id is null;
+ end if;
+ return new;
+end $$;
+create trigger zz_checkout_shared_hours_work_epoch after update on public.daily_reports
+ for each row execute function checkout_shared_hours_private.record_first_work_epoch();
+
+create function checkout_shared_hours_private.work_evidence(rid uuid)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare r public.daily_reports%rowtype;answer jsonb;basis jsonb;
+begin
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null or not(checkout_shared_hours_private.uses_contract(rid) or checkout_shared_hours_private.enrollment_available(rid)) then return null;end if;
+ if r.representative_signature_json is not null then
+  answer:=shared_daily_report_private.work_signature_receipt(rid);
+  if answer->>'schema'<>'2' or answer->>'report_id' is distinct from rid::text
+   or answer->>'company_id' is distinct from r.company_id::text
+   or answer->>'work_date' is distinct from r.report_date::text
+   or answer->>'work_basis_sha256'!~'^[0-9a-f]{64}$'
+  then raise sqlstate '55000' using message='shared_hours_work_receipt_unavailable';end if;
+  return answer;
+ end if;
+ basis:=shared_daily_report_private.work_basis(rid);
+ return jsonb_build_object('schema',2,'report_id',rid,'company_id',r.company_id,'work_date',r.report_date,
+  'event_id',null,'work_basis',basis,'work_basis_sha256',encode(sha256(convert_to(basis::text,'UTF8')),'hex'));
+end $$;
+
+create function checkout_shared_hours_private.hour_required(rid uuid,wid uuid,p_facts jsonb default null)
+returns boolean language plpgsql stable security invoker set search_path='' as $$
+declare facts jsonb;
+begin
+ facts:=p_facts;
+ if facts is null then select worker_facts into facts from checkout_shared_hours_private.confirmations
+  where report_id=rid and worker_id=wid order by revision desc limit 1;end if;
+ if facts is null then select jsonb_build_object('company_allowance_selections',company_allowance_selections)
+  into facts from public.daily_report_workers where report_id=rid and worker_id=wid;end if;
+ return exists(select 1 from jsonb_array_elements(coalesce(facts#>'{company_allowance_selections,items}','[]'::jsonb)) i where i->>'unit'='hour')
+  or exists(select 1 from public.daily_reports target join public.daily_report_workers bound
+   on bound.report_id=target.id and bound.worker_id=wid
+   join public.daily_reports other on other.company_id=target.company_id and other.report_date=target.report_date and other.id<>rid
+   join public.daily_report_workers rw on rw.report_id=other.id and rw.worker_id=wid
+   cross join lateral jsonb_array_elements(coalesce(rw.company_allowance_selections->'items','[]'::jsonb)) i
+   where target.id=rid and i->>'unit'='hour');
+end
+$$;
+
+create function checkout_shared_hours_private.confirmation_current(c checkout_shared_hours_private.confirmations,work jsonb,source jsonb)
+returns boolean language sql stable security invoker set search_path='' as $$
+ select coalesce(c.id is not null and source->>'blocked'='false'
+  and c.source_fingerprint=source->>'source_fingerprint' and c.work_basis_sha256=work->>'work_basis_sha256'
+  and(c.work_event_id=(work->>'event_id')::bigint or(c.work_event_id is null and(work->>'event_id' is null
+   or exists(select 1 from checkout_shared_hours_private.work_protocol p where p.report_id=c.report_id
+    and p.first_work_event_id=(work->>'event_id')::bigint and c.confirmed_at<=(work->>'saved_at')::timestamptz)))),false)
+$$;
+
+create function checkout_shared_hours_private.permits_worker_materialization(rid uuid,wid uuid,old_json jsonb,new_json jsonb)
+returns boolean language plpgsql stable security invoker set search_path='' as $$
+begin
+ return exists(select 1 from checkout_shared_hours_private.materialization_permits p
+  join checkout_shared_hours_private.supervisor_contexts s on s.id=p.supervisor_context_id
+  where p.report_id=rid and p.worker_id=wid and p.transaction_id=txid_current() and p.actor_id=auth.uid()
+   and s.report_id=rid and s.transaction_id=txid_current() and s.actor_id=auth.uid()
+   and p.expected_facts_sha256=encode(sha256(convert_to(p.expected_facts::text,'UTF8')),'hex')
+   and shared_worker_facts_private.matches_materialization(old_json,new_json,p.expected_facts));
+end
+$$;
+
+create function checkout_shared_hours_private.lock_report_scopes(rid uuid)
+returns void language plpgsql volatile security invoker set search_path='' as $$
+declare scope_set jsonb;
+begin
+ select coalesce(jsonb_agg(jsonb_build_object('cid',r.company_id,'wid',w.worker_id,'day',r.report_date)
+  order by w.worker_id),'[]') into scope_set
+ from public.daily_reports r join public.daily_report_workers w on w.report_id=r.id where r.id=rid;
+ perform payroll_scope_private.lock_scopes(scope_set);
+ perform 1 from public.daily_reports where id=rid for update;
+end $$;
+
+create function checkout_shared_hours_private.supervisor_snapshot(rid uuid)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare r public.daily_reports%rowtype;w record;c checkout_shared_hours_private.confirmations%rowtype;
+ source jsonb;work jsonb;inputs jsonb:='[]';basis jsonb;ready boolean:=true;current_input boolean;
+ required boolean:=false;needs_hours boolean;
+begin
+ if not checkout_shared_hours_private.uses_contract(rid) then
+  return jsonb_build_object('schema',2,'enabled',false,'required',false,'ready',false,'inputs','[]'::jsonb,
+   'fingerprint',encode(sha256(convert_to(jsonb_build_array('not_enrolled',rid)::text,'UTF8')),'hex'));end if;
+ select * into r from public.daily_reports where id=rid;
+ work:=checkout_shared_hours_private.work_evidence(rid);
+ for w in select worker_id from public.daily_report_workers where report_id=rid order by worker_id loop
+  required:=true;
+  needs_hours:=checkout_shared_hours_private.hour_required(rid,w.worker_id);
+  source:=checkout_shared_hours_private.read_source_scope(r.company_id,w.worker_id,r.report_date,rid);
+  select * into c from checkout_shared_hours_private.confirmations where report_id=rid and worker_id=w.worker_id order by revision desc limit 1;
+  current_input:=checkout_shared_hours_private.confirmation_current(c,work,source)
+   and(not needs_hours or c.hours is not null);
+  ready:=ready and current_input and work->>'event_id' is not null;
+  inputs:=inputs||jsonb_build_array(jsonb_build_object('worker_id',w.worker_id,'work_date',r.report_date,
+   'hours',c.hours,'hours_required',needs_hours,'worker_facts',c.worker_facts,
+   'revision',coalesce(c.revision,0),'confirmation_id',c.id,'confirmed_by',c.confirmed_by,
+   'confirmed_at',c.confirmed_at,'source_kind','clocked_shift',
+   'source_fingerprint',source->>'source_fingerprint','source_current',current_input,
+   'required',true,'confirmed',current_input,'facts_confirmed',c.id is not null,'facts_current',current_input,
+   'reason',case when source->>'blocked'='true' then source->'reasons'
+     when c.id is null then jsonb_build_array('individual_facts_confirmation_missing')
+     when not current_input then jsonb_build_array('individual_facts_confirmation_stale') else '[]'::jsonb end));
+ end loop;
+ basis:=jsonb_build_object('schema',2,'report_id',rid,'work_receipt',work,'inputs',inputs);
+ return jsonb_build_object('schema',2,'enabled',true,'required',required,'ready',ready,
+  'work_basis_sha256',work->>'work_basis_sha256','inputs',inputs,
+  'fingerprint',encode(sha256(convert_to(basis::text,'UTF8')),'hex'));
+end $$;
+
+create function checkout_shared_hours_private.prepare_supervisor(rid uuid,expectedhash text)
+returns void language plpgsql volatile security invoker set search_path='' as $$
+declare actor uuid;snapshot jsonb;prior checkout_shared_hours_private.supervisor_contexts%rowtype;
+ item jsonb;c checkout_shared_hours_private.confirmations%rowtype;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ if not checkout_shared_hours_private.uses_contract(rid) then return;end if;
+ perform checkout_shared_hours_private.lock_report_scopes(rid);
+ snapshot:=checkout_shared_hours_private.supervisor_snapshot(rid);
+ if snapshot->>'fingerprint' is distinct from expectedhash or snapshot->>'ready' is distinct from 'true' then
+  raise sqlstate 'PT409' using message='shared_hours_supervisor_basis_changed_or_pending';end if;
+ select * into prior from checkout_shared_hours_private.supervisor_contexts
+  where report_id=rid and transaction_id=txid_current() and actor_id=actor;
+ if prior.id is not null then
+  if prior.annex_fingerprint is distinct from expectedhash then raise sqlstate 'PT409' using message='shared_hours_supervisor_basis_changed_or_pending';end if;
+  return;
+ end if;
+ insert into checkout_shared_hours_private.supervisor_contexts(report_id,transaction_id,actor_id,annex_fingerprint)
+ values(rid,txid_current(),actor,expectedhash) returning * into prior;
+ for item in select * from jsonb_array_elements(snapshot->'inputs') loop
+  select * into c from checkout_shared_hours_private.confirmations where id=(item->>'confirmation_id')::bigint;
+  insert into checkout_shared_hours_private.materialization_permits(report_id,worker_id,transaction_id,actor_id,
+   supervisor_context_id,expected_facts,expected_facts_sha256)
+  values(rid,c.worker_id,txid_current(),actor,prior.id,c.worker_facts,encode(sha256(convert_to(c.worker_facts::text,'UTF8')),'hex'));
+  perform shared_worker_facts_private.materialize_confirmed_worker(rid,c.worker_id,c.worker_facts);
+  delete from checkout_shared_hours_private.materialization_permits where report_id=rid and worker_id=c.worker_id
+   and transaction_id=txid_current() and actor_id=actor;
+ end loop;
+ if checkout_report_registration_private.inputs_complete(rid) is distinct from true
+  or checkout_shared_hours_private.supervisor_snapshot(rid)->>'fingerprint' is distinct from expectedhash then
+  raise sqlstate 'PT409' using message='shared_hours_materialized_facts_invalid_or_changed';end if;
+end $$;
+
+create function checkout_shared_hours_private.read_input(rid uuid,wid uuid)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare actor uuid;r public.daily_reports%rowtype;source jsonb;work jsonb;
+ c checkout_shared_hours_private.confirmations%rowtype;editable boolean;frozen boolean;current_facts boolean;enrolling boolean;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ select * into r from public.daily_reports where id=rid;
+ enrolling:=not checkout_shared_hours_private.uses_contract(rid);
+ if r.id is null or(enrolling and not(checkout_shared_hours_private.enrollment_available(rid)
+   and(shared_daily_report_private.can_edit_draft_roster(rid) or private.has_company_feature(r.company_id,'can_manage_attendance'))))
+  or not exists(select 1 from public.daily_report_workers where report_id=rid and worker_id=wid)
+  or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=actor)
+  or not(shared_daily_report_private.can_read_roster(rid) or private.has_company_feature(r.company_id,'can_manage_attendance'))
+ then raise sqlstate '42501' using message='paid_hours_input_access_unavailable';end if;
+ source:=checkout_shared_hours_private.read_source_scope(r.company_id,wid,r.report_date,rid);
+ work:=checkout_shared_hours_private.work_evidence(rid);
+ frozen:=r.representative_signature_json is not null;
+ select * into c from checkout_shared_hours_private.confirmations where report_id=rid and worker_id=wid order by revision desc limit 1;
+ current_facts:=checkout_shared_hours_private.confirmation_current(c,work,source);
+ editable:=not enrolling and r.status='draft' and r.supervisor_signature_json is null and source->>'blocked'='false'
+  and (shared_daily_report_private.can_edit_draft_roster(rid)
+   or shared_daily_report_private.can_confirm_own_hours_after_reporter(rid,wid));
+ return jsonb_build_object('schema',1,'contract_version',2,'actor_id',actor,'company_id',r.company_id,'worker_id',wid,
+  'report_id',rid,'work_date',r.report_date,'hours',c.hours,'revision',coalesce(c.revision,0),
+  'scope_fingerprint',source->>'source_fingerprint','source_kind','clocked_shift',
+  'source_blocked',source->'blocked','source_reasons',source->'reasons',
+  'required',checkout_shared_hours_private.hour_required(rid,wid),'editable',editable,'report_status',r.status,
+  'input_scope_current',c.id is null or current_facts,
+  'work_report_frozen',frozen,'first_reporter_covers_work_only',true,'enrollment_pending',enrolling,
+  'work_basis_sha256',work->>'work_basis_sha256','confirmation_id',c.id,
+  'worker_facts',c.worker_facts,'proposed_worker_facts',shared_worker_facts_private.propose_worker_facts(rid,wid),
+  'facts_confirmed',c.id is not null,'facts_current',current_facts,
+  'own_worker',exists(select 1 from public.workers where id=wid and user_id=actor),
+  'management_confirmation_available',private.has_company_feature(r.company_id,'can_manage_attendance'));
+end $$;
+
+create function checkout_shared_hours_private.confirm_facts(rid uuid,wid uuid,p_facts jsonb,p_hours numeric,p_expected_revision bigint,p_expected_scope text,p_management_reason text default null)
+returns jsonb language plpgsql volatile security invoker set search_path='' as $$
+declare actor uuid;r public.daily_reports%rowtype;source jsonb;work jsonb;state jsonb;
+ c checkout_shared_hours_private.confirmations%rowtype;kind text;is_manager boolean;facts jsonb;needs_hours boolean;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ state:=checkout_shared_hours_private.read_input(rid,wid);
+ perform checkout_shared_hours_private.lock_report_scopes(rid);
+ state:=checkout_shared_hours_private.read_input(rid,wid);
+ select * into r from public.daily_reports where id=rid;
+ is_manager:=private.has_company_feature(r.company_id,'can_manage_attendance') and nullif(btrim(p_management_reason),'') is not null;
+ if state->>'editable' is distinct from 'true' and not(is_manager and r.status='draft' and r.supervisor_signature_json is null
+  and state->>'source_blocked'='false') then raise sqlstate '55000' using message='paid_hours_input_not_editable';end if;
+ facts:=shared_worker_facts_private.normalize_worker_facts(rid,wid,p_facts);
+ needs_hours:=checkout_shared_hours_private.hour_required(rid,wid,facts);
+ if (needs_hours and p_hours is null) or(p_hours is not null and(p_hours<0 or p_hours>24 or scale(p_hours)>4 or p_hours::text in('NaN','Infinity','-Infinity')))
+  or p_expected_revision is null or p_expected_revision<0 then raise sqlstate '22023' using message='explicit_paid_hours_required';end if;
+ if state->>'scope_fingerprint' is distinct from p_expected_scope or (state->>'revision')::bigint<>p_expected_revision then
+  raise sqlstate 'PT409' using message='paid_hours_input_conflict';end if;
+ select * into c from checkout_shared_hours_private.confirmations where report_id=rid and worker_id=wid order by revision desc limit 1;
+ work:=checkout_shared_hours_private.work_evidence(rid);
+ if c.id is not null and c.hours is not distinct from p_hours and c.worker_facts=facts
+  and c.source_fingerprint=p_expected_scope and checkout_shared_hours_private.confirmation_current(c,work,
+   checkout_shared_hours_private.read_source_scope(r.company_id,wid,r.report_date,rid))
+ then return state||jsonb_build_object('changed',false);end if;
+ kind:=case when is_manager then 'management'
+  when exists(select 1 from public.workers where id=wid and user_id=actor) then 'self' else 'group_before_reporter' end;
+ insert into checkout_shared_hours_private.confirmations(report_id,worker_id,company_id,work_date,revision,hours,worker_facts,work_event_id,
+  source_fingerprint,work_basis_sha256,confirmed_by,confirmation_kind,management_reason)
+ values(rid,wid,r.company_id,r.report_date,coalesce(c.revision,0)+1,p_hours,facts,(work->>'event_id')::bigint,p_expected_scope,
+  work->>'work_basis_sha256',actor,kind,case when is_manager then btrim(p_management_reason) else null end);
+ -- Explicit separate annex confirmation. Never clear or rewrite the frozen
+ -- work report, roster, first reporter signature, or another worker's input.
+ return checkout_shared_hours_private.read_input(rid,wid)||jsonb_build_object('changed',true);
+end $$;
+
+create function checkout_shared_hours_private.save_input(rid uuid,wid uuid,p_hours numeric,p_expected_revision bigint,p_expected_scope text,p_management_reason text default null)
+returns jsonb language plpgsql volatile security invoker set search_path='' as $$
+declare facts jsonb;
+begin
+ perform checkout_shared_hours_private.read_input(rid,wid);
+ select worker_facts into facts from checkout_shared_hours_private.confirmations where report_id=rid and worker_id=wid order by revision desc limit 1;
+ if facts is null then raise sqlstate '55000' using message='worker_facts_confirmation_required';end if;
+ return checkout_shared_hours_private.confirm_facts(rid,wid,facts-'company_allowance_legacy_labels',p_hours,
+  p_expected_revision,p_expected_scope,p_management_reason);
+end $$;
+
+create function checkout_shared_hours_private.capture_report(rid uuid,p_signature jsonb)
+returns void language plpgsql volatile security invoker set search_path='' as $$
+declare r public.daily_reports%rowtype;snapshot jsonb;work jsonb;item jsonb;
+ context_row checkout_shared_hours_private.supervisor_contexts%rowtype;confirmation checkout_shared_hours_private.confirmations%rowtype;
+begin
+ if not checkout_shared_hours_private.uses_contract(rid) then raise sqlstate '55000' using message='shared_hours_contract_required';end if;
+ perform checkout_shared_hours_private.lock_report_scopes(rid);
+ select * into r from public.daily_reports where id=rid;
+ snapshot:=checkout_shared_hours_private.supervisor_snapshot(rid);work:=checkout_shared_hours_private.work_evidence(rid);
+ if snapshot->>'required'='false' then return;end if;
+ if snapshot->>'ready' is distinct from 'true' or r.representative_signature_json is null or r.supervisor_signature_json is null
+  or p_signature is distinct from jsonb_build_object('version',3,'representative',r.representative_signature_json,'supervisor',r.supervisor_signature_json)
+ then raise sqlstate '55000' using message='shared_hours_final_confirmation_pending';end if;
+ select * into context_row from checkout_shared_hours_private.supervisor_contexts where report_id=rid
+  and transaction_id=txid_current() and actor_id=auth.uid() and annex_fingerprint=snapshot->>'fingerprint';
+ if context_row.id is null then raise sqlstate '42501' using message='shared_hours_supervisor_confirmation_required';end if;
+ for item in select * from jsonb_array_elements(snapshot->'inputs') loop
+  select * into confirmation from checkout_shared_hours_private.confirmations where id=(item->>'confirmation_id')::bigint;
+  insert into checkout_shared_hours_private.ledger(report_id,worker_id,company_id,work_date,contract_version,
+   confirmation_id,hours,worker_facts,source_kind,source_fingerprint,work_receipt,work_basis_sha256,work_event_id,supervisor_context_id,
+   supervisor_signature,supervisor_signature_md5,annex_fingerprint,captured_by)
+  values(rid,confirmation.worker_id,r.company_id,r.report_date,2,confirmation.id,confirmation.hours,confirmation.worker_facts,confirmation.source_kind,
+   confirmation.source_fingerprint,work,work->>'work_basis_sha256',(work->>'event_id')::bigint,context_row.id,r.supervisor_signature_json,
+   md5(r.supervisor_signature_json::text),snapshot->>'fingerprint',auth.uid())
+  on conflict(report_id,worker_id,confirmation_id,work_event_id,supervisor_signature_md5) do nothing;
+ end loop;
+end $$;
+
+create function checkout_shared_hours_private.read_hours(cid uuid,wid uuid,day_value date)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare entry checkout_shared_hours_private.ledger%rowtype;r public.daily_reports%rowtype;source jsonb;work jsonb;answer jsonb;matches integer:=0;
+begin
+ for entry in select * from checkout_shared_hours_private.ledger where company_id=cid and worker_id=wid and work_date=day_value order by id loop
+  select * into r from public.daily_reports where id=entry.report_id;
+  if r.id is null or entry.hours is null or r.company_id<>cid or r.report_date<>day_value or r.status is distinct from 'signed'
+   or r.supervisor_signature_json is distinct from entry.supervisor_signature
+   or r.signature_json is distinct from jsonb_build_object('version',3,'representative',r.representative_signature_json,'supervisor',r.supervisor_signature_json) then continue;end if;
+  if not exists(select 1 from public.daily_report_workers where report_id=r.id and worker_id=wid)
+   or not exists(select 1 from public.attendance_entries where company_id=cid and worker_id=wid
+    and work_date=day_value and source_report_id=r.id and base_man_days>0) then continue;end if;
+  work:=checkout_shared_hours_private.work_evidence(r.id);
+  if work is distinct from entry.work_receipt then continue;end if;
+  source:=checkout_shared_hours_private.read_source_scope(cid,wid,day_value,r.id);
+  if source->>'blocked' is distinct from 'false' or source->>'source_fingerprint' is distinct from entry.source_fingerprint then continue;end if;
+  if exists(select 1 from checkout_shared_hours_private.confirmations c where c.report_id=r.id and c.worker_id=wid and c.id<>entry.confirmation_id
+   and c.revision>(select revision from checkout_shared_hours_private.confirmations where id=entry.confirmation_id)) then continue;end if;
+  matches:=matches+1;
+  answer:=jsonb_build_object('contract_version',2,'hours',entry.hours,'report_id',entry.report_id,'confirmation_id',entry.confirmation_id,
+   'work_report_signature_receipt',entry.work_receipt,'supervisor_annex_fingerprint',entry.annex_fingerprint,
+   'supervisor_context_id',entry.supervisor_context_id,'source_fingerprint',entry.source_fingerprint);
+ end loop;
+ if matches<>1 then return jsonb_build_object('available',false,'hours',null,'reason',case when matches=0 then 'shared_signed_hours_pending' else 'shared_signed_hours_ambiguous' end);end if;
+ return answer||jsonb_build_object('available',true);
+end $$;
+
+create function checkout_shared_hours_private.worker_registration_ready(rid uuid,wid uuid)
+returns boolean language plpgsql stable security invoker set search_path='' as $$
+declare r public.daily_reports%rowtype;c checkout_shared_hours_private.confirmations%rowtype;source jsonb;work jsonb;
+begin
+ if not checkout_shared_hours_private.uses_contract(rid) then return false;end if;
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null or r.representative_signature_json is null
+  or not exists(select 1 from public.daily_report_workers where report_id=rid and worker_id=wid) then return false;end if;
+ work:=checkout_shared_hours_private.work_evidence(rid);
+ if work->>'event_id' is null then return false;end if;
+ source:=checkout_shared_hours_private.read_source_scope(r.company_id,wid,r.report_date,rid);
+ select * into c from checkout_shared_hours_private.confirmations where report_id=rid and worker_id=wid order by revision desc limit 1;
+ return checkout_shared_hours_private.confirmation_current(c,work,source)
+  and(not checkout_shared_hours_private.hour_required(rid,wid) or c.hours is not null);
+exception when sqlstate '55000' then
+ -- A cleared/revised work receipt is pending, never an unlocked registration.
+ return false;
+end $$;
+
+revoke all on all functions in schema checkout_shared_hours_private from public,anon,authenticated,service_role;

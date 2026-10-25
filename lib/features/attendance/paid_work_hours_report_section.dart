@@ -79,14 +79,20 @@ class _PaidWorkHoursReportSectionState extends State<PaidWorkHoursReportSection>
 /// Run after the ordinary report draft and exact clock links have saved, and
 /// before opening either existing signature UI. Earlier site reports can sign;
 /// the final closed day report must carry an explicitly saved daily quantity.
-String? paidWorkHoursSignatureProblem(Iterable<PaidWorkHoursSnapshot> values) {
+String? paidWorkHoursSignatureProblem(Iterable<PaidWorkHoursSnapshot> values,
+    {bool forSupervisor = false}) {
   for (final state in values) {
     if (!state.hoursRequired) continue;
+    if (state.contractVersion == 2 && state.firstReporterCoversWorkOnly && !forSupervisor) {
+      // The first reporter signs work facts only. Missing personal hours remain
+      // pending and must not become either zero or first-reporter consent.
+      continue;
+    }
     if (state.sourceBlocked) {
       const intermediateReasons = {
         'report_is_not_final_closed_shift', 'open_shift', 'final_shift_missing',
       };
-      if (state.sourceReasons.isNotEmpty && state.sourceReasons.every(intermediateReasons.contains)) continue;
+      if (state.contractVersion == 1 && state.sourceReasons.isNotEmpty && state.sourceReasons.every(intermediateReasons.contains)) continue;
       return '時間手当の勤務記録を確認できません。実勤務時間を再読込してください。';
     }
     if (!state.inputScopeCurrent || state.hours == null) {

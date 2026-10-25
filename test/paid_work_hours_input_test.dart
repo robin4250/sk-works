@@ -21,6 +21,12 @@ Map<String, dynamic> payload() => {
 PaidWorkHoursSnapshot parse(Map<String, dynamic> raw) => PaidWorkHoursSnapshot.parse(raw,
   actorId: actor, companyId: company, workerId: worker, reportId: report);
 
+Map<String, dynamic> sharedPayload() => payload()..addAll({
+  'contract_version': 2, 'work_report_frozen': true,
+  'first_reporter_covers_work_only': true,
+  'work_basis_sha256': List.filled(64, 'b').join(), 'report_status': 'draft',
+});
+
 void main() {
   test('unknown quantity and explicit zero stay distinct', () {
     expect(parse(payload()).hours, isNull);
@@ -58,6 +64,26 @@ void main() {
     earlier['source_reasons'] = ['report_is_not_final_closed_shift', 'overlapping_shift_evidence'];
     expect(paidWorkHoursSignatureProblem([parse(earlier)]), isNotNull);
   });
+  test('v2 first work signature does not approve unknown personal hours', () {
+    final state = parse(sharedPayload()..addAll({
+      'editable': false, 'source_blocked': true, 'source_reasons': ['open_shift'],
+    }));
+    expect(paidWorkHoursSignatureProblem([state]), isNull);
+    expect(paidWorkHoursSignatureProblem([state], forSupervisor: true), isNotNull);
+    expect(paidWorkHoursSignatureProblem([parse(sharedPayload()..['hours'] = 0)],
+      forSupervisor: true), isNull);
+  });
+  test('unknown work-consent versions cannot relax signature validation', () {
+    for (final changed in [
+      sharedPayload()..['contract_version'] = 3,
+      sharedPayload()..['contract_version'] = 2.0,
+      sharedPayload()..remove('first_reporter_covers_work_only'),
+      sharedPayload()..['work_basis_sha256'] = '',
+      sharedPayload()..['report_status'] = 'unknown',
+    ]) {
+      expect(() => parse(changed), throwsStateError);
+    }
+  });
   testWidgets('blank input is not submitted as zero', (tester) async {
     var calls = 0;
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PaidWorkHoursInputCard(
@@ -80,6 +106,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls, ['0']);
     expect(delivered?.hours, 0);
+  });
+  testWidgets('v2 personal confirmation does not ask to erase the work signature', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PaidWorkHoursInputCard(
+      snapshot: parse(sharedPayload()),
+      onSave: (_) async => parse(sharedPayload()..['hours'] = 7.25), onSaved: (_) {},
+    ))));
+    await tester.enterText(find.byKey(const ValueKey('paid-work-hours-input')), '7.25');
+    await tester.tap(find.text('実勤務時間を確認して保存'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('報告者サインは変更していません'), findsOneWidget);
+    expect(find.textContaining('署名を取り直してください'), findsNothing);
   });
   testWidgets('stale input source starts blank rather than reusing previous quantity', (tester) async {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PaidWorkHoursInputCard(
