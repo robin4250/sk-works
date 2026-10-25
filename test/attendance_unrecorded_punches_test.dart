@@ -259,6 +259,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('給与用の勤務記録は未確定'), findsOneWidget);
       final save = find.widgetWithText(FilledButton, '登録・編集を直接反映');
+      await tester.scrollUntilVisible(save, 180,
+        scrollable: find.byType(Scrollable).first);
       await tester.ensureVisible(save);
       await tester.tap(save);
       await tester.pumpAndSettle();

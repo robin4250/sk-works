@@ -62,11 +62,14 @@ void main() {
   }
   testWidgets('management exposes saved report recovery before editing fields', (tester) async {
     final f = fixture.Fixture();
-    await f.start();
-    addTearDown(f.client.dispose);
-    await tester.pumpWidget(MaterialApp(home: AttendanceManagementPage(
-      repository: f.repository, initialWorkerId: fixture.worker,
-      initialDate: DateTime(2026, 10, 25), restrictedRecovery: true)));
+    await tester.runAsync(f.start);
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.runAsync(f.client.dispose);
+    });
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: AttendanceManagementPage(
+      repository: fixture.PageFixture(f.client), initialWorkerId: fixture.worker,
+      initialDate: DateTime(2026, 10, 25), restrictedRecovery: true))));
     await tester.pumpAndSettle();
     expect(find.text('この日の日報・サインを開く'), findsOneWidget);
     expect(find.textContaining('署名済み内容は保持'), findsOneWidget);
