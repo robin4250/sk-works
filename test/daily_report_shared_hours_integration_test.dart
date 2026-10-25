@@ -26,7 +26,8 @@ final _date = DateTime(2026, 10, 25);
 class _Reports implements DailyReportRepository {
   bool reporterSaved = false, supervisorSaved = false, peerOpen = false;
   bool omitSource = false, staleSupervisorRead = false, missingReport = false;
-  bool recoveryChoices = false;
+  bool recoveryChoices = false, documentMode = false;
+  String description = '保存済みの作業';
   bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
   int draftWrites = 0, ordinaryReporterWrites = 0;
   List<DailyReportWorkerDraft> get workers => [
@@ -44,8 +45,8 @@ class _Reports implements DailyReportRepository {
   @override Future<DailyReportRecord?> loadReport({required DateTime date,
     String? siteId, String? routeAssignmentId, String? vehicleClockInAnchorId,
     String? reportId}) async => missingReport ? null : DailyReportRecord(id: _report, companyId: _company,
-      date: date, siteId: _site, siteName: '対象現場', workDescription: '保存済みの作業',
-      status: persistedSupervisor ? 'signed' : 'draft', workers: workers,
+      date: date, siteId: _site, siteName: '対象現場', workDescription: description,
+      status: persistedSupervisor && !documentMode ? 'signed' : 'draft', workers: workers,
       reporterSignerName: reporterSaved ? '最初の報告者' : null,
       reporterSignatureJson: reporterSaved ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null,
       responsibleSignerName: persistedSupervisor ? '責任者' : null,
@@ -92,7 +93,8 @@ class _Shared implements SharedDailyReportRepository {
   final bool enabled;
   bool hold = false;
   String source = _source;
-  bool workOnly = true, ready = false;
+  bool workOnly = true, ready = false, documentOnly = false;
+  int documentEdits = 0, documentSaves = 0;
   int supervisorWrites = 0;
   SharedDailyReportContext get state => SharedDailyReportContext(actorId: _actor,
     companyId: _company, workerId: _worker, reportId: _report, sourceClockInId: source,
@@ -104,7 +106,17 @@ class _Shared implements SharedDailyReportRepository {
     reporterName: reports.reporterSaved ? '最初の報告者' : '',
     reportStatus: reports.supervisorSaved ? 'signed' : 'draft',
     expectedUpdatedAt: DateTime.utc(2026, 10, 25, 8), signatureScopeFingerprint: _scope,
-    supervisorReady: ready,
+    supervisorReady: ready || (documentOnly && reports.reporterSaved && !reports.supervisorSaved),
+    documentOnly: documentOnly, documentComplete: documentOnly && reports.persistedSupervisor,
+    documentEditable: documentOnly && reports.reporterSaved,
+    financialConfirmationRequired: documentOnly,
+    documentBasis: documentOnly ? {'report': {'id': _report, 'company_id': _company, 'report_date': '2026-10-25',
+      'work_description': reports.description}, 'workers': [for (final w in reports.workers) {
+      'report_id': _report, 'worker_id': w.workerId, 'worker_name': w.workerName,
+      'overtime_hours': w.overtimeHours, 'early_hours': w.earlyHours, 'night_hours': w.nightHours,
+      'allowance_amount': w.allowanceAmount, 'allowance_label': w.allowanceLabel,
+      'company_allowance_selections': w.companyAllowanceSelections?.toJson(),
+      'vehicle_id': w.vehicleId, 'route_assignment_id': w.routeId, 'odometer_km': w.odometerKm}]} : null,
     firstReporterCoversWorkOnly: enabled && workOnly,
     workBasis: {'contract_version': 2, 'report': {'id': _report, 'company_id': _company,
       'work_date': '2026-10-25', 'site_id': _site, 'route_assignment_id': null,
@@ -118,6 +130,24 @@ class _Shared implements SharedDailyReportRepository {
     expect(signature['strokes'], isA<List>());
     supervisorWrites++;
     reports.supervisorSaved = true;
+    return state;
+  }
+  @override Future<SharedDailyReportContext> saveDocumentDraft({required SharedDailyReportContext before,
+    required String workDescription, required List<Map<String, dynamic>> workers}) async {
+    expect(before.documentOnly, isTrue);
+    expect(before.reporterSaved, isFalse);
+    expect(workers.single['worker_id'], _worker);
+    documentSaves++;
+    reports.description = workDescription;
+    return state;
+  }
+  @override Future<SharedDailyReportContext> startDocumentEdit({required SharedDailyReportContext before,
+    required String reason}) async {
+    expect(before.documentEditable, isTrue);
+    expect(reason, isNotEmpty);
+    documentEdits++;
+    reports.reporterSaved = false;
+    reports.supervisorSaved = false;
     return state;
   }
   @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -136,7 +166,7 @@ class _MissingShared extends _Shared {
 class _Facts implements SharedWorkerFactsRepository {
   bool requireHours = true, managePeer = false;
   bool? outsideCurrentReport;
-  int confirmations = 0;
+  int confirmations = 0, reads = 0;
   bool missingProposal = false;
   SharedWorkerFacts? savedFacts;
   double? savedHours;
@@ -158,7 +188,7 @@ class _Facts implements SharedWorkerFactsRepository {
     isOwnWorker: workerId == _worker, canManageAttendance: managePeer && workerId == _peer,
     hoursRequiredOutsideCurrentReport: outsideCurrentReport ?? requireHours);
   @override Future<SharedWorkerFactsSnapshot> load({required String companyId,
-    required String reportId, required String workerId}) async => snapshot(workerId);
+    required String reportId, required String workerId}) async { reads++; return snapshot(workerId); }
   @override Future<SharedWorkerFactsSnapshot> confirm(SharedWorkerFactsSnapshot before,
     SharedWorkerFacts facts, {double? hours, String? managementReason}) async {
     confirmations++;
@@ -214,6 +244,82 @@ void main() {
     expect(reports.draftWrites, 0);
     expect(reports.ordinaryReporterWrites, 0);
     expect(reports.reporterSaved, isTrue);
+  });
+
+  for (final stale in [false, true]) {
+    testWidgets('document-only supervisor goes straight to signature without personal-facts save, stale=$stale', (tester) async {
+      final reports = _Reports()..reporterSaved = true..documentMode = true..staleSupervisorRead = stale;
+      final shared = _Shared(reports)..documentOnly = true;
+      final hours = _Hours()..fail = true;
+      final facts = _Facts()..missingProposal = true;
+      await open(tester, reports, hours, shared, facts: facts);
+      expect(facts.reads, 0);
+      await reveal(tester, '責任者サイン');
+      await tester.tap(find.text('責任者サイン'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SignatureCapturePage), findsOneWidget);
+      expect(find.text('この内容で責任者サインへ'), findsNothing);
+      expect(hours.workersRead, isEmpty);
+      expect(facts.reads, 0);
+      expect(reports.draftWrites, 0);
+      expect(find.byTooltip('サインする日報を確認'), findsOneWidget);
+      Navigator.of(tester.element(find.byType(SignatureCapturePage))).pop(
+        const SignatureResult(signerName: '責任者', strokes: [[Offset(0.1, 0.2)]]));
+      await tester.pumpAndSettle();
+      expect(shared.supervisorWrites, 1);
+      expect(find.text('責任者サインを保存し、日報が完了しました'), stale ? findsNothing : findsOneWidget);
+      expect(reports.draftWrites, 0);
+      expect(reports.ordinaryReporterWrites, 0);
+    });
+  }
+  for (final supervisorSigned in [false, true]) {
+    testWidgets('document hand-edit clears visible signatures only after explicit server reset, supervisor=$supervisorSigned', (tester) async {
+      final reports = _Reports()..reporterSaved = true..documentMode = true..supervisorSaved = supervisorSigned;
+      final shared = _Shared(reports)..documentOnly = true;
+      await open(tester, reports, _Hours(), shared);
+      await reveal(tester, '手直し');
+      await tester.tap(find.text('手直し'));
+      await tester.pumpAndSettle();
+      expect(shared.documentEdits, 0);
+      await tester.tap(find.text('戻る'));
+      await tester.pumpAndSettle();
+      expect(reports.reporterSaved, isTrue);
+      await reveal(tester, '手直し');
+      await tester.tap(find.text('手直し'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('手直しを始める'));
+      await tester.pumpAndSettle();
+      expect(shared.documentEdits, 1);
+      expect(reports.reporterSaved, isFalse);
+      expect(reports.supervisorSaved, isFalse);
+      expect(reports.draftWrites, 0);
+      expect(find.text('日報を手直しできます。保存後にサインを取り直してください。'), findsOneWidget);
+    });
+  }
+
+  testWidgets('document correction saves changed text through document writer without legacy roster rewrite', (tester) async {
+    final reports = _Reports()..reporterSaved = true..documentMode = true;
+    final shared = _Shared(reports)..documentOnly = true;
+    await open(tester, reports, _Hours(), shared);
+    await reveal(tester, '手直し');
+    await tester.tap(find.text('手直し'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('手直しを始める'));
+    await tester.pumpAndSettle();
+    final description = find.byKey(const ValueKey('daily-report-work-description'));
+    await tester.ensureVisible(description);
+    await tester.enterText(description, '手直しした作業内容');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await reveal(tester, '登録');
+    await tester.tap(find.text('登録'));
+    await tester.pumpAndSettle();
+    expect(shared.documentSaves, 1);
+    expect(reports.description, '手直しした作業内容');
+    expect(reports.draftWrites, 0);
+    expect(reports.reporterSaved, isFalse);
+    expect(reports.supervisorSaved, isFalse);
   });
 
   test('report guidance removes technical StateError wrapper', () {

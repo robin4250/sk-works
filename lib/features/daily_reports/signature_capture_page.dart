@@ -72,6 +72,7 @@ class SignatureCapturePage extends StatefulWidget {
     this.submitLabel = 'このサインで確定',
     this.initialSignerName = '',
     this.signerNameOptions = const [],
+    this.reviewText,
   });
 
   final String title;
@@ -79,6 +80,7 @@ class SignatureCapturePage extends StatefulWidget {
   final String submitLabel;
   final String initialSignerName;
   final List<String> signerNameOptions;
+  final String? reviewText;
 
   @override
   State<SignatureCapturePage> createState() => _SignatureCapturePageState();
@@ -165,6 +167,12 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          if (widget.reviewText != null) IconButton(
+            tooltip: 'サインする日報を確認', icon: const Icon(Icons.description_outlined),
+            onPressed: () => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+              title: const Text('サインする日報'),
+              content: SingleChildScrollView(child: Text(widget.reviewText!)),
+              actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('閉じる'))]))),
           TextButton(
             onPressed: _strokes.isEmpty
                 ? null

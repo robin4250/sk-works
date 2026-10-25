@@ -41,6 +41,42 @@ void main() {
       SharedDailyReportContext.parse(value, actorId: actor,
         companyId: company, workerId: worker, sourceClockInId: source,
         reportId: report, workDate: DateTime(2026, 10, 25));
+  Map<String, dynamic> documentRow() => row()..addAll({
+    'document_only': true, 'document_complete': false, 'document_editable': true,
+    'financial_confirmation_required': true,
+    'document_basis': {'report': {'id': report, 'company_id': company,
+      'report_date': '2026-10-25', 'work_description': '保存済みの作業内容'},
+      'workers': [{'report_id': report, 'worker_id': worker, 'worker_name': '本人'}]},
+  });
+  test('only explicit document contract separates signature from financial confirmation', () {
+    expect(parse(row()).documentOnly, isFalse);
+    final value = parse(documentRow());
+    expect(value.documentOnly, isTrue);
+    expect(value.canCollectSupervisor, isTrue);
+    expect(value.financialConfirmationRequired, isTrue);
+    expect(value.documentComplete, isFalse);
+    expect(() => value.documentBasis!['workers'].clear(), throwsUnsupportedError);
+  });
+  test('document completion needs both actual signature states and exact report basis', () {
+    expect(() => parse(documentRow()..['document_complete'] = true), throwsStateError);
+    expect(() => parse(documentRow()..['document_basis'] = null), throwsStateError);
+    final other = documentRow();
+    (other['document_basis'] as Map)['report']['id'] = source;
+    expect(() => parse(other), throwsStateError);
+    final completed = documentRow()..addAll({'document_complete': true, 'supervisor_saved': true, 'state': 'supervisor_saved'});
+    expect(parse(completed).documentComplete, isTrue);
+    expect(parse(completed).canCollectSupervisor, isFalse);
+  });
+  for (final key in ['document_only', 'document_complete', 'document_editable', 'financial_confirmation_required']) {
+    test('document flag $key is never truthy coercion', () {
+      expect(() => parse(documentRow()..[key] = 'true'), throwsStateError);
+    });
+  }
+  test('document-only cannot erase finance separation or silently include a finance annex', () {
+    expect(() => parse(documentRow()..['financial_confirmation_required'] = false), throwsStateError);
+    expect(() => parse(documentRow()..['hours_annex'] = {'required': false}), throwsStateError);
+  });
+
   test('reporter saved means readonly facts and supervisor collection', () {
     final value = parse(row());
     expect(value.signedFactsReadOnly, isTrue);
