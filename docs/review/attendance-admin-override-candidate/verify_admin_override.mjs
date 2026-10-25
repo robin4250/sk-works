@@ -99,7 +99,7 @@ try {
  await reject(()=>force(OTHER,foreignSid,'delete',[item(reportWorker,docDay,{mode:'off'})]),/worker does not belong|cell_scope_invalid/);
  const beforeRollback=await q('select attendance_admin_override_private.snapshot($1,$2,$3::jsonb) v',[A,'upsert',JSON.stringify([item(reportWorker,docDay)])]);
  const auditCount=await q('select count(*)::int v from attendance_admin_override_private.operations');
- await reject(()=>force(U,id(80),'upsert',[item(reportWorker,docDay),item(W3,'2026-10-30',{clock_in:'not-a-time'})]),/invalid input syntax|invalid value/);
+ await reject(()=>force(U,id(80),'upsert',[item(reportWorker,docDay),item(W3,'2026-10-30',{clock_in:'not-a-time'})]),/time zone "not-a-time" not recognized/);
  eq(await q('select attendance_admin_override_private.snapshot($1,$2,$3::jsonb) v',[A,'upsert',JSON.stringify([item(reportWorker,docDay)])]),beforeRollback,'Late invalid clock input rolls back earlier cells, signatures and cancellation changes');
  eq(await q('select count(*)::int v from attendance_admin_override_private.operations'),auditCount,'Failed mutation cannot commit a success audit');
  eq(await q('select count(*)::int v from attendance_admin_override_private.contexts'),0,'Failed mutation leaves no live permit');
@@ -107,6 +107,11 @@ try {
  eq(await q('select count(*)::int v from attendance_entries where company_id=$1 and work_date=$2',[A,'2026-10-30']),2,'Batch creates exactly its two explicit manual attendance rows');
  eq(await q('select attendance_admin_override_private.protected_financial($1,$2::jsonb) v',[A,JSON.stringify([item(reportWorker,docDay),item(W2,docDay)])]),protection,'All CRUD and rollback paths preserve finalized source snapshots');
  eq(await q("select has_table_privilege('authenticated','attendance_admin_override_private.contexts','insert,update,delete') v"),false,'Normal API caller cannot forge administrative scope permits');
+ eq(await force(U,id(80),'upsert',[item(W3,'2026-10-29',{mode:'paid_leave',site_id:null,man_days:1})]),1,'Manager can explicitly register paid leave');
+ eq(await q("select status v from paid_leave_requests where company_id=$1 and worker_id=$2 and leave_date='2026-10-29'",[A,W3]),'approved','Management paid leave remains explicit approved attendance, not a captured signature');
+ eq(await force(U,id(80),'upsert',[item(W3,'2026-10-29',{mode:'off',site_id:null})]),1,'Manager can change an existing day to off');
+ eq(await q("select count(*)::int v from attendance_entries where company_id=$1 and worker_id=$2 and work_date='2026-10-29'",[A,W3]),0,'Off removes current attendance without a fake work row');
+ await reject(()=>force(U,id(80),'upsert',[item(W3,'2026-10-28'),item(W3,'2026-10-28')]),{code:'22023',message:'attendance_admin_duplicate_cell'});
  console.log(JSON.stringify({pass:true,checks,native_pg17:true,actual_force_md5_before:'7de4106cf653bb7b39ab0103ec462853',actual_observed_trigger_bodies:true,synthetic_auth_and_neutral_invoice_producer:true,unchanged_old_suites_replayed:false,production_changed:false}));
 `;
  const proof=join(folder,'proof.mjs');await writeFile(proof,prefix+unit+tail);
