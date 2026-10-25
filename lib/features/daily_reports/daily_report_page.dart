@@ -2020,10 +2020,10 @@ class _WorkerFactsConfirmationSectionState extends State<_WorkerFactsConfirmatio
   @override Widget build(BuildContext context) => FutureBuilder<List<SharedWorkerFactsSnapshot>>(
     future: _future, builder: (context, result) {
       if (result.connectionState != ConnectionState.done) { return const LinearProgressIndicator(); }
-      if (result.hasError || result.data == null) return Card(child: ListTile(
+      if (result.hasError || result.data == null) { return Card(child: ListTile(
         title: const Text('本人の勤務実績を確認できません。'),
         subtitle: const Text('未確認を0として扱わず、再読み込みしてください。'),
-        trailing: TextButton(onPressed: _reload, child: const Text('再読込'))));
+        trailing: TextButton(onPressed: _reload, child: const Text('再読込')))); }
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('本人の勤務実績を確認',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
