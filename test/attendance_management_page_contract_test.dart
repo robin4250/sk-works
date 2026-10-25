@@ -22,7 +22,11 @@ void main() {
     expect(app, contains("case 'attendance_management':"));
     expect(app, contains("onOpenManagement:"));
     expect(app.replaceAll(RegExp(r'\s+'), ' '), contains("_identity.isManagement && _identity.can('can_manage_attendance') && _subAdminFeatureEnabled('attendance_management')"));
-    expect(app, contains("page = const AttendanceManagementPage()"));
+    final protectedRoutes = File('lib/features/attendance/attendance_protected_routes.dart').readAsStringSync();
+    expect(app, contains("page = attendanceManagementDestination()"));
+    expect(protectedRoutes, contains('SecondaryProtectedPage('));
+    expect(protectedRoutes, contains('child: AttendanceManagementPage('));
+    expect(app, isNot(contains('page = const AttendanceManagementPage()')));
     expect(repo, contains("rpc('force_manage_attendance'"));
     expect(repo, contains("const {'owner', 'admin', 'manager'}"));
   });
