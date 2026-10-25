@@ -170,16 +170,16 @@ begin
 end $$;
 
 create function attendance_admin_override_private.begin_batch(cid uuid,p_action text,p_items jsonb) returns uuid language plpgsql volatile security definer set search_path='' as $$
-declare actor uuid;sid uuid;state jsonb;oid uuid;report_ids uuid[];i jsonb;r record;
+declare actor uuid;sid uuid;state jsonb;oid uuid;report_ids uuid[];v_item jsonb;r record;
 begin
  if not attendance_admin_override_private.enabled(cid) then return null;end if;
  actor:=attendance_admin_override_private.require_manager(cid);sid:=(auth.jwt()->>'session_id')::uuid;
  if p_action not in('upsert','delete') or jsonb_typeof(p_items) is distinct from 'array' or jsonb_array_length(p_items) not between 1 and 500 then raise exception 'invalid management batch';end if;
  if exists(select 1 from jsonb_array_elements(p_items) i group by i->>'worker_id',i->>'date' having count(*)>1) then raise sqlstate '22023' using message='attendance_admin_duplicate_cell';end if;
- for i in select value from jsonb_array_elements(p_items) loop
-  if nullif(i->>'worker_id','') is null or nullif(i->>'date','') is null or coalesce(i->>'mode','work') not in('work','paid_leave','off')
-  or not exists(select 1 from public.workers w where w.id=(i->>'worker_id')::uuid and w.company_id=cid and w.status='active')
-  or (coalesce(i->>'mode','work')='work' and not exists(select 1 from public.sites s where s.id=(i->>'site_id')::uuid and s.company_id=cid)) then
+ for v_item in select value from jsonb_array_elements(p_items) loop
+  if nullif(v_item->>'worker_id','') is null or nullif(v_item->>'date','') is null or coalesce(v_item->>'mode','work') not in('work','paid_leave','off')
+  or not exists(select 1 from public.workers w where w.id=(v_item->>'worker_id')::uuid and w.company_id=cid and w.status='active')
+  or (coalesce(v_item->>'mode','work')='work' and not exists(select 1 from public.sites s where s.id=(v_item->>'site_id')::uuid and s.company_id=cid)) then
    raise sqlstate '42501' using message='attendance_admin_cell_scope_invalid';end if;
  end loop;
  state:=attendance_admin_override_private.snapshot(cid,p_action,p_items);
