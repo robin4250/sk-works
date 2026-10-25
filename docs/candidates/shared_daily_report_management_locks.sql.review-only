@@ -1,0 +1,69 @@
+-- REVIEW ONLY. One source-pinned lock prefix in the existing authorized writer.
+begin;
+create function shared_daily_report_private.lock_management_batch(p_company_id uuid,p_action text,p_items jsonb)
+returns void language plpgsql volatile security definer set search_path='' as $$
+declare scopes jsonb;before_reports jsonb;after_reports jsonb;scope_row record;previous shared_daily_report_private.clock_group_context%rowtype;
+begin
+ -- Called only after the original writer's company/role/feature/payload checks.
+ -- Private ownership is not an alternative public management entry point.
+ if p_action not in ('upsert','delete') or jsonb_typeof(p_items) is distinct from 'array'
+ or jsonb_array_length(p_items) not between 1 and 500 then raise exception 'invalid management batch';end if;
+ if not exists(select 1 from jsonb_array_elements(p_items) i where shared_daily_report_private.enabled(p_company_id,(i->>'date')::date)
+  or exists(select 1 from public.daily_reports d join shared_daily_report_private.work_protocol p on p.report_id=d.id
+   where d.company_id=p_company_id and d.report_date=(i->>'date')::date)) then return;end if;
+
+ select * into previous from shared_daily_report_private.clock_group_context where backend_pid=pg_backend_pid() for update;
+ if previous.transaction_id=txid_current() then
+  raise sqlstate '40001' using message='shared_group_prepare_batch_before_any_clock_write';end if;
+ with inputs as(select (x->>'worker_id')::uuid wid,(x->>'date')::date day_value,nullif(x->>'site_id','')::uuid site from jsonb_array_elements(p_items) x),
+ affected as(select distinct r.id from public.daily_reports r join inputs i on r.company_id=p_company_id and r.report_date=i.day_value
+  and (r.site_id=i.site or exists(select 1 from public.daily_report_workers rw where rw.report_id=r.id and rw.worker_id=i.wid)))
+ select coalesce(jsonb_agg(jsonb_build_object('id',a.id,'sources',payroll_scope_private.report_sources(a.id)) order by a.id),'[]'::jsonb)
+ into before_reports from affected a;
+ with inputs as(select (x->>'worker_id')::uuid wid,(x->>'date')::date day_value from jsonb_array_elements(p_items) x),
+ scope_values as(select p_company_id cid,i.wid,i.day_value day from inputs i
+  union select x.cid,x.wid,x.day from jsonb_array_elements(before_reports) r,
+   lateral jsonb_to_recordset(r#>'{sources,scopes}') x(cid uuid,wid uuid,day date))
+ select coalesce(jsonb_agg(jsonb_build_object('cid',cid,'wid',wid,'day',day) order by cid,wid,day),'[]'::jsonb) into scopes from scope_values;
+ perform payroll_scope_private.lock_scopes(scopes,false);
+ with inputs as(select (x->>'worker_id')::uuid wid,(x->>'date')::date day_value,nullif(x->>'site_id','')::uuid site from jsonb_array_elements(p_items) x),
+ affected as(select distinct r.id from public.daily_reports r join inputs i on r.company_id=p_company_id and r.report_date=i.day_value
+  and (r.site_id=i.site or exists(select 1 from public.daily_report_workers rw where rw.report_id=r.id and rw.worker_id=i.wid)))
+ select coalesce(jsonb_agg(jsonb_build_object('id',a.id,'sources',payroll_scope_private.report_sources(a.id)) order by a.id),'[]'::jsonb)
+ into after_reports from affected a;
+ if after_reports is distinct from before_reports then raise sqlstate '40001' using message='shared_group_management_sources_changed';end if;
+ -- All canonical scopes are acquired before the FIRST sorted group lock.
+ for scope_row in with inputs as(select (x->>'worker_id')::uuid wid,(x->>'date')::date day_value,nullif(x->>'site_id','')::uuid site from jsonb_array_elements(p_items) x),
+ groups as(select jsonb_build_array(p_company_id,i.day_value,i.site,null) value from inputs i where i.site is not null
+  union select jsonb_build_array(r.company_id,r.report_date,r.site_id,r.route_assignment_id) from public.daily_reports r
+   where r.id in(select (x->>'id')::uuid from jsonb_array_elements(before_reports) x)
+  union select jsonb_build_array(a.company_id,a.work_date,a.site_id,a.route_assignment_id) from public.attendance_verifications a
+   join inputs i on a.company_id=p_company_id and a.worker_id=i.wid and a.work_date=i.day_value)
+ select value from groups order by value::text loop
+  perform pg_advisory_xact_lock(hashtextextended(scope_row.value::text,0));
+ end loop;
+ -- Waiting for a group must not expand the canonical scopes already held.
+ -- Re-read after the LAST group lock before entering the original writer.
+ with inputs as(select (x->>'worker_id')::uuid wid,(x->>'date')::date day_value,nullif(x->>'site_id','')::uuid site from jsonb_array_elements(p_items) x),
+ affected as(select distinct r.id from public.daily_reports r join inputs i on r.company_id=p_company_id and r.report_date=i.day_value
+  and (r.site_id=i.site or exists(select 1 from public.daily_report_workers rw where rw.report_id=r.id and rw.worker_id=i.wid)))
+ select coalesce(jsonb_agg(jsonb_build_object('id',a.id,'sources',payroll_scope_private.report_sources(a.id)) order by a.id),'[]'::jsonb)
+ into after_reports from affected a;
+ if after_reports is distinct from before_reports then raise sqlstate '40001' using message='shared_group_management_sources_changed';end if;
+ insert into shared_daily_report_private.clock_group_context(backend_pid,transaction_id,actor_id,prepared_scopes)
+ values(pg_backend_pid(),txid_current(),auth.uid(),scopes)
+ on conflict(backend_pid) do update set transaction_id=excluded.transaction_id,actor_id=excluded.actor_id,
+  company_id=null,worker_id=null,work_month=null,prepared_scopes=excluded.prepared_scopes;
+end $$;
+revoke all on function shared_daily_report_private.lock_management_batch(uuid,text,jsonb) from public,anon,authenticated,service_role;
+do $$
+declare original_definition text;anchor text:=E'  for v_item in\n    select value from jsonb_array_elements(p_items)\n  loop';
+begin
+ if (select md5(prosrc) from pg_proc where oid='public.force_manage_attendance(text,jsonb)'::regprocedure)
+  is distinct from '077b4a1373689071c84e0a14f0a8d824' then raise exception 'management_original_source_mismatch';end if;
+ original_definition:=pg_get_functiondef('public.force_manage_attendance(text,jsonb)'::regprocedure);
+ if (length(original_definition)-length(replace(original_definition,anchor,'')))/length(anchor)<>1 then
+  raise exception 'management_lock_prefix_anchor_mismatch';end if;
+ execute replace(original_definition,anchor,E'  perform shared_daily_report_private.lock_management_batch(v_company_id,p_action,p_items);\n\n'||anchor);
+end $$;
+commit;
