@@ -72,3 +72,24 @@ not pretend that free names are registered selections and does not add a new
 payroll writer. Direct structured allowance editing within the management form
 remains a separate backend/client requirement. No production business rows or
 rollout flags were changed by these follow-ups. The emergency gate remains OFF.
+
+## Supervisor signature closure
+
+The restricted report screen now permits supervisor review only when the current
+server context permits supervisor collection. Missing reporter signatures receive
+a specific prompt before saving or opening capture. Existing ready-facts review,
+actor/source/target binding, scope fingerprint, expected-update comparison and
+manager-specific signature RPC remain in place; no backend guard is removed.
+A signature result is not shown as finalized until a fresh report read confirms
+the same report is signed and both saved signature fields exist.
+
+After the reporter saves, the gate re-reads authoritative registration state.
+Only when every blocking registration is gone and the exact same actor, source,
+worker, date, company, destination and report are nonblocking and waiting for the
+supervisor does it open that report once on the ordinary navigator. The screen is
+then freely dismissible; supervisor waiting never becomes a new global lock.
+Read failures, changed source/destination/actor and additional pending reports
+refuse this continuation. The ordinary report screen rechecks server context.
+New isolated UI regressions cover a real capture-result handoff into a saved
+signed report, refusal of a stale final report read, and gate continuation races.
+No real person signature is fabricated and no production report is changed.

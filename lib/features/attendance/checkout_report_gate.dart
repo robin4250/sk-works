@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../daily_reports/daily_report_page.dart';
 import '../daily_reports/shared_daily_report_repository.dart';
 import '../../data/supabase_backend.dart';
+import '../../widgets/sko_scroll_chrome.dart';
 import 'attendance_management_page.dart';
 import 'attendance_verification_page.dart';
 import 'checkout_native_reminder_coordinator.dart';
@@ -103,7 +104,8 @@ class _CheckoutReportGateActivationState extends State<CheckoutReportGateActivat
 class CheckoutReportGate extends StatefulWidget {
   const CheckoutReportGate({super.key, required this.child,
     this.repository, this.controller, this.reportBuilder, this.beforeRegistration,
-    this.sharedReportRepository, this.scheduledFlowBuilder, this.managementBuilder});
+    this.sharedReportRepository, this.scheduledFlowBuilder, this.managementBuilder,
+    this.onContinueSavedReport});
   final Widget child;
   final CheckoutReportGateRepository? repository;
   final CheckoutReportGateController? controller;
@@ -112,6 +114,7 @@ class CheckoutReportGate extends StatefulWidget {
   @visibleForTesting final SharedDailyReportRepository? sharedReportRepository;
   @visibleForTesting final Widget Function(String actorId, Widget child)? scheduledFlowBuilder;
   @visibleForTesting final Widget Function(PendingCheckoutRegistration)? managementBuilder;
+  @visibleForTesting final void Function(PendingCheckoutRegistration)? onContinueSavedReport;
   @override State<CheckoutReportGate> createState() => _CheckoutReportGateState();
 }
 class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBindingObserver {
@@ -132,6 +135,8 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
   bool _canManageCurrent = false;
   bool _managementHold = false;
   String? _managementHoldText;
+  final Set<String> _continuing = {};
+  final Set<String> _continued = {};
   CheckoutNativeReminderCoordinator? _nativeReminders;
   int _nativeEpoch = 0;
 
@@ -158,6 +163,8 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
     if (!mounted) { return; }
     final actor = _controller.actorId;
     if (actor != _actor) {
+      _continuing.clear();
+      _continued.clear();
       _pending = const [];
       _registrations = const [];
       _canManageCurrent = false;
@@ -174,6 +181,51 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
       return;
     }
     unawaited(_read(actor));
+  }
+  bool _sameRegistration(PendingCheckoutRegistration before, PendingCheckoutRegistration after) =>
+      before.identity == after.identity && before.companyId == after.companyId &&
+      before.workerId == after.workerId && before.workDate == after.workDate &&
+      before.siteId == after.siteId && before.routeId == after.routeId &&
+      (before.reportId == null || before.reportId == after.reportId);
+
+  Future<void> _continueSavedReport(PendingCheckoutRegistration target) async {
+    final actor = _actor;
+    if (actor == null || _controller.actorId != actor || _repository?.actorId != actor) return;
+    final key = '$actor/${target.identity}';
+    if (_continuing.contains(key) || _continued.contains(key)) return;
+    _continuing.add(key);
+    final expectedGeneration = _generation + 1;
+    try {
+      await _read(actor);
+      PendingCheckoutRegistration? eligible() {
+        if (!mounted || _actor != actor || _controller.actorId != actor ||
+            _repository?.actorId != actor || _generation != expectedGeneration ||
+            _checking || _error != null || _pending.isNotEmpty) return null;
+        return _registrations.where((row) => _sameRegistration(target, row) &&
+          !row.blocking && row.state == 'reporter_saved_waiting_supervisor' &&
+          row.reportId != null).firstOrNull;
+      }
+      if (eligible() == null) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final saved = eligible();
+        if (saved == null || _continued.contains(key)) return;
+        final continuation = widget.onContinueSavedReport;
+        final navigator = SkoScrollChromeController.navigatorKey.currentState;
+        if (continuation == null && navigator == null) return;
+        _continued.add(key);
+        if (continuation != null) {
+          continuation(saved);
+        } else {
+          unawaited(navigator!.push<void>(MaterialPageRoute(builder: (_) => DailyReportPage(
+            initialReportId: saved.reportId, initialDate: saved.workDate,
+            initialSiteId: saved.siteId, initialRouteAssignmentId: saved.routeId,
+            vehicleClockInId: saved.sourceClockInId,
+            groupClockInAnchorId: saved.sourceClockInId))));
+        }
+      });
+    } finally {
+      _continuing.remove(key);
+    }
   }
   Future<void> _read(String actor) async {
     final generation = ++_generation;
@@ -375,7 +427,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
                       showGroupCheckoutAfterPersonalSave(context,
                         anchorId: target.sourceClockInId, workDate: target.workDate)
                   : null,
-                child: widget.reportBuilder?.call(target, _changed) ?? DailyReportPage(
+                child: widget.reportBuilder?.call(target, () => unawaited(_continueSavedReport(target))) ?? DailyReportPage(
                 key: ValueKey('$_actor/${target.identity}'),
                 initialDate: target.workDate, initialSiteId: target.siteId,
                 initialRouteAssignmentId: target.routeId, initialReportId: target.reportId,
@@ -383,7 +435,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
                 restrictedReporterRegistration: true, registrationActorId: _actor,
                 registrationCompanyId: target.companyId, registrationWorkerId: target.workerId,
                 onManageRegistration: _openManagement,
-                onRegistrationSaved: _changed)));
+                onRegistrationSaved: () => unawaited(_continueSavedReport(target)))));
           })),
         )),
         if (_pending.isEmpty || _checking || _error != null) Positioned.fill(child: _status()),

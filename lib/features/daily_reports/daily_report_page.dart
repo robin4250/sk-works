@@ -1279,6 +1279,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   Future<void> _sign() async {
     if (_managementHold || _saving) return;
+    if (_report?.reporterSignatureJson == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('先に作業内容を保存し、報告者サインを登録してください。')));
+      return;
+    }
+    FocusScope.of(context).unfocus();
     if (!_visitReport && _editSessionUnverified) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('編集申請の状態を確認できません。日報を再読み込みしてください。'))));
@@ -1395,10 +1401,17 @@ class _DailyReportPageState extends State<DailyReportPage> {
         );
       }
       if (!mounted) return;
+      await _loadSelectedSite();
+      if (!mounted) return;
+      checkSigningContext();
+      if (_error != null || !_signed || _report?.id != reportId ||
+          _report?.reporterSignatureJson == null || _report?.responsibleSignatureJson == null) {
+        throw StateError('責任者サインの保存・確定を再確認できませんでした。日報を再読み込みしてください。再サインは確認後に行ってください。');
+      }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(SkoLanguageController.tr('責任者サインで日報を確定しました'))),
       );
-      await _loadSelectedSite();
+      widget.onRegistrationSaved?.call();
       if (mounted && _error == null && shouldFinishCheckoutReport(
         signed: _signed,
         isVisitReport: _visitReport,
@@ -2011,7 +2024,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: _managementHold || _saving || widget.restrictedReporterRegistration ? null : _sign,
+                                onTap: _managementHold || _saving || (widget.restrictedReporterRegistration &&
+                                    _sharedContext?.canAccessSupervisorCollection != true) ? null : _sign,
                               ),
                             ),
                           const SizedBox(height: 16),
