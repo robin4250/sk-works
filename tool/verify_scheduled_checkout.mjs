@@ -30,11 +30,13 @@ try{
  create table sites(id uuid primary key,company_id uuid);
  create table route_assignments(id uuid primary key,company_id uuid,is_active boolean default true);
  create table attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,site_id uuid,route_assignment_id uuid,event_type text,verification_mode text,confirmed_at timestamptz,work_date date,source_clock_in_id uuid);
- create table work_attendance_selections(company_id uuid,worker_id uuid,work_date date,verification_mode text);
+ create table work_attendance_selections(company_id uuid,worker_id uuid,work_date date,verification_mode text,site_id uuid,route_assignment_id uuid,updated_by uuid,updated_at timestamptz);
+ create table work_vehicle_route_selections(company_id uuid,worker_id uuid,work_date date,route_assignment_id uuid,updated_by uuid,updated_at timestamptz);
+ create table route_visit_log(source_clock_in_id uuid,proof jsonb);
  create table gps_auto_attendance_schedules(company_id uuid,worker_id uuid primary key,site_id uuid,route_assignment_id uuid,weekdays smallint[],local_time time,timezone text,enabled boolean,updated_by uuid,updated_at timestamptz);
  create function public.save_my_attendance_selection(text,uuid,smallint[],time,text) returns jsonb language plpgsql as $$declare c uuid;w uuid;begin
  select company_id,id into c,w from public.workers where user_id=auth.uid() limit 1;
- insert into public.gps_auto_attendance_schedules values(c,w,$2,null,$3,$4,$5,true,auth.uid(),now()) on conflict(worker_id) do update set site_id=excluded.site_id,route_assignment_id=null,weekdays=excluded.weekdays,local_time=excluded.local_time,timezone=excluded.timezone,enabled=true;
+ insert into public.gps_auto_attendance_schedules values(c,w,$2,null,$3,$4,$5,true,auth.uid(),now()) on conflict(worker_id) do update set site_id=excluded.site_id,weekdays=excluded.weekdays,local_time=excluded.local_time,timezone=excluded.timezone,enabled=true;
  return '{}'::jsonb;end$$;
  create function public.save_my_route_attendance_selection(text,uuid,smallint[],time,text) returns jsonb language plpgsql as $$declare c uuid;w uuid;begin
  select company_id,id into c,w from public.workers where user_id=auth.uid() limit 1;
@@ -89,6 +91,21 @@ try{
  await rpc('select public.disable_my_gps_work_schedule() v');eq((await read()).items,[]);
  eq((await save(null,R,'00:00','00:01',3)).revision,4);eq((await read()).items.length,1); // Schedule edits preserve the already captured old-site work.
  await db.query('update attendance_verifications set site_id=null,route_assignment_id=$1 where id=$2',[R,I]);eq((await read()).items,[]); // Explicit source correction invalidates the old snapshot.
+ const routeSource=id(42);
+ await db.query("insert into attendance_verifications values($1,$2,$3,null,$4,'clock_in','gps_auto',now()-interval '1 day',((now() at time zone 'Asia/Tokyo')::date-1),null)",[routeSource,C,W,R]);
+ await db.query('insert into route_visit_log values($1,$2::jsonb)',[routeSource,JSON.stringify({immutable_route_visit:'fixture only',vehicle:'saved-vehicle'})]);
+ const routeSourceHash=await q('select md5(to_jsonb(a)::text) v from attendance_verifications a where id=$1',[routeSource]);
+ const routeProofHash=await q('select md5(to_jsonb(v)::text) v from route_visit_log v where source_clock_in_id=$1',[routeSource]);
+ await db.query("insert into work_attendance_selections values($1,$2,(now() at time zone 'Asia/Tokyo')::date,'gps_auto',null,$3,null,null)",[C,W,R]);
+ await db.query("insert into work_vehicle_route_selections values($1,$2,(now() at time zone 'Asia/Tokyo')::date,$3,null,null)",[C,W,R]);
+ eq((await save(S,null,'00:00','00:01',4)).revision,5);
+ eq(await q('select route_assignment_id v from gps_auto_attendance_schedules where worker_id=$1',[W]),null);
+ eq(await q('select route_assignment_id v from work_attendance_selections where worker_id=$1',[W]),null);
+ eq(await q('select route_assignment_id v from work_vehicle_route_selections where worker_id=$1',[W]),null);
+ const preservedRoute=(await read()).items.find(v=>v.source_clock_in_id===routeSource);
+ eq(preservedRoute.route_assignment_id,R);eq(preservedRoute.site_id,null);eq(preservedRoute.due,true);
+ eq(await q('select md5(to_jsonb(a)::text) v from attendance_verifications a where id=$1',[routeSource]),routeSourceHash);
+ eq(await q('select md5(to_jsonb(v)::text) v from route_visit_log v where source_clock_in_id=$1',[routeSource]),routeProofHash);
  const countBefore=await q('select count(*)::int v from scheduled_checkout_private.postponements');
  await db.query('insert into auth.sessions values($1,$2,null)',[id(81),B]);
  await q("select set_config('fixture.actor',$1,false) v",[B]);

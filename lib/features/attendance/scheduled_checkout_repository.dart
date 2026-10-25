@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../data/supabase_backend.dart';
 
 @immutable
 class ScheduledCheckoutTarget {
@@ -60,6 +61,8 @@ class ScheduledCheckoutNotificationPlan {
 class ScheduledCheckoutRepository {
   ScheduledCheckoutRepository(this.client);
   final SupabaseClient client;
+  static ScheduledCheckoutRepository? maybeCreate() => SupabaseBackend.isInitialized
+      ? ScheduledCheckoutRepository(SupabaseBackend.client) : null;
   String? get actorId => client.auth.currentUser?.id;
 
   Future<ScheduledCheckoutState> read() => _call('read_my_scheduled_checkout');
@@ -71,7 +74,7 @@ class ScheduledCheckoutRepository {
 
   Future<ScheduledCheckoutNotificationPlan> loadNotificationPlan() async {
     final actor = actorId;
-    final raw = await _guarded(() => client.rpc('read_my_scheduled_checkout_notification_plan'));
+    final raw = await _guarded(() => client.rpc('read_my_scheduled_checkout_notification_plan', params: const <String, dynamic>{}));
     if (actor == null) { throw StateError('ログイン状態を確認してください。'); }
     return parseNotificationPlan(raw, actor);
   }
@@ -98,7 +101,7 @@ class ScheduledCheckoutRepository {
 
   Future<ScheduledCheckoutState> _call(String rpc, {Map<String, dynamic>? params}) async {
     final actor = actorId;
-    final raw = await _guarded(() => client.rpc(rpc, params: params));
+    final raw = await _guarded(() => client.rpc(rpc, params: params ?? const <String, dynamic>{}));
     if (actor == null) { throw StateError('ログイン状態を確認してください。'); }
     return parse(raw, actor);
   }

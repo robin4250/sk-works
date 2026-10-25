@@ -8,6 +8,10 @@ class GpsWorkScheduleDraft {
   String _db(TimeOfDay v) => '${v.hour.toString().padLeft(2, '0')}:${v.minute.toString().padLeft(2, '0')}:00';
   String get clockInDatabase => _db(clockIn);
   String get checkoutDatabase => _db(checkoutReminder);
+  String get label {
+    const days = {1:'月',2:'火',3:'水',4:'木',5:'金',6:'土',7:'日'};
+    return '${weekdays.map((v) => days[v] ?? '').join('・')} / 出勤 ${clockInDatabase.substring(0,5)} / 退勤確認 ${checkoutDatabase.substring(0,5)}${checkoutNextDay ? '（翌日）' : ''}';
+  }
   bool get checkoutNextDay => checkoutReminder.hour * 60 + checkoutReminder.minute < clockIn.hour * 60 + clockIn.minute;
 }
 

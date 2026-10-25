@@ -62,6 +62,15 @@ begin
  select revision into prior from scheduled_checkout_private.settings where worker_id=wid for update;
  if coalesce(prior,0)<>p_expected_revision then raise sqlstate '40001' using message='gps_work_schedule_changed';end if;
  if p_site_id is not null then
+  -- The older site saver predates routes. Preserve its public contract while
+  -- clearing only this worker's selected-day route pointers atomically.
+  update public.gps_auto_attendance_schedules set site_id=p_site_id,route_assignment_id=null
+   where company_id=cid and worker_id=wid;
+  update public.work_attendance_selections set site_id=p_site_id,route_assignment_id=null,
+   updated_by=actor,updated_at=clock_timestamp()
+   where company_id=cid and worker_id=wid and work_date=(statement_timestamp() at time zone 'Asia/Tokyo')::date;
+  update public.work_vehicle_route_selections set route_assignment_id=null,updated_by=actor,updated_at=clock_timestamp()
+   where company_id=cid and worker_id=wid and work_date=(statement_timestamp() at time zone 'Asia/Tokyo')::date;
   perform public.save_my_attendance_selection('gps_auto',p_site_id,p_weekdays,p_clock_in_time,'Asia/Tokyo');
  else
   perform public.save_my_route_attendance_selection('gps_auto',p_route_assignment_id,p_weekdays,p_clock_in_time,'Asia/Tokyo');

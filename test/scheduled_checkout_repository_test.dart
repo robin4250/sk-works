@@ -38,7 +38,7 @@ class Fixture{
   if(req.url.path.endsWith('/token')){value={'access_token':token(user),'refresh_token':'fixture-only','token_type':'bearer','expires_in':3600,
    'user':{'id':user,'aud':'authenticated','role':'authenticated','email':'synthetic@example.invalid','app_metadata':{'provider':'email'},'user_metadata':<String,dynamic>{},'created_at':'2026-10-01T00:00:00Z'}};}
   else{
-   requests.add(req.url.path.split('/').last);parameters.add(Map<String,dynamic>.from(jsonDecode(req.body) as Map));
+   requests.add(req.url.path.split('/').last);final decoded=jsonDecode(req.body);parameters.add(decoded is Map?Map<String,dynamic>.from(decoded):<String,dynamic>{});
    if(switchDuringRead){switchDuringRead=false;await login(other);await login(actor);}
    value=req.url.path.endsWith('/read_my_scheduled_checkout_notification_plan')?plan():state(due:!req.url.path.endsWith('/postpone_my_scheduled_checkout'));
   }
