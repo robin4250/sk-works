@@ -69,7 +69,7 @@ const extension=String.raw`
   await client.query("select set_config('fixture.hour_claims',$1,false)",[JSON.stringify(claims)]);
   const saved=await q('select public.save_checkout_paid_work_hours($1,$2,7.25,0,$3) v',[finalReport,W5,scope.source_fingerprint]);
   eq(saved.hours,7.25,'Live-session public save/readback preserves explicit hours');
-  await reject(()=>q('select public.save_checkout_paid_work_hours($1,$2,8,0,$3) v',[finalReport,W5,scope.source_fingerprint]),/revision changed/);
+  await reject(()=>q('select public.save_checkout_paid_work_hours($1,$2,8,0,$3) v',[finalReport,W5,scope.source_fingerprint]),/paid_hours_input_conflict/);
  }finally{await exec('reset role');}
  await client.query('delete from auth.sessions where id=$1',[hoursSession]);
  await exec('set role authenticated');

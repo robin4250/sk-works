@@ -39,6 +39,10 @@ begin
  if (prior_state->>'editable')::boolean is distinct from true then raise sqlstate '55000' using message='paid_hours_input_not_editable';end if;
  result:=checkout_paid_hours_candidate_private.save_draft(rid,wid,p_hours,p_expected_revision,p_expected_scope);
  return checkout_paid_hours_candidate_private.read_input(rid,wid)||jsonb_build_object('changed',result->'changed');
+exception when serialization_failure then
+ -- Keep internal source/revision CAS and locking unchanged. Expose the
+ -- expected stale-input conflict as HTTP409, never a raw database message.
+ raise sqlstate 'PT409' using message='paid_hours_input_conflict';
 end $save$;
 revoke all on function checkout_paid_hours_candidate_private.read_input(uuid,uuid) from public,anon,authenticated,service_role;
 revoke all on function checkout_paid_hours_candidate_private.save_input(uuid,uuid,numeric,bigint,text) from public,anon,authenticated,service_role;

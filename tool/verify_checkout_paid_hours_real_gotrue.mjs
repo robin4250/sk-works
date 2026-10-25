@@ -64,7 +64,11 @@ const extension=String.raw`
    message:typeof failure.message==='string'?failure.message.slice(0,500):null},production_changed:false}));
  }
  eq(response.status,200);eq((await response.json()).hours,7.25);
- response=await rpc('save_checkout_paid_work_hours',{...hourSave,p_hours:8},owner);assert.ok(response.status>=400&&response.status<500);checks++;
+ response=await rpc('save_checkout_paid_work_hours',{...hourSave,p_hours:8},owner);
+ eq(response.status,409);const staleHoursError=await response.json();
+ eq(staleHoursError.code,'PT409');eq(staleHoursError.message,'paid_hours_input_conflict');
+ response=await rpc('read_checkout_paid_work_hours',hourRead,owner);eq(response.status,200);
+ eq((await response.json()).hours,7.25);
  for(const role of ['representative','supervisor']){
   response=await rpc('save_daily_report_signature',{p_report_id:hourReport,p_role:role,p_signer_name:'Real JWT '+role,p_signature_json:signature},owner);assert.ok([200,204].includes(response.status));checks++;
  }
