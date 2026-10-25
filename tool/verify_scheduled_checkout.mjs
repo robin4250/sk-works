@@ -124,5 +124,17 @@ try{
  await db.query('set role authenticated');await reject(()=>q('select * from scheduled_checkout_private.settings'),/permission denied/);await db.query('reset role');
  eq(await q("select has_function_privilege('service_role','public.save_my_gps_work_schedule(uuid,uuid,smallint[],time,time,bigint)','execute') v"),false);
  eq(await q("select has_function_privilege('anon','public.read_my_scheduled_checkout()','execute') v"),false);
+ const reminderHash=await q("select md5(jsonb_build_object('sources',(select jsonb_agg(to_jsonb(s) order by source_clock_in_id) from scheduled_checkout_private.sources s),'postponements',(select jsonb_agg(to_jsonb(p) order by source_clock_in_id) from scheduled_checkout_private.postponements p))::text) v");
+ await db.query('set role authenticated');await reject(()=>db.query('delete from attendance_verifications where id=$1',[I]),/permission denied/);await db.query('reset role');
+ eq(await q("select md5(jsonb_build_object('sources',(select jsonb_agg(to_jsonb(s) order by source_clock_in_id) from scheduled_checkout_private.sources s),'postponements',(select jsonb_agg(to_jsonb(p) order by source_clock_in_id) from scheduled_checkout_private.postponements p))::text) v"),reminderHash);
+ const settingsHash=await q('select md5(to_jsonb(s)::text) v from scheduled_checkout_private.settings s where worker_id=$1',[W]);
+ const otherSourceHash=await q('select md5(to_jsonb(s)::text) v from scheduled_checkout_private.sources s where source_clock_in_id=$1',[routeSource]);
+ eq(await q('select count(*)::int v from scheduled_checkout_private.sources where source_clock_in_id=$1',[I]),1);
+ await db.query('delete from attendance_verifications where id=$1',[I]);
+ eq(await q('select count(*)::int v from scheduled_checkout_private.sources where source_clock_in_id=$1',[I]),0);
+ eq(await q('select count(*)::int v from scheduled_checkout_private.postponements where source_clock_in_id=$1',[I]),0);
+ eq(await q('select md5(to_jsonb(s)::text) v from scheduled_checkout_private.settings s where worker_id=$1',[W]),settingsHash);
+ eq(await q('select md5(to_jsonb(s)::text) v from scheduled_checkout_private.sources s where source_clock_in_id=$1',[routeSource]),otherSourceHash);
+ eq(await q('select md5(to_jsonb(v)::text) v from route_visit_log v where source_clock_in_id=$1',[routeSource]),routeProofHash);
  console.log(JSON.stringify({pass:true,checks,synthetic_auth:true,real_gotrue:false,automatic_clock_out:false,production_changed:false}));
 }finally{await db.end();}

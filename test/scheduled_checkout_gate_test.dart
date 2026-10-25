@@ -19,12 +19,12 @@ void main(){
   await tester.pumpWidget(const SizedBox());
  });
  testWidgets('still working unlocks only after persisted server postponement',(tester)async{
-  ScheduledCheckoutTarget? submitted;
+  ScheduledCheckoutTarget? submitted;var notifications=0;
   await tester.pumpWidget(MaterialApp(home:ScheduledCheckoutGate(actorId:actor,load:()async=>state(),
-   postpone:(target)async{submitted=target;return state(due:false);},checkoutBuilder:(_,t)=>const Text('real checkout'),
+   postpone:(target)async{submitted=target;return state(due:false);},onServerChanged:()async{notifications++;},checkoutBuilder:(_,t)=>const Text('real checkout'),
    child:const Scaffold(body:Text('ordinary')))));
   await tester.pumpAndSettle();await tester.tap(find.text('まだ勤務中・30分後に再通知'));await tester.pumpAndSettle();
-  expect(submitted?.scopeFingerprint,'v1');expect(find.text('ordinary'),findsOneWidget);
+  expect(notifications,1);expect(submitted?.scopeFingerprint,'v1');expect(find.text('ordinary'),findsOneWidget);
   expect(await ScheduledCheckoutGateController.instance.handleSystemBack(),isFalse);
   await tester.pumpWidget(const SizedBox());
  });

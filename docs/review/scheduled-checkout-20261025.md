@@ -26,7 +26,10 @@ Thirty-minute postponement is server persisted with source fingerprint CAS.
 Every public RPC uses the independently reviewed live-session helper pinned at
 MD5 `9ca270fa06ff48883705cea5d18a8f2f`. PUBLIC/anon/service-role grants are revoked;
 only authenticated gets public RPC execute. Tables/internal helpers are private,
-RLS enabled with no client table policy/grant. Company feature check only exposes
+RLS enabled with no client table policy/grant. Reminder-only foreign keys
+clean up their private child rows on an already-authorized source/target deletion;
+this adds no AV deletion right and changes none of its existing guards/audit.
+No financial/history table is cascaded and no DROP CASCADE is used. Company feature check only exposes
 a scoped management recovery action; it does not bypass ordinary app navigation.
 Administrative actual corrections and shared-report/signature override retain
 server role/audit checks outside this new reminder unit.

@@ -9,11 +9,11 @@ end $$;
 create schema scheduled_checkout_private;
 revoke all on schema scheduled_checkout_private from public,anon,authenticated,service_role;
 create table scheduled_checkout_private.rollout(
- company_id uuid primary key references public.companies(id),enabled boolean not null default false
+ company_id uuid primary key references public.companies(id) on delete cascade,enabled boolean not null default false
 );
 create table scheduled_checkout_private.settings(
- company_id uuid not null references public.companies(id),worker_id uuid primary key references public.workers(id),
- site_id uuid references public.sites(id),route_assignment_id uuid references public.route_assignments(id),
+ company_id uuid not null references public.companies(id) on delete cascade,worker_id uuid primary key references public.workers(id) on delete cascade,
+ site_id uuid references public.sites(id) on delete cascade,route_assignment_id uuid references public.route_assignments(id) on delete cascade,
  weekdays smallint[] not null,clock_in_time time not null,checkout_time time not null,
  timezone text not null default 'Asia/Tokyo' check(timezone='Asia/Tokyo'),
  revision bigint not null default 1 check(revision>0),created_at timestamptz not null default clock_timestamp(),updated_at timestamptz not null default clock_timestamp(),
@@ -21,12 +21,12 @@ create table scheduled_checkout_private.settings(
  check(cardinality(weekdays) between 1 and 7 and weekdays<@array[1,2,3,4,5,6,7]::smallint[])
 );
 create table scheduled_checkout_private.sources(
- source_clock_in_id uuid primary key references public.attendance_verifications(id),
+ source_clock_in_id uuid primary key references public.attendance_verifications(id) on delete cascade,
  company_id uuid not null,worker_id uuid not null,work_date date not null,site_id uuid,route_assignment_id uuid,
  schedule_revision bigint not null,reminder_at timestamptz not null,captured_at timestamptz not null default clock_timestamp()
 );
 create table scheduled_checkout_private.postponements(
- source_clock_in_id uuid primary key references public.attendance_verifications(id),
+ source_clock_in_id uuid primary key references public.attendance_verifications(id) on delete cascade,
  company_id uuid not null,worker_id uuid not null,next_reminder_at timestamptz not null,
  revision bigint not null default 1,updated_at timestamptz not null default clock_timestamp()
 );

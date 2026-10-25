@@ -16,13 +16,14 @@ class ScheduledCheckoutGateController {
 class ScheduledCheckoutGate extends StatefulWidget {
   const ScheduledCheckoutGate({super.key, required this.actorId, required this.load,
     required this.postpone, required this.checkoutBuilder, required this.child,
-    this.managementBuilder, this.onReauthenticate});
+    this.managementBuilder, this.onReauthenticate, this.onServerChanged});
   final String actorId;
   final Future<ScheduledCheckoutState> Function() load;
   final Future<ScheduledCheckoutState> Function(ScheduledCheckoutTarget) postpone;
   final Widget Function(BuildContext, ScheduledCheckoutTarget) checkoutBuilder;
   final Widget Function(BuildContext, ScheduledCheckoutTarget)? managementBuilder;
   final Future<void> Function()? onReauthenticate;
+  final Future<void> Function()? onServerChanged;
   final Widget child;
   @override State<ScheduledCheckoutGate> createState() => _ScheduledCheckoutGateState();
 }
@@ -115,6 +116,7 @@ class _ScheduledCheckoutGateState extends State<ScheduledCheckoutGate> with Widg
       if (!mounted || generation != _generation) { return; }
       if (result.actorId != widget.actorId) { throw StateError('退勤対象の本人を確認できません。'); }
       setState(() => _accept(result));
+      await _notifyServerChanged();
     } catch (error) {
       if (mounted && generation == _generation) { setState(() => _error = error); }
     } finally {
@@ -130,7 +132,16 @@ class _ScheduledCheckoutGateState extends State<ScheduledCheckoutGate> with Widg
     setState(() => _routeOpen = true);
     await nav.push<void>(MaterialPageRoute(builder: (context) => builder(context, target)));
     if (mounted && generation == _generation) {
-      setState(() => _routeOpen = false);await _check();
+      setState(() => _routeOpen = false);await _check();await _notifyServerChanged();
+    }
+  }
+  Future<void> _notifyServerChanged() async {
+    final generation = _generation;
+    try { await widget.onServerChanged?.call(); } catch (_) {
+      if (mounted && generation == _generation) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text(
+          '通知予定を同期できませんでした。アプリを開いた時に退勤状態を再確認します。')));
+      }
     }
   }
   Widget _confirmation(ScheduledCheckoutTarget target) => Scaffold(
