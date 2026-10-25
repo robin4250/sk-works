@@ -52,7 +52,7 @@ try{
  await reject(()=>sharedCall(U,foreignSid,'select public.read_shared_report_financial_readiness($1) v',[rid]),{code:'42501',message:'checkout_report_actor_access_unavailable'});
  // A second real synthetic report tests the exact eligible boundary, still without a finance writer.
  phase='document-finance-exact-valid-boundary';
- const goodDay='2026-10-28';await mkShift(9580,W3,goodDay);
+ const goodDay='2026-10-20';await mkShift(9580,W3,goodDay);
  const goodId=await q('select public.save_daily_report_destination_draft(null,$1,null,$2,$3,$4::jsonb) v',[SITE,goodDay,'確認対象の実作業',JSON.stringify([worker(W3,[],{allowance_label:null})])]);
  await client.query("insert into shared_daily_report_private.document_rollout values($1,$2,'2026-10-01',true)",[A,goodId]);
  await client.query('insert into document_finance_readiness_private.rollout values($1,$2,true)',[A,goodId]);

@@ -119,7 +119,7 @@ begin
   raise sqlstate '55000' using message='shared_report_roster_requires_approved_edit';
  end if;
  return case when tg_op='DELETE' then old else new end;
-end $function$
+end $function$;
 
 CREATE OR REPLACE FUNCTION shared_worker_facts_private.materialize_confirmed_worker(rid uuid, wid uuid, facts jsonb)
  RETURNS void
@@ -170,7 +170,7 @@ begin
  if not exists(select 1 from public.daily_report_workers x where x.report_id=rid and x.worker_id=wid
   and shared_worker_facts_private.matches_materialization(to_jsonb(w),to_jsonb(x),facts)) then
   raise sqlstate 'PT409' using message='shared_worker_materialization_result_changed';end if;
-end $function$
+end $function$;
 
 
 create function public.prepare_shared_report_financial_resigning(
