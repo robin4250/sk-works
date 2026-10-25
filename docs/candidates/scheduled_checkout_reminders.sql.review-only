@@ -1,0 +1,251 @@
+-- REVIEW ONLY. No automatic clock-out, rollout activation or cron registration.
+begin;
+do $$ begin
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('checkout_report_registration_private.current_actor()')
+  and md5(p.prosrc)='9ca270fa06ff48883705cea5d18a8f2f' and not p.prosecdef
+  and p.proconfig=array['search_path=""'] and pg_get_userbyid(p.proowner)='postgres')
+ then raise exception 'live-session checkout actor prerequisite differs';end if;
+end $$;
+create schema scheduled_checkout_private;
+revoke all on schema scheduled_checkout_private from public,anon,authenticated,service_role;
+create table scheduled_checkout_private.rollout(
+ company_id uuid primary key references public.companies(id),enabled boolean not null default false
+);
+create table scheduled_checkout_private.settings(
+ company_id uuid not null references public.companies(id),worker_id uuid primary key references public.workers(id),
+ site_id uuid references public.sites(id),route_assignment_id uuid references public.route_assignments(id),
+ weekdays smallint[] not null,clock_in_time time not null,checkout_time time not null,
+ timezone text not null default 'Asia/Tokyo' check(timezone='Asia/Tokyo'),
+ revision bigint not null default 1 check(revision>0),created_at timestamptz not null default clock_timestamp(),updated_at timestamptz not null default clock_timestamp(),
+ check ((site_id is null)<>(route_assignment_id is null)),
+ check(cardinality(weekdays) between 1 and 7 and weekdays<@array[1,2,3,4,5,6,7]::smallint[])
+);
+create table scheduled_checkout_private.sources(
+ source_clock_in_id uuid primary key references public.attendance_verifications(id),
+ company_id uuid not null,worker_id uuid not null,work_date date not null,site_id uuid,route_assignment_id uuid,
+ schedule_revision bigint not null,reminder_at timestamptz not null,captured_at timestamptz not null default clock_timestamp()
+);
+create table scheduled_checkout_private.postponements(
+ source_clock_in_id uuid primary key references public.attendance_verifications(id),
+ company_id uuid not null,worker_id uuid not null,next_reminder_at timestamptz not null,
+ revision bigint not null default 1,updated_at timestamptz not null default clock_timestamp()
+);
+alter table scheduled_checkout_private.rollout enable row level security;
+alter table scheduled_checkout_private.settings enable row level security;
+alter table scheduled_checkout_private.sources enable row level security;
+alter table scheduled_checkout_private.postponements enable row level security;
+revoke all on all tables in schema scheduled_checkout_private from public,anon,authenticated,service_role;
+
+-- Reuse the existing GPS clock-in save, then atomically bind checkout settings
+-- to exactly the same worker/destination. Ambiguous legacy membership fails.
+create function public.save_my_gps_work_schedule(
+ p_site_id uuid,p_route_assignment_id uuid,p_weekdays smallint[],p_clock_in_time time,p_checkout_time time,
+ p_expected_revision bigint
+) returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare actor uuid;cid uuid;wid uuid;matches integer;prior bigint;actual public.gps_auto_attendance_schedules%rowtype;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ if (p_site_id is null)=(p_route_assignment_id is null) or p_clock_in_time is null or p_checkout_time is null
+ or p_clock_in_time=p_checkout_time or extract(second from p_clock_in_time)<>0 or extract(second from p_checkout_time)<>0
+ or (select count(distinct v) from unnest(p_weekdays) v)<>cardinality(p_weekdays) or p_expected_revision is null or p_expected_revision<0
+ or p_weekdays is null or cardinality(p_weekdays) not between 1 and 7
+ or not p_weekdays<@array[1,2,3,4,5,6,7]::smallint[] then
+  raise sqlstate '22023' using message='gps_work_schedule_invalid';end if;
+ select count(*),min(w.company_id::text)::uuid,min(w.id::text)::uuid into matches,cid,wid
+ from public.workers w join public.company_members m on m.company_id=w.company_id and m.user_id=actor
+ where w.user_id=actor and w.status='active' and (
+  exists(select 1 from public.sites s where s.id=p_site_id and s.company_id=w.company_id)
+  or exists(select 1 from public.route_assignments r where r.id=p_route_assignment_id and r.company_id=w.company_id and r.is_active));
+ if matches<>1 then raise sqlstate '42501' using message='gps_work_schedule_actor_unavailable';end if;
+ perform pg_advisory_xact_lock(hashtextextended('scheduled-checkout:'||wid::text,0));
+ perform scheduled_checkout_private.ensure_sources(actor);
+ select revision into prior from scheduled_checkout_private.settings where worker_id=wid for update;
+ if coalesce(prior,0)<>p_expected_revision then raise sqlstate '40001' using message='gps_work_schedule_changed';end if;
+ if p_site_id is not null then
+  perform public.save_my_attendance_selection('gps_auto',p_site_id,p_weekdays,p_clock_in_time,'Asia/Tokyo');
+ else
+  perform public.save_my_route_attendance_selection('gps_auto',p_route_assignment_id,p_weekdays,p_clock_in_time,'Asia/Tokyo');
+ end if;
+ select * into actual from public.gps_auto_attendance_schedules where company_id=cid and worker_id=wid;
+ if actual.worker_id is null or not actual.enabled or actual.site_id is distinct from p_site_id
+ or actual.route_assignment_id is distinct from p_route_assignment_id
+ or actual.local_time<>p_clock_in_time or actual.weekdays<>p_weekdays or actual.timezone<>'Asia/Tokyo' then
+  raise sqlstate '42501' using message='gps_work_schedule_legacy_scope_changed';end if;
+ insert into scheduled_checkout_private.settings(company_id,worker_id,site_id,route_assignment_id,weekdays,clock_in_time,checkout_time)
+ values(cid,wid,p_site_id,p_route_assignment_id,p_weekdays,p_clock_in_time,p_checkout_time)
+ on conflict(worker_id) do update set company_id=excluded.company_id,site_id=excluded.site_id,
+ route_assignment_id=excluded.route_assignment_id,weekdays=excluded.weekdays,clock_in_time=excluded.clock_in_time,
+ checkout_time=excluded.checkout_time,revision=scheduled_checkout_private.settings.revision+1,updated_at=clock_timestamp();
+ return jsonb_build_object('schema',1,'actor_id',actor,'company_id',cid,'worker_id',wid,
+ 'revision',coalesce(prior,0)+1,'weekdays',p_weekdays,'clock_in_time',p_clock_in_time::text,
+ 'checkout_time',p_checkout_time::text,'checkout_next_day',p_checkout_time<p_clock_in_time,
+ 'timezone','Asia/Tokyo','site_id',p_site_id,'route_assignment_id',p_route_assignment_id);
+end $$;
+revoke all on function public.save_my_gps_work_schedule(uuid,uuid,smallint[],time,time,bigint) from public,anon,authenticated,service_role;
+grant execute on function public.save_my_gps_work_schedule(uuid,uuid,smallint[],time,time,bigint) to authenticated;
+
+
+create function public.read_my_gps_work_schedule()
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare actor uuid;configs jsonb;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ select coalesce(jsonb_agg(jsonb_build_object('company_id',s.company_id,'worker_id',s.worker_id,
+ 'site_id',s.site_id,'route_assignment_id',s.route_assignment_id,'weekdays',s.weekdays,
+ 'clock_in_time',s.clock_in_time::text,'checkout_time',s.checkout_time::text,'timezone',s.timezone,
+ 'checkout_next_day',s.checkout_time<s.clock_in_time,'revision',s.revision,
+ 'enabled',g.enabled and coalesce(f.enabled,false)
+ and g.site_id is not distinct from s.site_id and g.route_assignment_id is not distinct from s.route_assignment_id
+ and g.weekdays=s.weekdays and g.local_time=s.clock_in_time and g.timezone=s.timezone) order by s.worker_id),'[]') into configs
+ from scheduled_checkout_private.settings s
+ join public.workers w on w.id=s.worker_id and w.company_id=s.company_id and w.user_id=actor and w.status='active'
+ join public.company_members m on m.company_id=s.company_id and m.user_id=actor
+ join public.gps_auto_attendance_schedules g on g.company_id=s.company_id and g.worker_id=s.worker_id
+ left join scheduled_checkout_private.rollout f on f.company_id=s.company_id;
+ return jsonb_build_object('schema',1,'actor_id',actor,'configurations',configs);
+end $$;
+revoke all on function public.read_my_gps_work_schedule() from public,anon,authenticated,service_role;
+grant execute on function public.read_my_gps_work_schedule() to authenticated;
+
+-- All decisions are made from the actor's real clock-in, never a notification
+-- payload or another member's clock-out/report. This reader never writes money.
+-- Capture current work before changing future schedule settings. A saved
+-- clock-in's reminder time does not move when the next schedule is edited.
+create function scheduled_checkout_private.ensure_sources(actor uuid)
+returns void language sql volatile security invoker set search_path='' as $$
+ insert into scheduled_checkout_private.sources(source_clock_in_id,company_id,worker_id,work_date,
+ site_id,route_assignment_id,schedule_revision,reminder_at)
+ select i.id,i.company_id,i.worker_id,i.work_date,i.site_id,i.route_assignment_id,s.revision,
+ (i.work_date+s.checkout_time+case when s.checkout_time<s.clock_in_time then interval '1 day' else interval '0' end) at time zone s.timezone
+ from public.attendance_verifications i
+ join public.workers w on w.id=i.worker_id and w.company_id=i.company_id and w.user_id=actor and w.status='active'
+ join public.company_members m on m.company_id=i.company_id and m.user_id=actor
+ join scheduled_checkout_private.rollout f on f.company_id=i.company_id and f.enabled
+ join scheduled_checkout_private.settings s on s.company_id=i.company_id and s.worker_id=i.worker_id
+ join public.gps_auto_attendance_schedules g on g.company_id=s.company_id and g.worker_id=s.worker_id and g.enabled
+ where i.event_type='clock_in' and i.verification_mode='gps_auto' and i.work_date>=(s.created_at at time zone s.timezone)::date
+ and s.site_id is not distinct from i.site_id and s.route_assignment_id is not distinct from i.route_assignment_id
+ and g.site_id is not distinct from s.site_id and g.route_assignment_id is not distinct from s.route_assignment_id
+ and g.weekdays=s.weekdays and g.local_time=s.clock_in_time and g.timezone=s.timezone
+ and extract(isodow from i.work_date)::smallint=any(s.weekdays)
+ and not exists(select 1 from public.attendance_verifications o where o.source_clock_in_id=i.id and o.event_type='clock_out')
+ on conflict(source_clock_in_id) do nothing
+$$;
+revoke all on function scheduled_checkout_private.ensure_sources(uuid) from public,anon,authenticated,service_role;
+
+create function scheduled_checkout_private.read_actor(actor uuid)
+returns jsonb language sql stable security invoker set search_path='' as $$
+ with candidates as(
+ select i.company_id,i.worker_id,i.id source_clock_in_id,i.work_date,i.site_id,i.route_assignment_id,
+  s.schedule_revision,p.revision postpone_revision,
+  private.has_company_feature(i.company_id,'can_manage_attendance') can_manage_attendance,
+  greatest(s.reminder_at,coalesce(p.next_reminder_at,'-infinity'::timestamptz)) reminder_at
+ from public.attendance_verifications i
+ join public.workers w on w.id=i.worker_id and w.company_id=i.company_id and w.user_id=actor and w.status='active'
+ join public.company_members m on m.company_id=i.company_id and m.user_id=actor
+ join scheduled_checkout_private.rollout f on f.company_id=i.company_id and f.enabled
+ join scheduled_checkout_private.sources s on s.source_clock_in_id=i.id and s.company_id=i.company_id and s.worker_id=i.worker_id and s.work_date=i.work_date
+ join public.gps_auto_attendance_schedules g on g.company_id=s.company_id and g.worker_id=s.worker_id and g.enabled
+ left join scheduled_checkout_private.postponements p on p.source_clock_in_id=i.id and p.company_id=i.company_id and p.worker_id=i.worker_id
+ where i.event_type='clock_in' and i.verification_mode='gps_auto'
+ and s.site_id is not distinct from i.site_id and s.route_assignment_id is not distinct from i.route_assignment_id
+
+ and not exists(select 1 from public.attendance_verifications o where o.source_clock_in_id=i.id and o.event_type='clock_out')
+ )
+ select jsonb_build_object('schema',1,'actor_id',actor,
+ 'feature_enabled',exists(select 1 from scheduled_checkout_private.rollout f join public.company_members m on m.company_id=f.company_id where m.user_id=actor and f.enabled),
+ 'server_time',statement_timestamp(),'items',coalesce(jsonb_agg(jsonb_build_object(
+ 'company_id',company_id,'worker_id',worker_id,'source_clock_in_id',source_clock_in_id,'work_date',work_date,
+ 'site_id',site_id,'route_assignment_id',route_assignment_id,'reminder_at',reminder_at,
+ 'due',reminder_at<=statement_timestamp(),'can_manage_attendance',coalesce(can_manage_attendance,false),'scope_fingerprint',md5(jsonb_build_array(company_id,worker_id,source_clock_in_id,
+ work_date,site_id,route_assignment_id,schedule_revision,postpone_revision,reminder_at)::text)
+ ) order by reminder_at,source_clock_in_id),'[]'::jsonb)) from candidates
+$$;
+revoke all on function scheduled_checkout_private.read_actor(uuid) from public,anon,authenticated,service_role;
+create function public.read_my_scheduled_checkout()
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare actor uuid;begin
+ actor:=checkout_report_registration_private.current_actor();
+ perform scheduled_checkout_private.ensure_sources(actor);
+ return scheduled_checkout_private.read_actor(actor);end $$;
+revoke all on function public.read_my_scheduled_checkout() from public,anon,authenticated,service_role;
+grant execute on function public.read_my_scheduled_checkout() to authenticated;
+create function public.postpone_my_scheduled_checkout(p_source_clock_in_id uuid,p_expected_scope text)
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare actor uuid;state jsonb;item jsonb;cid uuid;wid uuid;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ select i.company_id,i.worker_id into cid,wid from public.attendance_verifications i
+ join public.workers w on w.id=i.worker_id and w.company_id=i.company_id and w.user_id=actor and w.status='active'
+ join public.company_members m on m.company_id=i.company_id and m.user_id=actor
+ where i.id=p_source_clock_in_id and i.event_type='clock_in';
+ if wid is null then raise sqlstate '42501' using message='scheduled_checkout_unavailable';end if;
+ perform pg_advisory_xact_lock(hashtextextended('scheduled-checkout:'||wid::text,0));
+ state:=scheduled_checkout_private.read_actor(actor);
+ select v into item from jsonb_array_elements(state->'items') v where v->>'source_clock_in_id'=p_source_clock_in_id::text;
+ if item is null or (item->>'due')::boolean is distinct from true then
+  raise sqlstate '42501' using message='scheduled_checkout_unavailable';end if;
+ if p_expected_scope is null or item->>'scope_fingerprint'<>p_expected_scope then
+  raise sqlstate '40001' using message='scheduled_checkout_changed';end if;
+ insert into scheduled_checkout_private.postponements(source_clock_in_id,company_id,worker_id,next_reminder_at)
+ values(p_source_clock_in_id,cid,wid,clock_timestamp()+interval '30 minutes')
+ on conflict(source_clock_in_id) do update set next_reminder_at=excluded.next_reminder_at,
+ revision=scheduled_checkout_private.postponements.revision+1,updated_at=clock_timestamp();
+ return scheduled_checkout_private.read_actor(actor);
+end $$;
+revoke all on function public.postpone_my_scheduled_checkout(uuid,text) from public,anon,authenticated,service_role;
+grant execute on function public.postpone_my_scheduled_checkout(uuid,text) to authenticated;
+-- Native local notifications consume concrete server UTC instants. Device
+-- code never reinterprets weekdays, time zones or overnight dates.
+create function public.read_my_scheduled_checkout_notification_plan()
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare actor uuid;state jsonb;configurations jsonb;planned jsonb;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ perform scheduled_checkout_private.ensure_sources(actor);
+ state:=scheduled_checkout_private.read_actor(actor);
+ configurations:=public.read_my_gps_work_schedule()->'configurations';
+ with configured as(
+  select c.*,((statement_timestamp() at time zone c.timezone)::date + n)::date work_day
+  from scheduled_checkout_private.settings c
+  join public.workers w on w.id=c.worker_id and w.company_id=c.company_id and w.user_id=actor and w.status='active'
+  join public.company_members m on m.company_id=c.company_id and m.user_id=actor
+  join scheduled_checkout_private.rollout f on f.company_id=c.company_id and f.enabled
+  join public.gps_auto_attendance_schedules g on g.company_id=c.company_id and g.worker_id=c.worker_id and g.enabled
+  cross join generate_series(-1,7) as d(n)
+  where g.site_id is not distinct from c.site_id and g.route_assignment_id is not distinct from c.route_assignment_id
+  and g.weekdays=c.weekdays and g.local_time=c.clock_in_time and g.timezone=c.timezone
+ ), placeholders as(
+  select actor::text||':'||worker_id::text||':'||work_day::text source_id,worker_id,work_day work_date,null::uuid source_clock_in_id,
+   (work_day+checkout_time+case when checkout_time<clock_in_time then interval '1 day' else interval '0' end) at time zone timezone fire_at
+  from configured c where extract(isodow from work_day)::smallint=any(weekdays)
+  and work_day>=(created_at at time zone timezone)::date
+  and not exists(select 1 from public.work_attendance_selections a where a.company_id=c.company_id and a.worker_id=c.worker_id and a.work_date=c.work_day and a.verification_mode<>'gps_auto')
+  and not exists(select 1 from public.attendance_verifications o where o.company_id=c.company_id and o.worker_id=c.worker_id and o.work_date=c.work_day and o.event_type='clock_out')
+  and not exists(select 1 from jsonb_array_elements(state->'items') v where v->>'worker_id'=c.worker_id::text and v->>'work_date'=c.work_day::text)
+ ), source_bound as(
+  select actor::text||':'||(v->>'source_clock_in_id') source_id,(v->>'worker_id')::uuid worker_id,
+   (v->>'work_date')::date work_date,(v->>'source_clock_in_id')::uuid source_clock_in_id,(v->>'reminder_at')::timestamptz fire_at
+  from jsonb_array_elements(state->'items') v
+ ), combined as(select * from placeholders union all select * from source_bound)
+ select coalesce(jsonb_agg(jsonb_build_object('source_id',source_id,'worker_id',worker_id,'work_date',work_date,
+ 'source_clock_in_id',source_clock_in_id,'fire_at',fire_at) order by fire_at,source_id),'[]') into planned
+ from combined where fire_at>statement_timestamp() and fire_at<statement_timestamp()+interval '8 days';
+ return jsonb_build_object('schema',1,'actor_id',actor,'state',state,'configurations',configurations,'planned_notifications',planned);
+end $$;
+revoke all on function public.read_my_scheduled_checkout_notification_plan() from public,anon,authenticated,service_role;
+grant execute on function public.read_my_scheduled_checkout_notification_plan() to authenticated;
+
+-- Explicit opt-out also stops old GPS selection; it never clocks anyone out.
+create function public.disable_my_gps_work_schedule()
+returns void language plpgsql volatile security definer set search_path='' as $$
+declare actor uuid;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ update public.gps_auto_attendance_schedules g set enabled=false,updated_at=clock_timestamp(),updated_by=actor
+ where exists(select 1 from public.workers w join public.company_members m on m.company_id=w.company_id and m.user_id=actor
+ where w.id=g.worker_id and w.company_id=g.company_id and w.user_id=actor);
+end $$;
+revoke all on function public.disable_my_gps_work_schedule() from public,anon,authenticated,service_role;
+grant execute on function public.disable_my_gps_work_schedule() to authenticated;
+commit;
