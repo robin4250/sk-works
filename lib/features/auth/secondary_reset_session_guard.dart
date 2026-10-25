@@ -70,7 +70,8 @@ class SecondaryResetSessionGuard {
 
   Future<void> close() async {
     _closed = true;
-    await _subscription?.cancel();
+    final subscription = _subscription;
     _subscription = null;
+    await subscription?.cancel();
   }
 }
