@@ -187,8 +187,7 @@ begin
   and (target->>'early_hours')::numeric=greatest(coalesce((item->>'early_hours')::numeric,0),0)
   and (target->>'night_hours')::numeric=greatest(coalesce((item->>'night_hours')::numeric,0),0)
   and case when management_registered_allowance_private.enabled(r.company_id) then management_registered_allowance_private.matches(rid,wid,target,item) else nullif(target->>'allowance_label','') is not distinct from nullif((select string_agg(value,'・') from jsonb_array_elements_text(coalesce(item->'allowance_names','[]'::jsonb))),'') end;
-end $function$
-
+end $function$;
 CREATE OR REPLACE FUNCTION public.force_manage_attendance(p_action text, p_items jsonb)
  RETURNS integer
  LANGUAGE plpgsql
@@ -658,6 +657,5 @@ begin
   perform attendance_admin_override_private.finish_batch(v_admin_operation);
   return v_count;
 end;
-$function$
-
+$function$;
 commit;
