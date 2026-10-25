@@ -9,6 +9,39 @@ import 'attendance_management_company_allowance_field.dart';
 import '../daily_reports/daily_report_company_allowance_selection.dart';
 import '../../international/language_controller.dart';
 
+bool _managementVerificationCancelled(Object error) =>
+    error is StateError && error.message == 'attendance_reauthentication_cancelled';
+
+Future<String?> _requestManagementPassword(BuildContext context) async {
+  if (!context.mounted) return null;
+  final controller = TextEditingController();
+  try {
+    return await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('勤怠操作の第二認証'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('今回の登録・編集・削除を実行するため、第2パスワードを入力してください。'),
+          const SizedBox(height: 12),
+          TextField(controller: controller, obscureText: true, autofocus: true,
+            enableSuggestions: false, autocorrect: false,
+            decoration: const InputDecoration(labelText: '第2パスワード'),
+            onSubmitted: (value) => Navigator.pop(dialogContext, value)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('キャンセル')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('認証して実行')),
+        ],
+      ),
+    );
+  } finally {
+    controller.clear();
+    controller.dispose();
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+}
+
 String attendanceManagementActionErrorMessage(Object error) {
   final raw = error.toString();
   if (raw.contains('shared_report_roster_requires_approved_edit') ||
@@ -278,6 +311,7 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
     setState(() => _busy = true);
     try {
       await widget.repository.apply(
+        requestSecondaryPassword: () => _requestManagementPassword(context),
         action: 'upsert',
         workerIds: [workerId],
         dates: [_date],
@@ -299,6 +333,7 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
       _show('この日の勤務内容を管理者登録として保存しました');
       await _loadCell();
     } catch (error) {
+      if (_managementVerificationCancelled(error)) return;
       if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -322,11 +357,13 @@ class _IndividualManagementPanelState extends State<_IndividualManagementPanel> 
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
-      await widget.repository.apply(action: 'delete', workerIds: [workerId], dates: [_date], mode: 'off');
+      await widget.repository.apply(
+        requestSecondaryPassword: () => _requestManagementPassword(context),action: 'delete', workerIds: [workerId], dates: [_date], mode: 'off');
       if (!mounted) return;
       _show('この日の勤怠・有給・日報を削除しました');
       await _loadCell();
     } catch (error) {
+      if (_managementVerificationCancelled(error)) return;
       if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -448,6 +485,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
     setState(() => _busy = true);
     try {
       final count = await widget.repository.apply(
+        requestSecondaryPassword: () => _requestManagementPassword(context),
         action: 'upsert', workerIds: _workerIds, dates: _dates, mode: values.mode, siteId: values.siteId,
         manDays: values.manDays, overtimeHours: values.overtimeHours, earlyHours: values.earlyHours, nightHours: values.nightHours,
         allowanceNames: values.allowanceNames,
@@ -457,6 +495,7 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
       );
       if (mounted) _show('$count件を管理者登録として保存しました');
     } catch (error) {
+      if (_managementVerificationCancelled(error)) return;
       if (mounted) _show('一括更新できませんでした: $error');
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -481,9 +520,11 @@ class _BulkManagementPanelState extends State<_BulkManagementPanel> {
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
-      final count = await widget.repository.apply(action: 'delete', workerIds: _workerIds, dates: _dates, mode: 'off');
+      final count = await widget.repository.apply(
+        requestSecondaryPassword: () => _requestManagementPassword(context),action: 'delete', workerIds: _workerIds, dates: _dates, mode: 'off');
       if (mounted) _show('$count件を一括削除しました');
     } catch (error) {
+      if (_managementVerificationCancelled(error)) return;
       if (mounted) _show(attendanceManagementActionErrorMessage(error));
     } finally {
       if (mounted) setState(() => _busy = false);
