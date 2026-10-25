@@ -31,7 +31,7 @@ const addition=String.raw`
  await exec(await readFile('docs/candidates/checkout_shared_hours_v2_api.sql.review-only','utf8'));
  eq(await q('select count(*)::int v from checkout_shared_hours_private.work_protocol'),0,'V2 installation never converts v1 or shared history');
  await client.query("insert into checkout_shared_hours_private.rollout(company_id,starts_on,enabled) values($1,'2026-10-01',true)",[A]);
- const v2Day='2026-10-23';
+ const v2Day='2026-10-20';
  const v2StartA=id(8900),v2EndA=id(8901),v2StartB=id(8902),v2EndB=id(8903);
  await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at) values($1,$2,$3,$4,'clock_in',$5::timestamptz)",[v2StartA,A,reportWorker,SITE,v2Day+'T08:00:00+09:00']);
  await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,source_clock_in_id) values($1,$2,$3,$4,'clock_out',$5::timestamptz,$6)",[v2EndA,A,reportWorker,SITE,v2Day+'T17:00:00+09:00',v2StartA]);
