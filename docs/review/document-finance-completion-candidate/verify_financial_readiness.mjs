@@ -17,10 +17,19 @@ try{
  const unit=String.raw`
  phase='document-finance-readiness-source-install';
  const snapshot=()=>q("select jsonb_build_object('reports',(select jsonb_agg(to_jsonb(r) order by id) from daily_reports r),'workers',(select jsonb_agg(to_jsonb(w) order by report_id,worker_id) from daily_report_workers w),'events',(select jsonb_agg(to_jsonb(e) order by id) from shared_daily_report_private.signature_events e),'confirmations',(select jsonb_agg(to_jsonb(c) order by id) from checkout_shared_hours_private.confirmations c),'ledger',(select jsonb_agg(to_jsonb(l) order by id) from checkout_shared_hours_private.ledger l),'entries',(select jsonb_agg(to_jsonb(a) order by id) from attendance_entries a),'payroll',(select jsonb_agg(to_jsonb(s) order by worker_id,period_start) from payroll_statements s)) v");
+ const readinessRoutineCatalog=()=>q("select jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'definition',pg_get_functiondef(p.oid),'owner',p.proowner::regrole::text,'acl',p.proacl,'config',p.proconfig,'definer',p.prosecdef) order by p.oid) v from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in('shared_daily_report_private','shared_worker_facts_private','checkout_shared_hours_private') or p.oid='private.clear_daily_report_signatures_on_workers()'::regprocedure");
+ const readinessRoutinesBefore=await readinessRoutineCatalog();
  const readinessInstallBefore=await snapshot();
  await exec(await readFile(process.env.SKO_FINANCE_READINESS_CANDIDATE,'utf8'));
  eq(await snapshot(),readinessInstallBefore,'Installation changes no report, signature, confirmation, ledger, attendance or salary row');
  eq(await q('select count(*)::int v from document_finance_readiness_private.rollout'),0,'No company/report enabled during install');
+ await exec('drop function public.read_shared_report_financial_readiness(uuid);drop schema document_finance_readiness_private cascade;');
+ eq(await readinessRoutineCatalog(),readinessRoutinesBefore,'Unused readiness restore preserves exact existing routine definitions and ACL including signature trigger function');
+ eq(await snapshot(),readinessInstallBefore,'Unused readiness restore preserves every existing report and financial row');
+ eq(await q("select to_regprocedure('public.read_shared_report_financial_readiness(uuid)') is null and not exists(select 1 from pg_namespace where nspname='document_finance_readiness_private') v"),true,'Unused readiness RPC/private schema fully removed');
+ await exec(await readFile(process.env.SKO_FINANCE_READINESS_CANDIDATE,'utf8'));
+ eq(await snapshot(),readinessInstallBefore,'Readiness reinstalls after unused restore with exact source pins and unchanged data');
+
  await exec("select set_config('fixture.manager','on',false)");
  let status=await sharedCall(U,id(80),'select public.read_shared_report_financial_readiness($1) v',[rid]);
  eq(status.enabled,false,'Explicit default OFF');
@@ -76,7 +85,7 @@ try{
  eq(await q("select has_function_privilege('anon','public.read_shared_report_financial_readiness(uuid)','execute') v"),false,'Anonymous caller cannot read readiness');
  eq(await q("select has_schema_privilege('authenticated','document_finance_readiness_private','usage') v"),false,'No client schema grant');
  eq(await q("select relrowsecurity v from pg_class where oid='document_finance_readiness_private.rollout'::regclass"),true,'Private rollout has RLS');
- console.log(JSON.stringify({pass:true,checks,native_pg17:true,diagnosis_only:true,financial_writer_implemented:false,old_suites_replayed:false,production_changed:false}));
+ console.log(JSON.stringify({pass:true,checks,native_pg17:true,unused_restore_verified:true,diagnosis_only:true,financial_writer_implemented:false,old_suites_replayed:false,production_changed:false}));
 `;
  const proof=join(folder,'proof.mjs');await writeFile(proof,setup+unit+tail);
  if(process.env.SKO_FINANCE_READINESS_EMIT_ONLY)await writeFile(process.env.SKO_FINANCE_READINESS_EMIT_ONLY,setup+unit+tail);

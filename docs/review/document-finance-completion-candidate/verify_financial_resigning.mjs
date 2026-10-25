@@ -19,6 +19,11 @@ try{
  const vehicleSource=JSON.parse(await readFile('tool/fixtures/shared_worker_facts_sources.json','utf8')).functions.find(f=>f.signature==='private.save_daily_report_vehicle_usage(uuid,uuid,uuid,uuid,numeric)');
  eq(md5(dbBody(vehicleSource.definition)),vehicleSource.source_md5,'Exact observed legacy vehicle validator dependency');await exec(vehicleSource.definition);
  const snapshot=()=>q("select jsonb_build_object('clocks',(select jsonb_agg(to_jsonb(a) order by id) from attendance_verifications a),'reports',(select jsonb_agg(to_jsonb(r) order by id) from daily_reports r),'workers',(select jsonb_agg(to_jsonb(w) order by report_id,worker_id) from daily_report_workers w),'events',(select jsonb_agg(to_jsonb(e) order by id) from shared_daily_report_private.signature_events e),'protocol',(select jsonb_agg(to_jsonb(p) order by report_id) from checkout_shared_hours_private.work_protocol p),'confirmations',(select jsonb_agg(to_jsonb(c) order by id) from checkout_shared_hours_private.confirmations c),'ledger',(select jsonb_agg(to_jsonb(l) order by id) from checkout_shared_hours_private.ledger l),'entries',(select jsonb_agg(to_jsonb(a) order by id) from attendance_entries a),'payroll',(select jsonb_agg(to_jsonb(s) order by worker_id,period_start) from payroll_statements s),'settings',(select jsonb_agg(to_jsonb(s) order by worker_id) from worker_payroll_settings s)) v");
+ const originalSignatures=['shared_daily_report_private.guard_roster()','shared_worker_facts_private.materialize_confirmed_worker(uuid,uuid,jsonb)','shared_daily_report_private.read_context(uuid)','shared_daily_report_private.resolve_own(uuid)'];
+ const originalDefinitions=await q("select jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'definition',pg_get_functiondef(p.oid)) order by p.oid) v from pg_proc p where p.oid=any($1::regprocedure[])",[originalSignatures]);
+ const routineCatalog=()=>q("select jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'definition',pg_get_functiondef(p.oid),'owner',p.proowner::regrole::text,'acl',p.proacl,'config',p.proconfig,'definer',p.prosecdef) order by p.oid) v from pg_proc p where p.oid=any($1::regprocedure[])",[[...originalSignatures,'private.clear_daily_report_signatures_on_workers()']]);
+ const triggerCatalog=()=>q("select jsonb_agg(jsonb_build_object('name',tgname,'definition',pg_get_triggerdef(oid),'enabled',tgenabled) order by oid) v from pg_trigger where tgrelid in('public.daily_reports'::regclass,'public.daily_report_workers'::regclass) and not tgisinternal");
+ const routinesBeforeInstall=await routineCatalog(),triggersBeforeInstall=await triggerCatalog();
  const transitionBeforeInstall=await snapshot();
  await exec(await readFile(process.env.SKO_FINANCE_TRANSITION_CANDIDATE,'utf8'));
  eq(await snapshot(),transitionBeforeInstall,'Default OFF installation preserves all source/financial rows');
@@ -26,6 +31,18 @@ try{
  const initialContext=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  eq(initialContext.financial_resigning_supported,false,'Default OFF context cannot authorize signature reset');
  eq(initialContext.financial_transition_id??null,null,'Unprepared report never claims staged facts');
+ // Independent OFF/unused restoration. Never uninstall a used transition.
+ eq(await q('select count(*)::int v from document_finance_completion_private.transitions'),0,'Unused restore requires zero transition audit rows');
+ eq(await q('select count(*)::int v from document_finance_completion_private.worker_permits'),0,'Unused restore requires zero permits');
+ for(const original of originalDefinitions)await exec(original.definition);
+ await exec('drop function public.prepare_shared_report_financial_resigning(uuid,timestamptz,text,jsonb,text);drop schema document_finance_completion_private cascade;');
+ eq(await routineCatalog(),routinesBeforeInstall,'Unused restore retains exact four original definitions, owner, config, SECURITY DEFINER and ACL');
+ eq(await triggerCatalog(),triggersBeforeInstall,'Unused restore preserves exact signature trigger definitions and enablement');
+ eq(await snapshot(),transitionBeforeInstall,'Unused restore preserves all clock/report/signature/financial/settings data');
+ eq(await q("select to_regprocedure('public.prepare_shared_report_financial_resigning(uuid,timestamptz,text,jsonb,text)') is null and not exists(select 1 from pg_namespace where nspname='document_finance_completion_private') v"),true,'Unused RPC/private schema fully removed');
+ await exec(await readFile(process.env.SKO_FINANCE_TRANSITION_CANDIDATE,'utf8'));
+ eq(await snapshot(),transitionBeforeInstall,'Exact-source guarded reinstall after unused restore changes no existing data');
+
  await exec("select set_config('fixture.manager','on',false)");
  const makeItem=async(wid,changes={})=>{
   const w=await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[rid,wid]);
@@ -133,7 +150,7 @@ try{
  eq(await snapshot(),completeBefore,'Identical signature retry does not duplicate attendance/payment facts');
  eq(await q("select has_function_privilege('anon','public.prepare_shared_report_financial_resigning(uuid,timestamptz,text,jsonb,text)','execute') v"),false,'No anonymous transition endpoint');
  eq(await q("select has_schema_privilege('authenticated','document_finance_completion_private','usage') v"),false,'Audit/private permits unexposed');
- console.log(JSON.stringify({pass:true,checks,native_pg17:true,explicit_revision_and_real_resigning:true,existing_financial_writers:true,original_clear_trigger_unmodified:true,unchanged_old_suites_replayed:false,production_changed:false}));
+ console.log(JSON.stringify({pass:true,checks,native_pg17:true,unused_restore_verified:true,explicit_revision_and_real_resigning:true,existing_financial_writers:true,original_clear_trigger_unmodified:true,unchanged_old_suites_replayed:false,production_changed:false}));
 `;
  const proof=join(folder,'proof.mjs');await writeFile(proof,setup+unit+tail);
  if(process.env.SKO_FINANCE_TRANSITION_EMIT_ONLY)await writeFile(process.env.SKO_FINANCE_TRANSITION_EMIT_ONLY,setup+unit+tail);
