@@ -20,9 +20,8 @@ import 'features/albums/albums_cloud_page.dart';
 import 'features/analytics/usage_analytics_repository.dart';
 import 'features/attendance/attendance_cloud_page.dart';
 import 'features/attendance/attendance_page.dart';
-import 'features/attendance/attendance_worker_list_page.dart';
 import 'features/attendance/attendance_selection_page.dart';
-import 'features/attendance/attendance_management_page.dart';
+import 'features/attendance/attendance_protected_routes.dart';
 import 'features/attendance/work_destination_selection_page.dart';
 import 'features/attendance/route_journey_capture_page.dart';
 import 'features/attendance/attendance_verification_page.dart';
@@ -1109,7 +1108,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (key == 'attendance_list') {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => AttendanceWorkerListPage(
+          builder: (_) => attendanceWorkerListDestination(
             onOpenManagement:
                 _nestedActionKeys.contains('attendance_management')
                 ? () => _openHomeAction('attendance_management')
@@ -1409,7 +1408,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         page = const CompanySubmittedDocumentsPage();
         break;
       case 'attendance_management':
-        page = const AttendanceManagementPage();
+        page = attendanceManagementDestination();
         break;
       case 'line_talk':
         page = const LineTalkHubPage();

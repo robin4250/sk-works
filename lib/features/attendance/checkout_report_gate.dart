@@ -6,7 +6,7 @@ import '../daily_reports/daily_report_page.dart';
 import '../daily_reports/shared_daily_report_repository.dart';
 import '../../data/supabase_backend.dart';
 import '../../widgets/sko_scroll_chrome.dart';
-import 'attendance_management_page.dart';
+import 'attendance_protected_routes.dart';
 import 'attendance_verification_page.dart';
 import 'checkout_native_reminder_coordinator.dart';
 import 'checkout_report_gate_repository.dart';
@@ -347,7 +347,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
     final target = _pending.first;
     final actor = _actor;
     await _navigator.currentState?.push<void>(MaterialPageRoute(builder: (_) =>
-      widget.managementBuilder?.call(target) ?? AttendanceManagementPage(
+      widget.managementBuilder?.call(target) ?? attendanceManagementDestination(
         initialWorkerId: target.workerId, initialDate: target.workDate,
         restrictedRecovery: true)));
     if (mounted && actor != null && _actor == actor && _controller.actorId == actor) {
@@ -382,7 +382,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
       checkoutBuilder: (_, target) => AttendanceVerificationPage(
         initialEventType: 'clock_out', initialSourceClockInId: target.sourceId,
         scheduledCheckoutTarget: target),
-      managementBuilder: (_, target) => AttendanceManagementPage(
+      managementBuilder: (_, target) => attendanceManagementDestination(
         initialWorkerId: target.workerId, initialDate: DateTime.parse(target.workDate),
         restrictedRecovery: true),
       onReauthenticate: _controller.reauthenticate,

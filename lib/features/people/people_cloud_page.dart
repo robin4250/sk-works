@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/company_data_transfer.dart';
-import '../attendance/attendance_worker_list_page.dart';
+import '../attendance/attendance_protected_routes.dart';
 import '../notifications/notification_bell.dart';
 import '../../international/language_controller.dart';
 import '../common/data_date_labels.dart';
@@ -175,7 +175,7 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                 ? null
                 : () => Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const AttendanceWorkerListPage(),
+                        builder: (_) => attendanceWorkerListDestination(),
                       ),
                     ),
             icon: const Icon(Icons.calendar_month_outlined),
