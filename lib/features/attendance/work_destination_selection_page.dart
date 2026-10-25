@@ -5,6 +5,7 @@ import '../operations/vehicle_route_repository.dart';
 import '../operations/route_stops_preview.dart';
 import 'attendance_verification_repository.dart';
 import 'gps_auto_schedule_dialog.dart';
+import 'gps_work_schedule_selection_flow.dart';
 
 /// Fixed sites become available again only after clearing the selected route.
 class WorkDestinationSiteField extends StatelessWidget {
@@ -179,6 +180,18 @@ class _WorkDestinationSelectionPageState
     setState(() => _saving = true);
     try {
       _requireLoadedActor();
+      if (_mode == 'gps_auto') {
+        final siteId = _routeId == null ? _siteId : null;
+        final seed = await GpsWorkScheduleSelection.load(siteId:siteId,routeId:_routeId,
+          fallbackWeekdays:_gpsWeekdays,fallbackClockIn:_gpsTime);
+        if (!mounted) return;
+        final schedule = seed.expectedRevision > 0 ? seed : await seed.choose(context);
+        if (schedule == null || !mounted) { return; }
+        _requireLoadedActor();
+        if (!await schedule.save(context,siteId:siteId,routeId:_routeId)) { return; }
+        _requireLoadedActor();
+        await vehicleRouteRepository.saveTodayRouteSelection(_routeId);
+      } else {
       final siteId = _routeId == null ? _siteId : null;
       if (siteId != null) {
         _requireLoadedActor();
@@ -216,6 +229,8 @@ class _WorkDestinationSelectionPageState
               ? '${_gpsTime.hour.toString().padLeft(2, '0')}:${_gpsTime.minute.toString().padLeft(2, '0')}:00'
               : null,
         );
+      }
+        await GpsWorkScheduleRuntime.instance.refresh();
       }
       if (!mounted) return;
       _requireLoadedActor();

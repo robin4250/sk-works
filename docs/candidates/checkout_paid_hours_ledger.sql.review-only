@@ -1,0 +1,196 @@
+-- REVIEW ONLY: private explicit-hours input/dual-signature ledger.
+-- Requires closed_day_paid_hours_scope reader and exact writer/consumer patches.
+-- No public endpoint, client grant, rollout activation, or payroll rate changes.
+create table checkout_paid_hours_candidate_private.drafts (
+ company_id uuid not null,worker_id uuid not null,work_date date not null,report_id uuid not null,
+ revision bigint not null check(revision>0),hours numeric not null check(hours>=0 and hours<=24 and scale(hours)<=4),
+ scope_fingerprint text not null check(scope_fingerprint~'^[0-9a-f]{64}$'),
+ recorded_by uuid not null,recorded_at timestamptz not null default clock_timestamp(),
+ primary key(company_id,worker_id,work_date,report_id)
+);
+create table checkout_paid_hours_candidate_private.ledger (
+ id uuid primary key default gen_random_uuid(),company_id uuid not null,worker_id uuid not null,
+ work_date date not null,report_id uuid not null,revision bigint not null,hours numeric not null,
+ scope_fingerprint text not null,input_basis jsonb not null,signature_basis jsonb not null,
+ captured_at timestamptz not null default clock_timestamp(),captured_by uuid not null,
+ unique(company_id,worker_id,work_date,report_id,revision,scope_fingerprint),
+ check(hours>=0 and hours<=24 and scale(hours)<=4)
+);
+alter table checkout_paid_hours_candidate_private.drafts enable row level security;
+alter table checkout_paid_hours_candidate_private.ledger enable row level security;
+revoke all on all tables in schema checkout_paid_hours_candidate_private from public,anon,authenticated,service_role;
+
+create function checkout_paid_hours_candidate_private.draft_basis(rid uuid)
+returns jsonb language sql stable security invoker set search_path='' as $basis$
+ select coalesce(jsonb_agg(jsonb_build_object('worker_id',d.worker_id,'work_date',d.work_date,
+ 'revision',d.revision,'hours',d.hours,'scope_fingerprint',d.scope_fingerprint) order by d.worker_id),'[]')
+ from checkout_paid_hours_candidate_private.drafts d where d.report_id=rid and exists(select 1 from public.daily_report_workers where report_id=rid and worker_id=d.worker_id)
+$basis$;
+
+create function checkout_paid_hours_candidate_private.save_draft(
+ rid uuid,wid uuid,p_hours numeric,p_expected_revision bigint,p_expected_scope text
+) returns jsonb language plpgsql volatile security invoker set search_path='' as $save$
+declare r public.daily_reports%rowtype; d checkout_paid_hours_candidate_private.drafts%rowtype;
+ basis jsonb; next_revision bigint;
+begin
+ if current_setting('transaction_isolation')<>'read committed' then raise exception 'hours input requires read committed';end if;
+ if p_hours is null or p_hours<0 or p_hours>24 or scale(p_hours)>4 or p_hours::text in('NaN','Infinity','-Infinity')
+ or p_expected_revision is null or p_expected_revision<0 or p_expected_scope is null or p_expected_scope!~'^[0-9a-f]{64}$'
+ then raise exception 'explicit paid hours and source revision required' using errcode='22023';end if;
+ select * into r from public.daily_reports where id=rid;
+ if not found or auth.uid() is null or private.account_access_allowed() is distinct from true
+ or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=auth.uid())
+ or not exists(select 1 from public.workers where id=wid and company_id=r.company_id
+ and (user_id=auth.uid() or private.has_company_feature(r.company_id,'can_manage_attendance')))
+ then raise exception 'paid hours input unavailable' using errcode='42501';end if;
+ perform payroll_scope_private.lock_scopes(jsonb_build_array(jsonb_build_object('cid',r.company_id,'wid',wid,'day',r.report_date)));
+ select * into r from public.daily_reports where id=rid for update;
+ if r.status is distinct from 'draft' then raise exception 'signed report requires approved correction' using errcode='55000';end if;
+ basis:=checkout_paid_hours_candidate_private.read_closed_day_scope(r.company_id,wid,r.report_date,rid);
+ if (basis->>'blocked')::boolean is distinct from false or basis->>'source_fingerprint' is distinct from p_expected_scope
+ then raise exception 'paid hours source changed or not final' using errcode='40001';end if;
+ select * into d from checkout_paid_hours_candidate_private.drafts where company_id=r.company_id and worker_id=wid
+ and work_date=r.report_date and report_id=rid for update;
+ if coalesce(d.revision,0)<>p_expected_revision then raise exception 'paid hours revision changed' using errcode='40001';end if;
+ -- Idempotent unchanged saves do not erase otherwise valid signatures.
+ if d.revision is not null and d.hours=p_hours and d.scope_fingerprint=p_expected_scope then
+  return jsonb_build_object('revision',d.revision,'hours',d.hours,'scope_fingerprint',d.scope_fingerprint,'changed',false);end if;
+ next_revision:=coalesce(d.revision,0)+1;
+ insert into checkout_paid_hours_candidate_private.drafts(company_id,worker_id,work_date,report_id,revision,hours,scope_fingerprint,recorded_by)
+ values(r.company_id,wid,r.report_date,rid,next_revision,p_hours,p_expected_scope,auth.uid())
+ on conflict(company_id,worker_id,work_date,report_id) do update set revision=excluded.revision,hours=excluded.hours,
+ scope_fingerprint=excluded.scope_fingerprint,recorded_by=excluded.recorded_by,recorded_at=clock_timestamp();
+ update public.daily_reports set representative_signature_json=null,representative_signer_name=null,
+ supervisor_signature_json=null,supervisor_signer_name=null,signature_json=null,signed_at=null,
+ updated_by=auth.uid(),updated_at=clock_timestamp() where id=rid;
+ return jsonb_build_object('revision',next_revision,'hours',p_hours,'scope_fingerprint',p_expected_scope,'changed',true);
+end $save$;
+
+-- Called from the exact existing sign_daily_report while its standard
+-- worker/month and report locks are held, before attendance propagation.
+create function checkout_paid_hours_candidate_private.capture_report(rid uuid,p_signature jsonb)
+returns void language plpgsql volatile security invoker set search_path='' as $capture$
+declare r public.daily_reports%rowtype;d checkout_paid_hours_candidate_private.drafts%rowtype;
+ basis jsonb;input jsonb;signature jsonb;
+begin
+ if not exists(select 1 from checkout_paid_hours_candidate_private.drafts where report_id=rid) then return;end if;
+ if current_setting('transaction_isolation')<>'read committed' then raise exception 'hours signing requires read committed';end if;
+ select * into r from public.daily_reports where id=rid for update;
+ if r.id is null or auth.uid() is null or private.account_access_allowed() is distinct from true
+ or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=auth.uid())
+ then raise exception 'hours signing unavailable' using errcode='42501';end if;
+ signature:=jsonb_build_object('version',3,'representative',r.representative_signature_json,'supervisor',r.supervisor_signature_json);
+ if r.representative_signature_json is null or r.supervisor_signature_json is null
+ or jsonb_typeof(r.representative_signature_json->'strokes') is distinct from 'array'
+ or jsonb_typeof(r.supervisor_signature_json->'strokes') is distinct from 'array'
+ or not exists(select 1 from jsonb_array_elements(r.representative_signature_json->'strokes') x where jsonb_typeof(x)='array' and jsonb_array_length(x)>0)
+ or not exists(select 1 from jsonb_array_elements(r.supervisor_signature_json->'strokes') x where jsonb_typeof(x)='array' and jsonb_array_length(x)>0)
+ or p_signature is distinct from signature
+ then raise exception 'both canonical signatures required for paid hours' using errcode='42501';end if;
+ for d in select x.* from checkout_paid_hours_candidate_private.drafts x where report_id=rid and exists(select 1 from public.daily_report_workers rw where rw.report_id=rid and rw.worker_id=x.worker_id) order by x.worker_id for share loop
+  basis:=checkout_paid_hours_candidate_private.read_closed_day_scope(d.company_id,d.worker_id,d.work_date,rid);
+  if (basis->>'blocked')::boolean is distinct from false or basis->>'source_fingerprint' is distinct from d.scope_fingerprint
+  then raise exception 'paid hours source changed before signing' using errcode='40001';end if;
+  input:=jsonb_build_object('worker_id',d.worker_id,'work_date',d.work_date,'revision',d.revision,
+                         'hours',d.hours,'scope_fingerprint',d.scope_fingerprint);
+  insert into checkout_paid_hours_candidate_private.ledger(company_id,worker_id,work_date,report_id,revision,hours,
+  scope_fingerprint,input_basis,signature_basis,captured_by)
+  values(d.company_id,d.worker_id,d.work_date,rid,d.revision,d.hours,d.scope_fingerprint,input,signature,auth.uid())
+  on conflict(company_id,worker_id,work_date,report_id,revision,scope_fingerprint) do nothing;
+  if not exists(select 1 from checkout_paid_hours_candidate_private.ledger l where l.company_id=d.company_id
+    and l.worker_id=d.worker_id and l.work_date=d.work_date and l.report_id=rid and l.revision=d.revision
+    and l.scope_fingerprint=d.scope_fingerprint and l.input_basis=input and l.signature_basis=signature) then
+   raise exception 'paid hours immutable ledger differs' using errcode='40001';end if;
+ end loop;
+end $capture$;
+
+create function checkout_paid_hours_candidate_private.read_hours(cid uuid,wid uuid,p_day date)
+returns jsonb language plpgsql stable security invoker set search_path='' as $read$
+declare l checkout_paid_hours_candidate_private.ledger%rowtype;r public.daily_reports%rowtype;
+ basis jsonb;answer jsonb;matched integer:=0;
+begin
+ if auth.uid() is null or private.account_access_allowed() is distinct from true
+ or not exists(select 1 from public.company_members where company_id=cid and user_id=auth.uid())
+ then raise exception 'paid hours unavailable' using errcode='42501';end if;
+ for l in select * from checkout_paid_hours_candidate_private.ledger where company_id=cid and worker_id=wid and work_date=p_day loop
+  select * into r from public.daily_reports where id=l.report_id and company_id=cid and report_date=p_day;
+  if r.id is null or r.status is distinct from 'signed' or r.representative_signature_json is null or r.supervisor_signature_json is null
+  or r.signature_json is distinct from l.signature_basis
+  or l.signature_basis is distinct from jsonb_build_object('version',3,'representative',r.representative_signature_json,'supervisor',r.supervisor_signature_json)
+  or not exists(select 1 from public.daily_report_workers where report_id=l.report_id and worker_id=wid)
+  or not exists(select 1 from public.attendance_entries where company_id=cid and worker_id=wid and work_date=p_day and source_report_id=l.report_id)
+  or not exists(select 1 from checkout_paid_hours_candidate_private.drafts d where d.company_id=cid and d.worker_id=wid and d.work_date=p_day
+   and d.report_id=l.report_id and d.revision=l.revision and d.hours=l.hours and d.scope_fingerprint=l.scope_fingerprint)
+  then continue;end if;
+  basis:=checkout_paid_hours_candidate_private.read_closed_day_scope(cid,wid,p_day,l.report_id);
+  if (basis->>'blocked')::boolean is distinct from false or basis->>'source_fingerprint' is distinct from l.scope_fingerprint then continue;end if;
+  matched:=matched+1;
+  answer:=jsonb_build_object('hours',l.hours,'ledger_id',l.id,'report_id',l.report_id,'scope_fingerprint',l.scope_fingerprint);
+ end loop;
+ if matched<>1 then return jsonb_build_object('available',false,'hours',null,'reason',case when matched=0 then 'signed_paid_hours_unavailable' else 'signed_paid_hours_ambiguous' end);end if;
+ return answer||jsonb_build_object('available',true);
+end $read$;
+
+-- All new clock evidence uses the same lock as the existing report signature
+-- writer. This prevents a same-day new shift being inserted during capture.
+create function checkout_paid_hours_candidate_private.clock_scopes(p_evidence jsonb)
+returns jsonb language plpgsql stable security invoker set search_path='' as $scopes$
+declare shift_day date;e public.attendance_verifications%rowtype;scopes jsonb:='[]';
+begin
+ for e in select * from jsonb_populate_recordset(null::public.attendance_verifications,p_evidence) loop
+  shift_day:=coalesce(e.work_date,(e.confirmed_at at time zone 'Asia/Tokyo')::date);
+  if e.source_clock_in_id is not null then
+   select coalesce(a.work_date,(a.confirmed_at at time zone 'Asia/Tokyo')::date) into shift_day
+   from public.attendance_verifications a where a.id=e.source_clock_in_id;
+  end if;
+  if shift_day is null then raise exception 'clock source day unavailable' using errcode='40001';end if;
+  scopes:=scopes||jsonb_build_array(jsonb_build_object('cid',e.company_id,'wid',e.worker_id,'day',shift_day));
+ end loop;
+ return scopes;
+end $scopes$;
+create function checkout_paid_hours_candidate_private.lock_clock_scope()
+returns trigger language plpgsql volatile security definer set search_path='' as $lock$
+declare evidence jsonb;
+begin
+ if current_setting('transaction_isolation')<>'read committed' then raise exception 'paid hours clock scope requires read committed';end if;
+ evidence:=case when tg_op<>'INSERT' then jsonb_build_array(to_jsonb(old)) else '[]'::jsonb end
+  ||case when tg_op<>'DELETE' then jsonb_build_array(to_jsonb(new)) else '[]'::jsonb end;
+ perform payroll_scope_private.lock_scopes(checkout_paid_hours_candidate_private.clock_scopes(evidence));
+ if tg_op='DELETE' then return old;end if;return new;
+end $lock$;
+
+create function checkout_paid_hours_candidate_private.refresh_clock_scope()
+returns trigger language plpgsql volatile security definer set search_path='' as $refresh$
+declare evidence jsonb;scope record;
+begin
+ evidence:=case when tg_op<>'INSERT' then jsonb_build_array(to_jsonb(old)) else '[]'::jsonb end
+  ||case when tg_op<>'DELETE' then jsonb_build_array(to_jsonb(new)) else '[]'::jsonb end;
+ -- Only days with a previously captured quantity need payroll invalidation.
+ for scope in select distinct x.cid,x.wid,x.day from jsonb_to_recordset(
+  checkout_paid_hours_candidate_private.clock_scopes(evidence)) x(cid uuid,wid uuid,day date) order by x.cid,x.wid,x.day loop
+  if exists(select 1 from checkout_paid_hours_candidate_private.ledger where company_id=scope.cid and worker_id=scope.wid and work_date=scope.day) then
+   perform private.refresh_automatic_payroll(scope.cid,scope.wid,scope.day);
+   perform private.sync_payroll_attendance_detail(scope.cid,scope.wid,scope.day);
+  end if;
+ end loop;
+ return null;
+end $refresh$;
+revoke all on all functions in schema checkout_paid_hours_candidate_private from public,anon,authenticated,service_role;
+create trigger aa_checkout_paid_hours_clock_scope before insert or update or delete on public.attendance_verifications
+ for each row execute function checkout_paid_hours_candidate_private.lock_clock_scope();
+create trigger zz_checkout_paid_hours_clock_refresh after insert or update or delete on public.attendance_verifications
+ for each row execute function checkout_paid_hours_candidate_private.refresh_clock_scope();
+
+create function checkout_paid_hours_candidate_private.month_quantities(cid uuid,wid uuid,p_start date,p_end date)
+returns jsonb language plpgsql stable security invoker set search_path='' as $month$
+declare work_day date;answer jsonb:='{}';
+begin
+ if p_start is null or p_end is null or p_start<>date_trunc('month',p_start)::date
+ or p_end<>(p_start+interval '1 month - 1 day')::date then raise exception 'canonical hours month required' using errcode='22023';end if;
+ for work_day in select distinct a.work_date from public.attendance_entries a where a.company_id=cid and a.worker_id=wid
+ and a.work_date between p_start and p_end and a.work_date<=(current_timestamp at time zone 'Asia/Tokyo')::date loop
+  answer:=jsonb_set(answer,array[work_day::text],checkout_paid_hours_candidate_private.read_hours(cid,wid,work_day),true);
+ end loop;
+ return answer;
+end $month$;
+revoke all on function checkout_paid_hours_candidate_private.month_quantities(uuid,uuid,date,date) from public,anon,authenticated,service_role;

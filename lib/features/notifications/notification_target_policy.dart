@@ -7,6 +7,7 @@ bool notificationTargetIsValid(String? actionKey, String? actionId) {
     'paid_leave_request',
     'route_billing_quantity_request',
     'daily_report_edit_request',
+    'checkout_report_registration',
     'site_information_request',
     'site_information_request_result',
     'attendance_correction_request',

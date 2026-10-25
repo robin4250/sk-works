@@ -1,0 +1,72 @@
+name: Checkout report notification routing
+on:
+  pull_request:
+    paths:
+      - 'lib/features/notifications/checkout_report_notification_*.dart'
+      - 'lib/features/notifications/app_notification_repository.dart'
+      - 'lib/features/notifications/notification_target_policy.dart'
+      - 'lib/features/notifications/notifications_page.dart'
+      - 'lib/features/notifications/attention_center_*.dart'
+      - 'lib/features/notifications/notification_business_status.dart'
+      - 'lib/features/notifications/notification_open_session.dart'
+      - 'lib/features/attendance/checkout_report_resume_*.dart'
+      - 'test/checkout_report_notification_*_test.dart'
+      - 'test/fixtures/checkout_report_notification_fixture.dart'
+      - 'test/checkout_report_resume_*_test.dart'
+      - 'test/attention_center_*_test.dart'
+      - 'test/notification_*_test.dart'
+      - 'test/source_notification_target_test.dart'
+      - 'docs/review/checkout-report-notification-20261025.md'
+      - '.github/workflows/checkout-report-notification.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  report-notification-routing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze dedicated routing and existing notification integration
+        run: >-
+          flutter analyze
+          lib/features/notifications/checkout_report_notification_repository.dart
+          lib/features/notifications/checkout_report_notification_page.dart
+          lib/features/notifications/app_notification_repository.dart
+          lib/features/notifications/notification_target_policy.dart
+          lib/features/notifications/notifications_page.dart
+          test/checkout_report_notification_repository_test.dart
+          test/checkout_report_notification_page_test.dart
+          test/fixtures/checkout_report_notification_fixture.dart
+      - name: Dedicated reader and report resume widgets
+        run: >-
+          timeout 240s flutter test
+          test/checkout_report_notification_repository_test.dart
+          test/checkout_report_notification_page_test.dart
+          --reporter expanded --timeout 30s
+      - name: Existing notification and stage1 resume regressions
+        run: >-
+          timeout 420s flutter test
+          test/attention_center_item_test.dart
+          test/attention_center_mapping_test.dart
+          test/notification_business_status_test.dart
+          test/notification_explanation_page_test.dart
+          test/notification_open_session_test.dart
+          test/notification_request_selection_test.dart
+          test/notification_payroll_routing_test.dart
+          test/payroll_notification_state_test.dart
+          test/source_notification_target_test.dart
+          test/route_billing_notification_entry_test.dart
+          test/site_information_notification_routing_contract_test.dart
+          test/paid_leave_notification_routing_contract_test.dart
+          test/checkout_report_resume_repository_test.dart
+          test/checkout_report_resume_action_test.dart
+          --reporter expanded --timeout 30s

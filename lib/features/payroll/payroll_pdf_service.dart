@@ -10,6 +10,7 @@ import 'package:printing/printing.dart';
 import 'payroll_statement_repository.dart';
 import 'payroll_recorded_tax_amounts.dart';
 import 'payroll_insurance_calculation_evidence.dart';
+import 'payroll_recorded_unit_evidence.dart';
 import '../shared/company_seal_pdf.dart';
 
 class PayrollPdfService {
@@ -966,7 +967,10 @@ class PayrollPdfService {
                         pw.Expanded(
                           flex: earnings ? 39 : 43,
                           child: pw.Text(
-                            _moneyExplanation(visible[i].key, detail, month),
+                            recordedPayrollUnitEvidence(detail, name: visible[i].key,
+                              section: earnings ? 'earning' : 'deduction',
+                              displayedAmount: (_asNumber(visible[i].value) ?? 0).abs())?.calculation ??
+                                _moneyExplanation(visible[i].key, detail, month),
                             textAlign: pw.TextAlign.center,
                             style: const pw.TextStyle(fontSize: 5),
                           ),
@@ -975,7 +979,10 @@ class PayrollPdfService {
                           pw.Expanded(
                             flex: 17,
                             child: pw.Text(
-                              _quantity(visible[i].key, detail),
+                              recordedPayrollUnitEvidence(detail, name: visible[i].key,
+                                section: 'earning',
+                                displayedAmount: (_asNumber(visible[i].value) ?? 0).abs())?.quantityLabel ??
+                                  _quantity(visible[i].key, detail),
                               textAlign: pw.TextAlign.center,
                               style: const pw.TextStyle(fontSize: 5),
                             ),

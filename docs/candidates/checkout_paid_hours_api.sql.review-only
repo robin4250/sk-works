@@ -1,0 +1,63 @@
+-- REVIEW ONLY. Requires the separately tested registration actor/session helper.
+-- This does not activate the app feature or expose internal ledger tables.
+DO $preflight$ BEGIN
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('checkout_report_registration_private.current_actor()')
+  and md5(p.prosrc)='9ca270fa06ff48883705cea5d18a8f2f' and not p.prosecdef and p.proconfig=array['search_path=""']
+  and pg_get_userbyid(p.proowner)='postgres') then
+  raise exception 'live-session checkout actor prerequisite missing';end if;
+END $preflight$;
+create function checkout_paid_hours_candidate_private.read_input(rid uuid,wid uuid)
+returns jsonb language plpgsql stable security definer set search_path='' as $read$
+declare actor uuid;r public.daily_reports%rowtype;basis jsonb;
+ d checkout_paid_hours_candidate_private.drafts%rowtype;hours_required boolean;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=actor)
+ or not exists(select 1 from public.workers where id=wid and company_id=r.company_id
+  and (user_id=actor or private.has_company_feature(r.company_id,'can_manage_attendance')))
+ or not exists(select 1 from public.daily_report_workers where report_id=rid and worker_id=wid)
+ then raise sqlstate '42501' using message='paid_hours_input_access_unavailable';end if;
+ basis:=checkout_paid_hours_candidate_private.read_closed_day_scope(r.company_id,wid,r.report_date,rid);
+ select * into d from checkout_paid_hours_candidate_private.drafts where company_id=r.company_id
+ and worker_id=wid and work_date=r.report_date and report_id=rid;
+ select exists(select 1 from public.daily_reports dr join public.daily_report_workers rw on rw.report_id=dr.id
+ cross join lateral jsonb_array_elements(coalesce(rw.company_allowance_selections->'items','[]')) i
+ where dr.company_id=r.company_id and dr.report_date=r.report_date and rw.worker_id=wid and i->>'unit'='hour') into hours_required;
+ return jsonb_build_object('schema',1,'actor_id',actor,'company_id',r.company_id,'worker_id',wid,'report_id',rid,
+ 'work_date',r.report_date,'hours',d.hours,'revision',coalesce(d.revision,0),
+ 'scope_fingerprint',basis->'source_fingerprint','source_blocked',basis->'blocked','source_reasons',basis->'reasons',
+ 'required',hours_required,'editable',r.status='draft' and (basis->>'blocked')::boolean is false,
+ 'report_status',r.status,'input_scope_current',d.revision is null or d.scope_fingerprint=basis->>'source_fingerprint');
+end $read$;
+create function checkout_paid_hours_candidate_private.save_input(
+ rid uuid,wid uuid,p_hours numeric,p_expected_revision bigint,p_expected_scope text
+) returns jsonb language plpgsql volatile security definer set search_path='' as $save$
+declare prior_state jsonb;result jsonb;
+begin
+ prior_state:=checkout_paid_hours_candidate_private.read_input(rid,wid);
+ if (prior_state->>'editable')::boolean is distinct from true then raise sqlstate '55000' using message='paid_hours_input_not_editable';end if;
+ result:=checkout_paid_hours_candidate_private.save_draft(rid,wid,p_hours,p_expected_revision,p_expected_scope);
+ return checkout_paid_hours_candidate_private.read_input(rid,wid)||jsonb_build_object('changed',result->'changed');
+exception when serialization_failure then
+ -- Keep internal source/revision CAS and locking unchanged. Expose the
+ -- expected stale-input conflict as HTTP409, never a raw database message.
+ raise sqlstate 'PT409' using message='paid_hours_input_conflict';
+end $save$;
+revoke all on function checkout_paid_hours_candidate_private.read_input(uuid,uuid) from public,anon,authenticated,service_role;
+revoke all on function checkout_paid_hours_candidate_private.save_input(uuid,uuid,numeric,bigint,text) from public,anon,authenticated,service_role;
+grant usage on schema checkout_paid_hours_candidate_private to authenticated;
+grant execute on function checkout_paid_hours_candidate_private.read_input(uuid,uuid) to authenticated;
+grant execute on function checkout_paid_hours_candidate_private.save_input(uuid,uuid,numeric,bigint,text) to authenticated;
+create function public.read_checkout_paid_work_hours(p_report_id uuid,p_worker_id uuid)
+returns jsonb language sql stable security invoker set search_path='' as $public_read$
+ select checkout_paid_hours_candidate_private.read_input(p_report_id,p_worker_id)
+$public_read$;
+create function public.save_checkout_paid_work_hours(p_report_id uuid,p_worker_id uuid,p_hours numeric,p_expected_revision bigint,p_expected_scope text)
+returns jsonb language sql volatile security invoker set search_path='' as $public_save$
+ select checkout_paid_hours_candidate_private.save_input(p_report_id,p_worker_id,p_hours,p_expected_revision,p_expected_scope)
+$public_save$;
+revoke all on function public.read_checkout_paid_work_hours(uuid,uuid) from public,anon,authenticated,service_role;
+revoke all on function public.save_checkout_paid_work_hours(uuid,uuid,numeric,bigint,text) from public,anon,authenticated,service_role;
+grant execute on function public.read_checkout_paid_work_hours(uuid,uuid) to authenticated;
+grant execute on function public.save_checkout_paid_work_hours(uuid,uuid,numeric,bigint,text) to authenticated;

@@ -350,6 +350,7 @@ import UserNotifications
   private var skoMapChannel: FlutterMethodChannel?
   private var skoCaptureChannel: FlutterMethodChannel?
   private var skoNotificationChannel: FlutterMethodChannel?
+  private var skoCheckoutReminders: SkoCheckoutReminders?
 
   override func application(
     _ application: UIApplication,
@@ -449,6 +450,10 @@ import UserNotifications
         }
       }
       skoNotificationChannel = channel
+    }
+
+    if let registrar = self.registrar(forPlugin: "SkoCheckoutReminders") {
+      skoCheckoutReminders = SkoCheckoutReminders(messenger: registrar.messenger())
     }
 
     if let registrar = self.registrar(forPlugin: "SkoCaptureMetadata") {
@@ -855,6 +860,9 @@ private enum SkoCaptureMetadata {
 }
 
 SWIFT
+
+# Keep the native reminder implementation versioned, including reused projects.
+cat tool/ios/checkout_reminders.swift >> ios/Runner/AppDelegate.swift
 
 echo "iOS標準MapKitの複数ピン現場マップを設定しました。"
 

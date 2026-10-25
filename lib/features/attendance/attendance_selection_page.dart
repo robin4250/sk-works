@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 
 import '../operations/vehicle_route_repository.dart';
 import 'attendance_verification_repository.dart';
-import 'gps_auto_attendance_service.dart';
 import 'gps_auto_schedule_dialog.dart';
+import 'gps_work_schedule_dialog.dart';
+import 'gps_work_schedule_selection_flow.dart';
 
 class AttendanceSelectionPage extends StatefulWidget {
   const AttendanceSelectionPage({super.key});
@@ -25,6 +26,7 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
   String? _vehicleId;
   List<int> _gpsWeekdays = const [1, 2, 3, 4, 5];
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
+  GpsWorkScheduleSelection? _gpsSchedule;
   String? _loadedActorId;
   void _requireLoadedActor() {
     if (_loadedActorId == null || _vehicleRouteRepository?.selectionActorId != _loadedActorId) {
@@ -81,6 +83,10 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
       var mode = selection['mode']?.toString() ??
           (schedule['enabled'] == true ? 'gps_auto' : 'none');
       if (mode == 'location') mode = 'gps_auto';
+      final gpsSchedule = mode == 'gps_auto' ? await GpsWorkScheduleSelection.load(
+        siteId:selection['site_id']?.toString(),routeId:selection['route_assignment_id']?.toString() ?? vehicleSelection['route_assignment_id']?.toString(),
+        fallbackWeekdays:scheduleDays,fallbackClockIn:gpsTimeFromDatabase(schedule['local_time'])) : null;
+
 
       if (!mounted) return;
       if (actor == null || vehicleRouteRepository.selectionActorId != actor) {
@@ -97,7 +103,9 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
         _vehicleId = vehicleSelection['vehicle_id']?.toString();
         _gpsWeekdays =
             scheduleDays.isEmpty ? const [1, 2, 3, 4, 5] : scheduleDays;
-        _gpsTime = gpsTimeFromDatabase(schedule['local_time']);
+        _gpsSchedule = gpsSchedule;
+        _gpsWeekdays = gpsSchedule?.draft.weekdays ?? _gpsWeekdays;
+        _gpsTime = gpsSchedule?.draft.clockIn ?? gpsTimeFromDatabase(schedule['local_time']);
         _loading = false;
         _error = null;
       });
@@ -117,18 +125,25 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
       return;
     }
 
-    final schedule = await showGpsAutoScheduleDialog(
-      context,
-      initialWeekdays: _gpsWeekdays,
-      initialTime: _gpsTime,
-    );
-    if (schedule == null || !mounted) return;
+    await _editGpsSchedule(selectMode:true);
+  }
 
-    setState(() {
-      _mode = 'gps_auto';
-      _gpsWeekdays = schedule.weekdays;
-      _gpsTime = schedule.time;
-    });
+  Future<void> _editGpsSchedule({bool selectMode=false}) async {
+    try {
+      _requireLoadedActor();
+      final seed = _gpsSchedule ?? await GpsWorkScheduleSelection.load(siteId:_siteId,routeId:_routeId,
+        fallbackWeekdays:_gpsWeekdays,fallbackClockIn:_gpsTime);
+      if (!mounted) return;
+      final edited = await seed.choose(context);
+      if (edited == null || !mounted) return;
+      _requireLoadedActor();
+      setState(() {
+        if (selectMode) { _mode='gps_auto'; }
+        _gpsSchedule=edited;_gpsWeekdays=edited.draft.weekdays;_gpsTime=edited.draft.clockIn;
+      });
+    } catch (error) {
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('出退勤時刻を確認できません: $error'))); }
+    }
   }
 
   Future<void> _save() async {
@@ -156,15 +171,15 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
       return;
     }
 
-    if (_mode == 'gps_auto') {
-      final allowed = await ensureGpsAutoLocationPermission(context);
-      if (!allowed || !mounted) return;
-    }
-
     setState(() => _saving = true);
     try {
       _requireLoadedActor();
       _requireLoadedActor();
+      if (_mode == 'gps_auto') {
+        final schedule = _gpsSchedule;
+        if (schedule == null) { throw StateError('出勤・退勤確認時刻を設定してください。'); }
+        if (!await schedule.save(context,siteId:_siteId,routeId:_siteId == null ? _routeId : null)) { return; }
+      } else {
       await attendanceRepository.saveAttendanceSelection(
         mode: _mode,
         siteId: _siteId,
@@ -173,9 +188,10 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
             ? '${_gpsTime.hour.toString().padLeft(2, '0')}:${_gpsTime.minute.toString().padLeft(2, '0')}:00'
             : null,
       );
+      }
       _requireLoadedActor();
       await vehicleRouteRepository.saveTodayVehicleSelection(_vehicleId);
-      await GpsAutoAttendanceService.instance.refresh();
+      if (_mode != 'gps_auto') { await GpsWorkScheduleRuntime.instance.refresh(); }
       if (!mounted) return;
       _requireLoadedActor();
       Navigator.of(context).pop(true);
@@ -256,30 +272,13 @@ class _AttendanceSelectionPageState extends State<AttendanceSelectionPage> {
                         Card(
                           child: ListTile(
                             leading: const Icon(Icons.schedule_outlined),
-                            title: const Text('曜日とGPS取得時間'),
+                            title: const Text('曜日・出勤・退勤確認時刻'),
                             subtitle: Text(
-                              GpsAutoScheduleDraft(
-                                weekdays: _gpsWeekdays,
-                                time: _gpsTime,
-                              ).label,
+                              (_gpsSchedule?.draft ?? GpsWorkScheduleDraft(weekdays:_gpsWeekdays,
+                                clockIn:_gpsTime,checkoutReminder:const TimeOfDay(hour:17,minute:0))).label,
                             ),
                             trailing: const Icon(Icons.chevron_right),
-                            onTap: _saving
-                                ? null
-                                : () async {
-                                    final schedule =
-                                        await showGpsAutoScheduleDialog(
-                                      context,
-                                      initialWeekdays: _gpsWeekdays,
-                                      initialTime: _gpsTime,
-                                    );
-                                    if (schedule != null && mounted) {
-                                      setState(() {
-                                        _gpsWeekdays = schedule.weekdays;
-                                        _gpsTime = schedule.time;
-                                      });
-                                    }
-                                  },
+                            onTap: _saving ? null : () => _editGpsSchedule(),
                           ),
                         ),
                       ],
