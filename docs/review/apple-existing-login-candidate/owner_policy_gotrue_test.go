@@ -29,13 +29,14 @@ func TestSKOAppleOwnerPolicyTransaction(t *testing.T) {
  require.NoError(t,config.Hook.CustomAccessToken.PopulateExtensibilityPoint())
  defer func(){config.Hook.CustomAccessToken.Enabled=false}()
 
- cases:=[]struct{name string;enabled,protect,permit,existingApple,removeApple bool;email,subject string;wantError bool}{
+ cases:=[]struct{name string;enabled,protect,permit,existingApple,removeApple,pkce bool;email,subject string;wantError bool}{
   {name:"default OFF unchanged",protect:true,email:"owner@example.test",subject:"unknown"},
   {name:"owner unknown same email auto link rolls back",enabled:true,protect:true,email:"owner@example.test",subject:"unknown",wantError:true},
   {name:"enrolled existing Apple preserves UID",enabled:true,protect:true,permit:true,existingApple:true,email:"owner@example.test",subject:"reserved"},
   {name:"enrolled manual prepared link preserves UID",enabled:true,protect:true,permit:true,email:"owner@example.test",subject:"reserved"},
   {name:"unlink race reserved subject cannot create new UID",enabled:true,protect:true,permit:true,existingApple:true,removeApple:true,email:"different@example.test",subject:"reserved",wantError:true},
   {name:"reserved subject cannot link to another existing UID",enabled:true,protect:true,permit:true,email:"other@example.test",subject:"reserved",wantError:true},
+  {name:"PKCE boundary identity commits before denied token",enabled:true,protect:true,pkce:true,email:"owner@example.test",subject:"unknown",wantError:true},
   {name:"unrelated signup policy unchanged",enabled:true,protect:true,email:"unrelated@example.test",subject:"unrelated"},
  }
  for _,c:=range cases {t.Run(c.name,func(t *testing.T){
@@ -59,14 +60,24 @@ func TestSKOAppleOwnerPolicyTransaction(t *testing.T) {
   data:=&provider.UserProvidedData{Metadata:&provider.Claims{Subject:c.subject,Email:c.email,EmailVerified:true},Emails:[]provider.Email{{Email:c.email,Primary:true,Verified:true}}}
   req:=httptest.NewRequest(http.MethodPost,"/token?grant_type=id_token",nil)
   var resultUser *models.User
-  err:=api.db.Transaction(func(tx *storage.Connection)error{
-   _,u,e:=api.createAccountFromExternalIdentity(tx,req,data,"apple",false);if e!=nil{return e};resultUser=u
-   _,e=api.issueRefreshToken(req,http.Header{},tx,u,models.OAuth,models.GrantParams{});return e
-  })
+  var err error
+  if c.pkce {
+   // external.go PKCE callback commits identity/flow-state before token_pkce exchange.
+   // Reproduce that transaction boundary; this proves the hook is NOT sufficient.
+   require.NoError(t,api.db.Transaction(func(tx *storage.Connection)error{
+    _,u,e:=api.createAccountFromExternalIdentity(tx,req,data,"apple",false);resultUser=u;return e
+   }))
+   _,err=api.issueRefreshToken(req,http.Header{},api.db,resultUser,models.OAuth,models.GrantParams{})
+  } else {
+   err=api.db.Transaction(func(tx *storage.Connection)error{
+    _,u,e:=api.createAccountFromExternalIdentity(tx,req,data,"apple",false);if e!=nil{return e};resultUser=u
+    _,e=api.issueRefreshToken(req,http.Header{},tx,u,models.OAuth,models.GrantParams{});return e
+   })
+  }
   if c.wantError {
    require.Error(t,err)
    require.Equal(t,beforeUsers,count("users"),"failed exchange must roll back new user")
-   require.Equal(t,beforeIdentities,count("identities"),"failed exchange must roll back identity")
+   if c.pkce {require.Equal(t,beforeIdentities+1,count("identities"),"PKCE identity persists: do not activate this hook as global protection")} else {require.Equal(t,beforeIdentities,count("identities"),"failed exchange must roll back identity")}
    require.Equal(t,beforeSessions,count("sessions"),"failed exchange must roll back session")
   } else {
    require.NoError(t,err)
