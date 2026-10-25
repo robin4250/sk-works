@@ -65,3 +65,8 @@ Local checks so far: offline exact-source generation and both loader/generated-J
 Financial confirmation after document-only signing remains a separate workflow and is not automatically enabled. Existing `read_input.editable` may stay false once the reporter signs; this candidate deliberately offers the explicit record/reset/save/re-sign path, not fabricated financial confirmation. Target a reviewed report allowlist only until a separately reviewed financial workflow is ready. The monthly/daily registration incompatibility is preserved as a financial error and no longer blocks the document signature calculation.
 
 Attendance-management physical deletion remains blocked for signed/enrolled work. `force_manage_attendance` deletes worker rows and then an empty report; `guard_roster` correctly rejects that, and `work_protocol.report_id` also has a non-cascading FK. A document revision reset is **not permission or a guarantee to delete attendance/report history**. Cancellation/tombstones and financial/finalized guards require a separate history-preserving design; this candidate does not change that writer or those FK rules.
+
+
+## 追加の実稼働trigger同等性と未登録区分
+
+2026-10-25の本番read-onlyで取得した署名クリア2関数と手当metadata guardの本文MD5をtrigger-source-pins.jsonへ保存。Native fixtureへ実定義/実triggerを追加し、NULLの勤務区分と月給×旧日手当を保持したまま署名・手直し・再署名する境界を検証する。旧給与計算関数は変更しない。通常の非管理者が手直し途中にログアウトして別sessionで戻った場合のeditorSid引継ぎは未対応で、現在管理者による復旧が必要。sid拘束を自動で緩和しない。

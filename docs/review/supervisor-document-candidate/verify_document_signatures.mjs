@@ -50,11 +50,16 @@ const unit=String.raw`
  const offBefore=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  const beforeInstall=await q("select jsonb_build_object('r',(select to_jsonb(r) from daily_reports r where id=$1),'w',(select jsonb_agg(to_jsonb(w) order by worker_id) from daily_report_workers w where report_id=$1),'settings',(select jsonb_agg(to_jsonb(s) order by worker_id) from worker_payroll_settings s)) v",[rid]);
  await exec(await readFile(process.env.SKO_DOCUMENT_CANDIDATE,'utf8'));
+ const sourceTriggers=JSON.parse(await readFile(process.env.SKO_DOCUMENT_TRIGGER_PINS,'utf8'));
+ for(const f of sourceTriggers){eq(md5(dbBody(f.definition)),f.body_md5,'Observed production trigger source pin');await exec(f.definition);}
+ await exec("create trigger clear_daily_report_signatures_on_draft before update on public.daily_reports for each row execute function private.clear_daily_report_signatures_on_draft();create trigger clear_daily_report_signatures_on_workers after insert or update or delete on public.daily_report_workers for each row execute function private.clear_daily_report_signatures_on_workers();create trigger company_checkout_report_metadata_guard before insert or update on public.daily_report_workers for each row execute function company_checkout_allowance_private.guard_report_metadata();");
+
  eq(await q('select count(*)::int v from shared_daily_report_private.document_rollout'),0,'Installation is OFF and creates no company activation');
  eq(await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]),offBefore,'OFF context and finance readiness unchanged');
  eq(await q("select jsonb_build_object('r',(select to_jsonb(r) from daily_reports r where id=$1),'w',(select jsonb_agg(to_jsonb(w) order by worker_id) from daily_report_workers w where report_id=$1),'settings',(select jsonb_agg(to_jsonb(s) order by worker_id) from worker_payroll_settings s)) v",[rid]),beforeInstall,'OFF install preserves source records and settings');
  // Reproduce monthly pay type versus an already-saved daily selection exactly.
  await client.query("update worker_payroll_settings set pay_type='monthly' where company_id=$1 and worker_id=$2",[A,reportWorker]);
+ await client.query('update daily_report_workers set work_category=null where report_id=$1 and worker_id=$2',[rid,reportWorker]);
  await reject(()=>client.query('select company_checkout_allowance_private.registered_item($1,$2,$3::jsonb)',[A,reportWorker,JSON.stringify(days[0])]),{code:'40001',message:'company allowance registration changed; reload report choices'});
  const financial=()=>q("select jsonb_build_object('attendance',(select coalesce(jsonb_agg(to_jsonb(a) order by id),'[]') from attendance_entries a),'payroll',(select coalesce(jsonb_agg(to_jsonb(s) order by worker_id,period_start),'[]') from payroll_statements s),'hours_ledger',(select coalesce(jsonb_agg(to_jsonb(l) order by id),'[]') from checkout_shared_hours_private.ledger l),'confirmations',(select coalesce(jsonb_agg(to_jsonb(c) order by id),'[]') from checkout_shared_hours_private.confirmations c),'settings',(select coalesce(jsonb_agg(to_jsonb(s) order by worker_id),'[]') from worker_payroll_settings s)) v");
  const financialBefore=await financial();
@@ -65,6 +70,7 @@ const unit=String.raw`
  await exec("select set_config('fixture.manager','on',false)");
  let context=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid]);
  eq(context.document_only,true,'Explicit document mode without financial recalculation');
+ eq(context.document_basis.workers.find(w=>w.worker_id===reportWorker).work_category,null,'Missing historical work category is preserved, not guessed');
  eq(context.document_basis.workers.length,2,'Actual saved roster exposed for signature review');
  eq(context.document_basis.workers.find(w=>w.worker_id===reportWorker).company_allowance_selections.items[0].id,DAYS[0],'Daily selection source preserved despite current monthly salary');
  await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,'representative','実報告者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
@@ -116,6 +122,7 @@ const unit=String.raw`
  eq(edited.document_basis.workers.find(w=>w.worker_id===W2).allowance_label,null,'Original optional worker label is SQL NULL');
  eq(savedDoc.document_basis.workers.find(w=>w.worker_id===W2).allowance_label,null,'Dart empty-string payload retains original SQL NULL rather than rewriting it');
  eq(savedDoc.document_basis.report.work_description,'明示的に手直しした本文','Document writer persists explicit corrected description');
+ eq(savedDoc.document_basis.workers.find(w=>w.worker_id===reportWorker).work_category,null,'Correction does not fabricate a work category');
  eq(savedDoc.document_basis.workers.find(w=>w.worker_id===reportWorker).overtime_hours,1.25,'Explicit quantity persists without changing existing pay category');
  eq(savedDoc.document_basis.workers.find(w=>w.worker_id===reportWorker).company_allowance_selections.items[0].id,DAYS[0],'Unchanged stale selection stays a raw saved value, never repriced');
  await reject(()=>sharedCall(U,id(80),'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,savedDoc.report_updated_at,savedDoc.signature_scope_fingerprint,'手当を変えた場合は再検証',JSON.stringify([documentWorker(reportWorker,[days[1]]),documentWorker(W2,[])])]),{code:'40001',message:'company allowance registration changed; reload report choices'});
@@ -147,7 +154,7 @@ try {
  if(process.env.SKO_DOCUMENT_EMIT_ONLY){
   await writeFile(process.env.SKO_DOCUMENT_EMIT_ONLY,setup+unit+tail);
  }else{
-  const result=spawnSync(process.execPath,[script,process.argv[2]],{stdio:'inherit',env:{...process.env,SKO_DOCUMENT_CANDIDATE:resolve(here,'document-signature-and-edit.sql.review-only')}});
+  const result=spawnSync(process.execPath,[script,process.argv[2]],{stdio:'inherit',env:{...process.env,SKO_DOCUMENT_CANDIDATE:resolve(here,'document-signature-and-edit.sql.review-only'),SKO_DOCUMENT_TRIGGER_PINS:resolve(here,'trigger-source-pins.json')}});
   if(result.error)throw result.error;process.exitCode=result.status??1;
  }
 }finally{await rm(folder,{recursive:true,force:true});}
