@@ -191,7 +191,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
-    await confirm(tester);
+    await tester.ensureVisible(find.text('退勤を確定'));
+    await tester.tap(find.text('退勤を確定'));
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('group-checkout-dialog'), findsOneWidget);
     expect(order, ['group']);
     await tester.tap(find.text('continue-to-report'));

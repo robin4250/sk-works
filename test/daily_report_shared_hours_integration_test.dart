@@ -160,7 +160,7 @@ void main() {
     await tester.pumpAndSettle();
   }
   Future<void> reveal(WidgetTester tester, String text) async {
-    final finder = find.text(text).first;
+    final finder = find.text(text);
     final scrollable = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(finder, 220, scrollable: scrollable, maxScrolls: 40);
     await tester.ensureVisible(finder);
@@ -230,6 +230,8 @@ void main() {
     expect(facts.confirmations, 0);
     final button = find.byKey(const ValueKey('confirm-worker-facts/$_worker'));
     await tester.scrollUntilVisible(button, 220, scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
     await tester.tap(button);
     await tester.pumpAndSettle();
     expect(facts.confirmations, 0);
@@ -238,6 +240,8 @@ void main() {
     await tester.ensureVisible(hours);
     await tester.enterText(hours, '7.25');
     await tester.ensureVisible(button);
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
     await tester.tap(button);
     await tester.pumpAndSettle();
     expect(facts.confirmations, 1);
@@ -255,6 +259,8 @@ void main() {
     await tester.enterText(overtime, '');
     final button = find.byKey(const ValueKey('confirm-worker-facts/$_worker'));
     await tester.ensureVisible(button);
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
     await tester.tap(button);
     await tester.pumpAndSettle();
     expect(facts.confirmations, 0);
@@ -269,6 +275,8 @@ void main() {
     await tester.scrollUntilVisible(button, 220, scrollable: find.byType(Scrollable).first, maxScrolls: 40);
     expect(find.byWidgetPredicate((widget) => widget is TextField &&
       widget.decoration?.labelText == '実勤務時間（休憩を除く）'), findsNothing);
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
     await tester.tap(button);
     await tester.pumpAndSettle();
     expect(facts.confirmations, 1);
