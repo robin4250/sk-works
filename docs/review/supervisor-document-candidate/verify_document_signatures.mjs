@@ -74,7 +74,8 @@ const unit=String.raw`
  eq(context.hours_annex,null,'Document scope does not call payroll annex calculator');
  eq(context.document_editable,true,'Original reporting actor can explicitly start a revision');
  eq(await q('select count(*)::int v from checkout_shared_hours_private.confirmations where report_id=$1',[rid]),0,'No self confirmation fabricated');
- await reject(()=>sharedCall(OTHER,foreignSid,'select public.read_shared_daily_report_context($1) v',[rid]),/actor|session|member|account/);
+ // Existing read_context intentionally conceals cross-company report existence.
+ await reject(()=>sharedCall(OTHER,foreignSid,'select public.read_shared_daily_report_context($1) v',[rid]),{code:'42501',message:'shared_report_unavailable'});
  await reject(()=>sharedCall(memberB,sidB,'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,context.report_updated_at,context.signature_scope_fingerprint,'他の作業者による変更']),/reporter_or_manager/);
  await reject(()=>sharedCall(U,id(80),'select public.start_shared_report_document_edit($1,$2::timestamptz,$3,$4) v',[rid,context.report_updated_at,'stale-scope','理由']),/signature_scope_changed/);
  await reject(()=>client.query("update daily_report_workers set overtime_hours=2 where report_id=$1 and worker_id=$2",[rid,reportWorker]),/explicit_edit_writer|approved_edit/);
