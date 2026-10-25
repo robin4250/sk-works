@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {verifyGooglePrimary,GooglePrimaryDenied} from './google_primary_verifier.mjs';
+import {createGooglePrimaryPorts} from './google_primary_ports.mjs';
 const now=1800000000,actor='00000000-0000-0000-0000-000000000001',sid='00000000-0000-0000-0000-000000000002';
 const pair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
 const jwk={...await crypto.subtle.exportKey('jwk',pair.publicKey),kid:'fixture-google',alg:'RS256',use:'sig'};
@@ -19,3 +20,22 @@ test('challenge is consumed once even for a still-valid Google token',async()=>{
 test('server actor/session/Google identity change during verification aborts consumption',async()=>{for(const change of[a=>{a.user.id='00000000-0000-0000-0000-000000000003';},a=>{a.claims.session_id='00000000-0000-0000-0000-000000000004';},a=>{a.user.identities=[];}]){const f=fixture();let n=0;f.ports.authenticateExactBearer=async()=>{const a=access();if(++n===2)change(a);return a;};await assert.rejects(verifyGooglePrimary(await input(),f.ports),GooglePrimaryDenied);assert.equal(f.calls.some(x=>x[0]==='consume'),false);}});
 test('atomic challenge/session/deletion failure returns no evidence',async()=>{const f=fixture();f.ports.consumeChallenge=async()=>false;await assert.rejects(verifyGooglePrimary(await input(),f.ports),GooglePrimaryDenied);});
 test('OFF port performs no credential, session or challenge operation',async()=>{const f=fixture();f.ports.enabled=false;await assert.rejects(verifyGooglePrimary(await input(),f.ports),GooglePrimaryDenied);assert.deepEqual(f.calls,[]);});
+test('real server adapters pin Google JWKS and send original bearer only to exact GoTrue user endpoint',async()=>{
+ const f=fixture(),calls=[];const bearer=b({alg:'fixture'})+'.'+b(access().claims)+'.fixture';
+ const ports=createGooglePrimaryPorts({enabled:true,baseUrl:'https://ztktgquxvcxcjxtluspu.supabase.co',publicKey:'synthetic-public',
+  audiences:['web-client'],authorizedPresenters:['ios-client'],loadChallenge:f.ports.loadChallenge,consumeChallenge:f.ports.consumeChallenge,now:()=>now,
+  fetcher:async(url,init)=>{calls.push({url,init});if(url==='https://www.googleapis.com/oauth2/v3/certs')return Response.json({keys:[jwk]});
+   assert.equal(url,'https://ztktgquxvcxcjxtluspu.supabase.co/auth/v1/user');assert.equal(init.headers.Authorization,'Bearer '+bearer);return Response.json(access().user);}});
+ await verifyGooglePrimary({...await input(),exactBearer:bearer},ports);
+ assert.equal(calls.filter(x=>x.url.includes('googleapis')).length,1);
+ assert.equal(calls.filter(x=>x.url.endsWith('/user')).length,2);
+ assert.equal(calls.every(x=>x.init.method==='GET'&&x.init.redirect==='error'),true);
+ assert.equal(calls.find(x=>x.url.includes('googleapis')).init.headers.Authorization,undefined);
+});
+test('missing challenge adapters or another project keeps server adapter OFF without network',async()=>{
+ let calls=0;
+ for(const cfg of[{baseUrl:'https://attacker.test'},{baseUrl:'https://ztktgquxvcxcjxtluspu.supabase.co'}]){
+  const p=createGooglePrimaryPorts({enabled:true,publicKey:'synthetic-public',...cfg,fetcher:async()=>{calls++;throw Error('forbidden');}});
+  await assert.rejects(verifyGooglePrimary(await input(),p),GooglePrimaryDenied);
+ }assert.equal(calls,0);
+});

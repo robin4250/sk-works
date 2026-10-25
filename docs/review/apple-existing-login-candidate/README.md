@@ -17,3 +17,5 @@ Remaining before activation:
 `handler.mjs` accepts only `id_token` and `nonce`. The environment requires a server service-role JWT, a public Supabase key, the exact project origin, an explicit audience allowlist and explicit enable flag. No environment values or credential material are logged. Client callers receive only a generic Japanese failure message. SMS is unrelated and phone login remains preparation-only.
 
 Validation: `node --test existing_apple_login.test.mjs`. The GitHub workflow also creates a disposable PostgreSQL 17 instance and executes `native.sql`; no production connection is used.
+
+Further OFF preparation is in `google-primary-port-contract.md`: Google primary verification with real RSA tests, trusted read-only network adapters and a default-OFF Flutter native-credential adapter. The generic operation-proof protocol and public handler remain unchanged; fresh Google authentication acquisition, trusted challenge lifecycle, native channel registration and safe Apple activation remain incomplete.
