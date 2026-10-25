@@ -656,7 +656,7 @@ grant execute on function public.start_shared_report_document_edit(uuid,timestam
 create function public.save_shared_report_document_draft(p_report_id uuid,p_expected_updated_at timestamptz,p_expected_signature_scope text,p_work_description text,p_workers jsonb)
 returns jsonb language plpgsql volatile security definer set search_path='' as $$
 declare actor uuid;sid uuid;r public.daily_reports%rowtype;w public.daily_report_workers%rowtype;
- scope_before jsonb;current_scope jsonb;item jsonb;next_row jsonb;choices jsonb;hours numeric;field text;
+ scope_before jsonb;current_scope jsonb;item jsonb;next_row jsonb;choices jsonb;hours numeric;field text;next_label text;
 begin
  actor:=checkout_report_registration_private.current_actor();sid:=(auth.jwt()->>'session_id')::uuid;
  if sid is null or p_work_description is null or length(p_work_description)>1048576
@@ -694,21 +694,23 @@ begin
     raise sqlstate '22023' using message='document_draft_quantity_out_of_range';end if;
   end loop;
   choices:=case when item?'company_allowance_selections' then nullif(item->'company_allowance_selections','null'::jsonb) else w.company_allowance_selections end;
+  next_label:=w.allowance_label;
   if choices is distinct from w.company_allowance_selections then
    if choices is null then raise sqlstate '22023' using message='document_draft_clear_choices_requires_explicit_empty_list';end if;
    choices:=company_checkout_allowance_private.normalize_choices(r.company_id,w.worker_id,choices);
    perform company_checkout_allowance_private.validate_labels(r.company_id,w.worker_id,item->>'allowance_label',choices,w.company_allowance_legacy_labels);
-  elsif item->>'allowance_label' is distinct from w.allowance_label then
+   next_label:=nullif(btrim(item->>'allowance_label'),'');
+  elsif nullif(btrim(coalesce(item->>'allowance_label','')),'') is distinct from nullif(btrim(coalesce(w.allowance_label,'')),'') then
    raise sqlstate '22023' using message='document_draft_label_requires_explicit_choice_change';
   end if;
   next_row:=to_jsonb(w)||jsonb_build_object('overtime_hours',(item->>'overtime_hours')::numeric,
    'early_hours',(item->>'early_hours')::numeric,'night_hours',(item->>'night_hours')::numeric,
-   'allowance_label',item->>'allowance_label','company_allowance_selections',choices);
+   'allowance_label',next_label,'company_allowance_selections',choices);
   insert into shared_report_edit_private.document_write_permits(report_id,worker_id,transaction_id,actor_id,session_id,old_row,expected_row)
   values(r.id,w.worker_id,txid_current(),actor,sid,to_jsonb(w),next_row);
   update public.daily_report_workers set overtime_hours=(item->>'overtime_hours')::numeric,
    early_hours=(item->>'early_hours')::numeric,night_hours=(item->>'night_hours')::numeric,
-   allowance_label=item->>'allowance_label',company_allowance_selections=choices where report_id=r.id and worker_id=w.worker_id;
+   allowance_label=next_label,company_allowance_selections=choices where report_id=r.id and worker_id=w.worker_id;
   delete from shared_report_edit_private.document_write_permits where report_id=r.id and worker_id=w.worker_id and transaction_id=txid_current() and actor_id=actor;
  end loop;
  update shared_daily_report_private.work_protocol set document_only=true where report_id=r.id;

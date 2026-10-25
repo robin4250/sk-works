@@ -109,10 +109,12 @@ const unit=String.raw`
  eq(await q("select has_table_privilege('authenticated','shared_report_edit_private.document_edit_permits','insert,update,delete') v"),false,'Client cannot forge reset permits');
  // A corrected report must receive new actual signatures. No old signature copy.
  // Exactly the current Dart toRpcJson; old worker() also sends work_category.
- const documentWorker=(wid,items,extra={})=>{const row={...worker(wid,items,extra)};delete row.work_category;return row;};
+ const documentWorker=(wid,items,extra={})=>{const saved=edited.document_basis.workers.find(w=>w.worker_id===wid);assert.ok(saved);const row={...worker(wid,items),overtime_hours:Number(saved.overtime_hours??0),early_hours:Number(saved.early_hours??0),night_hours:Number(saved.night_hours??0),allowance_amount:Number(saved.allowance_amount??0)};if(JSON.stringify(items)===JSON.stringify(saved.company_allowance_selections?.items??[]))row.allowance_label=saved.allowance_label??'';delete row.work_category;return {...row,...extra};};
  const correctedRoster=JSON.stringify([documentWorker(reportWorker,[days[0]],{overtime_hours:1.25}),documentWorker(W2,[])]);
  await reject(()=>sharedCall(U,otherEditorSid,'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,edited.report_updated_at,edited.signature_scope_fingerprint,'別sessionでは編集不可',correctedRoster]),{code:'42501',message:'document_draft_edit_actor_or_payload_required'});
  const savedDoc=await sharedCall(U,id(80),'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[rid,edited.report_updated_at,edited.signature_scope_fingerprint,'明示的に手直しした本文',correctedRoster]);
+ eq(edited.document_basis.workers.find(w=>w.worker_id===W2).allowance_label,null,'Original optional worker label is SQL NULL');
+ eq(savedDoc.document_basis.workers.find(w=>w.worker_id===W2).allowance_label,null,'Dart empty-string payload retains original SQL NULL rather than rewriting it');
  eq(savedDoc.document_basis.report.work_description,'明示的に手直しした本文','Document writer persists explicit corrected description');
  eq(savedDoc.document_basis.workers.find(w=>w.worker_id===reportWorker).overtime_hours,1.25,'Explicit quantity persists without changing existing pay category');
  eq(savedDoc.document_basis.workers.find(w=>w.worker_id===reportWorker).company_allowance_selections.items[0].id,DAYS[0],'Unchanged stale selection stays a raw saved value, never repriced');
@@ -126,6 +128,16 @@ const unit=String.raw`
  await sharedCall(memberC,sidC,'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,'supervisor','再署名責任者',signature,context.report_updated_at,context.signature_scope_fingerprint]);
  eq((await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[rid])).document_complete,true,'Fresh signatures finish the corrected document');
  eq(await financial(),financialBefore,'Correction and re-signing never finalize financial rows');
+ // Separate existing-empty-string fixture verifies both raw storage variants.
+ const emptyRid=await draft('2026-10-27',W4,[]);
+ await client.query("update daily_report_workers set allowance_label='' where report_id=$1 and worker_id=$2",[emptyRid,W4]);
+ await client.query("insert into shared_daily_report_private.document_rollout values($1,$2,'2026-10-01',true)",[A,emptyRid]);
+ const emptyContext=await sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[emptyRid]);
+ const emptyWorker=emptyContext.document_basis.workers[0];
+ const emptyPayload={worker_id:W4,overtime_hours:Number(emptyWorker.overtime_hours??0),early_hours:Number(emptyWorker.early_hours??0),night_hours:Number(emptyWorker.night_hours??0),allowance_amount:Number(emptyWorker.allowance_amount??0),allowance_label:emptyWorker.allowance_label??'',company_allowance_selections:emptyWorker.company_allowance_selections};
+ const emptySaved=await sharedCall(U,id(80),'select public.save_shared_report_document_draft($1,$2::timestamptz,$3,$4,$5::jsonb) v',[emptyRid,emptyContext.report_updated_at,emptyContext.signature_scope_fingerprint,'空欄ラベルを保持する本文修正',JSON.stringify([emptyPayload])]);
+ eq(emptySaved.document_basis.workers[0].allowance_label,'','Existing empty-string label stays empty without normalization or pricing');
+ eq(await financial(),financialBefore,'Both NULL/empty display normalization cases preserve every financial row');
  console.log(JSON.stringify({pass:true,checks,scope:'document-only-signature-and-revision',native_pg17:true,actual_source_writers:true,unchanged_broad_suites_replayed:false,synthetic_auth:true,production_changed:false}));
 `;
 const tail=base.slice(base.indexOf('}catch(error){'));
