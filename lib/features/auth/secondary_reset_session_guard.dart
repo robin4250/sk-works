@@ -33,7 +33,9 @@ class SecondaryResetSessionGuard {
 
   static String? identityOf(Session? session) {
     if (session == null || session.isExpired ||
-        session.user.toJson()['is_anonymous'] == true) return null;
+        session.user.toJson()['is_anonymous'] == true) {
+      return null;
+    }
     try {
       final parts = session.accessToken.split('.');
       if (parts.length != 3) return null;

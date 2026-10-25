@@ -100,8 +100,11 @@ class DeviceSecondaryPasswordResetAccess extends ChangeNotifier
     if (!ok) invalidateProof();
     return ok;
     } catch (_) {
-      if (identical(_verification, guard)) invalidateProof();
-      else await guard.close();
+      if (identical(_verification, guard)) {
+        invalidateProof();
+      } else {
+        await guard.close();
+      }
       rethrow;
     }
   }
@@ -132,8 +135,11 @@ class DeviceSecondaryPasswordResetAccess extends ChangeNotifier
     if (!ok) invalidateProof();
     return ok;
     } catch (_) {
-      if (identical(_verification, guard)) invalidateProof();
-      else await guard.close();
+      if (identical(_verification, guard)) {
+        invalidateProof();
+      } else {
+        await guard.close();
+      }
       rethrow;
     }
   }
@@ -166,8 +172,11 @@ class DeviceSecondaryPasswordResetAccess extends ChangeNotifier
       if (!_current(generation, guard)) throw StateError('Authentication changed');
     } finally {
       _saveInProgress = false;
-      if (identical(_verification, guard)) invalidateProof();
-      else await guard.close();
+      if (identical(_verification, guard)) {
+        invalidateProof();
+      } else {
+        await guard.close();
+      }
     }
   }
 
@@ -217,7 +226,7 @@ class _ResetState extends State<SecondaryPasswordResetPage>
         WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     if (_access is DeviceSecondaryPasswordResetAccess) {
-      (_access as DeviceSecondaryPasswordResetAccess).addListener(_verificationChanged);
+      _access.addListener(_verificationChanged);
       _requirementsLoading = true;
       _loadRequirement();
     }
@@ -396,11 +405,11 @@ class _ResetState extends State<SecondaryPasswordResetPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (_access is DeviceSecondaryPasswordResetAccess) {
-      (_access as DeviceSecondaryPasswordResetAccess).removeListener(_verificationChanged);
+      _access.removeListener(_verificationChanged);
     }
     _clear();
     if (widget.access == null && _access is DeviceSecondaryPasswordResetAccess) {
-      (_access as DeviceSecondaryPasswordResetAccess).dispose();
+      _access.dispose();
     }
     _password.dispose();
     _confirm.dispose();

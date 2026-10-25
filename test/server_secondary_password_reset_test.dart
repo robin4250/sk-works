@@ -63,7 +63,7 @@ class _SessionFixture {
     events.add(AuthState(AuthChangeEvent.signedIn, current));
   }
 }
-DeviceSecondaryPasswordResetAccess accessFor(_Transport transport, {_SessionFixture? session}) {
+DeviceSecondaryPasswordResetAccess _accessFor(_Transport transport, {_SessionFixture? session}) {
   final fixture = session ?? _SessionFixture();
   addTearDown(fixture.events.close);
   return DeviceSecondaryPasswordResetAccess(reauthenticationRepository: transport,
@@ -95,7 +95,7 @@ Future<void> replacement(WidgetTester tester) async {
 void main() {
   testWidgets('enabled device flow requires server primary proof and completes with proof RPC', (tester) async {
     final transport = _Transport();
-    final access = accessFor(transport);
+    final access = _accessFor(transport);
     await open(tester, access);
     expect(find.byKey(const Key('primary-password')), findsOneWidget);
     final segmented = tester.widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>));
@@ -112,7 +112,7 @@ void main() {
   });
   testWidgets('capability failure cannot downgrade to biometric or legacy reset', (tester) async {
     final transport = _Transport()..failCapability = true;
-    await open(tester, accessFor(transport));
+    await open(tester, _accessFor(transport));
     expect(find.textContaining('本人確認の設定を確認できませんでした'), findsOneWidget);
     await tester.tap(find.text('本人確認する')); await tester.pump();
     expect(transport.requests, 0);expect(transport.replacements, 0);
@@ -123,14 +123,14 @@ void main() {
   });
   testWidgets('denied proof keeps replacement form hidden and sends no save', (tester) async {
     final transport = _Transport()..failProof = true;
-    await open(tester, accessFor(transport));
+    await open(tester, _accessFor(transport));
     await authenticate(tester);
     expect(find.byKey(const Key('reset-password')), findsNothing);
     expect(transport.replacements, 0);
   });
   testWidgets('background during server verification invalidates the late nonce', (tester) async {
     final transport = _Transport()..pending = Completer<String>();
-    final access = accessFor(transport);
+    final access = _accessFor(transport);
     await open(tester, access);
     await tester.enterText(find.byKey(const Key('primary-password')), 'synthetic-primary');
     await tester.tap(find.text('本人確認する')); await tester.pump();
@@ -146,7 +146,7 @@ void main() {
   });
   testWidgets('ambiguous save clears proof and requires new primary verification', (tester) async {
     final transport = _Transport()..failSave = true;
-    final access = accessFor(transport);
+    final access = _accessFor(transport);
     await open(tester, access);await authenticate(tester);await replacement(tester);
     expect(find.byKey(const Key('reset-password')), findsNothing);
     await expectLater(access.save('synthetic-replay'), throwsStateError);
@@ -156,7 +156,7 @@ void main() {
   });
   test('queued A-B-A during proof request cannot authorize a later save', () async {
     final transport = _Transport()..pending = Completer<String>();
-    final fixture = _SessionFixture();final access = accessFor(transport, session: fixture);
+    final fixture = _SessionFixture();final access = _accessFor(transport, session: fixture);
     await access.loadRequirement();
     final pending = expectLater(access.authenticateWithPassword('synthetic-primary'), throwsStateError);
     fixture.change('other', 'other-session');
@@ -169,7 +169,7 @@ void main() {
   for (final mode in ['A-B-A', 'same-actor-new-session', 'signed-out-event']) {
     test('verification cannot survive auth history before save: $mode', () async {
       final transport = _Transport();final fixture = _SessionFixture();
-      final access = accessFor(transport, session: fixture);
+      final access = _accessFor(transport, session: fixture);
       await access.loadRequirement();expect(await access.authenticateWithPassword('synthetic-primary'), isTrue);
       if (mode == 'A-B-A') fixture.change('other', 'other-session');
       if (mode == 'signed-out-event') fixture.events.add(AuthState(AuthChangeEvent.signedOut, null));
@@ -181,7 +181,7 @@ void main() {
   }
   test('same-session JWT refresh retains one valid reset attempt', () async {
     final transport = _Transport();final fixture = _SessionFixture();
-    final access = accessFor(transport, session: fixture);
+    final access = _accessFor(transport, session: fixture);
     await access.loadRequirement();expect(await access.authenticateWithPassword('synthetic-primary'), isTrue);
     final token = fixture.current!.accessToken;
     fixture.change('synthetic-actor', 'original-session', expiry: fixture.expiresAt + 60);
@@ -193,7 +193,7 @@ void main() {
   });
   testWidgets('restored actor after queued session switch hides the verified form', (tester) async {
     final transport = _Transport();final fixture = _SessionFixture();
-    final access = accessFor(transport, session: fixture);
+    final access = _accessFor(transport, session: fixture);
     await open(tester, access);await authenticate(tester);
     expect(find.byKey(const Key('reset-password')), findsOneWidget);
     fixture.change('other', 'other-session');fixture.change('synthetic-actor', 'original-session');
