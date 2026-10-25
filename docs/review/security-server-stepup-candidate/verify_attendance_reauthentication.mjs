@@ -87,6 +87,20 @@ try {
  for(const c of [concurrentA,concurrentB])await c.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false);",[U,id(80)]);
  await concurrentA.query('begin');await concurrentA.query('set role authenticated');await concurrentA.query('select public.attendance_management_reauthentication_target($1,$2::jsonb)',['upsert',JSON.stringify(items)]);
  await concurrentB.query('begin');await concurrentB.query('set role authenticated');await concurrentB.query('select public.attendance_management_reauthentication_target($1,$2::jsonb)',['upsert',JSON.stringify(items)]);
+ const parallelItemsA=[cell(W3,'2026-10-25')],parallelItemsB=[cell(W7,'2026-10-24')];
+ // Both sessions already hold membership SHARE locks; underlying writer locks
+ // are acquired afterwards in their unchanged order.
+ const parallelProofA=await issue(await getTarget('upsert',parallelItemsA));
+ const parallelProofB=await issue(await getTarget('upsert',parallelItemsB));
+ const pendingA=concurrentA.query('select public.force_manage_attendance_with_proof($1,$2::jsonb,$3) v',['upsert',JSON.stringify(parallelItemsA),parallelProofA]);
+ const pendingB=concurrentB.query('select public.force_manage_attendance_with_proof($1,$2::jsonb,$3) v',['upsert',JSON.stringify(parallelItemsB),parallelProofB]);
+ // End A immediately after its operation, so any shared payroll/report lock
+ // waiter can advance; no timeout or deadlock counts as success.
+ const completeA=pendingA.then(async result=>{eq(result.rows[0].v,1,'Concurrent manager A actual write');await concurrentA.query('commit');});
+ const completeB=pendingB.then(async result=>{eq(result.rows[0].v,1,'Concurrent manager B actual write');await concurrentB.query('commit');});
+ await Promise.all([completeA,completeB]);
+ // Reacquire only membership locks for the observable insertion barrier test.
+ for(const c of [concurrentA,concurrentB]){await c.query('begin');await c.query('select public.attendance_management_reauthentication_target($1,$2::jsonb)',['upsert',JSON.stringify(items)]);}
  const pid=(await membership.query('select pg_backend_pid() pid')).rows[0].pid;
  const inserting=membership.query('insert into company_members(company_id,user_id,role) values($1,$2,$3)',[B,U,'owner']);
  let blocked=false;for(let i=0;i<100;i++){if(await q('select cardinality(pg_blocking_pids($1))>0 v',[pid])){blocked=true;break;}await new Promise(r=>setTimeout(r,10));}eq(blocked,true,'Concurrent membership insertion demonstrably waits');
