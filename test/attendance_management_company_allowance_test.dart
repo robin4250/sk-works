@@ -92,7 +92,7 @@ void main() {
     addTearDown(client.dispose);
     await login(actor);
     final repository = AttendanceManagementRepository.forTesting(client);
-    expect((await repository.loadCompanyAllowanceOptions([first])).companyId, company);
+    expect((await repository.loadCompanyAllowanceOptions([first])).labels.companyId, company);
     final original = client.auth.currentSession!.accessToken;
     switchDuringRead = true;
     await expectLater(repository.loadCompanyAllowanceOptions([first]), throwsStateError);
