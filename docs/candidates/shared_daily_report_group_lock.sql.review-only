@@ -1,0 +1,72 @@
+-- REVIEW ONLY. New membership INSERT serialization; historical update/delete
+-- behavior and all existing source bodies are preserved.
+begin;
+do $$ begin
+ if not exists(select 1 from pg_trigger t join pg_proc p on p.oid=t.tgfoid
+  where t.tgrelid='public.attendance_verifications'::regclass and not t.tgisinternal
+   and t.tgname='attendance_shift_evidence_guard' and t.tgenabled='O' and t.tgtype=23
+   and md5(p.prosrc)='e1d6e6a1b8da732d8bcf5f55d3f1374b') then
+  raise exception 'shared_group_normalizer_source_or_order_mismatch';end if;
+ if exists(select 1 from pg_trigger t join pg_proc p on p.oid=t.tgfoid
+  where t.tgrelid='public.attendance_verifications'::regclass and not t.tgisinternal
+   and t.tgname='attendance_capture_contract_guard' and t.tgenabled<>'D'
+   and (md5(p.prosrc)<>'c00ebc9e6659d58bc678dcc4d454e5a7' or t.tgtype<>23)) then
+  raise exception 'shared_group_earlier_capture_guard_changed';end if;
+ if (select md5(prosrc) from pg_proc where oid='payroll_scope_private.lock_scopes(jsonb,boolean)'::regprocedure)
+  is distinct from '1bce36e2e59eeb8e0144c5743b8ea800' then raise exception 'shared_group_canonical_lock_source_mismatch';end if;
+ -- Existing same-kind BEFORE triggers execute alphabetically. Unknown earlier
+ -- hooks must be explicitly reviewed before this candidate can be activated.
+ if exists(select 1 from pg_trigger t where t.tgrelid='public.attendance_verifications'::regclass and not t.tgisinternal
+  and (t.tgtype&2)=2 and (t.tgtype&4)=4 and t.tgenabled<>'D' and t.tgname<'az_shared_report_membership_scope'
+  and t.tgname not in ('attendance_capture_contract_guard','attendance_shift_evidence_guard')) then
+  raise exception 'shared_group_unreviewed_earlier_insert_trigger';end if;
+end $$;
+-- Bounded runtime ordering context: one row per server backend, replaced on
+-- its next transaction. This is not an authorization or financial receipt.
+create table shared_daily_report_private.clock_group_context(
+ backend_pid integer primary key,transaction_id bigint not null,actor_id uuid,
+ company_id uuid,worker_id uuid,work_month date,prepared_scopes jsonb
+);
+alter table shared_daily_report_private.clock_group_context enable row level security;
+revoke all on table shared_daily_report_private.clock_group_context from public,anon,authenticated,service_role;
+create function shared_daily_report_private.claim_clock_scope(p_cid uuid,p_wid uuid,p_day date)
+returns void language plpgsql security definer set search_path='' as $$
+declare previous shared_daily_report_private.clock_group_context%rowtype;
+begin
+ select * into previous from shared_daily_report_private.clock_group_context where backend_pid=pg_backend_pid() for update;
+ if previous.backend_pid is null or previous.transaction_id<>txid_current() then
+  insert into shared_daily_report_private.clock_group_context(backend_pid,transaction_id,actor_id,company_id,worker_id,work_month)
+  values(pg_backend_pid(),txid_current(),auth.uid(),p_cid,p_wid,date_trunc('month',p_day)::date)
+  on conflict(backend_pid) do update set transaction_id=excluded.transaction_id,actor_id=excluded.actor_id,
+   company_id=excluded.company_id,worker_id=excluded.worker_id,work_month=excluded.work_month,prepared_scopes=null;
+  return;
+ end if;
+ if previous.actor_id is distinct from auth.uid() then raise sqlstate '40001' using message='shared_group_actor_changed';end if;
+ if previous.prepared_scopes is not null and exists(select 1 from jsonb_to_recordset(previous.prepared_scopes) x(cid uuid,wid uuid,day date)
+  where x.cid=p_cid and x.wid=p_wid and date_trunc('month',x.day)=date_trunc('month',p_day)) then return;end if;
+ if previous.company_id=p_cid and previous.worker_id=p_wid
+ and previous.work_month=date_trunc('month',p_day)::date then return;end if;
+ raise sqlstate '40001' using message='shared_group_batch_scopes_must_be_prepared';
+end $$;
+revoke all on function shared_daily_report_private.claim_clock_scope(uuid,uuid,date) from public,anon,authenticated,service_role;
+create function shared_daily_report_private.lock_new_membership()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+ if tg_op<>'INSERT' then raise exception 'shared_group_insert_trigger_only';end if;
+ if not shared_daily_report_private.enabled(new.company_id,new.work_date)
+ and not exists(select 1 from public.daily_reports d join shared_daily_report_private.work_protocol p on p.report_id=d.id
+  where d.company_id=new.company_id and d.report_date=new.work_date and d.site_id is not distinct from new.site_id
+   and d.route_assignment_id is not distinct from new.route_assignment_id) then return new;end if;
+ if new.work_date is null or new.worker_id is null or new.company_id is null then
+  raise sqlstate '22023' using message='shared_group_normalized_source_required';end if;
+ -- The pinned preceding shift normalizer has already assigned the real report
+ -- day. Lock the canonical worker/month BEFORE the group and route source.
+ perform shared_daily_report_private.claim_clock_scope(new.company_id,new.worker_id,new.work_date);
+ perform payroll_scope_private.lock_scopes(jsonb_build_array(jsonb_build_object('cid',new.company_id,'wid',new.worker_id,'day',new.work_date)),false);
+ perform pg_advisory_xact_lock(hashtextextended(jsonb_build_array(new.company_id,new.work_date,new.site_id,new.route_assignment_id)::text,0));
+ return new;
+end $$;
+revoke all on function shared_daily_report_private.lock_new_membership() from public,anon,authenticated,service_role;
+create trigger az_shared_report_membership_scope before insert on public.attendance_verifications
+ for each row execute function shared_daily_report_private.lock_new_membership();
+commit;

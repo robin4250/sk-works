@@ -15,8 +15,16 @@ signature. Existing unsigned drafts require the exact displayed updated-at and c
 work/source-set CAS. Every server-known clock-in or validated manual attendance
 identity in the same destination/day belongs to the initial common roster; the
 client cannot omit a known coworker. A new member after the first receipt is an
-explicit roster-correction hold, never an invisible append. Concurrent AV group
-serialization still requires the separate lock-order proof before activation.
+explicit roster-correction hold, never an invisible append. The separate
+membership candidate orders canonical worker/month locks before sorted group
+locks, after the source-pinned date normalizer and before route-source locks.
+It applies only to INSERT and never adds a row-before-canonical UPDATE lock.
+Unprepared mixed-worker or mixed-month clock writes fail before acquiring an
+additional canonical scope. The source-pinned authorized manager writer gets
+one lock prefix that pre-acquires its full batch and affected-report scopes;
+source sets are checked again after waiting for the last group lock. New
+scope discovery requires reload rather than acquiring extra locks in reverse
+order. Remote lock-order proof remains required before activation.
 
 An eligible ordinary member belongs to the saved report roster, company and real
 matching clock-in scope. A roster member can open supervisor collection readiness even while working;
@@ -39,9 +47,17 @@ already-saved signature is idempotent; different saved signatures are rejected.
 server `can_manage_attendance`. It can collect reporter or supervisor signatures
 without the manager's own clock/GPS/schedule/roster. It still requires actual
 signature strokes and name, preserves actor versus actual signer in an append-
-only private audit. Finalized edits must use the existing approval workflow;
-exact approved-session continuation through the new v2 final wrapper remains
-unverified and must be completed before claiming that workflow supported.
+only private audit. Finalized edits use the existing approval workflow. The
+approved-edit candidate observes the actual source-pinned approved-to-used
+request transition and binds its reset to the same transaction, live session,
+actor, report and company. It grants report-scoped approved-editor permission,
+never global attendance management. Other clients cannot edit or sign through
+an active session. Its final wrapper verifies current readiness and the exact
+reviewed annex before calling the original signature writer. The hours module
+must copy only unchanged, source-matching confirmations with explicit approved
+editor provenance; changed peer or managed facts require fresh authorized
+confirmation. Combined actual-v2 proof remains required before claiming this
+continuation supported.
 Management recovery must be reachable from a blocked gate only with the server
 capability flag, and the management backend rechecks authority.
 
@@ -88,7 +104,10 @@ existing path; missing API, error, unknown response never means disabled or
 complete. The server `canManageAttendance` flag controls recovery visibility.
 After reporterSaved, display the saved report read-only, suppress `_saveDraft`
 and `_saveBeforeSignature`, and collect supervisor via `collectSupervisor` using
-the immutable before-context. Management uses `manageSignature` and the actual
+the immutable before-context. An exact approved edit uses
+`approvedEditRequestId` and `collectApprovedSupervisor`; its report-scoped
+permission is independent of `canManageAttendance`. Management uses
+`manageSignature` and the actual
 signer capture. Only the atomic shared path may omit the old all-peer-clockout
 UI prerequisite; the ordinary reporter's own checkout remains mandatory. For
 hours-required peers still working, first work-report signature and later hours
@@ -112,4 +131,9 @@ Parser/client tests cover capability distinction, identity/day binding and
 signature/annex readiness. Local Node syntax and diff checks only; remote
 Native/Flutter, combined hours/facts-v2 proof, complete approved-edit session
 continuation, final UI/help, production source pins,
-activation and iPhone behavior remain unverified.
+activation and iPhone behavior remain unverified. The group/manager dedicated
+proofs additionally cover blocked new arrivals, unprepared batch rollback,
+same-worker cross-month rejection, and report-source expansion while a manager
+waits for a group lock. The approved-editor proof uses the actual existing
+request-consuming draft writer and verifies another session/actor cannot reuse
+the exact continuation, including idempotent lost-response finalization.
