@@ -40,6 +40,7 @@ import 'shared_worker_facts_repository.dart';
 /// Keep technical exception wrappers out of report/save guidance.
 String dailyReportActionErrorMessage(Object error) {
   if (error is SharedReportManagementHold) return error.message;
+  if (error is FormatException && RegExp(r'[ぁ-んァ-ヶ一-龠]').hasMatch(error.message)) return error.message;
   if (error is StateError && RegExp(r'[ぁ-んァ-ヶ一-龠]').hasMatch(error.message.toString())) {
     return error.message.toString();
   }
@@ -183,6 +184,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
   bool get _visitReport => widget.routeVisitContext != null;
 
   bool get _signed => _report?.signed == true;
+  bool get _documentComplete => _sharedContext?.documentOnly == true &&
+      _sharedContext?.documentComplete == true && _sharedContext?.reportId == _report?.id &&
+      _report?.reporterSignatureJson != null && _report?.responsibleSignatureJson != null;
   bool get _sharedFactsReadOnly => _sharedContext?.enabled == true &&
       _sharedContext!.signedFactsReadOnly && !_editingApprovedReport;
   bool get _partialSharedDraftAllowed => _sharedContext?.enabled == true &&
@@ -1325,7 +1329,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         await _reviewSupervisorFacts(sharedBefore);
         return;
       }
-      await _checkPaidHoursBeforeSignature(reportId, checkSigningContext, forSupervisor: true);
+      if (sharedBefore?.documentOnly != true) {
+        await _checkPaidHoursBeforeSignature(reportId, checkSigningContext, forSupervisor: true);
+      }
       if (!mounted) return;
       checkSigningContext();
       sharedBefore = await _readSharedContext(reportId: reportId);
@@ -1336,7 +1342,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
           sharedBefore?.approvedEditRequestId != _editSession?.requestId) {
         throw StateError('現在の編集申請とサイン対象を確認できません。日報を開き直してください。');
       }
-      if (sharedBefore?.enabled == true && !await _reviewSupervisorFacts(sharedBefore!)) return;
+      if (sharedBefore?.documentOnly == true) {
+        if (!sharedBefore!.canCollectSupervisor || !_sharedDocumentMatchesEditor(sharedBefore)) {
+          throw StateError('サインする日報の内容が変わりました。日報を再読み込みしてください。');
+        }
+      } else if (sharedBefore?.enabled == true && !await _reviewSupervisorFacts(sharedBefore!)) {
+        return;
+      }
       if (!mounted) return;
       checkSigningContext();
       // Saving changes invalidates the earlier reporter signature server-side.
@@ -1370,6 +1382,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
           initialSignerName: responsibleName,
           title: SkoLanguageController.tr('責任者サイン'),
           signerLabel: SkoLanguageController.tr('現場責任者名'),
+          reviewText: sharedBefore?.documentOnly == true ? _documentSignatureSummary(sharedBefore!) : null,
           submitLabel: _editingApprovedReport
               ? SkoLanguageController.tr('このサインを確認') : SkoLanguageController.tr('責任者サインで確定'),
         ),
@@ -1412,16 +1425,16 @@ class _DailyReportPageState extends State<DailyReportPage> {
       await _loadSelectedSite();
       if (!mounted) return;
       checkSigningContext();
-      if (_error != null || !_signed || _report?.id != reportId ||
+      if (_error != null || !(_signed || _documentComplete) || _report?.id != reportId ||
           _report?.reporterSignatureJson == null || _report?.responsibleSignatureJson == null) {
         throw StateError('責任者サインの保存・確定を再確認できませんでした。日報を再読み込みしてください。再サインは確認後に行ってください。');
       }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(SkoLanguageController.tr('責任者サインで日報を確定しました'))),
+        content: Text(SkoLanguageController.tr(_documentComplete ? '責任者サインを保存し、日報が完了しました' : '責任者サインで日報を確定しました'))),
       );
       widget.onRegistrationSaved?.call();
       if (mounted && _error == null && shouldFinishCheckoutReport(
-        signed: _signed,
+        signed: _signed || _documentComplete,
         isVisitReport: _visitReport,
         reportRouteId: _routeAssignmentId,
         checkoutRouteId: widget.initialRouteAssignmentId,
@@ -1649,6 +1662,72 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
+  bool _sharedDocumentMatchesEditor(SharedDailyReportContext state) {
+    if (!_sharedWorkMatchesEditor(state)) return false;
+    final rows = state.documentBasis?['workers'];
+    if (rows is! List || rows.length != _workers.length) return false;
+    for (final worker in _workers) {
+      final matches = rows.where((row) => row is Map && row['worker_id'] == worker.workerId).toList();
+      if (matches.length != 1) return false;
+      final row = matches.single as Map;
+      if (row['worker_name'] != worker.workerName ||
+          row['overtime_hours'] != worker.overtimeHours || row['early_hours'] != worker.earlyHours ||
+          row['night_hours'] != worker.nightHours || row['allowance_amount'] != worker.allowanceAmount ||
+          (row['allowance_label'] ?? '') != worker.allowanceLabel ||
+          row['vehicle_id'] != worker.vehicleId || row['route_assignment_id'] != worker.routeId ||
+          row['odometer_km'] != worker.odometerKm) return false;
+      final savedChoices = row['company_allowance_selections'];
+      final shownChoices = worker.companyAllowanceSelections;
+      if ((savedChoices == null) != (shownChoices == null)) return false;
+      if (savedChoices != null && jsonEncode(DailyReportCompanyAllowanceSelections.fromJson(savedChoices).toJson()) !=
+          jsonEncode(shownChoices!.toJson())) return false;
+    }
+    return true;
+  }
+
+  String _documentSignatureSummary(SharedDailyReportContext state) {
+    final lines = <String>['サインする日報', state.workDescription,
+      '勤務日：${state.workDate.toIso8601String().substring(0, 10)}'];
+    for (final row in state.documentBasis!['workers'] as List) {
+      lines.add('${row['worker_name']}：残業 ${row['overtime_hours']}h / 早出 ${row['early_hours']}h / 夜間 ${row['night_hours']}h');
+      final label = row['allowance_label'];
+      if (label is String && label.isNotEmpty) lines.add('手当：$label');
+      if (row['odometer_km'] != null) lines.add('走行距離：${row['odometer_km']}km');
+    }
+    return lines.join('\n');
+  }
+
+  Future<void> _startDocumentEdit() async {
+    final repository = _sharedReportRepository;
+    final before = _sharedContext;
+    if (_saving || repository == null || before == null || !before.documentEditable || before.reportId != _report?.id) return;
+    final accepted = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('日報を手直し'),
+      content: const Text('現在の日報とサインは履歴に残します。手直し後は報告者と責任者のサインを取り直します。'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('戻る')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('手直しを始める')),
+      ]));
+    if (accepted != true || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      if (_sharedContext != before || _repository?.currentActorId != before.actorId) throw const DailyReportActorChanged();
+      await repository.startDocumentEdit(before: before, reason: '本人が日報の手直しを開始');
+      if (!mounted) return;
+      if (_repository?.currentActorId != before.actorId) throw const DailyReportActorChanged();
+      _invalidatePendingSignature();
+      await _loadSelectedSite();
+      if (!mounted) return;
+      if (_error != null || _report?.id != before.reportId || _report?.reporterSignatureJson != null ||
+          _report?.responsibleSignatureJson != null || _sharedContext?.documentOnly != true) {
+        throw StateError('手直しを開始した状態を再確認できません。日報を開き直してください。');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('日報を手直しできます。保存後にサインを取り直してください。')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(dailyReportActionErrorMessage(error))));
+    } finally { if (mounted) setState(() => _saving = false); }
+  }
+
   Future<void> _requestEdit() async {
     if (_saving) return;
     final report = _report;
@@ -1869,7 +1948,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               group.routeAssignmentId == _routeAssignmentId &&
                               group.workers.isNotEmpty,
                     ),
-                            isSigned: _signed,
+                            isSigned: _signed || _documentComplete,
                           ),
                           const SizedBox(height: 16),
                           if (widget.vehicleClockInId != null)
@@ -1971,8 +2050,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               _sharedContext?.firstReporterCoversWorkOnly == true &&
                               _sharedContext?.reporterSaved == true &&
                               _report?.companyId != null && _workerFactsRepository != null)
-                            _WorkerFactsConfirmationSection(
+                            Builder(builder: (context) {
+                              final section = _WorkerFactsConfirmationSection(
                               repository: _workerFactsRepository,
+                              independentSignature: _sharedContext?.documentOnly == true,
                               companyId: _report!.companyId!, reportId: _report!.id,
                               workers: _workers, sourceRevision: _report,
                               companyAllowanceItems: _repository?.currentActorId == _companyAllowanceActor
@@ -1982,7 +2063,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               companyAllowanceNamesLoading: _companyAllowanceNamesLoading,
                               companyAllowanceNamesUnavailable: _companyAllowanceNamesUnavailable,
                               onSaved: () => unawaited(_afterPaidHoursSaved()),
-                            ),
+                            );
+                              return _sharedContext?.documentOnly == true
+                                  ? Card(child: ExpansionTile(maintainState: true,
+                                      title: const Text('勤務実績・手当の確認（後から可）'),
+                                      children: [section]))
+                                  : section;
+                            }),
                           if (!_managementHold && !_visitReport && _sharedContext?.firstReporterCoversWorkOnly != true && _report?.id.isNotEmpty == true &&
                               _report?.companyId != null && _paidHoursRepository != null)
                             PaidWorkHoursReportSection(
@@ -2008,12 +2095,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          if (_signed)
+                          if (_signed || _documentComplete)
                             Card(
                               child: ListTile(
                                 leading: _ReportStepBadge(_dailyStep(4)),
                                 title: Text(
-                                  SkoLanguageController.tr('責任者サイン済み・確定'),
+                                  SkoLanguageController.tr(_documentComplete ? '責任者サイン済み・日報完了' : '責任者サイン済み・確定'),
                                   style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
                                 subtitle: Text(
@@ -2059,6 +2146,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               icon: const Icon(Icons.save_outlined),
                               label: Text(SkoLanguageController.tr('登録')),
                             ),
+                          if (_sharedContext?.documentOnly == true && _sharedContext?.documentEditable == true)
+                            OutlinedButton.icon(
+                              key: const ValueKey('daily-report-start-document-edit'),
+                              onPressed: _saving ? null : _startDocumentEdit,
+                              icon: const Icon(Icons.edit_outlined), label: const Text('手直し')),
+                          if (_documentComplete)
+                            const Padding(padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Text('日報は完了しました。勤務実績・手当の確認は別に行えます。')),
                           if (_signed && !_visitReport && _approvedEditAvailable)
                             FilledButton.icon(
                               key: const ValueKey('daily-report-begin-approved-edit'),
@@ -2116,8 +2211,10 @@ class _WorkerFactsConfirmationSection extends StatefulWidget {
     required this.companyId, required this.reportId, required this.workers,
     required this.sourceRevision, required this.companyAllowanceItems,
     required this.companyAllowanceEligibility, required this.companyAllowanceNamesLoading,
-    required this.companyAllowanceNamesUnavailable, required this.onSaved});
+    required this.companyAllowanceNamesUnavailable, required this.onSaved,
+    this.independentSignature = false});
   final SharedWorkerFactsRepository repository;
+  final bool independentSignature;
   final String companyId, reportId;
   final List<DailyReportWorkerDraft> workers;
   final Object? sourceRevision;
@@ -2151,7 +2248,9 @@ class _WorkerFactsConfirmationSectionState extends State<_WorkerFactsConfirmatio
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('本人の勤務実績を確認',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-        const Text('作業報告のサインとは別に、各自の退勤後の実績を確認します。本人の確認・必要な時間がそろってから、責任者本人にサインしてもらいます。'),
+        Text(widget.independentSignature
+          ? '勤務実績・手当の確認は日報のサインと別に行います。未確認を0とせず、本人が内容を確認して保存してください。'
+          : '作業報告のサインとは別に、各自の退勤後の実績を確認します。本人の確認・必要な時間がそろってから、責任者本人にサインしてもらいます。'),
         for (final snapshot in result.data!) _WorkerFactsConfirmationCard(
           key: ValueKey('facts/${snapshot.actorId}/${snapshot.reportId}/${snapshot.workerId}'),
           repository: widget.repository, snapshot: snapshot,
@@ -2264,6 +2363,15 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
       }
       final hours = _requiresHours ? _readNumber(_hours, '実勤務時間') : null;
       if (_managed && _reason.text.trim().isEmpty) throw const FormatException('管理者が確認する理由を入力してください。');
+      final choices = draft.companyAllowanceSelections?.items ?? const <DailyReportCompanyAllowanceSelection>[];
+      final allowed = widget.eligibleCompanyAllowanceKeys;
+      if (choices.isNotEmpty && (widget.companyAllowanceNamesLoading || widget.companyAllowanceNamesUnavailable || allowed == null)) {
+        throw StateError('会社手当の適用対象を確認できません。再読み込みしてください。');
+      }
+      final unavailable = choices.where((item) => !allowed!.contains(item.key)).toList();
+      if (unavailable.isNotEmpty) {
+        throw StateError('保存済みの「${unavailable.map((item) => item.nameSnapshot).join('、')}」は現在の給与区分に適用できません。手当の選択を見直してください。');
+      }
       final facts = SharedWorkerFacts.fromDraft(draft, workCategory: _category!);
       final saved = await widget.repository.confirm(before, facts, hours: hours,
         managementReason: _managed ? _reason.text.trim() : null);
@@ -2274,7 +2382,7 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
       }
       widget.onSaved();
     } catch (error) {
-      if (mounted) setState(() => _error = '$error');
+      if (mounted) setState(() => _error = dailyReportActionErrorMessage(error));
     } finally { if (mounted) setState(() => _saving = false); }
   }
   @override void dispose() {
