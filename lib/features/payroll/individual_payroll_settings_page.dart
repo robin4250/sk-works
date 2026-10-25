@@ -1,3 +1,4 @@
+import 'payroll_insurance_settings_entry.dart';
 import 'payroll_tax_conditions_page.dart';
 import 'payroll_fixed_deductions.dart';
 import '../settings/company_payroll_rates_page.dart';
@@ -5,6 +6,7 @@ import '../../international/language_controller.dart';
 import 'dart:convert';
 import 'dart:async';
 import '../shared/company_allowance_label_repository.dart';
+import '../shared/company_allowance_current_price_repository.dart';
 
 import '../../domain/payroll_rate_settings_hydration.dart';
 import '../../data/supabase_backend.dart';
@@ -19,6 +21,7 @@ import 'paid_leave_pay.dart';
 import 'payroll_draft_keep_alive.dart';
 import 'resident_tax_section.dart';
 import 'resident_tax_capability.dart';
+import 'company_common_allowance_entry_page.dart';
 import 'payroll_unit_conditions_page.dart';
 import 'payroll_unit_item_editor.dart';
 import 'individual_allowance_rows.dart';
@@ -80,6 +83,7 @@ class _IndividualPayrollSettingsPageState
   bool _saving = false;
   bool _allowanceSaveUncertain = false;
   bool _showDeductions = false;
+  final _insuranceEntry = PayrollInsuranceEntryController();
   PayrollItemUnit _earningUnit = PayrollItemUnit.month;
   PayrollItemUnit _deductionUnit = PayrollItemUnit.month;
   final _unitPanelKey = GlobalKey();
@@ -100,7 +104,7 @@ class _IndividualPayrollSettingsPageState
     super.initState();
     _repository = widget.repository ?? IndividualPayrollSettingsRepository.maybeCreate();
     _registeredAllowanceSource = widget.registeredAllowanceSource ??
-        SupabaseCompanyAllowanceLabelRepository.maybeCreate();
+        CompanyAllowanceCurrentPriceRepository.maybeCreate();
     for (final field in _amountFields) {
       _controllers[field.$1] = TextEditingController();
     }
@@ -114,6 +118,7 @@ class _IndividualPayrollSettingsPageState
 
   @override
   void dispose() {
+    _insuranceEntry.dispose();
     _unitFooter.dispose();
     for (final controller in _controllers.values) {
       controller.dispose();
@@ -534,7 +539,7 @@ class _IndividualPayrollSettingsPageState
         actions: [IconButton(tooltip: '使い方', icon: const Icon(Icons.help_outline),
           onPressed: () => showDialog<void>(context: context, builder: (context) =>
             AlertDialog(title: const Text('手当の登録'),
-              content: const Text('時間・日・月の単位ごとに、追加ボタンから手当を登録します。登録済みの手当も同じ一覧で編集・削除できます。会社共通の定義や確定済み明細は、この社員の手当編集では削除しません。保存結果を確認できない場合は入力を保持し、再送せず保存済みの状態を確認します。'),
+              content: Text(SkoLanguageController.tr('時間・日・月の単位ごとに、追加ボタンから手当を登録します。登録済みの手当も同じ一覧で編集・削除できます。会社共通手当は現在登録されている名前と単価を共通の見出しから確認します。権限不足や取得失敗などで単価を照合できないときは「単価未確認」と表示し、0円とは扱いません。ここでの現在単価は過去の給与への適用額とは別です。「共通設定」で編集します。「個別手当」はこの社員だけの設定です。同名でも保存元を分けて保持し、共通を個別へコピーしません。会社共通の定義や確定済み明細は、この社員の手当編集では削除しません。保存結果を確認できない場合は入力を保持し、再送せず保存済みの状態を確認します。')),
               actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))]))),
           const SkoNotificationBell()],
         bottom: _updatedAt == null
@@ -705,6 +710,10 @@ class _IndividualPayrollSettingsPageState
                     ),
                   ),
                   SizedBox(height: 12),
+                  PayrollInsuranceSettingsEntry(
+                    key: const ValueKey('insurance-settings-global-entry'),
+                    controller: _insuranceEntry, enabled: !_busy,
+                  ),
                   SegmentedButton<bool>(
                     showSelectedIcon: false,
                     segments: [
@@ -769,6 +778,7 @@ class _IndividualPayrollSettingsPageState
                           if (_workerId != null)
                             PayrollFixedDeductions(
                               key: ValueKey('fixed-deductions-$_workerId'),
+                              entryController: _insuranceEntry,
                               showAmounts: _deductionUnit == PayrollItemUnit.month,
                               companyId: companyId ?? '',
                               workerId: _workerId!,
@@ -1076,6 +1086,9 @@ class _IndividualPayrollSettingsPageState
         padding: const EdgeInsets.all(10),
         child: Column(
           children: [
+            Align(alignment: Alignment.centerLeft,
+              child: Text(SkoLanguageController.tr('個別手当（この社員だけ）'),
+                style: Theme.of(context).textTheme.labelSmall)),
             TextFormField(
               controller: item.name,
               enabled: enabled,
@@ -1159,6 +1172,7 @@ class _IndividualPayrollSettingsPageState
         PayrollRegisteredAllowanceName(
           key: '${item.origin}/${item.id ?? item.legacySlot}', itemId: item.id,
           name: item.name, legacySlot: item.legacySlot,
+          currentRateYen: item.currentRateYen, displayUnit: item.displayUnit,
           section: PayrollItemSection.values.byName(item.section),
           unit: PayrollItemUnit.values.byName(item.unit)),
     ];
@@ -1271,6 +1285,19 @@ class _IndividualPayrollSettingsPageState
         canEditIndividualAllowances: _workspace?.canEdit == true && !_saving,
         individualSaveUncertain: _allowanceSaveUncertain,
         registeredAllowanceNames: _registeredNameRows,
+        registeredAllowanceNamesLoaded: _registeredAllowanceNames != null && _allowanceScopeCurrent(),
+        onOpenCompanyCommonSettings: () async {
+          if (!_allowanceScopeCurrent()) return;
+          final generation = _loadGeneration;
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => CompanyCommonAllowanceEntryPage(companyId: company)));
+          if (!mounted || generation != _loadGeneration || _workerId != worker ||
+              !_allowanceScopeCurrent() || (_workspace?.companyId ?? _settingValues['company_id']) != company) {
+            return;
+          }
+          // Refresh names only. Do not replace unsaved worker/unit drafts.
+          await _loadRegisteredAllowanceNames(company, worker, generation);
+        },
         registeredAllowanceNamesUnavailable: _registeredAllowanceReadFailed,
         individualAllowanceItems: individualAllowanceRows(_individualAllowanceValues),
         onIndividualAllowanceDraftChanged: _rememberAllowanceDraft,
@@ -1403,4 +1430,5 @@ class _CustomMoneyDraft {
     amount.dispose();
   }
 }
+
 

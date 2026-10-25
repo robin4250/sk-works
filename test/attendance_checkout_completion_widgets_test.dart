@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/attendance/attendance_verification_page.dart';
 import 'package:sk_works/features/attendance/attendance_verification_repository.dart';
 import 'package:sk_works/features/attendance/attendance_shift_context.dart';
+import 'package:sk_works/features/attendance/checkout_report_resume_repository.dart';
 import 'package:sk_works/features/attendance/capture_verification_draft.dart';
 import 'package:sk_works/features/attendance/gps_photo_capture_result.dart';
 
@@ -124,15 +125,50 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.inserts, 1);
       expect(reports, 1);
-      expect(find.textContaining('勤怠は登録済みです'), findsOneWidget);
-      await tester.ensureVisible(find.text('登録済みの日報を開く'));
-      await tester.tap(find.text('登録済みの日報を開く'));
+      expect(find.textContaining('退勤は記録済みです'), findsOneWidget);
+      await tester.ensureVisible(find.text('日報を再開'));
+      await tester.tap(find.text('日報を再開'));
       await tester.pumpAndSettle();
       expect(repository.inserts, 1);
       expect(reports, 2);
       expect(find.text('Open'), findsOneWidget);
     },
   );
+  testWidgets('returning without reporter registration keeps saved checkout resumable without reinsertion', (tester) async {
+    final repository = _Repository();
+    final reportReader = _ReportReader();
+    await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) => Scaffold(
+      body: TextButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => AttendanceVerificationPage(initialEventType: 'clock_out',
+          repository: repository, reportResumeRepository: reportReader,
+          openSavedReport: (_, saved) async {}))), child: const Text('Open'))))));
+    await tester.tap(find.text('Open')); await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('退勤を確定')); await tester.tap(find.text('退勤を確定'));
+    await tester.pumpAndSettle();
+    expect(repository.inserts, 1); expect(reportReader.reads, 1);
+    expect(find.text('日報を再開'), findsOneWidget);
+    expect(find.textContaining('日報の登録と報告者サインを完了してください'), findsOneWidget);
+    reportReader.reporter = true;
+    await tester.ensureVisible(find.text('日報を再開')); await tester.tap(find.text('日報を再開'));
+    await tester.pumpAndSettle();
+    expect(repository.inserts, 1); expect(reportReader.reads, 2);
+    expect(find.text('Open'), findsOneWidget);
+    expect(reportReader.responsible, false);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('failed saved-report verification keeps the same closed shift and offers retry', (tester) async {
+    final repository = _Repository();
+    final reportReader = _ReportReader()..fail = true;
+    await tester.pumpWidget(MaterialApp(home: AttendanceVerificationPage(initialEventType: 'clock_out',
+      repository: repository, reportResumeRepository: reportReader,
+      openSavedReport: (_, saved) async {})));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('退勤を確定')); await tester.tap(find.text('退勤を確定'));
+    await tester.pumpAndSettle();
+    expect(repository.inserts, 1); expect(find.text('日報を再開'), findsOneWidget);
+    expect(find.textContaining('退勤は記録済みです。日報を開けませんでした'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('zero open shifts cannot create another checkout', (
     tester,
   ) async {
@@ -224,4 +260,19 @@ class ArchivedRepository extends _Repository {
     expect(d.id, draft.id);
     acknowledged = true;
   }
+}
+
+class _ReportReader implements CheckoutReportResumeRepository {
+  bool reporter = false, responsible = false, fail = false;
+  int reads = 0;
+  @override Future<CheckoutReportResumeTarget> inspectSavedCheckout(Map<String, dynamic> saved) async {
+    reads++;
+    if (fail) throw StateError('synthetic read unavailable');
+    return CheckoutReportResumeTarget(companyId: 'company', workerId: 'worker',
+      workDate: DateTime(2026,10,11), sourceClockInIds: const ['start'],
+      clockOutIds: const ['end'], sourceClockInId: 'start', clockOutId: 'end', routeId: 'route',
+      state: reporter ? CheckoutReportState.partialSignature : CheckoutReportState.missing,
+      reporterSignatureSaved: reporter, responsibleSignatureSaved: responsible);
+  }
+  @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

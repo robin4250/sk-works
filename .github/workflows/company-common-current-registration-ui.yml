@@ -1,0 +1,99 @@
+name: Company common current registration UI
+on:
+  pull_request:
+    paths:
+      - 'test/company_common_allowance_connected_test.dart'
+      - 'test/company_common_allowance_entry_test.dart'
+      - 'test/company_common_calculation_resolution_test.dart'
+      - 'test/company_common_canonical_publication_approval_test.dart'
+      - 'test/company_common_canonical_publication_panel_test.dart'
+      - 'test/company_common_canonical_publication_pending_test.dart'
+      - 'test/company_common_canonical_publication_repository_test.dart'
+      - 'test/company_common_fixed_footer_test.dart'
+      - 'test/company_common_payroll_page_test.dart'
+      - 'lib/features/shared/company_allowance_current_price_repository.dart'
+      - 'lib/features/shared/company_allowance_label_repository.dart'
+      - 'lib/features/payroll/payroll_unit_item_editor.dart'
+      - 'test/company_allowance_current_price_repository_test.dart'
+      - 'test/payroll_current_company_prices_card_test.dart'
+      - 'lib/features/payroll/payroll_unit_conditions_page.dart'
+      - 'lib/features/payroll/payroll_company_common_card.dart'
+      - 'lib/features/payroll/individual_payroll_settings_page.dart'
+      - 'lib/features/payroll/payroll_unit_conditions_repository.dart'
+      - 'lib/features/payroll/company_common_application_status.dart'
+      - 'lib/features/payroll/payroll_insurance_settings_entry.dart'
+      - 'test/company_common_current_registration_display_test.dart'
+      - 'test/individual_allowance_unification_test.dart'
+      - 'test/payroll_company_common_test.dart'
+      - 'test/payroll_inline_unit_sections_test.dart'
+      - 'test/company_common_application_status_test.dart'
+      - 'test/payroll_insurance_external_entry_test.dart'
+      - 'test/payroll_insurance_settings_entry_test.dart'
+      - 'test/individual_payroll_ui_tabs_test.dart'
+      - 'test/individual_payroll_fixed_footer_test.dart'
+      - 'test/payroll_unit_conditions_repository_test.dart'
+      - 'test/payroll_unit_conditions_editor_test.dart'
+      - '.github/workflows/company-common-current-registration-ui.yml'
+permissions:
+  contents: read
+concurrency:
+  group: current-common-registration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  current-registration-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Install pinned dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Preserve dependency pins
+        run: git diff --exit-code -- pubspec.yaml pubspec.lock
+      - name: Analyze current display and shared salary host
+        run: >-
+          flutter analyze
+          lib/features/shared/company_allowance_current_price_repository.dart
+          lib/features/shared/company_allowance_label_repository.dart
+          lib/features/payroll/payroll_unit_item_editor.dart
+          test/company_allowance_current_price_repository_test.dart
+          test/payroll_current_company_prices_card_test.dart
+          lib/features/payroll/payroll_unit_conditions_page.dart
+          lib/features/payroll/payroll_company_common_card.dart
+          lib/features/payroll/individual_payroll_settings_page.dart
+          test/company_common_current_registration_display_test.dart
+          test/individual_allowance_unification_test.dart
+      - name: Current registration, all units, salary drafts and dependency entry regressions
+        run: >-
+          timeout 480s flutter test --reporter expanded --timeout 60s
+          test/company_common_allowance_connected_test.dart
+          test/company_common_allowance_entry_test.dart
+          test/company_common_calculation_resolution_test.dart
+          test/company_common_canonical_publication_approval_test.dart
+          test/company_common_canonical_publication_panel_test.dart
+          test/company_common_canonical_publication_pending_test.dart
+          test/company_common_canonical_publication_repository_test.dart
+          test/company_common_fixed_footer_test.dart
+          test/company_common_payroll_page_test.dart
+          test/company_allowance_current_price_repository_test.dart
+          test/payroll_current_company_prices_card_test.dart
+          test/company_allowance_label_repository_test.dart
+          test/targeted_translation_resource_coverage_test.dart
+          test/company_common_current_registration_display_test.dart
+          test/individual_allowance_unification_test.dart
+          test/payroll_company_common_test.dart
+          test/payroll_inline_unit_sections_test.dart
+          test/company_common_application_status_test.dart
+          test/payroll_insurance_external_entry_test.dart
+          test/payroll_insurance_settings_entry_test.dart
+          test/individual_payroll_ui_tabs_test.dart
+          test/individual_payroll_fixed_footer_test.dart
+          test/payroll_unit_conditions_repository_test.dart
+          test/payroll_unit_conditions_editor_test.dart
+

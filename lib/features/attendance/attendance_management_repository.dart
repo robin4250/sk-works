@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'checkout_report_gate.dart';
 
 class AttendanceManagementOption {
   const AttendanceManagementOption({required this.id, required this.name});
@@ -272,7 +273,14 @@ class AttendanceManagementRepository {
             'clock_out': clockOut,
           },
     ];
+    final actor = _client.auth.currentUser?.id;
     final raw = await _client.rpc('force_manage_attendance', params: {'p_action': action, 'p_items': items});
+    final gate = CheckoutReportGateController.instance;
+    // The server decides whether the affected worker is this actor and has a
+    // new obligation. A proxy write is never itself a reporter obligation.
+    if (actor != null && _client.auth.currentUser?.id == actor && gate.actorId == actor) {
+      gate.requestCheck();
+    }
     return (raw as num?)?.toInt() ?? items.length;
   }
 

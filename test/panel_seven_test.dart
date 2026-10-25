@@ -6,16 +6,17 @@ import 'package:sk_works/features/auth/panel_seven_page.dart';
 import 'package:sk_works/features/auth/panel_seven_repository.dart';
 import 'package:sk_works/features/auth/login_method_enrollment_card.dart';
 
-PanelSevenSnapshot snapshot() => const PanelSevenSnapshot(
-  actorId: 'a', providers: ['google'], email: 'owner@example.test',
+PanelSevenSnapshot snapshot({bool? primaryConfigured}) => PanelSevenSnapshot(
+  actorId: 'a', providers: const ['google'], email: 'owner@example.test',
   phone: null, emailConfirmed: true, phoneConfirmed: false,
-  sessionMethods: ['oauth'], secondaryConfigured: true,
+  sessionMethods: const ['oauth'], secondaryConfigured: true, primaryConfigured: primaryConfigured,
   accessToken: 'synthetic',
 );
 
 class FakeRepository implements PanelSevenSource {
   bool current = true;
   int loads = 0;
+  PanelSevenSnapshot? value;
   Future<PanelSevenSnapshot>? nextLoad;
   final events = StreamController<AuthState>.broadcast();
   @override
@@ -29,7 +30,7 @@ class FakeRepository implements PanelSevenSource {
     nextLoad = null;
     if (pending != null) return pending;
     if (!current) throw StateError('changed');
-    return snapshot();
+    return value ?? snapshot();
   }
 }
 
@@ -145,6 +146,93 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.loads, 2);
     expect(find.text('Google'), findsOneWidget);
+  });
+
+  testWidgets('confirmed Google email has collapsed next-login guidance without pretending password is set', (tester) async {
+    final repository = FakeRepository();
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.events.close();
+    });
+    await tester.pumpWidget(MaterialApp(home: PanelSevenPage(repository: repository)));
+    await tester.pumpAndSettle();
+    final guide = find.byKey(const ValueKey('account-email-login-guide'));
+    await tester.scrollUntilVisible(guide, 100);
+    expect(tester.widget<ExpansionTile>(guide).initiallyExpanded, false);
+    await tester.tap(find.text('メールでログインするには')); await tester.pumpAndSettle();
+    expect(find.textContaining('現在のGoogleログインをログアウトする必要はありません。'), findsOneWidget);
+    expect(find.textContaining('この確認済みメールと保存した第一パスワードを使います。'), findsOneWidget);
+    expect(find.textContaining('この画面で第一パスワードの保存を確認しました。'), findsNothing);
+    expect(repository.loads, 1);
+  });
+
+  testWidgets('unconfirmed email never shows confirmed-email login guidance', (tester) async {
+    final repository = FakeRepository()..value = const PanelSevenSnapshot(
+      actorId: 'a', providers: ['google'], email: 'owner@example.test', phone: null,
+      emailConfirmed: false, phoneConfirmed: false, sessionMethods: ['oauth'],
+      secondaryConfigured: true, accessToken: 'synthetic');
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.events.close();
+    });
+    await tester.pumpWidget(MaterialApp(home: PanelSevenPage(repository: repository)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('account-email-login-guide')), findsNothing);
+    expect(find.textContaining('この画面で第一パスワードの保存を確認しました。'), findsNothing);
+    expect(repository.loads, 1);
+  });
+
+  for (final configured in <bool?>[true, false, null]) {
+    testWidgets('primary self status $configured is distinct from local save receipt', (tester) async {
+      final repository = FakeRepository()..value = snapshot(primaryConfigured: configured);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await repository.events.close();
+      });
+      await tester.pumpWidget(MaterialApp(home: PanelSevenPage(repository: repository)));
+      await tester.pumpAndSettle();
+      final row = find.byKey(const ValueKey('account-primary-password'));
+      await tester.scrollUntilVisible(row, 100);
+      final text = tester.widgetList<Text>(find.descendant(of: row, matching: find.byType(Text)))
+          .map((w) => w.data ?? '').join(' ');
+      if (configured == true) {
+        expect(text, contains('設定済みです。'));
+        expect(text, isNot(contains('未設定です。')));
+        expect(text, isNot(contains('登録の有無は取得できません')));
+      } else if (configured == false) {
+        expect(text, contains('未設定です。'));
+        expect(text, isNot(contains('設定済みです。')));
+        expect(text, isNot(contains('登録の有無は取得できません')));
+      } else {
+        expect(text, contains('登録の有無は取得できません'));
+        expect(text, isNot(contains('未設定です。')));
+        expect(text, isNot(contains('設定済みです。')));
+      }
+      expect(text, isNot(contains('この画面で第一パスワードの保存を確認しました')));
+    });
+  }
+
+  testWidgets('new explicit empty status supersedes older local save receipt', (tester) async {
+    final repository = FakeRepository();
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.events.close();
+    });
+    await tester.pumpWidget(MaterialApp(home: PanelSevenPage(repository: repository)));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byType(LoginMethodEnrollmentCard), 200);
+    final card = tester.widget<LoginMethodEnrollmentCard>(find.byType(LoginMethodEnrollmentCard));
+    card.onPrimaryPasswordSaved!(); await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('account-primary-password')), -200);
+    expect(find.textContaining('この画面で第一パスワードの保存を確認しました'), findsOneWidget);
+    repository.value = snapshot(primaryConfigured: false);
+    card.onChanged!(); await tester.pumpAndSettle();
+    expect(find.textContaining('未設定です。'), findsOneWidget);
+    expect(find.textContaining('この画面で第一パスワードの保存を確認しました'), findsNothing);
+    repository.value = snapshot();
+    card.onChanged!(); await tester.pumpAndSettle();
+    expect(find.textContaining('登録の有無は取得できません'), findsOneWidget);
+    expect(find.textContaining('この画面で第一パスワードの保存を確認しました'), findsNothing);
   });
 
 }

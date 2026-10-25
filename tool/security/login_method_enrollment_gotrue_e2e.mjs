@@ -8,6 +8,8 @@ import {promisify} from 'node:util';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 
 const run=promisify(execFile),root=process.cwd();
+const statusHook=process.env.SKO_PRIMARY_PASSWORD_STATUS_REVIEW;
+if(statusHook&&statusHook!=='contract-v1')throw Error('Unknown isolated password status hook');
 const parent=path.resolve(process.env.RUNNER_TEMP??'');
 if(process.env.CI!=='true'||!process.env.RUNNER_TEMP||parent==='/'||
  Object.keys(process.env).some(k=>/^SUPABASE_(ACCESS_TOKEN|DB_PASSWORD|URL|SERVICE_ROLE_KEY|SECRET_KEY|PROJECT_REF)$/.test(k)))
@@ -108,6 +110,8 @@ try {
   'secondary',(select jsonb_agg(to_jsonb(x) order by user_id) from private.fixture_secondary_password x),
   'google',(select jsonb_agg(to_jsonb(x) order by id) from auth.identities x where provider='google')) value`)).rows[0].value;
  const beforeHash=digest(await preserved());
+ const primaryStatus=statusHook ? await (await import('./primary_password_self_status_fixture.mjs'))
+  .preparePrimaryPasswordStatus(db,{request,json,claims,original,seed}) : null;
  phase='add-first-password-through-real-user-endpoint';
  const password=`Fixture-${randomBytes(24).toString('hex')}!A1`;
  await json(await request('/auth/v1/user',{method:'PUT',token:original.access_token,body:{password}}));
@@ -115,12 +119,14 @@ try {
  assert.equal(after.id,before.id);assert.ok(after.identities.some(x=>x.provider==='google'&&x.id===before.identities[0].id));
  assert.equal(digest(await preserved()),beforeHash);
  assert.deepEqual(await json(await roles(original.access_token)),beforeRoles);
+ await primaryStatus?.afterPassword();
  phase='actual-password-login-same-user';
  const signed=await json(await request('/auth/v1/token?grant_type=password',{body:{email,password}}));
  assert.equal(signed.user.id,seed.id);assert.notEqual(claims(signed.access_token).session_id,claims(original.access_token).session_id);
  assert.deepEqual(await json(await roles(signed.access_token)),beforeRoles);
  assert.equal((await readUser(original.access_token)).id,seed.id);
  assert.equal(digest(await preserved()),beforeHash);
+ await primaryStatus?.afterLogin(signed);
  phase='wrong-password-denied';
  const denied=await request('/auth/v1/token?grant_type=password',{body:{email,password:'incorrect-fixture-password'}});
  assert.equal(denied.status,400);assert.equal((await denied.json()).access_token,undefined);

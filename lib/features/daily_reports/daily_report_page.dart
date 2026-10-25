@@ -42,9 +42,17 @@ class DailyReportPage extends StatefulWidget {
     this.vehicleClockInId,
     this.groupClockInAnchorId,
     this.routeVisitContext,
+    this.restrictedReporterRegistration = false,
+    this.registrationActorId,
+    this.registrationCompanyId,
+    this.registrationWorkerId,
+    this.onRegistrationSaved,
     @visibleForTesting this.repositoryForTesting,
   });
 
+  final bool restrictedReporterRegistration;
+  final String? registrationActorId, registrationCompanyId, registrationWorkerId;
+  final VoidCallback? onRegistrationSaved;
   final RouteVisitReportContext? routeVisitContext;
   @visibleForTesting
   final DailyReportRepository? repositoryForTesting;
@@ -205,6 +213,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
       final groups = await repository.loadClockedInGroups(date);
       if (!mounted || generation != _loadGeneration) return;
 
+      if (widget.restrictedReporterRegistration && repository.currentActorId != widget.registrationActorId) {
+        throw const DailyReportActorChanged();
+      }
       DailyReportSiteGroup? selected;
       if (_siteId != null) {
         selected = groups
@@ -214,6 +225,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
         selected = groups
             .where((g) => g.routeAssignmentId == _routeAssignmentId)
             .firstOrNull;
+      }
+      if (widget.restrictedReporterRegistration && selected == null) {
+        throw StateError('退勤した現場の日報を確認できません。対象を再確認してください。');
       }
       selected ??= groups.firstOrNull;
 
@@ -302,6 +316,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
         vehicleClockInAnchorId: _currentVehicleAnchor,
         reportId: widget.initialReportId,
       );
+      if (widget.restrictedReporterRegistration &&
+          (repository.currentActorId != widget.registrationActorId ||
+           (existing != null && existing.companyId != widget.registrationCompanyId))) {
+        throw StateError('日報の本人・会社を確認できません。');
+      }
       if (widget.initialReportId != null && existing?.id != widget.initialReportId) {
         throw StateError('選んだ保存済み日報を確認できません。日報一覧を再読み込みしてください。');
       }
@@ -368,6 +387,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
       }
 
 
+      if (widget.restrictedReporterRegistration &&
+          (repository.currentActorId != widget.registrationActorId ||
+           !workers.any((worker) => worker.workerId == widget.registrationWorkerId &&
+             worker.sourceClockInId == widget.vehicleClockInId))) {
+        throw StateError('退勤した本人の勤務原本を確認できません。');
+      }
       final meterEnabled = await repository.vehicleMeterEnabledForAnchor(_currentVehicleAnchor,
       );
       if (meterEnabled) {
@@ -827,6 +852,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
       return null;
     }
 
+    if (widget.restrictedReporterRegistration &&
+        (repository.currentActorId != widget.registrationActorId ||
+         _siteId != widget.initialSiteId || _routeAssignmentId != widget.initialRouteAssignmentId ||
+         !_workers.any((worker) => worker.workerId == widget.registrationWorkerId &&
+           worker.sourceClockInId == widget.vehicleClockInId))) {
+      throw StateError('退勤した本人の勤務原本を確認できません。');
+    }
     _applyControllers();
 
     final missingOdometer = _workers.where(
@@ -871,6 +903,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       );
       await _loadSelectedSite();
       if (!mounted || _error != null || _report?.id != id) return null;
+      widget.onRegistrationSaved?.call();
       return id;
     } catch (error) {
       if (!mounted) return null;
@@ -940,6 +973,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         content: Text(SkoLanguageController.tr('報告者サインを保存しました'))),
       );
       await _loadSelectedSite();
+      widget.onRegistrationSaved?.call();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -1352,7 +1386,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     );
   }
 
-  static const _helpText = "報告者サインの後、責任者サインで日報を確定します。保存した日報は「保存済み一覧」から閲覧・印刷できます。\n\n日報を登録しても画面は閉じません。初回保存後、適用を確認できた会社手当を選び、再保存または報告者サインへ進みます。サイン前に変更内容を保存します。会社の登録内容が更新された場合は再読み込みしてください。正式な退勤日報の未署名下書きでは、会社共通の時間・日単位の項目を各メンバーの欄から選べます。月単位は退勤に出さず、個別給料設定で確認します。過去日付の入力でも候補は現在の登録名です。候補を開くだけでは登録しません。退勤では会社に登録された項目だけを選び、単価や新しい手当名を入力し直しません。選んだ名前は改行区切りで保存し、従来の保存済み入力も保持します。保存済みの名前を自動で置き換えません。署名済み日報は正規の編集承認なしに変更できません。選択は登録IDと版を付けて保存し、単価や数量をアプリで推測しません。給与への反映は正式な退勤日報の確定を起点に、対象月の未確定給与で確認します。途中の訪問日報は給与確定の代わりにはなりません。\n\n複数現場の請求は退勤時の正式日報のサインを根拠にします。途中の訪問日報だけでは確定しません。同じ日に同じ取引会社を複数現場で訪問しても1人工、異なる取引会社は会社ごとに1人工です。別の請求数量申請・承認は不要です。退勤署名・訪問先・登録単価を確認できない場合は請求額を未確定と表示します。\n\n給与や出勤表の人工は変更しません。請求書の承認印は別の確認操作です。";
+  static const _helpText = "退勤後は必須項目と報告者サインをサーバーへ保存するまで、日報登録を続けてください。現場責任者の記入・サインは後から取得できます。通信が失敗しても退勤し直さず、保存内容を保持して再確認します。報告者の登録後も、責任者サインと正規の給与反映が済むまで未完了です。\n\n報告者サインの後、責任者サインで日報を確定します。保存した日報は「保存済み一覧」から閲覧・印刷できます。\n\n日報を登録しても画面は閉じません。初回保存後、適用を確認できた会社手当を選び、再保存または報告者サインへ進みます。サイン前に変更内容を保存します。会社の登録内容が更新された場合は再読み込みしてください。正式な退勤日報の未署名下書きでは、会社共通の時間・日単位の項目を各メンバーの欄から選べます。月単位は退勤に出さず、個別給料設定で確認します。過去日付の入力でも候補は現在の登録名です。候補を開くだけでは登録しません。退勤では会社に登録された項目だけを選び、単価や新しい手当名を入力し直しません。選んだ名前は改行区切りで保存し、従来の保存済み入力も保持します。保存済みの名前を自動で置き換えません。署名済み日報は正規の編集承認なしに変更できません。選択は登録IDと版を付けて保存し、単価や数量をアプリで推測しません。給与への反映は正式な退勤日報の確定を起点に、対象月の未確定給与で確認します。途中の訪問日報は給与確定の代わりにはなりません。\n\n複数現場の請求は退勤時の正式日報のサインを根拠にします。途中の訪問日報だけでは確定しません。同じ日に同じ取引会社を複数現場で訪問しても1人工、異なる取引会社は会社ごとに1人工です。別の請求数量申請・承認は不要です。退勤署名・訪問先・登録単価を確認できない場合は請求額を未確定と表示します。\n\n給与や出勤表の人工は変更しません。請求書の承認印は別の確認操作です。";
 
   void _showHelp() => showDialog<void>(
     context: context,
@@ -1367,8 +1401,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
   @override
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
-    return Scaffold(
+    return PopScope(
+      canPop: !widget.restrictedReporterRegistration,
+      child: Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.restrictedReporterRegistration,
         title: Text(
           SkoLanguageController.tr('日報'),
           style: const TextStyle(fontWeight: FontWeight.w900),
@@ -1376,7 +1413,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         actions: [
           IconButton(onPressed: _saving ? null : _showHelp,
             icon: const Icon(Icons.help_outline), tooltip: SkoLanguageController.tr('ヘルプ')),
-          TextButton.icon(
+          if (!widget.restrictedReporterRegistration) TextButton.icon(
             key: const Key('daily-report-month-list'),
             label: Text(SkoLanguageController.tr('保存済み一覧')),
             onPressed: _saving ? null : () => Navigator.of(context).push(
@@ -1385,7 +1422,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
             ),
             icon: const Icon(Icons.list_alt_outlined),
           ),
-          const SkoNotificationBell(),
+          if (!widget.restrictedReporterRegistration) const SkoNotificationBell(),
         ],
       ),
       bottomNavigationBar: _notificationRetryReportId == null ? null : SafeArea(
@@ -1411,7 +1448,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             label: SkoLanguageController.tr('日付'),
                             value:
                                 '${_date.year}/${_two(_date.month)}/${_two(_date.day)}',
-                            onTap: _saving || _visitReport || widget.initialReportId != null ? null : _pickDate,
+                            onTap: _saving || widget.restrictedReporterRegistration || _visitReport || widget.initialReportId != null ? null : _pickDate,
                           ),
                           const SizedBox(height: 10),
                           DropdownButtonFormField<String>(
@@ -1440,7 +1477,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                   ),
                                 ),
                             ],
-                            onChanged: _saving || _visitReport || widget.initialReportId != null ? null : _selectSite,
+                            onChanged: _saving || widget.restrictedReporterRegistration || _visitReport || widget.initialReportId != null ? null : _selectSite,
                           ),
                           const SizedBox(height: 16),
                           _MemberSummary(workers: _workers),
@@ -1469,7 +1506,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           ),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: () => Navigator.of(context).push(
+                                onTap: widget.restrictedReporterRegistration ? null : () => Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (_) => DailyReportEvidencePage(
                                       date: _date,
@@ -1598,7 +1635,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           ),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: _saving ? null : _sign,
+                                onTap: _saving || widget.restrictedReporterRegistration ? null : _sign,
                               ),
                             ),
                           const SizedBox(height: 16),
@@ -1644,7 +1681,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                           const SizedBox(height: 10),
                           OutlinedButton.icon(
-                            onPressed: () => Navigator.of(context).push(
+                            onPressed: widget.restrictedReporterRegistration ? null : () => Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => DailyReportPrintPreviewPage(
                                   date: _date,
@@ -1662,7 +1699,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                         ],
                       ),
       ),
-    );
+    ));
   }
 
   static String _number(double value) {

@@ -1,0 +1,28 @@
+ // Disposable table + exact phase-A guard body only. The full phase-A installer
+ // has its own Native proof; this synthetic setup is not a hosted baseline.
+ await db.exec(`create table private.master_feature_settings(feature_key text primary key,enabled boolean);
+ alter table private.master_feature_settings enable row level security;
+ revoke all on private.master_feature_settings from public,anon,authenticated,service_role;
+ insert into private.master_feature_settings values('trade_document_reciprocal_seals',false);
+ create function private.require_trade_document_reciprocal_seals()
+ returns void language plpgsql security invoker set search_path='' as $guard$
+ declare enabled_value boolean;
+ begin
+ select enabled into enabled_value from private.master_feature_settings
+ where feature_key='trade_document_reciprocal_seals' for share;
+ if not found or enabled_value is not true then
+  raise exception using errcode='55000',message='trade reciprocal seals disabled';
+ end if;
+ end $guard$;
+ revoke all on function private.require_trade_document_reciprocal_seals() from public,anon,authenticated,service_role;`);
+ // Preserve the exact existing guard source whitespace; body hash is asserted by
+ // the install candidate rather than bypassed by the fixture.
+ const exactGuard="\ndeclare enabled_value boolean;\nbegin\n select enabled into enabled_value from private.master_feature_settings\n where feature_key='trade_document_reciprocal_seals' for share;\n if not found or enabled_value is not true then\n  raise exception using errcode='55000',message='trade reciprocal seals disabled';\n end if;\nend ";
+ await db.exec("create or replace function private.require_trade_document_reciprocal_seals() returns void language plpgsql security invoker set search_path='' as $guard$"+exactGuard+'$guard$;');
+ const metadataBefore=await q("select jsonb_agg(jsonb_build_object('signature',oid::regprocedure::text,'attributes',(to_jsonb(p)-'prosrc'-'proargdefaults')||jsonb_build_object('arguments',pg_get_function_arguments(p.oid))) order by oid::regprocedure::text) v from pg_proc p where oid in ('trade_document_consent_private.prepare_document(uuid,uuid,uuid,integer,jsonb,text,uuid,text,integer)'::regprocedure,'trade_document_consent_private.decide(uuid,integer,uuid,integer,text,text,text,boolean,uuid)'::regprocedure,'trade_document_consent_private.confirm_local_document(uuid,uuid,integer,jsonb,uuid,boolean,boolean)'::regprocedure,'trade_document_consent_private.confirm_monthly_review(uuid,uuid,integer,jsonb,uuid,boolean,boolean)'::regprocedure,'trade_document_confirmation_api_private.workspace(text,uuid,text)'::regprocedure,'trade_document_confirmation_api_private.confirm(jsonb,uuid,boolean,boolean)'::regprocedure)");
+ await db.exec(await fs.readFile('docs/candidates/trade_reciprocal_business_gate_20261024.sql.review-only','utf8'));
+ const metadataAfter=await q("select jsonb_agg(jsonb_build_object('signature',oid::regprocedure::text,'attributes',(to_jsonb(p)-'prosrc'-'proargdefaults')||jsonb_build_object('arguments',pg_get_function_arguments(p.oid))) order by oid::regprocedure::text) v from pg_proc p where oid in ('trade_document_consent_private.prepare_document(uuid,uuid,uuid,integer,jsonb,text,uuid,text,integer)'::regprocedure,'trade_document_consent_private.decide(uuid,integer,uuid,integer,text,text,text,boolean,uuid)'::regprocedure,'trade_document_consent_private.confirm_local_document(uuid,uuid,integer,jsonb,uuid,boolean,boolean)'::regprocedure,'trade_document_consent_private.confirm_monthly_review(uuid,uuid,integer,jsonb,uuid,boolean,boolean)'::regprocedure,'trade_document_confirmation_api_private.workspace(text,uuid,text)'::regprocedure,'trade_document_confirmation_api_private.confirm(jsonb,uuid,boolean,boolean)'::regprocedure)");
+ check(metadataAfter,metadataBefore);
+ // Owner fixture write only to exercise existing ON scenarios; no proof/toggle
+ // API is exposed or substituted. The suite finishes OFF.
+ await db.exec("update private.master_feature_settings set enabled=true where feature_key='trade_document_reciprocal_seals'");

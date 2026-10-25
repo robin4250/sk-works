@@ -8,10 +8,12 @@ class CompanyAllowanceLabel {
   const CompanyAllowanceLabel({required this.id, required this.name,
     required this.unit, required this.generation, this.origin = 'company_legacy',
     this.payrollType = 'all', this.section = 'earning', this.displayUnit = '',
-    this.legacySlot, this.registrationVersion});
+    this.legacySlot, this.registrationVersion, this.currentRateYen});
   final String? id;
   final String name, unit, origin, payrollType, section, displayUnit;
   final int? generation, legacySlot, registrationVersion;
+  /// Current privileged catalog read only; never a payroll snapshot amount.
+  final int? currentRateYen;
   bool get selectable => id != null && registrationVersion != null &&
       (origin != 'company_legacy' || generation != null);
 }
@@ -123,3 +125,4 @@ class SupabaseCompanyAllowanceLabelRepository implements CompanyAllowanceLabelSo
     return CompanyAllowanceLabelSnapshot.parse(raw, companyId);
   }
 }
+

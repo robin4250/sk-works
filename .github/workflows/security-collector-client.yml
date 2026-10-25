@@ -1,0 +1,31 @@
+name: Security collector client
+on:
+  pull_request:
+    paths:
+      - 'lib/features/security/security_collector_*.dart'
+      - 'lib/features/security/security_incident_page.dart'
+      - 'test/security_collector_*_test.dart'
+      - '.github/workflows/security-collector-client.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lib/features/security/security_collector_*.dart'
+      - 'lib/features/security/security_incident_page.dart'
+      - 'test/security_collector_*_test.dart'
+      - '.github/workflows/security-collector-client.yml'
+permissions:
+  contents: read
+jobs:
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/security/security_collector_repository.dart lib/features/security/security_collector_page.dart lib/features/security/security_incident_page.dart test/security_collector_repository_test.dart test/security_collector_page_test.dart
+      - run: flutter test test/security_collector_repository_test.dart test/security_collector_page_test.dart
