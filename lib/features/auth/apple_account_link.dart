@@ -218,36 +218,54 @@ class AppleAccountLink {
     _actor = initial.user.id;
     _revoked = false;
     _pending = true;
+    var browserStarted = false;
+    void checkPreparation() {
+      _checkActor(generation);
+      if (client.auth.currentSession?.accessToken != initial.accessToken) {
+        throw StateError('apple_link_session_changed');
+      }
+    }
     _subscription = changes.listen((state) {
+      if (generation != _generation) return;
+      // Inspect the event itself: currentSession alone misses an A→B→A burst.
+      // Before opening Apple, all preflight evidence belongs to one exact token.
+      // A same-account OAuth callback may replace that token after handoff.
       if (state.event == AuthChangeEvent.signedOut ||
-          client.auth.currentSession?.user.id != _actor) {
+          state.session?.user.id != _actor ||
+          client.auth.currentSession?.user.id != _actor ||
+          (!browserStarted && (state.session?.accessToken != initial.accessToken ||
+              client.auth.currentSession?.accessToken != initial.accessToken))) {
         _revoked = true;
       }
-    }, onError: (Object _) { _revoked = true; });
+    }, onError: (Object _) { if (generation == _generation) _revoked = true; });
     try {
+      checkPreparation();
       final user = await _verifiedUser(generation);
+      checkPreparation();
       if (!_has(user, 'google') || _has(user, 'apple')) {
         throw StateError('apple_link_existing_google_required');
       }
       // Check the AMR only after the exact access token was verified above.
-      if (!_recentOAuth(client.auth.currentSession!.accessToken)) {
+      if (!_recentOAuth(initial.accessToken)) {
         throw StateError('apple_link_recent_google_required');
       }
       _googleIdentityBefore = _googleIdentity(user);
       _membershipBefore = await _memberships(generation);
+      checkPreparation();
       if (!await providerEnabled()) throw StateError('apple_link_not_configured');
-      _checkActor(generation);
+      checkPreparation();
       // Obtain, then check the session before launching. The SDK may await PKCE
       // storage before reading its current JWT; a revoked operation never opens
       // a URL obtained for another account.
       final response = await client.auth.getLinkIdentityUrl(OAuthProvider.apple,
           redirectTo: redirect).timeout(const Duration(seconds: 15));
-      _checkActor(generation);
+      checkPreparation();
       final uri = Uri.parse(response.url);
       if (uri.scheme != 'https' || uri.host != 'appleid.apple.com' ||
           uri.userInfo.isNotEmpty || uri.port != 443) {
         throw StateError('apple_link_invalid_authorize_url');
       }
+      browserStarted = true;
       if (!await _launch(uri)) throw StateError('apple_link_launch_failed');
       _checkActor(generation);
     } catch (_) {
