@@ -67,7 +67,7 @@ class Fixture {
           case '/rest/v1/rpc/reauthentication_capabilities':
             body = {
               'protocol': 'sko-reauthentication-v1',
-              'secondary_password': false, 'master_feature': false,
+              'secondary_password': managementProof, 'master_feature': false,
               'master_security': false, 'attendance_management': managementProof,
               'secondary_password_change_supported': false,
               'secondary_password_recovery_supported': false,
