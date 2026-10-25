@@ -99,6 +99,9 @@ void main() {
       scrollable: find.descendant(of: find.byType(ListView).first,
         matching: find.byType(Scrollable)).first);
     await tester.ensureVisible(find.text('退勤を確定'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+    await tester.pumpAndSettle();
+    expect(find.text('退勤を確定').hitTestable(), findsOneWidget);
     await tester.tap(find.text('退勤を確定'));
     await tester.pumpAndSettle();
   }
@@ -198,6 +201,9 @@ void main() {
       scrollable: find.descendant(of: find.byType(ListView).first,
         matching: find.byType(Scrollable)).first);
     await tester.ensureVisible(find.text('退勤を確定'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+    await tester.pumpAndSettle();
+    expect(find.text('退勤を確定').hitTestable(), findsOneWidget);
     await tester.tap(find.text('退勤を確定'));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('group-checkout-dialog'), findsOneWidget);
