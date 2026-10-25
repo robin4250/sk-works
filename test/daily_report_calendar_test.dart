@@ -104,7 +104,7 @@ void main() {
     await tester.tap(find.text('現場A')); await tester.pumpAndSettle();
     final noPhotos=find.byKey(const ValueKey('daily-report-day-12-no-photos'));
     await tester.scrollUntilVisible(noPhotos,500); await tester.pumpAndSettle();
-    expect(find.descendant(of:noPhotos,matching:find.text('写真無し 1枚')),findsOneWidget);
+    expect(find.descendant(of:noPhotos,matching:find.text('写真無し 1件')),findsOneWidget);
     expect(find.byKey(const ValueKey('daily-report-day-12-photos')),findsOneWidget);
     await tester.tap(noPhotos); await tester.pumpAndSettle();
     expect(find.text('作業:old'),findsOneWidget);
@@ -146,7 +146,7 @@ void main() {
     await tester.pumpAndSettle(); await tester.tap(find.text('現場A')); await tester.pumpAndSettle();
     final button=find.byKey(const ValueKey('daily-report-day-12-no-photos'));
     await tester.scrollUntilVisible(button,400); await tester.pumpAndSettle();
-    expect(find.descendant(of:button,matching:find.text('写真無し 2枚')),findsOneWidget);
+    expect(find.descendant(of:button,matching:find.text('写真無し 2件')),findsOneWidget);
     expect(reports.classified.where((id)=>id=='old').length,1);
     await tester.tap(button); await tester.pumpAndSettle();
     final older=find.byKey(const ValueKey('daily-report-select-older'));

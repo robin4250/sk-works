@@ -16,9 +16,9 @@ User _user(String id, {String? phone = '+15550000001', String? email}) => User(
   email: email,
 );
 
-Map<String, dynamic> _session(User user) => {
+Map<String, dynamic> _session(User user, {String sessionId = 'global-session', int expiresAt = 4102444800}) => {
   'access_token':
-      '${base64Url.encode(utf8.encode('{}'))}.${base64Url.encode(utf8.encode(jsonEncode({'exp': 4102444800, 'sub': user.id})))}.test',
+      '${base64Url.encode(utf8.encode('{}'))}.${base64Url.encode(utf8.encode(jsonEncode({'exp': expiresAt, 'sub': user.id, 'session_id': sessionId, 'role': 'authenticated'})))}.test',
   'refresh_token': 'temporary-test-token',
   'token_type': 'bearer',
   'expires_in': 3600,
@@ -54,7 +54,7 @@ void main() {
                   as Map<String, dynamic>;
           received.complete();
           await release.future;
-          request.response.write(jsonEncode(_session(original)));
+          request.response.write(jsonEncode(_session(original, sessionId: 'temporary-session')));
         } else {
           request.response.write('{}');
         }
@@ -67,6 +67,8 @@ void main() {
       final temporary = _Client(url);
       final verifier = SecondaryPasswordPrimaryVerifier(
         currentUser: () => shared.currentUser,
+        currentSession: () => shared.currentSession,
+        authChanges: shared.onAuthStateChange,
         createClient: () => temporary,
       );
       final result = verifier.verify('synthetic-password');
@@ -104,7 +106,7 @@ void main() {
             jsonDecode(await utf8.decoder.bind(request).join())
                 as Map<String, dynamic>,
           );
-          request.response.write(jsonEncode(_session(actor)));
+          request.response.write(jsonEncode(_session(actor, sessionId: 'temporary-session')));
         } else {
           request.response.write('{}');
         }
@@ -119,6 +121,8 @@ void main() {
       expect(
         await SecondaryPasswordPrimaryVerifier(
           currentUser: () => shared.currentUser,
+        currentSession: () => shared.currentSession,
+        authChanges: shared.onAuthStateChange,
           createClient: () => temporary,
         ).verify('synthetic-password'),
         isTrue,
@@ -151,6 +155,8 @@ void main() {
       await expectLater(
         SecondaryPasswordPrimaryVerifier(
           currentUser: () => actor,
+          currentSession: () => Session.fromJson(_session(actor)),
+          authChanges: const Stream<AuthState>.empty(),
           createClient: () => temporary,
         ).verify('synthetic-password'),
         throwsA(isA<AuthException>()),
@@ -160,4 +166,77 @@ void main() {
       expect(actor.id, 'original');
     },
   );
+  for (final mode in ['A-B-A', 'A-new-session', 'same-session-refresh']) {
+    test('temporary password verification is bound to auth history: $mode', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final received = Completer<void>(), release = Completer<void>();
+      final requests = <Uri>[];
+      final actor = _user('original');
+      server.listen((request) async {
+        requests.add(request.uri);
+        if (request.uri.path.endsWith('/token')) {
+          await utf8.decoder.bind(request).join();
+          received.complete();
+          await release.future;
+          request.response.write(jsonEncode(_session(actor, sessionId: 'temporary-session')));
+        } else { request.response.write('{}'); }
+        await request.response.close();
+      });
+      final url = 'http://127.0.0.1:${server.port}/auth/v1';
+      final shared = _Client(url);
+      addTearDown(shared.dispose);
+      await shared.setInitialSession(jsonEncode(_session(actor)));
+      final originalToken = shared.currentSession!.accessToken;
+      final temporary = _Client(url);
+      final pending = SecondaryPasswordPrimaryVerifier(currentUser: () => shared.currentUser,
+        currentSession: () => shared.currentSession, authChanges: shared.onAuthStateChange,
+        createClient: () => temporary).verify('synthetic-password');
+      await received.future;
+      if (mode == 'A-B-A') {
+        await shared.setInitialSession(jsonEncode(_session(_user('other'))));
+        await shared.setInitialSession(jsonEncode(_session(actor)));
+        expect(shared.currentSession!.accessToken, originalToken);
+      } else if (mode == 'A-new-session') {
+        await shared.setInitialSession(jsonEncode(_session(actor, sessionId: 'new-session')));
+      } else {
+        await shared.setInitialSession(jsonEncode(_session(actor, expiresAt: 4102444700)));
+        expect(shared.currentSession!.accessToken, isNot(originalToken));
+      }
+      final current = shared.currentSession;
+      release.complete();
+      expect(await pending, mode == 'same-session-refresh');
+      expect(identical(shared.currentSession, current), isTrue);
+      expect(requests.last.path, '/auth/v1/logout');
+      expect(requests.last.queryParameters['scope'], 'local');
+      expect(temporary.currentSession, isNull);
+      expect(temporary.disposed, isTrue);
+    });
+  }
+
+  test('unexpected reuse of original session is refused without logout', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final actor = _user('original');
+    final requests = <Uri>[];
+    server.listen((request) async {
+      requests.add(request.uri);
+      await utf8.decoder.bind(request).join();
+      request.response.write(jsonEncode(_session(actor)));
+      await request.response.close();
+    });
+    final url = 'http://127.0.0.1:${server.port}/auth/v1';
+    final shared = _Client(url);addTearDown(shared.dispose);
+    await shared.setInitialSession(jsonEncode(_session(actor)));
+    final original = shared.currentSession;
+    final temporary = _Client(url);
+    expect(await SecondaryPasswordPrimaryVerifier(currentUser: () => shared.currentUser,
+      currentSession: () => shared.currentSession, authChanges: shared.onAuthStateChange,
+      createClient: () => temporary).verify('synthetic-password'), isFalse);
+    expect(requests.where((r) => r.path.endsWith('/logout')), isEmpty);
+    expect(identical(shared.currentSession, original), isTrue);
+    expect(temporary.disposed, isTrue);
+  });
+
 }
+

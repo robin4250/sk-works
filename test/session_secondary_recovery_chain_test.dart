@@ -113,7 +113,7 @@ void main() {
     expect(Supabase.instance.client.auth.currentSession!.accessToken, _tokenBeforeRestart);
   });
   tearDownAll(() async { await Supabase.instance.dispose(); });
-  testWidgets('SDK persisted restart then explicit logout and login reaches existing secondary Face reset only', (tester) async {
+  testWidgets('SDK persisted Google-compatible session and Face unlock remain usable while unsafe reset is preparing', (tester) async {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     const channel = MethodChannel('plugins.flutter.io/local_auth');
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
@@ -178,29 +178,21 @@ void main() {
     await tester.tap(find.text('第2パスワードを再設定')); await _settle(tester);
     expect(find.text('第2パスワードを再設定'), findsOneWidget);
     expect(find.byKey(const Key('reset-password')), findsNothing);
-    await tester.tap(find.text('本人確認する')); await _settle(tester);
-    expect(_nativeCalls.where((c) => c.method == 'authenticate').length, 1);
-    expect(find.byKey(const Key('reset-password')), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('reset-password')), _secondary);
-    await tester.enterText(find.byKey(const Key('reset-confirm')), _secondary);
-    await tester.runAsync(() async {
-      await tester.tap(find.text('再設定する'));
-      await _until(() => _calls.any((r) => r.url.path.endsWith('/set_secondary_password')));
-    });
-    await _settle(tester);
-    expect(find.text('第2パスワードを再設定しました。新しいパスワードで認証してください。'), findsOneWidget);
-    expect(_calls.where((r) => r.url.path.endsWith('/set_secondary_password')).length, 1);
+    expect(find.textContaining('第2パスワードの再設定は準備中'), findsOneWidget);
+    expect(find.text('本人確認する'), findsNothing);
+    expect(_nativeCalls.where((c) => c.method == 'authenticate'), isEmpty);
+    expect(_calls.where((r) => r.url.path.endsWith('/set_secondary_password')), isEmpty);
     expect(Supabase.instance.client.auth.currentUser!.id, _actor);
     expect(_prefs.getBool(_bioKey), true);
     expect(_prefs.getString(_storageKey), isNotNull);
+    await tester.pageBack();await _settle(tester);
+    await tester.tap(find.text('Face ID / Touch IDで開く'));await _settle(tester);
+    expect(_nativeCalls.where((c) => c.method == 'authenticate').length, 1);
+    expect(find.text('protected fixture'), findsOneWidget);
+    expect(_calls.where((r) => r.url.path.endsWith('/set_secondary_password')), isEmpty);
     expect(_calls.where((r) => r.url.path == '/auth/v1/token').length, 2);
     expect(_calls.where((r) => r.url.path == '/auth/v1/logout').length, 1);
     expect(_calls.where((r) => r.url.path == '/auth/v1/user' || r.url.path == '/auth/v1/otp' || r.url.path.contains('master_recovery')), isEmpty);
-    // Cancelled Face prompt cannot reveal replacement fields or write again.
-    _biometricResult = false;
-    await tester.tap(find.text('第2パスワードを再設定')); await _settle(tester);
-    await tester.tap(find.text('本人確認する')); await _settle(tester);
-    expect(find.byKey(const Key('reset-password')), findsNothing);
-    expect(_calls.where((r) => r.url.path.endsWith('/set_secondary_password')).length, 1);
   }, timeout: const Timeout(Duration(seconds: 60)));
 }
+

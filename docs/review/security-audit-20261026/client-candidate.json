@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "pull_request": "https://github.com/robin4250/sk-works/pull/1421",
+  "head": "61d1fed697dbc3c244c6a97e1b2eec29f598158a",
+  "base": "22ba6ec4349c66a14244fc76f0e823a0831ae142",
+  "focused_ci": "https://github.com/robin4250/sk-works/actions/runs/40231926458",
+  "analysis": "success",
+  "focused_tests_passed": 48,
+  "server_fixture_boundary": "success",
+  "existing_session_secondary_face_id_chain": "success",
+  "existing_google_isolated_login": "success",
+  "existing_email_login": "success",
+  "primary_recovery_without_sms": "success",
+  "ios_at_checkpoint": "queued",
+  "flutter_full_at_checkpoint": "in_progress",
+  "production_changed": false,
+  "merged": false,
+  "residual_server_legacy_setter": "open",
+  "server_secondary_step_up_receipt": "not_deployed"
+}

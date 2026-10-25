@@ -1,0 +1,186 @@
+{
+  "schema": 1,
+  "review_date_jst": "2026-10-26",
+  "repository": "robin4250/sk-works",
+  "main": "22ba6ec4349c66a14244fc76f0e823a0831ae142",
+  "git_files": [
+    {
+      "path": "lib/features/auth/apple_account_link.dart",
+      "blob_sha": "31ba2d819e49f6ab756c50acdbb02555fb0f8d49"
+    },
+    {
+      "path": "lib/features/auth/operation_reauthentication_repository.dart",
+      "blob_sha": "7617edc571c37dc93a8579c3b2a4a1fbb20a16af"
+    },
+    {
+      "path": "lib/features/auth/secondary_password_primary_verifier.dart",
+      "blob_sha": "e6c7fcabd5e1df55685b6ecb8145c9e20ed0fff4"
+    },
+    {
+      "path": "lib/features/auth/secondary_password_reset_page.dart",
+      "blob_sha": "fc31754162b561c5c98e746a080daa445f4fd85c"
+    },
+    {
+      "path": "lib/features/auth/secure_onboarding_repository.dart",
+      "blob_sha": "496ca4cc7208df1b88e9d585ab177ec5e6c237d9"
+    },
+    {
+      "path": "supabase/functions/reauthenticate-operation/handler.mjs",
+      "blob_sha": "61ba5442f997ff9c4b95c8495ea9787fbb77fbe4"
+    },
+    {
+      "path": "tool/staged/reauthentication_proofs.sql",
+      "blob_sha": "a380cb587ac65d3ebe1f66d9822d191bd86e8529"
+    }
+  ],
+  "live_functions": [
+    {
+      "signature": "attendance_admin_override_private.require_manager(uuid)",
+      "md5": "f128ff1fc6f8857e5ec09c6d59e96cdb",
+      "owner": "postgres",
+      "definer": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres}",
+      "anon_execute": false,
+      "authenticated_execute": false
+    },
+    {
+      "signature": "checkout_report_registration_private.current_actor()",
+      "md5": "9ca270fa06ff48883705cea5d18a8f2f",
+      "owner": "postgres",
+      "definer": false,
+      "config": [
+        "search_path=\"\""
+      ],
+      "acl": "{postgres=X/postgres}",
+      "anon_execute": false,
+      "authenticated_execute": false
+    },
+    {
+      "signature": "public.force_manage_attendance(text, jsonb)",
+      "md5": "0e5cee91af53cc09e212e620394785f6",
+      "owner": "postgres",
+      "definer": true,
+      "config": [
+        "search_path=public, private, pg_temp"
+      ],
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "anon_execute": false,
+      "authenticated_execute": true
+    },
+    {
+      "signature": "public.secondary_password_configured()",
+      "md5": "b92fe5933698bbff4ca214ac78c6d605",
+      "owner": "postgres",
+      "definer": true,
+      "config": [
+        "search_path=public, pg_temp"
+      ],
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "anon_execute": false,
+      "authenticated_execute": true
+    },
+    {
+      "signature": "public.set_secondary_password(text)",
+      "md5": "186836f47904e471514d8150e89951f0",
+      "owner": "postgres",
+      "definer": true,
+      "config": [
+        "search_path=public, extensions, pg_temp"
+      ],
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "anon_execute": false,
+      "authenticated_execute": true
+    },
+    {
+      "signature": "public.verify_secondary_password(text)",
+      "md5": "592b30d4832b747f6a7ef4bc424cb33a",
+      "owner": "postgres",
+      "definer": true,
+      "config": [
+        "search_path=public, extensions, pg_temp"
+      ],
+      "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+      "anon_execute": false,
+      "authenticated_execute": true
+    }
+  ],
+  "server_proof_installation": {
+    "rollout_table": false,
+    "proofs_table": false,
+    "capabilities_rpc": false,
+    "replace_with_proof_rpc": false,
+    "issue_proof_rpc": false
+  },
+  "sensitive_tables": [
+    {
+      "relation": "attendance_admin_override_private.cancellations",
+      "rls": true,
+      "acl": "{postgres=arwdDxtm/postgres}",
+      "anon_select": false,
+      "authenticated_select": false,
+      "authenticated_write": false
+    },
+    {
+      "relation": "attendance_admin_override_private.contexts",
+      "rls": true,
+      "acl": "{postgres=arwdDxtm/postgres}",
+      "anon_select": false,
+      "authenticated_select": false,
+      "authenticated_write": false
+    },
+    {
+      "relation": "attendance_admin_override_private.operations",
+      "rls": true,
+      "acl": "{postgres=arwdDxtm/postgres}",
+      "anon_select": false,
+      "authenticated_select": false,
+      "authenticated_write": false
+    },
+    {
+      "relation": "attendance_admin_override_private.rollout",
+      "rls": true,
+      "acl": "{postgres=arwdDxtm/postgres}",
+      "anon_select": false,
+      "authenticated_select": false,
+      "authenticated_write": false
+    },
+    {
+      "relation": "public.user_secondary_credentials",
+      "rls": true,
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+      "anon_select": false,
+      "authenticated_select": false,
+      "authenticated_write": false
+    },
+    {
+      "relation": "shared_daily_report_private.document_rollout",
+      "rls": true,
+      "acl": "{postgres=arwdDxtm/postgres}",
+      "anon_select": false,
+      "authenticated_select": false,
+      "authenticated_write": false
+    },
+    {
+      "relation": "shared_report_edit_private.document_edit_permits",
+      "rls": true,
+      "acl": "{postgres=arwdDxtm/postgres}",
+      "anon_select": false,
+      "authenticated_select": false,
+      "authenticated_write": false
+    },
+    {
+      "relation": "shared_report_edit_private.document_write_permits",
+      "rls": true,
+      "acl": "{postgres=arwdDxtm/postgres}",
+      "anon_select": false,
+      "authenticated_select": false,
+      "authenticated_write": false
+    }
+  ],
+  "edge_reauthentication_present": false,
+  "client_source_mutations": false,
+  "production_mutations": false
+}

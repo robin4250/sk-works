@@ -1,0 +1,50 @@
+name: Document financial readiness and explicit re-signing
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/review/document-finance-completion-candidate/**'
+      - '.github/workflows/document-finance-completion-native.yml'
+permissions:
+  contents: read
+jobs:
+  document-finance-native:
+    strategy:
+      fail-fast: false
+      matrix:
+        proof: [financial_readiness, financial_resigning]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_checkout_integration_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: python3 tool/prepare_checkout_paid_hours.py --output "$RUNNER_TEMP/paid-hours-v1-patches.sql"
+      - run: python3 tool/prepare_checkout_shared_hours_v2.py --output "$RUNNER_TEMP/shared-hours-v2-patches.sql"
+      - name: Validate loader and focused proof syntax
+        env:
+          SKO_FINANCE_READINESS_EMIT_ONLY: ${{ runner.temp }}/finance-focused.mjs
+          SKO_FINANCE_TRANSITION_EMIT_ONLY: ${{ runner.temp }}/finance-focused.mjs
+        run: |
+          node --check docs/review/document-finance-completion-candidate/verify_${{ matrix.proof }}.mjs
+          node docs/review/document-finance-completion-candidate/verify_${{ matrix.proof }}.mjs
+          node --check "$RUNNER_TEMP/finance-focused.mjs"
+      - name: Actual source guards, explicit holds, real revision and original financial writers
+        env:
+          SKO_CHECKOUT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_checkout_integration_fixture
+          SKO_PAID_HOURS_PATCHES: ${{ runner.temp }}/paid-hours-v1-patches.sql
+          SKO_SHARED_HOURS_V2_PATCHES: ${{ runner.temp }}/shared-hours-v2-patches.sql
+        run: node docs/review/document-finance-completion-candidate/verify_${{ matrix.proof }}.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+
