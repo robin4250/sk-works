@@ -1,0 +1,38 @@
+name: Checkout component entry integration
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/**'
+      - 'test/gps_work_schedule_selection_flow_test.dart'
+      - '.github/workflows/checkout-components-integration.yml'
+permissions:
+  contents: read
+jobs:
+  connected-gps-entry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
+      - name: Analyze actual connected selection entries and service
+        run: >-
+          flutter analyze
+          lib/features/attendance/attendance_selection_page.dart
+          lib/features/attendance/attendance_workplace_selection_page.dart
+          lib/features/attendance/work_destination_selection_page.dart
+          lib/features/attendance/gps_auto_attendance_service.dart
+          lib/features/attendance/gps_work_schedule_selection_flow.dart
+          test/gps_work_schedule_selection_flow_test.dart
+      - name: Verify server saved configuration and unchanged GPS contract
+        run: >-
+          timeout 540s flutter test --reporter expanded --timeout 60s
+          test/gps_work_schedule_selection_flow_test.dart
+          test/attendance_gps_auto_restore_contract_test.dart

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../operations/vehicle_route_repository.dart';
 import 'attendance_verification_repository.dart';
 import 'gps_auto_schedule_dialog.dart';
+import 'gps_work_schedule_selection_flow.dart';
 
 class AttendanceWorkplaceSelectionPage extends StatefulWidget {
   const AttendanceWorkplaceSelectionPage({super.key});
@@ -90,6 +91,7 @@ class _AttendanceWorkplaceSelectionPageState
         _kind = routeId?.isNotEmpty == true ? 'route' : 'site';
         _mode = selection['mode']?.toString() ??
             (schedule['enabled'] == true ? 'gps_auto' : 'manual');
+        if (_mode == 'location') { _mode='gps_auto'; }
         final rawDays = schedule['weekdays'];
         _gpsWeekdays = rawDays is List
             ? rawDays.whereType<num>().map((e) => e.toInt()).toList()
@@ -115,6 +117,19 @@ class _AttendanceWorkplaceSelectionPageState
     setState(() => _saving = true);
     try {
       _requireLoadedActor();
+      if (_mode == 'gps_auto') {
+        final siteId = _kind == 'site' ? _siteId : null;
+        final routeId = _kind == 'route' ? _routeId : null;
+        final seed = await GpsWorkScheduleSelection.load(siteId:siteId,routeId:routeId,
+          fallbackWeekdays:_gpsWeekdays,fallbackClockIn:_gpsTime);
+        if (!mounted) return;
+        final schedule = seed.expectedRevision > 0 ? seed : await seed.choose(context);
+        if (schedule == null || !mounted) { return; }
+        _requireLoadedActor();
+        if (!await schedule.save(context,siteId:siteId,routeId:routeId)) { return; }
+        _requireLoadedActor();
+        await routes.saveTodayRouteSelection(routeId);
+      } else {
       if (_kind == 'route') {
         _requireLoadedActor();
         await routes.saveTodayRouteSelection(_routeId);
@@ -137,6 +152,8 @@ class _AttendanceWorkplaceSelectionPageState
               ? '${_gpsTime.hour.toString().padLeft(2, '0')}:${_gpsTime.minute.toString().padLeft(2, '0')}:00'
               : null,
         );
+      }
+        await GpsWorkScheduleRuntime.instance.refresh();
       }
       if (!mounted) return;
       _requireLoadedActor();

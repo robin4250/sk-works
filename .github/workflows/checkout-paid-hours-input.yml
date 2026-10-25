@@ -1,0 +1,25 @@
+name: Checkout paid-work-hours input candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/paid_work_hours*'
+      - 'test/paid_work_hours*'
+      - '.github/workflows/checkout-paid-hours-input.yml'
+permissions:
+  contents: read
+jobs:
+  paid-work-hours-input:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/attendance/paid_work_hours_repository.dart lib/features/attendance/paid_work_hours_input_card.dart lib/features/attendance/paid_work_hours_report_section.dart lib/features/payroll/payroll_recorded_unit_evidence.dart test/paid_work_hours_repository_test.dart test/paid_work_hours_input_test.dart test/paid_work_hours_payroll_pdf_test.dart test/payroll_recorded_unit_evidence_test.dart
+      - run: flutter test test/paid_work_hours_repository_test.dart test/paid_work_hours_input_test.dart test/payroll_recorded_unit_evidence_test.dart

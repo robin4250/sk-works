@@ -3,8 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../daily_reports/daily_report_page.dart';
+import '../daily_reports/shared_daily_report_repository.dart';
+import '../../data/supabase_backend.dart';
+import 'attendance_management_page.dart';
+import 'attendance_verification_page.dart';
+import 'checkout_native_reminder_coordinator.dart';
 import 'checkout_report_gate_repository.dart';
 import 'group_checkout_dialog.dart';
+import 'scheduled_checkout_gate.dart';
+import 'scheduled_checkout_repository.dart';
 
 /// Activation means onboarding/authentication completed, never permission to
 /// bypass an outstanding server registration. Auth recovery stays outside it.
@@ -14,6 +21,7 @@ class CheckoutReportGateController extends ChangeNotifier {
   Future<void> Function()? reauthenticate;
   int revision = 0;
   Future<bool> Function()? handleSystemBack;
+  Future<bool> Function(String sourceClockInId)? handleSavedSource;
   int _activation = 0;
   int activate(String actor, Future<void> Function() recovery) {
     actorId = actor;
@@ -35,6 +43,12 @@ class CheckoutReportGateController extends ChangeNotifier {
     revision++;
     notifyListeners();
     return true;
+  }
+  Future<bool> handleSavedCheckout(String sourceClockInId) async {
+    if (actorId == null) return false;
+    final handler = handleSavedSource;
+    if (handler == null) throw StateError('日報の確認画面を準備できません。再読み込みしてください。');
+    return handler(sourceClockInId);
   }
 }
 
@@ -88,24 +102,38 @@ class _CheckoutReportGateActivationState extends State<CheckoutReportGateActivat
 /// The hidden Navigator is retained to preserve its state and unsaved drafts.
 class CheckoutReportGate extends StatefulWidget {
   const CheckoutReportGate({super.key, required this.child,
-    this.repository, this.controller, this.reportBuilder, this.beforeRegistration});
+    this.repository, this.controller, this.reportBuilder, this.beforeRegistration,
+    this.sharedReportRepository, this.scheduledFlowBuilder, this.managementBuilder});
   final Widget child;
   final CheckoutReportGateRepository? repository;
   final CheckoutReportGateController? controller;
   @visibleForTesting final Widget Function(PendingCheckoutRegistration, VoidCallback)? reportBuilder;
   @visibleForTesting final Future<void> Function(BuildContext, PendingCheckoutRegistration)? beforeRegistration;
+  @visibleForTesting final SharedDailyReportRepository? sharedReportRepository;
+  @visibleForTesting final Widget Function(String actorId, Widget child)? scheduledFlowBuilder;
+  @visibleForTesting final Widget Function(PendingCheckoutRegistration)? managementBuilder;
   @override State<CheckoutReportGate> createState() => _CheckoutReportGateState();
 }
 class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBindingObserver {
   late final _controller = widget.controller ?? CheckoutReportGateController.instance;
   late final _repository = widget.repository ?? CheckoutReportGateRepository.maybeCreate();
+  late final _sharedReports = widget.sharedReportRepository ??
+      (widget.repository == null ? SharedDailyReportRepository.maybeCreate() : null);
+  late final _scheduledRepository = SupabaseBackend.isInitialized
+      ? ScheduledCheckoutRepository(SupabaseBackend.client) : null;
   List<PendingCheckoutRegistration> _pending = const [];
+  List<PendingCheckoutRegistration> _registrations = const [];
   bool _checking = false;
   Object? _error;
   int _generation = 0;
   String? _actor;
   var _navigator = GlobalKey<NavigatorState>();
   String? _renderedIdentity;
+  bool _canManageCurrent = false;
+  bool _managementHold = false;
+  String? _managementHoldText;
+  CheckoutNativeReminderCoordinator? _nativeReminders;
+  int _nativeEpoch = 0;
 
   @override void initState() {
     super.initState();
@@ -114,12 +142,13 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
       _controller.deactivate(_controller.actorId!, _controller._activation);
     }
     _controller.handleSystemBack = _handleBack;
+    _controller.handleSavedSource = _handleSavedSource;
     _controller.addListener(_changed);
     if (_controller.actorId != null) { _changed(); }
   }
   Future<bool> _handleBack() async {
     final blocked = _actor != null && (_checking || _error != null || _pending.isNotEmpty);
-    if (!blocked) { return false; }
+    if (!blocked) { return ScheduledCheckoutGateController.instance.handleSystemBack(); }
     if (!_checking && _error == null && _pending.isNotEmpty) {
       await _navigator.currentState?.maybePop();
     }
@@ -130,9 +159,14 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
     final actor = _controller.actorId;
     if (actor != _actor) {
       _pending = const [];
+      _registrations = const [];
+      _canManageCurrent = false;
+      _managementHold = false;
+      _managementHoldText = null;
       _renderedIdentity = null;
       _navigator = GlobalKey<NavigatorState>();
       _actor = actor;
+      unawaited(_replaceNativeActor(actor));
     }
     if (actor == null) {
       _generation++;
@@ -143,20 +177,38 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
   }
   Future<void> _read(String actor) async {
     final generation = ++_generation;
-    setState(() { _checking = true; _error = null; });
+    setState(() { _checking = true; _error = null; _canManageCurrent = false; });
     try {
       final repository = _repository;
       if (repository == null || repository.actorId != actor) { throw StateError('ログイン状態を確認してください。'); }
       final rows = await repository.readPending();
       if (!mounted || generation != _generation || _controller.actorId != actor || repository.actorId != actor) { return; }
       final pending = rows.where((row) => row.blocking).toList();
-      final identity = pending.isEmpty ? null : pending.first.identity;
+      var canManage = false;
+      var managementHold = false;
+      String? managementHoldText;
+      if (pending.isNotEmpty && _sharedReports != null) {
+        final context = await _sharedReports.loadForSource(pending.first.sourceClockInId);
+        if (context.actorId != actor || context.companyId != pending.first.companyId ||
+            context.workerId != pending.first.workerId || context.workDate != pending.first.workDate) {
+          throw StateError('日報の勤務原本を確認できません。');
+        }
+        canManage = context.canManageAttendance;
+        managementHold = context.isManagementHold;
+        if (managementHold) { managementHoldText = context.managementHoldMessage; }
+      }
+      if (!mounted || generation != _generation || _controller.actorId != actor || repository.actorId != actor) { return; }
+      final identity = pending.isEmpty ? null : '${pending.first.identity}/hold:$managementHold';
       setState(() {
         if (identity != _renderedIdentity) {
           _navigator = GlobalKey<NavigatorState>();
           _renderedIdentity = identity;
         }
         _pending = pending;
+        _registrations = rows;
+        _canManageCurrent = canManage;
+        _managementHold = managementHold;
+        _managementHoldText = managementHoldText;
         _checking = false;
       });
     } catch (error) {
@@ -164,42 +216,157 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
       setState(() { _error = error; _checking = false; });
     }
   }
+  Future<bool> _handleSavedSource(String sourceClockInId) async {
+    final actor = _controller.actorId;
+    if (actor == null) return false;
+    await _read(actor);
+    if (!mounted || _controller.actorId != actor || _actor != actor || _checking || _error != null) return true;
+    final enabled = _repository?.enforcementEnabled;
+    if (enabled == false) return false;
+    if (enabled != true) {
+      setState(() => _error = StateError('日報登録の提供状態を確認できません。'));
+      return true;
+    }
+    return _pending.isNotEmpty ||
+        _registrations.any((row) => row.sourceClockInId == sourceClockInId);
+  }
+  Future<void> _replaceNativeActor(String? actor) async {
+    final epoch = ++_nativeEpoch;
+    final previous = _nativeReminders;
+    _nativeReminders = null;
+    await previous?.dispose();
+    final repository = _scheduledRepository;
+    if (!mounted || epoch != _nativeEpoch || actor == null || repository == null ||
+        _controller.actorId != actor || repository.actorId != actor || widget.repository != null) { return; }
+    final coordinator = CheckoutNativeReminderCoordinator(
+      currentActorId: () => repository.actorId,
+      currentSessionIdentity: () => repository.currentSessionIdentity,
+      sessionChanges: repository.client.auth.onAuthStateChange.map(
+        (event) => ScheduledCheckoutRepository.sessionIdentityOf(event.session)),
+      loadPlan: () async {
+        final identity = repository.currentSessionIdentity;
+        if (identity == null || repository.actorId != actor || _controller.actorId != actor) {
+          throw StateError('通知予定の本人を確認できません。');
+        }
+        final plan = await repository.loadNotificationPlan();
+        if (plan.actorId != actor || repository.actorId != actor ||
+            repository.currentSessionIdentity != identity || _controller.actorId != actor) {
+          throw StateError('通知予定のログイン状態が変わりました。');
+        }
+        return NativeCheckoutDevicePlan(actorId: actor, sessionIdentity: identity,
+          serverTime: plan.state.serverTime,
+          notifications: [for (final item in plan.plannedNotifications)
+            NativeCheckoutDeviceNotification(sourceId: item.sourceId, fireAt: item.fireAt)],
+          hasDueConfirmation: plan.state.due.isNotEmpty);
+      },
+      requestGateCheck: (_) async {
+        final identity = repository.currentSessionIdentity;
+        if (identity == null || repository.actorId != actor || _controller.actorId != actor) return false;
+        final fresh = await repository.read();
+        if (!mounted || fresh.actorId != actor || repository.actorId != actor ||
+            repository.currentSessionIdentity != identity || _controller.actorId != actor) { return false; }
+        // A native cue only requests authoritative reads. It is never a route
+        // target or a local completion flag; absent sources are stale cues.
+        _controller.requestCheck();
+        await ScheduledCheckoutGateController.instance.requestCheck();
+        return repository.actorId == actor && repository.currentSessionIdentity == identity;
+      });
+    _nativeReminders = coordinator;
+    await coordinator.init();
+  }
   @override void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _controller.actorId != null) { _changed(); }
+    if (state == AppLifecycleState.resumed && _controller.actorId != null) {
+      _changed();
+      unawaited(_nativeReminders?.refresh());
+    }
   }
   @override void dispose() {
     _generation++;
+    _nativeEpoch++;
+    unawaited(_nativeReminders?.dispose());
     WidgetsBinding.instance.removeObserver(this);
     _controller.removeListener(_changed);
     if (_controller.handleSystemBack == _handleBack) { _controller.handleSystemBack = null; }
+    if (_controller.handleSavedSource == _handleSavedSource) { _controller.handleSavedSource = null; }
     super.dispose();
+  }
+  Future<void> _openManagement() async {
+    if (!_canManageCurrent || _checking || _error != null || _pending.isEmpty) return;
+    final target = _pending.first;
+    final actor = _actor;
+    await _navigator.currentState?.push<void>(MaterialPageRoute(builder: (_) =>
+      widget.managementBuilder?.call(target) ?? AttendanceManagementPage(
+        initialWorkerId: target.workerId, initialDate: target.workDate,
+        restrictedRecovery: true)));
+    if (mounted && actor != null && _actor == actor && _controller.actorId == actor) {
+      _changed();
+      await ScheduledCheckoutGateController.instance.requestCheck();
+      unawaited(CheckoutNativeReminderCoordinator.refreshCurrent());
+    }
+  }
+  Widget _scheduledFlow(Widget child) {
+    final actor = _actor;
+    if (actor == null) return child;
+    if (widget.scheduledFlowBuilder != null) return widget.scheduledFlowBuilder!(actor, child);
+    // Legacy injected report-only fixtures do not stand in for a production
+    // schedule capability. Combined-flow tests inject the scheduled wrapper.
+    if (widget.repository != null) return child;
+    Future<ScheduledCheckoutState> load() async {
+      final repository = _scheduledRepository;
+      if (repository == null || repository.actorId != actor) {
+        throw StateError('退勤予定の本人を確認できません。');
+      }
+      return repository.read();
+    }
+    return ScheduledCheckoutGate(key: ValueKey('scheduled-checkout/$actor'),
+      actorId: actor, load: load,
+      postpone: (target) async {
+        final repository = _scheduledRepository;
+        if (repository == null || repository.actorId != actor) {
+          throw StateError('退勤予定の本人を確認できません。');
+        }
+        return repository.postpone(target);
+      },
+      checkoutBuilder: (_, target) => AttendanceVerificationPage(
+        initialEventType: 'clock_out', initialSourceClockInId: target.sourceId,
+        scheduledCheckoutTarget: target),
+      managementBuilder: (_, target) => AttendanceManagementPage(
+        initialWorkerId: target.workerId, initialDate: DateTime.parse(target.workDate),
+        restrictedRecovery: true),
+      onReauthenticate: _controller.reauthenticate,
+      onServerChanged: CheckoutNativeReminderCoordinator.refreshCurrent,
+      child: child);
   }
   Widget _status() => Scaffold(body: SafeArea(child: Center(child: Padding(
     padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
       if (_checking) const CircularProgressIndicator(),
       const SizedBox(height: 12),
-      Text(_error == null && _pending.isNotEmpty && _pending.first.state == 'source_conflict'
+      Text(_managementHold ? (_managementHoldText ?? '勤怠管理での確認が必要です。') :
+        _error == null && _pending.isNotEmpty && _pending.first.state == 'source_conflict'
           ? '勤務原本を確認できないため日報を登録できません。管理者へ確認してください。'
           : _error == null ? '日報の登録状況を確認しています' : '日報の登録状況を確認できません。保存内容は保持しています。'),
-      if (_error != null || (!_checking && _pending.isNotEmpty && _pending.first.state == 'source_conflict')) ...[
+      if (_managementHold || _error != null || (!_checking && _pending.isNotEmpty && _pending.first.state == 'source_conflict')) ...[
         const SizedBox(height: 12),
-        FilledButton(onPressed: _changed, child: const Text('再試行')),
+        if (!_managementHold) FilledButton(onPressed: _changed, child: const Text('再試行')),
         TextButton(onPressed: _controller.reauthenticate, child: const Text('ログインし直す')),
+        if (_canManageCurrent && _error == null)
+          OutlinedButton(onPressed: _openManagement, child: const Text('管理者の勤怠管理で確認')),
       ],
     ]),
   ))));
   @override Widget build(BuildContext context) {
     final blocked = _actor != null && (_checking || _error != null || _pending.isNotEmpty);
     return Stack(fit: StackFit.expand, children: [
-      Offstage(offstage: blocked, child: IgnorePointer(ignoring: blocked, child: widget.child)),
+      Offstage(offstage: blocked, child: IgnorePointer(ignoring: blocked, child: _scheduledFlow(widget.child))),
       if (blocked) Positioned.fill(child: PopScope(canPop: false, child: Stack(children: [
-        if (_pending.isNotEmpty && _pending.first.state != 'source_conflict') Positioned.fill(child: NavigatorPopHandler<Object?>(
+        if (_pending.isNotEmpty) Positioned.fill(child: NavigatorPopHandler<Object?>(
           onPopWithResult: (_) => _navigator.currentState?.maybePop(),
           // The ordinary Navigator remains mounted offstage. Its inherited
           // MaterialApp HeroController must not attach to this second Navigator.
           child: HeroControllerScope.none(child: Navigator(key: _navigator, onGenerateRoute: (_) {
             final target = _pending.first;
             return MaterialPageRoute<void>(settings: RouteSettings(name: target.identity), builder: (_) =>
+              target.state == 'source_conflict' || _managementHold ? _status() :
               _BeforeReportRegistration(
                 key: ValueKey('$_actor/${target.identity}/group'),
                 before: target.siteId != null && target.routeId == null &&
@@ -215,10 +382,11 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
                 vehicleClockInId: target.sourceClockInId, groupClockInAnchorId: target.sourceClockInId,
                 restrictedReporterRegistration: true, registrationActorId: _actor,
                 registrationCompanyId: target.companyId, registrationWorkerId: target.workerId,
+                onManageRegistration: _openManagement,
                 onRegistrationSaved: _changed)));
           })),
         )),
-        if (_pending.isEmpty || _checking || _error != null || _pending.first.state == 'source_conflict') Positioned.fill(child: _status()),
+        if (_pending.isEmpty || _checking || _error != null) Positioned.fill(child: _status()),
       ]))),
     ]);
   }

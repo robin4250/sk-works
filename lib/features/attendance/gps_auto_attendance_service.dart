@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 
 import 'attendance_verification_repository.dart';
+import 'scheduled_checkout_gate.dart';
+import 'checkout_native_reminder_coordinator.dart';
 
 class GpsAutoAttendanceService {
   GpsAutoAttendanceService._();
@@ -85,11 +87,15 @@ class GpsAutoAttendanceService {
     if (repository == null) return;
 
     try {
-      await repository.attemptGpsAutoAttendance(
+      final result = await repository.attemptGpsAutoAttendance(
         latitude: position.latitude,
         longitude: position.longitude,
         accuracyM: position.accuracy,
       );
+      if (result['status'] == 'clocked_in') {
+        await ScheduledCheckoutGateController.instance.requestCheck();
+        unawaited(CheckoutNativeReminderCoordinator.refreshCurrent());
+      }
     } catch (_) {
       // The next Core Location update retries. Server-side checks remain
       // idempotent for the scheduled day.

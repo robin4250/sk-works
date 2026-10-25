@@ -6,10 +6,14 @@ import 'attendance_checkout_minute_guard.dart';
 import '../../international/language_controller.dart';
 
 class AttendanceManagementPage extends StatefulWidget {
-  const AttendanceManagementPage({super.key, this.repository, this.initialWorkerId, this.initialDate});
+  const AttendanceManagementPage({super.key, this.repository, this.initialWorkerId,
+    this.initialDate, this.restrictedRecovery = false});
   final AttendanceManagementRepository? repository;
   final String? initialWorkerId;
   final DateTime? initialDate;
+  /// Recovery stays inside the gate's dedicated Navigator. Server permissions
+  /// are still checked by the existing management repository on every write.
+  final bool restrictedRecovery;
 
   @override
   State<AttendanceManagementPage> createState() => _AttendanceManagementPageState();
@@ -63,7 +67,7 @@ class _AttendanceManagementPageState extends State<AttendanceManagementPage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(SkoLanguageController.tr('勤怠管理'), style: const TextStyle(fontWeight: FontWeight.w900)),
-          actions: const [SkoNotificationBell()],
+          actions: [if (!widget.restrictedRecovery) const SkoNotificationBell()],
           bottom: TabBar(
             tabs: [
               Tab(

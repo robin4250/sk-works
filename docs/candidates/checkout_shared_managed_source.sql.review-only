@@ -1,0 +1,422 @@
+-- REVIEW ONLY. V2 manager-attested manual attendance adapter; v1 is untouched.
+-- Install after v2 core and before its public API. No rollout or data conversion.
+begin;
+do $$begin
+ if not exists(select 1 from pg_proc p join pg_roles o on o.oid=p.proowner
+  where p.oid=to_regprocedure('payroll_scope_private.lock_scopes(jsonb,boolean)')
+   and md5(p.prosrc)='1bce36e2e59eeb8e0144c5743b8ea800' and o.rolname='postgres'
+   and p.prosecdef and p.proconfig=array['search_path=""'])
+ or not exists(select 1 from pg_proc p join pg_roles o on o.oid=p.proowner
+  where p.oid=to_regprocedure('private.save_daily_report_signature(uuid,text,text,jsonb)')
+   and md5(p.prosrc)='40f29d53008e6bf5610ce25e5fa96ef3' and o.rolname='postgres'
+   and p.prosecdef and p.proconfig=array['search_path=""']) then
+  raise exception 'shared_managed_source_writer_prerequisite_changed';end if;
+end $$;
+create schema checkout_shared_managed_private;
+revoke all on schema checkout_shared_managed_private from public,anon,authenticated,service_role;
+create table checkout_shared_managed_private.manager_receipts(
+ confirmation_id bigint primary key,report_id uuid not null,worker_id uuid not null,company_id uuid not null,
+ confirmed_by uuid not null,source_fingerprint text not null,expected_facts_sha256 text not null,
+ management_reason text not null check(nullif(btrim(management_reason),'') is not null),
+ recorded_at timestamptz not null default clock_timestamp()
+);
+create table checkout_shared_managed_private.adoptions(
+ id bigint generated always as identity primary key,report_id uuid not null,worker_id uuid not null,
+ company_id uuid not null,work_date date not null,entry_id uuid not null,confirmation_id bigint not null,
+ transaction_id bigint not null,actor_id uuid not null,supervisor_context_id bigint not null,
+ source_fingerprint text not null,before_entry jsonb not null,before_source_scope jsonb not null,
+ expected_facts jsonb not null,before_payroll_vector jsonb not null,
+ created_at timestamptz not null default clock_timestamp(),
+ unique(report_id,worker_id,transaction_id,actor_id)
+);
+create table checkout_shared_managed_private.adoption_events(
+ id bigint generated always as identity primary key,adoption_id bigint not null references checkout_shared_managed_private.adoptions(id),
+ phase text not null check(phase in('bound','materialized','verified')),accepted_entry_sha256 text not null,
+ recorded_at timestamptz not null default clock_timestamp()
+);
+alter table checkout_shared_managed_private.manager_receipts enable row level security;
+alter table checkout_shared_managed_private.adoptions enable row level security;
+alter table checkout_shared_managed_private.adoption_events enable row level security;
+revoke all on all tables in schema checkout_shared_managed_private from public,anon,authenticated,service_role;
+revoke all on all sequences in schema checkout_shared_managed_private from public,anon,authenticated,service_role;
+
+create function checkout_shared_managed_private.immutable_audit()
+returns trigger language plpgsql volatile security invoker set search_path='' as $$begin
+ raise sqlstate '42501' using message='shared_managed_audit_is_immutable';end $$;
+create trigger immutable_manager_receipt before update or delete on checkout_shared_managed_private.manager_receipts
+ for each row execute function checkout_shared_managed_private.immutable_audit();
+create trigger immutable_adoption before update or delete on checkout_shared_managed_private.adoptions
+ for each row execute function checkout_shared_managed_private.immutable_audit();
+create trigger immutable_adoption_event before update or delete on checkout_shared_managed_private.adoption_events
+ for each row execute function checkout_shared_managed_private.immutable_audit();
+
+create function checkout_shared_managed_private.row_sha256(value jsonb)
+returns text language sql immutable security invoker set search_path='' as $$
+ select encode(sha256(convert_to(value::text,'UTF8')),'hex')
+$$;
+
+-- Currency component projection, not a row hash: timestamps, revisions and new
+-- consent evidence may change, but no saved currency, rate or amount may drift.
+create function checkout_shared_managed_private.payroll_vector(cid uuid,wid uuid,day_value date)
+returns jsonb language sql stable security invoker set search_path='' as $$
+ select coalesce(jsonb_agg(jsonb_build_object('id',p.id,'gross_pay',p.gross_pay,
+  'deductions',p.deductions,'net_pay',p.net_pay,
+  'detail_currency',(select coalesce(jsonb_object_agg(k,v),'{}'::jsonb) from jsonb_each(coalesce(p.detail,'{}')) x(k,v)
+    where (jsonb_typeof(v)='number' and k not in('出勤日数','休出日数','有給日数','残業時間','早出時間','夜間時間'))
+     or k in('custom_earnings','custom_deductions','社会保険','有給内訳額')),
+  'unit_items',(select coalesce(jsonb_agg(jsonb_build_object('id',i->'id','origin',i->'origin',
+    'name',i->'name','section',i->'section','unit',i->'unit','rate_yen',i->'rate_yen',
+    'quantity',i->'quantity','amount_yen',i->'amount_yen') order by i::text),'[]'::jsonb)
+    from jsonb_array_elements(coalesce(p.detail#>'{unit_resolution,items}','[]')) i)) order by p.id),'[]'::jsonb)
+ from public.payroll_statements p where p.company_id=cid and p.worker_id=wid
+  and p.period_start=date_trunc('month',day_value)::date
+$$;
+
+create function checkout_shared_managed_private.financial_scope_protected(cid uuid,wid uuid,day_value date)
+returns boolean language sql stable security invoker set search_path='' as $$
+ select exists(select 1 from public.payroll_statements p where p.company_id=cid and p.worker_id=wid
+  and p.period_start=date_trunc('month',day_value)::date and(
+   p.automatic_calculation is distinct from true or p.workflow_state::text is distinct from 'draft'
+   or jsonb_typeof(p.detail) is distinct from 'object'
+   or to_jsonb(p)->>'finalized_at' is not null or to_jsonb(p)->>'finalized_by' is not null
+   or to_jsonb(p)->>'retained_finalized_by' is not null
+   or case when jsonb_typeof(to_jsonb(p)->'approved_ids')='array'
+    then jsonb_array_length(to_jsonb(p)->'approved_ids')>0 else false end))
+$$;
+
+create function checkout_shared_managed_private.final_report_signed(rid uuid)
+returns boolean language sql stable security invoker set search_path='' as $$
+ select exists(select 1 from public.daily_reports r where r.id=rid and r.status='signed' and r.signed_at is not null
+  and checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json)
+  and checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json)
+  and r.signature_json=jsonb_build_object('version',3,'representative',r.representative_signature_json,
+   'supervisor',r.supervisor_signature_json))
+$$;
+
+-- Identity discovery for the first work-report roster, not adoption readiness.
+-- A positive partial day is still a known crew member. No salary/UID/RW field
+-- is needed to discover that fact; unsupported financial conversion holds later.
+create function checkout_shared_managed_private.eligible_managed_worker_ids(rid uuid)
+returns uuid[] language plpgsql stable security invoker set search_path='' as $$
+declare r public.daily_reports%rowtype;answer uuid[];
+begin
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null then raise sqlstate '42501' using message='managed_roster_report_unavailable';end if;
+ if exists(select 1 from public.attendance_entries a where a.company_id=r.company_id
+  and a.work_date=r.report_date and a.site_id is not distinct from r.site_id
+  and a.route_assignment_id is not distinct from r.route_assignment_id and a.base_man_days>0
+  and not exists(select 1 from public.workers w where w.id=a.worker_id and w.company_id=r.company_id)) then
+  raise sqlstate 'PT409' using message='managed_roster_manual_worker_scope_mismatch';end if;
+ if exists(select 1 from public.attendance_entries a where a.company_id=r.company_id
+  and a.work_date=r.report_date and a.site_id is not distinct from r.site_id
+  and a.route_assignment_id is not distinct from r.route_assignment_id and a.base_man_days>0
+  and a.source_report_id is not null) then
+  raise sqlstate 'PT409' using message='managed_roster_existing_projection_pending';end if;
+ if exists(select 1 from public.attendance_entries a where a.company_id=r.company_id
+  and a.work_date=r.report_date and a.site_id is not distinct from r.site_id
+  and a.route_assignment_id is not distinct from r.route_assignment_id
+  group by a.worker_id having count(*)<>1 and bool_or(a.base_man_days>0)) then
+  raise sqlstate 'PT409' using message='managed_roster_manual_source_ambiguous';end if;
+ select coalesce(array_agg(a.worker_id order by a.worker_id),'{}'::uuid[]) into answer
+ from public.attendance_entries a where a.company_id=r.company_id and a.work_date=r.report_date
+  and a.site_id is not distinct from r.site_id and a.route_assignment_id is not distinct from r.route_assignment_id
+  and a.base_man_days>0 and a.source_report_id is null;
+ return answer;
+end $$;
+
+-- No actor parameter or authorization impersonation. This owner-only source is
+-- evidence, not permission: public v2 confirmation separately requires manager.
+create function checkout_shared_managed_private.managed_source_scope(rid uuid,wid uuid)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare r public.daily_reports%rowtype;a public.attendance_entries%rowtype;matches integer;
+ before_image jsonb;av_set jsonb;ae_set jsonb;basis jsonb;reasons jsonb:='[]';
+ adopted checkout_shared_managed_private.adoptions%rowtype;accepted text;verified boolean:=false;
+begin
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null or not exists(select 1 from public.daily_report_workers where report_id=rid and worker_id=wid)
+  or not exists(select 1 from public.workers where id=wid and company_id=r.company_id) then
+  return jsonb_build_object('source_kind','managed_attendance','blocked',true,
+   'source_fingerprint',checkout_shared_managed_private.row_sha256(jsonb_build_array('missing',rid,wid)),
+   'reasons',jsonb_build_array('managed_attendance_target_missing'));end if;
+ select count(*) into matches from public.attendance_entries x where x.company_id=r.company_id and x.worker_id=wid
+  and x.work_date=r.report_date and x.site_id is not distinct from r.site_id
+  and x.route_assignment_id is not distinct from r.route_assignment_id;
+ if matches<>1 then reasons:=reasons||jsonb_build_array('managed_attendance_missing_or_ambiguous');
+ else
+  select * into a from public.attendance_entries x where x.company_id=r.company_id and x.worker_id=wid
+   and x.work_date=r.report_date and x.site_id is not distinct from r.site_id
+   and x.route_assignment_id is not distinct from r.route_assignment_id;
+  before_image:=to_jsonb(a);
+  if a.source_report_id is not null then
+   select d.* into adopted from checkout_shared_managed_private.adoptions d
+    where d.report_id=rid and d.worker_id=wid and d.entry_id=a.id order by d.id desc limit 1;
+   select e.accepted_entry_sha256,e.phase='verified' into accepted,verified
+    from checkout_shared_managed_private.adoption_events e where e.adoption_id=adopted.id order by e.id desc limit 1;
+   if a.source_report_id=rid and accepted=checkout_shared_managed_private.row_sha256(to_jsonb(a)) then
+    before_image:=adopted.before_entry;
+   else reasons:=reasons||jsonb_build_array('managed_attendance_already_bound_or_changed');end if;
+  end if;
+  if a.base_man_days is distinct from 1::numeric then
+   reasons:=reasons||jsonb_build_array('managed_attendance_fractional_or_nonpositive_day');end if;
+  if before_image->>'company_allowance_receipt_id' is not null then
+   reasons:=reasons||jsonb_build_array('managed_attendance_receipt_already_consumed');end if;
+ end if;
+ select coalesce(jsonb_agg(to_jsonb(x) order by x.id),'[]') into av_set
+  from public.attendance_verifications x where x.company_id=r.company_id and x.worker_id=wid and x.work_date=r.report_date;
+ select coalesce(jsonb_agg(case when x.id=a.id then before_image else to_jsonb(x) end order by x.id),'[]') into ae_set
+  from public.attendance_entries x where x.company_id=r.company_id and x.worker_id=wid and x.work_date=r.report_date;
+ basis:=jsonb_build_object('schema',1,'source_kind','managed_attendance','report_id',rid,'company_id',r.company_id,
+  'worker_id',wid,'work_date',r.report_date,'site_id',r.site_id,'route_assignment_id',r.route_assignment_id,
+  'manual_entry',before_image,'all_day_attendance',ae_set,'all_day_clock_evidence',av_set);
+ if not coalesce(verified,false) and checkout_shared_managed_private.financial_scope_protected(r.company_id,wid,r.report_date) then
+  reasons:=reasons||jsonb_build_array('managed_payroll_scope_protected');end if;
+ return jsonb_build_object('source_kind','managed_attendance','source_fingerprint',checkout_shared_managed_private.row_sha256(basis),
+  'blocked',jsonb_array_length(reasons)>0,'reasons',reasons,'manual_entry_id',a.id,
+  'manual_entry_hash',checkout_shared_managed_private.row_sha256(before_image),
+  'manual_entry_revision',before_image->>'updated_at','all_day_av_set_sha256',checkout_shared_managed_private.row_sha256(av_set),
+  'all_day_ae_set_sha256',checkout_shared_managed_private.row_sha256(ae_set));
+end $$;
+
+create function checkout_shared_managed_private.entry_matches_facts(entry jsonb,facts jsonb)
+returns boolean language sql immutable security invoker set search_path='' as $$
+ select coalesce(entry->'base_man_days'='1'::jsonb
+  and entry->'overtime_hours'=facts->'overtime_hours' and entry->'early_hours'=facts->'early_hours'
+  and entry->'night_hours'=facts->'night_hours' and entry->'work_category'=facts->'work_category'
+  and entry->'allowance_amount'=facts->'allowance_amount'
+  and entry->'notes' is not distinct from facts->'allowance_label'
+  and(select coalesce(jsonb_agg(v order by v),'[]') from(select distinct value v from jsonb_array_elements_text(coalesce(entry->'allowance_names','[]'))) x)
+   =(select coalesce(jsonb_agg(v order by v),'[]') from(select distinct btrim(value) v
+     from unnest(string_to_array(coalesce(facts->>'allowance_label',''),E'\n')) value where btrim(value)<>'') x),false)
+$$;
+
+create function checkout_shared_managed_private.validate_managed_facts(rid uuid,wid uuid,facts jsonb)
+returns void language plpgsql stable security invoker set search_path='' as $$
+declare source jsonb;entry jsonb;
+begin
+ source:=checkout_shared_managed_private.managed_source_scope(rid,wid);
+ if source->>'blocked' is distinct from 'false' then raise sqlstate 'PT409' using message='managed_attendance_source_pending';end if;
+ select to_jsonb(a) into entry from public.attendance_entries a where a.id=(source->>'manual_entry_id')::uuid;
+ if facts->'schema' is distinct from '1'::jsonb or not checkout_shared_managed_private.entry_matches_facts(entry,facts) then
+  raise sqlstate 'PT409' using message='managed_attendance_confirmed_facts_differ';end if;
+end $$;
+
+create function checkout_shared_managed_private.propose_worker_facts(rid uuid,wid uuid)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare source jsonb;a public.attendance_entries%rowtype;w public.daily_report_workers%rowtype;answer jsonb;
+begin
+ source:=checkout_shared_managed_private.managed_source_scope(rid,wid);
+ if source->>'blocked' is distinct from 'false' then return null;end if;
+ select * into a from public.attendance_entries where id=(source->>'manual_entry_id')::uuid;
+ select * into w from public.daily_report_workers where report_id=rid and worker_id=wid;
+ -- Actual manual hours/category/cash/labels, with existing server-normalized
+ -- choices and vehicle evidence. Missing or incompatible facts remain pending.
+ answer:=shared_worker_facts_private.normalize_worker_facts(rid,wid,jsonb_build_object(
+  'schema',1,'overtime_hours',a.overtime_hours,'early_hours',a.early_hours,'night_hours',a.night_hours,
+  'work_category',a.work_category,'allowance_amount',a.allowance_amount,'allowance_label',a.notes,
+  'company_allowance_selections',w.company_allowance_selections,'vehicle_id',w.vehicle_id,
+  'route_assignment_id',w.route_assignment_id,'odometer_km',w.odometer_km));
+ perform checkout_shared_managed_private.validate_managed_facts(rid,wid,answer);
+ return answer;
+exception when data_exception or serialization_failure or insufficient_privilege or object_not_in_prerequisite_state or sqlstate 'PT409' then
+ return null;
+end $$;
+
+create function checkout_shared_managed_private.record_manager_confirmation(rid uuid,wid uuid,confirmation bigint,source_fp text,facts jsonb)
+returns void language plpgsql volatile security invoker set search_path='' as $$
+declare actor uuid;r public.daily_reports%rowtype;source jsonb;c checkout_shared_hours_private.confirmations%rowtype;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ select * into r from public.daily_reports where id=rid;
+ if r.id is not null then
+  perform payroll_scope_private.lock_scopes(jsonb_build_array(jsonb_build_object('cid',r.company_id,'wid',wid,'day',r.report_date)));
+  perform 1 from public.daily_reports where id=rid for update;
+  perform 1 from public.attendance_entries where company_id=r.company_id and worker_id=wid and work_date=r.report_date order by id for share;
+ end if;
+ if r.id is null or not checkout_shared_hours_private.uses_contract(rid)
+  or not private.has_company_feature(r.company_id,'can_manage_attendance')
+  or not exists(select 1 from public.company_members where company_id=r.company_id and user_id=actor) then
+  raise sqlstate '42501' using message='managed_attendance_manager_receipt_required';end if;
+ perform checkout_shared_managed_private.validate_managed_facts(rid,wid,facts);
+ source:=checkout_shared_managed_private.managed_source_scope(rid,wid);
+ select * into c from checkout_shared_hours_private.confirmations where id=confirmation;
+ if source->>'source_fingerprint' is distinct from source_fp or c.report_id is distinct from rid
+  or c.worker_id is distinct from wid or c.company_id is distinct from r.company_id
+  or c.confirmed_by is distinct from actor or c.confirmation_kind is distinct from 'management'
+  or c.source_kind is distinct from 'managed_attendance' or c.worker_facts is distinct from facts
+  or c.source_fingerprint is distinct from source_fp or nullif(btrim(c.management_reason),'') is null then
+  raise sqlstate 'PT409' using message='managed_attendance_manager_receipt_changed';end if;
+ insert into checkout_shared_managed_private.manager_receipts(confirmation_id,report_id,worker_id,company_id,
+  confirmed_by,source_fingerprint,expected_facts_sha256,management_reason)
+ values(confirmation,rid,wid,r.company_id,actor,source_fp,checkout_shared_managed_private.row_sha256(facts),c.management_reason);
+end $$;
+
+create function checkout_shared_managed_private.prepare_managed_adoption(rid uuid,wid uuid,p_expected_source_fingerprint text,p_expected_facts jsonb)
+returns void language plpgsql volatile security invoker set search_path='' as $$
+declare actor uuid;r public.daily_reports%rowtype;a public.attendance_entries%rowtype;
+ source jsonb;permit checkout_shared_hours_private.materialization_permits%rowtype;
+ c checkout_shared_hours_private.confirmations%rowtype;audit_id bigint;baseline jsonb;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ select * into r from public.daily_reports where id=rid;
+ if r.id is null then raise sqlstate '42501' using message='managed_attendance_target_unavailable';end if;
+ -- Canonical scope is obtained before report, AE and statement row locks.
+ perform payroll_scope_private.lock_scopes(jsonb_build_array(jsonb_build_object('cid',r.company_id,'wid',wid,'day',r.report_date)));
+ perform 1 from public.daily_reports where id=rid for update;
+ perform 1 from public.payroll_statements where company_id=r.company_id and worker_id=wid
+  and period_start=date_trunc('month',r.report_date)::date order by id for update;
+ select p.* into permit from checkout_shared_hours_private.materialization_permits p
+  join checkout_shared_hours_private.supervisor_contexts s on s.id=p.supervisor_context_id
+  where p.report_id=rid and p.worker_id=wid and p.transaction_id=txid_current() and p.actor_id=actor
+   and s.report_id=rid and s.transaction_id=txid_current() and s.actor_id=actor
+   and p.expected_facts=p_expected_facts and p.expected_facts_sha256=checkout_shared_managed_private.row_sha256(p_expected_facts);
+ if permit.report_id is null or not checkout_shared_hours_private.uses_contract(rid) then
+  raise sqlstate '42501' using message='managed_attendance_materialization_permit_required';end if;
+ if exists(select 1 from public.attendance_entries x where x.source_report_id=rid
+  and not exists(select 1 from checkout_shared_managed_private.adoptions d where d.report_id=rid
+   and d.entry_id=x.id and d.transaction_id=txid_current() and d.actor_id=actor)) then
+  -- This new adapter is not authority to rewrite a previously projected report.
+  raise sqlstate 'PT409' using message='managed_attendance_report_already_projected_pending';end if;
+ select * into c from checkout_shared_hours_private.confirmations where report_id=rid and worker_id=wid order by revision desc limit 1;
+ if c.source_kind is distinct from 'managed_attendance' or c.worker_facts is distinct from p_expected_facts
+  or c.source_fingerprint is distinct from p_expected_source_fingerprint
+  or not exists(select 1 from checkout_shared_managed_private.manager_receipts m where m.confirmation_id=c.id
+   and m.report_id=rid and m.worker_id=wid and m.company_id=r.company_id
+   and m.confirmed_by=c.confirmed_by and m.source_fingerprint=c.source_fingerprint
+   and m.expected_facts_sha256=checkout_shared_managed_private.row_sha256(p_expected_facts)) then
+  raise sqlstate '42501' using message='managed_attendance_manager_receipt_required';end if;
+ source:=checkout_shared_managed_private.managed_source_scope(rid,wid);
+ if source->>'blocked' is distinct from 'false' or source->>'source_fingerprint' is distinct from p_expected_source_fingerprint
+  or checkout_shared_managed_private.financial_scope_protected(r.company_id,wid,r.report_date) then
+  raise sqlstate 'PT409' using message='managed_attendance_source_or_financial_scope_changed';end if;
+ select * into a from public.attendance_entries where id=(source->>'manual_entry_id')::uuid for update;
+ if a.source_report_id is not null or not checkout_shared_managed_private.entry_matches_facts(to_jsonb(a),p_expected_facts)
+  or checkout_shared_managed_private.managed_source_scope(rid,wid)->>'source_fingerprint' is distinct from p_expected_source_fingerprint then
+  raise sqlstate 'PT409' using message='managed_attendance_original_row_not_adoptable';end if;
+ baseline:=checkout_shared_managed_private.payroll_vector(r.company_id,wid,r.report_date);
+ if baseline='[]'::jsonb then raise sqlstate 'PT409' using message='managed_attendance_payroll_snapshot_missing';end if;
+ insert into checkout_shared_managed_private.adoptions(report_id,worker_id,company_id,work_date,entry_id,confirmation_id,
+  transaction_id,actor_id,supervisor_context_id,source_fingerprint,before_entry,before_source_scope,expected_facts,before_payroll_vector)
+ values(rid,wid,r.company_id,r.report_date,a.id,c.id,txid_current(),actor,permit.supervisor_context_id,
+  p_expected_source_fingerprint,to_jsonb(a),source,p_expected_facts,baseline) returning id into audit_id;
+ update public.attendance_entries set source_report_id=rid where id=a.id and source_report_id is null;
+ if not found then raise sqlstate 'PT409' using message='managed_attendance_source_binding_changed';end if;
+ if not exists(select 1 from checkout_shared_managed_private.adoption_events e
+  join public.attendance_entries x on x.id=a.id where e.adoption_id=audit_id and e.phase='bound'
+   and e.accepted_entry_sha256=checkout_shared_managed_private.row_sha256(to_jsonb(x))) then
+  raise sqlstate 'PT409' using message='managed_attendance_bound_row_receipt_missing';end if;
+ if checkout_shared_managed_private.managed_source_scope(rid,wid)->>'source_fingerprint' is distinct from p_expected_source_fingerprint then
+  raise sqlstate 'PT409' using message='managed_attendance_binding_changed_source_basis';end if;
+end $$;
+
+-- A normal original-sign UPDATE changes server stamps/receipt before its AFTER
+-- payroll refresh runs. Record its exact NEW hash while a private, audited
+-- adoption transaction is active. This is never a broad field-ignore alias.
+create function checkout_shared_managed_private.record_adoption_ae_stamp()
+returns trigger language plpgsql volatile security definer set search_path='' as $$
+declare actor uuid:=auth.uid();d checkout_shared_managed_private.adoptions%rowtype;phase_name text;
+begin
+ select * into d from checkout_shared_managed_private.adoptions where entry_id=new.id
+  and transaction_id=txid_current() and actor_id=actor order by id desc limit 1;
+ if d.id is null then return new;end if;
+ if new.source_report_id is distinct from d.report_id
+  or(old.source_report_id is not null and old.source_report_id is distinct from d.report_id)
+  or not exists(select 1 from checkout_shared_hours_private.supervisor_contexts s where s.id=d.supervisor_context_id
+   and s.report_id=d.report_id and s.transaction_id=txid_current() and s.actor_id=actor)
+  or not checkout_shared_managed_private.entry_matches_facts(to_jsonb(new),d.expected_facts)
+  or(to_jsonb(new)-array['source_report_id','company_allowance_receipt_id','updated_by','updated_at','notes','allowance_names'])
+   is distinct from(d.before_entry-array['source_report_id','company_allowance_receipt_id','updated_by','updated_at','notes','allowance_names']) then
+  raise sqlstate 'PT409' using message='managed_attendance_inflight_row_changed';end if;
+ if new.company_allowance_receipt_id is not null and not exists(select 1 from company_checkout_allowance_private.receipts c
+  where c.id=new.company_allowance_receipt_id and c.company_id=d.company_id and c.worker_id=d.worker_id
+   and c.work_date=d.work_date and c.report_id=d.report_id) then
+  raise sqlstate 'PT409' using message='managed_attendance_receipt_scope_changed';end if;
+ phase_name:=case when old.source_report_id is null then 'bound' else 'materialized' end;
+ insert into checkout_shared_managed_private.adoption_events(adoption_id,phase,accepted_entry_sha256)
+ values(d.id,phase_name,checkout_shared_managed_private.row_sha256(to_jsonb(new)));
+ return new;
+end $$;
+
+-- Call immediately AFTER the original sign writer and BEFORE v2 capture or
+-- commit. Any drift aborts the whole transaction; no repair/substitution occurs.
+create function checkout_shared_managed_private.assert_managed_adoption_unchanged(rid uuid)
+returns void language plpgsql volatile security invoker set search_path='' as $$
+declare actor uuid;d checkout_shared_managed_private.adoptions%rowtype;a public.attendance_entries%rowtype;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ for d in select * from checkout_shared_managed_private.adoptions where report_id=rid
+  and transaction_id=txid_current() and actor_id=actor order by worker_id loop
+  if not checkout_shared_managed_private.final_report_signed(rid)
+   or not exists(select 1 from checkout_shared_hours_private.supervisor_contexts s where s.id=d.supervisor_context_id
+   and s.report_id=rid and s.transaction_id=txid_current() and s.actor_id=actor) then
+   raise sqlstate '42501' using message='managed_attendance_supervisor_context_missing';end if;
+  select * into a from public.attendance_entries where id=d.entry_id for update;
+  if a.id is null or a.source_report_id is distinct from rid
+   or not checkout_shared_managed_private.entry_matches_facts(to_jsonb(a),d.expected_facts)
+   or (to_jsonb(a)-array['source_report_id','company_allowance_receipt_id','updated_by','updated_at','notes','allowance_names'])
+      is distinct from(d.before_entry-array['source_report_id','company_allowance_receipt_id','updated_by','updated_at','notes','allowance_names'])
+   or checkout_shared_managed_private.payroll_vector(d.company_id,d.worker_id,d.work_date) is distinct from d.before_payroll_vector then
+   raise sqlstate 'PT409' using message='managed_attendance_financial_vector_changed_pending';end if;
+  insert into checkout_shared_managed_private.adoption_events(adoption_id,phase,accepted_entry_sha256)
+  values(d.id,'verified',checkout_shared_managed_private.row_sha256(to_jsonb(a)));
+ end loop;
+end $$;
+
+-- A forgotten post-sign hook or a later recalculator in the same transaction
+-- cannot commit an unproved pointer change. This is not an automatic verifier:
+-- it requires the explicit successful verified event and rechecks final state.
+create function checkout_shared_managed_private.require_verified_commit()
+returns trigger language plpgsql volatile security definer set search_path='' as $$
+declare accepted text;entry jsonb;
+begin
+ select e.accepted_entry_sha256 into accepted from checkout_shared_managed_private.adoption_events e
+  where e.adoption_id=new.id and e.phase='verified' order by e.id desc limit 1;
+ select to_jsonb(a) into entry from public.attendance_entries a where a.id=new.entry_id;
+ if accepted is null or new.transaction_id<>txid_current() or new.actor_id is distinct from auth.uid()
+  or not checkout_shared_managed_private.final_report_signed(new.report_id)
+  or accepted is distinct from checkout_shared_managed_private.row_sha256(entry) then
+  raise sqlstate 'PT409' using message='managed_attendance_unverified_commit_forbidden';end if;
+ if checkout_shared_managed_private.payroll_vector(new.company_id,new.worker_id,new.work_date)
+  is distinct from new.before_payroll_vector then
+  raise sqlstate 'PT409' using message='managed_attendance_financial_vector_changed_pending';end if;
+ return null;
+end $$;
+create constraint trigger shared_managed_adoption_commit_guard after insert on checkout_shared_managed_private.adoptions
+ deferrable initially deferred for each row execute function checkout_shared_managed_private.require_verified_commit();
+
+create function checkout_shared_managed_private.lock_attendance_scopes()
+returns trigger language plpgsql volatile security definer set search_path='' as $$
+declare scopes jsonb:='[]';affected boolean;
+begin
+ if tg_op<>'INSERT' then scopes:=scopes||jsonb_build_array(jsonb_build_object('cid',old.company_id,'wid',old.worker_id,'day',old.work_date));end if;
+ if tg_op<>'DELETE' then scopes:=scopes||jsonb_build_array(jsonb_build_object('cid',new.company_id,'wid',new.worker_id,'day',new.work_date));end if;
+ select exists(select 1 from jsonb_to_recordset(scopes) x(cid uuid,wid uuid,day date)
+  join checkout_shared_hours_private.confirmations c on c.company_id=x.cid and c.worker_id=x.wid and c.work_date=x.day
+  where c.source_kind='managed_attendance') into affected;
+ -- No new lock or refresh is introduced to an untouched v1/manual scope.
+ if affected then perform payroll_scope_private.lock_scopes(scopes,tg_op='DELETE');end if;
+ if tg_op='DELETE' then return old;else return new;end if;
+end $$;
+create function checkout_shared_managed_private.invalidate_attendance_scopes()
+returns trigger language plpgsql volatile security definer set search_path='' as $$
+declare scope record;scopes jsonb:='[]';affected boolean;
+begin
+ if tg_op<>'INSERT' then scopes:=scopes||jsonb_build_array(jsonb_build_object('cid',old.company_id,'wid',old.worker_id,'day',old.work_date));end if;
+ if tg_op<>'DELETE' then scopes:=scopes||jsonb_build_array(jsonb_build_object('cid',new.company_id,'wid',new.worker_id,'day',new.work_date));end if;
+ select exists(select 1 from jsonb_to_recordset(scopes) x(cid uuid,wid uuid,day date)
+  join checkout_shared_hours_private.confirmations c on c.company_id=x.cid and c.worker_id=x.wid and c.work_date=x.day
+  where c.source_kind='managed_attendance') into affected;
+ if affected then
+  for scope in select distinct x.cid,x.wid,x.day from jsonb_to_recordset(scopes) x(cid uuid,wid uuid,day date) order by x.cid,x.wid,x.day loop
+   perform checkout_shared_hours_private.invalidate_worker_day(scope.cid,scope.wid,scope.day);
+  end loop;
+ end if;
+ return null;
+end $$;
+create trigger aa_shared_managed_attendance_scope before insert or update or delete on public.attendance_entries
+ for each row execute function checkout_shared_managed_private.lock_attendance_scopes();
+create trigger ab_shared_managed_adoption_stamp before update on public.attendance_entries
+ for each row execute function checkout_shared_managed_private.record_adoption_ae_stamp();
+create trigger zz_shared_managed_attendance_refresh after insert or update or delete on public.attendance_entries
+ for each row execute function checkout_shared_managed_private.invalidate_attendance_scopes();
+revoke all on all functions in schema checkout_shared_managed_private from public,anon,authenticated,service_role;
+commit;

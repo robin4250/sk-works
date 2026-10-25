@@ -1,0 +1,35 @@
+name: Closed day paid hours server scope candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/closed_day_paid_hours_scope.sql.review-only'
+      - 'tool/fixtures/closed_day_actual_clock_sources.json'
+      - 'tool/verify_closed_day_paid_hours_scope.mjs'
+      - '.github/workflows/closed-day-paid-hours-scope.yml'
+permissions:
+  contents: read
+jobs:
+  native-closed-day-paid-hours-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_paid_hours_scope_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/verify_closed_day_paid_hours_scope.mjs
+      - name: Source-bound shift and final route guards with closed day scope
+        env:
+          SKO_PAID_HOURS_SCOPE_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_paid_hours_scope_fixture
+        run: node tool/verify_closed_day_paid_hours_scope.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

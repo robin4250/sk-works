@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../daily_reports/daily_report_page.dart';
+import '../../data/supabase_backend.dart';
 import '../route_billing/route_customer_day_quantity_page.dart';
 import '../../international/language_controller.dart';
 import '../notifications/notification_bell.dart';
@@ -23,6 +25,10 @@ import 'group_checkout_dialog.dart';
 import 'bulk_attendance_page.dart';
 import 'gps_auto_attendance_service.dart';
 import 'gps_auto_schedule_dialog.dart';
+import 'gps_work_schedule_selection_flow.dart';
+import 'scheduled_checkout_repository.dart';
+import 'scheduled_checkout_gate.dart';
+import 'checkout_native_reminder_coordinator.dart';
 import 'checkout_report_resume_repository.dart';
 import 'checkout_report_gate.dart';
 import 'checkout_report_resume_action.dart';
@@ -75,15 +81,27 @@ class AttendanceVerificationPage extends StatefulWidget {
   const AttendanceVerificationPage({
     super.key,
     this.initialEventType,
+    this.initialSourceClockInId,
+    this.scheduledCheckoutTarget,
     @visibleForTesting this.repository,
     @visibleForTesting this.openSavedReport,
     @visibleForTesting this.reportResumeRepository,
+    @visibleForTesting this.scheduledCheckoutRepositoryForTesting,
+    @visibleForTesting this.groupCheckoutForTesting,
   });
 
   final String? initialEventType;
+  /// Scheduled confirmation is bound to one saved clock-in, never the first
+  /// open shift returned by the workspace.
+  final String? initialSourceClockInId;
+  final ScheduledCheckoutTarget? scheduledCheckoutTarget;
   final AttendanceVerificationRepository? repository;
   final Future<void> Function(BuildContext, Map<String, dynamic>)? openSavedReport;
   final CheckoutReportResumeRepository? reportResumeRepository;
+  @visibleForTesting
+  final ScheduledCheckoutRepository? scheduledCheckoutRepositoryForTesting;
+  @visibleForTesting
+  final Future<void> Function(BuildContext, String sourceId, DateTime workDate)? groupCheckoutForTesting;
 
   @override
   State<AttendanceVerificationPage> createState() =>
@@ -93,6 +111,9 @@ class AttendanceVerificationPage extends StatefulWidget {
 class _AttendanceVerificationPageState
     extends State<AttendanceVerificationPage> {
   late final _repository = widget.repository ?? AttendanceVerificationRepository.maybeCreate();
+  late final _scheduledSettings = widget.scheduledCheckoutRepositoryForTesting ??
+      (widget.repository == null && SupabaseBackend.isInitialized
+          ? ScheduledCheckoutRepository(SupabaseBackend.client) : null);
   final _bulkAttendanceRepository = AttendanceCloudRepository.maybeCreate();
   final _picker = ImagePicker();
   final _journeyRepository = RouteJourneyCaptureRepository.maybeCreate();
@@ -106,6 +127,7 @@ class _AttendanceVerificationPageState
   List<Map<String, dynamic>> _recent = const [];
   List<AttendanceShiftContext> _openShifts = const [];
   AttendanceShiftContext? _shift;
+  String? _pinnedCheckoutActor;
 
   String _mode = 'none';
   String? _workerId;
@@ -113,6 +135,9 @@ class _AttendanceVerificationPageState
   late String _eventType;
   List<int> _gpsWeekdays = const [1, 2, 3, 4, 5];
   TimeOfDay _gpsTime = const TimeOfDay(hour: 8, minute: 0);
+  TimeOfDay _gpsCheckoutTime = const TimeOfDay(hour: 17, minute: 0);
+  GpsWorkScheduleSelection? _gpsSelection;
+  bool _gpsTwoTimesConfirmed = false;
 
   String? _vehicleName;
   String? _vehicleId;
@@ -154,6 +179,12 @@ class _AttendanceVerificationPageState
     }
 
     try {
+      if (widget.initialSourceClockInId != null) {
+        _pinnedCheckoutActor ??= repository.userId;
+        if (_pinnedCheckoutActor == null || repository.userId != _pinnedCheckoutActor) {
+          throw StateError('通知のログイン状態が変わりました。退勤確認を開き直してください。');
+        }
+      }
       final values = await Future.wait([
         repository.loadWorkers(),
         repository.loadSites(),
@@ -190,6 +221,33 @@ class _AttendanceVerificationPageState
       );
 
       final pendingCapture = await repository.loadPendingCaptureDraft();
+      final gpsSelection = _eventType == 'clock_in' && selectedMode == 'gps_auto' &&
+          pendingCapture == null && _scheduledSettings != null
+          ? await GpsWorkScheduleSelection.load(repository: _scheduledSettings,
+              siteId: destination.siteId, routeId: destination.routeId,
+              fallbackWeekdays: scheduleDays,
+              fallbackClockIn: gpsTimeFromDatabase(schedule['local_time']))
+          : null;
+      final requestedSource = widget.initialSourceClockInId;
+      if (requestedSource != null &&
+          (widget.initialEventType != 'clock_out' ||
+           status.openShifts.where((shift) => shift.id == requestedSource).length != 1 ||
+           (pendingCapture != null &&
+            (pendingCapture.payload['event_type'] != 'clock_out' ||
+             pendingCapture.payload['source_clock_in_id'] != requestedSource)))) {
+        throw StateError('通知の勤務原本を確認できません。退勤確認へ戻って再読み込みしてください。');
+      }
+      final scheduledTarget = widget.scheduledCheckoutTarget;
+      if (scheduledTarget != null) {
+        final selected = status.openShifts.where((shift) => shift.id == scheduledTarget.sourceId).toList();
+        if (requestedSource != scheduledTarget.sourceId || selected.length != 1 ||
+            selected.single.workerId != scheduledTarget.workerId ||
+            selected.single.workDate != DateTime.parse(scheduledTarget.workDate) ||
+            selected.single.siteId != scheduledTarget.siteId || selected.single.routeId != scheduledTarget.routeId ||
+            await repository.captureCompanyId() != scheduledTarget.companyId) {
+          throw StateError('通知の本人・会社・勤務日・現場が一致しません。退勤確認へ戻ってください。');
+        }
+      }
       final journeyShifts = <AttendanceShiftContext>[];
       List<String> pendingJourneySourceIds = const [];
       final journeys = _journeyRepository;
@@ -201,6 +259,9 @@ class _AttendanceVerificationPageState
         }
       }
       if (!mounted) return;
+      if (widget.initialSourceClockInId != null && repository.userId != _pinnedCheckoutActor) {
+        throw StateError('通知のログイン状態が変わりました。退勤確認を開き直してください。');
+      }
       setState(() {
         _workers = values[0] as List<Map<String, dynamic>>;
         _sites = sites
@@ -214,6 +275,13 @@ class _AttendanceVerificationPageState
         _gpsWeekdays =
             scheduleDays.isEmpty ? const [1, 2, 3, 4, 5] : scheduleDays;
         _gpsTime = gpsTimeFromDatabase(schedule['local_time']);
+        _gpsSelection = gpsSelection;
+        _gpsTwoTimesConfirmed = gpsSelection != null && gpsSelection.expectedRevision > 0;
+        if (gpsSelection != null) {
+          _gpsWeekdays = gpsSelection.draft.weekdays;
+          _gpsTime = gpsSelection.draft.clockIn;
+          _gpsCheckoutTime = gpsSelection.draft.checkoutReminder;
+        }
         _vehicleName = status.selectedVehicleName;
         _vehicleId = status.selectedVehicleId;
         _routeId = destination.routeId;
@@ -222,8 +290,11 @@ class _AttendanceVerificationPageState
         _openShifts = status.openShifts;
         _journeyShifts = journeyShifts;
         _pendingJourneySourceIds = pendingJourneySourceIds;
-        _shift = _eventType == 'clock_out' && _openShifts.length == 1 ? _openShifts.single : null;
+        _shift = requestedSource != null
+            ? _openShifts.singleWhere((shift) => shift.id == requestedSource)
+            : _eventType == 'clock_out' && _openShifts.length == 1 ? _openShifts.single : null;
         if (_shift != null) _selectShift(_shift!);
+        if (requestedSource != null) _workerId = _shift!.workerId;
         _pendingCaptureDraft = pendingCapture;
         if (pendingCapture != null) {
           _shift = null;
@@ -290,19 +361,30 @@ class _AttendanceVerificationPageState
       setState(() => _mode = value);
       return;
     }
-
-    final schedule = await showGpsAutoScheduleDialog(
-      context,
-      initialWeekdays: _gpsWeekdays,
-      initialTime: _gpsTime,
-    );
+    if (_eventType == 'clock_out') {
+      setState(() => _mode = 'gps_auto');
+      return;
+    }
+    try {
+    final selection = _gpsSelection ?? await GpsWorkScheduleSelection.load(
+      repository: _scheduledSettings, siteId: _siteId, routeId: _routeId,
+      fallbackWeekdays: _gpsWeekdays, fallbackClockIn: _gpsTime);
+    if (!mounted) return;
+    final schedule = await selection.choose(context);
     if (schedule == null || !mounted) return;
 
     setState(() {
       _mode = 'gps_auto';
-      _gpsWeekdays = schedule.weekdays;
-      _gpsTime = schedule.time;
+      _gpsSelection = schedule;
+      _gpsWeekdays = schedule.draft.weekdays;
+      _gpsTime = schedule.draft.clockIn;
+      _gpsCheckoutTime = schedule.draft.checkoutReminder;
+      _gpsTwoTimesConfirmed = true;
     });
+    } catch (error) {
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('出退勤時刻の設定を確認できません: $error'))); }
+    }
   }
 
   @override
@@ -321,7 +403,7 @@ class _AttendanceVerificationPageState
             tooltip: SkoLanguageController.tr('退勤後の日報'),
             onPressed: () => showCheckoutReportResumeHelp(context),
             icon: const Icon(Icons.help_outline)),
-          const SkoNotificationBell(),
+          if (widget.initialSourceClockInId == null) const SkoNotificationBell(),
           IconButton(
             tooltip: '再読み込み',
             onPressed: _editingLocked ? null : _load,
@@ -373,7 +455,7 @@ class _AttendanceVerificationPageState
                         for (final shift in _openShifts)
                           DropdownMenuItem(value: shift.id, child: Text(_shiftLabel(shift), overflow: TextOverflow.ellipsis)),
                       ],
-                      onChanged: _editingLocked ? null : (value) {
+                      onChanged: _editingLocked || widget.initialSourceClockInId != null ? null : (value) {
                         if (value == null) return;
                         setState(() => _selectShift(_openShifts.firstWhere((shift) => shift.id == value)));
                       },
@@ -413,30 +495,16 @@ class _AttendanceVerificationPageState
                     Card(
                       child: ListTile(
                         leading: const Icon(Icons.schedule_outlined),
-                        title: const Text('選択中の曜日とGPS取得時間'),
+                        title: const Text('GPS出勤・退勤確認の設定'),
                         subtitle: Text(
-                          GpsAutoScheduleDraft(
-                            weekdays: _gpsWeekdays,
-                            time: _gpsTime,
-                          ).label,
+                          '${GpsAutoScheduleDraft(weekdays: _gpsWeekdays, time: _gpsTime).label}\n退勤確認：${_gpsTwoTimesConfirmed
+                              ? '${_gpsCheckoutTime.hour.toString().padLeft(2, '0')}:${_gpsCheckoutTime.minute.toString().padLeft(2, '0')}'
+                              : '未設定'}',
                         ),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: _editingLocked
+                        onTap: _editingLocked || isClockOut
                             ? null
-                            : () async {
-                                final schedule =
-                                    await showGpsAutoScheduleDialog(
-                                  context,
-                                  initialWeekdays: _gpsWeekdays,
-                                  initialTime: _gpsTime,
-                                );
-                                if (schedule != null && mounted) {
-                                  setState(() {
-                                    _gpsWeekdays = schedule.weekdays;
-                                    _gpsTime = schedule.time;
-                                  });
-                                }
-                              },
+                            : () => _changeMode('gps_auto'),
                       ),
                     ),
                   ],
@@ -647,6 +715,13 @@ class _AttendanceVerificationPageState
            workerId == null || (siteId == null && _routeId == null)))) {
       return;
     }
+    if (widget.initialSourceClockInId != null &&
+        (_eventType != 'clock_out' || _shift?.id != widget.initialSourceClockInId ||
+         repository.userId != _pinnedCheckoutActor)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('通知と退勤する勤務が一致しません。退勤確認へ戻ってください。')));
+      return;
+    }
 
     if (_mode == 'none') {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -697,13 +772,20 @@ class _AttendanceVerificationPageState
           isSameAttendanceMinute(_shift!.clockIn, DateTime.now())) {
         throw StateError(sameMinuteCheckoutMessage);
       }
-      if (_mode == 'gps_auto') {
-        if (!mounted) return;
-        final allowed = await ensureGpsAutoLocationPermission(context);
-        if (!allowed || !mounted) return;
-      }
       if (_eventType == 'clock_in') {
-        await repository.saveAttendanceSelection(
+        if (_mode == 'gps_auto') {
+          if (!_gpsTwoTimesConfirmed) {
+            await _changeMode('gps_auto');
+            requireActor();
+            if (!_gpsTwoTimesConfirmed || !mounted) return;
+          }
+          if (!mounted) return;
+          final selection = _gpsSelection;
+          if (selection == null) throw StateError('出退勤時刻の保存機能を確認できません。');
+          if (!await selection.save(context, siteId: siteId, routeId: _routeId)) return;
+          requireActor();
+        } else {
+          await repository.saveAttendanceSelection(
         mode: _mode,
         siteId: siteId,
         weekdays: _mode == 'gps_auto' ? _gpsWeekdays : null,
@@ -711,7 +793,8 @@ class _AttendanceVerificationPageState
             ? '${_gpsTime.hour.toString().padLeft(2, '0')}:${_gpsTime.minute.toString().padLeft(2, '0')}:00'
             : null,
       );
-        await GpsAutoAttendanceService.instance.refresh();
+        }
+        if (_mode != 'gps_auto') await GpsAutoAttendanceService.instance.refresh();
         await repository.validateNewClockInOptions();
       }
 
@@ -724,6 +807,12 @@ class _AttendanceVerificationPageState
         );
         if (!mounted) return;
         final status = result['status']?.toString() ?? '';
+        if (status == 'clocked_in') {
+          await ScheduledCheckoutGateController.instance.requestCheck();
+          unawaited(CheckoutNativeReminderCoordinator.refreshCurrent());
+          requireActor();
+        }
+        if (!mounted) return;
         final message = switch (status) {
           'clocked_in' => 'GPS自動出勤で出勤を記録しました',
           'outside_site' => '現場にいないようなのでGPS自動出勤は出勤を登録しませんでした',
@@ -946,6 +1035,10 @@ class _AttendanceVerificationPageState
       if (_savedVerificationActor == null || _repository?.userId != _savedVerificationActor) {
         throw StateError('操作したアカウントを再確認してください');
       }
+      if (widget.initialSourceClockInId != null &&
+          saved['source_clock_in_id'] != widget.initialSourceClockInId) {
+        throw StateError('通知と保存された退勤の勤務原本が一致しません。再確認してください。');
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -955,11 +1048,35 @@ class _AttendanceVerificationPageState
       );
 
       if (_eventType == 'clock_out') {
-        if (widget.openSavedReport == null && CheckoutReportGateController.instance.requestCheck()) {
+        unawaited(CheckoutNativeReminderCoordinator.refreshCurrent());
+        final sourceId = saved['source_clock_in_id']?.toString() ?? _shift?.id;
+        final date = DateTime.tryParse(saved['work_date']?.toString() ?? '') ?? _shift?.workDate;
+        final siteId = saved['site_id']?.toString() ?? _shift?.siteId ?? _siteId;
+        final routeId = saved['route_assignment_id']?.toString() ?? _shift?.routeId ?? _routeId;
+        final reportWorkerId = _workerId;
+        if (sourceId == null) throw StateError('退勤した勤務原本を確認できません。');
+        final gateHandled = await CheckoutReportGateController.instance.handleSavedCheckout(sourceId);
+        if (!mounted) return;
+        if (_repository?.userId != _savedVerificationActor) {
+          throw StateError('操作したアカウントを再確認してください');
+        }
+        if (gateHandled) {
           // The outer gate owns authoritative registration and isolates this
           // ordinary Navigator before it returns to its previous screen.
           if (mounted) { Navigator.of(context).pop(true); }
           return;
+        }
+        if (sourceId.isNotEmpty && date != null && siteId != null && routeId == null) {
+          final groupOverride = widget.groupCheckoutForTesting;
+          if (groupOverride != null) {
+            await groupOverride(context, sourceId, date);
+          } else {
+            await showGroupCheckoutAfterPersonalSave(context, anchorId: sourceId, workDate: date);
+          }
+          if (!mounted) return;
+          if (_repository?.userId != _savedVerificationActor) {
+            throw StateError('操作したアカウントを再確認してください');
+          }
         }
         final reportOverride = widget.openSavedReport;
         if (reportOverride != null) {
@@ -969,15 +1086,6 @@ class _AttendanceVerificationPageState
           if (widget.reportResumeRepository != null && !await _confirmSavedReporter(saved)) { return; }
           if (mounted) Navigator.of(context).pop(true);
           return;
-        }
-        final sourceId = saved['source_clock_in_id']?.toString() ?? _shift?.id;
-        final date = DateTime.tryParse(saved['work_date']?.toString() ?? '') ?? _shift?.workDate;
-        final siteId = saved['site_id']?.toString() ?? _shift?.siteId ?? _siteId;
-        final routeId = saved['route_assignment_id']?.toString() ?? _shift?.routeId ?? _routeId;
-        final reportWorkerId = _workerId;
-        if (sourceId != null && date != null && siteId != null && routeId == null) {
-          await showGroupCheckoutAfterPersonalSave(context, anchorId: sourceId, workDate: date);
-          if (!mounted) return;
         }
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => DailyReportPage(

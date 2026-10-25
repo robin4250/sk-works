@@ -1,0 +1,70 @@
+name: Scheduled checkout confirmation candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/scheduled_checkout_reminders.sql.review-only'
+      - 'tool/fixtures/scheduled_checkout_session.sql'
+      - 'tool/verify_scheduled_checkout.mjs'
+      - 'lib/features/attendance/scheduled_checkout_repository.dart'
+      - 'lib/features/attendance/scheduled_checkout_gate.dart'
+      - 'lib/features/attendance/gps_work_schedule_dialog.dart'
+      - 'test/scheduled_checkout_repository_test.dart'
+      - 'test/scheduled_checkout_gate_test.dart'
+      - 'test/gps_work_schedule_dialog_test.dart'
+      - '.github/workflows/scheduled-checkout-candidate.yml'
+permissions:
+  contents: read
+jobs:
+  scheduled-checkout-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_scheduled_checkout_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/verify_scheduled_checkout.mjs
+      - name: Exact live-session helper, scheduled source, postponement and old clock-in settings
+        env:
+          SKO_SCHEDULED_CHECKOUT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_scheduled_checkout_fixture
+        run: node tool/verify_scheduled_checkout.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+  scheduled-checkout-flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
+      - name: Analyze isolated reminder and schedule components
+        run: >-
+          flutter analyze
+          lib/features/attendance/scheduled_checkout_repository.dart
+          lib/features/attendance/scheduled_checkout_gate.dart
+          lib/features/attendance/gps_work_schedule_dialog.dart
+          test/scheduled_checkout_repository_test.dart
+          test/scheduled_checkout_gate_test.dart
+          test/gps_work_schedule_dialog_test.dart
+      - name: Due confirmation, scoped management, persisted postponement and session guards
+        run: >-
+          timeout 420s flutter test --reporter expanded --timeout 60s
+          test/scheduled_checkout_repository_test.dart
+          test/scheduled_checkout_gate_test.dart
+          test/gps_work_schedule_dialog_test.dart

@@ -1,0 +1,49 @@
+name: Shared checkout final release composition
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/checkout_paid_hours*.sql.review-only'
+      - 'docs/candidates/closed_day_paid_hours_scope.sql.review-only'
+      - 'docs/candidates/checkout_shared_*.sql.review-only'
+      - 'docs/candidates/shared_daily_report*.sql.review-only'
+      - 'tool/fixtures/**'
+      - 'tool/verify_company_checkout_integration.mjs'
+      - 'tool/prepare_company_checkout_integration.py'
+      - 'tool/verify_checkout_registration_source_chain.mjs'
+      - 'docs/candidates/checkout_report_registration*.sql.review-only'
+      - 'tool/prepare_checkout*_hours*.py'
+      - 'tool/verify_checkout_shared_*v2.mjs'
+      - 'tool/verify_shared_daily_report.mjs'
+      - '.github/workflows/checkout-shared-release-v2.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  shared-checkout-release-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_checkout_integration_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: python3 tool/prepare_checkout_paid_hours.py --output "$RUNNER_TEMP/paid-hours-v1-patches.sql"
+      - run: python3 tool/prepare_checkout_shared_hours_v2.py --output "$RUNNER_TEMP/shared-hours-v2-patches.sql"
+      - run: node --check tool/verify_checkout_shared_release_v2.mjs
+      - name: Canonical parent once, normal v2 then managed adoption and approved corrections
+        env:
+          SKO_CHECKOUT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_checkout_integration_fixture
+          SKO_PAID_HOURS_PATCHES: ${{ runner.temp }}/paid-hours-v1-patches.sql
+          SKO_SHARED_HOURS_V2_PATCHES: ${{ runner.temp }}/shared-hours-v2-patches.sql
+        run: node tool/verify_checkout_shared_release_v2.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
