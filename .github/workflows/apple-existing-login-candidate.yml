@@ -1,0 +1,32 @@
+name: Registered Apple login candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/apple-existing-login-candidate/**'
+      - '.github/workflows/apple-existing-login-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-proof:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: apple_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test docs/review/apple-existing-login-candidate/existing_apple_login.test.mjs
+      - name: Disposable Native PostgreSQL fixture
+        env:
+          PGPASSWORD: fixture
+        run: psql -h localhost -U postgres -d apple_fixture -v ON_ERROR_STOP=1 -f docs/review/apple-existing-login-candidate/native.sql
