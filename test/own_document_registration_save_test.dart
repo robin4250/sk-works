@@ -132,6 +132,8 @@ Future<void> _open(
 }
 
 Future<void> _selectPhoto(WidgetTester tester) async {
+  await tester.ensureVisible(find.byType(CheckboxListTile));
+  await tester.pumpAndSettle();
   await tester.tap(find.byType(CheckboxListTile));
   await tester.pumpAndSettle();
   await tester.tap(find.widgetWithText(FilledButton, '登録').last);

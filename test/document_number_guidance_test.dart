@@ -31,7 +31,7 @@ void main() {
     expect(find.text('⑤ '), findsOneWidget);
     expect(find.text('選択済み'), findsOneWidget);
     expect(find.text('任意'), findsWidgets);
-    await tester.tap(find.widgetWithText(FilledButton, '登録'));
+    await tester.tap(find.widgetWithText(FilledButton, '登録').last);
     await tester.pumpAndSettle();
     expect(gateway.saved, 1);
   });
