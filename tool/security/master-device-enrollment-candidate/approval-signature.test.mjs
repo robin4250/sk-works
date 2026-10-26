@@ -20,5 +20,10 @@ test('owner device signs a bounded challenge and altered/replayed data is reject
   assert.equal(verify({nowMs:now+120000}),false);
   assert.equal(verify({device:{...device,active:false}}),false);
   assert.equal(verify({device:{...device,actor:'00000000-0000-0000-0000-000000000005'}}),false);
+  assert.equal(verify({device:{...device,id:'00000000-0000-0000-0000-000000000005'}}),false);
+  const attacker=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).publicKey.export({type:'spki',format:'pem'});
+  assert.equal(verify({device:{...device,publicKeyPem:attacker}}),false);
+  assert.equal(verify({intent:{...intent,expiresMs:now+120001}}),false);
+  assert.equal(verify({nowMs:now-1}),false);
   assert.equal(verify({signature:Buffer.from('not-a-signature')}),false);
 });
