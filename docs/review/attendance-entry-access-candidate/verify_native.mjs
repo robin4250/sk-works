@@ -67,8 +67,10 @@ try {
  await client.query('update public.user_secondary_credentials set locked_until=null,failed_attempts=0 where user_id=$1',[manager]);
  let access=await open();eq(access.ok,true,'One real password verification opens one entry grant');assert.match(access.grant,/^[a-f0-9]{64}$/);
  eq(await q('select token_hash=$1 v from attendance_entry_access_private.grants',[access.grant]),false,'Database never stores raw grant');
+ phase='entry-authorized-actual-crud';
  const afterEntryCredential=await credential();
  const cell=(day='2026-10-20',extra={})=>({worker_id:W,date:day,mode:'work',site_id:SITE,man_days:1,overtime_hours:0,early_hours:0,night_hours:0,allowance_names:[],company_allowance_selections:choices([]),company_allowance_legacy_labels:'',work_description:'入口認証後の正規管理操作',clock_in:'08:00',clock_out:'17:00',...extra});
+ const deleteCell=day=>{const x=cell(day,{mode:'off'});delete x.company_allowance_selections;delete x.company_allowance_legacy_labels;return x;};
  const perform=(action,items,grant=access.grant,actor=manager,sid=managerSid,cid=A)=>sharedCall(actor,sid,'select public.force_manage_attendance_with_access($1,$2::jsonb,$3,$4) v',[action,JSON.stringify(items),grant,cid]);
  const salaryDays=()=>q("select coalesce((detail->>'出勤日数')::numeric,0) v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,W]);
  const invoiceAmount=()=>q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]);
@@ -81,11 +83,12 @@ try {
  eq(await perform('upsert',[cell('2026-10-20',{work_description:'同じ画面で正規編集'})]),1,'Edit reuses same page authorization without another password');
  eq(Number(await salaryDays()),salaryBefore+1,'Edit does not duplicate salary day');
  eq(Number(await invoiceAmount()),invoiceBefore+10000,'Edit does not duplicate invoice amount');
- eq(await perform('delete',[cell('2026-10-20',{mode:'off'})]),1,'Delete uses same page authorization without another password');
+ eq(await perform('delete',[deleteCell('2026-10-20')]),1,'Delete uses same page authorization without another password');
  eq(Number(await salaryDays()),salaryBefore,'Actual payroll removes selected day');
  eq(Number(await invoiceAmount()),invoiceBefore,'Actual invoice removes selected participant-day');
  eq(await credential(),afterEntryCredential,'Multiple CRUD operations never call password verifier again');
  eq(await q("select count(*)::int v from attendance_entry_access_private.events where event='management'"),3,'Each actual management write remains audited');
+ phase='entry-denials-and-lifecycle';
  const safeBusiness=await business();
  await reject(()=>perform('upsert',[cell()],access.grant,manager,secondSid),/attendance_entry_access_required/);
  await reject(()=>perform('upsert',[cell()],access.grant,memberB,sidB),/attendance_admin_current_management_required|attendance_entry_access_required/);
@@ -120,6 +123,7 @@ try {
  await client.query('delete from auth.sessions where id=$1',[managerSid]);
  await reject(()=>perform('upsert',[cell()]),/reauthentication_required/);
  await client.query('insert into auth.sessions(id,user_id) values($1,$2)',[managerSid,manager]);
+ phase='entry-direct-privilege-and-used-restore';
  for(const role of ['anon','service_role']){
   await exec('set role '+role);try{await reject(()=>q('select public.open_attendance_management_access($1,$2) v',['synthetic-entry-rotated',A]),{code:'42501'});await reject(()=>q('select public.force_manage_attendance_with_access($1,$2::jsonb,$3,$4) v',['upsert',JSON.stringify([cell()]),access.grant,A]),{code:'42501'});}finally{await exec('reset role');}
  }
