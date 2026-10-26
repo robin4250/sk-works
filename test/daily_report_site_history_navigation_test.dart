@@ -34,49 +34,49 @@ class History extends DailyReportMonthRepository{
 }
 void main(){
  final clients=<SupabaseClient>[];
- tearDown(() async {for(final client in clients){await client.dispose();}clients.clear();});
+ tearDown(() async {debugPrint('DIAG teardown start');for(final client in clients){await client.dispose();}clients.clear();debugPrint('DIAG teardown end');});
  for(final pending in [false,true]){
  for(final scale in [1.0,1.5]) {
  testWidgets('large controls navigate year boundaries and same-day IDs in one category $pending $scale',(tester)async{
   tester.view.physicalSize=const Size(390,800);tester.view.devicePixelRatio=1;addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client,pending:pending);final anchor=history.all[1];
-  await tester.pumpWidget(MaterialApp(builder:(context,child)=>MediaQuery(data:MediaQuery.of(context).copyWith(textScaler:TextScaler.linear(scale)),child:child!), home:DailyReportSavedPreviewPager(repository:history,actor:actor,
+  debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(builder:(context,child)=>MediaQuery(data:MediaQuery.of(context).copyWith(textScaler:TextScaler.linear(scale)),child:child!), home:DailyReportSavedPreviewPager(repository:history,actor:actor,
    entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
    previewBuilderForTesting:(doc)=>Scaffold(body:Center(child:Text('report:${doc.report.id}'))))));
-  await tester.pumpAndSettle();expect(find.text('2 / 4件'),findsOneWidget);expect(find.text(pending?'サイン待ち':'保存済み'),findsOneWidget);
+  debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.text('2 / 4件'),findsOneWidget);expect(find.text(pending?'サイン待ち':'保存済み'),findsOneWidget);
   final previous=find.byKey(const ValueKey('daily-report-previous')),next=find.byKey(const ValueKey('daily-report-next'));
   expect(tester.getSize(previous).height,greaterThanOrEqualTo(48));expect(tester.getSize(next).width,greaterThanOrEqualTo(48));
-  await tester.tap(previous);await tester.pumpAndSettle();expect(find.text('2024年'),findsOneWidget);expect(find.text('1月2日'),findsOneWidget);
+  await tester.tap(previous);debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.text('2024年'),findsOneWidget);expect(find.text('1月2日'),findsOneWidget);
   expect(tester.widget<OutlinedButton>(previous).onPressed,isNull);expect(find.text('最も古い日報'),findsOneWidget);
-  await tester.tap(next);await tester.pumpAndSettle();await tester.tap(next);await tester.pumpAndSettle();expect(find.text('report:same-day'),findsOneWidget);
-  await tester.tap(next);await tester.pumpAndSettle();expect(find.text('2027年'),findsOneWidget);expect(find.text('4 / 4件'),findsOneWidget);
+  await tester.tap(next);debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');await tester.tap(next);debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.text('report:same-day'),findsOneWidget);
+  await tester.tap(next);debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.text('2027年'),findsOneWidget);expect(find.text('4 / 4件'),findsOneWidget);
   expect(tester.widget<OutlinedButton>(next).onPressed,isNull);expect(find.text('最も新しい日報'),findsOneWidget);
   expect(history.opened,['anchor','old','anchor','same-day','new']);expect(tester.takeException(),isNull);
  });}}
  testWidgets('unavailable all-period history does not claim oldest or newest',(tester)async{
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client)..fail=true;final anchor=history.all[1];
-  await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
+  debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
    previewBuilderForTesting:(doc)=>Scaffold(body:Text('report:${doc.report.id}')))));
-  await tester.pumpAndSettle();expect(find.text('report:anchor'),findsOneWidget);expect(find.textContaining('全期間を取得できません'),findsOneWidget);
+  debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.text('report:anchor'),findsOneWidget);expect(find.textContaining('全期間を取得できません'),findsOneWidget);
   expect(find.text('最も新しい日報'),findsNothing);expect(find.text('最も古い日報'),findsNothing);expect(find.text('範囲未確認'),findsNWidgets(2));
  });
  testWidgets('a completed report cannot remain in pending preview after server state changes',(tester)async{
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client,pending:true)..changed=true;final anchor=history.all[1];
-  await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
+  debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
    previewBuilderForTesting:(doc)=>Scaffold(body:Text('report:${doc.report.id}')))));
-  await tester.pumpAndSettle();expect(find.textContaining('保存状態が変わりました'),findsOneWidget);expect(find.text('report:anchor'),findsNothing);
+  debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.textContaining('保存状態が変わりました'),findsOneWidget);expect(find.text('report:anchor'),findsNothing);
  });
  testWidgets('zoomed PDF pan preserves current report while large arrow remains available',(tester)async{
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client);final anchor=history.all[1];
-  await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
+  debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
    previewWithZoomBuilderForTesting:(doc,zoom)=>Scaffold(body:Column(children:[Text('report:${doc.report.id}'),TextButton(onPressed:()=>zoom(true),child:const Text('拡大'))])))));
-  await tester.pumpAndSettle();await tester.tap(find.text('拡大'));await tester.pumpAndSettle();
-  await tester.fling(find.byKey(const ValueKey('daily-report-preview-swipe')),const Offset(250,0),800);await tester.pumpAndSettle();expect(history.opened,['anchor']);
-  await tester.tap(find.byKey(const ValueKey('daily-report-next')));await tester.pumpAndSettle();expect(history.opened,['anchor','same-day']);expect(tester.takeException(),isNull);
+  debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');await tester.tap(find.text('拡大'));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');
+  await tester.fling(find.byKey(const ValueKey('daily-report-preview-swipe')),const Offset(250,0),800);debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(history.opened,['anchor']);
+  await tester.tap(find.byKey(const ValueKey('daily-report-next')));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(history.opened,['anchor','same-day']);expect(tester.takeException(),isNull);
  });
  test('RLS metadata history uses selected site/status and keyset beyond one month',()async{
   var reads=0;final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((request)async{

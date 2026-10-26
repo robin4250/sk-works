@@ -35,7 +35,7 @@ class ReadReports extends DailyReportMonthRepository{
 }
 void main(){
  final clients=<SupabaseClient>[];
- tearDown(() async {for(final client in clients){await client.dispose();}clients.clear();});
+ tearDown(() async {debugPrint('DIAG teardown start');for(final client in clients){await client.dispose();}clients.clear();debugPrint('DIAG teardown end');});
  setUp((){final previous=SharedPreferencesAsyncPlatform.instance;SharedPreferencesAsyncPlatform.instance=InMemorySharedPreferencesAsync.empty();addTearDown(()=>SharedPreferencesAsyncPlatform.instance=previous);});
  test('saved, supervisor pending, unfinished and finalization pending remain distinct',(){
   expect(entry('s',DateTime(2026),status:'signed').saveState,DailyReportSaveState.saved);
@@ -49,23 +49,23 @@ void main(){
   tester.view.physicalSize=const Size(390,1000);tester.view.devicePixelRatio=1;addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final repo=FixtureReports(client);String? opened;
-  await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(initialMonth:DateTime(2026,10),repositoryForTesting:repo,
+  debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(initialMonth:DateTime(2026,10),repositoryForTesting:repo,
    pendingBuilderForTesting:(e){opened=e.id;return Scaffold(appBar:AppBar(),body:Text('既存日報 ${e.id}'));})));
-  await tester.pumpAndSettle();expect(find.text('保存済み 1件'),findsOneWidget);expect(find.text('サイン待ち 1件'),findsNothing);
-  await tester.tap(find.byKey(const ValueKey('daily-report-pending-filter')));await tester.pumpAndSettle();
+  debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.text('保存済み 1件'),findsOneWidget);expect(find.text('サイン待ち 1件'),findsNothing);
+  await tester.tap(find.byKey(const ValueKey('daily-report-pending-filter')));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');
   expect(find.text('責任者サイン待ち 3件'),findsOneWidget);expect(find.text('すべての月・現場別'),findsOneWidget);
   expect(find.byKey(const ValueKey('daily-report-pending-site-site:site-a')),findsOneWidget);
   expect(find.byKey(const ValueKey('daily-report-pending-site-site:site-b')),findsOneWidget);
   expect(find.textContaining('2025-01-02'),findsOneWidget);expect(find.textContaining('2024-02-01'),findsOneWidget);
   final text=tester.widget<Text>(find.text('責任者サイン待ち 3件'));expect(text.style!.color,Colors.red.shade900);
-  await tester.tap(find.descendant(of:find.byKey(const ValueKey('daily-report-pending-entry-old-a')),matching:find.text('サイン')));await tester.pumpAndSettle();
+  await tester.tap(find.descendant(of:find.byKey(const ValueKey('daily-report-pending-entry-old-a')),matching:find.text('サイン')));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');
   expect(opened,'old-a');expect(find.text('既存日報 old-a'),findsOneWidget);
-  await tester.pageBack();await tester.pumpAndSettle();expect(repo.pendingReads,2);expect(tester.takeException(),isNull);
+  await tester.pageBack();debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(repo.pendingReads,2);expect(tester.takeException(),isNull);
  });
  testWidgets('pending error is never presented as an empty successful list',(tester)async{
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);final repo=FixtureReports(client)..fail=true;
-  await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(repositoryForTesting:repo)));await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const ValueKey('daily-report-pending-filter')));await tester.pumpAndSettle();
+  debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(repositoryForTesting:repo)));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');
+  await tester.tap(find.byKey(const ValueKey('daily-report-pending-filter')));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');
   expect(find.text('サイン待ちの日報を取得できません。再読み込みしてください。'),findsOneWidget);expect(find.text('責任者サイン待ちの日報はありません。'),findsNothing);
  });
  for(final visitAvailable in [true,false]){
