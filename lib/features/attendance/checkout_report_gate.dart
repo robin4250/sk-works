@@ -239,7 +239,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
       var canManage = false;
       var managementHold = false;
       String? managementHoldText;
-      if (pending.isNotEmpty && _sharedReports != null) {
+      if (pending.isNotEmpty && pending.first.state != 'report_choice_required' && _sharedReports != null) {
         final context = await _sharedReports.loadForSource(pending.first.sourceClockInId);
         if (context.actorId != actor || context.companyId != pending.first.companyId ||
             context.workerId != pending.first.workerId || context.workDate != pending.first.workDate) {
@@ -250,7 +250,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
         if (managementHold) { managementHoldText = context.managementHoldMessage; }
       }
       if (!mounted || generation != _generation || _controller.actorId != actor || repository.actorId != actor) { return; }
-      final identity = pending.isEmpty ? null : '${pending.first.identity}/hold:$managementHold';
+      final identity = pending.isEmpty ? null : '${pending.first.identity}/${pending.first.state}/hold:$managementHold';
       setState(() {
         if (identity != _renderedIdentity) {
           _navigator = GlobalKey<NavigatorState>();
@@ -419,6 +419,11 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
             final target = _pending.first;
             return MaterialPageRoute<void>(settings: RouteSettings(name: target.identity), builder: (_) =>
               target.state == 'source_conflict' || _managementHold ? _status() :
+              target.state == 'report_choice_required' ? _CheckoutReportChoice(
+                target: target, onChoose: (createReport) async {
+                  await _repository!.choose(target, createReport: createReport);
+                  if (mounted) _changed();
+                }) :
               _BeforeReportRegistration(
                 key: ValueKey('$_actor/${target.identity}/group'),
                 before: target.siteId != null && target.routeId == null &&
@@ -467,4 +472,47 @@ class _BeforeReportRegistrationState extends State<_BeforeReportRegistration> {
   @override Widget build(BuildContext context) => widget.before == null || _ready
       ? widget.child
       : const PopScope(canPop: false, child: Scaffold(body: Center(child: CircularProgressIndicator())));
+}
+
+/// The choice is saved on the server before releasing or starting the gate.
+class _CheckoutReportChoice extends StatefulWidget {
+  const _CheckoutReportChoice({required this.target, required this.onChoose});
+  final PendingCheckoutRegistration target;
+  final Future<void> Function(bool createReport) onChoose;
+  @override State<_CheckoutReportChoice> createState() => _CheckoutReportChoiceState();
+}
+class _CheckoutReportChoiceState extends State<_CheckoutReportChoice> {
+  bool _saving = false;
+  bool? _pendingChoice;
+  Object? _error;
+  Future<void> _choose(bool createReport) async {
+    if (_saving) return;
+    setState(() { _saving = true; _pendingChoice = createReport; _error = null; });
+    try {
+      await widget.onChoose(createReport);
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+  @override Widget build(BuildContext context) => PopScope(canPop: false,
+    child: Scaffold(appBar: AppBar(title: const Text('退勤後の日報'), automaticallyImplyLeading: false),
+      body: SafeArea(child: Center(child: Padding(padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('${widget.target.workDate.month}/${widget.target.workDate.day} 現場メンバー ${widget.target.memberCount}人'),
+            const SizedBox(height: 12),
+            const Text('退勤は記録済みです。日報を作成しますか？'),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: _saving || (_error != null && _pendingChoice == false) ? null : () => _choose(true),
+              child: const Text('日報を作成する')),
+            const SizedBox(height: 8),
+            OutlinedButton(onPressed: _saving || (_error != null && _pendingChoice == true) ? null : () => _choose(false),
+              child: const Text('退勤のみ')),
+            const SizedBox(height: 12),
+            const Text('退勤のみを選んでも、出勤表から後で日報を作成できます。'),
+            if (_saving) const Center(child: CircularProgressIndicator()),
+            if (_error != null) const Text('選択結果を確認できません。同じボタンでもう一度確認してください。'),
+          ]))))));
 }

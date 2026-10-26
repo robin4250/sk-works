@@ -1,0 +1,50 @@
+name: Checkout report explicit choice
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/checkout_report_gate*'
+      - 'lib/features/attendance/checkout_report_resume_action.dart'
+      - 'test/checkout_report_gate*'
+      - 'docs/review/checkout-report-choice-candidate/**'
+      - '.github/workflows/checkout-report-choice.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-choice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_report_registration_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check docs/review/checkout-report-choice-candidate/verify_choice.mjs
+      - env:
+          SKO_REPORT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_report_registration_fixture
+        run: node docs/review/checkout-report-choice-candidate/verify_choice.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+  choice-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
+      - run: flutter analyze lib/features/attendance/checkout_report_gate.dart lib/features/attendance/checkout_report_gate_repository.dart lib/features/attendance/checkout_report_resume_action.dart test/checkout_report_gate_test.dart test/checkout_report_gate_repository_test.dart
+      - run: flutter test test/checkout_report_gate_test.dart test/checkout_report_gate_repository_test.dart test/checkout_report_resume_action_test.dart test/attendance_checkout_completion_widgets_test.dart

@@ -1,0 +1,21 @@
+-- Only before any choice or activation. Never erase a started report.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='45s';
+lock table checkout_report_choice_private.rollout,checkout_report_choice_private.choices in access exclusive mode;
+do $$declare definition text;begin
+ if current_user<>'postgres' then raise exception 'postgres required';end if;
+ if exists(select 1 from checkout_report_choice_private.rollout) or exists(select 1 from checkout_report_choice_private.choices) then raise exception 'choice module already used';end if;
+ if md5((select prosrc from pg_proc where oid='checkout_report_registration_private.read_for_actor(uuid)'::regprocedure))<>'abb512142aab94a5a446611237e87743' then raise exception 'choice reader source differs';end if;
+ select originals.definition into definition from checkout_report_choice_private.originals where signature='checkout_report_registration_private.read_for_actor(uuid)';
+ if definition is null then raise exception 'reader original missing';end if;
+ execute definition;
+ if md5((select prosrc from pg_proc where oid='checkout_report_registration_private.read_for_actor(uuid)'::regprocedure))<>'c01b3c1a9a6aec82f0da7fd9e83b7364' then raise exception 'reader restore differs';end if;
+end$$;
+drop function public.choose_checkout_report_registration(uuid,text,boolean);
+drop function checkout_report_choice_private.read_before_choice(uuid);
+drop table checkout_report_choice_private.choices;
+drop table checkout_report_choice_private.rollout;
+drop table checkout_report_choice_private.originals;
+drop schema checkout_report_choice_private;
+commit;

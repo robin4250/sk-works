@@ -8,11 +8,13 @@ class PendingCheckoutRegistration {
   const PendingCheckoutRegistration({required this.companyId, required this.workerId,
     required this.workDate, required this.sourceClockInId, required this.clockOutId,
     required this.state, required this.blocking, required this.scopeFingerprint,
-    this.siteId, this.routeId, this.reportId});
+    this.siteId, this.routeId, this.reportId, this.choiceAvailable = false, this.memberCount});
   final String companyId, workerId, sourceClockInId, clockOutId, state, scopeFingerprint;
   final DateTime workDate;
   final String? siteId, routeId, reportId;
   final bool blocking;
+  final bool choiceAvailable;
+  final int? memberCount;
   String get identity => '$companyId/$workerId/$sourceClockInId/$clockOutId';
 }
 
@@ -43,6 +45,20 @@ class CheckoutReportGateRepository {
     return rows;
   }
 
+  Future<void> choose(PendingCheckoutRegistration target, {required bool createReport}) async {
+    final actor = actorId;
+    if (actor == null || !target.choiceAvailable) {
+      throw StateError('日報作成の選択状態を確認してください。');
+    }
+    final raw = await client.rpc('choose_checkout_report_registration', params: {
+      'p_source_clock_in_id': target.sourceClockInId,
+      'p_expected_scope': target.scopeFingerprint,
+      'p_create_report': createReport,
+    });
+    if (actorId != actor) { throw StateError('ログイン状態が変わりました。'); }
+    parse(raw, actor);
+  }
+
   @visibleForTesting
   static List<PendingCheckoutRegistration> parse(Object? raw, String actor) {
     if (raw is! Map || raw['schema'] != 1 || raw['actor_id'] != actor || raw['items'] is! List || raw['enforcement_enabled'] is! bool || !raw.containsKey('effective_from')) {
@@ -71,13 +87,20 @@ class CheckoutReportGateRepository {
           row['scope_fingerprint'] is! String || (row['scope_fingerprint'] as String).isEmpty) {
         throw StateError('日報の登録状態を確認できません。');
       }
-      const blockingStates = {'report_missing', 'source_conflict', 'report_input_incomplete', 'reporter_signature_missing'};
-      const nonblockingStates = {'reporter_saved_waiting_supervisor', 'signed_projection_unverified', 'completed'};
+      const blockingStates = {'report_missing', 'source_conflict', 'report_input_incomplete', 'reporter_signature_missing', 'report_choice_required'};
+      const nonblockingStates = {'reporter_saved_waiting_supervisor', 'signed_projection_unverified', 'completed', 'checkout_deferred'};
       if (!(row['blocking'] == true ? blockingStates : nonblockingStates).contains(row['registration_state'])) {
         throw StateError('日報の完了状態を確認できません。');
       }
-      if (row['blocking'] == false && row['report_id'] == null) {
+      if (row['blocking'] == false && row['report_id'] == null && row['registration_state'] != 'checkout_deferred') {
         throw StateError('登録済み日報を確認できません。');
+      }
+      final choiceAvailable = row['choice_available'] == true;
+      final memberCount = row['member_count'];
+      if ((row['registration_state'] == 'report_choice_required' || row['registration_state'] == 'checkout_deferred') &&
+          (!choiceAvailable || memberCount is! int || memberCount < 1 ||
+            (row['registration_state'] == 'report_choice_required' && memberCount < 2))) {
+        throw StateError('当日の現場メンバーを確認できません。');
       }
       final dateText = row['work_date'];
       final date = dateText is String ? DateTime.tryParse(dateText) : null;
@@ -93,7 +116,8 @@ class CheckoutReportGateRepository {
         reportId: row['report_id'] == null ? null : id(row['report_id']),
         sourceClockInId: id(row['source_clock_in_id']), clockOutId: id(row['clock_out_id']),
         state: row['registration_state'] as String, blocking: row['blocking'] as bool,
-        scopeFingerprint: row['scope_fingerprint'] as String);
+        scopeFingerprint: row['scope_fingerprint'] as String,
+        choiceAvailable: choiceAvailable, memberCount: memberCount is int ? memberCount : null);
       if (!identities.add(target.identity)) { throw StateError('日報の対象が重複しています。'); }
       result.add(target);
     }
