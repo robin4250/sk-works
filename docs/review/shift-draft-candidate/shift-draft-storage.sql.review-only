@@ -39,10 +39,10 @@ begin
  if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) not between 1 and 100 then
    raise exception 'shift_invalid_batch';
  end if;
- if exists(select 1 from jsonb_array_elements(p_rows) x group by x->>'worker_id',x->>'work_date' having count(*)>1) then
+ if exists(select 1 from jsonb_array_elements(p_rows) x group by (x->>'worker_id')::uuid,(x->>'work_date')::date having count(*)>1) then
    raise exception 'shift_duplicate_worker_date';
  end if;
- for r in select x from jsonb_array_elements(p_rows) x order by x->>'worker_id',x->>'work_date' loop
+ for r in select x from jsonb_array_elements(p_rows) x order by (x->>'worker_id')::uuid,(x->>'work_date')::date loop
    if jsonb_typeof(r) is distinct from 'object' or jsonb_typeof(r->'holiday') is distinct from 'boolean'
       or jsonb_typeof(r->'night') is distinct from 'boolean'
       or jsonb_typeof(r->'check_late') is distinct from 'boolean'
