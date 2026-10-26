@@ -1,0 +1,178 @@
+CREATE OR REPLACE FUNCTION public.set_master_device_locked(p_device_id uuid, p_locked boolean)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'private', 'pg_temp'
+AS $function$
+declare
+  v_actor uuid := auth.uid();
+  v_device private.master_devices%rowtype;
+begin
+  if not public.is_current_user_master_admin() then
+    raise exception 'master admin permission required';
+  end if;
+
+  select *
+  into v_device
+  from private.master_devices
+  where id = p_device_id
+    and master_user_id = v_actor
+  for update;
+
+  if not found then
+    raise exception 'master device not found';
+  end if;
+
+  if v_device.revoked_at is not null then
+    raise exception 'revoked master device cannot be changed';
+  end if;
+
+  update private.master_devices
+  set is_locked = p_locked
+  where id = p_device_id;
+
+  insert into private.master_admin_audit_log(
+    actor_user_id,
+    action,
+    target_user_id,
+    details
+  )
+  values(
+    v_actor,
+    case when p_locked then 'master_device_lock'
+         else 'master_device_unlock' end,
+    v_actor,
+    jsonb_build_object(
+      'device_id', p_device_id,
+      'device_name', v_device.device_name
+    )
+  );
+end;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.revoke_master_device(p_device_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'private', 'pg_temp'
+AS $function$
+declare
+  v_actor uuid := auth.uid();
+  v_device private.master_devices%rowtype;
+begin
+  if not public.is_current_user_master_admin() then
+    raise exception 'master admin permission required';
+  end if;
+
+  select *
+  into v_device
+  from private.master_devices
+  where id = p_device_id
+    and master_user_id = v_actor
+  for update;
+
+  if not found then
+    raise exception 'master device not found';
+  end if;
+
+  if v_device.revoked_at is not null then
+    return;
+  end if;
+
+  update private.master_devices
+  set is_locked = true,
+      revoked_at = now(),
+      revoked_by = v_actor
+  where id = p_device_id;
+
+  insert into private.master_admin_audit_log(
+    actor_user_id,
+    action,
+    target_user_id,
+    details
+  )
+  values(
+    v_actor,
+    'master_device_revoke',
+    v_actor,
+    jsonb_build_object(
+      'device_id', p_device_id,
+      'device_name', v_device.device_name
+    )
+  );
+end;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.bootstrap_first_master_device(p_device_key text, p_device_name text, p_device_type text, p_platform text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'private', 'pg_temp'
+AS $function$
+declare
+  v_actor uuid := auth.uid();
+  v_device_id uuid;
+begin
+  if v_actor is null or not public.is_current_user_master_admin() then
+    raise exception 'master admin permission required';
+  end if;
+
+  if p_device_key is null or length(p_device_key) < 32 or length(p_device_key) > 256 then
+    raise exception 'invalid master device key';
+  end if;
+
+  if p_device_name is null or length(trim(p_device_name)) < 1 or length(p_device_name) > 120 then
+    raise exception 'invalid master device name';
+  end if;
+
+  if p_device_type not in ('iphone','ipad','mac','other') then
+    raise exception 'invalid master device type';
+  end if;
+
+  if exists(
+    select 1
+    from private.master_devices d
+    where d.master_user_id = v_actor
+      and d.revoked_at is null
+  ) then
+    raise exception 'trusted device approval required';
+  end if;
+
+  insert into private.master_devices(
+    master_user_id,
+    device_key,
+    device_name,
+    device_type,
+    platform,
+    last_used_at
+  )
+  values(
+    v_actor,
+    p_device_key,
+    trim(p_device_name),
+    p_device_type,
+    nullif(trim(coalesce(p_platform,'')), ''),
+    now()
+  )
+  returning id into v_device_id;
+
+  insert into private.master_admin_audit_log(
+    actor_user_id,
+    action,
+    target_user_id,
+    details
+  )
+  values(
+    v_actor,
+    'master_device_bootstrap',
+    v_actor,
+    jsonb_build_object('device_id', v_device_id)
+  );
+
+  return jsonb_build_object(
+    'trusted', true,
+    'device_id', v_device_id
+  );
+end;
+$function$
+;

@@ -6,6 +6,7 @@ create table auth.sessions(id uuid primary key,user_id uuid,not_after timestampt
 create table private.account_deletion_access_restrictions(user_id uuid primary key);
 create table private.master_devices(id uuid primary key default gen_random_uuid(),master_user_id uuid not null,
  device_key text not null,device_name text not null,device_type text not null,last_used_at timestamptz,
+ platform text,is_locked boolean not null default false,revoked_by uuid,
  revoked_at timestamptz, unique(master_user_id,device_key));
 create table private.master_admin_audit_log(actor_user_id uuid,action text,target_user_id uuid,details jsonb);
 create table public.user_secondary_credentials(user_id uuid primary key,password_hash text,
