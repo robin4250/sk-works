@@ -432,21 +432,27 @@ class _OwnDocumentRegistrationPageState
           ),
         );
         if (source == null || !mounted) return;
-        final picked = source == 'pdf'
-            ? await FilePicker.pickFile(type: FileType.custom, allowedExtensions: const ['pdf'])
-            : widget.pickPhoto != null
-            ? await widget.pickPhoto!(source == 'camera' ? ImageSource.camera : ImageSource.gallery)
-            : await _picker.pickImage(
-                source: source == 'camera' ? ImageSource.camera : ImageSource.gallery,
-                imageQuality: 88,
-                maxWidth: 2400,
-              );
-        if (picked == null || !mounted) return;
-        attachmentBytes = await picked.readAsBytes();
-        if (source == 'pdf' && (attachmentBytes.length < 5 || String.fromCharCodes(attachmentBytes.take(5)) != '%PDF-')) {
-          throw const FormatException('PDFファイルを選択してください。');
+        if (source == 'pdf') {
+          final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: const ['pdf']);
+          if (file == null || !mounted) return;
+          final bytes = await file.readAsBytes();
+          if (bytes.length < 5 || String.fromCharCodes(bytes.take(5)) != '%PDF-') {
+            throw const FormatException('PDFファイルを選択してください。');
+          }
+          attachmentBytes = bytes;
+          originalFilename = file.name;
+        } else {
+          final picked = widget.pickPhoto != null
+              ? await widget.pickPhoto!(source == 'camera' ? ImageSource.camera : ImageSource.gallery)
+              : await _picker.pickImage(
+                  source: source == 'camera' ? ImageSource.camera : ImageSource.gallery,
+                  imageQuality: 88,
+                  maxWidth: 2400,
+                );
+          if (picked == null || !mounted) return;
+          attachmentBytes = await picked.readAsBytes();
+          originalFilename = picked.name;
         }
-        originalFilename = picked.name;
         if (!mounted) return;
       }
 
