@@ -61,7 +61,7 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('シフトの下書き')),
-    body: ListView(children: [
+    body: SingleChildScrollView(child: Column(children: [
       Text('${widget.date.year}年${widget.date.month}月${widget.date.day}日'),
       ShiftPeoplePicker(people: widget.people, selectedIds: selected,
         onChanged: saving ? (_) {} : (ids) => setState(() => selected = ids)),
@@ -69,6 +69,6 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
         onChanged: saving ? (_) {} : (value) => setState(() => draft = value)),
       if (message != null) Text(message!),
       FilledButton(onPressed: saving ? null : submit, child: const Text('下書きを保存')),
-    ]),
+    ])),
   );
 }
