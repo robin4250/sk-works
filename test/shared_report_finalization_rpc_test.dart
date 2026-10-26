@@ -17,6 +17,7 @@ final _scope = List.filled(64, 'a').join();
 
 class _RpcFixture {
   bool explicit = false, document = false, complete = false, route = false, switchAba = false;
+  bool stageReporterSaved = true, managedContext = false;
   String loginUid = _actor;
   int generation = 0;
   final calls = <String>[];
@@ -59,10 +60,10 @@ class _RpcFixture {
     'explicit_finalization_completed': complete, 'report_updated_at': _stamp.toIso8601String(),
     'signature_scope_fingerprint': _scope};
   Map<String, dynamic> response() => {'schema': 1, 'actor_id': _actor, 'company_id': _company,
-    'worker_id': _worker, 'source_clock_in_id': _source, 'report_id': _report, 'work_date': '2026-10-26',
-    'state': complete ? 'supervisor_saved' : document ? 'reporter_required' : 'reporter_saved_waiting_supervisor',
-    'enabled': true, 'can_manage_attendance': false, 'reporter_saved': !document,
-    'supervisor_saved': complete, 'source_attached': true, 'supervisor_ready': !complete,
+    'worker_id': managedContext ? null : _worker, 'source_clock_in_id': managedContext ? null : _source, 'report_id': _report, 'work_date': '2026-10-26',
+    'state': complete ? 'supervisor_saved' : document || !stageReporterSaved ? 'reporter_required' : 'reporter_saved_waiting_supervisor',
+    'enabled': true, 'can_manage_attendance': managedContext, 'reporter_saved': !document && stageReporterSaved,
+    'supervisor_saved': complete, 'source_attached': !managedContext, 'supervisor_ready': !complete,
     'first_reporter_covers_work_only': true, 'management_hold': false,
     'pending_members': [], 'supervisor_pending_reasons': [], 'reporter_name': '報告者',
     'report_status': complete ? 'signed' : 'draft', 'report_updated_at': _stamp.toIso8601String(),
@@ -77,9 +78,10 @@ class _RpcFixture {
       'work_date': '2026-10-26', 'site_id': _source, 'route_assignment_id': null,
       'work_description': '実際の作業'}, 'roster': [{'worker_id': _worker}]}};
   SharedDailyReportContext before({bool ready = false, bool provisional = false}) => SharedDailyReportContext(actorId: _actor,
-    companyId: _company, workerId: _worker, reportId: _report, sourceClockInId: _source,
+    companyId: _company, workerId: managedContext ? null : _worker, reportId: _report,
+    sourceClockInId: managedContext ? null : _source,
     workDate: DateTime(2026, 10, 26), state: 'reporter_required', enabled: true,
-    canManageAttendance: false, reporterSaved: ready || provisional, supervisorSaved: ready, sourceAttached: true,
+    canManageAttendance: managedContext, reporterSaved: ready || provisional, supervisorSaved: ready, sourceAttached: !managedContext,
     reportStatus: 'draft', firstReporterCoversWorkOnly: true,
     expectedUpdatedAt: _stamp, signatureScopeFingerprint: _scope, supervisorReady: true,
     explicitFinalizationRequired: explicit, explicitFinalizationReady: ready,
@@ -138,6 +140,15 @@ void main() {
         'p_workers': [_workerInput()]});
     });
   }
+  test('unsigned saved-report manager stages typed hours without fabricating reporter signature', () async {
+    final fixture = _RpcFixture()..explicit = true..stageReporterSaved = false..managedContext = true;
+    addTearDown(fixture.client.dispose); await fixture.login();
+    final after = await fixture.repository.prepareProvisionalFacts(before: fixture.before(), workers: [_workerInput()]);
+    expect(fixture.calls, ['prepare_shared_report_provisional_facts']);
+    expect((fixture.requests.single['p_workers'] as List).single['confirmed_hours'], 7.5);
+    expect(after.sourceClockInId, isNull); expect(after.canManageAttendance, isTrue);
+    expect(after.reporterSaved, isFalse); expect(after.supervisorSaved, isFalse);
+  });
   test('late-checkout preparation is unavailable on legacy or already signed context', () async {
     final fixture = _RpcFixture(); addTearDown(fixture.client.dispose); await fixture.login();
     await expectLater(fixture.repository.prepareProvisionalFacts(before: fixture.before(provisional: true), workers: [_workerInput()]), throwsStateError);

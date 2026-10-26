@@ -1464,6 +1464,19 @@ class _DailyReportPageState extends State<DailyReportPage> {
           throw StateError('サイン対象の日報が更新されました。日報を再読み込みしてください。');
         }
       }
+      if (sharedBefore?.explicitFinalizationRequired == true && sharedBefore?.sourceClockInId == null) {
+        final before = sharedBefore!;
+        final prepared = await _sharedReportRepository!.prepareProvisionalFacts(before: before,
+          workers: [for (final worker in _workers) {...worker.toRpcJson(),
+            'confirmed_hours': enteredHours[worker.workerId],
+            'confirmation_reason': worker.workerId == before.workerId || enteredConfirmationReason.isEmpty
+              ? null : enteredConfirmationReason}]);
+        if (!mounted) return;
+        checkSigningContext();
+        _verifySharedContext(prepared, reportId: reportId);
+        sharedBefore = prepared;
+        _sharedContext = prepared;
+      }
       if (sharedBefore?.firstReporterCoversWorkOnly == true &&
           (_workDescription.text.trim().isEmpty || _workers.isEmpty || !_sharedWorkMatchesEditor(sharedBefore!))) {
         throw StateError('作業内容とメンバーが更新されています。保存済みの日報を再読み込みして確認してください。');

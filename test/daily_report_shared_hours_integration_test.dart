@@ -44,6 +44,7 @@ class _Reports implements DailyReportRepository {
       companyAllowanceSelections: savedSelections ?? (recoveryChoices ? DailyReportCompanyAllowanceSelections([]) : null),
       sourceClockInId: omitSource ? null : _source, sourceClockOutAt: DateTime(2026, 10, 25, 17)),
     if (peerOpen) DailyReportWorkerDraft(workerId: _peer, workerName: '勤務継続中',
+      workCategory: category, companyAllowanceSelections: savedSelections ?? (recoveryChoices ? DailyReportCompanyAllowanceSelections([]) : null),
       sourceClockInId: '00000000-0000-0000-0000-000000000051',
       sourceClockOutAt: peerClosed ? DateTime(2026, 10, 25, 18) : null),
   ];
@@ -116,7 +117,9 @@ class _Shared implements SharedDailyReportRepository {
   bool hold = false, manager = false, financialSupported = false, prepared = false, preparedValid = true;
   int financialPreparations = 0, freshReporterWrites = 0;
   List<SharedWorkerFactsTransitionInput>? financialInputs;
-  String source = _source;
+  String? source = _source;
+  bool managerNoOwnWorker = false;
+  List<Map<String, dynamic>>? provisionalPayload;
   bool workOnly = true, ready = false, documentOnly = false;
   int documentEdits = 0, documentSaves = 0;
   int supervisorWrites = 0, finalizationWrites = 0, provisionalPreparations = 0;
@@ -124,7 +127,7 @@ class _Shared implements SharedDailyReportRepository {
   int actualSourceBindings = 0;
   bool failFinalization = false, loseFinalizationAcknowledgement = false;
   SharedDailyReportContext get state => SharedDailyReportContext(actorId: reports.viewerActor,
-    companyId: _company, workerId: reports.viewerWorker, reportId: _report, sourceClockInId: source,
+    companyId: _company, workerId: managerNoOwnWorker ? null : reports.viewerWorker, reportId: _report, sourceClockInId: source,
     clockOutId: '00000000-0000-0000-0000-000000000060', workDate: _date,
     state: hold ? 'managed_financial_hold' : !enabled ? 'disabled' : reports.supervisorSaved ? 'supervisor_saved' :
       reports.reporterSaved ? 'reporter_saved_waiting_supervisor' : 'reporter_required',
@@ -132,7 +135,7 @@ class _Shared implements SharedDailyReportRepository {
     explicitFinalizationRequired: reports.explicitMode,
     explicitFinalizationReady: reports.explicitMode && reports.reporterSaved && reports.supervisorSaved && !reports.finalized,
     explicitFinalizationCompleted: reports.explicitMode && reports.finalized,
-    supervisorSaved: reports.supervisorSaved, sourceAttached: true,
+    supervisorSaved: reports.supervisorSaved, sourceAttached: source != null,
     reporterName: reports.reporterSaved ? '最初の報告者' : '',
     reportStatus: (reports.explicitMode ? reports.finalized : reports.supervisorSaved) ? 'signed' : 'draft',
     expectedUpdatedAt: DateTime.utc(2026, 10, 25, 8), signatureScopeFingerprint: _scope,
@@ -158,7 +161,8 @@ class _Shared implements SharedDailyReportRepository {
   @override Future<SharedDailyReportContext> loadReport(String reportId, {String? expectedActor}) async => state;
   @override Future<SharedDailyReportContext> prepareProvisionalFacts({required SharedDailyReportContext before,
     required List<Map<String, dynamic>> workers}) async {
-    expect(before.reporterSaved, isTrue); expect(before.supervisorSaved, isFalse);
+    expect(before.reporterSaved, reports.reporterSaved); expect(before.supervisorSaved, isFalse);
+    provisionalPayload = workers;
     expect(workers.map((worker) => worker['worker_id']), reports.workers.map((worker) => worker.workerId));
     expect(workers.every((worker) => worker.containsKey('confirmed_hours')), isTrue);
     provisionalPreparations++;
@@ -296,7 +300,7 @@ void main() {
   for (final peerClosed in [false, true]) {
     testWidgets('another member stage prepares only an actually closed late peer before supervisor capture: $peerClosed', (tester) async {
       final reports = _Reports()..reporterSaved = true..explicitMode = true..peerOpen = true
-        ..viewerActor = '00000000-0000-0000-0000-000000000099'..viewerWorker = _peer;
+        ..category = 'day'..recoveryChoices = true..viewerActor = '00000000-0000-0000-0000-000000000099'..viewerWorker = _peer;
       final shared = _Shared(reports)..latePeerStage = true..source = '00000000-0000-0000-0000-000000000051';
       final hours = _Hours()..actorId = reports.viewerActor;
       await open(tester, reports, hours, shared);
@@ -315,7 +319,7 @@ void main() {
     });
   }
   testWidgets('lost preparation ACK refreshes before retry and never fabricates another source', (tester) async {
-    final reports = _Reports()..reporterSaved = true..explicitMode = true..peerOpen = true;
+    final reports = _Reports()..reporterSaved = true..explicitMode = true..peerOpen = true..category = 'day'..recoveryChoices = true;
     final shared = _Shared(reports)..latePeerStage = true..loseStageAcknowledgement = true;
     await open(tester, reports, _Hours(), shared); reports.peerClosed = true;
     await reveal(tester, '責任者サイン'); await tester.tap(find.text('責任者サイン')); await tester.pumpAndSettle();
@@ -328,7 +332,7 @@ void main() {
   });
 
   Future<void> expandMemberFields(WidgetTester tester) async {
-    final member = find.descendant(of: find.byType(ExpansionTile), matching: find.text('報告者')).first;
+    final member = find.descendant(of: find.byType(ExpansionTile), matching: find.text('報告者'));
     await tester.scrollUntilVisible(member, 180, scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(member); await tester.pumpAndSettle();
     await tester.tap(member); await tester.pumpAndSettle();
@@ -388,6 +392,23 @@ void main() {
     expect(reports.savedWorkerPayload!.single['allowance_label'], '旧手入力の手当');
     expect(reports.savedWorkerPayload!.single['allowance_amount'], 5000);
     expect(reports.reporterSaved, isFalse); expect(reports.finalized, isFalse);
+  });
+
+  testWidgets('saved-report manager without own source stages entered hours before reporter capture', (tester) async {
+    final reports = _Reports()..explicitMode = true..category = 'day'..recoveryChoices = true;
+    final shared = _Shared(reports)..manager = true..managerNoOwnWorker = true..source = null;
+    await open(tester, reports, _Hours(), shared);
+    final field = find.byKey(const ValueKey('daily-report-confirmed-hours/$_worker'));
+    await tester.scrollUntilVisible(field, 160, scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(field); await tester.pumpAndSettle();
+    await tester.enterText(field, '7.25'); FocusManager.instance.primaryFocus?.unfocus(); await tester.pumpAndSettle();
+    await reveal(tester, '報告者サイン'); await tester.tap(find.text('報告者サイン')); await tester.pumpAndSettle();
+    expect(shared.provisionalPreparations, 1);
+    expect(shared.provisionalPayload!.single['confirmed_hours'], 7.25);
+    expect(shared.provisionalPayload!.single['company_allowance_selections'], {'contract_version': 1, 'items': []});
+    expect(find.byType(SignatureCapturePage), findsOneWidget);
+    expect(tester.widget<SignatureCapturePage>(find.byType(SignatureCapturePage)).reviewText, contains('7.25時間'));
+    expect(reports.reporterSaved, isFalse); expect(shared.supervisorWrites, 0);
   });
 
   testWidgets('actual signatures remain draft until explicit step five succeeds', (tester) async {
