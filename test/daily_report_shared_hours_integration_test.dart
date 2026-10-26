@@ -126,6 +126,7 @@ class _Shared implements SharedDailyReportRepository {
   bool latePeerStage = false, loseStageAcknowledgement = false;
   int actualSourceBindings = 0;
   bool failFinalization = false, loseFinalizationAcknowledgement = false;
+  Map<String, dynamic>? savedHoursAnnex;
   SharedDailyReportContext get state => SharedDailyReportContext(actorId: reports.viewerActor,
     companyId: _company, workerId: managerNoOwnWorker ? null : reports.viewerWorker, reportId: _report, sourceClockInId: source,
     clockOutId: '00000000-0000-0000-0000-000000000060', workDate: _date,
@@ -139,6 +140,7 @@ class _Shared implements SharedDailyReportRepository {
     reporterName: reports.reporterSaved ? '最初の報告者' : '',
     reportStatus: (reports.explicitMode ? reports.finalized : reports.supervisorSaved) ? 'signed' : 'draft',
     expectedUpdatedAt: DateTime.utc(2026, 10, 25, 8), signatureScopeFingerprint: _scope,
+    hoursAnnex: savedHoursAnnex,
     supervisorReady: ready || (documentOnly && reports.reporterSaved && !reports.supervisorSaved),
     documentOnly: documentOnly, documentComplete: documentOnly && reports.persistedSupervisor,
     documentEditable: documentOnly && reports.reporterSaved,
@@ -297,6 +299,104 @@ void main() {
     await tester.scrollUntilVisible(button, 220, scrollable: find.byType(Scrollable).first, maxScrolls: 40);
     await tester.ensureVisible(button); await tester.pumpAndSettle();
   }
+  for (final saved in [(false, false), (true, false), (true, true)]) {
+    testWidgets('signature titles show a small saved label only for persisted roles $saved', (tester) async {
+      final reports = _Reports()..reporterSaved = saved.$1..supervisorSaved = saved.$2;
+      await open(tester, reports, _Hours(), _Shared(reports));
+      await reveal(tester, '報告者サイン');
+      final reporter = find.byKey(const ValueKey('daily-report-reporter-saved'));
+      final supervisor = find.byKey(const ValueKey('daily-report-supervisor-saved'));
+      expect(reporter, saved.$1 ? findsOneWidget : findsNothing);
+      expect(supervisor, saved.$2 ? findsOneWidget : findsNothing);
+      expect(find.text('報告者サイン'), findsOneWidget);
+      expect(find.text('責任者サイン'), findsOneWidget);
+      if (saved.$1) {
+        expect(tester.getRect(reporter).left, greaterThan(tester.getRect(find.text('報告者サイン')).right));
+        final label = tester.widget<Text>(reporter);
+        expect(label.data, 'サイン済み');
+        expect(label.style!.fontSize, lessThan(DefaultTextStyle.of(
+          tester.element(find.text('報告者サイン'))).style.fontSize!));
+      }
+    });
+  }
+  testWidgets('reopened signature reset removes both saved labels', (tester) async {
+    final reports = _Reports()..reporterSaved = true..supervisorSaved = true;
+    await open(tester, reports, _Hours(), _Shared(reports));
+    await reveal(tester, '報告者サイン');
+    expect(find.byKey(const ValueKey('daily-report-reporter-saved')), findsOneWidget);
+    expect(find.byKey(const ValueKey('daily-report-supervisor-saved')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink()); await tester.pump();
+    reports.reporterSaved = false; reports.supervisorSaved = false;
+    await open(tester, reports, _Hours(), _Shared(reports));
+    await reveal(tester, '報告者サイン');
+    expect(find.byKey(const ValueKey('daily-report-reporter-saved')), findsNothing);
+    expect(find.byKey(const ValueKey('daily-report-supervisor-saved')), findsNothing);
+  });
+  testWidgets('work step is entered rather than saved and responds to empty input', (tester) async {
+    final reports = _Reports()..description = '';
+    await open(tester, reports, _Hours(), _Shared(reports));
+    expect(find.byKey(const ValueKey('daily-report-work-saved')), findsNothing);
+    expect(find.byKey(const ValueKey('daily-report-work-status')), findsOneWidget);
+    final field = find.byKey(const ValueKey('daily-report-work-description'));
+    await tester.ensureVisible(field); await tester.pumpAndSettle();
+    await tester.enterText(field, '実際の作業'); await tester.pump();
+    expect(find.byKey(const ValueKey('daily-report-work-saved')), findsOneWidget);
+    expect(find.text('記入済み'), findsOneWidget);
+    expect(reports.draftWrites, 0);
+    await tester.enterText(field, '   '); await tester.pump();
+    expect(find.byKey(const ValueKey('daily-report-work-saved')), findsNothing);
+    expect(reports.draftWrites, 0);
+  });
+  for (final current in [false, true]) {
+    testWidgets('optional step requires saved current member confirmations, current=$current', (tester) async {
+      final reports = _Reports()..reporterSaved = true;
+      final shared = _Shared(reports)..savedHoursAnnex = {
+        'enabled': true, 'ready': true, 'required': false,
+        'inputs': [{'worker_id': _worker, 'confirmed': true, 'facts_current': current,
+          'source_current': true, 'hours': null}],
+      };
+      await open(tester, reports, _Hours(), shared);
+      await reveal(tester, 'メンバー別 残業・早出・手当');
+      expect(find.byKey(const ValueKey('daily-report-facts-saved')), current ? findsOneWidget : findsNothing);
+      expect(find.byKey(const ValueKey('daily-report-facts-status')), current ? findsNothing : findsOneWidget);
+      expect(reports.draftWrites, 0);
+    });
+  }
+  testWidgets('default zero optional values remain optional rather than confirmed', (tester) async {
+    final reports = _Reports();
+    await open(tester, reports, _Hours(), _Shared(reports));
+    await reveal(tester, 'メンバー別 残業・早出・手当');
+    expect(find.byKey(const ValueKey('daily-report-facts-saved')), findsNothing);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('daily-report-facts-status'))).data, '任意');
+    expect(reports.draftWrites, 0);
+  });
+  testWidgets('editing confirmed optional input removes its green status until saved reload', (tester) async {
+    final reports = _Reports()..reporterSaved = true;
+    final shared = _Shared(reports)..savedHoursAnnex = {
+      'enabled': true, 'ready': true, 'required': false,
+      'inputs': [{'worker_id': _worker, 'confirmed': true, 'facts_current': true,
+        'source_current': true, 'hours': null}],
+    };
+    final facts = _Facts()..requireHours = false;
+    facts.savedFacts = facts.proposed();
+    await open(tester, reports, _Hours(), shared, facts: facts);
+    await reveal(tester, 'メンバー別 残業・早出・手当');
+    expect(find.byKey(const ValueKey('daily-report-facts-saved')), findsOneWidget);
+    final member = find.descendant(of: find.byType(ExpansionTile), matching: find.text('報告者'));
+    await tester.scrollUntilVisible(member, 180, scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(member); await tester.pumpAndSettle();
+    await tester.tap(member); await tester.pumpAndSettle();
+    final overtime = find.byWidgetPredicate((widget) => widget is TextField && widget.decoration?.labelText == '残業(h)');
+    await tester.ensureVisible(overtime); await tester.pumpAndSettle();
+    await tester.enterText(overtime, '1'); await tester.pump();
+    await tester.scrollUntilVisible(find.text('メンバー別 残業・早出・手当'), -180,
+      scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('daily-report-facts-saved')), findsNothing);
+    expect(find.byKey(const ValueKey('daily-report-facts-status')), findsOneWidget);
+    expect(facts.savedFacts!.overtimeHours, 0);
+    expect(facts.confirmations, 0); expect(reports.draftWrites, 0);
+  });
   for (final peerClosed in [false, true]) {
     testWidgets('another member stage prepares only an actually closed late peer before supervisor capture: $peerClosed', (tester) async {
       final reports = _Reports()..reporterSaved = true..explicitMode = true..peerOpen = true
@@ -432,6 +532,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(reports.finalized, isTrue); expect(shared.finalizationWrites, 1);
     expect(find.text('確定済み'), findsOneWidget);
+    expect(find.byKey(const ValueKey('daily-report-finalize-saved')), findsOneWidget);
   });
   testWidgets('missing supervisor cannot unlock step five', (tester) async {
     final reports = _Reports()..reporterSaved = true..explicitMode = true;
@@ -447,6 +548,7 @@ void main() {
     await open(tester, reports, _Hours(), shared); await revealFinalize(tester);
     await tester.tap(find.byKey(const ValueKey('daily-report-finalize'))); await tester.pumpAndSettle();
     expect(reports.finalized, isFalse); expect(find.text('確定済み'), findsNothing);
+    expect(find.byKey(const ValueKey('daily-report-finalize-saved')), findsNothing);
     expect(shared.finalizationWrites, 1);
     shared.failFinalization = false; await revealFinalize(tester);
     await tester.tap(find.byKey(const ValueKey('daily-report-finalize'))); await tester.pumpAndSettle();
@@ -631,6 +733,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(SignatureCapturePage), findsOneWidget);
       expect(find.text('この内容で責任者サインへ'), findsNothing);
+      expect(find.byKey(const ValueKey('daily-report-supervisor-saved')), findsNothing);
       expect(hours.workersRead, isEmpty);
       expect(facts.reads, 0);
       expect(reports.draftWrites, 0);
@@ -640,6 +743,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(shared.supervisorWrites, 1);
       expect(find.text('責任者サインを保存し、日報が完了しました'), stale ? findsNothing : findsOneWidget);
+      expect(find.byKey(const ValueKey('daily-report-supervisor-saved')), stale ? findsNothing : findsOneWidget);
       expect(reports.draftWrites, 0);
       expect(reports.ordinaryReporterWrites, 0);
     });
@@ -936,5 +1040,6 @@ void main() {
     expect(reports.draftWrites, 0);
   });
 }
+
 
 

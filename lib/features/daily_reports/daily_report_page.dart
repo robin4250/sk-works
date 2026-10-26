@@ -200,6 +200,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   SharedDailyReportContext? _pendingSharedSignatureContext;
   String? _pendingSignatureFingerprint;
   String? _pendingReporterFingerprint;
+  bool _optionalFactsHaveInputChanges = false;
 
   bool get _editingApprovedReport => !_visitReport && _editSession != null &&
       _editSession!.actorId == _repository?.currentActorId &&
@@ -242,6 +243,42 @@ class _DailyReportPageState extends State<DailyReportPage> {
       ? _report?.visitFinalizationRequired == true : _sharedContext?.explicitFinalizationRequired == true;
 
   bool get _signed => _report?.signed == true;
+  bool get _reporterSignatureSaved => _report?.id.isNotEmpty == true &&
+      _report?.reporterSignatureJson != null &&
+      (_sharedContext?.enabled != true ||
+        (_sharedContext?.reportId == _report?.id && _sharedContext?.reporterSaved == true));
+  bool get _supervisorSignatureSaved => _report?.id.isNotEmpty == true &&
+      _report?.responsibleSignatureJson != null &&
+      (_sharedContext?.enabled != true ||
+        (_sharedContext?.reportId == _report?.id && _sharedContext?.supervisorSaved == true));
+
+  bool get _optionalFactsConfirmed {
+    final shared = _sharedContext;
+    if (shared == null || !shared.enabled || shared.reportId != _report?.id ||
+        !shared.reporterSaved || !shared.hoursAnnexReady || _workers.isEmpty ||
+        _managementHold || _optionalFactsHaveInputChanges) { return false; }
+    final inputs = shared.hoursAnnexInputs;
+    return inputs.length == _workers.length && _workers.every((worker) =>
+      inputs.where((input) => input['worker_id'] == worker.workerId &&
+        input['confirmed'] == true && input['facts_current'] == true &&
+        input['source_current'] == true).length == 1);
+  }
+
+  Widget _stepTitle(String title, {required String step, required bool complete, required String status}) =>
+      Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        Text(SkoLanguageController.tr(title), style: const TextStyle(fontWeight: FontWeight.w900)),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          if (complete) ...[
+            Icon(Icons.check_circle, size: 14, color: Colors.green.shade800),
+            const SizedBox(width: 3),
+          ],
+          Text(SkoLanguageController.tr(status),
+            key: ValueKey('daily-report-$step-${complete ? 'saved' : 'status'}'),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: complete ? Colors.green.shade800 : Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600)),
+        ]),
+      ]);
   bool get _documentComplete => _sharedContext?.explicitFinalizationRequired != true &&
       _sharedContext?.documentOnly == true &&
       _sharedContext?.documentComplete == true && _sharedContext?.reportId == _report?.id &&
@@ -706,6 +743,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   void _resetWorkerControllers() {
+    _optionalFactsHaveInputChanges = false;
     _disposeWorkerControllers();
     for (final worker in _workers) {
       final savedHours = _sharedContext?.hoursAnnexInputs
@@ -2460,21 +2498,22 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             minLines: 6,
                             maxLines: 12,
                             decoration: InputDecoration(
-                              labelText: SkoLanguageController.tr('作業内容'),
+                              label: ValueListenableBuilder<TextEditingValue>(
+                                valueListenable: _workDescription,
+                                builder: (context, value, child) => _stepTitle('作業内容', step: 'work',
+                                  complete: value.text.trim().isNotEmpty,
+                                  status: value.text.trim().isNotEmpty ? '記入済み' : '未記入')),
                               prefixIcon: const _ReportStepBadge('①'),
                               alignLabelWithHint: true,
                               hintText: SkoLanguageController.tr('本日の作業内容を入力'),
                             ),
                           ),
                           const SizedBox(height: 16),
-                          if (!_sharedFactsReadOnly || _sharedContext?.explicitFinalizationRequired == true) Row(children: [
+                          Row(children: [
                             _ReportStepBadge(_dailyStep(2)),
                             const SizedBox(width: 8),
-                            Expanded(child: Text(
-                              SkoLanguageController.tr('メンバー別 残業・早出・手当'),
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w900),
-                            )),
+                            Expanded(child: _stepTitle('メンバー別 残業・早出・手当', step: 'facts',
+                              complete: _optionalFactsConfirmed, status: _optionalFactsConfirmed ? '確認済み' : '任意')),
                           ]),
                           const SizedBox(height: 8),
                           if (!_sharedFactsReadOnly || _sharedContext?.explicitFinalizationRequired == true) for (final worker in _workers) ...[
@@ -2530,6 +2569,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               readOnly: _sharedContext?.financialTransitionPending == true,
                               companyId: _report!.companyId!, reportId: _report!.id,
                               workers: _workers, sourceRevision: _report,
+                              onInputChanged: () {
+                                if (!_optionalFactsHaveInputChanges) {
+                                  setState(() => _optionalFactsHaveInputChanges = true);
+                                }
+                              },
                               companyAllowanceItems: _repository?.currentActorId == _companyAllowanceActor
                                   ? _companyAllowanceItems : const [],
                               companyAllowanceEligibility: _repository?.currentActorId == _companyAllowanceActor
@@ -2564,10 +2608,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           Card(
                             child: ListTile(
                               leading: _ReportStepBadge(_dailyStep(3)),
-                              title: Text(
-                                SkoLanguageController.tr('報告者サイン'),
-                                style: TextStyle(fontWeight: FontWeight.w900),
-                              ),
+                              title: _stepTitle('報告者サイン', step: 'reporter', complete: _reporterSignatureSaved,
+                                status: _reporterSignatureSaved ? 'サイン済み' : '未サイン'),
                               subtitle: _report?.reporterSignatureJson == null ? null : Text(
                                 _report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み')),
                               trailing: _managementHold || _signed || _visitReporterLocked || _sharedFactsReadOnly
@@ -2582,11 +2624,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             Card(
                               child: ListTile(
                                 leading: _ReportStepBadge(_dailyStep(4)),
-                                title: Text(
-                                  SkoLanguageController.tr(_explicitFinalizationRequired
-                                      ? '責任者サイン済み' : _documentComplete ? '責任者サイン済み・日報完了' : '責任者サイン済み・確定'),
-                                  style: TextStyle(fontWeight: FontWeight.w900),
-                                ),
+                                title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
+                                  status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン'),
                                 subtitle: Text(
                                   _report?.responsibleSignerName ?? _report?.signerName ?? SkoLanguageController.tr('責任者サイン済み'),
                                 ),
@@ -2598,10 +2637,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             Card(
                               child: ListTile(
                                 leading: _ReportStepBadge(_dailyStep(4)),
-                                title: Text(
-                                  SkoLanguageController.tr('責任者サイン'),
-                                  style: TextStyle(fontWeight: FontWeight.w900),
-                                ),
+                                title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
+                                  status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン'),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: _managementHold || _saving || (widget.restrictedReporterRegistration &&
                                     _sharedContext?.canAccessSupervisorCollection != true) ? null : _sign,
@@ -2611,8 +2648,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           if (!_editingApprovedReport) Card(child: Padding(padding: const EdgeInsets.all(16),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                               Row(children: [const _ReportStepBadge('⑤'), const SizedBox(width: 8),
-                                Expanded(child: Text(_signed ? '確定済み' : '保存して確定',
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)))]),
+                                Expanded(child: _stepTitle('保存して確定', step: 'finalize', complete: _signed,
+                                  status: _signed ? '確定済み' : '未確定'))]),
                               const SizedBox(height: 8),
                               if (!_signed) FilledButton.icon(
                                 key: const ValueKey('daily-report-finalize'),
@@ -2845,7 +2882,7 @@ class _WorkerFactsConfirmationSection extends StatefulWidget {
     required this.sourceRevision, required this.companyAllowanceItems,
     required this.companyAllowanceEligibility, required this.companyAllowanceNamesLoading,
     required this.companyAllowanceNamesUnavailable, required this.onSaved,
-    this.independentSignature = false});
+    this.independentSignature = false, this.onInputChanged});
   final SharedWorkerFactsRepository repository;
   final bool independentSignature, readOnly;
   final String companyId, reportId;
@@ -2855,6 +2892,7 @@ class _WorkerFactsConfirmationSection extends StatefulWidget {
   final Map<String, Set<String>> companyAllowanceEligibility;
   final bool companyAllowanceNamesLoading, companyAllowanceNamesUnavailable;
   final VoidCallback onSaved;
+  final VoidCallback? onInputChanged;
   @override State<_WorkerFactsConfirmationSection> createState() => _WorkerFactsConfirmationSectionState();
 }
 class _WorkerFactsConfirmationSectionState extends State<_WorkerFactsConfirmationSection> {
@@ -2892,7 +2930,7 @@ class _WorkerFactsConfirmationSectionState extends State<_WorkerFactsConfirmatio
           eligibleCompanyAllowanceKeys: widget.companyAllowanceEligibility[snapshot.workerId],
           companyAllowanceNamesLoading: widget.companyAllowanceNamesLoading,
           companyAllowanceNamesUnavailable: widget.companyAllowanceNamesUnavailable,
-          onSaved: widget.onSaved, onReload: _reload),
+          onSaved: widget.onSaved, onReload: _reload, onInputChanged: widget.onInputChanged),
       ]);
     });
 }
@@ -2939,8 +2977,9 @@ class _WorkerFactsConfirmationCardState extends State<_WorkerFactsConfirmationCa
     }
   }
   void _inputChanged() {
-    if (!_staging || _seeding) return;
-    _staged = false; widget.onInputChanged?.call();
+    if (_seeding) return;
+    if (_staging) _staged = false;
+    widget.onInputChanged?.call();
   }
   void _seed() {
     _seeding = true; _staged = false;
@@ -3805,5 +3844,6 @@ class _ReportStepBadge extends StatelessWidget {
       color: Theme.of(context).colorScheme.primary,
       fontSize: 28, fontWeight: FontWeight.w800))));
 }
+
 
 
