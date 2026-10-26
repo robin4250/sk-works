@@ -1,5 +1,6 @@
 import 'company_seal_snapshot.dart';
 import 'expense_cost_snapshot.dart';
+import 'trade_document_adjustment_snapshot.dart';
 
 enum InvoiceDetailMode {
   consolidatedOnly,
@@ -133,6 +134,7 @@ class InvoiceCalculationResult {
     this.taxYenOverride,
     this.grandTotalYenOverride,
     this.expenseCost = const ExpenseCostSnapshot.none(),
+    this.documentAdjustments = const [],
   });
 
   final String customerId;
@@ -163,6 +165,7 @@ class InvoiceCalculationResult {
   final int? taxYenOverride;
   final int? grandTotalYenOverride;
   final ExpenseCostSnapshot expenseCost;
+  final List<SavedTradeDocumentAdjustment> documentAdjustments;
   int get expenseExtraAmountYen => expenseCost.amountYen;
 
   int get subtotalYen =>
@@ -202,6 +205,7 @@ class InvoiceEngine {
     int? taxYenOverride,
     int? grandTotalYenOverride,
     ExpenseCostSnapshot expenseCost = const ExpenseCostSnapshot.none(),
+    List<SavedTradeDocumentAdjustment> documentAdjustments = const [],
   }) {
     if (customerId.trim().isEmpty) {
       throw ArgumentError.value(customerId, 'customerId', 'must not be empty');
@@ -267,7 +271,7 @@ class InvoiceEngine {
       taxYenOverride: taxYenOverride,
       grandTotalYenOverride: grandTotalYenOverride,
       expenseCost: expenseCost,
+      documentAdjustments: List.unmodifiable(documentAdjustments),
     );
   }
 }
-

@@ -1,0 +1,38 @@
+name: Trade document adjustments
+on:
+  pull_request:
+    paths:
+      - 'lib/domain/**'
+      - 'lib/features/shared/trade_document_adjustment*'
+      - 'lib/features/invoices/**'
+      - 'lib/features/payroll/payment_certificate*'
+      - 'test/trade_document_adjustment*'
+      - 'supabase/review/document_adjust*'
+      - 'supabase/review/refresh_functions.incomplete.sql'
+      - 'supabase/tests/fixtures/trade_document_adjustments_20261026/**'
+      - 'tool/verify_adjustment*'
+      - '.github/workflows/trade-document-adjustments.yml'
+  workflow_dispatch:
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/domain/trade_document_adjustment_snapshot.dart lib/features/shared/trade_document_adjustment_model.dart lib/features/shared/trade_document_adjustment_page.dart lib/features/shared/trade_document_adjustment_repository.dart lib/features/invoices/invoice_cloud_page.dart lib/features/invoices/invoice_cloud_repository.dart lib/features/invoices/invoice_pdf_service.dart lib/features/payroll/payment_certificate_repository.dart lib/features/payroll/payment_certificate_pdf_service.dart lib/features/payroll/payment_certificates_page.dart test/trade_document_adjustment_page_test.dart test/trade_document_adjustment_snapshot_test.dart
+      - run: flutter test test/trade_document_adjustment_page_test.dart test/trade_document_adjustment_snapshot_test.dart
+  isolated-sql:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/sko-adjustment" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
+      - run: node tool/verify_adjustment_arithmetic.mjs "$RUNNER_TEMP/sko-adjustment/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_adjustment_real_refresh.mjs "$RUNNER_TEMP/sko-adjustment/node_modules/@electric-sql/pglite/dist/index.js"

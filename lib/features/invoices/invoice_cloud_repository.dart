@@ -1,4 +1,5 @@
 import '../shared/company_seal_current_preview.dart';
+import '../shared/trade_document_adjustment_repository.dart';
 import '../../domain/invoice_document_seal.dart';
 import '../../domain/company_seal_snapshot.dart';
 
@@ -7,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import '../../domain/invoice_engine.dart';
 import '../../domain/expense_cost_snapshot.dart';
+import '../../domain/trade_document_adjustment_snapshot.dart';
 
 class InvoiceCloudRepository {
   InvoiceCloudRepository._(this._client);
@@ -14,6 +16,19 @@ class InvoiceCloudRepository {
   InvoiceCloudRepository.forTesting(this._client);
 
   final SupabaseClient _client;
+
+  SupabaseTradeDocumentAdjustmentRepository createAdjustmentPort() =>
+      SupabaseTradeDocumentAdjustmentRepository(_client);
+
+  Future<String> adjustmentCompanyId() async {
+    final actor = _client.auth.currentUser?.id;
+    if (actor == null) throw StateError('ログインが必要です。');
+    final rows = await _client.from('company_members').select('company_id').eq('user_id', actor);
+    if (_client.auth.currentUser?.id != actor || rows.length != 1) {
+      throw StateError('操作する会社を一意に確認できません。');
+    }
+    return rows.single['company_id'] as String;
+  }
 
   static InvoiceCloudRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -451,6 +466,7 @@ class InvoiceCloudRepository {
             taxYenOverride: _toInt(invoice['tax']),
             grandTotalYenOverride: _toInt(invoice['grand_total']),
             expenseCost: ExpenseCostSnapshot.parse(snapshotMap),
+            documentAdjustments: SavedTradeDocumentAdjustment.parse(snapshotMap),
           ),
         );
       } catch (_) {
@@ -654,5 +670,6 @@ class InvoiceCloudRepository {
     return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 }
+
 
 

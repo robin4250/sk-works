@@ -248,6 +248,9 @@ class InvoicePdfService {
         buffer.writeln('別途経費（原額） ${_yen(invoice.expenseExtraAmountYen)}');
       }
       final totals = DocumentDisplayTotals.invoice(invoice);
+      for (final item in invoice.documentAdjustments.where((item) => item.isFinalAmount)) {
+        buffer.writeln('${item.title}（追加税なし） ${_yen(item.signedYen)}');
+      }
       buffer
         ..writeln('小計 ${_visibleYen(totals.workSubtotal)}')
         ..writeln('福利厚生費 ${_visibleYen(totals.welfare)}')
@@ -316,6 +319,10 @@ class InvoicePdfService {
         unitPrice: '',
         amount: _number(invoice.expenseExtraAmountYen),
       ));
+    }
+    for (final item in invoice.documentAdjustments.where((item) => item.isFinalAmount)) {
+      rows.add(_InvoiceFormRow(siteName: '調整', content: '${item.title}（追加税なし）',
+        quantity: '', unitPrice: '', amount: _number(item.signedYen)));
     }
     return rows;
   }
@@ -2182,6 +2189,3 @@ class _ScreenApprovals extends StatelessWidget {
     ],
   );
 }
-
-
-
