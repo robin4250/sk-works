@@ -56,7 +56,7 @@ jobs:
           flutter_root="$(dirname "$(dirname "$(command -v flutter)")")"
           framework_dir="$flutter_root/bin/cache/artifacts/engine/ios-release/Flutter.xcframework/ios-arm64"
           test -f "$framework_dir/Flutter.framework/Headers/Flutter.h"
-          xcrun swiftc -typecheck -swift-version 5 -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" -target arm64-apple-ios15.5 -F "$framework_dir" -I ios/Runner -import-objc-header ios/Runner/Runner-Bridging-Header.h ios/Runner/AppDelegate.swift
+          xcrun swiftc -typecheck -parse-as-library -swift-version 5 -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" -target arm64-apple-ios15.5 -F "$framework_dir" -I ios/Runner -import-objc-header ios/Runner/Runner-Bridging-Header.h ios/Runner/AppDelegate.swift
           python3 - <<'PY'
           import plistlib
           with open('ios/Runner/Info.plist','rb') as f:
