@@ -32,6 +32,10 @@ try {
  eq(await business(),businessBefore,'Entry OFF install changes no business/financial/signature rows');
  eq(await q('select count(*)::int v from attendance_entry_access_private.rollout'),0,'New entry gate absent/default OFF');
  const installedCatalog=await oldCatalog();
+ await exec('alter table attendance_entry_access_private.grants disable row level security');
+ await reject(()=>exec(restoreSql),/attendance_entry_restore_catalogue_changed/);await exec('rollback');
+ eq(await oldCatalog(),installedCatalog,'Changed new-table security metadata refuses restoration before original writers change');
+ await exec('alter table attendance_entry_access_private.grants enable row level security');
  await exec('create view public.fixture_unknown_entry_dependency as select attendance_entry_access_private.required() required');
  await reject(()=>exec(restoreSql),/depend|cannot drop/i);await exec('rollback');
  eq(await oldCatalog(),installedCatalog,'Unknown dependency rolls back entire unused restore');

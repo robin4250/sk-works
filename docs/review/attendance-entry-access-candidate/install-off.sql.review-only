@@ -9,6 +9,7 @@ do $pins$ begin
  if not exists(select 1 from pg_proc where oid=to_regprocedure('public.force_manage_attendance_with_proof(text,jsonb,text)') and md5(prosrc)='fa8e7e3d12c6c23d18d4d588323e3710' and provolatile='v' and proacl::text='{postgres=X/postgres,authenticated=X/postgres}' and prosecdef and pg_get_userbyid(proowner)='postgres' and proconfig=array['search_path=""']::text[]) then raise exception 'attendance_entry_original_proof_changed';end if;
  if not exists(select 1 from pg_proc where oid=to_regprocedure('private.require_reauthentication_session()') and md5(prosrc)='b5c8e2f259a99b3c69694ad0640080e5' and pg_get_userbyid(proowner)='postgres' and prosecdef and proconfig=array['search_path=""']::text[] and proacl::text='{postgres=X/postgres}') or
  not exists(select 1 from pg_proc where oid=to_regprocedure('public.verify_secondary_password(text)') and md5(prosrc)='592b30d4832b747f6a7ef4bc424cb33a' and pg_get_userbyid(proowner)='postgres' and prosecdef and proconfig=array['search_path=public, extensions, pg_temp']::text[]) then raise exception 'attendance_entry_verifier_dependency_changed';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('attendance_admin_override_private.require_manager(uuid)') and md5(prosrc)='f128ff1fc6f8857e5ec09c6d59e96cdb' and pg_get_userbyid(proowner)='postgres' and prosecdef and proconfig=array['search_path=""']::text[] and proacl::text='{postgres=X/postgres}') then raise exception 'attendance_entry_manager_dependency_changed';end if;
 end $pins$;
 create schema attendance_entry_access_private;
 revoke all on schema attendance_entry_access_private from public,anon,authenticated,service_role;
@@ -28,6 +29,7 @@ create table attendance_entry_access_private.events(
  created_at timestamptz not null default clock_timestamp());
 create table attendance_entry_access_private.originals(signature text primary key,definition text not null,metadata jsonb not null,installed_metadata jsonb);
 create table attendance_entry_access_private.installed_functions(signature text primary key,metadata jsonb not null);
+create table attendance_entry_access_private.installed_catalog(singleton boolean primary key default true check(singleton),metadata jsonb not null);
 insert into attendance_entry_access_private.originals(signature,definition,metadata)
  select p.oid::regprocedure::text,pg_get_functiondef(p.oid),to_jsonb(p)
  from pg_proc p where p.oid in(to_regprocedure('public.force_manage_attendance(text,jsonb)'),to_regprocedure('public.force_manage_attendance_with_proof(text,jsonb,text)'));
@@ -36,8 +38,22 @@ alter table attendance_entry_access_private.grants enable row level security;
 alter table attendance_entry_access_private.events enable row level security;
 alter table attendance_entry_access_private.originals enable row level security;
 alter table attendance_entry_access_private.installed_functions enable row level security;
+alter table attendance_entry_access_private.installed_catalog enable row level security;
 revoke all on all tables in schema attendance_entry_access_private from public,anon,authenticated,service_role;
 revoke all on all sequences in schema attendance_entry_access_private from public,anon,authenticated,service_role;
+
+create function attendance_entry_access_private.catalogue() returns jsonb
+language sql stable security definer set search_path='' as $$
+ select jsonb_build_object(
+ 'schema',(select jsonb_build_object('oid',oid,'owner',nspowner,'acl',nspacl) from pg_namespace where nspname='attendance_entry_access_private'),
+ 'relations',(select jsonb_agg(jsonb_build_object('oid',c.oid,'name',c.relname,'kind',c.relkind,'owner',c.relowner,'acl',c.relacl,'rls',c.relrowsecurity,'force_rls',c.relforcerowsecurity,'options',c.reloptions,'persistence',c.relpersistence) order by c.oid) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='attendance_entry_access_private'),
+ 'columns',(select jsonb_agg(to_jsonb(a) order by a.attrelid,a.attnum) from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='attendance_entry_access_private' and a.attnum>0),
+ 'defaults',(select jsonb_agg(to_jsonb(d) order by d.oid) from pg_attrdef d join pg_class c on c.oid=d.adrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='attendance_entry_access_private'),
+ 'constraints',(select jsonb_agg(to_jsonb(k) order by k.oid) from pg_constraint k join pg_namespace n on n.oid=k.connamespace where n.nspname='attendance_entry_access_private'),
+ 'indexes',(select jsonb_agg(to_jsonb(i) order by i.indexrelid) from pg_index i join pg_class c on c.oid=i.indrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='attendance_entry_access_private'),
+ 'triggers',(select jsonb_agg(to_jsonb(t) order by t.oid) from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='attendance_entry_access_private'),
+ 'policies',(select jsonb_agg(to_jsonb(p) order by p.oid) from pg_policy p join pg_class c on c.oid=p.polrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='attendance_entry_access_private'))
+$$;
 
 create function attendance_entry_access_private.guard_revision() returns trigger
 language plpgsql set search_path='' as $$begin
@@ -182,4 +198,5 @@ insert into attendance_entry_access_private.installed_functions
  where n.nspname='attendance_entry_access_private' or p.oid in(
  to_regprocedure('public.attendance_management_entry_capabilities()'),to_regprocedure('public.open_attendance_management_access(text,uuid)'),
  to_regprocedure('public.force_manage_attendance_with_access(text,jsonb,text,uuid)'),to_regprocedure('public.close_attendance_management_access(text)'),to_regprocedure('public.revoke_company_attendance_access(text,uuid,bigint,text)'));
+insert into attendance_entry_access_private.installed_catalog(metadata) values(attendance_entry_access_private.catalogue());
 commit;
