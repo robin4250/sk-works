@@ -108,3 +108,11 @@ health/notification call; the normal SKO app is deliberately outside this route.
 
 The candidate is implemented/tested, not main-integrated, deployed, enabled or a
 completed honeypot/MTD security system. Other-user distribution remains blocked.
+
+Companion progress: [MANAGEMENT.md](MANAGEMENT.md) records the separately tested
+signed management/recovery/audit core; [COLLECTOR-DELIVERY.md](COLLECTOR-DELIVERY.md)
+records the OFF fixed-destination collector-v2 sender, durable ACK/holds and nine
+additional actual-runtime tests. Both remain absent from the public module graph
+and deployment scheduler. The integration/hosting/notification limits above still
+apply; an internal signed companion does not relabel the legacy public-path audit
+as signed or complete real Master authentication.

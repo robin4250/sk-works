@@ -62,3 +62,12 @@ read/dismiss CAS, no raw-secret retention, restart and retention preservation.
 Then separately record actual Master iPhone display/read and false-positive
 review/closure. These tests/real sends are **not performed by this design file**.
 No notification or production authorization is enabled here.
+
+## Added transport prerequisite
+
+`COLLECTOR-DELIVERY.md` now describes a tested OFF/unscheduled companion from the
+existing observation outbox to the exact collector-v2 ingress. It supplies fixed
+destination, signed immutable bytes, bounded retries and durable ACK/held states.
+Those ACKs do not satisfy the notification, display or Master-review requirements
+above. The new trusted-provenance notification outbox and real delivery remain
+unimplemented; the synthetic incident-import path remains excluded.

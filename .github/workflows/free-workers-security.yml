@@ -13,6 +13,15 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+      - name: Reuse exact reviewed collector ingress source without merging or deploying it
+        uses: actions/checkout@v4
+        with:
+          repository: robin4250/sk-works
+          ref: 20f516d662e8e50458db68ba3e8a39772d93454d
+          path: collector-proof-source
+          sparse-checkout: supabase/functions/security-collector-ingest/handler.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24.22.1'
@@ -29,4 +38,5 @@ jobs:
         working-directory: tool/security/free-worker-candidate
         env:
           SKO_SECURITY_SOURCE_ROOT: ${{ github.workspace }}/tool/security
+          SKO_COLLECTOR_HANDLER_SOURCE: ${{ github.workspace }}/collector-proof-source/supabase/functions/security-collector-ingest/handler.mjs
         run: npm test
