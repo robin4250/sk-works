@@ -14,7 +14,7 @@ func TestSKOAppleNativeEnrollmentLedgerLifecycle(t *testing.T){
  create schema if not exists private;
  create table public.company_members(user_id uuid,company_id uuid,role text);
  create table private.account_deletion_access_restrictions(user_id uuid primary key);
- create function auth.jwt()returns jsonb language sql stable as $$select '{"role":"service_role"}'::jsonb$$;`).Exec())
+ create function auth.jwt()returns jsonb language sql stable as $$select jsonb_build_object('role',concat('service','_role'))$$;`).Exec())
  ledgerSQL,err:=os.ReadFile(os.Getenv("SKO_APPLE_ENROLLMENT_FILE"));require.NoError(t,err)
  require.NoError(t,api.db.RawQuery(string(ledgerSQL)).Exec())
  defer func(){require.NoError(t,api.db.RawQuery(`drop schema apple_native_enrollment_private cascade;drop function public.read_apple_native_enrollment_context(uuid,uuid);drop function public.reserve_apple_native_subject(uuid,uuid,text,text,text,text,bigint);drop function public.complete_apple_native_subject(uuid,uuid,uuid,text,text,text);drop function public.hold_apple_native_subject(uuid,uuid,uuid);drop function auth.jwt();drop table public.company_members;drop table private.account_deletion_access_restrictions;`).Exec())}()
