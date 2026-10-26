@@ -89,6 +89,12 @@ void main() {
     await t.enterText(find.descendant(of: row, matching: find.byType(TextField)).at(0), '役職手当');
     await t.enterText(find.descendant(of: row, matching: find.byType(TextField)).at(1), '15000');
     FocusManager.instance.primaryFocus?.unfocus();
+    await t.ensureVisible(find.text('時間単位').first);
+    await t.tap(find.text('時間単位').first); await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('position-transfer-enabled')), findsNothing);
+    await t.tap(find.text('日単位').first); await t.pumpAndSettle();
+    await t.ensureVisible(find.byKey(const ValueKey('position-transfer-row-0')));
+    expect(t.widget<TextField>(find.descendant(of: find.byKey(const ValueKey('position-transfer-row-0')), matching: find.byType(TextField)).first).controller!.text, '役職手当');
     await t.ensureVisible(find.widgetWithText(FilledButton, '登録'));
     await t.tap(find.widgetWithText(FilledButton, '登録')); await t.pumpAndSettle();
     await t.tap(find.text('確定して保存')); await t.pumpAndSettle();
