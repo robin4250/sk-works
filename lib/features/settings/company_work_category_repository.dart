@@ -35,7 +35,7 @@ class CompanyWorkCategoryRepository {
       if (parts.length != 3) return null;
       final value = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
       if (value is! Map || value['sub'] != session.user.id || value['session_id'] is! String ||
-          !RegExp(r'^[0-9a-f-]{36}$').hasMatch(value['session_id'] as String)) return null;
+          !RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$').hasMatch(value['session_id'] as String)) { return null; }
       return '${session.user.id}/${value['session_id']}';
     } on Object { return null; }
   }
@@ -80,7 +80,7 @@ class CompanyWorkCategoryRepository {
       final row = rows.single;
       if (row['id'] != sourceClockInId || row['company_id'] != snapshot.companyId ||
           row['worker_id'] != workerId || row['event_type'] != 'clock_in' ||
-          row['work_date'] != CompanyWorkCategoryPolicy.dateKey(workDate)) return null;
+          row['work_date'] != CompanyWorkCategoryPolicy.dateKey(workDate)) { return null; }
       final raw = row['confirmed_at'];
       if (raw is! String || !RegExp(r'(Z|[+-]\d{2}:?\d{2})$').hasMatch(raw)) return null;
       final clockIn = DateTime.tryParse(raw);
