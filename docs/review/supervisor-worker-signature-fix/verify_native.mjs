@@ -44,7 +44,13 @@ try {
   eq(await q('select bool_and(work_category is null) v from daily_report_workers where report_id=$1',[idReport]),true,'Reporter signed the existing NULL category source without silently changing it');
   for(const [wid,actor,sid] of [[reportWorker,U,id(80)],[W2,memberB,sidB]]){
    const own=await sharedCall(actor,sid,'select public.read_shared_worker_facts($1,$2) v',[idReport,wid]);
-   const facts={...own.proposed_worker_facts,work_category:'day'};delete facts.company_allowance_legacy_labels;
+   // A legacy NULL category deliberately makes proposed_worker_facts null.
+   // Build the same explicit 11-field form as the client, preserving every
+   // existing saved amount/choice/vehicle value and selecting day explicitly.
+   const savedWorker=await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[idReport,wid]);
+   const facts={schema:1,...Object.fromEntries(['overtime_hours','early_hours','night_hours',
+    'allowance_amount','allowance_label','company_allowance_selections','vehicle_id',
+    'route_assignment_id','odometer_km'].map(key=>[key,savedWorker[key]??null])),work_category:'day'};
    await sharedCall(actor,sid,'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,$4,$5,$6) v',[idReport,wid,JSON.stringify(facts),own.required?8:null,own.revision,own.scope_fingerprint]);
   }
   eq(await q('select bool_and(work_category is null) v from daily_report_workers where report_id=$1',[idReport]),true,'Confirmations preserve the nullable signed source until trusted supervisor materialization');
