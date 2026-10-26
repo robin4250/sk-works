@@ -124,6 +124,9 @@ class WorkerAttendanceMonth {
 class WorkerAttendanceSheetRepository {
   WorkerAttendanceSheetRepository._(this._client);
 
+  /// Allows a scoped Supabase client to be supplied by read-path tests.
+  WorkerAttendanceSheetRepository.forClient(this._client);
+
   final SupabaseClient _client;
 
   static WorkerAttendanceSheetRepository? maybeCreate() {
