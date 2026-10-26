@@ -43,7 +43,7 @@ void main() {
     await tester.pumpAndSettle();
     final after = tester.getSize(paint);
     expect(after.aspectRatio, closeTo(before.aspectRatio, .001));
-    expect(find.textContaining('端末を横向き'), findsOneWidget);
+    expect(find.byType(SignatureOrientationGuide), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -65,3 +65,4 @@ void main() {
     await left.up(); await right.up();
   });
 }
+

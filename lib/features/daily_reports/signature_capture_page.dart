@@ -27,19 +27,19 @@ class SignatureResult {
 
   static List<List<Offset>> fromJson(Object? value) {
     final rawValue = value is Map ? value['strokes'] : value;
-    if (rawValue is! List) return const [];
+    if (rawValue is! List) { return const []; }
     final strokes = <List<Offset>>[];
     for (final rawStroke in rawValue) {
-      if (rawStroke is! List) continue;
+      if (rawStroke is! List) { continue; }
       final points = <Offset>[];
       for (final rawPoint in rawStroke) {
-        if (rawPoint is! Map) continue;
+        if (rawPoint is! Map) { continue; }
         final x = (rawPoint['x'] as num?)?.toDouble();
         final y = (rawPoint['y'] as num?)?.toDouble();
-        if (x == null || y == null) continue;
+        if (x == null || y == null) { continue; }
         points.add(Offset(x, y));
       }
-      if (points.isNotEmpty) strokes.add(points);
+      if (points.isNotEmpty) { strokes.add(points); }
     }
     return strokes;
   }
@@ -48,11 +48,11 @@ class SignatureResult {
   // Legacy normalized strokes have no recoverable capture dimensions.
   static Size? sizeFromJson(Object? value) {
     final strokes = value is Map ? value['strokes'] : value;
-    if (strokes is! List) return null;
+    if (strokes is! List) { return null; }
     for (final stroke in strokes) {
-      if (stroke is! List) continue;
+      if (stroke is! List) { continue; }
       for (final point in stroke) {
-        if (point is! Map) continue;
+        if (point is! Map) { continue; }
         final width = point['canvas_width'];
         final height = point['canvas_height'];
         if (width is num && height is num && width.isFinite && height.isFinite && width > 0 && height > 0) {
@@ -91,6 +91,8 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   final _strokes = <List<Offset>>[];
   Size _canvasSize = Size.zero;
   Size? _captureSize;
+  bool _landscape = false;
+  bool _strokeActive = false;
 
   @override
   void initState() {
@@ -107,7 +109,9 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   }
 
   void _startStroke(DragStartDetails details) {
-    if (_canvasSize.width <= 0 || _canvasSize.height <= 0) return;
+    if (!_landscape || _canvasSize.width <= 0 || _canvasSize.height <= 0) { return; }
+    FocusManager.instance.primaryFocus?.unfocus();
+    _strokeActive = true;
     setState(() {
       _captureSize ??= _canvasSize;
       _strokes.add([
@@ -120,7 +124,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   }
 
   void _addPoint(DragUpdateDetails details) {
-    if (_strokes.isEmpty || _canvasSize.width <= 0 || _canvasSize.height <= 0) {
+    if (!_landscape || !_strokeActive || _strokes.isEmpty || _canvasSize.width <= 0 || _canvasSize.height <= 0) {
       return;
     }
     setState(() {
@@ -160,6 +164,21 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Flutter's viewport follows either landscape direction on phones/tablets.
+    // A flat/locked portrait viewport stays blocked; handwriting is not guessed.
+    _landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    if (!_landscape) { _strokeActive = false; }
+    final hasOptions = widget.signerNameOptions.any((name) => name.trim().isNotEmpty);
+    final picker = DropdownButtonFormField<String>(
+      key: const ValueKey('signature-member-picker'),
+      decoration: const InputDecoration(labelText: '出勤メンバーから選択', isDense: true),
+      items: [for (final name in widget.signerNameOptions.map((name) => name.trim()).where((name) => name.isNotEmpty).toSet())
+        DropdownMenuItem(value: name, child: Text(name))],
+      onChanged: (name) { if (name != null) { _signer.text = name; } },
+    );
+    final nameField = TextField(controller: _signer,
+      decoration: InputDecoration(labelText: widget.signerLabel,
+        prefixIcon: const Icon(Icons.person_outline), isDense: true));
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -176,111 +195,89 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
           TextButton(
             onPressed: _strokes.isEmpty
                 ? null
-                : () => setState(() { _strokes.clear(); _captureSize = null; }),
+                : () => setState(() { _strokes.clear(); _captureSize = null; _strokeActive = false; }),
             child: const Text('消去'),
           ),
         ],
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Text(
-                '端末を横向きにして、大きな入力画面で\n'
-                '横書きでサインすることをおすすめします。',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            if (widget.signerNameOptions.any((name) => name.trim().isNotEmpty))
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: DropdownButtonFormField<String>(
-                  key: const ValueKey('signature-member-picker'),
-                  decoration: const InputDecoration(labelText: '出勤メンバーから選択'),
-                  items: [
-                    for (final name
-                        in widget.signerNameOptions
-                            .map((name) => name.trim())
-                            .where((name) => name.isNotEmpty)
-                            .toSet())
-                      DropdownMenuItem(value: name, child: Text(name)),
-                  ],
-                  onChanged: (name) {
-                    if (name != null) _signer.text = name;
-                  },
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-              child: TextField(
-                controller: _signer,
-                decoration: InputDecoration(
-                  labelText: widget.signerLabel,
-                  prefixIcon: const Icon(Icons.person_outline),
-                ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final available = Size(constraints.maxWidth, constraints.maxHeight);
-                    final fitted = _captureSize == null ? available : applyBoxFit(BoxFit.contain, _captureSize!, available).destination;
-                    _canvasSize = fitted;
-                    return Center(child: SizedBox(width: fitted.width, height: fitted.height, child: GestureDetector(
-                      onPanStart: _startStroke,
-                      onPanUpdate: _addPoint,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        foregroundDecoration: BoxDecoration(
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.outlineVariant,
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Stack(
-                          children: [
-                            const Positioned(
-                              left: 16,
-                              right: 16,
-                              top: 14,
-                              child: Text(
-                                '画面を横向きにしてサインしてください',
-                                style: TextStyle(fontSize: 13),
-                              ),
-                            ),
-                            Positioned.fill(
-                              child: CustomPaint(
-                                painter: SignaturePainter(strokes: _strokes, canvasSize: _captureSize ?? _canvasSize),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )));
-                  },
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: FilledButton.icon(
-                onPressed: _submit,
-                icon: const Icon(Icons.check_circle_outline),
-                label: Text(widget.submitLabel),
-              ),
-            ),
-          ],
-        ),
-      ),
+      body: SafeArea(child: LayoutBuilder(builder: (context, bodyConstraints) => Column(
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: bodyConstraints.maxHeight * .35),
+            child: SingleChildScrollView(child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: _landscape && hasOptions
+                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: picker), const SizedBox(width: 16), Expanded(child: nameField)])
+                : Column(children: [if (hasOptions) ...[picker, const SizedBox(height: 12)], nameField]),
+            )),
+          ),
+          Expanded(child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: LayoutBuilder(builder: (context, constraints) {
+              final available = Size(constraints.maxWidth, constraints.maxHeight);
+              final fitted = _captureSize == null ? available
+                : applyBoxFit(BoxFit.contain, _captureSize!, available).destination;
+              _canvasSize = fitted;
+              return Stack(fit: StackFit.expand, children: [
+                Center(child: SizedBox(width: fitted.width, height: fitted.height,
+                  child: GestureDetector(
+                    key: const ValueKey('signature-drawing-surface'),
+                    behavior: HitTestBehavior.opaque,
+                    onPanStart: _landscape ? _startStroke : null,
+                    onPanUpdate: _landscape ? _addPoint : null,
+                    onPanEnd: _landscape ? (_) { _strokeActive = false; } : null,
+                    onPanCancel: _landscape ? () { _strokeActive = false; } : null,
+                    child: Container(
+                      decoration: BoxDecoration(color: Colors.white,
+                        borderRadius: BorderRadius.circular(18)),
+                      foregroundDecoration: BoxDecoration(
+                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                        borderRadius: BorderRadius.circular(18)),
+                      child: CustomPaint(painter: SignaturePainter(strokes: _strokes,
+                        canvasSize: _captureSize ?? _canvasSize)),
+                    ),
+                  ),
+                )),
+                if (!_landscape) const Positioned.fill(child: IgnorePointer(child: SignatureOrientationGuide())),
+              ]);
+            }),
+          )),
+          Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: FilledButton.icon(onPressed: _submit,
+              icon: const Icon(Icons.check_circle_outline), label: Text(widget.submitLabel))),
+        ],
+      ))),
     );
   }
+}
+
+/// Portrait-only direction marks use the current screen's upright coordinates.
+class SignatureOrientationGuide extends StatelessWidget {
+  const SignatureOrientationGuide({super.key});
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('signature-orientation-guide'),
+    decoration: BoxDecoration(color: Colors.white.withValues(alpha: .94),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: Theme.of(context).colorScheme.primary, width: 2)),
+    child: Stack(children: [
+      const Align(alignment: Alignment.topCenter, child: Padding(
+        padding: EdgeInsets.all(8), child: Text('↑ 上', style: TextStyle(fontWeight: FontWeight.bold)))),
+      const Align(alignment: Alignment.bottomCenter, child: Padding(
+        padding: EdgeInsets.all(8), child: Text('下 ↓', style: TextStyle(fontWeight: FontWeight.bold)))),
+      const Align(alignment: Alignment.centerLeft, child: Padding(
+        padding: EdgeInsets.all(8), child: Text('← 左', style: TextStyle(fontWeight: FontWeight.bold)))),
+      const Align(alignment: Alignment.centerRight, child: Padding(
+        padding: EdgeInsets.all(8), child: Text('右 →', style: TextStyle(fontWeight: FontWeight.bold)))),
+      Positioned.fill(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 40),
+        child: Center(child: FittedBox(fit: BoxFit.scaleDown,
+          child: SizedBox(width: 260, child: Text('横向きにしてサインしてください',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800,
+              color: Theme.of(context).colorScheme.primary))))))),
+    ]),
+  );
 }
 
 class SignaturePreview extends StatelessWidget {
@@ -339,7 +336,7 @@ class SignaturePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     for (final stroke in strokes) {
-      if (stroke.isEmpty) continue;
+      if (stroke.isEmpty) { continue; }
       final path = Path();
       final first = project(stroke.first);
       path.moveTo(first.dx, first.dy);
@@ -360,7 +357,7 @@ class SignaturePainter extends CustomPainter {
 Rect signatureInkBounds(List<List<Offset>> strokes, Size source) {
   final points = strokes.expand((stroke) => stroke).where(
       (point) => point.dx.isFinite && point.dy.isFinite).toList();
-  if (points.isEmpty) return Offset.zero & source;
+  if (points.isEmpty) { return Offset.zero & source; }
   var left = points.first.dx.clamp(0.0, 1.0) * source.width;
   var right = left;
   var top = points.first.dy.clamp(0.0, 1.0) * source.height;
@@ -368,10 +365,11 @@ Rect signatureInkBounds(List<List<Offset>> strokes, Size source) {
   for (final point in points.skip(1)) {
     final x = point.dx.clamp(0.0, 1.0) * source.width;
     final y = point.dy.clamp(0.0, 1.0) * source.height;
-    if (x < left) left = x;
-    if (x > right) right = x;
-    if (y < top) top = y;
-    if (y > bottom) bottom = y;
+    if (x < left) { left = x; }
+    if (x > right) { right = x; }
+    if (y < top) { top = y; }
+    if (y > bottom) { bottom = y; }
   }
   return Rect.fromLTRB(left - 2.4, top - 2.4, right + 2.4, bottom + 2.4);
 }
+

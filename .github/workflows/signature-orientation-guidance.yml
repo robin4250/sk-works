@@ -1,0 +1,25 @@
+name: Signature landscape guidance
+on:
+  pull_request:
+    paths:
+      - 'lib/features/daily_reports/signature_capture_page.dart'
+      - 'test/signature_orientation_guidance_test.dart'
+      - 'test/daily_report_signature_aspect_test.dart'
+      - '.github/workflows/signature-orientation-guidance.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/daily_reports/signature_capture_page.dart test/signature_orientation_guidance_test.dart test/daily_report_signature_aspect_test.dart
+      - run: flutter test test/signature_orientation_guidance_test.dart test/daily_report_signature_aspect_test.dart test/signature_capture_member_names_test.dart test/signature_ink_frame_test.dart test/sko_signature_orientation_test.dart test/iphone_portrait_orientation_contract_test.dart
