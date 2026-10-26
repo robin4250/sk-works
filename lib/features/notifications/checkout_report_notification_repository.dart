@@ -8,8 +8,8 @@ import '../../data/supabase_backend.dart';
 class CheckoutReportNotificationUnavailable implements Exception {}
 
 const checkoutReportRegistrationAction = 'checkout_report_registration';
-const _blockingStates = {'report_missing', 'source_conflict', 'report_input_incomplete', 'reporter_signature_missing'};
-const _waitingStates = {'reporter_saved_waiting_supervisor', 'signed_projection_unverified'};
+const _blockingStates = {'report_missing', 'source_conflict', 'report_input_incomplete', 'reporter_signature_missing', 'report_choice_required'};
+const _waitingStates = {'reporter_saved_waiting_supervisor', 'signed_projection_unverified', 'checkout_deferred'};
 final _uuid = RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
 
 String _id(Object? value) {
@@ -40,7 +40,7 @@ class CheckoutReportNotificationItem {
   final DateTime workDate;
   final bool blocking;
   bool get canResume => const {'report_input_incomplete', 'reporter_signature_missing',
-    'reporter_saved_waiting_supervisor'}.contains(state);
+    'reporter_saved_waiting_supervisor', 'signed_projection_unverified'}.contains(state);
 }
 
 class CheckoutReportNotificationSnapshot {
@@ -50,7 +50,7 @@ class CheckoutReportNotificationSnapshot {
   final List<CheckoutReportNotificationItem> items;
   static CheckoutReportNotificationSnapshot parse(Object? raw, {required String actorId, required String reportId}) {
     const keys = {'schema','actor_id','report_id','enforcement_enabled','effective_from','resolved','items'};
-    if (raw is! Map || raw.length != keys.length || !raw.keys.every(keys.contains) ||
+    if (raw is! Map || !keys.every(raw.containsKey) || !raw.keys.every((key) => keys.contains(key) || key == 'choice_enforcement_enabled') ||
         raw['schema'] != 1 || raw['actor_id'] != actorId || raw['report_id'] != reportId ||
         !_uuid.hasMatch(actorId) || !_uuid.hasMatch(reportId) ||
         raw['enforcement_enabled'] is! bool || raw['resolved'] is! bool || raw['items'] is! List ||
@@ -58,26 +58,37 @@ class CheckoutReportNotificationSnapshot {
       throw CheckoutReportNotificationUnavailable();
     }
     final enabled = raw['enforcement_enabled'] as bool, resolved = raw['resolved'] as bool;
+    if (raw.containsKey('choice_enforcement_enabled') &&
+        (raw['choice_enforcement_enabled'] is! bool || raw['choice_enforcement_enabled'] == true && !enabled)) {
+      throw CheckoutReportNotificationUnavailable();
+    }
     final effective = raw['effective_from'] == null ? null : _day(raw['effective_from']);
     if ((enabled && effective == null) || (resolved && (!enabled || (raw['items'] as List).isNotEmpty))) {
       throw CheckoutReportNotificationUnavailable();
     }
     const itemKeys = {'company_id','worker_id','work_date','site_id','route_assignment_id','report_id',
       'source_clock_in_id','clock_out_id','registration_state','blocking','scope_fingerprint'};
+    const choiceKeys = {'choice_available','member_count','report_started'};
     final items = <CheckoutReportNotificationItem>[];
     final seen = <String>{};
     for (final row in raw['items'] as List) {
-      if (row is! Map || row.length != itemKeys.length || !row.keys.every(itemKeys.contains) ||
+      if (row is! Map || !itemKeys.every(row.containsKey) || !row.keys.every((key) => itemKeys.contains(key) || choiceKeys.contains(key)) ||
           row['report_id'] != reportId || row['blocking'] is! bool ||
           !_blockingStates.contains(row['registration_state']) && !_waitingStates.contains(row['registration_state']) ||
           row['blocking'] != _blockingStates.contains(row['registration_state']) ||
           row['scope_fingerprint'] is! String || !RegExp(r'^[0-9a-f]{32}$').hasMatch(row['scope_fingerprint'] as String)) {
         throw CheckoutReportNotificationUnavailable();
       }
+      final hasChoice = choiceKeys.any(row.containsKey);
+      if (hasChoice && (!choiceKeys.every(row.containsKey) || row['choice_available'] != true ||
+          row['report_started'] is! bool || row['member_count'] is! int || row['member_count'] < 1 ||
+          raw['choice_enforcement_enabled'] == false)) {
+        throw CheckoutReportNotificationUnavailable();
+      }
       final item = CheckoutReportNotificationItem._(row);
       if ((item.siteId == null) == (item.routeId == null) || item.sourceClockInId == item.clockOutId ||
           !seen.add('${item.companyId}/${item.workerId}/${item.clockOutId}') ||
-          enabled && item.workDate.isBefore(effective!) ||
+          enabled && item.workDate.isBefore(effective!) && !(hasChoice && row['report_started'] == true) ||
           items.isNotEmpty && (item.companyId != items.first.companyId || item.workDate != items.first.workDate ||
             item.siteId != items.first.siteId || item.routeId != items.first.routeId)) {
         throw CheckoutReportNotificationUnavailable();

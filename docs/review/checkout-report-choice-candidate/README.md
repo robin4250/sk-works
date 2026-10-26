@@ -16,3 +16,9 @@ Validation: dedicated PG17 job uses the actual established registration bootstra
 The monthly list remains read-only. Its `+` action reads a separate actor/source-bound creation list and requires the user to choose the real saved checkout. An enforced flow without a matching source does not open the old free editor. Another worker's administrative path and an OFF capability remain separate. Cancelling the picker writes nothing.
 
 The creation reader can list saved sources before the rollout start date. Reading them does not add any gate obligation. Only an explicit `choose(create)` stores a start and includes that one historical source in subsequent gate reads; unselected historical backlog stays outside the gate. The rollout start date itself is not widened. Source choice and normal report creation remain separate: choosing never fabricates a report, attendance, signature, payroll or invoice.
+
+## Notification entry to explicit finalization
+
+A notification in `signed_projection_unverified` can open its exact report when the fresh real source reader identifies a draft with both reporter and supervisor evidence saved. This only opens the report; it never signs, finalizes or writes a choice. Legacy `status=signed` projection anomalies and protected payroll periods retain management-only handling. Source conflicts remain outside the editor.
+
+The notification parser accepts only typed, known optional choice metadata and handles deferred/choice-required rows separately from genuine pending report work. A deferred row cannot suppress another resumable row. Historical notifications require the explicit-start marker before bypassing the rollout date check. Dedicated real-SDK HTTP/widget cases distinguish draft versus legacy signed and assert that opening emits reads only.
