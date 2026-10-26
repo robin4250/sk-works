@@ -106,7 +106,9 @@ class AttendanceManagementEntryAccess extends SecondaryEntryAccess {
       'p_password': password, 'p_expected_company_id': _company,
     }, epoch);
     if (raw is Map && raw['protocol'] == 'sko-attendance-entry-v1' &&
-        raw['ok'] == false && raw['error'] == 'invalid_password') return false;
+        raw['ok'] == false && raw['error'] == 'invalid_password') {
+      return false;
+    }
     final expiry = raw is Map ? DateTime.tryParse(raw['expires_at']?.toString() ?? '') : null;
     if (raw is! Map || raw['protocol'] != 'sko-attendance-entry-v1' || raw['ok'] != true ||
         raw['company_id'] != _company || raw['grant'] is! String ||

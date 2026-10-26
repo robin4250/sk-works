@@ -68,7 +68,7 @@ try {
  let access=await open();eq(access.ok,true,'One real password verification opens one entry grant');assert.match(access.grant,/^[a-f0-9]{64}$/);
  eq(await q('select token_hash=$1 v from attendance_entry_access_private.grants',[access.grant]),false,'Database never stores raw grant');
  const afterEntryCredential=await credential();
- const cell=(day='2026-10-29',extra={})=>({worker_id:W,date:day,mode:'work',site_id:SITE,man_days:1,overtime_hours:0,early_hours:0,night_hours:0,allowance_names:[],company_allowance_selections:{version:1,items:[]},company_allowance_legacy_labels:'',work_description:'入口認証後の正規管理操作',clock_in:'08:00',clock_out:'17:00',...extra});
+ const cell=(day='2026-10-29',extra={})=>({worker_id:W,date:day,mode:'work',site_id:SITE,man_days:1,overtime_hours:0,early_hours:0,night_hours:0,allowance_names:[],company_allowance_selections:choices([]),company_allowance_legacy_labels:'',work_description:'入口認証後の正規管理操作',clock_in:'08:00',clock_out:'17:00',...extra});
  const perform=(action,items,grant=access.grant,actor=manager,sid=managerSid,cid=A)=>sharedCall(actor,sid,'select public.force_manage_attendance_with_access($1,$2::jsonb,$3,$4) v',[action,JSON.stringify(items),grant,cid]);
  const salaryDays=()=>q("select coalesce((detail->>'出勤日数')::numeric,0) v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,W]);
  const invoiceAmount=()=>q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]);

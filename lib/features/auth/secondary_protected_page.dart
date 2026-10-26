@@ -256,6 +256,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       // Later inactive events must invalidate the pending save normally.
       _nativePrompt = false;
       await repository.setSecondaryPassword(password);
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       if (_entryAccess?.requiredByServer == true &&
           !await _entryAccess!.unlock(password)) {
         throw StateError('勤怠管理の入口認証を完了できませんでした。');

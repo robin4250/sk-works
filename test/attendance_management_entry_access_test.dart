@@ -10,7 +10,7 @@ import 'operation_reauthentication_repository_test.dart' as base;
 const company = '30000000-0000-0000-0000-000000000001';
 class EntryFixture extends base.Fixture {
   late final access = AttendanceManagementEntryAccess(client);
-  Object capability = {'protocol': 'sko-attendance-entry-v1', 'enabled': true,
+  Object entryCapability = {'protocol': 'sko-attendance-entry-v1', 'enabled': true,
     'company_id': company, 'ttl_seconds': 900};
   int status = 200;
   bool passwordAccepted = true;
@@ -22,7 +22,7 @@ class EntryFixture extends base.Fixture {
   @override Future<http.Response> handle(http.Request request) async {
     if (request.url.path.endsWith('/attendance_management_entry_capabilities')) {
       entryCalls.add(request);
-      return base.jsonResponse(capability, status);
+      return base.jsonResponse(entryCapability, status);
     }
     if (request.url.path.endsWith('/open_attendance_management_access')) {
       entryCalls.add(request);await duringOpen?.call();
@@ -72,11 +72,11 @@ void main() {
   });
   test('only missing additive capability API permits OFF compatibility', () async {
     final f=EntryFixture();addTearDown(f.cleanup);await f.login();
-    f.status=404;f.capability={'code':'PGRST202','message':'synthetic missing API'};
+    f.status=404;f.entryCapability={'code':'PGRST202','message':'synthetic missing API'};
     await f.access.prepare();expect(f.access.requiredByServer,false);
-    f.status=403;f.capability={'code':'42501','message':'synthetic denial'};
+    f.status=403;f.entryCapability={'code':'42501','message':'synthetic denial'};
     await expectLater(f.access.prepare(),throwsA(isA<PostgrestException>()));
-    f.status=200;f.capability={'protocol':'sko-attendance-entry-v1','enabled':'true','company_id':company,'ttl_seconds':900};
+    f.status=200;f.entryCapability={'protocol':'sko-attendance-entry-v1','enabled':'true','company_id':company,'ttl_seconds':900};
     await expectLater(f.access.prepare(),throwsStateError);
   });
   test('background or route invalidation discards grant and late management response', () async {
