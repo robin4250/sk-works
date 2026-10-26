@@ -23,4 +23,22 @@ void main() {
     await expectLater(gateway.save([draft, draft]), throwsFormatException);
     expect(calls, 0);
   });
+  test('loads a bounded month and rejects incomplete or duplicate data', () async {
+    final row = {'worker_id': 'w', 'work_date': '2026-10-26', 'site_id': 's',
+      'holiday': false, 'night': false, 'start_minute': 480, 'end_minute': 1020,
+      'check_late': true, 'check_early': true, 'revision': 3};
+    final gateway = ShiftDraftGateway((name, params) async {
+      expect(name, 'list_shift_drafts');
+      expect(params['p_from'], '2026-10-01');
+      expect(params['p_to'], '2026-10-31');
+      return [row];
+    });
+    final drafts = await gateway.listMonth('c', DateTime(2026, 10, 20));
+    expect(drafts.single.workerId, 'w');
+    expect(drafts.single.revision, 3);
+    final invalid = ShiftDraftGateway((_, _) async => [row, row]);
+    await expectLater(invalid.listMonth('c', DateTime(2026, 10)), throwsFormatException);
+    final incomplete = ShiftDraftGateway((_, _) async => null);
+    await expectLater(incomplete.listMonth('c', DateTime(2026, 10)), throwsFormatException);
+  });
 }
