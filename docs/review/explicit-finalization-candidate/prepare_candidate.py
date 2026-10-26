@@ -29,13 +29,17 @@ for sig,source in originals.items():
         match=re.search(r"execute 'select checkout_shared_hours_private.prepare_supervisor\(\$1,\$2\)' using [^;]+;",source)
         source=once(source,match.group(0),"if not explicit_report_finalization_private.required("+target+") then "+match.group(0)+' end if;')
     elif sig.startswith('private.save_daily_report_signature'):
-        source=once(source,"  if r.status <> 'draft' then", "  perform explicit_report_finalization_private.enroll(r.id);\n  if explicit_report_finalization_private.required(r.id) then\n    if shared_daily_report_private.document_mode(r.id) then raise sqlstate '55000' using message='explicit_report_actual_revision_required';end if;\n    if p_role='representative' then perform explicit_report_finalization_private.auto_confirm(r.id);\n    elsif p_role='supervisor' then perform explicit_report_finalization_private.assert_supervisor(r.id);end if;\n  end if;\n  if r.status <> 'draft' then")
+        source=once(source,"  if r.status <> 'draft' then", "  perform explicit_report_finalization_private.enroll(r.id);\n  if explicit_report_finalization_private.required(r.id) then\n    perform explicit_report_finalization_private.lock_actor(r.id);\n    if shared_daily_report_private.document_mode(r.id) then raise sqlstate '55000' using message='explicit_report_actual_revision_required';end if;\n    if p_role='representative' then perform explicit_report_finalization_private.auto_confirm(r.id);\n    elsif p_role='supervisor' then perform explicit_report_finalization_private.assert_supervisor(r.id);end if;\n  end if;\n  if r.status <> 'draft' then")
         source=once(source,'and not shared_daily_report_private.document_mode(r.id) then','and not shared_daily_report_private.document_mode(r.id) and not explicit_report_finalization_private.required(r.id) then')
     elif '.submit_report(' in sig:
         source=once(source,' perform shared_daily_report_private.enroll_work_report(rid);',' perform shared_daily_report_private.enroll_work_report(rid);\n perform explicit_report_finalization_private.enroll(rid);\n perform explicit_report_finalization_private.auto_confirm(rid,p_workers);')
     elif '.materialize_confirmed_worker(' in sig:
         source=once(source,' update public.daily_report_workers set overtime_hours='," if explicit_report_finalization_private.permitted(rid,'finalize') and after_row=to_jsonb(w) and explicit_report_finalization_private.facts_match(rid,wid,facts) then return;end if;\n update public.daily_report_workers set overtime_hours=")
+    elif '.read_input(' in sig:
+        source=once(source,"'management_confirmation_available',private.has_company_feature(r.company_id,'can_manage_attendance'))", "'management_confirmation_available',private.has_company_feature(r.company_id,'can_manage_attendance'),'site_coordinator_confirmation_available',explicit_report_finalization_private.coordinator_available(rid,wid))")
     elif '.confirm_facts(' in sig:
+        source=once(source," if state->>'editable' is distinct from 'true' and not(is_manager and r.status='draft' and r.supervisor_signature_json is null\n  and state->>'source_blocked'='false') then", " if state->>'editable' is distinct from 'true' and not(explicit_report_finalization_private.coordinator_permitted(rid,wid) or (is_manager and r.status='draft' and r.supervisor_signature_json is null\n  and state->>'source_blocked'='false')) then")
+        source=once(source," kind:=case when is_manager then 'management'", " kind:=case when explicit_report_finalization_private.coordinator_permitted(rid,wid) then explicit_report_finalization_private.coordinator_kind(rid) when is_manager then 'management'")
         source=once(source,' facts:=shared_worker_facts_private.normalize_worker_facts(rid,wid,p_facts);'," facts:=shared_worker_facts_private.normalize_worker_facts(rid,wid,p_facts);\n if explicit_report_finalization_private.required(rid) and (r.representative_signature_json is not null or r.supervisor_signature_json is not null) and explicit_report_finalization_private.facts_match(rid,wid,facts) is distinct from true then raise sqlstate '55000' using message='explicit_report_edit_before_facts_change';end if;")
     elif sig.startswith('public.save_daily_report_destination_draft'):
         source=once(source,'  v_worker_id uuid;','  v_worker_id uuid;\n  explicit_previous_categories jsonb;')
@@ -45,6 +49,7 @@ for sig,source in originals.items():
 pins=[{k:v for k,v in row.items() if k!='definition'} for row in original_rows]
 feature=next(x for x in json.loads((HERE/'financial-source-originals.json').read_text()) if x['identity']=='private.has_company_feature(uuid,text)')
 pins.append({'signature':'private.has_company_feature(uuid,text)',**{k:v for k,v in feature.items() if k not in ('identity','definition')}})
+pins.extend({k:v for k,v in x.items() if k!='definition'} for x in json.loads((HERE/'support-source-originals.json').read_text()))
 def meta_guard(x):
     conditions=["p.oid=to_regprocedure("+literal(x['signature'])+")","md5(p.prosrc)="+literal(x['body_md5']),"pg_get_userbyid(p.proowner)="+literal(x.get('owner','postgres'))]
     if 'security_definer' in x: conditions.append("p.prosecdef="+str(x['security_definer']).lower())
@@ -54,6 +59,13 @@ def meta_guard(x):
     return " if not exists(select 1 from pg_proc p where "+' and '.join(conditions)+") then raise exception 'explicit_finalization_source_changed: "+x['signature']+"';end if;"
 checks='\n'.join(meta_guard(x) for x in pins)
 core=(HERE/'core.sql').read_text()
+insert_at=core.index('create function explicit_report_finalization_private.assert_supervisor(')
+core=core[:insert_at]+(HERE/'coordinator-core.sql').read_text()+'\n'+core[insert_at:]
+constraints=json.loads((HERE/'confirmation-constraints-originals.json').read_text())
+constraint_guard="do $constraints$ begin\n"+'\n'.join(" if not exists(select 1 from pg_constraint c where c.conrelid='checkout_shared_hours_private.confirmations'::regclass and c.conname="+literal(x['conname'])+" and c.contype='c' and c.convalidated and pg_get_constraintdef(c.oid,true)="+literal(x['definition'])+") then raise exception 'explicit_finalization_constraint_changed: "+x['conname']+"';end if;" for x in constraints)+"\nend $constraints$;\n"
+new_kind="alter table checkout_shared_hours_private.confirmations drop constraint confirmations_confirmation_kind_check;alter table checkout_shared_hours_private.confirmations add constraint confirmations_confirmation_kind_check check(confirmation_kind in('self','group_before_reporter','management','approved_editor','site_coordinator'));\n"
+core=constraint_guard+core+'\n'+new_kind
+
 sql='-- REVIEW ONLY. Default OFF. No production activation or employee data mutation.\nbegin;\nset local lock_timeout=\'5s\';set local statement_timeout=\'45s\';\ndo $install$ begin if current_user<>\'postgres\' or to_regnamespace(\'explicit_report_finalization_private\') is not null then raise exception \'explicit_finalization_install_precondition\';end if;end $install$;\ndo $pins$ begin\n'+checks+'\nend $pins$;\n'+core+'\n'+'\n'.join(x.rstrip().rstrip(';')+';' for x in patches.values())+'\ncommit;\n'
 (HERE/'explicit-finalization.sql.review-only').write_text(sql)
 (HERE/'source-pins.json').write_text(json.dumps(pins,indent=2)+'\n')
@@ -85,18 +97,27 @@ route_sql='-- REVIEW ONLY. Default OFF. Independent visit documents; no financia
 (HERE/'explicit-route-finalization.sql.review-only').write_text(route_sql)
 
 # Unused OFF restoration only. Existing definitions/owner/config/ACL must match.
-def restore(namespace,original_rows,patched_sources,new_functions,triggers):
+def restore(namespace,original_rows,patched_sources,new_functions,triggers,core_text):
     post=[]
     for row,source in zip(original_rows,patched_sources):
         post.append({**row,'body_md5':hashlib.md5(body(source).encode()).hexdigest()})
     sql="-- REVIEW ONLY. Refuses used/enabled modules. Exact post-source restoration.\nbegin;\nset local lock_timeout='5s';set local statement_timeout='45s';\ndo $unused$ begin\n if current_user<>'postgres' then raise exception 'unused_restore_postgres_required';end if;\n"
-    tables=['states','events','receipts','permits']
+    tables=[name.split('.')[-1] for name in re.findall(r'create table\s+([a-z_.]+)\(',core_text,re.I) if name.split('.')[-1] not in ['rollout','reports']]
     for table in tables:sql+=" if exists(select 1 from "+namespace+'.'+table+") then raise exception 'explicit_finalization_restore_used_module';end if;\n"
     for table in ['rollout','reports']:sql+=" if exists(select 1 from "+namespace+'.'+table+" where enabled) then raise exception 'explicit_finalization_restore_enabled_module';end if;\n"
     sql+='\n'.join(meta_guard(x) for x in post)+"\nend $unused$;\n"
     for row in reversed(original_rows):sql+=re.sub(r'(?i)^create function','create or replace function',row['definition'])+';\n'
-    for function in reversed(new_functions):sql+='drop function '+function+';\n'
+    if namespace=='explicit_report_finalization_private':
+        kind_original=next(x for x in constraints if x['conname']=='confirmations_confirmation_kind_check')
+        expected=kind_original['definition'].replace("'approved_editor'::text", "'approved_editor'::text, 'site_coordinator'::text")
+        sql+="do $kind$ begin if not exists(select 1 from pg_constraint c where conrelid='checkout_shared_hours_private.confirmations'::regclass and conname='confirmations_confirmation_kind_check' and pg_get_constraintdef(c.oid,true)="+literal(expected)+") then raise exception 'explicit_finalization_constraint_changed';end if;end $kind$;\n"
+        sql+="alter table checkout_shared_hours_private.confirmations drop constraint confirmations_confirmation_kind_check;alter table checkout_shared_hours_private.confirmations add constraint confirmations_confirmation_kind_check "+kind_original['definition']+";\n"
     for trigger,table in reversed(triggers):sql+='drop trigger '+trigger+' on '+table+';\n'
-    return sql+'drop schema '+namespace+' cascade;\ncommit;\n'
-(HERE/'explicit-finalization-restore-unused.sql.review-only').write_text(restore('explicit_report_finalization_private',original_rows,list(patches.values()),['public.start_shared_report_finalization_edit(uuid,timestamptz,text,text)','public.finalize_shared_daily_report(uuid,timestamptz,text)'],[('zzzz_explicit_report_receipts','public.daily_reports')]))
-(HERE/'explicit-route-finalization-restore-unused.sql.review-only').write_text(restore('explicit_route_finalization_private',route_originals,route_patches,['public.start_route_visit_report_finalization_edit(uuid,timestamptz,text,text)','public.finalize_route_visit_report(uuid,timestamptz,text)'],[('zzzz_explicit_route_receipts','private.route_visit_reports'),('explicit_route_completion_gate','private.route_visit_reports')]))
+    declared=re.findall(r'create function\s+([a-z_.]+)\(([^)]*)\)',core_text,re.I)
+    for name,args in reversed(declared):
+        types=[arg.strip().split()[1] for arg in args.split(',') if arg.strip()]
+        sql+='drop function '+name+'('+','.join(types)+');\n'
+    for name in reversed(re.findall(r'create table\s+([a-z_.]+)\(',core_text,re.I)):sql+='drop table '+name+';\n'
+    return sql+'drop schema '+namespace+';\ncommit;\n'
+(HERE/'explicit-finalization-restore-unused.sql.review-only').write_text(restore('explicit_report_finalization_private',original_rows,list(patches.values()),['public.start_shared_report_finalization_edit(uuid,timestamptz,text,text)','public.finalize_shared_daily_report(uuid,timestamptz,text)'],[('zzzz_explicit_report_receipts','public.daily_reports')],core))
+(HERE/'explicit-route-finalization-restore-unused.sql.review-only').write_text(restore('explicit_route_finalization_private',route_originals,route_patches,['public.start_route_visit_report_finalization_edit(uuid,timestamptz,text,text)','public.finalize_route_visit_report(uuid,timestamptz,text)'],[('zzzz_explicit_route_receipts','private.route_visit_reports'),('explicit_route_completion_gate','private.route_visit_reports')],(HERE/'route-core.sql').read_text()))

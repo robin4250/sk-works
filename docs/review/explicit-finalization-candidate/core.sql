@@ -1,10 +1,11 @@
 create schema explicit_report_finalization_private;
 revoke all on schema explicit_report_finalization_private from public,anon,authenticated,service_role;
 create table explicit_report_finalization_private.rollout(company_id uuid primary key references public.companies(id),starts_on date not null,new_report_from timestamptz not null,enabled boolean not null default false);
-create table explicit_report_finalization_private.reports(company_id uuid not null references public.companies(id),report_id uuid primary key references public.daily_reports(id),enabled boolean not null default false);
-create table explicit_report_finalization_private.states(report_id uuid primary key references public.daily_reports(id),company_id uuid not null,revision bigint not null default 1,enrolled_by uuid not null,enrolled_at timestamptz not null default clock_timestamp());
+create table explicit_report_finalization_private.reports(company_id uuid not null references public.companies(id),report_id uuid primary key references public.daily_reports(id) on delete cascade,enabled boolean not null default false);
+create table explicit_report_finalization_private.states(report_id uuid primary key references public.daily_reports(id) on delete cascade,company_id uuid not null,revision bigint not null default 1,enrolled_by uuid not null,enrolled_at timestamptz not null default clock_timestamp());
 create table explicit_report_finalization_private.events(id bigint generated always as identity primary key,report_id uuid not null,company_id uuid not null,revision bigint not null,kind text not null,actor_id uuid not null,session_id uuid not null,reason text,before_state jsonb,expected_at timestamptz,expected_scope text,created_at timestamptz not null default clock_timestamp());
 create table explicit_report_finalization_private.receipts(report_id uuid not null,revision bigint not null,role text not null,signer text not null,signature jsonb not null,basis jsonb not null,actor_id uuid not null,session_id uuid not null,created_at timestamptz not null default clock_timestamp(),primary key(report_id,revision,role));
+create table explicit_report_finalization_private.management_reports(report_id uuid primary key references public.daily_reports(id) on delete cascade,company_id uuid not null,operation_id uuid not null,actor_id uuid not null,session_id uuid not null);
 create table explicit_report_finalization_private.permits(report_id uuid primary key,kind text not null,transaction_id bigint not null,actor_id uuid not null,session_id uuid not null,old_report jsonb not null);
 alter table explicit_report_finalization_private.rollout enable row level security;
 alter table explicit_report_finalization_private.reports enable row level security;
@@ -12,17 +13,27 @@ alter table explicit_report_finalization_private.states enable row level securit
 alter table explicit_report_finalization_private.events enable row level security;
 alter table explicit_report_finalization_private.receipts enable row level security;
 alter table explicit_report_finalization_private.permits enable row level security;
+alter table explicit_report_finalization_private.management_reports enable row level security;
 revoke all on all tables in schema explicit_report_finalization_private from public,anon,authenticated,service_role;
 revoke all on all sequences in schema explicit_report_finalization_private from public,anon,authenticated,service_role;
 
+create function explicit_report_finalization_private.admin_context(rid uuid) returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare c jsonb;cid uuid;
+begin
+ c:=attendance_admin_override_private.current_context();
+ if c is null then return null;end if;
+ select company_id into cid from public.daily_reports where id=rid;
+ if c->>'company_id'=cid::text and c->'report_ids' @> jsonb_build_array(rid) then return c;end if;
+ return null;
+end $$;
 create function explicit_report_finalization_private.enabled(rid uuid) returns boolean language sql stable security definer set search_path='' as $$
  select exists(select 1 from public.daily_reports r where r.id=rid and (
   exists(select 1 from explicit_report_finalization_private.reports x where x.report_id=r.id and x.company_id=r.company_id and x.enabled)
   or exists(select 1 from explicit_report_finalization_private.rollout x where x.company_id=r.company_id and x.enabled and r.report_date>=x.starts_on and r.created_at>=x.new_report_from)))
 $$;
 create function explicit_report_finalization_private.required(rid uuid) returns boolean language sql stable security definer set search_path='' as $$
- select exists(select 1 from explicit_report_finalization_private.states where report_id=rid)
- or (explicit_report_finalization_private.enabled(rid) and exists(select 1 from public.daily_reports where id=rid and status='draft'))
+ select not exists(select 1 from explicit_report_finalization_private.management_reports where report_id=rid) and explicit_report_finalization_private.admin_context(rid) is null and (exists(select 1 from explicit_report_finalization_private.states where report_id=rid)
+ or (explicit_report_finalization_private.enabled(rid) and exists(select 1 from public.daily_reports where id=rid and status='draft')))
 $$;
 create function explicit_report_finalization_private.enroll(rid uuid) returns void language plpgsql security definer set search_path='' as $$
 declare actor uuid;r public.daily_reports%rowtype;
@@ -35,7 +46,7 @@ begin
 end $$;
 create function explicit_report_finalization_private.actor_allowed(rid uuid) returns boolean language sql stable security definer set search_path='' as $$
  select exists(select 1 from public.daily_reports r join public.company_members m on m.company_id=r.company_id and m.user_id=auth.uid() where r.id=rid
-  and (private.has_company_feature(r.company_id,'can_manage_attendance') is true or exists(
+  and (private.has_company_feature(r.company_id,'can_manage_attendance') is true or shared_daily_report_private.approved_editor(r.id) or (r.status='signed' and shared_daily_report_private.approved_editor(r.id,true) and exists(select 1 from explicit_report_finalization_private.events e where e.report_id=r.id and e.kind='finalized' and e.actor_id=auth.uid() and e.session_id=(auth.jwt()->>'session_id')::uuid)) or exists(
    select 1 from public.daily_report_workers rw join public.workers w on w.id=rw.worker_id and w.company_id=r.company_id and w.user_id=auth.uid()
    join public.attendance_verifications i on i.worker_id=w.id and i.company_id=r.company_id and i.work_date=r.report_date and i.event_type='clock_in'
    where rw.report_id=r.id and i.site_id is not distinct from r.site_id and i.route_assignment_id is not distinct from r.route_assignment_id
@@ -45,6 +56,9 @@ create function explicit_report_finalization_private.lock_actor(rid uuid) return
 declare actor uuid;cid uuid;n integer;
 begin
  actor:=checkout_report_registration_private.current_actor();
+ perform 1 from auth.users where id=actor for share;
+ perform 1 from auth.sessions where id=(auth.jwt()->>'session_id')::uuid and user_id=actor for share;
+ perform checkout_report_registration_private.current_actor();
  select company_id into cid from public.daily_reports where id=rid;
  -- SHARE also protects an absent permission row from a concurrent deny insert.
  lock table public.member_feature_permissions in share mode;
@@ -95,8 +109,18 @@ begin
   'explicit_finalization_editable',needed and r.status='draft' and explicit_report_finalization_private.enabled(rid) and explicit_report_finalization_private.actor_allowed(rid));
 end $$;
 create function explicit_report_finalization_private.record_receipts() returns trigger language plpgsql security definer set search_path='' as $$
-declare rev bigint;actor uuid;role_value text;name_value text;signature_value jsonb;proof jsonb;
+declare rev bigint;actor uuid;role_value text;name_value text;signature_value jsonb;proof jsonb;admin_proof jsonb;
 begin
+ admin_proof:=explicit_report_finalization_private.admin_context(new.id);
+ if admin_proof is not null then
+  actor:=checkout_report_registration_private.current_actor();
+  insert into explicit_report_finalization_private.management_reports values(new.id,new.company_id,(admin_proof->>'operation_id')::uuid,actor,(auth.jwt()->>'session_id')::uuid)
+   on conflict(report_id) do update set operation_id=excluded.operation_id,actor_id=excluded.actor_id,session_id=excluded.session_id;
+  select revision into rev from explicit_report_finalization_private.states where report_id=new.id;
+  insert into explicit_report_finalization_private.events(report_id,company_id,revision,kind,actor_id,session_id,before_state)
+   values(new.id,new.company_id,coalesce(rev,1),'management_override',actor,(auth.jwt()->>'session_id')::uuid,jsonb_build_object('report',to_jsonb(old),'context',admin_proof,'draft',explicit_report_finalization_private.basis(new.id)));
+  return new;
+ end if;
  if not explicit_report_finalization_private.required(new.id) then return new;end if;
  actor:=checkout_report_registration_private.current_actor();
  perform explicit_report_finalization_private.enroll(new.id);
@@ -159,6 +183,10 @@ begin
   select company_id into cid from public.daily_reports where id=rid;
   select exists(select 1 from public.workers where id=w.worker_id and company_id=cid and user_id=auth.uid()) into is_own;
   reason:=nullif(btrim(item->>'confirmation_reason'),'');
+  if not is_own and explicit_report_finalization_private.coordinator_available(rid,w.worker_id) then
+   perform public.confirm_shared_site_report_facts(rid,w.worker_id,facts-'company_allowance_legacy_labels',hours,(state->>'revision')::bigint,state->>'scope_fingerprint',reason);
+   continue;
+  end if;
   if not is_own and private.has_company_feature(cid,'can_manage_attendance') is true and reason is null then continue;end if;
   if length(reason)>1000 then raise sqlstate '22023' using message='explicit_report_confirmation_reason_invalid';end if;
   if state->>'editable'='true' or private.has_company_feature(cid,'can_manage_attendance') is true then
@@ -197,7 +225,7 @@ end $$;
 create function explicit_report_finalization_private.assert_invoice(rid uuid,cid uuid,customer uuid,first_day date,last_day date) returns void language plpgsql security definer set search_path='' as $$
 declare v public.invoices%rowtype;site uuid;
 begin
- if customer is null then select id into customer from public.customers where company_id=cid and notes='sko_system_unassigned_invoice_customer';end if;
+ if customer is null or not exists(select 1 from public.customers where id=customer and company_id=cid and nullif(btrim(name),'') is not null and notes is distinct from 'sko_system_unassigned_invoice_customer') then raise sqlstate '55000' using message='explicit_report_invoice_customer_required';end if;
  select * into v from public.invoices where company_id=cid and customer_id=customer and billing_period_start=first_day and billing_period_end=last_day and automatic_calculation is true order by created_at,id limit 1;
  if v.id is null then
   if exists(select 1 from public.invoices where company_id=cid and customer_id=customer and billing_period_start=first_day and billing_period_end=last_day and (automatic_calculation is distinct from true or status is distinct from 'draft' or finalized_at is not null)) then raise sqlstate '55000' using message='explicit_report_finalized_invoice_protected';end if;

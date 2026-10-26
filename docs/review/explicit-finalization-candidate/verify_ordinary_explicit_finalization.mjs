@@ -44,6 +44,9 @@ try{
  await exec("alter table sites add column if not exists name text,add column if not exists formal_name text,add column if not exists created_at timestamptz default now();create table public.member_feature_permissions(company_id uuid,user_id uuid,can_view_invoices boolean default false,can_manage_invoices boolean default false,can_manage_payroll boolean default false,can_manage_people boolean default false,can_manage_attendance boolean default false,can_approve_daily_report_edits boolean default false,can_manage_partner_chat boolean default false);");
  const dependencies=[];for(const file of ['financial-dependencies.json','financial-dependencies2.json','financial-dependencies3.json'])dependencies.push(...JSON.parse(await readFile(candidateRoot+'/sources/'+file,'utf8')));
  const producers=JSON.parse(await readFile(candidateRoot+'/financial-source-originals.json','utf8'));
+ const vehicleSource=JSON.parse(await readFile('tool/fixtures/shared_worker_facts_sources.json','utf8')).functions.find(f=>f.signature==='private.save_daily_report_vehicle_usage(uuid,uuid,uuid,uuid,numeric)');
+ eq(md5(dbBody(vehicleSource.definition)),vehicleSource.source_md5,'Exact observed legacy vehicle validator dependency');await exec(vehicleSource.definition);
+
  const ranks={aoyagi_reisho_name_supported:0,rate_formula_label:1,resolve_rate_formula:2,route_signed_checkout_sources:3,route_signed_site_rates:4,route_signed_checkout_components:5,route_billing_invoice_blocked:6,uploaded_company_seal_snapshot:7,document_company_seal_snapshot:8,ensure_unassigned_invoice_customer:9,expense_cost_components:10,route_billing_invoice_components:11};
  for(const row of dependencies.sort((a,b)=>(ranks[a.identity.match(/private\.([^ (]+)/)[1]]??100)-(ranks[b.identity.match(/private\.([^ (]+)/)[1]]??100))){eq(md5(dbBody(row.definition)),row.body_md5,'Exact dependency '+row.identity);await exec(row.definition);}
  for(const row of producers){eq(md5(dbBody(row.definition)),row.body_md5,'Exact financial producer '+row.identity);if(row.identity==='private.has_company_feature(uuid,text)')await exec('drop function private.has_company_feature(uuid,text)');await exec(row.definition);if(row.acl!==null)await exec('revoke all on function '+row.identity+' from public,anon,authenticated,service_role');}
@@ -53,7 +56,7 @@ try{
  await client.query("insert into customers(id,company_id,name) values($1,$2,'合成の取引先')",[customer,A]);
  await client.query("update sites set customer_id=$1,name='合成の現場',formal_name='合成の現場' where id=$2",[customer,SITE]);
  await client.query('insert into site_financial_settings(company_id,site_id,billing_unit_price_yen,welfare_rate) values($1,$2,10000,0)',[A,SITE]);
- await client.query("update company_members set role='worker' where company_id=$1 and user_id in($2,$3)",[A,memberB,memberC]);
+ await client.query("update company_members set role='worker' where company_id=$1 and user_id in($2,$3,$4)",[A,U,memberB,memberC]);
  await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,work_date,source_clock_in_id) values($1,$2,$3,$4,'clock_out',$5::date+time '17:00',$5,$6)",[id(9303),A,W2,SITE,docDay,id(9302)]);
  await sharedCall(U,id(80),'select public.reuse_my_shared_daily_report($1) v',[docStart]);
  await sharedCall(memberB,sidB,'select public.reuse_my_shared_daily_report($1) v',[id(9302)]);
@@ -71,12 +74,19 @@ try{
  eq(await q('select count(*)::int v from explicit_report_finalization_private.reports'),0,'No report activation');
  await client.query('insert into explicit_report_finalization_private.reports(company_id,report_id,enabled) values($1,$2,true)',[A,rid]);
  const context=async(actor=U,sid=id(80))=>sharedCall(actor,sid,'select public.read_shared_daily_report_context($1) v',[rid]);
- const peer=await sharedCall(memberB,sidB,'select public.read_shared_worker_facts($1,$2) v',[rid,W2]);
+ const peer=await sharedCall(U,id(80),'select public.read_shared_worker_facts($1,$2) v',[rid,W2]);
  assert.ok(peer.proposed_worker_facts,'Explicit category and selections are required');
+ eq(peer.management_confirmation_available,false,'Ordinary coordinator has no administrative confirmation role');
+ eq(peer.site_coordinator_confirmation_available,true,'Only actual same-site frozen participant gets coordinator scope');
  const peerFacts={...peer.proposed_worker_facts};delete peerFacts.company_allowance_legacy_labels;
- await sharedCall(memberB,sidB,'select public.confirm_shared_worker_facts($1,$2,$3::jsonb,$4,$5,$6) v',[rid,W2,JSON.stringify(peerFacts),null,peer.revision,peer.scope_fingerprint]);
  let c=await context();
- await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,'representative','合成の実報告者',signature,c.report_updated_at,c.signature_scope_fingerprint]);
+ const actualPayload=JSON.stringify([worker(reportWorker,[days[0]]),worker(W2,[])]);
+ await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$2::timestamptz,$3,$4::jsonb,$5,$6::jsonb,$7) v',[docStart,c.report_updated_at,'保存済み手当を含む日報',actualPayload,'合成の実報告者',signature,c.signature_scope_fingerprint]);
+ await reject(()=>sharedCall(U,id(80),'select public.confirm_managed_shared_worker_facts($1,$2,$3::jsonb,$4,$5,$6,$7) v',[rid,W2,JSON.stringify(peerFacts),null,peer.revision,peer.scope_fingerprint,'管理者として偽装しない']),/shared_hours_audited_management_required/);
+ eq(await q('select confirmation_kind v from checkout_shared_hours_private.confirmations where report_id=$1 and worker_id=$2 order by revision desc limit 1',[rid,reportWorker]),'self','Actual actor confirms own facts as self');
+ eq(await q('select confirmation_kind v from checkout_shared_hours_private.confirmations where report_id=$1 and worker_id=$2 order by revision desc limit 1',[rid,W2]),'site_coordinator','Peer facts are not falsely called self or management');
+ eq(await q('select count(*)::int v from explicit_report_finalization_private.coordinator_events where report_id=$1 and worker_id=$2 and actor_id=$3 and role=\'site_coordinator\'',[rid,W2,U]),1,'Coordinator confirmation is separately audited once');
+ eq(await q('select count(*)::int v from explicit_report_finalization_private.coordinator_permits'),0,'No reusable coordinator permit after ③');
  c=await context(memberB,sidB);
  eq(c.explicit_finalization_required,true,'Frozen participant resumes same explicit report');
  await sharedCall(memberB,sidB,'select public.collect_shared_report_supervisor_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[rid,id(9302),'合成の実責任者',signature,c.report_updated_at,c.signature_scope_fingerprint]);
@@ -110,7 +120,7 @@ try{
  eq(invoice.grand_total,20000,'Actual source quantity two times explicit synthetic daily rate 10000');
  const settled=await snapshot();await finish();eq(await snapshot(),settled,'Exact lost-result retry duplicates no source, payroll, invoice or final audit');
  eq(await q('select count(*)::int v from explicit_report_finalization_private.permits'),0,'No reusable final-save permit');
- console.log(JSON.stringify({pass:true,checks,native_pg17:true,signature_capture_deferred:true,actual_four_financial_producers:true,actual_invoice_non_route_dependencies:true,actual_payroll_one_day_per_participant:true,invoice_one_customer_month:true,error_and_early_return_atomic_rollback:true,exact_retry_idempotent:true,synthetic_auth_and_neutral_tax_leave:true,old_document_conversion_and_admin_crud_covered:false,production_changed:false}));
+ console.log(JSON.stringify({pass:true,checks,native_pg17:true,signature_capture_deferred:true,actual_four_financial_producers:true,ordinary_site_coordinator_and_peer_handoff:true,actual_invoice_non_route_dependencies:true,actual_payroll_one_day_per_participant:true,invoice_one_customer_month:true,error_and_early_return_atomic_rollback:true,exact_retry_idempotent:true,synthetic_auth_and_neutral_tax_leave:true,old_document_conversion_and_admin_crud_covered:false,production_changed:false}));
 `;
  const proof=join(folder,'proof.mjs'),generated=setup+unit+tail;await writeFile(proof,generated);
  if(process.env.SKO_ORDINARY_EXPLICIT_EMIT_ONLY)await writeFile(process.env.SKO_ORDINARY_EXPLICIT_EMIT_ONLY,generated);

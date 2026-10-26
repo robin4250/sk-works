@@ -166,6 +166,15 @@ try {
   equal((await admin.query('select count(*)::int n from explicit_route_finalization_private.reports')).rows[0].n, 0, 'default OFF has no report enrollment rows');
 
 
+  const installedCatalogue = await originalCatalogue();
+  await admin.query('create view public.fixture_external_route_dependency as select explicit_route_finalization_private.required(null::uuid) needed');
+  const externalViewOid = (await admin.query("select 'public.fixture_external_route_dependency'::regclass::oid::text v")).rows[0].v;
+  await rejects(() => admin.query(restoreSql), /depend|cannot drop/i, 'unknown external dependency blocks unused restore without CASCADE');
+  await admin.query('rollback');
+  equal((await admin.query("select 'public.fixture_external_route_dependency'::regclass::oid::text v")).rows[0].v, externalViewOid, 'external dependent view remains present');
+  equal(await originalCatalogue(), installedCatalogue, 'blocked external-dependency restore rolls back every source function');
+  equal(await protectedState(), protectedBefore, 'blocked restore leaves original data unchanged');
+  await admin.query('drop view public.fixture_external_route_dependency');
   await admin.query(restoreSql);
   equal((await admin.query("select count(*)::int n from pg_namespace where nspname='explicit_route_finalization_private'")).rows[0].n, 0, 'unused restore removes only the new module schema');
   equal(await originalCatalogue(), catalogueBefore, 'unused restore returns every pre-existing routine definition, OID, owner, ACL and configuration');

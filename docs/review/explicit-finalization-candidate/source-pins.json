@@ -121,6 +121,17 @@
     "volatility": "v"
   },
   {
+    "signature": "checkout_shared_hours_private.read_input(uuid,uuid)",
+    "body_md5": "99e5b6b6229470fdb9551632c12e4321",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": false,
+    "volatility": "s"
+  },
+  {
     "signature": "private.has_company_feature(uuid,text)",
     "body_md5": "ead168c7ebccdaf04657a66f1afd5d82",
     "owner": "postgres",
@@ -129,5 +140,16 @@
     ],
     "acl": null,
     "security_definer": true
+  },
+  {
+    "signature": "attendance_admin_override_private.current_context()",
+    "body_md5": "9ebf5c2bba29341d1e81893f1ad98309",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "s"
   }
 ]

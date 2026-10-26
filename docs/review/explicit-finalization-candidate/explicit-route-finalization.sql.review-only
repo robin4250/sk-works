@@ -40,6 +40,9 @@ create function explicit_route_finalization_private.lock_actor(rid uuid) returns
 declare actor uuid;cid uuid;
 begin
  actor:=checkout_report_registration_private.current_actor();
+ perform 1 from auth.users where id=actor for share;
+ perform 1 from auth.sessions where id=(auth.jwt()->>'session_id')::uuid and user_id=actor for share;
+ perform checkout_report_registration_private.current_actor();
  select company_id into cid from private.route_visit_reports where id=rid;
  perform 1 from public.company_members where company_id=cid and user_id=actor for share;
  if (select count(*) from public.company_members where company_id=cid and user_id=actor)<>1 then raise sqlstate '42501' using message='explicit_route_membership_required';end if;
