@@ -1,0 +1,48 @@
+name: Daily report explicit finalization UI
+on:
+  pull_request:
+    paths:
+      - 'lib/features/daily_reports/**'
+      - 'lib/features/settings/company_work_category*'
+      - 'test/daily_report*'
+      - 'test/shared_daily_report_repository_test.dart'
+      - '.github/workflows/daily-report-explicit-finalization-ui.yml'
+permissions:
+  contents: read
+concurrency:
+  group: daily-explicit-finalization-ui-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  focused-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
+      - name: Analyze finalization UI and work category preservation
+        run: >-
+          flutter analyze
+          lib/features/daily_reports/daily_report_page.dart
+          lib/features/daily_reports/daily_report_repository.dart
+          lib/features/daily_reports/shared_daily_report_repository.dart
+          lib/features/daily_reports/shared_worker_facts_repository.dart
+          lib/features/daily_reports/group_daily_report_roster.dart
+          test/daily_report_shared_hours_integration_test.dart
+          test/shared_daily_report_repository_test.dart
+          test/daily_report_work_category_roundtrip_test.dart
+      - name: Finalization retry, lost acknowledgement, and source/category preservation
+        run: >-
+          timeout 480s flutter test --reporter expanded --timeout 60s
+          test/shared_daily_report_repository_test.dart
+          test/shared_worker_facts_repository_test.dart
+          test/daily_report_shared_hours_integration_test.dart
+          test/daily_report_work_category_roundtrip_test.dart
+          test/group_daily_report_roster_test.dart

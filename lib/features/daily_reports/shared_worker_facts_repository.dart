@@ -95,7 +95,7 @@ class SharedWorkerFacts {
     }
     final sameVehicle = template?.vehicleId == vehicleId && template?.routeId == routeId && template?.odometerKm == odometerKm;
     return DailyReportWorkerDraft(workerId: workerId, workerName: workerName,
-      overtimeHours: overtimeHours, earlyHours: earlyHours, nightHours: nightHours,
+      overtimeHours: overtimeHours, earlyHours: earlyHours, nightHours: nightHours, workCategory: workCategory,
       allowanceAmount: allowanceAmount, allowanceLabel: allowanceLabel ?? '',
       companyAllowanceSelections: companyAllowanceSelections, vehicleId: vehicleId,
       vehicleName: sameVehicle ? template?.vehicleName : null, routeId: routeId,
@@ -249,4 +249,5 @@ class SharedWorkerFactsRepository {
         if (managed) 'p_reason': reason});
   }
 }
+
 

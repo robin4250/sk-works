@@ -22,6 +22,7 @@ class DailyReportWorkerDraft {
     this.overtimeHours = 0,
     this.earlyHours = 0,
     this.nightHours = 0,
+    this.workCategory,
     this.allowanceAmount = 0,
     this.allowanceLabel = '',
     this.companyAllowanceSelections,
@@ -44,6 +45,7 @@ class DailyReportWorkerDraft {
   double overtimeHours;
   double earlyHours;
   double nightHours;
+  String? workCategory;
   int allowanceAmount;
   String allowanceLabel;
   DailyReportCompanyAllowanceSelections? companyAllowanceSelections;
@@ -65,6 +67,7 @@ class DailyReportWorkerDraft {
         'overtime_hours': overtimeHours,
         'early_hours': earlyHours,
         'night_hours': nightHours,
+        if (workCategory != null) 'work_category': workCategory,
         'allowance_amount': allowanceAmount,
         'allowance_label': allowanceLabel,
         if (companyAllowanceSelections != null)
@@ -543,6 +546,14 @@ class DailyReportRepository {
     return Map<String, dynamic>.from(result);
   }
 
+  static String? _workCategory(Object? value) {
+    if (value == null) return null;
+    if (value is! String || !const ['day', 'night', 'holiday', 'holiday_night'].contains(value)) {
+      throw StateError('保存済みの勤務区分を確認できません。管理者に確認してください。');
+    }
+    return value;
+  }
+
   DailyReportRecord _visitRecord(
     Map<String, dynamic> row,
     RouteVisitReportContext context,
@@ -564,6 +575,7 @@ class DailyReportRepository {
             overtimeHours: _number(raw['overtime_hours']),
             earlyHours: _number(raw['early_hours']),
             nightHours: _number(raw['night_hours']),
+            workCategory: _workCategory(raw['work_category']),
             allowanceAmount: (raw['allowance_amount'] as num?)?.toInt() ?? 0,
             allowanceLabel: raw['allowance_label']?.toString() ?? '',
             companyAllowanceSelections: raw['company_allowance_selections'] == null ? null
@@ -670,7 +682,7 @@ class DailyReportRepository {
     var query = _client
         .from('daily_reports')
         .select(
-          'id, company_id, created_by, updated_by, site_id, route_assignment_id, report_date, work_description, status, signer_name, signature_json, representative_signer_name, representative_signature_json, supervisor_signer_name, supervisor_signature_json, signed_at, sites(name), route_assignments(route_name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label,${companySelectionsEnabled ? " company_allowance_selections," : ""} vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
+          'id, company_id, created_by, updated_by, site_id, route_assignment_id, report_date, work_description, status, signer_name, signature_json, representative_signer_name, representative_signature_json, supervisor_signer_name, supervisor_signature_json, signed_at, sites(name), route_assignments(route_name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, work_category, allowance_amount, allowance_label,${companySelectionsEnabled ? " company_allowance_selections," : ""} vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
         )
         .eq('report_date', _dbDate(date));
     query = siteId != null
@@ -712,6 +724,7 @@ class DailyReportRepository {
             overtimeHours: _number(detail['overtime_hours']),
             earlyHours: _number(detail['early_hours']),
             nightHours: _number(detail['night_hours']),
+            workCategory: _workCategory(detail['work_category']),
             allowanceAmount:
                 (detail['allowance_amount'] as num?)?.toInt() ?? 0,
             allowanceLabel: detail['allowance_label']?.toString() ?? '',
@@ -1324,3 +1337,4 @@ bool dailyReportRpcValueEqual(Object? a, Object? b) {
   }
   return a == b;
 }
+

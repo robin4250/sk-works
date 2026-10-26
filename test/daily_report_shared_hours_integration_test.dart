@@ -27,6 +27,7 @@ class _Reports implements DailyReportRepository {
   bool reporterSaved = false, supervisorSaved = false, peerOpen = false;
   bool omitSource = false, staleSupervisorRead = false, missingReport = false;
   bool recoveryChoices = false, documentMode = false;
+  bool explicitMode = false, finalized = false;
   String description = '保存済みの作業';
   bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
   int draftWrites = 0, ordinaryReporterWrites = 0, anchorReads = 0;
@@ -46,7 +47,7 @@ class _Reports implements DailyReportRepository {
     String? siteId, String? routeAssignmentId, String? vehicleClockInAnchorId,
     String? reportId}) async => missingReport ? null : DailyReportRecord(id: _report, companyId: _company,
       date: date, siteId: _site, siteName: '対象現場', workDescription: description,
-      status: persistedSupervisor && !documentMode ? 'signed' : 'draft', workers: workers,
+      status: (explicitMode ? finalized : persistedSupervisor && !documentMode) ? 'signed' : 'draft', workers: workers,
       reporterSignerName: reporterSaved ? '最初の報告者' : null,
       reporterSignatureJson: reporterSaved ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null,
       responsibleSignerName: persistedSupervisor ? '責任者' : null,
@@ -97,16 +98,20 @@ class _Shared implements SharedDailyReportRepository {
   String source = _source;
   bool workOnly = true, ready = false, documentOnly = false;
   int documentEdits = 0, documentSaves = 0;
-  int supervisorWrites = 0;
+  int supervisorWrites = 0, finalizationWrites = 0;
+  bool failFinalization = false, loseFinalizationAcknowledgement = false;
   SharedDailyReportContext get state => SharedDailyReportContext(actorId: _actor,
     companyId: _company, workerId: _worker, reportId: _report, sourceClockInId: source,
     clockOutId: '00000000-0000-0000-0000-000000000060', workDate: _date,
     state: hold ? 'managed_financial_hold' : !enabled ? 'disabled' : reports.supervisorSaved ? 'supervisor_saved' :
       reports.reporterSaved ? 'reporter_saved_waiting_supervisor' : 'reporter_required',
     enabled: enabled, canManageAttendance: manager, reporterSaved: reports.reporterSaved,
+    explicitFinalizationRequired: reports.explicitMode,
+    explicitFinalizationReady: reports.explicitMode && reports.reporterSaved && reports.supervisorSaved && !reports.finalized,
+    explicitFinalizationCompleted: reports.explicitMode && reports.finalized,
     supervisorSaved: reports.supervisorSaved, sourceAttached: true,
     reporterName: reports.reporterSaved ? '最初の報告者' : '',
-    reportStatus: reports.supervisorSaved ? 'signed' : 'draft',
+    reportStatus: (reports.explicitMode ? reports.finalized : reports.supervisorSaved) ? 'signed' : 'draft',
     expectedUpdatedAt: DateTime.utc(2026, 10, 25, 8), signatureScopeFingerprint: _scope,
     supervisorReady: ready || (documentOnly && reports.reporterSaved && !reports.supervisorSaved),
     documentOnly: documentOnly, documentComplete: documentOnly && reports.persistedSupervisor,
@@ -128,6 +133,14 @@ class _Shared implements SharedDailyReportRepository {
       'roster': [for (final worker in reports.workers) {'worker_id': worker.workerId}]});
   @override Future<SharedDailyReportContext> loadForSource(String sourceClockInId) async => state;
   @override Future<SharedDailyReportContext> loadReport(String reportId, {String? expectedActor}) async => state;
+  @override Future<SharedDailyReportContext> finalize({required SharedDailyReportContext before}) async {
+    expect(before.canFinalize, isTrue);
+    finalizationWrites++;
+    if (failFinalization) throw StateError('給与・請求への反映に失敗しました。');
+    reports.finalized = true;
+    if (loseFinalizationAcknowledgement) throw StateError('確定結果を受信できませんでした。');
+    return state;
+  }
   @override Future<SharedDailyReportContext> collectSupervisor({required SharedDailyReportContext before,
     required String signerName, required Map<String, dynamic> signature}) async {
     expect(before.signatureScopeFingerprint, _scope);
@@ -241,6 +254,50 @@ void main() {
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
   }
+
+  Future<void> revealFinalize(WidgetTester tester) async {
+    final button = find.byKey(const ValueKey('daily-report-finalize'));
+    await tester.scrollUntilVisible(button, 220, scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+    await tester.ensureVisible(button); await tester.pumpAndSettle();
+  }
+  testWidgets('actual signatures remain draft until explicit step five succeeds', (tester) async {
+    final reports = _Reports()..reporterSaved = true..supervisorSaved = true..explicitMode = true;
+    final shared = _Shared(reports)..ready = true;
+    await open(tester, reports, _Hours(), shared);
+    await revealFinalize(tester);
+    expect(reports.finalized, isFalse); expect(shared.finalizationWrites, 0);
+    await tester.tap(find.byKey(const ValueKey('daily-report-finalize')));
+    await tester.pumpAndSettle();
+    expect(reports.finalized, isTrue); expect(shared.finalizationWrites, 1);
+    expect(find.text('確定済み'), findsOneWidget);
+  });
+  testWidgets('missing supervisor cannot unlock step five', (tester) async {
+    final reports = _Reports()..reporterSaved = true..explicitMode = true;
+    final shared = _Shared(reports);
+    await open(tester, reports, _Hours(), shared);
+    await revealFinalize(tester);
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('daily-report-finalize'))).onPressed, isNull);
+    expect(shared.finalizationWrites, 0);
+  });
+  testWidgets('failed finalization does not report success or lose retry', (tester) async {
+    final reports = _Reports()..reporterSaved = true..supervisorSaved = true..explicitMode = true;
+    final shared = _Shared(reports)..failFinalization = true;
+    await open(tester, reports, _Hours(), shared); await revealFinalize(tester);
+    await tester.tap(find.byKey(const ValueKey('daily-report-finalize'))); await tester.pumpAndSettle();
+    expect(reports.finalized, isFalse); expect(find.text('確定済み'), findsNothing);
+    expect(shared.finalizationWrites, 1);
+    shared.failFinalization = false; await revealFinalize(tester);
+    await tester.tap(find.byKey(const ValueKey('daily-report-finalize'))); await tester.pumpAndSettle();
+    expect(shared.finalizationWrites, 2); expect(reports.finalized, isTrue);
+  });
+  testWidgets('lost committed finalization acknowledgement reloads without a second write', (tester) async {
+    final reports = _Reports()..reporterSaved = true..supervisorSaved = true..explicitMode = true;
+    final shared = _Shared(reports)..loseFinalizationAcknowledgement = true;
+    await open(tester, reports, _Hours(), shared); await revealFinalize(tester);
+    await tester.tap(find.byKey(const ValueKey('daily-report-finalize'))); await tester.pumpAndSettle();
+    expect(shared.finalizationWrites, 1); expect(reports.finalized, isTrue);
+    expect(find.byKey(const ValueKey('daily-report-finalize')), findsNothing);
+  });
 
   testWidgets('financial capability unavailable preserves both actual signatures', (tester) async {
     final reports = _Reports()..reporterSaved = true..supervisorSaved = true..documentMode = true;
@@ -674,4 +731,5 @@ void main() {
     expect(reports.draftWrites, 0);
   });
 }
+
 
