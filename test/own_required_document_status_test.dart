@@ -24,7 +24,7 @@ void main() {
   Future<void> show(WidgetTester tester, Map<String,dynamic> req,
       Map<String,dynamic>? status) async {
     await tester.pumpWidget(MaterialApp(home: OwnDocumentRegistrationPage(
-      gateway: FakeGateway(req, status))));
+      key: UniqueKey(), gateway: FakeGateway(req, status))));
     await tester.pumpAndSettle();
   }
   Map<String,dynamic> req(String name, {bool required = true}) =>
