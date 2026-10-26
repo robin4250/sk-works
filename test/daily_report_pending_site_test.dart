@@ -61,7 +61,7 @@ void main(){
   await tester.tap(find.descendant(of:find.byKey(const ValueKey('daily-report-pending-entry-old-a')),matching:find.text('サイン')));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');
   expect(opened,'old-a');expect(find.text('既存日報 old-a'),findsOneWidget);
   await tester.pageBack();debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(repo.pendingReads,2);expect(tester.takeException(),isNull);
- });
+ }, timeout: const Timeout(Duration(seconds: 30)));
  testWidgets('pending error is never presented as an empty successful list',(tester)async{
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);final repo=FixtureReports(client)..fail=true;
   debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(repositoryForTesting:repo)));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');

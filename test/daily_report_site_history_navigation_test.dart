@@ -53,7 +53,7 @@ void main(){
   await tester.tap(next);debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.text('2027年'),findsOneWidget);expect(find.text('4 / 4件'),findsOneWidget);
   expect(tester.widget<OutlinedButton>(next).onPressed,isNull);expect(find.text('最も新しい日報'),findsOneWidget);
   expect(history.opened,['anchor','old','anchor','same-day','new']);expect(tester.takeException(),isNull);
- });}}
+ }, timeout: const Timeout(Duration(seconds: 30)));}}
  testWidgets('unavailable all-period history does not claim oldest or newest',(tester)async{
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client)..fail=true;final anchor=history.all[1];
