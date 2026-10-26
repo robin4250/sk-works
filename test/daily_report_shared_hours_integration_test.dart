@@ -395,20 +395,31 @@ void main() {
   });
 
   testWidgets('saved-report manager without own source stages entered hours before reporter capture', (tester) async {
-    final reports = _Reports()..explicitMode = true..category = 'day'..recoveryChoices = true;
+    final reports = _Reports()..explicitMode = true..category = 'day';
     final shared = _Shared(reports)..manager = true..managerNoOwnWorker = true..source = null;
     await open(tester, reports, _Hours(), shared);
     final field = find.byKey(const ValueKey('daily-report-confirmed-hours/$_worker'));
     await tester.scrollUntilVisible(field, 160, scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(field); await tester.pumpAndSettle();
     await tester.enterText(field, '7.25'); FocusManager.instance.primaryFocus?.unfocus(); await tester.pumpAndSettle();
+    final reason = find.byKey(const ValueKey('daily-report-management-facts-reason'));
+    await tester.scrollUntilVisible(reason, 160, scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(reason); await tester.pumpAndSettle();
+    await tester.enterText(reason, '本人に実勤務時間を聞き取って確認');
+    FocusManager.instance.primaryFocus?.unfocus(); await tester.pumpAndSettle();
     await reveal(tester, '報告者サイン'); await tester.tap(find.text('報告者サイン')); await tester.pumpAndSettle();
     expect(shared.provisionalPreparations, 1);
     expect(shared.provisionalPayload!.single['confirmed_hours'], 7.25);
+    expect(shared.provisionalPayload!.single['confirmation_reason'], '本人に実勤務時間を聞き取って確認');
     expect(shared.provisionalPayload!.single['company_allowance_selections'], {'contract_version': 1, 'items': []});
     expect(find.byType(SignatureCapturePage), findsOneWidget);
     expect(tester.widget<SignatureCapturePage>(find.byType(SignatureCapturePage)).reviewText, contains('7.25時間'));
     expect(reports.reporterSaved, isFalse); expect(shared.supervisorWrites, 0);
+    await tester.pageBack(); await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(field, -160, scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(field); await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).controller!.text, '7.25');
+    expect(shared.provisionalPreparations, 1);
   });
 
   testWidgets('actual signatures remain draft until explicit step five succeeds', (tester) async {

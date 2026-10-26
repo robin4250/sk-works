@@ -143,8 +143,10 @@ void main() {
   test('unsigned saved-report manager stages typed hours without fabricating reporter signature', () async {
     final fixture = _RpcFixture()..explicit = true..stageReporterSaved = false..managedContext = true;
     addTearDown(fixture.client.dispose); await fixture.login();
-    final after = await fixture.repository.prepareProvisionalFacts(before: fixture.before(), workers: [_workerInput()]);
+    final input = _workerInput()..['confirmation_reason'] = '本人に実勤務時間を聞き取って確認';
+    final after = await fixture.repository.prepareProvisionalFacts(before: fixture.before(), workers: [input]);
     expect(fixture.calls, ['prepare_shared_report_provisional_facts']);
+    expect((fixture.requests.single['p_workers'] as List).single['confirmation_reason'], '本人に実勤務時間を聞き取って確認');
     expect((fixture.requests.single['p_workers'] as List).single['confirmed_hours'], 7.5);
     expect(after.sourceClockInId, isNull); expect(after.canManageAttendance, isTrue);
     expect(after.reporterSaved, isFalse); expect(after.supervisorSaved, isFalse);

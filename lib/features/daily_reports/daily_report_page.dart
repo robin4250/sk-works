@@ -774,7 +774,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
   }
 
   double _optionalReportHours(TextEditingController? controller, String label) {
-    final text = controller?.text.trim() ?? '';
+    if (controller == null) { throw StateError('$labelの入力欄を確認できません。日報を再読み込みしてください。'); }
+    final text = controller.text.trim();
     if (text.isEmpty) return 0;
     final value = double.tryParse(text);
     if (!RegExp(r'^(?:0|[1-9]\d?)(?:\.\d{1,4})?$').hasMatch(text) ||
@@ -1427,9 +1428,18 @@ class _DailyReportPageState extends State<DailyReportPage> {
       final enteredHours = <String, double?>{
         for (final worker in _workers) worker.workerId: _enteredConfirmedHours(worker.workerId),
       };
+      void restoreEnteredInput() {
+        for (final entry in enteredHours.entries) {
+          if (entry.value != null && _confirmedHours.containsKey(entry.key)) {
+            _confirmedHours[entry.key]!.text = _number(entry.value!);
+          }
+        }
+        if (enteredConfirmationReason.isNotEmpty) _managementFactsReason.text = enteredConfirmationReason;
+      }
       final reportId = await _saveBeforeSignature();
       if (reportId == null || !mounted) return;
       checkSigningContext();
+      restoreEnteredInput();
       if (_sharedFactsReadOnly) {
         await _loadSelectedSite();
         if (mounted) widget.onRegistrationSaved?.call();
@@ -1459,6 +1469,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
           throw StateError('サイン前の入力内容を保存できません。日報を再読み込みしてください。');
         }
         sharedBefore = _sharedContext;
+        restoreEnteredInput();
         if (sharedBefore?.explicitFinalizationRequired != true || sharedBefore?.reporterSaved == true ||
             sharedBefore?.supervisorSaved == true) {
           throw StateError('サイン対象の日報が更新されました。日報を再読み込みしてください。');
@@ -2544,8 +2555,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                           if (_sharedContext?.explicitFinalizationRequired == true &&
                               _sharedContext?.canManageAttendance == true &&
-                              _sharedContext!.hoursAnnexInputs.any((input) =>
-                                input['worker_id'] != _sharedContext?.workerId && input['confirmed'] != true))
+                              (_sharedContext?.workerId == null || _sharedContext!.hoursAnnexInputs.any((input) =>
+                                input['worker_id'] != _sharedContext?.workerId && input['confirmed'] != true)))
                             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(
                               key: const ValueKey('daily-report-management-facts-reason'),
                               controller: _managementFactsReason, enabled: !_saving && !_signed,
