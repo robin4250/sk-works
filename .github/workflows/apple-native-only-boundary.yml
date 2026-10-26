@@ -60,4 +60,4 @@ jobs:
         working-directory: gotrue
         env:
           SKO_APPLE_POLICY_FILE: ${{ github.workspace }}/candidate/docs/review/apple-existing-login-candidate/owner-policy.sql.review-only
-        run: go test ./internal/api -run '^TestSKOApple(OwnerPolicyTransaction|NativeOnlyConfigurationBoundary)$' -count=1 -v
+        run: go test ./internal/api -run '^TestSKOApple(OwnerPolicyTransaction|NativeOnlyConfigurationBoundary|NativeLinkOriginalSession)$' -count=1 -v

@@ -41,6 +41,16 @@ disabled-provider refusal and the positive control that supplying a secret opens
 the OAuth constructor. It makes no connection to Apple and writes no identity.
 It does not prove the full hosted `/authorize` path, enrollment or device login.
 
+The continuation also tests the actual reported-version `/token` native
+`link_identity=true` HTTP route with generated Apple RSA credentials, the real
+Auth middleware, existing owner-subject hook and disposable PostgreSQL. It
+checks a permitted link, absent permit, wrong nonce and wrong original bearer;
+the newly issued Apple session is logged out locally while the original session,
+UID/email/profile, existing Google identity and a synthetic company snapshot
+remain. This company table is a fixture, not the full SKO schema. A passing
+test does not supply the still-missing primary-password/enrollment SQL adapters
+or prove a real Apple credential or hosted configuration.
+
 This is a candidate configuration boundary, **not permission to enable Apple**.
 Before adoption, inspect actual provider settings without disclosing values,
 verify that web/manual OAuth remains unavailable on the hosted instance, compose
