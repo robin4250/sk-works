@@ -30,7 +30,9 @@ ShiftAttendanceStatus compareConfirmedShift({
       (confirmedClockIn != null && confirmedClockIn.isAfter(now)) ||
       (linkedConfirmedClockOut != null && (confirmedClockIn == null ||
         linkedConfirmedClockOut.isBefore(confirmedClockIn) || linkedConfirmedClockOut.isAfter(now)));
-  if (invalid) return const ShiftAttendanceStatus(pending: true, flags: {});
+  if (invalid) {
+    return const ShiftAttendanceStatus(pending: true, flags: {});
+  }
   final flags = <ShiftAttendanceFlag>{};
   if (confirmedClockIn == null) {
     if (checkAbsence && !now.isBefore(absenceDecisionTime)) {
