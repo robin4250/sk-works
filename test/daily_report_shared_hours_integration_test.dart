@@ -361,7 +361,7 @@ void main() {
   }
   testWidgets('saved badge has an accessible preview action with enlarged labels', (tester) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
+    try {
     final reports = _Reports()..reporterSaved = true..supervisorSaved = true;
     await open(tester, reports, _Hours(), _Shared(reports), textScale: 1.5);
     await reveal(tester, '報告者サイン');
@@ -371,6 +371,7 @@ void main() {
         isButton: true, hasTapAction: true));
     }
     expect(tester.takeException(), isNull);
+    } finally { semantics.dispose(); }
   });
   testWidgets('reopened signature reset removes both saved labels', (tester) async {
     final reports = _Reports()..reporterSaved = true..supervisorSaved = true;
