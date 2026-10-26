@@ -1,0 +1,29 @@
+{
+  "scope": "read-only metadata/source audit",
+  "main_preserved": "ff591eef650f2354dc52e16bca981a45808fea3e",
+  "public_authenticated_definers": 197,
+  "definer_body_hashes_unchanged_since_prior": 197,
+  "public_authenticated_non_extension_invokers": 251,
+  "public_callable_total": 448,
+  "storage_buckets": 16,
+  "storage_public_buckets": 0,
+  "storage_policies_unchanged": 98,
+  "storage_live_candidate_buckets": 1,
+  "other_buckets_live_http_unverified": 15,
+  "line_catalog_targets_compared": 38,
+  "line_original_bodies_match": 37,
+  "line_legitimate_changed_body": {
+    "schema": "private",
+    "name": "trade_document_source",
+    "args": "p_kind text, p_subject uuid, p_source_revision text",
+    "current_body_md5": "ebcc70935938482054943560390038b2"
+  },
+  "r19_helper_count": 0,
+  "r19_policy_count": 0,
+  "business_data_reads": false,
+  "production_writes": false,
+  "new_gap_claims_without_proof": false,
+  "successful_tests_repeated": false,
+  "p34_personnel_status": "root applied guarded existing candidate during this audit; do not report as unresolved",
+  "next": "R20 guard regeneration against current trade document body, preservation of all 76 added lines, complete public invoker/definer authorization closure and 15 other Storage HTTP/session boundaries"
+}

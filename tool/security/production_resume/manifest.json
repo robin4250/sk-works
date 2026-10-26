@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "base": "74d4c2f578e26ca1f7f21628f19a1da6b2fdeee9",
+  "test_result": {
+    "new_tests": 8,
+    "pass": 8,
+    "node": "24.22.1",
+    "production_changes": 0,
+    "network_sends": 0
+  },
+  "existing_dependencies": [
+    {
+      "path": "tool/security/decoy_lab.mjs",
+      "sha256": "9f5f9058515867d7b45bc2d5286cc43f86851b499c9d197cc973bd432a5cee0f"
+    },
+    {
+      "path": "tool/security/collector_signed_transport_candidate/collector_signed_transport.mjs",
+      "sha256": "beb8ce3361d656d7c85e35eb77c9fb3a94ecbcb4b8f8e869474dcfeb8290d45a"
+    }
+  ],
+  "files": [
+    {
+      "path": "decoy_collector_producer.mjs",
+      "sha256": "ed9a3570685794312428b08307308779fa3a0b88e8d6cb123e2b4a93dd3f91e1"
+    },
+    {
+      "path": "decoy_collector_producer_test.mjs",
+      "sha256": "f46bd38f3edfee8eae97e1f13085392470d497f9d25fb9d0823b97b5e6db8e89"
+    },
+    {
+      "path": "README.md",
+      "sha256": "756326d578a1d81f2664c57c23068a2a76afa460f10916d9d81166f2ba0f3fbd"
+    }
+  ]
+}

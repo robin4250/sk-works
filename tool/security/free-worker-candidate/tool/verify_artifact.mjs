@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {binaryHex,binarySha256} from '../src/wasm-manifest.mjs';
+const bytes=await readFile(new URL('../src/decoy.wasm',import.meta.url));
+assert.equal(bytes.toString('hex'),binaryHex);assert.equal(createHash('sha256').update(bytes).digest('hex'),binarySha256);
+const m=new WebAssembly.Module(bytes);assert.deepEqual(WebAssembly.Module.imports(m),[]);
+const e=WebAssembly.Module.exports(m);assert.deepEqual(e.map(x=>[x.name,x.kind]),[['memory','memory'],['status','function'],['response_ptr','function'],['response_len','function']]);
+const instance=new WebAssembly.Instance(m,{});assert.equal(instance.exports.memory.buffer.byteLength,65536);assert.throws(()=>instance.exports.memory.grow(1));
+console.log(JSON.stringify({pass:true,binary_sha256:binarySha256,bytes:bytes.length,imports:0,memory_maximum_pages:1}));

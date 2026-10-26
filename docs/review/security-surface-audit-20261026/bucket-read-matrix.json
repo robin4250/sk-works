@@ -1,0 +1,212 @@
+[
+  {
+    "bucket": "attendance-evidence",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "attendance_evidence_read",
+      "review moderator files",
+      "review visible files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "attendance-route-evidence",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "review moderator files",
+      "review visible files",
+      "route_journey_photo_read"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "chat-attachments",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "chat safety attachment storage",
+      "chat_attachments_storage_read",
+      "review moderator files",
+      "review visible files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "communication-albums",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "album_pending_cleanup_read",
+      "communication_albums_read",
+      "review moderator files",
+      "review visible files",
+      "safety communication files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "communication-notes",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "note_files_read",
+      "review moderator files",
+      "review visible files",
+      "safety communication files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "company-income-tax-tables",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "income_tax_pdf_no_anon",
+      "income_tax_pdf_read",
+      "income_tax_pdf_read_guard",
+      "review moderator files",
+      "review visible files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "company-required-documents",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "company_document_files_read",
+      "company_document_photo_files_read",
+      "delivered_company_files_read",
+      "review moderator files",
+      "review visible files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "custom-chat-photos",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "custom_chat_photo_no_anon",
+      "custom_chat_photo_read",
+      "custom_chat_photo_read_boundary",
+      "review moderator files",
+      "review visible files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "employee-onboarding-documents",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "employee_onboarding_documents_read",
+      "review moderator files",
+      "review visible files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "expense-receipts",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "expense_receipt_select",
+      "expense_receipt_select_boundary",
+      "review moderator files",
+      "review visible files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "partner-archive-documents",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "delivered_company_files_read",
+      "partner_document_files_read",
+      "review moderator files",
+      "review visible files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "profile-photos",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "profile_photos_approved_friend_read",
+      "profile_photos_read",
+      "review moderator files",
+      "review visible files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "qualification-certificates",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "qualification_certificates_read",
+      "qualification_submission_review_read",
+      "review moderator files",
+      "review visible files"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "site-entrance-photos",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "entrance_photo_read",
+      "review moderator files",
+      "review visible files",
+      "site_photo_request_read"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "vehicle-documents",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "review moderator files",
+      "review visible files",
+      "vehicle documents read"
+    ],
+    "live_session_guard_candidate_scope": false,
+    "actual_http_scope_status": "not_complete"
+  },
+  {
+    "bucket": "worker-documents",
+    "public": false,
+    "select_or_global_policy_names": [
+      "account_deletion_access_guard",
+      "document_submission_review_read",
+      "employee_personnel_portrait_read",
+      "review moderator files",
+      "review visible files",
+      "worker_document_photo_managed_read",
+      "worker_documents_read"
+    ],
+    "live_session_guard_candidate_scope": true,
+    "actual_http_scope_status": "not_complete"
+  }
+]

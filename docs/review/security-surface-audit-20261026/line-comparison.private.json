@@ -1,0 +1,268 @@
+[
+  {
+    "stage": "r20_catalog",
+    "schema": "private",
+    "name": "enqueue_notification",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r20_catalog",
+    "schema": "public",
+    "name": "invoice_approval_history",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r20_catalog",
+    "schema": "public",
+    "name": "invoice_approval_status_rows",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r20_catalog",
+    "schema": "public",
+    "name": "invoice_approval_status_rows_v2",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r20_catalog",
+    "schema": "private",
+    "name": "trade_document_source",
+    "original_body_matches": false,
+    "found": true
+  },
+  {
+    "stage": "r21_catalog",
+    "schema": "public",
+    "name": "approve_invoice",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r21_catalog",
+    "schema": "public",
+    "name": "cancel_invoice_approval",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r21_catalog",
+    "schema": "public",
+    "name": "set_invoice_stamp_display_date",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r22_catalog",
+    "schema": "public",
+    "name": "decide_attendance_correction_request",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r23_catalog",
+    "schema": "public",
+    "name": "set_invoice_approvers",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r24_catalog",
+    "schema": "private",
+    "name": "ensure_invoice_approval_rows",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r24_catalog",
+    "schema": "private",
+    "name": "invoice_approval_rows_trigger",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r24_catalog",
+    "schema": "private",
+    "name": "create_line_historical_invoices",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r24_catalog",
+    "schema": "private",
+    "name": "create_line_invoices",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r26_catalog",
+    "schema": "private",
+    "name": "can_access_communication_group",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r26_catalog",
+    "schema": "private",
+    "name": "chat_can_send",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r26_catalog",
+    "schema": "private",
+    "name": "custom_chat_group_members",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r26_catalog",
+    "schema": "private",
+    "name": "invite_friend_to_chat_group",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r26_catalog",
+    "schema": "private",
+    "name": "leave_custom_chat_group",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r26_catalog",
+    "schema": "private",
+    "name": "remove_custom_chat_group_member",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r26_catalog",
+    "schema": "private",
+    "name": "respond_chat_group_invite",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r26_catalog",
+    "schema": "private",
+    "name": "my_chat_group_invites",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r26_catalog",
+    "schema": "public",
+    "name": "my_chat_group_invites",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r26_catalog",
+    "schema": "private",
+    "name": "account_access_allowed",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r28_catalog",
+    "schema": "private",
+    "name": "guard_line_enrolled_attendance_day",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r28_catalog",
+    "schema": "private",
+    "name": "submit_line_attendance",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r28_catalog",
+    "schema": "public",
+    "name": "submit_past_attendance_request",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r28_catalog",
+    "schema": "public",
+    "name": "can_manage_attendance_corrections",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r30_catalog",
+    "schema": "private",
+    "name": "chat_report_queue",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r30_catalog",
+    "schema": "private",
+    "name": "content_review_moderator",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r30_catalog",
+    "schema": "private",
+    "name": "content_review_payload",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r30_catalog",
+    "schema": "private",
+    "name": "report_chat_message",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r30_catalog",
+    "schema": "private",
+    "name": "review_chat_report",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r30_catalog",
+    "schema": "public",
+    "name": "chat_report_queue",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r30_catalog",
+    "schema": "public",
+    "name": "report_chat_message",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r30_catalog",
+    "schema": "public",
+    "name": "review_chat_report",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r30_catalog",
+    "schema": "private",
+    "name": "content_review_queue",
+    "original_body_matches": true,
+    "found": true
+  },
+  {
+    "stage": "r30_catalog",
+    "schema": "public",
+    "name": "content_review_queue",
+    "original_body_matches": true,
+    "found": true
+  }
+]
