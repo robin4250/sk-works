@@ -15,7 +15,7 @@ class FakeGateway implements OwnDocumentRegistrationGateway {
   };
   @override
   Future<void> saveOwnDocument({required String requirementId,
-    required DateTime? expiresAt, required String notes,
+    DateTime? expiresAt, required String notes,
     Uint8List? attachmentBytes, String? originalFilename,
     bool requireEmptyAttachment = false}) async {}
 }
