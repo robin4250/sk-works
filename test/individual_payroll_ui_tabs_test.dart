@@ -68,6 +68,50 @@ void main() {
   );
   tearDown(() async => client.dispose());
 
+  testWidgets('日給と日単位でのみ最下部に振替を表示し保存する', (t) async {
+    final repository = _Repository(client, initial: {
+      'pay_type': 'daily', 'day_daily': 20000,
+      'rate_formula': {'paid_leave_daily_yen': 9000},
+    });
+    await t.pumpWidget(MaterialApp(home: IndividualPayrollSettingsPage(repository: repository)));
+    await t.pumpAndSettle();
+    final toggle = find.byKey(const ValueKey('position-transfer-enabled'));
+    expect(toggle, findsNothing);
+    await t.ensureVisible(find.text('日単位').first);
+    await t.tap(find.text('日単位').first);
+    await t.pumpAndSettle();
+    await t.ensureVisible(toggle);
+    expect(t.widget<SwitchListTile>(toggle).value, isFalse);
+    await t.tap(toggle); await t.pumpAndSettle();
+    await t.ensureVisible(find.byKey(const ValueKey('position-transfer-add')));
+    await t.tap(find.byKey(const ValueKey('position-transfer-add'))); await t.pumpAndSettle();
+    final row = find.byKey(const ValueKey('position-transfer-row-0'));
+    await t.enterText(find.descendant(of: row, matching: find.byType(TextField)).at(0), '役職手当');
+    await t.enterText(find.descendant(of: row, matching: find.byType(TextField)).at(1), '15000');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await t.ensureVisible(find.text('時間単位').first);
+    await t.tap(find.text('時間単位').first); await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('position-transfer-enabled')), findsNothing);
+    await t.tap(find.text('日単位').first); await t.pumpAndSettle();
+    await t.ensureVisible(find.byKey(const ValueKey('position-transfer-row-0')));
+    expect(t.widget<TextField>(find.descendant(of: find.byKey(const ValueKey('position-transfer-row-0')), matching: find.byType(TextField)).first).controller!.text, '役職手当');
+    await t.ensureVisible(find.widgetWithText(FilledButton, '登録'));
+    await t.tap(find.widgetWithText(FilledButton, '登録')); await t.pumpAndSettle();
+    await t.tap(find.text('確定して保存')); await t.pumpAndSettle();
+    final formula = repository.saved!['rate_formula'] as Map;
+    expect(formula['paid_leave_daily_yen'], 9000);
+    expect(formula['position_transfer'], {'enabled': true, 'items': [{'name': '役職手当', 'amount_yen': 15000}]});
+  });
+
+  testWidgets('時給の従業員には日単位でも振替を表示しない', (t) async {
+    final repository = _Repository(client, initial: {'pay_type': 'hourly', 'day_daily': 1200});
+    await t.pumpWidget(MaterialApp(home: IndividualPayrollSettingsPage(repository: repository)));
+    await t.pumpAndSettle();
+    await t.ensureVisible(find.text('日単位').first);
+    await t.tap(find.text('日単位').first); await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('position-transfer-enabled')), findsNothing);
+  });
+
   testWidgets('saving one allowance preserves existing tax, resident tax and every legacy insurance row', (t) async {
     final insurance = [
       {'name': '健康保険料', 'amount_yen': 5100},
@@ -370,4 +414,5 @@ void main() {
     },
   );
 }
+
 
