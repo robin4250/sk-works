@@ -56,6 +56,7 @@ try{
  await role('postgres');await db.query(undo);eq(await routineSnapshot(),originals,'Unused restore preserves exact original function OIDs and all pg_proc fields');eq(await surroundings(),before,'Unused restore preserves core/business state');
  await db.query(install);await db.query('create view public.unknown_collector_dependency as select event_id from private.security_collector_events');
  await reject(()=>db.query(undo),/depend|cannot drop/);await role('postgres');eq(await count('private.security_collector_events'),0,'Unknown dependency refusal leaves whole installation intact');await db.query('drop view public.unknown_collector_dependency');
+ await db.query("create function public.untracked_collector_dependency()returns bigint language plpgsql as $$begin return(select count(*)from private.security_collector_events);end$$");await reject(()=>db.query(undo),/external_runtime_dependency/);await role('postgres');await db.query('drop function public.untracked_collector_dependency()');
  await db.query(undo);eq(await routineSnapshot(),originals,'Dependency refusal and retry restore old core exactly');await db.query(install);
  const key=randomBytes(32),key2=randomBytes(32),event={event_id:randomUUID(),collector_id:cid,occurred_at:new Date().toISOString(),event_kind:'current_lure_touched',generation:1,correlation_key:hash('synthetic repeated source'),key_epoch:new Date().toISOString().slice(0,10)};
  const envelope=(payload=event,secret=key,version=1,stamp=Date.now(),raw=Buffer.from(JSON.stringify(payload)))=>({collector_id:cid,key_version:version,timestamp:stamp,body_base64:raw.toString('base64'),signature:createHmac('sha256',secret).update(`sko-collector-v2\n${cid}\n${version}\n${stamp}\n`).update(raw).digest('hex')});
@@ -69,7 +70,7 @@ try{
  await reject(()=>ingest({...envelope(),key_version:2}),/collector_unavailable/);
  await reject(()=>ingest(envelope(event,key,1,Date.now()-61000)),/collector_unavailable/);
  await reject(()=>ingest(envelope({...event,event_id:randomUUID(),collector_id:randomUUID()})),/invalid_metadata/);
- await reject(()=>ingest(envelope({...event,event_id:randomUUID(),ip:'forbidden'})),/invalid collector metadata/);
+ await reject(()=>ingest(envelope({...event,event_id:randomUUID(),ip:'forbidden'})),/collector_invalid_metadata/);
  const duplicateRaw=Buffer.from(JSON.stringify(event).replace('"generation":1','"generation":1,"generation":1'));
  await reject(()=>ingest(envelope(event,key,1,Date.now(),duplicateRaw)),/invalid_metadata/);
  for(const name of ['anon','authenticated']){await role(name);await reject(()=>db.query('select public.ingest_signed_security_collector_event($1)',[envelope()]),/permission/);}
