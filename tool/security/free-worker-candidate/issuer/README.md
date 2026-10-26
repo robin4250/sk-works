@@ -136,3 +136,45 @@ Master-control APIs must not be exposed until those prerequisites are verified.
 This module does not make real honeypot/MTD deployment, actual alerts or Apple
 account linking complete. Existing failed production connection attempts are
 not retried or bypassed here.
+
+## Offline guard compiler and never-used restoration
+
+`prepare-management-issuer-guards.py` emits a read-only catalogue capture query
+and, given a root-reviewed snapshot, compiles one guarded OFF transaction and a
+separate never-used restore. It does not connect to any database. Capture only
+routine definitions/full pg_proc metadata, authorization-relevant table
+catalogues, schema/default ACLs and operator/module/API absence. It never
+exports Auth rows, passwords, session values, private keys or person data.
+
+The compiler requires all current core/crypto dependencies and absent module
+and APIs. Both compiler outputs preserve all existing routines and referenced
+table/schema/default-grant metadata exactly. The install checks private-module
+RLS/ACLs and exact caller-versus-service endpoint roles, rejects unexpected
+default grants, and requires all deployment/proof/command/audit tables empty.
+The owner-only installation receipt preserves the original baseline and exact
+new-function/catalogue/sequence state. All operations are one transaction with
+5-second lock and45-second statement bounds. No configuration/keys are added.
+
+Unused restore exclusively locks new tables, refuses any configuration, ledger,
+audit rows, consumed sequence or catalogue drift, and checks outside runtime
+dependencies on both private schema and new public RPC names. Public APIs,
+known module triggers, helper graph and tables are removed in reverse order
+using RESTRICT, never CASCADE. Existing core and table metadata are checked
+after removal. Unknown dependencies roll back the entire restore. Used modules
+require separate recovery; never delete real rows merely to pass this guard.
+
+`verify-management-issuer-guards.mjs` passed18 isolated PGlite checks with the
+production-style public default service grants reproduced: install/restore/
+reinstall, same baseline, duplicate install refusal, unknown view/private
+runtime/public-RPC dependencies, core configuration and installed ACL drift,
+bad service EXECUTE rollback, configured-OFF restore refusal and sequence-use
+refusal. Fixture compilation occurs only in a fresh temporary directory and
+does not overwrite root's production-pinned outputs. A separate fresh Native17
+service job is provided; its result is still CI-pending.
+
+No production snapshot has been captured for this issuer guard. The referenced
+managed-table/crypto permissions, actual default ACLs, live dependency graph,
+concurrent authorization transport, existing Auth/business-row invariants,
+durable backup and root's reviewed live metadata pins must be supplied and
+verified before any OFF production installation. Source-only compilation and
+PGlite success are not production approval or a recovery rehearsal.
