@@ -75,6 +75,35 @@ $$;
 create function explicit_report_finalization_private.facts_match(rid uuid,wid uuid,facts jsonb) returns boolean language sql stable security definer set search_path='' as $$
  select coalesce((to_jsonb(w)||(facts-'schema'))=to_jsonb(w),false) from public.daily_report_workers w where report_id=rid and worker_id=wid
 $$;
+create function explicit_report_finalization_private.initial_hours(rid uuid) returns jsonb language plpgsql stable security definer set search_path='' as $$
+declare wid uuid;input jsonb;answer jsonb:='[]';
+begin
+ for wid in select worker_id from public.daily_report_workers where report_id=rid order by worker_id loop
+  input:=checkout_shared_hours_private.read_input(rid,wid);
+  answer:=answer||jsonb_build_array(jsonb_build_object('worker_id',wid,'hours',case when input->>'facts_current'='true' then input->'hours' else 'null'::jsonb end));
+ end loop;
+ return answer;
+end $$;
+create function explicit_report_finalization_private.representative_current(rid uuid,proof jsonb) returns boolean language plpgsql stable security definer set search_path='' as $$
+declare item jsonb;current_input jsonb;
+begin
+ if proof is null or proof-'initial_hours' is distinct from explicit_report_finalization_private.basis(rid) or jsonb_typeof(proof->'initial_hours') is distinct from 'array' then return false;end if;
+ for item in select value from jsonb_array_elements(proof->'initial_hours') loop
+  if item->'hours'<>'null'::jsonb then
+   current_input:=checkout_shared_hours_private.read_input(rid,(item->>'worker_id')::uuid);
+   if current_input->'hours' is distinct from item->'hours' then return false;end if;
+  end if;
+ end loop;
+ return true;
+end $$;
+create function explicit_report_finalization_private.assert_hours_unchanged(rid uuid,wid uuid,hours numeric) returns void language plpgsql stable security definer set search_path='' as $$
+declare proof jsonb;initial_value numeric;
+begin
+ if not explicit_report_finalization_private.required(rid) or not exists(select 1 from public.daily_reports where id=rid and representative_signature_json is not null) then return;end if;
+ select p.basis into proof from explicit_report_finalization_private.receipts p join explicit_report_finalization_private.states s on s.report_id=p.report_id and s.revision=p.revision where p.report_id=rid and p.role='representative';
+ select (value->>'hours')::numeric into initial_value from jsonb_array_elements(proof->'initial_hours') where value->>'worker_id'=wid::text;
+ if initial_value is not null and hours is distinct from initial_value then raise sqlstate '55000' using message='explicit_report_edit_before_facts_change';end if;
+end $$;
 create function explicit_report_finalization_private.ready(rid uuid) returns boolean language plpgsql stable security definer set search_path='' as $$
 declare r public.daily_reports%rowtype;s explicit_report_finalization_private.states%rowtype;annex jsonb;item jsonb;proof explicit_report_finalization_private.receipts%rowtype;
 begin
@@ -86,7 +115,7 @@ begin
   or not checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json) then return false;end if;
  select * into proof from explicit_report_finalization_private.receipts where report_id=rid and revision=s.revision and role='representative';
  if proof.signature is distinct from r.representative_signature_json or proof.signer is distinct from r.representative_signer_name
-  or proof.basis is distinct from explicit_report_finalization_private.basis(rid) then return false;end if;
+  or explicit_report_finalization_private.representative_current(rid,proof.basis) is distinct from true then return false;end if;
  annex:=checkout_shared_hours_private.supervisor_snapshot(rid);
  if annex->>'ready' is distinct from 'true' then return false;end if;
  for item in select value from jsonb_array_elements(annex->'inputs') loop
@@ -111,6 +140,7 @@ end $$;
 create function explicit_report_finalization_private.record_receipts() returns trigger language plpgsql security definer set search_path='' as $$
 declare rev bigint;actor uuid;role_value text;name_value text;signature_value jsonb;proof jsonb;admin_proof jsonb;
 begin
+ if not explicit_report_finalization_private.enabled(new.id) and not exists(select 1 from explicit_report_finalization_private.states where report_id=new.id) and not exists(select 1 from explicit_report_finalization_private.management_reports where report_id=new.id) then return new;end if;
  admin_proof:=explicit_report_finalization_private.admin_context(new.id);
  if admin_proof is not null then
   actor:=checkout_report_registration_private.current_actor();
@@ -133,7 +163,8 @@ begin
   name_value:=case when role_value='representative' then new.representative_signer_name else new.supervisor_signer_name end;
   if signature_value is not null and (case when role_value='representative' then old.representative_signature_json else old.supervisor_signature_json end) is distinct from signature_value then
    proof:=explicit_report_finalization_private.basis(new.id);
-   if role_value='supervisor' then proof:=jsonb_build_object('draft',proof,'annex',checkout_shared_hours_private.supervisor_snapshot(new.id));end if;
+   if role_value='supervisor' then proof:=jsonb_build_object('draft',proof,'annex',checkout_shared_hours_private.supervisor_snapshot(new.id));
+   else proof:=proof||jsonb_build_object('initial_hours',explicit_report_finalization_private.initial_hours(new.id));end if;
    insert into explicit_report_finalization_private.receipts(report_id,revision,role,signer,signature,basis,actor_id,session_id)
    values(new.id,rev,role_value,name_value,signature_value,proof,actor,(auth.jwt()->>'session_id')::uuid)
    on conflict(report_id,revision,role) do update set signer=excluded.signer,signature=excluded.signature,basis=excluded.basis,actor_id=excluded.actor_id,session_id=excluded.session_id,created_at=clock_timestamp();
@@ -160,7 +191,7 @@ begin
  select revision into rev from explicit_report_finalization_private.states where report_id=rid;
  select * into proof from explicit_report_finalization_private.receipts where report_id=rid and revision=rev and role='representative';
  if proof.signature is distinct from r.representative_signature_json or proof.signer is distinct from r.representative_signer_name
-  or proof.basis is distinct from explicit_report_finalization_private.basis(rid) then raise sqlstate '55000' using message='explicit_report_actual_revision_required';end if;
+  or explicit_report_finalization_private.representative_current(rid,proof.basis) is distinct from true then raise sqlstate '55000' using message='explicit_report_actual_revision_required';end if;
  annex:=checkout_shared_hours_private.supervisor_snapshot(rid);
  if annex->>'ready' is distinct from 'true' then raise sqlstate '55000' using message='explicit_report_finalization_facts_pending';end if;
  for item in select value from jsonb_array_elements(annex->'inputs') loop
