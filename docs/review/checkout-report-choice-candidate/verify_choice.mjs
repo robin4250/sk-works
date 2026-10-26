@@ -195,7 +195,7 @@ try {
  assert.equal((await target()).registration_state,'checkout_deferred');
  await choose(true);assert.equal((await target()).report_started,true);assert.equal((await target()).registration_state,'report_missing');assert.equal((await target()).blocking,true);
  await assert.rejects(()=>choose(false),/already_started/);
- const history=await q('select (deferred_at is not null and started_at is not null) v from checkout_report_choice_private.choices');assert.equal(history,true,'Later explicit create retains checkout-only history');
+ const history=await q('select (deferred_at is not null and started_at is not null) v from checkout_report_choice_private.choices where source_clock_in_id=$1',[id(50)]);assert.equal(history,true,'Later explicit create retains checkout-only history');
  await db.query("insert into daily_reports(id,company_id,site_id,report_date,status,updated_at,work_description,representative_signer_name,representative_signature_json) values($1,$2,$3,'2026-10-25','draft',now(),'synthetic work','Synthetic reporter','{\"strokes\":[[{}]]}')",[id(60),id(1),id(4)]);
  await db.query('insert into daily_report_workers(report_id,worker_id) values($1,$2)',[id(60),id(3)]);
  await db.query('update attendance_verifications set daily_report_id=$1 where id=any($2::uuid[])',[id(60),[id(50),id(51)]]);
