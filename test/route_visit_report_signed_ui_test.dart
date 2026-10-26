@@ -55,7 +55,8 @@ void main() {
       expect(repository.finalized, isFalse); expect(repository.finalizationWrites, 0);
       final button = find.byKey(const ValueKey('daily-report-finalize'));
       await tester.scrollUntilVisible(button, 200, scrollable: find.byType(Scrollable).first);
-      await tester.ensureVisible(button); await tester.tap(button); await tester.pumpAndSettle();
+      await tester.ensureVisible(button); await tester.pumpAndSettle();
+      await tester.tap(button); await tester.pumpAndSettle();
       expect(repository.finalized, isTrue); expect(repository.finalizationWrites, 1);
       expect(find.byKey(const ValueKey('daily-report-finalize')), findsNothing);
     });

@@ -93,6 +93,7 @@ void main() {
     final member = find.descendant(of: find.byType(ExpansionTile), matching: find.text('合成社員'));
     await tester.scrollUntilVisible(member, 250, scrollable: reportScroll);
     await tester.ensureVisible(member);
+    await tester.pumpAndSettle();
     await tester.tap(member); await tester.pumpAndSettle();
     expect(find.byType(DailyReportAllowanceNameField), findsOneWidget,
       reason: tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).join(' | '));

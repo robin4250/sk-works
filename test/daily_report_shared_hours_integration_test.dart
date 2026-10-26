@@ -1,6 +1,7 @@
 // ignore_for_file: depend_on_referenced_packages
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:sk_works/features/attendance/paid_work_hours_repository.dart';
@@ -299,6 +300,27 @@ void main() {
     expect(find.byKey(const ValueKey('daily-report-finalize')), findsNothing);
   });
 
+  test('financial and visit failures provide actionable Japanese without SQL details', () {
+    const examples = {
+      'explicit_report_finalized_payroll_protected': '対象月の給与が確定済み',
+      'explicit_report_finalized_invoice_protected': '対象月の請求書が確定済み',
+      'explicit_report_payroll_projection_blocked': '給与計算に必要な設定',
+      'explicit_report_invoice_projection_missing': '請求先と請求設定',
+      'explicit_report_actual_facts_required': '実勤務時間',
+      'explicit_report_confirmation_reason_invalid': '1〜1000文字',
+      'shared_report_scope_changed': '再読み込み',
+      'explicit_route_finalization_not_allowed': '現場メンバー',
+    };
+    for (final entry in examples.entries) {
+      final message = dailyReportActionErrorMessage(PostgrestException(message: entry.key,
+        code: 'P0001', details: 'private.internal_table: synthetic SQL details'));
+      expect(message, contains(entry.value));
+      expect(message, isNot(contains('通信状態')));
+      expect(message, isNot(contains(entry.key)));
+      expect(message, isNot(contains('private.internal_table')));
+    }
+  });
+
   testWidgets('financial capability unavailable preserves both actual signatures', (tester) async {
     final reports = _Reports()..reporterSaved = true..supervisorSaved = true..documentMode = true;
     final shared = _Shared(reports)..documentOnly = true..manager = true;
@@ -405,6 +427,7 @@ void main() {
       widget is DropdownButtonFormField<String> && widget.key.toString().contains('facts-category/'));
     await tester.scrollUntilVisible(category, -200, scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(category);
+    await tester.pumpAndSettle();
     await tester.tap(category);
     await tester.pumpAndSettle();
     await tester.tap(find.text('日勤').last);
