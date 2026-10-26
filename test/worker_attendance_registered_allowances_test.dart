@@ -14,8 +14,8 @@ Map<String, Object?> selection({String name = '保存済み共通手当', String
   'generation': null, 'registration_version': 7,
   'name_snapshot': name, 'unit': unit,
 };
-Map<String, Object?> row(Object? saved, {String id = report, String user = worker}) => {
-  'report_id': id, 'worker_id': user, 'company_allowance_selections': saved,
+Map<String, Object?> row(Object? saved, {String id = report, String user = worker, String status = 'signed'}) => {
+  'report_id': id, 'worker_id': user, 'company_allowance_selections': saved, 'daily_reports': {'status': status},
 };
 Map<String, Object?> choices(List<Object?> items) => {'contract_version': 1, 'items': items};
 void main() {
@@ -59,6 +59,7 @@ void main() {
     }
   });
   test('actual Supabase read connects only linked worker snapshots to their work dates', () async {
+    const draftReport = '00000000-0000-0000-0000-000000000005';
     const otherReport = '00000000-0000-0000-0000-000000000004';
     final seen = <Uri>[];
     final client = SupabaseClient('https://fixture.invalid', 'synthetic-public',
@@ -76,6 +77,9 @@ void main() {
           {'id': 'entry-one', 'source_report_id': report, 'work_date': '2026-10-26',
             'site_id': 'site', 'base_man_days': 1, 'allowance_amount': 0,
             'allowance_names': ['自由記入'], 'sites': {'name': '合成現場'}},
+          {'id': 'entry-draft', 'source_report_id': draftReport, 'work_date': '2026-10-28',
+            'site_id': 'site', 'base_man_days': 1, 'allowance_amount': 0,
+            'allowance_names': ['既存確定出勤の手当'], 'sites': {'name': '合成現場'}},
           {'id': 'entry-two', 'source_report_id': otherReport, 'work_date': '2026-10-27',
             'site_id': 'site', 'base_man_days': 1, 'allowance_amount': 0,
             'allowance_names': [], 'sites': {'name': '合成現場'}},
@@ -84,9 +88,11 @@ void main() {
         expect(request.url.queryParameters['worker_id'], 'eq.$worker');
         expect(request.url.queryParameters['report_id'], contains(report));
         expect(request.url.queryParameters['report_id'], contains(otherReport));
-        expect(request.url.queryParameters['select'], 'report_id,worker_id,company_allowance_selections');
+        expect(request.url.queryParameters['select'], 'report_id,worker_id,company_allowance_selections,daily_reports!inner(status)');
+        expect(request.url.queryParameters['daily_reports.status'], 'eq.signed');
         result = [row(choices([selection(name: '登録当時の名前')])),
-          row(choices([selection(name: '翌日の手当')]), id: otherReport)];
+          row(choices([selection(name: '翌日の手当')]), id: otherReport),
+          row(choices([selection(name: '手直し中の未確定手当')]), id: draftReport, status: 'draft')];
       } else if (path.endsWith('/attendance_verifications') || path.endsWith('/paid_leave_requests')) {
         result = [];
       } else if (path.endsWith('/paid_leave_worker_summary')) {
@@ -108,7 +114,10 @@ void main() {
       expect(first.allowanceNames, isNot(contains('現在の改名後')));
       expect(first.allowanceNames, isNot(contains('翌日の手当')));
       expect(second.allowanceNames, ['翌日の手当']);
-      expect(month.days.length, 2);
+      final draftDay = month.days[DateTime(2026, 10, 28)]!;
+      expect(draftDay.allowanceNames, ['既存確定出勤の手当']);
+      expect(draftDay.companyAllowanceSelections, isEmpty);
+      expect(month.days.length, 3);
       expect(seen.where((uri) => uri.path.endsWith('/daily_report_workers')).length, 1);
     } finally {
       await client.dispose();
