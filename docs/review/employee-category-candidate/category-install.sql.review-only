@@ -1,0 +1,86 @@
+-- Candidate only. Do not apply until full live-session and concurrency tests pass.
+begin;
+create schema if not exists employee_category_private;
+revoke all on schema employee_category_private from public, anon, authenticated;
+create table employee_category_private.categories (
+ id uuid primary key default gen_random_uuid(),
+ company_id uuid not null references public.companies(id),
+ name text not null check (name=btrim(name) and char_length(name) between 1 and 40),
+ active boolean not null default true,
+ created_by uuid not null, created_at timestamptz not null default now(),
+ unique(company_id,id)
+);
+create unique index employee_category_company_name_unique on employee_category_private.categories(company_id, lower(name));
+create table employee_category_private.assignments (
+ worker_id uuid primary key references public.workers(id),
+ company_id uuid not null references public.companies(id),
+ category_id uuid not null,
+ foreign key(company_id,category_id) references employee_category_private.categories(company_id,id)
+);
+create table employee_category_private.audit (
+ id bigint generated always as identity primary key,
+ company_id uuid not null, actor_id uuid not null, worker_id uuid,
+ action text not null, old_category uuid, new_category uuid,
+ created_at timestamptz not null default now()
+);
+revoke all on all tables in schema employee_category_private from public, anon, authenticated;
+revoke all on all sequences in schema employee_category_private from public, anon, authenticated;
+
+create function employee_category_private.check_manage(p_company uuid) returns void
+language plpgsql security definer set search_path='' as $$
+begin
+ perform private.require_reauthentication_session();
+ if private.account_access_allowed() is not true or not exists(select 1 from public.company_members cm
+   where cm.company_id=p_company and cm.user_id=auth.uid()
+     and cm.role::text in ('owner','admin','manager')
+     and private.has_company_feature(p_company,'can_manage_people') is true) then
+   raise exception '社員区分を管理する権限がありません' using errcode='42501';
+ end if;
+end $$;
+revoke all on function employee_category_private.check_manage(uuid) from public, anon, authenticated;
+
+-- Run only from authorized management entry; repeated calls preserve existing IDs.
+create function public.ensure_employee_categories(p_company uuid) returns void
+language plpgsql security definer set search_path='' as $$
+begin
+ perform employee_category_private.check_manage(p_company);
+ with added as (
+   insert into employee_category_private.categories(company_id,name,created_by)
+   select p_company,v.name,auth.uid() from (values('正社員'),('派遣社員'),('アルバイト')) v(name)
+   on conflict do nothing returning id
+ ) insert into employee_category_private.audit(company_id,actor_id,action,new_category)
+   select p_company,auth.uid(),'category_create',id from added;
+end $$;
+revoke all on function public.ensure_employee_categories(uuid) from public,anon;
+grant execute on function public.ensure_employee_categories(uuid) to authenticated;
+
+create function public.list_employee_categories(p_company uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+begin
+ perform private.require_reauthentication_session();
+ if private.personnel_view_allowed(p_company) is not true then
+   raise exception '社員区分を閲覧する権限がありません' using errcode='42501';
+ end if;
+ return coalesce((select jsonb_agg(jsonb_build_object('id',id,'name',name,'active',active) order by name,id)
+ from employee_category_private.categories where company_id=p_company),'[]'::jsonb);
+end $$;
+revoke all on function public.list_employee_categories(uuid) from public,anon;
+grant execute on function public.list_employee_categories(uuid) to authenticated;
+
+create function public.add_employee_category(p_company uuid,p_name text) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare v_name text:=btrim(p_name); v_id uuid;
+begin
+ perform employee_category_private.check_manage(p_company);
+ if v_name is null or char_length(v_name) not between 1 and 40 then
+   raise exception '区分名は1〜40文字で入力してください';
+ end if;
+ insert into employee_category_private.categories(company_id,name,created_by)
+ values(p_company,v_name,auth.uid()) returning id into v_id;
+ insert into employee_category_private.audit(company_id,actor_id,action,new_category)
+ values(p_company,auth.uid(),'category_create',v_id);
+ return jsonb_build_object('id',v_id,'name',v_name,'active',true);
+end $$;
+revoke all on function public.add_employee_category(uuid,text) from public,anon;
+grant execute on function public.add_employee_category(uuid,text) to authenticated;
+commit;

@@ -341,6 +341,8 @@ class PeopleCloudRepository {
             'phone': personnel['phone'] ?? value['phone'] ?? '',
             'email': value['email'] ?? '',
             'role': value['role'] ?? '',
+            'employeeCategoryId': personnel['employeeCategoryId'],
+            'employeeCategoryName': personnel['employeeCategoryName'] ?? '',
             'employeeNumber':
                 personnel['employeeNumber'] ?? dates['employee_number'] ?? '',
             'department': personnel['department'] ?? dates['department'] ?? '',
@@ -472,6 +474,27 @@ class PeopleCloudRepository {
     };
   }
 
+  Future<List<Map<String, dynamic>>> loadEmployeeCategories(String company) async {
+    final actor = actorId;
+    final token = _client.auth.currentSession?.accessToken;
+    final member = await membership(companyId: company);
+    await _client.rpc('ensure_employee_categories', params: {'p_company': company});
+    final raw = await _client.rpc('list_employee_categories', params: {'p_company': company});
+    if (actorId != actor || _client.auth.currentSession?.accessToken != token ||
+        await membership(companyId: company) != member) throw const PersonnelScopeChanged();
+    if (raw is! List) throw StateError('社員区分を確認できません。');
+    return [for (final value in raw) if (value is Map) Map<String, dynamic>.from(value)];
+  }
+
+  Future<void> addEmployeeCategory(String company, String name) async {
+    final actor = actorId;
+    final token = _client.auth.currentSession?.accessToken;
+    final member = await membership(companyId: company);
+    await _client.rpc('add_employee_category', params: {'p_company': company, 'p_name': name});
+    if (actorId != actor || _client.auth.currentSession?.accessToken != token ||
+        await membership(companyId: company) != member) throw const PersonnelScopeChanged();
+  }
+
   Future<Map<String, dynamic>> savePersonnelProfile(
     Map<String, dynamic> record,
   ) async {
@@ -488,6 +511,8 @@ class PeopleCloudRepository {
           'blood_type': record['bloodType']?.toString() ?? '',
           'role': record['role']?.toString() ?? '',
           'employee_number': record['employeeNumber']?.toString() ?? '',
+          if (record['employeeCategorySubmitted'] == true)
+            'employee_category_id': record['employeeCategoryId'],
           'department': record['department']?.toString() ?? '',
           'hire_date': record['hireDate']?.toString() ?? '',
           'phone': record['phone']?.toString() ?? '',
@@ -586,4 +611,5 @@ class PeopleCloudRepository {
     return text.isEmpty ? null : text;
   }
 }
+
 

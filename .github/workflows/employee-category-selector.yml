@@ -21,3 +21,35 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze lib/features/people/employee_category_selector.dart test/employee_category_selector_test.dart
       - run: flutter test test/employee_category_selector_test.dart
+  sql-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGPASSWORD: fixture
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test role boundaries and approval with synthetic rows
+        run: |
+          psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/fixture.sql
+          psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/category-install.sql.review-only
+          psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/worker_personnel_payload.after.sql
+          psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/employee_personnel_view.after.sql
+          psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/apply_worker_personnel_payload.after.sql
+          psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/save_worker_personnel_profile.after.sql
+          psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/decide.before.sql
+          psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/sql-test.sql

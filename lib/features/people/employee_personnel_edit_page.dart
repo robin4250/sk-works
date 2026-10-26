@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import 'people_cloud_repository.dart';
+import 'employee_category_selector.dart';
 import 'people_page.dart';
 import 'personnel_family_member.dart';
 
@@ -35,6 +36,12 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
   late List<EditableFamilyMember> _familyMembers;
   late String _bloodType;
   bool _saving = false;
+  String? _categoryId;
+  String? _categoryCompany;
+  bool _categoryReady = false;
+  bool _categoryDirty = false;
+  List<EmployeeCategoryOption> _categories = const [];
+  String? _categoryError;
   bool _directAdminSave = false;
   bool _loadingSaveMode = true;
 
@@ -44,6 +51,7 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     final record = widget.record;
     _name = TextEditingController(text: record.name);
     _role = TextEditingController(text: record.role);
+    _categoryId = record.employeeCategoryId;
     _employeeNumber = TextEditingController(text: record.employeeNumber);
     _department = TextEditingController(text: record.department);
     _hireDate = DateTime.tryParse(record.hireDate);
@@ -69,6 +77,18 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     }
     try {
       final member = await repository.membership(companyId:widget.privacySession?.company);
+      if (widget.record.kind == PersonKind.employee) {
+        try {
+          final rows = await repository.loadEmployeeCategories(member.companyId);
+          if (!mounted) return;
+          _categoryCompany = member.companyId;
+          _categories = [for (final row in rows)
+            EmployeeCategoryOption(id: row['id'].toString(), name: row['name'].toString(), active: row['active'] == true)];
+          _categoryReady = true;
+        } catch (_) {
+          _categoryError = '区分を読み込めません。再読み込みしてください。';
+        }
+      }
       if (!mounted) return;
       setState(() {
         _directAdminSave = member.role == 'owner' || member.role == 'admin';
@@ -158,6 +178,8 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
         'name': _name.text.trim(),
         'bloodType': _bloodType,
         'role': _role.text.trim(),
+        'employeeCategorySubmitted': _categoryReady && _categoryDirty,
+        'employeeCategoryId': _categoryId,
         'employeeNumber': _employeeNumber.text.trim(),
         'department': _department.text.trim(),
         'hireDate': _hireDate == null
@@ -199,6 +221,32 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     }
   }
 
+  Future<void> _addCategory() async {
+    final repository = _repository;
+    final company = _categoryCompany;
+    if (repository == null || company == null || _saving) return;
+    final controller = TextEditingController();
+    final name = await showDialog<String>(context: context, builder: (context) => AlertDialog(
+      title: const Text('従業員区分を追加'),
+      content: TextField(controller: controller, maxLength: 40,
+        decoration: const InputDecoration(labelText: '区分名')),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('戻る')),
+        FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('追加'))],
+    ));
+    controller.dispose();
+    if (!mounted || name == null || name.isEmpty) return;
+    try {
+      await repository.addEmployeeCategory(company, name);
+      final rows = await repository.loadEmployeeCategories(company);
+      if (!mounted) return;
+      setState(() => _categories = [for (final row in rows)
+        EmployeeCategoryOption(id: row['id'].toString(), name: row['name'].toString(), active: row['active'] == true)]);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('追加できませんでした: $error')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -230,6 +278,14 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
             ),
           ),
           const SizedBox(height: 10),
+          if (widget.record.kind == PersonKind.employee) ...[
+            if (_categoryReady)
+              EmployeeCategorySelector(options: _categories, selectedId: _categoryId,
+                onChanged: (value) => setState(() { _categoryId = value; _categoryDirty = true; }),
+                onAdd: _saving ? null : _addCategory)
+            else if (_categoryError != null) Text(_categoryError!),
+            const SizedBox(height: 10),
+          ],
           _field(_department, '所属'),
           const SizedBox(height: 10),
           ListTile(
@@ -440,3 +496,4 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
     ),
   );
 }
+

@@ -1,0 +1,155 @@
+CREATE OR REPLACE FUNCTION public.save_worker_personnel_profile(p_worker_id uuid, p_payload jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_company uuid;
+  v_existing boolean;
+  v_request uuid;
+  v_current jsonb;
+  v_actor uuid:=auth.uid();
+  v_actor_role text;
+  v_required integer;
+  v_category_id uuid;
+  v_category_name text;
+  v_previous_category uuid;
+begin
+  if v_actor is null then raise exception 'ログインが必要です'; end if;
+  if not private.can_edit_worker_personnel(p_worker_id) then
+    raise exception '社員個人情報を変更する権限がありません';
+  end if;
+
+  select w.company_id into v_company
+  from public.workers w
+  where w.id=p_worker_id;
+
+  if v_company is null then raise exception '社員を確認できません'; end if;
+
+  -- Reject a manual duplicate before a pending approval request is created.
+  -- The trigger/index recheck at application time covers approval-time races.
+  if p_payload ? 'employee_number' and nullif(btrim(p_payload->>'employee_number'),'') is not null then
+    if length(btrim(p_payload->>'employee_number'))>40 then
+      raise exception using errcode='22001',message='employee_number_too_long';
+    end if;
+    if exists(select 1 from public.workers w where w.company_id=v_company
+      and w.id<>p_worker_id
+      and upper(btrim(w.employee_number))=upper(btrim(p_payload->>'employee_number'))) then
+      raise exception using errcode='23505',message='employee_number_duplicate',
+        constraint='workers_company_employee_number_unique';
+    end if;
+  end if;
+
+
+  select cm.role::text into v_actor_role
+  from public.company_members cm
+  where cm.company_id=v_company
+    and cm.user_id=v_actor
+  limit 1;
+
+  if v_actor_role is null then
+    raise exception '会社への所属が必要です';
+  end if;
+
+  select exists(
+    select 1
+    from public.worker_personnel_profiles p
+    where p.worker_id=p_worker_id
+  ) into v_existing;
+
+  v_current:=private.worker_personnel_payload(p_worker_id);
+  if p_payload ? 'employee_category_id' then
+    v_category_id:=nullif(p_payload->>'employee_category_id','')::uuid;
+    select category_id into v_previous_category from employee_category_private.assignments
+      where worker_id=p_worker_id and company_id=v_company;
+    if v_category_id is distinct from v_previous_category then
+      perform employee_category_private.check_manage(v_company);
+    end if;
+    if v_category_id is not null then
+      select name into v_category_name from employee_category_private.categories
+        where company_id=v_company and id=v_category_id and (active or id=v_previous_category);
+      if v_category_name is null then raise exception '有効な社員区分を確認できません'; end if;
+    end if;
+    -- The approved name comes from the company master, never from client input.
+    p_payload:=p_payload||jsonb_build_object('employee_category_name',v_category_name);
+  else
+    -- Legacy clients do not send this field and must neither clear nor compare it.
+    v_current:=v_current-'employee_category_id'-'employee_category_name';
+    p_payload:=p_payload-'employee_category_name';
+  end if;
+
+  if not v_existing then
+    perform private.apply_worker_personnel_payload(p_worker_id,p_payload,v_actor);
+    return jsonb_build_object(
+      'status','saved',
+      'requires_approval',false,
+      'saved_directly',true
+    );
+  end if;
+
+  if v_current=p_payload then
+    return jsonb_build_object(
+      'status','unchanged',
+      'requires_approval',false,
+      'saved_directly',false
+    );
+  end if;
+
+  if v_actor_role in ('owner','admin') then
+    perform private.apply_worker_personnel_payload(p_worker_id,p_payload,v_actor);
+
+    update public.worker_personnel_change_requests
+    set status='rejected',resolved_at=now()
+    where worker_id=p_worker_id
+      and status='pending';
+
+    return jsonb_build_object(
+      'status','saved',
+      'requires_approval',false,
+      'saved_directly',true
+    );
+  end if;
+
+  select count(*)::integer into v_required
+  from public.worker_personnel_approvers a
+  where a.company_id=v_company
+    and a.user_id<>v_actor;
+
+  if v_required<1 then
+    raise exception '社員個人情報の承認者を1〜3名で設定してください（申請者本人は承認できません）';
+  end if;
+
+  v_required:=least(v_required,3);
+
+  update public.worker_personnel_change_requests
+  set status='rejected',resolved_at=now()
+  where worker_id=p_worker_id
+    and requested_by=v_actor
+    and status='pending';
+
+  insert into public.worker_personnel_change_requests(
+    company_id,worker_id,requested_by,proposed,required_approvals
+  ) values(v_company,p_worker_id,v_actor,p_payload,v_required)
+  returning id into v_request;
+
+  insert into public.app_notifications(
+    company_id,recipient_user_id,kind,title,body,action_key,action_id
+  )
+  select v_company,a.user_id,'approval','社員個人情報の変更申請',
+    '社員個人情報の変更申請があります。登録済み承認者の承認後に反映されます。',
+    'worker_personnel_change',v_request
+  from public.worker_personnel_approvers a
+  where a.company_id=v_company
+    and a.user_id<>v_actor;
+
+  return jsonb_build_object(
+    'status','pending',
+    'requires_approval',true,
+    'request_id',v_request,
+    'required_approvals',v_required,
+    'saved_directly',false
+  );
+end
+$function$
+

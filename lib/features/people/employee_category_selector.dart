@@ -27,7 +27,8 @@ class EmployeeCategorySelector extends StatelessWidget {
         initialValue: matches == 1 ? selectedId : null,
         decoration: const InputDecoration(labelText: '従業員区分'),
         hint: Text(selectedId != null && matches != 1 ? '区分を確認できません' : '未設定'),
-        items: [for (final option in visible)
+        items: [const DropdownMenuItem<String>(value: null, child: Text('未設定')),
+          for (final option in visible)
           DropdownMenuItem(value: option.id,
             child: Text(option.active ? option.name : '${option.name}（使用停止）'))],
         onChanged: onChanged,
