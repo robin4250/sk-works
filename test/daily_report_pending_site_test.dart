@@ -33,6 +33,8 @@ class ReadReports extends DailyReportMonthRepository{
  @override String get actor=>actorId;
  @override void checkActor(String user){if(user!=actorId)throw StateError('actor changed');}
 }
+void fastTestWidgets(String name, Future<void> Function(WidgetTester) body) =>
+    testWidgets(name, body, timeout: const Timeout(Duration(seconds: 30)));
 void main(){
  final clients=<SupabaseClient>[];
  tearDown(() async {debugPrint('DIAG teardown start');for(final client in clients){await client.dispose();}clients.clear();debugPrint('DIAG teardown end');});
@@ -45,7 +47,7 @@ void main(){
   expect(entry('i',DateTime(2026),reporter:false).saveState,DailyReportSaveState.inputPending);
   expect(entry('unknown',DateTime(2026),status:'unknown').saveState,DailyReportSaveState.inputPending);
  });
- testWidgets('red pending all-month groups open saved identity without choosing a day',(tester)async{
+ fastTestWidgets('red pending all-month groups open saved identity without choosing a day',(tester)async{
   tester.view.physicalSize=const Size(390,1000);tester.view.devicePixelRatio=1;addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final repo=FixtureReports(client);String? opened;
@@ -61,8 +63,8 @@ void main(){
   await tester.tap(find.descendant(of:find.byKey(const ValueKey('daily-report-pending-entry-old-a')),matching:find.text('サイン')));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');
   expect(opened,'old-a');expect(find.text('既存日報 old-a'),findsOneWidget);
   await tester.pageBack();debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(repo.pendingReads,2);expect(tester.takeException(),isNull);
- }, timeout: const Timeout(Duration(seconds: 30)));
- testWidgets('pending error is never presented as an empty successful list',(tester)async{
+ });
+ fastTestWidgets('pending error is never presented as an empty successful list',(tester)async{
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);final repo=FixtureReports(client)..fail=true;
   debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(repositoryForTesting:repo)));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');
   await tester.tap(find.byKey(const ValueKey('daily-report-pending-filter')));debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');

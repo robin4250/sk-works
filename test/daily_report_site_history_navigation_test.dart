@@ -32,12 +32,14 @@ class History extends DailyReportMonthRepository{
    reporterSignatureJson:pending?{'strokes':[[{'x':0.1,'y':0.2}]]}:null),const []);
  }
 }
+void fastTestWidgets(String name, Future<void> Function(WidgetTester) body) =>
+    testWidgets(name, body, timeout: const Timeout(Duration(seconds: 30)));
 void main(){
  final clients=<SupabaseClient>[];
  tearDown(() async {debugPrint('DIAG teardown start');for(final client in clients){await client.dispose();}clients.clear();debugPrint('DIAG teardown end');});
  for(final pending in [false,true]){
  for(final scale in [1.0,1.5]) {
- testWidgets('large controls navigate year boundaries and same-day IDs in one category $pending $scale',(tester)async{
+ fastTestWidgets('large controls navigate year boundaries and same-day IDs in one category $pending $scale',(tester)async{
   tester.view.physicalSize=const Size(390,800);tester.view.devicePixelRatio=1;addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client,pending:pending);final anchor=history.all[1];
@@ -53,8 +55,8 @@ void main(){
   await tester.tap(next);debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.text('2027年'),findsOneWidget);expect(find.text('4 / 4件'),findsOneWidget);
   expect(tester.widget<OutlinedButton>(next).onPressed,isNull);expect(find.text('最も新しい日報'),findsOneWidget);
   expect(history.opened,['anchor','old','anchor','same-day','new']);expect(tester.takeException(),isNull);
- }, timeout: const Timeout(Duration(seconds: 30)));}}
- testWidgets('unavailable all-period history does not claim oldest or newest',(tester)async{
+ });}}
+ fastTestWidgets('unavailable all-period history does not claim oldest or newest',(tester)async{
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client)..fail=true;final anchor=history.all[1];
   debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
@@ -62,14 +64,14 @@ void main(){
   debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.text('report:anchor'),findsOneWidget);expect(find.textContaining('全期間を取得できません'),findsOneWidget);
   expect(find.text('最も新しい日報'),findsNothing);expect(find.text('最も古い日報'),findsNothing);expect(find.text('範囲未確認'),findsNWidgets(2));
  });
- testWidgets('a completed report cannot remain in pending preview after server state changes',(tester)async{
+ fastTestWidgets('a completed report cannot remain in pending preview after server state changes',(tester)async{
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client,pending:true)..changed=true;final anchor=history.all[1];
   debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
    previewBuilderForTesting:(doc)=>Scaffold(body:Text('report:${doc.report.id}')))));
   debugPrint('DIAG settle begin');await tester.pumpAndSettle(const Duration(milliseconds:100), EnginePhase.sendSemanticsUpdate, const Duration(seconds:3));debugPrint('DIAG settle end');expect(find.textContaining('保存状態が変わりました'),findsOneWidget);expect(find.text('report:anchor'),findsNothing);
  });
- testWidgets('zoomed PDF pan preserves current report while large arrow remains available',(tester)async{
+ fastTestWidgets('zoomed PDF pan preserves current report while large arrow remains available',(tester)async{
   final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client);final anchor=history.all[1];
   debugPrint('DIAG pumpWidget begin');await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
