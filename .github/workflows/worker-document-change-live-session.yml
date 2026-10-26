@@ -1,0 +1,38 @@
+name: Worker document change live session candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/worker-document-change-live-session/**'
+      - 'tool/worker_document_change_live_session*'
+      - '.github/workflows/worker-document-change-live-session.yml'
+permissions:
+  contents: read
+jobs:
+  native:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_change_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SKO_DOCUMENT_CHANGE_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_change_fixture
+      SKO_DOCUMENT_PG_MODULE: /tmp/sko-document-native/node_modules/pg/lib/index.js
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix /tmp/sko-document-native --no-save --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - run: node tool/worker_document_change_live_session_test.mjs "$GITHUB_WORKSPACE/tool/worker_document_change_native_pg17_runtime.mjs" postgres

@@ -1,0 +1,59 @@
+CREATE OR REPLACE FUNCTION private.personal_document_submission(p_action text, p_data jsonb DEFAULT '{}'::jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare uid uuid:=auth.uid();cid uuid;wid uuid;rid uuid;can_review boolean;req private.document_submissions%rowtype;oldrow jsonb;newpath text;ext text;
+begin
+ if uid is null then raise exception 'ログインが必要です';end if;
+ select company_id into cid from public.company_members where user_id=uid limit 1;
+ if cid is null then raise exception '所属会社がありません';end if;
+ select exists(select 1 from public.company_members where company_id=cid and user_id=uid and role::text in ('owner','admin')) or exists(select 1 from public.company_approval_assignees where company_id=cid and user_id=uid) into can_review;
+ if p_action='list' then
+  return coalesce((select jsonb_agg(to_jsonb(r)||jsonb_build_object('worker_name',w.name,'document_name',d.name,'can_review',can_review) order by r.created_at desc) from private.document_submissions r join public.workers w on w.id=r.worker_id join public.document_requirements d on d.id=r.requirement_id where r.company_id=cid and r.status<>'draft' and ((can_review and r.status='pending') or r.requested_by=uid)),'[]');
+ end if;
+ if p_action='prepare' then
+  wid:=(p_data->>'worker_id')::uuid;rid:=(p_data->>'requirement_id')::uuid;
+  if not exists(select 1 from public.workers where id=wid and company_id=cid and (user_id=uid or exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=uid and m.role::text in ('owner','admin') and private.has_company_feature(cid,'can_manage_people')))) then raise exception '本人の書類だけ申請できます';end if;
+  if not exists(select 1 from public.workers where id=wid and user_id=uid) and exists(select 1 from public.document_requirements where id=rid and name ~ '(マイナンバー|個人番号)') then raise exception '個人番号は専用の手続きが必要です';end if;
+  if not exists(select 1 from public.document_requirements where id=rid and company_id=cid and name<>'銀行口座情報') then raise exception '書類の種類を確認してください';end if;
+  perform pg_advisory_xact_lock(hashtextextended(wid::text||rid::text,0));
+  select to_jsonb(s) into oldrow from public.worker_document_statuses s where worker_id=wid and requirement_id=rid and company_id=cid;
+  if exists(select 1 from public.document_requirements where id=rid and expiry_required) and nullif(p_data->>'expires_at','') is null then raise exception '有効期限を入力してください';end if;
+  ext:=p_data->>'extension';
+  if ext is not null and ext not in ('pdf','jpg','jpeg','png','heic','heif') then raise exception '写真またはPDFを選択してください';end if;
+  insert into private.document_submissions(company_id,worker_id,requirement_id,requested_by,previous,attachment_path,notes,expires_at)
+  values(cid,wid,rid,uid,oldrow,oldrow->>'attachment_path',p_data->>'notes',nullif(p_data->>'expires_at','')::date) returning * into req;
+  if ext is not null then
+   newpath:=cid::text||'/'||wid::text||'/'||rid::text||'/'||req.id::text||'/submission.'||ext;
+   update private.document_submissions set upload_path=newpath,attachment_path=newpath where id=req.id;
+  end if;
+  return jsonb_build_object('id',req.id,'upload_path',newpath);
+ end if;
+ select * into req from private.document_submissions where id=(p_data->>'id')::uuid and company_id=cid for update;
+ if not found then raise exception '申請が見つかりません';end if;
+ if p_action='submit' then
+  if req.requested_by<>uid or req.status<>'draft' then raise exception 'この申請は送信できません';end if;
+  if req.attachment_path is null or not exists(select 1 from storage.objects where bucket_id='worker-documents' and name=req.attachment_path) then raise exception '写真またはPDFを登録してください';end if;
+  update private.document_submissions set status='pending' where id=req.id;
+  return '{}';
+ end if;
+ if not can_review or req.status<>'pending' then raise exception '承認権限または申請状態を確認してください';end if;
+ if p_action='reject' then
+  if nullif(trim(p_data->>'reason'),'') is null then raise exception '差し戻す理由が必要です';end if;
+  update private.document_submissions set status='rejected',reason=p_data->>'reason',reviewed_by=uid,reviewed_at=now() where id=req.id;return '{}';
+ end if;
+ if p_action<>'approve' then raise exception '操作を確認してください';end if;
+ perform pg_advisory_xact_lock(hashtextextended(req.worker_id::text||req.requirement_id::text,0));
+ select to_jsonb(s) into oldrow from public.worker_document_statuses s where worker_id=req.worker_id and requirement_id=req.requirement_id and company_id=cid for update;
+ if oldrow is distinct from req.previous then raise exception '申請後に書類が更新されました。再申請してください';end if;
+ if not exists(select 1 from public.workers where id=req.worker_id and company_id=cid and (user_id=req.requested_by or exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=req.requested_by and m.role::text in ('owner','admin') and private.has_company_feature(cid,'can_manage_people')))) then raise exception '申請者の所属を確認してください';end if;
+ if not exists(select 1 from storage.objects where bucket_id='worker-documents' and name=req.attachment_path) then raise exception '添付書類が見つかりません。再申請してください';end if;
+ insert into public.worker_document_statuses(company_id,worker_id,requirement_id,status,attachment_path,notes,expires_at,original_verified,updated_by)
+ values(cid,req.worker_id,req.requirement_id,'verified',req.attachment_path,req.notes,req.expires_at,false,uid)
+ on conflict(worker_id,requirement_id) do update set status='verified',attachment_path=excluded.attachment_path,notes=excluded.notes,expires_at=excluded.expires_at,original_verified=false,updated_by=uid,updated_at=now();
+ update private.document_submissions set status='approved',reviewed_by=uid,reviewed_at=now() where id=req.id;
+ return '{}';
+end $function$
+

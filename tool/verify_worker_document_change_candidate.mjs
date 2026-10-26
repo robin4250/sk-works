@@ -21,7 +21,17 @@ const denyRpc=async(a,d,code='42501')=>assert.rejects(rpc(a,d),e=>e.code===code)
 const official=async()=>(await db.query('select * from public.worker_document_statuses where id=$1',[target])).rows[0];
 try {
  await setupWorkerDocumentChangeFixture(db);
+ await db.exec("select set_config('fixture.session','live',false)");
  await actor(owner);
+ await db.exec("select set_config('fixture.session','revoked',false)");await denyRpc('capability');
+ await db.exec("select set_config('fixture.session','live',false)");
+ pass('revoked session blocks API, live session permitted');
+ await db.exec('reset role');await db.exec(`update auth.sessions set not_after=clock_timestamp()-interval '1 minute' where id='${owner}'`);await actor(owner);await denyRpc('capability');
+ await db.exec('reset role');await db.exec(`update auth.sessions set not_after=null,user_id='${reviewer}' where id='${owner}'`);await actor(owner);await denyRpc('capability');
+ await db.exec('reset role');await db.exec(`update auth.sessions set user_id='${owner}' where id='${owner}';update auth.users set banned_until=clock_timestamp()+interval '1 hour' where id='${owner}'`);await actor(owner);await denyRpc('capability');
+ await db.exec('reset role');await db.exec(`update auth.users set banned_until=null,is_anonymous=true where id='${owner}'`);await actor(owner);await denyRpc('capability');
+ await db.exec('reset role');await db.exec(`update auth.users set is_anonymous=false where id='${owner}'`);await actor(owner);
+ pass('actual session helper rejects expiry, foreign session, banned and anonymous users');
  assert.deepEqual(await rpc('capability'),{version:1,change_requests_available:true,new_upload_available:false,max_photos:20,self_approval_allowed:false});
  await db.exec(`insert into public.worker_document_statuses(id,company_id,worker_id,requirement_id,updated_by) values('${target}','${company}','${worker}','${requirement}','${owner}')`);
  await db.exec(`update public.worker_document_statuses set status='submitted',attachment_path='${photo}',notes='original',updated_by='${owner}' where id='${target}'`);
@@ -94,5 +104,56 @@ try {
  pass('unproven legacy placeholder fails closed; caller cannot forge positive INSERT history');
  await db.exec("select set_config('fixture.blocked','yes',false)");await denyRpc('detail',{request_id:uid(25)});
  pass('saved attachment retention policy and current account gate preserved');
+ // Existing personal-document approval must remain usable, but cannot self-approve.
+ await db.exec("select set_config('fixture.blocked','',false)");
+ await db.exec('reset role');
+ const legacyWorker2=uid(50),legacyTarget2=uid(51),legacyRequest=uid(52),legacyOldPhoto=photo.replace(worker,legacyWorker2),legacyPhoto=photo.replace(worker,legacyWorker2).replace('front.jpg','legacy-new.pdf');
+ await db.exec(`insert into public.workers values('${legacyWorker2}','${company}','${owner}');
+ insert into public.worker_document_statuses(id,company_id,worker_id,requirement_id,status,attachment_path,notes,updated_by)
+ values('${legacyTarget2}','${company}','${legacyWorker2}','${requirement}','submitted','${legacyOldPhoto}','before','${owner}');
+ insert into storage.objects(bucket_id,name) values('worker-documents','${legacyPhoto}');
+ insert into private.document_submissions(id,company_id,worker_id,requirement_id,requested_by,previous,attachment_path,notes,status)
+ select '${legacyRequest}','${company}','${legacyWorker2}','${requirement}','${owner}',to_jsonb(s),'${legacyPhoto}','after','pending'
+ from public.worker_document_statuses s where s.id='${legacyTarget2}';
+ insert into public.company_approval_assignees values('${company}','${owner}'),('${company}','${reviewer}');
+ update public.company_members set role='member' where company_id='${company}' and user_id='${reviewer}';`);
+ await actor(owner);await denyRpc('detail',{request_id:uid(999)});
+ await assert.rejects(db.query('select private.personal_document_submission($1,$2::jsonb)', ['approve',JSON.stringify({id:legacyRequest})]),e=>e.code==='42501');
+ await actor(reviewer);await db.query('select private.personal_document_submission($1,$2::jsonb)', ['approve',JSON.stringify({id:legacyRequest})]);
+ await db.exec('reset role');
+ assert.equal((await db.query(`select notes from public.worker_document_statuses where id='${legacyTarget2}'`)).rows[0].notes,'after');
+ assert.equal((await db.query('select count(*)::int n from private.worker_document_legacy_tickets')).rows[0].n,0);
+ pass('legacy personal-document approval applies once and consumes its ticket; self approval denied');
+ const firstWorker=uid(60),firstRequest=uid(61),firstPhoto=photo.replace(worker,uid(60)).replace('front.jpg','first.pdf');
+ await db.exec(`insert into public.workers values('${firstWorker}','${company}','${owner}');
+ insert into storage.objects(bucket_id,name) values('worker-documents','${firstPhoto}');
+ insert into private.document_submissions(id,company_id,worker_id,requirement_id,requested_by,previous,attachment_path,notes,status)
+ values('${firstRequest}','${company}','${firstWorker}','${requirement}','${owner}',null,'${firstPhoto}','first approved','pending');`);
+ await actor(reviewer);await db.query('select private.personal_document_submission($1,$2::jsonb)', ['approve',JSON.stringify({id:firstRequest})]);
+ await db.exec('reset role');
+ assert.equal((await db.query(`select notes from public.worker_document_statuses where worker_id='${firstWorker}'`)).rows[0].notes,'first approved');
+ assert.equal((await db.query('select count(*)::int n from private.worker_document_legacy_tickets')).rows[0].n,0);
+ pass('legacy initial document approval inserts once for a non-admin assigned reviewer');
+ // A legacy approval must not overwrite a document changed after submission.
+ const staleWorker=uid(70),staleTarget=uid(71),staleRequest=uid(72),stalePhoto=photo.replace(worker,uid(70)).replace('front.jpg','stale.pdf');
+ await db.query("select set_config('fixture.uid',$1,false)",[owner]);
+ await db.exec(`insert into public.workers values('${staleWorker}','${company}','${owner}');
+ insert into public.worker_document_statuses(id,company_id,worker_id,requirement_id,status,notes,updated_by)
+ values('${staleTarget}','${company}','${staleWorker}','${requirement}','submitted','original','${owner}');
+ insert into storage.objects(bucket_id,name) values('worker-documents','${stalePhoto}');
+ insert into private.document_submissions(id,company_id,worker_id,requirement_id,requested_by,previous,attachment_path,notes,status)
+ select '${staleRequest}','${company}','${staleWorker}','${requirement}','${owner}',to_jsonb(s),'${stalePhoto}','stale proposal','pending'
+ from public.worker_document_statuses s where s.id='${staleTarget}';`);
+ // Simulate a previously authorized concurrent change, bypassing only the test fixture trigger.
+ await db.exec(`alter table public.worker_document_statuses disable trigger zz_worker_document_change_guard;
+ update public.worker_document_statuses set notes='newer approved content' where id='${staleTarget}';
+ alter table public.worker_document_statuses enable trigger zz_worker_document_change_guard;`);
+ await actor(reviewer);
+ await assert.rejects(db.query('select private.personal_document_submission($1,$2::jsonb)', ['approve',JSON.stringify({id:staleRequest})]));
+ await db.exec('reset role');
+ assert.equal((await db.query(`select notes from public.worker_document_statuses where id='${staleTarget}'`)).rows[0].notes,'newer approved content');
+ assert.equal((await db.query(`select status from private.document_submissions where id='${staleRequest}'`)).rows[0].status,'pending');
+ assert.equal((await db.query('select count(*)::int n from private.worker_document_legacy_tickets')).rows[0].n,0);
+ pass('stale legacy approval cannot overwrite newer content or leave a ticket');
  console.log(`PASS: ${groups} boundary groups; ${process.argv[3]==='postgres'?'native PostgreSQL17 synthetic fixture':'PGlite synthetic fixture'}; real JWT/production not exercised`);
 } finally {await db.close()}
