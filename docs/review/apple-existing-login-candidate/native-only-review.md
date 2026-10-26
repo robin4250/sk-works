@@ -63,6 +63,18 @@ verification, not fresh Google authentication. It must not silently substitute
 Face ID, token refresh, email matching or the second attendance password.
 No new enrollment/proof/challenge store or protocol is introduced here.
 
+`native_apple_enrollment.mjs` is an OFF internal orchestration candidate with
+13 synthetic-port / real-Apple-RSA tests. It requires trusted live-session,
+primary-credential-version and exact company/Google context, a same-UID primary
+password verifier that has already closed its temporary session, an atomic
+service-only subject reservation, native linking and completion adapters.
+It discards the new native-link session after scoped local logout and returns
+only a linked result, preserving the original Google session. Unknown link
+outcomes are held rather than unlinking an identity to pretend rollback.
+Those adapters, public endpoint and activation are **not supplied by this core**.
+Its internal credential version must never be populated from request JSON or
+returned to a client. No interface is treated as a completed enrollment broker.
+
 ## Small implemented hardening
 
 The existing read-only Google port now bounds the entire fetch plus response

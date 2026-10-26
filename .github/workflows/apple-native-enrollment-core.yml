@@ -1,0 +1,22 @@
+name: Apple native enrollment core
+on:
+  pull_request:
+    paths:
+      - 'docs/review/apple-existing-login-candidate/native_apple_enrollment*'
+      - 'docs/review/apple-existing-login-candidate/existing_apple_login.mjs'
+      - '.github/workflows/apple-native-enrollment-core.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-session-preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test docs/review/apple-existing-login-candidate/native_apple_enrollment.test.mjs
