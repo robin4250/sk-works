@@ -186,6 +186,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
   String? _savedDraftFingerprint;
   String? _error;
 
+  final Map<String, TextEditingController> _confirmedHours = {};
+  final _managementFactsReason = TextEditingController();
   final Map<String, TextEditingController> _overtime = {};
   final Map<String, TextEditingController> _early = {};
   final Map<String, TextEditingController> _night = {};
@@ -309,12 +311,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
   @override
   void dispose() {
     _workDescription.dispose();
+    _managementFactsReason.dispose();
     _disposeWorkerControllers();
     super.dispose();
   }
 
   void _disposeWorkerControllers() {
     for (final controller in [
+      ..._confirmedHours.values,
       ..._overtime.values,
       ..._early.values,
       ..._night.values,
@@ -323,6 +327,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     ]) {
       controller.dispose();
     }
+    _confirmedHours.clear();
     _overtime.clear();
     _early.clear();
     _night.clear();
@@ -335,14 +340,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final companyId = _report?.companyId ?? _sharedContext?.companyId ?? widget.registrationCompanyId;
     final actor = _repository?.currentActorId;
     if (repository == null || companyId == null || actor == null || _signed ||
-        _sharedFactsReadOnly || _workers.every((worker) => worker.workCategory != null)) return;
+        _sharedFactsReadOnly || _workers.every((worker) => worker.workCategory != null)) { return; }
     try {
       final snapshot = await repository.load(companyId);
       for (final worker in _workers.where((worker) => worker.workCategory == null && worker.sourceClockInId != null)) {
         final proposed = await repository.proposeForSource(snapshot,
           sourceClockInId: worker.sourceClockInId!, workerId: worker.workerId, workDate: _date);
         if (!mounted || generation != _loadGeneration || _repository?.currentActorId != actor ||
-            (_report?.companyId ?? _sharedContext?.companyId ?? widget.registrationCompanyId) != companyId) return;
+            (_report?.companyId ?? _sharedContext?.companyId ?? widget.registrationCompanyId) != companyId) { return; }
         if (worker.workCategory == null && proposed != null) setState(() => worker.workCategory = proposed);
       }
     } catch (_) {
@@ -654,6 +659,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
   void _resetWorkerControllers() {
     _disposeWorkerControllers();
     for (final worker in _workers) {
+      final savedHours = _sharedContext?.hoursAnnexInputs
+          .where((input) => input['worker_id'] == worker.workerId && input['confirmed'] == true)
+          .firstOrNull?['hours'];
+      _confirmedHours[worker.workerId] = TextEditingController(
+        text: savedHours is num ? _number(savedHours.toDouble()) : '');
       _overtime[worker.workerId] =
           TextEditingController(text: _number(worker.overtimeHours),
       );
@@ -1236,6 +1246,45 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
+  double? _enteredConfirmedHours(String workerId) {
+    final text = _confirmedHours[workerId]?.text.trim() ?? '';
+    if (text.isEmpty) return null;
+    final value = double.tryParse(text);
+    if (!RegExp(r'^(?:0|[1-9]\d?)(?:\.\d{1,4})?$').hasMatch(text) ||
+        value == null || !value.isFinite || value < 0 || value > 24) {
+      throw const FormatException('実勤務時間を0〜24の数値で入力してください。');
+    }
+    return value;
+  }
+
+  Future<void> _confirmPendingFactsBeforeSupervisor(SharedDailyReportContext state,
+      void Function() checkSigningContext) async {
+    final repository = _workerFactsRepository;
+    if (!state.explicitFinalizationRequired || repository == null || state.reportId == null ||
+        state.supervisorSaved) { return; }
+    for (final worker in _workers) {
+      final before = await repository.load(companyId: state.companyId,
+        reportId: state.reportId!, workerId: worker.workerId);
+      checkSigningContext();
+      if (before.confirmed && before.current || before.sourceBlocked) continue;
+      if (!before.editable && !before.canManageAttendance) continue;
+      final facts = before.proposedFacts;
+      if (facts == null) throw StateError('${worker.workerName}さんの②勤務区分と手当を確認してください。');
+      final managed = !before.isOwnWorker;
+      final reason = managed ? _managementFactsReason.text.trim() : null;
+      if (managed && (reason == null || reason.isEmpty)) {
+        throw const FormatException('本人に代わって勤務実績を確認する理由を入力してください。');
+      }
+      final saved = await repository.confirm(before, facts,
+        hours: _enteredConfirmedHours(worker.workerId), managementReason: reason);
+      checkSigningContext();
+      if (!saved.confirmed || !saved.current || saved.workerId != worker.workerId ||
+          saved.reportId != state.reportId || saved.companyId != state.companyId) {
+        throw StateError('勤務実績の保存結果を確認できません。再読み込みしてください。');
+      }
+    }
+  }
+
   Future<void> _signReporter() async {
     if (_managementHold || _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly) return;
     if (_workDescription.text.trim().isEmpty) {
@@ -1267,6 +1316,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
     setState(() => _saving = true);
     try {
+      final enteredHours = <String, double?>{
+        if (_sharedContext?.explicitFinalizationRequired == true)
+          for (final worker in _workers) worker.workerId: _enteredConfirmedHours(worker.workerId),
+      };
       final reportId = await _saveBeforeSignature();
       if (reportId == null || !mounted) return;
       checkSigningContext();
@@ -1306,7 +1359,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
           _applyControllers();
           resultState = await sharedRepository.submit(before: sharedBefore,
             workDescription: _workDescription.text,
-            workers: [for (final worker in _workers) worker.toRpcJson()],
+            workers: [for (final worker in _workers) {...worker.toRpcJson(),
+              if (sharedBefore.explicitFinalizationRequired) 'confirmed_hours': enteredHours[worker.workerId]}],
             signerName: result.signerName, signature: {'strokes': result.toJson()});
         } else {
           resultState = await sharedRepository.manageSignature(before: sharedBefore,
@@ -1385,6 +1439,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (!mounted) return;
       checkSigningContext();
       if (sharedBefore?.isManagementHold == true) return;
+      if (sharedBefore?.explicitFinalizationRequired == true && !sharedBefore!.supervisorReady) {
+        await _confirmPendingFactsBeforeSupervisor(sharedBefore, checkSigningContext);
+        sharedBefore = await _readSharedContext(reportId: reportId);
+        if (!mounted) return;
+        checkSigningContext();
+      }
       if (sharedBefore?.enabled == true && !sharedBefore!.supervisorReady) {
         await _reviewSupervisorFacts(sharedBefore);
         return;
@@ -1529,7 +1589,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final before = _sharedContext;
     if (_saving || _managementHold || repository == null || before == null ||
         !before.canFinalize || before.reportId != _report?.id ||
-        before.actorId != _repository?.currentActorId) return;
+        before.actorId != _repository?.currentActorId) { return; }
     FocusScope.of(context).unfocus();
     setState(() => _saving = true);
     try {
@@ -1552,8 +1612,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (mounted && _repository?.currentActorId == before.actorId) {
         await _loadSelectedSite();
       }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(dailyReportActionErrorMessage(error))));
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(dailyReportActionErrorMessage(error)))); }
     } finally { if (mounted) setState(() => _saving = false); }
   }
 
@@ -2177,7 +2237,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          if (!_sharedFactsReadOnly) Row(children: [
+                          if (!_sharedFactsReadOnly || _sharedContext?.explicitFinalizationRequired == true) Row(children: [
                             _ReportStepBadge(_dailyStep(2)),
                             const SizedBox(width: 8),
                             Expanded(child: Text(
@@ -2187,10 +2247,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             )),
                           ]),
                           const SizedBox(height: 8),
-                          if (!_sharedFactsReadOnly) for (final worker in _workers) ...[
+                          if (!_sharedFactsReadOnly || _sharedContext?.explicitFinalizationRequired == true) for (final worker in _workers) ...[
                             _WorkerDetailCard(
                               worker: worker,
                               editable: _editable,
+                              confirmedHours: _sharedContext?.explicitFinalizationRequired == true ? _confirmedHours[worker.workerId] : null,
+                              confirmedHoursEditable: !_saving && !_signed && _sharedContext?.supervisorSaved != true,
                               onWorkCategoryChanged: (value) {
                                 _invalidatePendingSignature();
                                 setState(() => worker.workCategory = value);
@@ -2220,7 +2282,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             const SizedBox(height: 8),
                           ],
                           const SizedBox(height: 8),
-                          if (!_managementHold && !_visitReport && _sharedContext?.enabled == true &&
+                          if (!_managementHold && !_visitReport && _sharedContext?.explicitFinalizationRequired != true && _sharedContext?.enabled == true &&
                               _sharedContext?.firstReporterCoversWorkOnly == true &&
                               _sharedContext?.reporterSaved == true &&
                               _report?.companyId != null && _workerFactsRepository != null)
@@ -2254,6 +2316,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               sourceRevision: _report,
                               onSaved: () => unawaited(_afterPaidHoursSaved()),
                             ),
+                          if (_sharedContext?.explicitFinalizationRequired == true &&
+                              _sharedContext?.canManageAttendance == true &&
+                              _sharedContext!.hoursAnnexInputs.any((input) =>
+                                input['worker_id'] != _sharedContext?.workerId && input['confirmed'] != true))
+                            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(
+                              key: const ValueKey('daily-report-management-facts-reason'),
+                              controller: _managementFactsReason, enabled: !_saving && !_signed,
+                              decoration: const InputDecoration(labelText: '本人に代わって勤務実績を確認する理由'))),
                           Card(
                             child: ListTile(
                               leading: _ReportStepBadge(_dailyStep(3)),
@@ -2805,7 +2875,7 @@ class _WorkerDetailCard extends StatelessWidget {
     required this.odometer,
     required this.onCaptureOdometer,
     this.inlineFields = false,
-    this.onWorkCategoryChanged,
+    this.onWorkCategoryChanged, this.confirmedHours, this.confirmedHoursEditable = false,
     this.allowOdometerCamera = true, this.allowVehicleEdits = true,
   });
 
@@ -2825,6 +2895,8 @@ class _WorkerDetailCard extends StatelessWidget {
   final VoidCallback onCaptureOdometer;
   final bool inlineFields, allowOdometerCamera, allowVehicleEdits;
   final ValueChanged<String?>? onWorkCategoryChanged;
+  final TextEditingController? confirmedHours;
+  final bool confirmedHoursEditable;
 
   @override
   Widget build(BuildContext context) {
@@ -2842,6 +2914,12 @@ class _WorkerDetailCard extends StatelessWidget {
             DropdownMenuItem(value: 'holiday', child: Text('休日勤務')),
             DropdownMenuItem(value: 'holiday_night', child: Text('休日夜勤'))],
           onChanged: editable ? onWorkCategoryChanged : null)),
+      if (confirmedHours != null) Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+        child: TextField(key: ValueKey('daily-report-confirmed-hours/${worker.workerId}'),
+          controller: confirmedHours, enabled: confirmedHoursEditable,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: '実勤務時間（時間単位の給与・手当がある場合）',
+            suffixText: '時間', helperText: '休憩を除いた実際の時間を入力します。該当なしなら空欄で進めます。'))),
       ExpansionTile(
         leading: const CircleAvatar(child: Icon(Icons.person_outline)),
         title: Text(
