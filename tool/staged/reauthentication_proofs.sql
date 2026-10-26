@@ -28,7 +28,8 @@ language sql immutable set search_path='' as $$
  select case p_operation when 'secondary_password.replace' then 'secondary_password'
   when 'secondary_password.change' then 'secondary_password'
   when 'master.feature.set' then 'master_feature'
-  when 'master.security_incidents.read' then 'master_security' end
+  when 'master.security_incidents.read' then 'master_security'
+  when 'master.security_collector.read' then 'master_security' end
 $$;
 revoke all on function private.reauthentication_scope(text) from public,anon,authenticated;
 
@@ -112,6 +113,8 @@ begin
    and company_id::text=p_target->>'company_id' and role::text in ('owner','admin','manager'))) then
   raise sqlstate '42501' using message='reauthentication_unavailable';
  elsif p_operation='master.security_incidents.read' and p_target<>'{"scope":"platform"}'::jsonb then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ elsif p_operation='master.security_collector.read' and p_target<>'{"scope":"decoy_collector"}'::jsonb then
   raise sqlstate '42501' using message='reauthentication_unavailable';
  end if;
  if p_target is null or (p_operation like 'master.%' and not exists(
