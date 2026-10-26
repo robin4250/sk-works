@@ -11,9 +11,11 @@ def read(name):
 invoice=read('private.refresh_automatic_invoice.sql')
 certificate=read('private.refresh_automatic_payment_certificate.sql')
 rows=read('private.certificate_calculation_rows.sql')
+guard=read('private.expense_payment_v2_guard.sql')
 expected=[('private.refresh_automatic_invoice(uuid,uuid,date)',invoice,'9173c4e7237b764ecb4c1e79bad85005'),
  ('private.refresh_automatic_payment_certificate(uuid,uuid,date)',certificate,'5828ec68ad83ace5f0c0fc8f21851cf8'),
- ('private.certificate_calculation_rows(uuid,uuid,date,date)',rows,'5b245861b26afe2ffb581be84f8dfa4c')]
+ ('private.certificate_calculation_rows(uuid,uuid,date,date)',rows,'5b245861b26afe2ffb581be84f8dfa4c'),
+ ('private.expense_payment_v2_guard()',guard,'4d08bd0b372a3048b9eb52dd99a3c321')]
 for signature,source,digest in expected:
     body=re.search(r'AS \$function\$([\s\S]*?)\$function\$',source).group(1)
     assert hashlib.md5(body.encode()).hexdigest()==digest,signature
@@ -91,10 +93,32 @@ certificate=certificate.replace("'other_deductions_yen',0","'other_deductions_ye
 certificate=replace_once(certificate," if use_v2 then\n snapshot_value:=", " if jsonb_array_length(named_items)>0 or coalesce(existing.snapshot?'document_adjustments_v1',false) then\n snapshot_value:=snapshot_value||jsonb_build_object('document_adjustments_v1',named_items,'document_final_plus_yen',named_plus,'document_final_minus_yen',named_minus);\n end if;\n if use_v2 then\n snapshot_value:=")
 invoice=replace_once(invoice,'end;\n$function$',"  if jsonb_array_length(named_items)>0 then\n  perform document_adjustment_private.bind_occurrences(cid,'invoice',customer,first_day,\n    (select id from public.invoices where company_id=cid and customer_id=customer and billing_period_start=first_day and automatic_calculation));\n  end if;\nend;\n$function$")
 certificate=replace_once(certificate,'end\n$function$'," if jsonb_array_length(named_items)>0 then\n perform document_adjustment_private.bind_occurrences(cid,'payment_certificate',partner,first_day,\n   (select id from public.payment_certificates where company_id=cid and partner_company_id=partner and period_start=first_day));\n end if;\nend\n$function$")
+guard=replace_once(guard,'expected jsonb;gross numeric;', 'expected jsonb;gross numeric;named_plus numeric:=0;named_minus numeric:=0;named_expected jsonb;')
+guard=replace_once(guard," basis:=jsonb_build_object("," basis:=jsonb_build_object(") if False else guard
+anchor=" basis:=jsonb_build_object('company_id',new.company_id"
+if anchor not in guard:anchor="basis:=jsonb_build_object('company_id',new.company_id"
+guard=replace_once(guard,anchor,"""if new.snapshot?'document_adjustments_v1' then
+ named_expected:=document_adjustment_private.ledger_items(new.company_id,'payment_certificate',new.partner_company_id,new.period_start);
+ if new.snapshot->'document_adjustments_v1' is distinct from named_expected then
+  raise exception 'payment adjustments differ from canonical company/party/month ledger';end if;
+ select coalesce(sum((x->>'amount_yen')::numeric) filter(where x->>'sign'='plus'),0),
+        coalesce(sum((x->>'amount_yen')::numeric) filter(where x->>'sign'='minus'),0)
+ into named_plus,named_minus from jsonb_array_elements(named_expected) x
+ where x->>'calculation_mode'='settlement_yen';
+ if new.snapshot->'document_final_plus_yen' is distinct from to_jsonb(named_plus)
+    or new.snapshot->'document_final_minus_yen' is distinct from to_jsonb(named_minus) then
+  raise exception 'payment final adjustment amounts differ from ledger';end if;
+elsif new.snapshot?'document_final_plus_yen' or new.snapshot?'document_final_minus_yen' then
+ raise exception 'orphan payment adjustment amounts refused';
+end if;
+gross:=gross+named_plus;
+"""+anchor)
+guard=guard.replace("'other_deductions_yen',0","'other_deductions_yen',named_minus")
+guard=replace_once(guard,"new.deductions<>(envelope->>'amount_yen')::numeric", "new.deductions<>(envelope->>'amount_yen')::numeric+named_minus")
 # These generated functions still need zero-source protections, frozen-document
 # protections and snapshot/display integration. Do not apply this file alone.
 out=root/'supabase/review/refresh_functions.incomplete.sql'
-out.write_text('-- INCOMPLETE REVIEW ONLY. NOT DEPLOYABLE.\n'+invoice+'\n'+rows+'\n'+certificate)
+out.write_text('-- INCOMPLETE REVIEW ONLY. NOT DEPLOYABLE.\n'+invoice+'\n'+rows+'\n'+certificate+'\n'+guard)
 preflight='do $check$ begin\n'
 for signature,source,digest in expected:
     preflight+=f"if (select md5(prosrc) from pg_proc where oid=to_regprocedure('{signature}')) is distinct from '{digest}' then raise exception 'Source drift: {signature}';end if;\n"

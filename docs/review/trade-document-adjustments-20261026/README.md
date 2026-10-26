@@ -2,7 +2,7 @@
 
 Base main: `9b2095cf121374de943990abd46cf58afc09b544`。
 本番へのSQL適用・有効化・統合・Release作成・iPhone導入は行っていない。
-CI、採用PDFの描画比較、Native PostgreSQLでの真の並行試験が終わるまで
+採用PDFの描画比較、Native PostgreSQLでの真の並行試験が終わるまで
 完成または本番適用可能として扱わない。検証済みbuild20/21のIPAを再作成しない。
 
 ## ユーザー指定
@@ -49,11 +49,21 @@ source版・結果に結び付けたサーバ保存tokenを登録時に照合す
 再refreshでの金額維持、同command再試行、異payload拒否、CAS拒否、確定後保存拒否、
 確定snapshot保持・台帳への捕捉、一般社員/未所属/異種相手拒否、private直接読取拒否、
 audit変更拒否、導入二重実行拒否を確認。
-認証session helperとexpense-v2 OFF判定はfixture用の代用であり、
-本番認証境界やv2 ONとの統合確認の代替ではない。
+PR #1445の初回CIでも301+45項目成功。
+
+`--v2`追加検証: PGlite 56項目成功。実productionから捕捉したenvelope、
+v2 guard、reader、finalizeを用い、合成の非零経費4円・税後plus10円/minus3円、
+計算前の減算、確定後のfrozen reader、金額改変・orphan metadata拒否を確認。
+v2 guard拡張は元のperiod/envelope/claim/finalized検証を維持し、加減算snapshotを
+会社/相手/月の正規private ledgerへ照合する。既存経費と加減算を区別する。
+認証session helperと会社別v2有効化判定はfixture用の代用であり、
+本番認証境界の代替ではない。追加v2差分のCIは未実行。
 
 Flutter/Dartはローカルで実行していない。共通画面/接続15件とsnapshot4件の
-テスト候補はCI未実行。従来のPDF/frame regressionもCI未実行。
+テスト候補は初回CI analyzeで未到達。指摘6infoは修正差分をrootへ送付済み。
+従来のPDF/frame regressionはrootのCIで成功済み。
+追加のPDF生成/renderテストは未実行。pinfont+合成帳票で税後plus/minusの表示・
+合計11850円と既定header/footerの画像一致を検証し、PNGをCI内部artifactへ保存する。
 
 ## 導入手順（root所有。未承認・未実施）
 
@@ -74,9 +84,10 @@ Flutter/Dartはローカルで実行していない。共通画面/接続15件�
 
 ## 残る確認
 
-- CI analyzer/widget/repository/PDF tests、描画比較。既定header/footer/署名枠を維持。
+- CI analyzer/widget/repository/追加PDF tests、描画比較。既定header/footer/署名枠を維持。
 - Native複数sessionの同時apply/承認/refresh、毎月編集と当月操作のlock順。
-- expense-v2 ONの実helper/readerと税後plus/minusの内訳整合。
+  専用localhost/DB名/fixture credentialを強制するpg17 runtimeと2session runner候補あり。
+- expense-v2 ON追加差分のCI。
 - アプリ終了時のpending request端末復旧は未実装。再起動後はサーバの最新一覧と
   scope CASで競合する旧requestの二重登録を防ぐが、前回commandの専用再開表示はない。
 - rollout設定・production監査閲覧/保存期限は既存管理方針と統合してから有効化。

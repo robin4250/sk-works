@@ -60,8 +60,10 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
             kind: TradeDocumentAdjustmentKind.invoice, month: month, port: port)));
       if (mounted) await _load();
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('項目の加減算を開けませんでした。会社とログイン状態をご確認ください。')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('項目の加減算を開けませんでした。会社とログイン状態をご確認ください。')));
+      }
     } finally { await port.dispose(); }
   }
 

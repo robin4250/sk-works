@@ -159,7 +159,9 @@ class _TradeDocumentAdjustmentPageState extends State<TradeDocumentAdjustmentPag
         if (_message != null) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_message!, semanticsLabel: _message)),
         if (workspace == null && !_busy) OutlinedButton(onPressed: _load, child: const Text('再読み込み')),
         if (workspace != null) ...[
-          DropdownButtonFormField<String>(value: workspace.partyId,
+          DropdownButtonFormField<String>(
+            key: ValueKey(['party', widget.companyId, widget.kind.value, widget.month, workspace.partyId].join(':')),
+            initialValue: workspace.partyId,
             decoration: InputDecoration(labelText: widget.kind.partyLabel),
             items: workspace.parties.map((p) => DropdownMenuItem(value: p.id, child: Text(p.name))).toList(),
             onChanged: _busy || _pending != null || _prepared != null || _editing != null ? null : (value) { setState(() { _partyId = value; _mode = null; _siteId = null; _message = null; }); _load(); }),
@@ -167,13 +169,17 @@ class _TradeDocumentAdjustmentPageState extends State<TradeDocumentAdjustmentPag
           if (!workspace.ready || workspace.supportedModes.isEmpty) const Text('この機能は準備中です。'),
           if (!workspace.canEdit) const Text('登録・編集する権限がありません。'),
           const SizedBox(height: 16),
-          DropdownButtonFormField<TradeDocumentAdjustmentCalculationMode>(value: _mode,
+          DropdownButtonFormField<TradeDocumentAdjustmentCalculationMode>(
+            key: ValueKey(['mode', widget.companyId, widget.kind.value, widget.month, workspace.partyId, _mode?.value].join(':')),
+            initialValue: _mode,
             isExpanded: true, decoration: const InputDecoration(labelText: '計算方法'),
             items: workspace.supportedModes.map((mode) => DropdownMenuItem(value: mode,
               child: Text(mode.label, maxLines: 2))).toList(),
             onChanged: _enabled && _prepared == null ? (value) => setState(() { _mode = value; }) : null),
           if (_mode == TradeDocumentAdjustmentCalculationMode.beforeCharges && widget.kind == TradeDocumentAdjustmentKind.invoice)
-            DropdownButtonFormField<String>(value: _siteId, decoration: const InputDecoration(labelText: '対象現場'),
+            DropdownButtonFormField<String>(
+              key: ValueKey(['site', widget.companyId, widget.kind.value, widget.month, workspace.partyId, _siteId].join(':')),
+              initialValue: _siteId, decoration: const InputDecoration(labelText: '対象現場'),
               items: workspace.chargeSites.map((site) => DropdownMenuItem(value: site.id, child: Text(site.label))).toList(),
               onChanged: _enabled && _prepared == null ? (value) => setState(() { _siteId = value; }) : null),
           Wrap(spacing: 12, children: TradeDocumentAdjustmentSign.values.map((sign) => ChoiceChip(label: Text(sign.label), selected: _sign == sign,
@@ -184,7 +190,9 @@ class _TradeDocumentAdjustmentPageState extends State<TradeDocumentAdjustmentPag
           Wrap(spacing: 12, children: TradeDocumentAdjustmentRecurrence.values.map((recurrence) => ChoiceChip(label: Text(recurrence.label), selected: _recurrence == recurrence,
             onSelected: _enabled && _prepared == null && _editing == null ? (_) => setState(() { _recurrence = recurrence; }) : null)).toList()),
           if (_editing?.recurrence == TradeDocumentAdjustmentRecurrence.monthly)
-            DropdownButtonFormField<TradeDocumentAdjustmentUpdateScope>(value: _scope,
+            DropdownButtonFormField<TradeDocumentAdjustmentUpdateScope>(
+              key: ValueKey(['scope', widget.companyId, widget.kind.value, widget.month, workspace.partyId, _editing?.id, _scope.name].join(':')),
+              initialValue: _scope,
               decoration: const InputDecoration(labelText: '変更する範囲'),
               items: const [DropdownMenuItem(value: TradeDocumentAdjustmentUpdateScope.currentMonth, child: Text('この月だけ')),
                 DropdownMenuItem(value: TradeDocumentAdjustmentUpdateScope.fromMonth, child: Text('この月から毎月'))],

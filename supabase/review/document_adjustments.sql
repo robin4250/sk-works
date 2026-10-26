@@ -97,7 +97,7 @@ begin
 end $body$;
 revoke all on function document_adjustment_private.charge_delta(bigint,bigint,numeric,numeric) from public,anon,authenticated;
 
-create function document_adjustment_private.active_items(p_company uuid,p_kind text,p_party uuid,p_month date)
+create function document_adjustment_private.ledger_items(p_company uuid,p_kind text,p_party uuid,p_month date)
 returns jsonb language sql stable security definer set search_path='' as $body$
  select coalesce(jsonb_agg(jsonb_build_object(
   'template_id',t.id,'template_version',v.version,'entry_id',o.id,
@@ -109,7 +109,6 @@ returns jsonb language sql stable security definer set search_path='' as $body$
   'recurrence',t.recurrence,'month',p_month
  ) order by t.created_at,t.id),'[]'::jsonb)
  from document_adjustment_private.templates t
- join document_adjustment_private.rollout cfg on cfg.company_id=t.company_id and cfg.enabled
  join lateral (
   select x.* from document_adjustment_private.template_versions x
   where x.template_id=t.id and x.effective_month<=p_month
@@ -119,6 +118,12 @@ returns jsonb language sql stable security definer set search_path='' as $body$
  left join document_adjustment_private.occurrences o on o.template_id=t.id and o.month=p_month
  where t.company_id=p_company and t.kind=p_kind and t.party_id=p_party
   and not coalesce(o.canceled,false)
+$body$;
+revoke all on function document_adjustment_private.ledger_items(uuid,text,uuid,date) from public,anon,authenticated;
+create function document_adjustment_private.active_items(p_company uuid,p_kind text,p_party uuid,p_month date)
+returns jsonb language sql stable security definer set search_path='' as $body$
+ select case when exists(select 1 from document_adjustment_private.rollout where company_id=p_company and enabled)
+ then document_adjustment_private.ledger_items(p_company,p_kind,p_party,p_month) else '[]'::jsonb end
 $body$;
 revoke all on function document_adjustment_private.active_items(uuid,text,uuid,date) from public,anon,authenticated;
 

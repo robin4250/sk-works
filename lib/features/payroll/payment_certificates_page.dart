@@ -62,8 +62,10 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
             kind: TradeDocumentAdjustmentKind.paymentCertificate, month: month, port: port)));
       if (mounted) await _load();
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('項目の加減算を開けませんでした。ログイン状態をご確認ください。')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('項目の加減算を開けませんでした。ログイン状態をご確認ください。')));
+      }
     } finally { await port.dispose(); }
   }
 
