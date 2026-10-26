@@ -1,0 +1,22 @@
+name: QR attendance preflight candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/qr_attendance/qr_attendance_transition.dart'
+      - 'test/qr_attendance_transition_test.dart'
+      - '.github/workflows/qr-attendance-transition.yml'
+permissions:
+  contents: read
+jobs:
+  transition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/qr_attendance/qr_attendance_transition.dart test/qr_attendance_transition_test.dart
+      - run: flutter test --reporter expanded test/qr_attendance_transition_test.dart
