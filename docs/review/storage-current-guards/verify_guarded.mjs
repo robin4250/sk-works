@@ -53,7 +53,7 @@ const tail=String.raw`
  // Apply feature, then generate the live layer from its actual fresh post-catalog.
  await db.exec(feature);await writeFile(folder+'/policies.json',JSON.stringify(await policies()));
  const live=await generate('live');
- await assert.rejects(db.exec(live.replace('commit;','do $$begin raise exception \'injected_late_failure\';end$$;commit;')),/injected_late_failure/);checks++;await db.exec('rollback');
+ await assert.rejects(db.exec(live.replace('commit;',()=> 'do $$begin raise exception \'injected_late_failure\';end$$;commit;')),/injected_late_failure/);checks++;await db.exec('rollback');
  compare((await db.query("select to_regclass('private.storage_session_guard_rollout')is null as absent")).rows[0].absent,true,'failed installation removes all new live state');
  compare(await policies(),featurePolicies,'failed installation leaves policy catalog exact');
  await db.exec(live);const livePolicies=await policies();
