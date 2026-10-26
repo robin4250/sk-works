@@ -45,7 +45,7 @@ export async function enrollNativeApple(input,ports){
  // and company snapshot, native-only rollout and unconsumed token hash. It
  // reserves a verified subject for THIS UID, never by email or client-selected UID.
  const reservation=await ports.reserveSubject({actor_id:before.actor_id,session_id:before.session_id,
-  subject:credential.subject,token_sha256:credential.tokenHash,snapshot_sha256:snapshotHash,verified_at:evidence.verified_at});
+  subject:credential.subject,token_sha256:credential.tokenHash,snapshot_sha256:snapshotHash,snapshot:before,verified_at:evidence.verified_at});
  if(!reservation||!uuid.test(reservation.request_id??'')||reservation.actor_id!==before.actor_id||reservation.session_id!==before.session_id||
  reservation.subject!==credential.subject||reservation.token_sha256!==credential.tokenHash||reservation.status!=='reserved')deny();
  let temporaryAccess=null;let accepted=false;

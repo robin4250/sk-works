@@ -85,6 +85,14 @@ Those adapters, public endpoint and activation are **not supplied by this core**
 Its internal credential version must never be populated from request JSON or
 returned to a client. No interface is treated as a completed enrollment broker.
 
+The subsequent OFF companion in `native-enrollment-adapters.md` supplies a
+bounded primary-password port, service-only SQL context/reservation/completion/
+hold candidate and its HTTP RPC ports. It adds only enrollment bookkeeping,
+not a replacement operation-proof protocol. It is not yet connected to the
+public endpoint or hosted hook/provider configuration; schema guards, Native
+concurrency/current-Auth integration, session-isolation proof, recovery/retention
+and owner-iPhone verification remain activation gates.
+
 ## Small implemented hardening
 
 The existing read-only Google port now bounds the entire fetch plus response

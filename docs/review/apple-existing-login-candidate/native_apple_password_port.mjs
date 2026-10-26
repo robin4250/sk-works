@@ -22,9 +22,9 @@ function sameContext(current,expected){
   JSON.stringify(current.memberships)===JSON.stringify(expected.memberships)&&JSON.stringify(current.google_identities)===JSON.stringify(expected.google_identities)&&
   JSON.stringify(current.apple_subjects)===JSON.stringify(expected.apple_subjects);
 }
-export function createNativeApplePasswordPort({enabled=false,baseUrl,publicKey,authenticateExactBearer,loadExactContext,fetcher=fetch,now=()=>Math.floor(Date.now()/1000),timeoutMs=10000}={}){
+export function createNativeApplePasswordPort({enabled=false,passwordSessionIsolationReviewed=false,baseUrl,publicKey,authenticateExactBearer,loadExactContext,fetcher=fetch,now=()=>Math.floor(Date.now()/1000),timeoutMs=10000}={}){
  if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>10000)throw unavailable();
- const ready=enabled===true&&baseUrl===origin&&typeof publicKey==='string'&&!!publicKey&&typeof authenticateExactBearer==='function'&&typeof loadExactContext==='function';
+ const ready=enabled===true&&passwordSessionIsolationReviewed===true&&baseUrl===origin&&typeof publicKey==='string'&&!!publicKey&&typeof authenticateExactBearer==='function'&&typeof loadExactContext==='function';
  async function request(path,init,status){
   const controller=new AbortController();let timer;
   const work=(async()=>{const response=await fetcher(origin+path,{...init,redirect:'error',signal:controller.signal});
