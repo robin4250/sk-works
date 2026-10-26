@@ -1,0 +1,71 @@
+-- Isolated candidate: this file does not alter existing device RPCs and does
+-- not register, trust, lock, unlock or revoke any device. Do not deploy as a
+-- complete enrollment solution. Existing authentication is unchanged.
+begin;
+create schema if not exists master_device_enrollment_candidate;
+revoke all on schema master_device_enrollment_candidate from public, anon, authenticated;
+
+create table master_device_enrollment_candidate.rollout (
+  singleton boolean primary key default true check (singleton),
+  enabled boolean not null default false
+);
+insert into master_device_enrollment_candidate.rollout(singleton) values (true);
+create table master_device_enrollment_candidate.intents (
+  id uuid primary key default gen_random_uuid(),
+  actor uuid not null,
+  session_id uuid not null,
+  device_key_sha256 text not null check (device_key_sha256 ~ '^[0-9a-f]{64}$'),
+  device_type text not null check (device_type in ('iphone', 'ipad', 'mac')),
+  created_at timestamptz not null default clock_timestamp(),
+  expires_at timestamptz not null,
+  check (expires_at > created_at)
+);
+alter table master_device_enrollment_candidate.rollout enable row level security;
+alter table master_device_enrollment_candidate.intents enable row level security;
+revoke all on all tables in schema master_device_enrollment_candidate from public, anon, authenticated;
+
+-- Preparatory intent only. Actual enrollment additionally requires a trusted
+-- device signature or an independent, verified owner recovery channel.
+-- Crucially a bad second password returns normally, allowing the existing
+-- verifier's failed-attempt counter to commit rather than being rolled back.
+create function public.prepare_master_device_enrollment_candidate(
+  p_device_key_sha256 text, p_device_type text, p_second_password text
+) returns jsonb language plpgsql security definer set search_path='' as $$
+declare v_actor uuid := auth.uid(); v_session uuid; v_enabled boolean;
+  v_intent uuid; v_count integer; v_ok boolean;
+begin
+  if v_actor is null or not public.is_current_user_master_admin() then
+    raise sqlstate '42501' using message='master_access_required';
+  end if;
+  v_session := private.require_reauthentication_session();
+  select enabled into v_enabled from master_device_enrollment_candidate.rollout
+    where singleton for share;
+  if not found or not v_enabled then
+    raise sqlstate '42501' using message='master_device_enrollment_unavailable';
+  end if;
+  if p_device_key_sha256 is null or p_device_key_sha256 !~ '^[0-9a-f]{64}$'
+      or p_device_type is null or p_device_type not in ('iphone','ipad','mac') then
+    raise sqlstate '22023' using message='master_device_request_invalid';
+  end if;
+  -- Shared lock order for concurrent intents; no credential or device mutation.
+  perform pg_advisory_xact_lock(hashtextextended('sko-master-enrollment:' || v_actor::text, 0));
+  select count(*) into v_count from master_device_enrollment_candidate.intents
+    where actor=v_actor and expires_at>clock_timestamp();
+  if v_count >= 3 then
+    raise sqlstate '42501' using message='master_device_request_limit';
+  end if;
+  v_ok := public.verify_secondary_password(p_second_password);
+  if not coalesce(v_ok,false) then
+    return jsonb_build_object('accepted',false);
+  end if;
+  insert into master_device_enrollment_candidate.intents(
+    actor,session_id,device_key_sha256,device_type,expires_at
+  ) values (
+    v_actor,v_session,p_device_key_sha256,p_device_type,clock_timestamp()+interval '2 minutes'
+  ) returning id into v_intent;
+  return jsonb_build_object('accepted',true,'intent_id',v_intent,
+    'registration_complete',false);
+end $$;
+revoke all on function public.prepare_master_device_enrollment_candidate(text,text,text) from public,anon;
+grant execute on function public.prepare_master_device_enrollment_candidate(text,text,text) to authenticated;
+commit;
