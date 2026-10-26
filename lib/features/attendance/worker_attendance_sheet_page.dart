@@ -234,6 +234,8 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
               onPaidLeave: _openPaidLeave,
               onCorrection: _openAttendanceCorrection,
             ),
+            if (_data?.pendingDetailsUnavailable == true)
+              const _PendingReportReadWarning(),
             _WeekTabs(
               count: weeks.length,
               selected: _selectedWeek,
@@ -403,6 +405,9 @@ class _WeekTabs extends StatelessWidget {
 }
 
 @visibleForTesting
+Widget attendanceCalendarForTesting({required DateTime month, required WorkerAttendanceMonth data}) =>
+    _MonthCalendar(month: month, data: data, onDateTap: (_) {});
+
 Widget attendanceWeekForTesting({required DateTime month, required List<DateTime> week, required WorkerAttendanceMonth data}) =>
     _WeekList(month: month, week: week, data: data, onDateTap: (_) {});
 
@@ -433,10 +438,7 @@ class _WeekList extends StatelessWidget {
             (constraints.maxHeight - verticalPadding) / week.length, minimumHeight);
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-          physics: itemHeight * week.length > constraints.maxHeight - verticalPadding
-              ? const ClampingScrollPhysics()
-              : const NeverScrollableScrollPhysics(),
-          itemExtent: itemHeight,
+          physics: const ClampingScrollPhysics(),
           itemCount: week.length,
           itemBuilder: (context, index) {
             final date = week[index];
@@ -444,13 +446,15 @@ class _WeekList extends StatelessWidget {
                 date.month == month.month && date.year == month.year;
             final day = data.days[DateTime(date.year, date.month, date.day)];
 
-            return _AttendanceDayCard(
+            return ConstrainedBox(
+              constraints: BoxConstraints(minHeight: itemHeight),
+              child: _AttendanceDayCard(
               date: date,
               weekday: (SkoLanguageController.isEnglish ? _weekdayNamesEn : _weekdayNamesJa)[index],
               inMonth: inMonth,
               day: day,
               onTap: day?.paidLeave == true ? () {} : () => onDateTap(date),
-            );
+            ));
           },
         );
       },
@@ -524,6 +528,7 @@ class _AttendanceDayCard extends StatelessWidget {
                 flex: 5,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     if (paidLeave || worked) Text(
                       paidLeave
@@ -555,17 +560,13 @@ class _AttendanceDayCard extends StatelessWidget {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                    ] else if (worked) ...[
+                    ] else if (worked || day?.hasAllowance == true) ...[
                       const SizedBox(height: 2),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            for (final tag in _tags(day!))
-                              Padding(padding: const EdgeInsets.only(right: 4), child: tag),
-                          ],
-                        ),
-                      ),
+                      Wrap(spacing: 4, runSpacing: 3, children: _tags(day!)),
+                    ],
+                    if (day?.pendingReports.isNotEmpty == true) ...[
+                      const SizedBox(height: 3),
+                      _PendingReportLabels(day: day!),
                     ],
                   ],
                 ),
@@ -612,7 +613,7 @@ class _AttendanceDayCard extends StatelessWidget {
                         ],
                       )
                     : Text(
-                        SkoLanguageController.tr('休み'),
+                        day?.pendingReports.isNotEmpty == true ? '未確定' : day?.hasAllowance == true ? '手当のみ' : SkoLanguageController.tr('休み'),
                         textAlign: TextAlign.right,
                         style: TextStyle(fontWeight: FontWeight.w800),
                       ),
@@ -631,13 +632,13 @@ class _AttendanceDayCard extends StatelessWidget {
   List<Widget> _tags(WorkerAttendanceDay day) {
     final tags = <Widget>[];
     if (day.overtimeHours > 0) {
-      tags.add(_MiniTag(SkoLanguageController.isEnglish ? 'OT ${_number(day.overtimeHours)}' : '残${_number(day.overtimeHours)}'));
+      tags.add(_MiniTag(SkoLanguageController.isEnglish ? 'OT ${_number(day.overtimeHours)}' : '残業${_number(day.overtimeHours)}時間'));
     }
     if (day.earlyHours > 0) {
-      tags.add(_MiniTag(SkoLanguageController.isEnglish ? 'Early ${_number(day.earlyHours)}' : '早${_number(day.earlyHours)}'));
+      tags.add(_MiniTag(SkoLanguageController.isEnglish ? 'Early ${_number(day.earlyHours)}' : '早出${_number(day.earlyHours)}時間'));
     }
     if (day.nightHours > 0) {
-      tags.add(_MiniTag(SkoLanguageController.isEnglish ? 'Night ${_number(day.nightHours)}' : '夜${_number(day.nightHours)}'));
+      tags.add(_MiniTag(SkoLanguageController.isEnglish ? 'Night ${_number(day.nightHours)}' : '夜間${_number(day.nightHours)}時間'));
     }
     if (day.hasAllowance) {
       final names = day.allowanceNames.isEmpty
@@ -844,6 +845,8 @@ class _WorkerAttendanceMonthPageState
                 ),
               ),
             ],
+            if (_data.pendingDetailsUnavailable)
+              const _PendingReportReadWarning(),
             const SizedBox(height: 6),
             _MonthCalendar(
               month: _month,
@@ -933,7 +936,7 @@ class _MonthCalendar extends StatelessWidget {
             LayoutBuilder(
               builder: (context, constraints) {
                 final cellHeight =
-                    MediaQuery.textScalerOf(context).scale(11) * 5 + 18;
+                    MediaQuery.textScalerOf(context).scale(11) * 14 + 24;
                 return GridView.count(
                   crossAxisCount: 7,
                   shrinkWrap: true,
@@ -1027,7 +1030,7 @@ class _MonthCalendarCell extends StatelessWidget {
             ),
             const Spacer(),
             Text(
-              paidLeave ? '有給' : worked ? shortSite : '休',
+              paidLeave ? '有給' : worked ? shortSite : day?.pendingReports.isNotEmpty == true ? '日報' : day?.hasAllowance == true ? '手当' : '休',
               maxLines: 1,
               overflow: TextOverflow.clip,
               style: TextStyle(
@@ -1040,6 +1043,13 @@ class _MonthCalendarCell extends StatelessWidget {
                         : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
+            if (day != null && (day!.overtimeHours > 0 || day!.earlyHours > 0 || day!.nightHours > 0))
+              Text([
+                if (day!.overtimeHours > 0) '残業${_attendanceDetailNumber(day!.overtimeHours)}h',
+                if (day!.earlyHours > 0) '早出${_attendanceDetailNumber(day!.earlyHours)}h',
+                if (day!.nightHours > 0) '夜間${_attendanceDetailNumber(day!.nightHours)}h',
+              ].join(' '), maxLines: 3, textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900)),
             if (day?.hasAllowance == true)
               Text(
                 (day!.allowanceNames.isEmpty
@@ -1054,6 +1064,8 @@ class _MonthCalendarCell extends StatelessWidget {
               )
             else
               const SizedBox(height: 10),
+            if (day?.pendingReports.isNotEmpty == true)
+              _PendingReportLabels(day: day!, compact: true),
             const Spacer(),
           ],
         ),
@@ -1061,6 +1073,41 @@ class _MonthCalendarCell extends StatelessWidget {
       ),
     );
   }
+}
+
+String _attendanceDetailNumber(double value) => value.toStringAsFixed(2)
+    .replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+
+class _PendingReportReadWarning extends StatelessWidget {
+  const _PendingReportReadWarning();
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    child: Text('未確定日報の残業・手当を取得できませんでした。再読込してください。確定済み記録のみ表示しています。',
+      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+  );
+}
+
+class _PendingReportLabels extends StatelessWidget {
+  const _PendingReportLabels({required this.day, this.compact = false});
+  final WorkerAttendanceDay day;
+  final bool compact;
+  @override
+  Widget build(BuildContext context) => Text(
+    day.pendingReports.map((report) => [
+      '日報未確定',
+      if (!compact && report.siteName.isNotEmpty) report.siteName,
+      if (report.overtimeHours > 0) '残業${_attendanceDetailNumber(report.overtimeHours)}h',
+      if (report.earlyHours > 0) '早出${_attendanceDetailNumber(report.earlyHours)}h',
+      if (report.nightHours > 0) '夜間${_attendanceDetailNumber(report.nightHours)}h',
+      ...report.allowanceNames,
+    ].join('・')).join('\n'),
+    maxLines: compact ? 3 : null,
+    overflow: compact ? TextOverflow.ellipsis : null,
+    textAlign: compact ? TextAlign.center : TextAlign.start,
+    style: TextStyle(fontSize: compact ? 8 : 11,
+      color: Theme.of(context).colorScheme.tertiary, fontWeight: FontWeight.w700),
+  );
 }
 
 class _MonthlySummary extends StatelessWidget {
@@ -1224,11 +1271,11 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                                               SkoLanguageController.tr('休み'),
                                       '${_time(day.clockIn)}〜${_time(day.clockOut)}',
                                       if (day.overtimeHours > 0)
-                                        '残${_number(day.overtimeHours)}',
+                                        '残業${_number(day.overtimeHours)}時間',
                                       if (day.earlyHours > 0)
-                                        '早${_number(day.earlyHours)}',
+                                        '早出${_number(day.earlyHours)}時間',
                                       if (day.nightHours > 0)
-                                        '夜${_number(day.nightHours)}',
+                                        '夜間${_number(day.nightHours)}時間',
                                       if (day.hasAllowance)
                                         ...(day.allowanceNames.isEmpty
                                             ? const <String>['手当1']
@@ -1313,4 +1360,5 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+
 
