@@ -320,7 +320,7 @@ begin
  select coalesce(array_agg(event_id),'{}'::uuid[]) into ids from(select event_id from private.security_collector_events where received_at<cutoff order by received_at,event_id limit 1000)s;
  select encode(extensions.digest(convert_to(coalesce(string_agg(e.event_id::text||':'||coalesce(x.canonical_sha256,'evidence_missing'),',' order by e.event_id),''),'UTF8'),'sha256'),'hex') into digest
  from private.security_collector_events e left join private.security_collector_evidence x on x.event_id=e.event_id where e.event_id=any(ids);
- delete from private.security_collector_events e left join private.security_collector_evidence x on x.event_id=e.event_id where e.event_id=any(ids);
+ delete from private.security_collector_evidence where event_id=any(ids);
  delete from private.security_collector_events where event_id=any(ids);get diagnostics removed=row_count;
  delete from private.security_collector_read_audit where audit_id in(select audit_id from private.security_collector_read_audit where read_at<clock_timestamp()-interval '90 days' order by audit_id limit 1000);get diagnostics reads_removed=row_count;
  delete from private.security_collector_keys k where(k.collector_id,k.key_version)in(select collector_id,key_version from private.security_collector_keys old where((revoked_at is not null and revoked_at<cutoff)or valid_until<cutoff)and not exists(select 1 from private.security_collector_evidence e where e.collector_id=old.collector_id and e.key_version=old.key_version)order by collector_id,key_version limit 1000);get diagnostics keys_removed=row_count;

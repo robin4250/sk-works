@@ -27,7 +27,7 @@ const install=await read('install-off.sql.review-only'),undo=await read('restore
 try{
  eq(Number((await db.query('show server_version_num')).rows[0].server_version_num)>=170000,true,'PostgreSQL17');
  eq((await db.query("select count(*)::int n from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname not in('pg_catalog','information_schema') and n.nspname not like 'pg_toast%' and c.relkind='r'")).rows[0].n,0,'Empty disposable catalog');
- await db.query(`create role anon nologin;create role authenticated nologin;create role service_role nologin;create schema private;create schema auth;create schema extensions;create extension pgcrypto with schema extensions;
+ await db.query(`create role anon nologin;create role authenticated nologin;create role service_role nologin bypassrls;create schema private;create schema auth;create schema extensions;create extension pgcrypto with schema extensions;
  create function auth.jwt()returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;
  create function auth.uid()returns uuid language sql stable as $$select(auth.jwt()->>'sub')::uuid$$;
  create function auth.role()returns text language sql stable as $$select auth.jwt()->>'role'$$;
@@ -42,7 +42,7 @@ try{
  create table public.user_secondary_credentials(user_id uuid primary key,password_hash text,failed_attempts int,locked_until timestamptz,updated_at timestamptz);
  create table public.payroll_statements(id uuid,payload text);insert into public.payroll_statements values('90000000-0000-0000-0000-000000000001','preserved frozen financial sentinel');
  revoke all on schema private,auth,extensions from public,anon,authenticated,service_role;
- grant usage on schema private,auth to authenticated;grant usage on schema auth to service_role;grant execute on all functions in schema auth to authenticated,service_role;
+ grant usage on schema private,auth to authenticated,service_role;grant execute on all functions in schema auth to authenticated,service_role;
  `);
  await db.query('insert into auth.users(id)values($1),($2)',[actor,other]);await db.query('insert into auth.sessions values($1,$2,null),($3,$4,null)',[sid,actor,otherSid,other]);
  await db.query('insert into public.company_members values($1,$2,$3),($4,$5,$6)',[cid,actor,'owner',randomUUID(),other,'owner']);
@@ -78,6 +78,7 @@ try{
  await reject(()=>ingest(envelope(event,key,1,Date.now(),duplicateRaw)),/invalid_metadata/);
  for(const name of ['anon','authenticated']){await role(name);await reject(()=>db.query('select public.ingest_signed_security_collector_event($1)',[envelope()]),/permission/);}
  for(const name of ['anon','authenticated','service_role']){await role(name);for(const table of ['private.security_collector_events','private.security_collector_keys','private.security_collector_evidence'])await reject(()=>db.query('select * from '+table),/permission/);}
+ await role('postgres');for(const name of ['anon','authenticated','service_role']){eq((await db.query("select has_function_privilege($1,'private.purge_expired_security_collector_events()','execute')v",[name])).rows[0].v,false,'No API role executes retention');eq((await db.query("select has_table_privilege($1,'private.security_collector_keys','select')v",[name])).rows[0].v,false,'Even service BYPASSRLS has no key SELECT grant');}
  await role('postgres');await db.query('update private.security_collector_keys set enabled=false,revoked_at=clock_timestamp() where collector_id=$1',[cid]);await db.query("insert into private.security_collector_keys values($1,2,$2,true,null,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 day')",[cid,key2]);
  await reject(()=>ingest(envelope()),/collector_unavailable/);
  eq(await ingest(envelope(event,key2,2)),event.event_id,'Rotated active key may retry same original event without rewriting evidence');
@@ -100,17 +101,17 @@ try{
   const unknownAck={...event,event_id:randomUUID()};loseAck=true;eq((await http(unknownAck)).status,503,'Actual HTTP commit with lost ACK remains unavailable');eq((await http(unknownAck)).status,204,'HTTP identical retry resolves lost commit ACK');eq(await count('private.security_collector_events'),beforeHTTP+2,'Lost HTTP ACK creates no duplicate');
  }finally{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}}
  // Physical key rotation waits for in-flight verified ingress, then denies stale keys.
- const writer=new Client({connectionString:u.href});await writer.connect();
+ const writer=new Client({connectionString:u.href}),observer=new Client({connectionString:u.href});await writer.connect();await observer.connect();
  try{
   await role('postgres');const mainPid=(await db.query('select pg_backend_pid()pid')).rows[0].pid;
   await writer.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({role:'service_role'})]);await writer.query('set role service_role');await writer.query('begin');
   const racingEvent={...event,event_id:randomUUID()};await writer.query('select public.ingest_signed_security_collector_event($1)',[envelope(racingEvent,key2,2)]);
   const rotate=db.query('update private.security_collector_keys set enabled=false,revoked_at=clock_timestamp() where collector_id=$1 and key_version=2',[cid]);let waiting=false;
-  for(let i=0;i<80;i++){waiting=(await writer.query("select wait_event_type='Lock'waiting from pg_stat_activity where pid=$1",[mainPid])).rows[0]?.waiting;if(waiting)break;await new Promise(resolve=>setTimeout(resolve,10));}
+  for(let i=0;i<80;i++){waiting=(await observer.query("select wait_event_type='Lock'waiting from pg_stat_activity where pid=$1",[mainPid])).rows[0]?.waiting;if(waiting)break;await new Promise(resolve=>setTimeout(resolve,10));}
   eq(waiting,true,'Physical revocation waits behind ingress key SHARE lock');await writer.query('commit');await rotate;
   await reject(()=>ingest(envelope({...event,event_id:randomUUID()},key2,2)),/collector_unavailable/);await role('postgres');eq((await db.query('select count(*)::int n from private.security_collector_events where event_id=$1',[racingEvent.event_id])).rows[0].n,1,'In-flight event commits atomically before revocation');
   await db.query('update private.security_collector_keys set enabled=true,revoked_at=null where collector_id=$1 and key_version=2',[cid]);
- }finally{await writer.query('rollback').catch(()=>{});await writer.end();}
+ }finally{await writer.query('rollback').catch(()=>{});await writer.end();await observer.end();}
  // A locked source row cannot hold an ingest forever; function-local lock_timeout is real.
  const blocker=new Client({connectionString:u.href});await blocker.connect();
  try{await blocker.query('begin');await blocker.query('select * from private.security_collector_keys where collector_id=$1 and key_version=2 for update',[cid]);const started=Date.now();await reject(()=>ingest(envelope({...event,event_id:randomUUID()},key2,2)),/lock timeout/);eq(Date.now()-started<4000,true,'Ingress lock wait is bounded at one second');}finally{await blocker.query('rollback');await blocker.end();}

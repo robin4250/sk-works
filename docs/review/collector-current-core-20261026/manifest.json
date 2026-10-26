@@ -15,7 +15,7 @@
   "bridge_role_required": false,
   "production_applied": false,
   "artifacts": {
-    "install-off.sql.review-only": "82fe1f9a4059926c036c0f2fed2fa05ea8aba13dbb902fb343204eef1817983b",
+    "install-off.sql.review-only": "f9fbbe74f63eae03498fae93a5a4ea59d7cff507513a18285d386ba112cf2167",
     "restore-unused.sql.review-only": "41d3daa76bba0f3c293b22a46ebf3d79c38f275c40a1f81ae47b44a7cf86a4cd"
   }
 }
