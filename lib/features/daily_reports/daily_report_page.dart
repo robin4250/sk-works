@@ -715,7 +715,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       );
     }
     for (final controller in [
-      ..._overtime.values, ..._early.values, ..._night.values,
+      ..._confirmedHours.values, ..._overtime.values, ..._early.values, ..._night.values,
       ..._allowanceLabel.values, ..._odometer.values,
     ]) {
       controller.addListener(_invalidatePendingSignature);
