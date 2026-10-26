@@ -5,12 +5,13 @@ import 'company_work_category_policy.dart';
 
 class CompanyWorkCategorySnapshot {
   const CompanyWorkCategorySnapshot({required this.actorId, required this.companyId,
-    required this.revision, required this.canManage, required this.policy});
+    required this.revision, required this.canManage, required this.policy, String? sessionIdentity}) : _sessionIdentity = sessionIdentity;
   final String actorId, companyId;
+  final String? _sessionIdentity;
   final int revision;
   final bool canManage;
   final CompanyWorkCategoryPolicy? policy;
-  factory CompanyWorkCategorySnapshot.parse(Object? value, {required String actorId, required String companyId}) {
+  factory CompanyWorkCategorySnapshot.parse(Object? value, {required String actorId, required String companyId, String? sessionIdentity}) {
     if (value is! Map || value['schema'] != 1 || value['actor_id'] != actorId ||
         value['company_id'] != companyId || value['can_manage'] is! bool ||
         value['revision'] is! int || (value['revision'] as int) < 0 ||
@@ -18,7 +19,7 @@ class CompanyWorkCategorySnapshot {
       throw const FormatException('会社の勤務区分設定が一致しません。再読込してください。');
     }
     return CompanyWorkCategorySnapshot(actorId: actorId, companyId: companyId,
-      revision: value['revision'] as int, canManage: value['can_manage'] as bool,
+      revision: value['revision'] as int, canManage: value['can_manage'] as bool, sessionIdentity: sessionIdentity,
       policy: value['policy'] == null ? null : CompanyWorkCategoryPolicy.parse(value['policy']));
   }
 }
@@ -51,7 +52,7 @@ class CompanyWorkCategoryRepository {
       final raw = await _client.rpc(rpc, params: params);
       await Future<void>.delayed(Duration.zero);
       if (changed || _identity(_client.auth.currentSession) != identity) throw StateError('ログイン状態が変わりました。設定を開き直してください。');
-      return CompanyWorkCategorySnapshot.parse(raw, actorId: actor, companyId: companyId);
+      return CompanyWorkCategorySnapshot.parse(raw, actorId: actor, companyId: companyId, sessionIdentity: identity);
     } on PostgrestException catch (error) {
       if (error.code == 'PT409' || error.code == '40001') throw StateError('会社の設定が更新されました。再読込してください。');
       if (error.code == '42501') throw StateError('会社の勤務区分設定を操作する権限がありません。');
@@ -65,7 +66,7 @@ class CompanyWorkCategoryRepository {
     final policy = snapshot.policy;
     if (policy == null || sourceClockInId.isEmpty || workerId.isEmpty) return null;
     final identity = _identity(_client.auth.currentSession);
-    if (identity == null || _client.auth.currentUser?.id != snapshot.actorId) return null;
+    if (identity == null || identity != snapshot._sessionIdentity || _client.auth.currentUser?.id != snapshot.actorId) return null;
     var changed = false;
     final subscription = _client.auth.onAuthStateChange.listen((event) {
       if (_identity(event.session) != identity) changed = true;
@@ -91,6 +92,10 @@ class CompanyWorkCategoryRepository {
   }
   Future<CompanyWorkCategorySnapshot> save(CompanyWorkCategorySnapshot before, CompanyWorkCategoryPolicy policy) {
     if (!before.canManage) throw StateError('勤務区分設定は管理者のみ変更できます。');
+    if (before.actorId != _client.auth.currentUser?.id || before._sessionIdentity == null ||
+        before._sessionIdentity != _identity(_client.auth.currentSession)) {
+      throw StateError('ログイン状態が変わりました。設定を開き直してください。');
+    }
     final validated = CompanyWorkCategoryPolicy.parse(policy.toJson());
     return _request(before.companyId, 'save_company_work_category_policy', {'p_company_id': before.companyId,
       'p_expected_revision': before.revision, 'p_policy': validated.toJson()});

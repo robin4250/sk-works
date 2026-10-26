@@ -24,8 +24,8 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.yaml pubspec.lock
-      - run: flutter analyze lib/features/settings/company_work_category_policy.dart lib/features/settings/company_work_category_repository.dart lib/features/settings/company_work_category_page.dart lib/features/settings/settings_page.dart test/company_work_category_policy_test.dart
-      - run: flutter test test/company_work_category_policy_test.dart --reporter expanded
+      - run: flutter analyze lib/features/settings/company_work_category_policy.dart lib/features/settings/company_work_category_repository.dart lib/features/settings/company_work_category_page.dart lib/features/settings/settings_page.dart test/company_work_category_policy_test.dart test/company_work_category_repository_test.dart
+      - run: flutter test test/company_work_category_policy_test.dart test/company_work_category_repository_test.dart --reporter expanded
   policy-native:
     runs-on: ubuntu-latest
     timeout-minutes: 8
