@@ -23,7 +23,7 @@ SCHEMA_QUERY = """select jsonb_build_object('owner',pg_get_userbyid(nspowner),'a
 COLUMNS_QUERY = """select jsonb_agg(jsonb_build_object('name',attname,'type',format_type(atttypid,atttypmod),'not_null',attnotnull) order by attnum) from pg_attribute where attrelid='storage.objects'::regclass and attnum>0 and not attisdropped"""
 
 
-def catalog_guard(policies, routines, catalog):
+def catalog_guard(policies, routines, catalog, operator_context=None):
     expected = sorted((p for p in policies if p["table"] == "objects"), key=lambda p: p["name"])
     relation = {k: catalog["relation"][k] for k in ("owner", "acl", "rls", "force_rls")}
     conditions = [
@@ -33,6 +33,14 @@ def catalog_guard(policies, routines, catalog):
         (COLUMNS_QUERY, catalog["object_columns"], "columns"),
     ]
     sql = "do $storage_source_guard$ begin\n"
+    if operator_context is None:
+        if catalog["relation"]["owner"] != "postgres":
+            raise ValueError("managed_storage_operator_context_required")
+        operator_context = {"operator": "postgres", "owner_usage": True, "storage_schema_usage": True}
+    sql += " if current_user<>" + lit(operator_context["operator"]) + " or pg_has_role(current_user,(select relowner from pg_class where oid='storage.objects'::regclass),'USAGE') is distinct from " + str(operator_context["owner_usage"]).lower() + " or has_schema_privilege(current_user,'storage','usage') is distinct from " + str(operator_context["storage_schema_usage"]).lower() + " then raise exception 'storage_review_operator_drift';end if;\n"
+    if "platform_policy_grants" in operator_context:
+        setting = operator_context["platform_policy_grants"]
+        sql += " if current_setting('supautils.policy_grants',true) is distinct from " + (lit(setting) if setting is not None else "null") + " then raise exception 'storage_review_platform_policy_grant_drift';end if;\n"
     for query, value, label in conditions:
         sql += " if (" + query + ") is distinct from " + jsonlit(value) + " then raise exception 'storage_review_" + label + "_drift';end if;\n"
     for routine in routines:
@@ -57,8 +65,8 @@ def source_body(source_root, name, expected):
     return text[start + len("begin;\n"):-len("commit;\n")]
 
 
-def install(kind, source_root, policies, routines, catalog):
-    guard = catalog_guard(policies, routines, catalog)
+def install(kind, source_root, policies, routines, catalog, operator_context=None):
+    guard = catalog_guard(policies, routines, catalog, operator_context)
     if kind == "feature":
         body = source_body(source_root, "storage_session_feature_boundary.sql.review-only", FEATURE_SHA)
     elif kind == "live":
@@ -75,8 +83,8 @@ insert into private.storage_session_guard_installation select true,xmin::text fr
     return envelope(guard, body)
 
 
-def restore(kind, source_root, before_policies, post_policies, routines, catalog):
-    guard = catalog_guard(post_policies, routines, catalog)
+def restore(kind, source_root, before_policies, post_policies, routines, catalog, operator_context=None):
+    guard = catalog_guard(post_policies, routines, catalog, operator_context)
     if kind == "feature":
         old = next(p for p in before_policies if p["name"] == "worker_document_photo_managed_read")
         body = "-- MANUAL EMERGENCY ONLY: this deliberately reopens the original manager feature-OFF read.\nalter policy worker_document_photo_managed_read on storage.objects using (" + old["qual"] + ");\n"
@@ -113,16 +121,18 @@ def main():
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--kind", choices=("feature", "live"), required=True)
     parser.add_argument("--post-policies", type=Path)
+    parser.add_argument("--operator-context", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     policies = json.loads(args.policies.read_text())[0]["policies"]
     routines = json.loads(args.routines.read_text())[0]["routines"]
     catalog = json.loads(args.catalog.read_text())[0]["catalog"]
+    operator_context = json.loads(args.operator_context.read_text())[0]["operator_context"] if args.operator_context else None
     if args.post_policies:
         post = json.loads(args.post_policies.read_text())[0]["policies"]
-        sql = restore(args.kind, args.source_root, policies, post, routines, catalog)
+        sql = restore(args.kind, args.source_root, policies, post, routines, catalog, operator_context)
     else:
-        sql = install(args.kind, args.source_root, policies, routines, catalog)
+        sql = install(args.kind, args.source_root, policies, routines, catalog, operator_context)
     args.output.write_text(sql)
     print(json.dumps({"output": str(args.output), "sha256": hashlib.sha256(sql.encode()).hexdigest(), "deployment_performed": False}))
 

@@ -24,11 +24,14 @@ const tail=String.raw`
  const policyQuery="select coalesce(jsonb_agg(jsonb_build_object('table',tablename,'name',policyname,'roles',to_jsonb(roles),'cmd',cmd,'qual',qual,'with_check',with_check,'permissive',permissive)order by policyname),'[]'::jsonb)as policies from pg_policies where schemaname='storage'and tablename='objects'";
  const policies=async()=>(await db.query(policyQuery)).rows;
  const beforePolicies=await policies();
+ const syntheticGrant='{"postgres":["storage.objects"]}';
+ await db.query("select set_config('supautils.policy_grants',$1,false)",[syntheticGrant]);
+ await writeFile(folder+'/operator.json',JSON.stringify([{operator_context:{operator:'postgres',owner_usage:true,storage_schema_usage:true,platform_policy_grants:syntheticGrant}}]));
  const originals=(await db.query("select jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'definition',pg_get_functiondef(p.oid),'owner',pg_get_userbyid(p.proowner),'acl',p.proacl::text,'config',p.proconfig,'security_definer',p.prosecdef,'volatility',p.provolatile)order by n.nspname,p.proname)as routines from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private'and p.proname in('account_access_allowed','document_submission_access','has_company_feature','personnel_portrait_path','personnel_view_allowed','try_uuid')")).rows;
  const objectCatalog=(await db.query("select jsonb_build_object('relation',(select jsonb_build_object('owner',pg_get_userbyid(c.relowner),'acl',c.relacl::text,'rls',c.relrowsecurity,'force_rls',c.relforcerowsecurity)from pg_class c where c.oid='storage.objects'::regclass),'schema',(select jsonb_build_object('owner',pg_get_userbyid(nspowner),'acl',nspacl::text)from pg_namespace where nspname='storage'),'object_columns',(select jsonb_agg(jsonb_build_object('name',attname,'type',format_type(atttypid,atttypmod),'not_null',attnotnull)order by attnum)from pg_attribute where attrelid='storage.objects'::regclass and attnum>0 and not attisdropped))as catalog")).rows;
  await writeFile(folder+'/policies.json',JSON.stringify(beforePolicies));await writeFile(folder+'/routines.json',JSON.stringify(originals));await writeFile(folder+'/catalog.json',JSON.stringify(objectCatalog));
  async function generate(kind,post){
-  const args=[generator,'--source-root',checkout,'--policies',folder+'/policies.json','--routines',folder+'/routines.json','--catalog',folder+'/catalog.json','--kind',kind,'--output',folder+'/candidate.sql'];
+  const args=[generator,'--source-root',checkout,'--policies',folder+'/policies.json','--routines',folder+'/routines.json','--catalog',folder+'/catalog.json','--operator-context',folder+'/operator.json','--kind',kind,'--output',folder+'/candidate.sql'];
   if(post){await writeFile(folder+'/post.json',JSON.stringify(post));args.push('--post-policies',folder+'/post.json');}
   execFileSync('python3',args,{stdio:'pipe'});return await readFile(folder+'/candidate.sql','utf8');
  }
@@ -37,6 +40,10 @@ const tail=String.raw`
  const originalBusiness=await business();
  const feature=await generate('feature');
  compare((feature.match(/^begin;$/gm)??[]).length,1,'feature single transaction');
+ await db.query("select set_config('supautils.policy_grants',$1,false)",['{"postgres":[]}']);
+ await assert.rejects(db.exec(feature),/storage_review_platform_policy_grant_drift/);checks++;await db.exec('rollback');
+ await db.query("select set_config('supautils.policy_grants',$1,false)",[syntheticGrant]);
+ compare(await policies(),beforePolicies,'platform setting drift refuses before policy changes');
  await db.exec('create policy unexpected_storage_policy on storage.objects for select to authenticated using(false)');
  await assert.rejects(db.exec(feature),/storage_review_policies_drift/);checks++;await db.exec('rollback;drop policy unexpected_storage_policy on storage.objects');
  compare(await policies(),beforePolicies,'unknown policy refusal leaves exact original catalog');

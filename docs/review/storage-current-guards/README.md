@@ -33,6 +33,12 @@ Every current Storage SELECT/ALL policy (35 of 35) matches the established `stor
 
 The two layers are intentionally separate. The supplied live preparation was generated against the original fresh 98-policy catalog. If feature narrowing is applied first, **recapture the post-feature catalog and regenerate the live envelope**; do not bypass its expected-before comparison. Removal is in reverse order, with exact fresh post-catalog, stopped readers/writers, independently saved original metadata and the tested operator plan. DROP has no CASCADE. Catalog guards are not a substitute for a complete private Storage-object/DB/Auth backup or for provider/administrator recovery checks.
 
+## Managed Storage operator boundary
+
+The current `postgres` operator is not a member of the Storage owner role. This is not by itself evidence that policy DDL is unavailable: the managed Supabase `supautils.policy_grants` setting explicitly includes `storage.objects` for `postgres`. The generator now requires the exact captured operator, owner-role usage result, schema usage and platform setting for non-owner preparation. It changes no role membership or grant. Official platform mechanism: [supautils Manage Policies](https://github.com/supabase/supautils#manage-policies).
+
+The additional Native test checks platform-setting drift using a fixture-owned custom GUC. That test does **not** install supautils or prove managed non-owner policy DDL. The existing owner/ACL/RLS predicates remain; the actual managed operation is a separate production-execution receipt. The 28-check earlier implementation is preserved below, and the new exact-head operator-setting guard remains pending until recorded.
+
 ## Status
 
 New wrapper PostgreSQL17 CI succeeded: head `f8d809d3c25c7386ae5ddf40abfb461e9bf91cc5`, run `40282520949`, job `121438749060`, 28 checks. Earlier failure receipts remain in history: SQL late-failure fixture dollar replacement and restore source-delimiter extraction were corrected without modifying the original product bodies or permission expectations. Main integration, protected full recovery rehearsal, production changes, activation, actual provider/administrator/iPhone checks are not complete. Existing build 20 IPA is unchanged. Root alone owns production integration and deployment.
