@@ -21,6 +21,10 @@ void main() {
       {'id': 'receipt', ...metadata, 'photo_capture_status': 'upload_failed'},
       {'id': 'receipt', ...metadata, 'photo_storage_path': '  '},
       {'id': '', ...metadata},
+      {'id': '  ', ...metadata},
+      {'id': 'receipt', ...metadata, 'payload': null},
+      {'id': 'receipt', ...metadata, 'payload': 'invalid'},
+      {'id': 'receipt', 'payload': <String, dynamic>{}},
     ]) {
       expect(savedCapturePhotoRegistered(row), isFalse);
     }
