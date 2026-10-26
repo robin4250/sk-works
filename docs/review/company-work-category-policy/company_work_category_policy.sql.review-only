@@ -1,0 +1,91 @@
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='45s';
+-- No business row, signature, clock or financial writer is replaced.
+create schema company_work_category_private;
+revoke all on schema company_work_category_private from public,anon,authenticated;
+create table company_work_category_private.settings (
+ company_id uuid primary key references public.companies(id),
+ revision integer not null check(revision>0), policy jsonb not null,
+ updated_by uuid not null, updated_at timestamptz not null default clock_timestamp()
+);
+create table company_work_category_private.history (
+ company_id uuid not null references public.companies(id), revision integer not null,
+ policy jsonb not null, actor_id uuid not null, saved_at timestamptz not null default clock_timestamp(),
+ primary key(company_id,revision)
+);
+alter table company_work_category_private.settings enable row level security;
+alter table company_work_category_private.history enable row level security;
+revoke all on all tables in schema company_work_category_private from public,anon,authenticated;
+create function company_work_category_private.valid_policy(p jsonb) returns boolean
+language plpgsql immutable set search_path='' as $$
+declare x jsonb; s text; a text[]='{}'; b text[]='{}'; n integer;
+begin
+ if p is null or jsonb_typeof(p)<>'object' then return false; end if;
+ if (select count(*) from jsonb_object_keys(p))<>7 or
+    not p ?& array['schema','night_start_minute','night_end_minute','holiday_weekdays','holiday_dates','working_dates','include_japanese_holidays'] then return false; end if;
+ if p->'schema'<>'1'::jsonb or jsonb_typeof(p->'include_japanese_holidays')<>'boolean' then return false; end if;
+ foreach s in array array['night_start_minute','night_end_minute'] loop
+  if jsonb_typeof(p->s)<>'number' or (p->>s)!~'^[0-9]+$' then return false; end if;
+  n=(p->>s)::integer; if n<0 or n>1439 then return false; end if;
+ end loop;
+ if p->'night_start_minute'=p->'night_end_minute' then return false; end if;
+ if jsonb_typeof(p->'holiday_weekdays')<>'array' or jsonb_array_length(p->'holiday_weekdays')>7 then return false; end if;
+ if (select count(*)<>count(distinct v) from jsonb_array_elements(p->'holiday_weekdays') v) then return false; end if;
+ for x in select value from jsonb_array_elements(p->'holiday_weekdays') loop
+  if jsonb_typeof(x)<>'number' or x::text!~'^[1-7]$' then return false; end if;
+ end loop;
+ foreach s in array array['holiday_dates','working_dates'] loop
+  if jsonb_typeof(p->s)<>'array' or jsonb_array_length(p->s)>730 then return false; end if;
+  if (select count(*)<>count(distinct v) from jsonb_array_elements(p->s) v) then return false; end if;
+  for x in select value from jsonb_array_elements(p->s) loop
+   if jsonb_typeof(x)<>'string' or (x#>>'{}')!~'^(20|21)[0-9]{2}-[0-9]{2}-[0-9]{2}$' or
+      to_char((x#>>'{}')::date,'YYYY-MM-DD')<>(x#>>'{}') then return false; end if;
+   if s='holiday_dates' then a=array_append(a,x#>>'{}'); else b=array_append(b,x#>>'{}'); end if;
+  end loop;
+ end loop;
+ return not a&&b;
+exception when others then return false;
+end;
+$$;
+revoke all on function company_work_category_private.valid_policy(jsonb) from public,anon,authenticated;
+create function public.read_company_work_category_policy(p_company_id uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare v_actor uuid=auth.uid(); v_role text; v_count integer; v company_work_category_private.settings%rowtype;
+begin
+ if v_actor is null or p_company_id is null then raise exception using errcode='42501',message='company membership required'; end if;
+ select count(*),min(role::text) into v_count,v_role from public.company_members where company_id=p_company_id and user_id=v_actor;
+ if v_count<>1 then raise exception using errcode='42501',message='unique company membership required'; end if;
+ select * into v from company_work_category_private.settings where company_id=p_company_id;
+ return jsonb_build_object('schema',1,'actor_id',v_actor,'company_id',p_company_id,'revision',coalesce(v.revision,0),
+   'can_manage',coalesce(v_role in ('owner','admin'),false),'policy',v.policy);
+end;
+$$;
+revoke all on function public.read_company_work_category_policy(uuid) from public,anon;
+grant execute on function public.read_company_work_category_policy(uuid) to authenticated;
+create function public.save_company_work_category_policy(p_company_id uuid,p_expected_revision integer,p_policy jsonb) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare v_actor uuid=auth.uid(); v_role text; v_count integer; v_revision integer;
+begin
+ if v_actor is null or p_company_id is null then raise exception using errcode='42501',message='company membership required'; end if;
+ -- Keep live membership fixed for this setting transaction, including role changes.
+ lock table public.company_members in share mode;
+ select count(*),min(role::text) into v_count,v_role from public.company_members where company_id=p_company_id and user_id=v_actor;
+ if v_count<>1 or v_role is null or v_role not in ('owner','admin') then raise exception using errcode='42501',message='company administrator required'; end if;
+ if p_expected_revision is null or p_expected_revision<0 or company_work_category_private.valid_policy(p_policy) is not true then
+  raise exception using errcode='22023',message='invalid company work category policy'; end if;
+ -- Company-specific serialization covers initial absence as well as updates.
+ perform pg_advisory_xact_lock(hashtextextended('company_work_category/'||p_company_id::text,0));
+ select revision into v_revision from company_work_category_private.settings where company_id=p_company_id for update;
+ if coalesce(v_revision,0)<>p_expected_revision then raise exception using errcode='PT409',message='company policy changed'; end if;
+ insert into company_work_category_private.settings(company_id,revision,policy,updated_by)
+ values(p_company_id,coalesce(v_revision,0)+1,p_policy,v_actor)
+ on conflict(company_id) do update set revision=excluded.revision,policy=excluded.policy,updated_by=excluded.updated_by,updated_at=clock_timestamp();
+ insert into company_work_category_private.history(company_id,revision,policy,actor_id)
+ values(p_company_id,coalesce(v_revision,0)+1,p_policy,v_actor);
+ return public.read_company_work_category_policy(p_company_id);
+end;
+$$;
+revoke all on function public.save_company_work_category_policy(uuid,integer,jsonb) from public,anon;
+grant execute on function public.save_company_work_category_policy(uuid,integer,jsonb) to authenticated;
+commit;

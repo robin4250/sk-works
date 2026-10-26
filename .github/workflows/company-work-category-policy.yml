@@ -1,0 +1,52 @@
+name: Company work category defaults
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/company_work_category*'
+      - 'lib/features/settings/settings_page.dart'
+      - 'test/company_work_category*'
+      - 'docs/review/company-work-category-policy/**'
+      - '.github/workflows/company-work-category-policy.yml'
+permissions:
+  contents: read
+jobs:
+  policy-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.5
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
+      - run: flutter analyze lib/features/settings/company_work_category_policy.dart lib/features/settings/company_work_category_repository.dart lib/features/settings/company_work_category_page.dart lib/features/settings/settings_page.dart test/company_work_category_policy_test.dart
+      - run: flutter test test/company_work_category_policy_test.dart --reporter expanded
+  policy-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_company_work_category_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check docs/review/company-work-category-policy/verify_native.mjs
+      - name: Policy authorization, validation, history and concurrent CAS
+        env:
+          SKO_WORK_CATEGORY_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_company_work_category_fixture
+        run: node docs/review/company-work-category-policy/verify_native.mjs "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

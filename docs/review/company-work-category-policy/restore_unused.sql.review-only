@@ -1,0 +1,17 @@
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='45s';
+lock table company_work_category_private.settings,company_work_category_private.history in access exclusive mode;
+do $guard$ begin
+ if exists(select 1 from company_work_category_private.settings) or exists(select 1 from company_work_category_private.history) then raise exception 'used policy cannot be restored'; end if;
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure('company_work_category_private.valid_policy(jsonb)')) is distinct from 'f77a42898070a81e21cc405e943661e0' then raise exception 'policy source changed'; end if;
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure('public.read_company_work_category_policy(uuid)')) is distinct from 'be89f17488c96558e90bb16b87b9f653' then raise exception 'policy source changed'; end if;
+ if (select md5(prosrc) from pg_proc where oid=to_regprocedure('public.save_company_work_category_policy(uuid,integer,jsonb)')) is distinct from 'f5c1750e9e333aab07337ca4eef0a368' then raise exception 'policy source changed'; end if;
+end $guard$;
+drop function public.save_company_work_category_policy(uuid,integer,jsonb);
+drop function public.read_company_work_category_policy(uuid);
+drop function company_work_category_private.valid_policy(jsonb);
+drop table company_work_category_private.history;
+drop table company_work_category_private.settings;
+drop schema company_work_category_private;
+commit;
