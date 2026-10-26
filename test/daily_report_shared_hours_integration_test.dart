@@ -28,12 +28,13 @@ class _Reports implements DailyReportRepository {
   bool reporterSaved = false, supervisorSaved = false, peerOpen = false;
   bool omitSource = false, staleSupervisorRead = false, missingReport = false;
   bool recoveryChoices = false, documentMode = false;
-  bool explicitMode = false, finalized = false;
+  bool explicitMode = false, finalized = false, explicitOnSave = false;
+  String? category;
   String description = '保存済みの作業';
   bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
   int draftWrites = 0, ordinaryReporterWrites = 0, anchorReads = 0;
   List<DailyReportWorkerDraft> get workers => [
-    DailyReportWorkerDraft(workerId: _worker, workerName: '報告者',
+    DailyReportWorkerDraft(workerId: _worker, workerName: '報告者', workCategory: category,
       companyAllowanceSelections: recoveryChoices ? DailyReportCompanyAllowanceSelections([]) : null,
       sourceClockInId: omitSource ? null : _source, sourceClockOutAt: DateTime(2026, 10, 25, 17)),
     if (peerOpen) DailyReportWorkerDraft(workerId: _peer, workerName: '勤務継続中',
@@ -67,7 +68,11 @@ class _Reports implements DailyReportRepository {
   @override Future<String> saveDraft({String? reportId, String? siteId,
     String? routeAssignmentId, required DateTime date, required String workDescription,
     required List<DailyReportWorkerDraft> workers, String? groupClockInAnchorId,
-    String? vehicleClockInAnchorId}) async { draftWrites++; return _report; }
+    String? vehicleClockInAnchorId}) async {
+    draftWrites++;
+    if (explicitOnSave) { explicitMode = true; description = workDescription; category = workers.first.workCategory; }
+    return _report;
+  }
   @override Future<void> saveReporterSignature({required String reportId,
     required String signerName, required Object signatureJson}) async { ordinaryReporterWrites++; }
   @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -321,6 +326,20 @@ void main() {
     }
   });
 
+  testWidgets('first saved draft enrollment rechecks missing work category before capturing reporter', (tester) async {
+    final reports = _Reports()..explicitOnSave = true;
+    final shared = _Shared(reports);
+    await open(tester, reports, _Hours(), shared);
+    await tester.enterText(find.byKey(const ValueKey('daily-report-work-description')), '更新した実際の作業');
+    FocusManager.instance.primaryFocus?.unfocus(); await tester.pumpAndSettle();
+    await reveal(tester, '報告者サイン');
+    await tester.tap(find.text('報告者サイン')); await tester.pumpAndSettle();
+    expect(reports.explicitMode, isTrue); expect(reports.draftWrites, 1);
+    expect(find.byType(SignatureCapturePage), findsNothing);
+    expect(find.textContaining('②の勤務区分'), findsOneWidget);
+    expect(reports.reporterSaved, isFalse); expect(shared.freshReporterWrites, 0);
+  });
+
   testWidgets('financial capability unavailable preserves both actual signatures', (tester) async {
     final reports = _Reports()..reporterSaved = true..supervisorSaved = true..documentMode = true;
     final shared = _Shared(reports)..documentOnly = true..manager = true;
@@ -509,8 +528,8 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
-    await reveal(tester, '登録');
-    await tester.tap(find.text('登録'));
+    await reveal(tester, '入力途中を保存');
+    await tester.tap(find.text('入力途中を保存'));
     await tester.pumpAndSettle();
     expect(shared.documentSaves, 1);
     expect(reports.description, '手直しした作業内容');
@@ -595,7 +614,7 @@ void main() {
     await reveal(tester, '報告者サイン');
     final tile = tester.widget<ListTile>(find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile)));
     expect(tile.onTap, isNull);
-    expect(find.text('登録'), findsNothing);
+    expect(find.text('入力途中を保存'), findsNothing);
     expect(reports.draftWrites, 0);
     expect(reports.ordinaryReporterWrites, 0);
   });
@@ -603,7 +622,7 @@ void main() {
     final reports = _Reports();
     await open(tester, reports, _Hours(), _Shared(reports)..hold = true);
     expect(find.textContaining('手入力済み勤怠・給与との差異'), findsOneWidget);
-    expect(find.text('登録'), findsNothing);
+    expect(find.text('入力途中を保存'), findsNothing);
     await reveal(tester, '報告者サイン');
     final tile = tester.widget<ListTile>(find.ancestor(of: find.text('報告者サイン'), matching: find.byType(ListTile)));
     expect(tile.onTap, isNull);

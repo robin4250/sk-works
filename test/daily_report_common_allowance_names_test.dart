@@ -78,13 +78,15 @@ class _CheckoutFlowRepository implements DailyReportRepository {
 }
 
 void main() {
-  testWidgets('first draft save stays on report and selected allowance is saved before signature page', (tester) async {
+  testWidgets('step two prepares allowance choices without independent save or gate release', (tester) async {
     final previousPreferences = SharedPreferencesAsyncPlatform.instance;
     SharedPreferencesAsyncPlatform.instance = _EmptyAsyncPreferences();
     addTearDown(() => SharedPreferencesAsyncPlatform.instance = previousPreferences);
     final repository = _CheckoutFlowRepository();
+    var registrationReleases = 0;
     await tester.pumpWidget(MaterialApp(home: DailyReportPage(
-      initialDate: DateTime(2026, 10, 1), initialSiteId: 'site', repositoryForTesting: repository)));
+      initialDate: DateTime(2026, 10, 1), initialSiteId: 'site', repositoryForTesting: repository,
+      onRegistrationSaved: () => registrationReleases++)));
     await tester.pumpAndSettle();
     expect(repository.eligibilityReads, 0);
     expect(repository.labelReads, 1);
@@ -95,18 +97,16 @@ void main() {
     await tester.ensureVisible(member);
     await tester.pumpAndSettle();
     await tester.tap(member); await tester.pumpAndSettle();
-    expect(find.byType(DailyReportAllowanceNameField), findsOneWidget,
-      reason: tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).join(' | '));
-    expect(tester.widget<DailyReportAllowanceNameField>(find.byType(DailyReportAllowanceNameField)).registeredItems, hasLength(1));
-    await tester.scrollUntilVisible(find.widgetWithText(FilterChip, 'PC手当'), 250, scrollable: reportScroll);
-    expect(tester.widget<FilterChip>(find.widgetWithText(FilterChip, 'PC手当')).onSelected, isNull);
-    final register = find.text('登録');
-    await tester.scrollUntilVisible(register, 250, scrollable: reportScroll);
-    await tester.ensureVisible(register); await tester.pumpAndSettle();
-    await tester.tap(register); await tester.pumpAndSettle();
+    expect(find.byType(DailyReportAllowanceNameField), findsNothing);
+    final prepareButton = find.widgetWithText(OutlinedButton, '手当を選ぶ');
+    await tester.scrollUntilVisible(prepareButton, 200, scrollable: reportScroll);
+    await tester.ensureVisible(prepareButton); await tester.pumpAndSettle();
+    await tester.tap(prepareButton); await tester.pumpAndSettle();
     expect(find.byType(DailyReportPage), findsOneWidget);
     expect(repository.saves, hasLength(1));
     expect(repository.eligibilityReads, 1);
+    expect(registrationReleases, 0);
+    expect(find.byType(DailyReportAllowanceNameField), findsOneWidget);
     final chip = find.widgetWithText(FilterChip, 'PC手当');
     await tester.scrollUntilVisible(chip, -250, scrollable: reportScroll);
     await tester.ensureVisible(chip); await tester.pumpAndSettle();

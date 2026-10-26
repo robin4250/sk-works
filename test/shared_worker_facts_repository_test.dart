@@ -50,6 +50,7 @@ class Fixture {
   String loginUid = actor, loginSid = sid;
   int generation = 0;
   bool queuedAba = false, switchSid = false, refreshToken = false;
+  bool siteCoordinator = false, ownWorker = true;
   String? rpcError;
   final rpcRequests = <Map<String, dynamic>>[];
   final rpcNames = <String>[];
@@ -73,7 +74,7 @@ class Fixture {
           'user_metadata': <String, dynamic>{}, 'created_at': '2026-10-01T00:00:00Z'}};
     } else {
       final name = request.url.path.split('/').last;
-      expect(name, anyOf('read_shared_worker_facts', 'confirm_shared_worker_facts', 'confirm_managed_shared_worker_facts'));
+      expect(name, anyOf('read_shared_worker_facts', 'confirm_shared_worker_facts', 'confirm_managed_shared_worker_facts', 'confirm_shared_site_report_facts'));
       expect(request.method, 'POST');
       final body = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
       rpcNames.add(name); rpcRequests.add(body);
@@ -89,7 +90,8 @@ class Fixture {
       }
       if (switchSid) { switchSid = false; await login(session: otherSid); }
       if (refreshToken) { refreshToken = false; await client.auth.refreshSession(); }
-      final row = response();
+      final row = response()..['own_worker'] = ownWorker;
+      if (siteCoordinator) row['site_coordinator_confirmation_available'] = true;
       if (body.containsKey('p_facts')) {
         row['worker_facts'] = Map<String, dynamic>.from(body['p_facts'] as Map)
           ..['company_allowance_legacy_labels'] = '保存済み個別手当';
@@ -239,4 +241,32 @@ void main() {
     await expectLater(load(), throwsA(isA<StateError>().having((e) => e.message,
       'safe denial message', 'この勤務実績を登録する権限を確認できません。')));
   });
+  test('site coordinator has its own explicit scope and never grants management authority', () async {
+    final raw = response()..addAll({'own_worker': false, 'site_coordinator_confirmation_available': true});
+    final before = parse(raw);
+    expect(before.canCoordinateSiteReport, isTrue); expect(before.canManageAttendance, isFalse);
+    fixture.siteCoordinator = true; fixture.ownWorker = false; await fixture.login();
+    final after = await fixture.repository.confirmSiteReportFacts(before, before.proposedFacts!);
+    expect(fixture.rpcNames, ['confirm_shared_site_report_facts']);
+    expect(fixture.rpcRequests.single['p_reason'], isNull);
+    expect(fixture.rpcRequests.single['p_expected_revision'], before.revision);
+    expect(fixture.rpcRequests.single['p_expected_scope'], before.scopeFingerprint);
+    expect(after.confirmed, isTrue); expect(after.current, isTrue);
+    expect(after.canManageAttendance, isFalse);
+  });
+  test('missing or truthy site coordinator capability cannot select its RPC', () async {
+    final before = parse(response()); await fixture.login();
+    expect(before.canCoordinateSiteReport, isFalse);
+    expect(() => fixture.repository.confirmSiteReportFacts(before, before.proposedFacts!), throwsFormatException);
+    expect(fixture.rpcRequests, isEmpty);
+    expect(() => parse(response()..['site_coordinator_confirmation_available'] = 'true'), throwsFormatException);
+  });
+  test('coordinator confirmation rejects a snapshot from a different signed-in actor before writing', () async {
+    final before = parse(response()..['site_coordinator_confirmation_available'] = true);
+    await fixture.login(uid: other, session: otherSid);
+    await expectLater(fixture.repository.confirmSiteReportFacts(before, before.proposedFacts!), throwsStateError);
+    expect(fixture.rpcRequests, isEmpty);
+  });
+
 }
+
