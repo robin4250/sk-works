@@ -481,7 +481,9 @@ class PeopleCloudRepository {
     await _client.rpc('ensure_employee_categories', params: {'p_company': company});
     final raw = await _client.rpc('list_employee_categories', params: {'p_company': company});
     if (actorId != actor || _client.auth.currentSession?.accessToken != token ||
-        await membership(companyId: company) != member) throw const PersonnelScopeChanged();
+        await membership(companyId: company) != member) {
+      throw const PersonnelScopeChanged();
+    }
     if (raw is! List) throw StateError('社員区分を確認できません。');
     return [for (final value in raw) if (value is Map) Map<String, dynamic>.from(value)];
   }
@@ -492,7 +494,9 @@ class PeopleCloudRepository {
     final member = await membership(companyId: company);
     await _client.rpc('add_employee_category', params: {'p_company': company, 'p_name': name});
     if (actorId != actor || _client.auth.currentSession?.accessToken != token ||
-        await membership(companyId: company) != member) throw const PersonnelScopeChanged();
+        await membership(companyId: company) != member) {
+      throw const PersonnelScopeChanged();
+    }
   }
 
   Future<Map<String, dynamic>> savePersonnelProfile(
