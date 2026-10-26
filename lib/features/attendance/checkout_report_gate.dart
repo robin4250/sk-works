@@ -233,7 +233,17 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
     try {
       final repository = _repository;
       if (repository == null || repository.actorId != actor) { throw StateError('ログイン状態を確認してください。'); }
-      final rows = await repository.readPending();
+      var rows = await repository.readPending();
+      if (!mounted || generation != _generation || _controller.actorId != actor || repository.actorId != actor) return;
+      final direct = rows.where((row) => row.blocking && row.choiceAvailable &&
+        !row.reportStarted && row.state != 'report_choice_required').firstOrNull;
+      if (direct != null) {
+        // A single-member automatic start is persisted before displaying the
+        // form. A later roster addition cannot turn it into checkout-only.
+        await repository.choose(direct, createReport: true);
+        if (!mounted || generation != _generation || _controller.actorId != actor || repository.actorId != actor) return;
+        rows = await repository.readPending();
+      }
       if (!mounted || generation != _generation || _controller.actorId != actor || repository.actorId != actor) { return; }
       final pending = rows.where((row) => row.blocking).toList();
       var canManage = false;

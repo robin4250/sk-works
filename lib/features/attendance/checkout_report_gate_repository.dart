@@ -8,12 +8,13 @@ class PendingCheckoutRegistration {
   const PendingCheckoutRegistration({required this.companyId, required this.workerId,
     required this.workDate, required this.sourceClockInId, required this.clockOutId,
     required this.state, required this.blocking, required this.scopeFingerprint,
-    this.siteId, this.routeId, this.reportId, this.choiceAvailable = false, this.memberCount});
+    this.siteId, this.routeId, this.reportId, this.choiceAvailable = false, this.memberCount, this.reportStarted = false});
   final String companyId, workerId, sourceClockInId, clockOutId, state, scopeFingerprint;
   final DateTime workDate;
   final String? siteId, routeId, reportId;
   final bool blocking;
   final bool choiceAvailable;
+  final bool reportStarted;
   final int? memberCount;
   String get identity => '$companyId/$workerId/$sourceClockInId/$clockOutId';
 }
@@ -117,7 +118,7 @@ class CheckoutReportGateRepository {
         sourceClockInId: id(row['source_clock_in_id']), clockOutId: id(row['clock_out_id']),
         state: row['registration_state'] as String, blocking: row['blocking'] as bool,
         scopeFingerprint: row['scope_fingerprint'] as String,
-        choiceAvailable: choiceAvailable, memberCount: memberCount is int ? memberCount : null);
+        choiceAvailable: choiceAvailable, reportStarted: row['report_started'] == true, memberCount: memberCount is int ? memberCount : null);
       if (!identities.add(target.identity)) { throw StateError('日報の対象が重複しています。'); }
       result.add(target);
     }

@@ -2,9 +2,21 @@
 begin;
 set local lock_timeout='5s';
 set local statement_timeout='45s';
+create temporary table checkout_choice_protected(name text primary key,digest text) on commit drop;
+do $$declare name text;digest text;begin
+ foreach name in array array['public.attendance_verifications','public.attendance_entries','public.daily_reports','public.daily_report_workers','public.workers','public.company_members','public.payroll_statements','public.invoices','public.payment_certificates','shared_daily_report_private.signature_events'] loop
+  if to_regclass(name) is not null then
+   execute format('lock table %s in share mode',name);
+   execute format('select md5(coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text)::text,''[]'')) from %s x',name) into digest;
+   insert into checkout_choice_protected values(name,digest);
+  end if;
+ end loop;
+end$$;
 do $$begin
  if current_user<>'postgres' then raise exception 'postgres required';end if;
- if md5((select prosrc from pg_proc where oid='checkout_report_registration_private.read_for_actor(uuid)'::regprocedure))<>'c01b3c1a9a6aec82f0da7fd9e83b7364' then raise exception 'registration reader source differs';end if;
+ if not exists(select 1 from pg_proc where oid='checkout_report_registration_private.read_for_actor(uuid)'::regprocedure
+ and md5(prosrc)='c01b3c1a9a6aec82f0da7fd9e83b7364' and pg_get_userbyid(proowner)='postgres'
+ and prosecdef and proconfig=array['search_path=""']::text[] and proacl::text='{postgres=X/postgres}' and provolatile='v') then raise exception 'registration reader source or metadata differs';end if;
 end$$;
 create schema checkout_report_choice_private;
 revoke all on schema checkout_report_choice_private from public,anon,authenticated,service_role;
@@ -38,7 +50,7 @@ begin
     and site_id is not distinct from (item->>'site_id')::uuid and route_assignment_id is not distinct from (item->>'route_assignment_id')::uuid) w;
    members:=jsonb_array_length(roster);
    select * into choice from checkout_report_choice_private.choices where source_clock_in_id=(item->>'source_clock_in_id')::uuid and company_id=(item->>'company_id')::uuid and worker_id=(item->>'worker_id')::uuid and actor_id=actor;
-   item:=item||jsonb_build_object('choice_available',true,'member_count',members,'scope_fingerprint',md5(jsonb_build_array(item->>'scope_fingerprint',roster)::text));
+   item:=item||jsonb_build_object('choice_available',true,'report_started',choice.started_at is not null,'member_count',members,'scope_fingerprint',md5(jsonb_build_array(item->>'scope_fingerprint',roster)::text));
    -- A started report is durable. Only the existing persisted-reporter checks
    -- may release it; later choosing checkout-only cannot erase that obligation.
    if (item->>'blocking')::boolean and choice.started_at is null then
@@ -75,4 +87,10 @@ begin
 end$$;
 revoke all on function public.choose_checkout_report_registration(uuid,text,boolean) from public,anon,authenticated,service_role;
 grant execute on function public.choose_checkout_report_registration(uuid,text,boolean) to authenticated;
+do $$declare row record;digest text;begin
+ for row in select * from checkout_choice_protected loop
+  execute format('select md5(coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text)::text,''[]'')) from %s x',row.name) into digest;
+  if digest is distinct from row.digest then raise exception 'business data changed: %',row.name;end if;
+ end loop;
+end$$;
 commit;

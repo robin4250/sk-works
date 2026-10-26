@@ -158,6 +158,7 @@ try {
 
  // Choice module runs against the actual registration reader and current actor
  // helper above, not a replacement authorization implementation.
+ await db.query('revoke execute on function checkout_report_registration_private.read_for_actor(uuid) from service_role'); // Fixture default grants differ from captured deployed postgres-only ACL.
  const choiceSql=await readFile('docs/review/checkout-report-choice-candidate/install-off.sql.review-only','utf8');
  const beforeDefinition=await q("select pg_get_functiondef('checkout_report_registration_private.read_for_actor(uuid)'::regprocedure) v");
  const beforeAcl=await q("select proacl::text v from pg_proc where oid='checkout_report_registration_private.read_for_actor(uuid)'::regprocedure");
@@ -180,11 +181,19 @@ try {
  assert.equal((await target()).registration_state,'report_choice_required');assert.equal((await target()).member_count,2);
  const choose=async(create,scope)=> q('select public.choose_checkout_report_registration($1,$2,$3) v',[id(50),scope??(await target()).scope_fingerprint,create]);
  await assert.rejects(()=>choose(false,'wrong'),/choice_stale/);
+ await db.query("insert into attendance_verifications values($1,$3,$4,$5,null,'clock_in','2026-10-26 08:00Z','2026-10-26',null,null,null),($2,$3,$4,$5,null,'clock_out','2026-10-26 17:00Z','2026-10-26',$1,null,null)",[id(70),id(71),id(1),id(3),id(4)]);
+ const single=async()=> (await read()).items.find(x=>x.source_clock_in_id===id(70));
+ assert.equal((await single()).member_count,1);
+ await q('select public.choose_checkout_report_registration($1,$2,true) v',[id(70),(await single()).scope_fingerprint]);
+ await db.query("insert into attendance_verifications values($1,$2,$3,$4,null,'clock_in','2026-10-26 09:00Z','2026-10-26',null,null,null)",[id(72),id(1),id(6),id(4)]);
+ assert.equal((await single()).member_count,2);assert.equal((await single()).registration_state,'report_missing');
+ await assert.rejects(()=>q('select public.choose_checkout_report_registration($1,$2,false) v',[id(70),'unused']),/choice_stale/);
+ await assert.rejects(async()=>q('select public.choose_checkout_report_registration($1,$2,false) v',[id(70),(await single()).scope_fingerprint]),/already_started/);
  await choose(false);assert.equal((await target()).registration_state,'checkout_deferred');assert.equal((await target()).blocking,false);
- await choose(false);assert.equal(await q('select count(*)::int v from checkout_report_choice_private.choices'),1,'Retry is idempotent');
+ await choose(false);assert.equal(await q('select count(*)::int v from checkout_report_choice_private.choices'),2,'Retry is idempotent');
  // Fresh authoritative read after reconnect has the same persisted choice.
  assert.equal((await target()).registration_state,'checkout_deferred');
- await choose(true);assert.equal((await target()).registration_state,'report_missing');assert.equal((await target()).blocking,true);
+ await choose(true);assert.equal((await target()).report_started,true);assert.equal((await target()).registration_state,'report_missing');assert.equal((await target()).blocking,true);
  await assert.rejects(()=>choose(false),/already_started/);
  const history=await q('select (deferred_at is not null and started_at is not null) v from checkout_report_choice_private.choices');assert.equal(history,true,'Later explicit create retains checkout-only history');
  await db.query("insert into daily_reports(id,company_id,site_id,report_date,status,updated_at,work_description,representative_signer_name,representative_signature_json) values($1,$2,$3,'2026-10-25','draft',now(),'synthetic work','Synthetic reporter','{\"strokes\":[[{}]]}')",[id(60),id(1),id(4)]);
