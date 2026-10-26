@@ -42,8 +42,13 @@ try {
   let c=await caseContext(idReport,U,id(80));
   await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$2::timestamptz,$3,$4::jsonb,$5,$6::jsonb,$7) v',[id(n),c.report_updated_at,work,payload,'合成の実報告者',signature,c.signature_scope_fingerprint]);
   eq(await q('select bool_and(work_category is null) v from daily_report_workers where report_id=$1',[idReport]),true,'Reporter signed the existing NULL category source without silently changing it');
+  // In the old enabled shared protocol, peers attach their own source when
+  // resuming AFTER the first reporter save. A pre-sign read is not enrollment.
+  await sharedCall(memberB,sidB,'select public.reuse_my_shared_daily_report($1) v',[id(n+2)]);
   for(const [wid,actor,sid] of [[reportWorker,U,id(80)],[W2,memberB,sidB]]){
+   phase='nullable-case-confirm-'+(admin?'admin-':'ordinary-')+(wid===reportWorker?'reporter':'peer');
    const own=await sharedCall(actor,sid,'select public.read_shared_worker_facts($1,$2) v',[idReport,wid]);
+   eq(own.editable,true,'Actual own-source confirmation ready '+JSON.stringify({blocked:own.source_blocked,reasons:own.source_reasons,kind:own.source_kind,own:own.own_worker,enrolling:own.enrollment_pending}));
    // A legacy NULL category deliberately makes proposed_worker_facts null.
    // Build the same explicit 11-field form as the client, preserving every
    // existing saved amount/choice/vehicle value and selecting day explicitly.
@@ -64,6 +69,7 @@ try {
  }
  phase='baseline-null-category-confirmed-day-reproduces-refusal';
  const ordinaryCase=await legacyNullableCase(9800,'2026-10-23');
+ phase='baseline-null-category-confirmed-day-reproduces-refusal';
  const beforeFailure=await business(),signatureBefore=await reportSignature(ordinaryCase.idReport);
  await reject(ordinaryCase.collect,/shared_report_signed_facts_require_approved_edit/);
  eq(await business(),beforeFailure,'Baseline failure rolls back materialization, signatures and financial writes');

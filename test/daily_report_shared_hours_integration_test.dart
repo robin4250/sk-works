@@ -322,11 +322,13 @@ void main() {
   testWidgets('reopened signature reset removes both saved labels', (tester) async {
     final reports = _Reports()..reporterSaved = true..supervisorSaved = true;
     await open(tester, reports, _Hours(), _Shared(reports));
+    await reveal(tester, '報告者サイン');
     expect(find.byKey(const ValueKey('daily-report-reporter-saved')), findsOneWidget);
     expect(find.byKey(const ValueKey('daily-report-supervisor-saved')), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink()); await tester.pump();
     reports.reporterSaved = false; reports.supervisorSaved = false;
     await open(tester, reports, _Hours(), _Shared(reports));
+    await reveal(tester, '報告者サイン');
     expect(find.byKey(const ValueKey('daily-report-reporter-saved')), findsNothing);
     expect(find.byKey(const ValueKey('daily-report-supervisor-saved')), findsNothing);
   });
@@ -354,6 +356,7 @@ void main() {
           'source_current': true, 'hours': null}],
       };
       await open(tester, reports, _Hours(), shared);
+      await reveal(tester, 'メンバー別 残業・早出・手当');
       expect(find.byKey(const ValueKey('daily-report-facts-saved')), current ? findsOneWidget : findsNothing);
       expect(find.byKey(const ValueKey('daily-report-facts-status')), current ? findsNothing : findsOneWidget);
       expect(reports.draftWrites, 0);
@@ -362,6 +365,7 @@ void main() {
   testWidgets('default zero optional values remain optional rather than confirmed', (tester) async {
     final reports = _Reports();
     await open(tester, reports, _Hours(), _Shared(reports));
+    await reveal(tester, 'メンバー別 残業・早出・手当');
     expect(find.byKey(const ValueKey('daily-report-facts-saved')), findsNothing);
     expect(tester.widget<Text>(find.byKey(const ValueKey('daily-report-facts-status'))).data, '任意');
     expect(reports.draftWrites, 0);
@@ -376,6 +380,7 @@ void main() {
     final facts = _Facts()..requireHours = false;
     facts.savedFacts = facts.proposed();
     await open(tester, reports, _Hours(), shared, facts: facts);
+    await reveal(tester, 'メンバー別 残業・早出・手当');
     expect(find.byKey(const ValueKey('daily-report-facts-saved')), findsOneWidget);
     final member = find.descendant(of: find.byType(ExpansionTile), matching: find.text('報告者'));
     await tester.scrollUntilVisible(member, 180, scrollable: find.byType(Scrollable).first);
@@ -384,7 +389,11 @@ void main() {
     final overtime = find.byWidgetPredicate((widget) => widget is TextField && widget.decoration?.labelText == '残業(h)');
     await tester.ensureVisible(overtime); await tester.pumpAndSettle();
     await tester.enterText(overtime, '1'); await tester.pump();
+    await tester.scrollUntilVisible(find.text('メンバー別 残業・早出・手当'), -180,
+      scrollable: find.byType(Scrollable).first, maxScrolls: 40);
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('daily-report-facts-saved')), findsNothing);
+    expect(find.byKey(const ValueKey('daily-report-facts-status')), findsOneWidget);
     expect(facts.savedFacts!.overtimeHours, 0);
     expect(facts.confirmations, 0); expect(reports.draftWrites, 0);
   });
