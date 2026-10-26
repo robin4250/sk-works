@@ -75,3 +75,24 @@ test('legacy service key uses bearer server credential and malformed env is hidd
  const state=setup({env});assert.equal((await state.handler(request())).status,200);assert.equal(publications(state.calls)[0].init.headers.Authorization,'Bearer legacy-service-token');
  const broken=setup({env:name=>name==='SUPABASE_URL'?'https://project.supabase.co':'{broken'});assert.equal((await broken.handler(request())).status,422);assert.equal(publications(broken.calls).length,0);
 });
+
+test('pension grade start prevents historic months from using a newer table',async()=>{
+ const rate={...official.rates[0],kind:'pension_insurance',insuranceMonth:'2017-09-01',source:{...official.rates[0].source,
+  applicability:{...official.rates[0].source.applicability,remuneration_effective_from:'2020-09-01'}}};
+ const state=setup({official:{...official,rates:[rate]}});
+ assert.equal((await state.handler(request({...input,insurance_month:'2018-10-01',payroll_month:'2018-10-01',payment_month:'2018-11-01'}))).status,422);
+ assert.equal(publications(state.calls).length,0);
+});
+test('source metadata matches existing SQL string and key bounds before service publication',async()=>{
+ const good={...official.rates[0],source:{...official.rates[0].source,applicability:{...official.rates[0].source.applicability,test:'x'.repeat(512)}}};
+ const success=setup({official:{...official,rates:[good]}});
+ assert.equal((await success.handler(request())).status,200);
+ assert.equal(JSON.parse(publications(success.calls)[0].init.body).p_values[0].source.applicability.test.length,512);
+ for(const extra of [{test:'x'.repeat(513)},{test:''},{test:' '},{test:1},{['x'.repeat(81)]:'valid'},Object.fromEntries(Array.from({length:20},(_,i)=>['extra'+i,'value']))]){
+  const bad={...good,source:{...good.source,applicability:{...good.source.applicability,...extra}}};
+  const state=setup({official:{...official,rates:[bad]}});
+  assert.equal((await state.handler(request())).status,422);
+  assert.equal(publications(state.calls).length,0);
+ }
+});
+

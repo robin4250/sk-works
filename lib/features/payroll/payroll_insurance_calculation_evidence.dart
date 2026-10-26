@@ -56,6 +56,8 @@ class PayrollInsuranceCalculationEvidence {
           final scaled = insuranceEvidenceYen(value['employee']);
           if (base == null || calculated == null || scaled == null || scaled > 100000000) {
             formula = '控除額 ${insuranceEvidenceMoney(amount)}（計算根拠の保存記録を確認できません）';
+          } else if (!_savedArithmeticMatches(base, scaled, calculated)) {
+            formula = '控除額 ${insuranceEvidenceMoney(amount)}（保存された計算基準・料率と不一致）';
           } else {
             final baseName = kind == 'employment_insurance' ? '当月対象賃金' : base == 0 ? '計算対象額' : '標準報酬月額';
             final calculation = '$baseName ${insuranceEvidenceMoney(base)} × ${insuranceEvidencePercent(scaled)}% ＝ ${insuranceEvidenceMoney(calculated)}';
@@ -74,6 +76,17 @@ class PayrollInsuranceCalculationEvidence {
     return PayrollInsuranceCalculationEvidence(rows: List.unmodifiable(rows),
       referenceText: _reference(conditions['insurance_basis_reference']),
       provenanceText: '平均月収と標準報酬月額の採用関係は未記録。金額・料率はこの明細の保存値です。');
+  }
+
+  // Display validation only. Both stored floor/ceil outcomes are legitimate
+  // rounding evidence; never recalculate or write a premium here.
+  static bool _savedArithmeticMatches(int base, int scaledRate, int amount) {
+    final numerator = BigInt.from(base) * BigInt.from(scaledRate);
+    final denominator = BigInt.from(100000000);
+    final floor = numerator ~/ denominator;
+    final ceil = (numerator + denominator - BigInt.one) ~/ denominator;
+    final recorded = BigInt.from(amount);
+    return recorded >= floor && recorded <= ceil;
   }
 
   static bool _applicableRate(Map row, Map tax, String month) {

@@ -12,6 +12,27 @@ const scope={insurer:'kyokai',prefecture:'東京都',employment_business:'constr
 const sources={health_insurance:'https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/',nursing_insurance:'https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/002/',child_support:'https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/003/',pension_insurance:'https://www.nenkin.go.jp/service/kounen/hokenryo/ryogaku/ryogakuhyo/index.html',employment_insurance:'https://jsite.mhlw.go.jp/yamagata-roudoukyoku/koyouhoken-20260316.html'};
 const values=Object.entries(sources).map(([kind,url])=>({kind,label:kind,total:1000000,employee:500000,employer:500000,insurance_month:'2026-10-01',payroll_month:'2026-10-01',payment_month:'2026-11-01',source:{url,publisher:'Official fixture',document_hash:'a'.repeat(64),applicability:{...scope,scope_version:'1',effective_insurance_month:'2026-04-01'}}}));
 const clone=x=>JSON.parse(JSON.stringify(x));
+// The same 2026 table used by the client, carried in existing bounded source
+// strings. This proves publication/application/history preserve the full table
+// without changing the SQL schema or silently applying a fetched candidate.
+const remunerationSource=fs.readFileSync('lib/features/payroll/payroll_standard_remuneration.dart','utf8');
+const tableArray=name=>remunerationSource.match(new RegExp(`${name} = <int>\\[([^\\]]+)`))[1].match(/\d+/g).map(Number);
+const healthBases=tableArray('healthBases'),healthLower=tableArray('lowerBounds');
+const tableValues=clone(values);
+for(const value of tableValues){
+ if(!['health_insurance','pension_insurance'].includes(value.kind))continue;
+ const pension=value.kind==='pension_insurance';
+ Object.assign(value.source.applicability,{
+  remuneration_bases_csv:(pension?healthBases.slice(3,35):healthBases).join(','),
+  remuneration_lower_bounds_csv:(pension?[0,...healthLower.slice(4,35)]:healthLower).join(','),
+  remuneration_source_url:'https://www.kyoukaikenpo.or.jp/lp/2026hokenryou/',
+  remuneration_document_hash:'b'.repeat(64),remuneration_effective_from:pension?'2020-09-01':'2026-03-01',
+  remuneration_table_version:'jp-general-2026-v1',
+  ...(pension?{remuneration_verification_url:'https://www.nenkin.go.jp/service/yougo/hagyo/hyojunhoshugetsu.html',remuneration_verification_hash:'c'.repeat(64)}:{})
+ });
+ assert.ok(Object.keys(value.source.applicability).length<=20);
+ assert.ok(Object.values(value.source.applicability).every(s=>typeof s==='string'&&s.length<=512));
+}
 async function role(name,id=owner){await db.exec('reset role');await db.query("select set_config('test.actor',$1,false)",[id]);await db.exec(`set role ${name}`);}
 async function publish(batch=values,id=owner,version=1,c=company){return (await db.query('select public.publish_official_payroll_rate_candidates($1,$2,$3,$4::jsonb) r',[c,id,version,JSON.stringify(batch)])).rows[0].r;}
 async function state(){await db.exec('reset role');return (await db.query(`select jsonb_build_object('settings',(select coalesce(jsonb_agg(to_jsonb(s)),'[]') from payroll_rate_private.settings s),'history',(select coalesce(jsonb_agg(to_jsonb(h)),'[]') from payroll_rate_private.history h),'scope',(select coalesce(jsonb_agg(to_jsonb(s)),'[]') from payroll_rate_private.company_scope s),'scope_history',(select coalesce(jsonb_agg(to_jsonb(s)),'[]') from payroll_rate_private.scope_history s)) s`)).rows[0].s;}
@@ -40,17 +61,19 @@ try {
  for(const mutation of [v=>v.insurance_month='2026-03-01',v=>v.kind='custom',v=>v.total++,v=>v.source.document_hash='invalid',v=>v.source.url+='?untrusted=1',v=>v.source.applicability.scope_version='2',v=>v.source.applicability.prefecture='大阪府',v=>delete v.source.applicability.effective_insurance_month]){const v=clone(values[0]);mutation(v);await reject([values[1],v]);}
  const employment=clone(values[4]);employment.source.applicability.employment_business='general';await reject([employment],/business differs/);
  const wrongInsurer=clone(values[1]);wrongInsurer.source.applicability.insurer='union';await reject([wrongInsurer],/insurer scope differs/);
- await role('service_role');assert.deepEqual(await publish(values,admin),{count:5});
+ await role('service_role');assert.deepEqual(await publish(tableValues,admin),{count:5});
  assert.deepEqual(await state(),before,'publication must leave settings/history/scope untouched');
  assert.equal(await count(),5);
  const evidence=(await db.query('select * from payroll_rate_private.candidates order by item_id')).rows;
- for(const row of evidence){assert.equal(row.verified_by,admin);assert.equal(row.scope_version,1);assert.match(row.verification_evidence,/official-rate-parser-v1; sha256=/);assert.ok(row.checked_at);}
- await role('service_role');assert.deepEqual(await publish(),{count:5});assert.equal(await count(),10,'refetch retains old evidence');
+ for(const row of evidence){assert.equal(row.verified_by,admin);assert.equal(row.scope_version,1);assert.match(row.verification_evidence,/official-rate-parser-v1; sha256=/);assert.ok(row.checked_at);assert.deepEqual(row.value,tableValues.find(v=>v.kind===row.item_id));}
+ await role('service_role');assert.deepEqual(await publish(tableValues),{count:5});assert.equal(await count(),10,'refetch retains old evidence');
  await role('authenticated');const latest=(await db.query('select public.read_company_payroll_rates($1) r',[company])).rows[0].r;
  const candidate=latest.candidates.find(c=>c.item_id==='health_insurance');assert.ok(candidate);
  const applied=(await db.query('select public.apply_company_payroll_rate_candidate($1,$2,$3,1,true) r',[company,candidate.item_id,candidate.candidate_id])).rows[0].r;
  assert.equal(applied.origin,'official_candidate');assert.equal(applied.version,2);
+ assert.deepEqual(applied.value.source.applicability,tableValues[0].source.applicability,'explicit application must preserve all retrieved bounds and provenance');
  await db.query('select public.save_company_payroll_rate_scope($1,1,$2::jsonb,true)',[company,JSON.stringify({...scope,prefecture:'大阪府'})]);
  await reject(values,/scope version conflict/);
  console.log('PASS official candidates: service-only ACL, owner/admin/restricted/company denial, scope CAS, bounded atomic batches, hash/URL/scope validation, immutable settings/audit, retained evidence and explicit normal apply');
 } finally {await db.close();}
+

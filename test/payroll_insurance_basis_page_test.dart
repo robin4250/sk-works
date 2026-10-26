@@ -31,7 +31,7 @@ void main() {
     await t.pumpAndSettle();
   }
 
-  Future<void> scenario(WidgetTester t, {required bool supported, bool editIncome = true, bool manualOverride = false, bool changePeriod = false, bool modeRoundtrip = false}) async {
+  Future<void> scenario(WidgetTester t, {required bool supported, bool editIncome = true, bool manualOverride = false, bool changePeriod = false, bool modeRoundtrip = false, int averageIncome = 480000, int expectedHealth = 470000, int expectedPension = 470000}) async {
     var version = 1, saves = 0;
     var saved = Map<String, dynamic>.from(original);
     Map<String, dynamic> response() => {'company_id': 'company', 'worker_id': 'worker',
@@ -71,7 +71,7 @@ void main() {
     }
     await enter(t, 'insurance-reference-from', '2026-07');
     await enter(t, 'insurance-reference-to', '2026-09');
-    await enter(t, 'insurance-reference-average', '480000');
+    await enter(t, 'insurance-reference-average', '$averageIncome');
     if (manualOverride) {
       final tile = find.byKey(const ValueKey('insurance-standard-base-overrides'));
       await t.ensureVisible(tile); await t.pumpAndSettle();
@@ -104,18 +104,18 @@ void main() {
       await t.tap(apply); await t.pumpAndSettle();
     }
     await save(t);
-    expect(saved['health_base_yen'], modeRoundtrip ? 710000 : manualOverride ? 440000 : 470000);
-    expect(saved['pension_base_yen'], modeRoundtrip ? 650000 : 470000);
+    expect(saved['health_base_yen'], modeRoundtrip ? 710000 : manualOverride ? 440000 : expectedHealth);
+    expect(saved['pension_base_yen'], modeRoundtrip ? 650000 : expectedPension);
     expect(saved['income_mode'], 'fixed');
     if (supported) {
       expect(saved['insurance_basis_reference'], {'schema': 1, 'from': changePeriod ? '2026-06-01' : '2026-07-01',
-        'to': '2026-09-01', 'average_monthly_income_yen': modeRoundtrip ? 700000 : 480000,
+        'to': '2026-09-01', 'average_monthly_income_yen': modeRoundtrip ? 700000 : averageIncome,
         'source': 'manual', 'observed_months': 0, 'history_fingerprint': null});
       final reload = find.widgetWithText(TextButton, '再読み込み');
       await t.ensureVisible(reload); await t.pumpAndSettle();
       await t.tap(reload); await t.pumpAndSettle();
       final field = t.widget<TextFormField>(find.byKey(const ValueKey('insurance-reference-average')));
-      expect(field.controller!.text, modeRoundtrip ? '700000' : '480000');
+      expect(field.controller!.text, modeRoundtrip ? '700000' : '$averageIncome');
       expect(t.widget<TextFormField>(find.byKey(const ValueKey('insurance-reference-from'), skipOffstage: false)).controller!.text, changePeriod ? '2026-06' : '2026-07');
     } else {
       expect(saved.containsKey('insurance_basis_reference'), isFalse);
@@ -123,6 +123,16 @@ void main() {
     }
     await t.pumpWidget(const SizedBox.shrink());
     await t.pump();
+  }
+
+  for (final row in <(int, int, int)>[
+    (0, 58000, 88000), (62999, 58000, 88000), (92999, 88000, 88000),
+    (635000, 650000, 650000), (1355000, 1390000, 650000),
+    (2000000, 1390000, 650000),
+  ]) {
+    testWidgets('income ${row.$1} saves independent insurance limits without capping the reference',
+      (t) => scenario(t, supported: true, averageIncome: row.$1,
+          expectedHealth: row.$2, expectedPension: row.$3));
   }
 
   testWidgets('single income input saves and reloads both derived standard bases',
@@ -137,6 +147,27 @@ void main() {
       (t) => scenario(t, supported: true, modeRoundtrip: true));
   testWidgets('unprepared server preserves normal condition save and discloses unsaved reference',
       (t) => scenario(t, supported: false));
+
+  testWidgets('insurance formulas and grade limits start folded and open on demand', (t) async {
+    await t.pumpWidget(MaterialApp(home: PayrollTaxConditionsPage(
+      companyId: 'company', workerId: 'worker', month: DateTime(2026, 10),
+      rpc: (name, params) async => {'company_id': 'company', 'worker_id': 'worker',
+        'can_edit': true, 'items': [
+          {'starts_on': '2026-10-01', 'version': 1, 'value': original},
+        ]},
+    )));
+    await t.pumpAndSettle();
+    const formula = '本人負担の保険料 ＝ 標準報酬月額 × 会社に登録した本人負担料率（端数処理後）';
+    expect(find.text(formula), findsNothing);
+    final tile = find.byKey(const ValueKey('insurance-calculation-details'));
+    await t.ensureVisible(tile); await t.pumpAndSettle();
+    await t.tap(find.descendant(of: tile, matching: find.text('計算式・上限と下限')));
+    await t.pumpAndSettle();
+    expect(find.text(formula), findsOneWidget);
+    expect(find.textContaining('1,355,000円以上は上限の1,390,000円'), findsOneWidget);
+    expect(find.textContaining('635,000円以上は上限の650,000円'), findsOneWidget);
+    await t.pumpWidget(const SizedBox.shrink()); await t.pump();
+  });
 
   testWidgets('invalid average and reversed period never call the save RPC', (t) async {
     var saves = 0;

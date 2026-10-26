@@ -6,6 +6,8 @@ export type OfficialRate = {
   source: { url: string; publisher: string; document_hash: string; applicability: Record<string, string> };
 };
 export const SOURCES = {
+  remuneration: 'https://www.kyoukaikenpo.or.jp/lp/2026hokenryou/',
+  pensionRemuneration: 'https://www.nenkin.go.jp/service/yougo/hagyo/hyojunhoshugetsu.html',
   healthIndex: 'https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/',
   health: 'https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/rate_prefectures/r08/',
   care: 'https://www.kyoukaikenpo.or.jp/about/business/insurance_rate/002/',
@@ -119,6 +121,50 @@ export async function fetchOfficialDocument(url: string, fetcher: typeof fetch =
     return fail('転送回数');
   } finally { clearTimeout(timer); }
 }
+
+// Constants are reviewed compatibility guards only. Returned values are parsed from this fetch.
+const reviewedBases = '58000,68000,78000,88000,98000,104000,110000,118000,126000,134000,142000,150000,160000,170000,180000,190000,200000,220000,240000,260000,280000,300000,320000,340000,360000,380000,410000,440000,470000,500000,530000,560000,590000,620000,650000,680000,710000,750000,790000,830000,880000,930000,980000,1030000,1090000,1150000,1210000,1270000,1330000,1390000';
+const reviewedLowers = '0,63000,73000,83000,93000,101000,107000,114000,122000,130000,138000,146000,155000,165000,175000,185000,195000,210000,230000,250000,270000,290000,310000,330000,350000,370000,395000,425000,455000,485000,515000,545000,575000,605000,635000,665000,695000,730000,770000,810000,855000,905000,955000,1005000,1055000,1115000,1175000,1235000,1295000,1355000';
+export function parseRemuneration(html: string): {bases: number[]; lowerBounds: number[]} {
+  if (!compact(html).includes('令和8年度保険料率のお知らせ')) fail('標準報酬表の年度');
+  const selects = [...html.matchAll(/<select\b[^>]*\bname=["']houshu["'][^>]*>([\s\S]*?)<\/select>/gi)];
+  if (selects.length !== 1) fail('標準報酬表の区分');
+  const options = [...selects[0][1].matchAll(/<option\b[^>]*\bvalue=["'](\d+)["'][^>]*>([\s\S]*?)<\/option>/gi)];
+  const bases: number[] = [], lowerBounds: number[] = [], uppers: (number|null)[] = [];
+  const yen = (v: string): number => {
+    if (!/^\d+(?:\.\d{1,4})?$/.test(v)) return fail('標準報酬の円換算');
+    const [whole,fraction=''] = v.split('.');
+    const value = Number(whole)*10000+Number(fraction.padEnd(4,'0'));
+    if (!Number.isSafeInteger(value)) fail('標準報酬の精度');
+    return value;
+  };
+  for (const option of options) {
+    const match = /^(\d+(?:\.\d+)?)万円\((\d+(?:\.\d+)?)[~～](\d+(?:\.\d+)?)?万円\)$/.exec(compact(option[2]));
+    if (!match) fail('標準報酬の範囲形式');
+    const base = Number(option[1]), lower = yen(match![2]), upper = match![3] ? yen(match![3]) : null;
+    if (yen(match![1]) !== base || lower > base || (upper !== null && base >= upper)) fail('標準報酬の表示と値');
+    bases.push(base); lowerBounds.push(lower); uppers.push(upper);
+  }
+  if (bases.length !== 50 || bases.join(',') !== reviewedBases || lowerBounds.join(',') !== reviewedLowers ||
+      uppers.some((upper,i) => i === 49 ? upper !== null : upper !== lowerBounds[i+1])) fail('未検証の標準報酬表');
+  return {bases,lowerBounds};
+}
+export function parsePensionRemuneration(html: string, health: {bases:number[]; lowerBounds:number[]}): {bases:number[];lowerBounds:number[]} {
+  const text = compact(html);
+  if (!text.includes('更新日:2020年9月1日') ||
+      !text.includes('1等級(8万8千円)から32等級(65万円)までの32等級')) fail('厚生年金の等級確認');
+  // General employees pension clamps the same statutory intermediate bands to its 1st/32nd grades.
+  // The complete reviewed table is also checked by the receiving client before application.
+  const first = health.bases.indexOf(88000), last = health.bases.indexOf(650000);
+  if (first !== 3 || last-first+1 !== 32) fail('厚生年金の等級数');
+  return {bases:health.bases.slice(first,last+1), lowerBounds:[0,...health.lowerBounds.slice(first+1,last+1)]};
+}
+function remunerationMetadata(table: {bases:number[];lowerBounds:number[]}, document: {hash:string}, effective: string): Record<string,string> {
+  return {remuneration_bases_csv:table.bases.join(','), remuneration_lower_bounds_csv:table.lowerBounds.join(','),
+    remuneration_source_url:SOURCES.remuneration, remuneration_document_hash:document.hash,
+    remuneration_effective_from:effective, remuneration_table_version:'jp-general-2026-v1'};
+}
+
 export async function fetchOfficialRates(scope: RateScope, options: {fetcher?: typeof fetch; now?: Date} = {}): Promise<{rates: OfficialRate[]; checkedAt: string; year: number; warnings: string[]}> {
   const now = options.now ?? new Date();
   const japaneseNow = new Date(now.getTime() + 9 * 3600000);
@@ -128,9 +174,11 @@ export async function fetchOfficialRates(scope: RateScope, options: {fetcher?: t
   if (!['kyokai', 'union', 'other', 'unconfigured'].includes(scope.insurer)) fail('加入保険者を設定してください');
   if (scope.insurer === 'kyokai' && !PREFECTURES.includes(scope.prefecture ?? '')) fail('都道府県を設定してください');
   if (!(scope.employment_business && Object.hasOwn(businesses, scope.employment_business))) fail('雇用保険の事業区分を設定してください');
-  const keys: (keyof typeof SOURCES)[] = ['pension', 'employmentIndex', 'employment'];
+  const keys: (keyof typeof SOURCES)[] = ['pension', 'employmentIndex', 'employment', 'remuneration', 'pensionRemuneration'];
   if (scope.insurer === 'kyokai') keys.push('healthIndex', 'health', 'care', 'child');
   const documents = Object.fromEntries(await Promise.all(keys.map(async key => [key, await fetchOfficialDocument(SOURCES[key], options.fetcher)])));
+  const healthTable = parseRemuneration(documents.remuneration.html);
+  const pensionTable = parsePensionRemuneration(documents.pensionRemuneration.html, healthTable);
   verifyAnnualIndex(documents.employmentIndex.html, year, 'employment');
   const employment = parseEmployment(documents.employment.html, year)[scope.employment_business!];
   const rates: OfficialRate[] = []; const warnings: string[] = [];
@@ -141,11 +189,12 @@ export async function fetchOfficialRates(scope: RateScope, options: {fetcher?: t
   if (scope.insurer === 'kyokai') {
     verifyAnnualIndex(documents.healthIndex.html, year, 'health');
     const common = {insurer: 'kyokai', insured_category: 'general'};
-    add('health_insurance', 'health', parseHealth(documents.health.html, year).get(scope.prefecture!)!, '2026-03-01', '2026-04-01', {...common, prefecture: scope.prefecture!});
+    add('health_insurance', 'health', parseHealth(documents.health.html, year).get(scope.prefecture!)!, '2026-03-01', '2026-04-01', {...common, prefecture: scope.prefecture!, ...remunerationMetadata(healthTable, documents.remuneration, '2026-03-01')});
     add('nursing_insurance', 'care', parseGeneralRate(documents.care.html, year, 3), '2026-03-01', '2026-04-01', common);
     add('child_support', 'child', parseGeneralRate(documents.child.html, year, 4), '2026-04-01', '2026-05-01', common);
-  } else warnings.push('健康保険・介護保険・子ども子育て支援金は加入保険者の資料で確認してください。協会けんぽの値は取得していません。');
-  add('pension_insurance', 'pension', parsePension(documents.pension.html), '2017-09-01', '2017-10-01', {scheme: 'employees_pension'});
+  } else warnings.push('健康保険・介護保険・子ども子育て支援金は加入保険者の資料で確認してください。協会けんぽの健康保険等の料率は取得していません。');
+  add('pension_insurance', 'pension', parsePension(documents.pension.html), '2017-09-01', '2017-10-01', {scheme: 'employees_pension', ...remunerationMetadata(pensionTable, documents.remuneration, '2020-09-01'), remuneration_verification_url:SOURCES.pensionRemuneration, remuneration_verification_hash:documents.pensionRemuneration.hash});
   add('employment_insurance', 'employment', employment.total, '2026-04-01', null, {employment_business: scope.employment_business!, fiscal_year: '2026', effective_until: '2027-03-31'}, employment.employee, employment.employer);
   return {rates, checkedAt: now.toISOString(), year, warnings};
 }
+

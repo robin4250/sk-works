@@ -26,4 +26,27 @@ void main() {
     expect(find.text('保険料の計算根拠'), findsNothing);
     expect(find.textContaining('¥0'), findsNothing);
   });
+  testWidgets('minimum and maximum saved equations remain collapsed until tapped', (t) async {
+    for (final values in [
+      (58000, 88000, '標準報酬月額 ¥58,000 × 5% ＝ ¥2,900',
+        '標準報酬月額 ¥88,000 × 9.15% ＝ ¥8,052'),
+      (1390000, 650000, '標準報酬月額 ¥1,390,000 × 5% ＝ ¥69,500',
+        '標準報酬月額 ¥650,000 × 9.15% ＝ ¥59,475'),
+    ]) {
+      final detail = insuranceBoundaryEvidenceFixture(healthBase: values.$1, pensionBase: values.$2);
+      final before = jsonEncode(detail);
+      await t.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+        child: PayrollInsuranceEvidenceCard(key: ValueKey(values.$1), detail: detail, month: '2026-10-01')))));
+      await t.pumpAndSettle();
+      expect(find.text(values.$3), findsNothing);
+      expect(find.text(values.$4), findsNothing);
+      await t.tap(find.text('保険料の計算根拠')); await t.pumpAndSettle();
+      expect(find.text(values.$3), findsOneWidget);
+      expect(find.text(values.$4), findsOneWidget);
+      expect(jsonEncode(detail), before);
+      expect(t.takeException(), isNull);
+      await t.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
 }

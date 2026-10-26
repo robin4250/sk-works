@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {fetchOfficialRates,fetchOfficialDocument,parseHealth,parseGeneralRate,parseEmployment,parsePension,verifyAnnualIndex,SOURCES,PREFECTURES} from './official_rates.ts';
+import {fetchOfficialRates,fetchOfficialDocument,parseHealth,parseGeneralRate,parseEmployment,parsePension,parseRemuneration,parsePensionRemuneration,verifyAnnualIndex,SOURCES,PREFECTURES} from './official_rates.ts';
 const fixture=JSON.parse(readFileSync(new URL('./official_rates_fixture.json',import.meta.url),'utf8'));
 const now=new Date('2026-10-10T00:00:00Z');
 const scope={insurer:'kyokai',prefecture:'東京都',employment_business:'construction'};
@@ -48,7 +48,7 @@ test('pension reads official fixed rate, annual indexes require matching year',(
 test('fetch produces five candidates with source hashes and no company mutations',async()=>{
  const before=JSON.stringify(scope); const visited=[];
  const result=await fetchOfficialRates(scope,{now,fetcher:mock(fixture,visited)});
- assert.equal(JSON.stringify(scope),before); assert.equal(visited.length,7);
+ assert.equal(JSON.stringify(scope),before); assert.equal(visited.length,9);
  assert.equal(result.rates.length,5); assert.deepEqual(result.warnings,[]);
  assert.equal(result.checkedAt,now.toISOString());
  const health=result.rates.find(r=>r.kind==='health_insurance');
@@ -58,12 +58,13 @@ test('fetch produces five candidates with source hashes and no company mutations
  assert.equal(health.source.applicability.effective_insurance_month,'2026-03-01');
  assert.equal(result.rates.find(r=>r.kind==='employment_insurance').paymentMonth,null);
 });
-test('union, other and unconfigured never fetch/apply kyokai sources',async()=>{
+test('non-kyokai scope retrieves common grade evidence without using kyokai health rates',async()=>{
  for(const insurer of ['union','other','unconfigured']){
   const visited=[];const result=await fetchOfficialRates({...scope,insurer,prefecture:null},{now,fetcher:mock(fixture,visited)});
   assert.deepEqual(result.rates.map(r=>r.kind),['pension_insurance','employment_insurance']);
-  assert.equal(result.warnings.length,1);assert.equal(visited.length,3);
-  assert.ok(!visited.some(u=>u.includes('kyoukaikenpo')));
+  assert.equal(result.warnings.length,1);assert.equal(visited.length,5);
+  assert.deepEqual(visited.filter(u=>u.includes('kyoukaikenpo')),[SOURCES.remuneration]);
+  assert.ok(result.warnings[0].includes('健康保険等の料率は取得していません'));
  }
 });
 test('unsupported year, company conditions and stale official index reject before publication',async()=>{
@@ -87,3 +88,54 @@ test('safe canonical redirect and timeout work without following arbitrary paths
  assert.equal(calls,2);assert.equal(doc.html,fixture.care);
  await assert.rejects(()=>fetchOfficialDocument(SOURCES.health,async(_,options)=>new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('timeout')))),5));
 });
+
+test('official remuneration options supply all fifty health and thirty-two pension bands',()=>{
+ const health=parseRemuneration(fixture.remuneration);
+ assert.equal(health.bases.length,50);assert.equal(health.lowerBounds.length,50);
+ assert.deepEqual([health.bases[0],health.lowerBounds[1],health.lowerBounds.at(-1),health.bases.at(-1)],[58000,63000,1355000,1390000]);
+ const pension=parsePensionRemuneration(fixture.pensionRemuneration,health);
+ assert.equal(pension.bases.length,32);assert.equal(pension.lowerBounds.length,32);
+ assert.deepEqual([pension.bases[0],pension.lowerBounds[0],pension.lowerBounds[1],pension.lowerBounds.at(-1),pension.bases.at(-1)],[88000,0,93000,635000,650000]);
+ assert.deepEqual(pension.bases,health.bases.slice(3,35));
+ assert.deepEqual(pension.lowerBounds,[0,...health.lowerBounds.slice(4,35)]);
+});
+test('changed inner grades, missing/duplicate options, range gaps and stale source editions fail closed',()=>{
+ const html=fixture.remuneration;
+ const first=html.match(/<option value="58000">[^<]+<\/option>/)[0];
+ for(const invalid of [
+  html.replace('value="300000"','value="301000"'),
+  html.replace(first,''),html.replace(first,first+first),
+  html.replace('0～6.3万円','0～6.4万円'),
+  html.replace('令和8年度','令和9年度'),
+  html+'<select name="houshu"></select>',
+  html.replace('value="58000">5.8','value="58000">5.9'),
+ ])assert.throws(()=>parseRemuneration(invalid));
+ const health=parseRemuneration(html);
+ for(const invalid of [fixture.pensionRemuneration.replace('32等級','31等級'),fixture.pensionRemuneration.replace('65万円','68万円'),fixture.pensionRemuneration.replace('2020年9月1日','2027年9月1日')])assert.throws(()=>parsePensionRemuneration(invalid,health));
+});
+test('retrieved grade metadata contains actual fetched source hashes and bounded full tables',async()=>{
+ const result=await fetchOfficialRates(scope,{now,fetcher:mock()});
+ for(const kind of ['health_insurance','pension_insurance']){
+  const rate=result.rates.find(r=>r.kind===kind),app=rate.source.applicability;
+  assert.equal(app.remuneration_source_url,SOURCES.remuneration);
+  assert.equal(app.remuneration_document_hash,createHash('sha256').update(fixture.remuneration).digest('hex'));
+  assert.equal(app.remuneration_table_version,'jp-general-2026-v1');
+  assert.equal(app.remuneration_bases_csv.split(',').length,kind==='health_insurance'?50:32);
+  assert.ok(Object.keys(app).length+4<=20);
+  assert.ok(Object.values(app).every(v=>typeof v==='string'&&v.length<=512));
+  if(kind==='pension_insurance'){
+   assert.equal(app.remuneration_verification_url,SOURCES.pensionRemuneration);
+   assert.equal(app.remuneration_verification_hash,createHash('sha256').update(fixture.pensionRemuneration).digest('hex'));
+   assert.equal(app.remuneration_effective_from,'2020-09-01');
+  }else assert.equal(app.remuneration_effective_from,'2026-03-01');
+ }
+});
+test('unreadable or revised grade evidence aborts retrieval and fiscal rollover never reuses 2026',async()=>{
+ for(const replacement of [{remuneration:'unavailable'},{pensionRemuneration:'unavailable'}]){
+  await assert.rejects(()=>fetchOfficialRates(scope,{now,fetcher:mock({...fixture,...replacement})}));
+ }
+ const visited=[];
+ await assert.rejects(()=>fetchOfficialRates(scope,{now:new Date('2026-12-31T15:00:00Z'),fetcher:mock(fixture,visited)}));
+ assert.deepEqual(visited,[]);
+});
+
