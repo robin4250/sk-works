@@ -52,7 +52,7 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
       await widget.save(List.unmodifiable(requests));
       if (mounted) setState(() => message = '下書きを保存しました。');
     } catch (_) {
-      if (mounted) setState(() => message = '保存できませんでした。内容を確認して再試行してください。');
+      if (mounted) setState(() => message = '保存結果を確認できません。再読み込みして確認してください。');
     } finally {
       if (mounted) setState(() => saving = false);
     }

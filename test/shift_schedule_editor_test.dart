@@ -23,7 +23,7 @@ void main() {
     await tester.ensureVisible(find.text('下書きを保存'));
     await tester.tap(find.text('下書きを保存'));
     await tester.pumpAndSettle();
-    expect(find.text('保存できませんでした。内容を確認して再試行してください。'), findsOneWidget);
+    expect(find.text('保存結果を確認できません。再読み込みして確認してください。'), findsOneWidget);
     expect(received.single.workerId, 'w');
     expect(received.single.revision, 2);
     await tester.ensureVisible(find.text('下書きを保存'));

@@ -7,6 +7,10 @@ begin
  insert into shift_draft_private.rollout values(c,true);
  perform public.save_shift_drafts(c,rows);
  assert (select revision from shift_draft_private.plans)=1,'first revision';
+ assert jsonb_array_length(public.list_shift_drafts(c,'2026-10-01','2026-10-31'))=1,'bounded draft read';
+ failed:=false;
+ begin perform public.list_shift_drafts(c,'2026-10-01','2026-11-02'); exception when others then failed:=true; end;
+ assert failed,'unbounded read rejected';
  failed:=false;
  begin perform public.save_shift_drafts(c,rows); exception when others then failed:=true; end;
  assert failed,'stale revision';
@@ -20,5 +24,6 @@ begin
  begin perform public.save_shift_drafts(c,rows); exception when insufficient_privilege then failed:=true; end;
  assert failed,'anonymous denied';
  assert not has_function_privilege('anon','public.save_shift_drafts(uuid,jsonb)','EXECUTE'),'anon grant';
+ assert not has_function_privilege('anon','public.list_shift_drafts(uuid,date,date)','EXECUTE'),'anon read grant';
  assert not has_table_privilege('authenticated','shift_draft_private.plans','SELECT'),'direct table grant';
 end $$;
