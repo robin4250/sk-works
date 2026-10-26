@@ -65,6 +65,10 @@ route_originals=json.loads((HERE/'route-source-originals.json').read_text())
 route_patches=[]
 for row in route_originals:
     source=re.sub(r'(?i)^create function','create or replace function',row['definition'])
+    if 'list_saved_route_visit_reports(' in row['signature']:
+        source=once(source,'r.created_by = auth.uid()',"(case when explicit_route_finalization_private.required(r.id) then explicit_route_finalization_private.actor_allowed(r.id) else r.created_by=auth.uid() end)")
+        route_patches.append(source)
+        continue
     source=once(source,'r.created_by<>auth.uid()',"(case when explicit_route_finalization_private.required(r.id) then not explicit_route_finalization_private.actor_allowed(r.id) else r.created_by<>auth.uid() end)")
     if '.route_visit_report_command(' in row['signature']:
         source=once(source,'  if r.created_by', '  if r.created_by') if '  if r.created_by' in source else source

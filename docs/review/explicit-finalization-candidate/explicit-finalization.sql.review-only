@@ -12,7 +12,7 @@ do $pins$ begin
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.save_daily_report_signature(uuid,text,text,jsonb)') and md5(p.prosrc)='09cbeccf5547649e8a2df26988b43eb5' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.provolatile='v' and p.proconfig is not distinct from array['search_path=""']::text[] and p.proacl is not distinct from '{postgres=X/postgres,authenticated=X/postgres}'::aclitem[]) then raise exception 'explicit_finalization_source_changed: private.save_daily_report_signature(uuid,text,text,jsonb)';end if;
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.collect_supervisor(uuid,uuid,text,jsonb,boolean,timestamp with time zone,text)') and md5(p.prosrc)='5d664661bf4ed13b0a5cc74a95dbfb61' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.provolatile='v' and p.proconfig is not distinct from array['search_path=""']::text[] and p.proacl is not distinct from '{postgres=X/postgres}'::aclitem[]) then raise exception 'explicit_finalization_source_changed: shared_daily_report_private.collect_supervisor(uuid,uuid,text,jsonb,boolean,timestamp with time zone,text)';end if;
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_worker_facts_private.materialize_confirmed_worker(uuid,uuid,jsonb)') and md5(p.prosrc)='c1dd554c49f88eaee4324ecdc4838dc0' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=false and p.provolatile='v' and p.proconfig is not distinct from array['search_path=""']::text[] and p.proacl is not distinct from '{postgres=X/postgres}'::aclitem[]) then raise exception 'explicit_finalization_source_changed: shared_worker_facts_private.materialize_confirmed_worker(uuid,uuid,jsonb)';end if;
- if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)') and md5(p.prosrc)='8c341bb00650cab35b1fa23b34e69eae' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.provolatile='v' and p.proconfig is not distinct from array['search_path=public, private, pg_temp']::text[] and p.proacl is not distinct from '{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}'::aclitem[]) then raise exception 'explicit_finalization_source_changed: save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)';end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('public.save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)') and md5(p.prosrc)='8c341bb00650cab35b1fa23b34e69eae' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.provolatile='v' and p.proconfig is not distinct from array['search_path=public, private, pg_temp']::text[] and p.proacl is not distinct from '{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}'::aclitem[]) then raise exception 'explicit_finalization_source_changed: public.save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)';end if;
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.manage_signature(uuid,text,text,jsonb,timestamp with time zone,text)') and md5(p.prosrc)='30af4c7f4c0b1d103f17ed236f98613a' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.provolatile='v' and p.proconfig is not distinct from array['search_path=""']::text[] and p.proacl is not distinct from '{postgres=X/postgres}'::aclitem[]) then raise exception 'explicit_finalization_source_changed: shared_daily_report_private.manage_signature(uuid,text,text,jsonb,timestamp with time zone,text)';end if;
  if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.has_company_feature(uuid,text)') and md5(p.prosrc)='ead168c7ebccdaf04657a66f1afd5d82' and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef=true and p.proconfig is not distinct from array['search_path=public, private, pg_temp']::text[] and p.proacl is not distinct from null::aclitem[]) then raise exception 'explicit_finalization_source_changed: private.has_company_feature(uuid,text)';end if;
 end $pins$;
@@ -212,8 +212,21 @@ begin
  return shared_daily_report_private.read_context(r.id);
 end $$;
 
+create function explicit_report_finalization_private.assert_invoice(rid uuid,cid uuid,customer uuid,first_day date,last_day date) returns void language plpgsql security definer set search_path='' as $$
+declare v public.invoices%rowtype;site uuid;
+begin
+ if customer is null then select id into customer from public.customers where company_id=cid and notes='sko_system_unassigned_invoice_customer';end if;
+ select * into v from public.invoices where company_id=cid and customer_id=customer and billing_period_start=first_day and billing_period_end=last_day and automatic_calculation is true order by created_at,id limit 1;
+ if v.id is null then
+  if exists(select 1 from public.invoices where company_id=cid and customer_id=customer and billing_period_start=first_day and billing_period_end=last_day and (automatic_calculation is distinct from true or status is distinct from 'draft' or finalized_at is not null)) then raise sqlstate '55000' using message='explicit_report_finalized_invoice_protected';end if;
+  raise sqlstate '55000' using message='explicit_report_invoice_projection_missing';end if;
+ if v.status is distinct from 'draft' or v.finalized_at is not null then raise sqlstate '55000' using message='explicit_report_finalized_invoice_protected';end if;
+ if v.calculation_blocked is distinct from false then raise sqlstate '55000' using message='explicit_report_invoice_projection_blocked';end if;
+ select site_id into site from public.daily_reports where id=rid;
+ if site is not null and not exists(select 1 from jsonb_array_elements(v.snapshot->'sites') x where x->>'site_id'=site::text) then raise sqlstate '55000' using message='explicit_report_invoice_source_missing';end if;
+end $$;
 create function explicit_report_finalization_private.assert_financial_projection(rid uuid) returns void language plpgsql security definer set search_path='' as $$
-declare r public.daily_reports%rowtype;w public.daily_report_workers%rowtype;p public.payroll_statements%rowtype;v public.invoices%rowtype;cid uuid;first_day date;last_day date;
+declare r public.daily_reports%rowtype;w public.daily_report_workers%rowtype;p public.payroll_statements%rowtype;v public.invoices%rowtype;cid uuid;first_day date;last_day date;customer_row record;customer_count integer:=0;
 begin
  select * into r from public.daily_reports where id=rid;
  first_day:=date_trunc('month',r.report_date)::date;last_day:=(first_day+interval '1 month - 1 day')::date;
@@ -227,15 +240,23 @@ begin
   if p.automatic_calculation is distinct from true or p.workflow_state is distinct from 'draft' then raise sqlstate '55000' using message='explicit_report_finalized_payroll_protected';end if;
   if p.calculation_blocked is distinct from false then raise sqlstate '55000' using message='explicit_report_payroll_projection_blocked';end if;
  end loop;
- select (to_jsonb(x)->>'customer_id')::uuid into cid from public.sites x where x.id=r.site_id and x.company_id=r.company_id;
- if r.site_id is null then select (to_jsonb(x)->>'customer_id')::uuid into cid from public.route_assignments x where x.id=r.route_assignment_id and x.company_id=r.company_id;end if;
- if cid is null then select id into cid from public.customers where company_id=r.company_id and notes='sko_system_unassigned_invoice_customer';end if;
- select * into v from public.invoices where company_id=r.company_id and customer_id=cid and billing_period_start=first_day and billing_period_end=last_day and automatic_calculation is true order by created_at,id limit 1;
- if v.id is null then raise sqlstate '55000' using message='explicit_report_invoice_projection_missing';end if;
- if v.status is distinct from 'draft' or v.finalized_at is not null or v.automatic_calculation is distinct from true then raise sqlstate '55000' using message='explicit_report_finalized_invoice_protected';end if;
- if v.calculation_blocked is distinct from false then raise sqlstate '55000' using message='explicit_report_invoice_projection_blocked';end if;
- if r.site_id is not null and not exists(select 1 from jsonb_array_elements(v.snapshot->'sites') x where x->>'site_id'=r.site_id::text) then raise sqlstate '55000' using message='explicit_report_invoice_source_missing';end if;
+ if r.site_id is not null then
+  select (to_jsonb(x)->>'customer_id')::uuid into cid from public.sites x where x.id=r.site_id and x.company_id=r.company_id;
+  perform explicit_report_finalization_private.assert_invoice(r.id,r.company_id,cid,first_day,last_day);
+ elsif r.route_assignment_id is not null then
+  -- The actual signed checkout source enumerates visit customers. Never infer
+  -- one system invoice from a route_assignment field that does not exist.
+  if to_regprocedure('private.route_signed_checkout_sources(uuid,date,date)') is null then raise sqlstate '55000' using message='explicit_report_route_invoice_sources_unavailable';end if;
+  for customer_row in execute 'select distinct customer_id,source_ready from private.route_signed_checkout_sources($1,$2,$3) where report_id=$4' using r.company_id,first_day,last_day,r.id loop
+   if customer_row.source_ready is distinct from true then raise sqlstate '55000' using message='explicit_report_invoice_source_missing';end if;
+   customer_count:=customer_count+1;
+   perform explicit_report_finalization_private.assert_invoice(r.id,r.company_id,customer_row.customer_id,first_day,last_day);
+  end loop;
+  if customer_count=0 then raise sqlstate '55000' using message='explicit_report_invoice_source_missing';end if;
+ else raise sqlstate '55000' using message='explicit_report_financial_source_missing';
+ end if;
 end $$;
+
 create function public.finalize_shared_daily_report(p_report_id uuid,p_expected_updated_at timestamptz,p_expected_signature_scope text) returns jsonb language plpgsql security definer set search_path='' as $$
 declare actor uuid;r public.daily_reports%rowtype;scope jsonb;annex jsonb;rev bigint;prior explicit_report_finalization_private.events%rowtype;
 begin
@@ -790,6 +811,7 @@ declare
   v_edit_request_id uuid;
   v_worker jsonb;
   v_worker_id uuid;
+  explicit_previous_categories jsonb;
   checkout_previous_choices jsonb; checkout_previous_labels jsonb;
   checkout_previous_legacy_labels jsonb; checkout_choices jsonb; checkout_legacy_labels text;
   checkout_previous_basis jsonb; checkout_prior_report_id uuid; checkout_had_choices boolean:=false;
@@ -907,6 +929,7 @@ begin
     coalesce(jsonb_object_agg(worker_id::text,company_allowance_legacy_labels),'{}')
     into checkout_previous_choices,checkout_previous_labels,checkout_previous_legacy_labels
     from public.daily_report_workers where report_id=v_report_id;
+  select coalesce(jsonb_object_agg(worker_id::text,work_category),'{}'::jsonb) into explicit_previous_categories from public.daily_report_workers where report_id=v_report_id;
   delete from public.daily_report_workers where report_id=v_report_id;
 
   for v_worker in
@@ -952,7 +975,7 @@ begin
       greatest(coalesce((v_worker->>'night_hours')::numeric,0),0),
       greatest(coalesce((v_worker->>'allowance_amount')::integer,0),0),
       nullif(trim(coalesce(v_worker->>'allowance_label','')),''),
-      nullif(v_worker->>'work_category',''),checkout_choices,checkout_legacy_labels
+      coalesce(nullif(v_worker->>'work_category',''),explicit_previous_categories->>v_worker_id::text),checkout_choices,checkout_legacy_labels
     );
   end loop;
 

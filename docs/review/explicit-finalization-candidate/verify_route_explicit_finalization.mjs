@@ -72,7 +72,9 @@ const read = (client, args) => value(client, 'select public.read_route_visit_rep
 const sign = (client, rid, role, name, strokes) => value(client, 'select public.save_route_visit_report_signature($1,$2,$3,$4) v', [rid, role, name, strokes]);
 const finalize = (client, row) => value(client, 'select public.finalize_route_visit_report($1,$2,$3) v', [row.id, row.report_updated_at, row.signature_scope_fingerprint]);
 const edit = (client, row, reason = '手当を実入力に訂正') => value(client, 'select public.start_route_visit_report_finalization_edit($1,$2,$3,$4) v', [row.id, row.report_updated_at, row.signature_scope_fingerprint, reason]);
-const saveDraft = (client, args, description, workers) => value(client, 'select public.save_route_visit_report_draft($1,$2,$3,$4,$5,$6,$7) v', [...args, description, workers]);
+const saveDraft = (client, args, description, workers) => value(client, 'select public.save_route_visit_report_draft($1,$2,$3,$4,$5,$6,$7) v', [...args, description, JSON.stringify(workers)]);
+const listVisits = (client, workerId = null) => value(client,
+  'select public.list_saved_route_visit_reports($1,$2,$3,0,500) v', [day,'2026-10-27',workerId]);
 async function protectedState() {
   return value(admin, `select jsonb_build_object(
     'reports',(select coalesce(jsonb_agg(to_jsonb(x) order by id),'[]') from public.daily_reports x),
@@ -137,6 +139,12 @@ try {
   await admin.query(actorFunction[0]);
   await admin.query('revoke all on function checkout_report_registration_private.current_actor() from public,anon,authenticated,service_role');
   await admin.query(await repoFile('supabase/migrations/20261011121738_route_visit_report_documents.sql'));
+  await admin.query('create table public.route_assignments(id uuid primary key,company_id uuid,route_name text)');
+  await admin.query(await repoFile('supabase/migrations/20261012034936_route_saved_report_listing.sql'));
+  // Reproduce the captured production list RPC ACL, including original order.
+  // This is fixture metadata, not a grant proposed for deployment.
+  await admin.query('revoke execute on function public.list_saved_route_visit_reports(date,date,uuid,integer,integer) from authenticated; grant execute on function public.list_saved_route_visit_reports(date,date,uuid,integer,integer) to service_role; grant execute on function public.list_saved_route_visit_reports(date,date,uuid,integer,integer) to authenticated');
+  await admin.query('insert into public.route_assignments values($1,$2,$3)', [route,company,'合成ルート']);
   await admin.query('insert into public.company_members values($1,$2),($1,$3),($1,$4),($5,$6)', [company,creator,member,outsider,otherCompany,foreign]);
   await admin.query('insert into public.workers(id,company_id,name,user_id) values($1,$2,$3,$4),($5,$2,$6,$7),($8,$2,$9,$10),($11,$12,$13,$14)',
     [worker,company,'合成本人',creator,memberWorker,'合成現場メンバー',member,outsiderWorker,'合成の非参加者',outsider,foreignWorker,otherCompany,'合成他社',foreign]);
@@ -172,6 +180,24 @@ try {
   equal(first.row.explicit_finalization_completed, false);
   equal(first.row.workers.map(x => x.worker_id).sort(), [worker,memberWorker].sort(), 'actual frozen same-day route roster');
   const tuple = sourceTuple(first.row);
+  await asActor(b, member);
+  const memberList = await listVisits(b, memberWorker);
+  equal(memberList.length, 1, 'frozen member can discover another creator report through the real saved-list RPC');
+  equal(memberList[0].id, first.row.id);
+  equal(sourceTuple(memberList[0]), tuple, 'the saved-list supplies the exact five-tuple used for handoff');
+  for (const actor of [outsider, foreign]) {
+    await asActor(b, actor);
+    equal(await listVisits(b), [], 'non-roster same-company and foreign users cannot discover report identifiers');
+    equal(await listVisits(b, memberWorker), [], 'worker filter never grants another member access');
+  }
+  await asActor(a, creator);
+  equal(await listVisits(a, outsiderWorker), [], 'saved worker filter remains an actual report-worker filter');
+  const offVisit = await newVisit(230, {enable: false});
+  await asActor(b, member);
+  equal((await listVisits(b)).map(x => x.id), [first.row.id], 'OFF reports retain original creator-only discovery');
+  await asActor(a, creator);
+  ok((await listVisits(a)).some(x => x.id === offVisit.row.id), 'creator still sees the un-enrolled original visit');
+
   await rejects(() => sign(a, first.row.id, 'responsible', '順序不正', signature(1)), /reporter|required|signature/i);
   for (const actor of [outsider, foreign]) {
     await asActor(b, actor);

@@ -194,8 +194,21 @@ begin
  return shared_daily_report_private.read_context(r.id);
 end $$;
 
+create function explicit_report_finalization_private.assert_invoice(rid uuid,cid uuid,customer uuid,first_day date,last_day date) returns void language plpgsql security definer set search_path='' as $$
+declare v public.invoices%rowtype;site uuid;
+begin
+ if customer is null then select id into customer from public.customers where company_id=cid and notes='sko_system_unassigned_invoice_customer';end if;
+ select * into v from public.invoices where company_id=cid and customer_id=customer and billing_period_start=first_day and billing_period_end=last_day and automatic_calculation is true order by created_at,id limit 1;
+ if v.id is null then
+  if exists(select 1 from public.invoices where company_id=cid and customer_id=customer and billing_period_start=first_day and billing_period_end=last_day and (automatic_calculation is distinct from true or status is distinct from 'draft' or finalized_at is not null)) then raise sqlstate '55000' using message='explicit_report_finalized_invoice_protected';end if;
+  raise sqlstate '55000' using message='explicit_report_invoice_projection_missing';end if;
+ if v.status is distinct from 'draft' or v.finalized_at is not null then raise sqlstate '55000' using message='explicit_report_finalized_invoice_protected';end if;
+ if v.calculation_blocked is distinct from false then raise sqlstate '55000' using message='explicit_report_invoice_projection_blocked';end if;
+ select site_id into site from public.daily_reports where id=rid;
+ if site is not null and not exists(select 1 from jsonb_array_elements(v.snapshot->'sites') x where x->>'site_id'=site::text) then raise sqlstate '55000' using message='explicit_report_invoice_source_missing';end if;
+end $$;
 create function explicit_report_finalization_private.assert_financial_projection(rid uuid) returns void language plpgsql security definer set search_path='' as $$
-declare r public.daily_reports%rowtype;w public.daily_report_workers%rowtype;p public.payroll_statements%rowtype;v public.invoices%rowtype;cid uuid;first_day date;last_day date;
+declare r public.daily_reports%rowtype;w public.daily_report_workers%rowtype;p public.payroll_statements%rowtype;v public.invoices%rowtype;cid uuid;first_day date;last_day date;customer_row record;customer_count integer:=0;
 begin
  select * into r from public.daily_reports where id=rid;
  first_day:=date_trunc('month',r.report_date)::date;last_day:=(first_day+interval '1 month - 1 day')::date;
@@ -209,15 +222,23 @@ begin
   if p.automatic_calculation is distinct from true or p.workflow_state is distinct from 'draft' then raise sqlstate '55000' using message='explicit_report_finalized_payroll_protected';end if;
   if p.calculation_blocked is distinct from false then raise sqlstate '55000' using message='explicit_report_payroll_projection_blocked';end if;
  end loop;
- select (to_jsonb(x)->>'customer_id')::uuid into cid from public.sites x where x.id=r.site_id and x.company_id=r.company_id;
- if r.site_id is null then select (to_jsonb(x)->>'customer_id')::uuid into cid from public.route_assignments x where x.id=r.route_assignment_id and x.company_id=r.company_id;end if;
- if cid is null then select id into cid from public.customers where company_id=r.company_id and notes='sko_system_unassigned_invoice_customer';end if;
- select * into v from public.invoices where company_id=r.company_id and customer_id=cid and billing_period_start=first_day and billing_period_end=last_day and automatic_calculation is true order by created_at,id limit 1;
- if v.id is null then raise sqlstate '55000' using message='explicit_report_invoice_projection_missing';end if;
- if v.status is distinct from 'draft' or v.finalized_at is not null or v.automatic_calculation is distinct from true then raise sqlstate '55000' using message='explicit_report_finalized_invoice_protected';end if;
- if v.calculation_blocked is distinct from false then raise sqlstate '55000' using message='explicit_report_invoice_projection_blocked';end if;
- if r.site_id is not null and not exists(select 1 from jsonb_array_elements(v.snapshot->'sites') x where x->>'site_id'=r.site_id::text) then raise sqlstate '55000' using message='explicit_report_invoice_source_missing';end if;
+ if r.site_id is not null then
+  select (to_jsonb(x)->>'customer_id')::uuid into cid from public.sites x where x.id=r.site_id and x.company_id=r.company_id;
+  perform explicit_report_finalization_private.assert_invoice(r.id,r.company_id,cid,first_day,last_day);
+ elsif r.route_assignment_id is not null then
+  -- The actual signed checkout source enumerates visit customers. Never infer
+  -- one system invoice from a route_assignment field that does not exist.
+  if to_regprocedure('private.route_signed_checkout_sources(uuid,date,date)') is null then raise sqlstate '55000' using message='explicit_report_route_invoice_sources_unavailable';end if;
+  for customer_row in execute 'select distinct customer_id,source_ready from private.route_signed_checkout_sources($1,$2,$3) where report_id=$4' using r.company_id,first_day,last_day,r.id loop
+   if customer_row.source_ready is distinct from true then raise sqlstate '55000' using message='explicit_report_invoice_source_missing';end if;
+   customer_count:=customer_count+1;
+   perform explicit_report_finalization_private.assert_invoice(r.id,r.company_id,customer_row.customer_id,first_day,last_day);
+  end loop;
+  if customer_count=0 then raise sqlstate '55000' using message='explicit_report_invoice_source_missing';end if;
+ else raise sqlstate '55000' using message='explicit_report_financial_source_missing';
+ end if;
 end $$;
+
 create function public.finalize_shared_daily_report(p_report_id uuid,p_expected_updated_at timestamptz,p_expected_signature_scope text) returns jsonb language plpgsql security definer set search_path='' as $$
 declare actor uuid;r public.daily_reports%rowtype;scope jsonb;annex jsonb;rev bigint;prior explicit_report_finalization_private.events%rowtype;
 begin
