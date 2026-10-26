@@ -57,7 +57,8 @@ void main() {
     expect(actual!.canvasSize!.width, greaterThan(actual!.canvasSize!.height));
     expect(requests.last, ['DeviceOrientation.portraitUp']);
     expect(requests.any((r) => r.contains('DeviceOrientation.landscapeLeft') &&
-      r.contains('DeviceOrientation.landscapeRight')), isTrue);
+      r.contains('DeviceOrientation.landscapeRight') &&
+      !r.contains('DeviceOrientation.portraitUp')), isTrue);
     expect(tester.takeException(), isNull);
     } finally {
       debugDefaultTargetPlatformOverride = null;
@@ -107,9 +108,9 @@ void main() {
     tester.view.physicalSize = const Size(390, 844);
     await tester.pumpAndSettle();
     final confirm = find.widgetWithText(FilledButton, 'サインを確定');
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
-    await tester.tap(confirm);
-    await tester.pump();
+    expect(confirm, findsNothing);
+    expect(find.byType(TextField), findsNothing);
+    expect(getSurface(), findsNothing);
     expect(completed, isFalse);
     expect(find.byType(SignatureOrientationGuide), findsOneWidget);
     tester.view.physicalSize = const Size(844, 390);

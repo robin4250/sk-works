@@ -41,9 +41,14 @@ void main() {
     final before = (tester.widget<CustomPaint>(paint).painter! as SignaturePainter).canvasSize!;
     tester.view.physicalSize = const Size(500, 900);
     await tester.pumpAndSettle();
+    expect(paint, findsNothing);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byType(SignatureOrientationGuide), findsOneWidget);
+    tester.view.physicalSize = const Size(900, 500);
+    await tester.pumpAndSettle();
     final after = tester.getSize(paint);
     expect(after.aspectRatio, closeTo(before.aspectRatio, .001));
-    expect(find.byType(SignatureOrientationGuide), findsOneWidget);
+    expect((tester.widget<CustomPaint>(paint).painter! as SignaturePainter).strokes, isNotEmpty);
     expect(tester.takeException(), isNull);
   });
 

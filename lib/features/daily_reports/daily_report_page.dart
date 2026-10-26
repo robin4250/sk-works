@@ -274,6 +274,16 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
+  RoundedRectangleBorder get _stepCardShape => RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(12),
+    side: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1),
+  );
+
+  OutlineInputBorder get _stepInputBorder => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1),
+  );
+
   Widget _stepTitle(String title, {required String step, required bool complete,
       required String status, VoidCallback? onSavedTap}) {
     final badge = Row(mainAxisSize: MainAxisSize.min, children: [
@@ -2522,19 +2532,25 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 builder: (context, value, child) => _stepTitle('作業内容', step: 'work',
                                   complete: value.text.trim().isNotEmpty,
                                   status: value.text.trim().isNotEmpty ? '記入済み' : '未記入')),
+                              border: _stepInputBorder,
+                              enabledBorder: _stepInputBorder,
+                              disabledBorder: _stepInputBorder,
+                              focusedBorder: _stepInputBorder,
+                              prefixIconConstraints: const BoxConstraints(minWidth: 56, minHeight: 40),
                               prefixIcon: const _ReportStepBadge('①'),
                               alignLabelWithHint: true,
                               hintText: SkoLanguageController.tr('本日の作業内容を入力'),
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Row(children: [
+                          Card(shape: _stepCardShape, margin: EdgeInsets.zero,
+                            child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              child: Row(children: [
                             _ReportStepBadge(_dailyStep(2)),
                             const SizedBox(width: 8),
                             Expanded(child: _stepTitle('メンバー別 残業・早出・手当', step: 'facts',
                               complete: _optionalFactsConfirmed, status: _optionalFactsConfirmed ? '確認済み' : '任意')),
-                          ]),
-                          const SizedBox(height: 8),
+                          ]))),
                           if (!_sharedFactsReadOnly || _sharedContext?.explicitFinalizationRequired == true) for (final worker in _workers) ...[
                             _WorkerDetailCard(
                               worker: worker,
@@ -2625,7 +2641,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               controller: _managementFactsReason, enabled: !_saving && !_signed,
                               decoration: const InputDecoration(labelText: '本人に代わって勤務実績を確認する理由'))),
                           Card(
+                            shape: _stepCardShape, margin: EdgeInsets.zero,
                             child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                              horizontalTitleGap: 8, minLeadingWidth: 40,
                               leading: _ReportStepBadge(_dailyStep(3)),
                               title: _stepTitle('報告者サイン', step: 'reporter', complete: _reporterSignatureSaved,
                                 status: _reporterSignatureSaved ? 'サイン済み' : '未サイン',
@@ -2642,7 +2661,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           if (_signed || _documentComplete || _sharedContext?.supervisorSaved == true ||
                               (_visitReport && _report?.responsibleSignatureJson != null))
                             Card(
+                              shape: _stepCardShape, margin: EdgeInsets.zero,
                               child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                horizontalTitleGap: 8, minLeadingWidth: 40,
                                 leading: _ReportStepBadge(_dailyStep(4)),
                                 title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
                                   status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン',
@@ -2656,7 +2678,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             )
                           else
                             Card(
+                              shape: _stepCardShape, margin: EdgeInsets.zero,
                               child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                horizontalTitleGap: 8, minLeadingWidth: 40,
                                 leading: _ReportStepBadge(_dailyStep(4)),
                                 title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
                                   status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン',
@@ -2667,7 +2692,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               ),
                             ),
                           const SizedBox(height: 16),
-                          if (!_editingApprovedReport) Card(child: Padding(padding: const EdgeInsets.all(16),
+                          if (!_editingApprovedReport) Card(shape: _stepCardShape, margin: EdgeInsets.zero,
+                            child: Padding(padding: const EdgeInsets.all(8),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                               Row(children: [const _ReportStepBadge('⑤'), const SizedBox(width: 8),
                                 Expanded(child: _stepTitle('保存して確定', step: 'finalize', complete: _signed,

@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'lib/features/daily_reports/signature_capture_page.dart'
+      - 'lib/widgets/sko_orientation_policy.dart'
+      - 'test/sko_signature_orientation_test.dart'
       - 'lib/features/daily_reports/daily_report_page.dart'
       - 'test/daily_report_shared_hours_integration_test.dart'
       - 'test/signature_orientation_guidance_test.dart'
@@ -24,5 +26,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/features/daily_reports/daily_report_page.dart lib/features/daily_reports/signature_capture_page.dart test/signature_orientation_guidance_test.dart test/signature_confirm_return_test.dart test/daily_report_signature_aspect_test.dart
+      - run: flutter analyze lib/widgets/sko_orientation_policy.dart test/sko_signature_orientation_test.dart lib/features/daily_reports/daily_report_page.dart lib/features/daily_reports/signature_capture_page.dart test/signature_orientation_guidance_test.dart test/signature_confirm_return_test.dart test/daily_report_signature_aspect_test.dart
       - run: flutter test test/daily_report_shared_hours_integration_test.dart test/signature_orientation_guidance_test.dart test/signature_confirm_return_test.dart test/daily_report_signature_aspect_test.dart test/signature_capture_member_names_test.dart test/signature_ink_frame_test.dart test/sko_signature_orientation_test.dart test/iphone_portrait_orientation_contract_test.dart

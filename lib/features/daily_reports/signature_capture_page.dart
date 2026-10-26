@@ -165,10 +165,17 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Flutter's viewport follows either landscape direction on phones/tablets.
-    // A flat/locked portrait viewport stays blocked; handwriting is not guessed.
+    // Request landscape on entry. A platform that has not rotated must not
+    // expose a portrait form; viewport orientation is not a physical sensor.
     _landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
     if (!_landscape) { _strokeActive = false; }
+    if (!_landscape) {
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.title)),
+        body: const SafeArea(child: Padding(
+          padding: EdgeInsets.all(16), child: SignatureOrientationGuide())),
+      );
+    }
     final hasOptions = widget.signerNameOptions.any((name) => name.trim().isNotEmpty);
     final picker = DropdownButtonFormField<String>(
       key: const ValueKey('signature-member-picker'),
@@ -253,7 +260,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   }
 }
 
-/// Portrait-only direction marks use the current screen's upright coordinates.
+/// Holding screen while the platform has not supplied a landscape viewport.
 class SignatureOrientationGuide extends StatelessWidget {
   const SignatureOrientationGuide({super.key});
   @override

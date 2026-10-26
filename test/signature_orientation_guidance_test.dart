@@ -25,10 +25,9 @@ void main() {
       for (final mark in ['↑ 上', '下 ↓', '← 左', '右 →']) {
         expect(find.text(mark), findsOneWidget);
       }
-      expect(t.widget<GestureDetector>(surface).onPanStart, isNull);
-      await t.dragFrom(t.getCenter(surface), const Offset(60, 20));
-      await t.pump();
-      expect(painter(t).strokes, isEmpty);
+      expect(surface, findsNothing);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('サインを確定'), findsNothing);
       expect(t.takeException(), isNull);
     });
   }
@@ -59,14 +58,14 @@ void main() {
     t.view.physicalSize = const Size(390, 844);
     await t.pumpAndSettle();
     expect(find.byType(SignatureOrientationGuide), findsOneWidget);
-    await t.dragFrom(t.getCenter(surface), const Offset(40, 20));
-    await t.pump();
-    expect(jsonEncode(SignatureResult(signerName: '検証', strokes: painter(t).strokes,
-      canvasSize: painter(t).canvasSize).toJson()), before);
-    expect(t.getSize(ink).aspectRatio, closeTo(capture.aspectRatio, .001));
+    expect(surface, findsNothing);
+    expect(find.byType(TextField), findsNothing);
     t.view.physicalSize = const Size(844, 390);
     await t.pumpAndSettle();
     expect(find.byType(SignatureOrientationGuide), findsNothing);
+    expect(jsonEncode(SignatureResult(signerName: '検証', strokes: painter(t).strokes,
+      canvasSize: painter(t).canvasSize).toJson()), before);
+    expect(t.getSize(ink).aspectRatio, closeTo(capture.aspectRatio, .001));
     await t.dragFrom(t.getCenter(surface) - const Offset(20, 20), const Offset(40, 20));
     await t.pump();
     expect(painter(t).strokes.length, 2);
