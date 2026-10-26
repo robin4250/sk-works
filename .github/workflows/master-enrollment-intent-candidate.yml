@@ -38,6 +38,10 @@ jobs:
       PGDATABASE: postgres
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: |
           psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/native-setup.sql
           psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/native-real-functions.sql
@@ -46,3 +50,4 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/legacy-entry-gate.sql.review-only
           psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/native-legacy-gate-tests.sql
           psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/native-tests.sql
+          node tool/security/master-device-enrollment-candidate/native-concurrency.mjs
