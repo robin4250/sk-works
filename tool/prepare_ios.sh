@@ -225,6 +225,7 @@ entries = {
     "NSCameraUsageDescription": "SKOで出勤確認や資格証、現場写真を登録するためカメラを使用します。",
     "NSPhotoLibraryUsageDescription": "SKOでプロフィール写真や現場・チャットの写真を選択するため写真ライブラリを使用します。",
     "ITSAppUsesNonExemptEncryption": False,
+    "SKOAppleCredentialPreparationEnabled": False,
 }
 
 for key, value in entries.items():
@@ -347,6 +348,7 @@ import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  private var skoAppleCredentialChannel: SKOAppleCredentialChannel?
   private var skoMapChannel: FlutterMethodChannel?
   private var skoCaptureChannel: FlutterMethodChannel?
   private var skoNotificationChannel: FlutterMethodChannel?
@@ -520,6 +522,9 @@ import UserNotifications
         }
       }
       skoCaptureChannel = channel
+    }
+    if let registrar = self.registrar(forPlugin: "SkoAppleCredential") {
+      skoAppleCredentialChannel = SKOAppleCredentialChannel(messenger: registrar.messenger())
     }
     return launched
   }
@@ -863,6 +868,9 @@ SWIFT
 
 # Keep the native reminder implementation versioned, including reused projects.
 cat tool/ios/checkout_reminders.swift >> ios/Runner/AppDelegate.swift
+# OFF Apple credential acquisition only; no provider, entitlement or session mutation.
+cat tool/ios/apple_credential_state.swift >> ios/Runner/AppDelegate.swift
+cat tool/ios/apple_credential.swift >> ios/Runner/AppDelegate.swift
 
 echo "iOS標準MapKitの複数ピン現場マップを設定しました。"
 

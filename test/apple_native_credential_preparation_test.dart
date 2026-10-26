@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -32,10 +32,13 @@ void main() {
   late List<http.Request> network;
   bool google = true;
   int calls = 0;
+  final canceled = <String>[];
+  final requested = <String>[];
   Future<Object?> Function()? native;
   setUp(() async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     changes = StreamController<AuthState>.broadcast(); network = []; google = true; calls = 0;
+    canceled.clear(); requested.clear();
     native = () async => {'id_token':'header.payload.signature', 'nonce':'n' * 43};
     client = SupabaseClient('https://native-apple.invalid','synthetic-public',
       authOptions: const AuthClientOptions(autoRefreshToken: false),
@@ -46,7 +49,12 @@ void main() {
       }));
     await client.auth.setInitialSession(session(actor));
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel,(call) async {
-      expect(call.method,'requestAppleCredential'); expect(call.arguments,isNull); calls++; return native!();
+      final args = call.arguments as Map;
+      final id = args['request_id'] as String;
+      expect(RegExp(r'^[a-f0-9]{32}$').hasMatch(id), isTrue);
+      expect(args.length, 1);
+      if (call.method == 'cancelAppleCredential') { canceled.add(id); return true; }
+      expect(call.method,'requestAppleCredential'); requested.add(id); calls++; return native!();
     });
   });
   tearDown(() async {
@@ -111,4 +119,48 @@ void main() {
     await expectLater(preparation().requestForExistingGoogleAccount(),throwsStateError);
     expect(calls,0); expect(network,isEmpty);
   });
+  Future<void> waitForNative() async {
+    for (var i = 0; i < 30 && calls == 0; i++) { await Future<void>.delayed(Duration.zero); }
+    expect(calls, 1);
+  }
+  test('background and disposal cancel only the active correlation and reject late credentials', () async {
+    for (final disposing in [false, true]) {
+      calls = 0; canceled.clear(); requested.clear();
+      final pending = Completer<Object?>(); native = () => pending.future;
+      final source = preparation();
+      final attempt = source.requestForExistingGoogleAccount();
+      final expectation = expectLater(attempt, throwsStateError);
+      await waitForNative();
+      if (disposing) { source.dispose(); } else { source.didChangeAppLifecycleState(AppLifecycleState.paused); }
+      pending.complete({'id_token':'header.payload.signature', 'nonce':'n' * 43});
+      await expectation;
+      expect(canceled, contains(requested.single));
+      source.dispose();
+    }
+  });
+  test('native timeout is Japanese and cancels before another attempt can begin', () async {
+    final pending = Completer<Object?>(); native = () => pending.future;
+    final source = AppleNativeCredentialPreparation(client, enabled: true, channel: channel,
+      authChanges: changes.stream, credentialTimeout: const Duration(milliseconds: 5));
+    await expectLater(source.requestForExistingGoogleAccount(), throwsA(isA<StateError>().having(
+      (error) => error.message, 'message', contains('時間切れ'))));
+    await Future<void>.delayed(Duration.zero);
+    expect(canceled, contains(requested.single));
+    pending.complete({'id_token':'header.payload.signature', 'nonce':'n' * 43});
+    source.dispose();
+  });
+  test('a busy request cannot be replaced and a disposed source cannot start again', () async {
+    final pending = Completer<Object?>(); native = () => pending.future;
+    final source = preparation();
+    final attempt = source.requestForExistingGoogleAccount();
+    await waitForNative();
+    await expectLater(source.requestForExistingGoogleAccount(), throwsStateError);
+    expect(calls, 1);
+    pending.complete({'id_token':'header.payload.signature', 'nonce':'n' * 43});
+    await attempt;
+    source.dispose();
+    await expectLater(source.requestForExistingGoogleAccount(), throwsStateError);
+    expect(calls, 1);
+  });
+
 }
