@@ -17,6 +17,7 @@ jobs:
           node-version: '22'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: node tool/security/master-device-enrollment-candidate/check-intent.mjs
+      - run: node --test tool/security/master-device-enrollment-candidate/approval-signature.test.mjs
   native-session-and-password:
     runs-on: ubuntu-latest
     timeout-minutes: 10
