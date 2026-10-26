@@ -9,7 +9,7 @@ Map<String, dynamic> insuranceEvidenceFixture() {
   return {...premiums, 'tax_calculation': {
     'calculator_version': 'payroll-tax-20261014-overrides-v1', 'condition_version': 1,
     'conditions_start': '2026-10-01', 'payment_date': '2026-11-25',
-    'conditions': {'insurance_mode': 'rates', 'health': true, 'pension': true,
+    'conditions': <String, dynamic>{'insurance_mode': 'rates', 'health': true, 'pension': true,
       'employment': true, 'nursing': true, 'child_support': true,
       'health_base_yen': 320000, 'pension_base_yen': 340000,
       'insurance_basis_reference': {'schema': 1, 'from': '2026-04-01', 'to': '2026-06-01',
@@ -46,7 +46,7 @@ Map<String, dynamic> insuranceBoundaryEvidenceFixture({required int healthBase,
   detail.addAll(premiums);
   tax['premiums'] = premiums;
   tax['payment_date'] = '${next.year}-${next.month.toString().padLeft(2, '0')}-25';
-  (tax['conditions'] as Map).addAll({'health_base_yen': healthBase,
+  (tax['conditions'] as Map).addAll(<String, dynamic>{'health_base_yen': healthBase,
     'pension_base_yen': pensionBase});
   tax['rates'] = [for (final spec in specs) {
     'insurance_month': month, 'base_yen': spec.$3,
