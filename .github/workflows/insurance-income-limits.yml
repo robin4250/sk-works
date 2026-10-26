@@ -1,0 +1,25 @@
+name: Insurance income limits and folded calculation
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payroll_standard_remuneration.dart'
+      - 'lib/features/payroll/payroll_tax_conditions_page.dart'
+      - 'test/payroll_standard_remuneration_test.dart'
+      - 'test/payroll_insurance_basis_page_test.dart'
+      - '.github/workflows/insurance-income-limits.yml'
+permissions:
+  contents: read
+jobs:
+  insured-income-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/payroll/payroll_standard_remuneration.dart lib/features/payroll/payroll_tax_conditions_page.dart test/payroll_standard_remuneration_test.dart test/payroll_insurance_basis_page_test.dart
+      - run: flutter test test/payroll_standard_remuneration_test.dart test/payroll_insurance_basis_page_test.dart test/payroll_insurance_basis_reference_test.dart test/payroll_insurance_basis_section_test.dart test/payroll_insurance_basis_fixed_test.dart --reporter expanded

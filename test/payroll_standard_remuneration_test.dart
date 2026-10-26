@@ -25,8 +25,25 @@ void main() {
     expect(PayrollStandardRemuneration.fromMonthlyIncome(665000, '2026-10').healthYen, 680000);
     expect(PayrollStandardRemuneration.fromMonthlyIncome(665000, '2026-10').pensionYen, 650000);
   });
-  test('zero, negative, overflow, malformed and unsupported years refuse conversion', () {
-    for (final value in [0, -1, 2147483648]) {
+  test('explicit zero income uses the lowest insured grades', () {
+    final result = PayrollStandardRemuneration.fromMonthlyIncome(0, '2026-10');
+    expect(result.healthYen, 58000);
+    expect(result.pensionYen, 88000);
+  });
+  test('requested thresholds use independent official health and pension limits', () {
+    for (final row in <(int, int, int)>[
+      (62999, 58000, 88000), (63000, 68000, 88000),
+      (92999, 88000, 88000), (93000, 98000, 98000),
+      (634999, 620000, 620000), (635000, 650000, 650000),
+      (650000, 650000, 650000), (1354999, 1330000, 650000),
+      (1355000, 1390000, 650000), (2000000, 1390000, 650000),
+    ]) {
+      final result = PayrollStandardRemuneration.fromMonthlyIncome(row.$1, '2026-10');
+      expect((result.healthYen, result.pensionYen), (row.$2, row.$3), reason: 'income ${row.$1}');
+    }
+  });
+  test('negative, overflow, malformed and unsupported years refuse conversion', () {
+    for (final value in [-1, 2147483648]) {
       expect(() => PayrollStandardRemuneration.fromMonthlyIncome(value, '2026-10'), throwsFormatException);
     }
     for (final month in ['2025-12', '2027-01', '2026-13', '2026-1', '2026-10-01']) {

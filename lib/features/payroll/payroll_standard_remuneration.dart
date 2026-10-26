@@ -24,8 +24,8 @@ class PayrollStandardRemuneration {
   ];
 
   static PayrollStandardRemuneration fromMonthlyIncome(int income, String month) {
-    if (income <= 0 || income > 2147483647) {
-      throw const FormatException('保険料の基準にする平均月収は1円以上で入力してください');
+    if (income < 0 || income > 2147483647) {
+      throw const FormatException('保険料の基準にする平均月収は0〜2,147,483,647円で入力してください');
     }
     if (!RegExp(r'^2026-(0[1-9]|1[0-2])$').hasMatch(month)) {
       throw const FormatException('この等級表は2026年の適用月に対応しています。別の年は通知書の標準報酬月額を入力してください');

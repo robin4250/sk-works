@@ -781,6 +781,23 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                     ),
                   ]),
                   Text('計算に使う標準報酬月額：健康保険 ${_amounts['health_base_yen']!.text}円・厚生年金 ${_amounts['pension_base_yen']!.text}円'),
+                  const ExpansionTile(
+                    key: ValueKey('insurance-calculation-details'),
+                    title: Text('計算式・上限と下限'),
+                    childrenPadding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('本人負担の保険料 ＝ 標準報酬月額 × 会社に登録した本人負担料率（端数処理後）'),
+                      SizedBox(height: 8),
+                      Text('健康保険：平均月収63,000円未満は58,000円、1,355,000円以上は上限の1,390,000円を計算基準にします。'),
+                      SizedBox(height: 8),
+                      Text('厚生年金：平均月収93,000円未満は88,000円、635,000円以上は上限の650,000円を計算基準にします。'),
+                      SizedBox(height: 8),
+                      Text('2026年の一般被保険者の等級表です。平均月収の入力額は上限で書き換えません。未入力を0円として計算しません。'),
+                      SizedBox(height: 8),
+                      Text('給料明細・PDFには、その明細に保存された計算基準額・本人負担料率・控除額で実際の計算式を表示します。通知書などの手入力額・手動修正額は自動計算と区別します。'),
+                    ],
+                  ),
                   ExpansionTile(
                     key: const ValueKey('insurance-standard-base-overrides'),
                     maintainState: true,
