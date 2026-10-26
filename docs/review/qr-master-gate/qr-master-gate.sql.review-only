@@ -1,0 +1,21 @@
+-- Candidate only: install OFF; no QR API is exposed by this file.
+-- All future issue / scan / register writers must call the gate in the same
+-- transaction as their protected action, before reading or changing QR data.
+begin;
+create schema qr_attendance_private;
+revoke all on schema qr_attendance_private from public, anon, authenticated;
+
+-- Missing row is OFF. A SHARE lock serializes in-flight protected actions with
+-- the existing master setter's row update; OFF never deletes device records.
+create function qr_attendance_private.require_enabled() returns void
+language plpgsql security definer set search_path='' as $$
+declare is_enabled boolean;
+begin
+ select enabled into is_enabled from private.master_feature_settings
+ where feature_key='qr_attendance' for share;
+ if is_enabled is distinct from true then
+   raise sqlstate '42501' using message='qr_attendance_disabled';
+ end if;
+end $$;
+revoke all on function qr_attendance_private.require_enabled() from public, anon, authenticated;
+commit;
