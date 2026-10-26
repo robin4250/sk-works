@@ -109,7 +109,7 @@ try {
  await sharedCall(manager,managerSid,'select public.close_attendance_management_access($1) v',[access.grant]);
  await reject(()=>perform('upsert',[cell()]),/attendance_entry_access_required/);
  access=await open();
- await client.query("update attendance_entry_access_private.grants set created_at=clock_timestamp()-interval '16 minutes',expires_at=clock_timestamp()-interval '1 minute' where token_hash=encode(extensions.digest($1,'sha256'),'hex')",[access.grant]);
+ await client.query("update attendance_entry_access_private.grants set created_at=statement_timestamp()-interval '16 minutes',expires_at=statement_timestamp()-interval '1 minute' where token_hash=encode(extensions.digest($1,'sha256'),'hex')",[access.grant]);
  await reject(()=>perform('upsert',[cell()]),/attendance_entry_access_required/);
  access=await open();
  await sharedCall(manager,managerSid,"select public.set_secondary_password('synthetic-entry-rotated') v");
@@ -140,7 +140,47 @@ try {
  await client.query('update attendance_entry_access_private.rollout set enabled=false where company_id=$1',[A]);
  await reject(()=>exec(restoreSql),/attendance_entry_restore_used_or_configured/);await exec('rollback');
  eq(await q('select count(*)::int v from attendance_entry_access_private.events')>0,true,'Used restoration keeps every authorization/audit record');
- console.log(JSON.stringify({pass:true,checks,native_pg17:true,actual_four_financial_producers:true,one_entry_password_multiple_crud:true,wrong_password_counter_commits:true,session_company_role_credential_revision_bound:true,no_global_per_operation_activation:true,unused_restore_exact:true,unknown_dependency_refused:true,used_restore_refused:true,production_changed:false}));
+ phase='entry-bounded-retention';
+ await client.query('update attendance_entry_access_private.rollout set enabled=true where company_id=$1',[A]);
+ access=await open('synthetic-entry-rotated');
+ const activeBefore=await q("select to_jsonb(g) v from attendance_entry_access_private.grants g where token_hash=encode(extensions.digest($1,'sha256'),'hex')",[access.grant]);
+ const currentRevision=await q('select revision v from attendance_entry_access_private.rollout where company_id=$1',[A]);
+ await client.query("insert into attendance_entry_access_private.grants(token_hash,actor_id,session_id,company_id,revision,credential_fingerprint,created_at,expires_at) select encode(extensions.digest('retention-old-grant-'||n,'sha256'),'hex'),$1,$2,$3,$4,'synthetic-fingerprint',statement_timestamp()-interval '3 days',statement_timestamp()-interval '3 days'+interval '15 minutes' from generate_series(1,1105)n",[manager,managerSid,A,currentRevision]);
+ await client.query("insert into attendance_entry_access_private.events(event,actor_id,session_id,company_id,revision,created_at) select 'closed',$1,$2,$3,$4,clock_timestamp()-interval '91 days' from generate_series(1,1105)n",[manager,managerSid,A,currentRevision]);
+ const retainedEvents=()=>q("select jsonb_agg(to_jsonb(e) order by id) v from attendance_entry_access_private.events e where created_at>=clock_timestamp()-interval '90 days'");
+ const retainedGrants=()=>q("select jsonb_agg(to_jsonb(g) order by id) v from attendance_entry_access_private.grants g where not(expires_at<clock_timestamp() and coalesce(revoked_at,expires_at)<clock_timestamp()-interval '1 day')");
+ const grantsBefore=await retainedGrants(),logsBefore=await retainedEvents(),purgeBusinessBefore=await business();
+ const firstPurge=await q('select attendance_entry_access_private.purge_retained(1000) v');
+ eq(firstPurge.grants_deleted,1000,'First retention call deletes exactly 1000 expired grant hashes');
+ eq(firstPurge.events_deleted,0,'First call cannot exceed total batch budget across tables');
+ const secondPurge=await q('select attendance_entry_access_private.purge_retained(1000) v');
+ eq(secondPurge.grants_deleted,105,'Second retention call removes only remaining eligible grants');
+ eq(secondPurge.events_deleted,895,'Second call uses only remaining shared event budget');
+ const thirdPurge=await q('select attendance_entry_access_private.purge_retained(1000) v');
+ eq(thirdPurge.grants_deleted,0,'No extra expired grant rows are invented');
+ eq(thirdPurge.events_deleted,210,'Third call completes the old event backlog');
+ eq(await retainedEvents(),logsBefore,'Every newer authorization event remains byte-identical');
+ eq(await retainedGrants(),grantsBefore,'Every live or recently expired/revoked grant remains byte-identical');
+ eq(await q("select to_jsonb(g) v from attendance_entry_access_private.grants g where id=$1",[activeBefore.id]),activeBefore,'Current active grant remains byte-identical');
+ eq(await q("select count(*)::int v from attendance_entry_access_private.grants where expires_at<clock_timestamp() and coalesce(revoked_at,expires_at)<clock_timestamp()-interval '1 day'"),0,'Eligible grant backlog is empty after bounded calls');
+ eq(await q("select count(*)::int v from attendance_entry_access_private.events where created_at<clock_timestamp()-interval '90 days'"),0,'Eligible event backlog is empty after bounded calls');
+ const retention=await q('select to_jsonb(s) v from attendance_entry_access_private.retention_state s');
+ eq(String(retention.runs),'3','Bounded one-row summary records every maintenance call');
+ eq(String(retention.grants_deleted),'1105','Summary retains cumulative grant deletion count');
+ eq(String(retention.events_deleted),'1105','Summary retains cumulative event deletion count');
+ eq(retention.last_grants,0,'Summary retains last grant batch count');eq(retention.last_events,210,'Summary retains last event batch count');
+ eq(await q('select count(*)::int v from attendance_entry_access_private.retention_state'),1,'Maintenance audit itself stays one bounded row');
+ eq(await business(),purgeBusinessBefore,'Retention cannot mutate original business, salary, invoice or signing rows');
+ for(const limit of [null,0,1001])await reject(()=>q('select attendance_entry_access_private.purge_retained($1) v',[limit]),/attendance_entry_retention_limit/);
+ eq(await q('select to_jsonb(s) v from attendance_entry_access_private.retention_state s'),retention,'Invalid limits cannot record a false maintenance run');
+ for(const role of ['anon','authenticated','service_role']){
+  await exec('set role '+role);try{await reject(()=>q('select attendance_entry_access_private.purge_retained(1000) v'),{code:'42501'});}finally{await exec('reset role');}
+ }
+ eq(await perform('upsert',[cell('2026-10-17')]),1,'An unchanged current grant still authorizes real management after maintenance');
+ await client.query('update attendance_entry_access_private.rollout set enabled=false where company_id=$1',[A]);
+ await reject(()=>exec(restoreSql),/attendance_entry_restore_retention_used/);await exec('rollback');
+ eq(await q('select to_jsonb(s) v from attendance_entry_access_private.retention_state s'),retention,'Purge never turns a used module back into an unused uninstall candidate');
+ console.log(JSON.stringify({pass:true,checks,native_pg17:true,actual_four_financial_producers:true,one_entry_password_multiple_crud:true,wrong_password_counter_commits:true,session_company_role_credential_revision_bound:true,no_global_per_operation_activation:true,unused_restore_exact:true,unknown_dependency_refused:true,used_restore_refused:true,bounded_owner_retention:true,current_grants_and_recent_logs_preserved:true,production_changed:false}));
 `;
  const script=join(folder,'proof.mjs');await writeFile(script,prefix+prerequisites+unit+tail);
  const run=spawnSync(process.execPath,[script,process.argv[2]],{stdio:'inherit',env:{...process.env,

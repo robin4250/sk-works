@@ -27,6 +27,12 @@ create table attendance_entry_access_private.events(
  grant_id uuid,actor_id uuid not null,session_id uuid not null,company_id uuid not null,
  revision bigint not null,action text,items_sha256 text,reason text,
  created_at timestamptz not null default clock_timestamp());
+create table attendance_entry_access_private.retention_state(
+ singleton boolean primary key default true check(singleton),runs bigint not null default 0 check(runs>=0),
+ grants_deleted bigint not null default 0 check(grants_deleted>=0),events_deleted bigint not null default 0 check(events_deleted>=0),
+ last_at timestamptz,last_grants integer not null default 0,last_events integer not null default 0,
+ check(last_grants>=0 and last_events>=0 and last_grants+last_events<=1000));
+insert into attendance_entry_access_private.retention_state default values;
 create table attendance_entry_access_private.originals(signature text primary key,definition text not null,metadata jsonb not null,installed_metadata jsonb);
 create table attendance_entry_access_private.installed_functions(signature text primary key,metadata jsonb not null);
 create table attendance_entry_access_private.installed_catalog(singleton boolean primary key default true check(singleton),metadata jsonb not null);
@@ -36,6 +42,7 @@ insert into attendance_entry_access_private.originals(signature,definition,metad
 alter table attendance_entry_access_private.rollout enable row level security;
 alter table attendance_entry_access_private.grants enable row level security;
 alter table attendance_entry_access_private.events enable row level security;
+alter table attendance_entry_access_private.retention_state enable row level security;
 alter table attendance_entry_access_private.originals enable row level security;
 alter table attendance_entry_access_private.installed_functions enable row level security;
 alter table attendance_entry_access_private.installed_catalog enable row level security;
@@ -54,6 +61,37 @@ language sql stable security definer set search_path='' as $$
  'triggers',(select jsonb_agg(to_jsonb(t) order by t.oid) from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='attendance_entry_access_private'),
  'policies',(select jsonb_agg(to_jsonb(p) order by p.oid) from pg_policy p join pg_class c on c.oid=p.polrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='attendance_entry_access_private'))
 $$;
+
+-- Owner-operated maintenance only. No exposed/public purge RPC and no actor
+-- impersonation: an authenticated client cannot call this invoker function.
+create function attendance_entry_access_private.purge_retained(p_limit integer default 1000) returns jsonb
+language plpgsql set search_path='' as $$
+declare observed timestamptz:=clock_timestamp();removed_grants integer;removed_events integer;
+begin
+ if current_user<>'postgres' then raise sqlstate '42501' using message='attendance_entry_retention_owner_required';end if;
+ if p_limit is null or p_limit<1 or p_limit>1000 then raise sqlstate '22023' using message='attendance_entry_retention_limit';end if;
+ -- A live or recently expired capability is never removed. Locks held by a
+ -- concurrent access/revoke request are skipped rather than waited on.
+ with selected as(
+  select id from attendance_entry_access_private.grants
+  where expires_at<observed and coalesce(revoked_at,expires_at)<observed-interval '1 day'
+  order by coalesce(revoked_at,expires_at),id limit p_limit for update skip locked
+ ),removed as(delete from attendance_entry_access_private.grants g using selected s where g.id=s.id returning g.id)
+ select count(*)::integer into removed_grants from removed;
+ with selected as(
+  select id from attendance_entry_access_private.events where created_at<observed-interval '90 days'
+  order by created_at,id limit p_limit-removed_grants for update skip locked
+ ),removed as(delete from attendance_entry_access_private.events e using selected s where e.id=s.id returning e.id)
+ select count(*)::integer into removed_events from removed;
+ -- A single bounded summary avoids creating an unbounded purge-log table.
+ -- Any maintenance use permanently disqualifies unused-only uninstallation.
+ update attendance_entry_access_private.retention_state set runs=runs+1,
+  grants_deleted=grants_deleted+removed_grants,events_deleted=events_deleted+removed_events,
+  last_at=observed,last_grants=removed_grants,last_events=removed_events where singleton;
+ if not found then raise exception 'attendance_entry_retention_summary_missing';end if;
+ return jsonb_build_object('grants_deleted',removed_grants,'events_deleted',removed_events,'limit',p_limit,
+  'grant_retention_seconds',86400,'event_retention_days',90,'observed_at',observed);
+end $$;
 
 create function attendance_entry_access_private.guard_revision() returns trigger
 language plpgsql set search_path='' as $$begin
