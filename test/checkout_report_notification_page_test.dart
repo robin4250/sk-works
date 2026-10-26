@@ -132,7 +132,10 @@ void main() {
       String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
       final calls = <http.Request>[];
       final signature = {'strokes': [[{'x': 1, 'y': 1}]]};
-      final actual = SupabaseClient('https://notification-http.invalid', 'synthetic-public',
+      late final SupabaseClient actual;
+      // Initialize the client/isolate in the real zone, matching production.
+      await t.runAsync(() async {
+        actual = SupabaseClient('https://notification-http.invalid', 'synthetic-public',
         authOptions: const AuthClientOptions(autoRefreshToken: false),
         httpClient: MockClient((request) async {
           calls.add(request);
@@ -168,6 +171,13 @@ void main() {
           }
           return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'}, request: request);
         }));
+        await actual.auth.setInitialSession(jsonEncode({
+        'access_token': '${part({'alg': 'HS256'})}.${part({'sub': notificationActor,
+          'session_id': notificationClockIn, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic',
+        'refresh_token': 'synthetic', 'token_type': 'bearer', 'expires_in': 3600,
+        'user': {'id': notificationActor, 'aud': 'authenticated', 'created_at': '2026-01-01T00:00:00Z',
+          'app_metadata': <String, dynamic>{}, 'user_metadata': <String, dynamic>{}}}));
+      });
       addTearDown(() async {
         await t.pumpWidget(const SizedBox.shrink());
         await t.runAsync(actual.dispose);
@@ -182,12 +192,6 @@ void main() {
         }
         fail('HTTP fixture did not settle: ${calls.map((request) => request.url.path).toList()}');
       }
-      await t.runAsync(() => actual.auth.setInitialSession(jsonEncode({
-        'access_token': '${part({'alg': 'HS256'})}.${part({'sub': notificationActor,
-          'session_id': notificationClockIn, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic',
-        'refresh_token': 'synthetic', 'token_type': 'bearer', 'expires_in': 3600,
-        'user': {'id': notificationActor, 'aud': 'authenticated', 'created_at': '2026-01-01T00:00:00Z',
-          'app_metadata': <String, dynamic>{}, 'user_metadata': <String, dynamic>{}}})));
       t.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       var routes = 0;
       await t.pumpWidget(MaterialApp(home: CheckoutReportNotificationPage(reportId: notificationReport,
