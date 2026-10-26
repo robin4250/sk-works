@@ -168,7 +168,20 @@ void main() {
           }
           return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json'}, request: request);
         }));
-      addTearDown(actual.dispose);
+      addTearDown(() async {
+        await t.pumpWidget(const SizedBox.shrink());
+        await t.runAsync(actual.dispose);
+      });
+      Future<void> settleHttp() async {
+        // PostgREST decodes through a real isolate. Drive the real event loop
+        // until observable loading completes instead of advancing fake time.
+        for (var attempt = 0; attempt < 200; attempt++) {
+          await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+          await t.pump();
+          if (find.byType(LinearProgressIndicator).evaluate().isEmpty) return;
+        }
+        fail('HTTP fixture did not settle: ${calls.map((request) => request.url.path).toList()}');
+      }
       await t.runAsync(() => actual.auth.setInitialSession(jsonEncode({
         'access_token': '${part({'alg': 'HS256'})}.${part({'sub': notificationActor,
           'session_id': notificationClockIn, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.synthetic',
@@ -184,9 +197,9 @@ void main() {
           expect(value.sourceClockInId, notificationClockIn);
           expect(value.reporterSignatureSaved && value.responsibleSignatureSaved, true);
         })));
-      await t.pumpAndSettle();
+      await settleHttp();
       expect(find.text('日報を開く'), findsOneWidget);
-      await t.tap(find.text('日報を開く')); await t.pumpAndSettle();
+      await t.tap(find.text('日報を開く')); await settleHttp();
       expect(routes, legacy ? 0 : 1);
       if (legacy) expect(find.textContaining('管理者の確認が必要です。自動で再確定しません。'), findsOneWidget);
       expect(calls.where((request) => request.method != 'GET').every((request) =>
