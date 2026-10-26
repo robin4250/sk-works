@@ -17,3 +17,29 @@ jobs:
           node-version: '22'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
       - run: node tool/security/master-device-enrollment-candidate/check-intent.mjs
+  native-session-and-password:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic-fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: synthetic-fixture
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/native-setup.sql
+          psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/native-real-functions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/enrollment-intent.sql.review-only
+          psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/native-tests.sql
