@@ -86,7 +86,11 @@ class PayrollPdfService {
 
     final transfer = payrollPositionTransfer(detail, originalEarningEntries);
     final earningEntries = transfer?.entries ?? originalEarningEntries;
-    final displayDetail = transfer == null ? detail : <String, dynamic>{
+    final transferRequested = detail['position_transfer_snapshot'] is Map &&
+        (detail['position_transfer_snapshot'] as Map)['enabled'] == true;
+    final displayDetail = transfer == null ? <String, dynamic>{
+      ...detail, if (transferRequested) '_position_transfer_invalid': true,
+    } : <String, dynamic>{
       ...detail,
       '_position_transfer_rate': transfer.rate,
       '_position_transfer_days': transfer.days,
@@ -976,7 +980,9 @@ class PayrollPdfService {
                         pw.Expanded(
                           flex: earnings ? 39 : 43,
                           child: pw.Text(
-                            earnings && visible[i].key == '基本給' && detail['_position_transfer_rate'] != null
+                            earnings && visible[i].key == '基本給' && detail['_position_transfer_invalid'] == true
+                              ? '振替の設定・支給額を確認してください'
+                              : earnings && visible[i].key == '基本給' && detail['_position_transfer_rate'] != null
                               ? '${_number(detail['_position_transfer_rate'] as int)}円 × ${detail['_position_transfer_days']}日'
                               : recordedPayrollUnitEvidence(detail, name: visible[i].key,
                               section: earnings ? 'earning' : 'deduction',

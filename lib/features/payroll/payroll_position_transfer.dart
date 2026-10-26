@@ -27,6 +27,13 @@ PayrollPositionTransfer? payrollPositionTransfer(
     if (name.isEmpty || name == '基本給' || name == '基本給の調整額' ||
         amount == null || amount == 0 || !names.add(name) ||
         yen(original[name]) != amount) return null;
+    // Reject labels merged from more than one configured source row.
+    for (final container in [detail['custom_earnings'],
+        (detail['unit_resolution'] is Map) ? (detail['unit_resolution'] as Map)['items'] : null]) {
+      if (container is List && container.whereType<Map>().where((entry) =>
+          entry['name']?.toString().trim() == name &&
+          (entry['section'] == null || entry['section'] == 'earning')).length > 1) return null;
+    }
     transferred += amount;
     if (transferred > 2147483647) return null;
   }
