@@ -87,6 +87,13 @@ void main() {
     await expectLater(f.write(),throwsStateError);
     expect(f.entryCalls.where((r)=>r.url.path.endsWith('/force_manage_attendance_with_access')).length,writes);
   });
+  test('background during entrance response cannot install a late server grant', () async {
+    final f=EntryFixture();addTearDown(f.cleanup);await f.enter();
+    f.duringOpen=() async {f.access.invalidate();};
+    await expectLater(f.access.unlock('synthetic-entry-password'),throwsStateError);
+    expect(f.access.isOpen,false);
+    expect(f.entryCalls.where((r)=>r.url.path.endsWith('/force_manage_attendance_with_access')),isEmpty);
+  });
   test('historical A to B to A during entry cannot adopt old grant', () async {
     final f=EntryFixture();addTearDown(f.cleanup);await f.enter();
     f.duringOpen=() async {

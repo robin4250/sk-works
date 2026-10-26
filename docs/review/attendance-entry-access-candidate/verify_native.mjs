@@ -72,8 +72,8 @@ try {
  const cell=(day='2026-10-20',extra={})=>({worker_id:W,date:day,mode:'work',site_id:SITE,man_days:1,overtime_hours:0,early_hours:0,night_hours:0,allowance_names:[],company_allowance_selections:choices([]),company_allowance_legacy_labels:'',work_description:'入口認証後の正規管理操作',clock_in:'08:00',clock_out:'17:00',...extra});
  const deleteCell=day=>{const x=cell(day,{mode:'off'});delete x.company_allowance_selections;delete x.company_allowance_legacy_labels;return x;};
  const perform=(action,items,grant=access.grant,actor=manager,sid=managerSid,cid=A)=>sharedCall(actor,sid,'select public.force_manage_attendance_with_access($1,$2::jsonb,$3,$4) v',[action,JSON.stringify(items),grant,cid]);
- const salaryDays=()=>q("select coalesce((detail->>'出勤日数')::numeric,0) v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,W]);
- const invoiceAmount=()=>q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]);
+ const salaryDays=()=>q("select coalesce((select (detail->>'出勤日数')::numeric from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'),0) v",[A,W]);
+ const invoiceAmount=()=>q('select coalesce((select grand_total from invoices where company_id=$1 and customer_id=$2 and automatic_calculation),0) v',[A,customer]);
  const salaryBefore=Number(await salaryDays()??0),invoiceBefore=Number(await invoiceAmount()??0);
  await reject(()=>sharedCall(manager,managerSid,'select public.force_manage_attendance($1,$2::jsonb) v',['upsert',JSON.stringify([cell()])]),/attendance_entry_access_required/);
  await reject(()=>sharedCall(manager,managerSid,'select public.force_manage_attendance_with_proof($1,$2::jsonb,$3) v',['upsert',JSON.stringify([cell()]),'a'.repeat(64)]),/attendance_entry_access_required/);
@@ -86,6 +86,8 @@ try {
  eq(await perform('delete',[deleteCell('2026-10-20')]),1,'Delete uses same page authorization without another password');
  eq(Number(await salaryDays()),salaryBefore,'Actual payroll removes selected day');
  eq(Number(await invoiceAmount()),invoiceBefore,'Actual invoice removes selected participant-day');
+ eq(await q("select count(*)::int v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,W]),0,'Actual producer removes empty daily-pay draft rather than fabricating zero-day statement');
+ eq(await q('select count(*)::int v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]),0,'Actual producer removes empty automatic invoice draft');
  eq(await credential(),afterEntryCredential,'Multiple CRUD operations never call password verifier again');
  eq(await q("select count(*)::int v from attendance_entry_access_private.events where event='management'"),3,'Each actual management write remains audited');
  phase='entry-denials-and-lifecycle';
