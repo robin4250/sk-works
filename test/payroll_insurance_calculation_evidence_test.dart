@@ -134,4 +134,57 @@ void main() {
     expect(jsonEncode(detail), before);
   });
 
+  test('broken saved arithmetic never prints a false equation even when amounts agree', () {
+    final detail = insuranceBoundaryEvidenceFixture(healthBase: 58000, pensionBase: 88000);
+    final tax = detail['tax_calculation'] as Map;
+    final health = (tax['rates'] as List).first as Map;
+    health['employee_yen'] = 999999;
+    (tax['premiums'] as Map)['健康保険料'] = 999999;
+    detail['健康保険料'] = 999999;
+    final before = jsonEncode(detail);
+    final row = read(detail).rows.first;
+    expect(row.amountYen, 999999);
+    expect(row.formula, '控除額 ¥999,999（保存された計算基準・料率と不一致）');
+    expect(row.formula, isNot(contains('×')));
+    expect(row.formula, isNot(contains('＝')));
+    expect(jsonEncode(detail), before);
+    detail['健康保険料'] = 3000;
+    tax['deduction_overrides'] = {'health_insurance': 3000};
+    expect(read(detail).rows.first.amountYen, 3000);
+    expect(read(detail).rows.first.formula, contains('保存された計算基準・料率と不一致'));
+    expect(read(detail).rows.first.formula, isNot(contains('×')));
+  });
+  test('saved floor and ceiling both retain actual after-rounding amounts', () {
+    for (final amount in [2856, 2857]) {
+      final detail = insuranceBoundaryEvidenceFixture(healthBase: 58000,
+        pensionBase: 88000, healthRate: 4925000);
+      final tax = detail['tax_calculation'] as Map;
+      ((tax['rates'] as List).first as Map)['employee_yen'] = amount;
+      (tax['premiums'] as Map)['健康保険料'] = amount;
+      detail['健康保険料'] = amount;
+      final before = jsonEncode(detail);
+      expect(read(detail).rows.first.formula,
+        amount == 2856 ? '標準報酬月額 ¥58,000 × 4.925% ＝ ¥2,856'
+          : '標準報酬月額 ¥58,000 × 4.925% ＝ ¥2,857');
+      expect(jsonEncode(detail), before);
+    }
+  });
+  test('integer evidence guard remains exact beyond double safe multiplication', () {
+    for (final amount in [2147483625, 2147483626]) {
+      final detail = insuranceBoundaryEvidenceFixture(healthBase: 58000, pensionBase: 88000);
+      final tax = detail['tax_calculation'] as Map;
+      final health = (tax['rates'] as List).first as Map;
+      health['base_yen'] = 2147483647;
+      (health['value'] as Map)['employee'] = 99999999;
+      health['employee_yen'] = amount;
+      detail['健康保険料'] = amount;
+      expect(read(detail).rows.first.amountYen, amount);
+      expect(read(detail).rows.first.formula, contains('× 99.999999% ＝'));
+      health['employee_yen'] = amount + 2;
+      detail['健康保険料'] = amount + 2;
+      expect(read(detail).rows.first.formula, contains('保存された計算基準・料率と不一致'));
+      expect(read(detail).rows.first.formula, isNot(contains('×')));
+    }
+  });
+
 }

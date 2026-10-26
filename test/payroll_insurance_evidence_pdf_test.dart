@@ -77,7 +77,7 @@ print(json.dumps(report,ensure_ascii=False))
       final statement = PayrollStatementRecord(id: 'insurance-boundary-${values.$1}',
         companyName: '境界照合用の合成会社', workerName: '合成社員',
         periodStart: DateTime(2026, 10, 1), periodEnd: DateTime(2026, 10, 31),
-        grossPay: 500000, deductions: deductions.toDouble(), netPay: (500000 - deductions).toDouble(), detail: detail);
+        grossPay: 500000, deductions: deductions, netPay: 500000 - deductions, detail: detail);
       final bytes = await PayrollPdfService.buildPdf(statement, regularFont: font, boldFont: font);
       expect(jsonEncode(detail), before);
       final folder = Platform.environment['SKO_PDF_OUTPUT_DIR'] ??
