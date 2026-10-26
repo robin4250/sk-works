@@ -62,6 +62,7 @@ jobs:
       - name: Actual reported-version provider and transaction code
         working-directory: gotrue
         env:
+          SKO_APPLE_LIFECYCLE_ADMIN_URL: postgresql://postgres:root@127.0.0.1:5432/postgres
           SKO_APPLE_ENROLLMENT_FILE: ${{ github.workspace }}/candidate/docs/review/apple-existing-login-candidate/native-enrollment.sql.review-only
           SKO_APPLE_POLICY_FILE: ${{ github.workspace }}/candidate/docs/review/apple-existing-login-candidate/owner-policy.sql.review-only
         run: go test ./internal/api -run '^TestSKOApple(OwnerPolicyTransaction|NativeOnlyConfigurationBoundary|NativeLinkOriginalSession|NativeEnrollmentLedgerLifecycle)$' -count=1 -v
