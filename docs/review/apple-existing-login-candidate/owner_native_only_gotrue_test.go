@@ -64,7 +64,7 @@ func TestSKOAppleNativeOnlyConfigurationBoundary(t *testing.T){
  cfg.External.Apple.Secret=""
  cache:=provider.NewOIDCProviderCache(time.Minute)
  before:=calls.Load()
- _,err=provider.NewAppleProvider(ctx,cfg.External.Apple,cache)
+ _,err:=provider.NewAppleProvider(ctx,cfg.External.Apple,cache)
  require.ErrorContains(t,err,"missing OAuth secret")
  require.Equal(t,before,calls.Load(),"OAuth is rejected before discovery or identity work")
 
