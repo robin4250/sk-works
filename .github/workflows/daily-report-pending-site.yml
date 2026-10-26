@@ -1,0 +1,44 @@
+name: Daily report supervisor pending by site
+on:
+  pull_request:
+    paths:
+      - 'lib/features/daily_reports/daily_report_month*'
+      - 'test/daily_report_pending_site_test.dart'
+      - 'supabase/review/list_pending_route_visit_reports.sql.review-only'
+      - 'tool/verify_pending_route_listing.mjs'
+      - 'tool/pending_route_listing_native.mjs'
+      - '.github/workflows/daily-report-pending-site.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/daily_reports/daily_report_month_page.dart lib/features/daily_reports/daily_report_month_repository.dart test/daily_report_pending_site_test.dart
+      - run: flutter test test/daily_report_pending_site_test.dart test/daily_report_calendar_test.dart test/daily_report_calendar_opening_test.dart test/daily_report_month_export_test.dart test/daily_report_month_navigation_test.dart
+  native-read-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_pending_report_fixture
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/verify_pending_route_listing.mjs tool/pending_route_listing_native.mjs
+        env:
+          SKO_PENDING_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_pending_report_fixture
+          SKO_PENDING_PG_MODULE: ${{ github.workspace }}/tool/security/fixture_dependencies/node_modules/pg/lib/index.js

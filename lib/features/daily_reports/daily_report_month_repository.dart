@@ -5,6 +5,23 @@ import 'daily_report_pdf_evidence.dart';
 import 'daily_report_repository.dart';
 import 'route_visit_report_context.dart';
 
+enum DailyReportSaveState { saved, supervisorPending, finalizationPending, inputPending }
+
+extension DailyReportSaveStateLabel on DailyReportSaveState {
+  String get label => switch (this) {
+    DailyReportSaveState.saved => '保存済み',
+    DailyReportSaveState.supervisorPending => 'サイン待ち',
+    DailyReportSaveState.finalizationPending => '確定待ち',
+    DailyReportSaveState.inputPending => '入力途中',
+  };
+}
+
+class DailyReportPendingResult {
+  const DailyReportPendingResult(this.entries, {this.visitWarning});
+  final List<DailyReportMonthEntry> entries;
+  final String? visitWarning;
+}
+
 class DailyReportMonthEntry {
   const DailyReportMonthEntry({
     required this.id,
@@ -15,12 +32,23 @@ class DailyReportMonthEntry {
     this.routeId,
     this.visitContext,
     this.createdAt,
+    this.reporterSigned = false,
+    this.supervisorSigned = false,
   });
   final String id, name, status;
   final DateTime date;
   final String? siteId, routeId;
   final RouteVisitReportContext? visitContext;
   final DateTime? createdAt;
+  final bool reporterSigned, supervisorSigned;
+  DailyReportSaveState get saveState {
+    if (const ['signed', 'completed'].contains(status)) return DailyReportSaveState.saved;
+    if (status == 'reporter_signed' || (status == 'draft' && reporterSigned && !supervisorSigned)) {
+      return DailyReportSaveState.supervisorPending;
+    }
+    if (status == 'draft' && reporterSigned && supervisorSigned) return DailyReportSaveState.finalizationPending;
+    return DailyReportSaveState.inputPending;
+  }
   bool get isVisit => visitContext != null;
   String get kindLabel => isVisit ? '訪問日報' : routeId != null ? 'ルート日報' : '日報';
 }
@@ -60,6 +88,8 @@ class DailyReportMonthRepository {
   Future<List<DailyReportMonthEntry>> list(DateTime month, {String? workerId}) async {
     final user = actor;
     final result = <DailyReportMonthEntry>[];
+    final reporterIds = await _signatureIds(month, workerId: workerId, reporter: true);
+    final supervisorIds = await _signatureIds(month, workerId: workerId, reporter: false);
     // Explicit pagination avoids silently truncating a month's accessible reports.
     for (var offset = 0; ; offset += 500) {
       checkActor(user);
@@ -97,6 +127,7 @@ class DailyReportMonthRepository {
             date: date,
             name: name,
             status: row['status']?.toString() ?? '',
+            reporterSigned: reporterIds.contains(id), supervisorSigned: supervisorIds.contains(id),
             siteId: site,
             routeId: route,
             createdAt: DateTime.tryParse(row['created_at']?.toString() ?? ''),
@@ -155,6 +186,120 @@ class DailyReportMonthRepository {
     return result;
   }
 
+  Future<Set<String>> _signatureIds(DateTime month, {String? workerId, required bool reporter}) async {
+    final user = actor;
+    final ids = <String>{};
+    for (var offset = 0; ; offset += 500) {
+      checkActor(user);
+      var query = client.from('daily_reports').select('id${workerId == null ? '' : ',daily_report_workers!inner(worker_id)'}')
+          .eq('status', 'draft').gte('report_date', dateKey(DateTime(month.year, month.month)))
+          .lt('report_date', dateKey(DateTime(month.year, month.month + 1)));
+      if (workerId != null) query = query.eq('daily_report_workers.worker_id', workerId);
+      query = reporter ? query.not('representative_signature_json', 'is', null)
+          : query.or('supervisor_signature_json.not.is.null,signature_json.not.is.null');
+      final rows = await query.order('id').range(offset, offset + 499);
+      checkActor(user);
+      for (final row in rows) {
+        final id = row['id'];
+        if (id is! String || id.isEmpty || !ids.add(id)) throw StateError('署名状態を確認できません。');
+      }
+      if (rows.length < 500) return ids;
+    }
+  }
+
+  /// All accessible supervisor-pending reports, independent of the selected month.
+  /// Only saved metadata is fetched; signature stroke bodies are never selected.
+  Future<DailyReportPendingResult> listPending({String? workerId}) async {
+    final user = actor;
+    final uuid = RegExp(r'^[a-fA-F0-9]{8}-(?:[a-fA-F0-9]{4}-){3}[a-fA-F0-9]{12}$');
+    if (workerId != null && !uuid.hasMatch(workerId)) throw StateError('対象メンバーを確認できません。');
+    final result = <DailyReportMonthEntry>[];
+    final seen = <String>{};
+    DateTime? afterDate;
+    String? afterId;
+    for (;;) {
+      checkActor(user);
+      var query = client.from('daily_reports').select(
+        'id,report_date,created_at,site_id,route_assignment_id,status,work_description,sites(name),route_assignments(route_name)${workerId == null ? '' : ',daily_report_workers!inner(worker_id)'}')
+        .eq('status', 'draft').not('representative_signature_json', 'is', null)
+        .isFilter('supervisor_signature_json', null).isFilter('signature_json', null);
+      if (workerId != null) query = query.eq('daily_report_workers.worker_id', workerId);
+      if (afterDate != null) query = query.or('report_date.gt.${dateKey(afterDate)},and(report_date.eq.${dateKey(afterDate)},id.gt.$afterId)');
+      final rows = await query.order('report_date').order('id').range(0, 199);
+      checkActor(user);
+      for (final row in rows) {
+        final id = row['id'];
+        final date = DateTime.tryParse(row['report_date']?.toString() ?? '');
+        final site = row['site_id'] as String?, route = row['route_assignment_id'] as String?;
+        final destination = site != null ? row['sites'] : row['route_assignments'];
+        final name = destination is Map ? destination[site != null ? 'name' : 'route_name'] : null;
+        if (id is! String || !uuid.hasMatch(id) || date == null || row['status'] != 'draft' || (site == null && route == null) ||
+            name is! String || name.trim().isEmpty || !seen.add('report:$id') ||
+            (afterDate != null && (date.isBefore(afterDate) || (date == afterDate && id.compareTo(afterId!) <= 0)))) {
+          throw StateError('サイン待ちの日報を確認できません。');
+        }
+        // Missing required report input must not be represented as supervisor-only waiting.
+        if (row['work_description'] is String && (row['work_description'] as String).trim().isNotEmpty) {
+          result.add(DailyReportMonthEntry(id: id, date: date, name: name, status: 'draft',
+            siteId: site, routeId: route, reporterSigned: true,
+            createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '')));
+        }
+        afterDate = date; afterId = id;
+      }
+      if (rows.length < 200) break;
+    }
+    String? warning;
+    try {
+      final companies = await client.from('company_members').select('company_id').eq('user_id', user).order('company_id');
+      checkActor(user);
+      final companyIds = <String>{};
+      for (final company in companies) {
+        final companyId = company['company_id'];
+        if (companyId is! String || !uuid.hasMatch(companyId) || !companyIds.add(companyId)) throw StateError('会社を確認できません。');
+        DateTime? cursorDate; String? cursorId;
+        for (;;) {
+          final raw = await client.rpc('list_pending_route_visit_reports', params: {
+            'p_company_id': companyId, 'p_worker_id': workerId,
+            'p_after_date': cursorDate == null ? null : dateKey(cursorDate), 'p_after_id': cursorId, 'p_limit': 200,
+          });
+          checkActor(user);
+          if (raw is! Map || raw['actor_id'] != user || raw['company_id'] != companyId || raw['entries'] is! List) {
+            throw StateError('訪問日報の対象を確認できません。');
+          }
+          final page = raw['entries'] as List;
+          if (page.length > 200) throw StateError('訪問日報の件数を確認できません。');
+          for (final row in page) {
+            if (row is! Map || row['company_id'] != companyId || row['status'] != 'reporter_signed' ||
+                row['reporter_signed'] != true || row['supervisor_signed'] != false) throw StateError('訪問日報の署名状態を確認できません。');
+            String text(String key) {
+              final value = row[key]; if (value is! String || value.isEmpty) throw StateError('訪問日報の識別情報を確認できません。');return value;
+            }
+            final id = text('id'), date = DateTime.tryParse(text('report_date'));
+            if (date == null || !seen.add('visit:$id') || (cursorDate != null &&
+                (date.isBefore(cursorDate) || (date == cursorDate && id.compareTo(cursorId!) <= 0)))) throw StateError('訪問日報の順序を確認できません。');
+            final context = RouteVisitReportContext(sourceClockInId: text('source_clock_in_id'),
+              routeAssignmentId: text('route_assignment_id'), routeStopId: text('route_stop_id'),
+              startCaptureId: text('start_capture_id'), endCaptureId: text('end_capture_id'));
+            context.toRpcParams();
+            result.add(DailyReportMonthEntry(id: id, date: date, name: text('site_name'), status: 'reporter_signed',
+              siteId: row['site_id'] is String ? row['site_id'] as String : null, routeId: context.routeAssignmentId, visitContext: context, reporterSigned: true,
+              createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '')));
+            cursorDate = date; cursorId = id;
+          }
+          if (page.length < 200) break;
+        }
+      }
+    } catch (_) {
+      checkActor(user);
+      // Partial visit pages are never presented as a complete list.
+      result.removeWhere((entry) => entry.isVisit);
+      warning = '訪問日報のサイン待ちは未確認です。再読み込みしてください。';
+    }
+    checkActor(user);
+    result.sort((a, b) { final name = a.name.compareTo(b.name); return name != 0 ? name : a.date.compareTo(b.date); });
+    return DailyReportPendingResult(List.unmodifiable(result), visitWarning: warning);
+  }
+
   /// Classifies actual saved reports using evidence metadata, without downloading photos.
   Future<bool> hasPhotos(DailyReportMonthEntry entry, {required String expectedActor}) async {
     checkActor(expectedActor);
@@ -206,4 +351,5 @@ class DailyReportMonthRepository {
     return DailyReportMonthDocument(report, photos);
   }
 }
+
 

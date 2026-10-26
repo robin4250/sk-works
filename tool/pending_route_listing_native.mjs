@@ -1,0 +1,5 @@
+import{pathToFileURL}from'node:url';import path from'node:path';
+const loaded=await import(pathToFileURL(path.resolve(process.env.SKO_PENDING_PG_MODULE)).href);const Client=loaded.Client??loaded.default?.Client;
+const raw=process.env.SKO_PENDING_FIXTURE_URL;const u=new URL(raw);
+if(typeof Client!=='function'||u.hostname!=='127.0.0.1'||u.pathname!=='/sko_pending_report_fixture'||u.username!=='postgres'||u.password!=='fixture-only-password'||u.search||u.hash)throw Error('Dedicated localhost pending-report fixture only');
+export class PGlite{constructor(){this.client=new Client({connectionString:raw});this.ready=this.client.connect().then(async()=>{if(Math.floor(Number((await this.client.query('show server_version_num')).rows[0].server_version_num)/10000)!==17)throw Error('PostgreSQL17 required');if((await this.client.query("select to_regclass('public.company_members')x")).rows[0].x)throw Error('Empty fixture only');});}async query(q,a){await this.ready;return this.client.query(q,a);}async exec(q){await this.ready;return this.client.query(q);}async close(){await this.client.end();}}
