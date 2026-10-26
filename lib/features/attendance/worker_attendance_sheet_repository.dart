@@ -81,8 +81,10 @@ class WorkerAttendanceMonth {
     required this.month,
     required this.days,
     this.allowanceUnits = const <String, String>{},
+    this.pendingDetailsUnavailable = false,
   });
 
+  final bool pendingDetailsUnavailable;
   final int year;
   final int month;
   final Map<DateTime, WorkerAttendanceDay> days;
@@ -251,14 +253,22 @@ class WorkerAttendanceSheetRepository {
                 .inFilter('report_id', reportIds.toList()),
             reportIds: reportIds, workerId: targetWorkerId);
 
-    final pendingReports = AttendancePendingReportDetails.parse(
-      await _client.from('daily_report_workers')
-          .select('report_id,worker_id,overtime_hours,early_hours,night_hours,allowance_label,company_allowance_selections,daily_reports!inner(id,report_date,status,sites(name))')
-          .eq('worker_id', targetWorkerId)
-          .eq('daily_reports.status', 'draft')
-          .gte('daily_reports.report_date', startText)
-          .lt('daily_reports.report_date', endText),
-      workerId: targetWorkerId, month: start);
+    var pendingReports = const <AttendancePendingReportDetails>[];
+    var pendingDetailsUnavailable = false;
+    try {
+      pendingReports = AttendancePendingReportDetails.parse(
+        await _client.from('daily_report_workers')
+            .select('report_id,worker_id,overtime_hours,early_hours,night_hours,allowance_label,company_allowance_selections,daily_reports!inner(id,report_date,status,sites(name))')
+            .eq('worker_id', targetWorkerId)
+            .eq('daily_reports.status', 'draft')
+            .gte('daily_reports.report_date', startText)
+            .lt('daily_reports.report_date', endText),
+        workerId: targetWorkerId, month: start);
+    } catch (_) {
+      // This supplemental read must not hide verified attendance. Never claim
+      // that missing/denied/malformed draft details are an empty confirmed set.
+      pendingDetailsUnavailable = true;
+    }
 
     final verificationRows = await _client
         .from('attendance_verifications')
@@ -402,6 +412,7 @@ class WorkerAttendanceSheetRepository {
     return WorkerAttendanceMonth(
       year: month.year,
       month: month.month,
+      pendingDetailsUnavailable: pendingDetailsUnavailable,
       allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),
       days: {
         for (final entry in drafts.entries)

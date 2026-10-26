@@ -234,6 +234,8 @@ class _WorkerAttendanceSheetPageState extends State<WorkerAttendanceSheetPage> {
               onPaidLeave: _openPaidLeave,
               onCorrection: _openAttendanceCorrection,
             ),
+            if (_data?.pendingDetailsUnavailable == true)
+              const _PendingReportReadWarning(),
             _WeekTabs(
               count: weeks.length,
               selected: _selectedWeek,
@@ -558,7 +560,7 @@ class _AttendanceDayCard extends StatelessWidget {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                    ] else if (worked) ...[
+                    ] else if (worked || day?.hasAllowance == true) ...[
                       const SizedBox(height: 2),
                       Wrap(spacing: 4, runSpacing: 3, children: _tags(day!)),
                     ],
@@ -611,7 +613,7 @@ class _AttendanceDayCard extends StatelessWidget {
                         ],
                       )
                     : Text(
-                        day?.pendingReports.isNotEmpty == true ? '未確定' : SkoLanguageController.tr('休み'),
+                        day?.pendingReports.isNotEmpty == true ? '未確定' : day?.hasAllowance == true ? '手当のみ' : SkoLanguageController.tr('休み'),
                         textAlign: TextAlign.right,
                         style: TextStyle(fontWeight: FontWeight.w800),
                       ),
@@ -843,6 +845,8 @@ class _WorkerAttendanceMonthPageState
                 ),
               ),
             ],
+            if (_data.pendingDetailsUnavailable)
+              const _PendingReportReadWarning(),
             const SizedBox(height: 6),
             _MonthCalendar(
               month: _month,
@@ -932,7 +936,7 @@ class _MonthCalendar extends StatelessWidget {
             LayoutBuilder(
               builder: (context, constraints) {
                 final cellHeight =
-                    MediaQuery.textScalerOf(context).scale(11) * 9 + 18;
+                    MediaQuery.textScalerOf(context).scale(11) * 14 + 24;
                 return GridView.count(
                   crossAxisCount: 7,
                   shrinkWrap: true,
@@ -1026,7 +1030,7 @@ class _MonthCalendarCell extends StatelessWidget {
             ),
             const Spacer(),
             Text(
-              paidLeave ? '有給' : worked ? shortSite : day?.pendingReports.isNotEmpty == true ? '日報' : '休',
+              paidLeave ? '有給' : worked ? shortSite : day?.pendingReports.isNotEmpty == true ? '日報' : day?.hasAllowance == true ? '手当' : '休',
               maxLines: 1,
               overflow: TextOverflow.clip,
               style: TextStyle(
@@ -1073,6 +1077,16 @@ class _MonthCalendarCell extends StatelessWidget {
 
 String _attendanceDetailNumber(double value) => value.toStringAsFixed(2)
     .replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+
+class _PendingReportReadWarning extends StatelessWidget {
+  const _PendingReportReadWarning();
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+    child: Text('未確定日報の残業・手当を取得できませんでした。再読込してください。確定済み記録のみ表示しています。',
+      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+  );
+}
 
 class _PendingReportLabels extends StatelessWidget {
   const _PendingReportLabels({required this.day, this.compact = false});

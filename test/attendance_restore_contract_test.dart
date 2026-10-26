@@ -31,11 +31,16 @@ void main() {
     expect(page, contains('final itemHeight ='));
     expect(page, contains('(constraints.maxHeight - verticalPadding) / week.length'));
     expect(page, contains('physics: const NeverScrollableScrollPhysics()'));
-    expect(page, contains('itemExtent: itemHeight'));
+    // Long saved allowance names need natural row height; preserve the minimum
+    // viewport allocation without clipping wrapped detail rows.
+    expect(page, contains('constraints: BoxConstraints(minHeight: itemHeight)'));
+    expect(page, contains('Wrap(spacing: 4, runSpacing: 3'));
+    expect(page, isNot(contains('itemExtent: itemHeight')));
     expect(page, contains('padding: const EdgeInsets.fromLTRB(10, 5, 10, 5)'));
     expect(pdf, contains('day.hasAllowance'));
     expect(pdf, contains('day.allowanceNames'));
     expect(pdf, contains("data.allowanceUnits[entry.key] ?? '回'"));
   });
 }
+
 
