@@ -105,7 +105,9 @@ void main() {
       expect(find.text(label), findsOneWidget);
       final tile = find.ancestor(of: find.text(label), matching: find.byType(ListTile));
       await tester.ensureVisible(tile);
-      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      expect(tile.hitTestable(), findsOneWidget);
+      await tester.tap(tile.hitTestable());
       await tester.pumpAndSettle();
       expect(find.text('保存済みの作業'), findsOneWidget);
       await tester.pageBack();
@@ -128,7 +130,9 @@ void main() {
       expect(subtitle, findsOneWidget);
       final tile = find.ancestor(of: subtitle, matching: find.byType(ListTile));
       await tester.ensureVisible(tile);
-      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      expect(tile.hitTestable(), findsOneWidget);
+      await tester.tap(tile.hitTestable());
       await tester.pumpAndSettle();
       expect(find.text('preview:visit-$i'), findsOneWidget);
       await tester.pageBack();
