@@ -285,7 +285,9 @@ class _OwnDocumentRegistrationPageState
                     ),
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  _documentRegistrationStep(
+                    '①', '書類種類', requirementId == null ? '必須' : '選択済み',
+                    DropdownButtonFormField<String>(
                     initialValue: requirementId,
                     decoration: const InputDecoration(labelText: '書類種類'),
                     items: [
@@ -299,9 +301,11 @@ class _OwnDocumentRegistrationPageState
                       requirementId = value;
                       attachPhoto = false;
                     }),
-                  ),
+                  )),
                   const SizedBox(height: 8),
-                  ListTile(
+                  _documentRegistrationStep(
+                    '②', '有効期限', expiresAt == null ? '任意' : '設定済み',
+                    ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('有効期限'),
                     subtitle: Text(
@@ -322,17 +326,23 @@ class _OwnDocumentRegistrationPageState
                         setDialogState(() => expiresAt = picked);
                       }
                     },
-                  ),
-                  TextField(
+                  )),
+                  const SizedBox(height: 8),
+                  _documentRegistrationStep(
+                    '③', '備考', '任意',
+                    TextField(
                     controller: notes,
                     decoration: const InputDecoration(labelText: '備考'),
                     maxLines: 2,
-                  ),
+                  )),
+                  const SizedBox(height: 8),
                   if (!photoEditingAvailable)
                     const Text(
                       '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。保存済みの写真は保持します。',
                     ),
-                  CheckboxListTile(
+                  _documentRegistrationStep(
+                    '④', '添付', attachPhoto ? '次に選択' : '任意',
+                    CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('写真を添付する'),
                     value: attachPhoto,
@@ -343,7 +353,7 @@ class _OwnDocumentRegistrationPageState
                         ? null
                         : (value) =>
                               setDialogState(() => attachPhoto = value ?? false),
-                  ),
+                  )),
                 ],
               ),
             ),
@@ -361,7 +371,7 @@ class _OwnDocumentRegistrationPageState
                         'notes': notes.text.trim(),
                         'attachPhoto': attachPhoto,
                       }),
-                child: const Text('登録'),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [Text('⑤ '), Text('登録')]),
               ),
             ],
           ),
@@ -714,3 +724,32 @@ class _OwnDocumentRegistrationPageState
   }
 }
 
+
+
+Widget _documentRegistrationStep(
+    String number, String label, String status, Widget child) {
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      border: Border.all(color: const Color(0xFF1976D2), width: 1),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Text(number, style: const TextStyle(
+              color: Color(0xFF1976D2), fontWeight: FontWeight.bold)),
+          const SizedBox(width: 6),
+          Expanded(child: Text(label,
+              style: const TextStyle(fontWeight: FontWeight.bold))),
+          Text(status, style: TextStyle(
+              color: status == '選択済み' || status == '設定済み'
+                  ? Colors.green.shade700 : Colors.black54, fontSize: 12)),
+        ]),
+        child,
+      ],
+    ),
+  );
+}
