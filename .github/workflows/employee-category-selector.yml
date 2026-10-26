@@ -1,0 +1,23 @@
+name: Employee category selector candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/employee_category_selector.dart'
+      - 'test/employee_category_selector_test.dart'
+      - '.github/workflows/employee-category-selector.yml'
+permissions:
+  contents: read
+jobs:
+  selector:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/people/employee_category_selector.dart test/employee_category_selector_test.dart
+      - run: flutter test test/employee_category_selector_test.dart
