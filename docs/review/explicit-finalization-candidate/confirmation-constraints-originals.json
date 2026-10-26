@@ -1,0 +1,17 @@
+[
+  {
+    "conname": "confirmations_check",
+    "contype": "c",
+    "definition": "CHECK ((confirmation_kind = 'management'::text) = (NULLIF(btrim(management_reason), ''::text) IS NOT NULL))"
+  },
+  {
+    "conname": "confirmations_check1",
+    "contype": "c",
+    "definition": "CHECK (source_kind <> 'managed_attendance'::text OR confirmation_kind = 'management'::text)"
+  },
+  {
+    "conname": "confirmations_confirmation_kind_check",
+    "contype": "c",
+    "definition": "CHECK (confirmation_kind = ANY (ARRAY['self'::text, 'group_before_reporter'::text, 'management'::text, 'approved_editor'::text]))"
+  }
+]

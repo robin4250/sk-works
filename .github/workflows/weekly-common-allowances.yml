@@ -1,0 +1,29 @@
+name: Weekly attendance registered allowance display
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/worker_attendance*.dart'
+      - 'test/worker_attendance_registered_allowances_test.dart'
+      - 'test/device_review_batch_contract_test.dart'
+      - 'test/allowance_unit_display_contract_test.dart'
+      - 'test/attendance_restore_contract_test.dart'
+      - '.github/workflows/weekly-common-allowances.yml'
+permissions:
+  contents: read
+jobs:
+  registered-display:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.yaml pubspec.lock
+      - run: flutter analyze lib/features/attendance/worker_attendance_sheet_repository.dart lib/features/attendance/worker_attendance_sheet_page.dart lib/features/attendance/worker_attendance_registered_allowances.dart test/worker_attendance_registered_allowances_test.dart
+      - run: timeout 300 flutter test test/worker_attendance_registered_allowances_test.dart test/attendance_sheet_paid_leave_footer_actions_contract_test.dart test/attendance_sheet_correction_entry_contract_test.dart test/paid_leave_attendance_sheet_contract_test.dart test/device_review_batch_contract_test.dart test/allowance_unit_display_contract_test.dart test/attendance_restore_contract_test.dart --reporter expanded

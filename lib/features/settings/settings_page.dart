@@ -15,6 +15,7 @@ import '../../data/supabase_backend.dart';
 import '../../international/language_controller.dart';
 import 'company_module_settings_page.dart';
 import 'company_rate_settings_page.dart';
+import 'company_work_category_page.dart';
 import 'company_payroll_rates_page.dart';
 import 'master_device_management_page.dart';
 import 'master_device_repository.dart';
@@ -386,6 +387,15 @@ class _SettingsPageState extends State<SettingsPage> {
                               leading: const Icon(Icons.tune_outlined),
                               title: const Text('関連設定'),
                               children: [
+                                ListTile(
+                                  leading: const Icon(Icons.schedule_outlined),
+                                  title: const Text('勤務区分の自動入力'),
+                                  subtitle: const Text('日勤・夜勤の出勤時刻と会社の休日'),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: _companyId == null ? null : () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(builder: (_) => CompanyWorkCategoryPage(companyId: _companyId!)),
+                                  ),
+                                ),
                                 ListTile(
                                   leading: const Icon(Icons.currency_yen_outlined),
                                   title: const Text('消費税・福利厚生費・旧単価'),

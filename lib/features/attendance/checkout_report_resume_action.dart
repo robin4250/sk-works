@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../international/language_controller.dart';
 import '../daily_reports/daily_report_page.dart';
 import 'checkout_report_resume_repository.dart';
+import 'checkout_report_gate.dart';
+import 'checkout_report_gate_repository.dart';
 
 typedef CheckoutReportOpener = Future<void> Function(
     BuildContext context, CheckoutReportResumeTarget target);
@@ -23,11 +25,38 @@ Future<CheckoutReportResumeTarget> openCheckoutReportResumeTarget(
   required CheckoutReportResumeTarget target,
   required CheckoutReportResumeRepository repository,
   CheckoutReportOpener? opener,
+  CheckoutReportGateRepository? gateRepository,
 }) async {
   final current = await repository.revalidate(target);
   if (!context.mounted) { return current; }
   if (!current.needsCompletion && !current.complete) {
     throw StateError(checkoutReportStateLabel(current));
+  }
+  PendingCheckoutRegistration? started;
+  String? startedActor;
+  // This action is explicitly labelled '作成・再開'. Mere list inspection or
+  // viewing a complete report must never assign reporting responsibility.
+  if (!current.reporterSignatureSaved && (opener == null || gateRepository != null)) {
+    final gate = gateRepository ?? CheckoutReportGateRepository.maybeCreate();
+    if (gate != null) {
+      var rows = await gate.readPending();
+      final sourceBound = gate.choiceEnforcementEnabled == true && await gate.isOwnWorker(current.workerId);
+      if (sourceBound) rows = await gate.readCreationSources(current.workDate);
+      if (!context.mounted) return current;
+      final pending = rows.where((row) => row.sourceClockInId == current.sourceClockInId &&
+        row.choiceAvailable).firstOrNull;
+      if (sourceBound && pending == null) {
+        throw StateError('この勤務原本の日報作成を開始できません。再読み込みしてください。');
+      }
+      if (pending != null) {
+        started = pending;
+        startedActor = gate.actorId;
+        await gate.choose(pending, createReport: true);
+        if (!context.mounted) return current;
+        final handled = await CheckoutReportGateController.instance.handleSavedCheckout(current.sourceClockInId);
+        if (handled || !context.mounted) return repository.revalidate(current);
+      }
+    }
   }
   if (opener != null) {
     await opener(context, current);
@@ -38,6 +67,10 @@ Future<CheckoutReportResumeTarget> openCheckoutReportResumeTarget(
         initialRouteAssignmentId: current.routeId, initialReportId: current.reportId,
         vehicleClockInId: current.sourceClockInId,
         groupClockInAnchorId: current.sourceClockInId,
+        restrictedReporterRegistration: started != null,
+        registrationActorId: startedActor,
+        registrationCompanyId: started?.companyId,
+        registrationWorkerId: started?.workerId,
       ),
     ));
   }

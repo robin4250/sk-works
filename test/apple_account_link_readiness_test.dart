@@ -31,7 +31,7 @@ String session(String id, {int age = 0}) {
 class ReadinessEventAppleLink extends AppleAccountLink {
   ReadinessEventAppleLink(super.client, this.events, {
     required Future<bool> Function() providerCheck,
-  }) : super(settingsUrl: Uri.parse('https://apple-readiness.invalid/auth/v1/settings'),
+  }) : super.forTesting(settingsUrl: Uri.parse('https://apple-readiness.invalid/auth/v1/settings'),
     publicKey: 'synthetic-public', providerCheck: providerCheck,
     launch: (_) async => throw StateError('readiness must never launch OAuth'));
   final Stream<AuthState> events;
@@ -68,7 +68,7 @@ void main() {
     client = SupabaseClient('https://apple-readiness.invalid', 'synthetic-public',
       authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: network);
     await client.auth.setInitialSession(session(actor));
-    source = AppleAccountLink(client,
+    source = AppleAccountLink.forTesting(client,
       settingsUrl: Uri.parse('https://apple-readiness.invalid/auth/v1/settings'),
       publicKey: 'synthetic-public', providerCheck: () async {
         reachedProvider?.complete(); await holdProvider?.future;
@@ -89,6 +89,36 @@ void main() {
       r.url.path.contains('/authorize') || r.url.path.contains('/identities')), false);
     expect(launches, 0);
   }
+
+  test('production provider and recent OAuth never release manual enrollment', () async {
+    final product = AppleAccountLink(client,
+      settingsUrl: Uri.parse('https://apple-readiness.invalid/auth/v1/settings'),
+      publicKey: 'synthetic-public', providerCheck: () async => true,
+      launch: (_) async { launches++; return true; });
+    addTearDown(product.dispose);
+    final token = client.auth.currentSession!.accessToken;
+    expect(await product.readiness(), AppleLinkReadiness.enrollmentPreparing);
+    noAuthMutation(token);
+    requests.clear();
+    await expectLater(product.begin(), throwsA(isA<StateError>()
+      .having((e) => e.message, 'reason', 'apple_link_enrollment_preparing')));
+    expect(requests, isEmpty);
+    expect(product.pending, false);
+    noAuthMutation(token);
+  });
+
+  test('production reads an existing Apple link without enabling a new one', () async {
+    apple = true;
+    final product = AppleAccountLink(client,
+      settingsUrl: Uri.parse('https://apple-readiness.invalid/auth/v1/settings'),
+      publicKey: 'synthetic-public', providerCheck: () async => true,
+      launch: (_) async { launches++; return true; });
+    addTearDown(product.dispose);
+    final token = client.auth.currentSession!.accessToken;
+    expect(await product.readiness(), AppleLinkReadiness.linked);
+    expect(product.pending, false);
+    noAuthMutation(token);
+  });
 
   test('ready is a server-verified read only preflight, not completed linking', () async {
     final token = client.auth.currentSession!.accessToken;

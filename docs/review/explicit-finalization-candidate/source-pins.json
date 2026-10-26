@@ -1,0 +1,155 @@
+[
+  {
+    "signature": "shared_daily_report_private.read_context(uuid)",
+    "body_md5": "2e291c11037c2b0845bac182706fb544",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "s"
+  },
+  {
+    "signature": "checkout_shared_hours_private.confirm_facts(uuid,uuid,jsonb,numeric,bigint,text,text)",
+    "body_md5": "3aaaa459095a5bb3b5f07f9299aec829",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": false,
+    "volatility": "v"
+  },
+  {
+    "signature": "shared_daily_report_private.submit_report(uuid,timestamp with time zone,text,jsonb,text,jsonb,text)",
+    "body_md5": "07387a56e6d64b057b0436bf831028bb",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "v"
+  },
+  {
+    "signature": "shared_report_edit_private.collect_supervisor(uuid,uuid,text,jsonb,timestamp with time zone,text)",
+    "body_md5": "58e457c4e2b6e639275ecf8ccd8efe50",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "v"
+  },
+  {
+    "signature": "shared_daily_report_private.resolve_own(uuid)",
+    "body_md5": "54799a72c102c13fd2e3e6205ac28a3f",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "v"
+  },
+  {
+    "signature": "shared_daily_report_private.guard_report()",
+    "body_md5": "eb70a5c51bd5d37839e02a14192c7982",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "v"
+  },
+  {
+    "signature": "private.save_daily_report_signature(uuid,text,text,jsonb)",
+    "body_md5": "09cbeccf5547649e8a2df26988b43eb5",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+    "security_definer": true,
+    "volatility": "v"
+  },
+  {
+    "signature": "shared_daily_report_private.collect_supervisor(uuid,uuid,text,jsonb,boolean,timestamp with time zone,text)",
+    "body_md5": "5d664661bf4ed13b0a5cc74a95dbfb61",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "v"
+  },
+  {
+    "signature": "shared_worker_facts_private.materialize_confirmed_worker(uuid,uuid,jsonb)",
+    "body_md5": "c1dd554c49f88eaee4324ecdc4838dc0",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": false,
+    "volatility": "v"
+  },
+  {
+    "signature": "public.save_daily_report_destination_draft(uuid,uuid,uuid,date,text,jsonb)",
+    "body_md5": "8c341bb00650cab35b1fa23b34e69eae",
+    "owner": "postgres",
+    "config": [
+      "search_path=public, private, pg_temp"
+    ],
+    "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+    "security_definer": true,
+    "volatility": "v"
+  },
+  {
+    "signature": "shared_daily_report_private.manage_signature(uuid,text,text,jsonb,timestamp with time zone,text)",
+    "body_md5": "30af4c7f4c0b1d103f17ed236f98613a",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "v"
+  },
+  {
+    "signature": "checkout_shared_hours_private.read_input(uuid,uuid)",
+    "body_md5": "99e5b6b6229470fdb9551632c12e4321",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": false,
+    "volatility": "s"
+  },
+  {
+    "signature": "private.has_company_feature(uuid,text)",
+    "body_md5": "ead168c7ebccdaf04657a66f1afd5d82",
+    "owner": "postgres",
+    "config": [
+      "search_path=public, private, pg_temp"
+    ],
+    "acl": null,
+    "security_definer": true
+  },
+  {
+    "signature": "attendance_admin_override_private.current_context()",
+    "body_md5": "9ebf5c2bba29341d1e81893f1ad98309",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "s"
+  }
+]

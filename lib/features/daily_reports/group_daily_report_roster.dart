@@ -15,7 +15,7 @@ List<DailyReportWorkerDraft> mergeAnchoredGroupRoster({
   DailyReportWorkerDraft copy(DailyReportWorkerDraft worker) => DailyReportWorkerDraft(
     workerId: worker.workerId, workerName: worker.workerName,
     overtimeHours: worker.overtimeHours, earlyHours: worker.earlyHours,
-    nightHours: worker.nightHours, allowanceAmount: worker.allowanceAmount,
+    nightHours: worker.nightHours, workCategory: worker.workCategory, allowanceAmount: worker.allowanceAmount,
     allowanceLabel: worker.allowanceLabel,
     companyAllowanceSelections: worker.companyAllowanceSelections, vehicleId: worker.vehicleId,
     vehicleName: worker.vehicleName, routeId: worker.routeId, routeName: worker.routeName,
@@ -34,3 +34,4 @@ List<DailyReportWorkerDraft> mergeAnchoredGroupRoster({
             workerId: candidate.workerId, workerName: candidate.name)),
   ]);
 }
+

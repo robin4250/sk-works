@@ -69,6 +69,14 @@ void main() {
     expect(source.starts, 0);
   });
 
+  testWidgets('unreleased enrollment has Japanese preparation text and no start action', (t) async {
+    source.result = AppleLinkReadiness.enrollmentPreparing;
+    await show(t);
+    expect(find.textContaining('Appleアカウントの追加は準備中です。'), findsOneWidget);
+    expect(find.text('このアカウントにAppleを追加'), findsNothing);
+    expect(source.starts, 0);
+  });
+
   testWidgets('already linked has no start action and help preserves current login', (t) async {
     source.result = AppleLinkReadiness.linked;
     await show(t);

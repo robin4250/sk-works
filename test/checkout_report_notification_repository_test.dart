@@ -73,6 +73,35 @@ void main() {
       expect(() => parse({...base, 'items':[row]}), throwsA(isA<CheckoutReportNotificationUnavailable>()));
     }
   });
+  test('typed source-choice metadata permits only explicitly started historical notification', () {
+    final base = registrationNotification(state: 'signed_projection_unverified');
+    final row = Map<String, dynamic>.from((base['items'] as List).single as Map);
+    final historical = {...row, 'work_date': '2026-09-30', 'choice_available': true,
+      'member_count': 2, 'report_started': true};
+    expect(parse({...base, 'items': [historical]}).items.single.canResume, true);
+    for (final change in <Map<String, dynamic>>[
+      {'report_started': false}, {'member_count': '2'}, {'choice_available': false}, {'untrusted': true},
+    ]) {
+      expect(() => parse({...base, 'items': [{...historical, ...change}]}),
+        throwsA(isA<CheckoutReportNotificationUnavailable>()));
+    }
+    expect(() => parse({...base, 'items': [{...row, 'member_count': 2}]}),
+      throwsA(isA<CheckoutReportNotificationUnavailable>()));
+  });
+  test('deferred source does not hide or resume another genuine pending source', () {
+    final base = registrationNotification(state: 'reporter_saved_waiting_supervisor');
+    final row = Map<String, dynamic>.from((base['items'] as List).single as Map);
+    final deferred = {...row, 'source_clock_in_id': notificationSite,
+      'clock_out_id': notificationCompany, 'registration_state': 'checkout_deferred',
+      'blocking': false, 'choice_available': true, 'member_count': 2, 'report_started': false};
+    final snapshot = parse({...base, 'choice_enforcement_enabled': true, 'items': [row, deferred]});
+    expect(snapshot.items, hasLength(2));
+    expect(snapshot.items.where((item) => item.canResume).single.state, 'reporter_saved_waiting_supervisor');
+    final choice = {...deferred, 'registration_state': 'report_choice_required', 'blocking': true};
+    expect(parse({...base, 'choice_enforcement_enabled': true, 'items': [choice]}).items.single.canResume, false);
+    expect(() => parse({...base, 'choice_enforcement_enabled': 'true'}),
+      throwsA(isA<CheckoutReportNotificationUnavailable>()));
+  });
   test('reader sends only exact report UUID with captured bearer and no fallback write', () async {
     final requests = <http.Request>[];
     final client = SupabaseClient('https://report-notification.invalid','synthetic-public',

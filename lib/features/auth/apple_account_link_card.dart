@@ -156,6 +156,7 @@ class _AppleAccountLinkCardState extends State<AppleAccountLinkCard>
       if (!_loading && !_pending && !_complete) Text(switch (_readiness) {
         AppleLinkReadiness.ready => '追加前の確認ができました。Appleの本人確認と連携はまだ完了していません。',
         AppleLinkReadiness.linked => 'このアカウントへのApple連携は確認済みです。',
+        AppleLinkReadiness.enrollmentPreparing => 'Appleアカウントの追加は準備中です。Google・Face IDと現在の会社設定は引き続き使えます。',
         AppleLinkReadiness.providerDisabled => 'Apple連携は提供準備中です。現在のログイン方法を引き続き使えます。',
         AppleLinkReadiness.recentOAuthRequired => '同じログインを保った追加の本人確認が必要です。この接続は準備中です。',
         AppleLinkReadiness.loginRequired => '現在のログインを確認できません。Apple追加は開始できません。',
