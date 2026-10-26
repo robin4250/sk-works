@@ -1,0 +1,24 @@
+name: Decoy collector producer bridge
+on:
+  pull_request:
+    paths:
+      - 'tool/security/production_resume/**'
+      - '.github/workflows/decoy-collector-producer.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  metadata-only-producer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify new bridge against exact existing decoy and signed collector
+        env:
+          SKO_SECURITY_SOURCE_ROOT: ${{ github.workspace }}/tool/security
+        run: node --test tool/security/production_resume/decoy_collector_producer_test.mjs
