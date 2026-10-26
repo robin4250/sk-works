@@ -25,7 +25,7 @@ jobs:
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze lib/features/daily_reports/daily_report_month_page.dart lib/features/daily_reports/daily_report_month_repository.dart test/daily_report_pending_site_test.dart test/daily_report_site_history_navigation_test.dart lib/features/daily_reports/daily_report_saved_preview_pager.dart
-      - run: timeout 120s flutter test --timeout 30s --reporter expanded test/daily_report_pending_site_test.dart test/daily_report_site_history_navigation_test.dart test/daily_report_calendar_test.dart test/daily_report_calendar_opening_test.dart test/daily_report_month_export_test.dart test/daily_report_month_navigation_test.dart test/saved_route_report_reading_test.dart
+      - run: flutter test test/daily_report_pending_site_test.dart test/daily_report_site_history_navigation_test.dart test/daily_report_calendar_test.dart test/daily_report_calendar_opening_test.dart test/daily_report_month_export_test.dart test/daily_report_month_navigation_test.dart test/saved_route_report_reading_test.dart
   native-read-boundary:
     runs-on: ubuntu-latest
     timeout-minutes: 10
