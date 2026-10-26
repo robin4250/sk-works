@@ -260,7 +260,7 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
         if (managementHold) { managementHoldText = context.managementHoldMessage; }
       }
       if (!mounted || generation != _generation || _controller.actorId != actor || repository.actorId != actor) { return; }
-      final identity = pending.isEmpty ? null : '${pending.first.identity}/${pending.first.state}/hold:$managementHold';
+      final identity = pending.isEmpty ? null : '${pending.first.identity}/${pending.first.state}/${pending.first.state == 'report_choice_required' ? pending.first.scopeFingerprint : ''}/hold:$managementHold';
       setState(() {
         if (identity != _renderedIdentity) {
           _navigator = GlobalKey<NavigatorState>();
@@ -431,7 +431,14 @@ class _CheckoutReportGateState extends State<CheckoutReportGate> with WidgetsBin
               target.state == 'source_conflict' || _managementHold ? _status() :
               target.state == 'report_choice_required' ? _CheckoutReportChoice(
                 target: target, onChoose: (createReport) async {
-                  await _repository!.choose(target, createReport: createReport);
+                  try {
+                    await _repository!.choose(target, createReport: createReport);
+                  } catch (_) {
+                    // A lost response or changed roster is resolved by a fresh
+                    // authoritative read, never an optimistic local release.
+                    if (mounted) _changed();
+                    rethrow;
+                  }
                   if (mounted) _changed();
                 }) :
               _BeforeReportRegistration(
