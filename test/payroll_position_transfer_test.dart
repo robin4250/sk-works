@@ -29,7 +29,7 @@ void main() {
     expect(payrollPositionTransfer(detail(days: 0), original), isNull);
     expect(payrollPositionTransfer({}, original), isNull);
   });
-  test('mismatched allowance amounts and combined base rates fail closed', () {
+  test('mismatched allowance amounts and inconsistent base evidence fail closed', () {
     expect(payrollPositionTransfer(detail(), {...original, '役職手当': 9000}), isNull);
     final duplicate = detail();
     (duplicate['position_transfer_snapshot']['items'] as List).add(
@@ -40,5 +40,11 @@ void main() {
       'name': '基本給', 'section': 'earning', 'unit': 'day', 'category': 'night',
       'rate_yen': 15000, 'quantity': 1, 'amount_yen': 15000});
     expect(payrollPositionTransfer(d, original), isNull);
+    final mixed = payrollPositionTransfer(d, {...original, '基本給': 215000})!;
+    expect(mixed.isAverage, isTrue);
+    expect(mixed.days, 21);
+    expect(mixed.rate, 11000);
+    expect(mixed.entries.values.cast<num>().reduce((a, b) => a + b), 256000);
+    expect(mixed.entries['残業手当'], 25000);
   });
 }
