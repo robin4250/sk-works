@@ -1,0 +1,24 @@
+name: Shift status comparison
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/features/shifts/**'
+      - 'test/shift_attendance_status_test.dart'
+      - '.github/workflows/shift-status-comparison.yml'
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/shifts/shift_attendance_status.dart test/shift_attendance_status_test.dart
+      - run: flutter test --reporter expanded test/shift_attendance_status_test.dart
