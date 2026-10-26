@@ -1,0 +1,54 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {createNativeAppleAuthPorts}from'./native_apple_auth_port.mjs';
+import {createNativeAppleEnrollmentHandler}from'./native_apple_enrollment_handler.mjs';
+const actor='11111111-1111-4111-8111-111111111111',sid='22222222-2222-4222-8222-222222222222',otherSid='33333333-3333-4333-8333-333333333333';
+const project='https://ztktgquxvcxcjxtluspu.supabase.co';
+const jwt=(session=sid,extra={})=>'eyJhbGciOiJSUzI1NiJ9.'+Buffer.from(JSON.stringify({sub:actor,session_id:session,role:'authenticated',aud:'authenticated',iss:project+'/auth/v1',exp:2000,...extra})).toString('base64url')+'.fixture';
+const original=jwt(),issued=jwt(otherSid),apple='fixture.signed.token',nonce='n'.repeat(43);
+const json=value=>new Response(JSON.stringify(value),{status:200,headers:{'content-type':'application/json'}});
+function fixture(overrides={}){const calls=[];const fetcher=async(url,init)=>{calls.push({url,init});
+ if(url.endsWith('/user'))return json({id:actor,is_anonymous:false,identities:[{provider:'apple',identity_data:{sub:'apple-subject'}}]});
+ if(url.endsWith('grant_type=id_token'))return json({access_token:issued,refresh_token:'MUST_NOT_ESCAPE',token_type:'bearer'});
+ if(url.endsWith('logout?scope=local'))return new Response(null,{status:204});throw Error('unexpected');};
+ return {calls,ports:createNativeAppleAuthPorts({enabled:true,nativeOnlyReviewed:true,baseUrl:project,publicKey:'sb_publishable_fixture',fetcher,now:()=>1000,...overrides})};}
+test('OFF and wrong origin do not make network requests',async()=>{for(const override of [{enabled:false},{nativeOnlyReviewed:false},{baseUrl:'https://evil.invalid'},{publicKey:'sb_secret_forbidden'}]){const f=fixture(override);await assert.rejects(f.ports.bindOriginal(original));assert.equal(f.calls.length,0);}});
+test('exact original bearer is verified by Auth; linked temporary credentials never expose refresh',async()=>{const f=fixture();await f.ports.bindOriginal(original);const result=await f.ports.linkNativeIdentity({exactBearer:original,idToken:apple,rawNonce:nonce});assert.deepEqual(result,{access_token:issued,token_type:'bearer'});
+ const post=f.calls.find(x=>x.url.includes('grant_type'));assert.equal(post.init.headers.Authorization,'Bearer '+original);assert.deepEqual(JSON.parse(post.init.body),{provider:'apple',id_token:apple,nonce,link_identity:true});assert.equal(post.init.redirect,'manual');
+ assert.deepEqual(await f.ports.authenticateIssuedSession(issued),{actor_id:actor,session_id:otherSid,apple_subjects:['apple-subject']});
+ await assert.rejects(f.ports.revokeLocal(original));assert.equal(await f.ports.revokeLocal(issued),true);await assert.rejects(f.ports.revokeLocal(issued));
+ assert.equal(f.calls.filter(x=>x.url.includes('logout')).length,1);assert.equal(f.calls.at(-1).init.headers.Authorization,'Bearer '+issued);});
+test('caller cannot rebind original actor/session or clean up arbitrary token',async()=>{const f=fixture();await f.ports.bindOriginal(original);await assert.rejects(f.ports.bindOriginal(issued));await assert.rejects(f.ports.linkNativeIdentity({exactBearer:issued,idToken:apple,rawNonce:nonce}));await assert.rejects(f.ports.revokeLocal(issued));assert.equal(f.calls.length,1);});
+test('decoded claims are rejected unless verified user, issuer, audience, role and live expiry agree',async()=>{for(const extra of [{sub:'99999999-9999-4999-8999-999999999999'},{iss:'https://evil.invalid/auth/v1'},{aud:'wrong'},{role:'service_role'},{exp:999},{session_id:'bad'}]){const f=fixture();await assert.rejects(f.ports.bindOriginal(jwt(sid,extra)));assert.equal(f.calls.length,1);}});
+test('Auth denial and redirects are never trusted or followed',async()=>{for(const status of [401,302]){let calls=0;const f=fixture({fetcher:async()=>{calls++;return new Response('denied',{status});}});await assert.rejects(f.ports.bindOriginal(original));assert.equal(calls,1);}});
+test('same-session token is not authorized for temporary cleanup',async()=>{const calls=[];const f=fixture({fetcher:async(url,init)=>{calls.push(url);return url.endsWith('/user')?json({id:actor}):json({access_token:original,token_type:'bearer'});}});await f.ports.bindOriginal(original);await assert.rejects(f.ports.linkNativeIdentity({exactBearer:original,idToken:apple,rawNonce:nonce}));await assert.rejects(f.ports.revokeLocal(original));assert.equal(calls.some(x=>x.includes('logout')),false);});
+test('ignored abort and oversized Auth responses fail closed',async()=>{const f=fixture({timeoutMs:5,fetcher:()=>new Promise(()=>{})});await assert.rejects(f.ports.bindOriginal(original));const big=fixture({fetcher:async()=>new Response('x'.repeat(65537))});await assert.rejects(big.ports.bindOriginal(original));});
+test('endpoint remains OFF until every independent reviewed gate is supplied',async()=>{let calls=0;for(const config of [{},{enabled:true},{enabled:true,nativeOnlyReviewed:true,passwordSessionIsolationReviewed:true,globalGoogleProtectionReviewed:false}]){const h=createNativeAppleEnrollmentHandler(config,{fetcher:async()=>{calls++;throw Error();}});const r=await h(new Request('https://broker.invalid',{method:'POST'}));assert.equal(r.status,503);assert.equal(r.headers.get('cache-control'),'no-store');}assert.equal(calls,0);});
+test('endpoint strictly rejects caller identity fields and body type before any Auth call',async()=>{let calls=0;const config={enabled:true,nativeOnlyReviewed:true,passwordSessionIsolationReviewed:true,globalGoogleProtectionReviewed:true,baseUrl:project,publicKey:'sb_publishable_fixture',serviceKey:'sb_secret_fixture',audiences:['com.skworks.skWorks']};const h=createNativeAppleEnrollmentHandler(config,{resolveKey:async()=>null,fetcher:async()=>{calls++;throw Error();}});
+ for(const body of [{id_token:apple,nonce,password:'private',actor_id:actor},{id_token:apple,nonce,password:9}]){const r=await h(new Request('https://broker.invalid',{method:'POST',headers:{authorization:'Bearer '+original,'content-type':'application/json'},body:JSON.stringify(body)}));assert.equal(r.status,403);const text=await r.text();assert.equal(text.includes('private'),false);assert.equal(text.includes(original),false);}assert.equal(calls,0);});
+test('composed endpoint verifies RSA, authenticates exact original, reserves once and closes only two temporary sessions',async()=>{
+ const {sha256Hex}=await import('./existing_apple_login.mjs');
+ const pair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
+ const jwk={...await crypto.subtle.exportKey('jwk',pair.publicKey),kid:'fixture',alg:'RS256',use:'sig'};
+ const b=x=>Buffer.from(JSON.stringify(x)).toString('base64url');const claims={iss:'https://appleid.apple.com',aud:'com.skworks.skWorks',sub:'apple-subject',iat:1000,exp:1500,nonce:await sha256Hex(nonce)};
+ const unsigned=b({alg:'RS256',kid:'fixture'})+'.'+b(claims);const credential=unsigned+'.'+Buffer.from(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',pair.privateKey,new TextEncoder().encode(unsigned))).toString('base64url');
+ const pw=jwt('44444444-4444-4444-8444-444444444444'),requestId='55555555-5555-4555-8555-555555555555';let linked=false;const calls=[];
+ const context=()=>({actor_id:actor,session_id:sid,account_allowed:true,primary_password_configured:true,primary_credential_version:'a'.repeat(64),profile_version:'d'.repeat(64),memberships:[{company_id:'66666666-6666-4666-8666-666666666666',role:'owner'}],google_identities:[{id:'77777777-7777-4777-8777-777777777777',provider_id:'google-subject'}],apple_subjects:linked?['apple-subject']:[]});
+ const network=async(url,init)=>{calls.push({url,init});const body=init.body?JSON.parse(init.body):{};
+ if(url.endsWith('/user'))return json({id:actor,email:'fixture@example.invalid',identities:linked?[{provider:'apple',identity_data:{sub:'apple-subject'}}]:[]});
+ if(url.includes('grant_type=password'))return json({access_token:pw,user:{id:actor},token_type:'bearer'});
+ if(url.includes('grant_type=id_token')){assert.equal(init.headers.Authorization,'Bearer '+original);assert.equal(body.link_identity,true);linked=true;return json({access_token:issued,token_type:'bearer',refresh_token:'SECRET_REFRESH'});}
+ if(url.includes('logout?scope=local')){assert.notEqual(init.headers.Authorization,'Bearer '+original);return new Response(null,{status:204});}
+ if(url.endsWith('read_apple_native_enrollment_context'))return json(context());
+ if(url.endsWith('reserve_apple_native_subject'))return json({request_id:requestId,actor_id:actor,session_id:sid,subject:'apple-subject',token_sha256:body.p_token_sha256,status:'reserved'});
+ if(url.endsWith('complete_apple_native_subject'))return json({linked:true,request_id:requestId,actor_id:actor});
+ throw Error('unexpected '+url);};
+ const config={enabled:true,nativeOnlyReviewed:true,passwordSessionIsolationReviewed:true,globalGoogleProtectionReviewed:true,baseUrl:project,publicKey:'sb_publishable_fixture',serviceKey:'sb_secret_fixture',audiences:['com.skworks.skWorks']};
+ const handler=createNativeAppleEnrollmentHandler(config,{fetcher:network,now:()=>1000,resolveKey:async()=>jwk});
+ const r=await handler(new Request('https://broker.invalid',{method:'POST',headers:{authorization:'Bearer '+original,'content-type':'application/json'},body:JSON.stringify({id_token:credential,nonce,password:'fixture-password'})}));
+ assert.equal(r.status,200,JSON.stringify(calls.map(x=>x.url)));assert.deepEqual(await r.json(),{linked:true,user_id:actor});assert.equal(calls.filter(x=>x.url.includes('logout?')).length,2);
+ assert.equal(calls.filter(x=>x.url.endsWith('reserve_apple_native_subject')).length,1);assert.equal(calls.filter(x=>x.url.endsWith('complete_apple_native_subject')).length,1);
+ assert.equal(calls.some(x=>x.init.headers.Authorization==='Bearer sb_secret_fixture'),false);
+ const stalled=createNativeAppleEnrollmentHandler({...config,keyTimeoutMs:5},{fetcher:network,now:()=>1000,resolveKey:()=>new Promise(()=>{})});
+ const denied=await stalled(new Request('https://broker.invalid',{method:'POST',headers:{authorization:'Bearer '+original,'content-type':'application/json'},body:JSON.stringify({id_token:credential,nonce,password:'fixture-password'})}));
+ assert.equal(denied.status,403);assert.equal(calls.filter(x=>x.url.endsWith('reserve_apple_native_subject')).length,1);
+});
