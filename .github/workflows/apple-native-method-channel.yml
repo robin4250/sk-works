@@ -1,0 +1,67 @@
+name: Apple native MethodChannel OFF integration
+on:
+  pull_request:
+    paths:
+      - 'tool/prepare_ios.sh'
+      - 'tool/ios/apple_credential*.swift'
+      - 'tool/tests/apple_credential_state_main.swift'
+      - 'lib/features/auth/apple_native_credential_preparation.dart'
+      - 'test/apple_native_credential_preparation_test.dart'
+      - '.github/workflows/apple-native-method-channel.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-state-and-sdk:
+    runs-on: macos-26-intel
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compile real credential source for supported iOS target
+        run: xcrun swiftc -typecheck -swift-version 5 -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" -target arm64-apple-ios15.5 tool/ios/apple_credential_state.swift tool/ios/apple_credential.swift
+      - name: Execute production correlation and exactly-once state machine
+        run: |
+          cp tool/tests/apple_credential_state_main.swift "$RUNNER_TEMP/main.swift"
+          xcrun swiftc -swift-version 5 tool/ios/apple_credential_state.swift "$RUNNER_TEMP/main.swift" -o "$RUNNER_TEMP/apple-credential-state"
+          "$RUNNER_TEMP/apple-credential-state"
+      - name: Validate preparation shell without executing Flutter locally
+        run: bash -n tool/prepare_ios.sh
+
+  generated-appdelegate:
+    runs-on: macos-26-intel
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Prepare generated iOS source and pinned Flutter framework
+        run: |
+          flutter precache --ios
+          bash tool/prepare_ios.sh
+          git diff --exit-code -- pubspec.yaml pubspec.lock
+      - name: Typecheck complete generated AppDelegate with actual Flutter module
+        run: |
+          set -euo pipefail
+          flutter_root="$(dirname "$(dirname "$(command -v flutter)")")"
+          framework_dir="$flutter_root/bin/cache/artifacts/engine/ios-release/Flutter.xcframework/ios-arm64"
+          test -f "$framework_dir/Flutter.framework/Headers/Flutter.h"
+          xcrun swiftc -typecheck -parse-as-library -swift-version 5 -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" -target arm64-apple-ios15.5 -F "$framework_dir" -I ios/Runner -import-objc-header ios/Runner/Runner-Bridging-Header.h ios/Runner/AppDelegate.swift
+          python3 - <<'PY'
+          import plistlib
+          with open('ios/Runner/Info.plist','rb') as f:
+              info=plistlib.load(f)
+          assert info['SKOAppleCredentialPreparationEnabled'] is False
+          assert info['FlutterDeepLinkingEnabled'] is False
+          assert any('com.skworks.sko' in t.get('CFBundleURLSchemes',[]) for t in info['CFBundleURLTypes'])
+          PY

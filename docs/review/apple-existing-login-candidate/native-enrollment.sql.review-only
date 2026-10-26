@@ -1,0 +1,156 @@
+-- REVIEW ONLY. OFF service-only Apple enrollment bookkeeping. No Auth provider,
+-- session, user, identity, company or existing proof-core writes.
+begin;
+create schema apple_native_enrollment_private;
+revoke all on schema apple_native_enrollment_private from public,anon,authenticated,service_role;
+create table apple_native_enrollment_private.rollout(
+ singleton boolean primary key check(singleton),enabled boolean not null default false,
+ native_only_reviewed boolean not null default false,
+ password_session_isolation_reviewed boolean not null default false
+);
+create table apple_native_enrollment_private.requests(
+ request_id uuid primary key default gen_random_uuid(),actor_id uuid not null,session_id uuid not null,
+ subject text not null check(subject ~ '^[A-Za-z0-9._-]{1,255}$'),
+ token_sha256 text not null unique check(token_sha256 ~ '^[a-f0-9]{64}$'),
+ snapshot_sha256 text not null check(snapshot_sha256 ~ '^[a-f0-9]{64}$'),snapshot jsonb not null,
+ verified_at timestamptz not null,created_at timestamptz not null default clock_timestamp(),
+ expires_at timestamptz not null,status text not null check(status in('reserved','held','completed')),
+ completed_at timestamptz
+);
+create unique index apple_native_one_incomplete_subject on apple_native_enrollment_private.requests(subject) where status in('reserved','held');
+create table apple_native_enrollment_private.events(
+ id bigint generated always as identity primary key,request_id uuid not null references apple_native_enrollment_private.requests,
+ event text not null check(event in('reserved','held','completed')),at timestamptz not null default clock_timestamp()
+);
+alter table apple_native_enrollment_private.rollout enable row level security;
+alter table apple_native_enrollment_private.requests enable row level security;
+alter table apple_native_enrollment_private.events enable row level security;
+revoke all on all tables in schema apple_native_enrollment_private from public,anon,authenticated,service_role;
+
+create function apple_native_enrollment_private.ready()
+returns boolean language plpgsql volatile security definer set search_path='' as $$
+declare own_ready boolean;hook_ready boolean;
+begin
+ select enabled and native_only_reviewed and password_session_isolation_reviewed into own_ready
+  from apple_native_enrollment_private.rollout where singleton for share;
+ if own_ready is distinct from true then return false;end if;
+ select enabled into hook_ready from apple_owner_policy.rollout where singleton for share;
+ return hook_ready is true;
+end
+$$;
+revoke all on function apple_native_enrollment_private.ready() from public,anon,authenticated,service_role;
+
+create function apple_native_enrollment_private.context(p_actor uuid,p_session uuid)
+returns jsonb language sql stable security definer set search_path='' as $$
+ select jsonb_build_object('actor_id',u.id,'session_id',s.id,'account_allowed',true,
+ 'primary_password_configured',true,
+ 'primary_credential_version',encode(sha256(convert_to(u.encrypted_password,'UTF8')),'hex'),
+ 'profile_version',encode(sha256(convert_to(jsonb_build_object('email',to_jsonb(u)->'email','phone',to_jsonb(u)->'phone','metadata',to_jsonb(u)->'raw_user_meta_data')::text,'UTF8')),'hex'),
+ 'memberships',(select jsonb_agg(jsonb_build_object('company_id',m.company_id,'role',m.role::text) order by m.company_id)
+  from public.company_members m where m.user_id=u.id),
+ 'google_identities',(select jsonb_agg(jsonb_build_object('id',i.id,'provider_id',i.provider_id) order by i.id)
+  from auth.identities i where i.user_id=u.id and i.provider='google'),
+ 'apple_subjects',coalesce((select jsonb_agg(i.provider_id order by i.provider_id) from auth.identities i
+  where i.user_id=u.id and i.provider='apple'),'[]'::jsonb))
+ from auth.users u join auth.sessions s on s.user_id=u.id and s.id=p_session
+ where u.id=p_actor and coalesce(u.encrypted_password,'')<>''
+ and coalesce((to_jsonb(u)->>'is_anonymous')::boolean,false)=false
+ and to_jsonb(u)->>'deleted_at' is null
+ and (to_jsonb(u)->>'banned_until' is null or (to_jsonb(u)->>'banned_until')::timestamptz<=now())
+ and (to_jsonb(s)->>'not_after' is null or (to_jsonb(s)->>'not_after')::timestamptz>now())
+ and not exists(select 1 from private.account_deletion_access_restrictions d where d.user_id=u.id)
+ and exists(select 1 from public.company_members m where m.user_id=u.id)
+ and exists(select 1 from auth.identities i where i.user_id=u.id and i.provider='google'
+   and i.provider_id ~ '^[A-Za-z0-9._-]{1,255}$')
+$$;
+revoke all on function apple_native_enrollment_private.context(uuid,uuid) from public,anon,authenticated,service_role;
+
+create function public.read_apple_native_enrollment_context(p_actor_id uuid,p_session_id uuid)
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+begin
+ if auth.jwt()->>'role' is distinct from 'service_role' then raise sqlstate '42501' using message='server_only';end if;
+ if not apple_native_enrollment_private.ready() then return null;end if;
+ return apple_native_enrollment_private.context(p_actor_id,p_session_id);
+end $$;
+revoke all on function public.read_apple_native_enrollment_context(uuid,uuid) from public,anon,authenticated,service_role;
+grant execute on function public.read_apple_native_enrollment_context(uuid,uuid) to service_role;
+
+create function public.reserve_apple_native_subject(p_actor_id uuid,p_session_id uuid,p_subject text,
+ p_token_sha256 text,p_snapshot_sha256 text,p_snapshot text,p_verified_at bigint)
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare c jsonb;r apple_native_enrollment_private.requests;ts timestamptz:=clock_timestamp();
+begin
+ if auth.jwt()->>'role' is distinct from 'service_role' then raise sqlstate '42501' using message='server_only';end if;
+ if not apple_native_enrollment_private.ready() or p_subject is null or p_subject !~ '^[A-Za-z0-9._-]{1,255}$'
+  or p_token_sha256 is null or p_token_sha256 !~ '^[a-f0-9]{64}$' or p_snapshot_sha256 is null
+  or p_snapshot_sha256 !~ '^[a-f0-9]{64}$' or p_snapshot is null or octet_length(p_snapshot)>16384
+  or encode(sha256(convert_to(p_snapshot,'UTF8')),'hex') is distinct from p_snapshot_sha256
+  or p_verified_at is null or p_verified_at<extract(epoch from ts)-120 or p_verified_at>extract(epoch from ts)+5 then return null;end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-subject:'||p_subject,0));
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-actor:'||p_actor_id::text,0));
+ perform 1 from auth.users where id=p_actor_id for share;
+ perform 1 from auth.sessions where id=p_session_id and user_id=p_actor_id for share;
+ perform 1 from public.company_members where user_id=p_actor_id for share;
+ perform 1 from auth.identities where user_id=p_actor_id or (provider='apple' and provider_id=p_subject) for share;
+ c:=apple_native_enrollment_private.context(p_actor_id,p_session_id);
+ if c is null or c->'apple_subjects'<>'[]'::jsonb or
+  (c-array['account_allowed','primary_password_configured']) is distinct from p_snapshot::jsonb
+  or exists(select 1 from auth.identities where provider='apple' and provider_id=p_subject)
+  or exists(select 1 from apple_owner_policy.subject_permits where apple_subject=p_subject)
+  or exists(select 1 from apple_native_enrollment_private.requests where token_sha256=p_token_sha256
+    or (actor_id=p_actor_id and status in('reserved','held')) or (subject=p_subject and status in('reserved','held'))) then return null;end if;
+ insert into apple_owner_policy.protected_users values(p_actor_id) on conflict do nothing;
+ insert into apple_owner_policy.subject_permits values(p_subject,p_actor_id);
+ insert into apple_native_enrollment_private.requests(actor_id,session_id,subject,token_sha256,snapshot_sha256,snapshot,verified_at,expires_at,status)
+ values(p_actor_id,p_session_id,p_subject,p_token_sha256,p_snapshot_sha256,p_snapshot::jsonb,to_timestamp(p_verified_at),least(ts+interval '120 seconds',to_timestamp(p_verified_at)+interval '120 seconds'),'reserved') returning * into r;
+ insert into apple_native_enrollment_private.events(request_id,event) values(r.request_id,'reserved');
+ return jsonb_build_object('request_id',r.request_id,'actor_id',r.actor_id,'session_id',r.session_id,
+  'subject',r.subject,'token_sha256',r.token_sha256,'status',r.status);
+end $$;
+revoke all on function public.reserve_apple_native_subject(uuid,uuid,text,text,text,text,bigint) from public,anon,authenticated,service_role;
+grant execute on function public.reserve_apple_native_subject(uuid,uuid,text,text,text,text,bigint) to service_role;
+
+create function public.complete_apple_native_subject(p_request_id uuid,p_actor_id uuid,p_session_id uuid,
+ p_subject text,p_token_sha256 text,p_before_snapshot_sha256 text)
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare r apple_native_enrollment_private.requests;c jsonb;
+begin
+ if auth.jwt()->>'role' is distinct from 'service_role' then raise sqlstate '42501' using message='server_only';end if;
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request_id;
+ if not found then return null;end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-subject:'||r.subject,0));
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-actor:'||r.actor_id::text,0));
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request_id for update;
+ if not apple_native_enrollment_private.ready() or r.status<>'reserved' or r.expires_at<=clock_timestamp()
+  or r.actor_id is distinct from p_actor_id or r.session_id is distinct from p_session_id
+  or r.subject is distinct from p_subject or r.token_sha256 is distinct from p_token_sha256
+  or r.snapshot_sha256 is distinct from p_before_snapshot_sha256 then return null;end if;
+ perform 1 from auth.users where id=p_actor_id for share;
+ perform 1 from auth.sessions where id=p_session_id and user_id=p_actor_id for share;
+ perform 1 from public.company_members where user_id=p_actor_id for share;
+ perform 1 from auth.identities where user_id=p_actor_id for share;
+ c:=apple_native_enrollment_private.context(p_actor_id,p_session_id);
+ if c is null or (c-array['account_allowed','primary_password_configured','apple_subjects']) is distinct from (r.snapshot-'apple_subjects')
+  or c->'apple_subjects' is distinct from jsonb_build_array(p_subject)
+  or not exists(select 1 from auth.identities where user_id=p_actor_id and provider='apple' and provider_id=p_subject and identity_data->>'sub'=p_subject)
+  or not exists(select 1 from apple_owner_policy.subject_permits where apple_subject=p_subject and expected_user_id=p_actor_id) then return null;end if;
+ update apple_native_enrollment_private.requests set status='completed',completed_at=clock_timestamp() where request_id=p_request_id;
+ insert into apple_native_enrollment_private.events(request_id,event) values(p_request_id,'completed');
+ return jsonb_build_object('linked',true,'request_id',p_request_id,'actor_id',p_actor_id);
+end $$;
+revoke all on function public.complete_apple_native_subject(uuid,uuid,uuid,text,text,text) from public,anon,authenticated,service_role;
+grant execute on function public.complete_apple_native_subject(uuid,uuid,uuid,text,text,text) to service_role;
+
+create function public.hold_apple_native_subject(p_request_id uuid,p_actor_id uuid,p_session_id uuid)
+returns boolean language plpgsql volatile security definer set search_path='' as $$
+begin
+ if auth.jwt()->>'role' is distinct from 'service_role' then raise sqlstate '42501' using message='server_only';end if;
+ update apple_native_enrollment_private.requests set status='held' where request_id=p_request_id
+  and actor_id=p_actor_id and session_id=p_session_id and status='reserved';
+ if found then insert into apple_native_enrollment_private.events(request_id,event) values(p_request_id,'held');return true;end if;
+ return false;
+end $$;
+revoke all on function public.hold_apple_native_subject(uuid,uuid,uuid) from public,anon,authenticated,service_role;
+grant execute on function public.hold_apple_native_subject(uuid,uuid,uuid) to service_role;
+-- Deliberately no rollout rows, user/subject permits or hosted hook configuration.
+commit;
