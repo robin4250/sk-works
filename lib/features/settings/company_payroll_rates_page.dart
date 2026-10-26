@@ -1,4 +1,5 @@
 import '../payroll/resident_tax_annual_entry_card.dart';
+import '../payroll/payroll_official_remuneration_table.dart';
 import '../payroll/resident_tax_annual_page.dart';
 import '../payroll/resident_tax_reminder_panel.dart';
 import 'dart:math';
@@ -110,7 +111,10 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
           SnackBar(
             content: Text(
               warnings.isEmpty
-                  ? '公式料率を取得しました。現在値と比較して、項目ごとに適用してください。'
+                  ? (_data!.candidates.any((candidate) =>
+                      PayrollOfficialRemunerationTable.fromRate(candidate.value) != null)
+                    ? '公式料率と標準報酬月額の上限・下限を取得しました。現在値と比較して、項目ごとに適用してください。'
+                    : '公式料率を取得しました。現在値と比較して、項目ごとに適用してください。')
                   : warnings.join('\n'),
             ),
           ),
@@ -424,6 +428,9 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
   static Widget _valueDetails(Map<String, dynamic> value) {
     final source = payrollRateObject(value['source']);
     final applicability = source['applicability'];
+    final table = PayrollOfficialRemunerationTable.fromRate(value);
+    String yen(int amount) => '${amount.toString().replaceAllMapped(
+        RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',')}円';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
       Text(value['label'] as String),
       Text('全体 ${formatPayrollRatePercent(value['total'] as int)}%'),
@@ -436,8 +443,19 @@ class _CompanyPayrollRatesPageState extends State<CompanyPayrollRatesPage> {
       SelectableText('${source['url'] ?? '未記載'}',
         key: PageStorageKey('payroll-rate-source-url-${source['url']}')),
       _PayrollRateSourceLink(url: source['url']?.toString() ?? ''),
+      if (table != null) ...[
+        Text('公式表の標準報酬月額：${yen(table.minimumYen)}〜${yen(table.maximumYen)}'),
+        Text('平均月収${yen(table.minimumIncomeExclusiveYen)}未満 → ${yen(table.minimumYen)}で計算'),
+        Text('平均月収${yen(table.maximumIncomeInclusiveYen)}以上 → ${yen(table.maximumYen)}で計算'),
+        Text('等級表の適用開始：${_month(table.effectiveFrom)}'),
+        const Text('公式表の全等級とアプリの計算表の一致を確認済み'),
+        _PayrollRateSourceLink(url: table.sourceUrl),
+        if (table.verificationUrl != null)
+          _PayrollRateSourceLink(url: table.verificationUrl!),
+      ],
       if (applicability is Map) for (final entry in applicability.entries)
-        Text(_applicabilityText(entry.key.toString(), entry.value)),
+        if (!PayrollOfficialRemunerationTable.keys.contains(entry.key))
+          Text(_applicabilityText(entry.key.toString(), entry.value)),
     ]);
   }
 
@@ -934,4 +952,5 @@ int residentTaxAnnualInitialYear(DateTime instant) {
   final jst = instant.toUtc().add(const Duration(hours: 9));
   return jst.month >= 5 ? jst.year : jst.year - 1;
 }
+
 

@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/settings/company_payroll_rates_repository.dart';
 import 'company_payroll_rates_page_test.dart' as fixture;
+import '../../fixtures/payroll_official_remuneration_fixture.dart';
 
 class FetchRepository extends fixture.FakeRatesRepository implements OfficialCompanyPayrollRateFetcher {
   @override
   String officialFetchActor = 'actor';
   int fetches = 0;
   bool failFetch = false;
+  bool includeRemunerationTable = false;
   Completer<List<String>>? gate;
   Map<String,String>? months;
   FetchRepository({bool canEdit = true}) {
@@ -22,8 +24,13 @@ class FetchRepository extends fixture.FakeRatesRepository implements OfficialCom
     fetches++; months = requestedMonths;
     if (failFetch) throw StateError('network');
     if (gate != null) return gate!.future;
+    final candidate = fixture.value('health_insurance',employee:600000);
+    if (includeRemunerationTable) {
+      ((candidate['source'] as Map)['applicability'] as Map).addAll(
+          Map<String, String>.from((officialTableRate()['source'] as Map)['applicability'] as Map));
+    }
     data = CompanyPayrollRatesData(canEdit:data.canEdit,items:data.items,
-      candidates:[CompanyPayrollRateCandidate(id:'official',itemId:'health_insurance',value:fixture.value('health_insurance',employee:600000),checkedAt:'2026-10-10',scopeVersion:1)],history:[],companyScope:data.companyScope);
+      candidates:[CompanyPayrollRateCandidate(id:'official',itemId:'health_insurance',value:candidate,checkedAt:'2026-10-10',scopeVersion:1)],history:[],companyScope:data.companyScope);
     return [];
   }
 }
@@ -37,6 +44,24 @@ Future<void> fetch(WidgetTester tester) async {
   await tester.tap(find.text('取得して比較')); await tester.pumpAndSettle();
 }
 void main() {
+  testWidgets('existing fetch button retrieves table evidence without adding or auto-applying controls', (tester) async {
+    final repository = FetchRepository()..includeRemunerationTable = true;
+    await fixture.openPage(tester, repository);
+    await fetch(tester);
+    expect(repository.fetches, 1);
+    expect(repository.saved, isEmpty);
+    expect(repository.applied, isEmpty);
+    expect(find.text('最新の公式料率を取得'), findsOneWidget);
+    await fixture.reveal(tester, find.byKey(const ValueKey('apply-official')));
+    final tile = find.byKey(const PageStorageKey('rate-details-official'));
+    await fixture.reveal(tester, tile);
+    await tester.tap(tile); await tester.pumpAndSettle();
+    expect(find.text('公式表の標準報酬月額：58,000円〜1,390,000円'), findsOneWidget);
+    expect(find.text('平均月収63,000円未満 → 58,000円で計算'), findsOneWidget);
+    expect(find.text('平均月収1,355,000円以上 → 1,390,000円で計算'), findsOneWidget);
+    expect(find.textContaining('remuneration_bases_csv'), findsNothing);
+    expect(repository.months!['insurance_month'], '2026-10-01');
+  });
   testWidgets('registration months are prefilled and calendar choice reaches fetch', (tester) async {
     final repository = FetchRepository();
     await fixture.openPage(tester, repository);
@@ -102,3 +127,4 @@ void main() {
     expect(repository.fetches,0);
   });
 }
+

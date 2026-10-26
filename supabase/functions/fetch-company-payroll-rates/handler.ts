@@ -72,11 +72,17 @@ return async (req: Request) => {
     if (!fetched.rates.length) return reply({error:'会社条件に合う公式料率を取得できませんでした。'},422);
     const values = fetched.rates.map(rate => {
       if (insurance < rate.insuranceMonth) throw new Error('保険適用月が公式料率の開始月より前です。');
+      const tableFrom = rate.source.applicability.remuneration_effective_from;
+      if (tableFrom && insurance < month(tableFrom)) throw new Error('保険適用月が公式等級表の開始月より前です。');
       return {kind:rate.kind,label:labels[rate.kind],total:rate.total,employee:rate.employee,employer:rate.employer,
         insurance_month:insurance,payroll_month:payroll,payment_month:payment,source:{...rate.source,applicability:{...rate.source.applicability,
           scope_version:String(initial.company_scope.version),
           ...Object.fromEntries(Object.entries(initial.company_scope.value).filter(([,v])=>typeof v === 'string'))}}};
     });
+    for (const value of values) {
+      const fields = Object.entries(value.source.applicability);
+      if (fields.length > 20 || fields.some(([k,v]) => !k.trim() || k.length > 80 || typeof v !== 'string' || !v.trim() || v.length > 512)) throw new Error('公式資料の保存形式が範囲外です。');
+    }
     const latest = await read();
     if (latest.can_edit !== true || latest.company_scope?.version !== initial.company_scope.version) return reply({error:'会社条件が変更されました。再読み込みしてください。'},409);
     const serviceKey = key('SUPABASE_SECRET_KEYS','SUPABASE_SERVICE_ROLE_KEY');
@@ -92,3 +98,4 @@ return async (req: Request) => {
   }
 };
 }
+
