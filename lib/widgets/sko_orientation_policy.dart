@@ -2,8 +2,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// Preserve the normal iPhone portrait policy; signatures temporarily rotate.
-/// iPad and other platforms retain their existing platform orientation policy.
+/// Normal iPhone pages are portrait. Signature routes request only landscape.
+/// Other devices return to the app's normal, platform-controlled policy ([]).
 class SkoOrientationPolicy {
   static bool _phonePortrait = false;
   static int _signaturePages = 0;
@@ -20,20 +20,22 @@ class SkoOrientationPolicy {
   }
 
   static Future<void> enterSignature() async {
-    if (!_phonePortrait) return;
     _signaturePages++;
+    if (_signaturePages != 1) return;
+    // iPad multitasking / OS restrictions can ignore this request. The capture
+    // page withholds its entire form until a landscape viewport is available.
     await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
   }
 
   static Future<void> leaveSignature() async {
-    if (!_phonePortrait || _signaturePages == 0) return;
+    if (_signaturePages == 0) return;
     _signaturePages--;
     if (_signaturePages == 0) {
-      await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      await SystemChrome.setPreferredOrientations(_phonePortrait
+        ? [DeviceOrientation.portraitUp] : <DeviceOrientation>[]);
     }
   }
 }

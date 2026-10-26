@@ -42,7 +42,7 @@ void main() {
     );
       await tester.dragFrom(tester.getCenter(canvas), const Offset(80, 30));
       await tester.pump();
-      await tester.tap(find.text('このサインで確定'));
+      await tester.tap(find.text('サインを確定'));
       await tester.pumpAndSettle();
       expect(result?.signerName, '佐藤 太郎');
       expect(result?.strokes, isNotEmpty);
@@ -63,7 +63,7 @@ void main() {
         findsNothing,
       );
       await tester.enterText(find.byType(TextField), '');
-      await tester.tap(find.text('このサインで確定'));
+      await tester.tap(find.text('サインを確定'));
       await tester.pump();
       expect(find.text('現場責任者名を入力してください'), findsOneWidget);
       await tester.enterText(find.byType(TextField), '変更責任者');
@@ -71,3 +71,4 @@ void main() {
     },
   );
 }
+

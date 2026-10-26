@@ -1,0 +1,186 @@
+-- REVIEW CANDIDATE. Fresh additive schema only. No existing core replacement.
+-- Default OFF: root alone provisions a reviewed deployment and independent keys.
+begin;
+set local lock_timeout='5s';set local statement_timeout='45s';
+do $pre$ begin
+ if current_user<>'postgres' or to_regnamespace('security_management_issuer_private')is not null then raise exception 'management_issuer_fresh_install_only';end if;
+ if to_regprocedure('private.require_reauthentication_session()')is null or to_regprocedure('public.verify_secondary_password(text)')is null or to_regprocedure('public.is_current_user_master_admin()')is null then raise exception 'management_issuer_core_missing';end if;
+ if(select md5(prosrc)from pg_proc where oid=to_regprocedure('private.require_reauthentication_session()'))is distinct from 'b5c8e2f259a99b3c69694ad0640080e5'then raise exception 'management_issuer_core_drift: private.require_reauthentication_session()';end if;
+ if(select md5(prosrc)from pg_proc where oid=to_regprocedure('public.verify_secondary_password(text)'))is distinct from '592b30d4832b747f6a7ef4bc424cb33a'then raise exception 'management_issuer_core_drift: public.verify_secondary_password(text)';end if;
+ if(select md5(prosrc)from pg_proc where oid=to_regprocedure('public.is_current_user_master_admin()'))is distinct from 'efbc31721e3fb604059228badaef0139'then raise exception 'management_issuer_core_drift: public.is_current_user_master_admin()';end if;
+ if(select md5(prosrc)from pg_proc where oid=to_regprocedure('private.account_access_allowed()'))is distinct from 'aeca25db212c043c472334026bd98724'then raise exception 'management_issuer_core_drift: private.account_access_allowed()';end if;
+end $pre$;
+create schema security_management_issuer_private;
+revoke all on schema security_management_issuer_private from public,anon,authenticated,service_role;
+create table security_management_issuer_private.deployments(
+ deployment_id text primary key check(deployment_id~'^[a-zA-Z0-9_-]{1,64}$'),
+ company_id uuid not null,owner_id uuid not null,enabled boolean not null default false,
+ revision bigint not null default 1 check(revision>0),
+ key_id text not null check(key_id~'^[a-zA-Z0-9_-]{1,64}$'),key_version integer not null check(key_version>0),
+ manager_jwk jsonb not null,
+ check(jsonb_typeof(manager_jwk)='object' and manager_jwk->>'kty'='OKP' and manager_jwk->>'crv'='Ed25519' and manager_jwk->>'x'~'^[A-Za-z0-9_-]{43}$' and manager_jwk-'kty'-'crv'-'x'='{}'::jsonb)
+);
+create table security_management_issuer_private.proofs(
+ proof_hash text primary key check(proof_hash~'^[a-f0-9]{64}$'),command_id uuid not null unique,
+ actor_id uuid not null,session_id uuid not null,company_id uuid not null,deployment_id text not null,
+ operation text not null check(operation='master.security_decoy.manage'),
+ payload_body text not null,payload_hash text not null check(payload_hash~'^[a-f0-9]{64}$'),
+ registry_hash text not null,credential_fingerprint text not null,
+ created_at timestamptz not null,expires_at timestamptz not null,consumed_at timestamptz,
+ check(expires_at>created_at and expires_at<=created_at+interval '60 seconds')
+);
+create table security_management_issuer_private.commands(
+ command_id uuid primary key,proof_hash text not null unique references security_management_issuer_private.proofs(proof_hash),
+ actor_id uuid not null,session_id uuid not null,company_id uuid not null,deployment_id text not null,
+ payload_body text not null,payload_hash text not null,registry_hash text not null,credential_fingerprint text not null,
+ expires_at timestamptz not null,state text not null check(state in('claimed','signed')),
+ lease_id uuid not null,lease_until timestamptz not null,attempts integer not null check(attempts between 1 and 3),
+ last_failure text check(last_failure in('key_unavailable','signing_failed','completion_unknown')),
+ signature text check(signature~'^[a-f0-9]{128}$'),receipt jsonb,
+ check((state='claimed'and signature is null and receipt is null)or(state='signed'and signature is not null and receipt is not null))
+);
+create table security_management_issuer_private.audit(
+ sequence bigint generated always as identity primary key,command_id uuid not null,
+ actor_id uuid not null,session_id uuid not null,company_id uuid not null,
+ kind text not null check(kind in('prepared','claimed','reclaimed','signed','signer_failed')),
+ payload_hash text not null,at timestamptz not null default clock_timestamp(),details jsonb not null default '{}'::jsonb
+);
+do $secure$ declare n text;begin foreach n in array array['deployments','proofs','commands','audit']loop
+ execute format('alter table security_management_issuer_private.%I enable row level security',n);
+ execute format('revoke all on security_management_issuer_private.%I from public,anon,authenticated,service_role',n);
+end loop;end $secure$;
+revoke all on sequence security_management_issuer_private.audit_sequence_seq from public,anon,authenticated,service_role;
+
+create function security_management_issuer_private.digest(p text)returns text language sql immutable set search_path='' as $$select encode(extensions.digest(convert_to(p,'UTF8'),'sha256'),'hex')$$;
+create function security_management_issuer_private.binding(p_actor uuid,p_session uuid,p_company uuid,p_deployment text,p_lock_credential boolean default true)
+returns jsonb language plpgsql security definer set search_path='' as $binding$
+declare d security_management_issuer_private.deployments%rowtype;credential text;locked_until_time timestamptz;
+begin
+ if p_actor is null or p_session is null or p_company is null or not pg_try_advisory_xact_lock_shared(private.account_deletion_barrier_key(p_actor)) then raise sqlstate '42501' using message='management_actor_unavailable';end if;
+ perform 1 from auth.users where id=p_actor and deleted_at is null and not coalesce(is_anonymous,false) and(banned_until is null or banned_until<=clock_timestamp()) for share;
+ if not found or exists(select 1 from private.account_deletion_access_restrictions where user_id=p_actor)then raise sqlstate '42501' using message='management_actor_unavailable';end if;
+ perform 1 from auth.sessions where id=p_session and user_id=p_actor and(not_after is null or not_after>clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='management_session_unavailable';end if;
+ perform 1 from private.master_admins where user_id=p_actor and enabled for share;
+ if not found then raise sqlstate '42501' using message='management_master_unavailable';end if;
+ perform 1 from public.company_members where company_id=p_company and user_id=p_actor and role::text in('owner','admin') for share;
+ if not found then raise sqlstate '42501' using message='management_company_unavailable';end if;
+ select * into d from security_management_issuer_private.deployments where deployment_id=p_deployment and company_id=p_company and owner_id=p_actor and enabled for share;
+ if not found then raise sqlstate '55000' using message='management_issuer_disabled';end if;
+ if p_lock_credential then select password_hash,locked_until into credential,locked_until_time from public.user_secondary_credentials where user_id=p_actor for share;
+ else select password_hash,locked_until into credential,locked_until_time from public.user_secondary_credentials where user_id=p_actor;end if;
+ if p_lock_credential and locked_until_time>clock_timestamp()then raise sqlstate '42501' using message='management_credential_locked';end if;
+ if credential is null then raise sqlstate '42501' using message='management_credential_unavailable';end if;
+ return jsonb_build_object('registry_hash',security_management_issuer_private.digest(to_jsonb(d)::text),'credential_fingerprint',security_management_issuer_private.digest(credential),'key_id',d.key_id,'key_version',d.key_version,'manager_jwk',d.manager_jwk);
+end $binding$;
+create function security_management_issuer_private.service_only()returns void language plpgsql set search_path='' as $$begin
+ if current_setting('role',true)is distinct from 'service_role' or auth.jwt()->>'role'is distinct from 'service_role' then raise sqlstate '42501' using message='management_signer_service_only';end if;
+end$$;
+
+create function public.prepare_decoy_management_proof(p_company_id uuid,p_command jsonb,p_secondary_password text)
+returns jsonb language plpgsql security definer set search_path='' set lock_timeout='1s' set statement_timeout='5s' as $prepare$
+declare actor uuid:=auth.uid();sid uuid;bind jsonb;token text;command uuid:=gen_random_uuid();payload text;
+ at_time timestamptz;issued bigint;until_ms bigint;nonce uuid:=gen_random_uuid();ok boolean;key_count integer;
+begin
+ sid:=private.require_reauthentication_session();
+ if jsonb_typeof(p_command)is distinct from 'object' or p_command-'deployment_id'-'action'-'reason'-'expected_policy_revision'-'expected_trust_revision'<>'{}'::jsonb or
+  jsonb_typeof(p_command->'deployment_id')is distinct from 'string' or jsonb_typeof(p_command->'action')is distinct from 'string' or jsonb_typeof(p_command->'reason')is distinct from 'string' or p_command->>'deployment_id'!~'^[a-zA-Z0-9_-]{1,64}$' or p_command->>'action'not in('enable','disable','rotate','quarantine','release')or p_command->>'reason'not in('operator_review','false_positive','overload')or
+  jsonb_typeof(p_command->'expected_policy_revision')is distinct from 'number' or p_command->>'expected_policy_revision'!~'^[1-9][0-9]{0,14}$' or
+  jsonb_typeof(p_command->'expected_trust_revision')is distinct from 'number' or p_command->>'expected_trust_revision'!~'^[1-9][0-9]{0,14}$' then raise sqlstate '22023' using message='management_command_rejected';end if;
+ select count(*)into key_count from jsonb_object_keys(p_command);
+ if key_count<>5 then raise sqlstate '22023' using message='management_command_rejected';end if;
+ bind:=security_management_issuer_private.binding(actor,sid,p_company_id,p_command->>'deployment_id',false);
+ if(select count(*)from security_management_issuer_private.proofs where actor_id=actor and created_at>clock_timestamp()-interval '1 day')>=1000 then raise sqlstate '55000' using message='management_proof_capacity';end if;
+ -- A false verifier result must return normally: its failed-attempt/lock update
+ -- is part of the committed RPC transaction, never undone by a later throw.
+ ok:=public.verify_secondary_password(p_secondary_password);
+ if ok is not true then return jsonb_build_object('verified',false,'reason','secondary_password_rejected');end if;
+ bind:=security_management_issuer_private.binding(actor,sid,p_company_id,p_command->>'deployment_id');
+ at_time:=clock_timestamp();issued:=floor(extract(epoch from at_time)*1000)::bigint;until_ms:=issued+60000;
+ -- Every string is validated ASCII/UUID/allowlist. Remove only JSON formatting
+ -- whitespace to match management.mjs payloadCopy's exact field order.
+ payload:=regexp_replace(json_build_object('v',1,'kind','management','key_id',bind->>'key_id','key_version',(bind->>'key_version')::integer,
+  'deployment_id',p_command->>'deployment_id','subject',actor::text,'company_id',p_company_id::text,'action',p_command->>'action','reason',p_command->>'reason',
+  'expected_policy_revision',(p_command->>'expected_policy_revision')::bigint,'expected_trust_revision',(p_command->>'expected_trust_revision')::bigint,
+  'nonce',nonce::text,'issued_at',issued,'expires_at',until_ms)::text,'[[:space:]]','','g');
+ token:=encode(extensions.gen_random_bytes(32),'hex');
+ insert into security_management_issuer_private.proofs values(security_management_issuer_private.digest(token),command,actor,sid,p_company_id,p_command->>'deployment_id','master.security_decoy.manage',payload,security_management_issuer_private.digest(payload),bind->>'registry_hash',bind->>'credential_fingerprint',at_time,to_timestamp(until_ms/1000.0),null);
+ insert into security_management_issuer_private.audit(command_id,actor_id,session_id,company_id,kind,payload_hash)values(command,actor,sid,p_company_id,'prepared',security_management_issuer_private.digest(payload));
+ return jsonb_build_object('verified',true,'operation','master.security_decoy.manage','proof',token,'command_id',command,'payload_hash',security_management_issuer_private.digest(payload),'expires_at',until_ms);
+end $prepare$;
+
+create function public.claim_decoy_management_command(p_proof text)
+returns jsonb language plpgsql security definer set search_path='' set lock_timeout='1s' set statement_timeout='5s' as $claim$
+declare actor uuid:=auth.uid();sid uuid;proof security_management_issuer_private.proofs%rowtype;c security_management_issuer_private.commands%rowtype;b jsonb;lease uuid:=gen_random_uuid();kind text;
+begin
+ sid:=private.require_reauthentication_session();
+ if p_proof is null or p_proof!~'^[a-f0-9]{64}$'then raise sqlstate '42501' using message='management_proof_rejected';end if;
+ select * into proof from security_management_issuer_private.proofs where proof_hash=security_management_issuer_private.digest(p_proof)for update;
+ if not found or proof.actor_id<>actor or proof.session_id<>sid or proof.operation<>'master.security_decoy.manage' or proof.expires_at<=clock_timestamp()then raise sqlstate '42501' using message='management_proof_rejected';end if;
+ b:=security_management_issuer_private.binding(actor,sid,proof.company_id,proof.deployment_id);
+ if b->>'registry_hash'<>proof.registry_hash or b->>'credential_fingerprint'<>proof.credential_fingerprint or security_management_issuer_private.digest(proof.payload_body)<>proof.payload_hash then raise sqlstate '42501' using message='management_proof_binding_changed';end if;
+ select * into c from security_management_issuer_private.commands where command_id=proof.command_id for update;
+ if found then
+  if c.proof_hash<>proof.proof_hash or c.actor_id<>actor or c.session_id<>sid or c.company_id<>proof.company_id or c.deployment_id<>proof.deployment_id or c.payload_body<>proof.payload_body or c.payload_hash<>proof.payload_hash then raise sqlstate '42501' using message='management_command_ledger_changed';end if;
+  if c.state='signed'then return jsonb_build_object('state','signed','operation','master.security_decoy.manage','command_id',c.command_id,'actor_id',c.actor_id,'session_id',c.session_id,'company_id',c.company_id,'manager_jwk',b->'manager_jwk','payload_hash',c.payload_hash,'receipt',c.receipt);end if;
+  if c.lease_until>clock_timestamp()then return jsonb_build_object('state','pending','command_id',c.command_id);end if;
+  if c.attempts>=3 then return jsonb_build_object('state','held','command_id',c.command_id);end if;
+  update security_management_issuer_private.commands set lease_id=lease,lease_until=least(clock_timestamp()+interval '10 seconds',expires_at),attempts=attempts+1,last_failure=null where command_id=c.command_id returning * into c;kind:='reclaimed';
+ else
+  if proof.consumed_at is not null then raise sqlstate '42501' using message='management_proof_ledger_changed';end if;
+  insert into security_management_issuer_private.commands values(proof.command_id,proof.proof_hash,actor,sid,proof.company_id,proof.deployment_id,proof.payload_body,proof.payload_hash,proof.registry_hash,proof.credential_fingerprint,proof.expires_at,'claimed',lease,least(clock_timestamp()+interval '10 seconds',proof.expires_at),1,null,null,null)returning * into c;
+  update security_management_issuer_private.proofs set consumed_at=clock_timestamp()where proof_hash=proof.proof_hash;kind:='claimed';
+ end if;
+ insert into security_management_issuer_private.audit(command_id,actor_id,session_id,company_id,kind,payload_hash,details)values(c.command_id,actor,sid,c.company_id,kind,c.payload_hash,jsonb_build_object('attempt',c.attempts));
+ return jsonb_build_object('state','claimed','operation','master.security_decoy.manage','command_id',c.command_id,'actor_id',c.actor_id,'session_id',c.session_id,'company_id',c.company_id,'lease_id',c.lease_id,'payload_hash',c.payload_hash,'payload_body',c.payload_body,'payload',c.payload_body::jsonb,'manager_jwk',b->'manager_jwk');
+end $claim$;
+
+create function public.complete_decoy_management_command(p_command_id uuid,p_lease_id uuid,p_payload_hash text,p_signature text)
+returns jsonb language plpgsql security definer set search_path='' set lock_timeout='1s' set statement_timeout='5s' as $complete$
+declare c security_management_issuer_private.commands%rowtype;b jsonb;v_receipt jsonb;
+begin
+ perform security_management_issuer_private.service_only();
+ select * into c from security_management_issuer_private.commands where command_id=p_command_id for update;
+ if not found or c.payload_hash is distinct from p_payload_hash or c.lease_id is distinct from p_lease_id or p_signature is null or p_signature!~'^[a-f0-9]{128}$'or c.expires_at<=clock_timestamp()then raise sqlstate '42501' using message='management_completion_rejected';end if;
+ b:=security_management_issuer_private.binding(c.actor_id,c.session_id,c.company_id,c.deployment_id);
+ if b->>'registry_hash'<>c.registry_hash or b->>'credential_fingerprint'<>c.credential_fingerprint then raise sqlstate '42501' using message='management_completion_binding_changed';end if;
+ if c.state='signed'then if c.signature<>p_signature then raise sqlstate '42501' using message='management_signature_conflict';end if;return c.receipt;end if;
+ if c.lease_until<=clock_timestamp()then raise sqlstate '42501' using message='management_claim_expired';end if;
+ v_receipt:=jsonb_build_object('payload',c.payload_body::jsonb,'signature',p_signature);
+ update security_management_issuer_private.commands set state='signed',signature=p_signature,receipt=v_receipt where command_id=p_command_id;
+ insert into security_management_issuer_private.audit(command_id,actor_id,session_id,company_id,kind,payload_hash)values(c.command_id,c.actor_id,c.session_id,c.company_id,'signed',c.payload_hash);
+ return v_receipt;
+end $complete$;
+create function public.fail_decoy_management_command(p_command_id uuid,p_lease_id uuid,p_failure text)
+returns void language plpgsql security definer set search_path='' as $fail$
+declare c security_management_issuer_private.commands%rowtype;
+begin
+ perform security_management_issuer_private.service_only();
+ if p_failure is null or p_failure not in('key_unavailable','signing_failed','completion_unknown')then raise sqlstate '22023' using message='management_failure_rejected';end if;
+ select * into c from security_management_issuer_private.commands where command_id=p_command_id and lease_id=p_lease_id and state='claimed'and lease_until>clock_timestamp()for update;
+ if not found then return;end if;
+ update security_management_issuer_private.commands set lease_until=least(lease_until,clock_timestamp()),last_failure=p_failure where command_id=c.command_id;
+ insert into security_management_issuer_private.audit(command_id,actor_id,session_id,company_id,kind,payload_hash,details)values(c.command_id,c.actor_id,c.session_id,c.company_id,'signer_failed',c.payload_hash,jsonb_build_object('failure',p_failure,'attempt',c.attempts));
+end $fail$;
+
+create function security_management_issuer_private.immutable_ledger()returns trigger language plpgsql set search_path='' as $ledger$
+begin
+ if tg_op='DELETE'then raise exception 'management_ledger_immutable';end if;
+ if tg_table_name='proofs'then
+  if to_jsonb(new)-'consumed_at'is distinct from to_jsonb(old)-'consumed_at' or(old.consumed_at is not null and new.consumed_at is distinct from old.consumed_at)then raise exception 'management_ledger_immutable';end if;
+ elsif old.state='signed'then
+  if to_jsonb(new)is distinct from to_jsonb(old)then raise exception 'management_ledger_immutable';end if;
+ elsif to_jsonb(new)-array['state','lease_id','lease_until','attempts','last_failure','signature','receipt']is distinct from to_jsonb(old)-array['state','lease_id','lease_until','attempts','last_failure','signature','receipt']then raise exception 'management_ledger_immutable';end if;
+ return new;
+end $ledger$;
+create trigger management_proof_immutable before update or delete on security_management_issuer_private.proofs for each row execute function security_management_issuer_private.immutable_ledger();
+create trigger management_command_immutable before update or delete on security_management_issuer_private.commands for each row execute function security_management_issuer_private.immutable_ledger();
+create function security_management_issuer_private.immutable_audit()returns trigger language plpgsql set search_path='' as $$begin raise exception 'management_audit_immutable';end$$;
+create trigger management_audit_immutable before update or delete on security_management_issuer_private.audit for each row execute function security_management_issuer_private.immutable_audit();
+do $grants$ declare f record;begin
+ for f in select p.oid::regprocedure as sig from pg_proc p where p.pronamespace='security_management_issuer_private'::regnamespace loop execute format('revoke all on function %s from public,anon,authenticated,service_role',f.sig);end loop;
+end $grants$;
+revoke all on function public.prepare_decoy_management_proof(uuid,jsonb,text),public.claim_decoy_management_command(text),public.complete_decoy_management_command(uuid,uuid,text,text),public.fail_decoy_management_command(uuid,uuid,text)from public,anon,authenticated,service_role;
+grant execute on function public.prepare_decoy_management_proof(uuid,jsonb,text),public.claim_decoy_management_command(text)to authenticated;
+grant execute on function public.complete_decoy_management_command(uuid,uuid,text,text),public.fail_decoy_management_command(uuid,uuid,text)to service_role;
+commit;

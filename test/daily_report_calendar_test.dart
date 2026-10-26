@@ -37,6 +37,10 @@ class Reports extends DailyReportMonthRepository {
       entry('other',12,1,site:'site-b',name:'現場B')];
   }
   @override
+  Future<DailyReportSiteHistoryResult> listSiteHistory(DailyReportMonthEntry anchor, {String? workerId}) async =>
+    DailyReportSiteHistoryResult((await list(anchor.date)).where((entry) =>
+      dailyReportDestinationKey(entry) == dailyReportDestinationKey(anchor) && entry.saveState == anchor.saveState).toList());
+  @override
   Future<bool> hasPhotos(DailyReportMonthEntry entry, {required String expectedActor}) async {
     checkActor(expectedActor);
     classified.add(entry.id);
@@ -244,7 +248,7 @@ void main() {
     expect(tester.takeException(),isNull);
   });
 
-  testWidgets('right swipe opens next saved day, left swipe opens older same-day ID', (tester) async {
+  testWidgets('right swipe opens next same-day ID before a newer day', (tester) async {
     final reports=Reports(client);
     final entries=[entry('new',12,2),entry('old',12,1),entry('tomorrow',13,1)];
     await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:reports,actor:'actor',
@@ -253,8 +257,10 @@ void main() {
     await tester.fling(find.byKey(const ValueKey('daily-report-preview-swipe')),const Offset(-350,0),1000);
     await tester.pumpAndSettle(); expect(find.text('old'),findsOneWidget);
     await tester.fling(find.byKey(const ValueKey('daily-report-preview-swipe')),const Offset(350,0),1000);
-    await tester.pumpAndSettle(); expect(find.text('tomorrow'),findsOneWidget);
-    expect(reports.opened,['new','old','tomorrow']);
+    await tester.pumpAndSettle(); expect(find.text('new'),findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('daily-report-next'))); await tester.pumpAndSettle();
+    expect(find.text('tomorrow'),findsOneWidget);
+    expect(reports.opened,['new','old','new','tomorrow']);
     reports.changed=true;
     await tester.tap(find.byTooltip('古い日報へ（左スライド）')); await tester.pumpAndSettle();
     expect(find.text('選んだ日報を取得できませんでした。一覧を再読み込みしてください。'),findsOneWidget);
@@ -262,3 +268,4 @@ void main() {
     expect(tester.takeException(),isNull);
   });
 }
+

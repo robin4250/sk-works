@@ -1,0 +1,50 @@
+-- REVIEW ONLY. Supported Custom Access Token PostgreSQL hook; NOT an auth-table trigger.
+-- NOT complete protection: PKCE commits identity before token hook; see enablement-review.md.
+-- Never configure this hook in production before same-version GoTrue proof and enrollment review.
+begin;
+create schema apple_owner_policy;
+revoke all on schema apple_owner_policy from public;
+create table apple_owner_policy.rollout(singleton boolean primary key check(singleton),enabled boolean not null default false);
+create table apple_owner_policy.protected_users(user_id uuid primary key);
+-- An explicit server-verified enrollment/permit, not an email-derived identity registry.
+-- Deliberately no cascading Auth FK: a deleted owner's subject must not become a new UID.
+create table apple_owner_policy.subject_permits(
+ apple_subject text primary key check(apple_subject ~ '^[A-Za-z0-9._-]{1,255}$'),
+ expected_user_id uuid not null references apple_owner_policy.protected_users
+);
+alter table apple_owner_policy.rollout enable row level security;
+alter table apple_owner_policy.protected_users enable row level security;
+alter table apple_owner_policy.subject_permits enable row level security;
+revoke all on all tables in schema apple_owner_policy from public;
+create function apple_owner_policy.custom_access_token_hook(event jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare enabled_value boolean;uid uuid;protected_value boolean;
+begin
+ select enabled into enabled_value from apple_owner_policy.rollout where singleton for share;
+ if enabled_value is distinct from true then return jsonb_build_object('claims',event->'claims');end if;
+ uid:=(event->>'user_id')::uuid;
+ if uid::text is distinct from event->'claims'->>'sub' then
+  return jsonb_build_object('error',jsonb_build_object('http_code',403,'message','Account verification unavailable'));
+ end if;
+ perform 1 from apple_owner_policy.protected_users where user_id=uid for share;
+ protected_value:=found;
+ -- Lock permits used by this actor OR any reserved Apple subject present on this actor.
+ perform 1 from apple_owner_policy.subject_permits p
+ where p.expected_user_id=uid or exists(select 1 from auth.identities i
+  where i.user_id=uid and i.provider='apple' and i.provider_id=p.apple_subject) for share;
+ if exists(
+  select 1 from auth.identities i left join apple_owner_policy.subject_permits p
+  on p.apple_subject=i.provider_id
+  where i.user_id=uid and i.provider='apple' and
+   ((protected_value and p.apple_subject is null)
+    or (p.apple_subject is not null and (p.expected_user_id<>uid or i.identity_data->>'sub' is distinct from p.apple_subject)))
+ ) then
+  return jsonb_build_object('error',jsonb_build_object('http_code',403,'message','Account verification unavailable'));
+ end if;
+ return jsonb_build_object('claims',event->'claims');
+end $$;
+revoke all on function apple_owner_policy.custom_access_token_hook(jsonb) from public;
+grant usage on schema apple_owner_policy to supabase_auth_admin;
+grant execute on function apple_owner_policy.custom_access_token_hook(jsonb) to supabase_auth_admin;
+-- No rollout row, protected UID, subject permit or dashboard hook configuration is installed.
+commit;

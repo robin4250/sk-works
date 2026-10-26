@@ -22,6 +22,9 @@ class _Reports extends DailyReportMonthRepository {
   @override
   Future<List<DailyReportMonthEntry>> list(DateTime month, {String? workerId}) async => [record];
   @override
+  Future<DailyReportSiteHistoryResult> listSiteHistory(DailyReportMonthEntry anchor, {String? workerId}) async =>
+    DailyReportSiteHistoryResult([record]);
+  @override
   Future<bool> hasPhotos(DailyReportMonthEntry entry, {required String expectedActor}) async => false;
   @override
   Future<DailyReportMonthDocument> loadOne(DailyReportMonthEntry entry, {required String expectedActor}) async {
@@ -103,3 +106,4 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
