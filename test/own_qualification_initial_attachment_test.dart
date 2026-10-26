@@ -65,7 +65,7 @@ void main() {
     await tester.tap(find.text('資格証を選択（0件）'));
     await tester.pumpAndSettle();
     expect(find.text('資格証を選択（1件）'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, '登録'));
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.widgetWithText(FilledButton, '登録')).last);
     await tester.pumpAndSettle();
     expect(cloud.inserts, 1);
     expect(photo.submits, 1);
@@ -78,7 +78,7 @@ void main() {
     await tester.ensureVisible(find.text('資格証を選択（0件）'));
     await tester.tap(find.text('資格証を選択（0件）'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '登録'));
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.widgetWithText(FilledButton, '登録')).last);
     await tester.pumpAndSettle();
     expect(cloud.inserts, 1); expect(photo.submits, 1);
     expect(find.text('資格情報は登録済みです。資格証の申請結果を一覧で確認してください。'), findsOneWidget);
@@ -88,7 +88,7 @@ void main() {
     await start(tester, cloud, photo);
     final button = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '資格証を選択（0件）'));
     expect(button.onPressed, isNull);
-    await tester.tap(find.widgetWithText(FilledButton, '登録'));
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.widgetWithText(FilledButton, '登録')).last);
     await tester.pumpAndSettle();
     expect(cloud.inserts, 1); expect(photo.submits, 0);
   });
