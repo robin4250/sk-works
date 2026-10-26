@@ -10,6 +10,10 @@ security protocol: no verified approval service or independent recovery is
 implemented. The legacy gate blocks lock/revoke while enabled, and no secure
 replacement is provided yet. The SQL must not be enabled, deployed, or used
 for actual device registration. The test identity and passwords are synthetic.
+`verified-approval.mjs` is an offline composition candidate only: its adapter
+and atomic database revalidation do not yet exist. Secure delivery of the
+approval token to the requesting session is also unresolved; it is not a
+deployable service or a recovery implementation.
 
 ## Existing components to reuse
 
