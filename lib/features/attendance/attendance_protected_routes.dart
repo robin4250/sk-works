@@ -10,6 +10,11 @@ SecondaryProtectedPage attendanceWorkerListDestination({Future<void> Function()?
 SecondaryProtectedPage attendanceManagementDestination({
   AttendanceManagementRepository? repository, String? initialWorkerId,
   DateTime? initialDate, bool restrictedRecovery = false,
-}) => SecondaryProtectedPage(title: '勤怠管理', child: AttendanceManagementPage(
-  repository: repository, initialWorkerId: initialWorkerId,
-  initialDate: initialDate, restrictedRecovery: restrictedRecovery));
+}) {
+  final managedRepository = repository ?? AttendanceManagementRepository.maybeCreate();
+  return SecondaryProtectedPage(title: '勤怠管理',
+    entryAccess: managedRepository == null ? null : () => managedRepository.entryAccess,
+    child: AttendanceManagementPage(
+      repository: managedRepository, initialWorkerId: initialWorkerId,
+      initialDate: initialDate, restrictedRecovery: restrictedRecovery));
+}

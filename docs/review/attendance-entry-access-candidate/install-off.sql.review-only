@@ -1,0 +1,185 @@
+-- REVIEW ONLY. Entry authentication, not per-operation password prompts.
+-- No activation, business-row mutation or Apple/provider/credential change.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='45s';
+do $pins$ begin
+ if current_user<>'postgres' or to_regnamespace('attendance_entry_access_private') is not null then raise exception 'attendance_entry_install_precondition';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.force_manage_attendance(text,jsonb)') and md5(prosrc)='dbe64a4af862d941d1abde29631bd7ad' and prosecdef and pg_get_userbyid(proowner)='postgres' and proconfig=array['search_path=""']::text[]) then raise exception 'attendance_entry_original_force_changed';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('public.force_manage_attendance_with_proof(text,jsonb,text)') and md5(prosrc)='fa8e7e3d12c6c23d18d4d588323e3710' and prosecdef and pg_get_userbyid(proowner)='postgres' and proconfig=array['search_path=""']::text[]) then raise exception 'attendance_entry_original_proof_changed';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('private.require_reauthentication_session()') and md5(prosrc)='b5c8e2f259a99b3c69694ad0640080e5') or
+ not exists(select 1 from pg_proc where oid=to_regprocedure('public.verify_secondary_password(text)') and md5(prosrc)='592b30d4832b747f6a7ef4bc424cb33a') then raise exception 'attendance_entry_verifier_dependency_changed';end if;
+end $pins$;
+create schema attendance_entry_access_private;
+revoke all on schema attendance_entry_access_private from public,anon,authenticated,service_role;
+create table attendance_entry_access_private.rollout(company_id uuid primary key references public.companies(id),enabled boolean not null default false,revision bigint not null default 1 check(revision>0));
+create table attendance_entry_access_private.grants(
+ id uuid primary key default extensions.gen_random_uuid(),
+ token_hash text not null unique check(token_hash~'^[0-9a-f]{64}$'),
+ actor_id uuid not null,session_id uuid not null,company_id uuid not null,
+ revision bigint not null,credential_fingerprint text not null,created_at timestamptz not null default clock_timestamp(),
+ expires_at timestamptz not null,revoked_at timestamptz,
+ check(expires_at>created_at and expires_at<=created_at+interval '15 minutes'));
+create index attendance_entry_grant_actor on attendance_entry_access_private.grants(actor_id,session_id);
+create table attendance_entry_access_private.events(
+ id bigint generated always as identity primary key,event text not null check(event in('opened','closed','management','revision_revoked')),
+ grant_id uuid,actor_id uuid not null,session_id uuid not null,company_id uuid not null,
+ revision bigint not null,action text,items_sha256 text,reason text,
+ created_at timestamptz not null default clock_timestamp());
+create table attendance_entry_access_private.originals(signature text primary key,definition text not null,metadata jsonb not null,installed_metadata jsonb);
+create table attendance_entry_access_private.installed_functions(signature text primary key,metadata jsonb not null);
+insert into attendance_entry_access_private.originals(signature,definition,metadata)
+ select p.oid::regprocedure::text,pg_get_functiondef(p.oid),to_jsonb(p)
+ from pg_proc p where p.oid in(to_regprocedure('public.force_manage_attendance(text,jsonb)'),to_regprocedure('public.force_manage_attendance_with_proof(text,jsonb,text)'));
+alter table attendance_entry_access_private.rollout enable row level security;
+alter table attendance_entry_access_private.grants enable row level security;
+alter table attendance_entry_access_private.events enable row level security;
+alter table attendance_entry_access_private.originals enable row level security;
+alter table attendance_entry_access_private.installed_functions enable row level security;
+revoke all on all tables in schema attendance_entry_access_private from public,anon,authenticated,service_role;
+revoke all on all sequences in schema attendance_entry_access_private from public,anon,authenticated,service_role;
+
+create function attendance_entry_access_private.guard_revision() returns trigger
+language plpgsql set search_path='' as $$begin
+ if new.revision<old.revision or new.revision>old.revision+1 then raise exception 'attendance_entry_revision_must_advance_once';end if;
+ if new.enabled is distinct from old.enabled then new.revision:=old.revision+1;end if;
+ return new;
+end $$;
+create trigger attendance_entry_revision_guard before update on attendance_entry_access_private.rollout
+for each row execute function attendance_entry_access_private.guard_revision();
+
+create function attendance_entry_access_private.context() returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();sid uuid;cid uuid;
+begin
+ sid:=private.require_reauthentication_session();
+ lock table public.company_members in share mode;
+ lock table public.member_feature_permissions in share mode;
+ if (select count(*) from public.company_members where user_id=actor)<>1 then raise sqlstate '42501' using message='attendance_entry_single_company_required';end if;
+ select company_id into strict cid from public.company_members where user_id=actor;
+ perform attendance_admin_override_private.require_manager(cid);
+ return jsonb_build_object('actor',actor,'sid',sid,'company',cid);
+end $$;
+create function attendance_entry_access_private.required() returns boolean
+language sql stable security definer set search_path='' as $$
+ select exists(select 1 from attendance_entry_access_private.rollout r
+  join public.company_members m on m.company_id=r.company_id
+  where m.user_id=auth.uid() and r.enabled)
+$$;
+
+create function public.attendance_management_entry_capabilities() returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare c jsonb;begin
+ c:=attendance_entry_access_private.context();
+ return jsonb_build_object('protocol','sko-attendance-entry-v1','company_id',c->>'company',
+  'enabled',exists(select 1 from attendance_entry_access_private.rollout where company_id=(c->>'company')::uuid and enabled),'ttl_seconds',900);
+end $$;
+
+create function public.open_attendance_management_access(p_password text,p_expected_company_id uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare c jsonb;rev bigint;raw_token text;fingerprint text;gid uuid;started timestamptz;expiry timestamptz;
+begin
+ c:=attendance_entry_access_private.context();
+ if p_expected_company_id is distinct from (c->>'company')::uuid then raise sqlstate '42501' using message='attendance_entry_company_changed';end if;
+ select revision into rev from attendance_entry_access_private.rollout where company_id=p_expected_company_id and enabled for share;
+ if not found then raise sqlstate '42501' using message='attendance_entry_disabled';end if;
+ -- A wrong password MUST return normally so the established failed-attempt
+ -- counter is committed. Raising after verification would erase that counter.
+ if public.verify_secondary_password(p_password) is distinct from true then
+  return jsonb_build_object('protocol','sko-attendance-entry-v1','ok',false,'error','invalid_password');
+ end if;
+ select encode(extensions.digest(password_hash,'sha256'),'hex') into strict fingerprint from public.user_secondary_credentials where user_id=(c->>'actor')::uuid for share;
+ perform pg_advisory_xact_lock(hashtextextended('sko-attendance-entry:'||(c->>'actor'),0));
+ if (select count(*) from attendance_entry_access_private.grants where actor_id=(c->>'actor')::uuid and revoked_at is null and expires_at>clock_timestamp())>=16 then
+  return jsonb_build_object('protocol','sko-attendance-entry-v1','ok',false,'error','too_many_open_pages');
+ end if;
+ raw_token:=encode(extensions.gen_random_bytes(32),'hex');started:=clock_timestamp();expiry:=started+interval '15 minutes';
+ insert into attendance_entry_access_private.grants(token_hash,actor_id,session_id,company_id,revision,credential_fingerprint,created_at,expires_at)
+ values(encode(extensions.digest(convert_to(raw_token,'UTF8'),'sha256'),'hex'),(c->>'actor')::uuid,(c->>'sid')::uuid,p_expected_company_id,rev,fingerprint,started,expiry) returning id into gid;
+ insert into attendance_entry_access_private.events(event,grant_id,actor_id,session_id,company_id,revision)
+ values('opened',gid,(c->>'actor')::uuid,(c->>'sid')::uuid,p_expected_company_id,rev);
+ return jsonb_build_object('protocol','sko-attendance-entry-v1','ok',true,'company_id',p_expected_company_id,'grant',raw_token,'expires_at',expiry);
+end $$;
+
+create function attendance_entry_access_private.require_access(p_access text,p_expected_company_id uuid) returns attendance_entry_access_private.grants
+language plpgsql security definer set search_path='' as $$
+declare c jsonb;g attendance_entry_access_private.grants%rowtype;rev bigint;fingerprint text;
+begin
+ c:=attendance_entry_access_private.context();
+ if p_expected_company_id is distinct from (c->>'company')::uuid or p_access is null or p_access!~'^[0-9a-f]{64}$' then raise sqlstate '42501' using message='attendance_entry_access_required';end if;
+ select revision into rev from attendance_entry_access_private.rollout where company_id=p_expected_company_id and enabled for share;
+ if not found then raise sqlstate '42501' using message='attendance_entry_access_required';end if;
+ select encode(extensions.digest(password_hash,'sha256'),'hex') into fingerprint from public.user_secondary_credentials where user_id=(c->>'actor')::uuid for share;
+ if fingerprint is null then raise sqlstate '42501' using message='attendance_entry_access_required';end if;
+ select * into g from attendance_entry_access_private.grants where token_hash=encode(extensions.digest(convert_to(p_access,'UTF8'),'sha256'),'hex') for update;
+ if not found or g.actor_id is distinct from (c->>'actor')::uuid or g.session_id is distinct from (c->>'sid')::uuid
+  or g.company_id is distinct from p_expected_company_id or g.revision is distinct from rev or g.credential_fingerprint is distinct from fingerprint or g.revoked_at is not null or g.expires_at<=clock_timestamp()
+ then raise sqlstate '42501' using message='attendance_entry_access_required';end if;
+ return g;
+end $$;
+
+create function public.force_manage_attendance_with_access(p_action text,p_items jsonb,p_access text,p_expected_company_id uuid) returns integer
+language plpgsql security definer set search_path='' as $$
+declare g attendance_entry_access_private.grants%rowtype;result integer;
+begin
+ g:=attendance_entry_access_private.require_access(p_access,p_expected_company_id);
+ if p_action is null or p_action not in('upsert','delete') or p_items is null or jsonb_typeof(p_items)<>'array'
+  or jsonb_array_length(p_items)<1 or jsonb_array_length(p_items)>500 then raise sqlstate '22023' using message='attendance_entry_invalid_items';end if;
+ -- Original management authority, audit and financial writer are unchanged.
+ result:=attendance_stepup_private.force_manage_attendance_unproven(p_action,p_items);
+ insert into attendance_entry_access_private.events(event,grant_id,actor_id,session_id,company_id,revision,action,items_sha256)
+ values('management',g.id,g.actor_id,g.session_id,g.company_id,g.revision,p_action,encode(extensions.digest(convert_to(p_items::text,'UTF8'),'sha256'),'hex'));
+ return result;
+end $$;
+
+create function public.close_attendance_management_access(p_access text) returns void
+language plpgsql security definer set search_path='' as $$
+declare sid uuid;g attendance_entry_access_private.grants%rowtype;
+begin
+ sid:=private.require_reauthentication_session();
+ if p_access is null or p_access!~'^[0-9a-f]{64}$' then return;end if;
+ update attendance_entry_access_private.grants set revoked_at=clock_timestamp()
+ where token_hash=encode(extensions.digest(convert_to(p_access,'UTF8'),'sha256'),'hex')
+ and actor_id=auth.uid() and session_id=sid and revoked_at is null returning * into g;
+ if found then insert into attendance_entry_access_private.events(event,grant_id,actor_id,session_id,company_id,revision)
+  values('closed',g.id,g.actor_id,g.session_id,g.company_id,g.revision);end if;
+end $$;
+
+create function public.revoke_company_attendance_access(p_access text,p_expected_company_id uuid,p_expected_revision bigint,p_reason text) returns bigint
+language plpgsql security definer set search_path='' as $$
+declare g attendance_entry_access_private.grants%rowtype;next_revision bigint;
+begin
+ g:=attendance_entry_access_private.require_access(p_access,p_expected_company_id);
+ if not exists(select 1 from public.company_members where company_id=g.company_id and user_id=g.actor_id and role::text in('owner','admin')) then raise sqlstate '42501' using message='attendance_entry_owner_required';end if;
+ if p_reason is null or length(btrim(p_reason))<5 or length(p_reason)>200 then raise sqlstate '22023' using message='attendance_entry_revocation_reason_required';end if;
+ update attendance_entry_access_private.rollout set revision=revision+1 where company_id=g.company_id and revision=p_expected_revision and enabled returning revision into next_revision;
+ if not found then raise sqlstate '40001' using message='attendance_entry_revision_changed';end if;
+ insert into attendance_entry_access_private.events(event,grant_id,actor_id,session_id,company_id,revision,reason)
+ values('revision_revoked',g.id,g.actor_id,g.session_id,g.company_id,next_revision,btrim(p_reason));
+ return next_revision;
+end $$;
+
+create or replace function public.force_manage_attendance(p_action text,p_items jsonb) returns integer
+language plpgsql security definer set search_path='' as $$begin
+ if attendance_entry_access_private.required() then raise sqlstate '42501' using message='attendance_entry_access_required';end if;
+ if private.reauthentication_required('attendance_management') then
+  raise sqlstate '42501' using message='reauthentication_required';end if;
+ return attendance_stepup_private.force_manage_attendance_unproven(p_action,p_items);
+end $$;
+create or replace function public.force_manage_attendance_with_proof(p_action text,p_items jsonb,p_proof text) returns integer
+language plpgsql security definer set search_path='' as $$declare target jsonb;begin
+ if attendance_entry_access_private.required() then raise sqlstate '42501' using message='attendance_entry_access_required';end if;
+ target:=attendance_stepup_private.target(p_action,p_items);
+ perform private.consume_reauthentication_proof('attendance.manage',target,p_proof);
+ return attendance_stepup_private.force_manage_attendance_unproven(p_action,p_items);
+end $$;
+revoke all on all functions in schema attendance_entry_access_private from public,anon,authenticated,service_role;
+revoke all on function public.attendance_management_entry_capabilities(),public.open_attendance_management_access(text,uuid),public.force_manage_attendance_with_access(text,jsonb,text,uuid),public.close_attendance_management_access(text),public.revoke_company_attendance_access(text,uuid,bigint,text) from public,anon,service_role;
+grant execute on function public.attendance_management_entry_capabilities(),public.open_attendance_management_access(text,uuid),public.force_manage_attendance_with_access(text,jsonb,text,uuid),public.close_attendance_management_access(text),public.revoke_company_attendance_access(text,uuid,bigint,text) to authenticated;
+update attendance_entry_access_private.originals o set installed_metadata=to_jsonb(p) from pg_proc p where p.oid=to_regprocedure(o.signature);
+insert into attendance_entry_access_private.installed_functions
+ select p.oid::regprocedure::text,to_jsonb(p) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+ where n.nspname='attendance_entry_access_private' or p.oid in(
+ to_regprocedure('public.attendance_management_entry_capabilities()'),to_regprocedure('public.open_attendance_management_access(text,uuid)'),
+ to_regprocedure('public.force_manage_attendance_with_access(text,jsonb,text,uuid)'),to_regprocedure('public.close_attendance_management_access(text)'),to_regprocedure('public.revoke_company_attendance_access(text,uuid,bigint,text)'));
+commit;
