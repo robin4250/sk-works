@@ -19,6 +19,13 @@ test('owner device signs a bounded challenge and altered/replayed data is reject
   assert.equal(verify({intent:{...intent,consumed:true}}),false);
   assert.equal(verify({nowMs:now+120000}),false);
   assert.equal(verify({device:{...device,active:false}}),false);
+  // Fail closed when an adapter supplies a missing or non-boolean state.
+  for (const active of [undefined, null, 1, 'true']) {
+    assert.equal(verify({device:{...device,active}}),false);
+  }
+  for (const consumed of [undefined, null, 0, 'false']) {
+    assert.equal(verify({intent:{...intent,consumed}}),false);
+  }
   assert.equal(verify({device:{...device,actor:'00000000-0000-0000-0000-000000000005'}}),false);
   assert.equal(verify({device:{...device,id:'00000000-0000-0000-0000-000000000005'}}),false);
   const attacker=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).publicKey.export({type:'spki',format:'pem'});

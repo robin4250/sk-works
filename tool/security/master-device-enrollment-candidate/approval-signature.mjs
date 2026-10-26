@@ -20,8 +20,8 @@ export function approvalPayload(intent,device) {
 }
 export function verifyApprovalSignature({intent,device,signature,nowMs}) {
   try {
-    if (!Number.isSafeInteger(nowMs) || !device.active || device.actor!==intent.actor ||
-        intent.consumed || intent.expiresMs<=nowMs || intent.createdMs>nowMs ||
+    if (!Number.isSafeInteger(nowMs) || device.active !== true || device.actor!==intent.actor ||
+        intent.consumed !== false || intent.expiresMs<=nowMs || intent.createdMs>nowMs ||
         intent.expiresMs-intent.createdMs>120000 || !Buffer.isBuffer(signature) ||
         signature.length<8 || signature.length>80) return false;
     const publicKey=createPublicKey(device.publicKeyPem);
