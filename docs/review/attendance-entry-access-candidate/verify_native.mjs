@@ -68,7 +68,7 @@ try {
  let access=await open();eq(access.ok,true,'One real password verification opens one entry grant');assert.match(access.grant,/^[a-f0-9]{64}$/);
  eq(await q('select token_hash=$1 v from attendance_entry_access_private.grants',[access.grant]),false,'Database never stores raw grant');
  const afterEntryCredential=await credential();
- const cell=(day='2026-10-29',extra={})=>({worker_id:W,date:day,mode:'work',site_id:SITE,man_days:1,overtime_hours:0,early_hours:0,night_hours:0,allowance_names:[],company_allowance_selections:choices([]),company_allowance_legacy_labels:'',work_description:'入口認証後の正規管理操作',clock_in:'08:00',clock_out:'17:00',...extra});
+ const cell=(day='2026-10-20',extra={})=>({worker_id:W,date:day,mode:'work',site_id:SITE,man_days:1,overtime_hours:0,early_hours:0,night_hours:0,allowance_names:[],company_allowance_selections:choices([]),company_allowance_legacy_labels:'',work_description:'入口認証後の正規管理操作',clock_in:'08:00',clock_out:'17:00',...extra});
  const perform=(action,items,grant=access.grant,actor=manager,sid=managerSid,cid=A)=>sharedCall(actor,sid,'select public.force_manage_attendance_with_access($1,$2::jsonb,$3,$4) v',[action,JSON.stringify(items),grant,cid]);
  const salaryDays=()=>q("select coalesce((detail->>'出勤日数')::numeric,0) v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,W]);
  const invoiceAmount=()=>q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]);
@@ -78,10 +78,10 @@ try {
  eq(await perform('upsert',[cell()]),1,'First save uses page grant without another password');
  eq(Number(await salaryDays()),salaryBefore+1,'Actual payroll adds exactly one entry day');
  eq(Number(await invoiceAmount()),invoiceBefore+10000,'Actual invoice adds one actual participant-day');
- eq(await perform('upsert',[cell('2026-10-29',{work_description:'同じ画面で正規編集'})]),1,'Edit reuses same page authorization without another password');
+ eq(await perform('upsert',[cell('2026-10-20',{work_description:'同じ画面で正規編集'})]),1,'Edit reuses same page authorization without another password');
  eq(Number(await salaryDays()),salaryBefore+1,'Edit does not duplicate salary day');
  eq(Number(await invoiceAmount()),invoiceBefore+10000,'Edit does not duplicate invoice amount');
- eq(await perform('delete',[cell('2026-10-29',{mode:'off'})]),1,'Delete uses same page authorization without another password');
+ eq(await perform('delete',[cell('2026-10-20',{mode:'off'})]),1,'Delete uses same page authorization without another password');
  eq(Number(await salaryDays()),salaryBefore,'Actual payroll removes selected day');
  eq(Number(await invoiceAmount()),invoiceBefore,'Actual invoice removes selected participant-day');
  eq(await credential(),afterEntryCredential,'Multiple CRUD operations never call password verifier again');
@@ -94,7 +94,7 @@ try {
  await exec("select set_config('fixture.manager','off',false)");await reject(()=>perform('upsert',[cell()]),/attendance_admin_current_management_required/);await exec("select set_config('fixture.manager','on',false)");
  await client.query("update company_members set role='worker' where user_id=$1",[manager]);await reject(()=>perform('upsert',[cell()]),/attendance_admin_current_management_required/);await client.query("update company_members set role='owner' where user_id=$1",[manager]);
  const beforeBadBatch=await business();
- await reject(()=>perform('upsert',[cell('2026-10-28'),cell('2026-10-30',{clock_in:'invalid-time'})]),/time zone|invalid input/i);
+ await reject(()=>perform('upsert',[cell('2026-10-19'),cell('2026-10-18',{clock_in:'invalid-time'})]),/time zone|invalid input/i);
  eq(await business(),beforeBadBatch,'Failed actual batch rolls back original payroll/invoice/source/audit changes');
  eq(await credential(),afterEntryCredential,'Failed batch still performs no password verification');
  await sharedCall(manager,managerSid,'select public.close_attendance_management_access($1) v',[access.grant]);
@@ -110,7 +110,7 @@ try {
  eq(String(await sharedCall(manager,managerSid,'select public.revoke_company_attendance_access($1,$2,$3,$4) v',[access.grant,A,revision,'合成の復旧試験による明示失効'])),String(Number(revision)+1),'Authorized audited revision change invalidates previous grants');
  await reject(()=>perform('upsert',[cell()]),/attendance_entry_access_required/);
  access=await open('synthetic-entry-rotated');
- eq(await perform('upsert',[cell('2026-10-30')]),1,'Real re-entry recovers after explicit revision revocation');
+ eq(await perform('upsert',[cell('2026-10-18')]),1,'Real re-entry recovers after explicit revision revocation');
  const beforeToggle=access.grant;
  await client.query('update attendance_entry_access_private.rollout set enabled=false where company_id=$1',[A]);
  await reject(()=>perform('upsert',[cell()]),/attendance_entry_access_required/);
