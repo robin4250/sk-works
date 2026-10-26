@@ -644,8 +644,7 @@ class _AttendanceDayCard extends StatelessWidget {
           ? <String>[SkoLanguageController.tr('手当')]
           : day.allowanceNames;
       for (final name in names) {
-        final unit = day.allowanceUnits[name] ?? '回';
-        tags.add(_MiniTag('${name}1$unit'));
+        tags.add(_MiniTag(day.allowanceDisplayText(name)));
       }
     }
     return tags;
@@ -1046,7 +1045,7 @@ class _MonthCalendarCell extends StatelessWidget {
                 (day!.allowanceNames.isEmpty
                         ? const <String>['手当']
                         : day!.allowanceNames)
-                    .map((name) => '${name}1${day!.allowanceUnits[name] ?? '回'}')
+                    .map((name) => day!.allowanceDisplayText(name))
                     .join(' '),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -1234,8 +1233,7 @@ class WorkerAttendancePrintPreviewPage extends StatelessWidget {
                                         ...(day.allowanceNames.isEmpty
                                             ? const <String>['手当1']
                                             : day.allowanceNames.map(
-                                                (name) =>
-                                                    '${name}1${day.allowanceUnits[name] ?? ''}',
+                                                (name) => day.allowanceDisplayText(name),
                                               )),
                                     ].join('  '),
                                     style: const TextStyle(fontSize: 11),
@@ -1315,3 +1313,4 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+
