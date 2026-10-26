@@ -1,0 +1,552 @@
+-- REVIEW ONLY. Root-owned production review and recovery checks remain required.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='45s';
+lock table public.worker_personnel_profiles,public.worker_family_members in access exclusive mode;
+do $personnel_fresh_guard$ begin
+if (select coalesce(jsonb_agg(jsonb_build_object('table',tablename,'name',policyname,'permissive',permissive,'roles',to_jsonb(roles),'cmd',cmd,'qual',qual,'with_check',with_check) order by tablename,policyname),'[]'::jsonb) from pg_policies where schemaname='public' and tablename in('worker_personnel_profiles','worker_family_members')) is distinct from '[{"cmd":"SELECT","name":"worker family members read","qual":"(EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = worker_family_members.worker_id) AND (w.company_id = worker_family_members.company_id) AND ((w.user_id = ( SELECT auth.uid() AS uid)) OR (EXISTS ( SELECT 1\n           FROM company_members cm\n          WHERE ((cm.company_id = w.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY[''owner''::text, ''admin''::text, ''manager''::text])))))))))","roles":["public"],"table":"worker_family_members","permissive":"PERMISSIVE","with_check":null},{"cmd":"SELECT","name":"personnel profile read","qual":"(EXISTS ( SELECT 1\n   FROM workers w\n  WHERE ((w.id = worker_personnel_profiles.worker_id) AND (w.company_id = worker_personnel_profiles.company_id) AND ((w.user_id = ( SELECT auth.uid() AS uid)) OR (EXISTS ( SELECT 1\n           FROM company_members cm\n          WHERE ((cm.company_id = w.company_id) AND (cm.user_id = ( SELECT auth.uid() AS uid)) AND ((cm.role)::text = ANY (ARRAY[''owner''::text, ''admin''::text, ''manager''::text])))))))))","roles":["public"],"table":"worker_personnel_profiles","permissive":"PERMISSIVE","with_check":null}]'::jsonb then raise exception 'personnel_current_policies_drift';end if;
+if (select jsonb_agg(jsonb_build_object('relation',c.relname,'oid',c.oid::text,'owner',pg_get_userbyid(c.relowner),'acl',c.relacl::text,'rls',c.relrowsecurity) order by c.relname) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind='r' and c.relname in('worker_personnel_profiles','worker_family_members')) is distinct from '[{"acl":"{postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres}","oid":"27562","rls":true,"owner":"postgres","relation":"worker_family_members"},{"acl":"{postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres}","oid":"27496","rls":true,"owner":"postgres","relation":"worker_personnel_profiles"}]'::jsonb then raise exception 'personnel_current_tables_drift';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.employee_personnel_rows()') and p.oid::text='27493' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION private.employee_personnel_rows()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''''
+AS $function$
+declare
+  v_user uuid:=auth.uid();
+  v_company uuid;
+begin
+  select cm.company_id into v_company
+  from public.company_members cm
+  where cm.user_id=v_user
+    and cm.role::text in (''owner'',''admin'',''manager'')
+  limit 1;
+  if v_company is null then
+    raise exception ''社員情報の閲覧権限がありません'';
+  end if;
+
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      ''worker_id'',w.id,''name'',w.name,
+      ''kind'',case when w.affiliation::text=''partner_company''
+        then ''partnerWorker'' else ''employee'' end,
+      ''blood_type'',coalesce(p.blood_type,''''),
+      ''role'',coalesce(w.role,''''),
+    ''employee_number'',coalesce(w.employee_number,''''),
+    ''department'',coalesce(w.department,''''),
+    ''hire_date'',coalesce(w.hire_date::text,''''),
+      ''phone'',coalesce(w.phone,''''),
+      ''address'',coalesce(p.address,''''),
+      ''emergency_name'',coalesce(p.emergency_name,''''),
+      ''emergency_relation'',coalesce(p.emergency_relation,''''),
+      ''emergency_phone'',coalesce(p.emergency_phone,''''),
+      ''emergency_address'',coalesce(p.emergency_address,''''),
+      ''family_composition'',coalesce(p.family_composition,''''),
+      ''family_members'',coalesce((
+        select jsonb_agg(jsonb_build_object(
+          ''id'',fm.id,''name'',fm.name,''relation'',fm.relation,
+          ''birth_date'',fm.birth_date,''is_dependent'',fm.is_dependent
+        ) order by fm.birth_date nulls last,fm.name)
+        from public.worker_family_members fm
+        where fm.worker_id=w.id and fm.company_id=w.company_id
+      ),''[]''::jsonb),
+      ''created_at'',w.created_at,
+      ''updated_at'',greatest(w.updated_at,coalesce(p.updated_at,w.updated_at))
+    ) order by w.name)
+    from public.workers w
+    left join public.worker_personnel_profiles p
+      on p.worker_id=w.id and p.company_id=w.company_id
+    where w.company_id=v_company and w.status=''active''
+  ),''[]''::jsonb);
+end
+$function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from null and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=true and p.provolatile='s') then raise exception 'personnel_current_routine_drift';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('public.employee_personnel_rows()') and p.oid::text='27494' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION public.employee_personnel_rows()
+ RETURNS jsonb
+ LANGUAGE sql
+ SET search_path TO ''''
+AS $function$ select private.employee_personnel_rows() $function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=false and p.provolatile='v') then raise exception 'personnel_current_routine_drift';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.can_edit_worker_personnel(uuid)') and p.oid::text='27553' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION private.can_edit_worker_personnel(p_worker_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''''
+AS $function$
+  select exists(
+    select 1
+    from public.workers w
+    where w.id=p_worker_id
+      and (
+        w.user_id=auth.uid()
+        or exists(
+          select 1
+          from public.company_members cm
+          where cm.company_id=w.company_id
+            and cm.user_id=auth.uid()
+            and cm.role::text in (''owner'',''admin'',''manager'')
+        )
+      )
+  )
+$function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from null and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=true and p.provolatile='s') then raise exception 'personnel_current_routine_drift';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('public.save_worker_personnel_profile(uuid,jsonb)') and p.oid::text='27556' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION public.save_worker_personnel_profile(p_worker_id uuid, p_payload jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''''
+AS $function$
+declare
+  v_company uuid;
+  v_existing boolean;
+  v_request uuid;
+  v_current jsonb;
+  v_actor uuid:=auth.uid();
+  v_actor_role text;
+  v_required integer;
+begin
+  if v_actor is null then raise exception ''ログインが必要です''; end if;
+  if not private.can_edit_worker_personnel(p_worker_id) then
+    raise exception ''社員個人情報を変更する権限がありません'';
+  end if;
+
+  select w.company_id into v_company
+  from public.workers w
+  where w.id=p_worker_id;
+
+  if v_company is null then raise exception ''社員を確認できません''; end if;
+
+  -- Reject a manual duplicate before a pending approval request is created.
+  -- The trigger/index recheck at application time covers approval-time races.
+  if p_payload ? ''employee_number'' and nullif(btrim(p_payload->>''employee_number''),'''') is not null then
+    if length(btrim(p_payload->>''employee_number''))>40 then
+      raise exception using errcode=''22001'',message=''employee_number_too_long'';
+    end if;
+    if exists(select 1 from public.workers w where w.company_id=v_company
+      and w.id<>p_worker_id
+      and upper(btrim(w.employee_number))=upper(btrim(p_payload->>''employee_number''))) then
+      raise exception using errcode=''23505'',message=''employee_number_duplicate'',
+        constraint=''workers_company_employee_number_unique'';
+    end if;
+  end if;
+
+
+  select cm.role::text into v_actor_role
+  from public.company_members cm
+  where cm.company_id=v_company
+    and cm.user_id=v_actor
+  limit 1;
+
+  if v_actor_role is null then
+    raise exception ''会社への所属が必要です'';
+  end if;
+
+  select exists(
+    select 1
+    from public.worker_personnel_profiles p
+    where p.worker_id=p_worker_id
+  ) into v_existing;
+
+  v_current:=private.worker_personnel_payload(p_worker_id);
+
+  if not v_existing then
+    perform private.apply_worker_personnel_payload(p_worker_id,p_payload,v_actor);
+    return jsonb_build_object(
+      ''status'',''saved'',
+      ''requires_approval'',false,
+      ''saved_directly'',true
+    );
+  end if;
+
+  if v_current=p_payload then
+    return jsonb_build_object(
+      ''status'',''unchanged'',
+      ''requires_approval'',false,
+      ''saved_directly'',false
+    );
+  end if;
+
+  if v_actor_role in (''owner'',''admin'') then
+    perform private.apply_worker_personnel_payload(p_worker_id,p_payload,v_actor);
+
+    update public.worker_personnel_change_requests
+    set status=''rejected'',resolved_at=now()
+    where worker_id=p_worker_id
+      and status=''pending'';
+
+    return jsonb_build_object(
+      ''status'',''saved'',
+      ''requires_approval'',false,
+      ''saved_directly'',true
+    );
+  end if;
+
+  select count(*)::integer into v_required
+  from public.worker_personnel_approvers a
+  where a.company_id=v_company
+    and a.user_id<>v_actor;
+
+  if v_required<1 then
+    raise exception ''社員個人情報の承認者を1〜3名で設定してください（申請者本人は承認できません）'';
+  end if;
+
+  v_required:=least(v_required,3);
+
+  update public.worker_personnel_change_requests
+  set status=''rejected'',resolved_at=now()
+  where worker_id=p_worker_id
+    and requested_by=v_actor
+    and status=''pending'';
+
+  insert into public.worker_personnel_change_requests(
+    company_id,worker_id,requested_by,proposed,required_approvals
+  ) values(v_company,p_worker_id,v_actor,p_payload,v_required)
+  returning id into v_request;
+
+  insert into public.app_notifications(
+    company_id,recipient_user_id,kind,title,body,action_key,action_id
+  )
+  select v_company,a.user_id,''approval'',''社員個人情報の変更申請'',
+    ''社員個人情報の変更申請があります。登録済み承認者の承認後に反映されます。'',
+    ''worker_personnel_change'',v_request
+  from public.worker_personnel_approvers a
+  where a.company_id=v_company
+    and a.user_id<>v_actor;
+
+  return jsonb_build_object(
+    ''status'',''pending'',
+    ''requires_approval'',true,
+    ''request_id'',v_request,
+    ''required_approvals'',v_required,
+    ''saved_directly'',false
+  );
+end
+$function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=true and p.provolatile='v') then raise exception 'personnel_current_routine_drift';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.account_access_allowed()') and p.oid::text='25458' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION private.account_access_allowed()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''''
+AS $function$
+ select auth.uid() is not null and not exists(
+  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())
+$function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=true and p.provolatile='s') then raise exception 'personnel_current_routine_drift';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.has_company_feature(uuid,text)') and p.oid::text='19510' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION private.has_company_feature(p_company_id uuid, p_feature text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''public'', ''private'', ''pg_temp''
+AS $function$
+declare
+  v_user_id uuid := auth.uid();
+  v_role text;
+  v_perm public.member_feature_permissions%rowtype;
+begin
+  if v_user_id is null or p_company_id is null then
+    return false;
+  end if;
+
+  select cm.role::text
+  into v_role
+  from public.company_members cm
+  where cm.company_id = p_company_id
+    and cm.user_id = v_user_id
+  limit 1;
+
+  if v_role is null then
+    return false;
+  end if;
+
+  if v_role in (''owner'', ''admin'') then
+    return true;
+  end if;
+
+  select *
+  into v_perm
+  from public.member_feature_permissions
+  where company_id = p_company_id
+    and user_id = v_user_id;
+
+  if not found then
+    return case
+      when v_role = ''manager''
+       and p_feature in (
+         ''can_manage_attendance'',
+         ''can_approve_daily_report_edits''
+       )
+      then true
+      else false
+    end;
+  end if;
+
+  return case p_feature
+    when ''can_view_invoices'' then
+      v_perm.can_view_invoices or v_perm.can_manage_invoices
+    when ''can_manage_invoices'' then
+      v_perm.can_manage_invoices
+    when ''can_view_admin_site_data'' then
+      false
+    when ''can_manage_admin_site_data'' then
+      false
+    when ''can_manage_payroll'' then
+      v_perm.can_manage_payroll
+    when ''can_manage_people'' then
+      v_perm.can_manage_people
+    when ''can_manage_attendance'' then
+      v_perm.can_manage_attendance
+    when ''can_approve_daily_report_edits'' then
+      v_perm.can_approve_daily_report_edits
+    when ''can_manage_partner_chat'' then
+      v_perm.can_manage_partner_chat
+    else false
+  end;
+end;
+$function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from null and to_jsonb(p.proconfig) is not distinct from '["search_path=public, private, pg_temp"]'::jsonb and p.prosecdef=true and p.provolatile='s') then raise exception 'personnel_current_routine_drift';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.personnel_view_allowed(uuid)') and p.oid::text='30103' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION private.personnel_view_allowed(p_company uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE
+ SET search_path TO ''''
+AS $function$
+ select auth.uid() is not null and private.account_access_allowed()
+ and exists(select 1 from public.company_members m
+ where m.company_id=p_company and m.user_id=auth.uid()
+ and (m.role::text in (''owner'',''admin'',''viewer'')
+ or (m.role::text=''manager'' and private.has_company_feature(p_company,''can_manage_people''))));
+$function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres,authenticated=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=false and p.provolatile='s') then raise exception 'personnel_current_routine_drift';end if;
+end $personnel_fresh_guard$;
+create temporary table sko_personnel_protected(relation text primary key,n bigint,h text) on commit drop;
+do $rows_before$ declare target text;n bigint;h text;begin
+ foreach target in array array['public.worker_personnel_profiles','public.worker_family_members'] loop
+  execute format($digest$select count(*)::bigint,md5(coalesce(string_agg(row_hash,'' order by row_hash),''))from(select md5(to_jsonb(x)::text)row_hash from %s x)d$digest$,target)into n,h;
+  insert into pg_temp.sko_personnel_protected values(target,n,h);
+ end loop;
+end $rows_before$;
+set local lock_timeout='5s';
+set local statement_timeout='30s';
+select pg_advisory_xact_lock(hashtextextended('sko.p34.atomic',0));
+create temporary table p34_metadata on commit drop as
+select p.oid,p.proowner,p.proacl,p.proconfig,p.prosecdef
+from pg_proc p where p.oid in
+('private.employee_personnel_rows()'::regprocedure,'private.can_edit_worker_personnel(uuid)'::regprocedure);
+set local lock_timeout='5s';
+-- Fail closed on concurrent/drifted authorization definitions. Table locks keep
+-- a policy edit from racing the checked snapshot; no data or identities change.
+lock table public.worker_personnel_profiles,public.worker_family_members in access exclusive mode;
+do $guard$
+begin
+ if (select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
+     where n.nspname='public' and c.relname in ('worker_personnel_profiles','worker_family_members')
+       and c.relkind='r' and c.relrowsecurity and not c.relforcerowsecurity)=2
+ and (select count(*) from pg_policies p where p.schemaname='public'
+   and p.tablename in ('worker_personnel_profiles','worker_family_members'))=2
+ and exists(select 1 from pg_policies p where p.schemaname='public'
+   and p.tablename='worker_personnel_profiles' and p.policyname='personnel profile read'
+   and p.permissive='PERMISSIVE' and p.cmd='SELECT' and p.roles=ARRAY['public']::name[]
+   and md5(p.qual)='1f1384d90020f684fa997e8fa582e8a2' and p.with_check is null)
+ and exists(select 1 from pg_policies p where p.schemaname='public'
+   and p.tablename='worker_family_members' and p.policyname='worker family members read'
+   and p.permissive='PERMISSIVE' and p.cmd='SELECT' and p.roles=ARRAY['public']::name[]
+   and md5(p.qual)='ebbb5d4863aefdbb313b26d24cf61a6d' and p.with_check is null)
+ and exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.personnel_view_allowed(uuid)')
+   and md5(p.prosrc)='e884314c5119e72345e7614802432b15'
+   and pg_get_userbyid(p.proowner)='postgres' and not p.prosecdef
+   and p.provolatile='s' and p.prokind='f' and not p.proretset
+   and p.prorettype='boolean'::regtype
+   and p.prolang=(select oid from pg_language where lanname='sql')
+   and p.proconfig=ARRAY['search_path=""']::text[]
+   and p.proacl=ARRAY['postgres=X/postgres','authenticated=X/postgres']::aclitem[])
+ then return;
+ end if;
+ raise exception 'personnel_permission_baseline_drift: capture and review a fresh protected authorization snapshot before applying' using errcode='55000';
+end
+$guard$;
+-- Match the existing canonical employee-personnel read RPC, including its
+-- intentional read-only viewer scope, while retaining employees' own records.
+-- No INSERT/UPDATE/DELETE grants, helpers, business rows or payroll are changed.
+drop policy "personnel profile read" on public.worker_personnel_profiles;
+create policy "personnel profile read" on public.worker_personnel_profiles
+for select to authenticated using (
+  private.account_access_allowed()
+  and exists (
+    select 1 from public.workers w
+    where w.id=worker_personnel_profiles.worker_id
+      and w.company_id=worker_personnel_profiles.company_id
+      and (w.user_id=auth.uid()
+        or (private.personnel_view_allowed(worker_personnel_profiles.company_id)
+          and (w.status::text='active' or exists (
+            select 1 from public.company_members m
+            where m.company_id=worker_personnel_profiles.company_id
+              and m.user_id=auth.uid()
+              and m.role::text in ('owner','admin','manager')
+          ))))
+  )
+);
+drop policy "worker family members read" on public.worker_family_members;
+create policy "worker family members read" on public.worker_family_members
+for select to authenticated using (
+  private.account_access_allowed()
+  and exists (
+    select 1 from public.workers w
+    where w.id=worker_family_members.worker_id
+      and w.company_id=worker_family_members.company_id
+      and (w.user_id=auth.uid()
+        or (private.personnel_view_allowed(worker_family_members.company_id)
+          and (w.status::text='active' or exists (
+            select 1 from public.company_members m
+            where m.company_id=worker_family_members.company_id
+              and m.user_id=auth.uid()
+              and m.role::text in ('owner','admin','manager')
+          ))))
+  )
+);
+
+set local lock_timeout='5s';
+-- Cooperating migration owners serialize this exact authorization change.
+-- Production review must also exclude other function DDL writers; a catalog
+-- snapshot guard is not a universal lock against arbitrary external DDL.
+select pg_advisory_xact_lock(hashtextextended('sko.personnel-legacy-read-permission-guard',0));
+do $guard$
+begin
+ if exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.employee_personnel_rows()')
+   and md5(p.prosrc)='3dd173b3ba0768718bbc6f326ea1fb18'
+   and pg_get_userbyid(p.proowner)='postgres' and p.proacl is null
+   and p.prosecdef and p.provolatile='s' and p.prokind='f' and not p.proretset
+   and p.prorettype='jsonb'::regtype and p.proconfig=ARRAY['search_path=""']::text[]
+   and p.prolang=(select oid from pg_language where lanname='plpgsql'))
+ and exists(select 1 from pg_proc p where p.oid=to_regprocedure('public.employee_personnel_rows()')
+   and md5(p.prosrc)='1c119e25281012769df17297a56b1fe7'
+   and pg_get_userbyid(p.proowner)='postgres' and not p.prosecdef
+   and p.proacl=ARRAY['postgres=X/postgres','authenticated=X/postgres','service_role=X/postgres']::aclitem[]
+   and p.provolatile='v' and p.prorettype='jsonb'::regtype
+   and p.proconfig=ARRAY['search_path=""']::text[]
+   and p.prolang=(select oid from pg_language where lanname='sql'))
+ then return;
+ end if;
+ raise exception 'personnel_legacy_rpc_baseline_drift: capture and review a fresh protected authorization snapshot' using errcode='55000';
+end
+$guard$;
+-- Only the authorization condition and denial SQLSTATE change. CREATE OR REPLACE
+-- preserves the function owner/ACL; the public API and JSON payload are untouched.
+CREATE OR REPLACE FUNCTION private.employee_personnel_rows()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_user uuid:=auth.uid();
+  v_company uuid;
+begin
+  select cm.company_id into v_company
+  from public.company_members cm
+  where cm.user_id=v_user
+    and cm.role::text in ('owner','admin','manager')
+  limit 1;
+  if v_company is null
+     or private.account_access_allowed() is not true
+     or private.has_company_feature(v_company,'can_manage_people') is not true then
+    raise exception '社員情報の閲覧権限がありません' using errcode='42501';
+  end if;
+
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'worker_id',w.id,'name',w.name,
+      'kind',case when w.affiliation::text='partner_company'
+        then 'partnerWorker' else 'employee' end,
+      'blood_type',coalesce(p.blood_type,''),
+      'role',coalesce(w.role,''),
+    'employee_number',coalesce(w.employee_number,''),
+    'department',coalesce(w.department,''),
+    'hire_date',coalesce(w.hire_date::text,''),
+      'phone',coalesce(w.phone,''),
+      'address',coalesce(p.address,''),
+      'emergency_name',coalesce(p.emergency_name,''),
+      'emergency_relation',coalesce(p.emergency_relation,''),
+      'emergency_phone',coalesce(p.emergency_phone,''),
+      'emergency_address',coalesce(p.emergency_address,''),
+      'family_composition',coalesce(p.family_composition,''),
+      'family_members',coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'id',fm.id,'name',fm.name,'relation',fm.relation,
+          'birth_date',fm.birth_date,'is_dependent',fm.is_dependent
+        ) order by fm.birth_date nulls last,fm.name)
+        from public.worker_family_members fm
+        where fm.worker_id=w.id and fm.company_id=w.company_id
+      ),'[]'::jsonb),
+      'created_at',w.created_at,
+      'updated_at',greatest(w.updated_at,coalesce(p.updated_at,w.updated_at))
+    ) order by w.name)
+    from public.workers w
+    left join public.worker_personnel_profiles p
+      on p.worker_id=w.id and p.company_id=w.company_id
+    where w.company_id=v_company and w.status='active'
+  ),'[]'::jsonb);
+end
+$function$
+;
+
+set local lock_timeout='5s';
+-- Review-only production candidate. Coordinate all function-DDL writers and
+-- obtain the protected-backup/recovery review and explicit approval first.
+select pg_advisory_xact_lock(hashtextextended('sko.personnel-write-permission-guard',0));
+do $guard$
+begin
+ if exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.can_edit_worker_personnel(uuid)')
+   and md5(p.prosrc)='ead531bcf8b745788cd01371ac405014'
+   and pg_get_userbyid(p.proowner)='postgres' and p.proacl is null
+   and p.prosecdef and p.provolatile='s' and p.prokind='f' and not p.proretset
+   and p.prorettype='boolean'::regtype and p.proconfig=ARRAY['search_path=""']::text[]
+   and p.prolang=(select oid from pg_language where lanname='sql'))
+ and exists(select 1 from pg_proc p where p.oid=to_regprocedure('public.save_worker_personnel_profile(uuid,jsonb)')
+   and md5(p.prosrc)='c11956bf0845ab725312928c2422a7ab'
+   and pg_get_userbyid(p.proowner)='postgres' and p.prosecdef
+   and p.proacl=ARRAY['postgres=X/postgres','authenticated=X/postgres','service_role=X/postgres']::aclitem[]
+   and p.provolatile='v' and p.prorettype='jsonb'::regtype
+   and p.proconfig=ARRAY['search_path=""']::text[])
+ then return;
+ end if;
+ raise exception 'personnel_write_baseline_drift: capture and review a fresh protected authorization snapshot' using errcode='55000';
+end
+$guard$;
+-- The only replaced object. Existing save, payload application, approvals and
+-- notifications are untouched. In particular, approval assignees keep their
+-- separate is_worker_personnel_approver path, which does not call this helper.
+create or replace function private.can_edit_worker_personnel(p_worker_id uuid)
+returns boolean language sql stable security definer set search_path='' as $$
+ select private.account_access_allowed() is true and exists(
+   select 1 from public.workers w
+   where w.id=p_worker_id
+     and (w.user_id=auth.uid() or exists(
+       select 1 from public.company_members cm
+       where cm.company_id=w.company_id and cm.user_id=auth.uid()
+         and cm.role::text in ('owner','admin','manager')
+         and private.has_company_feature(w.company_id,'can_manage_people') is true
+     ))
+ );
+$$;
+do $p34$ begin
+if (select count(*) from p34_metadata)<>2 or exists(
+select 1 from p34_metadata s left join pg_proc p on p.oid=s.oid
+where p.oid is null or p.proowner<>s.proowner or p.proacl is distinct from s.proacl
+or p.proconfig is distinct from s.proconfig or p.prosecdef<>s.prosecdef)
+then raise exception 'Output metadata drift';end if;
+if (select md5(prosrc) from pg_proc where oid='private.employee_personnel_rows()'::regprocedure) is distinct from '3aa70397bbe2ded9040bb3f570ee1edb' then raise exception 'Output source drift';end if;
+if (select md5(prosrc) from pg_proc where oid='private.can_edit_worker_personnel(uuid)'::regprocedure) is distinct from 'a6bb4368b27f38f5e12a2cc2eb3feb22' then raise exception 'Output source drift';end if;
+if (select count(*) from pg_policies where schemaname='public'
+and tablename in ('worker_personnel_profiles','worker_family_members')
+and cmd='SELECT' and permissive='PERMISSIVE' and roles=array['authenticated']::name[])<>2
+then raise exception 'Output policy contract drift';end if;
+end $p34$;
+
+do $rows_after$ declare original record;n bigint;h text;begin
+ for original in select * from pg_temp.sko_personnel_protected loop
+  execute format($digest$select count(*)::bigint,md5(coalesce(string_agg(row_hash,'' order by row_hash),''))from(select md5(to_jsonb(x)::text)row_hash from %s x)d$digest$,original.relation)into n,h;
+  if n is distinct from original.n or h is distinct from original.h then raise exception 'personnel_current_business_rows_changed';end if;
+ end loop;
+end $rows_after$;
+commit;
