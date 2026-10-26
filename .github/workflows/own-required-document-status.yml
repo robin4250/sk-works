@@ -1,0 +1,23 @@
+name: Own required document status
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/own_document_registration_page.dart'
+      - 'test/own_required_document_status_test.dart'
+      - '.github/workflows/own-required-document-status.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/people/own_document_registration_page.dart test/own_required_document_status_test.dart
+      - run: flutter test --reporter expanded test/own_required_document_status_test.dart test/document_number_guidance_test.dart

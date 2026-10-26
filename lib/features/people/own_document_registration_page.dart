@@ -683,7 +683,32 @@ class _OwnDocumentRegistrationPageState
                                   _repository is OwnDocumentPhotoGateway &&
                                   !(_repository as OwnDocumentPhotoGateway)
                                       .photoEditingAvailable);
-                          final label = needsRegistration ? '未登録' : '登録済み';
+                          // Mirror the required-document attention predicate: the
+                          // primary attachment is required except for bank information,
+                          // whose completion depends on a separate private bank record.
+                          final statusValue = status?['status']?.toString();
+                          final isBank = requirement['name']?.toString() == '銀行口座情報';
+                          final isRequired = requirement['is_required'] == true;
+                          final primaryPath =
+                              status?['attachment_path']?.toString() ?? '';
+                          final attachmentMissing = status != null && isRequired &&
+                              !isBank && primaryPath.isEmpty;
+                          final bankUnconfirmed =
+                              status != null && isRequired && isBank;
+                          final statusMissing = statusValue == 'not_submitted' ||
+                              statusValue == 'missing' || statusValue == 'expired';
+                          final incomplete = needsRegistration || attachmentMissing ||
+                              bankUnconfirmed || statusMissing;
+                          final label = status == null || statusValue == 'not_submitted' ||
+                                  statusValue == 'missing'
+                              ? '未登録'
+                              : statusValue == 'expired'
+                                  ? '期限切れ'
+                                  : attachmentMissing
+                                      ? '添付待ち'
+                                      : bankUnconfirmed
+                                          ? '口座情報を確認'
+                                          : '登録済み';
                           final gateway = _repository;
                           final attachments = [
                             for (var i = 0; i < paths.length; i++)
@@ -691,7 +716,12 @@ class _OwnDocumentRegistrationPageState
                                 path: paths[i], signedUrl: gateway is OwnDocumentPhotoGateway
                                   ? gateway.signedUrl : (_) async => throw StateError('Attachment unavailable')),
                           ];
-                          final action = _saving ? null : needsRegistration
+                          final action = _saving ? null : attachmentMissing &&
+                                  workerDocumentHasRegisteredContent(status)
+                            ? () => ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text(
+                                  '登録済み書類への添付追加は準備中です。')))
+                            : needsRegistration
                             ? () => _registerDocument(initialRequirementId: id)
                             : gateway is OwnDocumentPhotoGateway
                               ? () => _editPhotos(status)
@@ -702,7 +732,7 @@ class _OwnDocumentRegistrationPageState
                             key: ValueKey('own-document:${gateway is _OwnDocumentRepositoryGateway ? gateway.actorId : ''}:${_worker?['id']}:$id'),
                             title: requirement['name']?.toString() ?? '書類',
                             icon: Icons.description_outlined,
-                            registered: !needsRegistration,
+                            registered: !incomplete,
                             statusLabel: label,
                             dateLabel: dates.isEmpty ? '' : dates.first,
                             detailLabel: [if (status != null) resourceDocumentReviewLabel(status['status']),
