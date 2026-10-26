@@ -9,7 +9,7 @@ create table public.worker_payroll_settings(company_id uuid,worker_id uuid,pay_t
  day_overtime numeric,night_overtime numeric,holiday_overtime numeric,holiday_night_overtime numeric,
  day_early numeric,night_early numeric,holiday_early numeric,holiday_night_early numeric,
  monthly_salary_yen numeric,family_monthly numeric,transport_monthly numeric,income_tax_monthly numeric,
- social_insurance_monthly numeric,other_deduction_monthly numeric,custom_deductions jsonb,
+ social_insurance_monthly numeric,other_deduction_monthly numeric,custom_deductions jsonb default '[]'::jsonb,
  allowance_name_1 text,allowance_1 numeric,allowance_name_2 text,allowance_2 numeric,
  allowance_name_3 text,allowance_3 numeric);
 create table public.attendance_entries(company_id uuid,worker_id uuid,site_id uuid,

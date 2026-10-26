@@ -17,6 +17,9 @@ PayrollRecordedUnitEvidence? recordedPayrollUnitEvidence(
   // Legacy attendance totals alone do not contain an attributable unit price.
   final primary = detail['unit_resolution'];
   final attendance = detail['attendance_unit_evidence'];
+  if (primary is Map && primary['blocked'] == true) {
+    return null;
+  }
   final primaryItems = primary is Map && primary['items'] is List
       ? (primary['items'] as List).whereType<Map>().where((item) =>
           item['name']?.toString().trim() == name.trim() && item['section'] == section)
@@ -85,7 +88,9 @@ PayrollRecordedUnitEvidence? _attendanceEvidence(Map resolution, {
     if (suffix == null || rate is! num || count is! num || money is! num ||
         !rate.isFinite || !count.isFinite || !money.isFinite || rate < 0 || count < 0 ||
         !(rate * count).isFinite || (rate * count).round() != money ||
-        num.tryParse(_decimal(rate)) != rate || num.tryParse(_decimal(count)) != count) return null;
+        num.tryParse(_decimal(rate)) != rate || num.tryParse(_decimal(count)) != count) {
+      return null;
+    }
     amount += money; quantity += count; units.add(suffix);
     final category = const {'day': '日勤', 'night': '夜勤',
       'holiday': '休日', 'holiday_night': '休日夜勤'}[item['category']];

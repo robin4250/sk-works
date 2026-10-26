@@ -52,6 +52,8 @@ void main() {
     };
     (saved['unit_resolution'] as Map)['blocked'] = true;
     expect(evidence(saved), isNull);
+    (saved['unit_resolution'] as Map)['items'] = [];
+    expect(evidence(saved), isNull);
   });
   test('categories preserve saved rates and reject overrides and rounding ambiguity', () {
     final saved = <String, dynamic>{'attendance_unit_evidence': {
