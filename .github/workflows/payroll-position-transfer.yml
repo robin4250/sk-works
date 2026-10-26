@@ -1,0 +1,24 @@
+name: Payroll position transfer
+on:
+  pull_request:
+    paths:
+      - 'lib/features/payroll/payroll_position_transfer.dart'
+      - 'lib/features/payroll/payroll_pdf_service.dart'
+      - 'test/payroll_position_transfer_test.dart'
+      - '.github/workflows/payroll-position-transfer.yml'
+permissions:
+  contents: read
+jobs:
+  presentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/payroll/payroll_position_transfer.dart lib/features/payroll/payroll_pdf_service.dart test/payroll_position_transfer_test.dart
+      - run: flutter test --reporter expanded test/payroll_position_transfer_test.dart test/payroll_recorded_unit_evidence_test.dart

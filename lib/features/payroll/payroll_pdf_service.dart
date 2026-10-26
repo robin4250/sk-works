@@ -11,6 +11,7 @@ import 'payroll_statement_repository.dart';
 import 'payroll_recorded_tax_amounts.dart';
 import 'payroll_insurance_calculation_evidence.dart';
 import 'payroll_recorded_unit_evidence.dart';
+import 'payroll_position_transfer.dart';
 import '../shared/company_seal_pdf.dart';
 
 class PayrollPdfService {
@@ -77,11 +78,19 @@ class PayrollPdfService {
       MapEntry<String, Object?>('交通費', earnings['交通費']),
       ...adjustmentEarnings.entries,
     ];
-    final earningEntries = _mergeMoneyEntries([
+    final originalEarningEntries = _mergeMoneyEntries([
       ..._withoutConfiguredAliases(legacyEarnings, configuredEarnings,
         independentUnits: _unitBaseMoney(detail, section: 'earning')),
       ...configuredEarnings.entries,
     ]);
+
+    final transfer = payrollPositionTransfer(detail, originalEarningEntries);
+    final earningEntries = transfer?.entries ?? originalEarningEntries;
+    final displayDetail = transfer == null ? detail : <String, dynamic>{
+      ...detail,
+      '_position_transfer_rate': transfer.rate,
+      '_position_transfer_days': transfer.days,
+    };
 
     final legacyDeductions = <MapEntry<String, Object?>>[
       MapEntry<String, Object?>(
@@ -117,7 +126,7 @@ class PayrollPdfService {
             statement,
             sealFont: sealFont,
             fallbackFont: regular,
-            detail: detail,
+            detail: displayDetail,
             earningEntries: Map.fromEntries(
               earningEntries.entries.skip(pageIndex * 15).take(15),
             ),
@@ -967,7 +976,9 @@ class PayrollPdfService {
                         pw.Expanded(
                           flex: earnings ? 39 : 43,
                           child: pw.Text(
-                            recordedPayrollUnitEvidence(detail, name: visible[i].key,
+                            earnings && visible[i].key == '基本給' && detail['_position_transfer_rate'] != null
+                              ? '${_number(detail['_position_transfer_rate'] as int)}円 × ${detail['_position_transfer_days']}日'
+                              : recordedPayrollUnitEvidence(detail, name: visible[i].key,
                               section: earnings ? 'earning' : 'deduction',
                               displayedAmount: (_asNumber(visible[i].value) ?? 0).abs())?.calculation ??
                                 _moneyExplanation(visible[i].key, detail, month),
@@ -979,7 +990,9 @@ class PayrollPdfService {
                           pw.Expanded(
                             flex: 17,
                             child: pw.Text(
-                              recordedPayrollUnitEvidence(detail, name: visible[i].key,
+                              visible[i].key == '基本給' && detail['_position_transfer_days'] != null
+                                ? '${detail['_position_transfer_days']}日'
+                                : recordedPayrollUnitEvidence(detail, name: visible[i].key,
                                 section: 'earning',
                                 displayedAmount: (_asNumber(visible[i].value) ?? 0).abs())?.quantityLabel ??
                                   _quantity(visible[i].key, detail),
@@ -991,7 +1004,9 @@ class PayrollPdfService {
                           flex: earnings ? 19 : 26,
                           child: pw.Text(
                             _number(
-                              (_asNumber(visible[i].value) ?? 0).abs().toInt(),
+                              visible[i].key == '基本給の調整額' && earnings
+                                  ? (_asNumber(visible[i].value) ?? 0).toInt()
+                                  : (_asNumber(visible[i].value) ?? 0).abs().toInt(),
                             ),
                             textAlign: pw.TextAlign.right,
                             style: const pw.TextStyle(fontSize: 6),
@@ -1475,5 +1490,6 @@ class PayrollPdfService {
 
   static String _yen(int value) => '¥${_number(value)}';
 }
+
 
 
