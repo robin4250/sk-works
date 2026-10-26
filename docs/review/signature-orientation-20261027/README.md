@@ -4,8 +4,12 @@ Base main: `986ac4d51d9c0298d5cd04a6d38d8d373f697094`。
 
 端末の現在のFlutter画面が縦のとき、枠に上下左右の目印と大きな「横向きにしてサインしてください」を表示し、署名ジェスチャを受け付けない。横向きになると自動的に案内と目印を消して入力可能にする。最初の線ではなく向きの変化が解除条件。横向きで消去した場合は案内を再表示しない。
 
+横向きで「サインを確定」を押すと既存Navigator.popで元の日報へ結果を返す。縦向きでは確定buttonも無効。本人名・筆跡がないと戻らない。通常iPhoneの縦向き復帰は既存SkoOrientationPolicy.leaveSignature、iPadは従来policyを保持。署名画面から戻ったことは日報保存成功を意味せず、親の日報の保存RPC・署名済み表示条件は変更しない。
+
 描画途中で縦へ戻っても保存済みstrokeと最初のcapture寸法を保持する。入力を止め、横へ戻ったら新strokeで続ける。Flutterのupright viewport座標を使うため左右両landscapeを個別に推測して回転しない。筆跡から天地を推測する処理はない。回転ロックなどでviewportが縦のままなら案内を維持する。
 
 既存のnormalized vectorとcanvas_width/canvas_heightを保持し、PNGへの保存形式変更やRPC/署名ハッシュ変更は行わない。日報previewとPDFは既存の同寸法metadata・uniform containを使用。既存署名/確定帳票を書き換えず、採用枠も変更しない。枠内の目印や案内はstroke/PDFへ保存されない。
 
 電話/タブレットの縦入力拒否、横自動解除、回転後の値保持・再開・消去、文字拡大、保存vectorを描画したピクセルの上下左右と比率を検証する候補を追加。既存member名・vector寸法・orientation・inkframeもCIで検証する。ローカルFlutter/Dartは未実行。CI/実iPhone/タブレットは未確認。本番DB変更ゼロ。
+
+報告者/責任者の緑「サイン済み」は、それぞれ保存済みの該当署名だけをread-only拡大プレビューするbutton。名前・元capture寸法を表示し、閉じると日報へ戻る。空/不正な保存payloadはgreen/preview対象にしない。責任者の旧signature_json fallbackは責任者にだけ使用し、報告者へ流用しない。親の日報保存RPC・署名履歴を変えない。

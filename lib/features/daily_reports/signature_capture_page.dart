@@ -69,7 +69,7 @@ class SignatureCapturePage extends StatefulWidget {
     super.key,
     this.title = '責任者サイン',
     this.signerLabel = '現場責任者名',
-    this.submitLabel = 'このサインで確定',
+    this.submitLabel = 'サインを確定',
     this.initialSignerName = '',
     this.signerNameOptions = const [],
     this.reviewText,
@@ -138,6 +138,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
   }
 
   void _submit() {
+    if (!_landscape) { return; }
     if (_signer.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${widget.signerLabel}を入力してください')),
@@ -244,7 +245,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
             }),
           )),
           Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: FilledButton.icon(onPressed: _submit,
+            child: FilledButton.icon(onPressed: _landscape ? _submit : null,
               icon: const Icon(Icons.check_circle_outline), label: Text(widget.submitLabel))),
         ],
       ))),
