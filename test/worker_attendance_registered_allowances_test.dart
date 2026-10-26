@@ -102,7 +102,7 @@ void main() {
       } else {
         throw StateError('Unexpected read: $path');
       }
-      return http.Response(jsonEncode(result), 200, headers: {'content-type': 'application/json'});
+      return http.Response(jsonEncode(result), 200, headers: {'content-type': 'application/json'}, request: request);
     }));
     try {
       final month = await WorkerAttendanceSheetRepository.forClient(client)
