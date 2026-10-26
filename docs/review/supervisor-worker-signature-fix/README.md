@@ -1,0 +1,15 @@
+# 責任者サイン時の署名保護エラー
+
+報告者サイン保存済み、責任者サイン未保存の共有日報で、保存済み勤務区分がNULL、本人確認済みの勤務区分がdayだった。責任者署名準備は、本人確認済みの事実を正規のtransaction permitで反映する。そのUPDATE後の旧AFTER triggerが報告者署名を無条件に消去し、共有日報の署名保護が正しく拒否したため全処理がrollbackした。
+
+修正対象はprivate.clear_daily_report_signatures_on_workers()の1関数だけ。完全同一行のUPDATEと、既存permits_worker_materializationによってactor・transaction・supervisor context・確認済みfactsの一致が確認できたUPDATEでは署名を消去しない。INSERT/DELETEや他の変更には既存動作を維持する。署名保護や権限確認は無効化せず、ユーザー設定GUCによる迂回も追加しない。
+
+既試験には旧AFTER trigger自体が含まれている。以前の成功ケースはworkerが既に正規化済みであり、署名後のNULL→dayという今回の実形状を網羅していなかった。trigger欠落が原因とは記録しない。
+
+対象Native試験は既ordinary emitterの実給与・請求producerと実triggerを再利用し、旧定義の同じエラーと全rollbackを確認してから修正を適用する。一般メンバー/管理者の署名保存、報告者署名byte保持、無許可変更拒否、permit偽造拒否、同一再試行で給与・請求の二重反映なし、旧INSERT/UPDATE/DELETEの失効動作を確認する。既247ケースの単純再実行ではない。
+
+guarded-installは当該trigger関数と5依存関数の本文・OID・owner/ACL/config、17trigger、2テーブル構造を固定し、45秒以内の1transactionで実行する。日報・明細行・正式勤怠・給与・請求・請求明細の全行digestが適用前後で同じことを要求する。実データ・署名を書き換える救済SQLは含まない。
+
+明示確定の新rolloutは別の導入判断であり、この修正ではONにしない。旧⑤準備中表示を理由に未検証の機能を強制有効化しない。正常な旧経路は責任者本人のサイン保存後に既金融反映を完了させる。
+
+本番反映・利用者による再保存・iPhone確認は、CI成功とは区別して記録する。build21既IPAは保持し再作成しない。

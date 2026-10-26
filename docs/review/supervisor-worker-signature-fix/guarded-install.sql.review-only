@@ -1,0 +1,265 @@
+-- REVIEW ONLY. Root applies after CI and durable backup; no signature/data repair.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='45s';
+lock table public.daily_reports,public.daily_report_workers in access exclusive mode;
+do $source_guard$ begin
+if current_user<>'postgres' then raise exception 'supervisor_worker_operator_changed';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('checkout_shared_hours_private.permits_worker_materialization(uuid,uuid,jsonb,jsonb)') and p.oid::text='33368' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION checkout_shared_hours_private.permits_worker_materialization(rid uuid, wid uuid, old_json jsonb, new_json jsonb)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO ''''
+AS $function$
+begin
+ return exists(select 1 from checkout_shared_hours_private.materialization_permits p
+  join checkout_shared_hours_private.supervisor_contexts s on s.id=p.supervisor_context_id
+  where p.report_id=rid and p.worker_id=wid and p.transaction_id=txid_current() and p.actor_id=auth.uid()
+   and s.report_id=rid and s.transaction_id=txid_current() and s.actor_id=auth.uid()
+   and p.expected_facts_sha256=encode(sha256(convert_to(p.expected_facts::text,''UTF8'')),''hex'')
+   and shared_worker_facts_private.matches_materialization(old_json,new_json,p.expected_facts));
+end
+$function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=false and p.provolatile='s')then raise exception 'supervisor_worker_dependency_changed';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.clear_daily_report_signatures_on_workers()') and p.oid::text='20033' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION private.clear_daily_report_signatures_on_workers()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''''
+AS $function$
+begin
+  update public.daily_reports set representative_signature_json=null, representative_signer_name=null,
+    supervisor_signature_json=null, supervisor_signer_name=null
+  where id=coalesce(new.report_id, old.report_id) and status=''draft'';
+  return coalesce(new,old);
+end;
+$function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=true and p.provolatile='v')then raise exception 'supervisor_worker_dependency_changed';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.guard_report()') and p.oid::text='33185' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION shared_daily_report_private.guard_report()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''''
+AS $function$
+begin
+ if tg_op=''UPDATE'' and attendance_admin_override_private.permit_report(to_jsonb(old),to_jsonb(new)) then return new;end if;
+ if tg_op=''UPDATE'' and explicit_report_finalization_private.edit_permitted(to_jsonb(old),to_jsonb(new)) then return new;end if;
+ if tg_op=''UPDATE'' and old.status=''signed'' and new.status=''draft'' and exists(select 1 from explicit_report_finalization_private.events where report_id=old.id and kind=''finalized'') then raise sqlstate ''55000'' using message=''explicit_report_finalized_edit_requires_attendance_management'';end if;
+ if tg_op=''UPDATE'' and explicit_report_finalization_private.required(old.id) and old.status<>''signed'' and new.status=''signed'' and not explicit_report_finalization_private.permitted(old.id,''finalize'') then raise sqlstate ''55000'' using message=''explicit_report_finalization_required'';end if;
+ if exists(select 1 from attendance_admin_override_private.cancellations c where c.report_id=old.id and c.company_id=old.company_id and c.active) then
+  raise sqlstate ''55000'' using message=''attendance_admin_cancelled_report_requires_management'';end if;
+ if not shared_daily_report_private.report_enabled(old.id) then return case when tg_op=''DELETE'' then old else new end;end if;
+ if tg_op=''UPDATE'' then
+  if shared_daily_report_private.document_mode(old.id) and old.status=''draft'' and new.status=''signed'' then
+   raise sqlstate ''55000'' using message=''document_only_financial_finalization_not_supported'';
+  end if;
+  if shared_report_edit_private.document_reset_permitted(to_jsonb(old),to_jsonb(new)) then return new;end if;
+  if row(new.id,new.company_id) is distinct from row(old.id,old.company_id) then
+   raise sqlstate ''42501'' using message=''shared_report_identity_immutable'';end if;
+  if old.status=''signed'' and new.status=''draft'' and exists(select 1 from shared_daily_report_private.work_protocol where report_id=old.id) then
+   if to_regprocedure(''shared_report_edit_private.begin_reset(jsonb,jsonb)'') is null then
+    raise sqlstate ''55000'' using message=''approved_edit_session_module_unavailable'';end if;
+   perform shared_daily_report_private.begin_approved_reset(to_jsonb(old),to_jsonb(new));
+  end if;
+  if shared_daily_report_private.approved_session_open(old.id) and not shared_daily_report_private.approved_editor(old.id) then
+   raise sqlstate ''42501'' using message=''approved_edit_exact_actor_session_required'';end if;
+  if row(new.representative_signer_name,new.representative_signature_json) is distinct from row(old.representative_signer_name,old.representative_signature_json)
+   and checkout_report_registration_private.has_signature(new.representative_signer_name,new.representative_signature_json)
+   and not shared_daily_report_private.signature_actor_allowed(old.id,''representative'') then
+   raise sqlstate ''42501'' using message=''shared_report_signature_actor_required'';end if;
+  if row(new.supervisor_signer_name,new.supervisor_signature_json) is distinct from row(old.supervisor_signer_name,old.supervisor_signature_json)
+   and checkout_report_registration_private.has_signature(new.supervisor_signer_name,new.supervisor_signature_json)
+   and not shared_daily_report_private.signature_actor_allowed(old.id,''supervisor'') then
+   raise sqlstate ''42501'' using message=''shared_report_signature_actor_required'';end if;
+  if ((not checkout_report_registration_private.has_signature(old.representative_signer_name,old.representative_signature_json)
+     and checkout_report_registration_private.has_signature(new.representative_signer_name,new.representative_signature_json))
+   or (not checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json)
+     and checkout_report_registration_private.has_signature(new.supervisor_signer_name,new.supervisor_signature_json))
+   or (old.status<>''signed'' and new.status=''signed''))
+   and exists(select 1 from shared_daily_report_private.rollout p where p.company_id=old.company_id and p.enabled
+    and old.created_at>=p.new_report_from)
+   and not exists(select 1 from shared_daily_report_private.work_protocol p where p.report_id=old.id and p.company_id=old.company_id) then
+   raise sqlstate ''55000'' using message=''shared_report_updated_app_required'';end if;
+  if exists(select 1 from shared_daily_report_private.work_protocol where report_id=old.id) then
+   if not checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json)
+    and checkout_report_registration_private.has_signature(new.supervisor_signer_name,new.supervisor_signature_json)
+    and (shared_daily_report_private.signature_scope(old.id)->>''supervisor_ready'')::boolean is distinct from true then
+    raise sqlstate ''55000'' using message=''shared_report_supervisor_not_ready'';end if;
+   if old.status<>''signed'' and new.status=''signed'' and (
+    not checkout_report_registration_private.has_signature(new.representative_signer_name,new.representative_signature_json)
+    or not checkout_report_registration_private.has_signature(new.supervisor_signer_name,new.supervisor_signature_json)
+    or new.signature_json is distinct from jsonb_build_object(''version'',3,''representative'',new.representative_signature_json,''supervisor'',new.supervisor_signature_json)) then
+    raise sqlstate ''55000'' using message=''shared_report_canonical_signatures_required'';end if;
+  end if;
+ end if;
+ if not checkout_report_registration_private.has_signature(old.representative_signer_name,old.representative_signature_json)
+ and not checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json) then
+  return case when tg_op=''DELETE'' then old else new end;end if;
+ if tg_op=''DELETE'' then raise sqlstate ''55000'' using message=''shared_report_signed_facts_require_approved_edit'';end if;
+ if shared_daily_report_private.approved_editor(old.id) then
+  if row(new.id,new.company_id) is distinct from row(old.id,old.company_id) then raise sqlstate ''42501'' using message=''approved_edit_report_identity_changed'';end if;
+  return new;end if;
+ if old.status=''draft'' and (
+  row(new.company_id,new.site_id,new.route_assignment_id,new.report_date,new.work_description)
+  is distinct from row(old.company_id,old.site_id,old.route_assignment_id,old.report_date,old.work_description)
+  or (checkout_report_registration_private.has_signature(old.representative_signer_name,old.representative_signature_json)
+      and row(new.representative_signer_name,new.representative_signature_json)
+       is distinct from row(old.representative_signer_name,old.representative_signature_json))
+  or (checkout_report_registration_private.has_signature(old.supervisor_signer_name,old.supervisor_signature_json)
+      and row(new.supervisor_signer_name,new.supervisor_signature_json)
+       is distinct from row(old.supervisor_signer_name,old.supervisor_signature_json))) then
+  raise sqlstate ''55000'' using message=''shared_report_signed_facts_require_approved_edit'';
+ end if;
+ return new;
+end $function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=true and p.provolatile='v')then raise exception 'supervisor_worker_dependency_changed';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_daily_report_private.guard_roster()') and p.oid::text='33188' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION shared_daily_report_private.guard_roster()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''''
+AS $function$
+declare rid uuid; r public.daily_reports%rowtype;materialization_allowed boolean:=false;fresh_contract boolean;
+begin
+ rid:=case when tg_op=''INSERT'' then new.report_id else old.report_id end;
+ select * into r from public.daily_reports where id=rid for share;
+ if attendance_admin_override_private.permit_roster(tg_op,to_jsonb(old),to_jsonb(new)) then return case when tg_op=''DELETE'' then old else new end;end if;
+ if shared_daily_report_private.document_mode(rid) then
+  if tg_op=''UPDATE'' and shared_report_edit_private.document_worker_write_permitted(to_jsonb(old),to_jsonb(new)) then return new;end if;
+  if tg_op=''UPDATE'' and to_jsonb(old)=to_jsonb(new) then return new;end if;
+  raise sqlstate ''55000'' using message=''document_roster_requires_explicit_edit_writer'';
+ end if;
+ if shared_daily_report_private.approved_session_open(rid) and not shared_daily_report_private.approved_editor(rid) then
+  raise sqlstate ''42501'' using message=''approved_edit_exact_actor_session_required'';end if;
+ if shared_daily_report_private.approved_editor(rid) and shared_daily_report_private.approved_roster_permitted(rid,tg_op,to_jsonb(old),to_jsonb(new)) then
+  return case when tg_op=''DELETE'' then old else new end;end if;
+ fresh_contract:=exists(select 1 from shared_daily_report_private.work_protocol where report_id=rid)
+  or exists(select 1 from shared_daily_report_private.rollout p where p.company_id=r.company_id and p.enabled
+   and r.report_date>=p.starts_on and r.created_at>=p.new_report_from);
+ if fresh_contract and ((tg_op=''INSERT'' and coalesce(new.allowance_amount,0)<>0)
+  or (tg_op=''UPDATE'' and (coalesce(new.allowance_amount,0)<>0 or coalesce(old.allowance_amount,0)<>0))
+  or (tg_op=''DELETE'' and coalesce(old.allowance_amount,0)<>0)) then
+  if tg_op=''UPDATE'' and row(new.report_id,new.worker_id) is not distinct from row(old.report_id,old.worker_id)
+   and to_regprocedure(''checkout_shared_hours_private.permits_worker_materialization(uuid,uuid,jsonb,jsonb)'') is not null then
+   execute ''select checkout_shared_hours_private.permits_worker_materialization($1,$2,$3,$4)''
+    into materialization_allowed using old.report_id,old.worker_id,to_jsonb(old),to_jsonb(new);
+  end if;
+  if materialization_allowed is distinct from true then
+   raise sqlstate ''42501'' using message=''shared_report_manual_cash_requires_trusted_source'';end if;
+ end if;
+ if shared_daily_report_private.report_enabled(r.id)
+ and (checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json)
+  or checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json))
+ and (tg_op<>''UPDATE'' or to_jsonb(new) is distinct from to_jsonb(old)) then
+  if tg_op=''UPDATE'' and row(new.report_id,new.worker_id) is not distinct from row(old.report_id,old.worker_id)
+   and to_regprocedure(''checkout_shared_hours_private.permits_worker_materialization(uuid,uuid,jsonb,jsonb)'') is not null then
+   execute ''select checkout_shared_hours_private.permits_worker_materialization($1,$2,$3,$4)''
+    into materialization_allowed using old.report_id,old.worker_id,to_jsonb(old),to_jsonb(new);
+  end if;
+  if materialization_allowed is true then return new;end if;
+  raise sqlstate ''55000'' using message=''shared_report_roster_requires_approved_edit'';
+ end if;
+ return case when tg_op=''DELETE'' then old else new end;
+end $function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=true and p.provolatile='v')then raise exception 'supervisor_worker_dependency_changed';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_worker_facts_private.matches_materialization(jsonb,jsonb,jsonb)') and p.oid::text='33268' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION shared_worker_facts_private.matches_materialization(old_row jsonb, new_row jsonb, facts jsonb)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''''
+AS $function$
+ select coalesce(jsonb_typeof(old_row)=''object'' and jsonb_typeof(new_row)=''object''
+  and jsonb_typeof(facts)=''object'' and facts->''schema''=''1''::jsonb
+  and (select count(*) from jsonb_object_keys(facts))=12
+  and old_row ?& array[''report_id'',''worker_id''] and new_row ?& array[''report_id'',''worker_id'']
+  and jsonb_typeof(old_row->''report_id'')=''string'' and jsonb_typeof(old_row->''worker_id'')=''string''
+  and row(old_row->''report_id'',old_row->''worker_id'') is not distinct from row(new_row->''report_id'',new_row->''worker_id'')
+  and (old_row-array[''overtime_hours'',''early_hours'',''night_hours'',''work_category'',''allowance_amount'',
+    ''allowance_label'',''company_allowance_selections'',''company_allowance_legacy_labels'',''vehicle_id'',''route_assignment_id'',''odometer_km''])
+   = (new_row-array[''overtime_hours'',''early_hours'',''night_hours'',''work_category'',''allowance_amount'',
+    ''allowance_label'',''company_allowance_selections'',''company_allowance_legacy_labels'',''vehicle_id'',''route_assignment_id'',''odometer_km''])
+  and (select bool_and(new_row ? k and facts ? k and new_row->k is not distinct from facts->k)
+   from unnest(array[''overtime_hours'',''early_hours'',''night_hours'',''work_category'',''allowance_amount'',
+    ''allowance_label'',''company_allowance_selections'',''company_allowance_legacy_labels'',''vehicle_id'',''route_assignment_id'',''odometer_km'']) as keys(k)),false)
+$function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=false and p.provolatile='i')then raise exception 'supervisor_worker_dependency_changed';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('shared_worker_facts_private.materialize_confirmed_worker(uuid,uuid,jsonb)') and p.oid::text='33269' and pg_get_functiondef(p.oid)='CREATE OR REPLACE FUNCTION shared_worker_facts_private.materialize_confirmed_worker(rid uuid, wid uuid, facts jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO ''''
+AS $function$
+declare r public.daily_reports%rowtype;w public.daily_report_workers%rowtype;after_row jsonb;
+ normalized jsonb;permitted boolean:=false;vehicle_changed boolean;
+begin
+ -- Outer prepare_supervisor already holds sorted canonical worker/month locks.
+ select * into r from public.daily_reports where id=rid for update;
+ select * into w from public.daily_report_workers where report_id=rid and worker_id=wid for update;
+ if r.id is null or w.worker_id is null or r.status<>''draft'' then
+  raise sqlstate ''55000'' using message=''shared_worker_materialization_unavailable'';end if;
+ normalized:=shared_worker_facts_private.normalize_worker_facts(rid,wid,facts-''company_allowance_legacy_labels'');
+ if normalized is distinct from facts then raise sqlstate ''PT409'' using message=''shared_worker_confirmed_facts_changed'';end if;
+ after_row:=to_jsonb(w)||(facts-''schema'');
+ if not shared_worker_facts_private.matches_materialization(to_jsonb(w),after_row,facts)
+  or to_regprocedure(''checkout_shared_hours_private.permits_worker_materialization(uuid,uuid,jsonb,jsonb)'') is null then
+  raise sqlstate ''42501'' using message=''shared_worker_materialization_context_required'';end if;
+ execute ''select checkout_shared_hours_private.permits_worker_materialization($1,$2,$3,$4)''
+  into permitted using rid,wid,to_jsonb(w),after_row;
+ if permitted is distinct from true then
+  raise sqlstate ''42501'' using message=''shared_worker_materialization_context_required'';end if;
+ vehicle_changed:=row(w.vehicle_id,w.route_assignment_id,w.odometer_km) is distinct from
+  row((facts->>''vehicle_id'')::uuid,(facts->>''route_assignment_id'')::uuid,(facts->>''odometer_km'')::numeric);
+ if vehicle_changed and not exists(select 1 from pg_proc p join pg_roles o on o.oid=p.proowner
+  where p.oid=to_regprocedure(''private.save_daily_report_vehicle_usage(uuid,uuid,uuid,uuid,numeric)'')
+  and md5(p.prosrc)=''f78e35bf948cc4702f9d65d28d0ac0e6'' and o.rolname=''postgres''
+  and p.prosecdef and p.proconfig=array[''search_path=""'']) then
+  raise sqlstate ''55000'' using message=''shared_worker_vehicle_writer_changed'';end if;
+ if explicit_report_finalization_private.permitted(rid,''finalize'') and after_row=to_jsonb(w) and explicit_report_finalization_private.facts_match(rid,wid,facts) then return;end if;
+ update public.daily_report_workers set overtime_hours=(facts->>''overtime_hours'')::numeric,
+  early_hours=(facts->>''early_hours'')::numeric,night_hours=(facts->>''night_hours'')::numeric,
+  work_category=facts->>''work_category'',allowance_amount=(facts->>''allowance_amount'')::integer,
+  allowance_label=facts->>''allowance_label'',company_allowance_selections=facts->''company_allowance_selections'',
+  company_allowance_legacy_labels=facts->>''company_allowance_legacy_labels'',vehicle_id=(facts->>''vehicle_id'')::uuid,
+  route_assignment_id=(facts->>''route_assignment_id'')::uuid,odometer_km=(facts->>''odometer_km'')::numeric
+ where report_id=rid and worker_id=wid;
+ if vehicle_changed then
+  -- Same transaction: its normal odometer/source checks must succeed or the
+  -- whole RW update and finalization are rolled back. No raw vehicle UPDATE.
+  perform private.save_daily_report_vehicle_usage(rid,wid,(facts->>''vehicle_id'')::uuid,
+   (facts->>''route_assignment_id'')::uuid,(facts->>''odometer_km'')::numeric);
+ end if;
+ if not exists(select 1 from public.daily_report_workers x where x.report_id=rid and x.worker_id=wid
+  and shared_worker_facts_private.matches_materialization(to_jsonb(w),to_jsonb(x),facts)) then
+  raise sqlstate ''PT409'' using message=''shared_worker_materialization_result_changed'';end if;
+end $function$
+' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=false and p.provolatile='v')then raise exception 'supervisor_worker_dependency_changed';end if;
+if (select jsonb_agg(jsonb_build_object('table',c.relname,'name',t.tgname,'oid',t.oid::text,'enabled',t.tgenabled,'definition',pg_get_triggerdef(t.oid))order by c.relname,t.tgname)from pg_trigger t join pg_class c on c.oid=t.tgrelid where t.tgrelid=any(array['public.daily_report_workers'::regclass,'public.daily_reports'::regclass])and not t.tgisinternal)is distinct from '[{"oid":"20034","name":"clear_daily_report_signatures_on_workers","table":"daily_report_workers","enabled":"O","definition":"CREATE TRIGGER clear_daily_report_signatures_on_workers AFTER INSERT OR DELETE OR UPDATE ON public.daily_report_workers FOR EACH ROW EXECUTE FUNCTION private.clear_daily_report_signatures_on_workers()"},{"oid":"32543","name":"company_checkout_report_metadata_guard","table":"daily_report_workers","enabled":"O","definition":"CREATE TRIGGER company_checkout_report_metadata_guard BEFORE INSERT OR UPDATE ON public.daily_report_workers FOR EACH ROW EXECUTE FUNCTION company_checkout_allowance_private.guard_report_metadata()"},{"oid":"21391","name":"reject_direct_report_worker_delete","table":"daily_report_workers","enabled":"O","definition":"CREATE TRIGGER reject_direct_report_worker_delete BEFORE DELETE ON public.daily_report_workers FOR EACH ROW EXECUTE FUNCTION private.reject_direct_attendance_delete()"},{"oid":"33189","name":"shared_report_preserve_signed_roster","table":"daily_report_workers","enabled":"O","definition":"CREATE TRIGGER shared_report_preserve_signed_roster BEFORE INSERT OR DELETE OR UPDATE ON public.daily_report_workers FOR EACH ROW EXECUTE FUNCTION shared_daily_report_private.guard_roster()"},{"oid":"20032","name":"clear_daily_report_signatures_on_draft","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER clear_daily_report_signatures_on_draft BEFORE UPDATE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION private.clear_daily_report_signatures_on_draft()"},{"oid":"29010","name":"daily_report_shift_identity_guard","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER daily_report_shift_identity_guard BEFORE UPDATE OF company_id, report_date, site_id, route_assignment_id ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION private.guard_daily_report_shift_identity()"},{"oid":"21390","name":"reject_direct_report_delete","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER reject_direct_report_delete BEFORE DELETE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION private.reject_direct_attendance_delete()"},{"oid":"20996","name":"report_refresh_invoice","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER report_refresh_invoice AFTER UPDATE OF status ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION private.report_refresh_invoice()"},{"oid":"20927","name":"report_refresh_payroll","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER report_refresh_payroll AFTER UPDATE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION private.report_refresh_payroll()"},{"oid":"30899","name":"route_checkout_invoice_refresh","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER route_checkout_invoice_refresh AFTER INSERT OR UPDATE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION private.route_checkout_invoice_refresh_trigger()"},{"oid":"29525","name":"route_visit_archive_report","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER route_visit_archive_report BEFORE DELETE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION private.archive_route_journey_visit_change()"},{"oid":"33186","name":"shared_report_preserve_signed_facts","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER shared_report_preserve_signed_facts BEFORE DELETE OR UPDATE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION shared_daily_report_private.guard_report()"},{"oid":"33209","name":"shared_report_signature_audit","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER shared_report_signature_audit AFTER UPDATE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION shared_daily_report_private.record_signature()"},{"oid":"33364","name":"zz_checkout_shared_hours_work_epoch","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER zz_checkout_shared_hours_work_epoch AFTER UPDATE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION checkout_shared_hours_private.record_first_work_epoch()"},{"oid":"33528","name":"zzz_shared_report_close_approved_edit","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER zzz_shared_report_close_approved_edit AFTER UPDATE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION shared_report_edit_private.complete_edit()"},{"oid":"33526","name":"zzz_shared_report_copy_approved_facts","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER zzz_shared_report_copy_approved_facts AFTER UPDATE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION shared_report_edit_private.copy_unchanged_after_reporter()"},{"oid":"34113","name":"zzzz_explicit_report_receipts","table":"daily_reports","enabled":"O","definition":"CREATE TRIGGER zzzz_explicit_report_receipts AFTER UPDATE ON public.daily_reports FOR EACH ROW EXECUTE FUNCTION explicit_report_finalization_private.record_receipts()"}]'::jsonb then raise exception 'supervisor_worker_triggers_changed';end if;
+if (select jsonb_agg(jsonb_build_object('name',c.relname,'oid',c.oid::text,'owner',pg_get_userbyid(c.relowner),'acl',c.relacl::text,'rls',c.relrowsecurity,'columns',(select jsonb_agg(jsonb_build_array(a.attnum,a.attname,a.atttypid::text,a.attnotnull)order by a.attnum)from pg_attribute a where a.attrelid=c.oid and a.attnum>0 and not a.attisdropped))order by c.relname)from pg_class c where c.oid=any(array['public.daily_report_workers'::regclass,'public.daily_reports'::regclass]))is distinct from '[{"acl":"{postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres}","oid":"19235","rls":true,"name":"daily_report_workers","owner":"postgres","columns":[[1,"report_id","2950",true],[2,"worker_id","2950",true],[3,"overtime_hours","1700",true],[4,"early_hours","1700",true],[5,"night_hours","1700",true],[6,"allowance_amount","23",true],[7,"allowance_label","25",false],[8,"work_category","25",false],[9,"vehicle_id","2950",false],[10,"route_assignment_id","2950",false],[11,"odometer_km","1700",false],[12,"company_allowance_selections","3802",false],[13,"company_allowance_legacy_labels","25",false]]},{"acl":"{postgres=arwdDxtm/postgres,authenticated=rm/postgres,service_role=arwdDxtm/postgres}","oid":"19201","rls":true,"name":"daily_reports","owner":"postgres","columns":[[1,"id","2950",true],[2,"company_id","2950",true],[3,"site_id","2950",false],[4,"report_date","1082",true],[5,"work_description","25",false],[6,"status","25",true],[7,"signer_name","25",false],[8,"signature_json","3802",false],[9,"signed_at","1184",false],[10,"created_by","2950",false],[11,"updated_by","2950",false],[12,"created_at","1184",true],[13,"updated_at","1184",true],[14,"representative_signature_json","3802",false],[15,"representative_signer_name","25",false],[16,"supervisor_signature_json","3802",false],[17,"supervisor_signer_name","25",false],[18,"route_assignment_id","2950",false]]}]'::jsonb then raise exception 'supervisor_worker_tables_changed';end if;
+end $source_guard$;
+create temporary table supervisor_worker_protected(relation text primary key,n bigint,h text)on commit drop;
+do $before_rows$ declare target text;n bigint;h text;begin foreach target in array array['public.daily_reports','public.daily_report_workers','public.attendance_entries','public.payroll_statements','public.invoices','public.invoice_detail_lines']loop execute format($digest$select count(*)::bigint,md5(coalesce(string_agg(row_hash,''order by row_hash),''))from(select md5(to_jsonb(x)::text)row_hash from %s x)d$digest$,target)into n,h;insert into pg_temp.supervisor_worker_protected values(target,n,h);end loop;end $before_rows$;
+-- Candidate body only; guarded production wrapper is prepared separately.
+create or replace function private.clear_daily_report_signatures_on_workers()
+returns trigger language plpgsql security definer set search_path='' as $function$
+declare materialization_allowed boolean:=false;
+begin
+  if tg_op='UPDATE' and row(new.report_id,new.worker_id)
+      is not distinct from row(old.report_id,old.worker_id) then
+    if to_jsonb(new) is not distinct from to_jsonb(old) then return new;end if;
+    -- The existing BEFORE roster guard accepts only the same actor/transaction,
+    -- supervisor context, and exact confirmed facts. Do not erase a saved work
+    -- signature while that trusted materialization is still in progress.
+    if to_regprocedure('checkout_shared_hours_private.permits_worker_materialization(uuid,uuid,jsonb,jsonb)') is not null then
+      execute 'select checkout_shared_hours_private.permits_worker_materialization($1,$2,$3,$4)'
+        into materialization_allowed using old.report_id,old.worker_id,to_jsonb(old),to_jsonb(new);
+      if materialization_allowed is true then return new;end if;
+    end if;
+  end if;
+  update public.daily_reports set representative_signature_json=null, representative_signer_name=null,
+    supervisor_signature_json=null, supervisor_signer_name=null
+  where id=coalesce(new.report_id, old.report_id) and status='draft';
+  return coalesce(new,old);
+end;
+$function$;
+
+do $after_rows$ declare original record;n bigint;h text;begin for original in select * from pg_temp.supervisor_worker_protected loop execute format($digest$select count(*)::bigint,md5(coalesce(string_agg(row_hash,''order by row_hash),''))from(select md5(to_jsonb(x)::text)row_hash from %s x)d$digest$,original.relation)into n,h;if n is distinct from original.n or h is distinct from original.h then raise exception 'supervisor_worker_business_rows_changed';end if;end loop;end $after_rows$;
+commit;

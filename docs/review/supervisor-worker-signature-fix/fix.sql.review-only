@@ -1,0 +1,23 @@
+-- Candidate body only; guarded production wrapper is prepared separately.
+create or replace function private.clear_daily_report_signatures_on_workers()
+returns trigger language plpgsql security definer set search_path='' as $function$
+declare materialization_allowed boolean:=false;
+begin
+  if tg_op='UPDATE' and row(new.report_id,new.worker_id)
+      is not distinct from row(old.report_id,old.worker_id) then
+    if to_jsonb(new) is not distinct from to_jsonb(old) then return new;end if;
+    -- The existing BEFORE roster guard accepts only the same actor/transaction,
+    -- supervisor context, and exact confirmed facts. Do not erase a saved work
+    -- signature while that trusted materialization is still in progress.
+    if to_regprocedure('checkout_shared_hours_private.permits_worker_materialization(uuid,uuid,jsonb,jsonb)') is not null then
+      execute 'select checkout_shared_hours_private.permits_worker_materialization($1,$2,$3,$4)'
+        into materialization_allowed using old.report_id,old.worker_id,to_jsonb(old),to_jsonb(new);
+      if materialization_allowed is true then return new;end if;
+    end if;
+  end if;
+  update public.daily_reports set representative_signature_json=null, representative_signer_name=null,
+    supervisor_signature_json=null, supervisor_signer_name=null
+  where id=coalesce(new.report_id, old.report_id) and status='draft';
+  return coalesce(new,old);
+end;
+$function$;
