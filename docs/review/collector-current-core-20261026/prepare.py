@@ -78,9 +78,13 @@ insert into security_collector_connection_private.installation values(true,(sele
     storage_unit = storage_unit.replace('grant execute on function private.ingest_security_collector_event(jsonb) to sko_security_collector_ingest;\n','')
     marker = " select coalesce(jsonb_agg(x),'[]'::jsonb) into result from ("
     assert storage_unit.count(marker) == 1
-    storage_unit = storage_unit.replace(marker, " if exists(select 1 from private.security_collector_events e where received_at>=clock_timestamp()-interval '7 days' and not private.verify_collector_event_evidence(e.event_id)) then raise exception 'collector_evidence_integrity_failed' using errcode='55000';end if;\n"+marker)
+    storage_unit = storage_unit.replace('declare result jsonb; actor uuid:=auth.uid();','declare result jsonb; valid_evidence boolean;actor uuid:=auth.uid();')
+    storage_unit = storage_unit.replace("returns jsonb language plpgsql security definer set search_path='' as $$","returns jsonb language plpgsql security definer set search_path='' set lock_timeout='1s' set statement_timeout='5s' as $$")
+    storage_unit = storage_unit.replace(marker, " select coalesce(jsonb_agg(x),'[]'::jsonb),coalesce(bool_and(private.verify_collector_event_evidence(x.event_id)),true) into result,valid_evidence from (")
+    storage_unit = storage_unit.replace(" ) x;\n insert into private.security_collector_read_audit", " ) x;\n if not valid_evidence then raise exception 'collector_evidence_integrity_failed' using errcode='55000';end if;\n insert into private.security_collector_read_audit")
     read_body = re.search(r'create function private.read_security_collector_events[\s\S]*?as (\$[\w]*\$)([\s\S]*?)\1', storage_unit, re.I)[2]
     reader_unit = transaction_body(reader).replace(',sko_security_collector_ingest','').replace('a62cc46b5c9fbcee3e38e9699e44bd00',hashlib.md5(read_body.encode()).hexdigest())
+    reader_unit = reader_unit.replace("p.proconfig is distinct from array['search_path=\"\"']", "p.proconfig is distinct from array['search_path=\"\"','lock_timeout=1s','statement_timeout=5s']",1)
     roleless = (ROOT/'roleless-core.sql').read_text()
     patched = '\n'.join(definitions[s].rstrip().rstrip(';')+';' for s in CHANGED)
     post = """do $preserved$ begin

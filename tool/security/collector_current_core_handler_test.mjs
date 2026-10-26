@@ -24,7 +24,7 @@ function fixture(overrides={}) {
   if(path==='/rest/v1/rpc/issue_reauthentication_proof') {issued=JSON.parse(options.body);return Response.json(new Date(Date.now()+120000).toISOString(),{status:overrides.issueStatus??200});}
   throw Error('Unexpected endpoint '+path);
  };
- const handler=createReauthenticationHandler({baseUrl:'https://fixture.invalid',publicKey:'public_fixture',serviceKey:'sb_'+'secret_'+'fixture-key',fetcher});
+ const handler=createReauthenticationHandler({baseUrl:'https://fixture.invalid',publicKey:'public_fixture',serviceKey:overrides.serviceKey??('sb_'+'secret_'+'fixture-key'),fetcher});
  return {calls,get issued(){return issued;},async invoke(body={operation:'secondary_password.replace',password:'synthetic-password',target},token=jwt()) {
   return handler(new Request('https://function.invalid',{method:'POST',headers:{Authorization:'Bearer '+token},body:JSON.stringify(body)}));
  }, handler};
@@ -130,3 +130,5 @@ for(const target of [{scope:'platform'},{scope:'decoy_collector',extra:true},{sc
 test('collector wrong credentials cannot issue a read proof',async()=>{
  const f=fixture({passwordStatus:400});assert.equal((await f.invoke({operation:'master.security_collector.read',password:'synthetic-password',target:{scope:'decoy_collector'}})).status,403);assert.equal(f.issued,undefined);
 });
+
+test('collector operation retains reviewed legacy Bearer/new secret header and redirect rules',async()=>{for(const serviceKey of ['legacy-fixture-jwt', 'sb_'+'secret_'+'fixture-only']){const f=fixture({serviceKey});assert.equal((await f.invoke({operation:'master.security_collector.read',password:'synthetic-password',target:{scope:'decoy_collector'}})).status,200);const c=f.calls.find(x=>x.path.endsWith('/issue_reauthentication_proof'));assert.equal(c.options.headers.apikey,serviceKey);assert.equal(c.options.headers.Authorization,serviceKey.startsWith('sb_secret_')?undefined:'Bearer '+serviceKey);assert.ok(f.calls.every(x=>x.options.redirect==='error'));}});

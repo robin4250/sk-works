@@ -23,7 +23,7 @@ create table private.security_collector_retention_audit(
  audit_id bigint generated always as identity primary key,
  ran_at timestamptz not null default clock_timestamp(),
  event_cutoff timestamptz not null,events_removed bigint not null check(events_removed>=0),
- reads_removed bigint not null check(reads_removed>=0),expired_event_set_sha256 text not null check(expired_event_set_sha256 ~ '^[0-9a-f]{64}$')
+ reads_removed bigint not null check(reads_removed>=0),keys_removed bigint not null check(keys_removed>=0),retention_audits_removed bigint not null check(retention_audits_removed>=0),expired_event_set_sha256 text not null check(expired_event_set_sha256 ~ '^[0-9a-f]{64}$')
 );
 alter table private.security_collector_keys enable row level security;
 alter table private.security_collector_evidence enable row level security;
@@ -61,7 +61,7 @@ exception when others then return false;
 end $$;
 revoke all on function private.verify_collector_event_evidence(uuid) from public,anon,authenticated,service_role;
 
-create function public.ingest_signed_security_collector_event(p_envelope jsonb) returns uuid language plpgsql volatile security definer set search_path='' as $$
+create function public.ingest_signed_security_collector_event(p_envelope jsonb) returns uuid language plpgsql volatile security definer set search_path='' set lock_timeout='1s' set statement_timeout='5s' as $$
 declare cid uuid;version integer;stamp bigint;now_ms bigint;raw bytea;payload jsonb;original_json json;
  key_row private.security_collector_keys%rowtype;expected bytea;supplied bytea;eid uuid;recorded private.security_collector_evidence%rowtype;
 begin
@@ -105,16 +105,19 @@ revoke all on function public.ingest_signed_security_collector_event(jsonb) from
 grant execute on function public.ingest_signed_security_collector_event(jsonb) to service_role;
 
 -- Fixed owner-only expiry; no caller-selected deletion window or business tables.
-create function private.purge_expired_security_collector_events() returns jsonb language plpgsql volatile security definer set search_path='' as $$
-declare cutoff timestamptz:=clock_timestamp()-interval '7 days';removed bigint;reads_removed bigint;digest text;
+create function private.purge_expired_security_collector_events() returns jsonb language plpgsql volatile security definer set search_path='' set lock_timeout='1s' set statement_timeout='5s' as $$
+declare cutoff timestamptz:=clock_timestamp()-interval '7 days';removed bigint;reads_removed bigint;keys_removed bigint;audits_removed bigint;digest text;ids uuid[];
 begin
  lock table private.security_collector_events,private.security_collector_evidence,private.security_collector_read_audit in share row exclusive mode;
- select encode(extensions.digest(convert_to(coalesce(string_agg(event_id::text||':'||canonical_sha256,',' order by event_id),''),'UTF8'),'sha256'),'hex') into digest
- from private.security_collector_evidence where event_id in(select event_id from private.security_collector_events where received_at<cutoff);
- delete from private.security_collector_evidence where event_id in(select event_id from private.security_collector_events where received_at<cutoff);
- delete from private.security_collector_events where received_at<cutoff;get diagnostics removed=row_count;
- delete from private.security_collector_read_audit where read_at<clock_timestamp()-interval '90 days';get diagnostics reads_removed=row_count;
- insert into private.security_collector_retention_audit(event_cutoff,events_removed,reads_removed,expired_event_set_sha256)values(cutoff,removed,reads_removed,digest);
- return jsonb_build_object('events_removed',removed,'reads_removed',reads_removed,'event_cutoff',cutoff);
+ select coalesce(array_agg(event_id),'{}'::uuid[]) into ids from(select event_id from private.security_collector_events where received_at<cutoff order by received_at,event_id limit 1000)s;
+ select encode(extensions.digest(convert_to(coalesce(string_agg(e.event_id::text||':'||coalesce(x.canonical_sha256,'evidence_missing'),',' order by e.event_id),''),'UTF8'),'sha256'),'hex') into digest
+ from private.security_collector_events e left join private.security_collector_evidence x on x.event_id=e.event_id where e.event_id=any(ids);
+ delete from private.security_collector_events e left join private.security_collector_evidence x on x.event_id=e.event_id where e.event_id=any(ids);
+ delete from private.security_collector_events where event_id=any(ids);get diagnostics removed=row_count;
+ delete from private.security_collector_read_audit where audit_id in(select audit_id from private.security_collector_read_audit where read_at<clock_timestamp()-interval '90 days' order by audit_id limit 1000);get diagnostics reads_removed=row_count;
+ delete from private.security_collector_keys k where(k.collector_id,k.key_version)in(select collector_id,key_version from private.security_collector_keys old where((revoked_at is not null and revoked_at<cutoff)or valid_until<cutoff)and not exists(select 1 from private.security_collector_evidence e where e.collector_id=old.collector_id and e.key_version=old.key_version)order by collector_id,key_version limit 1000);get diagnostics keys_removed=row_count;
+ delete from private.security_collector_retention_audit where audit_id in(select audit_id from private.security_collector_retention_audit where ran_at<clock_timestamp()-interval '365 days' order by audit_id limit 1000);get diagnostics audits_removed=row_count;
+ insert into private.security_collector_retention_audit(event_cutoff,events_removed,reads_removed,keys_removed,retention_audits_removed,expired_event_set_sha256)values(cutoff,removed,reads_removed,keys_removed,audits_removed,digest);
+ return jsonb_build_object('events_removed',removed,'reads_removed',reads_removed,'keys_removed',keys_removed,'retention_audits_removed',audits_removed,'event_cutoff',cutoff,'batch_limit',1000);
 end $$;
 revoke all on function private.purge_expired_security_collector_events() from public,anon,authenticated,service_role;

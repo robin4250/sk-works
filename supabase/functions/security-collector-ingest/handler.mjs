@@ -10,6 +10,11 @@ function valid(e,id,now){
 }
 export function createSecurityCollectorHandler({baseUrl,serviceKey,keys=[],enabled=()=>false,fetcher=fetch,clock=()=>Date.now()}={}){
  const base=new URL(baseUrl);if(base.protocol!=='https:'||base.username||base.password||base.pathname!=='/'||base.search||base.hash||!serviceKey||typeof serviceKey!=='string'||typeof fetcher!=='function'||typeof enabled!=='function'||typeof clock!=='function'||!Array.isArray(keys)||keys.length>8)throw Error('Invalid trusted collector configuration');
+ const serviceHeaders={apikey:serviceKey,'Content-Type':'application/json'};
+ if(!serviceKey.startsWith('sb_secret_')){
+  try{const parts=serviceKey.split('.');if(parts.length!==3||!parts.every(p=>/^[A-Za-z0-9_-]+$/.test(p)))throw Error();const claims=JSON.parse(atob(parts[1].replaceAll('-','+').replaceAll('_','/').padEnd(Math.ceil(parts[1].length/4)*4,'=')));if(claims.role!=='service_role')throw Error();serviceHeaders.Authorization='Bearer '+serviceKey;}
+  catch{throw Error('Invalid trusted collector service credential');}
+ }
  const registry=new Map();for(const entry of keys){if(!entry||Object.keys(entry).sort().join(',')!=='collector_id,key_hex,key_version'||!UUID.test(entry.collector_id)||!Number.isInteger(entry.key_version)||entry.key_version<1||entry.key_version>1000000||typeof entry.key_hex!=='string'||!/^[a-f0-9]{64}$/.test(entry.key_hex))throw Error('Invalid collector key configuration');const id=entry.collector_id+':'+entry.key_version;if(registry.has(id))throw Error('Duplicate collector key configuration');registry.set(id,crypto.subtle.importKey('raw',unhex(entry.key_hex),{name:'HMAC',hash:'SHA-256'},false,['verify']));}
  return async req=>{
   let reader,timer,upstreamTimer;const controller=new AbortController();
@@ -31,11 +36,11 @@ export function createSecurityCollectorHandler({baseUrl,serviceKey,keys=[],enabl
    if(!await crypto.subtle.verify('HMAC',await key,unhex(signature),signed))return reply(401);
    let event;try{event=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));}catch{return reply(400);}
    if(!valid(event,id,now))return reply(400);
-   upstreamTimer=setTimeout(()=>controller.abort(),5000);
-   const result=await fetcher(new URL('rest/v1/rpc/ingest_signed_security_collector_event',base),{method:'POST',headers:{apikey:serviceKey,'Content-Type':'application/json'},body:JSON.stringify({p_envelope:{collector_id:id,key_version:Number(v),timestamp:Number(ts),body_base64:base64(raw),signature}}),signal:controller.signal});
-   if(result.status!==200)return reply(503);
+   const upstreamDeadline=new Promise((_,reject)=>{upstreamTimer=setTimeout(()=>{controller.abort();reject(Error('upstream deadline'));},5000);});
+   const result=await Promise.race([fetcher(new URL('rest/v1/rpc/ingest_signed_security_collector_event',base),{method:'POST',headers:serviceHeaders,body:JSON.stringify({p_envelope:{collector_id:id,key_version:Number(v),timestamp:Number(ts),body_base64:base64(raw),signature}}),signal:controller.signal,redirect:'error'}),upstreamDeadline]);
+   if(result.status!==200){void result.body?.cancel().catch(()=>{});return reply(503);}
    const lengthResult=result.headers.get('content-length');if(lengthResult!==null&&Number(lengthResult)>128){void result.body?.cancel();return reply(503);}
-   const rr=result.body?.getReader();if(!rr)return reply(503);let count=0;const parts=[];try{for(;;){const part=await rr.read();if(part.done)break;count+=part.value.byteLength;if(count>128){void rr.cancel();return reply(503);}parts.push(part.value);}}finally{rr.releaseLock();}
+   const rr=result.body?.getReader();if(!rr)return reply(503);let count=0;const parts=[];try{for(;;){const part=await Promise.race([rr.read(),upstreamDeadline]);if(part.done)break;count+=part.value.byteLength;if(count>128){void rr.cancel();return reply(503);}parts.push(part.value);}}finally{void rr.cancel().catch(()=>{});rr.releaseLock();}
    const bytes=new Uint8Array(count);offset=0;for(const part of parts){bytes.set(part,offset);offset+=part.byteLength;}
    let returned;try{returned=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{return reply(503);}
    return returned===event.event_id?reply(204):reply(503);

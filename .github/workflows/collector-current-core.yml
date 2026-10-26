@@ -41,7 +41,17 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      postgrest:
+        image: postgrest/postgrest:v16.4
+        env:
+          PGRST_DB_URI: postgres://postgres:collector-fixture-only@collector:5432/collector_current_fixture
+          PGRST_DB_ANON_ROLE: anon
+          PGRST_DB_SCHEMAS: public
+          PGRST_JWT_SECRET: synthetic-collector-http-jwt-secret-at-least-32-characters
+        ports:
+          - 3000:3000
     env:
+      SKO_COLLECTOR_POSTGREST_FIXTURE_URL: http://127.0.0.1:3000
       SKO_COLLECTOR_CURRENT_FIXTURE_URL: postgresql://postgres:collector-fixture-only@127.0.0.1:5432/collector_current_fixture
     steps:
       - uses: actions/checkout@v4
@@ -52,3 +62,16 @@ jobs:
           node-version: '24'
       - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
       - run: node docs/review/collector-current-core-20261026/verify_native.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+
+  real-gotrue-current-operation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node docs/review/collector-current-core-20261026/verify_gotrue.mjs
