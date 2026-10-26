@@ -92,6 +92,7 @@ void main() {
     final reportScroll = find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first;
     final member = find.descendant(of: find.byType(ExpansionTile), matching: find.text('合成社員'));
     await tester.scrollUntilVisible(member, 250, scrollable: reportScroll);
+    await tester.ensureVisible(member);
     await tester.tap(member); await tester.pumpAndSettle();
     expect(find.byType(DailyReportAllowanceNameField), findsOneWidget,
       reason: tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).join(' | '));
@@ -317,3 +318,4 @@ void main() {
     expect(controller.text, '保存した旧名');
   });
 }
+

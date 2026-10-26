@@ -195,6 +195,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
   final Map<String, TextEditingController> _odometer = {};
 
   bool get _visitReport => widget.routeVisitContext != null;
+  bool get _registrationNavigationLocked => (widget.restrictedReporterRegistration || _visitReport) &&
+      !(_report?.reporterSignatureJson != null && _report!.workDescription.trim().isNotEmpty &&
+        (_visitReport || (_sharedContext?.reporterSaved == true && _sharedContext?.reportId == _report?.id &&
+          _hasRegistrationSource(_workers, _sharedContext, _report?.id))));
+  bool get _explicitFinalizationRequired => _visitReport
+      ? _report?.visitFinalizationRequired == true : _sharedContext?.explicitFinalizationRequired == true;
 
   bool get _signed => _report?.signed == true;
   bool get _documentComplete => _sharedContext?.explicitFinalizationRequired != true &&
@@ -420,6 +426,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
+      _managementFactsReason.clear();
       _companyAllowanceItems = const [];
       _companyAllowanceActor = null;
       _companyAllowanceEligibility = const {};
@@ -1316,6 +1323,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
     setState(() => _saving = true);
     try {
+      final enteredConfirmationReason = _managementFactsReason.text.trim();
       final enteredHours = <String, double?>{
         if (_sharedContext?.explicitFinalizationRequired == true)
           for (final worker in _workers) worker.workerId: _enteredConfirmedHours(worker.workerId),
@@ -1360,7 +1368,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
           resultState = await sharedRepository.submit(before: sharedBefore,
             workDescription: _workDescription.text,
             workers: [for (final worker in _workers) {...worker.toRpcJson(),
-              if (sharedBefore.explicitFinalizationRequired) 'confirmed_hours': enteredHours[worker.workerId]}],
+              if (sharedBefore.explicitFinalizationRequired) 'confirmed_hours': enteredHours[worker.workerId],
+              if (sharedBefore.explicitFinalizationRequired) 'confirmation_reason':
+                worker.workerId == sharedBefore.workerId || enteredConfirmationReason.isEmpty ? null : enteredConfirmationReason}],
             signerName: result.signerName, signature: {'strokes': result.toJson()});
         } else {
           resultState = await sharedRepository.manageSignature(before: sharedBefore,
@@ -1505,7 +1515,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
           reviewText: sharedBefore?.documentOnly == true ? _documentSignatureSummary(sharedBefore!) : null,
           submitLabel: _editingApprovedReport
               ? SkoLanguageController.tr('このサインを確認') : SkoLanguageController.tr(
-                  sharedBefore?.explicitFinalizationRequired == true ? '責任者サインを保存' : '責任者サインで確定'),
+                  _explicitFinalizationRequired ? '責任者サインを保存' : '責任者サインで確定'),
         ),
         ),
       );
@@ -1546,8 +1556,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
       await _loadSelectedSite();
       if (!mounted) return;
       checkSigningContext();
-      final explicitPending = _sharedContext?.explicitFinalizationRequired == true &&
-          _sharedContext?.supervisorSaved == true && _sharedContext?.explicitFinalizationCompleted != true;
+      final explicitPending = _explicitFinalizationRequired &&
+          (_visitReport ? _report?.responsibleSignatureJson != null && !_signed
+            : _sharedContext?.supervisorSaved == true && _sharedContext?.explicitFinalizationCompleted != true);
       if (_error != null || !(_signed || _documentComplete || explicitPending) || _report?.id != reportId ||
           _report?.reporterSignatureJson == null || _report?.responsibleSignatureJson == null) {
         throw StateError('責任者サインの保存・確定を再確認できませんでした。日報を再読み込みしてください。再サインは確認後に行ってください。');
@@ -1582,6 +1593,59 @@ class _DailyReportPageState extends State<DailyReportPage> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _finalizeVisitReport() async {
+    final repository = _repository;
+    final before = _report;
+    final visit = widget.routeVisitContext;
+    final actor = repository?.currentActorId;
+    if (_saving || repository == null || before == null || visit == null || actor == null ||
+        !before.canFinalizeVisit) { return; }
+    FocusScope.of(context).unfocus();
+    setState(() => _saving = true);
+    try {
+      await repository.finalizeVisit(context: visit, before: before);
+      if (!mounted || repository.currentActorId != actor) throw const DailyReportActorChanged();
+      await _loadSelectedSite();
+      if (!mounted || repository.currentActorId != actor) throw const DailyReportActorChanged();
+      if (_error != null || _report?.id != before.id || !_signed || _report?.visitFinalizationCompleted != true) {
+        throw StateError('現場訪問日報の確定を再確認できません。再読み込みしてください。');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('現場訪問の日報を保存して確定しました。')));
+      widget.onRegistrationSaved?.call();
+    } catch (error) {
+      if (mounted && repository.currentActorId == actor) { await _loadSelectedSite(); }
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(dailyReportActionErrorMessage(error)))); }
+    } finally { if (mounted) setState(() => _saving = false); }
+  }
+
+  Future<void> _startVisitFinalizationEdit() async {
+    final repository = _repository;
+    final before = _report;
+    final visit = widget.routeVisitContext;
+    final actor = repository?.currentActorId;
+    if (_saving || repository == null || before == null || visit == null || actor == null ||
+        !before.canEditVisitDraft) { return; }
+    final accepted = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('日報を手直し'),
+      content: const Text('現在の日報とサインは履歴に残します。手直し後は報告者と責任者のサインを取り直します。'),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('戻る')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('手直しを始める'))]));
+    if (accepted != true || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      await repository.startVisitFinalizationEdit(context: visit, before: before, reason: '現場メンバーが確定前の訪問日報を手直し');
+      if (!mounted || repository.currentActorId != actor) throw const DailyReportActorChanged();
+      await _loadSelectedSite();
+      if (!mounted || repository.currentActorId != actor) throw const DailyReportActorChanged();
+      if (_error != null || _report?.id != before.id || _report?.reporterSignatureJson != null ||
+          _report?.responsibleSignatureJson != null || _report?.status != 'draft') {
+        throw StateError('手直しの開始を再確認できません。日報を開き直してください。');
+      }
+    } catch (error) {
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(dailyReportActionErrorMessage(error)))); }
+    } finally { if (mounted) setState(() => _saving = false); }
   }
 
   Future<void> _finalizeReport() async {
@@ -2098,10 +2162,10 @@ class _DailyReportPageState extends State<DailyReportPage> {
   Widget build(BuildContext context) {
     SkoLanguageController.watch(context);
     return PopScope(
-      canPop: !widget.restrictedReporterRegistration,
+      canPop: !_registrationNavigationLocked,
       child: Scaffold(
       appBar: AppBar(
-        automaticallyImplyLeading: !widget.restrictedReporterRegistration,
+        automaticallyImplyLeading: !_registrationNavigationLocked,
         title: Text(
           SkoLanguageController.tr('日報'),
           style: const TextStyle(fontWeight: FontWeight.w900),
@@ -2109,7 +2173,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         actions: [
           IconButton(onPressed: _saving ? null : _showHelp,
             icon: const Icon(Icons.help_outline), tooltip: SkoLanguageController.tr('ヘルプ')),
-          if (!widget.restrictedReporterRegistration) TextButton.icon(
+          if (!_registrationNavigationLocked) TextButton.icon(
             key: const Key('daily-report-month-list'),
             label: Text(SkoLanguageController.tr('保存済み一覧')),
             onPressed: _saving ? null : () => Navigator.of(context).push(
@@ -2118,7 +2182,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
             ),
             icon: const Icon(Icons.list_alt_outlined),
           ),
-          if (!widget.restrictedReporterRegistration) const SkoNotificationBell(),
+          if (!_registrationNavigationLocked) const SkoNotificationBell(),
         ],
       ),
       bottomNavigationBar: _notificationRetryReportId == null &&
@@ -2197,7 +2261,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 {'name': _sharedContext!.reporterName})),
                               children: [Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                                 child: Text(SkoLanguageController.tr(
-                                  'この日報の内容と報告者サインは保存済みです。重複登録は不要です。責任者本人のサインは対象メンバーが取得できます。内容の変更には編集承認が必要です。')))],
+                                  _sharedContext?.explicitFinalizationRequired == true
+                                    ? '報告者サインまで仮保存済みです。他の画面へ移動できます。当日の現場メンバーが責任者本人のサインをもらい、⑤「保存して確定」で完了します。確定前の変更は「手直し」から行います。'
+                                    : 'この日報の内容と報告者サインは保存済みです。重複登録は不要です。責任者本人のサインは対象メンバーが取得できます。内容の変更には編集承認が必要です。')))],
                             )),
                           DailyReportPendingNotice(
                             hasClockedInWorkers: _groups.any((group) =>
@@ -2252,7 +2318,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               worker: worker,
                               editable: _editable,
                               confirmedHours: _sharedContext?.explicitFinalizationRequired == true ? _confirmedHours[worker.workerId] : null,
-                              confirmedHoursEditable: !_saving && !_signed && _sharedContext?.supervisorSaved != true,
+                              confirmedHoursEditable: !_saving && !_signed && _sharedContext?.supervisorSaved != true &&
+                                  (_sharedContext?.reporterSaved != true || _sharedContext?.workerId == worker.workerId ||
+                                    _sharedContext?.canManageAttendance == true),
                               onWorkCategoryChanged: (value) {
                                 _invalidatePendingSignature();
                                 setState(() => worker.workCategory = value);
@@ -2340,12 +2408,13 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          if (_signed || _documentComplete || _sharedContext?.supervisorSaved == true)
+                          if (_signed || _documentComplete || _sharedContext?.supervisorSaved == true ||
+                              (_visitReport && _report?.responsibleSignatureJson != null))
                             Card(
                               child: ListTile(
                                 leading: _ReportStepBadge(_dailyStep(4)),
                                 title: Text(
-                                  SkoLanguageController.tr(_sharedContext?.explicitFinalizationRequired == true
+                                  SkoLanguageController.tr(_explicitFinalizationRequired
                                       ? '責任者サイン済み' : _documentComplete ? '責任者サイン済み・日報完了' : '責任者サイン済み・確定'),
                                   style: TextStyle(fontWeight: FontWeight.w900),
                                 ),
@@ -2378,12 +2447,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               const SizedBox(height: 8),
                               if (!_signed) FilledButton.icon(
                                 key: const ValueKey('daily-report-finalize'),
-                                onPressed: _saving || _managementHold || _sharedContext?.canFinalize != true
-                                  ? null : _finalizeReport,
+                                onPressed: _saving || _managementHold || (_visitReport
+                                    ? _report?.canFinalizeVisit != true : _sharedContext?.canFinalize != true)
+                                  ? null : _visitReport ? _finalizeVisitReport : _finalizeReport,
                                 icon: const Icon(Icons.check_circle_outline),
                                 label: const Text('保存して確定')),
-                              if (!_signed) Text(_sharedContext?.explicitFinalizationRequired == true
-                                ? '報告者・責任者のサインと勤務実績がそろったら保存できます。成功後に給与・請求へ反映されます。'
+                              if (!_signed) Text(_explicitFinalizationRequired
+                                ? (_visitReport ? '現場訪問の日報を保存して確定します。給与・請求は、退勤後の日報を確定したときに反映します。'
+                                  : '報告者・責任者のサインと勤務実績がそろったら保存できます。成功後に給与・請求へ反映されます。')
                                 : '日報の確定処理は準備中です。管理者に確認してください。'),
                             ]))),
                           const SizedBox(height: 16),
@@ -2410,11 +2481,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               icon: const Icon(Icons.save_outlined),
                               label: Text(SkoLanguageController.tr('登録')),
                             ),
-                          if (_sharedContext?.explicitFinalizationEditable == true ||
+                          if (_report?.canEditVisitDraft == true || _sharedContext?.explicitFinalizationEditable == true ||
                               (_sharedContext?.documentOnly == true && _sharedContext?.documentEditable == true))
                             OutlinedButton.icon(
                               key: const ValueKey('daily-report-start-document-edit'),
-                              onPressed: _saving ? null : _startDocumentEdit,
+                              onPressed: _saving ? null : _visitReport ? _startVisitFinalizationEdit : _startDocumentEdit,
                               icon: const Icon(Icons.edit_outlined), label: const Text('手直し')),
                           if (_sharedContext?.documentOnly == true && _sharedContext?.canManageAttendance == true)
                             OutlinedButton.icon(key: const ValueKey('daily-report-financial-resigning'),
@@ -2455,7 +2526,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               child: ListTile(
                                 leading: const Icon(Icons.photo_library_outlined),
                                 title: Text(
-                                  SkoLanguageController.tr('参照：勤怠・現場記録'),
+                                  SkoLanguageController.tr('勤怠・現場記録'),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900),
                                 ),
@@ -2464,7 +2535,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           ),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: widget.restrictedReporterRegistration ? null : () => Navigator.of(context).push(
+                                onTap: _registrationNavigationLocked ? null : () => Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (_) => DailyReportEvidencePage(
                                       date: _date,
@@ -2477,7 +2548,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
                             ),
                           ],
                           OutlinedButton.icon(
-                            onPressed: widget.restrictedReporterRegistration ? null : () => Navigator.of(context).push(
+                            onPressed: _registrationNavigationLocked ? null : () => Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => DailyReportPrintPreviewPage(
                                   date: _date,

@@ -14,6 +14,31 @@ import 'package:sk_works/features/daily_reports/route_visit_report_context.dart'
 
 class _RealHttpOverrides extends HttpOverrides {}
 
+const _visitContext = RouteVisitReportContext(sourceClockInId: 'source',
+  routeAssignmentId: 'route', routeStopId: 'stop', startCaptureId: 'arrival', endCaptureId: 'move');
+class _VisitFinalizationFixture implements DailyReportRepository {
+  bool finalized = false, loseAcknowledgement = false;
+  int finalizationWrites = 0;
+  @override String? get currentActorId => 'actor';
+  @override Future<DailyReportRecord?> loadVisitReport(RouteVisitReportContext context) async =>
+    DailyReportRecord(id: 'visit-report', companyId: 'company', siteId: 'site', routeAssignmentId: 'route',
+      siteName: '現場', date: DateTime(2026, 10, 26), workDescription: '保存済みの訪問作業',
+      status: finalized ? 'signed' : 'reporter_signed',
+      workers: [DailyReportWorkerDraft(workerId: 'worker', workerName: '現場メンバー')],
+      reporterSignerName: '報告者', reporterSignatureJson: {'strokes': [[{'x': 0.1, 'y': 0.2}]]},
+      responsibleSignerName: '責任者', responsibleSignatureJson: {'strokes': [[{'x': 0.2, 'y': 0.3}]]},
+      visitFinalizationRequired: true, visitFinalizationReady: !finalized,
+      visitFinalizationCompleted: finalized, visitExpectedUpdatedAt: DateTime.utc(2026, 10, 26),
+      visitSignatureScope: List.filled(64, 'a').join());
+  @override Future<DailyReportRecord> finalizeVisit({required RouteVisitReportContext context,
+    required DailyReportRecord before}) async {
+    expect(before.canFinalizeVisit, isTrue); finalizationWrites++; finalized = true;
+    if (loseAcknowledgement) throw StateError('確定結果を受信できませんでした。');
+    return (await loadVisitReport(context))!;
+  }
+  @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
   setUp(() {
     final previous = SharedPreferencesAsyncPlatform.instance;
@@ -21,6 +46,20 @@ void main() {
         InMemorySharedPreferencesAsync.empty();
     addTearDown(() => SharedPreferencesAsyncPlatform.instance = previous);
   });
+  for (final loseAcknowledgement in [false, true]) {
+    testWidgets('visit signatures do not finalize before step five; lost ACK=$loseAcknowledgement', (tester) async {
+      final repository = _VisitFinalizationFixture()..loseAcknowledgement = loseAcknowledgement;
+      await tester.pumpWidget(MaterialApp(home: DailyReportPage(repositoryForTesting: repository,
+        routeVisitContext: _visitContext)));
+      await tester.pumpAndSettle();
+      expect(repository.finalized, isFalse); expect(repository.finalizationWrites, 0);
+      final button = find.byKey(const ValueKey('daily-report-finalize'));
+      await tester.scrollUntilVisible(button, 200, scrollable: find.byType(Scrollable).first);
+      await tester.ensureVisible(button); await tester.tap(button); await tester.pumpAndSettle();
+      expect(repository.finalized, isTrue); expect(repository.finalizationWrites, 1);
+      expect(find.byKey(const ValueKey('daily-report-finalize')), findsNothing);
+    });
+  }
   testWidgets(
     'visit reporter signature freezes draft and reporter while responsibility remains available',
     (tester) => HttpOverrides.runWithHttpOverrides(() async {
@@ -134,3 +173,4 @@ void main() {
     }, _RealHttpOverrides()),
   );
 }
+

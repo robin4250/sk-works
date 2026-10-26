@@ -418,7 +418,9 @@ class SharedDailyReportRepository {
       'p_source_clock_in_id': before.sourceClockInId,
       'p_expected_updated_at': before.expectedUpdatedAt?.toUtc().toIso8601String(),
       'p_expected_signature_scope': before.signatureScopeFingerprint,
-      'p_work_description': workDescription, 'p_workers': workers,
+      'p_work_description': workDescription, 'p_workers': [for (final worker in workers)
+        {...worker}..removeWhere((key, _) => !before.explicitFinalizationRequired &&
+          const ['work_category', 'confirmed_hours', 'confirmation_reason'].contains(key))],
       'p_signer_name': signerName, 'p_signature': signature,
     }, expectedActor: before.actorId);
     return SharedDailyReportContext.parse(raw, actorId: before.actorId,
@@ -436,7 +438,8 @@ class SharedDailyReportRepository {
       'p_report_id': before.reportId,
       'p_expected_updated_at': before.expectedUpdatedAt!.toUtc().toIso8601String(),
       'p_expected_signature_scope': before.signatureScopeFingerprint,
-      'p_work_description': workDescription, 'p_workers': workers,
+      'p_work_description': workDescription, 'p_workers': [for (final worker in workers)
+        {...worker}..removeWhere((key, _) => const ['work_category', 'confirmed_hours', 'confirmation_reason'].contains(key))],
     }, expectedActor: before.actorId);
     final after = SharedDailyReportContext.parse(raw, actorId: before.actorId,
       companyId: before.companyId, reportId: before.reportId, workDate: before.workDate);

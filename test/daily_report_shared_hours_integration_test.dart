@@ -327,7 +327,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('勤務区分（日勤・夜勤など）を選んでください。'), findsOneWidget);
     expect(shared.financialPreparations, 0); expect(facts.confirmations, 0);
-    final category = find.byType(DropdownButtonFormField<String>).last;
+    final category = find.byWidgetPredicate((widget) =>
+      widget is DropdownButtonFormField<String> && widget.key.toString().contains('facts-category/'));
+    await tester.scrollUntilVisible(category, -200, scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(category); await tester.tap(category); await tester.pumpAndSettle();
     await tester.tap(find.text('夜勤').last); await tester.pumpAndSettle();
     await reveal(tester, 'この人の勤務実績を確認');
@@ -399,7 +401,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('勤務区分（日勤・夜勤など）を選んでください。'), findsOneWidget);
     expect(facts.confirmations, 0);
-    final category = find.byType(DropdownButtonFormField<String>).last;
+    final category = find.byWidgetPredicate((widget) =>
+      widget is DropdownButtonFormField<String> && widget.key.toString().contains('facts-category/'));
+    await tester.scrollUntilVisible(category, -200, scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(category);
     await tester.tap(category);
     await tester.pumpAndSettle();
@@ -476,6 +480,7 @@ void main() {
     await tester.tap(find.text('手直しを始める'));
     await tester.pumpAndSettle();
     final description = find.byKey(const ValueKey('daily-report-work-description'));
+    await tester.scrollUntilVisible(description, -200, scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(description);
     await tester.enterText(description, '手直しした作業内容');
     FocusManager.instance.primaryFocus?.unfocus();
@@ -504,6 +509,7 @@ void main() {
     final reports = _Reports();
     await open(tester, reports, _Hours(), _Shared(reports));
     final description = find.byKey(const ValueKey('daily-report-work-description'));
+    await tester.scrollUntilVisible(description, -200, scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(description);
     await tester.enterText(description, '   ');
     await reveal(tester, '報告者サイン');
