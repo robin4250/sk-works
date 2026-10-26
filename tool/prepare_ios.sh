@@ -866,11 +866,11 @@ private enum SkoCaptureMetadata {
 
 SWIFT
 
-# Keep the native reminder implementation versioned, including reused projects.
-cat tool/ios/checkout_reminders.swift >> ios/Runner/AppDelegate.swift
 # OFF Apple credential acquisition only; no provider, entitlement or session mutation.
 cat tool/ios/apple_credential_state.swift >> ios/Runner/AppDelegate.swift
 cat tool/ios/apple_credential.swift >> ios/Runner/AppDelegate.swift
+# Keep the native reminder implementation versioned and last, including reused projects.
+cat tool/ios/checkout_reminders.swift >> ios/Runner/AppDelegate.swift
 
 echo "iOS標準MapKitの複数ピン現場マップを設定しました。"
 

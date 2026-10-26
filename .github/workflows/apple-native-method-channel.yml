@@ -49,6 +49,7 @@ jobs:
         run: |
           flutter precache --ios
           bash tool/prepare_ios.sh
+          bash tool/check_ios_generated_contract.sh
           git diff --exit-code -- pubspec.yaml pubspec.lock
       - name: Typecheck complete generated AppDelegate with actual Flutter module
         run: |
