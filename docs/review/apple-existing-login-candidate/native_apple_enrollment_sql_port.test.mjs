@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createNativeAppleEnrollmentSQLPorts} from './native_apple_enrollment_sql_port.mjs';
 const actor='00000000-0000-0000-0000-000000000001',sid='00000000-0000-0000-0000-000000000002',other='00000000-0000-0000-0000-000000000003',now=1800000000;
-const context=()=>({actor_id:actor,session_id:sid,account_allowed:true,primary_password_configured:true,primary_credential_version:'a'.repeat(64),memberships:[{company_id:other,role:'owner'}],google_identities:[{id:other,provider_id:'google'}],apple_subjects:[]});
+const context=()=>({actor_id:actor,session_id:sid,account_allowed:true,primary_password_configured:true,primary_credential_version:'a'.repeat(64),profile_version:'d'.repeat(64),memberships:[{company_id:other,role:'owner'}],google_identities:[{id:other,provider_id:'google'}],apple_subjects:[]});
 function fixture(){const calls=[];const cfg={enabled:true,baseUrl:'https://ztktgquxvcxcjxtluspu.supabase.co',serviceKey:'sb_secret_test',timeoutMs:30,now:()=>now,
  authenticateExactBearer:async token=>{assert.equal(token,'original-exact');return{user:{id:actor,is_anonymous:false},claims:{sub:actor,session_id:sid,role:'authenticated',exp:now+120}};},
  fetcher:async(url,init)=>{calls.push({url,init});return Response.json(context());}};

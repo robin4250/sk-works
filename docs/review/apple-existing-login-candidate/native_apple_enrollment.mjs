@@ -7,7 +7,7 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const sub=/^[A-Za-z0-9._-]{1,255}$/;
 function context(value){
  if(!value||!uuid.test(value.actor_id??'')||!uuid.test(value.session_id??'')||value.account_allowed!==true||value.primary_password_configured!==true||
- !/^[a-f0-9]{64}$/.test(value.primary_credential_version??'')||
+ !/^[a-f0-9]{64}$/.test(value.primary_credential_version??'')||!/^[a-f0-9]{64}$/.test(value.profile_version??'')||
  !Array.isArray(value.memberships)||!value.memberships.length||value.memberships.length>32||
  value.memberships.some(m=>!m||!uuid.test(m.company_id??'')||typeof m.role!=='string'||!/^[a-z_]{1,32}$/.test(m.role))||
  new Set(value.memberships.map(m=>m.company_id)).size!==value.memberships.length||
@@ -15,7 +15,7 @@ function context(value){
  value.google_identities.some(i=>!i||!uuid.test(i.id??'')||!sub.test(i.provider_id??''))||
  !Array.isArray(value.apple_subjects)||value.apple_subjects.some(s=>!sub.test(s)))deny();
  return Object.freeze({actor_id:value.actor_id,session_id:value.session_id,
-  primary_credential_version:value.primary_credential_version,
+  primary_credential_version:value.primary_credential_version,profile_version:value.profile_version,
   memberships:Object.freeze(value.memberships.map(m=>Object.freeze({company_id:m.company_id,role:m.role})).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))),
   google_identities:Object.freeze(value.google_identities.map(i=>Object.freeze({id:i.id,provider_id:i.provider_id})).sort((a,b)=>a.id.localeCompare(b.id))),
   apple_subjects:Object.freeze([...value.apple_subjects].sort())});

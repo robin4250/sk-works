@@ -27,7 +27,10 @@ replaces nor configures that hook. No rollout rows are seeded.
 
 The service-only context reader checks the live original SID, Auth account and
 deletion restriction, primary credential version, exact Google identities and
-company roles. The password fingerprint is internal SHA256 of the stored Auth
+company roles. A separate server-only profile fingerprint binds the existing
+Auth email/phone/user metadata without returning those values; concurrent
+profile changes invalidate enrollment. Provider/app metadata additions are not
+confused with the original user profile. The password fingerprint is internal SHA256 of the stored Auth
 credential version; the stored password hash itself never leaves SQL. It is
 not a password verifier and cannot be populated from app JSON.
 

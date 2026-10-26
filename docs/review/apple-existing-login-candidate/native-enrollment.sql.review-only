@@ -45,6 +45,7 @@ returns jsonb language sql stable security definer set search_path='' as $$
  select jsonb_build_object('actor_id',u.id,'session_id',s.id,'account_allowed',true,
  'primary_password_configured',true,
  'primary_credential_version',encode(sha256(convert_to(u.encrypted_password,'UTF8')),'hex'),
+ 'profile_version',encode(sha256(convert_to(jsonb_build_object('email',to_jsonb(u)->'email','phone',to_jsonb(u)->'phone','metadata',to_jsonb(u)->'raw_user_meta_data')::text,'UTF8')),'hex'),
  'memberships',(select jsonb_agg(jsonb_build_object('company_id',m.company_id,'role',m.role::text) order by m.company_id)
   from public.company_members m where m.user_id=u.id),
  'google_identities',(select jsonb_agg(jsonb_build_object('id',i.id,'provider_id',i.provider_id) order by i.id)
@@ -101,7 +102,7 @@ begin
  insert into apple_owner_policy.protected_users values(p_actor_id) on conflict do nothing;
  insert into apple_owner_policy.subject_permits values(p_subject,p_actor_id);
  insert into apple_native_enrollment_private.requests(actor_id,session_id,subject,token_sha256,snapshot_sha256,snapshot,verified_at,expires_at,status)
- values(p_actor_id,p_session_id,p_subject,p_token_sha256,p_snapshot_sha256,p_snapshot::jsonb,to_timestamp(p_verified_at),ts+interval '120 seconds','reserved') returning * into r;
+ values(p_actor_id,p_session_id,p_subject,p_token_sha256,p_snapshot_sha256,p_snapshot::jsonb,to_timestamp(p_verified_at),least(ts+interval '120 seconds',to_timestamp(p_verified_at)+interval '120 seconds'),'reserved') returning * into r;
  insert into apple_native_enrollment_private.events(request_id,event) values(r.request_id,'reserved');
  return jsonb_build_object('request_id',r.request_id,'actor_id',r.actor_id,'session_id',r.session_id,
   'subject',r.subject,'token_sha256',r.token_sha256,'status',r.status);

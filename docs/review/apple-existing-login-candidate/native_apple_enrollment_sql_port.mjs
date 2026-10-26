@@ -38,7 +38,7 @@ export function createNativeAppleEnrollmentSQLPorts({enabled=false,baseUrl,servi
    const c=a?.claims,checkedAt=now();
    if(!Number.isSafeInteger(checkedAt)||!c||a.user?.id!==c.sub||a.user.is_anonymous===true||c.role!=='authenticated'||!uuid.test(c.sub??'')||!uuid.test(c.session_id??'')||!Number.isSafeInteger(c.exp)||c.exp<=checkedAt)throw denied();
    const r=await rpc('read_apple_native_enrollment_context',{p_actor_id:c.sub,p_session_id:c.session_id});
-   if(!r||r.actor_id!==c.sub||r.session_id!==c.session_id||r.account_allowed!==true||r.primary_password_configured!==true)throw denied();
+   if(!r||r.actor_id!==c.sub||r.session_id!==c.session_id||r.account_allowed!==true||r.primary_password_configured!==true||!/^[a-f0-9]{64}$/.test(r.profile_version??''))throw denied();
    binding={actor_id:c.sub,session_id:c.session_id};return r;
   },
   async reserveSubject(info){

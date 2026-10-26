@@ -21,7 +21,7 @@ function sameContext(current,expected){
  const google=value=>Array.isArray(value)&&value.length<=8?JSON.stringify(value.map(i=>[i?.id,i?.provider_id]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))):null;
  const apple=value=>Array.isArray(value)?JSON.stringify([...value].sort()):null;
  return current?.account_allowed===true&&current.primary_password_configured===true&&current.actor_id===expected.actor_id&&current.session_id===expected.session_id&&
-  current.primary_credential_version===expected.primary_credential_version&&
+  current.primary_credential_version===expected.primary_credential_version&&current.profile_version===expected.profile_version&&
   membership(current.memberships)!==null&&membership(current.memberships)===membership(expected.memberships)&&
   google(current.google_identities)!==null&&google(current.google_identities)===google(expected.google_identities)&&
   apple(current.apple_subjects)!==null&&apple(current.apple_subjects)===apple(expected.apple_subjects);
@@ -40,7 +40,7 @@ export function createNativeApplePasswordPort({enabled=false,passwordSessionIsol
  }
  const close=async token=>{await request('/auth/v1/logout?scope=local',{method:'POST',headers:{apikey:publicKey,Authorization:'Bearer '+token}},204);return true;};
  return async({exactBearer,password,expected})=>{
-  if(!ready||typeof exactBearer!=='string'||!exactBearer||typeof password!=='string'||!password||password.length>1024||!uuid.test(expected?.actor_id??'')||!uuid.test(expected?.session_id??'')||!/^[a-f0-9]{64}$/.test(expected?.primary_credential_version??''))throw unavailable();
+  if(!ready||typeof exactBearer!=='string'||!exactBearer||typeof password!=='string'||!password||password.length>1024||!uuid.test(expected?.actor_id??'')||!uuid.test(expected?.session_id??'')||!/^[a-f0-9]{64}$/.test(expected?.primary_credential_version??'')||!/^[a-f0-9]{64}$/.test(expected?.profile_version??''))throw unavailable();
   const started=now();if(!Number.isSafeInteger(started))throw unavailable();
   const original=await authenticateExactBearer(exactBearer);
   if(!verifiedIdentity(original,expected,started)||!sameContext(await loadExactContext(exactBearer),expected))throw unavailable();

@@ -16,7 +16,7 @@ async function fixture(fn){
    if not exists(select 1 from pg_roles where rolname=r) then execute format('create role %I',r);end if;end loop;end$$;
    create schema auth;create schema private;
    create function auth.jwt() returns jsonb language sql stable as $$select coalesce(current_setting('test.claims',true),'{}')::jsonb$$;
-   create table auth.users(id uuid primary key,encrypted_password text,is_anonymous boolean default false,deleted_at timestamptz,banned_until timestamptz);
+   create table auth.users(id uuid primary key,encrypted_password text,email text,phone text,raw_user_meta_data jsonb default '{}'::jsonb,is_anonymous boolean default false,deleted_at timestamptz,banned_until timestamptz);
    create table auth.sessions(id uuid primary key,user_id uuid references auth.users,not_after timestamptz);
    create table auth.identities(id uuid primary key,user_id uuid references auth.users,provider text,provider_id text,identity_data jsonb,unique(provider,provider_id));
    create table public.company_members(user_id uuid,company_id uuid,role text,unique(user_id,company_id));
@@ -61,6 +61,7 @@ test('a valid atomic reservation creates a same-UID hook permit and stores exact
  assert.equal(r.actor_id,uid);assert.equal(r.session_id,sid);assert.equal(r.status,'reserved');
  assert.equal((await f.sql('select expected_user_id u from apple_owner_policy.subject_permits'))[0].u,uid);
  const stored=(await f.sql('select snapshot from apple_native_enrollment_private.requests'))[0].snapshot;
+ assert.equal((await f.sql("select expires_at<=verified_at+interval '120 seconds' bounded from apple_native_enrollment_private.requests"))[0].bounded,true);
  delete before.account_allowed;delete before.primary_password_configured;assert.deepEqual(stored,before);
  assert.equal(await f.reserve(),null);assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.events'))[0].n,1);
 }));
@@ -90,7 +91,7 @@ test('completion requires an actual same-UID subject and preserves original sess
 test('all completion bindings, expiry and role/Google/password changes deny success',()=>fixture(async f=>{
  await f.enable();const r=await f.reserve();await f.link();
  for(const patch of [{actor:other},{sid:other},{subject:'other-subject'},{token:'b'.repeat(64)},{hash:'c'.repeat(64)}])assert.equal(await f.complete(r,patch),null);
- for(const change of ["update apple_native_enrollment_private.requests set expires_at=now()-interval '1 second'","update auth.users set encrypted_password='changed' where id='"+uid+"'","update public.company_members set role='member'","update auth.identities set provider_id='changed' where provider='google'","delete from auth.sessions"]){
+ for(const change of ["update apple_native_enrollment_private.requests set expires_at=now()-interval '1 second'","update auth.users set encrypted_password='changed' where id='"+uid+"'","update public.company_members set role='member'","update auth.users set email='changed@example.test' where id='"+uid+"'","update auth.users set raw_user_meta_data='{\"name\":\"changed\"}' where id='"+uid+"'","update auth.identities set provider_id='changed' where provider='google'","delete from auth.sessions"]){
   await f.db.exec('begin');await f.db.exec(change);assert.equal(await f.complete(r),null);await f.db.exec('rollback');
  }
  assert.equal((await f.sql('select status from apple_native_enrollment_private.requests'))[0].status,'reserved');
