@@ -795,7 +795,7 @@ class WorkerDocumentRepository {
         .uploadBinary(
           path,
           attachmentBytes,
-          fileOptions: _extensionOf(originalFilename!) == '.pdf'
+          fileOptions: path.toLowerCase().endsWith('.pdf')
               ? const FileOptions(upsert: false, contentType: 'application/pdf')
               : const FileOptions(upsert: false),
         );
