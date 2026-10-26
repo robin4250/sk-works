@@ -84,6 +84,8 @@ class _IndividualPayrollSettingsPageState
   bool _allowanceSaveUncertain = false;
   bool _showDeductions = false;
   final _insuranceEntry = PayrollInsuranceEntryController();
+  bool _positionTransferEnabled = false;
+  final _positionTransferItems = <_CustomMoneyDraft>[];
   PayrollItemUnit _earningUnit = PayrollItemUnit.month;
   PayrollItemUnit _deductionUnit = PayrollItemUnit.month;
   final _unitPanelKey = GlobalKey();
@@ -119,6 +121,7 @@ class _IndividualPayrollSettingsPageState
   @override
   void dispose() {
     _insuranceEntry.dispose();
+    for (final item in _positionTransferItems) { item.dispose(); }
     _unitFooter.dispose();
     for (final controller in _controllers.values) {
       controller.dispose();
@@ -241,6 +244,17 @@ class _IndividualPayrollSettingsPageState
           .amount('paid_leave_granted_days')
           .toString();
       final storedFormula = setting.values['rate_formula'];
+      final transfer = storedFormula is Map ? storedFormula['position_transfer'] : null;
+      _positionTransferEnabled = transfer is Map && transfer['enabled'] == true;
+      for (final item in _positionTransferItems) { item.dispose(); }
+      _positionTransferItems.clear();
+      if (transfer is Map && transfer['items'] is List) {
+        for (final entry in transfer['items'] as List) {
+          if (entry is Map && entry['name'] is String && entry['amount_yen'] is int && (entry['amount_yen'] as int) >= 0) {
+            _positionTransferItems.add(_CustomMoneyDraft(name: entry['name'] as String, amountYen: entry['amount_yen'] as int));
+          }
+        }
+      }
       final leaveOverride = storedFormula is Map ? storedFormula['paid_leave_daily_yen'] : null;
       _controllers['paid_leave_daily_yen']!.text = leaveOverride?.toString() ?? '';
       for (final item in [..._customEarnings, ..._customDeductions]) {
@@ -417,6 +431,15 @@ class _IndividualPayrollSettingsPageState
         ),
       }
       ..['rate_overrides'] = rateDraft.overrides;
+
+    if (rateDraft.payType == 'daily') {
+      final items = _serializeCustomMoney(_positionTransferItems, sectionName: '振替');
+      if (items == null) return;
+      (values['rate_formula'] as Map<String, dynamic>)['position_transfer'] = {
+        'enabled': _positionTransferEnabled,
+        'items': items,
+      };
+    }
 
     preserveUnchangedPayrollRates(
       values,
@@ -937,6 +960,43 @@ class _IndividualPayrollSettingsPageState
                       ),
                     ),
                   ],
+                  if (!_showDeductions && _earningUnit == PayrollItemUnit.day &&
+                      (_rateDraft?.payType ?? _settingValues['pay_type'] ?? 'daily') == 'daily') ...[
+                    const SizedBox(height: 12),
+                    Card(child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        SwitchListTile(
+                          key: const ValueKey('position-transfer-enabled'),
+                          title: const Text('役職手当振替'),
+                          subtitle: const Text('役職手当と勤務手当を表示上の基本給へ振り替えます。'),
+                          value: _positionTransferEnabled,
+                          onChanged: workspace.canEdit && !_busy
+                              ? (value) => setState(() => _positionTransferEnabled = value) : null,
+                        ),
+                        for (var i = 0; i < _positionTransferItems.length; i++)
+                          Row(key: ValueKey('position-transfer-row-$i'), children: [
+                            Expanded(child: TextField(controller: _positionTransferItems[i].name,
+                              enabled: workspace.canEdit && !_busy && _positionTransferEnabled,
+                              decoration: const InputDecoration(labelText: '項目名'))),
+                            Expanded(child: TextField(controller: _positionTransferItems[i].amount,
+                              enabled: workspace.canEdit && !_busy && _positionTransferEnabled,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(labelText: '月額', suffixText: '円'))),
+                            IconButton(tooltip: '振替項目を削除',
+                              onPressed: workspace.canEdit && !_busy && _positionTransferEnabled
+                                ? () => _removeCustomMoney(_positionTransferItems, i) : null,
+                              icon: const Icon(Icons.delete_outline)),
+                          ]),
+                        OutlinedButton.icon(key: const ValueKey('position-transfer-add'),
+                          onPressed: workspace.canEdit && !_busy && _positionTransferEnabled
+                            ? () => setState(() => _positionTransferItems.add(_CustomMoneyDraft())) : null,
+                          icon: const Icon(Icons.add), label: const Text('項目を追加')),
+                        const Text('支給に登録した項目と金額が一致する場合に振り替えます。'),
+                        const Text('表示用日給は500円単位に四捨五入します。支給額・残業代は変わりません。'),
+                      ]),
+                    )),
+                  ],
                   SizedBox(height: 12),
                 ],
                 ),
@@ -1430,5 +1490,6 @@ class _CustomMoneyDraft {
     amount.dispose();
   }
 }
+
 
 

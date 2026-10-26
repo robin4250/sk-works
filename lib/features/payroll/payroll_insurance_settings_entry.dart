@@ -71,12 +71,20 @@ class PayrollInsuranceSettingsEntry extends StatelessWidget {
               actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる'))],
             ))),
         ]),
-        Text(value.status, key: const ValueKey('insurance-settings-status'),
-          style: Theme.of(context).textTheme.bodySmall),
-        if (value.effectiveFrom != null) Text('適用開始：${value.effectiveFrom}'),
-        if (value.referenceText != null) Text(value.referenceText!),
-        if (value.editing) const Text('入力中の修正を保存してから設定を開いてください。'),
+        ExpansionTile(
+          key: const ValueKey('insurance-settings-details'),
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.zero,
+          title: Text(value.status, key: const ValueKey('insurance-settings-status'),
+            style: Theme.of(context).textTheme.bodySmall),
+          children: [
+            if (value.effectiveFrom != null) Text('適用開始：${value.effectiveFrom}'),
+            if (value.referenceText != null) Text(value.referenceText!),
+            if (value.editing) const Text('入力中の修正を保存してから設定を開いてください。'),
+          ],
+        ),
       ]),
     ),
   );
 }
+
