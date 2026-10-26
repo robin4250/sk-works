@@ -290,7 +290,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
     return Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
       Text(SkoLanguageController.tr(title), style: const TextStyle(fontWeight: FontWeight.w900)),
       if (complete && onSavedTap != null)
-        Semantics(button: true, excludeSemantics: true, onTap: onSavedTap,
+        Semantics(key: ValueKey('daily-report-$step-preview-semantics'),
+          container: true, button: true, excludeSemantics: true, onTap: onSavedTap,
           label: '$title：サイン済み。プレビューを開く',
           child: Tooltip(message: 'サインを表示', child: InkWell(
             key: ValueKey('daily-report-$step-preview'), onTap: onSavedTap,

@@ -32,6 +32,8 @@ void main() {
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.display.size = const Size(1170, 2532);
     tester.view.display.devicePixelRatio = 3;
+    tester.view.physicalSize = const Size(2532, 1170);
+    tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.display.resetSize);
     addTearDown(tester.view.display.resetDevicePixelRatio);
     final requests = <List<dynamic>>[];
@@ -80,6 +82,10 @@ void main() {
     await tester.pump();
     expect(find.text('現場責任者名を入力してください'), findsOneWidget);
     expect(completed, isFalse);
+    // Let the first independent validation message finish before the next one.
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '責任者本人');
     await tester.tap(find.text('サインを確定'));
     await tester.pump();

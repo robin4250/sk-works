@@ -365,8 +365,11 @@ void main() {
     final reports = _Reports()..reporterSaved = true..supervisorSaved = true;
     await open(tester, reports, _Hours(), _Shared(reports), textScale: 1.5);
     await reveal(tester, '報告者サイン');
-    expect(find.bySemanticsLabel('報告者サイン：サイン済み。プレビューを開く'), findsOneWidget);
-    expect(find.bySemanticsLabel('責任者サイン：サイン済み。プレビューを開く'), findsOneWidget);
+    for (final entry in [('reporter', '報告者サイン'), ('supervisor', '責任者サイン')]) {
+      final node = tester.getSemantics(find.byKey(ValueKey('daily-report-${entry.$1}-preview-semantics')));
+      expect(node, matchesSemantics(label: '${entry.$2}：サイン済み。プレビューを開く',
+        isButton: true, hasTapAction: true));
+    }
     expect(tester.takeException(), isNull);
   });
   testWidgets('reopened signature reset removes both saved labels', (tester) async {
