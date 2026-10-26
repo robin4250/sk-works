@@ -14,7 +14,9 @@ Map<String, dynamic> registrationNotification({String state = 'reporter_signatur
       'work_date': '2026-10-25', 'site_id': notificationSite, 'route_assignment_id': null,
       'report_id': notificationReport, 'source_clock_in_id': notificationClockIn,
       'clock_out_id': notificationClockOut, 'registration_state': state,
-      'blocking': !{'reporter_saved_waiting_supervisor','signed_projection_unverified'}.contains(state),
-      'scope_fingerprint': 'a' * 32},
+      'blocking': !{'reporter_saved_waiting_supervisor','signed_projection_unverified','checkout_deferred'}.contains(state),
+      'scope_fingerprint': 'a' * 32,
+      if (const {'report_choice_required','checkout_deferred'}.contains(state)) ...{
+        'choice_available': true, 'member_count': 2, 'report_started': false}},
   ],
 };

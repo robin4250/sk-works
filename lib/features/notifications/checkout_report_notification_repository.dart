@@ -85,6 +85,11 @@ class CheckoutReportNotificationSnapshot {
           raw['choice_enforcement_enabled'] == false)) {
         throw CheckoutReportNotificationUnavailable();
       }
+      if (const {'report_choice_required','checkout_deferred'}.contains(row['registration_state']) &&
+          (!hasChoice || row['report_started'] != false ||
+            row['registration_state'] == 'report_choice_required' && row['member_count'] < 2)) {
+        throw CheckoutReportNotificationUnavailable();
+      }
       final item = CheckoutReportNotificationItem._(row);
       if ((item.siteId == null) == (item.routeId == null) || item.sourceClockInId == item.clockOutId ||
           !seen.add('${item.companyId}/${item.workerId}/${item.clockOutId}') ||
