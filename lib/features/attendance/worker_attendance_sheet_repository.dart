@@ -242,8 +242,9 @@ class WorkerAttendanceSheetRepository {
         ? <String, List<DailyReportCompanyAllowanceSelection>>{}
         : workerAttendanceRegisteredAllowances(
             await _client.from('daily_report_workers')
-                .select('report_id,worker_id,company_allowance_selections')
+                .select('report_id,worker_id,company_allowance_selections,daily_reports!inner(status)')
                 .eq('worker_id', targetWorkerId)
+                .eq('daily_reports.status', 'signed')
                 .inFilter('report_id', reportIds.toList()),
             reportIds: reportIds, workerId: targetWorkerId);
 
