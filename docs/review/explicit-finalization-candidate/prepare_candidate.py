@@ -54,7 +54,7 @@ def meta_guard(x):
     return " if not exists(select 1 from pg_proc p where "+' and '.join(conditions)+") then raise exception 'explicit_finalization_source_changed: "+x['signature']+"';end if;"
 checks='\n'.join(meta_guard(x) for x in pins)
 core=(HERE/'core.sql').read_text()
-sql='-- REVIEW ONLY. Default OFF. No production activation or employee data mutation.\nbegin;\nset local lock_timeout=\'5s\';set local statement_timeout=\'45s\';\ndo $install$ begin if current_user<>\'postgres\' or to_regnamespace(\'explicit_report_finalization_private\') is not null then raise exception \'explicit_finalization_install_precondition\';end if;end $install$;\ndo $pins$ begin\n'+checks+'\nend $pins$;\n'+core+'\n'+'\n'.join(patches.values())+'\ncommit;\n'
+sql='-- REVIEW ONLY. Default OFF. No production activation or employee data mutation.\nbegin;\nset local lock_timeout=\'5s\';set local statement_timeout=\'45s\';\ndo $install$ begin if current_user<>\'postgres\' or to_regnamespace(\'explicit_report_finalization_private\') is not null then raise exception \'explicit_finalization_install_precondition\';end if;end $install$;\ndo $pins$ begin\n'+checks+'\nend $pins$;\n'+core+'\n'+'\n'.join(x.rstrip().rstrip(';')+';' for x in patches.values())+'\ncommit;\n'
 (HERE/'explicit-finalization.sql.review-only').write_text(sql)
 (HERE/'source-pins.json').write_text(json.dumps(pins,indent=2)+'\n')
 # source-originals.json remains the exact readonly production catalog, including ACL/owner/config.
@@ -77,7 +77,7 @@ for row in route_originals:
     source=once(source," return to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name));", " return explicit_route_finalization_private.decorate(to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name)));")
     route_patches.append(source)
 route_checks='\n'.join(meta_guard(x) for x in route_originals)
-route_sql='-- REVIEW ONLY. Default OFF. Independent visit documents; no financial-row mutation.\nbegin;\nset local lock_timeout=\'5s\';set local statement_timeout=\'45s\';\ndo $install$ begin if current_user<>\'postgres\' or to_regnamespace(\'explicit_route_finalization_private\') is not null then raise exception \'explicit_route_install_precondition\';end if;end $install$;\ndo $pins$ begin\n'+route_checks+'\nend $pins$;\n'+(HERE/'route-core.sql').read_text()+'\n'+'\n'.join(route_patches)+'\ncommit;\n'
+route_sql='-- REVIEW ONLY. Default OFF. Independent visit documents; no financial-row mutation.\nbegin;\nset local lock_timeout=\'5s\';set local statement_timeout=\'45s\';\ndo $install$ begin if current_user<>\'postgres\' or to_regnamespace(\'explicit_route_finalization_private\') is not null then raise exception \'explicit_route_install_precondition\';end if;end $install$;\ndo $pins$ begin\n'+route_checks+'\nend $pins$;\n'+(HERE/'route-core.sql').read_text()+'\n'+'\n'.join(x.rstrip().rstrip(';')+';' for x in route_patches)+'\ncommit;\n'
 (HERE/'explicit-route-finalization.sql.review-only').write_text(route_sql)
 
 # Unused OFF restoration only. Existing definitions/owner/config/ACL must match.

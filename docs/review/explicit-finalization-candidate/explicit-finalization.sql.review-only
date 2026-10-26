@@ -308,8 +308,7 @@ begin
   'source_attached',coalesce(i.daily_report_id=r.id and exists(select 1 from public.attendance_verifications o where o.source_clock_in_id=i.id and o.event_type='clock_out' and o.daily_report_id=r.id),false),
   'state',case when not capability then 'disabled' when supervisor_saved then 'supervisor_saved'
    when reporter_saved then 'reporter_saved_waiting_supervisor' else 'reporter_required' end)||shared_daily_report_private.safe_signature_scope(r.id)||explicit_report_finalization_private.context_metadata(r.id);
-end $function$
-
+end $function$;
 CREATE OR REPLACE FUNCTION checkout_shared_hours_private.confirm_facts(rid uuid, wid uuid, p_facts jsonb, p_hours numeric, p_expected_revision bigint, p_expected_scope text, p_management_reason text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -361,8 +360,7 @@ begin
  -- Explicit separate annex confirmation. Never clear or rewrite the frozen
  -- work report, roster, first reporter signature, or another worker's input.
  return checkout_shared_hours_private.read_input(rid,wid)||jsonb_build_object('changed',true);
-end $function$
-
+end $function$;
 CREATE OR REPLACE FUNCTION shared_daily_report_private.submit_report(p_source_clock_in_id uuid, p_expected_updated_at timestamp with time zone, p_work_description text, p_workers jsonb, p_signer_name text, p_signature jsonb, p_expected_signature_scope text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -454,8 +452,7 @@ begin
  perform explicit_report_finalization_private.auto_confirm(rid,p_workers);
  perform private.save_daily_report_signature(rid,'representative',p_signer_name,p_signature);
  return shared_daily_report_private.resolve_own(p_source_clock_in_id);
-end $function$
-
+end $function$;
 CREATE OR REPLACE FUNCTION shared_report_edit_private.collect_supervisor(rid uuid, request uuid, signer text, signature jsonb, expected_at timestamp with time zone, expected_scope text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -493,8 +490,7 @@ begin
  if not shared_daily_report_private.document_mode(rid) and to_regprocedure('checkout_shared_managed_private.assert_managed_adoption_unchanged(uuid)') is not null then
   execute 'select checkout_shared_managed_private.assert_managed_adoption_unchanged($1)' using rid;end if;
  return jsonb_build_object('schema',1,'actor_id',actor,'report_id',rid,'state','saved');
-end $function$
-
+end $function$;
 CREATE OR REPLACE FUNCTION shared_daily_report_private.resolve_own(p_source_clock_in_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -540,8 +536,7 @@ begin
   'first_reporter_covers_work_only',shared_daily_report_private.work_only_available(r.id),
   'enabled',true,'reporter_saved',checkout_report_registration_private.has_signature(r.representative_signer_name,r.representative_signature_json),
   'supervisor_saved',checkout_report_registration_private.has_signature(r.supervisor_signer_name,r.supervisor_signature_json),'reporter_name',r.representative_signer_name,'report_updated_at',r.updated_at,'report_status',r.status)||shared_daily_report_private.safe_signature_scope(r.id)||explicit_report_finalization_private.context_metadata(r.id);
-end $function$
-
+end $function$;
 CREATE OR REPLACE FUNCTION shared_daily_report_private.guard_report()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -617,8 +612,7 @@ begin
   raise sqlstate '55000' using message='shared_report_signed_facts_require_approved_edit';
  end if;
  return new;
-end $function$
-
+end $function$;
 CREATE OR REPLACE FUNCTION private.save_daily_report_signature(p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb)
  RETURNS void
  LANGUAGE plpgsql
@@ -665,8 +659,7 @@ begin
       'representative',r.representative_signature_json,'supervisor',r.supervisor_signature_json));
   end if;
 end;
-$function$
-
+$function$;
 CREATE OR REPLACE FUNCTION shared_daily_report_private.collect_supervisor(p_report_id uuid, p_source_clock_in_id uuid, p_signer_name text, p_signature jsonb, p_management boolean, p_expected_updated_at timestamp with time zone, p_expected_signature_scope text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -734,8 +727,7 @@ begin
  if not shared_daily_report_private.document_mode(r.id) and to_regprocedure('checkout_shared_managed_private.assert_managed_adoption_unchanged(uuid)') is not null then
   execute 'select checkout_shared_managed_private.assert_managed_adoption_unchanged($1)' using r.id;end if;
  return jsonb_build_object('schema',1,'actor_id',actor,'report_id',r.id,'state','saved');
-end $function$
-
+end $function$;
 CREATE OR REPLACE FUNCTION shared_worker_facts_private.materialize_confirmed_worker(rid uuid, wid uuid, facts jsonb)
  RETURNS void
  LANGUAGE plpgsql
@@ -783,8 +775,7 @@ begin
  if not exists(select 1 from public.daily_report_workers x where x.report_id=rid and x.worker_id=wid
   and shared_worker_facts_private.matches_materialization(to_jsonb(w),to_jsonb(x),facts)) then
   raise sqlstate 'PT409' using message='shared_worker_materialization_result_changed';end if;
-end $function$
-
+end $function$;
 CREATE OR REPLACE FUNCTION public.save_daily_report_destination_draft(p_report_id uuid, p_site_id uuid, p_route_assignment_id uuid, p_report_date date, p_work_description text, p_workers jsonb)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -972,8 +963,7 @@ begin
   end if;
   return v_report_id;
 end;
-$function$
-
+$function$;
 CREATE OR REPLACE FUNCTION shared_daily_report_private.manage_signature(p_report_id uuid, p_role text, p_signer_name text, p_signature jsonb, p_expected_updated_at timestamp with time zone, p_expected_signature_scope text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1027,6 +1017,5 @@ begin
  if not shared_daily_report_private.document_mode(r.id) and to_regprocedure('checkout_shared_managed_private.assert_managed_adoption_unchanged(uuid)') is not null then
   execute 'select checkout_shared_managed_private.assert_managed_adoption_unchanged($1)' using r.id;end if;
  return jsonb_build_object('schema',1,'actor_id',actor,'report_id',r.id,'state','saved');
-end $function$
-
+end $function$;
 commit;

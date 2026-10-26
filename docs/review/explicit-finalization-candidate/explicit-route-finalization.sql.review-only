@@ -180,8 +180,7 @@ begin
   update private.route_visit_reports set status='skipped',updated_at=now() where id=r.id returning * into r;
  end if;
  return explicit_route_finalization_private.decorate(to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name)));
-end $function$
-
+end $function$;
 CREATE OR REPLACE FUNCTION private.save_route_visit_report_signature(p_report_id uuid, p_role text, p_signer_name text, p_signature_json jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -218,6 +217,5 @@ begin
   update private.route_visit_reports set supervisor_signer_name=trim(p_signer_name),supervisor_signature_json=p_signature_json,status=case when explicit_route_finalization_private.required(r.id) then 'reporter_signed' else 'completed' end,signed_at=case when explicit_route_finalization_private.required(r.id) then null else now() end,updated_at=now() where id=r.id returning * into r;
  end if;
  return explicit_route_finalization_private.decorate(to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name)));
-end $function$
-
+end $function$;
 commit;
