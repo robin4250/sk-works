@@ -1,0 +1,38 @@
+name: Current Storage catalog guarded preparation
+on:
+  pull_request:
+    paths:
+      - 'docs/review/storage-current-guards/**'
+      - '.github/workflows/storage-current-guards.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  new-preparation-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_storage_session_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_storage_session_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node docs/review/storage-current-guards/verify_guarded.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" --pg17
+        env:
+          SKO_STORAGE_SESSION_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_storage_session_fixture

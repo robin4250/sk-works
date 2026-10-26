@@ -1,0 +1,477 @@
+{
+  "schema": 1,
+  "base_main": "ff591eef650f2354dc52e16bca981a45808fea3e",
+  "sources": [
+    {
+      "pr": 1435,
+      "head": "779cb581c9e4c2435fe79e731c831d8ae4a9bd80"
+    },
+    {
+      "pr": 1436,
+      "head": "5756d48d2dd778c8094cacb987c165e7f345e4f2"
+    },
+    {
+      "pr": 1437,
+      "head": "90ae36401327371622aea6dc255354d9e7677a55"
+    },
+    {
+      "pr": 1438,
+      "head": "20f516d662e8e50458db68ba3e8a39772d93454d"
+    },
+    {
+      "pr": 1440,
+      "head": "2d7d469c1f1043de94242020dbddbec7afe73038"
+    }
+  ],
+  "files": [
+    {
+      "pr": 1435,
+      "path": ".github/workflows/decoy-collector-producer.yml",
+      "status": "added",
+      "sha": "6eed013b815c18dec1ec07b7a1711adc8d7c2a94"
+    },
+    {
+      "pr": 1435,
+      "path": "tool/security/production_resume/README.md",
+      "status": "added",
+      "sha": "4da5df7bfb45e670c56e85a816e8d88ed6be4235"
+    },
+    {
+      "pr": 1435,
+      "path": "tool/security/production_resume/decoy_collector_producer.mjs",
+      "status": "added",
+      "sha": "8e6251baff86cb70b22b521beb72f5d7f0c665e8"
+    },
+    {
+      "pr": 1435,
+      "path": "tool/security/production_resume/decoy_collector_producer_test.mjs",
+      "status": "added",
+      "sha": "9e53a6575f6dc2cd5f8a5f1061a42f768a7c0505"
+    },
+    {
+      "pr": 1435,
+      "path": "tool/security/production_resume/manifest.json",
+      "status": "added",
+      "sha": "a5fa28392713e223f10dec4c8698085c6b6a4f99"
+    },
+    {
+      "pr": 1436,
+      "path": ".github/workflows/attendance-entry-access.yml",
+      "status": "added",
+      "sha": "ee144264ee48876c5c9e27233c407e91c0e06ac8"
+    },
+    {
+      "pr": 1436,
+      "path": "docs/review/attendance-entry-access-candidate/README.md",
+      "status": "added",
+      "sha": "4de6b859ceb4efb9eefd49438976e5126db2e001"
+    },
+    {
+      "pr": 1436,
+      "path": "docs/review/attendance-entry-access-candidate/install-off.sql.review-only",
+      "status": "added",
+      "sha": "f99e726042b2fb9ecf2a63ebcc7d3904eab79bbb"
+    },
+    {
+      "pr": 1436,
+      "path": "docs/review/attendance-entry-access-candidate/restore-unused.sql.review-only",
+      "status": "added",
+      "sha": "0fe6e6db586ae6590fb5cc558124750e4fc7826e"
+    },
+    {
+      "pr": 1436,
+      "path": "docs/review/attendance-entry-access-candidate/verify_native.mjs",
+      "status": "added",
+      "sha": "027f8eba5b1bdfd9b448e6cb53218318a73f74a2"
+    },
+    {
+      "pr": 1436,
+      "path": "lib/features/attendance/attendance_management_entry_access.dart",
+      "status": "added",
+      "sha": "9b182be4a91c6616fd7c6edb63f2e1fd398ba0df"
+    },
+    {
+      "pr": 1436,
+      "path": "lib/features/attendance/attendance_management_page.dart",
+      "status": "modified",
+      "sha": "7ebb249da43427fdb7853560fb1c71971dc75693"
+    },
+    {
+      "pr": 1436,
+      "path": "lib/features/attendance/attendance_management_repository.dart",
+      "status": "modified",
+      "sha": "cbdfa8e330ce4d2bc1ae0a2dfb4bb637f4d98905"
+    },
+    {
+      "pr": 1436,
+      "path": "lib/features/attendance/attendance_protected_routes.dart",
+      "status": "modified",
+      "sha": "ec76097791fcc87e906a062d0362f85848bea6bf"
+    },
+    {
+      "pr": 1436,
+      "path": "lib/features/auth/secondary_entry_access.dart",
+      "status": "added",
+      "sha": "fcab47b20680dedb723a70feebf07d3e119ece50"
+    },
+    {
+      "pr": 1436,
+      "path": "lib/features/auth/secondary_protected_page.dart",
+      "status": "modified",
+      "sha": "42879573610e49dd40718b21339fbb0ecf98d6c2"
+    },
+    {
+      "pr": 1436,
+      "path": "test/attendance_management_entry_access_test.dart",
+      "status": "added",
+      "sha": "8a4809a0cadd3b23c0e0236c52ad411bf4121bd1"
+    },
+    {
+      "pr": 1436,
+      "path": "test/attendance_management_entry_page_test.dart",
+      "status": "added",
+      "sha": "ebb849cd2f59be33a51be276e6a21de3cb7877ca"
+    },
+    {
+      "pr": 1436,
+      "path": "test/attendance_management_proof_ui_test.dart",
+      "status": "modified",
+      "sha": "be6eef5019f6c05117b035b76a68f42ca3efccba"
+    },
+    {
+      "pr": 1437,
+      "path": ".github/workflows/storage-current-guards.yml",
+      "status": "added",
+      "sha": "cf435bc2c30840923787a0b12ba9300c52eebf29"
+    },
+    {
+      "pr": 1437,
+      "path": "docs/review/storage-current-guards/README.md",
+      "status": "added",
+      "sha": "63c17b2789edf7e4823a15bbdf7b6dc05e8cae0a"
+    },
+    {
+      "pr": 1437,
+      "path": "docs/review/storage-current-guards/prepare_storage_guards.py",
+      "status": "added",
+      "sha": "c1bd04737f1f06e6351aaa05b90376ea56bd36a5"
+    },
+    {
+      "pr": 1437,
+      "path": "docs/review/storage-current-guards/source-pins.json",
+      "status": "added",
+      "sha": "0e1ca03ed885e4a2eb9e058ecdcb46ffaedc8989"
+    },
+    {
+      "pr": 1437,
+      "path": "docs/review/storage-current-guards/storage-feature.guarded.sql.review-only",
+      "status": "added",
+      "sha": "6a0d1985d7e337e7f701673241d3c5f9c11bf28f"
+    },
+    {
+      "pr": 1437,
+      "path": "docs/review/storage-current-guards/storage-live.guarded.sql.review-only",
+      "status": "added",
+      "sha": "e172585bbfe77baa95aeab596b10d168452be2c8"
+    },
+    {
+      "pr": 1437,
+      "path": "docs/review/storage-current-guards/verify_guarded.mjs",
+      "status": "added",
+      "sha": "db1ab3009a4b8448ce6436310289ac0968095ea1"
+    },
+    {
+      "pr": 1438,
+      "path": ".github/workflows/collector-current-core.yml",
+      "status": "added",
+      "sha": "a214020ca45293648258f2d60b6cc5216f0af025"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/README.md",
+      "status": "added",
+      "sha": "50735b87c419c1d7418381d541d034a1ac607dd5"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/install-off.sql.review-only",
+      "status": "added",
+      "sha": "f36577bf52475248a402cd1786518922aea08ff5"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/manifest.json",
+      "status": "added",
+      "sha": "b6f0143096ce47be8e8f2ff50779ad0eb9998970"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/prepare.py",
+      "status": "added",
+      "sha": "577537b6ba1edf5eae17262394d5b8e8c2658099"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/restore-unused.sql.review-only",
+      "status": "added",
+      "sha": "a9df81fc0da3c54569333e017cac3b64e4e2b95d"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/roleless-core.sql",
+      "status": "added",
+      "sha": "a4f4ca3a4aa59f116932fe98a071f6ee617869ba"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/sources/collector_public_read.sql",
+      "status": "added",
+      "sha": "f50f6830dbebb050ceedb8a70d3b6996e98afb6d"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/sources/current-core-originals.json",
+      "status": "added",
+      "sha": "fae6121ef013f5443b5cbe56ccb79a7f36556b9b"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/sources/decoy_collector_producer.mjs",
+      "status": "added",
+      "sha": "8e6251baff86cb70b22b521beb72f5d7f0c665e8"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/sources/handler.mjs",
+      "status": "added",
+      "sha": "cde02952b069055679bd7558a481fb80a5ba83dc"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/sources/reauthentication_handler_test.mjs",
+      "status": "added",
+      "sha": "87e79b99102332145cb4f567873e3d6adccd3a8a"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/sources/reauthentication_proofs.sql",
+      "status": "added",
+      "sha": "80799e86c8c7359417d78109861fb501f08376d5"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/sources/security_collector_storage_v1_20261020.sql.review-only",
+      "status": "added",
+      "sha": "a45e8d1447d542f1997a67d65f6b3559499141a4"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/sources/v2-public-fixture-vector.json",
+      "status": "added",
+      "sha": "f626e8edf931f97bd10f4a1055b474b8701aeed3"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/verify_gotrue.mjs",
+      "status": "added",
+      "sha": "90e26c17f3f9cfdf849a2acade47e34f3a043a07"
+    },
+    {
+      "pr": 1438,
+      "path": "docs/review/collector-current-core-20261026/verify_native.mjs",
+      "status": "added",
+      "sha": "0248bfa3bbe396c69801124566493a73605f78b8"
+    },
+    {
+      "pr": 1438,
+      "path": "supabase/functions/reauthenticate-operation/handler.mjs",
+      "status": "modified",
+      "sha": "b27a72bdd128174ef261306ea792976db6e05f1d"
+    },
+    {
+      "pr": 1438,
+      "path": "supabase/functions/security-collector-ingest/handler.mjs",
+      "status": "added",
+      "sha": "20c4e3cb1aedf506a05198957ff9342be0469196"
+    },
+    {
+      "pr": 1438,
+      "path": "supabase/functions/security-collector-ingest/index.ts",
+      "status": "added",
+      "sha": "8a22af0c69a36d45192da1895e296a4d2c96dc6e"
+    },
+    {
+      "pr": 1438,
+      "path": "tool/security/collector_current_core_handler_test.mjs",
+      "status": "added",
+      "sha": "1839929e984185a3717cbd2e2a8bdc137c93b3d1"
+    },
+    {
+      "pr": 1438,
+      "path": "tool/security/collector_roleless_handler_test.mjs",
+      "status": "added",
+      "sha": "d4b5986daff7ad0b536a432422f1c86a2f0e7223"
+    },
+    {
+      "pr": 1440,
+      "path": ".github/workflows/free-workers-security.yml",
+      "status": "added",
+      "sha": "bebfb44d2e48b981c732c2ea9cdb01f18da97a94"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/COLLECTOR-DELIVERY.md",
+      "status": "added",
+      "sha": "d76955f446d3657e579852299c8657ff82824978"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/MANAGEMENT.md",
+      "status": "added",
+      "sha": "1980e57382cdc111a720adcd891477b6b3963e8c"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/NOTIFICATION-CONNECTION.md",
+      "status": "added",
+      "sha": "a69a55fa2b8b9cd9a935f3ab98fad9ce9cb18a27"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/README.md",
+      "status": "added",
+      "sha": "0c2f6e9c5c4b04e2c2934385d716803a7a3670d4"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/package-lock.json",
+      "status": "added",
+      "sha": "19bbde75175fb45fd86a76558ab4a2343dbc609c"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/package.json",
+      "status": "added",
+      "sha": "e7bcd57da496bcb4426c6882474879ab96fc8114"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/src/broker.mjs",
+      "status": "added",
+      "sha": "ec744c248906477fb036f243ba0c6db10c15f634"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/src/collector-sender.mjs",
+      "status": "added",
+      "sha": "bc6f0e87aa73d198c0801976426e95cd817bbe96"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/src/decoy.wasm",
+      "status": "added",
+      "sha": "4b716b157bd61fe53aad8116edb6d9cecbe12baa"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/src/decoy.wat",
+      "status": "added",
+      "sha": "9f1b5e3259b576bc1fde8f92de832e899bece530"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/src/management.mjs",
+      "status": "added",
+      "sha": "bb6a38d1ab94e887de6f9b955b50ee6f63b3c53a"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/src/protocol.mjs",
+      "status": "added",
+      "sha": "9cc1109709d084787d3defdc25839517b7d003cb"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/src/security-audit.mjs",
+      "status": "added",
+      "sha": "30b338fbd66ad620d4577793a4aaa096ada434bc"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/src/wasm-manifest.mjs",
+      "status": "added",
+      "sha": "a945f0b80983e3a52b57eff359362929c988c59c"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/src/wasm.mjs",
+      "status": "added",
+      "sha": "c2dbf215ca6abd568952ea000667e0d3e2d89777"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/src/worker.mjs",
+      "status": "added",
+      "sha": "264f0aecef7a3d6fb7f01090ebe1bb878046e3b5"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/tests/collector-sender-fixture.mjs",
+      "status": "added",
+      "sha": "0ec942b6d4fd85831a918b4d699b559177a1dab9"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/tests/collector-sender.test.mjs",
+      "status": "added",
+      "sha": "dfb6d60e3f813dbe302d5a122e21bdcdad3dc6b2"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/tests/management-fixture.mjs",
+      "status": "added",
+      "sha": "ea6e58be97dc650c55899a123544c01da0a2e3d3"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/tests/management.test.mjs",
+      "status": "added",
+      "sha": "213c845f08cdb659727fe3c8f47f23d6b5cee1f8"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/tests/runtime-fixture.mjs",
+      "status": "added",
+      "sha": "679b2ec4c8991fa67435543da06f6d9b7ac3403c"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/tests/runtime.test.mjs",
+      "status": "added",
+      "sha": "ae7f62d96607f96f0d742ff768118213c5c931a4"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/tool/build_wasm.py",
+      "status": "added",
+      "sha": "86bfd3cbc4b8f9e4f0c4a480302e5061e7c0a013"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/tool/verify_artifact.mjs",
+      "status": "added",
+      "sha": "30dc9a19eb239a1f37a97ffd9e90bc4a6e250cf9"
+    },
+    {
+      "pr": 1440,
+      "path": "tool/security/free-worker-candidate/wrangler.review-only.jsonc",
+      "status": "added",
+      "sha": "bc1477e1ec95b678021383fcf80cd29d4f0b6901"
+    }
+  ],
+  "main_changed": false,
+  "production_modules_enabled": false,
+  "apple_included": false,
+  "pairing_ci": "pending",
+  "p34_production_applied": true
+}

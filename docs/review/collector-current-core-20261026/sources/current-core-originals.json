@@ -1,0 +1,50 @@
+[
+  {
+    "acl": "{postgres=X/postgres,service_role=X/postgres}",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "body_md5": "c8f0891133ba8d96e1426ed9be8d04d0",
+    "signature": "public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)",
+    "definition": "CREATE OR REPLACE FUNCTION public.issue_reauthentication_proof(p_actor uuid, p_session uuid, p_operation text, p_target jsonb, p_proof_hash text)\n RETURNS timestamp with time zone\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$begin\n if coalesce(auth.role(),'')<>'service_role' or p_operation in('secondary_password.change','attendance.manage') then\n  raise sqlstate '42501' using message='reauthentication_unavailable';end if;\n return private.issue_reauthentication_proof(p_actor,p_session,p_operation,p_target,p_proof_hash);\nend $function$\n",
+    "volatility": "v",
+    "security_definer": true
+  },
+  {
+    "acl": "{postgres=X/postgres}",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "body_md5": "31a65249b835b7e11e7e011c384886aa",
+    "signature": "private.consume_reauthentication_proof(text,jsonb,text)",
+    "definition": "CREATE OR REPLACE FUNCTION private.consume_reauthentication_proof(p_operation text, p_target jsonb, p_proof text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare actor uuid:=auth.uid(); v_session uuid; consumed text;fingerprint text;\nbegin\n if actor is null or not private.account_access_allowed() or p_proof is null or p_proof !~ '^[0-9a-f]{64}$'\n  or private.reauthentication_scope(p_operation) is null\n  or not private.reauthentication_required(private.reauthentication_scope(p_operation)) then\n  raise sqlstate '42501' using message='reauthentication_required';\n end if;\n v_session:=private.require_reauthentication_session();\n begin v_session:=(auth.jwt()->>'session_id')::uuid;\n exception when invalid_text_representation then raise sqlstate '42501' using message='reauthentication_required'; end;\n if v_session is null then raise sqlstate '42501' using message='reauthentication_required'; end if;\n if p_operation like 'master.%' and not public.is_current_user_master_admin() then\n  raise sqlstate '42501' using message='reauthentication_required';\n end if;\n if not pg_try_advisory_xact_lock_shared(private.account_deletion_barrier_key(actor)) then\n  raise sqlstate '42501' using message='reauthentication_required';\n end if;\n if not private.account_access_allowed() then raise sqlstate '42501' using message='reauthentication_required'; end if;\n perform 1 from auth.sessions s where s.id=v_session and s.user_id=actor\n  and (s.not_after is null or s.not_after>clock_timestamp()) for share;\n if not found then raise sqlstate '42501' using message='reauthentication_required'; end if;\n -- Credential changes use one lock order, including primary recovery.\n if p_operation in('secondary_password.replace','secondary_password.change') then\n  perform pg_advisory_xact_lock(hashtextextended('sko-secondary-password:'||actor::text,0));\n  perform 1 from public.user_secondary_credentials where user_id=actor for update;\n end if;\n if p_operation in('secondary_password.change','attendance.manage') then\n  select encode(extensions.digest(password_hash,'sha256'),'hex') into fingerprint\n  from public.user_secondary_credentials where user_id=actor for share;\n  if not found then raise sqlstate '42501' using message='reauthentication_required';end if;\n end if;\n update private.reauthentication_proofs p set consumed_at=clock_timestamp()\n where p.proof_hash=encode(extensions.digest(p_proof,'sha256'),'hex')\n  and p.actor_id=actor and p.session_id=v_session and p.operation=p_operation\n  and p.target=p_target and p.secondary_credential_fingerprint is not distinct from fingerprint\n  and p.consumed_at is null and p.expires_at>clock_timestamp()\n returning proof_hash into consumed;\n if consumed is null then raise sqlstate '42501' using message='reauthentication_required'; end if;\nend $function$\n",
+    "volatility": "v",
+    "security_definer": true
+  },
+  {
+    "acl": "{postgres=X/postgres}",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "body_md5": "337a44356a067183455b0678cfc3eec5",
+    "signature": "private.reauthentication_scope(text)",
+    "definition": "CREATE OR REPLACE FUNCTION private.reauthentication_scope(p_operation text)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO ''\nAS $function$\n select case p_operation when 'secondary_password.replace' then 'secondary_password'\n  when 'secondary_password.change' then 'secondary_password'\n  when 'master.feature.set' then 'master_feature'\n  when 'master.security_incidents.read' then 'master_security'\n  when 'attendance.manage' then 'attendance_management' end\n$function$\n",
+    "volatility": "i",
+    "security_definer": false
+  },
+  {
+    "acl": "{postgres=X/postgres}",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "body_md5": "52d721f524d0e3996048a5c566348931",
+    "signature": "private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)",
+    "definition": "CREATE OR REPLACE FUNCTION private.issue_reauthentication_proof(p_actor uuid, p_session uuid, p_operation text, p_target jsonb, p_proof_hash text)\n RETURNS timestamp with time zone\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare expiry timestamptz; issued timestamptz;fingerprint text;\nbegin\n if p_actor is null or p_session is null\n  or p_proof_hash is null or p_proof_hash !~ '^[0-9a-f]{64}$'\n  or private.reauthentication_scope(p_operation) is null\n  or not private.reauthentication_required(private.reauthentication_scope(p_operation)) then\n  raise sqlstate '42501' using message='reauthentication_unavailable';\n end if;\n if p_operation in('secondary_password.replace','secondary_password.change') and p_target<>jsonb_build_object('user_id',p_actor) then\n  raise sqlstate '42501' using message='reauthentication_unavailable';\n elsif p_operation='master.feature.set' and (\n  jsonb_typeof(p_target)<>'object' or p_target<>jsonb_build_object('feature_key',p_target->'feature_key','enabled',p_target->'enabled')\n  or coalesce(p_target->>'feature_key','') not in ('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop')\n  or coalesce(jsonb_typeof(p_target->'enabled'),'')<>'boolean') then\n  raise sqlstate '42501' using message='reauthentication_unavailable';\n elsif p_operation='attendance.manage' and (\n  not private.reauthentication_required('secondary_password') or\n  p_target is null or jsonb_typeof(p_target)<>'object'\n  or p_target<>jsonb_build_object('company_id',p_target->'company_id','action',p_target->'action','items_sha256',p_target->'items_sha256')\n  or coalesce(p_target->>'action','') not in ('upsert','delete')\n  or coalesce(p_target->>'items_sha256','') !~ '^[0-9a-f]{64}$'\n  or (select count(*) from public.company_members where user_id=p_actor)<>1\n  or not exists(select 1 from public.company_members where user_id=p_actor\n   and company_id::text=p_target->>'company_id' and role::text in ('owner','admin','manager'))) then\n  raise sqlstate '42501' using message='reauthentication_unavailable';\n elsif p_operation='master.security_incidents.read' and p_target<>'{\"scope\":\"platform\"}'::jsonb then\n  raise sqlstate '42501' using message='reauthentication_unavailable';\n end if;\n if p_target is null or (p_operation like 'master.%' and not exists(\n  select 1 from private.master_admins where user_id=p_actor and enabled)) then\n  raise sqlstate '42501' using message='reauthentication_unavailable';\n end if;\n -- Same deletion barrier as the existing Data API account hook; fail closed.\n if not pg_try_advisory_xact_lock_shared(private.account_deletion_barrier_key(p_actor)) then\n  raise sqlstate '42501' using message='reauthentication_unavailable';\n end if;\n if exists(select 1 from private.account_deletion_access_restrictions where user_id=p_actor) then\n  raise sqlstate '42501' using message='reauthentication_unavailable';\n end if;\n perform 1 from auth.users where id=p_actor and not coalesce(is_anonymous,false)\n  and (banned_until is null or banned_until<=clock_timestamp()) for share;\n if not found then raise sqlstate '42501' using message='reauthentication_unavailable';end if;\n perform 1 from auth.sessions where id=p_session and user_id=p_actor\n  and (not_after is null or not_after>clock_timestamp()) for share;\n if not found then raise sqlstate '42501' using message='reauthentication_unavailable'; end if;\n if p_operation in('secondary_password.change','attendance.manage') then\n  select encode(extensions.digest(password_hash,'sha256'),'hex') into fingerprint\n  from public.user_secondary_credentials where user_id=p_actor for share;\n  if not found then raise sqlstate '42501' using message='reauthentication_unavailable';end if;\n end if;\n issued:=clock_timestamp(); expiry:=issued+interval '120 seconds';\n insert into private.reauthentication_proofs(proof_hash,actor_id,session_id,operation,target,issued_at,expires_at,secondary_credential_fingerprint)\n values(p_proof_hash,p_actor,p_session,p_operation,p_target,issued,expiry,fingerprint);\n return expiry;\nend $function$\n",
+    "volatility": "v",
+    "security_definer": true
+  }
+]

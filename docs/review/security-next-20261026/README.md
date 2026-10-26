@@ -1,0 +1,17 @@
+# 次の配布前セキュリティ統合候補
+
+build 21作成用main `ff591eef650f2354dc52e16bca981a45808fea3e` は固定する。この候補は別ブランチ上で既成果を統合して検証するもので、本番有効化・外部配布を意味しない。
+
+既PR #1435（検知producer）、#1436（勤怠管理入口一回の第二パスワード）、#1437（Storageガード）、#1438（現4scopeへのcollector接続）、#1440（無料Workers・管理署名・監査・復旧・送信companion）を再利用。元PR間でファイル重複なし74件、既存mainを変更する6ファイルは各元PRの基点とblob一致を確認した。元PRを個別に重ねて適用せず、この統合候補を今後の検証基点にする。来歴はmanifestに記録する。
+
+PR #1436の全体CIで残っていた2失敗は、旧Face ID表示の文字列契約が「サーバーがパスワードを要求する場合」の新条件に追従していなかったもの。通常の生体認証表示と保存は維持し、サーバーが実パスワードの証明を要求する入口ではローカル生体認証だけで代用しない条件を検証する。認証製品コードを緩める変更は加えていない。
+
+組合せ検証は既168項目のNative勤怠試験を再利用し、collectorを先にOFF導入してから入口モジュールの導入・復元・再導入・複数CRUDを実行する。4scope、既勤怠writerのOID/ACL/本文、業務・給与・署名の不変を追加確認する。collector単体のPostgREST・実GoTrue、Workersの実workerd/SQLite試験も同じtreeで実行する。成功済み単体試験の結果だけで組合せ成功を推測しない。
+
+本番状況：P34人事権限修正は2026-10-26に本番へ1回適用済み、2テーブル全行digestと7関数のOID/ACL/owner/config不変を確認。その他の本候補に含まれるDBモジュール・collector・Worker・入口gateは未配備/未有効化。機能OFF導入で既定動作を保ち、対応iPhone導入後に第二認証を有効化する。
+
+Storageのfeature修正は即時に閲覧権限を狭める別操作である。live-session修正との2候補は同じ旧98policy catalogを前提とするため、先に適用した後で残りを再取得・再生成して照合する。旧pinを外して二重適用しない。人事source緊急復元は旧権限を再開するため通常アクセス隔離後の手動緊急手順であり、未使用復元と呼ばない。
+
+未達：無料host/account接続・実鍵配備・Master管理issuer・独立anchorの永続保存先・通知先の接続と実通知、正常利用を含む実インフラ試験・復旧演習・iPhone確認。collector/HMAC鍵をデコイへ渡さず、実データ・本番鍵をデコイへ持ち込まない。Appleログインの未完adapter/実機試験は別PR #1420で継続し、この候補へ混在させない。
+
+他15Storage bucketの実失効・HTTP境界、公開RPC全権限の実証、LINE境界の未反映候補も残る。authenticatedから呼べるextension除外public関数はdefiner197件とinvoker251件の合計448件であり、invokerからprivate definerへ入る経路も監査対象に含める。197件のsource確認を全RPCの実アクセス試験完了と扱わない。LINE trade_document_sourceの帳票補完76行を削除・巻戻ししない。コード作成・CI成功・既定OFFを運用完了に数えない。

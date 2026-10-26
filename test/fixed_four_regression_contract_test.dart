@@ -22,12 +22,12 @@ void main() {
     expect(settings, isNot(contains("'onboarding_approvals'")));
   });
 
-  test('secondary password never hides the biometric entry', () {
+  test('secondary password keeps biometric entry unless server requires fresh password', () {
     final source = File(
       'lib/features/auth/secondary_protected_page.dart',
     ).readAsStringSync();
 
-    expect(source, contains('if (_biometricAvailable) ...['));
+    expect(source, contains('if (_biometricAvailable && _entryAccess?.requiredByServer != true) ...['));
     expect(
       source,
       isNot(contains('if (_biometricEnabled && _biometricAvailable) ...[')),
@@ -36,3 +36,4 @@ void main() {
     expect(source, contains(r"'sko_secondary_biometric_enabled_$userId'"));
   });
 }
+

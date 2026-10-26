@@ -3,12 +3,12 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('secondary auth keeps biometric entry visible after password unlock', () {
+  test('secondary auth preserves biometric entry outside server password proof', () {
     final source = File(
       'lib/features/auth/secondary_protected_page.dart',
     ).readAsStringSync();
 
-    expect(source, contains('if (_biometricAvailable) ...['));
+    expect(source, contains('if (_biometricAvailable && _entryAccess?.requiredByServer != true) ...['));
     expect(
       source,
       isNot(contains('if (_biometricEnabled && _biometricAvailable) ...[')),
@@ -18,3 +18,4 @@ void main() {
     expect(source, contains('Face ID / Touch IDで開く'));
   });
 }
+

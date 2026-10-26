@@ -1,7 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
-import '../auth/operation_reauthentication_repository.dart';
+import 'attendance_management_entry_access.dart';
 import 'checkout_report_gate.dart';
 import 'attendance_management_company_allowances.dart';
 import '../daily_reports/daily_report_company_allowance_selection.dart';
@@ -60,6 +60,7 @@ class AttendanceManagementRepository {
 
   AttendanceManagementRepository.forTesting(this._client);
   final SupabaseClient _client;
+  late final AttendanceManagementEntryAccess entryAccess = AttendanceManagementEntryAccess(_client);
 
   static AttendanceManagementRepository? maybeCreate() {
     if (!SupabaseBackend.isInitialized) return null;
@@ -458,10 +459,11 @@ class AttendanceManagementRepository {
           },
     ];
     final actor = _client.auth.currentUser?.id;
-    final raw = requestSecondaryPassword == null
-        ? await _client.rpc('force_manage_attendance', params: {'p_action': action, 'p_items': items})
-        : await OperationReauthenticationRepository(_client).manageAttendance(
-            action: action, items: items, requestPassword: requestSecondaryPassword);
+    // The page entrance authorizes this whole management visit. Writes never
+    // ask for a password again; the server still checks the live grant/role.
+    final raw = entryAccess.prepared && entryAccess.requiredByServer
+        ? await entryAccess.manage(action: action, items: items)
+        : await _client.rpc('force_manage_attendance', params: {'p_action': action, 'p_items': items});
     final gate = CheckoutReportGateController.instance;
     // The server decides whether the affected worker is this actor and has a
     // new obligation. A proxy write is never itself a reporter obligation.

@@ -1,0 +1,69 @@
+name: Attendance entry authorization
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/review/attendance-entry-access-candidate/**'
+      - 'lib/features/auth/secondary_entry_access.dart'
+      - 'lib/features/auth/secondary_protected_page.dart'
+      - 'lib/features/attendance/attendance_management*'
+      - 'lib/features/attendance/attendance_protected_routes.dart'
+      - 'test/attendance_management_entry*'
+      - 'test/attendance_management_proof_ui_test.dart'
+      - '.github/workflows/attendance-entry-access.yml'
+permissions:
+  contents: read
+concurrency:
+  group: attendance-entry-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  entry-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_checkout_integration_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: python3 tool/prepare_checkout_paid_hours.py --output "$RUNNER_TEMP/paid-hours-v1-patches.sql"
+      - run: python3 tool/prepare_checkout_shared_hours_v2.py --output "$RUNNER_TEMP/shared-hours-v2-patches.sql"
+      - name: Actual entry authorization and unchanged management finance
+        env:
+          SKO_CHECKOUT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_checkout_integration_fixture
+          SKO_PAID_HOURS_PATCHES: ${{ runner.temp }}/paid-hours-v1-patches.sql
+          SKO_SHARED_HOURS_V2_PATCHES: ${{ runner.temp }}/shared-hours-v2-patches.sql
+          SKO_ENTRY_COLLECTOR_PAIR: '1'
+        run: >-
+          node docs/review/attendance-entry-access-candidate/verify_native.mjs
+          "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+  entry-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze entry and existing attendance client
+        run: flutter analyze lib/features/auth/secondary_entry_access.dart lib/features/auth/secondary_protected_page.dart lib/features/attendance/attendance_management_entry_access.dart lib/features/attendance/attendance_management_page.dart lib/features/attendance/attendance_management_repository.dart lib/features/attendance/attendance_protected_routes.dart test/attendance_management_entry_access_test.dart test/attendance_management_entry_page_test.dart test/attendance_management_proof_ui_test.dart
+      - name: Actual SDK entry lifetime and existing attendance management
+        run: timeout 300 flutter test test/attendance_management_entry_access_test.dart test/attendance_management_proof_ui_test.dart test/attendance_secondary_entry_test.dart test/attendance_management_company_allowance_test.dart test/attendance_management_clock_precision_test.dart test/attendance_management_report_navigation_test.dart test/attendance_unrecorded_punches_test.dart test/fixed_four_regression_contract_test.dart test/secondary_biometric_persistence_contract_test.dart --reporter expanded
+      - name: Protected page entry once and background locking
+        run: timeout 180 flutter test test/attendance_management_entry_page_test.dart --dart-define=SKO_ENTRY_ACCESS_FIXTURE=true --dart-define=SUPABASE_URL=https://entry-access-fixture.invalid --dart-define=SUPABASE_PUBLISHABLE_KEY=public_fixture --reporter expanded
+

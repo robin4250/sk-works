@@ -7,16 +7,19 @@ import '../../data/supabase_backend.dart';
 
 import 'secure_onboarding_repository.dart';
 import 'secondary_password_reset_page.dart';
+import 'secondary_entry_access.dart';
 
 class SecondaryProtectedPage extends StatefulWidget {
   const SecondaryProtectedPage({
     super.key,
     required this.title,
     required this.child,
+    this.entryAccess,
   });
 
   final String title;
   final Widget child;
+  final SecondaryEntryAccess Function()? entryAccess;
 
   @override
   State<SecondaryProtectedPage> createState() => _SecondaryProtectedPageState();
@@ -43,6 +46,19 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   bool _nativePrompt = false;
   AppLifecycleState _lifecycle = AppLifecycleState.resumed;
   Completer<void>? _resumeWaiter;
+  SecondaryEntryAccess? _entryAccess;
+
+  void _entryInvalidated() {
+    if (mounted && _unlocked && _entryAccess?.isOpen == false) {
+      _generation++;
+      setState(() {
+        _unlocked = false;
+        _busy = false;
+        _password.clear();
+        _message = '勤怠管理を開くため、もう一度本人確認してください。';
+      });
+    }
+  }
 
   bool _sameAttempt(int generation, String actor, String token) {
     if (!mounted || generation != _generation || !SupabaseBackend.isInitialized) return false;
@@ -56,6 +72,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     // never touched by an old completion, including its busy/loading state.
     if (mounted && generation == _generation) {
       _generation++;
+      _entryAccess?.invalidate();
       _resumeWaiter?.complete();
       _resumeWaiter = null;
       setState(() {
@@ -112,6 +129,12 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     }
     final generation = ++_generation, token = session.accessToken;
     try {
+      if (_entryAccess == null && widget.entryAccess != null) {
+        _entryAccess = widget.entryAccess!();
+        _entryAccess!.addListener(_entryInvalidated);
+      }
+      await _entryAccess?.prepare();
+      if (!_acceptAttempt(generation, userId, token)) return;
       final configured = await repository.secondaryPasswordConfigured(accessToken: token);
       if (!_acceptAttempt(generation, userId, token)) return;
       final prefs = await SharedPreferences.getInstance();
@@ -154,6 +177,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       _generation++;
+      _entryAccess?.invalidate();
       _resumeWaiter?.complete();
       _resumeWaiter = null;
       _nativePrompt = false;
@@ -176,6 +200,8 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   @override
   void dispose() {
     _generation++;
+    _entryAccess?.removeListener(_entryInvalidated);
+    unawaited(_entryAccess?.close() ?? Future<void>.value());
     _resumeWaiter?.complete();
     _resumeWaiter = null;
     WidgetsBinding.instance.removeObserver(this);
@@ -231,6 +257,11 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
       _nativePrompt = false;
       await repository.setSecondaryPassword(password);
       if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
+      if (_entryAccess?.requiredByServer == true &&
+          !await _entryAccess!.unlock(password)) {
+        throw StateError('勤怠管理の入口認証を完了できませんでした。');
+      }
+      if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       final prefs = await SharedPreferences.getInstance();
       if (!_acceptAttempt(generation, userId, token) || _lifecycle != AppLifecycleState.resumed) return;
       await prefs.setBool(
@@ -275,7 +306,9 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
     });
 
     try {
-      final ok = await repository.verifySecondaryPassword(_password.text, accessToken: token);
+      final ok = _entryAccess?.requiredByServer == true
+          ? await _entryAccess!.unlock(_password.text)
+          : await repository.verifySecondaryPassword(_password.text, accessToken: token);
       if (!_acceptAttempt(generation, actor, token) || _lifecycle != AppLifecycleState.resumed) return;
       if (!ok) {
         setState(() {
@@ -302,6 +335,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   }
 
   Future<void> _unlockWithBiometric() async {
+    if (_entryAccess?.requiredByServer == true) return;
     final repository = _repository;
     final userId = repository?.currentUser?.id;
     final session = SupabaseBackend.isInitialized ? SupabaseBackend.client.auth.currentSession : null;
@@ -358,6 +392,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
   Future<void> _resetPassword() async {
     if (_busy) return;
     final userId = _repository?.currentUser?.id;
+    _entryAccess?.invalidate();
     setState(() => _busy = true);
     _password.clear();
     _confirm.clear();
@@ -477,7 +512,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
                             ),
                           ),
                         ),
-                        if (_biometricAvailable) ...[
+                        if (_biometricAvailable && _entryAccess?.requiredByServer != true) ...[
                           const SizedBox(height: 8),
                           SwitchListTile(
                             contentPadding: EdgeInsets.zero,
@@ -575,7 +610,7 @@ class _SecondaryProtectedPageState extends State<SecondaryProtectedPage>
                         onPressed: _busy ? null : _resetPassword,
                         child: const Text('第2パスワードを再設定'),
                       ),
-                      if (_biometricAvailable) ...[
+                      if (_biometricAvailable && _entryAccess?.requiredByServer != true) ...[
                         const SizedBox(height: 10),
                         OutlinedButton.icon(
                           onPressed: _busy ? null : _unlockWithBiometric,
