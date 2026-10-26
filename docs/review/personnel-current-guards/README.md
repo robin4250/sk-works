@@ -30,4 +30,4 @@ Given the saved exact before snapshot and a verified exact post snapshot, the ge
 
 The new wrapper Native test reuses only the established synthetic bootstrap. It targets new catalog drift checks, late/forbidden-DML rollback, actual manager-OFF denial with owner/admin saves preserved, exact source restoration/reapply and explicit old-gap reappearance. A passing isolated result is not proof of actual full DB/Auth/Storage archive recovery, actual OAuth/iPhone operation, every company role or all application surfaces.
 
-Status: syntax/preparation complete. New exact-head Native CI pending. Main integration, production apply, actual administrator access/recovery and iPhone confirmation remain root-owned separate steps. Existing build 20 IPA is unchanged.
+Status: new PostgreSQL17 wrapper CI succeeded on exact implementation head `793514345cff449f31777588ecc54944466b34aa`: run `40283302654`, job `121441162822`, 46 checks. Main integration, production apply, actual administrator access/recovery and iPhone confirmation remain root-owned separate steps. Existing build 20 IPA is unchanged.
