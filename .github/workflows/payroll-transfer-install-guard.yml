@@ -1,0 +1,27 @@
+name: Payroll transfer snapshot installation guard
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/review/payroll-position-transfer/guard/**'
+      - '.github/workflows/payroll-transfer-install-guard.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic-install-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: synthetic_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: synthetic_only
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash docs/review/payroll-position-transfer/guard/guard-test.sh
