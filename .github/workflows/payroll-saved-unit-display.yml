@@ -1,0 +1,58 @@
+name: Payroll saved unit display
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/features/payroll/payroll_recorded_unit_evidence.dart'
+      - 'lib/features/payroll/payroll_insurance_calculation_evidence.dart'
+      - 'test/payroll_recorded_unit_evidence_test.dart'
+      - 'test/payroll_saved_unit_pdf_test.dart'
+      - '.github/workflows/payroll-saved-unit-display.yml'
+permissions:
+  contents: read
+jobs:
+  saved-unit-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SKO_PDF_FONT_PATH: build/pdf-fixtures/NotoSansJP-Regular.ttf
+      SKO_PDF_OUTPUT_DIR: build/pdf-fixtures
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: |
+          flutter pub get --enforce-lockfile
+          python3 -m pip install PyMuPDF==1.26.6 fonttools==4.61.1
+          python3 tool/prepare_pdf_fixture_font.py
+      - run: flutter analyze lib/features/payroll/payroll_recorded_unit_evidence.dart lib/features/payroll/payroll_insurance_calculation_evidence.dart test/payroll_recorded_unit_evidence_test.dart test/payroll_saved_unit_pdf_test.dart
+      - run: flutter test --reporter expanded test/payroll_recorded_unit_evidence_test.dart test/payroll_insurance_calculation_evidence_test.dart test/payroll_saved_unit_pdf_test.dart test/payroll_insurance_evidence_pdf_test.dart
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: payroll-saved-unit-display
+          path: |
+            build/pdf-fixtures/payroll_saved_unit_evidence.pdf
+            build/pdf-fixtures/payroll_saved_unit_evidence.pdf.png
+          if-no-files-found: warn
+  synthetic-source-invariance:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: synthetic_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute actual old and candidate functions against synthetic rows
+        env:
+          PGPASSWORD: synthetic_only
+        run: psql -h localhost -U postgres -d postgres -f docs/review/payroll-saved-unit/sql/synthetic-test.sql
+

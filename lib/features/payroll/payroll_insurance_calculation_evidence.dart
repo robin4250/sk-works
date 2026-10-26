@@ -33,6 +33,9 @@ class PayrollInsuranceCalculationEvidence {
       final amount = insuranceEvidenceYen(detail.containsKey(entry.key) ? detail[entry.key] : premiums[entry.key]);
       if (amount == null) continue;
       final kind = entry.value.$1;
+      // A saved non-enrollment condition suppresses only a zero row. Preserve
+      // any nonzero deduction, including an override, so printed totals reconcile.
+      if (recorded && conditions[entry.value.$2] == false && amount == 0) continue;
       String formula;
       if (!recorded) {
         formula = '控除額 ${insuranceEvidenceMoney(amount)}（計算根拠の保存記録なし）';
@@ -44,9 +47,7 @@ class PayrollInsuranceCalculationEvidence {
       } else {
         final matches = tax['rates'] is List ? (tax['rates'] as List).where((row) =>
           row is Map && row['value'] is Map && (row['value'] as Map)['kind'] == kind).toList() : const [];
-        if (matches.isEmpty && conditions[entry.value.$2] == false && amount == 0) {
-          formula = '加入対象外（保存済み条件）＝ ¥0';
-        } else if (matches.length != 1 || !_applicableRate(matches.single as Map, tax, month)) {
+        if (matches.length != 1 || !_applicableRate(matches.single as Map, tax, month)) {
           formula = '控除額 ${insuranceEvidenceMoney(amount)}（適用料率の保存記録を確認できません）';
         } else {
           final rate = matches.single as Map;
@@ -147,3 +148,4 @@ String insuranceEvidencePercent(int scaled) {
   final fraction = (scaled % 1000000).toString().padLeft(6, '0').replaceFirst(RegExp(r'0+$'), '');
   return fraction.isEmpty ? '$whole' : '$whole.$fraction';
 }
+
