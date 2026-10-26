@@ -1,0 +1,19 @@
+name: Document numbered guidance
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/people/own_document_registration_page.dart test/document_number_guidance_test.dart
+      - run: flutter test test/document_number_guidance_test.dart test/own_document_registration_save_test.dart
