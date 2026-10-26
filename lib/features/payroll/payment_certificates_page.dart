@@ -1,4 +1,6 @@
 import '../shared/trade_document_confirmation_dialog.dart';
+import '../shared/trade_document_adjustment_model.dart';
+import '../shared/trade_document_adjustment_page.dart';
 import 'dart:typed_data';
 import '../shared/trade_document_actor_boundary.dart';
 import '../shared/trade_document_attachment_editor_page.dart';
@@ -41,6 +43,31 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
   int _loadGeneration = 0;
   int _siteGeneration = 0;
   String? _siteCompanyId;
+  bool _canAdjust = false;
+
+  Future<void> _openAdjustments() async {
+    final repository = _repository;
+    final company = repository?.loadedCompanyId;
+    if (repository == null || company == null || !_canAdjust) return;
+    final now = DateTime.now();
+    final day = await showDatePicker(context: context, initialDate: now,
+      firstDate: DateTime(2000), lastDate: DateTime(2099, 12, 31),
+      helpText: '加減算する対象月を選択');
+    if (day == null || !mounted) return;
+    final month = '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-01';
+    final port = repository.createAdjustmentPort();
+    try {
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
+          TradeDocumentAdjustmentPage(companyId: company,
+            kind: TradeDocumentAdjustmentKind.paymentCertificate, month: month, port: port)));
+      if (mounted) await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('項目の加減算を開けませんでした。ログイン状態をご確認ください。')));
+      }
+    } finally { await port.dispose(); }
+  }
 
   @override
   void initState() {
@@ -65,11 +92,13 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
 
     try {
       final items = await repository.loadCertificates(includeRegisteredPreviews: true);
+      final canAdjust = await repository.canAdjustLoadedCompany();
       if (!mounted || generation != _loadGeneration) return;
       _siteCompanyId = repository.loadedCompanyId;
       _loadSites();
       setState(() {
         _items = items;
+        _canAdjust = canAdjust;
         _loading = false;
         _error = null;
       });
@@ -156,6 +185,10 @@ class _PaymentCertificatesPageState extends State<PaymentCertificatesPage> {
       ),
       body: SafeArea(
         child: Column(children: [
+          if (!_loading && _canAdjust && _repository?.loadedCompanyId != null)
+            Padding(padding: const EdgeInsets.all(12), child: OutlinedButton.icon(
+              onPressed: _openAdjustments, icon: const Icon(Icons.add_circle_outline),
+              label: const Text('項目を追加（＋／−）'))),
           if (_siteItems.isNotEmpty || _siteError != null || _siteLoading)
             Flexible(child: SingleChildScrollView(child: _siteSection())),
           Expanded(child: _loading
@@ -1083,5 +1116,6 @@ class _PaymentAllowanceDraft {
     amount.dispose();
   }
 }
+
 
 

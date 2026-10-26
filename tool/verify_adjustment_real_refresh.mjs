@@ -1,0 +1,168 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import {pathToFileURL} from 'node:url';
+import path from 'node:path';
+const {setupExpenseCostFixture}=await import(pathToFileURL(path.resolve('tool/fixtures/expense_cost_fixture.mjs')).href);
+const {PGlite}=await import(process.argv[2]);const db=new PGlite();
+process.on('uncaughtException',error=>{console.error(JSON.stringify({error:error.message,where:error.where}));process.exit(1);});
+await setupExpenseCostFixture(db);
+await db.exec(fs.readFileSync('supabase/tests/expense_settlement_choice_cost_extension.sql','utf8'));
+await db.exec(fs.readFileSync('supabase/tests/expense_cost_amounts.sql','utf8'));
+const read=name=>fs.readFileSync(new URL('../'+name,import.meta.url),'utf8');
+await db.exec(`alter table invoices add column if not exists approval_finalized_at timestamptz;
+ alter table payment_certificates add column if not exists finalized_at timestamptz;
+ create table if not exists invoice_approvals(invoice_id uuid,status text);
+ create function private.require_reauthentication_session() returns uuid language sql as $$select auth.uid()$$;
+ create function private.expense_cost_direction_v2_enabled(uuid) returns boolean language sql as $$select false$$;
+`);
+for(const name of ['private.refresh_automatic_invoice.sql','private.refresh_automatic_payment_certificate.sql','private.certificate_calculation_rows.sql','private.expense_payment_v2_envelope.sql','private.expense_payment_v2_guard.sql']) {
+ await db.exec(read('supabase/tests/fixtures/trade_document_adjustments_20261026/'+name));
+}
+await db.exec(read('supabase/review/document_adjustment_install.incomplete.sql'));
+const useV2=process.argv.includes('--v2');
+await db.exec(`create trigger fixture_actual_payment_v2_guard before insert or update or delete on public.payment_certificates for each row execute function private.expense_payment_v2_guard();`);
+if(useV2) {
+ await db.exec(`create or replace function private.expense_cost_direction_v2_enabled(uuid) returns boolean language sql as $$select true$$;
+ create function private.payment_expense_v2_requested() returns boolean language sql as $$select true$$;`);
+ await db.exec(read('supabase/tests/fixtures/trade_document_adjustments_20261026/private.read_expense_document.sql'));
+ await db.exec(read('supabase/tests/fixtures/trade_document_adjustments_20261026/private.expense_cost_finalize.sql'));
+}
+const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const [company,actor,customer,site,partner,worker]=[1,2,3,4,5,6].map(id);
+await db.exec(`insert into companies(id,tax_rate,name) values('${company}',10,'検証会社');
+ insert into company_members values('${company}','${actor}','admin');
+ insert into customers values('${customer}','${company}','検証取引会社','');
+ insert into sites(id,company_id,customer_id,name) values('${site}','${company}','${customer}','検証現場');
+ insert into site_financial_settings(company_id,site_id,billing_unit_price_yen,welfare_rate) values('${company}','${site}',100,5);
+ insert into partner_companies values('${partner}','${company}','検証協力会社');
+ insert into partner_payment_settings(company_id,partner_company_id,daily_rate_yen,welfare_rate,tax_rate) values('${company}','${partner}',100,5,10);
+ insert into workers(id,company_id,name,user_id,partner_company_id) values('${worker}','${company}','検証作業者','${actor}','${partner}');
+ insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days) values('${company}','${site}','${worker}','2026-10-01','day',1);
+ insert into document_adjustment_private.rollout values('${company}',true,now());
+ set test.uid='${actor}';`);
+if(useV2) await db.exec(`insert into private.expense_claims(id,company_id,applicant_id,applicant_name,created_by,incurred_on,description,amount_yen,approval,allocation,counterparty_id,revision)
+ values('${id(7)}','${company}','${worker}','検証作業者','${actor}','2026-10-01','合成経費',4,'approved','subcontractor','${partner}',2);
+ insert into private.expense_settlement_choices(claim_id,company_id,method,settlement_month,revision,chosen_by,approval_current,cost_allocation_current)
+ values('${id(7)}','${company}','cash','2026-10-01',2,'${actor}',true,true);`);
+await db.query('select private.refresh_automatic_invoice($1,$2,$3)',[company,customer,'2026-10-01']);
+await db.query('select private.refresh_automatic_payment_certificate($1,$2,$3)',[company,partner,'2026-10-01']);
+let checks=0;
+const command=(kind,partyId,mode,amount,sign='plus',version=0)=>({command_id:crypto.randomUUID(),company_id:company,kind,party_id:partyId,month:'2026-10-01',expected_version:version,action:'add',entry_id:null,sign,title:'検証追加',amount_yen:amount,recurrence:'once',effective_month:'2026-10-01',calculation_mode:mode,site_id:kind==='invoice'&&mode==='before_charges'?site:null,expected_template_version:null,update_scope:'current_month'});
+const preview=async c=>(await db.query('select public.preview_trade_document_adjustment($1) v',[JSON.stringify(c)])).rows[0].v;
+const apply=async(c,p)=>(await db.query('select public.apply_trade_document_adjustment($1,$2) v',[JSON.stringify(c),p.token])).rows[0].v;
+for(const [kind,partyId] of [['invoice',customer],['payment_certificate',partner]]) {
+ const c=command(kind,partyId,'settlement_yen',10);const p=await preview(c);
+ assert.equal(p.result_total_yen-p.base_total_yen,10);checks++;
+ const receipt=await apply(c,p);assert.equal(receipt.applied,true);checks++;
+ assert.deepEqual(await apply(c,p),receipt);checks++;
+ const c2=command(kind,partyId,'before_charges',50,'minus',1);const p2=await preview(c2);
+ assert.equal(p2.result_total_yen-p2.base_total_yen,-58);checks++;
+ const receipt2=await apply(c2,p2);assert.equal(receipt2.result_total_yen,p2.result_total_yen);checks++;
+ const s=(await db.query('select document_adjustment_private.source($1,$2,$3,$4) v',[company,kind,partyId,'2026-10-01'])).rows[0].v;
+ assert.equal(s.total,p2.result_total_yen);checks++;
+ if(useV2&&kind==='payment_certificate') {
+  const details=(await db.query('select private.read_expense_document($1,$2) v',['paymentCertificate',s.id])).rows[0].v;
+  assert.equal(details.expense_cost_direction_v2.amount_yen,4);checks++;
+  assert.equal(details.expense_cost_basis.gross_before_expense_yen,68);checks++;
+  assert.equal(details.expense_cost_basis.other_deductions_yen,0);checks++;
+ }
+ const monthly={...command(kind,partyId,'settlement_yen',7,'plus',2),recurrence:'monthly'};
+ const mp=await preview(monthly);const mr=await apply(monthly,mp);
+ assert.equal(mr.version,3);checks++;
+ const workspace=(await db.query('select public.read_trade_document_adjustments($1,$2,$3,$4) v',[company,kind,'2026-11-01',partyId])).rows[0].v;
+ assert.equal(workspace.entries.length,1);checks++;
+ const futureEntry=workspace.entries[0];
+ const stop={...monthly,command_id:crypto.randomUUID(),month:'2026-11-01',effective_month:'2026-11-01',expected_version:0,action:'stop',entry_id:futureEntry.id,expected_template_version:1,update_scope:'from_month',title:null,sign:null,amount_yen:null,recurrence:null};
+ const sp=await preview(stop);assert.equal(sp.result_total_yen,0);checks++;
+ const sr=await apply(stop,sp);assert.equal(sr.result_total_yen,0);checks++;
+ const past=(await db.query('select document_adjustment_private.source($1,$2,$3,$4) v',[company,kind,partyId,'2026-10-01'])).rows[0].v;
+ assert.equal(past.total,mr.result_total_yen);checks++;
+ const stale={...command(kind,partyId,'settlement_yen',1),expected_version:0};
+ await assert.rejects(preview(stale),/他の変更/);checks++;
+ await assert.rejects(apply({...monthly,title:'改変'},mp),/同じ保存番号/);checks++;
+ const cancel={...monthly,command_id:crypto.randomUUID(),expected_version:3,action:'cancel',entry_id:mr.entry_id};
+ const cp=await preview(cancel);const cr=await apply(cancel,cp);
+ assert.equal(cr.result_total_yen,receipt2.result_total_yen);checks++;
+ const edit={...c2,command_id:crypto.randomUUID(),expected_version:4,action:'edit',entry_id:receipt2.entry_id,amount_yen:25};
+ const ep=await preview(edit);const er=await apply(edit,ep);
+ assert.equal(er.result_total_yen,useV2&&kind==='payment_certificate'?93:97);checks++;
+ if(useV2&&kind==='payment_certificate') {
+  const fm=command(kind,partyId,'settlement_yen',3,'minus',5);
+  const fp=await preview(fm);const fr=await apply(fm,fp);
+  assert.equal(fr.result_total_yen,90);checks++;
+  const fresh=(await db.query('select document_adjustment_private.source($1,$2,$3,$4) v',[company,kind,partyId,'2026-10-01'])).rows[0].v;
+  const details=(await db.query('select private.read_expense_document($1,$2) v',['paymentCertificate',fresh.id])).rows[0].v;
+  assert.equal(details.expense_cost_basis.gross_before_expense_yen,97);checks++;
+  assert.equal(details.expense_cost_basis.other_deductions_yen,3);checks++;
+  await assert.rejects(db.query('update payment_certificates set gross_amount=gross_amount+1 where id=$1',[fresh.id]),/amount or calculation basis/);checks++;
+  await assert.rejects(db.query("update payment_certificates set snapshot=snapshot-'document_adjustments_v1' where id=$1",[fresh.id]),/orphan payment/);checks++;
+ }
+ const table=kind==='invoice'?'invoices':'payment_certificates';
+ const period=kind==='invoice'?'billing_period_start':'period_start';
+ await db.query(`update ${table} set status='finalized',finalized_at=now() where company_id=$1 and ${period}='2026-10-01'`,[company]);
+ const frozen=(await db.query(`select snapshot from ${table} where company_id=$1 and ${period}='2026-10-01'`,[company])).rows[0].snapshot;
+ await assert.rejects(preview({...command(kind,partyId,'settlement_yen',1,'plus',5)}),/確定/);checks++;
+ await db.query(`select ${kind==='invoice'?'private.refresh_automatic_invoice':'private.refresh_automatic_payment_certificate'}($1,$2,$3)`,[company,partyId,'2026-10-01']);
+ const same=(await db.query(`select snapshot from ${table} where company_id=$1 and ${period}='2026-10-01'`,[company])).rows[0].snapshot;
+ assert.deepEqual(same,frozen);checks++;
+ const captured=(await db.query('select count(*)::int n from document_adjustment_private.occurrences o join document_adjustment_private.templates t on t.id=o.template_id where t.company_id=$1 and t.kind=$2 and o.finalized_snapshot is not null',[company,kind])).rows[0].n;
+ assert.equal(captured,useV2&&kind==='payment_certificate'?4:3);checks++;
+ if(useV2&&kind==='payment_certificate') {
+  const finalId=(await db.query("select id from payment_certificates where company_id=$1 and period_start='2026-10-01'",[company])).rows[0].id;
+  const finalRead=(await db.query('select private.read_expense_document($1,$2) v',['paymentCertificate',finalId])).rows[0].v;
+  assert.equal(finalRead.frozen,true);checks++;
+  assert.equal(finalRead.expense_cost_direction_v2.amount_yen,4);checks++;
+  assert.equal(finalRead.expense_cost_basis.other_deductions_yen,3);checks++;
+ }
+}
+await assert.rejects(db.exec('delete from document_adjustment_private.audit'),/履歴/);checks++;
+await db.exec(`set test.uid='${id(90)}'`);
+await assert.rejects(db.query('select public.read_trade_document_adjustments($1,$2,$3,$4)',[company,'invoice','2026-10-01',customer]),/アクセス権限/);checks++;
+await db.query('insert into company_members values($1,$2,$3)',[company,id(90),'employee']);
+await assert.rejects(db.query('select public.read_trade_document_adjustments($1,$2,$3,$4)',[company,'invoice','2026-10-01',customer]),/編集権限/);checks++;
+await assert.rejects(db.query('select public.read_trade_document_adjustments($1,$2,$3,$4)',[company,'payment_certificate','2026-10-01',partner]),/編集権限/);checks++;
+await db.exec(`set test.uid='${actor}';set role authenticated`);
+await assert.rejects(db.query('select * from document_adjustment_private.audit'),/permission denied/);checks++;
+await db.exec('reset role');
+await assert.rejects(db.query('select public.read_trade_document_adjustments($1,$2,$3,$4)',[company,'invoice','2026-10-01',partner]),/取引会社/);checks++;
+await assert.rejects(db.query('select public.read_trade_document_adjustments($1,$2,$3,$4)',[company,'payment_certificate','2026-10-01',customer]),/協力会社/);checks++;
+for(const [kind,partyId] of [['invoice',customer],['payment_certificate',partner]]) {
+ const history=(await db.query('select public.read_trade_document_adjustment_history($1,$2,$3,$4) v',[company,kind,partyId,'2026-10-01'])).rows[0].v;
+ assert.equal(history.entries.length,useV2&&kind==='payment_certificate'?6:5);checks++;
+ assert.equal(history.entries.every(e=>e.actor_id===actor&&Number.isInteger(e.before_total_yen)&&Number.isInteger(e.after_total_yen)),true);checks++;
+ assert.equal(history.entries.find(e=>e.action==='cancel').amount_yen,7);checks++;
+ const workspace=(await db.query('select public.read_trade_document_adjustments($1,$2,$3,$4) v',[company,kind,'2026-10-01',partyId])).rows[0].v;
+ assert.equal(workspace.locked,true);assert.equal(workspace.can_edit,true);checks++;
+ const cursor=history.entries.at(-1).id;
+ assert.equal((await db.query('select public.read_trade_document_adjustment_history($1,$2,$3,$4,$5) v',[company,kind,partyId,'2026-10-01',cursor])).rows[0].v.entries.length,0);checks++;
+}
+await assert.rejects(db.query('select public.set_trade_document_adjustment_rollout($1,false,$2)',[company,'短い']),/変更理由/);checks++;
+const off=(await db.query('select public.set_trade_document_adjustment_rollout($1,false,$2) v',[company,'緊急停止の隔離検証'])).rows[0].v;
+assert.equal(off.enabled,false);assert.equal(off.actor_id,actor);checks++;
+await assert.rejects(preview({...command('invoice',customer,'settlement_yen',1),month:'2028-09-01',effective_month:'2028-09-01'}),/準備中/);checks++;
+const operationHistory=(await db.query('select public.read_trade_document_adjustment_operations($1) v',[company])).rows[0].v;
+assert.equal(operationHistory.entries[0].reason,'緊急停止の隔離検証');checks++;
+assert.equal(operationHistory.entries[0].session_id,actor);checks++;
+await db.query('select public.set_trade_document_adjustment_rollout($1,true,$2)',[company,'隔離環境での検証再開']);
+const unused=await preview({...command('invoice',customer,'settlement_yen',1),month:'2028-10-01',effective_month:'2028-10-01'});
+const used=(await db.query("select receipt->>'preview_token' token from document_adjustment_private.commands limit 1")).rows[0].token;
+await db.query("update document_adjustment_private.previews set created_at=now()-interval '2 days' where token in ($1,$2)",[unused.token,used]);
+const financialCount=(await db.query('select (select count(*) from document_adjustment_private.commands)::int commands,(select count(*) from document_adjustment_private.audit)::int audit')).rows[0];
+assert.equal((await db.query('select public.cleanup_trade_document_adjustment_previews($1) v',[company])).rows[0].v.deleted_unused_previews,1);checks++;
+assert.equal((await db.query('select count(*)::int n from document_adjustment_private.previews where token=$1',[used])).rows[0].n,1);checks++;
+assert.deepEqual((await db.query('select (select count(*) from document_adjustment_private.commands)::int commands,(select count(*) from document_adjustment_private.audit)::int audit')).rows[0],financialCount);checks++;
+await assert.rejects(db.exec('delete from document_adjustment_private.operation_events'),/履歴/);checks++;
+for(const signature of ['public.apply_trade_document_adjustment(jsonb,uuid)','public.read_trade_document_adjustment_history(uuid,text,uuid,date,bigint)','public.set_trade_document_adjustment_rollout(uuid,boolean,text)','public.cleanup_trade_document_adjustment_previews(uuid,integer,text)']) {
+ assert.equal((await db.query('select has_function_privilege($1,$2,$3) allowed',['service_role',signature,'execute'])).rows[0].allowed,false);checks++;
+}
+await db.exec(`set test.uid='${id(90)}'`);
+await assert.rejects(db.query('select public.read_trade_document_adjustment_history($1,$2,$3,$4)',[company,'invoice',customer,'2026-10-01']),/編集権限/);checks++;
+await assert.rejects(db.query('select public.set_trade_document_adjustment_rollout($1,false,$2)',[company,'権限のない停止の検証']),/管理権限/);checks++;
+await assert.rejects(db.query('select public.cleanup_trade_document_adjustment_previews($1)',[company]),/管理権限/);checks++;
+await db.exec(`set test.uid='${actor}'`);
+const beforeInstallCount=(await db.query('select count(*)::int n from document_adjustment_private.commands')).rows[0].n;
+await assert.rejects(db.exec(read('supabase/review/document_adjustment_install.incomplete.sql')),/Source drift|Inspect existing/);checks++;
+await db.exec('rollback');
+assert.equal((await db.query('select count(*)::int n from document_adjustment_private.commands')).rows[0].n,beforeInstallCount);checks++;
+console.log(JSON.stringify({checks,compiled:true,actualRefreshExecuted:true,actualV2Guard:true,actualV2Reader:useV2,productionApplied:false}));
+await db.close();

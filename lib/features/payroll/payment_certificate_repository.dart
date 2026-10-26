@@ -5,7 +5,9 @@ import '../expenses/expense_document_repository.dart';
 import '../expenses/expense_detail_pdf.dart';
 import 'dart:async';
 import '../../domain/company_seal_snapshot.dart';
+import '../shared/trade_document_adjustment_repository.dart';
 import '../../domain/expense_cost_snapshot.dart';
+import '../../domain/trade_document_adjustment_snapshot.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
@@ -50,6 +52,7 @@ class PaymentCertificateRecord {
     this.lines = const [],
     this.expenseCost = const ExpenseCostSnapshot.none(),
     this.directionalExpenseRead,
+    this.documentAdjustments = const [],
   });
 
   final String id;
@@ -73,6 +76,7 @@ class PaymentCertificateRecord {
   final String partnerCompanyId;
   final List<PaymentCertificateLine> lines;
   final ExpenseCostSnapshot expenseCost;
+  final List<SavedTradeDocumentAdjustment> documentAdjustments;
   final ExpensePaymentReadCandidate? directionalExpenseRead;
   bool get hasDirectionalExpense => directionalExpenseRead?.usesV2 == true;
   int get expenseExtraAmountYen => directionalExpenseRead?.directionalCost?.amountYen ?? expenseCost.amountYen;
@@ -181,6 +185,18 @@ class PaymentCertificateRepository {
   final SupabaseClient _client;
   String? _loadedCompanyId;
   String? get loadedCompanyId => _loadedCompanyId;
+
+  SupabaseTradeDocumentAdjustmentRepository createAdjustmentPort() =>
+      SupabaseTradeDocumentAdjustmentRepository(_client);
+
+  Future<bool> canAdjustLoadedCompany() async {
+    final company = _loadedCompanyId, actor = _client.auth.currentUser?.id;
+    if (company == null || actor == null) return false;
+    final rows = await _client.from('company_members').select('role')
+        .eq('company_id', company).eq('user_id', actor);
+    return _client.auth.currentUser?.id == actor && rows.any((row) =>
+        const ['owner', 'admin'].contains(row['role']));
+  }
 
   static PaymentCertificateRepository? maybeCreate({bool enableExpenseDirectionV2 = false}) {
     if (!SupabaseBackend.isInitialized) return null;
@@ -345,6 +361,7 @@ class PaymentCertificateRepository {
           lines: List.unmodifiable(lines),
           expenseCost: directionRead == null ? ExpenseCostSnapshot.parse(snapshot) : const ExpenseCostSnapshot.none(),
           directionalExpenseRead: directionRead,
+          documentAdjustments: SavedTradeDocumentAdjustment.parse(snapshot),
         ),
       );
     }
@@ -720,4 +737,5 @@ class _PaymentDirectionActorLease {
   }
   void dispose() { subscription?.cancel(); }
 }
+
 

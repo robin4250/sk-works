@@ -1,0 +1,100 @@
+name: Trade document adjustments
+on:
+  pull_request:
+    paths:
+      - 'lib/domain/**'
+      - 'lib/features/shared/trade_document_adjustment*'
+      - 'lib/features/invoices/**'
+      - 'lib/features/payroll/payment_certificate*'
+      - 'test/trade_document_adjustment*'
+      - 'supabase/review/document_adjust*'
+      - 'supabase/review/refresh_functions.incomplete.sql'
+      - 'supabase/tests/fixtures/trade_document_adjustments_20261026/**'
+      - 'tool/verify_adjustment*'
+      - '.github/workflows/trade-document-adjustments.yml'
+  workflow_dispatch:
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/domain/trade_document_adjustment_snapshot.dart lib/features/shared/trade_document_adjustment_model.dart lib/features/shared/trade_document_adjustment_page.dart lib/features/shared/trade_document_adjustment_repository.dart lib/features/invoices/invoice_cloud_page.dart lib/features/invoices/invoice_cloud_repository.dart lib/features/invoices/invoice_pdf_service.dart lib/features/payroll/payment_certificate_repository.dart lib/features/payroll/payment_certificate_pdf_service.dart lib/features/payroll/payment_certificates_page.dart test/trade_document_adjustment_page_test.dart test/trade_document_adjustment_snapshot_test.dart
+      - run: flutter test test/trade_document_adjustment_page_test.dart test/trade_document_adjustment_snapshot_test.dart
+      - run: python -m pip install PyMuPDF==1.26.6
+      - run: flutter test test/trade_document_adjustment_pdf_generation_test.dart
+        env:
+          SKO_PDF_FONT_PATH: assets/fonts/company-seal/NotoSansJP-Bold.ttf
+          SKO_PDF_OUTPUT_DIR: build/adjustment-pdf-proof
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trade-document-adjustment-pdf-proof
+          path: build/adjustment-pdf-proof/
+  isolated-sql:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/sko-adjustment" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
+      - run: node tool/verify_adjustment_arithmetic.mjs "$RUNNER_TEMP/sko-adjustment/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_adjustment_real_refresh.mjs "$RUNNER_TEMP/sko-adjustment/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_adjustment_real_refresh.mjs "$RUNNER_TEMP/sko-adjustment/node_modules/@electric-sql/pglite/dist/index.js" --v2
+  native:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_document_adjustment_fixture
+          POSTGRES_PASSWORD: fixture-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts pg@8.16.3
+      - run: node tool/verify_adjustment_native_races.mjs ./tool/trade_document_adjustments_native_pg17_runtime.mjs --v2
+        env:
+          SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
+
+  guarded-restore:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_document_adjustment_fixture
+          POSTGRES_PASSWORD: fixture-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: cmp tool/trade_document_adjustment_guards/product-input.sql.review-only supabase/review/document_adjustment_install.incomplete.sql
+      - run: npm install --no-save --ignore-scripts pg@8.16.3
+      - run: node tool/trade_document_adjustment_guards/verify_isolated.mjs "$PWD/tool/trade_document_adjustments_native_pg17_runtime.mjs" "$PWD" "$PWD"
+        env:
+          SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
+          SKO_FIXTURE_PRODUCTION_DEFAULT_ACL: '1'

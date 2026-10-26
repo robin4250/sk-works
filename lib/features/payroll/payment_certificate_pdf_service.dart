@@ -115,7 +115,10 @@ class PaymentCertificatePdfService {
         .fold<int>(0, (sum, line) => sum + line.amountYen);
     final tax = record.lines.where((line) => isDocumentTaxLabel(line.workContent))
         .fold<int>(0, (sum, line) => sum + line.amountYen);
-    final display = DocumentDisplayTotals(workSubtotal: record.grossAmount - welfare - tax + (record.hasDirectionalExpense ? record.expenseLineDeltaYen : 0),
+    final finalItems = record.documentAdjustments.where((item) => item.isFinalAmount).toList();
+    final finalPlus = finalItems.where((item) => item.sign == 'plus').fold<int>(0, (sum, item) => sum + item.amountYen);
+    final finalMinus = finalItems.where((item) => item.sign == 'minus').fold<int>(0, (sum, item) => sum + item.amountYen);
+    final display = DocumentDisplayTotals(workSubtotal: record.grossAmount - finalPlus - welfare - tax + (record.hasDirectionalExpense ? record.expenseLineDeltaYen : 0),
       welfare: welfare, tax: tax, total: record.netAmount);
     final baseAmount = display.workSubtotal - record.expenseLineDeltaYen;
     final lines = [
@@ -296,6 +299,10 @@ class PaymentCertificatePdfService {
                 _cell(_number(item.$2), right: true),
               ],
             ),
+            for (final item in finalItems) pw.TableRow(children: [
+              _cell('調整'), _cell('${item.title}（追加税なし）'), _cell(''), _cell(''),
+              _cell(_number(item.signedYen), right: true),
+            ]),
             pw.TableRow(
               children: [
                 _cell(''),
@@ -312,9 +319,9 @@ class PaymentCertificatePdfService {
             ),
           ],
         ),
-        if (record.deductions != 0) pw.Padding(
+        if (record.deductions - finalMinus != 0) pw.Padding(
           padding: const pw.EdgeInsets.only(top: 5),
-          child: pw.Text('控除 ${_number(-record.deductions)}円（支払金額に反映済み）', style: const pw.TextStyle(fontSize: 8))),
+          child: pw.Text('控除 ${_number(-(record.deductions - finalMinus))}円（支払金額に反映済み）', style: const pw.TextStyle(fontSize: 8))),
         if (record.lines.isEmpty && record.grossAmount != 0) pw.Text(
           '※福利厚生費・消費税の内訳は保存されていません。保存済みの支払金額を表示しています。',
           style: const pw.TextStyle(fontSize: 7)),
@@ -413,4 +420,3 @@ class PaymentCertificatePdfService {
     return value;
   }
 }
-

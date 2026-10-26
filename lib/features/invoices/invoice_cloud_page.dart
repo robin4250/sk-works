@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../shared/trade_document_adjustment_model.dart';
+import '../shared/trade_document_adjustment_page.dart';
 
 import '../notifications/notification_preview_route_scope.dart';
 import '../../domain/invoice_engine.dart';
@@ -44,6 +46,26 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
   DateTime _period = DateTime(DateTime.now().year, DateTime.now().month);
   String? _companyFilter;
   bool _openedInitialInvoice = false;
+
+  Future<void> _openAdjustments() async {
+    final repository = _repository;
+    if (repository == null || !_canManageSettings) return;
+    final port = repository.createAdjustmentPort();
+    try {
+      final company = await repository.adjustmentCompanyId();
+      if (!mounted) return;
+      final month = '${_period.year.toString().padLeft(4, '0')}-${_period.month.toString().padLeft(2, '0')}-01';
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
+          TradeDocumentAdjustmentPage(companyId: company,
+            kind: TradeDocumentAdjustmentKind.invoice, month: month, port: port)));
+      if (mounted) await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('項目の加減算を開けませんでした。会社とログイン状態をご確認ください。')));
+      }
+    } finally { await port.dispose(); }
+  }
 
   @override
   void initState() {
@@ -257,6 +279,11 @@ class _InvoiceCloudPageState extends State<InvoiceCloudPage> {
                 ? _ErrorState(message: _error!, onRetry: _load)
                 : Column(
                     children: [
+                      if (_canManageSettings)
+                        Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                          child: OutlinedButton.icon(onPressed: _openAdjustments,
+                            icon: const Icon(Icons.add_circle_outline),
+                            label: const Text('項目を追加（＋／−）'))),
                       if (_hasPendingRouteQuantity)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -876,3 +903,4 @@ Future<bool> showInvoiceApprovalCancellationConfirmation(
       ),
     ) ??
     false;
+
