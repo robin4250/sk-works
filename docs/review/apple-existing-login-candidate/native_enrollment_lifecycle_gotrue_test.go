@@ -41,6 +41,7 @@ func TestSKOAppleNativeEnrollmentLedgerLifecycle(t *testing.T){
   models.TruncateAll(api.db)
   require.NoError(t,api.db.RawQuery("truncate apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout,apple_owner_policy.sko_apple_company_snapshot").Exec())
   owner,err:=models.NewUser("","existing-google@example.test","fixture-primary-password",config.JWT.Aud,map[string]interface{}{"full_name":"existing name","custom_field":"preserved"});require.NoError(t,err)
+  owner.AppMetaData=map[string]interface{}{"provider":"google","providers":[]string{"google"}}
   confirmed:=time.Now();owner.EmailConfirmedAt=&confirmed;require.NoError(t,api.db.Create(owner))
   google,err:=models.NewIdentity(owner,"google",map[string]interface{}{"sub":"existing-google-sub","email":"existing-google@example.test","email_verified":true});require.NoError(t,err);require.NoError(t,api.db.Create(google))
   if !tc.permit {require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.protected_users values(?)",owner.ID).Exec())}
