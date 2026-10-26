@@ -4,6 +4,7 @@ on:
     paths:
       - 'lib/features/qualifications/own_qualification*'
       - 'test/own_qualification_photo_submission_test.dart'
+      - 'test/own_qualification_initial_attachment_test.dart'
       - '.github/workflows/qualification-pdf-submission.yml'
 permissions:
   contents: read
@@ -20,4 +21,4 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze lib/features/qualifications/own_qualification_registration_page.dart lib/features/qualifications/own_qualification_photo_contract.dart lib/features/qualifications/own_qualification_photo_submission_repository.dart test/own_qualification_photo_submission_test.dart
-      - run: flutter test test/own_qualification_photo_submission_test.dart test/own_qualification_prepared_photo_test.dart
+      - run: flutter test test/own_qualification_photo_submission_test.dart test/own_qualification_prepared_photo_test.dart test/own_qualification_initial_attachment_test.dart

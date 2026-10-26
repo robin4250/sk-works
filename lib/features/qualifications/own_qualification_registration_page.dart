@@ -13,7 +13,14 @@ import '../shared/resource_registration_card.dart';
 
 
 class OwnQualificationRegistrationPage extends StatefulWidget {
-  const OwnQualificationRegistrationPage({super.key});
+  const OwnQualificationRegistrationPage({super.key, this.repository, this.photoRepository, this.pickAttachments});
+
+  @visibleForTesting
+  final QualificationCloudRepository? repository;
+  @visibleForTesting
+  final OwnQualificationPhotoSubmissionRepository? photoRepository;
+  @visibleForTesting
+  final Future<List<WorkerDocumentPhoto>?> Function(BuildContext context, List<WorkerDocumentPhoto> current)? pickAttachments;
 
   @override
   State<OwnQualificationRegistrationPage> createState() =>
@@ -22,8 +29,8 @@ class OwnQualificationRegistrationPage extends StatefulWidget {
 
 class _OwnQualificationRegistrationPageState
     extends State<OwnQualificationRegistrationPage> {
-  final _repository = QualificationCloudRepository.maybeCreate();
-  final _photoRepository =
+  late final _repository = widget.repository ?? QualificationCloudRepository.maybeCreate();
+  late final _photoRepository = widget.photoRepository ??
       OwnQualificationPhotoSubmissionRepository.maybeCreate();
   OwnQualificationPhotoCapability _photoCapability =
       OwnQualificationPhotoCapability.unavailable;
@@ -412,7 +419,9 @@ class _OwnQualificationRegistrationPageState
                           !_photoCapability.uploadAllowed || _pendingPhotos != null
                       ? null
                       : () async {
-                          final selected = await editWorkerDocumentPhotos(
+                          final selected = widget.pickAttachments != null
+                              ? await widget.pickAttachments!(dialogContext, selectedAttachments)
+                              : await editWorkerDocumentPhotos(
                             dialogContext,
                             paths: const [],
                             signedUrl: (_) async => '',
