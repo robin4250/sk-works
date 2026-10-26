@@ -1,9 +1,13 @@
-create role anon; create role authenticated;
+create role anon; create role authenticated; create role service_role;
 create schema auth; create schema private; create schema extensions;
 create extension pgcrypto with schema extensions;
 create table auth.users(id uuid primary key,is_anonymous boolean,banned_until timestamptz);
 create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
 create table private.account_deletion_access_restrictions(user_id uuid primary key);
+create table private.master_devices(id uuid primary key default gen_random_uuid(),master_user_id uuid not null,
+ device_key text not null,device_name text not null,device_type text not null,last_used_at timestamptz,
+ revoked_at timestamptz, unique(master_user_id,device_key));
+create table private.master_admin_audit_log(actor_user_id uuid,action text,target_user_id uuid,details jsonb);
 create table public.user_secondary_credentials(user_id uuid primary key,password_hash text,
  failed_attempts int not null default 0,locked_until timestamptz,updated_at timestamptz);
 create function auth.uid() returns uuid language sql as $$

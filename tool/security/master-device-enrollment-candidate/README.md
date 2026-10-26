@@ -4,6 +4,13 @@ Status: design only, not deployed or enabled. Existing passwords, devices and
 access policies must be preserved. Device enrollment must be performed by the
 owner after the entire flow and recovery have been tested.
 
+The isolated SQL candidate also contains request, service-only approval and
+completion primitives and a separate legacy RPC gate. This is not a complete
+security protocol: no verified approval service or independent recovery is
+implemented. The legacy gate blocks lock/revoke while enabled, and no secure
+replacement is provided yet. The SQL must not be enabled, deployed, or used
+for actual device registration. The test identity and passwords are synthetic.
+
 ## Existing components to reuse
 
 `tool/staged/master_device_lock_reauthentication.sql` provides a default-OFF
@@ -33,6 +40,9 @@ including concurrency-safe protection against losing the last usable device.
   A trusted device must cryptographically approve an additional enrollment;
   a hardware-backed non-exportable private key should require user presence
   where the platform supports it. Client-reported Face ID is not proof.
+  The current candidate's service-only approval function accepts an asserted
+  verification result. The service that verifies that result does not exist;
+  no test of the primitive establishes independent user presence.
 * First-device bootstrap has no trusted device to approve it. It requires a
   separately verified, owner-controlled recovery channel and a secure enrollment
   procedure; second password alone must not be presented as biometric proof.

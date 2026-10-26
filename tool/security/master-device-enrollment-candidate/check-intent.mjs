@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
 const db = new PGlite();
-await db.exec(`create role anon; create role authenticated;
+await db.exec(`create role anon; create role authenticated; create role service_role;
  create schema auth; create schema private;
  create function auth.uid() returns uuid language sql as $$
    select '00000000-0000-0000-0000-000000000001'::uuid $$;
@@ -39,4 +39,4 @@ await db.exec('update master_device_enrollment_candidate.rollout set enabled=fal
 await assert.rejects(() => db.query(call,[key,'iphone','synthetic-correct']), /master_device_enrollment_unavailable/);
 assert.equal((await db.query('select count(*)::int as n from master_device_enrollment_candidate.intents')).rows[0].n,3);
 await db.close();
-console.log('Synthetic intent smoke tests passed; enrollment itself is not implemented.');
+console.log('Synthetic intent smoke tests passed; enrollment is not production ready.');
