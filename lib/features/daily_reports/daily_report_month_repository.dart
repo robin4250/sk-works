@@ -270,13 +270,13 @@ class DailyReportMonthRepository {
           if (page.length > 200) throw StateError('訪問日報の件数を確認できません。');
           for (final row in page) {
             if (row is! Map || row['company_id'] != companyId || row['status'] != 'reporter_signed' ||
-                row['reporter_signed'] != true || row['supervisor_signed'] != false) throw StateError('訪問日報の署名状態を確認できません。');
+                row['reporter_signed'] != true || row['supervisor_signed'] != false) { throw StateError('訪問日報の署名状態を確認できません。'); }
             String text(String key) {
               final value = row[key]; if (value is! String || value.isEmpty) throw StateError('訪問日報の識別情報を確認できません。');return value;
             }
             final id = text('id'), date = DateTime.tryParse(text('report_date'));
             if (date == null || !seen.add('visit:$id') || (cursorDate != null &&
-                (date.isBefore(cursorDate) || (date == cursorDate && id.compareTo(cursorId!) <= 0)))) throw StateError('訪問日報の順序を確認できません。');
+                (date.isBefore(cursorDate) || (date == cursorDate && id.compareTo(cursorId!) <= 0)))) { throw StateError('訪問日報の順序を確認できません。'); }
             final context = RouteVisitReportContext(sourceClockInId: text('source_clock_in_id'),
               routeAssignmentId: text('route_assignment_id'), routeStopId: text('route_stop_id'),
               startCaptureId: text('start_capture_id'), endCaptureId: text('end_capture_id'));

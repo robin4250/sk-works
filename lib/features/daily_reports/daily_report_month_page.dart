@@ -137,10 +137,10 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
 
   Widget _pendingBody() {
     if (_pendingLoading) return const Center(child: CircularProgressIndicator());
-    if (_pendingError != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+    if (_pendingError != null) { return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
       Padding(padding: const EdgeInsets.all(16), child: Text(_pendingError!)),
       TextButton(onPressed: _loadPending, child: const Text('再読み込み')),
-    ]));
+    ])); }
     final sites = <String, List<DailyReportMonthEntry>>{};
     for (final entry in _pending) {
       if (entry.saveState != DailyReportSaveState.supervisorPending) continue;
