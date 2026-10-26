@@ -61,7 +61,11 @@ try{
  await sharedCall(U,id(80),'select public.reuse_my_shared_daily_report($1) v',[docStart]);
  await sharedCall(memberB,sidB,'select public.reuse_my_shared_daily_report($1) v',[id(9302)]);
  const business=()=>q("select jsonb_build_object('reports',(select jsonb_agg(to_jsonb(r) order by id) from daily_reports r),'workers',(select jsonb_agg(to_jsonb(w) order by report_id,worker_id) from daily_report_workers w),'clocks',(select jsonb_agg(to_jsonb(c) order by id) from attendance_verifications c),'entries',(select jsonb_agg(to_jsonb(e) order by id) from attendance_entries e),'payroll',(select jsonb_agg(to_jsonb(p) order by worker_id,period_start) from payroll_statements p),'invoices',(select jsonb_agg(to_jsonb(i) order by id) from invoices i),'ledger',(select jsonb_agg(to_jsonb(l) order by id) from checkout_shared_hours_private.ledger l),'confirmations',(select jsonb_agg(to_jsonb(c) order by id) from checkout_shared_hours_private.confirmations c),'events',(select jsonb_agg(to_jsonb(e) order by id) from shared_daily_report_private.signature_events e)) v");
- const snapshot=async()=>({...await business(),explicit:await q('select jsonb_agg(to_jsonb(e) order by id) v from explicit_report_finalization_private.events e'),permits:await q('select jsonb_agg(to_jsonb(p) order by report_id) v from explicit_report_finalization_private.permits p')});
+ const snapshot=async()=>{
+  const tables=(await client.query("select n.nspname,c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where c.relkind in('r','p') and (n.nspname in('explicit_report_finalization_private','shared_daily_report_private','checkout_shared_hours_private','company_checkout_allowance_private','attendance_admin_override_private','management_registered_allowance_private','shared_report_edit_private','attendance_stepup_private') or (n.nspname='private' and c.relname in('reauthentication_proofs','reauthentication_rollout')) or (n.nspname='public' and c.relname in('daily_report_edit_requests','daily_report_edit_approvals','app_notifications','user_secondary_credentials'))) order by n.nspname,c.relname")).rows;
+  const moduleTables={};for(const t of tables)moduleTables[t.nspname+'.'+t.relname]=await q('select jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text) v from '+identifier(t.nspname)+'.'+identifier(t.relname)+' t');
+  return {...await business(),moduleTables,explicit:moduleTables['explicit_report_finalization_private.events'],permits:moduleTables['explicit_report_finalization_private.permits'],coordinator_events:moduleTables['explicit_report_finalization_private.coordinator_events'],coordinator_permits:moduleTables['explicit_report_finalization_private.coordinator_permits'],source_bindings:moduleTables['explicit_report_finalization_private.source_bindings']};
+ };
  phase='ordinary-default-off-install';
  const actualSignature=JSON.parse(await readFile(candidateRoot+'/source-originals.json','utf8')).find(x=>x.signature==='private.save_daily_report_signature(uuid,text,text,jsonb)');
  eq(await q("select md5(prosrc) v from pg_proc where oid='private.save_daily_report_signature(uuid,text,text,jsonb)'::regprocedure"),actualSignature.body_md5,'Fixture retains the actual signature function body');
@@ -130,7 +134,258 @@ try{
  eq(invoice.grand_total,20000,'Actual source quantity two times explicit synthetic daily rate 10000');
  const settled=await snapshot();await finish();eq(await snapshot(),settled,'Exact lost-result retry duplicates no source, payroll, invoice or final audit');
  eq(await q('select count(*)::int v from explicit_report_finalization_private.permits'),0,'No reusable final-save permit');
- console.log(JSON.stringify({pass:true,checks,native_pg17:true,signature_capture_deferred:true,actual_four_financial_producers:true,ordinary_site_coordinator_and_peer_handoff:true,actual_invoice_non_route_dependencies:true,actual_payroll_one_day_per_participant:true,invoice_one_customer_month:true,error_and_early_return_atomic_rollback:true,exact_retry_idempotent:true,synthetic_auth_and_neutral_tax_leave:true,old_document_conversion_and_admin_crud_covered:false,production_changed:false}));
+
+ phase='ordinary-open-peer-fourth-step-preparation';
+ await client.query("update company_members set role='worker' where company_id=$1 and user_id in($2,$3)",[A,U,memberB]);
+ await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);
+ const openDay='2026-10-24',openStart=id(9500),openPeerStart=id(9502);
+ await mkShift(9500,reportWorker,openDay);await mkShift(9502,W2,openDay,false);
+ const openPayload=JSON.stringify([worker(reportWorker,[days[0]]),worker(W2,[])]);
+ const openRid=await sharedCall(U,id(80),'select public.save_daily_report_destination_draft(null,$1,null,$2,$3,$4::jsonb) v',[SITE,openDay,'同僚の退勤前に仮保存した合成作業',openPayload]);
+ await client.query('insert into explicit_report_finalization_private.reports(company_id,report_id,enabled) values($1,$2,true)',[A,openRid]);
+ const openContext=(actor=U,sid=id(80))=>sharedCall(actor,sid,'select public.read_shared_daily_report_context($1) v',[openRid]);
+ let stage=await openContext();
+ await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$2::timestamptz,$3,$4::jsonb,$5,$6::jsonb,$7) v',[openStart,stage.report_updated_at,'同僚の退勤前に仮保存した合成作業',openPayload,'退勤済み本人の実報告者サイン',signature,stage.signature_scope_fingerprint]);
+ eq(await q('select count(*)::int v from attendance_verifications where source_clock_in_id=$1 and event_type=\'clock_out\'',[openPeerStart]),0,'③ never invents the open participant clock-out');
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[openRid]),0,'Open-peer provisional report creates no financial attendance');
+ const unclosed=await openContext(memberB,sidB);
+ eq(unclosed.explicit_finalization_ready,false,'Open participant cannot be presented as finalized/zero');
+ // Synthetic source evidence only; the actual immutable-chronology trigger runs.
+ await client.query("insert into attendance_verifications(id,company_id,worker_id,site_id,event_type,confirmed_at,work_date,source_clock_in_id) values($1,$2,$3,$4,'clock_out',$5::date+time '17:00',$5,$6)",[id(9503),A,W2,SITE,openDay,openPeerStart]);
+ await sharedCall(memberB,sidB,'select public.reuse_my_shared_daily_report($1) v',[openPeerStart]);
+ stage=await openContext(memberB,sidB);
+ const stageRequest=[openRid,stage.report_updated_at,stage.signature_scope_fingerprint,openPayload];
+ const prepared=await sharedCall(memberB,sidB,'select public.prepare_shared_report_provisional_facts($1,$2::timestamptz,$3,$4::jsonb) v',stageRequest);
+ eq(prepared.hours_annex.ready,true,'Same ④ preparation confirms the now-closed whole roster');
+ eq(prepared.supervisor_ready,true,'Fresh facts authorize actual responsible capture');
+ eq(prepared.explicit_finalization_completed,false,'Preparation is not financial completion');
+ const preparedSnapshot=await snapshot();
+ const preparedAgain=await sharedCall(memberB,sidB,'select public.prepare_shared_report_provisional_facts($1,$2::timestamptz,$3,$4::jsonb) v',[openRid,prepared.report_updated_at,prepared.signature_scope_fingerprint,openPayload]);
+ eq(await snapshot(),preparedSnapshot,'Fresh-scope preparation retry adds no audit/financial duplicates');
+ await sharedCall(memberB,sidB,'select public.collect_shared_report_supervisor_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[openRid,openPeerStart,'同僚が取得した実責任者サイン',signature,preparedAgain.report_updated_at,preparedAgain.signature_scope_fingerprint]);
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[openRid]),0,'④ still creates no financial attendance');
+ const beforeOpenDays=[];
+ for(const wid of [reportWorker,W2])beforeOpenDays.push(Number(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,wid])));
+ const beforeOpenInvoice=await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]);
+ stage=await openContext(memberB,sidB);const openRequest=[openRid,stage.report_updated_at,stage.signature_scope_fingerprint];
+ const finishOpen=()=>sharedCall(memberB,sidB,'select public.finalize_shared_daily_report($1,$2::timestamptz,$3) v',openRequest);
+ eq((await finishOpen()).explicit_finalization_completed,true,'Open-peer handoff completes only at the final ⑤');
+ for(let n=0;n<2;n++)eq(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,[reportWorker,W2][n]]),String(beforeOpenDays[n]+1),'Each newly confirmed participant adds exactly one actual salary day');
+ eq(await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]),beforeOpenInvoice+20000,'Actual invoice adds exactly two participant-days at explicit 10000');
+ const afterOpen=await snapshot();await finishOpen();eq(await snapshot(),afterOpen,'Open-peer finalization retry does not add financial quantities');
+
+ phase='ordinary-off-legacy-reporter-six-key-compatibility';
+ await client.query("update company_members set role='worker' where company_id=$1 and user_id=$2",[A,U]);
+ await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);
+ const offDay='2026-10-22',offStart=id(9700);
+ await mkShift(9700,reportWorker,offDay);
+ const legacySix={worker_id:reportWorker,overtime_hours:0,early_hours:0,night_hours:0,allowance_amount:0,allowance_label:''};
+ const offPayload=JSON.stringify([legacySix]);
+ const offRid=await sharedCall(U,id(80),'select public.save_daily_report_destination_draft(null,$1,null,$2,$3,$4::jsonb) v',[SITE,offDay,'対象外の従来6項目による合成作業',offPayload]);
+ const offContext=await sharedCall(U,id(80),'select public.reuse_my_shared_daily_report($1) v',[offStart]);
+ const offLegacyBefore=await snapshot();
+ await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$2::timestamptz,$3,$4::jsonb,$5,$6::jsonb,$7) v',[offStart,offContext.report_updated_at,'対象外の従来6項目による合成作業',offPayload,'従来方式の実報告者',signature,offContext.signature_scope_fingerprint]);
+ eq(await q("select representative_signer_name='従来方式の実報告者' and representative_signature_json is not null v from daily_reports where id=$1",[offRid]),true,'OFF legacy six-key reporter input retains actual signature capture');
+ const offLegacyAfter=await snapshot();
+ for(const key of ['explicit','permits','coordinator_events','coordinator_permits','source_bindings'])eq(offLegacyAfter[key],offLegacyBefore[key],'OFF legacy submit creates no new explicit evidence: '+key);
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[offRid]),0,'Legacy reporter-only capture creates no financial attendance');
+ eq(offLegacyAfter.payroll,offLegacyBefore.payroll,'Legacy reporter-only capture leaves actual payroll unchanged');
+ eq(offLegacyAfter.invoices,offLegacyBefore.invoices,'Legacy reporter-only capture leaves actual invoices unchanged');
+
+
+ phase='ordinary-legacy-document-only-real-revision';
+ // Reproduce the old administrator-created document-only shape through the
+ // existing APIs, never by injecting signatures or a financial status.
+ await client.query("update company_members set role='owner' where company_id=$1 and user_id=$2",[A,U]);
+ await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);
+ const legacyPayrollBefore=Number(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,reportWorker]));
+ const legacyInvoiceBefore=await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]);
+ const oldDay='2026-10-25',oldStart=id(9400);
+ await mkShift(9400,reportWorker,oldDay);
+ const oldPayload=JSON.stringify([worker(reportWorker,[days[0]],{work_category:null})]);
+ const oldRid=await sharedCall(U,id(80),'select public.save_daily_report_destination_draft(null,$1,null,$2,$3,$4::jsonb) v',[SITE,oldDay,'旧保存方式の合成作業',oldPayload]);
+ await client.query("insert into shared_daily_report_private.document_rollout values($1,$2,'2026-10-01',true)",[A,oldRid]);
+ const oldContext=()=>sharedCall(U,id(80),'select public.read_shared_daily_report_context($1) v',[oldRid]);
+ let old=await oldContext();
+ eq(old.document_only,true,'Old document-only mode is actual server state');
+ await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[oldRid,'representative','旧25型の実報告者',signature,old.report_updated_at,old.signature_scope_fingerprint]);
+ old=await oldContext();
+ await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[oldRid,'supervisor','旧25型の実責任者',signature,old.report_updated_at,old.signature_scope_fingerprint]);
+ eq(await q('select work_category v from daily_report_workers where report_id=$1 and worker_id=$2',[oldRid,reportWorker]),null,'Historical missing category is preserved, never inferred as day');
+ eq(await q("select status='draft' and representative_signature_json is not null and supervisor_signature_json is not null v from daily_reports where id=$1",[oldRid]),true,'Old both-signatures draft is recreated using actual capture RPCs');
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[oldRid]),0,'Old document-only signatures created no attendance');
+ await sharedCall(U,id(80),'select public.reuse_my_shared_daily_report($1) v',[oldStart]);
+ await client.query('insert into explicit_report_finalization_private.reports(company_id,report_id,enabled) values($1,$2,true)',[A,oldRid]);
+ old=await oldContext();
+ const oldSigned=await snapshot();
+ await reject(()=>sharedCall(U,id(80),'select public.finalize_shared_daily_report($1,$2::timestamptz,$3) v',[oldRid,old.report_updated_at,old.signature_scope_fingerprint]),/explicit_report_finalization_not_ready|explicit_report_actual_revision_required/);
+ eq(await snapshot(),oldSigned,'Old signatures cannot be silently reused as financial approval');
+ old=await sharedCall(U,id(80),'select public.start_shared_report_finalization_edit($1,$2::timestamptz,$3,$4) v',[oldRid,old.report_updated_at,old.signature_scope_fingerprint,'実際の勤務区分を入力して改めてサインを取得']);
+ eq(await q("select representative_signature_json is null and supervisor_signature_json is null and status='draft' v from daily_reports where id=$1",[oldRid]),true,'Audited edit clears both current signatures before input');
+ eq(await q("select exists(select 1 from explicit_report_finalization_private.events where report_id=$1 and kind='edit' and before_state#>>'{report,representative_signer_name}'='旧25型の実報告者' and before_state#>>'{report,supervisor_signer_name}'='旧25型の実責任者') v",[oldRid]),true,'Actual old signature evidence remains in immutable edit history');
+ eq(await q('select work_category v from daily_report_workers where report_id=$1 and worker_id=$2',[oldRid,reportWorker]),null,'Editing alone does not manufacture a category');
+ const correctedPayload=JSON.stringify([worker(reportWorker,[days[0]],{work_category:'day'})]);
+ await sharedCall(U,id(80),'select public.save_daily_report_destination_draft($1,$2,null,$3,$4,$5::jsonb) v',[oldRid,SITE,oldDay,'実際の勤務区分を入力した合成作業',correctedPayload]);
+ eq(await q('select work_category v from daily_report_workers where report_id=$1 and worker_id=$2',[oldRid,reportWorker]),'day','Category comes from explicit fresh input');
+ old=await oldContext();
+ await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[oldRid,'representative','新たな25型の実報告者',signature,old.report_updated_at,old.signature_scope_fingerprint]);
+ old=await oldContext();
+ await sharedCall(U,id(80),'select public.manage_shared_report_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[oldRid,'supervisor','新たな25型の実責任者',signature,old.report_updated_at,old.signature_scope_fingerprint]);
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[oldRid]),0,'Fresh historical signatures still wait for explicit ⑤');
+ eq(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,reportWorker]),String(legacyPayrollBefore),'Historical draft is excluded from existing payroll until ⑤');
+ old=await oldContext();const oldRequest=[oldRid,old.report_updated_at,old.signature_scope_fingerprint];
+ const oldFinish=()=>sharedCall(U,id(80),'select public.finalize_shared_daily_report($1,$2::timestamptz,$3) v',oldRequest);
+ eq((await oldFinish()).explicit_finalization_completed,true,'Actual corrected historical record commits only at ⑤');
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[oldRid]),1,'Historical record creates one real source entry');
+ eq(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,reportWorker]),String(legacyPayrollBefore+1),'Actual producer adds exactly one newly confirmed historical date');
+ eq(await q("select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation",[A,customer]),legacyInvoiceBefore+10000,'Actual invoice adds exactly one newly confirmed historical participant-day');
+ const afterLegacy=await snapshot();await oldFinish();eq(await snapshot(),afterLegacy,'Historical retry does not duplicate financial rows or audit');
+
+
+ phase='ordinary-reversed-registered-choice-canonical-order';
+ await client.query("update company_members set role='worker' where company_id=$1 and user_id in($2,$3)",[A,U,memberB]);
+ await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[U,id(80)]);
+ const reverseDay='2026-10-23',reverseStart=id(9600),reversePeerStart=id(9602);
+ await mkShift(9600,reportWorker,reverseDay);await mkShift(9602,W2,reverseDay);
+ const reversed=[days[1],days[0]],canonical=[days[0],days[1]];
+ const reverseRid=await sharedCall(U,id(80),'select public.save_daily_report_destination_draft(null,$1,null,$2,$3,$4::jsonb) v',[SITE,reverseDay,'入力順が逆でも同じ登録手当を保持する合成作業',JSON.stringify([worker(reportWorker,reversed),worker(W2,[])])]);
+ const stored=await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[reverseRid,reportWorker]);
+ eq(stored.company_allowance_selections,choices(canonical),'Unsigned writer stores both original registered selections in canonical origin/id order');
+ eq(stored.company_allowance_selections.items.map(x=>x.name_snapshot).sort(),reversed.map(x=>x.name_snapshot).sort(),'Names, IDs, generation, version and unit are not lost by canonical order');
+ eq(stored.allowance_label.split('\\n').filter(Boolean).sort(),reversed.map(x=>x.name_snapshot).sort(),'Displayed Japanese registered names remain exact');
+ eq(stored.allowance_amount,0,'Canonical order does not manufacture an adjustment amount');
+ const canonicalPayload=JSON.stringify([{...worker(reportWorker,canonical),allowance_label:stored.allowance_label},worker(W2,[])]);
+ await client.query('insert into explicit_report_finalization_private.reports(company_id,report_id,enabled) values($1,$2,true)',[A,reverseRid]);
+ const reverseContext=(actor=U,sid=id(80))=>sharedCall(actor,sid,'select public.read_shared_daily_report_context($1) v',[reverseRid]);
+ let reversedContext=await reverseContext();
+ await sharedCall(U,id(80),'select public.submit_shared_daily_report($1,$2::timestamptz,$3,$4::jsonb,$5,$6::jsonb,$7) v',[reverseStart,reversedContext.report_updated_at,'入力順が逆でも同じ登録手当を保持する合成作業',canonicalPayload,'登録手当順序の実報告者',signature,reversedContext.signature_scope_fingerprint]);
+ reversedContext=await reverseContext(memberB,sidB);
+ await sharedCall(memberB,sidB,'select public.collect_shared_report_supervisor_signature($1,$2,$3,$4::jsonb,$5::timestamptz,$6) v',[reverseRid,reversePeerStart,'登録手当順序の実責任者',signature,reversedContext.report_updated_at,reversedContext.signature_scope_fingerprint]);
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[reverseRid]),0,'Reordered choices also remain provisional until ⑤');
+ const beforeReverseInvoice=await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]);
+ reversedContext=await reverseContext(memberB,sidB);const reversedRequest=[reverseRid,reversedContext.report_updated_at,reversedContext.signature_scope_fingerprint];
+ const finishReversed=()=>sharedCall(memberB,sidB,'select public.finalize_shared_daily_report($1,$2::timestamptz,$3) v',reversedRequest);
+ eq((await finishReversed()).explicit_finalization_completed,true,'Canonical raw facts materialize without changing the actual signed worker rows');
+ eq(await q('select count(*)::int v from company_checkout_allowance_private.receipts where report_id=$1 and worker_id=$2',[reverseRid,reportWorker]),1,'One immutable allowance receipt per actual source');
+ const actualReceipt=await q('select snapshot v from company_checkout_allowance_private.receipts where report_id=$1 and worker_id=$2',[reverseRid,reportWorker]);
+ eq(actualReceipt.items.map(x=>({id:x.id,name:x.name,rate_yen:x.rate_yen})).sort((a,b)=>a.id.localeCompare(b.id)),[{id:days[0].id,name:days[0].name_snapshot,rate_yen:100},{id:days[1].id,name:days[1].name_snapshot,rate_yen:200}],'Server resolves both actual registration values, without dropping/repricing either choice');
+ eq(await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]),beforeReverseInvoice+20000,'Reordered allowance input still adds both actual participant-days once');
+ const afterReverse=await snapshot();await finishReversed();eq(await snapshot(),afterReverse,'Canonical-order retry duplicates neither allowance receipts nor finance');
+
+
+ phase='ordinary-finalized-approved-reset-held-atomically';
+ // Exact observed public request/decision bodies; notification delivery uses
+ // the inherited synthetic notification outbox, never external delivery.
+ await exec("alter table public.daily_report_edit_requests add column if not exists reason text,add column if not exists approvals_required integer,add column if not exists created_at timestamptz default now(),add column if not exists resolved_at timestamptz;alter table public.daily_report_edit_requests alter column id set default gen_random_uuid();alter table public.daily_report_edit_requests alter column status set default 'pending';create table if not exists public.company_approval_assignees(company_id uuid,user_id uuid);create table public.daily_report_edit_approvals(request_id uuid,approver_user_id uuid,decision text,decided_at timestamptz default now(),primary key(request_id,approver_user_id));");
+ const actualReportEdits=JSON.parse(await readFile('tool/fixtures/checkout_daily_report_edit_sources.json','utf8'));
+ for(const f of actualReportEdits.functions){eq(md5(dbBody(f.definition)),f.source_md5,'Exact observed canonical request/approval source');await exec(f.definition);}
+ await client.query('insert into company_approval_assignees(company_id,user_id) values($1,$2)',[A,memberB]);
+ await client.query("update company_members set role='worker' where company_id=$1 and user_id in($2,$3)",[A,memberB,memberC]);
+ const guardedRequest=await sharedCall(memberC,sidC,"select public.request_daily_report_edit($1,'確定後に本人が正規の修正申請を行う合成検証') v",[rid]);
+ eq(await sharedCall(memberB,sidB,"select public.decide_daily_report_edit($1,'approve') v",[guardedRequest]),'approved','Different configured approver legitimately approves actual request');
+ const approvedResetBefore=await snapshot();
+ const untouchedFinalRoster=await q('select jsonb_agg(to_jsonb(w)-\'report_id\' order by worker_id) v from daily_report_workers w where report_id=$1',[rid]);
+ await reject(()=>sharedCall(memberC,sidC,'select public.save_daily_report_destination_draft($1,$2,null,$3,$4,$5::jsonb) v',[rid,SITE,docDay,'一般承認からの確定後resetは安全未達のため保留',JSON.stringify(untouchedFinalRoster)]),/explicit_report_finalized_edit_requires_attendance_management/);
+ eq(await snapshot(),approvedResetBefore,'Refused finalized reset preserves all signatures, attendance, actual payroll/invoice, receipts and request consumption');
+ eq(await q('select status v from daily_report_edit_requests where id=$1',[guardedRequest]),'approved','Safe refusal does not consume legitimate approval');
+
+
+
+ phase='ordinary-legacy-freeform-nonzero-cash-safe-hold';
+ // Construct historical pre-rollout input only via its real old public writer.
+ // Temporarily changing a synthetic rollout models that earlier state; no
+ // signature, status, attendance projection or money is injected directly.
+ await client.query("update shared_daily_report_private.rollout set enabled=false where company_id=$1",[A]);
+ await client.query("select set_config('fixture.actor',$1,false),set_config('fixture.sid',$2,false)",[memberC,sidC]);
+ const cashDay='2026-10-20',cashStart=id(9800),cashNames='旧自由手当\n旧追加手当',cashAmount=1375;
+ await mkShift(9800,W3,cashDay);
+ const oldCashWorker={worker_id:W3,overtime_hours:0,early_hours:0,night_hours:0,allowance_amount:cashAmount,allowance_label:cashNames};
+ const cashRid=await sharedCall(memberC,sidC,'select public.save_daily_report_destination_draft(null,$1,null,$2,$3,$4::jsonb) v',[SITE,cashDay,'旧方式から保持する調整額つき合成記録',JSON.stringify([oldCashWorker])]);
+ eq(await q('select company_allowance_selections v from daily_report_workers where report_id=$1 and worker_id=$2',[cashRid,W3]),null,'Actual legacy omitted choice key starts as NULL');
+ const typedCashWorker=worker(W3,[],{allowance_amount:cashAmount,allowance_label:cashNames,company_allowance_legacy_labels:cashNames});
+ await sharedCall(memberC,sidC,'select public.save_daily_report_destination_draft($1,$2,null,$3,$4,$5::jsonb) v',[cashRid,SITE,cashDay,'旧方式から保持する調整額つき合成記録',JSON.stringify([typedCashWorker])]);
+ const preservedCash=await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[cashRid,W3]);
+ eq(preservedCash.company_allowance_selections,choices([]),'Actual unsigned old NULL upgrades to explicitly validated empty registered choices');
+ eq(preservedCash.allowance_amount,cashAmount,'NULL-to-empty upgrade never zeroes an existing nonzero adjustment');
+ eq(preservedCash.allowance_label,cashNames,'NULL-to-empty upgrade retains every displayed freeform legacy name');
+ eq(preservedCash.company_allowance_legacy_labels,cashNames,'Legacy names remain separate from registered identities');
+ await client.query("update shared_daily_report_private.rollout set enabled=true where company_id=$1",[A]);
+ await client.query('insert into explicit_report_finalization_private.reports(company_id,report_id,enabled) values($1,$2,true)',[A,cashRid]);
+ const cashContext=await sharedCall(memberC,sidC,'select public.reuse_my_shared_daily_report($1) v',[cashStart]);
+ const cashBefore=await snapshot();
+ await reject(()=>sharedCall(memberC,sidC,'select public.submit_shared_daily_report($1,$2::timestamptz,$3,$4::jsonb,$5,$6::jsonb,$7) v',[cashStart,cashContext.report_updated_at,'旧方式から保持する調整額つき合成記録',JSON.stringify([typedCashWorker]),'調整額を消して進めない',signature,cashContext.signature_scope_fingerprint]),/shared_report_manual_cash_requires_trusted_source/);
+ eq(await snapshot(),cashBefore,'Unsupported nonzero adjustment is held atomically with every label/value/source/financial row unchanged');
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[cashRid]),0,'Unsupported legacy adjustment is never reported as finalized finance');
+
+ phase='ordinary-highest-management-real-03-04-05-install';
+ await exec('alter table company_common_allowance_private.items add column if not exists position integer default 0');
+ const managementRoot=resolve(candidateRoot,'../management-registered-allowances-candidate');
+ for(const row of JSON.parse(await readFile(managementRoot+'/native-reader-sources.json','utf8'))){eq(md5(dbBody(row.definition)),row.source_md5,'Exact observed management options reader');await exec(row.definition);}
+ await exec("create function public.read_company_registered_allowance_labels(p_company_id uuid) returns jsonb language sql stable set search_path='' as $$select company_common_allowance_private.registered_labels(p_company_id)$$");
+ await exec(await readFile(managementRoot+'/management-registered-allowances.sql.review-only','utf8'));
+ await exec('create schema extensions;create extension pgcrypto with schema extensions;alter table auth.users add column encrypted_password text');
+ await exec("create function auth.role() returns text language sql stable as $$select auth.jwt()->>'role'$$;create or replace function auth.jwt() returns jsonb language sql stable as $$select jsonb_build_object('role',coalesce(nullif(current_setting('fixture.role',true),''),'authenticated'),'sub',current_setting('fixture.actor',true),'session_id',coalesce(nullif(current_setting('fixture.sid',true),''),'00000000-0000-0000-0000-000000000080'),'is_anonymous',false)$$;");
+ await exec("create table private.account_deletion_access_restrictions(user_id uuid primary key);create function private.account_deletion_barrier_key(p_actor uuid) returns bigint language sql immutable as $$select hashtextextended('deletion:'||p_actor::text,0)$$;create table private.master_admins(user_id uuid primary key,enabled boolean);create function public.is_current_user_master_admin() returns boolean language sql security definer set search_path='' as $$select exists(select 1 from private.master_admins where user_id=auth.uid() and enabled)$$;create table public.user_secondary_credentials(user_id uuid primary key,password_hash text not null,failed_attempts integer not null default 0,locked_until timestamptz,updated_at timestamptz);alter table public.user_secondary_credentials enable row level security;revoke all on public.user_secondary_credentials from public,anon,authenticated;create table private.master_feature_settings(feature_key text primary key,enabled boolean,updated_at timestamptz,updated_by uuid);create function public.current_master_feature_flags() returns jsonb language sql as $$select '{}'::jsonb$$;");
+ await exec(await readFile('supabase/tests/fixtures/secondary_reset_before.sql','utf8'));
+ await exec(await readFile('supabase/tests/fixtures/reauthentication_master_before.sql','utf8'));
+ await exec(await readFile('tool/staged/reauthentication_proofs.sql','utf8'));
+ await exec(await readFile('docs/review/security-server-stepup-candidate/verify_secondary_password.source.sql','utf8'));
+ await exec('revoke all on function public.verify_secondary_password(text) from public,anon;grant execute on function public.verify_secondary_password(text) to authenticated');
+ const beforeProofForceOid=await q("select 'public.force_manage_attendance(text,jsonb)'::regprocedure::oid v");
+ await exec(await readFile('tool/staged/attendance_reauthentication.sql','utf8'));
+ eq(await q("select 'public.force_manage_attendance(text,jsonb)'::regprocedure::oid v"),beforeProofForceOid,'05 retains public force OID after 03 and explicit candidate');
+ eq(await q("select count(*)::int v from private.reauthentication_rollout where enabled"),0,'04 and 05 install with no proof activation');
+ const managementUser=id(9850),managementSid=id(9851);
+ await client.query('insert into auth.users(id) values($1)',[managementUser]);
+ await client.query('insert into auth.sessions(id,user_id) values($1,$2)',[managementSid,managementUser]);
+ await client.query("insert into company_members(company_id,user_id,role) values($1,$2,'owner')",[A,managementUser]);
+ await sharedCall(managementUser,managementSid,"select public.set_secondary_password('synthetic-highest-management-known') v");
+ await client.query('insert into attendance_admin_override_private.rollout values($1,true)',[A]);
+ await client.query('insert into management_registered_allowance_private.rollout values($1,true)',[A]);
+ await client.query("update private.reauthentication_rollout set enabled=true where scope in('attendance_management','secondary_password')");
+ await exec("select set_config('fixture.manager','on',false)");
+ await client.query("insert into explicit_report_finalization_private.rollout(company_id,starts_on,new_report_from,enabled) values($1,'2026-10-01','2026-10-01',true)",[A]);
+ const managementCell=(wid,day,extra={})=>({worker_id:wid,date:day,mode:'work',site_id:SITE,man_days:1,overtime_hours:0,early_hours:0,night_hours:0,allowance_names:[],work_description:'最高管理権限による実入力',clock_in:'08:00',clock_out:'17:00',...extra});
+ const targetFor=(actor,sid,action,items)=>sharedCall(actor,sid,'select public.attendance_management_reauthentication_target($1,$2::jsonb) v',[action,JSON.stringify(items)]);
+ const withManagementProof=async(action,items)=>{
+  const target=await targetFor(managementUser,managementSid,action,items);
+  const nonce=createHash('sha256').update('management-'+Math.random()).digest('hex');
+  assert.ok(await sharedCall(managementUser,managementSid,'select public.issue_secondary_reauthentication_proof($1,$2::jsonb,$3,$4) v',['attendance.manage',JSON.stringify(target),createHash('sha256').update(nonce).digest('hex'),'synthetic-highest-management-known']));
+  return sharedCall(managementUser,managementSid,'select public.force_manage_attendance_with_proof($1,$2::jsonb,$3) v',[action,JSON.stringify(items),nonce]);
+ };
+ const noManagerBefore=await snapshot();
+ await reject(()=>targetFor(memberB,sidB,'delete',[managementCell(reportWorker,docDay,{mode:'off'})]),/attendance management permission required|attendance_admin_current_management_required|attendance_reauthentication_/);
+ eq(await snapshot(),noManagerBefore,'Ordinary participant cannot impersonate highest management through a client-side permission hint');
+ await reject(()=>sharedCall(managementUser,managementSid,'select public.force_manage_attendance($1,$2::jsonb) v',['upsert',JSON.stringify([managementCell(reportWorker,docDay)])]),/reauthentication_required/);
+ phase='ordinary-highest-management-finalized-edit-delete-and-new';
+ const originalAdminReport=await q('select to_jsonb(r) v from daily_reports r where id=$1',[rid]);
+ const beforeAdminPayroll=[];for(const wid of [reportWorker,W2])beforeAdminPayroll.push(Number(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,wid])));
+ const beforeAdminInvoice=await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]);
+ const originalPeerRow=await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[rid,W2]);
+ eq(await withManagementProof('upsert',[managementCell(reportWorker,docDay,{work_description:'確定済みを正規最高管理権限で修正',company_allowance_selections:choices([days[0]]),company_allowance_legacy_labels:''})]),1,'Actual highest management edits finalized report through 03+05');
+ eq(await q("select representative_signature_json is null and supervisor_signature_json is null and status='draft' v from daily_reports where id=$1",[rid]),true,'Management revision does not forge/reuse old signatures');
+ eq(await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[rid,W2]),originalPeerRow,'Management edits only selected worker');
+ eq(await q("select exists(select 1 from attendance_admin_override_private.operations o where state='committed' and exists(select 1 from jsonb_array_elements(o.before_state->'reports') d where d->'report'=$1::jsonb)) v",[JSON.stringify(originalAdminReport)]),true,'Management audit preserves actual old final signature report');
+ const adminSourceReceipt=await q('select r.snapshot v from attendance_entries a join company_checkout_allowance_private.receipts r on r.id=a.company_allowance_receipt_id where a.source_report_id=$1 and a.worker_id=$2',[rid,reportWorker]);
+ eq(adminSourceReceipt.authority.kind,'attendance_management','03 registered receipt declares management authority honestly');
+ eq(adminSourceReceipt.authority.actor_id,managementUser,'03 receipt carries actual highest management identity');
+ eq(await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]),beforeAdminInvoice,'Editing a confirmed cell once does not duplicate invoice participant-days');
+ eq(await withManagementProof('delete',[managementCell(reportWorker,docDay,{mode:'off'})]),1,'Actual highest management deletes selected finalized attendance after proof');
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1 and worker_id=$2',[rid,reportWorker]),0,'Selected attendance removed');
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1 and worker_id=$2',[rid,W2]),1,'Unselected peer attendance retained');
+ eq(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,reportWorker]),String(beforeAdminPayroll[0]-1),'Actual highest deletion removes only selected salary day');
+ eq(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,W2]),String(beforeAdminPayroll[1]),'Actual highest deletion preserves peer salary days');
+ eq(await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]),beforeAdminInvoice-10000,'Actual highest deletion removes exactly selected invoice participant-day');
+ const createDay='2026-10-21';
+ eq(await withManagementProof('upsert',[managementCell(W3,createDay,{company_allowance_selections:choices([days[0]]),company_allowance_legacy_labels:'正規管理入力の自由記録'})]),1,'Highest management creates new actual attendance with registered ID plus free label');
+ const createdAdminRid=await q('select source_report_id v from attendance_entries where company_id=$1 and worker_id=$2 and work_date=$3',[A,W3,createDay]);
+ eq(await q('select representative_signature_json is null and supervisor_signature_json is null v from daily_reports where id=$1',[createdAdminRid]),true,'New management source does not manufacture handwritten signatures');
+ eq(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,W3]),'1','Actual highest new source creates exactly one salary day');
+ eq(await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]),beforeAdminInvoice,'Actual highest new source adds exactly one invoice participant-day');
+ eq(await q('select count(*)::int v from attendance_admin_override_private.contexts'),0,'Highest operations leave no reusable management permit');
+ eq(await q('select count(*)::int v from explicit_report_finalization_private.management_reports where report_id in($1,$2)',[rid,createdAdminRid]),2,'Explicit module records truthful management-only exceptions for changed and new report');
+
+ console.log(JSON.stringify({pass:true,checks,native_pg17:true,signature_capture_deferred:true,actual_four_financial_producers:true,ordinary_site_coordinator_and_peer_handoff:true,actual_invoice_non_route_dependencies:true,actual_payroll_one_day_per_participant:true,invoice_one_customer_month:true,error_and_early_return_atomic_rollback:true,exact_retry_idempotent:true,synthetic_auth_and_neutral_tax_leave:true,open_peer_same_fourth_step_preparation:true,off_legacy_six_keys_reporter:true,legacy_document_audited_revision:true,reversed_registered_choices_preserved:true,finalized_general_approved_reset_held_atomically:true,highest_crud_with_actual_03_04_05:true,legacy_freeform_and_nonzero_amount_preserved_then_held:true,legacy_cash_positive_finance_covered:false,production_changed:false}));
 `;
  const proof=join(folder,'proof.mjs'),generated=setup+unit+tail;await writeFile(proof,generated);
  if(process.env.SKO_ORDINARY_EXPLICIT_EMIT_ONLY)await writeFile(process.env.SKO_ORDINARY_EXPLICIT_EMIT_ONLY,generated);

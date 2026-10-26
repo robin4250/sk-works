@@ -160,7 +160,8 @@ begin
  needed:=explicit_report_finalization_private.required(rid);
  return jsonb_build_object('explicit_finalization_required',needed,'explicit_finalization_ready',needed and explicit_report_finalization_private.ready(rid),
   'explicit_finalization_completed',needed and r.status='signed' and exists(select 1 from explicit_report_finalization_private.events e join explicit_report_finalization_private.states s on s.report_id=e.report_id and s.revision=e.revision where e.report_id=rid and e.kind='finalized'),
-  'explicit_finalization_editable',needed and r.status='draft' and explicit_report_finalization_private.enabled(rid) and explicit_report_finalization_private.actor_allowed(rid));
+  'explicit_finalization_editable',needed and r.status='draft' and explicit_report_finalization_private.enabled(rid) and explicit_report_finalization_private.actor_allowed(rid),
+  'explicit_finalization_managed_only',exists(select 1 from explicit_report_finalization_private.events where report_id=rid and kind='finalized') or exists(select 1 from explicit_report_finalization_private.management_reports where report_id=rid));
 end $$;
 create function explicit_report_finalization_private.record_receipts() returns trigger language plpgsql security definer set search_path='' as $$
 declare rev bigint;actor uuid;role_value text;name_value text;signature_value jsonb;proof jsonb;admin_proof jsonb;
@@ -198,6 +199,24 @@ begin
  return new;
 end $$;
 create trigger zzzz_explicit_report_receipts after update on public.daily_reports for each row execute function explicit_report_finalization_private.record_receipts();
+create function explicit_report_finalization_private.record_management_entry() returns trigger language plpgsql security definer set search_path='' as $$
+declare rid uuid;c jsonb;r public.daily_reports%rowtype;actor uuid;rev bigint;
+begin
+ rid:=case when tg_op='DELETE' then old.source_report_id else new.source_report_id end;
+ if rid is null then return case when tg_op='DELETE' then old else new end;end if;
+ if not explicit_report_finalization_private.enabled(rid) and not exists(select 1 from explicit_report_finalization_private.states where report_id=rid) then return case when tg_op='DELETE' then old else new end;end if;
+ c:=explicit_report_finalization_private.admin_context(rid);
+ if c is null then return case when tg_op='DELETE' then old else new end;end if;
+ actor:=checkout_report_registration_private.current_actor();
+ select * into r from public.daily_reports where id=rid;
+ insert into explicit_report_finalization_private.management_reports values(rid,r.company_id,(c->>'operation_id')::uuid,actor,(auth.jwt()->>'session_id')::uuid)
+  on conflict(report_id) do update set operation_id=excluded.operation_id,actor_id=excluded.actor_id,session_id=excluded.session_id;
+ select revision into rev from explicit_report_finalization_private.states where report_id=rid;
+ insert into explicit_report_finalization_private.events(report_id,company_id,revision,kind,actor_id,session_id,before_state)
+ values(rid,r.company_id,coalesce(rev,1),'management_entry',actor,(auth.jwt()->>'session_id')::uuid,jsonb_build_object('report',to_jsonb(r),'context',c,'old_entry',case when tg_op='INSERT' then null else to_jsonb(old) end,'new_entry',case when tg_op='DELETE' then null else to_jsonb(new) end));
+ return case when tg_op='DELETE' then old else new end;
+end $$;
+create trigger zzzz_explicit_management_entry after insert or update or delete on public.attendance_entries for each row execute function explicit_report_finalization_private.record_management_entry();
 create function explicit_report_finalization_private.permitted(rid uuid,kind_value text) returns boolean language sql stable security definer set search_path='' as $$
  select exists(select 1 from explicit_report_finalization_private.permits p where p.report_id=rid and p.kind=kind_value and p.transaction_id=txid_current() and p.actor_id=auth.uid() and p.session_id=(auth.jwt()->>'session_id')::uuid)
 $$;
@@ -658,10 +677,12 @@ begin
  if state->>'report_id' is distinct from rid::text or (state->>'source_attached')::boolean is distinct from true
  or nullif(btrim(p_work_description),'') is null then raise sqlstate '55000' using message='shared_report_required_input_incomplete';end if;
  perform shared_daily_report_private.enroll_work_report(rid);
- perform explicit_report_finalization_private.enroll(rid);
- perform explicit_report_finalization_private.assert_payload(rid,p_workers);
- perform explicit_report_finalization_private.bind_closed_sources(rid,p_expected_signature_scope);
- perform explicit_report_finalization_private.auto_confirm(rid,p_workers);
+ if explicit_report_finalization_private.required(rid) then
+  perform explicit_report_finalization_private.enroll(rid);
+  perform explicit_report_finalization_private.assert_payload(rid,p_workers);
+  perform explicit_report_finalization_private.bind_closed_sources(rid,p_expected_signature_scope);
+  perform explicit_report_finalization_private.auto_confirm(rid,p_workers);
+ end if;
  perform private.save_daily_report_signature(rid,'representative',p_signer_name,p_signature);
  return shared_daily_report_private.resolve_own(p_source_clock_in_id);
 end $function$;
@@ -758,6 +779,7 @@ AS $function$
 begin
  if tg_op='UPDATE' and attendance_admin_override_private.permit_report(to_jsonb(old),to_jsonb(new)) then return new;end if;
  if tg_op='UPDATE' and explicit_report_finalization_private.edit_permitted(to_jsonb(old),to_jsonb(new)) then return new;end if;
+ if tg_op='UPDATE' and old.status='signed' and new.status='draft' and exists(select 1 from explicit_report_finalization_private.events where report_id=old.id and kind='finalized') then raise sqlstate '55000' using message='explicit_report_finalized_edit_requires_attendance_management';end if;
  if tg_op='UPDATE' and explicit_report_finalization_private.required(old.id) and old.status<>'signed' and new.status='signed' and not explicit_report_finalization_private.permitted(old.id,'finalize') then raise sqlstate '55000' using message='explicit_report_finalization_required';end if;
  if exists(select 1 from attendance_admin_override_private.cancellations c where c.report_id=old.id and c.company_id=old.company_id and c.active) then
   raise sqlstate '55000' using message='attendance_admin_cancelled_report_requires_management';end if;
@@ -1152,6 +1174,10 @@ begin
 
     checkout_choices:=case when v_worker?'company_allowance_selections' then v_worker->'company_allowance_selections'
       else nullif(checkout_previous_choices->v_worker_id::text,'null'::jsonb) end;
+    if checkout_choices is not null then
+      checkout_choices:=company_checkout_allowance_private.normalize_choices(v_company_id,v_worker_id,checkout_choices);
+      checkout_choices:=jsonb_build_object('contract_version',1,'items',(select coalesce(jsonb_agg(jsonb_set(item,'{id}',to_jsonb((item->>'id')::uuid::text)) order by item->>'origin',(item->>'id')::uuid),'[]'::jsonb) from jsonb_array_elements(checkout_choices->'items') item));
+    end if;
     checkout_legacy_labels:=case when checkout_choices is null then null
       when nullif(checkout_previous_choices->v_worker_id::text,'null'::jsonb) is null then checkout_previous_labels->>v_worker_id::text
       else checkout_previous_legacy_labels->>v_worker_id::text end;

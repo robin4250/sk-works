@@ -135,7 +135,8 @@ begin
  needed:=explicit_report_finalization_private.required(rid);
  return jsonb_build_object('explicit_finalization_required',needed,'explicit_finalization_ready',needed and explicit_report_finalization_private.ready(rid),
   'explicit_finalization_completed',needed and r.status='signed' and exists(select 1 from explicit_report_finalization_private.events e join explicit_report_finalization_private.states s on s.report_id=e.report_id and s.revision=e.revision where e.report_id=rid and e.kind='finalized'),
-  'explicit_finalization_editable',needed and r.status='draft' and explicit_report_finalization_private.enabled(rid) and explicit_report_finalization_private.actor_allowed(rid));
+  'explicit_finalization_editable',needed and r.status='draft' and explicit_report_finalization_private.enabled(rid) and explicit_report_finalization_private.actor_allowed(rid),
+  'explicit_finalization_managed_only',exists(select 1 from explicit_report_finalization_private.events where report_id=rid and kind='finalized') or exists(select 1 from explicit_report_finalization_private.management_reports where report_id=rid));
 end $$;
 create function explicit_report_finalization_private.record_receipts() returns trigger language plpgsql security definer set search_path='' as $$
 declare rev bigint;actor uuid;role_value text;name_value text;signature_value jsonb;proof jsonb;admin_proof jsonb;
@@ -173,6 +174,24 @@ begin
  return new;
 end $$;
 create trigger zzzz_explicit_report_receipts after update on public.daily_reports for each row execute function explicit_report_finalization_private.record_receipts();
+create function explicit_report_finalization_private.record_management_entry() returns trigger language plpgsql security definer set search_path='' as $$
+declare rid uuid;c jsonb;r public.daily_reports%rowtype;actor uuid;rev bigint;
+begin
+ rid:=case when tg_op='DELETE' then old.source_report_id else new.source_report_id end;
+ if rid is null then return case when tg_op='DELETE' then old else new end;end if;
+ if not explicit_report_finalization_private.enabled(rid) and not exists(select 1 from explicit_report_finalization_private.states where report_id=rid) then return case when tg_op='DELETE' then old else new end;end if;
+ c:=explicit_report_finalization_private.admin_context(rid);
+ if c is null then return case when tg_op='DELETE' then old else new end;end if;
+ actor:=checkout_report_registration_private.current_actor();
+ select * into r from public.daily_reports where id=rid;
+ insert into explicit_report_finalization_private.management_reports values(rid,r.company_id,(c->>'operation_id')::uuid,actor,(auth.jwt()->>'session_id')::uuid)
+  on conflict(report_id) do update set operation_id=excluded.operation_id,actor_id=excluded.actor_id,session_id=excluded.session_id;
+ select revision into rev from explicit_report_finalization_private.states where report_id=rid;
+ insert into explicit_report_finalization_private.events(report_id,company_id,revision,kind,actor_id,session_id,before_state)
+ values(rid,r.company_id,coalesce(rev,1),'management_entry',actor,(auth.jwt()->>'session_id')::uuid,jsonb_build_object('report',to_jsonb(r),'context',c,'old_entry',case when tg_op='INSERT' then null else to_jsonb(old) end,'new_entry',case when tg_op='DELETE' then null else to_jsonb(new) end));
+ return case when tg_op='DELETE' then old else new end;
+end $$;
+create trigger zzzz_explicit_management_entry after insert or update or delete on public.attendance_entries for each row execute function explicit_report_finalization_private.record_management_entry();
 create function explicit_report_finalization_private.permitted(rid uuid,kind_value text) returns boolean language sql stable security definer set search_path='' as $$
  select exists(select 1 from explicit_report_finalization_private.permits p where p.report_id=rid and p.kind=kind_value and p.transaction_id=txid_current() and p.actor_id=auth.uid() and p.session_id=(auth.jwt()->>'session_id')::uuid)
 $$;
