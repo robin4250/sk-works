@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/attendance/worker_attendance_registered_allowances.dart';
 import 'package:sk_works/features/attendance/worker_attendance_sheet_repository.dart';
@@ -54,4 +58,61 @@ void main() {
       expect(() => workerAttendanceRegisteredAllowances(invalid, reportIds: {report}, workerId: worker), throwsFormatException);
     }
   });
+  test('actual Supabase read connects only linked worker snapshots to their work dates', () async {
+    const otherReport = '00000000-0000-0000-0000-000000000004';
+    final seen = <Uri>[];
+    final client = SupabaseClient('https://fixture.invalid', 'synthetic-public',
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+        httpClient: MockClient((request) async {
+      seen.add(request.url);
+      final path = request.url.path;
+      Object result;
+      if (path.endsWith('/attendance_entries')) {
+        expect(request.url.queryParameters['worker_id'], 'eq.$worker');
+        expect(request.url.queryParametersAll['work_date'],
+            containsAll(['gte.2026-10-01', 'lt.2026-11-01']));
+        expect(request.url.queryParameters['select'], contains('source_report_id'));
+        result = [
+          {'id': 'entry-one', 'source_report_id': report, 'work_date': '2026-10-26',
+            'site_id': 'site', 'base_man_days': 1, 'allowance_amount': 0,
+            'allowance_names': ['自由記入'], 'sites': {'name': '合成現場'}},
+          {'id': 'entry-two', 'source_report_id': otherReport, 'work_date': '2026-10-27',
+            'site_id': 'site', 'base_man_days': 1, 'allowance_amount': 0,
+            'allowance_names': [], 'sites': {'name': '合成現場'}},
+        ];
+      } else if (path.endsWith('/daily_report_workers')) {
+        expect(request.url.queryParameters['worker_id'], 'eq.$worker');
+        expect(request.url.queryParameters['report_id'], contains(report));
+        expect(request.url.queryParameters['report_id'], contains(otherReport));
+        expect(request.url.queryParameters['select'], 'report_id,worker_id,company_allowance_selections');
+        result = [row(choices([selection(name: '登録当時の名前')])),
+          row(choices([selection(name: '翌日の手当')]), id: otherReport)];
+      } else if (path.endsWith('/attendance_verifications') || path.endsWith('/paid_leave_requests')) {
+        result = [];
+      } else if (path.endsWith('/paid_leave_worker_summary')) {
+        result = {'granted_days': 0};
+      } else if (path.endsWith('/my_attendance_allowance_units')) {
+        result = {'現在の改名後': '時間', '自由記入': '回'};
+      } else {
+        throw StateError('Unexpected read: $path');
+      }
+      return http.Response(jsonEncode(result), 200, headers: {'content-type': 'application/json'});
+    }));
+    try {
+      final month = await WorkerAttendanceSheetRepository.forClient(client)
+          .loadMonth(DateTime(2026, 10), workerId: worker);
+      final first = month.days[DateTime(2026, 10, 26)]!;
+      final second = month.days[DateTime(2026, 10, 27)]!;
+      expect(first.allowanceNames, ['登録当時の名前', '自由記入']);
+      expect(first.companyAllowanceSelections.single.registrationVersion, 7);
+      expect(first.allowanceNames, isNot(contains('現在の改名後')));
+      expect(first.allowanceNames, isNot(contains('翌日の手当')));
+      expect(second.allowanceNames, ['翌日の手当']);
+      expect(month.days.length, 2);
+      expect(seen.where((uri) => uri.path.endsWith('/daily_report_workers')).length, 1);
+    } finally {
+      await client.dispose();
+    }
+  });
+
 }
