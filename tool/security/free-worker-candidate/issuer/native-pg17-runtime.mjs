@@ -1,5 +1,5 @@
 import{pathToFileURL}from'node:url';import path from'node:path';
-const modulePath=process.env.SKO_MANAGEMENT_ISSUER_PG_MODULE;if(!modulePath)throw Error('pinned fixture pg module required');const{Client}=await import(pathToFileURL(path.resolve(modulePath))); 
+const modulePath=process.env.SKO_MANAGEMENT_ISSUER_PG_MODULE;if(!modulePath)throw Error('pinned fixture pg module required');const loaded=await import(pathToFileURL(path.resolve(modulePath)));const Client=loaded.Client??loaded.default?.Client;if(typeof Client!=='function')throw Error('fixture pg Client unavailable');
 const raw=process.env.SKO_MANAGEMENT_ISSUER_FIXTURE_URL;if(!raw)throw Error('dedicated fixture URL required');const u=new URL(raw);
 if(!['postgres:','postgresql:'].includes(u.protocol)||u.hostname!=='127.0.0.1'||u.pathname!=='/sko_management_issuer_fixture'||u.username!=='postgres'||u.password!=='fixture-only-password'||u.search||u.hash)throw Error('dedicated localhost management fixture only');
 export class PGlite{
