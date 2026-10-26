@@ -1,4 +1,5 @@
 // ignore_for_file: depend_on_referenced_packages
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,7 +35,7 @@ class History extends DailyReportMonthRepository{
 }
 void main(){
  final clients=<SupabaseClient>[];
- tearDown(() async {for(final client in clients){await client.dispose();}clients.clear();});
+ tearDown(() {for(final client in clients){unawaited(client.dispose());}clients.clear();});
  for(final pending in [false,true]){
  for(final scale in [1.0,1.5]) {
  testWidgets('large controls navigate year boundaries and same-day IDs in one category $pending $scale',(tester)async{
