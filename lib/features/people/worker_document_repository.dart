@@ -572,7 +572,10 @@ class WorkerDocumentRepository {
             .uploadBinary(
               path,
               photo.bytes!,
-              fileOptions: const FileOptions(upsert: false),
+              fileOptions: FileOptions(
+                upsert: false,
+                contentType: _extensionOf(photo.filename!) == '.pdf' ? 'application/pdf' : null,
+              ),
             );
         requireActor?.call();
         paths.add(path);
@@ -793,7 +796,10 @@ class WorkerDocumentRepository {
         .uploadBinary(
           path,
           attachmentBytes,
-          fileOptions: const FileOptions(upsert: false),
+          fileOptions: FileOptions(
+            upsert: false,
+            contentType: _extensionOf(originalFilename!) == '.pdf' ? 'application/pdf' : null,
+          ),
         );
     requireActor();
     final payload = {
