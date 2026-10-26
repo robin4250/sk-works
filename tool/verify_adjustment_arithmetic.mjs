@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 const {PGlite}=await import(process.argv[2]);
 const db=new PGlite();
-await db.exec(`create role anon;create role authenticated;create table public.companies(id uuid primary key);
+await db.exec(`create role anon;create role authenticated;create role service_role;create table public.companies(id uuid primary key);
 create table public.invoices(id uuid);create table public.payment_certificates(id uuid);`);
 await db.exec(fs.readFileSync(new URL('../supabase/review/document_adjustments.sql',import.meta.url),'utf8'));
 const pgRound=x=>Math.sign(x)*Math.floor(Math.abs(x)+0.5);

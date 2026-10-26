@@ -118,6 +118,38 @@ class SupabaseTradeDocumentAdjustmentRepository implements TradeDocumentAdjustme
     return receipt;
   }
 
+  @override
+  Future<TradeDocumentAdjustmentHistory> history({required String companyId,
+      required TradeDocumentAdjustmentKind kind, required String partyId, required String month, int? beforeId}) async {
+    final company = tradeDocumentAdjustmentUuid(companyId), party = tradeDocumentAdjustmentUuid(partyId);
+    final period = tradeDocumentAdjustmentMonth(month);
+    if (beforeId != null && (beforeId < 1 || beforeId > 9007199254740991)) { _invalid(); }
+    final data = _map(await _rpc('read_trade_document_adjustment_history', {
+      'p_company_id': company, 'p_kind': kind.value, 'p_party_id': party,
+      'p_month': period, 'p_before_id': beforeId}));
+    final history = TradeDocumentAdjustmentHistory(companyId: _string(data, 'company_id'),
+      kind: _kind(_string(data, 'kind')), partyId: _string(data, 'party_id'), month: _string(data, 'month'),
+      entries: _list(data, 'entries').map((value) {
+        final row = _map(value);
+        final sign = _nullableString(row, 'sign'), recurrence = _nullableString(row, 'recurrence');
+        final mode = _nullableString(row, 'calculation_mode'), timestamp = _string(row, 'created_at');
+        if (!RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(timestamp)) { _invalid(); }
+        final createdAt = DateTime.tryParse(timestamp);
+        if (createdAt == null) { _invalid(); }
+        return TradeDocumentAdjustmentHistoryEntry(id: _integer(row, 'id'), commandId: _string(row, 'command_id'),
+          actorId: _string(row, 'actor_id'), createdAt: createdAt,
+          action: TradeDocumentAdjustmentAction.values.firstWhere((action) => action.name == _string(row, 'action'), orElse: _invalid),
+          title: _string(row, 'title'), sign: sign == null ? null : _sign(sign),
+          amountYen: _nullableInteger(row, 'amount_yen'), recurrence: recurrence == null ? null : _recurrence(recurrence),
+          calculationMode: mode == null ? null : _mode(mode), beforeTotalYen: _integer(row, 'before_total_yen'),
+          afterTotalYen: _integer(row, 'after_total_yen'), changedMonths: _list(row, 'changed_months').map((month) {
+            if (month is! String) { _invalid(); } return tradeDocumentAdjustmentMonth(month);
+          }).toList());
+      }).toList(), hasMore: _boolean(data, 'has_more'));
+    history.verify(companyId: company, kind: kind, partyId: party, month: period, beforeId: beforeId);
+    return history;
+  }
+
   TradeDocumentAdjustmentReceipt _receipt(Object? value) {
     final data = _map(value);
     return TradeDocumentAdjustmentReceipt(request: _map(data['request']), applied: _boolean(data, 'applied'),

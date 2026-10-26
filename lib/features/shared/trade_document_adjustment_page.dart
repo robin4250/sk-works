@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'trade_document_adjustment_model.dart';
+import 'trade_document_adjustment_history_page.dart';
 
 class TradeDocumentAdjustmentPage extends StatefulWidget {
   const TradeDocumentAdjustmentPage({super.key, required this.companyId,
@@ -165,6 +166,10 @@ class _TradeDocumentAdjustmentPageState extends State<TradeDocumentAdjustmentPag
             decoration: InputDecoration(labelText: widget.kind.partyLabel),
             items: workspace.parties.map((p) => DropdownMenuItem(value: p.id, child: Text(p.name))).toList(),
             onChanged: _busy || _pending != null || _prepared != null || _editing != null ? null : (value) { setState(() { _partyId = value; _mode = null; _siteId = null; _message = null; }); _load(); }),
+          TextButton(onPressed: !_busy && _pending == null && workspace.partyId != null && workspace.canEdit
+              ? () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TradeDocumentAdjustmentHistoryPage(
+                companyId: widget.companyId, kind: widget.kind, partyId: workspace.partyId!, month: widget.month, port: widget.port)))
+              : null, child: const Text('変更履歴')),
           if (workspace.locked) const Text('確定済みの帳票は変更できません。'),
           if (!workspace.ready || workspace.supportedModes.isEmpty) const Text('この機能は準備中です。'),
           if (!workspace.canEdit) const Text('登録・編集する権限がありません。'),

@@ -20,6 +20,8 @@ for signature,source,digest in expected:
     body=re.search(r'AS \$function\$([\s\S]*?)\$function\$',source).group(1)
     assert hashlib.md5(body.encode()).hexdigest()==digest,signature
 invoice=replace_once(invoice,'declare\n','declare\n  named_items jsonb; named_item jsonb; named_final numeric:=0;\n')
+invoice=replace_once(invoice,'  if auth.uid() is null then return; end if;',
+ '  if auth.uid() is null then return; end if;\n  perform document_adjustment_private.lock_rollout_gate(cid);')
 invoice=replace_once(invoice,"  if found and (existing.status<>'draft' or existing.finalized_at is not null) then", "  if found and (existing.status<>'draft' or existing.finalized_at is not null or existing.approval_finalized_at is not null or coalesce(existing.invoice_seal_frozen,false) or exists(select 1 from public.invoice_approvals ia where ia.invoice_id=existing.id and ia.status='approved')) then")
 invoice=replace_once(invoice,"  select name into customer_name", """  if existing.snapshot?'document_adjustments_v1' and not exists(
     select 1 from document_adjustment_private.rollout r where r.company_id=cid and r.enabled
@@ -80,6 +82,8 @@ rows=replace_once(rows,'  pre_totals as (',"""  named_lines as (
 rows=replace_once(rows,'      select al.amount_yen from allowance_lines al','      select al.amount_yen from allowance_lines al\n      union all select nl.amount_yen from named_lines nl')
 rows=replace_once(rows,'    union all select * from summary_lines','    union all select * from named_lines\n    union all select * from summary_lines')
 certificate=replace_once(certificate,'declare\n','declare\n named_items jsonb;named_plus numeric:=0;named_minus numeric:=0;\n')
+certificate=replace_once(certificate,' if auth.uid() is null or partner is null then return; end if;',
+ ' if auth.uid() is null or partner is null then return; end if;\n perform document_adjustment_private.lock_rollout_gate(cid);')
 certificate=replace_once(certificate," if found and (existing.status<>'draft' or not existing.automatic_calculation) then return; end if;", " if found and (existing.status<>'draft' or existing.finalized_at is not null or not existing.automatic_calculation) then return; end if;\n if existing.snapshot?'document_adjustments_v1' and not exists(select 1 from document_adjustment_private.rollout r where r.company_id=cid and r.enabled) then return;end if;\n perform document_adjustment_private.ensure_occurrences(cid,'payment_certificate',partner,first_day);\n named_items:=document_adjustment_private.active_items(cid,'payment_certificate',partner,first_day);")
 certificate=certificate.replace('if attendance_count=0 and not (expense_component',"if attendance_count=0 and jsonb_array_length(named_items)=0 and not coalesce(existing.snapshot?'document_adjustments_v1',false) and not (expense_component")
 certificate=replace_once(certificate,' expense_net:=gross-expense_deductions;',""" named_items:=document_adjustment_private.active_items(cid,'payment_certificate',partner,first_day);

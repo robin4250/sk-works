@@ -2,13 +2,14 @@
 begin;
 create table document_adjustment_private.previews (
  token uuid primary key default gen_random_uuid(),
- actor_id uuid not null, request jsonb not null,
+ company_id uuid not null references public.companies(id),actor_id uuid not null, request jsonb not null,
  source_snapshot jsonb not null, source_total bigint not null,
  result_total bigint not null, result jsonb not null,
  created_at timestamptz not null default clock_timestamp()
 );
 alter table document_adjustment_private.previews enable row level security;
-revoke all on document_adjustment_private.previews from public,anon,authenticated;
+revoke all on document_adjustment_private.previews from public,anon,authenticated,service_role;
+create index adjustment_previews_expiry on document_adjustment_private.previews(company_id,created_at,token);
 
 create function document_adjustment_private.authorize(p_company uuid,p_kind text,p_party uuid)
 returns uuid language plpgsql security definer set search_path='' as $body$
@@ -29,13 +30,92 @@ begin
  else raise exception '帳票区分を確認できません';end if;
  return actor;
 end $body$;
-revoke all on function document_adjustment_private.authorize(uuid,text,uuid) from public,anon,authenticated;
+revoke all on function document_adjustment_private.authorize(uuid,text,uuid) from public,anon,authenticated,service_role;
+
+create function document_adjustment_private.authorize_operations(p_company uuid)
+returns uuid language plpgsql security definer set search_path='' as $body$
+declare sid uuid;
+begin
+ sid:=private.require_reauthentication_session();
+ if not exists(select 1 from public.company_members where company_id=p_company
+  and user_id=auth.uid() and role::text in ('owner','admin')) then
+  raise sqlstate '42501' using message='会社の管理権限がありません';end if;
+ return sid;
+end $body$;
+revoke all on function document_adjustment_private.authorize_operations(uuid) from public,anon,authenticated,service_role;
+
+create function public.set_trade_document_adjustment_rollout(p_company_id uuid,p_enabled boolean,p_reason text)
+returns jsonb language plpgsql security definer set search_path='' as $body$
+declare sid uuid;before_enabled boolean;event_id bigint;
+begin
+ sid:=document_adjustment_private.authorize_operations(p_company_id);
+ if p_enabled is null or p_reason is null or length(btrim(p_reason)) not between 5 and 500 then
+  raise exception '変更理由を5文字以上500文字以内で入力してください';end if;
+ perform document_adjustment_private.lock_rollout_gate(p_company_id,true);
+ insert into document_adjustment_private.rollout(company_id) values(p_company_id) on conflict do nothing;
+ select enabled into before_enabled from document_adjustment_private.rollout where company_id=p_company_id for update;
+ update document_adjustment_private.rollout set enabled=p_enabled,updated_at=clock_timestamp() where company_id=p_company_id;
+ insert into document_adjustment_private.operation_events(company_id,actor_id,session_id,action,reason,previous_enabled,enabled)
+ values(p_company_id,auth.uid(),sid,'rollout_change',btrim(p_reason),before_enabled,p_enabled) returning id into event_id;
+ return jsonb_build_object('company_id',p_company_id,'enabled',p_enabled,'previous_enabled',before_enabled,'event_id',event_id,'actor_id',auth.uid(),'reason',btrim(p_reason));
+end $body$;
+revoke all on function public.set_trade_document_adjustment_rollout(uuid,boolean,text) from public,anon,service_role;
+grant execute on function public.set_trade_document_adjustment_rollout(uuid,boolean,text) to authenticated;
+
+create function document_adjustment_private.cleanup_previews(p_company uuid,p_actor_only uuid,p_limit integer,p_reason text)
+returns integer language plpgsql security definer set search_path='' as $body$
+declare deleted integer;sid uuid:=private.require_reauthentication_session();
+begin
+ if p_limit not between 1 and 500 or p_reason is null or length(btrim(p_reason)) not between 5 and 500 then raise exception '整理条件を確認できません';end if;
+ with expired as (
+  select p.token from document_adjustment_private.previews p
+  where p.company_id=p_company and (p_actor_only is null or p.actor_id=p_actor_only)
+   and p.created_at<clock_timestamp()-interval '24 hours'
+   and not exists(select 1 from document_adjustment_private.commands c where c.receipt->>'preview_token'=p.token::text)
+  order by p.created_at,p.token limit p_limit for update skip locked
+ ),removed as (delete from document_adjustment_private.previews p using expired e where p.token=e.token returning 1)
+ select count(*)::integer into deleted from removed;
+ if deleted>0 then
+  insert into document_adjustment_private.operation_events(company_id,actor_id,session_id,action,reason,details)
+  values(p_company,auth.uid(),sid,'preview_cleanup',p_reason,jsonb_build_object('deleted_unused_previews',deleted,'expiry_hours',24,'actor_only',p_actor_only));
+ end if;
+ return deleted;
+end $body$;
+revoke all on function document_adjustment_private.cleanup_previews(uuid,uuid,integer,text) from public,anon,authenticated,service_role;
+
+create function public.cleanup_trade_document_adjustment_previews(p_company_id uuid,p_limit integer default 100,p_reason text default '期限切れ未使用プレビューの整理')
+returns jsonb language plpgsql security definer set search_path='' as $body$
+declare n integer;
+begin
+ perform document_adjustment_private.authorize_operations(p_company_id);
+ n:=document_adjustment_private.cleanup_previews(p_company_id,null,p_limit,p_reason);
+ return jsonb_build_object('company_id',p_company_id,'deleted_unused_previews',n);
+end $body$;
+revoke all on function public.cleanup_trade_document_adjustment_previews(uuid,integer,text) from public,anon,service_role;
+grant execute on function public.cleanup_trade_document_adjustment_previews(uuid,integer,text) to authenticated;
+
+create function public.read_trade_document_adjustment_operations(p_company_id uuid,p_before_id bigint default null)
+returns jsonb language plpgsql security definer set search_path='' as $body$
+declare events jsonb;flag boolean;
+begin
+ perform document_adjustment_private.authorize_operations(p_company_id);
+ select coalesce((select enabled from document_adjustment_private.rollout where company_id=p_company_id),false) into flag;
+ select coalesce(jsonb_agg(to_jsonb(e) order by e.id desc),'[]'::jsonb) into events from (
+  select id,actor_id,session_id,action,reason,previous_enabled,enabled,details,created_at
+   from document_adjustment_private.operation_events where company_id=p_company_id and (p_before_id is null or id<p_before_id)
+   order by id desc limit 100
+ ) e;
+ return jsonb_build_object('company_id',p_company_id,'enabled',flag,'entries',events);
+end $body$;
+revoke all on function public.read_trade_document_adjustment_operations(uuid,bigint) from public,anon,service_role;
+grant execute on function public.read_trade_document_adjustment_operations(uuid,bigint) to authenticated;
 
 create function document_adjustment_private.source(p_company uuid,p_kind text,p_party uuid,p_month date)
 returns jsonb language plpgsql security definer set search_path='' as $body$
 declare d jsonb;snap jsonb;
 begin
  if p_month<>date_trunc('month',p_month)::date then raise exception '対象月を確認できません';end if;
+ perform document_adjustment_private.lock_rollout_gate(p_company);
  perform pg_advisory_xact_lock(hashtextextended(
   case p_kind when 'invoice' then 'invoice:' else 'payment-certificate:' end
    ||p_company::text||p_party::text||p_month::text,0));
@@ -75,7 +155,7 @@ begin
  end if;
  return d;
 end $body$;
-revoke all on function document_adjustment_private.source(uuid,text,uuid,date) from public,anon,authenticated;
+revoke all on function document_adjustment_private.source(uuid,text,uuid,date) from public,anon,authenticated,service_role;
 
 create function public.read_trade_document_adjustments(p_company_id uuid,p_kind text,p_month date,p_party_id uuid default null)
 returns jsonb language plpgsql security definer set search_path='' as $body$
@@ -83,6 +163,7 @@ declare parties jsonb;entries jsonb:='[]';sites jsonb:='[]';items jsonb;src json
  ready boolean;locked boolean:=false;v bigint:=0;
 begin
  perform document_adjustment_private.authorize(p_company_id,p_kind,p_party_id);
+ perform document_adjustment_private.lock_rollout_gate(p_company_id);
  if p_month is null or p_month<>date_trunc('month',p_month)::date then raise exception '対象月を確認できません';end if;
  select coalesce(enabled,false) into ready from document_adjustment_private.rollout where company_id=p_company_id;
  ready:=coalesce(ready,false);
@@ -126,10 +207,10 @@ begin
   select coalesce((select version from document_adjustment_private.scope_versions where company_id=p_company_id and kind=p_kind and party_id=p_party_id and month=p_month),0) into v;
  end if;
  return jsonb_build_object('company_id',p_company_id,'kind',p_kind,'month',p_month,'party_id',p_party_id,
-  'parties',parties,'entries',entries,'version',v,'ready',ready,'can_edit',not locked,'locked',locked,
+  'parties',parties,'entries',entries,'version',v,'ready',ready,'can_edit',true,'locked',locked,
   'tax_mode','per_item','supported_modes',jsonb_build_array('before_charges','settlement_yen'),'charge_sites',sites);
 end $body$;
-revoke all on function public.read_trade_document_adjustments(uuid,text,date,uuid) from public,anon;
+revoke all on function public.read_trade_document_adjustments(uuid,text,date,uuid) from public,anon,service_role;
 grant execute on function public.read_trade_document_adjustments(uuid,text,date,uuid) to authenticated;
 
 create function document_adjustment_private.plan(p_request jsonb)
@@ -195,7 +276,7 @@ begin
  end if;
  return jsonb_build_object('old_items',items,'new_items',next_items,'entry',entry,'entry_id',oid,'template_id',tid,'template_version',ver,'version',sv);
 end $body$;
-revoke all on function document_adjustment_private.plan(jsonb) from public,anon,authenticated;
+revoke all on function document_adjustment_private.plan(jsonb) from public,anon,authenticated,service_role;
 
 create function public.preview_trade_document_adjustment(p_command jsonb)
 returns jsonb language plpgsql security definer set search_path='' as $body$
@@ -211,11 +292,12 @@ begin
  result:=jsonb_build_object('request',p_command,'token',token,'base_total_yen',(src->>'total')::bigint,
   'result_total_yen',(src->>'total')::bigint+(d->>'total_delta_yen')::bigint,
   'welfare_yen',d->'welfare_delta_yen','tax_yen',d->'tax_delta_yen','adjustment_yen',d->'settlement_delta_yen');
- insert into document_adjustment_private.previews(token,actor_id,request,source_snapshot,source_total,result_total,result)
- values(token,actor,p_command,src,(src->>'total')::bigint,(result->>'result_total_yen')::bigint,result||jsonb_build_object('plan',plan));
+ insert into document_adjustment_private.previews(token,company_id,actor_id,request,source_snapshot,source_total,result_total,result)
+ values(token,(p_command->>'company_id')::uuid,actor,p_command,src,(src->>'total')::bigint,(result->>'result_total_yen')::bigint,result||jsonb_build_object('plan',plan));
+ perform document_adjustment_private.cleanup_previews((p_command->>'company_id')::uuid,actor,100,'期限切れ未使用プレビューの自動整理');
  return result;
 end $body$;
-revoke all on function public.preview_trade_document_adjustment(jsonb) from public,anon;
+revoke all on function public.preview_trade_document_adjustment(jsonb) from public,anon,service_role;
 grant execute on function public.preview_trade_document_adjustment(jsonb) to authenticated;
 
 create function public.apply_trade_document_adjustment(p_command jsonb,p_preview_token uuid)
@@ -228,6 +310,7 @@ declare actor uuid;cid uuid:=(p_command->>'company_id')::uuid;k text:=p_command-
  future_states jsonb:='[]'::jsonb;future_after jsonb;
 begin
  actor:=document_adjustment_private.authorize(cid,k,party);
+ perform document_adjustment_private.lock_rollout_gate(cid);
  -- Serialize retries before checking the durable receipt.
  perform pg_advisory_xact_lock(hashtextextended('document-adjustment-command:'||(p_command->>'command_id'),0));
  select * into c from document_adjustment_private.commands where command_id=(p_command->>'command_id')::uuid;
@@ -301,10 +384,10 @@ begin
  insert into document_adjustment_private.commands(command_id,actor_id,company_id,request,receipt)
   values((p_command->>'command_id')::uuid,actor,cid,p_command,receipt);
  insert into document_adjustment_private.audit(command_id,actor_id,company_id,before_state,after_state)
-  values((p_command->>'command_id')::uuid,actor,cid,src,after_source||jsonb_build_object('receipt',receipt,'future_drafts',future_states));
+  values((p_command->>'command_id')::uuid,actor,cid,src,after_source||jsonb_build_object('receipt',receipt,'entry',entry,'future_drafts',future_states));
  return receipt;
 end $body$;
-revoke all on function public.apply_trade_document_adjustment(jsonb,uuid) from public,anon;
+revoke all on function public.apply_trade_document_adjustment(jsonb,uuid) from public,anon,service_role;
 grant execute on function public.apply_trade_document_adjustment(jsonb,uuid) to authenticated;
 
 -- Retrying lookup rechecks current company permissions; revoked users do not
@@ -320,6 +403,35 @@ begin
  perform document_adjustment_private.authorize(p_company_id,c.request->>'kind',(c.request->>'party_id')::uuid);
  return c.receipt;
 end $body$;
-revoke all on function public.lookup_trade_document_adjustment(uuid,uuid) from public,anon;
+revoke all on function public.lookup_trade_document_adjustment(uuid,uuid) from public,anon,service_role;
 grant execute on function public.lookup_trade_document_adjustment(uuid,uuid) to authenticated;
+
+create function public.read_trade_document_adjustment_history(p_company_id uuid,p_kind text,p_party_id uuid,p_month date,p_before_id bigint default null)
+returns jsonb language plpgsql security definer set search_path='' as $body$
+declare rows jsonb;oldest bigint;more boolean;
+begin
+ perform document_adjustment_private.authorize(p_company_id,p_kind,p_party_id);
+ if p_party_id is null or p_month is null or p_month<>date_trunc('month',p_month)::date or (p_before_id is not null and p_before_id<1) then
+  raise exception '変更履歴の対象を確認できません';end if;
+ select coalesce(jsonb_agg(e.value order by e.id desc),'[]'::jsonb),min(e.id) into rows,oldest from (
+  select a.id,jsonb_build_object('id',a.id,'command_id',c.command_id,'actor_id',a.actor_id,'created_at',a.created_at,
+   'action',c.request->>'action','title',coalesce(a.after_state->'entry'->>'title',nullif(c.request->>'title',''),'登録項目'),
+   'sign',coalesce(a.after_state->'entry'->>'sign',c.request->>'sign'),
+   'amount_yen',coalesce(a.after_state->'entry'->'amount_yen',nullif(c.request->'amount_yen','null'::jsonb)),
+   'recurrence',coalesce(a.after_state->'entry'->>'recurrence',c.request->>'recurrence'),
+   'calculation_mode',coalesce(a.after_state->'entry'->>'calculation_mode',c.request->>'calculation_mode'),
+   'before_total_yen',(a.before_state->>'total')::bigint,'after_total_yen',(a.after_state->>'total')::bigint,
+   'changed_months',jsonb_build_array(c.request->>'month')||coalesce((select jsonb_agg(x->'month') from jsonb_array_elements(coalesce(a.after_state->'future_drafts','[]')) x),'[]')) value
+  from document_adjustment_private.audit a join document_adjustment_private.commands c on c.command_id=a.command_id and c.company_id=a.company_id
+  where a.company_id=p_company_id and c.request->>'kind'=p_kind and c.request->>'party_id'=p_party_id::text
+   and c.request->>'month'=p_month::text and (p_before_id is null or a.id<p_before_id)
+  order by a.id desc limit 100
+ ) e;
+ select exists(select 1 from document_adjustment_private.audit a join document_adjustment_private.commands c on c.command_id=a.command_id and c.company_id=a.company_id
+  where a.company_id=p_company_id and c.request->>'kind'=p_kind and c.request->>'party_id'=p_party_id::text
+   and c.request->>'month'=p_month::text and a.id<oldest) into more;
+ return jsonb_build_object('company_id',p_company_id,'kind',p_kind,'party_id',p_party_id,'month',p_month,'entries',rows,'has_more',more);
+end $body$;
+revoke all on function public.read_trade_document_adjustment_history(uuid,text,uuid,date,bigint) from public,anon,service_role;
+grant execute on function public.read_trade_document_adjustment_history(uuid,text,uuid,date,bigint) to authenticated;
 commit;

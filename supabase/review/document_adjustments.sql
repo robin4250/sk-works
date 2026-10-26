@@ -2,12 +2,21 @@
 -- Source refresh integration and access-contract validation must pass before rollout.
 begin;
 create schema if not exists document_adjustment_private;
-revoke all on schema document_adjustment_private from public, anon, authenticated;
+revoke all on schema document_adjustment_private from public, anon, authenticated, service_role;
 
 create table document_adjustment_private.rollout (
  company_id uuid primary key references public.companies(id),
  enabled boolean not null default false,
  updated_at timestamptz not null default clock_timestamp()
+);
+create table document_adjustment_private.operation_events (
+ id bigint generated always as identity primary key,
+ company_id uuid not null references public.companies(id),
+ actor_id uuid not null,session_id uuid not null,
+ action text not null check(action in ('rollout_change','preview_cleanup')),
+ reason text not null check(length(btrim(reason)) between 5 and 500),
+ previous_enabled boolean,enabled boolean,details jsonb not null default '{}',
+ created_at timestamptz not null default clock_timestamp()
 );
 create table document_adjustment_private.templates (
  id uuid primary key default gen_random_uuid(),
@@ -70,11 +79,28 @@ create table document_adjustment_private.audit (
  created_at timestamptz not null default clock_timestamp()
 );
 do $body$ declare n text; begin
- foreach n in array array['rollout','templates','template_versions','scope_versions','occurrences','commands','audit'] loop
+ foreach n in array array['rollout','operation_events','templates','template_versions','scope_versions','occurrences','commands','audit'] loop
   execute format('alter table document_adjustment_private.%I enable row level security',n);
-  execute format('revoke all on table document_adjustment_private.%I from public,anon,authenticated',n);
+  execute format('revoke all on table document_adjustment_private.%I from public,anon,authenticated,service_role',n);
  end loop;
 end $body$;
+revoke all on all sequences in schema document_adjustment_private from public,anon,authenticated,service_role;
+
+-- Every projection writer takes company -> rollout gate -> finance scope ->
+-- document row. Exclusive OFF waits for all in-flight shared writers to commit;
+-- a writer starting after OFF observes false before modifying its ledger.
+create function document_adjustment_private.lock_rollout_gate(p_company uuid,p_exclusive boolean default false)
+returns void language plpgsql security definer set search_path='' as $body$
+begin
+ perform 1 from public.companies where id=p_company for share;
+ if not found then raise exception '会社情報を確認できません';end if;
+ if p_exclusive then
+  perform pg_advisory_xact_lock(hashtextextended('document-adjustment-rollout:'||p_company::text,0));
+ else
+  perform pg_advisory_xact_lock_shared(hashtextextended('document-adjustment-rollout:'||p_company::text,0));
+ end if;
+end $body$;
+revoke all on function document_adjustment_private.lock_rollout_gate(uuid,boolean) from public,anon,authenticated,service_role;
 
 -- Pure arithmetic only. Saved baseline and rates come from the real source,
 -- never caller input. Applying a negative pre-charge entry recalculates the
@@ -95,7 +121,7 @@ begin
   'welfare_delta_yen',new_w-old_w,'tax_delta_yen',new_t-old_t,
   'total_delta_yen',p_delta+new_w-old_w+new_t-old_t);
 end $body$;
-revoke all on function document_adjustment_private.charge_delta(bigint,bigint,numeric,numeric) from public,anon,authenticated;
+revoke all on function document_adjustment_private.charge_delta(bigint,bigint,numeric,numeric) from public,anon,authenticated,service_role;
 
 create function document_adjustment_private.ledger_items(p_company uuid,p_kind text,p_party uuid,p_month date)
 returns jsonb language sql stable security definer set search_path='' as $body$
@@ -119,13 +145,13 @@ returns jsonb language sql stable security definer set search_path='' as $body$
  where t.company_id=p_company and t.kind=p_kind and t.party_id=p_party
   and not coalesce(o.canceled,false)
 $body$;
-revoke all on function document_adjustment_private.ledger_items(uuid,text,uuid,date) from public,anon,authenticated;
+revoke all on function document_adjustment_private.ledger_items(uuid,text,uuid,date) from public,anon,authenticated,service_role;
 create function document_adjustment_private.active_items(p_company uuid,p_kind text,p_party uuid,p_month date)
 returns jsonb language sql stable security definer set search_path='' as $body$
  select case when exists(select 1 from document_adjustment_private.rollout where company_id=p_company and enabled)
  then document_adjustment_private.ledger_items(p_company,p_kind,p_party,p_month) else '[]'::jsonb end
 $body$;
-revoke all on function document_adjustment_private.active_items(uuid,text,uuid,date) from public,anon,authenticated;
+revoke all on function document_adjustment_private.active_items(uuid,text,uuid,date) from public,anon,authenticated,service_role;
 
 create function document_adjustment_private.ensure_occurrences(p_company uuid,p_kind text,p_party uuid,p_month date)
 returns void language plpgsql security definer set search_path='' as $body$
@@ -137,7 +163,7 @@ begin
  where document_adjustment_private.occurrences.override is null
    and document_adjustment_private.occurrences.finalized_snapshot is null;
 end $body$;
-revoke all on function document_adjustment_private.ensure_occurrences(uuid,text,uuid,date) from public,anon,authenticated;
+revoke all on function document_adjustment_private.ensure_occurrences(uuid,text,uuid,date) from public,anon,authenticated,service_role;
 
 create function document_adjustment_private.bind_occurrences(p_company uuid,p_kind text,p_party uuid,p_month date,p_document uuid)
 returns void language plpgsql security definer set search_path='' as $body$
@@ -147,17 +173,23 @@ begin
  from document_adjustment_private.templates t where t.id=o.template_id and t.company_id=p_company
   and t.kind=p_kind and t.party_id=p_party and o.month=p_month and o.document_id is null;
 end $body$;
-revoke all on function document_adjustment_private.bind_occurrences(uuid,text,uuid,date,uuid) from public,anon,authenticated;
+revoke all on function document_adjustment_private.bind_occurrences(uuid,text,uuid,date,uuid) from public,anon,authenticated,service_role;
 
 create function document_adjustment_private.append_only() returns trigger
 language plpgsql set search_path='' as $body$ begin raise exception '監査・操作履歴は変更できません';end $body$;
-revoke all on function document_adjustment_private.append_only() from public,anon,authenticated;
+revoke all on function document_adjustment_private.append_only() from public,anon,authenticated,service_role;
 create trigger audit_append_only before update or delete on document_adjustment_private.audit
  for each row execute function document_adjustment_private.append_only();
 create trigger commands_append_only before update or delete on document_adjustment_private.commands
  for each row execute function document_adjustment_private.append_only();
 create trigger template_versions_append_only before update or delete on document_adjustment_private.template_versions
  for each row execute function document_adjustment_private.append_only();
+create trigger operation_events_append_only before update or delete on document_adjustment_private.operation_events
+ for each row execute function document_adjustment_private.append_only();
+create index operation_events_company_time on document_adjustment_private.operation_events(company_id,id desc);
+create index adjustment_templates_scope on document_adjustment_private.templates(company_id,kind,party_id);
+create index adjustment_occurrences_document on document_adjustment_private.occurrences(document_id);
+create index adjustment_commands_preview on document_adjustment_private.commands((receipt->>'preview_token'));
 
 create function document_adjustment_private.capture_finalized() returns trigger
 language plpgsql security definer set search_path='' as $body$
@@ -172,7 +204,7 @@ begin
  end if;
  return new;
 end $body$;
-revoke all on function document_adjustment_private.capture_finalized() from public,anon,authenticated;
+revoke all on function document_adjustment_private.capture_finalized() from public,anon,authenticated,service_role;
 create trigger document_adjustments_finalize_invoice after update on public.invoices
  for each row execute function document_adjustment_private.capture_finalized();
 create trigger document_adjustments_finalize_certificate after update on public.payment_certificates
@@ -228,5 +260,5 @@ begin
   'tax_delta_yen',delta_t,'settlement_delta_yen',final_new-final_old,
   'total_delta_yen',delta_base+delta_w+delta_t+final_new-final_old);
 end $body$;
-revoke all on function document_adjustment_private.preview_delta(text,jsonb,jsonb,jsonb) from public,anon,authenticated;
+revoke all on function document_adjustment_private.preview_delta(text,jsonb,jsonb,jsonb) from public,anon,authenticated,service_role;
 commit;

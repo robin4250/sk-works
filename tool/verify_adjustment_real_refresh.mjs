@@ -126,6 +126,40 @@ await assert.rejects(db.query('select * from document_adjustment_private.audit')
 await db.exec('reset role');
 await assert.rejects(db.query('select public.read_trade_document_adjustments($1,$2,$3,$4)',[company,'invoice','2026-10-01',partner]),/取引会社/);checks++;
 await assert.rejects(db.query('select public.read_trade_document_adjustments($1,$2,$3,$4)',[company,'payment_certificate','2026-10-01',customer]),/協力会社/);checks++;
+for(const [kind,partyId] of [['invoice',customer],['payment_certificate',partner]]) {
+ const history=(await db.query('select public.read_trade_document_adjustment_history($1,$2,$3,$4) v',[company,kind,partyId,'2026-10-01'])).rows[0].v;
+ assert.equal(history.entries.length,useV2&&kind==='payment_certificate'?6:5);checks++;
+ assert.equal(history.entries.every(e=>e.actor_id===actor&&Number.isInteger(e.before_total_yen)&&Number.isInteger(e.after_total_yen)),true);checks++;
+ assert.equal(history.entries.find(e=>e.action==='cancel').amount_yen,7);checks++;
+ const workspace=(await db.query('select public.read_trade_document_adjustments($1,$2,$3,$4) v',[company,kind,'2026-10-01',partyId])).rows[0].v;
+ assert.equal(workspace.locked,true);assert.equal(workspace.can_edit,true);checks++;
+ const cursor=history.entries.at(-1).id;
+ assert.equal((await db.query('select public.read_trade_document_adjustment_history($1,$2,$3,$4,$5) v',[company,kind,partyId,'2026-10-01',cursor])).rows[0].v.entries.length,0);checks++;
+}
+await assert.rejects(db.query('select public.set_trade_document_adjustment_rollout($1,false,$2)',[company,'短い']),/変更理由/);checks++;
+const off=(await db.query('select public.set_trade_document_adjustment_rollout($1,false,$2) v',[company,'緊急停止の隔離検証'])).rows[0].v;
+assert.equal(off.enabled,false);assert.equal(off.actor_id,actor);checks++;
+await assert.rejects(preview({...command('invoice',customer,'settlement_yen',1),month:'2028-09-01',effective_month:'2028-09-01'}),/準備中/);checks++;
+const operationHistory=(await db.query('select public.read_trade_document_adjustment_operations($1) v',[company])).rows[0].v;
+assert.equal(operationHistory.entries[0].reason,'緊急停止の隔離検証');checks++;
+assert.equal(operationHistory.entries[0].session_id,actor);checks++;
+await db.query('select public.set_trade_document_adjustment_rollout($1,true,$2)',[company,'隔離環境での検証再開']);
+const unused=await preview({...command('invoice',customer,'settlement_yen',1),month:'2028-10-01',effective_month:'2028-10-01'});
+const used=(await db.query("select receipt->>'preview_token' token from document_adjustment_private.commands limit 1")).rows[0].token;
+await db.query("update document_adjustment_private.previews set created_at=now()-interval '2 days' where token in ($1,$2)",[unused.token,used]);
+const financialCount=(await db.query('select (select count(*) from document_adjustment_private.commands)::int commands,(select count(*) from document_adjustment_private.audit)::int audit')).rows[0];
+assert.equal((await db.query('select public.cleanup_trade_document_adjustment_previews($1) v',[company])).rows[0].v.deleted_unused_previews,1);checks++;
+assert.equal((await db.query('select count(*)::int n from document_adjustment_private.previews where token=$1',[used])).rows[0].n,1);checks++;
+assert.deepEqual((await db.query('select (select count(*) from document_adjustment_private.commands)::int commands,(select count(*) from document_adjustment_private.audit)::int audit')).rows[0],financialCount);checks++;
+await assert.rejects(db.exec('delete from document_adjustment_private.operation_events'),/履歴/);checks++;
+for(const signature of ['public.apply_trade_document_adjustment(jsonb,uuid)','public.read_trade_document_adjustment_history(uuid,text,uuid,date,bigint)','public.set_trade_document_adjustment_rollout(uuid,boolean,text)','public.cleanup_trade_document_adjustment_previews(uuid,integer,text)']) {
+ assert.equal((await db.query('select has_function_privilege($1,$2,$3) allowed',['service_role',signature,'execute'])).rows[0].allowed,false);checks++;
+}
+await db.exec(`set test.uid='${id(90)}'`);
+await assert.rejects(db.query('select public.read_trade_document_adjustment_history($1,$2,$3,$4)',[company,'invoice',customer,'2026-10-01']),/編集権限/);checks++;
+await assert.rejects(db.query('select public.set_trade_document_adjustment_rollout($1,false,$2)',[company,'権限のない停止の検証']),/管理権限/);checks++;
+await assert.rejects(db.query('select public.cleanup_trade_document_adjustment_previews($1)',[company]),/管理権限/);checks++;
+await db.exec(`set test.uid='${actor}'`);
 const beforeInstallCount=(await db.query('select count(*)::int n from document_adjustment_private.commands')).rows[0].n;
 await assert.rejects(db.exec(read('supabase/review/document_adjustment_install.incomplete.sql')),/Source drift|Inspect existing/);checks++;
 await db.exec('rollback');

@@ -91,3 +91,29 @@ Flutter/Dartはローカルで実行していない。共通画面/接続15件�
 - アプリ終了時のpending request端末復旧は未実装。再起動後はサーバの最新一覧と
   scope CASで競合する旧requestの二重登録を防ぐが、前回commandの専用再開表示はない。
 - rollout設定・production監査閲覧/保存期限は既存管理方針と統合してから有効化。
+
+## 緊急停止・変更履歴・プレビュー期限の追加候補
+
+全projection writerは会社row FOR SHARE → 会社別shared advisory gate →
+既存financial advisory → document rowの順を維持する。緊急OFF RPCは同gateを
+exclusiveで取得して進行中apply/通常refreshのcommitを待つ。OFF完了後に旧処理が
+遅れて金額をcommitする窓を作らず、待機中の新applyはOFFを確認して拒否する。
+会社rowを先行させることで実approve_invoiceの会社FOR UPDATE→invoice順とも整合する。
+
+rollout変更と期限掃除は会社owner/adminの実sessionを確認するRPCに限定。
+actor/session/reason/変更前後/時刻をappend-only operation_eventsへ保存する。
+直接table更新で運用せず、監査されるRPCを使う。service_roleは新schema/table/sequence/
+全新API・private functionから明示REVOKEし、従来4関数のACLは変更しない。
+
+金融変更履歴は会社/帳票種別/相手/月で限定し、既存can_manage_invoicesと支払証明書
+owner/adminの権限を維持。確定済み・OFF中も読み取り可能。操作者ID、操作、項目、
+変更前後合計、実際の対象月を100件ずつ表示する。氏名を捏造しない。
+
+プレビューは登録期限10分、未使用で24時間経過したものだけ整理する。
+本人が次のプレビューを作る時に本人分を最大100件自動整理し、owner/adminは会社分を
+最大500件整理できる。SKIP LOCKEDで処理中tokenを避け、受領が参照する使用済みtoken、
+commands、金融audit、確定snapshotは削除しない。削除件数もoperation_eventsへ記録。
+
+追加後の隔離検証: schema/math301、実v2/helper/readerと履歴/停止/cleanup/権限82成功。
+履歴UI/更新Native同期・停止drainはCI待ち。実GoTrueの再認証helperは製品RPCで必須だが、
+このfixtureはsession helperを代用するため、本番認証試験の完了を示すものではない。

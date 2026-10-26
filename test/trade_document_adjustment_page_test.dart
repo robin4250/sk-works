@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/shared/trade_document_adjustment_repository.dart';
+import 'package:sk_works/features/shared/trade_document_adjustment_history_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/shared/trade_document_adjustment_model.dart';
@@ -48,6 +49,19 @@ class FakePort implements TradeDocumentAdjustmentPort {
     if (unknown) { throw TimeoutException('unknown'); }
     return receipt!;
   }
+  bool wrongHistoryScope = false;
+  final historyCursors = <int?>[];
+  @override
+  Future<TradeDocumentAdjustmentHistory> history({required String companyId,
+    required TradeDocumentAdjustmentKind kind, required String partyId, required String month, int? beforeId}) async {
+    historyCursors.add(beforeId);
+    return TradeDocumentAdjustmentHistory(companyId: companyId, kind: kind,
+      partyId: wrongHistoryScope ? companyId : partyId, month: month,
+      entries: [TradeDocumentAdjustmentHistoryEntry(id: beforeId == null ? 102 : 101,
+        commandId: commandId, actorId: company, createdAt: DateTime.utc(2026, 10, 26),
+        action: TradeDocumentAdjustmentAction.add, title: '記録項目', beforeTotalYen: 1000,
+        afterTotalYen: 1100, changedMonths: [month])], hasMore: beforeId == null);
+  }
   @override
   Future<TradeDocumentAdjustmentReceipt?> lookup(TradeDocumentAdjustmentCommand command) async {
     lookups++; expect(identical(command, received), isTrue); return receipt;
@@ -64,7 +78,7 @@ TradeDocumentAdjustmentPreview previewFor(TradeDocumentAdjustmentCommand c) => T
   request: c.toJson(), token: 'preview', baseTotalYen: 1000, resultTotalYen: 1100);
 
 void main() {
-  for (final mode in ['valid', 'wrong_scope', 'wrong_number_type', 'transport', 'rejected']) {
+  for (final mode in ['valid', 'wrong_scope', 'wrong_number_type', 'transport', 'rejected', 'history_wrong_scope']) {
     test('SDK adjustment apply is strict and never retries: $mode', () async {
       String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
       final token = '${part({'alg': 'HS256'})}.${part({'sub': company, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.fixture';
@@ -80,6 +94,14 @@ void main() {
               200, headers: {'content-type': 'application/json'}, request: request);
           }
           calls++;
+          if (mode == 'history_wrong_scope') {
+            expect(request.url.path, '/rest/v1/rpc/read_trade_document_adjustment_history');
+            expect(jsonDecode(request.body), {'p_company_id': company, 'p_kind': 'invoice',
+              'p_party_id': party, 'p_month': month, 'p_before_id': null});
+            return http.Response(jsonEncode({'company_id': company, 'kind': 'invoice',
+              'party_id': company, 'month': month, 'entries': [], 'has_more': false}),
+              200, headers: {'content-type': 'application/json'}, request: request);
+          }
           expect(request.url.path, '/rest/v1/rpc/apply_trade_document_adjustment');
           expect(jsonDecode(request.body), {'p_command': c.toJson(), 'p_preview_token': 'preview'});
           expect(request.headers.entries.where((e) => e.key.toLowerCase() == 'authorization').single.value, 'Bearer $token');
@@ -95,7 +117,10 @@ void main() {
       await client.auth.signInWithPassword(email: 'fixture@example.invalid', password: 'fixture');
       final repository = SupabaseTradeDocumentAdjustmentRepository(client);
       addTearDown(repository.dispose);
-      if (mode == 'valid') {
+      if (mode == 'history_wrong_scope') {
+        await expectLater(repository.history(companyId: company, kind: TradeDocumentAdjustmentKind.invoice,
+          partyId: party, month: month), throwsFormatException);
+      } else if (mode == 'valid') {
         expect((await repository.apply(c, preview: previewFor(c))).resultTotalYen, 1100);
       } else if (mode == 'rejected') {
         await expectLater(repository.apply(c, preview: previewFor(c)), throwsA(isA<TradeDocumentAdjustmentRejected>()));
@@ -111,6 +136,28 @@ void main() {
     });
   }
 
+  testWidgets('history is read-only and paginates with last verified id', (tester) async {
+    final port = FakePort();
+    await tester.pumpWidget(MaterialApp(home: TradeDocumentAdjustmentHistoryPage(companyId: company,
+      kind: TradeDocumentAdjustmentKind.invoice, partyId: party, month: month, port: port)));
+    await tester.pumpAndSettle();
+    expect(find.text('操作者ID $company'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    await tester.ensureVisible(find.text('次の100件を読み込む'));
+    await tester.tap(find.text('次の100件を読み込む'));
+    await tester.pumpAndSettle();
+    expect(port.historyCursors, [null, 102]);
+    expect(find.text('操作者ID $company'), findsNWidgets(2));
+    expect(port.calls, 0);
+  });
+  testWidgets('history rejects different counterparty response without rendering records', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: TradeDocumentAdjustmentHistoryPage(companyId: company,
+      kind: TradeDocumentAdjustmentKind.invoice, partyId: party, month: month,
+      port: FakePort()..wrongHistoryScope = true)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('記録項目'), findsNothing);
+    expect(find.text('再読み込み'), findsOneWidget);
+  });
   test('positive yen bounds and canonical month are enforced', () {
     expect(() => command(amount: 0), throwsFormatException);
     expect(() => command(amount: 2147483648), throwsFormatException);

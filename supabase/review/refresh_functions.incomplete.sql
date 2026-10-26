@@ -58,6 +58,7 @@ declare
   route_parts jsonb; route_blocked boolean:=false;
 begin
   if auth.uid() is null then return; end if;
+  perform document_adjustment_private.lock_rollout_gate(cid);
 
   if customer is null then
     customer:=private.ensure_unassigned_invoice_customer(cid);
@@ -827,6 +828,7 @@ declare
  r_holiday_night_ot numeric:=0;
 begin
  if auth.uid() is null or partner is null then return; end if;
+ perform document_adjustment_private.lock_rollout_gate(cid);
  perform pg_advisory_xact_lock(hashtextextended(
    'payment-certificate:'||cid::text||partner::text||first_day::text,0
  ));

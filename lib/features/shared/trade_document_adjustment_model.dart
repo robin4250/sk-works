@@ -246,6 +246,56 @@ class TradeDocumentAdjustmentRejected implements Exception {
   final String message;
 }
 
+class TradeDocumentAdjustmentHistoryEntry {
+  TradeDocumentAdjustmentHistoryEntry({required this.id, required String commandId,
+    required String actorId, required this.createdAt, required this.action, required this.title,
+    required this.beforeTotalYen, required this.afterTotalYen,
+    required List<String> changedMonths, this.sign, this.amountYen, this.recurrence, this.calculationMode})
+      : commandId = tradeDocumentAdjustmentUuid(commandId), actorId = tradeDocumentAdjustmentUuid(actorId),
+        changedMonths = List.unmodifiable(changedMonths.map(tradeDocumentAdjustmentMonth)) {
+    if (id < 1 || id > 9007199254740991 || title.trim().isEmpty || title.runes.length > 120 ||
+        beforeTotalYen.abs() > 9007199254740991 || afterTotalYen.abs() > 9007199254740991 ||
+        (amountYen != null && (amountYen! < 1 || amountYen! > 2147483647)) ||
+        this.changedMonths.toSet().length != this.changedMonths.length) {
+      throw const FormatException('変更履歴を確認できません。');
+    }
+  }
+  final int id, beforeTotalYen, afterTotalYen;
+  final String commandId, actorId, title;
+  final DateTime createdAt;
+  final TradeDocumentAdjustmentAction action;
+  final TradeDocumentAdjustmentSign? sign;
+  final int? amountYen;
+  final TradeDocumentAdjustmentRecurrence? recurrence;
+  final TradeDocumentAdjustmentCalculationMode? calculationMode;
+  final List<String> changedMonths;
+}
+
+class TradeDocumentAdjustmentHistory {
+  TradeDocumentAdjustmentHistory({required String companyId, required this.kind,
+    required String partyId, required String month, required List<TradeDocumentAdjustmentHistoryEntry> entries,
+    required this.hasMore}) : companyId = tradeDocumentAdjustmentUuid(companyId),
+      partyId = tradeDocumentAdjustmentUuid(partyId), month = tradeDocumentAdjustmentMonth(month),
+      entries = List.unmodifiable(entries) {
+    if (entries.length > 100 || (hasMore && entries.isEmpty) ||
+        entries.asMap().entries.any((row) => row.key > 0 && entries[row.key - 1].id <= row.value.id)) {
+      throw const FormatException('変更履歴の並び順を確認できません。');
+    }
+  }
+  final String companyId, partyId, month;
+  final TradeDocumentAdjustmentKind kind;
+  final List<TradeDocumentAdjustmentHistoryEntry> entries;
+  final bool hasMore;
+  void verify({required String companyId, required TradeDocumentAdjustmentKind kind,
+    required String partyId, required String month, int? beforeId}) {
+    if (this.companyId != tradeDocumentAdjustmentUuid(companyId) || this.kind != kind ||
+        this.partyId != tradeDocumentAdjustmentUuid(partyId) || this.month != month ||
+        (beforeId != null && entries.any((row) => row.id >= beforeId))) {
+      throw const FormatException('変更履歴の会社・相手・対象月が一致しません。');
+    }
+  }
+}
+
 abstract class TradeDocumentAdjustmentPort {
   Future<TradeDocumentAdjustmentWorkspace> load({required String companyId,
     required TradeDocumentAdjustmentKind kind, required String month, String? partyId});
@@ -253,4 +303,6 @@ abstract class TradeDocumentAdjustmentPort {
   Future<TradeDocumentAdjustmentReceipt> apply(TradeDocumentAdjustmentCommand command,
     {required TradeDocumentAdjustmentPreview preview});
   Future<TradeDocumentAdjustmentReceipt?> lookup(TradeDocumentAdjustmentCommand command);
+  Future<TradeDocumentAdjustmentHistory> history({required String companyId,
+    required TradeDocumentAdjustmentKind kind, required String partyId, required String month, int? beforeId});
 }

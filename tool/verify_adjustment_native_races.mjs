@@ -146,13 +146,49 @@ try {
    await left.query('select id from companies where id=$1 for update',[company]);
    await left.query('select id from invoices where id=$1 for update',[ns.id]);
    const adding=settle(apply(right,nc,np));await waitForRightLock();checks++;
-   let approvalError;try{await left.query('select public.approve_invoice($1)',[ns.id]);}catch(error){approvalError=error;}
-   assert.equal(approvalError?.code,'40001');checks++;
-   await left.query('rollback');
-   const added=await adding;assert.equal(added.ok,true);checks++;
-   assert.equal((await saved(nextMonth)).total,np.result_total_yen);checks++;
+   // The operation gate now takes the company share lock first, matching the
+   // real approval RPC's company-first order. Apply cannot own finance/document
+   // locks while waiting for this approval's company lock.
    assert.equal((await left.query('select public.approve_invoice($1) v',[ns.id])).rows[0].v,true);checks++;
+   await left.query('commit');
+   const added=await adding;assert.equal(added.ok,false);assert.match(added.error.message,/確定|承認/);checks++;
+   assert.equal((await saved(nextMonth)).total,np.base_total_yen);checks++;
+   assert.equal((await db.query('select count(*)::int n from document_adjustment_private.commands where command_id=$1',[nc.command_id])).rows[0].n,0);checks++;
   }
+
+  // Emergency OFF drains an actual uncommitted apply before it can return.
+  const liveMonth='2027-10-01',live=command(kind,party,liveMonth,8),lp=await preview(live);
+  const waitingMonth='2027-11-01',waiting=command(kind,party,waitingMonth,9),wp=await preview(waiting);
+  await left.query('begin');const inFlight=await apply(left,live,lp);
+  const disabling=settle(right.query('select public.set_trade_document_adjustment_rollout($1,false,$2) v',[company,'進行中の登録を待つ停止検証']));
+  await waitForRightLock();checks++;
+  assert.equal((await db.query('select enabled from document_adjustment_private.rollout where company_id=$1',[company])).rows[0].enabled,true);checks++;
+  await left.query('commit');
+  const disabled=await disabling;assert.equal(disabled.ok,true);assert.equal(disabled.value.rows[0].v.enabled,false);checks++;
+  assert.equal((await saved(liveMonth)).total,inFlight.result_total_yen);checks++;
+  await assert.rejects(apply(left,waiting,wp),/準備中/);checks++;
+  assert.equal((await db.query('select count(*)::int n from document_adjustment_private.commands where command_id=$1',[waiting.command_id])).rows[0].n,0);checks++;
+  assert.equal((await saved(waitingMonth)).total,wp.base_total_yen);checks++;
+  await db.query('select public.set_trade_document_adjustment_rollout($1,true,$2)',[company,'隔離環境の停止検証から再開']);
+
+  // A writer queued behind the exclusive OFF gate wakes to disabled state.
+  await left.query('begin');await left.query('select public.set_trade_document_adjustment_rollout($1,false,$2)',[company,'待機中の登録を拒否する停止検証']);
+  const queued=settle(apply(right,waiting,wp));await waitForRightLock();checks++;
+  await left.query('commit');const rejected=await queued;
+  assert.equal(rejected.ok,false);assert.match(rejected.error.message,/準備中/);checks++;
+  assert.equal((await saved(waitingMonth)).total,wp.base_total_yen);checks++;
+  await db.query('select public.set_trade_document_adjustment_rollout($1,true,$2)',[company,'隔離環境で次の同期検証へ再開']);
+
+  // Ordinary refresh participates in the same drain barrier, including callers
+  // outside the public adjustment API.
+  await left.query('begin');await left.query(`select ${refreshName}($1,$2,$3)`,[company,party,waitingMonth]);
+  const stopRefresh=settle(right.query('select public.set_trade_document_adjustment_rollout($1,false,$2)',[company,'通常再計算を待つ停止検証']));
+  await waitForRightLock();checks++;
+  await left.query('commit');assert.equal((await stopRefresh).ok,true);checks++;
+  const held=await saved(waitingMonth);
+  await db.query(`select ${refreshName}($1,$2,$3)`,[company,party,waitingMonth]);
+  assert.deepEqual((await saved(waitingMonth)).snapshot,held.snapshot);checks++;
+  await db.query('select public.set_trade_document_adjustment_rollout($1,true,$2)',[company,'隔離環境の同期検証を完了して再開']);
  }
  console.log(JSON.stringify({checks,nativeConcurrentSessions:2,productionApplied:false}));
 } finally {await left.end();await right.end();await db.client.end();}
