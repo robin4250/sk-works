@@ -1,0 +1,22 @@
+[
+  {
+    "signature": "verify_secondary_password(text)",
+    "definition": "CREATE OR REPLACE FUNCTION public.verify_secondary_password(p_password text)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'extensions', 'pg_temp'\nAS $function$\ndeclare\n  v_user_id uuid := auth.uid();\n  v_row public.user_secondary_credentials%rowtype;\n  v_ok boolean;\nbegin\n  if v_user_id is null then\n    raise exception 'authentication required';\n  end if;\n\n  select *\n  into v_row\n  from public.user_secondary_credentials\n  where user_id = v_user_id\n  for update;\n\n  if not found then\n    return false;\n  end if;\n\n  if v_row.locked_until is not null and v_row.locked_until > now() then\n    raise exception 'secondary password temporarily locked';\n  end if;\n\n  v_ok := v_row.password_hash = crypt(coalesce(p_password, ''), v_row.password_hash);\n\n  if v_ok then\n    update public.user_secondary_credentials\n    set failed_attempts = 0,\n        locked_until = null,\n        updated_at = now()\n    where user_id = v_user_id;\n    return true;\n  end if;\n\n  update public.user_secondary_credentials\n  set failed_attempts = failed_attempts + 1,\n      locked_until = case\n        when failed_attempts + 1 >= 5 then now() + interval '5 minutes'\n        else null\n      end,\n      updated_at = now()\n  where user_id = v_user_id;\n\n  return false;\nend;\n$function$\n",
+    "body_md5": "592b30d4832b747f6a7ef4bc424cb33a"
+  },
+  {
+    "signature": "private.account_access_allowed()",
+    "definition": "CREATE OR REPLACE FUNCTION private.account_access_allowed()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n select auth.uid() is not null and not exists(\n  select 1 from private.account_deletion_access_restrictions where user_id=auth.uid())\n$function$\n",
+    "body_md5": "aeca25db212c043c472334026bd98724"
+  },
+  {
+    "signature": "is_current_user_master_admin()",
+    "definition": "CREATE OR REPLACE FUNCTION public.is_current_user_master_admin()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'private', 'pg_temp'\nAS $function$\n  select exists (\n    select 1\n    from private.master_admins ma\n    where ma.user_id = auth.uid()\n      and ma.enabled\n  );\n$function$\n",
+    "body_md5": "efbc31721e3fb604059228badaef0139"
+  },
+  {
+    "signature": "private.require_reauthentication_session()",
+    "definition": "CREATE OR REPLACE FUNCTION private.require_reauthentication_session()\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare actor uuid:=auth.uid();sid uuid;\nbegin\n if actor is null or auth.jwt()->>'role' is distinct from 'authenticated'\n  or coalesce(auth.jwt()->>'is_anonymous','false')<>'false'\n  or not private.account_access_allowed() then\n  raise sqlstate '42501' using message='reauthentication_required';\n end if;\n begin sid:=(auth.jwt()->>'session_id')::uuid;\n exception when invalid_text_representation then raise sqlstate '42501' using message='reauthentication_required';end;\n if sid is null or not pg_try_advisory_xact_lock_shared(private.account_deletion_barrier_key(actor)) then\n  raise sqlstate '42501' using message='reauthentication_required';end if;\n perform 1 from auth.users where id=actor and not coalesce(is_anonymous,false)\n  and (banned_until is null or banned_until<=clock_timestamp()) for share;\n if not found then raise sqlstate '42501' using message='reauthentication_required';end if;\n perform 1 from auth.sessions where id=sid and user_id=actor\n  and (not_after is null or not_after>clock_timestamp()) for share;\n if not found then raise sqlstate '42501' using message='reauthentication_required';end if;\n return sid;\nend $function$\n",
+    "body_md5": "b5c8e2f259a99b3c69694ad0640080e5"
+  }
+]

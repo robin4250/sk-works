@@ -1,0 +1,43 @@
+name: Dedicated Master management issuer
+on:
+  pull_request:
+    paths:
+      - 'tool/security/free-worker-candidate/issuer/**'
+      - 'tool/security/free-worker-candidate/src/management.mjs'
+      - 'tool/security/free-worker-candidate/src/security-audit.mjs'
+      - '.github/workflows/management-issuer.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  server-and-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/free-worker-candidate --ignore-scripts --no-audit --no-fund
+      - run: node --test tool/security/free-worker-candidate/issuer/issuer-server.test.mjs
+  native-proof-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_management_issuer_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/security/free-worker-candidate/issuer/verify-management-issuer-sql.mjs tool/security/free-worker-candidate/issuer/native-pg17-runtime.mjs --native
+        env:
+          SKO_MANAGEMENT_ISSUER_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_management_issuer_fixture
+          SKO_MANAGEMENT_ISSUER_PG_MODULE: ${{ github.workspace }}/tool/security/fixture_dependencies/node_modules/pg/lib/index.js
