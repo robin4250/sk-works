@@ -72,10 +72,39 @@ try{
  // The inherited installer grants service_role for its separate legacy tests.
  // Match the captured production ACL before testing the strict new source guard.
  await exec('revoke execute on function private.save_daily_report_signature(uuid,text,text,jsonb) from service_role');
- const before=await business();await exec(await readFile(candidateRoot+'/explicit-finalization.sql.review-only','utf8'));
+ const catalogueBeforeExplicit=await q("select jsonb_agg(jsonb_build_object('identity',p.oid::regprocedure::text,'oid',p.oid::text,'definition',pg_get_functiondef(p.oid),'owner',pg_get_userbyid(p.proowner),'acl',p.proacl::text,'config',p.proconfig,'definer',p.prosecdef,'volatility',p.provolatile) order by p.oid::regprocedure::text) v from pg_proc p where p.oid=any(select to_regprocedure(x)::oid from unnest($1::text[]) x)",[JSON.parse(await readFile(candidateRoot+'/source-originals.json','utf8')).map(x=>x.signature)]);
+ const constraintsBeforeExplicit=await q("select jsonb_agg(jsonb_build_object('name',conname,'type',contype,'definition',pg_get_constraintdef(oid,true),'validated',convalidated,'deferrable',condeferrable,'deferred',condeferred) order by conname) v from pg_constraint where conrelid='checkout_shared_hours_private.confirmations'::regclass");
+ const explicitInstallSql=await readFile(candidateRoot+'/explicit-finalization.sql.review-only','utf8');
+ const before=await business();await exec(explicitInstallSql);
  eq(await business(),before,'OFF installation preserves all source and financial rows');
  eq(await q('select count(*)::int v from explicit_report_finalization_private.rollout'),0,'No company activation');
  eq(await q('select count(*)::int v from explicit_report_finalization_private.reports'),0,'No report activation');
+
+ phase='ordinary-unused-restore-exact-original-catalogue';
+ const ordinaryOriginalSignatures=JSON.parse(await readFile(candidateRoot+'/source-originals.json','utf8')).map(x=>x.signature);
+ const ordinaryCatalogue=()=>q("select jsonb_agg(jsonb_build_object('identity',p.oid::regprocedure::text,'oid',p.oid::text,'definition',pg_get_functiondef(p.oid),'owner',pg_get_userbyid(p.proowner),'acl',p.proacl::text,'config',p.proconfig,'definer',p.prosecdef,'volatility',p.provolatile) order by p.oid::regprocedure::text) v from pg_proc p where p.oid=any(select to_regprocedure(x)::oid from unnest($1::text[]) x)",[ordinaryOriginalSignatures]);
+ const ordinaryConstraints=()=>q("select jsonb_agg(jsonb_build_object('name',conname,'type',contype,'definition',pg_get_constraintdef(oid,true),'validated',convalidated,'deferrable',condeferrable,'deferred',condeferred) order by conname) v from pg_constraint where conrelid='checkout_shared_hours_private.confirmations'::regclass");
+ const ordinaryRestoreSql=await readFile(candidateRoot+'/explicit-finalization-restore-unused.sql.review-only','utf8');
+ const installedOrdinaryCatalogue=await ordinaryCatalogue(),installedOrdinaryConstraints=await ordinaryConstraints();
+ await exec('create view public.fixture_external_ordinary_dependency as select explicit_report_finalization_private.required(null::uuid) needed');
+ const ordinaryViewOid=await q("select 'public.fixture_external_ordinary_dependency'::regclass::oid::text v");
+ const beforeBlockedRestore=await snapshot();
+ await reject(()=>exec(ordinaryRestoreSql),/depend|cannot drop/i);await exec('rollback');
+ eq(await q("select 'public.fixture_external_ordinary_dependency'::regclass::oid::text v"),ordinaryViewOid,'Unknown external dependency blocks restore and preserves exact external view OID');
+ eq(await ordinaryCatalogue(),installedOrdinaryCatalogue,'Blocked unused restore rolls back every original function and OID');
+ eq(await ordinaryConstraints(),installedOrdinaryConstraints,'Blocked unused restore rolls back coordinator confirmation constraints');
+ eq(await snapshot(),beforeBlockedRestore,'Blocked unused restore preserves every source, financial and module table');
+ await exec('drop view public.fixture_external_ordinary_dependency');
+ await exec(ordinaryRestoreSql);
+ eq(await q("select to_regnamespace('explicit_report_finalization_private') is null v"),true,'Unused restore removes only explicit new schema');
+ eq(await ordinaryCatalogue(),catalogueBeforeExplicit,'Unused restore preserves exact original definition, OID, owner, ACL, config and security mode');
+ eq(await ordinaryConstraints(),constraintsBeforeExplicit,'Unused restore restores original confirmation constraints');
+ eq(await business(),before,'Unused restore leaves every original business and financial row unchanged');
+ await exec(explicitInstallSql);
+ eq(await ordinaryCatalogue(),installedOrdinaryCatalogue,'Exact reviewed candidate reinstalls after unused restore with original routine OIDs');
+ eq(await ordinaryConstraints(),installedOrdinaryConstraints,'Reinstall restores exact coordinator constraints');
+ eq(await q('select count(*)::int v from explicit_report_finalization_private.events'),0,'Reinstalled unused module has no signature or financial event');
+
  await client.query('insert into explicit_report_finalization_private.reports(company_id,report_id,enabled) values($1,$2,true)',[A,rid]);
  const context=async(actor=U,sid=id(80))=>sharedCall(actor,sid,'select public.read_shared_daily_report_context($1) v',[rid]);
  const peer=await sharedCall(U,id(80),'select public.read_shared_worker_facts($1,$2) v',[rid,W2]);
@@ -252,7 +281,7 @@ try{
  const stored=await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1 and worker_id=$2',[reverseRid,reportWorker]);
  eq(stored.company_allowance_selections,choices(canonical),'Unsigned writer stores both original registered selections in canonical origin/id order');
  eq(stored.company_allowance_selections.items.map(x=>x.name_snapshot).sort(),reversed.map(x=>x.name_snapshot).sort(),'Names, IDs, generation, version and unit are not lost by canonical order');
- eq(stored.allowance_label.split('\\n').filter(Boolean).sort(),reversed.map(x=>x.name_snapshot).sort(),'Displayed Japanese registered names remain exact');
+ eq(stored.allowance_label.split('\n').filter(Boolean).sort(),reversed.map(x=>x.name_snapshot).sort(),'Displayed Japanese registered names remain exact');
  eq(stored.allowance_amount,0,'Canonical order does not manufacture an adjustment amount');
  const canonicalPayload=JSON.stringify([{...worker(reportWorker,canonical),allowance_label:stored.allowance_label},worker(W2,[])]);
  await client.query('insert into explicit_report_finalization_private.reports(company_id,report_id,enabled) values($1,$2,true)',[A,reverseRid]);
@@ -384,6 +413,12 @@ try{
  eq(await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]),beforeAdminInvoice,'Actual highest new source adds exactly one invoice participant-day');
  eq(await q('select count(*)::int v from attendance_admin_override_private.contexts'),0,'Highest operations leave no reusable management permit');
  eq(await q('select count(*)::int v from explicit_report_finalization_private.management_reports where report_id in($1,$2)',[rid,createdAdminRid]),2,'Explicit module records truthful management-only exceptions for changed and new report');
+ phase='ordinary-used-restore-refused-atomically';
+ const usedOrdinaryCatalogue=await ordinaryCatalogue(),usedOrdinaryConstraints=await ordinaryConstraints(),usedOrdinarySnapshot=await snapshot();
+ await reject(()=>exec(ordinaryRestoreSql),/explicit_finalization_restore_used_module|explicit_finalization_restore_enabled_module/);await exec('rollback');
+ eq(await ordinaryCatalogue(),usedOrdinaryCatalogue,'Used restore refuses without changing any active original function');
+ eq(await ordinaryConstraints(),usedOrdinaryConstraints,'Used restore refuses without changing active confirmation constraints');
+ eq(await snapshot(),usedOrdinarySnapshot,'Used restore preserves every original signature, financial row, module receipt, proof and audit');
 
  console.log(JSON.stringify({pass:true,checks,native_pg17:true,signature_capture_deferred:true,actual_four_financial_producers:true,ordinary_site_coordinator_and_peer_handoff:true,actual_invoice_non_route_dependencies:true,actual_payroll_one_day_per_participant:true,invoice_one_customer_month:true,error_and_early_return_atomic_rollback:true,exact_retry_idempotent:true,synthetic_auth_and_neutral_tax_leave:true,open_peer_same_fourth_step_preparation:true,off_legacy_six_keys_reporter:true,legacy_document_audited_revision:true,reversed_registered_choices_preserved:true,finalized_general_approved_reset_held_atomically:true,highest_crud_with_actual_03_04_05:true,legacy_freeform_and_nonzero_amount_preserved_then_held:true,legacy_cash_positive_finance_covered:false,production_changed:false}));
 `;
