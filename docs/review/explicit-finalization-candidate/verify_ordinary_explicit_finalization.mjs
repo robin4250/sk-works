@@ -417,6 +417,31 @@ try{
  eq(await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]),beforeAdminInvoice,'Actual highest new source adds exactly one invoice participant-day');
  eq(await q('select count(*)::int v from attendance_admin_override_private.contexts'),0,'Highest operations leave no reusable management permit');
  eq(await q('select count(*)::int v from explicit_report_finalization_private.management_reports where report_id in($1,$2)',[rid,createdAdminRid]),2,'Explicit module records truthful management-only exceptions for changed and new report');
+ phase='ordinary-highest-management-last-enrolled-worker-delete';
+ eq(await q('select count(*)::int v from daily_report_workers where report_id=$1',[rid]),1,'Last-worker case starts from the actually enrolled report with only the preserved peer');
+ eq(await q('select count(*)::int v from explicit_report_finalization_private.states where report_id=$1',[rid]),1,'Last-worker case exercises a real explicit state FK');
+ eq(await q('select count(*)::int v from explicit_report_finalization_private.reports where report_id=$1',[rid]),1,'Last-worker case exercises an actual explicit report enrollment FK');
+ eq(await q('select count(*)::int v from explicit_report_finalization_private.management_reports where report_id=$1',[rid]),1,'Last-worker case exercises an actual management marker FK');
+ const lastReportBefore=await q('select to_jsonb(r) v from daily_reports r where id=$1',[rid]);
+ const lastWorkerBefore=await q('select to_jsonb(w) v from daily_report_workers w where report_id=$1',[rid]);
+ const priorLastAudit=await q("select jsonb_agg(to_jsonb(o) order by id) v from attendance_admin_override_private.operations o where exists(select 1 from jsonb_array_elements(o.before_state->'reports') d where d#>>'{report,id}'=$1::text)",[rid]);
+ const priorLastEvents=await q('select jsonb_agg(to_jsonb(e) order by id) v from explicit_report_finalization_private.events e where report_id=$1',[rid]);
+ const otherLastSources=()=>q("select jsonb_build_object('reports',(select jsonb_agg(to_jsonb(r) order by id) from daily_reports r where id<>$1),'workers',(select jsonb_agg(to_jsonb(w) order by report_id,worker_id) from daily_report_workers w where report_id<>$1),'entries',(select jsonb_agg(to_jsonb(e) order by id) from attendance_entries e where source_report_id is distinct from $1),'other_salary',(select jsonb_agg(to_jsonb(p) order by worker_id,period_start) from payroll_statements p where worker_id<>$2)) v",[rid,W2]);
+ const lastOtherBefore=await otherLastSources();
+ const beforeLastDays=Number(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,W2]));
+ const beforeLastInvoice=await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]);
+ eq(await withManagementProof('delete',[managementCell(W2,docDay,{mode:'off'})]),1,'Actual 03+05 proof deletes the last worker of a real explicitly enrolled report');
+ eq(await q('select count(*)::int v from daily_reports where id=$1',[rid]),0,'Last-worker management deletion really removes the report row');
+ for(const table of ['states','reports','management_reports'])eq(await q('select count(*)::int v from explicit_report_finalization_private.'+table+' where report_id=$1',[rid]),0,'Deleted report clears only live explicit FK rows: '+table);
+ eq(await q('select count(*)::int v from attendance_entries where source_report_id=$1',[rid]),0,'Last-worker deletion removes its last attendance projection');
+ eq(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,W2]),String(beforeLastDays-1),'Actual payroll loses exactly the final selected participant-day');
+ eq(await q('select grand_total v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation',[A,customer]),beforeLastInvoice-10000,'Actual invoice loses exactly the final selected participant-day');
+ eq(await otherLastSources(),lastOtherBefore,'Last-worker deletion preserves every other report/day/employee source and other employee payroll');
+ for(const oldAudit of priorLastAudit??[])eq(await q('select to_jsonb(o) v from attendance_admin_override_private.operations o where id=$1',[oldAudit.id]),oldAudit,'Last-worker deletion retains earlier original-signature management audits byte-identically');
+ for(const oldEvent of priorLastEvents??[])eq(await q('select to_jsonb(e) v from explicit_report_finalization_private.events e where id=$1',[oldEvent.id]),oldEvent,'Last-worker deletion retains original signing/finalization evidence byte-identically');
+ eq(await q("select exists(select 1 from attendance_admin_override_private.operations o where state='committed' and action='delete' and exists(select 1 from jsonb_array_elements(o.before_state->'reports') d where d->'report'=$1::jsonb and d->'roster' @> jsonb_build_array($2::jsonb))) v",[JSON.stringify(lastReportBefore),JSON.stringify(lastWorkerBefore)]),true,'Last-worker committed delete audit preserves actual removed report and final roster row');
+ eq(await q('select count(*)::int v from attendance_admin_override_private.contexts'),0,'Last-worker delete leaves no live reusable management context');
+
  phase='ordinary-used-restore-refused-atomically';
  const usedOrdinaryCatalogue=await ordinaryCatalogue(),usedOrdinaryConstraints=await ordinaryConstraints(),usedOrdinarySnapshot=await snapshot();
  await reject(()=>exec(ordinaryRestoreSql),/explicit_finalization_restore_used_module|explicit_finalization_restore_enabled_module/);await exec('rollback');
@@ -424,7 +449,7 @@ try{
  eq(await ordinaryConstraints(),usedOrdinaryConstraints,'Used restore refuses without changing active confirmation constraints');
  eq(await snapshot(),usedOrdinarySnapshot,'Used restore preserves every original signature, financial row, module receipt, proof and audit');
 
- console.log(JSON.stringify({pass:true,checks,native_pg17:true,signature_capture_deferred:true,actual_four_financial_producers:true,ordinary_site_coordinator_and_peer_handoff:true,actual_invoice_non_route_dependencies:true,actual_payroll_one_day_per_participant:true,invoice_one_customer_month:true,error_and_early_return_atomic_rollback:true,exact_retry_idempotent:true,synthetic_auth_and_neutral_tax_leave:true,open_peer_same_fourth_step_preparation:true,off_legacy_six_keys_reporter:true,legacy_document_audited_revision:true,reversed_registered_choices_preserved:true,finalized_general_approved_reset_held_atomically:true,highest_crud_with_actual_03_04_05:true,legacy_freeform_and_nonzero_amount_preserved_then_held:true,legacy_cash_positive_finance_covered:false,production_changed:false}));
+ console.log(JSON.stringify({pass:true,checks,native_pg17:true,signature_capture_deferred:true,actual_four_financial_producers:true,ordinary_site_coordinator_and_peer_handoff:true,actual_invoice_non_route_dependencies:true,actual_payroll_one_day_per_participant:true,invoice_one_customer_month:true,error_and_early_return_atomic_rollback:true,exact_retry_idempotent:true,synthetic_auth_and_neutral_tax_leave:true,open_peer_same_fourth_step_preparation:true,off_legacy_six_keys_reporter:true,legacy_document_audited_revision:true,reversed_registered_choices_preserved:true,finalized_general_approved_reset_held_atomically:true,highest_crud_with_actual_03_04_05:true,last_enrolled_worker_report_delete_and_audit:true,legacy_freeform_and_nonzero_amount_preserved_then_held:true,legacy_cash_positive_finance_covered:false,production_changed:false}));
 `;
  const proof=join(folder,'proof.mjs'),generated=setup+unit+tail;await writeFile(proof,generated);
  if(process.env.SKO_ORDINARY_EXPLICIT_EMIT_ONLY)await writeFile(process.env.SKO_ORDINARY_EXPLICIT_EMIT_ONLY,generated);
