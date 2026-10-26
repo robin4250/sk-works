@@ -46,7 +46,7 @@ try{
  const producers=JSON.parse(await readFile(candidateRoot+'/financial-source-originals.json','utf8'));
  const ranks={aoyagi_reisho_name_supported:0,rate_formula_label:1,resolve_rate_formula:2,route_signed_checkout_sources:3,route_signed_site_rates:4,route_signed_checkout_components:5,route_billing_invoice_blocked:6,uploaded_company_seal_snapshot:7,document_company_seal_snapshot:8,ensure_unassigned_invoice_customer:9,expense_cost_components:10,route_billing_invoice_components:11};
  for(const row of dependencies.sort((a,b)=>(ranks[a.identity.match(/private\.([^ (]+)/)[1]]??100)-(ranks[b.identity.match(/private\.([^ (]+)/)[1]]??100))){eq(md5(dbBody(row.definition)),row.body_md5,'Exact dependency '+row.identity);await exec(row.definition);}
- for(const row of producers){eq(md5(dbBody(row.definition)),row.body_md5,'Exact financial producer '+row.identity);await exec(row.definition);if(row.acl!==null)await exec('revoke all on function '+row.identity+' from public,anon,authenticated,service_role');}
+ for(const row of producers){eq(md5(dbBody(row.definition)),row.body_md5,'Exact financial producer '+row.identity);if(row.identity==='private.has_company_feature(uuid,text)')await exec('drop function private.has_company_feature(uuid,text)');await exec(row.definition);if(row.acl!==null)await exec('revoke all on function '+row.identity+' from public,anon,authenticated,service_role');}
  await exec('create trigger fixture_actual_attendance_refresh_invoice after insert or update or delete on public.attendance_entries for each row execute function private.attendance_refresh_invoice()');
  const customer=id(9901);
  await client.query("update companies set name='合成の検証会社',tax_rate=0,company_seal_style='legacy' where id=$1",[A]);
