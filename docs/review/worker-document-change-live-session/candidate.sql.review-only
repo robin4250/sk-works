@@ -23,6 +23,11 @@ create table private.worker_document_changes (
  previous jsonb not null,proposed jsonb not null,
  created_at timestamptz not null default clock_timestamp(),reviewed_at timestamptz,reviewed_by uuid,reason text
 );
+create table private.worker_document_legacy_tickets (
+ request_id uuid primary key,actor_id uuid not null,transaction_id bigint not null
+);
+alter table private.worker_document_legacy_tickets enable row level security;
+revoke all on private.worker_document_legacy_tickets from public,anon,authenticated;
 create table private.worker_document_apply_tickets (
  target_id uuid primary key,request_id uuid not null,actor_id uuid not null,transaction_id bigint not null,
  previous jsonb not null,next_row jsonb not null
@@ -56,12 +61,37 @@ revoke all on function private.worker_document_change_can_review(uuid) from publ
 create function private.worker_document_change_guard() returns trigger
 language plpgsql security definer set search_path='' as $$
 declare before_row jsonb;after_row jsonb;ticket private.worker_document_apply_tickets%rowtype;
- oldpaths text[];newpaths text[];initial_blank boolean;
+ oldpaths text[];newpaths text[];initial_blank boolean;legacy record;
 begin
  if auth.uid() is null or not coalesce(private.account_access_allowed(),false) then
   raise exception 'Document actor unavailable' using errcode='42501';end if;
  if tg_op='DELETE' then raise exception 'Saved document deletion requires a separate preservation review' using errcode='42501';end if;
  if new.updated_by is distinct from auth.uid() then raise exception 'Document updater mismatch' using errcode='42501';end if;
+ -- A private, single-use transaction ticket is issued only inside the
+ -- authenticated legacy approval after all its checks have passed.
+ select r.* into legacy from private.worker_document_legacy_tickets t
+ join private.document_submissions r on r.id=t.request_id
+ where t.actor_id=auth.uid() and t.transaction_id=txid_current() and r.status='pending'
+  and r.requested_by<>auth.uid() and r.company_id=new.company_id and r.worker_id=new.worker_id
+  and r.requirement_id=new.requirement_id and private.worker_document_change_can_review(r.company_id)
+  and new.status='verified' and not new.original_verified
+  and new.attachment_path is not distinct from r.attachment_path
+  and new.notes is not distinct from r.notes and new.expires_at is not distinct from r.expires_at
+  and ((tg_op='INSERT' and (r.previous is null or exists(select 1 from public.worker_document_statuses cur
+     where cur.company_id=r.company_id and cur.worker_id=r.worker_id and cur.requirement_id=r.requirement_id
+       and to_jsonb(cur) is not distinct from r.previous))) or
+   (tg_op='UPDATE' and r.previous is not distinct from to_jsonb(old)
+    and (to_jsonb(new)-array['status','original_verified','attachment_path','attachment_paths','notes','expires_at','updated_at','updated_by'])=
+        (to_jsonb(old)-array['status','original_verified','attachment_path','attachment_paths','notes','expires_at','updated_at','updated_by'])))
+ for update of t;
+ if found then
+  -- INSERT ON CONFLICT runs BEFORE INSERT before BEFORE UPDATE. Preserve the
+  -- ticket for UPDATE when the legacy snapshot already has an official row.
+  if tg_op<>'INSERT' or legacy.previous is null then
+   delete from private.worker_document_legacy_tickets where request_id=legacy.id;
+  end if;
+  return new;
+ end if;
  if tg_op='INSERT' then
   if (new.original_verified or new.status='verified') and not private.worker_document_change_can_manage(new.company_id) then
    raise exception 'Manager verification required' using errcode='42501';end if;
@@ -114,6 +144,22 @@ revoke all on function private.worker_document_change_guard() from public,anon,a
 -- Runs after existing normalize_* and baseline BEFORE triggers, without replacing them.
 create trigger zz_worker_document_change_guard before insert or update or delete on public.worker_document_statuses
 for each row execute function private.worker_document_change_guard();
+
+-- Existing personal-approval function gets a transaction-local, private ticket.
+-- Hash pins the exact reviewed production body; never apply on drift.
+do $legacy$ declare body text; begin
+ select prosrc into body from pg_proc where oid=to_regprocedure('private.personal_document_submission(text,jsonb)');
+ if md5(body)<>'77a0cb7259aa6223265195c44572008b' then
+  raise exception 'legacy document function drift'; end if;
+ if position($anchor$ insert into public.worker_document_statuses(company_id,worker_id,requirement_id,status,attachment_path,notes,expires_at,original_verified,updated_by)$anchor$ in body)=0 then
+  raise exception 'legacy document insert anchor missing'; end if;
+ body:=replace(body,$anchor$ insert into public.worker_document_statuses(company_id,worker_id,requirement_id,status,attachment_path,notes,expires_at,original_verified,updated_by)$anchor$,
+ $replacement$ perform private.require_reauthentication_session();
+ if req.requested_by=uid then raise exception 'Self approval is not allowed' using errcode='42501';end if;
+ insert into private.worker_document_legacy_tickets(request_id,actor_id,transaction_id) values(req.id,uid,txid_current());
+ insert into public.worker_document_statuses(company_id,worker_id,requirement_id,status,attachment_path,notes,expires_at,original_verified,updated_by)$replacement$);
+ execute 'create or replace function private.personal_document_submission(p_action text,p_data jsonb default ''{}''::jsonb) returns jsonb language plpgsql security definer set search_path='''' as '||quote_literal(body);
+end $legacy$;
 
 create function private.worker_document_change_result(r private.worker_document_changes) returns jsonb
 language sql stable security definer set search_path='' as $$

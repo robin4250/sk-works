@@ -62,5 +62,11 @@ end $function$;
  await db.exec(`grant select on public.companies,public.company_members,public.workers,public.document_requirements,public.worker_document_status_history to authenticated;
  grant select,insert,update,delete on public.worker_document_statuses to authenticated;
  insert into public.document_requirements(id,company_id,name) values('${requirement}','${company}','Synthetic document');`);
+ await db.exec(`create table private.document_submissions(
+ id uuid primary key default gen_random_uuid(),company_id uuid,worker_id uuid,requirement_id uuid,requested_by uuid,
+ previous jsonb,attachment_path text,upload_path text,notes text,expires_at date,status text default 'draft',
+ reason text,reviewed_by uuid,reviewed_at timestamptz,created_at timestamptz default now());
+ create function private.has_company_feature(uuid,text) returns boolean language sql stable as $$select true$$;`);
+ await db.exec(source('docs/review/worker-document-change-live-session/personal-submission-before.sql.review-only'));
  await db.exec(source('docs/review/worker-document-change-live-session/candidate.sql.review-only'));
 }
