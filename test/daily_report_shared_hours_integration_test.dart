@@ -135,7 +135,7 @@ class _Shared implements SharedDailyReportRepository {
     firstReporterCoversWorkOnly: enabled && workOnly,
     workBasis: {'contract_version': 2, 'report': {'id': _report, 'company_id': _company,
       'work_date': '2026-10-25', 'site_id': _site, 'route_assignment_id': null,
-      'work_description': '保存済みの作業'},
+      'work_description': reports.description},
       'roster': [for (final worker in reports.workers) {'worker_id': worker.workerId}]});
   @override Future<SharedDailyReportContext> loadForSource(String sourceClockInId) async => state;
   @override Future<SharedDailyReportContext> loadReport(String reportId, {String? expectedActor}) async => state;
@@ -336,7 +336,8 @@ void main() {
     await tester.tap(find.text('報告者サイン')); await tester.pumpAndSettle();
     expect(reports.explicitMode, isTrue); expect(reports.draftWrites, 1);
     expect(find.byType(SignatureCapturePage), findsNothing);
-    expect(find.textContaining('②の勤務区分'), findsOneWidget);
+    expect(find.textContaining('②の勤務区分'), findsOneWidget,
+      reason: tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).join(' | '));
     expect(reports.reporterSaved, isFalse); expect(shared.freshReporterWrites, 0);
   });
 

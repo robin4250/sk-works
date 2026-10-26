@@ -379,9 +379,12 @@ class _DailyReportPageState extends State<DailyReportPage> {
         _sharedFactsReadOnly || _workers.every((worker) => worker.workCategory != null)) { return; }
     try {
       final snapshot = await repository.load(companyId);
-      for (final worker in _workers.where((worker) => worker.workCategory == null && worker.sourceClockInId != null)) {
+      for (final worker in _workers.where((worker) => worker.workCategory == null)) {
+        final source = worker.sourceClockInId ?? (_sharedContext?.workerId == worker.workerId
+          ? _sharedContext?.sourceClockInId : null);
+        if (source == null) continue;
         final proposed = await repository.proposeForSource(snapshot,
-          sourceClockInId: worker.sourceClockInId!, workerId: worker.workerId, workDate: _date);
+          sourceClockInId: source, workerId: worker.workerId, workDate: _date);
         if (!mounted || generation != _loadGeneration || _repository?.currentActorId != actor ||
             (_report?.companyId ?? _sharedContext?.companyId ?? widget.registrationCompanyId) != companyId) { return; }
         if (worker.workCategory == null && proposed != null) setState(() => worker.workCategory = proposed);
@@ -808,7 +811,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         _sharedReportRepository != null && _partialSharedDraftAllowed) {
       // A verified own checkout may save an incomplete draft. Signing still
       // waits for the explicit server work-only contract returned afterward.
-      final id = await _saveDraft(ownsBusyState: false);
+      final id = await _saveDraft(ownsBusyState: false, quiet: true);
       if (id == null || !mounted) return null;
     }
     if (_sharedContext?.firstReporterCoversWorkOnly != true && _workers.any((worker) => worker.meterManaged && worker.meterEventId == null,
@@ -822,7 +825,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       return null;
     }
     if (!_visitReport && _report?.id.isNotEmpty != true && _sharedReportRepository != null) {
-      final savedId = await _saveDraft(ownsBusyState: false);
+      final savedId = await _saveDraft(ownsBusyState: false, quiet: true);
       if (savedId == null || !mounted) return null;
     }
     if (!_visitReport && _report?.id.isNotEmpty == true) {
@@ -848,7 +851,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
     if (((_currentGroupAnchor != null && _workers.any((worker) => worker.sourceClockInId != null)) ||
          (_currentVehicleAnchor != null && _workers.any((worker) => worker.meterManaged))) &&
         _evidenceAttachmentFingerprint != _draftFingerprint()) {
-      final id = await _saveDraft(ownsBusyState: false);
+      final id = await _saveDraft(ownsBusyState: false, quiet: true);
       if (_sharedContext?.firstReporterCoversWorkOnly != true && _workers.any((worker) => worker.meterManaged && worker.meterEventId == null,
       )) {
         if (mounted) {
@@ -867,7 +870,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         _report!.id.isNotEmpty && _savedDraftFingerprint == _draftFingerprint()) {
       return _report!.id;
     }
-    final id = await _saveDraft(ownsBusyState: false);
+    final id = await _saveDraft(ownsBusyState: false, quiet: true);
     if (_sharedContext?.firstReporterCoversWorkOnly != true && _workers.any((worker) => worker.meterManaged && worker.meterEventId == null,
     )) {
       if (mounted) {
