@@ -82,7 +82,7 @@ insert into security_collector_connection_private.installation values(true,(sele
     read_body = re.search(r'create function private.read_security_collector_events[\s\S]*?as (\$[\w]*\$)([\s\S]*?)\1', storage_unit, re.I)[2]
     reader_unit = transaction_body(reader).replace(',sko_security_collector_ingest','').replace('a62cc46b5c9fbcee3e38e9699e44bd00',hashlib.md5(read_body.encode()).hexdigest())
     roleless = (ROOT/'roleless-core.sql').read_text()
-    patched = '\n'.join(definitions[s] for s in CHANGED)
+    patched = '\n'.join(definitions[s].rstrip().rstrip(';')+';' for s in CHANGED)
     post = """do $preserved$ begin
  if (select jsonb_agg(to_jsonb(x) order by scope) from private.reauthentication_rollout x) is distinct from (select rollout from security_collector_connection_private.installation) then raise exception 'collector_changed_existing_rollout';end if;
  if exists(select 1 from security_collector_connection_private.originals o join pg_proc p on p.oid=to_regprocedure(o.signature) where to_jsonb(p)-'prosrc' is distinct from o.metadata-'prosrc') then raise exception 'collector_changed_existing_metadata';end if;
@@ -99,6 +99,9 @@ commit;
 +'private.collector_mac_equal(bytea,bytea)','private.collector_event_metadata(private.security_collector_events)',
 +'private.verify_collector_event_evidence(uuid)','public.ingest_signed_security_collector_event(jsonb)','private.purge_expired_security_collector_events()'])x join pg_proc p on p.oid=to_regprocedure(x);
 +""".replace('\n+','\n')
+    post = post.replace('end $preserved$;', """ if exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace cross join lateral aclexplode(coalesce(c.relacl,acldefault(case when c.relkind='S' then 'S'::\"char\" else 'r'::\"char\" end,c.relowner)))a where (n.nspname='security_collector_connection_private' or(n.nspname='private' and c.relname like 'security_collector_%')) and c.relkind in('r','S') and(a.grantee<>c.relowner or(c.relkind='r' and not c.relrowsecurity))) then raise exception 'collector_relation_security_changed';end if;
+ if exists(select 1 from security_collector_connection_private.new_objects o join pg_proc p on p.oid=to_regprocedure(o.signature) cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a where a.grantee<>p.proowner and not(a.privilege_type='EXECUTE' and not a.is_grantable and ((o.signature in('private.read_security_collector_events(text)','public.master_security_collector_events(text)') and a.grantee='authenticated'::regrole)or(o.signature='public.ingest_signed_security_collector_event(jsonb)' and a.grantee='service_role'::regrole)))) then raise exception 'collector_routine_acl_changed';end if;
+end $preserved$;""")
     install = prefix + patched + '\n' + storage_unit + '\n' + roleless + '\n' + reader_unit + '\n' + object_capture + post
     new_hashes = {s: hashlib.md5(body(definitions[s]).encode()).hexdigest() for s in CHANGED}
     restore = """-- REVIEW ONLY. Unused collector-only restore; never removes existing core or role.
