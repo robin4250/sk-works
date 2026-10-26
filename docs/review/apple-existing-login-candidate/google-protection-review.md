@@ -18,7 +18,9 @@ Auth user/identity行を別UIDに編集する補修処理や削除の捏造は�
   必要。token hookに届く前、PKCEの早期identity取引でも拒否する。
 - 未承認Apple-first UIDへGoogleを自動合流する逆経路もidentity書込前に拒否。
 - 一度観測したGoogle provider subjectは元UIDと紐付けて保持する。Googleの
-  unlinkやAuth user削除で台帳は連鎖削除しない。元UIDへの復帰は許容し、
+  unlinkやAuth user削除で台帳は連鎖削除しない。公式soft deleteの消去/難読化は、
+  実deleted_at・同UID/provider/行ID・公式SHA256式が一致する場合だけ通す。
+  user_metadataのdeleted_atでは許可しない。元UIDへの復帰は許容し、
   削除後に同じGoogle subjectから黙って新UIDを作る経路は拒否する。
 - 正規のGoogleログイン・新規Google登録・メールPWは維持する。既Googleと
   Appleが未承認状態で混在していれば有効化をSTOPし、permitを自動作成しない。
@@ -50,12 +52,14 @@ disable/ロールバックでは、先にApple provider/関連入口を安全に
 
 - PGlite固定0.5.8：OFF/ACL、全Google seed、新Google/メールidentity維持、
   metadata改変、Apple直通/UID変更、同UID permit、逆方向の自動合流、混在STOP、
-  unlink/削除/再作成、後続失敗rollback、hookフラグ漂流の11ケース。
-- Native PostgreSQL 17：同11ケースと実二接続Google/Apple同UID競合をCI実行。
+  unlink/削除/再作成、後続失敗rollback、hookフラグ漂流、公式soft deleteと
+  metadata偽装、切替前soft-deleted行を含む14ケース。
+- Native PostgreSQL 17：同14ケースと実二接続Google/Apple同UID競合をCI実行。
 - 本番報告と同じ公式GoTrue v2.197.0 source
   `4eee58f296d9698a1c2c0ae14d7a0b379c7622d3`：実HTTP/RSA native token、
   PKCEの先行identity取引、Google新規/既ログイン、メールPW、同UID Apple許可、
-  metadata自己編集、削除/再作成、unlink後の元UID復帰と元refresh保持をCI実行。
+  metadata自己編集、hard/soft削除/再作成、unlink後の元UID復帰、未知ACKを想定した
+  Google再送の同UID保持と元refresh保持をCI実行。
   provider公開鍵は合成鍵のみ、外部通信は固定のoffline transportで拒否する。
 
 実GoTrue/Native CIの結果、既存本番catalog/trigger/owner/権限差分、本番配備、
@@ -64,5 +68,8 @@ hosted hook/native-only条件、入口/復旧/保持期限、iPhone確認は別�
 本番applyやtrigger権限昇格の回避手段をこの候補から実行してはならない。
 
 この台帳が保護するのは切替時に存在するGoogle identityと、その後に観測する
-identityである。切替前に削除済みで記録がない古いGoogle subjectの所有者を
+identityである。切替前に正規soft delete済みの難読化行はseedから除外し、
+勝手に元subjectとして登録しない。未知ACK後も台帳やAuth行を削除して
+取り消しを偽装しない。Google再送でsessionが増える場合も本人UIDは維持する。
+切替前に削除済みで記録がない古いGoogle subjectの所有者を
 推測で復元しない。既存の会社・本人IDや過去IPAを変更しない。

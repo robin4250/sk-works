@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 const native=!!process.env.SKO_APPLE_ENROLLMENT_NATIVE_URL;
 const Runtime=native?(await import('./native_apple_enrollment_native_runtime.mjs')).NativeRuntime:
  (await import(process.env.SKO_APPLE_ENROLLMENT_PGLITE)).PGlite;
@@ -9,7 +10,7 @@ const a='00000000-0000-0000-0000-000000000001',b='00000000-0000-0000-0000-000000
 async function fixture(fn){const db=new Runtime();try{
  await db.exec(`do $$declare r text;begin foreach r in array array['anon','authenticated','service_role','supabase_auth_admin'] loop
   if not exists(select 1 from pg_roles where rolname=r) then execute format('create role %I',r);end if;end loop;end$$;
-  create schema auth;create table auth.users(id uuid primary key,raw_user_meta_data jsonb default '{}'::jsonb);
+  create schema auth;create table auth.users(id uuid primary key,raw_user_meta_data jsonb default '{}'::jsonb,deleted_at timestamptz);
   create table auth.identities(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users on delete cascade,
    provider text not null,provider_id text not null,identity_data jsonb not null,unique(provider,provider_id));`);
  await db.exec(readFileSync(new URL('./owner-policy.sql.review-only',import.meta.url),'utf8'));
@@ -84,6 +85,31 @@ test('later Auth transaction failure rolls new Google identity and protection ba
 test('later token-hook rollout drift does not disable the activated identity-write guard',()=>fixture(async f=>{
  await f.identity(a,'google','google-a');await f.enable();await f.db.exec('update apple_owner_policy.rollout set enabled=false');
  const before=await f.state();await assert.rejects(f.identity(a,'apple','unknown'),/verification unavailable/);assert.deepEqual(await f.state(),before);
+}));
+test('official soft-delete metadata clearing and exact subject obfuscation retain original ownership',()=>fixture(async f=>{
+ await f.identity(a,'google','google-a');await f.enable();
+ await f.db.query('insert into apple_owner_policy.subject_permits values($1,$2)',['permitted',a]);await f.identity(a,'apple','permitted');
+ await f.db.query('update auth.users set deleted_at=clock_timestamp() where id=$1',[a]);
+ await f.db.query("update auth.identities set identity_data='{}'::jsonb where user_id=$1",[a]);
+ for(const i of await f.q('select id,provider,provider_id from auth.identities where user_id=$1',[a])){
+  const obfuscated=createHash('sha256').update(a+i.provider+':'+i.provider_id).digest('base64url');
+  await f.db.query('update auth.identities set provider_id=$1 where id=$2',[obfuscated,i.id]);
+ }
+ assert.deepEqual((await f.q('select provider_id,user_id from apple_google_protection.google_subject_owners')),[{provider_id:'google-a',user_id:a}]);
+ assert.equal((await f.q('select expected_user_id from apple_owner_policy.subject_permits'))[0].expected_user_id,a);
+ await assert.rejects(f.identity(b,'google','google-a'),/verification unavailable/);await assert.rejects(f.identity(b,'apple','permitted'),/verification unavailable/);
+}));
+test('user metadata deleted_at cannot authorize soft-delete cleanup or remove protection',()=>fixture(async f=>{
+ await f.identity(a,'google','google-a');await f.enable();
+ await f.db.query('update auth.users set raw_user_meta_data=$1 where id=$2',[JSON.stringify({deleted_at:'2026-10-26T00:00:00Z',protected:false}),a]);
+ const before=await f.state();await assert.rejects(f.db.query("update auth.identities set identity_data='{}'::jsonb where user_id=$1",[a]),/verification unavailable/);assert.deepEqual(await f.state(),before);
+}));
+test('already soft-deleted obfuscated identities are not mistaken for live Google subjects during seed',()=>fixture(async f=>{
+ await f.identity(a,'google','old-google');await f.identity(b,'google','live-google');
+ await f.db.query('update auth.users set deleted_at=clock_timestamp() where id=$1',[a]);
+ await f.db.query("update auth.identities set identity_data='{}'::jsonb,provider_id='previously-obfuscated' where user_id=$1",[a]);
+ const result=(await f.enable())[0].r;assert.equal(result.google_identities_protected,1);
+ assert.deepEqual((await f.q('select provider_id,user_id from apple_google_protection.google_subject_owners')),[{provider_id:'live-google',user_id:b}]);
 }));
 test('Native Google/Apple same-UID race never commits an unapproved mixed identity',{skip:!native},()=>fixture(async f=>{
  await f.enable();const peer=await f.db.peer();

@@ -52,7 +52,7 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
  })}
  ctx:=oidc.ClientContext(context.Background(),client)
  type tokenResult struct{AccessToken string `json:"access_token"`;RefreshToken string `json:"refresh_token"`;User struct{ID string `json:"id"`} `json:"user"`}
- for _,name:=range []string{"existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","unlink retains protection and Google can resume same UID"}{t.Run(name,func(t *testing.T){
+ for _,name:=range []string{"existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID"}{t.Run(name,func(t *testing.T){
   models.TruncateAll(api.db)
   require.NoError(t,api.db.RawQuery("truncate apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout,apple_google_protection.rollout,apple_google_protection.google_subject_owners,apple_google_protection.company_snapshot").Exec())
   createUser:=func(email,googleSub string)*models.User{
@@ -101,6 +101,20 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    var old string;require.NoError(t,api.db.RawQuery("select user_id::text from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&old));require.Equal(t,owner.ID.String(),old);return
   }
   original:=result(idToken("google","existing-google-sub",string(owner.Email),"",false));require.Equal(t,owner.ID.String(),original.User.ID)
+  if name=="official soft deletion keeps old subject ownership"{
+   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('registered-old-subject',?)",owner.ID).Exec())
+   i,e:=models.NewIdentity(owner,"apple",map[string]interface{}{"sub":"registered-old-subject","email":string(owner.Email),"email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(i))
+   realEmail:=string(owner.Email)
+   require.NoError(t,api.db.Transaction(func(tx *storage.Connection)error{if e:=owner.SoftDeleteUser(tx);e!=nil{return e};return owner.SoftDeleteUserIdentities(tx)}))
+   before:=counts();denied(idToken("google","existing-google-sub",realEmail,"",false),before);denied(idToken("apple","registered-old-subject",realEmail,"",false),before)
+   var old string;require.NoError(t,api.db.RawQuery("select user_id::text from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&old));require.Equal(t,owner.ID.String(),old);return
+  }
+  if name=="lost Google response retry keeps original UID"{
+   // The earlier successful response could have been lost before adoption.
+   // A credential retry may issue a session but must not create another person.
+   retry:=result(idToken("google","existing-google-sub",string(owner.Email),"",false));require.Equal(t,original.User.ID,retry.User.ID)
+   var n int;require.NoError(t,api.db.RawQuery("select count(*)from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&n));require.Equal(t,1,n)
+  }
   if name=="returning Google and primary password remain usable"{
    password:=result(call("/token?grant_type=password",map[string]interface{}{"email":string(owner.Email),"password":"fixture-primary-password"},""));require.Equal(t,owner.ID.String(),password.User.ID)
   }else if name=="same-UID enrolled native Apple admitted"{
@@ -110,7 +124,7 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    require.NoError(t,api.db.RawQuery("delete from auth.identities where user_id=? and provider='google'",owner.ID).Exec())
    before:=counts();denied(idToken("apple","unregistered-after-unlink",string(owner.Email),"",false),before)
    resumed:=result(idToken("google","existing-google-sub",string(owner.Email),"",false));require.Equal(t,owner.ID.String(),resumed.User.ID)
-  }else{
+  }else if name!="lost Google response retry keeps original UID"{
    if name=="user metadata cannot remove protection"{
     bytes,_:=json.Marshal(map[string]interface{}{"data":map[string]interface{}{"protected":false,"provider":"none","providers":[]string{}}})
     update:=httptest.NewRequest(http.MethodPut,"http://localhost/user",strings.NewReader(string(bytes)));update.Header.Set("Content-Type","application/json");update.Header.Set("Authorization","Bearer "+original.AccessToken);w:=httptest.NewRecorder();api.handler.ServeHTTP(w,update);require.Equal(t,http.StatusOK,w.Code)
