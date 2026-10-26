@@ -83,13 +83,13 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    before:=counts();denied(idToken("apple","unknown-apple","fresh@example.test","",false),before);return
   }
   if name=="reverse Google automatic merge denied"{
-   owner:=createUser("apple-first@example.test","");require.NoError(t,api.db.RawQuery("update auth.users set raw_app_meta_data='{\"provider\":\"apple\",\"providers\":[\"apple\"]}'::jsonb where id=?",owner.ID).Exec());i,e:=models.NewIdentity(owner,"apple",map[string]interface{}{"sub":"apple-first","email":owner.Email,"email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(i));enable()
-   before:=counts();denied(idToken("google","new-google",owner.Email,"",false),before);return
+   owner:=createUser("apple-first@example.test","");require.NoError(t,api.db.RawQuery("update auth.users set raw_app_meta_data='{\"provider\":\"apple\",\"providers\":[\"apple\"]}'::jsonb where id=?",owner.ID).Exec());i,e:=models.NewIdentity(owner,"apple",map[string]interface{}{"sub":"apple-first","email":string(owner.Email),"email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(i));enable()
+   before:=counts();denied(idToken("google","new-google",string(owner.Email),"",false),before);return
   }
   owner:=createUser("existing-google@example.test","existing-google-sub");enable();originalSnapshot:=snapshot(owner)
   if name=="token-hook flag drift retains write guard"{require.NoError(t,api.db.RawQuery("update apple_owner_policy.rollout set enabled=false").Exec())}
   if name=="PKCE identity-stage commit is now rejected"{
-   before:=counts();data:=&provider.UserProvidedData{Metadata:&provider.Claims{Subject:"unregistered-pkce",Email:owner.Email,EmailVerified:true},Emails:[]provider.Email{{Email:owner.Email,Primary:true,Verified:true}}}
+   before:=counts();data:=&provider.UserProvidedData{Metadata:&provider.Claims{Subject:"unregistered-pkce",Email:string(owner.Email),EmailVerified:true},Emails:[]provider.Email{{Email:string(owner.Email),Primary:true,Verified:true}}}
    req:=httptest.NewRequest(http.MethodGet,"/callback?code=synthetic-pkce",nil)
    err:=api.db.Transaction(func(tx *storage.Connection)error{_,_,e:=api.createAccountFromExternalIdentity(tx,req,data,"apple",false);return e})
    require.Error(t,err,"write-stage guard must reject before the earlier PKCE identity transaction can commit");require.Equal(t,before,counts());require.Equal(t,originalSnapshot,snapshot(owner));return
@@ -97,25 +97,25 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
   if name=="deleted Google subject cannot become new UID"{
    require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('registered-old-subject',?)",owner.ID).Exec())
    require.NoError(t,api.db.RawQuery("delete from auth.users where id=?",owner.ID).Exec());before:=counts()
-   denied(idToken("google","existing-google-sub",owner.Email,"",false),before);denied(idToken("apple","registered-old-subject",owner.Email,"",false),before)
+   denied(idToken("google","existing-google-sub",string(owner.Email),"",false),before);denied(idToken("apple","registered-old-subject",string(owner.Email),"",false),before)
    var old string;require.NoError(t,api.db.RawQuery("select user_id::text from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&old));require.Equal(t,owner.ID.String(),old);return
   }
-  original:=result(idToken("google","existing-google-sub",owner.Email,"",false));require.Equal(t,owner.ID.String(),original.User.ID)
+  original:=result(idToken("google","existing-google-sub",string(owner.Email),"",false));require.Equal(t,owner.ID.String(),original.User.ID)
   if name=="returning Google and primary password remain usable"{
-   password:=result(call("/token?grant_type=password",map[string]interface{}{"email":owner.Email,"password":"fixture-primary-password"},""));require.Equal(t,owner.ID.String(),password.User.ID)
+   password:=result(call("/token?grant_type=password",map[string]interface{}{"email":string(owner.Email),"password":"fixture-primary-password"},""));require.Equal(t,owner.ID.String(),password.User.ID)
   }else if name=="same-UID enrolled native Apple admitted"{
    require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('verified-native-subject',?)",owner.ID).Exec())
    linked:=result(idToken("apple","verified-native-subject","private-relay@example.test",original.AccessToken,true));require.Equal(t,owner.ID.String(),linked.User.ID)
   }else if name=="unlink retains protection and Google can resume same UID"{
    require.NoError(t,api.db.RawQuery("delete from auth.identities where user_id=? and provider='google'",owner.ID).Exec())
-   before:=counts();denied(idToken("apple","unregistered-after-unlink",owner.Email,"",false),before)
-   resumed:=result(idToken("google","existing-google-sub",owner.Email,"",false));require.Equal(t,owner.ID.String(),resumed.User.ID)
+   before:=counts();denied(idToken("apple","unregistered-after-unlink",string(owner.Email),"",false),before)
+   resumed:=result(idToken("google","existing-google-sub",string(owner.Email),"",false));require.Equal(t,owner.ID.String(),resumed.User.ID)
   }else{
    if name=="user metadata cannot remove protection"{
     bytes,_:=json.Marshal(map[string]interface{}{"data":map[string]interface{}{"protected":false,"provider":"none","providers":[]string{}}})
     update:=httptest.NewRequest(http.MethodPut,"http://localhost/user",strings.NewReader(string(bytes)));update.Header.Set("Content-Type","application/json");update.Header.Set("Authorization","Bearer "+original.AccessToken);w:=httptest.NewRecorder();api.handler.ServeHTTP(w,update);require.Equal(t,http.StatusOK,w.Code)
    }
-   before:=counts();denied(idToken("apple","unknown-apple",owner.Email,"",false),before)
+   before:=counts();denied(idToken("apple","unknown-apple",string(owner.Email),"",false),before)
   }
   require.Equal(t,originalSnapshot,snapshot(owner),"existing UID, email, profile fields, Google identity and company preserved")
   // Beyond getUser: a rejected linking attempt must not invalidate the original
