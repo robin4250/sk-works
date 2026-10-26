@@ -1,0 +1,16 @@
+create role anon; create role authenticated; create role service_role;
+create schema auth; create schema private;
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.actor',true),'')::uuid$$;
+create function auth.jwt() returns jsonb language sql stable as $$select jsonb_build_object('role',coalesce(nullif(current_setting('test.role',true),''),'authenticated'),'is_anonymous',coalesce(nullif(current_setting('test.anonymous',true),''),'false'),'session_id',nullif(current_setting('test.session',true),''))$$;
+create function private.account_access_allowed() returns boolean language sql stable as $$select auth.uid() is not null$$;
+create function private.account_deletion_barrier_key(uuid) returns bigint language sql immutable as $$select hashtextextended($1::text,0)$$;
+create table auth.users(id uuid primary key,is_anonymous boolean default false,banned_until timestamptz);
+create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
+create table public.company_members(company_id uuid,user_id uuid,role text);
+create table public.workers(id uuid primary key,company_id uuid);
+create table public.sites(id uuid primary key,company_id uuid);
+insert into auth.users(id) values ('00000000-0000-0000-0000-000000000001'),('00000000-0000-0000-0000-000000000002');
+insert into auth.sessions(id,user_id) values ('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000001');
+insert into public.company_members values ('00000000-0000-0000-0000-000000000021','00000000-0000-0000-0000-000000000001','owner'),('00000000-0000-0000-0000-000000000021','00000000-0000-0000-0000-000000000002','manager');
+insert into public.workers values ('00000000-0000-0000-0000-000000000031','00000000-0000-0000-0000-000000000021'),('00000000-0000-0000-0000-000000000032','00000000-0000-0000-0000-000000000022');
+insert into public.sites values ('00000000-0000-0000-0000-000000000041','00000000-0000-0000-0000-000000000021'),('00000000-0000-0000-0000-000000000042','00000000-0000-0000-0000-000000000022');

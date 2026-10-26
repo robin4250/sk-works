@@ -33,4 +33,15 @@ class ShiftDraftRequest {
   }
 
   bool get endsNextDay => !holiday && endMinute < startMinute;
+
+  Map<String, Object?> toJson() {
+    final problem = validate();
+    if (problem != null) throw FormatException(problem);
+    final month = workDate.month.toString().padLeft(2, '0');
+    final day = workDate.day.toString().padLeft(2, '0');
+    return {'worker_id': workerId, 'work_date': '${workDate.year}-$month-$day',
+      'site_id': siteId, 'holiday': holiday, 'night': night,
+      'start_minute': startMinute, 'end_minute': endMinute,
+      'check_late': checkLate, 'check_early': checkEarly, 'revision': revision};
+  }
 }
