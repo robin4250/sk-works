@@ -1,0 +1,24 @@
+name: Photo action guidance
+on:
+  pull_request:
+    paths:
+      - 'lib/widgets/input_step_heading.dart'
+      - 'lib/features/attendance/saved_capture_photo_status.dart'
+      - 'lib/features/attendance/attendance_verification_page.dart'
+      - 'lib/features/attendance/route_journey_capture_page.dart'
+      - 'test/saved_capture_photo_status_test.dart'
+      - '.github/workflows/photo-action-guidance.yml'
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/widgets/input_step_heading.dart lib/features/attendance/saved_capture_photo_status.dart lib/features/attendance/attendance_verification_page.dart lib/features/attendance/route_journey_capture_page.dart test/saved_capture_photo_status_test.dart
+      - run: flutter test test/saved_capture_photo_status_test.dart test/route_journey_completion_ui_test.dart test/route_journey_capture_recovery_test.dart

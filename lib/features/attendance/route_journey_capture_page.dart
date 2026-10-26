@@ -1,4 +1,5 @@
 import '../../widgets/input_step_heading.dart';
+import 'saved_capture_photo_status.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
@@ -626,6 +627,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
     SkoLanguageController.watch(context);
     FloatingHelpController.setContext(featureKey: 'attendance');
     final workspace = _workspace;
+    final savedForStop = _saved != null && _saved!['route_stop_id'] == _stopId;
+    final photoSaved = _pending == null && savedForStop &&
+        savedCapturePhotoRegistered(_saved);
+    final photoMode = workspace?['verification_mode'] == 'location_photo';
     final stops = workspace?['stops'] is List
         ? (workspace!['stops'] as List).whereType<Map>().toList()
         : <Map>[];
@@ -754,7 +759,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                   if (_visitsEnabled &&
                       _pending == null &&
                       workspace?['archived'] != true) ...[
-                    const InputStepHeading(number: '②', title: '到着・写真を記録'),
+                    InputStepHeading(number: '②', title: '到着・写真を記録',
+                      status: photoMode && photoSaved && _saved!['visit_kind'] == 'start'
+                          ? '写真登録済み' : null,
+                      complete: photoMode && photoSaved && _saved!['visit_kind'] == 'start'),
                     // A shift starts with arrival enabled. After arrival,
                     // only the move/leave action is enabled for this visit.
                     FilledButton.icon(
@@ -803,7 +811,10 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
                     ),
                   ] else if (workspace?['archived'] != true || _pending != null) ...[
                     InputStepHeading(number: '②', title: _pending != null
-                      ? '同じ現場記録の保存状況を再確認' : '途中現場の写真・位置情報を記録'),
+                      ? '同じ現場記録の保存状況を再確認' : '途中現場の写真・位置情報を記録',
+                      status: !photoMode ? null : _pending != null ? '保存未確認'
+                          : photoSaved ? '写真登録済み' : null,
+                      complete: photoMode && photoSaved),
                     FilledButton.icon(
                       onPressed:
                           _busy ||
@@ -861,3 +872,4 @@ class _RouteJourneyCapturePageState extends State<RouteJourneyCapturePage> {
     );
   }
 }
+

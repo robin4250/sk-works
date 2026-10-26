@@ -1,4 +1,5 @@
 import '../../widgets/input_step_heading.dart';
+import 'saved_capture_photo_status.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -567,7 +568,12 @@ class _AttendanceVerificationPageState
                   InputStepHeading(number: '③', title: _savedCaptureVerification != null
                     ? '登録状況を確認して日報へ' : _pendingCaptureDraft != null
                     ? '同じ写真・記録の保存状況を再確認' : _mode == 'location_photo'
-                    ? '写真を撮影し、位置情報と一緒に登録' : '内容を確認して登録'),
+                    ? '写真を撮影し、位置情報と一緒に登録' : '内容を確認して登録',
+                    status: _mode != 'location_photo' ? null : _pendingCaptureDraft != null
+                      ? '保存未確認' : _savedCaptureVerification == null ? null
+                      : savedCapturePhotoRegistered(_savedCaptureVerification) ? '写真登録済み' : '写真未登録',
+                    complete: _mode == 'location_photo' && _pendingCaptureDraft == null &&
+                      savedCapturePhotoRegistered(_savedCaptureVerification)),
                   FilledButton.icon(
                     onPressed: _saving || (_pendingCaptureDraft == null && _savedCaptureVerification == null && (
                             _workerId == null ||
@@ -1270,4 +1276,5 @@ class _ReadOnlySelectionCard extends StatelessWidget {
     );
   }
 }
+
 
