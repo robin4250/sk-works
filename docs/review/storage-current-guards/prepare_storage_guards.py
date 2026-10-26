@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 
 FEATURE_SHA = "d01576e8687e7ce053776a64ae51c0603408099dc1e2c3d7752afbff0f7a51db"
@@ -81,8 +82,10 @@ def restore(kind, source_root, before_policies, post_policies, routines, catalog
         body = "-- MANUAL EMERGENCY ONLY: this deliberately reopens the original manager feature-OFF read.\nalter policy worker_document_photo_managed_read on storage.objects using (" + old["qual"] + ");\n"
     elif kind == "live":
         raw = source_body(source_root, "storage_session_guard.sql.review-only", LIVE_SHA)
-        delimiter = "as $$\n"
-        expected_body = "\n" + raw.split(delimiter, 1)[1].split("\n$$;", 1)[0] + "\n"
+        match = re.search(r"\bas \$\$(.*?)\$\$;", raw, re.S)
+        if match is None:
+            raise ValueError("reviewed_live_function_delimiter_drift")
+        expected_body = match.group(1)
         md5 = hashlib.md5(expected_body.encode()).hexdigest()
         body = """do $unused$ begin
  if (select count(*) from private.storage_session_guard_rollout)<>1 or exists(select 1 from private.storage_session_guard_rollout where enabled) then raise exception 'storage_live_restore_requires_off';end if;
