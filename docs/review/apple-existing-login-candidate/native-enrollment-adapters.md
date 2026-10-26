@@ -60,7 +60,7 @@ abort. Snapshot context and its fingerprint are never public response fields.
 
 ## Verification and remaining boundaries
 
-- Existing 13 real-RSA/synthetic-port enrollment cases and 10 primary-password
+- Existing 13 real-RSA/synthetic-port enrollment cases and 11 primary-password
   port cases remain successful, including the new pre-exchange isolation gate.
 - Nine SQL HTTP-port cases verify selected actor/SID, wrong/expired identity,
   server credentials, exact snapshot serialization, rebinding, response limits
@@ -68,14 +68,16 @@ abort. Snapshot context and its fingerprint are never public response fields.
 - Twelve isolated PostgreSQL WASM cases execute the exact SQL, testing OFF/ACL,
   actual service database role, snapshot/credential/account restrictions,
   same-UID permits, replay, completion, hold and transaction rollback on audit
-  failure. WASM fixtures are not concurrent Native PostgreSQL or hosted Auth.
+  failure. A separate Native PostgreSQL 17 job executes the same twelve cases plus a
+  real two-connection same-subject race: exactly one reservation/permit/audit
+  commits. The fixed localhost fixture URL is checked before any connection.
+  This is not a hosted Auth enrollment test.
 
 The earlier official GoTrue v2.197.0 native-link proof is retained unchanged. It
 does not yet connect this new SQL lifecycle or prove hosted refresh-session
 preservation for fresh-password exchange. Before deployment, this candidate
 still needs current schema/catalog guards and the existing complete account/
-company access-policy review; Native PostgreSQL concurrency and current-version
-Auth integration; reviewed unused restoration and retention/recovery operations;
+company access-policy review; current-version Auth integration of this new lifecycle; reviewed unused restoration and retention/recovery operations;
 the trusted exact-bearer verifier and native-link HTTP adapter connected to a
 bounded authenticated endpoint; hosted native-only/provider/hook and password
 session conditions; and the original Google UID/company/session/Face ID tested
