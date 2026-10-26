@@ -117,7 +117,13 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    }
    before:=counts();denied(idToken("apple","unknown-apple",string(owner.Email),"",false),before)
   }
-  require.Equal(t,originalSnapshot,snapshot(owner),"existing UID, email, profile fields, Google identity and company preserved")
+  if name=="unlink retains protection and Google can resume same UID"{
+   // Explicit unlink removed the identity row; a new row ID is legitimate on
+   // relink. The person UID, provider subject, profile and company must persist.
+   var before,after map[string]interface{};require.NoError(t,json.Unmarshal([]byte(originalSnapshot),&before));require.NoError(t,json.Unmarshal([]byte(snapshot(owner)),&after))
+   for _,state:=range []map[string]interface{}{before,after}{for _,value:=range state["google"].([]interface{}){delete(value.(map[string]interface{}),"id")}}
+   require.Equal(t,before,after)
+  }else{require.Equal(t,originalSnapshot,snapshot(owner),"existing UID, email, profile fields, Google identity and company preserved")}
   // Beyond getUser: a rejected linking attempt must not invalidate the original
   // refresh credential used by the existing app/Face ID path. No Face ID hardware
   // or hosted single-session claim is made by this fixture.
