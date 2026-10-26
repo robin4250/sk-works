@@ -2,6 +2,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 import 'attendance_work_date.dart';
+import '../daily_reports/daily_report_company_allowance_selection.dart';
+import 'worker_attendance_registered_allowances.dart';
 
 class AttendanceWorker {
   const AttendanceWorker({required this.id, required this.name});
@@ -24,6 +26,7 @@ class WorkerAttendanceDay {
     this.hasHolidayWork = false,
     this.allowanceYen = 0,
     this.allowanceNames = const <String>[],
+    this.companyAllowanceSelections = const <DailyReportCompanyAllowanceSelection>[],
     this.allowanceUnits = const <String, String>{},
     this.paidLeave = false,
     this.paidLeaveOrdinal = 0,
@@ -45,6 +48,12 @@ class WorkerAttendanceDay {
   final bool hasHolidayWork;
   final int allowanceYen;
   final List<String> allowanceNames;
+  final List<DailyReportCompanyAllowanceSelection> companyAllowanceSelections;
+
+  String allowanceDisplayText(String name) =>
+      companyAllowanceSelections.any((item) => item.nameSnapshot == name)
+          ? name
+          : '${name}1${allowanceUnits[name] ?? "回"}';
   final Map<String, String> allowanceUnits;
   final bool paidLeave;
   final int paidLeaveOrdinal;
@@ -214,12 +223,26 @@ class WorkerAttendanceSheetRepository {
     final attendanceRows = await _client
         .from('attendance_entries')
         .select(
-          'id, work_date, site_id, base_man_days, work_category, overtime_hours, early_hours, night_hours, allowance_amount, allowance_names, sites(name)',
+          'id, source_report_id, work_date, site_id, base_man_days, work_category, overtime_hours, early_hours, night_hours, allowance_amount, allowance_names, sites(name)',
         )
         .eq('worker_id', targetWorkerId)
         .gte('work_date', startText)
         .lt('work_date', endText)
         .order('work_date');
+
+    final reportIds = <String>{
+      for (final row in attendanceRows)
+        if (row['source_report_id'] is String)
+          row['source_report_id'] as String,
+    };
+    final registered = reportIds.isEmpty
+        ? <String, List<DailyReportCompanyAllowanceSelection>>{}
+        : workerAttendanceRegisteredAllowances(
+            await _client.from('daily_report_workers')
+                .select('report_id,worker_id,company_allowance_selections')
+                .eq('worker_id', targetWorkerId)
+                .inFilter('report_id', reportIds.toList()),
+            reportIds: reportIds, workerId: targetWorkerId);
 
     final verificationRows = await _client
         .from('attendance_verifications')
@@ -253,6 +276,19 @@ class WorkerAttendanceSheetRepository {
       draft.earlyHours += _number(row['early_hours']);
       draft.nightHours += _number(row['night_hours']);
       draft.allowanceYen += (row['allowance_amount'] as num?)?.toInt() ?? 0;
+      for (final selected in registered[row['source_report_id']] ??
+          const <DailyReportCompanyAllowanceSelection>[]) {
+        if (!draft.companyAllowanceSelections.any((item) =>
+            item.key == selected.key &&
+            item.registrationVersion == selected.registrationVersion &&
+            item.generation == selected.generation &&
+            item.nameSnapshot == selected.nameSnapshot)) {
+          draft.companyAllowanceSelections.add(selected);
+        }
+        if (!draft.allowanceNames.contains(selected.nameSnapshot)) {
+          draft.allowanceNames.add(selected.nameSnapshot);
+        }
+      }
       final allowanceNames = row['allowance_names'];
       if (allowanceNames is List) {
         for (final value in allowanceNames) {
@@ -387,6 +423,7 @@ class _DayDraft {
   bool hasHolidayWork = false;
   int allowanceYen = 0;
   final List<String> allowanceNames = <String>[];
+  final List<DailyReportCompanyAllowanceSelection> companyAllowanceSelections = [];
   bool paidLeave = false;
   int paidLeaveOrdinal = 0;
   double paidLeaveRemaining = 0;
@@ -415,9 +452,11 @@ class _DayDraft {
         hasHolidayWork: hasHolidayWork,
         allowanceYen: allowanceYen,
         allowanceNames: List<String>.unmodifiable(allowanceNames),
+        companyAllowanceSelections: List.unmodifiable(companyAllowanceSelections),
         allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),
         paidLeave: paidLeave,
         paidLeaveOrdinal: paidLeaveOrdinal,
         paidLeaveRemaining: paidLeaveRemaining,
       );
 }
+
