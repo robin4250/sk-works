@@ -348,7 +348,7 @@ try{
 
  phase='ordinary-highest-management-real-03-04-05-install';
  await exec('alter table company_common_allowance_private.items add column if not exists position integer default 0');
- const managementRoot=resolve(candidateRoot,'../management-registered-allowances-candidate');
+ const managementRoot=candidateRoot+'/../management-registered-allowances-candidate';
  for(const row of JSON.parse(await readFile(managementRoot+'/native-reader-sources.json','utf8'))){eq(md5(dbBody(row.definition)),row.source_md5,'Exact observed management options reader');await exec(row.definition);}
  await exec("create function public.read_company_registered_allowance_labels(p_company_id uuid) returns jsonb language sql stable set search_path='' as $$select company_common_allowance_private.registered_labels(p_company_id)$$");
  await exec(await readFile(managementRoot+'/management-registered-allowances.sql.review-only','utf8'));
