@@ -16,13 +16,15 @@ export const readPolicy=s=>one(s,'SELECT * FROM policy WHERE id=1');
 export function transitionPolicy(storage,{expectedRevision,action,reason,now}){
  // Not connected to any public route/RPC method. Future caller must authenticate a Master capability.
  if(!Number.isSafeInteger(expectedRevision)||!Number.isSafeInteger(now)||typeof reason!=='string'||!['enable','rotate','quarantine','release','disable'].includes(action)||!['reviewed_test','operator_review','false_positive','overload'].includes(reason))throw Error('Control rejected');
- return storage.transactionSync(()=>{const p=readPolicy(storage);if(p.revision!==expectedRevision||now<p.clock)throw Error('Policy CAS rejected');
+ return storage.transactionSync(()=>transitionPolicyWithinTransaction(storage,{expectedRevision,action,reason,now}));
+}
+export function transitionPolicyWithinTransaction(storage,{expectedRevision,action,reason,now}){
+ const p=readPolicy(storage);if(p.revision!==expectedRevision||now<p.clock)throw Error('Policy CAS rejected');
   if(one(storage,'SELECT count(*) AS n FROM audit').n>=1000)throw Error('Audit budget unavailable');
   const revision=p.revision+1,epoch=p.epoch+1,generation=action==='rotate'?p.generation+1:p.generation;
   if(revision>1000000||epoch>1000000||generation>1000000)throw Error('Policy bounds');
   storage.sql.exec('UPDATE policy SET revision=?,epoch=?,generation=?,enabled=?,quarantined=?,clock=? WHERE id=1',revision,epoch,generation,action==='enable'?1:action==='disable'?0:p.enabled,action==='quarantine'?1:action==='release'?0:p.quarantined,now);
   storage.sql.exec('INSERT INTO audit VALUES(?,?,?,?)',revision,action,reason,now);return readPolicy(storage);
- });
 }
 function refreshDay(storage,now){
  const p=readPolicy(storage),day=new Date(now).toISOString().slice(0,10);if(now<p.clock)throw Error('Clock regression');

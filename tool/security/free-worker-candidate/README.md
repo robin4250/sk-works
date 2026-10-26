@@ -5,6 +5,11 @@ It creates no Cloudflare account, deployment, DNS change, paid plan, external
 delivery or production DB mutation. Existing build20/IPA and attendance second
 password behavior are untouched. No production DB/API key is configured.
 
+The companion `MANAGEMENT.md` adds internally verified signed management/recovery,
+signed management-audit/anchor/retention helpers and actual runtime tests. These
+are still not connected to a real issuer or public management endpoint. The
+original observation/outbox path remains distinct from that signed control chain.
+
 ## Implemented boundary
 
 - `src/worker.mjs`: exact synthetic hostname/GET/path routing. Query, unknown
