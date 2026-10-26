@@ -1,0 +1,418 @@
+{
+  "main": "74d4c2f578e26ca1f7f21628f19a1da6b2fdeee9",
+  "files": [
+    {
+      "path": "tool/security/storage_session_guard.sql.review-only",
+      "git_blob": "d518681ab5bd77b1efbefb0cb6a7c100439adf27",
+      "sha256": "3ba6741327067f4af15ee7169a6e844d60dbb3224885d576995e63b8d94b8f6b",
+      "main_blob": "d518681ab5bd77b1efbefb0cb6a7c100439adf27",
+      "matches": true
+    },
+    {
+      "path": "tool/security/storage_session_catalog.json",
+      "git_blob": "de1493a0883fa00cfc1b93f5578dfafb5d2b3541",
+      "sha256": "e752b8c03ab60b6c12f17ac3803c479472ac5aee154faec01d3afa9cb8a4a443",
+      "main_blob": "de1493a0883fa00cfc1b93f5578dfafb5d2b3541",
+      "matches": true
+    },
+    {
+      "path": "tool/security/storage_session_guard_sql_check.mjs",
+      "git_blob": "e9b3a94f8c7fb40c96f30805f44ff02f9e3e46df",
+      "sha256": "9b4d2c2f8f0d149f7fc66dfcc0f5bc6d95c51f6d2985874aaa935a6f4e166c6c",
+      "main_blob": "e9b3a94f8c7fb40c96f30805f44ff02f9e3e46df",
+      "matches": true
+    },
+    {
+      "path": "tool/security/storage_session_http_check.mjs",
+      "git_blob": "7080e8308be2f4aeb8cf6cc66dfa933a0625b09c",
+      "sha256": "5b0a46b9f60a1994960e64782372304105ff9b21b7b79ac5f5d63e892b72753d",
+      "main_blob": "7080e8308be2f4aeb8cf6cc66dfa933a0625b09c",
+      "matches": true
+    },
+    {
+      "path": "tool/security/storage_session_review.md",
+      "git_blob": "e66a523ede164defcb96eaab2f8bc4cb430e61ae",
+      "sha256": "add4027b1fc8562454afd1a0b36b71c04776660c90c600510deb229dc96de72a",
+      "main_blob": "e66a523ede164defcb96eaab2f8bc4cb430e61ae",
+      "matches": true
+    },
+    {
+      "path": "tool/security/storage_session_guard_http_check.mjs",
+      "git_blob": "18c120b2537df995e572a20f32798fe7aecceafe",
+      "sha256": "978b43bf2e5cbc12f36d111cf70326e902b96a4191c7b06378b72f3c6e6a8583",
+      "main_blob": "18c120b2537df995e572a20f32798fe7aecceafe",
+      "matches": true
+    },
+    {
+      "path": "tool/security/storage_session_http_review.md",
+      "git_blob": "3f74d81c99eb57df12e4dae3220b64a876cc959c",
+      "sha256": "a9dc40ba05b0a6ebb80a377d1c63088a86442a8f75077a280cc03be3bc3142b5",
+      "main_blob": "3f74d81c99eb57df12e4dae3220b64a876cc959c",
+      "matches": true
+    },
+    {
+      "path": "tool/security/storage_session_feature_boundary.sql.review-only",
+      "git_blob": "8a9e6a9f47f20568177870e6c2e20d4be9b99522",
+      "sha256": "d01576e8687e7ce053776a64ae51c0603408099dc1e2c3d7752afbff0f7a51db",
+      "main_blob": "8a9e6a9f47f20568177870e6c2e20d4be9b99522",
+      "matches": true
+    },
+    {
+      "path": "tool/security/storage_session_boundary_check.mjs",
+      "git_blob": "adff7b788ba5495e1a5851fd49ea786cb7ad52f0",
+      "sha256": "bed8dbf1e4cb6c2252c406b5d34f10880345c3d72b9982f4af20643d8f906b6c",
+      "main_blob": "adff7b788ba5495e1a5851fd49ea786cb7ad52f0",
+      "matches": true
+    },
+    {
+      "path": "tool/security/storage_session_guard_review.md",
+      "git_blob": "fa15c40eb1063c3c8aa1f920b9e59db039040f87",
+      "sha256": "baadc67a5061acefe9cf55f0db986df97e0642e60580fbd9db19a685ad93bf12",
+      "main_blob": "fa15c40eb1063c3c8aa1f920b9e59db039040f87",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r24_candidate.sql.review-only",
+      "git_blob": "e81cfec68389fa7c31122995f62e85bb2a7d2bc4",
+      "sha256": "6c08bb7043f299dce30437eb463e03a8c3afa886ae2b5a9db577d7e85f298a58",
+      "main_blob": "e81cfec68389fa7c31122995f62e85bb2a7d2bc4",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r22_fixture.mjs",
+      "git_blob": "2187322d000f287e2e78d6fb2df397c5037e10d8",
+      "sha256": "a61121557138b1a8b3a3d14303f309ad63cbb9b5d868f0787d8744ad257ead3e",
+      "main_blob": "2187322d000f287e2e78d6fb2df397c5037e10d8",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r30_candidate.sql.review-only",
+      "git_blob": "93ed585c584b7e64c6d6075190bf99ac16a216a8",
+      "sha256": "9f1e1b1cdd6275b3bd598842f43488e43c4eeb5ebb9358100b6bab9ec79ee90e",
+      "main_blob": "93ed585c584b7e64c6d6075190bf99ac16a216a8",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r29_rollout_review.md",
+      "git_blob": "f46470d214a87a8bf16a2e477b8deffbc65ad9a5",
+      "sha256": "b036d8df52a92d1aec7f88b8f1794796821271ac3b526f79183f1ba95cfe6ebd",
+      "main_blob": "f46470d214a87a8bf16a2e477b8deffbc65ad9a5",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r30_catalog.json",
+      "git_blob": "b711c778f49c6a0ee5028c828cf6e095c303fe64",
+      "sha256": "55aa718b0b7619ff97749c39032faac2edbffd0da1ddc5f5f730c0f74e84a453",
+      "main_blob": "b711c778f49c6a0ee5028c828cf6e095c303fe64",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r20_candidate.sql.review-only",
+      "git_blob": "3486abcccc4bd81745d60f9cd10a1ff31db2edd5",
+      "sha256": "300ba6ab9574612d9e3b3f87a9aa19a166c8e3b1cc41b7849ae07c2caf438ede",
+      "main_blob": "3486abcccc4bd81745d60f9cd10a1ff31db2edd5",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r23_fixture.mjs",
+      "git_blob": "128a85153212acaf79f0c8c6a090260705d4289e",
+      "sha256": "0d32ea254bab3ce0044146c243ef251754e8ca5a508eb4b211a7d1903b828139",
+      "main_blob": "128a85153212acaf79f0c8c6a090260705d4289e",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r30_fixture.mjs",
+      "git_blob": "345ae067361e96b1ac794a62b04017b20935c9da",
+      "sha256": "e06c59fea77c912fa8512f2a805f31305abbaa3510b078f974ec6fafea9d13e5",
+      "main_blob": "345ae067361e96b1ac794a62b04017b20935c9da",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r30_review.md",
+      "git_blob": "afaaa1ad8da24a63bdbc777783ab153f308ee75c",
+      "sha256": "4e9ed7eb1d55a686002cbfaa2f1744f4059e85d61de90ac7cf5724d78fe34443",
+      "main_blob": "afaaa1ad8da24a63bdbc777783ab153f308ee75c",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r25_fixture.mjs",
+      "git_blob": "5e15c96ef95e63be9e73ae2f6c911bde6b121a24",
+      "sha256": "f9dbdbb6abe8970981d000f2c3cc10f0a39967441d5484e94992dc2bf540bce5",
+      "main_blob": "5e15c96ef95e63be9e73ae2f6c911bde6b121a24",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r21_review.md",
+      "git_blob": "488d74ec1869cf64850f28a5aa1c83211be2e672",
+      "sha256": "0162d49a7670eeb8551b4a05589a761176528d06c1dcadb35d001a81a0884142",
+      "main_blob": "488d74ec1869cf64850f28a5aa1c83211be2e672",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r20_catalog.json",
+      "git_blob": "147c5479bfa3622266643bb6cbec26c44dc91100",
+      "sha256": "37058e2a0f99e141ed5aa2968ebf1205d55f266ea214d90fae53d42793e4a4f0",
+      "main_blob": "147c5479bfa3622266643bb6cbec26c44dc91100",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r25_candidate.sql.review-only",
+      "git_blob": "2de1b1fb5d34f39506c51bde795f3e54bae21c05",
+      "sha256": "33fecac31b347926afbfa28ee23515bf8857d3758e69087e3ff69b66949a0256",
+      "main_blob": "2de1b1fb5d34f39506c51bde795f3e54bae21c05",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r23_review.md",
+      "git_blob": "e5702d28e4850ec348981ebabee36aed4a844a59",
+      "sha256": "9ab5fa1b46b856869a3e6a30f6da66d2ca55a8f22daf4c6285ca23b41e51f8ce",
+      "main_blob": "e5702d28e4850ec348981ebabee36aed4a844a59",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r27_review.md",
+      "git_blob": "ff2d3078b698468416218fe17dc5e4e94120d726",
+      "sha256": "8b691b6620d3b6882ee2c19b3b769ec1680f7e0c1b0da8a5c30c4b731bade82e",
+      "main_blob": "ff2d3078b698468416218fe17dc5e4e94120d726",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r23_candidate.sql.review-only",
+      "git_blob": "f6544f24f351791cee243de85f8d89b6850ee2f9",
+      "sha256": "fec9449e12f44ee6401e9ef27bb0ae105f16567b8305e6b984fa38a368db2bf7",
+      "main_blob": "f6544f24f351791cee243de85f8d89b6850ee2f9",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r21_candidate.sql.review-only",
+      "git_blob": "13ef12b144f0becee11dd30989347e2ed851f684",
+      "sha256": "b036bda6e55988241981850aba17a25c89a03636e490304a74b7669ab6ed87a9",
+      "main_blob": "13ef12b144f0becee11dd30989347e2ed851f684",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r21_fixture.mjs",
+      "git_blob": "5cf9cff5788f7a476891775a0100904f21e3b310",
+      "sha256": "aee678821430258003902d955a9dc62a77e9bafaaae148d8c5d923290308d01c",
+      "main_blob": "5cf9cff5788f7a476891775a0100904f21e3b310",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r21_catalog.json",
+      "git_blob": "421b8158d5bd0dea3b36326b5f6862cebce42ed0",
+      "sha256": "7790762cda76f74df7bf66124c5115c22392d4617aa849f0d3791ac10315e845",
+      "main_blob": "421b8158d5bd0dea3b36326b5f6862cebce42ed0",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r19_candidate.sql.review-only",
+      "git_blob": "a1c4dc27e3bd9fa9b076e61e0615ae619e3cacb4",
+      "sha256": "a8f77064eea090a4dc652e3e1e66e69179b4db44db4726b6b01bb8b675b46e0a",
+      "main_blob": "a1c4dc27e3bd9fa9b076e61e0615ae619e3cacb4",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r22_candidate.sql.review-only",
+      "git_blob": "4786ee653d05a4edcf1d52d4024678b6dd34b42b",
+      "sha256": "e751b5834fa092bc3cd2e56b30b94613f384aa39862f4405b2bd4a61c8e6e72c",
+      "main_blob": "4786ee653d05a4edcf1d52d4024678b6dd34b42b",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r26_fixture.mjs",
+      "git_blob": "f827e8cc00532795e4054cba1a4c97c39e66e2a8",
+      "sha256": "816b9784bcec32092481c739d0bed75947f1ad411792e596d684ac41ca341094",
+      "main_blob": "f827e8cc00532795e4054cba1a4c97c39e66e2a8",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r28_catalog.json",
+      "git_blob": "3c19310a1fefbd171e50f97f65d4a8f03386fe7a",
+      "sha256": "dd9efd4edd119b4e2e2b725159ce85386c362c218d27289ac97cdc7040d54146",
+      "main_blob": "3c19310a1fefbd171e50f97f65d4a8f03386fe7a",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r26_catalog.json",
+      "git_blob": "9500a4968c4b7905cddb8699d3385f25cca0bb28",
+      "sha256": "054d6b2e993c208a810c008a569d5117fdcb79e95a872139fd33a549cfeb3601",
+      "main_blob": "9500a4968c4b7905cddb8699d3385f25cca0bb28",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r20_fixture.mjs",
+      "git_blob": "676c906e55357a8a8700f9b4f47597a72cf1cb9e",
+      "sha256": "214d60a240dac3b4e1dfe8e6e0687464ccf45c689ecb5623995332975e3fa04a",
+      "main_blob": "676c906e55357a8a8700f9b4f47597a72cf1cb9e",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r28_candidate.sql.review-only",
+      "git_blob": "6b33233045348dbbe9c65be19ea7dc6baf687968",
+      "sha256": "b7e03e2fcc3483fcf8d14ee2b34fb90595cef81a54fbbf93697460d66f02363c",
+      "main_blob": "6b33233045348dbbe9c65be19ea7dc6baf687968",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r24_review.md",
+      "git_blob": "b33879996092f7c1f195fc2afa6da31443fec981",
+      "sha256": "42a6c41768726fe617498c1666f413b858cb48555da36eec96e0ac25f0e5e285",
+      "main_blob": "b33879996092f7c1f195fc2afa6da31443fec981",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r28_fixture.mjs",
+      "git_blob": "f70e7b0aab3e2d7bebeef42b5225a5eaaf023f54",
+      "sha256": "b2155b6d61a6b3eab2bc2707ac710c465a35c77ebe1190ade94e26f2d8dd7577",
+      "main_blob": "f70e7b0aab3e2d7bebeef42b5225a5eaaf023f54",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r27_fixture.mjs",
+      "git_blob": "0656b92ab87b8585fc424bf9e7ad8b802fa2765b",
+      "sha256": "f9d58ceb0a2b3021e7384e44629b55ea1732c637e7ba2010575089c78fce2b3e",
+      "main_blob": "0656b92ab87b8585fc424bf9e7ad8b802fa2765b",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r20_review.md",
+      "git_blob": "dcf1eb263cc5bfaca84961f8290314e423f03400",
+      "sha256": "31e32bbfffd14b79ff1bb2f6469ca9df12054df9e22173253b5aa24348370255",
+      "main_blob": "dcf1eb263cc5bfaca84961f8290314e423f03400",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r28_review.md",
+      "git_blob": "feab17d43f89658411234689a72edf71e82cd2f1",
+      "sha256": "ad0f6e30300676c3aeff7aafa4c4c34aee630629f0148eb51f8fcd38b9d9b63e",
+      "main_blob": "feab17d43f89658411234689a72edf71e82cd2f1",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r23_catalog.json",
+      "git_blob": "ce9fb52542be06498f74c91eaa3c2203f3ab1635",
+      "sha256": "0d225b4242b8e6b207187db9cf22ea5e074e5d975f9e9062afefc0423f913a93",
+      "main_blob": "ce9fb52542be06498f74c91eaa3c2203f3ab1635",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r25_review.md",
+      "git_blob": "28192151ff9dd9398f53d9ddc21d6710bb0fd49b",
+      "sha256": "e75a56f335b54e364a474e0eeca221ed8a9a4a1e5551a166ffc0c5272466220d",
+      "main_blob": "28192151ff9dd9398f53d9ddc21d6710bb0fd49b",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r19_fixture.mjs",
+      "git_blob": "945be9f6bc450854cfe1497719841c938498fe6b",
+      "sha256": "4a07279de9ee5e4d72075efa994737f419d28a7fad5f6d12901a1447dc611586",
+      "main_blob": "945be9f6bc450854cfe1497719841c938498fe6b",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r24_fixture.mjs",
+      "git_blob": "643548b2113d7e1cb490f44d2976cac6e1038cb0",
+      "sha256": "46fd64fe4b4a7bf17a2f6ad44b14663842a9e5e5924b3bee55ff88f74c9fde3f",
+      "main_blob": "643548b2113d7e1cb490f44d2976cac6e1038cb0",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r26_review.md",
+      "git_blob": "72e5ce9bad0cad9d81dcc4a2023458b7bd670084",
+      "sha256": "53967a3f44dfaede1a64f6f674342dc97274086f78cc69c9cda49b4fce59bce9",
+      "main_blob": "72e5ce9bad0cad9d81dcc4a2023458b7bd670084",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r24_catalog.json",
+      "git_blob": "9750f4423db43a9a7a1d7084175c6310ff07619c",
+      "sha256": "73259c320b0cbdeccdbab15ca12e14a14f3c555bb0f6e1a059bed83f99d86b8b",
+      "main_blob": "9750f4423db43a9a7a1d7084175c6310ff07619c",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r22_catalog.json",
+      "git_blob": "5abd698431550842f8f2b3bab8ca4c3f17fb6ca7",
+      "sha256": "f23cc6e62b0dd20c150ad1d0e543a2ccc88b32b9bf751ab3dd4417ad9881c5b3",
+      "main_blob": "5abd698431550842f8f2b3bab8ca4c3f17fb6ca7",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r19_review.md",
+      "git_blob": "fd794c0367d13aff6753da0ed84eff504b628735",
+      "sha256": "fe3eeecc3295ce4c99c177627aa1a81165fac3a46e5c6c97d55578e3a17d1912",
+      "main_blob": "fd794c0367d13aff6753da0ed84eff504b628735",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r22_review.md",
+      "git_blob": "072defd0b9a4548968efb1fd8604bf4cb3777f8e",
+      "sha256": "95e8a6540169d79a383ce8f10d50274ea20a43fc4f23541896ed89c572a23891",
+      "main_blob": "072defd0b9a4548968efb1fd8604bf4cb3777f8e",
+      "matches": true
+    },
+    {
+      "path": "tool/security/r26_candidate.sql.review-only",
+      "git_blob": "818ccca5c78d2f813354c27181ba02f52e7b5042",
+      "sha256": "0bcdfb5f21a60659cc2d5e5e394043221e44666503d1d015bd089278838458ed",
+      "main_blob": "818ccca5c78d2f813354c27181ba02f52e7b5042",
+      "matches": true
+    },
+    {
+      "path": "tool/security/personnel_rls/live_policy_fixture_20261016.json",
+      "git_blob": "7eab6897016d02c1268851e2650648a4c16484f1",
+      "sha256": "8b52278984d9659042c85c96e89030e4aa8ae88c933e8f5f5768b00a6f3a4309",
+      "main_blob": "7eab6897016d02c1268851e2650648a4c16484f1",
+      "matches": true
+    },
+    {
+      "path": "tool/security/personnel_rls/pg_adapter.mjs",
+      "git_blob": "cff911ee09f683540b5b27f7c0665a7cb0031d39",
+      "sha256": "0ff9f322a7b76ef60a0e017c62f5215b9f15bc2c6887bd3725f6768cc0ccefe0",
+      "main_blob": "cff911ee09f683540b5b27f7c0665a7cb0031d39",
+      "matches": true
+    },
+    {
+      "path": "tool/security/personnel_rls/canonical_read_rpc_fixture.sql",
+      "git_blob": "ee7c868d4b93620437c79be2bf826da091ea8da2",
+      "sha256": "f3fb63e89cf0480fab5234b2b39af4540c70ac6e748ca3e9b81d373e7a6012b3",
+      "main_blob": "ee7c868d4b93620437c79be2bf826da091ea8da2",
+      "matches": true
+    },
+    {
+      "path": "tool/security/personnel_rls/README.md",
+      "git_blob": "db7330a83dcf56df47efdf15bec4bbb74e559f55",
+      "sha256": "e9a8c1263133b5c0ed8edbb28eb47f9f221e427f32ae326269c4df1e7cdb9362",
+      "main_blob": "db7330a83dcf56df47efdf15bec4bbb74e559f55",
+      "matches": true
+    },
+    {
+      "path": "tool/security/personnel_rls/LEGACY_RPC_REVIEW.md",
+      "git_blob": "8e93a714591b139cec976e9d573efc69932203d8",
+      "sha256": "7ef617f8a037b051ac06f957f8dfddeabb8d9244750c89d6b53daa86afcf7afb",
+      "main_blob": "8e93a714591b139cec976e9d573efc69932203d8",
+      "matches": true
+    },
+    {
+      "path": "tool/security/personnel_rls/verify.mjs",
+      "git_blob": "0155c23a549e50947874d34b04e174fec5ca8f19",
+      "sha256": "c0ece6637789219ea352367b5649731aa32f4affdc253c753ff08a467068d97e",
+      "main_blob": "0155c23a549e50947874d34b04e174fec5ca8f19",
+      "matches": true
+    },
+    {
+      "path": "tool/security/personnel_rls/legacy_read_rpc_fixture.json",
+      "git_blob": "b63a7587ff87876ee4a558f1c68c9ea31014c22a",
+      "sha256": "584e9d554107bf1bb1480a75339ba5f08786e133b121702ab6c29d485346711e",
+      "main_blob": "b63a7587ff87876ee4a558f1c68c9ea31014c22a",
+      "matches": true
+    },
+    {
+      "path": "tool/security/personnel_rls/legacy_verify.mjs",
+      "git_blob": "18162d6473ca41c7913a4c81b1051a4dab312869",
+      "sha256": "51681947e7011a7074a1e7ccae4d03dc5e5eba220fc66000448253a68cc8ee7f",
+      "main_blob": "18162d6473ca41c7913a4c81b1051a4dab312869",
+      "matches": true
+    }
+  ]
+}
