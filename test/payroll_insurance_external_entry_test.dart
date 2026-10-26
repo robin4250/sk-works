@@ -43,6 +43,8 @@ void main() {
       expect(find.text(state == 'saved' ? '設定済み（2026-10に適用）'
           : state == 'missing' ? '未設定（この月に適用する設定なし）'
           : '設定状況を確認できません'), findsOneWidget);
+      expect(find.text('適用開始：2026-09'), findsNothing);
+      await t.tap(find.byKey(const ValueKey('insurance-settings-details'))); await t.pumpAndSettle();
       if (state == 'saved') {
         expect(find.text('適用開始：2026-09'), findsOneWidget);
         expect(find.textContaining('2026-04〜2026-06・平均月収 320000円'), findsOneWidget);
@@ -101,3 +103,4 @@ void main() {
     controller.dispose(); await controller.open(); expect(newOpens, 1);
   });
 }
+
