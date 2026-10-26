@@ -60,6 +60,11 @@ try{
  const business=()=>q("select jsonb_build_object('reports',(select jsonb_agg(to_jsonb(r) order by id) from daily_reports r),'workers',(select jsonb_agg(to_jsonb(w) order by report_id,worker_id) from daily_report_workers w),'clocks',(select jsonb_agg(to_jsonb(c) order by id) from attendance_verifications c),'entries',(select jsonb_agg(to_jsonb(e) order by id) from attendance_entries e),'payroll',(select jsonb_agg(to_jsonb(p) order by worker_id,period_start) from payroll_statements p),'invoices',(select jsonb_agg(to_jsonb(i) order by id) from invoices i),'ledger',(select jsonb_agg(to_jsonb(l) order by id) from checkout_shared_hours_private.ledger l),'confirmations',(select jsonb_agg(to_jsonb(c) order by id) from checkout_shared_hours_private.confirmations c),'events',(select jsonb_agg(to_jsonb(e) order by id) from shared_daily_report_private.signature_events e)) v");
  const snapshot=async()=>({...await business(),explicit:await q('select jsonb_agg(to_jsonb(e) order by id) v from explicit_report_finalization_private.events e'),permits:await q('select jsonb_agg(to_jsonb(p) order by report_id) v from explicit_report_finalization_private.permits p')});
  phase='ordinary-default-off-install';
+ const actualSignature=JSON.parse(await readFile(candidateRoot+'/source-originals.json','utf8')).find(x=>x.signature==='private.save_daily_report_signature(uuid,text,text,jsonb)');
+ eq(await q("select md5(prosrc) v from pg_proc where oid='private.save_daily_report_signature(uuid,text,text,jsonb)'::regprocedure"),actualSignature.body_md5,'Fixture retains the actual signature function body');
+ // The inherited installer grants service_role for its separate legacy tests.
+ // Match the captured production ACL before testing the strict new source guard.
+ await exec('revoke execute on function private.save_daily_report_signature(uuid,text,text,jsonb) from service_role');
  const before=await business();await exec(await readFile(candidateRoot+'/explicit-finalization.sql.review-only','utf8'));
  eq(await business(),before,'OFF installation preserves all source and financial rows');
  eq(await q('select count(*)::int v from explicit_report_finalization_private.rollout'),0,'No company activation');
@@ -100,9 +105,12 @@ try{
  for(const wid of [reportWorker,W2])eq(await q("select (detail->>'出勤日数')::numeric v from payroll_statements where company_id=$1 and worker_id=$2 and period_start='2026-10-01'",[A,wid]),'1','Actual salary producer counts one day per participant');
  eq(await q('select count(*)::int v from invoices where company_id=$1 and customer_id=$2 and automatic_calculation is true',[A,customer]),1,'Actual invoice producer creates one customer/month draft');
  const invoice=await q('select to_jsonb(i) v from invoices i where company_id=$1 and customer_id=$2',[A,customer]);eq(invoice.calculation_blocked,false,'Actual invoice is not blocked');eq(invoice.snapshot.sites.some(s=>s.site_id===SITE),true,'Invoice keeps actual site source');
+ const actualSite=invoice.snapshot.sites.find(s=>s.site_id===SITE);
+ eq(actualSite.lines.filter(line=>Number(line.unit_price)===10000).reduce((sum,line)=>sum+Number(line.quantity),0),2,'Actual invoice counts both participant-days once');
+ eq(invoice.grand_total,20000,'Actual source quantity two times explicit synthetic daily rate 10000');
  const settled=await snapshot();await finish();eq(await snapshot(),settled,'Exact lost-result retry duplicates no source, payroll, invoice or final audit');
  eq(await q('select count(*)::int v from explicit_report_finalization_private.permits'),0,'No reusable final-save permit');
- console.log(JSON.stringify({pass:true,checks,native_pg17:true,signature_capture_deferred:true,actual_four_financial_producers:true,actual_invoice_dependency_closure:true,actual_payroll_one_day_per_participant:true,invoice_one_customer_month:true,error_and_early_return_atomic_rollback:true,exact_retry_idempotent:true,synthetic_auth_and_neutral_tax_leave:true,old_document_conversion_and_admin_crud_covered:false,production_changed:false}));
+ console.log(JSON.stringify({pass:true,checks,native_pg17:true,signature_capture_deferred:true,actual_four_financial_producers:true,actual_invoice_non_route_dependencies:true,actual_payroll_one_day_per_participant:true,invoice_one_customer_month:true,error_and_early_return_atomic_rollback:true,exact_retry_idempotent:true,synthetic_auth_and_neutral_tax_leave:true,old_document_conversion_and_admin_crud_covered:false,production_changed:false}));
 `;
  const proof=join(folder,'proof.mjs'),generated=setup+unit+tail;await writeFile(proof,generated);
  if(process.env.SKO_ORDINARY_EXPLICIT_EMIT_ONLY)await writeFile(process.env.SKO_ORDINARY_EXPLICIT_EMIT_ONLY,generated);
