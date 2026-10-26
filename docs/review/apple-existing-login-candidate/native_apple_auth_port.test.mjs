@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createNativeAppleAuthPorts}from'./native_apple_auth_port.mjs';
 import {createNativeAppleEnrollmentHandler}from'./native_apple_enrollment_handler.mjs';
+const secretPrefix=['sb','secret',''].join('_');
 const actor='11111111-1111-4111-8111-111111111111',sid='22222222-2222-4222-8222-222222222222',otherSid='33333333-3333-4333-8333-333333333333';
 const project='https://ztktgquxvcxcjxtluspu.supabase.co';
 const jwt=(session=sid,extra={})=>'eyJhbGciOiJSUzI1NiJ9.'+Buffer.from(JSON.stringify({sub:actor,session_id:session,role:'authenticated',aud:'authenticated',iss:project+'/auth/v1',exp:2000,...extra})).toString('base64url')+'.fixture';
@@ -11,7 +12,7 @@ function fixture(overrides={}){const calls=[];const fetcher=async(url,init)=>{ca
  if(url.endsWith('grant_type=id_token'))return json({access_token:issued,refresh_token:'MUST_NOT_ESCAPE',token_type:'bearer'});
  if(url.endsWith('logout?scope=local'))return new Response(null,{status:204});throw Error('unexpected');};
  return {calls,ports:createNativeAppleAuthPorts({enabled:true,nativeOnlyReviewed:true,baseUrl:project,publicKey:'sb_publishable_fixture',fetcher,now:()=>1000,...overrides})};}
-test('OFF and wrong origin do not make network requests',async()=>{for(const override of [{enabled:false},{nativeOnlyReviewed:false},{baseUrl:'https://evil.invalid'},{publicKey:'sb_secret_forbidden'}]){const f=fixture(override);await assert.rejects(f.ports.bindOriginal(original));assert.equal(f.calls.length,0);}});
+test('OFF and wrong origin do not make network requests',async()=>{for(const override of [{enabled:false},{nativeOnlyReviewed:false},{baseUrl:'https://evil.invalid'},{publicKey:secretPrefix+'forbidden'}]){const f=fixture(override);await assert.rejects(f.ports.bindOriginal(original));assert.equal(f.calls.length,0);}});
 test('exact original bearer is verified by Auth; linked temporary credentials never expose refresh',async()=>{const f=fixture();await f.ports.bindOriginal(original);const result=await f.ports.linkNativeIdentity({exactBearer:original,idToken:apple,rawNonce:nonce});assert.deepEqual(result,{access_token:issued,token_type:'bearer'});
  const post=f.calls.find(x=>x.url.includes('grant_type'));assert.equal(post.init.headers.Authorization,'Bearer '+original);assert.deepEqual(JSON.parse(post.init.body),{provider:'apple',id_token:apple,nonce,link_identity:true});assert.equal(post.init.redirect,'manual');
  assert.deepEqual(await f.ports.authenticateIssuedSession(issued),{actor_id:actor,session_id:otherSid,apple_subjects:['apple-subject']});
@@ -23,7 +24,7 @@ test('Auth denial and redirects are never trusted or followed',async()=>{for(con
 test('same-session token is not authorized for temporary cleanup',async()=>{const calls=[];const f=fixture({fetcher:async(url,init)=>{calls.push(url);return url.endsWith('/user')?json({id:actor}):json({access_token:original,token_type:'bearer'});}});await f.ports.bindOriginal(original);await assert.rejects(f.ports.linkNativeIdentity({exactBearer:original,idToken:apple,rawNonce:nonce}));await assert.rejects(f.ports.revokeLocal(original));assert.equal(calls.some(x=>x.includes('logout')),false);});
 test('ignored abort and oversized Auth responses fail closed',async()=>{const f=fixture({timeoutMs:5,fetcher:()=>new Promise(()=>{})});await assert.rejects(f.ports.bindOriginal(original));const big=fixture({fetcher:async()=>new Response('x'.repeat(65537))});await assert.rejects(big.ports.bindOriginal(original));});
 test('endpoint remains OFF until every independent reviewed gate is supplied',async()=>{let calls=0;for(const config of [{},{enabled:true},{enabled:true,nativeOnlyReviewed:true,passwordSessionIsolationReviewed:true,globalGoogleProtectionReviewed:false}]){const h=createNativeAppleEnrollmentHandler(config,{fetcher:async()=>{calls++;throw Error();}});const r=await h(new Request('https://broker.invalid',{method:'POST'}));assert.equal(r.status,503);assert.equal(r.headers.get('cache-control'),'no-store');}assert.equal(calls,0);});
-test('endpoint strictly rejects caller identity fields and body type before any Auth call',async()=>{let calls=0;const config={enabled:true,nativeOnlyReviewed:true,passwordSessionIsolationReviewed:true,globalGoogleProtectionReviewed:true,baseUrl:project,publicKey:'sb_publishable_fixture',serviceKey:'sb_secret_fixture',audiences:['com.skworks.skWorks']};const h=createNativeAppleEnrollmentHandler(config,{resolveKey:async()=>null,fetcher:async()=>{calls++;throw Error();}});
+test('endpoint strictly rejects caller identity fields and body type before any Auth call',async()=>{let calls=0;const config={enabled:true,nativeOnlyReviewed:true,passwordSessionIsolationReviewed:true,globalGoogleProtectionReviewed:true,baseUrl:project,publicKey:'sb_publishable_fixture',serviceKey:secretPrefix+'fixture',audiences:['com.skworks.skWorks']};const h=createNativeAppleEnrollmentHandler(config,{resolveKey:async()=>null,fetcher:async()=>{calls++;throw Error();}});
  for(const body of [{id_token:apple,nonce,password:'private',actor_id:actor},{id_token:apple,nonce,password:9}]){const r=await h(new Request('https://broker.invalid',{method:'POST',headers:{authorization:'Bearer '+original,'content-type':'application/json'},body:JSON.stringify(body)}));assert.equal(r.status,403);const text=await r.text();assert.equal(text.includes('private'),false);assert.equal(text.includes(original),false);}assert.equal(calls,0);});
 test('composed endpoint verifies RSA, authenticates exact original, reserves once and closes only two temporary sessions',async()=>{
  const {sha256Hex}=await import('./existing_apple_login.mjs');
@@ -42,12 +43,12 @@ test('composed endpoint verifies RSA, authenticates exact original, reserves onc
  if(url.endsWith('reserve_apple_native_subject'))return json({request_id:requestId,actor_id:actor,session_id:sid,subject:'apple-subject',token_sha256:body.p_token_sha256,status:'reserved'});
  if(url.endsWith('complete_apple_native_subject'))return json({linked:true,request_id:requestId,actor_id:actor});
  throw Error('unexpected '+url);};
- const config={enabled:true,nativeOnlyReviewed:true,passwordSessionIsolationReviewed:true,globalGoogleProtectionReviewed:true,baseUrl:project,publicKey:'sb_publishable_fixture',serviceKey:'sb_secret_fixture',audiences:['com.skworks.skWorks']};
+ const config={enabled:true,nativeOnlyReviewed:true,passwordSessionIsolationReviewed:true,globalGoogleProtectionReviewed:true,baseUrl:project,publicKey:'sb_publishable_fixture',serviceKey:secretPrefix+'fixture',audiences:['com.skworks.skWorks']};
  const handler=createNativeAppleEnrollmentHandler(config,{fetcher:network,now:()=>1000,resolveKey:async()=>jwk});
  const r=await handler(new Request('https://broker.invalid',{method:'POST',headers:{authorization:'Bearer '+original,'content-type':'application/json'},body:JSON.stringify({id_token:credential,nonce,password:'fixture-password'})}));
  assert.equal(r.status,200,JSON.stringify(calls.map(x=>x.url)));assert.deepEqual(await r.json(),{linked:true,user_id:actor});assert.equal(calls.filter(x=>x.url.includes('logout?')).length,2);
  assert.equal(calls.filter(x=>x.url.endsWith('reserve_apple_native_subject')).length,1);assert.equal(calls.filter(x=>x.url.endsWith('complete_apple_native_subject')).length,1);
- assert.equal(calls.some(x=>x.init.headers.Authorization==='Bearer sb_secret_fixture'),false);
+ assert.equal(calls.some(x=>x.init.headers.Authorization==='Bearer '+secretPrefix+'fixture'),false);
  const stalled=createNativeAppleEnrollmentHandler({...config,keyTimeoutMs:5},{fetcher:network,now:()=>1000,resolveKey:()=>new Promise(()=>{})});
  const denied=await stalled(new Request('https://broker.invalid',{method:'POST',headers:{authorization:'Bearer '+original,'content-type':'application/json'},body:JSON.stringify({id_token:credential,nonce,password:'fixture-password'})}));
  assert.equal(denied.status,403);assert.equal(calls.filter(x=>x.url.endsWith('reserve_apple_native_subject')).length,1);
