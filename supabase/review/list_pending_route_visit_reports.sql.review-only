@@ -8,9 +8,10 @@ do $fresh$ begin
 end $fresh$;
 create function public.list_pending_route_visit_reports(
  p_company_id uuid,p_worker_id uuid default null,p_after_date date default null,p_after_id uuid default null,p_limit integer default 200
-)returns jsonb language plpgsql stable security definer set search_path='' as $body$
+)returns jsonb language plpgsql volatile security definer set search_path='' as $body$
 declare actor uuid:=auth.uid();result jsonb;
 begin
+ perform private.require_reauthentication_session();
  if actor is null or not private.account_access_allowed() or p_company_id is null or not exists(
   select 1 from public.company_members where company_id=p_company_id and user_id=actor
  )then raise sqlstate '42501' using message='pending_report_account_unavailable';end if;

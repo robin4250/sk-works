@@ -5,9 +5,10 @@ do $fresh$ begin if current_user<>'postgres' or to_regprocedure('public.list_sit
 create function public.list_site_route_visit_reports(
  p_company_id uuid,p_site_id uuid default null,p_route_assignment_id uuid default null,p_site_name text default null,
  p_category text default 'saved',p_worker_id uuid default null,p_after_date date default null,p_after_id uuid default null,p_limit integer default 200
-)returns jsonb language plpgsql stable security definer set search_path='' as $body$
+)returns jsonb language plpgsql volatile security definer set search_path='' as $body$
 declare actor uuid:=auth.uid();result jsonb;
 begin
+ perform private.require_reauthentication_session();
  if actor is null or not private.account_access_allowed() or p_company_id is null or not exists(select 1 from public.company_members where company_id=p_company_id and user_id=actor)then raise sqlstate '42501' using message='site_report_account_unavailable';end if;
  if p_limit is null or p_limit<1 or p_limit>200 or(p_after_date is null)<>(p_after_id is null)or
   p_category is null or p_category not in('saved','supervisorPending','inputPending','finalizationPending')or

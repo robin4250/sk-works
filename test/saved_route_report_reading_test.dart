@@ -101,6 +101,8 @@ void main() {
     expect(repository.subject, 'selected-worker');
     expect(find.text('前日の日報'), findsNothing);
     for (final label in ['訪問先1', '訪問先2', '訪問先3', '退勤ルート']) {
+      await tester.scrollUntilVisible(find.text(label), 100, scrollable: find.byType(Scrollable).last);
+      expect(find.text(label), findsOneWidget);
       final tile = find.ancestor(of: find.text(label), matching: find.byType(ListTile));
       await tester.ensureVisible(tile);
       await tester.tap(tile);
@@ -122,6 +124,8 @@ void main() {
     expect(find.textContaining('この日に閲覧できる'), findsOneWidget);
     for (var i = 0; i < 3; i++) {
       final subtitle = find.text('2026-10-12 / 訪問日報 / ${i + 1}／3件目 / 作成 10:0$i / 保存済み');
+      await tester.scrollUntilVisible(subtitle, 100, scrollable: find.byType(Scrollable).last);
+      expect(subtitle, findsOneWidget);
       final tile = find.ancestor(of: subtitle, matching: find.byType(ListTile));
       await tester.ensureVisible(tile);
       await tester.tap(tile);
