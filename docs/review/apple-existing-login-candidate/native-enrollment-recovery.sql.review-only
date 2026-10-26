@@ -1,0 +1,117 @@
+-- REVIEW ONLY. Root DB operator recovery; no Auth identity/session or ownership reassignment.
+-- Depends on the four default-OFF modules. No client/service grants, settings or seeded policy.
+begin;
+alter table apple_native_enrollment_private.requests drop constraint requests_status_check;
+alter table apple_native_enrollment_private.requests add constraint requests_status_check check(status in('reserved','held','completed','cancelled'));
+alter table apple_native_enrollment_private.requests add column resolved_at timestamptz;
+alter table apple_native_enrollment_private.requests add column snapshot_redacted_at timestamptz;
+create table apple_native_enrollment_private.recovery_events(
+ command_id uuid primary key,request_id uuid references apple_native_enrollment_private.requests,
+ operation text not null,command jsonb not null,outcome jsonb not null,reason text not null,
+ operator text not null,backend_pid integer not null,transaction_id bigint not null,
+ created_at timestamptz not null default clock_timestamp()
+);
+create table apple_native_enrollment_private.retention_policy(
+ singleton boolean primary key check(singleton),snapshot_days integer not null check(snapshot_days between 30 and 3650),updated_at timestamptz not null default clock_timestamp()
+);
+alter table apple_native_enrollment_private.recovery_events enable row level security;
+alter table apple_native_enrollment_private.retention_policy enable row level security;
+revoke all on apple_native_enrollment_private.recovery_events,apple_native_enrollment_private.retention_policy from public,anon,authenticated,service_role;
+create function apple_native_enrollment_private.root_operator()returns void language plpgsql security definer set search_path='' as $$
+begin if current_user<>'postgres'or session_user<>'postgres'or coalesce(current_setting('role',true),'none')not in('none','postgres')then raise sqlstate '42501'using message='root_operator_required';end if;end $$;
+revoke all on function apple_native_enrollment_private.root_operator()from public,anon,authenticated,service_role;
+create function apple_native_enrollment_private.immutable_recovery_events()returns trigger language plpgsql security definer set search_path='' as $$begin raise exception 'apple_recovery_audit_is_append_only';end $$;
+revoke all on function apple_native_enrollment_private.immutable_recovery_events()from public,anon,authenticated,service_role;
+create trigger apple_recovery_events_immutable before update or delete on apple_native_enrollment_private.recovery_events for each row execute function apple_native_enrollment_private.immutable_recovery_events();
+create trigger apple_recovery_events_no_truncate before truncate on apple_native_enrollment_private.recovery_events for each statement execute function apple_native_enrollment_private.immutable_recovery_events();
+create function apple_native_enrollment_private.reconcile_request(p_command uuid,p_request uuid,p_current_session uuid,p_reason text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare r apple_native_enrollment_private.requests;c jsonb;old apple_native_enrollment_private.recovery_events;
+ cmd jsonb:=jsonb_build_object('operation','reconcile','request_id',p_request,'session_id',p_current_session,'reason',p_reason);
+ result jsonb;new_status text;permit uuid;
+begin
+ perform apple_native_enrollment_private.root_operator();
+ if p_command is null or p_request is null or p_current_session is null or p_reason is null or length(btrim(p_reason))not between 4 and 500 then raise exception 'apple_recovery_arguments';end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-recovery-command:'||p_command::text,0));
+ select * into old from apple_native_enrollment_private.recovery_events where command_id=p_command;
+ if found then if old.command is distinct from cmd then raise exception 'apple_recovery_command_reused';end if;return old.outcome;end if;
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request;
+ if not found then raise exception 'apple_recovery_request_missing';end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-subject:'||r.subject,0));
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-actor:'||r.actor_id::text,0));
+ -- Drain actual identity writers before observing a missing link. NOWAIT on
+ -- other Auth/business rows avoids reversing Auth's row-lock order.
+ lock table auth.identities in share row exclusive mode;
+ lock table public.company_members in share mode nowait;
+ perform 1 from auth.users where id=r.actor_id for share nowait;
+ perform 1 from auth.sessions where id=p_current_session and user_id=r.actor_id for share nowait;
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request for update;
+ if r.status in('completed','cancelled')then
+  result:=jsonb_build_object('reconciled',true,'request_id',r.request_id,'status',r.status,'changed',false);
+ else
+  c:=apple_native_enrollment_private.context(r.actor_id,p_current_session);
+  select expected_user_id into permit from apple_owner_policy.subject_permits where apple_subject=r.subject for update;
+  if not apple_google_protection.ready()or not apple_native_enrollment_private.ready()or c is null
+   or (c-array['account_allowed','primary_password_configured','session_id','apple_subjects'])is distinct from(r.snapshot-array['session_id','apple_subjects'])
+   or permit is distinct from r.actor_id then
+   result:=jsonb_build_object('reconciled',false,'request_id',r.request_id,'status',r.status,'reason','manual_account_or_policy_review_required');
+  elsif c->'apple_subjects'=jsonb_build_array(r.subject)and exists(select 1 from auth.identities where provider='apple'and provider_id=r.subject and user_id=r.actor_id and identity_data->>'sub'=r.subject)then
+   new_status:='completed';
+  elsif c->'apple_subjects'='[]'::jsonb and not exists(select 1 from auth.identities where provider='apple'and provider_id=r.subject)then
+   -- Global write guard is ON and identity transactions are drained. A late
+   -- link cannot commit after this exact same-UID permit is removed.
+   delete from apple_owner_policy.subject_permits where apple_subject=r.subject and expected_user_id=r.actor_id;
+   new_status:='cancelled';
+  else result:=jsonb_build_object('reconciled',false,'request_id',r.request_id,'status',r.status,'reason','identity_mismatch_requires_manual_review');end if;
+  if new_status is not null then
+   update apple_native_enrollment_private.requests set status=new_status,resolved_at=clock_timestamp(),completed_at=case when new_status='completed'then coalesce(completed_at,clock_timestamp())else completed_at end where request_id=r.request_id;
+   result:=jsonb_build_object('reconciled',true,'request_id',r.request_id,'status',new_status,'changed',true,'actor_id',r.actor_id,'subject_sha256',encode(sha256(convert_to(r.subject,'UTF8')),'hex'));
+  end if;
+ end if;
+ insert into apple_native_enrollment_private.recovery_events(command_id,request_id,operation,command,outcome,reason,operator,backend_pid,transaction_id)
+ values(p_command,p_request,'reconcile',cmd,result,p_reason,session_user,pg_backend_pid(),txid_current());
+ return result;
+end $$;
+revoke all on function apple_native_enrollment_private.reconcile_request(uuid,uuid,uuid,text)from public,anon,authenticated,service_role;
+create function apple_native_enrollment_private.configure_retention(p_command uuid,p_days integer,p_reason text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare old apple_native_enrollment_private.recovery_events;result jsonb;cmd jsonb:=jsonb_build_object('operation','configure_retention','days',p_days,'reason',p_reason);
+begin
+ perform apple_native_enrollment_private.root_operator();
+ if p_command is null or p_days is null or p_reason is null or p_days not between 30 and 3650 or length(btrim(p_reason))not between 4 and 500 then raise exception 'apple_retention_arguments';end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-recovery-command:'||p_command::text,0));
+ select * into old from apple_native_enrollment_private.recovery_events where command_id=p_command;
+ if found then if old.command is distinct from cmd then raise exception 'apple_recovery_command_reused';end if;return old.outcome;end if;
+ insert into apple_native_enrollment_private.retention_policy values(true,p_days,clock_timestamp())on conflict(singleton)do update set snapshot_days=p_days,updated_at=excluded.updated_at;
+ result:=jsonb_build_object('configured',true,'snapshot_days',p_days,'ownership_and_replay_tombstones_deleted',false);
+ insert into apple_native_enrollment_private.recovery_events(command_id,operation,command,outcome,reason,operator,backend_pid,transaction_id)
+ values(p_command,'configure_retention',cmd,result,p_reason,session_user,pg_backend_pid(),txid_current());return result;
+end $$;
+revoke all on function apple_native_enrollment_private.configure_retention(uuid,integer,text)from public,anon,authenticated,service_role;
+create function apple_native_enrollment_private.redact_finished_snapshots(p_command uuid,p_limit integer,p_reason text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare old apple_native_enrollment_private.recovery_events;days integer;n integer;result jsonb;
+ cmd jsonb:=jsonb_build_object('operation','redact_finished_snapshots','limit',p_limit,'reason',p_reason);
+begin
+ perform apple_native_enrollment_private.root_operator();
+ if p_command is null or p_limit is null or p_reason is null or p_limit not between 1 and 1000 or length(btrim(p_reason))not between 4 and 500 then raise exception 'apple_retention_arguments';end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-recovery-command:'||p_command::text,0));
+ select * into old from apple_native_enrollment_private.recovery_events where command_id=p_command;
+ if found then if old.command is distinct from cmd then raise exception 'apple_recovery_command_reused';end if;return old.outcome;end if;
+ select snapshot_days into days from apple_native_enrollment_private.retention_policy where singleton for share;
+ if days is null then raise exception 'apple_retention_policy_not_configured';end if;
+ with selected as(select request_id from apple_native_enrollment_private.requests
+  where status in('completed','cancelled')and snapshot_redacted_at is null
+   and coalesce(resolved_at,completed_at,created_at)<clock_timestamp()-make_interval(days=>days)
+  order by coalesce(resolved_at,completed_at,created_at),request_id for update skip locked limit p_limit)
+ update apple_native_enrollment_private.requests r set snapshot=jsonb_build_object('redacted',true,'original_snapshot_sha256',r.snapshot_sha256),snapshot_redacted_at=clock_timestamp()
+ from selected s where r.request_id=s.request_id;
+ get diagnostics n=row_count;
+ result:=jsonb_build_object('redacted_snapshots',n,'snapshot_days',days,'ownership_and_replay_tombstones_deleted',false);
+ insert into apple_native_enrollment_private.recovery_events(command_id,operation,command,outcome,reason,operator,backend_pid,transaction_id)
+ values(p_command,'redact_finished_snapshots',cmd,result,p_reason,session_user,pg_backend_pid(),txid_current());return result;
+end $$;
+revoke all on function apple_native_enrollment_private.redact_finished_snapshots(uuid,integer,text)from public,anon,authenticated,service_role;
+-- No automatic hold release, UID reassignment, key/config write, policy seed,
+-- timer or hosted cron is installed. Root must approve policy and each recovery.
+commit;
