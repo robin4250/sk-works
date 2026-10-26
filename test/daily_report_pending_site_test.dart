@@ -34,6 +34,8 @@ class ReadReports extends DailyReportMonthRepository{
  @override void checkActor(String user){if(user!=actorId)throw StateError('actor changed');}
 }
 void main(){
+ final clients=<SupabaseClient>[];
+ tearDown(() async {for(final client in clients){await client.dispose();}clients.clear();});
  setUp((){final previous=SharedPreferencesAsyncPlatform.instance;SharedPreferencesAsyncPlatform.instance=InMemorySharedPreferencesAsync.empty();addTearDown(()=>SharedPreferencesAsyncPlatform.instance=previous);});
  test('saved, supervisor pending, unfinished and finalization pending remain distinct',(){
   expect(entry('s',DateTime(2026),status:'signed').saveState,DailyReportSaveState.saved);
@@ -45,7 +47,7 @@ void main(){
  });
  testWidgets('red pending all-month groups open saved identity without choosing a day',(tester)async{
   tester.view.physicalSize=const Size(390,1000);tester.view.devicePixelRatio=1;addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);
-  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(client.dispose);
+  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final repo=FixtureReports(client);String? opened;
   await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(initialMonth:DateTime(2026,10),repositoryForTesting:repo,
    pendingBuilderForTesting:(e){opened=e.id;return Scaffold(appBar:AppBar(),body:Text('既存日報 ${e.id}'));})));
@@ -61,7 +63,7 @@ void main(){
   await tester.pageBack();await tester.pumpAndSettle();expect(repo.pendingReads,2);expect(tester.takeException(),isNull);
  });
  testWidgets('pending error is never presented as an empty successful list',(tester)async{
-  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(client.dispose);final repo=FixtureReports(client)..fail=true;
+  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);final repo=FixtureReports(client)..fail=true;
   await tester.pumpWidget(MaterialApp(home:DailyReportMonthPage(repositoryForTesting:repo)));await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('daily-report-pending-filter')));await tester.pumpAndSettle();
   expect(find.text('サイン待ちの日報を取得できません。再読み込みしてください。'),findsOneWidget);expect(find.text('責任者サイン待ちの日報はありません。'),findsNothing);
@@ -79,11 +81,11 @@ void main(){
    }else if(request.url.path.endsWith('/company_members')){result=[{'company_id':companyId}];}
    else if(request.url.path.endsWith('/rpc/list_pending_route_visit_reports')){
     final params=jsonDecode(request.body) as Map;expect(params['p_company_id'],companyId);expect(params['p_after_id'],isNull);
-    if(!visitAvailable)return http.Response(jsonEncode({'code':'PGRST202','message':'missing'}),404,headers:{'content-type':'application/json'});
+    if(!visitAvailable)return http.Response(jsonEncode({'code':'PGRST202','message':'missing'}),404,headers:{'content-type':'application/json'},request:request);
     result={'actor_id':actorId,'company_id':companyId,'entries':[{'id':id(300),'company_id':companyId,'report_date':'2023-01-01','status':'reporter_signed','reporter_signed':true,'supervisor_signed':false,'site_id':id(4),'site_name':'別訪問現場','source_clock_in_id':id(301),'route_assignment_id':id(302),'route_stop_id':id(303),'start_capture_id':id(304),'end_capture_id':id(305)}]};
    }else{throw StateError('unexpected ${request.url}');}
-   return http.Response(jsonEncode(result),200,headers:{'content-type':'application/json'});
-  }));addTearDown(client.dispose);
+   return http.Response(jsonEncode(result),200,headers:{'content-type':'application/json'},request:request);
+  }));clients.add(client);
   final result=await ReadReports(client).listPending();expect(reads,2);expect(result.entries.length,visitAvailable?202:201);
   expect(result.entries.where((e)=>e.isVisit).length,visitAvailable?1:0);expect(result.visitWarning,visitAvailable?isNull:isNotNull);
   expect(result.entries.every((e)=>e.saveState==DailyReportSaveState.supervisorPending),isTrue);

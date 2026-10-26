@@ -33,11 +33,13 @@ class History extends DailyReportMonthRepository{
  }
 }
 void main(){
+ final clients=<SupabaseClient>[];
+ tearDown(() async {for(final client in clients){await client.dispose();}clients.clear();});
  for(final pending in [false,true]){
  for(final scale in [1.0,1.5]) {
  testWidgets('large controls navigate year boundaries and same-day IDs in one category $pending $scale',(tester)async{
   tester.view.physicalSize=const Size(390,800);tester.view.devicePixelRatio=1;addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);
-  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(client.dispose);
+  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client,pending:pending);final anchor=history.all[1];
   await tester.pumpWidget(MaterialApp(builder:(context,child)=>MediaQuery(data:MediaQuery.of(context).copyWith(textScaler:TextScaler.linear(scale)),child:child!), home:DailyReportSavedPreviewPager(repository:history,actor:actor,
    entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
@@ -53,7 +55,7 @@ void main(){
   expect(history.opened,['anchor','old','anchor','same-day','new']);expect(tester.takeException(),isNull);
  });}}
  testWidgets('unavailable all-period history does not claim oldest or newest',(tester)async{
-  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(client.dispose);
+  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client)..fail=true;final anchor=history.all[1];
   await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
    previewBuilderForTesting:(doc)=>Scaffold(body:Text('report:${doc.report.id}')))));
@@ -61,14 +63,14 @@ void main(){
   expect(find.text('最も新しい日報'),findsNothing);expect(find.text('最も古い日報'),findsNothing);expect(find.text('範囲未確認'),findsNWidgets(2));
  });
  testWidgets('a completed report cannot remain in pending preview after server state changes',(tester)async{
-  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(client.dispose);
+  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client,pending:true)..changed=true;final anchor=history.all[1];
   await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
    previewBuilderForTesting:(doc)=>Scaffold(body:Text('report:${doc.report.id}')))));
   await tester.pumpAndSettle();expect(find.textContaining('保存状態が変わりました'),findsOneWidget);expect(find.text('report:anchor'),findsNothing);
  });
  testWidgets('zoomed PDF pan preserves current report while large arrow remains available',(tester)async{
-  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));addTearDown(client.dispose);
+  final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false));clients.add(client);
   final history=History(client);final anchor=history.all[1];
   await tester.pumpWidget(MaterialApp(home:DailyReportSavedPreviewPager(repository:history,actor:actor,entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
    previewWithZoomBuilderForTesting:(doc,zoom)=>Scaffold(body:Column(children:[Text('report:${doc.report.id}'),TextButton(onPressed:()=>zoom(true),child:const Text('拡大'))])))));
@@ -80,14 +82,14 @@ void main(){
   var reads=0;final client=SupabaseClient('https://example.invalid','fixture-public',authOptions:const AuthClientOptions(autoRefreshToken:false),httpClient:MockClient((request)async{
    Object body;
    if(request.url.path.endsWith('/daily_reports')){
-    expect(request.url.queryParameters['site_id'],'eq.$site');expect(request.url.queryParameters['status'],'in.(signed,completed)');
+    expect(request.url.queryParameters['site_id'],'eq.$site');expect(request.url.queryParameters['status'],'in.("signed","completed")');
     expect(request.url.queryParameters['select'],isNot(contains('signature_json')));expect(request.url.queryParameters.containsKey('report_date'),isFalse);
     body=reads++==0?[for(var n=10;n<210;n++){'id':rid(n),'report_date':'2024-01-01','created_at':'2024-01-01T00:00:00Z','site_id':site,'status':'signed','sites':{'name':'現場A'}}]
      :[{'id':rid(210),'report_date':'2027-01-01','site_id':site,'status':'signed','sites':{'name':'現場A'}}];
     if(reads==2)expect(request.url.queryParameters['or'],contains(rid(209)));
    }else if(request.url.path.endsWith('/company_members')){body=[];}else{throw StateError('unexpected request');}
-   return http.Response(jsonEncode(body),200,headers:{'content-type':'application/json'});
-  }));addTearDown(client.dispose);
+   return http.Response(jsonEncode(body),200,headers:{'content-type':'application/json'},request:request);
+  }));clients.add(client);
   final result=await _Reads(client).listSiteHistory(row('anchor',DateTime(2026,10,26)));expect(reads,2);expect(result.complete,isTrue);expect(result.entries.length,201);expect(result.entries.last.date.year,2027);
  });
 }
