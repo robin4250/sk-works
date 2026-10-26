@@ -20,7 +20,8 @@ Auth user/identity行を別UIDに編集する補修処理や削除の捏造は�
 - 一度観測したGoogle provider subjectは元UIDと紐付けて保持する。Googleの
   unlinkやAuth user削除で台帳は連鎖削除しない。公式soft deleteの消去/難読化は、
   実deleted_at・同UID/provider/行ID・公式SHA256式が一致する場合だけ通す。
-  user_metadataのdeleted_atでは許可しない。元UIDへの復帰は許容し、
+  user_metadataのdeleted_atでは許可しない。その後のcascade hard purgeも妨げず、
+  難読化subjectを本物として台帳へ増やさない。元UIDへの復帰は許容し、
   削除後に同じGoogle subjectから黙って新UIDを作る経路は拒否する。
 - 正規のGoogleログイン・新規Google登録・メールPWは維持する。既Googleと
   Appleが未承認状態で混在していれば有効化をSTOPし、permitを自動作成しない。

@@ -107,7 +107,9 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    realEmail:=string(owner.Email)
    require.NoError(t,api.db.Transaction(func(tx *storage.Connection)error{if e:=owner.SoftDeleteUser(tx);e!=nil{return e};return owner.SoftDeleteUserIdentities(tx)}))
    before:=counts();denied(idToken("google","existing-google-sub",realEmail,"",false),before);denied(idToken("apple","registered-old-subject",realEmail,"",false),before)
-   var old string;require.NoError(t,api.db.RawQuery("select user_id::text from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&old));require.Equal(t,owner.ID.String(),old);return
+   var old string;require.NoError(t,api.db.RawQuery("select user_id::text from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&old));require.Equal(t,owner.ID.String(),old)
+   require.NoError(t,api.db.RawQuery("delete from auth.users where id=?",owner.ID).Exec());before=counts()
+   denied(idToken("google","existing-google-sub",realEmail,"",false),before);return
   }
   if name=="lost Google response retry keeps original UID"{
    // The earlier successful response could have been lost before adoption.

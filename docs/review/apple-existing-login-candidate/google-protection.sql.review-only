@@ -64,7 +64,16 @@ begin
   perform pg_advisory_xact_lock(hashtextextended('sko-google-apple-user:'||lock_uid::text,0));
  end loop;
  if tg_op<>'INSERT' and old.provider='google' then
-  if old.identity_data->>'sub'=old.provider_id then
+  if tg_op='DELETE' then
+   -- Cascading hard purge may run after auth.users is no longer visible in
+   -- this transaction. Deletion cannot authorize a new identity: retain its
+   -- UID and any unambiguous subject, without inventing an obfuscated subject.
+   insert into apple_owner_policy.protected_users(user_id) values(old.user_id) on conflict do nothing;
+   if old.identity_data->>'sub'=old.provider_id and old.provider_id ~ '^[A-Za-z0-9._-]{1,255}$' then
+    insert into apple_google_protection.google_subject_owners(provider_id,user_id)
+     values(old.provider_id,old.user_id) on conflict do nothing;
+   end if;
+  elsif old.identity_data->>'sub'=old.provider_id then
    perform apple_google_protection.remember_google(old.provider_id,old.user_id);
   elsif not exists(select 1 from auth.users u where u.id=old.user_id and to_jsonb(u)->>'deleted_at' is not null) then
    raise sqlstate '42501' using message='Account identity verification unavailable';

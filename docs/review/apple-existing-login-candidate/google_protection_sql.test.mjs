@@ -97,6 +97,8 @@ test('official soft-delete metadata clearing and exact subject obfuscation retai
  }
  assert.deepEqual((await f.q('select provider_id,user_id from apple_google_protection.google_subject_owners')),[{provider_id:'google-a',user_id:a}]);
  assert.equal((await f.q('select expected_user_id from apple_owner_policy.subject_permits'))[0].expected_user_id,a);
+ await f.db.query('delete from auth.users where id=$1',[a]);
+ assert.equal((await f.q('select user_id from apple_google_protection.google_subject_owners'))[0].user_id,a);
  await assert.rejects(f.identity(b,'google','google-a'),/verification unavailable/);await assert.rejects(f.identity(b,'apple','permitted'),/verification unavailable/);
 }));
 test('user metadata deleted_at cannot authorize soft-delete cleanup or remove protection',()=>fixture(async f=>{
