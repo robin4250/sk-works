@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "base_main": "74d4c2f578e26ca1f7f21628f19a1da6b2fdeee9",
+  "changed_core_functions": {
+    "private.reauthentication_scope(text)": "f0edc66b9de5fd5a07716d8385f3e779",
+    "private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)": "86a010b24035915aae7e3773b382aa5a"
+  },
+  "existing_scopes": [
+    "attendance_management",
+    "master_feature",
+    "master_security",
+    "secondary_password"
+  ],
+  "role_provisioning": false,
+  "bridge_role_required": false,
+  "production_applied": false,
+  "artifacts": {
+    "install-off.sql.review-only": "fa0aaac105f9e4d859cbdc2ee41402c123de152e965110f191fc89d1417f257f",
+    "restore-unused.sql.review-only": "fa908ee354b3dcd0dd761c7ab43e62df77140d73d88727fc6c6f7f335390a61f"
+  }
+}

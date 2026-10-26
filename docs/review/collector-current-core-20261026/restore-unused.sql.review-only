@@ -1,0 +1,37 @@
+-- REVIEW ONLY. Unused collector-only restore; never removes existing core or role.
+begin;
+set local search_path='';set local lock_timeout='5s';set local statement_timeout='45s';
+lock table private.reauthentication_rollout,private.reauthentication_proofs in share row exclusive mode;
+lock table private.security_collector_control,private.security_collector_events,private.security_collector_read_audit,private.security_collector_keys,private.security_collector_evidence,private.security_collector_retention_audit,security_collector_connection_private.originals,security_collector_connection_private.installation,security_collector_connection_private.new_objects in access exclusive mode;
+do $unused$ declare x record;begin
+ if current_user<>'postgres' or (select count(*) from security_collector_connection_private.originals)<>2 or (select count(*) from security_collector_connection_private.installation)<>1 then raise exception 'collector_unused_restore_precondition';end if;
+ if exists(select 1 from private.security_collector_control where ingest_enabled or read_enabled) or exists(select 1 from private.security_collector_events) or exists(select 1 from private.security_collector_read_audit) or exists(select 1 from private.security_collector_read_audit_audit_id_seq where is_called or last_value<>1) or exists(select 1 from private.security_collector_keys) or exists(select 1 from private.security_collector_evidence) or exists(select 1 from private.security_collector_retention_audit) or exists(select 1 from private.security_collector_retention_audit_audit_id_seq where is_called or last_value<>1) or exists(select 1 from private.reauthentication_proofs where operation='master.security_collector.read') then raise exception 'collector_used_restore_refused';end if;
+ if exists(select 1 from security_collector_connection_private.originals o join pg_proc p on p.oid=to_regprocedure(o.signature) where to_jsonb(p)-'prosrc' is distinct from o.metadata-'prosrc') then raise exception 'collector_restore_core_metadata_changed';end if;
+ if (select count(*) from security_collector_connection_private.new_objects)<>8 or exists(select 1 from security_collector_connection_private.new_objects o left join pg_proc p on p.oid=to_regprocedure(o.signature) where to_jsonb(p) is distinct from o.metadata) then raise exception 'collector_new_routine_changed';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('private.reauthentication_scope(text)') and md5(prosrc)='f0edc66b9de5fd5a07716d8385f3e779') then raise exception 'collector_restore_core_body_changed';end if;
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)') and md5(prosrc)='86a010b24035915aae7e3773b382aa5a') then raise exception 'collector_restore_core_body_changed';end if;
+ for x in select * from security_collector_connection_private.originals order by signature loop execute x.definition;end loop;
+ if exists(select 1 from security_collector_connection_private.originals o join pg_proc p on p.oid=to_regprocedure(o.signature) where to_jsonb(p) is distinct from o.metadata) then raise exception 'collector_original_full_metadata_restore_failed';end if;
+end $unused$;
+drop function public.master_security_collector_events(text);
+drop function private.read_security_collector_events(text);
+drop function public.ingest_signed_security_collector_event(jsonb);
+drop function private.purge_expired_security_collector_events();
+drop function private.verify_collector_event_evidence(uuid);
+drop function private.collector_event_metadata(private.security_collector_events);
+drop function private.collector_mac_equal(bytea,bytea);
+drop function private.ingest_security_collector_event(jsonb);
+drop table private.security_collector_evidence;
+drop table private.security_collector_keys;
+drop table private.security_collector_retention_audit;
+drop table private.security_collector_read_audit;
+drop table private.security_collector_events;
+drop table private.security_collector_control;
+do $schema_restored$ begin
+ if (select nspacl::text from pg_namespace where nspname='private') is distinct from (select private_acl from security_collector_connection_private.installation) then raise exception 'collector_schema_acl_restore_failed';end if;
+end $schema_restored$;
+drop table security_collector_connection_private.new_objects;
+drop table security_collector_connection_private.originals;
+drop table security_collector_connection_private.installation;
+drop schema security_collector_connection_private restrict;
+commit;

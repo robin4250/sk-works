@@ -1,0 +1,54 @@
+name: Collector current-core roleless connection
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/review/collector-current-core-20261026/**'
+      - 'supabase/functions/security-collector-ingest/**'
+      - 'supabase/functions/reauthenticate-operation/handler.mjs'
+      - 'tool/security/collector_current_core_handler_test.mjs'
+      - 'tool/security/collector_roleless_handler_test.mjs'
+      - '.github/workflows/collector-current-core.yml'
+permissions:
+  contents: read
+jobs:
+  node-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tool/security/collector_current_core_handler_test.mjs tool/security/collector_roleless_handler_test.mjs
+      - run: python3 docs/review/collector-current-core-20261026/prepare.py
+      - run: git diff --exit-code -- docs/review/collector-current-core-20261026
+  native-current-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      collector:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: collector-fixture-only
+          POSTGRES_DB: collector_current_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d collector_current_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_COLLECTOR_CURRENT_FIXTURE_URL: postgresql://postgres:collector-fixture-only@127.0.0.1:5432/collector_current_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node docs/review/collector-current-core-20261026/verify_native.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

@@ -5,6 +5,7 @@ const scopes = new Map([
  ['attendance.manage', 'attendance_management'],
  ['master.feature.set', 'master_feature'],
  ['master.security_incidents.read', 'master_security'],
+ ['master.security_collector.read', 'master_security'],
  ['master.device.lock', 'master_device_lock'],
 ]);
 const featureKeys = new Set(['vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop','company_seal_image_tools']);
@@ -82,6 +83,7 @@ export function createReauthenticationHandler({baseUrl,publicKey,serviceKey,fetc
   if(payload.operation==='master.feature.set'&&(Object.keys(target).sort().join(',')!=='enabled,feature_key'||!featureKeys.has(target.feature_key)||typeof target.enabled!=='boolean'))return reply(400,{error:'invalid_request'});
   if(payload.operation==='master.device.lock'&&(Object.keys(target).sort().join(',')!=='device_id,locked'||typeof target.device_id!=='string'||!uuid.test(target.device_id)||target.device_id!==target.device_id.toLowerCase()||typeof target.locked!=='boolean'))return reply(400,{error:'invalid_request'});
   if(payload.operation==='master.security_incidents.read'&&(Object.keys(target).join(',')!=='scope'||target.scope!=='platform'))return reply(400,{error:'invalid_request'});
+  if(payload.operation==='master.security_collector.read'&&(Object.keys(target).join(',')!=='scope'||target.scope!=='decoy_collector'))return reply(400,{error:'invalid_request'});
   try {
    const deviceOperation=payload.operation==='master.device.lock';
    const capabilities=await request(deviceOperation?'/rest/v1/rpc/master_device_lock_capability':'/rest/v1/rpc/reauthentication_capabilities',{method:'POST',headers:{apikey:publicKey,Authorization:authorization,'Content-Type':'application/json'},body:'{}'});

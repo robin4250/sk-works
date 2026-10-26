@@ -1,0 +1,414 @@
+-- REVIEW ONLY. Collector-only addition to existing four-scope core. No role/key/gate provisioning.
+begin;
+set local search_path='';set local lock_timeout='5s';set local statement_timeout='45s';
+lock table private.reauthentication_rollout,private.reauthentication_proofs in share row exclusive mode;
+do $before$ begin
+ if current_user<>'postgres' or to_regnamespace('security_collector_connection_private') is not null then raise exception 'collector_connection_precondition';end if;
+ if (select array_agg(scope order by scope) from private.reauthentication_rollout) is distinct from array['attendance_management','master_feature','master_security','secondary_password']::text[] or exists(select 1 from private.reauthentication_rollout where scope='master_security' and enabled) then raise exception 'collector_current_core_four_scopes_required_off';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)') and md5(p.prosrc)='c8f0891133ba8d96e1426ed9be8d04d0' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres,service_role=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=true and p.provolatile='v') then raise exception 'collector_core_original_changed: public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.consume_reauthentication_proof(text,jsonb,text)') and md5(p.prosrc)='31a65249b835b7e11e7e011c384886aa' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=true and p.provolatile='v') then raise exception 'collector_core_original_changed: private.consume_reauthentication_proof(text,jsonb,text)';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.reauthentication_scope(text)') and md5(p.prosrc)='337a44356a067183455b0678cfc3eec5' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=false and p.provolatile='i') then raise exception 'collector_core_original_changed: private.reauthentication_scope(text)';end if;
+if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)') and md5(p.prosrc)='52d721f524d0e3996048a5c566348931' and pg_get_userbyid(p.proowner)='postgres' and p.proacl::text is not distinct from '{postgres=X/postgres}' and to_jsonb(p.proconfig) is not distinct from '["search_path=\"\""]'::jsonb and p.prosecdef=true and p.provolatile='v') then raise exception 'collector_core_original_changed: private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)';end if;
+end $before$;
+create schema security_collector_connection_private;
+revoke all on schema security_collector_connection_private from public,anon,authenticated,service_role;
+create table security_collector_connection_private.originals(signature text primary key,definition text not null,metadata jsonb not null);
+create table security_collector_connection_private.installation(singleton boolean primary key check(singleton),private_acl text,rollout jsonb not null);
+alter table security_collector_connection_private.originals enable row level security;
+alter table security_collector_connection_private.installation enable row level security;
+revoke all on all tables in schema security_collector_connection_private from public,anon,authenticated,service_role;
+insert into security_collector_connection_private.installation values(true,(select nspacl::text from pg_namespace where nspname='private'),(select jsonb_agg(to_jsonb(x) order by scope) from private.reauthentication_rollout x));
+insert into security_collector_connection_private.originals select x,pg_get_functiondef(p.oid),to_jsonb(p) from unnest(array['private.reauthentication_scope(text)','private.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)'])x join pg_proc p on p.oid=to_regprocedure(x);
+CREATE OR REPLACE FUNCTION private.reauthentication_scope(p_operation text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+ select case p_operation when 'secondary_password.replace' then 'secondary_password'
+  when 'secondary_password.change' then 'secondary_password'
+  when 'master.feature.set' then 'master_feature'
+  when 'master.security_incidents.read' then 'master_security'
+  when 'attendance.manage' then 'attendance_management'
+  when 'master.security_collector.read' then 'master_security' end
+$function$
+
+CREATE OR REPLACE FUNCTION private.issue_reauthentication_proof(p_actor uuid, p_session uuid, p_operation text, p_target jsonb, p_proof_hash text)
+ RETURNS timestamp with time zone
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare expiry timestamptz; issued timestamptz;fingerprint text;
+begin
+ if p_actor is null or p_session is null
+  or p_proof_hash is null or p_proof_hash !~ '^[0-9a-f]{64}$'
+  or private.reauthentication_scope(p_operation) is null
+  or not private.reauthentication_required(private.reauthentication_scope(p_operation)) then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ end if;
+ if p_operation in('secondary_password.replace','secondary_password.change') and p_target<>jsonb_build_object('user_id',p_actor) then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ elsif p_operation='master.feature.set' and (
+  jsonb_typeof(p_target)<>'object' or p_target<>jsonb_build_object('feature_key',p_target->'feature_key','enabled',p_target->'enabled')
+  or coalesce(p_target->>'feature_key','') not in ('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop')
+  or coalesce(jsonb_typeof(p_target->'enabled'),'')<>'boolean') then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ elsif p_operation='attendance.manage' and (
+  not private.reauthentication_required('secondary_password') or
+  p_target is null or jsonb_typeof(p_target)<>'object'
+  or p_target<>jsonb_build_object('company_id',p_target->'company_id','action',p_target->'action','items_sha256',p_target->'items_sha256')
+  or coalesce(p_target->>'action','') not in ('upsert','delete')
+  or coalesce(p_target->>'items_sha256','') !~ '^[0-9a-f]{64}$'
+  or (select count(*) from public.company_members where user_id=p_actor)<>1
+  or not exists(select 1 from public.company_members where user_id=p_actor
+   and company_id::text=p_target->>'company_id' and role::text in ('owner','admin','manager'))) then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ elsif p_operation='master.security_collector.read' and p_target is distinct from '{"scope":"decoy_collector"}'::jsonb then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ elsif p_operation='master.security_incidents.read' and p_target<>'{"scope":"platform"}'::jsonb then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ end if;
+ if p_target is null or (p_operation like 'master.%' and not exists(
+  select 1 from private.master_admins where user_id=p_actor and enabled)) then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ end if;
+ -- Same deletion barrier as the existing Data API account hook; fail closed.
+ if not pg_try_advisory_xact_lock_shared(private.account_deletion_barrier_key(p_actor)) then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ end if;
+ if exists(select 1 from private.account_deletion_access_restrictions where user_id=p_actor) then
+  raise sqlstate '42501' using message='reauthentication_unavailable';
+ end if;
+ perform 1 from auth.users where id=p_actor and not coalesce(is_anonymous,false)
+  and (banned_until is null or banned_until<=clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='reauthentication_unavailable';end if;
+ perform 1 from auth.sessions where id=p_session and user_id=p_actor
+  and (not_after is null or not_after>clock_timestamp()) for share;
+ if not found then raise sqlstate '42501' using message='reauthentication_unavailable'; end if;
+ if p_operation in('secondary_password.change','attendance.manage') then
+  select encode(extensions.digest(password_hash,'sha256'),'hex') into fingerprint
+  from public.user_secondary_credentials where user_id=p_actor for share;
+  if not found then raise sqlstate '42501' using message='reauthentication_unavailable';end if;
+ end if;
+ issued:=clock_timestamp(); expiry:=issued+interval '120 seconds';
+ insert into private.reauthentication_proofs(proof_hash,actor_id,session_id,operation,target,issued_at,expires_at,secondary_credential_fingerprint)
+ values(p_proof_hash,p_actor,p_session,p_operation,p_target,issued,expiry,fingerprint);
+ return expiry;
+end $function$
+
+create table private.security_collector_control(
+ singleton boolean primary key default true check(singleton),
+ ingest_enabled boolean not null default false,
+ read_enabled boolean not null default false
+);
+insert into private.security_collector_control(singleton) values(true);
+create table private.security_collector_events(
+ event_id uuid primary key,
+ collector_id uuid not null,
+ occurred_at timestamptz not null check(isfinite(occurred_at)),
+ received_at timestamptz not null default clock_timestamp(),
+ event_kind text not null check(event_kind in ('current_lure_touched','retired_lure_touched')),
+ generation integer not null check(generation between 1 and 1000000),
+ correlation_key text not null check(correlation_key ~ '^[0-9a-f]{64}$'),
+ key_epoch date not null,
+ source_provenance text not null default 'trusted_collector_observation'
+  check(source_provenance='trusted_collector_observation')
+);
+create index security_collector_received on private.security_collector_events(received_at desc,event_id);
+create table private.security_collector_read_audit(
+ audit_id bigint generated always as identity primary key,
+ actor_id uuid not null,
+ read_at timestamptz not null default clock_timestamp(),
+ result_count integer not null check(result_count between 0 and 100)
+);
+alter table private.security_collector_control enable row level security;
+alter table private.security_collector_events enable row level security;
+alter table private.security_collector_read_audit enable row level security;
+revoke all on private.security_collector_control,private.security_collector_events,
+ private.security_collector_read_audit from public,anon,authenticated,service_role;
+revoke all on sequence private.security_collector_read_audit_audit_id_seq
+ from public,anon,authenticated,service_role;
+
+create function private.ingest_security_collector_event(p_event jsonb)
+returns uuid language plpgsql security definer set search_path='' as $$
+declare eid uuid; cid uuid; at_time timestamptz; gen integer; epoch date;
+ existing private.security_collector_events%rowtype;
+begin
+ perform 1 from private.security_collector_control where singleton and ingest_enabled for share;
+ if not found then raise exception 'collector disabled' using errcode='55000';end if;
+ if p_event is null or jsonb_typeof(p_event)<>'object' or octet_length(p_event::text)>1024 or
+ (select array_agg(k order by k) from jsonb_object_keys(p_event) k) is distinct from
+ array['collector_id','correlation_key','event_id','event_kind','generation','key_epoch','occurred_at']::text[] then
+  raise exception 'invalid collector metadata' using errcode='22023';
+ end if;
+ if exists(select 1 from jsonb_each(p_event) where value='null'::jsonb) or
+ exists(select 1 from jsonb_each(p_event) where key<>'generation' and jsonb_typeof(value)<>'string') or
+ jsonb_typeof(p_event->'generation')<>'number' or p_event->>'generation' !~ '^[1-9][0-9]{0,6}$' or
+ p_event->>'event_id' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' or
+ p_event->>'collector_id' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' or
+ p_event->>'event_kind' not in ('current_lure_touched','retired_lure_touched') or
+ p_event->>'correlation_key' !~ '^[0-9a-f]{64}$' or
+ p_event->>'occurred_at' !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$' or
+ p_event->>'key_epoch' !~ '^\d{4}-\d{2}-\d{2}$' then
+  raise exception 'invalid collector metadata' using errcode='22023';
+ end if;
+ eid:=(p_event->>'event_id')::uuid;cid:=(p_event->>'collector_id')::uuid;
+ at_time:=(p_event->>'occurred_at')::timestamptz;gen:=(p_event->>'generation')::integer;
+ epoch:=(p_event->>'key_epoch')::date;
+ if not isfinite(at_time) or at_time>clock_timestamp()+interval '30 seconds' or
+ at_time<clock_timestamp()-interval '10 minutes' or gen>1000000 or
+ epoch<>(at_time at time zone 'UTC')::date then
+  raise exception 'invalid collector time or generation' using errcode='22023';
+ end if;
+ -- Serializes duplicate IDs only; no client-selected advisory-lock namespace.
+ insert into private.security_collector_events(event_id,collector_id,occurred_at,event_kind,generation,correlation_key,key_epoch)
+ values(eid,cid,at_time,p_event->>'event_kind',gen,p_event->>'correlation_key',epoch)
+ on conflict(event_id) do nothing;
+ select * into strict existing from private.security_collector_events where event_id=eid;
+ if existing.collector_id is distinct from cid or existing.occurred_at is distinct from at_time or
+ existing.event_kind is distinct from p_event->>'event_kind' or existing.generation is distinct from gen or
+ existing.correlation_key is distinct from p_event->>'correlation_key' or existing.key_epoch is distinct from epoch then
+  raise exception 'collector event conflict' using errcode='23505';
+ end if;
+ return eid;
+exception when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
+ raise exception 'invalid collector metadata' using errcode='22023';
+end $$;
+revoke all on function private.ingest_security_collector_event(jsonb)
+ from public,anon,authenticated,service_role;
+
+create function private.read_security_collector_events(p_proof text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare result jsonb; actor uuid:=auth.uid();
+begin
+ if actor is null or private.account_access_allowed() is not true or
+ public.is_current_user_master_admin() is not true then
+  raise exception 'collector records unavailable' using errcode='42501';
+ end if;
+ perform 1 from private.security_collector_control where singleton and read_enabled for share;
+ if not found then raise exception 'collector reading disabled' using errcode='55000';end if;
+ -- A distinct operation/scope must first be supported by the existing issuer.
+ perform private.consume_reauthentication_proof('master.security_collector.read',
+  '{"scope":"decoy_collector"}'::jsonb,p_proof);
+ if exists(select 1 from private.security_collector_events e where received_at>=clock_timestamp()-interval '7 days' and not private.verify_collector_event_evidence(e.event_id)) then raise exception 'collector_evidence_integrity_failed' using errcode='55000';end if;
+ select coalesce(jsonb_agg(x),'[]'::jsonb) into result from (
+  select event_id,collector_id,occurred_at,received_at,event_kind,generation,
+   correlation_key,key_epoch,source_provenance
+  from private.security_collector_events
+  where received_at>=clock_timestamp()-interval '7 days'
+  order by received_at desc,event_id limit 100
+ ) x;
+ insert into private.security_collector_read_audit(actor_id,result_count) values(actor,jsonb_array_length(result));
+ return jsonb_build_object('version',1,'source_provenance','trusted_collector_observation',
+  'coverage','collector_observations_only','attack_confirmed',false,'events',result);
+end $$;
+revoke all on function private.read_security_collector_events(text)
+ from public,anon,authenticated,service_role;
+grant execute on function private.read_security_collector_events(text) to authenticated;
+-- No public RPC or UI adapter in this slice. Both gates remain OFF.
+
+-- Service-role RPC is available only to the trusted collector, never the decoy.
+-- Registry is empty at installation. Root provisions separate collector keys later.
+create table private.security_collector_keys(
+ collector_id uuid not null,key_version integer not null check(key_version between 1 and 1000000),
+ hmac_key bytea not null check(octet_length(hmac_key)=32),
+ enabled boolean not null default false,revoked_at timestamptz,
+ valid_from timestamptz not null,valid_until timestamptz not null,
+ primary key(collector_id,key_version),
+ check(isfinite(valid_from) and isfinite(valid_until) and valid_until>valid_from and valid_until<=valid_from+interval '180 days'),
+ check(revoked_at is null or (isfinite(revoked_at) and not enabled))
+);
+create unique index security_collector_one_active_key on private.security_collector_keys(collector_id) where enabled and revoked_at is null;
+create table private.security_collector_evidence(
+ event_id uuid primary key references private.security_collector_events(event_id),
+ collector_id uuid not null,key_version integer not null,
+ transport_timestamp bigint not null check(transport_timestamp between 1000000000000 and 9999999999999),
+ original_body bytea not null check(octet_length(original_body) between 1 and 1024),
+ signature bytea not null check(octet_length(signature)=32),
+ canonical_sha256 text not null check(canonical_sha256 ~ '^[0-9a-f]{64}$'),
+ foreign key(collector_id,key_version) references private.security_collector_keys(collector_id,key_version)
+);
+create table private.security_collector_retention_audit(
+ audit_id bigint generated always as identity primary key,
+ ran_at timestamptz not null default clock_timestamp(),
+ event_cutoff timestamptz not null,events_removed bigint not null check(events_removed>=0),
+ reads_removed bigint not null check(reads_removed>=0),expired_event_set_sha256 text not null check(expired_event_set_sha256 ~ '^[0-9a-f]{64}$')
+);
+alter table private.security_collector_keys enable row level security;
+alter table private.security_collector_evidence enable row level security;
+alter table private.security_collector_retention_audit enable row level security;
+revoke all on private.security_collector_keys,private.security_collector_evidence,private.security_collector_retention_audit from public,anon,authenticated,service_role;
+revoke all on sequence private.security_collector_retention_audit_audit_id_seq from public,anon,authenticated,service_role;
+
+create function private.collector_mac_equal(a bytea,b bytea) returns boolean language plpgsql immutable set search_path='' as $$
+declare mismatch integer:=0;i integer;
+begin
+ if a is null or b is null or octet_length(a)<>32 or octet_length(b)<>32 then return false;end if;
+ for i in 0..31 loop mismatch:=mismatch | (get_byte(a,i) # get_byte(b,i));end loop;
+ return mismatch=0;
+end $$;
+revoke all on function private.collector_mac_equal(bytea,bytea) from public,anon,authenticated,service_role;
+
+create function private.collector_event_metadata(e private.security_collector_events) returns jsonb language sql immutable set search_path='' as $$
+ select jsonb_build_object('event_id',e.event_id,'collector_id',e.collector_id,'occurred_at',to_char(e.occurred_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'event_kind',e.event_kind,'generation',e.generation,'correlation_key',e.correlation_key,'key_epoch',to_char(e.key_epoch,'YYYY-MM-DD'))
+$$;
+revoke all on function private.collector_event_metadata(private.security_collector_events) from public,anon,authenticated,service_role;
+
+create function private.verify_collector_event_evidence(eid uuid) returns boolean language plpgsql stable security definer set search_path='' as $$
+declare e private.security_collector_events%rowtype;x private.security_collector_evidence%rowtype;k bytea;payload jsonb;expected bytea;
+begin
+ select * into e from private.security_collector_events where event_id=eid;if not found then return false;end if;
+ select * into x from private.security_collector_evidence where event_id=eid;if not found then return false;end if;
+ select hmac_key into k from private.security_collector_keys where collector_id=x.collector_id and key_version=x.key_version;if not found then return false;end if;
+ payload:=convert_from(x.original_body,'UTF8')::jsonb;
+ expected:=extensions.hmac(convert_to('sko-collector-v2'||chr(10)||x.collector_id::text||chr(10)||x.key_version::text||chr(10)||x.transport_timestamp::text||chr(10),'UTF8')||x.original_body,k,'sha256');
+ -- Revoking an old key stops new ingress, not verification of its old evidence.
+ return x.collector_id=e.collector_id and payload=private.collector_event_metadata(e)
+  and x.canonical_sha256=encode(extensions.digest(convert_to(payload::text,'UTF8'),'sha256'),'hex')
+  and private.collector_mac_equal(expected,x.signature);
+exception when others then return false;
+end $$;
+revoke all on function private.verify_collector_event_evidence(uuid) from public,anon,authenticated,service_role;
+
+create function public.ingest_signed_security_collector_event(p_envelope jsonb) returns uuid language plpgsql volatile security definer set search_path='' as $$
+declare cid uuid;version integer;stamp bigint;now_ms bigint;raw bytea;payload jsonb;original_json json;
+ key_row private.security_collector_keys%rowtype;expected bytea;supplied bytea;eid uuid;recorded private.security_collector_evidence%rowtype;
+begin
+ if auth.role() is distinct from 'service_role' then raise exception 'collector_unavailable' using errcode='42501';end if;
+ perform 1 from private.security_collector_control where singleton and ingest_enabled for share;
+ if not found then raise exception 'collector_unavailable' using errcode='55000';end if;
+ if p_envelope is null or jsonb_typeof(p_envelope)<>'object' or octet_length(p_envelope::text)>2048
+  or (select array_agg(k order by k) from jsonb_object_keys(p_envelope)k) is distinct from array['body_base64','collector_id','key_version','signature','timestamp']::text[]
+  or jsonb_typeof(p_envelope->'collector_id') is distinct from 'string'
+  or coalesce(p_envelope->>'collector_id','') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  or jsonb_typeof(p_envelope->'key_version') is distinct from 'number' or coalesce(p_envelope->>'key_version','') !~ '^[1-9][0-9]{0,6}$'
+  or jsonb_typeof(p_envelope->'timestamp') is distinct from 'number' or coalesce(p_envelope->>'timestamp','') !~ '^[0-9]{13}$'
+  or jsonb_typeof(p_envelope->'body_base64') is distinct from 'string' or coalesce(p_envelope->>'body_base64','') !~ '^[A-Za-z0-9+/]+={0,2}$'
+  or length(p_envelope->>'body_base64')>1368 or length(p_envelope->>'body_base64')%4<>0
+  or jsonb_typeof(p_envelope->'signature') is distinct from 'string' or coalesce(p_envelope->>'signature','') !~ '^[0-9a-f]{64}$'
+ then raise exception 'collector_invalid_envelope' using errcode='22023';end if;
+ cid:=(p_envelope->>'collector_id')::uuid;version:=(p_envelope->>'key_version')::integer;stamp:=(p_envelope->>'timestamp')::bigint;
+ now_ms:=floor(extract(epoch from clock_timestamp())*1000)::bigint;
+ if abs(now_ms-stamp)>60000 then raise exception 'collector_unavailable' using errcode='42501';end if;
+ select * into key_row from private.security_collector_keys where collector_id=cid and key_version=version and enabled and revoked_at is null and valid_from<=clock_timestamp() and valid_until>clock_timestamp() for share;
+ if not found then raise exception 'collector_unavailable' using errcode='42501';end if;
+ raw:=decode(p_envelope->>'body_base64','base64');supplied:=decode(p_envelope->>'signature','hex');
+ if octet_length(raw) not between 1 and 1024 or replace(encode(raw,'base64'),chr(10),'')<>p_envelope->>'body_base64' then raise exception 'collector_invalid_envelope' using errcode='22023';end if;
+ expected:=extensions.hmac(convert_to('sko-collector-v2'||chr(10)||cid::text||chr(10)||version::text||chr(10)||stamp::text||chr(10),'UTF8')||raw,key_row.hmac_key,'sha256');
+ if not private.collector_mac_equal(expected,supplied) then raise exception 'collector_unavailable' using errcode='42501';end if;
+ original_json:=convert_from(raw,'UTF8')::json;
+ if json_typeof(original_json) is distinct from 'object' or (select count(*) from json_each(original_json))<>7 then raise exception 'collector_invalid_metadata' using errcode='22023';end if;
+ payload:=original_json::jsonb;
+ if payload->>'collector_id' is distinct from cid::text then raise exception 'collector_invalid_metadata' using errcode='22023';end if;
+ -- The existing unchanged strict seven-field validator owns idempotence/conflicts.
+ eid:=private.ingest_security_collector_event(payload);
+ insert into private.security_collector_evidence(event_id,collector_id,key_version,transport_timestamp,original_body,signature,canonical_sha256)
+ values(eid,cid,version,stamp,raw,supplied,encode(extensions.digest(convert_to(payload::text,'UTF8'),'sha256'),'hex')) on conflict(event_id) do nothing;
+ select * into strict recorded from private.security_collector_evidence where event_id=eid;
+ if recorded.canonical_sha256<>encode(extensions.digest(convert_to(payload::text,'UTF8'),'sha256'),'hex') or not private.verify_collector_event_evidence(eid) then raise exception 'collector_evidence_conflict' using errcode='23505';end if;
+ return eid;
+exception when invalid_text_representation or invalid_datetime_format or datetime_field_overflow or character_not_in_repertoire or untranslatable_character then
+ raise exception 'collector_invalid_metadata' using errcode='22023';
+end $$;
+revoke all on function public.ingest_signed_security_collector_event(jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.ingest_signed_security_collector_event(jsonb) to service_role;
+
+-- Fixed owner-only expiry; no caller-selected deletion window or business tables.
+create function private.purge_expired_security_collector_events() returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare cutoff timestamptz:=clock_timestamp()-interval '7 days';removed bigint;reads_removed bigint;digest text;
+begin
+ lock table private.security_collector_events,private.security_collector_evidence,private.security_collector_read_audit in share row exclusive mode;
+ select encode(extensions.digest(convert_to(coalesce(string_agg(event_id::text||':'||canonical_sha256,',' order by event_id),''),'UTF8'),'sha256'),'hex') into digest
+ from private.security_collector_evidence where event_id in(select event_id from private.security_collector_events where received_at<cutoff);
+ delete from private.security_collector_evidence where event_id in(select event_id from private.security_collector_events where received_at<cutoff);
+ delete from private.security_collector_events where received_at<cutoff;get diagnostics removed=row_count;
+ delete from private.security_collector_read_audit where read_at<clock_timestamp()-interval '90 days';get diagnostics reads_removed=row_count;
+ insert into private.security_collector_retention_audit(event_cutoff,events_removed,reads_removed,expired_event_set_sha256)values(cutoff,removed,reads_removed,digest);
+ return jsonb_build_object('events_removed',removed,'reads_removed',reads_removed,'event_cutoff',cutoff);
+end $$;
+revoke all on function private.purge_expired_security_collector_events() from public,anon,authenticated,service_role;
+
+
+set local lock_timeout='3s';
+set local statement_timeout='30s';
+set local search_path='';
+do $collector_public_before$
+declare p record;
+begin
+ if current_user<>'postgres' or not has_schema_privilege('authenticated','public','USAGE')
+  or not has_schema_privilege('authenticated','private','USAGE') then
+  raise sqlstate '55000' using message='collector_public_read_prerequisite_missing';
+ end if;
+ if exists(select 1 from pg_proc f join pg_namespace n on n.oid=f.pronamespace
+  where n.nspname='public' and f.proname='master_security_collector_events') then
+  raise sqlstate '55000' using message='collector_public_read_already_exists';
+ end if;
+ select f.*,l.lanname into p from pg_proc f join pg_language l on l.oid=f.prolang
+  where f.oid=to_regprocedure('private.read_security_collector_events(text)');
+ if not found or pg_get_userbyid(p.proowner)<>'postgres' or not p.prosecdef
+  or p.provolatile<>'v' or p.lanname<>'plpgsql' or p.proretset
+  or p.prorettype<>'jsonb'::regtype or p.proconfig is distinct from array['search_path=""']
+  or md5(p.prosrc)<>'8b9f7f20f6572e0dd14673497790aeb0'
+  or not has_function_privilege('authenticated',p.oid,'EXECUTE')
+  or has_function_privilege('anon',p.oid,'EXECUTE')
+  or has_function_privilege('service_role',p.oid,'EXECUTE') then
+  raise sqlstate '55000' using message='collector_private_read_contract_differs';
+ end if;
+ if exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  where a.grantee<>p.proowner and not(a.grantee='authenticated'::regrole
+   and a.privilege_type='EXECUTE' and not a.is_grantable)) then
+  raise sqlstate '55000' using message='collector_private_read_acl_differs';
+ end if;
+end $collector_public_before$;
+
+create function public.master_security_collector_events(p_proof text)
+returns jsonb language plpgsql volatile security invoker set search_path='' as $$
+begin
+ -- VOLATILE makes POST read/write. GET/HEAD are also explicitly refused before
+ -- delegating, rather than relying on a later read-only transaction error.
+ if current_setting('request.method',true) is distinct from 'POST' then
+  raise sqlstate 'PT405' using message='post_required';
+ end if;
+ return private.read_security_collector_events(p_proof);
+end $$;
+revoke all on function public.master_security_collector_events(text)
+ from public,anon,authenticated,service_role;
+grant execute on function public.master_security_collector_events(text) to authenticated;
+
+do $collector_public_after$
+declare p record;
+begin
+ select f.*,l.lanname into p from pg_proc f join pg_language l on l.oid=f.prolang
+  where f.oid='public.master_security_collector_events(text)'::regprocedure;
+ if pg_get_userbyid(p.proowner)<>'postgres' or p.prosecdef or p.provolatile<>'v'
+  or md5(p.prosrc)<>'974d888a3eedae6c4de80338abcfa754'
+  or p.lanname<>'plpgsql' or p.proretset or p.prorettype<>'jsonb'::regtype
+  or p.proargnames is distinct from array['p_proof']::text[]
+  or p.proconfig is distinct from array['search_path=""']
+  or not has_function_privilege('authenticated',p.oid,'EXECUTE')
+  or has_function_privilege('anon',p.oid,'EXECUTE')
+  or has_function_privilege('service_role',p.oid,'EXECUTE') then
+  raise sqlstate '55000' using message='collector_public_read_contract_differs';
+ end if;
+ if exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+  where a.grantee<>p.proowner and not(a.grantee='authenticated'::regrole
+   and a.privilege_type='EXECUTE' and not a.is_grantable)) then
+  raise sqlstate '55000' using message='collector_public_read_acl_differs';
+ end if;
+end $collector_public_after$;
+
+create table security_collector_connection_private.new_objects(signature text primary key,metadata jsonb not null);
+alter table security_collector_connection_private.new_objects enable row level security;
+revoke all on security_collector_connection_private.new_objects from public,anon,authenticated,service_role;
+insert into security_collector_connection_private.new_objects select x,to_jsonb(p) from unnest(array[
+'private.ingest_security_collector_event(jsonb)','private.read_security_collector_events(text)','public.master_security_collector_events(text)',
+'private.collector_mac_equal(bytea,bytea)','private.collector_event_metadata(private.security_collector_events)',
+'private.verify_collector_event_evidence(uuid)','public.ingest_signed_security_collector_event(jsonb)','private.purge_expired_security_collector_events()'])x join pg_proc p on p.oid=to_regprocedure(x);
+do $preserved$ begin
+ if (select jsonb_agg(to_jsonb(x) order by scope) from private.reauthentication_rollout x) is distinct from (select rollout from security_collector_connection_private.installation) then raise exception 'collector_changed_existing_rollout';end if;
+ if exists(select 1 from security_collector_connection_private.originals o join pg_proc p on p.oid=to_regprocedure(o.signature) where to_jsonb(p)-'prosrc' is distinct from o.metadata-'prosrc') then raise exception 'collector_changed_existing_metadata';end if;
+ if (select count(*) from security_collector_connection_private.originals)<>2 or exists(select 1 from private.security_collector_control where ingest_enabled or read_enabled) or exists(select 1 from private.security_collector_events) or exists(select 1 from private.security_collector_read_audit) then raise exception 'collector_initial_not_unused_off';end if;
+ if (select nspacl::text from pg_namespace where nspname='private') is distinct from (select private_acl from security_collector_connection_private.installation) then raise exception 'collector_private_schema_acl_changed';end if;
+end $preserved$;
+commit;
