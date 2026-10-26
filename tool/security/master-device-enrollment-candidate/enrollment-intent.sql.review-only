@@ -16,6 +16,7 @@ create table master_device_enrollment_candidate.intents (
   session_id uuid not null,
   device_key_sha256 text not null check (device_key_sha256 ~ '^[0-9a-f]{64}$'),
   device_type text not null check (device_type in ('iphone', 'ipad', 'mac')),
+  challenge_nonce text not null unique check (challenge_nonce ~ '^[0-9a-f]{64}$'),
   created_at timestamptz not null default clock_timestamp(),
   expires_at timestamptz not null,
   approved_hash text check (approved_hash is null or approved_hash ~ '^[0-9a-f]{64}$'),
@@ -35,7 +36,7 @@ create function public.prepare_master_device_enrollment_candidate(
   p_device_key_sha256 text, p_device_type text, p_second_password text
 ) returns jsonb language plpgsql security definer set search_path='' as $$
 declare v_actor uuid := auth.uid(); v_session uuid; v_enabled boolean;
-  v_intent uuid; v_count integer; v_ok boolean;
+  v_intent uuid; v_nonce text; v_count integer; v_ok boolean;
 begin
   if v_actor is null or not public.is_current_user_master_admin() then
     raise sqlstate '42501' using message='master_access_required';
@@ -61,10 +62,13 @@ begin
   if not coalesce(v_ok,false) then
     return jsonb_build_object('accepted',false);
   end if;
+  -- Two server-generated random UUIDs supply 244 random bits. The nonce is
+  -- signed along with the authoritative intent, session and device key.
+  v_nonce := replace(gen_random_uuid()::text,'-','') || replace(gen_random_uuid()::text,'-','');
   insert into master_device_enrollment_candidate.intents(
-    actor,session_id,device_key_sha256,device_type,expires_at
+    actor,session_id,device_key_sha256,device_type,expires_at,challenge_nonce
   ) values (
-    v_actor,v_session,p_device_key_sha256,p_device_type,clock_timestamp()+interval '2 minutes'
+    v_actor,v_session,p_device_key_sha256,p_device_type,clock_timestamp()+interval '2 minutes',v_nonce
   ) returning id into v_intent;
   return jsonb_build_object('accepted',true,'intent_id',v_intent,
     'registration_complete',false);

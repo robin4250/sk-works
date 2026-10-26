@@ -38,5 +38,8 @@ await assert.rejects(() => db.query(call,[key,'mac','synthetic-correct']), /mast
 await db.exec('update master_device_enrollment_candidate.rollout set enabled=false');
 await assert.rejects(() => db.query(call,[key,'iphone','synthetic-correct']), /master_device_enrollment_unavailable/);
 assert.equal((await db.query('select count(*)::int as n from master_device_enrollment_candidate.intents')).rows[0].n,3);
+const stored = await db.query('select challenge_nonce from master_device_enrollment_candidate.intents');
+assert.equal(new Set(stored.rows.map(row => row.challenge_nonce)).size,3);
+for (const row of stored.rows) assert.match(row.challenge_nonce,/^[0-9a-f]{64}$/);
 await db.close();
 console.log('Synthetic intent smoke tests passed; enrollment is not production ready.');
