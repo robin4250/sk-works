@@ -1,0 +1,80 @@
+name: Explicit final-save Native contracts
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/review/explicit-finalization-candidate/**'
+      - '.github/workflows/explicit-finalization-native.yml'
+permissions:
+  contents: read
+concurrency:
+  group: explicit-finalization-native-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  ordinary-financial-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_checkout_integration_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: python3 tool/prepare_checkout_paid_hours.py --output "$RUNNER_TEMP/paid-hours-v1-patches.sql"
+      - run: python3 tool/prepare_checkout_shared_hours_v2.py --output "$RUNNER_TEMP/shared-hours-v2-patches.sql"
+      - name: Ordinary proof syntax
+        env:
+          SKO_ORDINARY_EXPLICIT_EMIT_ONLY: ${{ runner.temp }}/ordinary-explicit.mjs
+        run: |
+          node --check docs/review/explicit-finalization-candidate/verify_ordinary_explicit_finalization.mjs
+          node docs/review/explicit-finalization-candidate/verify_ordinary_explicit_finalization.mjs
+          node --check "$RUNNER_TEMP/ordinary-explicit.mjs"
+      - name: Actual payroll and invoice after explicit final save
+        env:
+          SKO_CHECKOUT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_checkout_integration_fixture
+          SKO_PAID_HOURS_PATCHES: ${{ runner.temp }}/paid-hours-v1-patches.sql
+          SKO_SHARED_HOURS_V2_PATCHES: ${{ runner.temp }}/shared-hours-v2-patches.sql
+        run: >-
+          node docs/review/explicit-finalization-candidate/verify_ordinary_explicit_finalization.mjs
+          "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+  route-document-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_route_explicit_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - name: Reproduce exact-source candidate assembly
+        run: |
+          python3 docs/review/explicit-finalization-candidate/prepare_candidate.py
+          git diff --exit-code -- docs/review/explicit-finalization-candidate
+      - name: Source syntax
+        run: node --check docs/review/explicit-finalization-candidate/verify_route_explicit_finalization.mjs
+      - name: Actual route evidence and explicit final-save transactions
+        env:
+          SKO_ROUTE_EXPLICIT_FINALIZATION_DATABASE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_route_explicit_fixture
+        run: >-
+          node docs/review/explicit-finalization-candidate/verify_route_explicit_finalization.mjs
+          "file://$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"

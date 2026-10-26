@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sk_works/features/attendance/worker_attendance_sheet_repository.dart';
 
 void main() {
   test('attendance restore keeps today summary allowance and A4 contracts', () {
@@ -13,7 +14,12 @@ void main() {
 
     expect(page, contains('final isToday = date.year == now.year'));
     expect(page, contains('width: isToday ? 2.5 : 1'));
-    expect(page, contains("allowanceUnits[name] ?? '回'"));
+    expect(
+      WorkerAttendanceDay(date: DateTime(2026, 10, 26),
+        allowanceUnits: const {'自由記入手当': '時間'})
+          .allowanceDisplayText('自由記入手当'),
+      '自由記入手当1時間',
+    );
     expect(page, contains('allowanceCounts'));
     expect(page, contains('if (data.workedDays > 0)'));
     expect(page, contains('if (data.overtimeHours > 0)'));
@@ -32,3 +38,4 @@ void main() {
     expect(pdf, contains("data.allowanceUnits[entry.key] ?? '回'"));
   });
 }
+

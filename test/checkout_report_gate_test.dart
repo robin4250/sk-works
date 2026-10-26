@@ -28,6 +28,12 @@ class _Repository implements CheckoutReportGateRepository {
     next = null;
     return pending == null ? rows : pending.future;
   }
+  final List<bool> choices = [];
+  @override Future<void> choose(PendingCheckoutRegistration target, {required bool createReport}) async {
+    choices.add(createReport);
+    if (fail) throw StateError('fixture choice response unavailable');
+    rows = createReport ? [_pending(target.sourceClockInId)] : [];
+  }
   @override dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -54,6 +60,34 @@ void main() {
       ]))), child: child!), home: const Scaffold(body: Text('ordinary-home')))));
     await tester.pump();
   }
+  testWidgets('multiple members choose checkout-only and server-confirmed choice releases normal pages', (tester) async {
+    repository.rows = [PendingCheckoutRegistration(companyId: 'company', workerId: 'worker',
+      workDate: DateTime(2026,10,21), sourceClockInId: 'in', clockOutId: 'out-in',
+      siteId: 'site', state: 'report_choice_required', blocking: true,
+      scopeFingerprint: 'scope', choiceAvailable: true, memberCount: 2)];
+    await mount(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('日報を作成する'), findsOneWidget);
+    expect(find.text('ordinary-home').hitTestable(), findsNothing);
+    await tester.tap(find.text('退勤のみ'));
+    await tester.pumpAndSettle();
+    expect(repository.choices, [false]);
+    expect(find.text('ordinary-home').hitTestable(), findsOneWidget);
+  });
+  testWidgets('explicit create starts restricted report rather than assigning first checkout silently', (tester) async {
+    repository.rows = [PendingCheckoutRegistration(companyId: 'company', workerId: 'worker',
+      workDate: DateTime(2026,10,21), sourceClockInId: 'in', clockOutId: 'out-in',
+      siteId: 'site', state: 'report_choice_required', blocking: true,
+      scopeFingerprint: 'scope', choiceAvailable: true, memberCount: 2)];
+    await mount(tester);
+    await tester.pumpAndSettle();
+    expect(repository.choices, isEmpty);
+    await tester.tap(find.text('日報を作成する'));
+    await tester.pumpAndSettle();
+    expect(repository.choices, [true]);
+    expect(find.text('report-in'), findsOneWidget);
+    expect(find.text('ordinary-home').hitTestable(), findsNothing);
+  });
   testWidgets('fresh exact reporter completion hands off once and leaves normal home available', (tester) async {
     final handed = <PendingCheckoutRegistration>[];
     await mount(tester, onContinueSavedReport: handed.add);

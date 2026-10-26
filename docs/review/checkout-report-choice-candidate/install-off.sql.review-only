@@ -1,0 +1,144 @@
+-- REVIEW ONLY. Install OFF; activate only with the corresponding client.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='45s';
+create temporary table checkout_choice_protected(name text primary key,digest text) on commit drop;
+do $$declare name text;digest text;begin
+ foreach name in array array['public.attendance_verifications','public.attendance_entries','public.daily_reports','public.daily_report_workers','public.workers','public.company_members','public.payroll_statements','public.invoices','public.payment_certificates','shared_daily_report_private.signature_events'] loop
+  if to_regclass(name) is not null then
+   execute format('lock table %s in share mode',name);
+   execute format('select md5(coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text)::text,''[]'')) from %s x',name) into digest;
+   insert into checkout_choice_protected values(name,digest);
+  end if;
+ end loop;
+end$$;
+do $$begin
+ if current_user<>'postgres' then raise exception 'postgres required';end if;
+ if not exists(select 1 from pg_proc where oid='checkout_report_registration_private.read_for_actor(uuid)'::regprocedure
+ and md5(prosrc)='c01b3c1a9a6aec82f0da7fd9e83b7364' and pg_get_userbyid(proowner)='postgres'
+ and prosecdef and proconfig=array['search_path=""']::text[] and proacl::text='{postgres=X/postgres}' and provolatile='v') then raise exception 'registration reader source or metadata differs';end if;
+end$$;
+create schema checkout_report_choice_private;
+revoke all on schema checkout_report_choice_private from public,anon,authenticated,service_role;
+create table checkout_report_choice_private.rollout(company_id uuid primary key references public.companies(id),enabled boolean not null default false);
+create table checkout_report_choice_private.choices(
+ source_clock_in_id uuid primary key references public.attendance_verifications(id),
+ company_id uuid not null references public.companies(id),worker_id uuid not null references public.workers(id),actor_id uuid not null,
+ deferred_at timestamptz,started_at timestamptz,
+ check(deferred_at is not null or started_at is not null));
+create table checkout_report_choice_private.originals(signature text primary key,definition text not null);
+insert into checkout_report_choice_private.originals values('checkout_report_registration_private.read_for_actor(uuid)',pg_get_functiondef('checkout_report_registration_private.read_for_actor(uuid)'::regprocedure));
+alter table checkout_report_choice_private.rollout enable row level security;
+alter table checkout_report_choice_private.choices enable row level security;
+alter table checkout_report_choice_private.originals enable row level security;
+revoke all on all tables in schema checkout_report_choice_private from public,anon,authenticated,service_role;
+do $$declare definition text;begin
+ select pg_get_functiondef('checkout_report_registration_private.read_for_actor(uuid)'::regprocedure) into definition;
+ definition:=replace(definition,'checkout_report_registration_private.read_for_actor(','checkout_report_choice_private.read_before_choice(');
+ execute definition;
+end$$;
+revoke all on function checkout_report_choice_private.read_before_choice(uuid) from public,anon,authenticated,service_role;
+do $$declare definition text;begin
+ select pg_get_functiondef('checkout_report_registration_private.read_for_actor(uuid)'::regprocedure) into definition;
+ if position('and o.work_date>=p.starts_on' in definition)=0 then raise exception 'source date predicate differs';end if;
+ definition:=replace(replace(definition,'checkout_report_registration_private.read_for_actor(','checkout_report_choice_private.read_all_sources('),'and o.work_date>=p.starts_on','');
+ execute definition;
+end$$;
+revoke all on function checkout_report_choice_private.read_all_sources(uuid) from public,anon,authenticated,service_role;
+create function checkout_report_choice_private.decorate(envelope jsonb,actor uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare item jsonb;result jsonb:='[]';roster jsonb;members integer;choice checkout_report_choice_private.choices%rowtype;
+begin
+ for item in select x from jsonb_array_elements(envelope->'items') x loop
+  if item->>'registration_state'<>'source_conflict' and exists(select 1 from checkout_report_choice_private.rollout where company_id=(item->>'company_id')::uuid and enabled) then
+   select coalesce(jsonb_agg(worker_id order by worker_id),'[]'::jsonb) into roster from (
+    select distinct worker_id from public.attendance_verifications where company_id=(item->>'company_id')::uuid and work_date=(item->>'work_date')::date and event_type='clock_in'
+    and site_id is not distinct from (item->>'site_id')::uuid and route_assignment_id is not distinct from (item->>'route_assignment_id')::uuid) w;
+   members:=jsonb_array_length(roster);
+   select * into choice from checkout_report_choice_private.choices where source_clock_in_id=(item->>'source_clock_in_id')::uuid and company_id=(item->>'company_id')::uuid and worker_id=(item->>'worker_id')::uuid and actor_id=actor;
+   item:=item||jsonb_build_object('choice_available',true,'report_started',choice.started_at is not null,'member_count',members,'scope_fingerprint',md5(jsonb_build_array(item->>'scope_fingerprint',roster)::text));
+   -- A started report is durable. Only the existing persisted-reporter checks
+   -- may release it; later choosing checkout-only cannot erase that obligation.
+   if (item->>'blocking')::boolean and choice.started_at is null then
+    if choice.deferred_at is not null then
+     item:=item||jsonb_build_object('registration_state','checkout_deferred','blocking',false);
+    elsif members>1 then
+     item:=item||jsonb_build_object('registration_state','report_choice_required');
+    end if;
+   end if;
+  end if;
+  result:=result||jsonb_build_array(item);
+ end loop;
+ return jsonb_set(envelope,'{items}',result)||jsonb_build_object('choice_enforcement_enabled',
+  coalesce((envelope->>'enforcement_enabled')::boolean,false) and exists(select 1 from checkout_report_choice_private.rollout p join public.company_members m on m.company_id=p.company_id where m.user_id=actor and p.enabled));
+end$$;
+revoke all on function checkout_report_choice_private.decorate(jsonb,uuid) from public,anon,authenticated,service_role;
+create or replace function checkout_report_registration_private.read_for_actor(actor uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare envelope jsonb;extra jsonb;
+begin
+ envelope:=checkout_report_choice_private.read_before_choice(actor);
+ select coalesce(jsonb_agg(x),'[]'::jsonb) into extra
+ from jsonb_array_elements(checkout_report_choice_private.read_all_sources(actor)->'items') x
+ join checkout_report_choice_private.choices c on c.source_clock_in_id=(x->>'source_clock_in_id')::uuid and c.actor_id=actor and c.started_at is not null
+ join checkout_report_choice_private.rollout p on p.company_id=c.company_id and p.enabled
+ where not exists(select 1 from jsonb_array_elements(envelope->'items') b where b->>'source_clock_in_id'=x->>'source_clock_in_id');
+ envelope:=jsonb_set(envelope,'{items}',(envelope->'items')||extra);
+ return checkout_report_choice_private.decorate(envelope,actor);
+end$$;
+create function checkout_report_choice_private.creation_sources(actor uuid,p_month date)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare envelope jsonb;items jsonb;
+begin
+ if p_month is null then raise exception 'work month required';end if;
+ envelope:=checkout_report_choice_private.read_all_sources(actor);
+ select coalesce(jsonb_agg(x),'[]'::jsonb) into items from jsonb_array_elements(envelope->'items') x
+ where date_trunc('month',(x->>'work_date')::date)=date_trunc('month',p_month)
+ and exists(select 1 from checkout_report_choice_private.rollout p where p.company_id=(x->>'company_id')::uuid and p.enabled);
+ return checkout_report_choice_private.decorate(jsonb_set(envelope,'{items}',items),actor);
+end$$;
+revoke all on function checkout_report_choice_private.creation_sources(uuid,date) from public,anon,authenticated,service_role;
+create function public.read_checkout_report_creation_sources(p_month date)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid;begin
+ actor:=checkout_report_registration_private.current_actor();
+ return checkout_report_choice_private.creation_sources(actor,p_month);
+end$$;
+revoke all on function public.read_checkout_report_creation_sources(date) from public,anon,authenticated,service_role;
+grant execute on function public.read_checkout_report_creation_sources(date) to authenticated;
+create function public.choose_checkout_report_registration(p_source_clock_in_id uuid,p_expected_scope text,p_create_report boolean)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid;envelope jsonb;item jsonb;source_day date;choice checkout_report_choice_private.choices%rowtype;
+begin
+ actor:=checkout_report_registration_private.current_actor();
+ if p_create_report is null or p_expected_scope is null then raise exception 'checkout_report_choice_required';end if;
+ perform pg_advisory_xact_lock(hashtextextended('checkout-report-choice/'||p_source_clock_in_id::text,0));
+ perform 1 from public.attendance_verifications where id=p_source_clock_in_id for share;
+ envelope:=checkout_report_registration_private.read_for_actor(actor);
+ select x into item from jsonb_array_elements(envelope->'items') x where x->>'source_clock_in_id'=p_source_clock_in_id::text;
+ if item is null and p_create_report then
+  select work_date into source_day from public.attendance_verifications where id=p_source_clock_in_id;
+  if source_day is not null then
+   envelope:=checkout_report_choice_private.creation_sources(actor,source_day);
+   select x into item from jsonb_array_elements(envelope->'items') x where x->>'source_clock_in_id'=p_source_clock_in_id::text;
+  end if;
+ end if;
+ if item is null or item->'choice_available' is distinct from 'true'::jsonb or item->>'scope_fingerprint' is distinct from p_expected_scope
+ or item->>'registration_state'='source_conflict' then raise exception 'checkout_report_choice_stale';end if;
+ select * into choice from checkout_report_choice_private.choices where source_clock_in_id=p_source_clock_in_id for update;
+ if found and (choice.actor_id<>actor or choice.company_id<>(item->>'company_id')::uuid or choice.worker_id<>(item->>'worker_id')::uuid) then raise sqlstate '42501' using message='checkout_report_choice_actor_differs';end if;
+ if not p_create_report and (choice.started_at is not null or item->>'registration_state' not in('report_choice_required','checkout_deferred') or (item->>'member_count')::integer<2) then raise exception 'checkout_report_already_started';end if;
+ insert into checkout_report_choice_private.choices(source_clock_in_id,company_id,worker_id,actor_id,deferred_at,started_at)
+ values(p_source_clock_in_id,(item->>'company_id')::uuid,(item->>'worker_id')::uuid,actor,case when not p_create_report then clock_timestamp() end,case when p_create_report then clock_timestamp() end)
+ on conflict(source_clock_in_id) do update set started_at=coalesce(checkout_report_choice_private.choices.started_at,excluded.started_at),deferred_at=coalesce(checkout_report_choice_private.choices.deferred_at,excluded.deferred_at);
+ return checkout_report_registration_private.read_for_actor(actor);
+end$$;
+revoke all on function public.choose_checkout_report_registration(uuid,text,boolean) from public,anon,authenticated,service_role;
+grant execute on function public.choose_checkout_report_registration(uuid,text,boolean) to authenticated;
+do $$declare row record;digest text;begin
+ for row in select * from checkout_choice_protected loop
+  execute format('select md5(coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text)::text,''[]'')) from %s x',row.name) into digest;
+  if digest is distinct from row.digest then raise exception 'business data changed: %',row.name;end if;
+ end loop;
+end$$;
+commit;

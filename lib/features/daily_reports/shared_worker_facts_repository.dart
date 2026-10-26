@@ -95,7 +95,7 @@ class SharedWorkerFacts {
     }
     final sameVehicle = template?.vehicleId == vehicleId && template?.routeId == routeId && template?.odometerKm == odometerKm;
     return DailyReportWorkerDraft(workerId: workerId, workerName: workerName,
-      overtimeHours: overtimeHours, earlyHours: earlyHours, nightHours: nightHours,
+      overtimeHours: overtimeHours, earlyHours: earlyHours, nightHours: nightHours, workCategory: workCategory,
       allowanceAmount: allowanceAmount, allowanceLabel: allowanceLabel ?? '',
       companyAllowanceSelections: companyAllowanceSelections, vehicleId: vehicleId,
       vehicleName: sameVehicle ? template?.vehicleName : null, routeId: routeId,
@@ -126,11 +126,11 @@ class SharedWorkerFactsSnapshot {
   const SharedWorkerFactsSnapshot({required this.scope, required this.facts,
     required this.proposedFacts, required this.confirmed, required this.current,
     required this.isOwnWorker, required this.canManageAttendance,
-    required this.hoursRequiredOutsideCurrentReport});
+    required this.hoursRequiredOutsideCurrentReport, this.canCoordinateSiteReport = false});
   final PaidWorkHoursSnapshot scope;
   final SharedWorkerFacts? facts, proposedFacts;
   final bool confirmed, current, isOwnWorker, canManageAttendance;
-  final bool hoursRequiredOutsideCurrentReport;
+  final bool hoursRequiredOutsideCurrentReport, canCoordinateSiteReport;
   String get actorId => scope.actorId;
   String get companyId => scope.companyId;
   String get workerId => scope.workerId;
@@ -153,13 +153,16 @@ class SharedWorkerFactsSnapshot {
       'hours_required_outside_current_report']) {
       if (raw[key] is! bool) { invalid(); }
     }
+    if (raw.containsKey('site_coordinator_confirmation_available') &&
+        raw['site_coordinator_confirmation_available'] is! bool) { invalid(); }
     final facts = raw['worker_facts'] == null ? null : SharedWorkerFacts.parse(raw['worker_facts']);
     final proposed = raw['proposed_worker_facts'] == null ? null : SharedWorkerFacts.parse(raw['proposed_worker_facts']);
     if (raw['facts_confirmed'] == true && facts == null || raw['facts_current'] == true && raw['facts_confirmed'] != true) { invalid(); }
     return SharedWorkerFactsSnapshot(scope: scope, facts: facts, proposedFacts: proposed,
       confirmed: raw['facts_confirmed'] as bool, current: raw['facts_current'] as bool,
       isOwnWorker: raw['own_worker'] as bool, canManageAttendance: raw['management_confirmation_available'] as bool,
-      hoursRequiredOutsideCurrentReport: raw['hours_required_outside_current_report'] as bool);
+      hoursRequiredOutsideCurrentReport: raw['hours_required_outside_current_report'] as bool,
+      canCoordinateSiteReport: raw['site_coordinator_confirmation_available'] == true);
   }
 }
 
@@ -186,10 +189,12 @@ class SharedWorkerFactsRepository {
 
   Future<SharedWorkerFactsSnapshot> _request({required String companyId,
     required String workerId, required String reportId, required String rpc,
-    required Map<String, dynamic> parameters}) async {
+    required Map<String, dynamic> parameters, String? expectedActor}) async {
     final session = _client.auth.currentSession;
     final actor = session?.user.id, key = _sessionKey(session);
-    if (actor == null || key == null) { throw StateError('ログインが必要です。'); }
+    if (actor == null || key == null || expectedActor != null && actor != expectedActor) {
+      throw StateError('ログイン状態が変わりました。日報を開き直してください。');
+    }
     var invalidated = false;
     final subscription = _client.auth.onAuthStateChange.listen((event) {
       if (_sessionKey(event.session) != key) { invalidated = true; }
@@ -224,6 +229,27 @@ class SharedWorkerFactsRepository {
       reportId: reportId, workerId: workerId, rpc: 'read_shared_worker_facts',
       parameters: {'p_report_id': reportId, 'p_worker_id': workerId});
 
+  Future<SharedWorkerFactsSnapshot> confirmSiteReportFacts(SharedWorkerFactsSnapshot before,
+    SharedWorkerFacts facts, {double? hours, String? reason}) {
+    final valid = SharedWorkerFacts.parse(facts.toJson());
+    final requiresHours = before.hoursRequiredOutsideCurrentReport ||
+        valid.companyAllowanceSelections.items.any((item) => item.unit == 'hour');
+    final explanation = reason?.trim();
+    if (!before.canCoordinateSiteReport || before.sourceBlocked ||
+        explanation != null && explanation.length > 1000 ||
+        hours != null && (!hours.isFinite || hours < 0 || hours > 24 ||
+          (hours * 10000 - (hours * 10000).round()).abs() > 0.000001) ||
+        requiresHours && hours == null) {
+      throw const FormatException('当日の現場メンバーと保存済みの勤務実績を確認してください。');
+    }
+    return _request(companyId: before.companyId, workerId: before.workerId,
+      reportId: before.reportId, expectedActor: before.actorId, rpc: 'confirm_shared_site_report_facts',
+      parameters: {'p_report_id': before.reportId, 'p_worker_id': before.workerId,
+        'p_facts': valid.toConfirmationJson(), 'p_hours': hours,
+        'p_expected_revision': before.revision, 'p_expected_scope': before.scopeFingerprint,
+        'p_reason': explanation == null || explanation.isEmpty ? null : explanation});
+  }
+
   Future<SharedWorkerFactsSnapshot> confirm(SharedWorkerFactsSnapshot before,
     SharedWorkerFacts facts, {double? hours, String? managementReason}) {
     // Prospective selection replaces this report's prior selections; the server
@@ -242,11 +268,12 @@ class SharedWorkerFactsRepository {
       throw const FormatException('退勤記録と本人の勤務実績を確認してください。');
     }
     return _request(companyId: before.companyId, workerId: before.workerId,
-      reportId: before.reportId, rpc: managed ? 'confirm_managed_shared_worker_facts' : 'confirm_shared_worker_facts',
+      reportId: before.reportId, expectedActor: before.actorId, rpc: managed ? 'confirm_managed_shared_worker_facts' : 'confirm_shared_worker_facts',
       parameters: {'p_report_id': before.reportId, 'p_worker_id': before.workerId,
         'p_facts': valid.toConfirmationJson(), 'p_hours': hours,
         'p_expected_revision': before.revision, 'p_expected_scope': before.scopeFingerprint,
         if (managed) 'p_reason': reason});
   }
 }
+
 

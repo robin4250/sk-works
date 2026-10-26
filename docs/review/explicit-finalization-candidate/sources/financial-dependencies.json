@@ -1,0 +1,50 @@
+[
+  {
+    "identity": "private.document_company_seal_snapshot(jsonb,uuid,boolean)",
+    "definition": "CREATE OR REPLACE FUNCTION private.document_company_seal_snapshot(p_existing jsonb, p_company uuid, p_new boolean)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare c public.companies; uploaded_png jsonb;\nbegin\n if not p_new then\n  if coalesce(p_existing,'{}'::jsonb) ? 'company_seal_snapshot' then\n   return jsonb_build_object('company_seal_snapshot',p_existing->'company_seal_snapshot');\n  end if;\n  return '{}'::jsonb;\n end if;\n\n uploaded_png:=private.uploaded_company_seal_snapshot(p_company);\n if uploaded_png IS NOT NULL then\n  return uploaded_png;\n end if;\n select * into c from public.companies where id=p_company for share;\n if c.id is null then raise exception 'Company does not exist.' using errcode='23503'; end if;\n if c.name is null or btrim(c.name)='' then\n  raise exception 'Registered company name is missing.' using errcode='22023';\n end if;\n if c.company_seal_style not in ('legacy','aoyagi_reisho','png_sumida_v1_standard','png_sumida_v1_light','png_sumida_v1_worn') then\n  raise exception 'Unknown company seal style.' using errcode='22023';\n end if;\n if c.company_seal_style='aoyagi_reisho' and not private.aoyagi_reisho_name_supported(c.name) then\n  raise exception 'Registered company name cannot be used for the selected seal.' using errcode='22023';\n end if;\n if c.company_seal_style in ('png_sumida_v1_standard','png_sumida_v1_light','png_sumida_v1_worn') then\n  if c.id is distinct from '0f117273-0a06-4a2f-85ec-720a3c9f4cf4'::uuid or c.name is distinct from 'すみだ建設株式会社' then\n   raise exception 'PNG seal belongs to another company' using errcode='22023';\n  end if;\n  return jsonb_build_object('company_seal_snapshot',jsonb_build_object(\n   'version',1,'style',c.company_seal_style,'name',c.name,'company_id',c.id));\n end if;\n return jsonb_build_object('company_seal_snapshot',jsonb_build_object(\n  'version',1,'style',c.company_seal_style,'name',c.name));\nend $function$\n",
+    "body_md5": "823cc52d0c652e7f04ff816a8a8eaf64",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "v"
+  },
+  {
+    "identity": "private.ensure_unassigned_invoice_customer(uuid)",
+    "definition": "CREATE OR REPLACE FUNCTION private.ensure_unassigned_invoice_customer(cid uuid)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare v_id uuid;\nbegin\n  select c.id into v_id\n  from public.customers c\n  where c.company_id=cid\n    and c.notes='sko_system_unassigned_invoice_customer'\n  order by c.created_at\n  limit 1;\n\n  if v_id is null then\n    insert into public.customers(company_id,name,billing_name,notes)\n    values(cid,'取引先未設定（自動下書き）','取引先未設定','sko_system_unassigned_invoice_customer')\n    returning id into v_id;\n  end if;\n  return v_id;\nend;\n$function$\n",
+    "body_md5": "fb85ab77acc1ea8299630aeeea372cd8",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": null,
+    "security_definer": true,
+    "volatility": "v"
+  },
+  {
+    "identity": "private.expense_cost_components(text,uuid,uuid,date,date,uuid)",
+    "definition": "CREATE OR REPLACE FUNCTION private.expense_cost_components(p_kind text, cid uuid, subject uuid, first_day date, last_day date, p_document uuid)\n RETURNS jsonb\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\n with scoped as (\n  select e.*,s.method,s.settlement_month,s.approval_current,s.cost_allocation_current\n  from private.expense_claims e join private.expense_settlement_choices s on s.claim_id=e.id and s.company_id=e.company_id\n  where e.company_id=cid and s.cost_allocation_current and e.incurred_on between first_day and last_day\n   and case p_kind when 'invoice' then e.allocation='customer' and e.counterparty_id=subject\n   when 'paymentCertificate' then e.allocation='subcontractor' and e.counterparty_id=subject else false end\n ),eligible as (\n  select e.* from scoped e where e.approval='approved' and e.approval_current and not e.withdrawn\n   and not exists(select 1 from private.expense_amount_consumptions c where c.claim_id=e.id and c.purpose='cost_recovery'\n    and (c.document_kind is distinct from p_kind or c.document_id is distinct from p_document))\n ) select jsonb_build_object('has_choices',exists(select 1 from scoped),\n  'amount_yen',coalesce((select sum(amount_yen) from eligible),0),\n  'claims',coalesce((select jsonb_agg(jsonb_build_object('id',id,'revision',revision,'applicant_id',applicant_id,\n   'applicant_name',applicant_name,'incurred_on',incurred_on,'description',description,'amount_yen',amount_yen,\n   'settlement_method',method,'settlement_month',settlement_month) order by incurred_on,id) from eligible),'[]'::jsonb))\n$function$\n",
+    "body_md5": "eb3864fbfc9b425c831edc0f7404c841",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "s"
+  },
+  {
+    "identity": "private.route_billing_invoice_components(uuid,uuid,date,date)",
+    "definition": "CREATE OR REPLACE FUNCTION private.route_billing_invoice_components(cid uuid, customer uuid, first_day date, last_day date)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\ndeclare r record; blocks jsonb:='[]'; lines jsonb; base numeric; welfare numeric; tax numeric;\n subtotal numeric:=0; tax_total numeric:=0; welfare_total numeric:=0; tax_rate numeric; signed_parts jsonb;\nbegin\n select greatest(coalesce(c.tax_rate,0),0) into tax_rate from public.companies c where c.id=cid;\n for r in select q.*,coalesce(nullif(s.formal_name,''),s.name) site_name,\n  case when f.welfare_rate between 0 and 100 then f.welfare_rate else 0 end welfare_rate\n  from private.route_billing_quantity_requests q join public.sites s on s.id=q.representative_site_id\n  left join public.site_financial_settings f on f.company_id=cid and f.site_id=s.id\n  where q.company_id=cid and q.customer_id=customer and q.work_date between first_day and last_day\n  and q.status='approved' and s.company_id=cid and s.customer_id=customer\n  and not exists(select 1 from private.route_billing_quantity_evidence e join public.sites es on es.id=e.site_id\n   where e.request_id=q.id and (es.company_id<>cid or es.customer_id is distinct from e.customer_id))\n  order by q.work_date,q.worker_id,q.id loop\n  base:=round(r.quantity*r.unit_price_yen);\n  welfare:=round(base*r.welfare_rate/100);tax:=round((base+welfare)*tax_rate/100);\n  lines:=jsonb_build_array(jsonb_build_object('site_label',r.site_name,'work_content','複数現場',\n   'quantity',r.quantity,'unit_price',r.unit_price_yen,'unit_price_text',r.unit_price_yen::text,'amount',base,\n   'route_billing_request_id',r.id,'route_billing_version',r.version));\n  if welfare>0 then lines:=lines||jsonb_build_array(jsonb_build_object('site_label','〃','work_content','（法定福利費）',\n   'quantity',0,'unit_price',0,'unit_price_text','','amount',welfare));end if;\n  if tax>0 then lines:=lines||jsonb_build_array(jsonb_build_object('site_label','〃','work_content','（消費税）',\n   'quantity',0,'unit_price',0,'unit_price_text',tax_rate::text||'%','amount',tax));end if;\n  blocks:=blocks||jsonb_build_array(jsonb_build_object('site_id',r.representative_site_id,'site_name',r.site_name,\n   'route_billing_request_id',r.id,'manual_adjustment',0,'welfare_rate_bps',r.welfare_rate*100,\n   'subtotal',base+welfare,'tax',tax,'grand_total',base+welfare+tax,'lines',lines));\n  subtotal:=subtotal+base+welfare;tax_total:=tax_total+tax;welfare_total:=welfare_total+welfare;\n end loop;\n signed_parts:=private.route_signed_checkout_components(cid,customer,first_day,last_day);\n blocks:=blocks||(signed_parts->'sites');\n subtotal:=subtotal+(signed_parts->>'subtotal')::numeric;\n tax_total:=tax_total+(signed_parts->>'tax')::numeric;\n welfare_total:=welfare_total+(signed_parts->>'welfare')::numeric;\n return jsonb_build_object('sites',blocks,'subtotal',subtotal,'tax',tax_total,'welfare',welfare_total,\n  'blocked',private.route_billing_invoice_blocked(cid,customer,first_day,last_day),\n  'route_signed_checkout_version',1,'source_issues',signed_parts->'issues',\n  'has_requests',coalesce((signed_parts->>'has_sources')::boolean,false) or exists(select 1 from private.route_billing_quantity_requests q where q.company_id=cid\n   and q.customer_id=customer and q.work_date between first_day and last_day));\nend $function$\n",
+    "body_md5": "115ebedbcc5e02c7adef762829b77cee",
+    "owner": "postgres",
+    "config": [
+      "search_path=\"\""
+    ],
+    "acl": "{postgres=X/postgres}",
+    "security_definer": true,
+    "volatility": "s"
+  }
+]

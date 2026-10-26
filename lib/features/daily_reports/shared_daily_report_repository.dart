@@ -32,6 +32,8 @@ class SharedDailyReportContext {
     this.documentBasis, this.financialResigningSupported = false,
     this.financialTransitionId, this.financialTransitionValid = false,
     this.managementHoldReason, this.approvedEditRequestId,
+    this.explicitFinalizationRequired = false, this.explicitFinalizationReady = false,
+    this.explicitFinalizationCompleted = false, this.explicitFinalizationEditable = false,
     this.pendingWorkerIds = const [], this.supervisorPendingReasons = const [],
   });
   final String actorId, companyId, state, reporterName;
@@ -43,6 +45,10 @@ class SharedDailyReportContext {
   final Map<String, dynamic>? workBasis;
   final Map<String, dynamic>? documentBasis;
   final bool supervisorReady;
+  final bool explicitFinalizationRequired, explicitFinalizationReady, explicitFinalizationCompleted, explicitFinalizationEditable;
+  bool get canFinalize => enabled && explicitFinalizationRequired && explicitFinalizationReady &&
+      !explicitFinalizationCompleted && reporterSaved && supervisorSaved &&
+      reportId != null && expectedUpdatedAt != null && signatureScopeFingerprint != null;
   final bool firstReporterCoversWorkOnly;
   final bool documentOnly, documentComplete, documentEditable, financialConfirmationRequired;
   final bool financialResigningSupported, financialTransitionValid;
@@ -117,6 +123,23 @@ class SharedDailyReportContext {
     for (final key in ['document_only', 'document_complete', 'document_editable', 'financial_confirmation_required', 'financial_resigning_supported', 'financial_transition_valid', 'new_actual_reporter_and_supervisor_signatures_required']) {
       if (row.containsKey(key) && row[key] is! bool) { invalid(); }
     }
+    const finalizationKeys = ['explicit_finalization_required', 'explicit_finalization_ready', 'explicit_finalization_completed'];
+    if (finalizationKeys.any(row.containsKey)) {
+      if (finalizationKeys.any((key) => row[key] is! bool)) { invalid(); }
+      if (row['explicit_finalization_required'] != true &&
+          (row['explicit_finalization_ready'] == true || row['explicit_finalization_completed'] == true) ||
+          row['explicit_finalization_required'] == true && row['enabled'] != true ||
+          row['explicit_finalization_ready'] == true &&
+            (row['reporter_saved'] != true || row['supervisor_saved'] != true || row['report_status'] != 'draft') ||
+          row['explicit_finalization_completed'] == true &&
+            (row['reporter_saved'] != true || row['supervisor_saved'] != true || row['report_status'] != 'signed' ||
+             row['explicit_finalization_ready'] == true)) { invalid(); }
+    }
+    if (row.containsKey('explicit_finalization_editable') &&
+        (row['explicit_finalization_editable'] is! bool ||
+          row['explicit_finalization_editable'] == true &&
+            (row['explicit_finalization_required'] != true || row['report_status'] != 'draft' ||
+             row['explicit_finalization_completed'] == true))) { invalid(); }
     final transitionId = row['financial_transition_id'];
     if (transitionId != null && (transitionId is! int || transitionId <= 0 ||
         row['financial_transition_state'] != 'ready_for_real_signatures' ||
@@ -278,6 +301,10 @@ class SharedDailyReportContext {
       signatureScopeFingerprint: fingerprint as String?, hoursAnnex: hoursAnnex,
       workBasis: workBasis, documentBasis: documentBasis,
       firstReporterCoversWorkOnly: row['first_reporter_covers_work_only'] as bool,
+      explicitFinalizationRequired: row['explicit_finalization_required'] == true,
+      explicitFinalizationReady: row['explicit_finalization_ready'] == true,
+      explicitFinalizationCompleted: row['explicit_finalization_completed'] == true,
+      explicitFinalizationEditable: row['explicit_finalization_editable'] == true,
       financialResigningSupported: row['financial_resigning_supported'] == true,
       financialTransitionId: transitionId as int?, financialTransitionValid: row['financial_transition_valid'] == true,
       documentOnly: documentOnly, documentComplete: documentComplete,
@@ -341,6 +368,61 @@ class SharedDailyReportRepository {
     final raw = await _rpc('read_shared_daily_report_context', {'p_report_id': reportId}, expectedActor: expectedActor);
     return SharedDailyReportContext.parse(raw, actorId: expectedActor ?? _client.auth.currentSession!.user.id, reportId: reportId);
   }
+  Future<SharedDailyReportContext> startFinalizationEdit({required SharedDailyReportContext before,
+    required String reason}) async {
+    if (!before.explicitFinalizationRequired || !before.explicitFinalizationEditable ||
+        before.explicitFinalizationCompleted || before.reportId == null ||
+        before.expectedUpdatedAt == null || before.signatureScopeFingerprint == null) {
+      throw StateError('確定前の日報を手直しできる状態を確認してください。');
+    }
+    final raw = await _rpc('start_shared_report_finalization_edit', {
+      'p_report_id': before.reportId,
+      'p_expected_updated_at': before.expectedUpdatedAt!.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint, 'p_reason': reason,
+    }, expectedActor: before.actorId);
+    final after = SharedDailyReportContext.parse(raw, actorId: before.actorId,
+      companyId: before.companyId, reportId: before.reportId, workDate: before.workDate);
+    if (!after.explicitFinalizationRequired || after.reporterSaved || after.supervisorSaved ||
+        after.reportStatus != 'draft') {
+      throw StateError('手直しの開始状態を確認できません。日報を再読み込みしてください。');
+    }
+    return after;
+  }
+  Future<SharedDailyReportContext> prepareProvisionalFacts({required SharedDailyReportContext before,
+    required List<Map<String, dynamic>> workers}) async {
+    if (!before.enabled || !before.explicitFinalizationRequired ||
+        before.supervisorSaved || before.explicitFinalizationCompleted || before.reportId == null ||
+        before.expectedUpdatedAt == null || before.signatureScopeFingerprint == null || before.reportStatus != 'draft') {
+      throw StateError('確定前の日報とサインの状態を確認してください。');
+    }
+    final raw = await _rpc('prepare_shared_report_provisional_facts', {
+      'p_report_id': before.reportId,
+      'p_expected_updated_at': before.expectedUpdatedAt!.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint, 'p_workers': workers,
+    }, expectedActor: before.actorId);
+    final after = SharedDailyReportContext.parse(raw, actorId: before.actorId,
+      companyId: before.companyId, reportId: before.reportId, workDate: before.workDate);
+    if (!after.explicitFinalizationRequired || after.reporterSaved != before.reporterSaved || after.supervisorSaved ||
+        after.explicitFinalizationCompleted || after.reportStatus != 'draft') {
+      throw StateError('退勤後の勤務実績の準備状態を確認できません。日報を再読み込みしてください。');
+    }
+    return after;
+  }
+
+  Future<SharedDailyReportContext> finalize({required SharedDailyReportContext before}) async {
+    if (!before.canFinalize) { throw StateError('報告者・責任者のサインと勤務実績を確認してから保存してください。'); }
+    final raw = await _rpc('finalize_shared_daily_report', {
+      'p_report_id': before.reportId,
+      'p_expected_updated_at': before.expectedUpdatedAt!.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint,
+    }, expectedActor: before.actorId);
+    final after = SharedDailyReportContext.parse(raw, actorId: before.actorId,
+      companyId: before.companyId, reportId: before.reportId, workDate: before.workDate);
+    if (!after.explicitFinalizationCompleted || after.reportStatus != 'signed') {
+      throw StateError('給与・請求への反映と日報の確定を確認できません。再読み込みしてください。');
+    }
+    return after;
+  }
   Future<SharedDailyReportContext> reuse(SharedDailyReportContext before) async {
     if (before.sourceClockInId == null) { throw StateError('本人の出退勤原本を確認してください。'); }
     final raw = await _rpc('reuse_my_shared_daily_report', {'p_source_clock_in_id': before.sourceClockInId}, expectedActor: before.actorId);
@@ -357,7 +439,9 @@ class SharedDailyReportRepository {
       'p_source_clock_in_id': before.sourceClockInId,
       'p_expected_updated_at': before.expectedUpdatedAt?.toUtc().toIso8601String(),
       'p_expected_signature_scope': before.signatureScopeFingerprint,
-      'p_work_description': workDescription, 'p_workers': workers,
+      'p_work_description': workDescription, 'p_workers': [for (final worker in workers)
+        {...worker}..removeWhere((key, _) => !before.explicitFinalizationRequired &&
+          const ['work_category', 'confirmed_hours', 'confirmation_reason'].contains(key))],
       'p_signer_name': signerName, 'p_signature': signature,
     }, expectedActor: before.actorId);
     return SharedDailyReportContext.parse(raw, actorId: before.actorId,
@@ -375,7 +459,8 @@ class SharedDailyReportRepository {
       'p_report_id': before.reportId,
       'p_expected_updated_at': before.expectedUpdatedAt!.toUtc().toIso8601String(),
       'p_expected_signature_scope': before.signatureScopeFingerprint,
-      'p_work_description': workDescription, 'p_workers': workers,
+      'p_work_description': workDescription, 'p_workers': [for (final worker in workers)
+        {...worker}..removeWhere((key, _) => const ['work_category', 'confirmed_hours', 'confirmation_reason'].contains(key))],
     }, expectedActor: before.actorId);
     final after = SharedDailyReportContext.parse(raw, actorId: before.actorId,
       companyId: before.companyId, reportId: before.reportId, workDate: before.workDate);
@@ -484,4 +569,5 @@ class SharedDailyReportRepository {
     return loadReport(before.reportId!, expectedActor: before.actorId);
   }
 }
+
 

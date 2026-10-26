@@ -22,6 +22,7 @@ class DailyReportWorkerDraft {
     this.overtimeHours = 0,
     this.earlyHours = 0,
     this.nightHours = 0,
+    this.workCategory,
     this.allowanceAmount = 0,
     this.allowanceLabel = '',
     this.companyAllowanceSelections,
@@ -44,6 +45,7 @@ class DailyReportWorkerDraft {
   double overtimeHours;
   double earlyHours;
   double nightHours;
+  String? workCategory;
   int allowanceAmount;
   String allowanceLabel;
   DailyReportCompanyAllowanceSelections? companyAllowanceSelections;
@@ -65,6 +67,7 @@ class DailyReportWorkerDraft {
         'overtime_hours': overtimeHours,
         'early_hours': earlyHours,
         'night_hours': nightHours,
+        if (workCategory != null) 'work_category': workCategory,
         'allowance_amount': allowanceAmount,
         'allowance_label': allowanceLabel,
         if (companyAllowanceSelections != null)
@@ -109,6 +112,8 @@ class DailyReportRecord {
     this.signedAt,
     this.notificationRetryScope,
     this.companyId,
+    this.visitFinalizationRequired = false, this.visitFinalizationReady = false,
+    this.visitFinalizationCompleted = false, this.visitExpectedUpdatedAt, this.visitSignatureScope,
   });
 
   final String id;
@@ -129,6 +134,14 @@ class DailyReportRecord {
   final SavedReportNotificationRetry? notificationRetryScope;
   final String? companyId;
 
+  final bool visitFinalizationRequired, visitFinalizationReady, visitFinalizationCompleted;
+  final DateTime? visitExpectedUpdatedAt;
+  final String? visitSignatureScope;
+  bool get canFinalizeVisit => visitFinalizationRequired && visitFinalizationReady &&
+      !visitFinalizationCompleted && reporterSignatureJson != null && responsibleSignatureJson != null &&
+      visitExpectedUpdatedAt != null && visitSignatureScope != null;
+  bool get canEditVisitDraft => visitFinalizationRequired && !visitFinalizationCompleted &&
+      reporterSignatureJson != null && visitExpectedUpdatedAt != null && visitSignatureScope != null;
   bool get signed => status == 'signed';
 }
 
@@ -536,11 +549,43 @@ class DailyReportRepository {
     Map<String, Object?> params,
   ) async {
     final actor = currentActorId;
-    final result = await _client.rpc(rpc, params: params);
-    if (currentActorId != actor) throw const DailyReportActorChanged();
-    if (result == null) return null;
-    if (result is! Map) throw StateError('現場訪問の日報を確認できません');
-    return Map<String, dynamic>.from(result);
+    final token = _client.auth.currentSession?.accessToken;
+    if (actor == null || token == null) {
+      if (const ['finalize_route_visit_report', 'start_route_visit_report_finalization_edit'].contains(rpc)) {
+        throw const DailyReportActorChanged();
+      }
+      // Legacy reads still rely on server authorization. New finalization
+      // operations always require a current authenticated client session.
+      final result = await _client.rpc(rpc, params: params);
+      if (currentActorId != actor || _client.auth.currentSession?.accessToken != token) {
+        throw const DailyReportActorChanged();
+      }
+      if (result == null) return null;
+      if (result is! Map) throw StateError('現場訪問の日報を確認できません');
+      return Map<String, dynamic>.from(result);
+    }
+    var invalidated = false;
+    final subscription = _client.auth.onAuthStateChange.listen((event) {
+      if (event.session?.user.id != actor || event.session?.accessToken != token) invalidated = true;
+    });
+    try {
+      final result = await _client.rpc(rpc, params: params);
+      await Future<void>.delayed(Duration.zero);
+      if (invalidated || currentActorId != actor || _client.auth.currentSession?.accessToken != token) {
+        throw const DailyReportActorChanged();
+      }
+      if (result == null) return null;
+      if (result is! Map) throw StateError('現場訪問の日報を確認できません');
+      return Map<String, dynamic>.from(result);
+    } finally { await subscription.cancel(); }
+  }
+
+  static String? _workCategory(Object? value) {
+    if (value == null) return null;
+    if (value is! String || !const ['day', 'night', 'holiday', 'holiday_night'].contains(value)) {
+      throw StateError('保存済みの勤務区分を確認できません。管理者に確認してください。');
+    }
+    return value;
   }
 
   DailyReportRecord _visitRecord(
@@ -564,6 +609,7 @@ class DailyReportRepository {
             overtimeHours: _number(raw['overtime_hours']),
             earlyHours: _number(raw['early_hours']),
             nightHours: _number(raw['night_hours']),
+            workCategory: _workCategory(raw['work_category']),
             allowanceAmount: (raw['allowance_amount'] as num?)?.toInt() ?? 0,
             allowanceLabel: raw['allowance_label']?.toString() ?? '',
             companyAllowanceSelections: raw['company_allowance_selections'] == null ? null
@@ -572,10 +618,31 @@ class DailyReportRepository {
         );
       }
     }
+    const finalizationKeys = ['explicit_finalization_required', 'explicit_finalization_ready', 'explicit_finalization_completed'];
+    final hasFinalization = finalizationKeys.any(row.containsKey);
+    if (hasFinalization && finalizationKeys.any((key) => row[key] is! bool)) {
+      throw StateError('現場訪問日報の確定状態を確認できません。');
+    }
+    final required = row['explicit_finalization_required'] == true;
+    final ready = row['explicit_finalization_ready'] == true;
+    final completed = row['explicit_finalization_completed'] == true;
+    final stamp = DateTime.tryParse(row['report_updated_at']?.toString() ?? '');
+    final scope = row['signature_scope_fingerprint'];
+    if (required && (stamp == null || scope is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(scope)) ||
+        !required && (ready || completed) ||
+        ready && (row['status'] != 'reporter_signed' || row['representative_signature_json'] == null ||
+          row['supervisor_signature_json'] == null || completed) ||
+        completed && (row['status'] != 'completed' || row['representative_signature_json'] == null ||
+          row['supervisor_signature_json'] == null)) {
+      throw StateError('現場訪問日報のサインと確定状態が一致しません。');
+    }
     final site = row['sites'];
     return DailyReportRecord(
       id: row['id']?.toString() ?? '',
       siteId: row['site_id']?.toString(),
+      companyId: row['company_id']?.toString(),
+      visitFinalizationRequired: required, visitFinalizationReady: ready, visitFinalizationCompleted: completed,
+      visitExpectedUpdatedAt: stamp, visitSignatureScope: scope is String ? scope : null,
       routeAssignmentId: context.routeAssignmentId,
       siteName:
           row['site_name']?.toString() ??
@@ -604,6 +671,38 @@ class DailyReportRepository {
       context.toRpcParams(),
     );
     return row == null ? null : _visitRecord(row, context);
+  }
+
+  Future<DailyReportRecord> finalizeVisit({required RouteVisitReportContext context,
+    required DailyReportRecord before}) async {
+    if (!before.canFinalizeVisit) { throw StateError('現場訪問日報の報告者・責任者サインを確認してください。'); }
+    final row = await _visitRpc('finalize_route_visit_report', {
+      'p_report_id': before.id,
+      'p_expected_updated_at': before.visitExpectedUpdatedAt!.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.visitSignatureScope,
+    });
+    if (row == null || row['id'] != before.id) { throw StateError('対象の現場訪問日報を確認できません。'); }
+    final after = _visitRecord(row, context);
+    if (!after.visitFinalizationCompleted || !after.signed || after.companyId != before.companyId) {
+      throw StateError('現場訪問日報の確定結果を確認できません。再読み込みしてください。');
+    }
+    return after;
+  }
+  Future<DailyReportRecord> startVisitFinalizationEdit({required RouteVisitReportContext context,
+    required DailyReportRecord before, required String reason}) async {
+    if (!before.canEditVisitDraft) { throw StateError('確定前の現場訪問日報を確認してください。'); }
+    final row = await _visitRpc('start_route_visit_report_finalization_edit', {
+      'p_report_id': before.id,
+      'p_expected_updated_at': before.visitExpectedUpdatedAt!.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.visitSignatureScope, 'p_reason': reason,
+    });
+    if (row == null || row['id'] != before.id) { throw StateError('対象の現場訪問日報を確認できません。'); }
+    final after = _visitRecord(row, context);
+    if (!after.visitFinalizationRequired || after.status != 'draft' || after.companyId != before.companyId ||
+        after.reporterSignatureJson != null || after.responsibleSignatureJson != null) {
+      throw StateError('手直し開始の結果を確認できません。再読み込みしてください。');
+    }
+    return after;
   }
 
   Future<String> saveVisitDraft({
@@ -670,7 +769,7 @@ class DailyReportRepository {
     var query = _client
         .from('daily_reports')
         .select(
-          'id, company_id, created_by, updated_by, site_id, route_assignment_id, report_date, work_description, status, signer_name, signature_json, representative_signer_name, representative_signature_json, supervisor_signer_name, supervisor_signature_json, signed_at, sites(name), route_assignments(route_name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, allowance_amount, allowance_label,${companySelectionsEnabled ? " company_allowance_selections," : ""} vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
+          'id, company_id, created_by, updated_by, site_id, route_assignment_id, report_date, work_description, status, signer_name, signature_json, representative_signer_name, representative_signature_json, supervisor_signer_name, supervisor_signature_json, signed_at, sites(name), route_assignments(route_name), daily_report_workers(worker_id, overtime_hours, early_hours, night_hours, work_category, allowance_amount, allowance_label,${companySelectionsEnabled ? " company_allowance_selections," : ""} vehicle_id, route_assignment_id, odometer_km, workers(name), vehicles(display_name), route_assignments(route_name))',
         )
         .eq('report_date', _dbDate(date));
     query = siteId != null
@@ -712,6 +811,7 @@ class DailyReportRepository {
             overtimeHours: _number(detail['overtime_hours']),
             earlyHours: _number(detail['early_hours']),
             nightHours: _number(detail['night_hours']),
+            workCategory: _workCategory(detail['work_category']),
             allowanceAmount:
                 (detail['allowance_amount'] as num?)?.toInt() ?? 0,
             allowanceLabel: detail['allowance_label']?.toString() ?? '',
@@ -1324,3 +1424,4 @@ bool dailyReportRpcValueEqual(Object? a, Object? b) {
   }
   return a == b;
 }
+

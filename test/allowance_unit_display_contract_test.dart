@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sk_works/features/attendance/worker_attendance_sheet_repository.dart';
 
 String read(String path) => File(path).readAsStringSync();
 
@@ -16,8 +17,14 @@ void main() {
         read('lib/features/attendance/attendance_pdf_service.dart');
 
     expect(repo, contains("'my_attendance_allowance_units'"));
-    expect(sheet, contains("day.allowanceUnits[name] ?? '回'"));
+    expect(
+      WorkerAttendanceDay(date: DateTime(2026, 10, 26),
+        allowanceUnits: const {'自由記入手当': '時間'})
+          .allowanceDisplayText('自由記入手当'),
+      '自由記入手当1時間',
+    );
     expect(sheet, contains("data.allowanceUnits[entry.key] ?? '回'"));
     expect(pdf, contains("data.allowanceUnits[entry.key] ?? '回'"));
   });
 }
+

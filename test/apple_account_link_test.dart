@@ -50,7 +50,7 @@ class WidgetReadinessAppleLink extends AppleAccountLink {
   WidgetReadinessAppleLink(super.client, {
     required Future<bool> Function() providerCheck,
     required Future<bool> Function(Uri) launch,
-  }) : super(
+  }) : super.forTesting(
     settingsUrl: Uri.parse('https://apple-link.invalid/auth/v1/settings'),
     publicKey: 'public-synthetic', providerCheck: providerCheck, launch: launch);
 
@@ -60,7 +60,7 @@ class WidgetReadinessAppleLink extends AppleAccountLink {
 
 class EventAppleLink extends AppleAccountLink {
   EventAppleLink(super.client, this.events, {required Future<bool> Function(Uri) launch})
-      : super(settingsUrl: Uri.parse('https://apple-link.invalid/auth/v1/settings'),
+      : super.forTesting(settingsUrl: Uri.parse('https://apple-link.invalid/auth/v1/settings'),
           publicKey: 'public-synthetic', providerCheck: () async => true, launch: launch);
   final Stream<AuthState> events;
   @override Stream<AuthState> get changes => events;
@@ -110,7 +110,7 @@ void main() {
       authOptions:AuthClientOptions(autoRefreshToken:false,
         authFlowType:AuthFlowType.pkce,pkceAsyncStorage:pkce), httpClient:network);
     await client.auth.setInitialSession(session(actor));
-    source=AppleAccountLink(client,
+    source=AppleAccountLink.forTesting(client,
       settingsUrl:Uri.parse('https://apple-link.invalid/auth/v1/settings'),
       publicKey:'public-synthetic',providerCheck:() async {
         gotProvider?.complete(); await holdProvider?.future; return enabled; },

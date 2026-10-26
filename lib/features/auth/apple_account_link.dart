@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -9,7 +10,7 @@ enum AppleLinkProviderStatus { enabled, disabled, unavailable }
 
 enum AppleLinkReadiness {
   ready, linked, loginRequired, googleRequired, recentOAuthRequired,
-  providerDisabled, unavailable,
+  providerDisabled, enrollmentPreparing, unavailable,
 }
 
 /// Adds Apple to a signed-in Google account. Never starts Apple sign-in/signup.
@@ -20,8 +21,22 @@ class AppleAccountLink {
     Future<bool> Function()? providerCheck,
     Future<bool> Function(Uri)? launch,
   }) : _providerCheck = providerCheck,
-       _launch = launch ?? ((uri) => launchUrl(uri));
+       _launch = launch ?? ((uri) => launchUrl(uri)),
+       _unreleasedFlowForTesting = false;
 
+  /// Exercises the retained linking protocol in isolated regression fixtures.
+  /// No product caller may use this constructor to release Apple enrollment.
+  @visibleForTesting
+  AppleAccountLink.forTesting(this.client, {
+    required this.settingsUrl,
+    required this.publicKey,
+    Future<bool> Function()? providerCheck,
+    Future<bool> Function(Uri)? launch,
+  }) : _providerCheck = providerCheck,
+       _launch = launch ?? ((uri) => launchUrl(uri)),
+       _unreleasedFlowForTesting = true;
+
+  final bool _unreleasedFlowForTesting;
   final SupabaseClient client;
   final Uri settingsUrl;
   final String publicKey;
@@ -135,7 +150,10 @@ class AppleAccountLink {
       if (rows.isEmpty) {
         return AppleLinkReadiness.unavailable;
       }
-      return AppleLinkReadiness.ready;
+      // Provider=true and a fresh OAuth AMR do not prove the Auth-side
+      // identity-write policy or operation-bound Google enrollment proof.
+      return _unreleasedFlowForTesting ? AppleLinkReadiness.ready
+          : AppleLinkReadiness.enrollmentPreparing;
     }
     AppleLinkReadiness result;
     try {
@@ -214,6 +232,9 @@ class AppleAccountLink {
   }
 
   Future<void> begin() async {
+    // Fail before PKCE storage, URL acquisition, identity mutation or launch.
+    // The supported pre-identity-write protection remains unproven.
+    if (!_unreleasedFlowForTesting) throw StateError('apple_link_enrollment_preparing');
     if (_pending) throw StateError('apple_link_already_pending');
     final initial = client.auth.currentSession;
     if (initial == null || initial.isExpired) {

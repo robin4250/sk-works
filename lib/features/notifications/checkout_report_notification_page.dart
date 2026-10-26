@@ -12,6 +12,8 @@ String checkoutReportNotificationLabel(String state) => switch (state) {
   'report_missing' => '対象の日報を確認できません。管理者が勤務原本を確認してください。',
   'source_conflict' => '日報と退勤の対応確認が必要です。管理者に確認してください。',
   'report_input_incomplete' => '日報の必須項目が未登録です。',
+  'report_choice_required' => '日報作成を始めるか選択してください。出勤表から対象勤務を選べます。',
+  'checkout_deferred' => '退勤のみで記録済みです。日報を作成するときは出勤表から対象勤務を選んでください。',
   'reporter_signature_missing' => '日報の報告者サインが未登録です。',
   'reporter_saved_waiting_supervisor' => '報告者の登録は完了しています。現場責任者のサイン待ちです。',
   'signed_projection_unverified' => '日報は署名済みです。給与・勤怠への反映確認が必要です。',
@@ -82,6 +84,8 @@ class _CheckoutReportNotificationPageState extends State<CheckoutReportNotificat
     return target.companyId == item.companyId && target.workerId == item.workerId &&
       target.reportId == widget.reportId && target.workDate == item.workDate &&
       target.siteId == item.siteId && target.routeId == item.routeId && target.needsCompletion &&
+      (item.state != 'signed_projection_unverified' ||
+        target.state == CheckoutReportState.partialSignature && target.reporterSignatureSaved && target.responsibleSignatureSaved) &&
       index >= 0 && index < target.clockOutIds.length && target.clockOutIds[index] == item.clockOutId;
   }
 
@@ -103,7 +107,15 @@ class _CheckoutReportNotificationPageState extends State<CheckoutReportNotificat
       final targets = await reader.loadDay(workerId: current.workerId, workDate: current.workDate);
       if (!mounted || !_active(generation)) { return; }
       final exact = targets.where((target) => _matchesTarget(target, current)).toList();
-      if (exact.length != 1) { throw CheckoutReportNotificationUnavailable(); }
+      if (exact.length != 1) {
+        if (current.state == 'signed_projection_unverified' && targets.any((target) =>
+            target.reportId == widget.reportId && const {CheckoutReportState.signedWithoutAttendance,
+              CheckoutReportState.protectedPeriod}.contains(target.state))) {
+          setState(() => _error = '署名済み日報の反映状態は管理者の確認が必要です。自動で再確定しません。');
+          return;
+        }
+        throw CheckoutReportNotificationUnavailable();
+      }
       await openCheckoutReportResumeTarget(context, target: exact.single, repository: reader,
         opener: (context, target) async {
           if (!_active(generation)) { throw CheckoutReportNotificationUnavailable(); }
@@ -158,7 +170,7 @@ class _CheckoutReportNotificationPageState extends State<CheckoutReportNotificat
             Text('${item.workDate.year}/${item.workDate.month}/${item.workDate.day}'),
             Text(_t(checkoutReportNotificationLabel(item.state))),
             if (item.canResume) FilledButton(onPressed: _busy ? null : () => _resume(item),
-              child: Text(_t('対象の日報を再開'))),
+              child: Text(_t(item.state == 'signed_projection_unverified' ? '日報を開く' : '対象の日報を再開'))),
           ]))),
       ],
       if (!_revoked) TextButton(onPressed: _busy ? null : _load, child: Text(_t('再読み込み'))),

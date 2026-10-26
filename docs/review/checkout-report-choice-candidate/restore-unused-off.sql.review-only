@@ -1,0 +1,43 @@
+-- Only before any choice or activation. Never erase a started report.
+begin;
+set local lock_timeout='5s';
+set local statement_timeout='45s';
+create temporary table checkout_choice_protected(name text primary key,digest text) on commit drop;
+do $$declare name text;digest text;begin
+ foreach name in array array['public.attendance_verifications','public.attendance_entries','public.daily_reports','public.daily_report_workers','public.workers','public.company_members','public.payroll_statements','public.invoices','public.payment_certificates','shared_daily_report_private.signature_events'] loop
+  if to_regclass(name) is not null then
+   execute format('lock table %s in share mode',name);
+   execute format('select md5(coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text)::text,''[]'')) from %s x',name) into digest;
+   insert into checkout_choice_protected values(name,digest);
+  end if;
+ end loop;
+end$$;
+lock table checkout_report_choice_private.rollout,checkout_report_choice_private.choices in access exclusive mode;
+do $$declare definition text;begin
+ if current_user<>'postgres' then raise exception 'postgres required';end if;
+ if exists(select 1 from checkout_report_choice_private.rollout) or exists(select 1 from checkout_report_choice_private.choices) then raise exception 'choice module already used';end if;
+ if not exists(select 1 from pg_proc where oid='checkout_report_registration_private.read_for_actor(uuid)'::regprocedure
+ and md5(prosrc)='5c899ddfa5868fc1f37de063c2308062' and pg_get_userbyid(proowner)='postgres' and prosecdef
+ and proconfig=array['search_path=""']::text[] and proacl::text='{postgres=X/postgres}' and provolatile='v') then raise exception 'choice reader source or metadata differs';end if;
+ select originals.definition into definition from checkout_report_choice_private.originals where signature='checkout_report_registration_private.read_for_actor(uuid)';
+ if definition is null then raise exception 'reader original missing';end if;
+ execute definition;
+ if md5((select prosrc from pg_proc where oid='checkout_report_registration_private.read_for_actor(uuid)'::regprocedure))<>'c01b3c1a9a6aec82f0da7fd9e83b7364' then raise exception 'reader restore differs';end if;
+end$$;
+drop function public.choose_checkout_report_registration(uuid,text,boolean);
+drop function public.read_checkout_report_creation_sources(date);
+drop function checkout_report_choice_private.creation_sources(uuid,date);
+drop function checkout_report_choice_private.decorate(jsonb,uuid);
+drop function checkout_report_choice_private.read_all_sources(uuid);
+drop function checkout_report_choice_private.read_before_choice(uuid);
+drop table checkout_report_choice_private.choices;
+drop table checkout_report_choice_private.rollout;
+drop table checkout_report_choice_private.originals;
+drop schema checkout_report_choice_private;
+do $$declare row record;digest text;begin
+ for row in select * from checkout_choice_protected loop
+  execute format('select md5(coalesce(jsonb_agg(to_jsonb(x) order by to_jsonb(x)::text)::text,''[]'')) from %s x',row.name) into digest;
+  if digest is distinct from row.digest then raise exception 'business data changed: %',row.name;end if;
+ end loop;
+end$$;
+commit;

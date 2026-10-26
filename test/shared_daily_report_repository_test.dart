@@ -226,5 +226,44 @@ void main() {
     expect(() => SharedDailyReportContext.parse(value, actorId: actor), throwsStateError);
   });
 
+  Map<String, dynamic> finalizationRow() => row()..addAll({
+    'explicit_finalization_required': true, 'explicit_finalization_ready': true,
+    'explicit_finalization_completed': false, 'explicit_finalization_editable': true,
+    'supervisor_saved': true, 'state': 'supervisor_saved',
+  });
+  test('supervisor signature is evidence until explicit financial finalization', () {
+    final value = parse(finalizationRow());
+    expect(value.canFinalize, isTrue);
+    expect(value.explicitFinalizationCompleted, isFalse);
+    expect(value.reportStatus, 'draft');
+    expect(value.canCollectSupervisor, isFalse);
+  });
+  test('old server and OFF capability never unlock finalization', () {
+    expect(parse(row()).canFinalize, isFalse);
+    expect(parse(row()..addAll({'explicit_finalization_required': false,
+      'explicit_finalization_ready': false, 'explicit_finalization_completed': false})).canFinalize, isFalse);
+  });
+  test('completed finalization requires signed report and both actual signatures', () {
+    final completed = finalizationRow()..addAll({'report_status': 'signed',
+      'explicit_finalization_ready': false, 'explicit_finalization_completed': true,
+      'explicit_finalization_editable': false});
+    expect(parse(completed).explicitFinalizationCompleted, isTrue);
+    expect(parse(completed).canFinalize, isFalse);
+    expect(() => parse(completed..['report_status'] = 'draft'), throwsStateError);
+  });
+  for (final key in ['explicit_finalization_required', 'explicit_finalization_ready', 'explicit_finalization_completed']) {
+    test('missing or truthy $key fails closed', () {
+      expect(() => parse(finalizationRow()..remove(key)), throwsStateError);
+      expect(() => parse(finalizationRow()..[key] = 'true'), throwsStateError);
+    });
+  }
+  test('finalization cannot be ready without current actual signatures', () {
+    expect(() => parse(finalizationRow()..['reporter_saved'] = false), throwsStateError);
+    expect(() => parse(finalizationRow()..['supervisor_saved'] = false), throwsStateError);
+    expect(() => parse(finalizationRow()..['report_status'] = 'signed'), throwsStateError);
+    expect(() => parse(finalizationRow()..['explicit_finalization_required'] = false), throwsStateError);
+  });
+
 }
+
 
