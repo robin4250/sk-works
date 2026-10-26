@@ -42,15 +42,18 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
   String? _openingEntryId;
   bool _loading = true, _exporting = false, _creating = false;
   int _generation = 0;
-  bool _showPending = false, _pendingLoading = false;
+  bool _showPending = false, _showUnfinished = false, _pendingLoading = false;
   int _pendingGeneration = 0;
   List<DailyReportMonthEntry> _pending = [];
   String? _pendingError, _pendingWarning;
   String? _siteKey, _siteName;
   final Map<String, Future<bool>> _photoPresence = {};
   final Map<String, Future<List<(DailyReportMonthEntry, bool)>>> _dayPresence = {};
-  List<DailyReportMonthEntry> get _visibleEntries => _siteKey == null ? _entries :
-      _entries.where((entry) => dailyReportDestinationKey(entry) == _siteKey).toList();
+  List<DailyReportMonthEntry> get _normalEntries => _entries.where((entry) => _showUnfinished
+      ? const [DailyReportSaveState.inputPending, DailyReportSaveState.finalizationPending].contains(entry.saveState)
+      : entry.saveState == DailyReportSaveState.saved).toList();
+  List<DailyReportMonthEntry> get _visibleEntries => _siteKey == null ? _normalEntries :
+      _normalEntries.where((entry) => dailyReportDestinationKey(entry) == _siteKey).toList();
   @override
   void initState() {
     super.initState();
@@ -119,16 +122,20 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
 
   Widget _listingControls() => Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4), child: Wrap(
     spacing: 8, runSpacing: 4, children: [
-      ChoiceChip(label: const Text('日報一覧'), selected: !_showPending,
-        onSelected: _exporting || _openingEntryId != null ? null : (_) => setState(() => _showPending = false)),
+      ChoiceChip(label: const Text('保存済み'), selected: !_showPending && !_showUnfinished,
+        onSelected: _exporting || _openingEntryId != null ? null : (_) => setState(() { _showPending = false; _showUnfinished = false; _siteKey = null; _siteName = null; })),
       ChoiceChip(key: const ValueKey('daily-report-pending-filter'),
         label: Text(_pending.isEmpty ? 'サイン待ち' : 'サイン待ち ${_pending.length}件'),
         selected: _showPending, selectedColor: Colors.red.shade100,
         labelStyle: TextStyle(color: Colors.red.shade900, fontWeight: FontWeight.bold),
         side: BorderSide(color: Colors.red.shade700),
         onSelected: _exporting || _openingEntryId != null ? null : (_) {
-          setState(() { _showPending = true; _siteKey = null; _siteName = null; }); _loadPending();
+          setState(() { _showPending = true; _showUnfinished = false; _siteKey = null; _siteName = null; }); _loadPending();
         }),
+      ChoiceChip(label: const Text('入力・確定待ち'), selected: _showUnfinished,
+        onSelected: _exporting || _openingEntryId != null ? null : (_) => setState(() {
+          _showPending = false; _showUnfinished = true; _siteKey = null; _siteName = null;
+        })),
     ]));
 
   Widget _withPendingControls(Widget normal) => Column(children: [
@@ -163,9 +170,13 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
           children: [for (final entry in group.value) ListTile(
             key: ValueKey('daily-report-pending-entry-${entry.id}'),
             title: Text('${DailyReportMonthRepository.dateKey(entry.date)}・${entry.kindLabel}'),
-            subtitle: entry.createdAt == null ? null : Text(_createdTime(entry.createdAt!)),
-            trailing: DailyReportSaveBadge(state: entry.saveState),
-            onTap: _openingEntryId != null || _exporting ? null : () => _openPendingEntry(entry),
+            subtitle: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (entry.createdAt != null) Text(_createdTime(entry.createdAt!)),
+              DailyReportSaveBadge(state: entry.saveState),
+            ]),
+            trailing: OutlinedButton(onPressed: _openingEntryId != null || _exporting ? null : () => _openPendingEntry(entry),
+              child: const Text('サイン')),
+            onTap: _openingEntryId != null || _exporting ? null : () => _openReportPager(entry, _pending),
           )],
         )),
       ]));
@@ -275,35 +286,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
     _load();
   }
 
-  Future<void> _openEntry(DailyReportMonthEntry entry) async {
-    final repository = _repository;
-    final actor = _actor;
-    if (repository == null || actor == null || _loading || _exporting || _openingEntryId != null) return;
-    setState(() => _openingEntryId = entry.id);
-    try {
-      final document = await repository.loadOne(entry, expectedActor: actor);
-      repository.checkActor(actor);
-      if (!mounted) return;
-      final report = document.report;
-      await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
-        widget.previewBuilderForTesting?.call(document) ?? DailyReportPrintPreviewPage(
-          date: report.date, siteName: report.siteName, workers: report.workers,
-          workDescription: report.workDescription, report: report,
-          evidence: document.evidence.map((photo) => photo.record).toList(),
-          resolvedEvidence: document.evidence,
-        )));
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(SkoLanguageController.tr('選んだ日報を取得できませんでした。一覧を再読み込みしてください。')),
-        ));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _openingEntryId = null);
-      }
-    }
-  }
+  Future<void> _openEntry(DailyReportMonthEntry entry) => _openCalendarEntry(entry);
 
   Future<void> _openQuantities() async {
     final repository = _repository, actor = _actor;
@@ -352,29 +335,31 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
     }
   }
 
-  Future<void> _openCalendarEntry(DailyReportMonthEntry entry) async {
+  Future<void> _openCalendarEntry(DailyReportMonthEntry entry) => _openReportPager(entry, _visibleEntries);
+
+  Future<void> _openReportPager(DailyReportMonthEntry entry, List<DailyReportMonthEntry> source) async {
     final repository = _repository, actor = _actor;
     if (repository == null || actor == null || _loading || _exporting || _openingEntryId != null) return;
-    // Claim before navigation: retained calendar callbacks must not stack previews.
-    final entries = List<DailyReportMonthEntry>.of(_visibleEntries);
+    final entries = List<DailyReportMonthEntry>.of(source);
     setState(() => _openingEntryId = entry.id);
     try {
       repository.checkActor(actor);
       await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
         DailyReportSavedPreviewPager(repository: repository, actor: actor,
-          entries: entries, initialEntryId: entry.id,
-          previewBuilderForTesting: widget.previewBuilderForTesting)));
+          entries: entries, initialEntryId: entry.id, initialEntryIsVisit: entry.isVisit,
+          allPeriodNavigation: true, workerId: widget.workerId,
+          previewBuilderForTesting: widget.previewBuilderForTesting,
+          editBuilderForTesting: widget.pendingBuilderForTesting)));
       repository.checkActor(actor);
-      if (mounted) await _load();
-    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(SkoLanguageController.tr('選んだ日報を取得できませんでした。一覧を再読み込みしてください。'))));
+        if (_showPending) await _loadPending();
+        await _load();
       }
+    } catch (_) {
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(SkoLanguageController.tr('選んだ日報を取得できませんでした。一覧を再読み込みしてください。')))); }
     } finally {
-      if (mounted && _openingEntryId == entry.id) {
-        setState(() => _openingEntryId = null);
-      }
+      if (mounted && _openingEntryId == entry.id) setState(() => _openingEntryId = null);
     }
   }
 
@@ -394,7 +379,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
   Widget _monthBuild(BuildContext context) {
     final busy = _loading || _exporting || _creating;
     final destinations = <String, List<DailyReportMonthEntry>>{};
-    for (final entry in _entries) {
+    for (final entry in _normalEntries) {
       destinations.putIfAbsent(dailyReportDestinationKey(entry), () => []).add(entry);
     }
     final visible = _visibleEntries;
@@ -584,7 +569,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
     final counts = <(String, String, String), int>{};
     final ordinals = <(String, String, String), int>{};
     final entryOrdinals = <int>[];
-    for (final entry in _entries) {
+    for (final entry in _visibleEntries) {
       final group = _entryGroup(entry);
       counts[group] = (counts[group] ?? 0) + 1;
       ordinals[group] = (ordinals[group] ?? 0) + 1;
@@ -621,17 +606,17 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
               ),
               const SizedBox(height: 8),
               FilledButton.icon(
-                onPressed: _loading || _exporting || _entries.isEmpty
+                onPressed: _loading || _exporting || _visibleEntries.isEmpty
                     ? null
                     : _export,
                 icon: const Icon(Icons.ios_share),
                 label: Text(
                   _exporting
                       ? '日報・写真を読み込み中…'
-                      : '${_selectedDate == null ? 'この月' : 'この日'}をまとめて保存・共有 (${_entries.length}件)',
+                      : '${_selectedDate == null ? 'この月' : 'この日'}をまとめて保存・共有 (${_visibleEntries.length}件)',
                 ),
               ),
-              if (_selectedDate != null && widget.workerId != null && _entries.any((entry) => entry.routeId != null))
+              if (_selectedDate != null && widget.workerId != null && _visibleEntries.any((entry) => entry.routeId != null))
                 OutlinedButton.icon(onPressed: _loading || _exporting || _openingEntryId != null ? null : _openQuantities,
                   icon: const Icon(Icons.request_quote_outlined), label: Text(SkoLanguageController.tr('請求数量を申請'))),
             ],
@@ -650,14 +635,14 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
                     ],
                   ),
                 )
-              : _entries.isEmpty
+              : _visibleEntries.isEmpty
               ? Center(child: Text('${_selectedDate == null ? 'この月' : 'この日'}の保存済み日報はありません。'))
               : RefreshIndicator(
                   onRefresh: _exporting ? () async {} : _load,
                   child: ListView.builder(
-                    itemCount: _entries.length,
+                    itemCount: _visibleEntries.length,
                     itemBuilder: (context, index) {
-                      final item = _entries[index];
+                      final item = _visibleEntries[index];
                       return ListTile(
                         title: Text(item.name),
                         onTap: _exporting || _openingEntryId != null ? null : () => _openEntry(item),

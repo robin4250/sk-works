@@ -16,6 +16,13 @@ extension DailyReportSaveStateLabel on DailyReportSaveState {
   };
 }
 
+class DailyReportSiteHistoryResult {
+  const DailyReportSiteHistoryResult(this.entries, {this.complete = true, this.warning});
+  final List<DailyReportMonthEntry> entries;
+  final bool complete;
+  final String? warning;
+}
+
 class DailyReportPendingResult {
   const DailyReportPendingResult(this.entries, {this.visitWarning});
   final List<DailyReportMonthEntry> entries;
@@ -298,6 +305,117 @@ class DailyReportMonthRepository {
     checkActor(user);
     result.sort((a, b) { final name = a.name.compareTo(b.name); return name != 0 ? name : a.date.compareTo(b.date); });
     return DailyReportPendingResult(List.unmodifiable(result), visitWarning: warning);
+  }
+
+  /// Reads every saved ID for the selected destination and immutable status category.
+  /// Metadata pagination never treats a failed/unavailable route RPC as an endpoint.
+  Future<DailyReportSiteHistoryResult> listSiteHistory(DailyReportMonthEntry anchor, {String? workerId}) async {
+    final user = actor, category = anchor.saveState;
+    final result = <DailyReportMonthEntry>[];
+    final seen = <String>{};
+    final uuid = RegExp(r'^[a-fA-F0-9]{8}-(?:[a-fA-F0-9]{4}-){3}[a-fA-F0-9]{12}$');
+    if ((workerId != null && !uuid.hasMatch(workerId)) ||
+        (anchor.siteId == null && anchor.routeId == null)) { throw StateError('現場の対象を確認できません。'); }
+    if (anchor.siteId != null || !anchor.isVisit) {
+      DateTime? cursorDate; String? cursorId;
+      for (;;) {
+        checkActor(user);
+        var query = client.from('daily_reports').select(
+          'id,report_date,created_at,site_id,route_assignment_id,status,work_description,sites(name),route_assignments(route_name)${workerId == null ? '' : ',daily_report_workers!inner(worker_id)'}');
+        if (anchor.siteId != null) { query = query.eq('site_id', anchor.siteId!); }
+        else { query = query.eq('route_assignment_id', anchor.routeId!).isFilter('site_id', null); }
+        if (workerId != null) query = query.eq('daily_report_workers.worker_id', workerId);
+        String? supervisorFilter;
+        switch (category) {
+          case DailyReportSaveState.saved: query = query.inFilter('status', ['signed', 'completed']); break;
+          case DailyReportSaveState.supervisorPending:
+            query = query.eq('status', 'draft').not('representative_signature_json', 'is', null)
+              .isFilter('supervisor_signature_json', null).isFilter('signature_json', null); break;
+          case DailyReportSaveState.finalizationPending:
+            query = query.eq('status', 'draft').not('representative_signature_json', 'is', null);
+            supervisorFilter = 'supervisor_signature_json.not.is.null,signature_json.not.is.null'; break;
+          case DailyReportSaveState.inputPending:
+            query = query.eq('status', 'draft').isFilter('representative_signature_json', null); break;
+        }
+        final cursorFilter = cursorDate == null ? null : 'report_date.gt.${dateKey(cursorDate)},and(report_date.eq.${dateKey(cursorDate)},id.gt.$cursorId)';
+        if (supervisorFilter != null && cursorFilter != null) { query = query.or('and(or($supervisorFilter),or($cursorFilter))'); }
+        else if (supervisorFilter != null) { query = query.or(supervisorFilter); }
+        else if (cursorFilter != null) { query = query.or(cursorFilter); }
+        final rows = await query.order('report_date').order('id').range(0, 199);
+        checkActor(user);
+        for (final row in rows) {
+          final id = row['id'], date = DateTime.tryParse(row['report_date']?.toString() ?? '');
+          final site = row['site_id'] as String?, route = row['route_assignment_id'] as String?;
+          final destination = site != null ? row['sites'] : row['route_assignments'];
+          final name = destination is Map ? destination[site != null ? 'name' : 'route_name'] : null;
+          if (id is! String || !uuid.hasMatch(id) || date == null || name is! String || name.isEmpty ||
+              (anchor.siteId != null ? site != anchor.siteId : site != null || route != anchor.routeId) ||
+              !seen.add('report:$id') || (cursorDate != null && (date.isBefore(cursorDate) ||
+                (date == cursorDate && id.compareTo(cursorId!) <= 0)))) { throw StateError('日報の現場・順序を確認できません。'); }
+          final entry = DailyReportMonthEntry(id: id, date: date, name: name, status: row['status']?.toString() ?? '',
+            siteId: site, routeId: route,
+            reporterSigned: category == DailyReportSaveState.supervisorPending || category == DailyReportSaveState.finalizationPending,
+            supervisorSigned: category == DailyReportSaveState.finalizationPending,
+            createdAt: DateTime.tryParse(row['created_at']?.toString() ?? ''));
+          if (entry.saveState != category) throw StateError('日報の保存状態が変わりました。');
+          result.add(entry);cursorDate = date;cursorId = id;
+        }
+        if (rows.length < 200) break;
+      }
+    }
+    String? warning;
+    if (anchor.siteId != null || anchor.isVisit) {
+      try {
+        final companies = await client.from('company_members').select('company_id').eq('user_id', user).order('company_id');
+        checkActor(user);
+        final companiesSeen = <String>{};
+        for (final company in companies) {
+          final cid = company['company_id'];
+          if (cid is! String || !uuid.hasMatch(cid) || !companiesSeen.add(cid)) throw StateError('会社を確認できません。');
+          DateTime? cursorDate; String? cursorId;
+          for (;;) {
+            final raw = await client.rpc('list_site_route_visit_reports', params: {
+              'p_company_id': cid, 'p_site_id': anchor.siteId,
+              'p_route_assignment_id': anchor.siteId == null ? anchor.routeId : null,
+              'p_site_name': anchor.siteId == null ? anchor.name : null,
+              'p_category': category.name, 'p_worker_id': workerId,
+              'p_after_date': cursorDate == null ? null : dateKey(cursorDate), 'p_after_id': cursorId, 'p_limit': 200,
+            });
+            checkActor(user);
+            if (raw is! Map || raw['actor_id'] != user || raw['company_id'] != cid || raw['category'] != category.name || raw['entries'] is! List) throw StateError('訪問日報の対象を確認できません。');
+            final rows = raw['entries'] as List;
+            if (rows.length > 200) throw StateError('訪問日報の件数を確認できません。');
+            for (final row in rows) {
+              if (row is! Map || row['company_id'] != cid) throw StateError('訪問日報の会社を確認できません。');
+              String text(String key) { final v = row[key];if (v is! String || v.isEmpty) throw StateError('訪問日報の識別情報を確認できません。');return v; }
+              final id = text('id'), date = DateTime.tryParse(text('report_date'));
+              final site = row['site_id'] as String?;
+              if (!uuid.hasMatch(id) || date == null || !seen.add('visit:$id') ||
+                  (anchor.siteId != null ? site != anchor.siteId : site != null || row['route_assignment_id'] != anchor.routeId || row['site_name'] != anchor.name) ||
+                  (cursorDate != null && (date.isBefore(cursorDate) || (date == cursorDate && id.compareTo(cursorId!) <= 0)))) { throw StateError('訪問日報の現場・順序を確認できません。'); }
+              final context = RouteVisitReportContext(sourceClockInId: text('source_clock_in_id'), routeAssignmentId: text('route_assignment_id'),
+                routeStopId: text('route_stop_id'), startCaptureId: text('start_capture_id'), endCaptureId: text('end_capture_id'));
+              context.toRpcParams();
+              final entry = DailyReportMonthEntry(id: id, date: date, name: text('site_name'), status: text('status'), siteId: site,
+                routeId: context.routeAssignmentId, visitContext: context, reporterSigned: row['reporter_signed'] == true,
+                supervisorSigned: row['supervisor_signed'] == true, createdAt: DateTime.tryParse(row['created_at']?.toString() ?? ''));
+              if (entry.saveState != category || row['reporter_signed'] is! bool || row['supervisor_signed'] is! bool) throw StateError('訪問日報の保存状態を確認できません。');
+              result.add(entry);cursorDate = date;cursorId = id;
+            }
+            if (rows.length < 200) break;
+          }
+        }
+      } catch (_) {
+        checkActor(user);
+        result.removeWhere((entry) => entry.isVisit);
+        warning = '訪問日報を含む全期間は未確認です。前後の日報の範囲を再取得してください。';
+      }
+    }
+    checkActor(user);
+    result.sort((a, b) { final date = a.date.compareTo(b.date);if (date != 0) return date;
+      final created = (a.createdAt ?? a.date).compareTo(b.createdAt ?? b.date);
+      return created != 0 ? created : a.id.compareTo(b.id); });
+    return DailyReportSiteHistoryResult(List.unmodifiable(result), complete: warning == null, warning: warning);
   }
 
   /// Classifies actual saved reports using evidence metadata, without downloading photos.

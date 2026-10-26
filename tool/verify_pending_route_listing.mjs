@@ -52,4 +52,20 @@ assert.equal((await db.query("select has_function_privilege('service_role','publ
 assert.equal((await db.query("select has_function_privilege('anon','public.list_pending_route_visit_reports(uuid,uuid,date,uuid,integer)','execute')ok")).rows[0].ok,false);checks++;
 assert.equal((await db.query("select md5(jsonb_agg(to_jsonb(r)order by id)::text) h from private.route_visit_reports r")).rows[0].h,before);checks++;
 await assert.rejects(db.exec(sql),/fresh_install/);await db.exec('rollback');checks++;
+const historySql=fs.readFileSync('supabase/review/list_site_route_visit_reports.sql.review-only','utf8');await db.exec(historySql);checks++;
+await db.exec(`set test.uid='${actor}';set role authenticated`);
+const history=async(category='saved',cursorDate=null,cursorId=null,site=id(100),limit=200)=>(await db.query('select public.list_site_route_visit_reports($1,$2,$3,$4,$5,$6,$7,$8,$9) v',[company,site,null,null,category,null,cursorDate,cursorId,limit])).rows[0].v;
+assert.deepEqual((await history()).entries.map(e=>e.id),[id(13)]);checks++;
+assert.deepEqual((await history('supervisorPending')).entries.map(e=>e.id),[id(10),id(11)]);checks++;
+assert.equal((await history('supervisorPending',null,null,id(100),1)).entries[0].id,id(10));checks++;
+assert.equal((await history('supervisorPending','2024-01-01',id(10),id(100),1)).entries[0].id,id(11));checks++;
+assert.deepEqual((await history('inputPending')).entries,[]);checks++;
+assert.deepEqual((await history('finalizationPending')).entries,[]);checks++;
+for(const args of [['saved',null,null,id(999)],['supervisorPending','2025-02-05',id(14)],['wrong'],['saved',null,id(13)],['saved',null,null,null],['saved',null,null,id(100),null]]) {
+ if(args[3]===id(999)){assert.equal((await history(...args)).entries.length,0);checks++;continue;}
+ await assert.rejects(history(...args),/site_report_/);checks++;
+}
+await db.exec('reset role');
+assert.equal((await db.query("select has_function_privilege('service_role','public.list_site_route_visit_reports(uuid,uuid,uuid,text,text,uuid,date,uuid,integer)','execute')ok")).rows[0].ok,false);checks++;
+assert.equal((await db.query("select md5(jsonb_agg(to_jsonb(r)order by id)::text) h from private.route_visit_reports r")).rows[0].h,before);checks++;
 await db.close();console.log(JSON.stringify({checks,productionApplied:false,actualFunction:true,authSessionHelper:'isolated fixture only'}));
