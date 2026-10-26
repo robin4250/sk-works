@@ -1,10 +1,11 @@
 /// Presentation-only transfer from a statement's immutable saved snapshot.
 /// Returns null unless every saved amount can be attributed without guessing.
 class PayrollPositionTransfer {
-  const PayrollPositionTransfer(this.entries, this.rate, this.days);
+  const PayrollPositionTransfer(this.entries, this.rate, this.days, this.isAverage);
   final Map<String, Object?> entries;
   final int rate;
   final num days;
+  final bool isAverage;
 }
 
 PayrollPositionTransfer? payrollPositionTransfer(
@@ -56,21 +57,34 @@ PayrollPositionTransfer? payrollPositionTransfer(
   }
   final items = (evidence['items'] as List).whereType<Map>().where((x) =>
       x['name'] == '基本給' && x['section'] == 'earning').toList();
-  if (items.length != 1 || items.single['unit'] != 'day' ||
-      items.single['category'] != 'day') {
+  if (items.isEmpty) {
     return null;
   }
-  final row = items.single;
-  final rate = yen(row['rate_yen']);
-  final amount = yen(row['amount_yen']);
-  final days = row['quantity'];
-  if (rate == null || amount != base || days is! num || !days.isFinite ||
-      days <= 0 || days > 31 || (days * 1000).round() != days * 1000 ||
-      (rate * days).round() != base) {
+  var days = 0.0;
+  var recordedBase = 0;
+  final categories = <String>{};
+  for (final row in items) {
+    final category = row['category'];
+    final rate = yen(row['rate_yen']);
+    final amount = yen(row['amount_yen']);
+    final quantity = row['quantity'];
+    if (row['unit'] != 'day' || category is! String || category.isEmpty ||
+        !categories.add(category) || rate == null || amount == null ||
+        quantity is! num || !quantity.isFinite || quantity <= 0 ||
+        (quantity * 1000).round() != quantity * 1000 ||
+        (rate * quantity).round() != amount) {
+      return null;
+    }
+    days += quantity;
+    recordedBase += amount;
+  }
+  if (days <= 0 || days > 31 || recordedBase != base) {
     return null;
   }
-  // Round half up to the nearest 500 yen, with the positive inputs above.
-  final displayRate = ((rate + transferred / days) / 500).round() * 500;
+  // Multiple saved rates require a weighted average. Label it as such in the PDF.
+  // Round positive values half up to the nearest 500 yen.
+  final displayRate = (((base + transferred) / days) / 500).round() * 500;
+  final num displayDays = days == days.roundToDouble() ? days.toInt() : days;
   final displayBase = (displayRate * days).round();
   final adjustment = base + transferred - displayBase;
   final result = Map<String, Object?>.from(original);
@@ -81,5 +95,5 @@ PayrollPositionTransfer? payrollPositionTransfer(
   if (adjustment != 0) {
     result['基本給の調整額'] = adjustment;
   }
-  return PayrollPositionTransfer(Map.unmodifiable(result), displayRate, days);
+  return PayrollPositionTransfer(Map.unmodifiable(result), displayRate, displayDays, items.length > 1);
 }

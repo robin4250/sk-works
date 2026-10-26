@@ -94,6 +94,7 @@ class PayrollPdfService {
       ...detail,
       '_position_transfer_rate': transfer.rate,
       '_position_transfer_days': transfer.days,
+      '_position_transfer_average': transfer.isAverage,
     };
 
     final legacyDeductions = <MapEntry<String, Object?>>[
@@ -983,7 +984,7 @@ class PayrollPdfService {
                             earnings && visible[i].key == '基本給' && detail['_position_transfer_invalid'] == true
                               ? '振替の設定・支給額を確認してください'
                               : earnings && visible[i].key == '基本給' && detail['_position_transfer_rate'] != null
-                              ? '${_number(detail['_position_transfer_rate'] as int)}円 × ${detail['_position_transfer_days']}日'
+                              ? '${detail['_position_transfer_average'] == true ? '平均 ' : ''}${_number(detail['_position_transfer_rate'] as int)}円 × ${detail['_position_transfer_days']}日'
                               : recordedPayrollUnitEvidence(detail, name: visible[i].key,
                               section: earnings ? 'earning' : 'deduction',
                               displayedAmount: (_asNumber(visible[i].value) ?? 0).abs())?.calculation ??
