@@ -35,4 +35,4 @@ The two layers are intentionally separate. The supplied live preparation was gen
 
 ## Status
 
-Code preparation and syntax checks complete; new wrapper Native CI is pending until its exact run is recorded. Main integration, protected full recovery rehearsal, production changes, activation, actual provider/administrator/iPhone checks are not complete. Existing build 20 IPA is unchanged. Root alone owns production integration and deployment.
+New wrapper PostgreSQL17 CI succeeded: head `f8d809d3c25c7386ae5ddf40abfb461e9bf91cc5`, run `40282520949`, job `121438749060`, 28 checks. Earlier failure receipts remain in history: SQL late-failure fixture dollar replacement and restore source-delimiter extraction were corrected without modifying the original product bodies or permission expectations. Main integration, protected full recovery rehearsal, production changes, activation, actual provider/administrator/iPhone checks are not complete. Existing build 20 IPA is unchanged. Root alone owns production integration and deployment.
