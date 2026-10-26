@@ -32,16 +32,25 @@ Future<CheckoutReportResumeTarget> openCheckoutReportResumeTarget(
   if (!current.needsCompletion && !current.complete) {
     throw StateError(checkoutReportStateLabel(current));
   }
+  PendingCheckoutRegistration? started;
+  String? startedActor;
   // This action is explicitly labelled '作成・再開'. Mere list inspection or
   // viewing a complete report must never assign reporting responsibility.
-  if (!current.reporterSignatureSaved && opener == null) {
+  if (!current.reporterSignatureSaved && (opener == null || gateRepository != null)) {
     final gate = gateRepository ?? CheckoutReportGateRepository.maybeCreate();
     if (gate != null) {
-      final rows = await gate.readPending();
+      var rows = await gate.readPending();
+      final sourceBound = gate.choiceEnforcementEnabled == true && await gate.isOwnWorker(current.workerId);
+      if (sourceBound) rows = await gate.readCreationSources(current.workDate);
       if (!context.mounted) return current;
       final pending = rows.where((row) => row.sourceClockInId == current.sourceClockInId &&
         row.choiceAvailable).firstOrNull;
+      if (sourceBound && pending == null) {
+        throw StateError('この勤務原本の日報作成を開始できません。再読み込みしてください。');
+      }
       if (pending != null) {
+        started = pending;
+        startedActor = gate.actorId;
         await gate.choose(pending, createReport: true);
         if (!context.mounted) return current;
         final handled = await CheckoutReportGateController.instance.handleSavedCheckout(current.sourceClockInId);
@@ -58,6 +67,10 @@ Future<CheckoutReportResumeTarget> openCheckoutReportResumeTarget(
         initialRouteAssignmentId: current.routeId, initialReportId: current.reportId,
         vehicleClockInId: current.sourceClockInId,
         groupClockInAnchorId: current.sourceClockInId,
+        restrictedReporterRegistration: started != null,
+        registrationActorId: startedActor,
+        registrationCompanyId: started?.companyId,
+        registrationWorkerId: started?.workerId,
       ),
     ));
   }

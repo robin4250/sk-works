@@ -31,9 +31,9 @@ void main() {
   test('only authoritative multi-member choice can defer without a report', () {
     final choice = {..._row(), 'registration_state': 'report_choice_required',
       'choice_available': true, 'member_count': 2};
-    expect(CheckoutReportGateRepository.parse(_response([choice]), _actor).single.memberCount, 2);
+    expect(CheckoutReportGateRepository.parse({..._response([choice]), 'choice_enforcement_enabled': true}, _actor).single.memberCount, 2);
     final deferred = {...choice, 'registration_state': 'checkout_deferred', 'blocking': false};
-    expect(CheckoutReportGateRepository.parse(_response([deferred]), _actor).single.reportId, isNull);
+    expect(CheckoutReportGateRepository.parse({..._response([deferred]), 'choice_enforcement_enabled': true}, _actor).single.reportId, isNull);
     expect(() => CheckoutReportGateRepository.parse(_response([{...choice, 'member_count': 1}]), _actor), throwsStateError);
     expect(() => CheckoutReportGateRepository.parse(_response([{...deferred, 'choice_available': false}]), _actor), throwsStateError);
     expect(() => CheckoutReportGateRepository.parse(_response([{...choice, 'member_count': '2'}]), _actor), throwsStateError);

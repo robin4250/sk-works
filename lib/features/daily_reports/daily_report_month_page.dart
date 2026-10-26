@@ -12,6 +12,7 @@ import 'daily_report_calendar_model.dart';
 import 'daily_report_saved_preview_pager.dart';
 import '../route_billing/route_customer_day_quantity_page.dart';
 import '../attendance/japan_holiday.dart';
+import '../attendance/checkout_report_new_action.dart';
 
 class DailyReportMonthPage extends StatefulWidget {
   const DailyReportMonthPage({super.key, this.initialMonth, this.initialDate, this.workerId,
@@ -37,7 +38,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
   String? _actor, _error;
   DateTime? _selectedDate;
   String? _openingEntryId;
-  bool _loading = true, _exporting = false;
+  bool _loading = true, _exporting = false, _creating = false;
   int _generation = 0;
   String? _siteKey, _siteName;
   final Map<String, Future<bool>> _photoPresence = {};
@@ -234,11 +235,24 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
   ));
 
   Future<void> _newReport() async {
-    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => DailyReportPage(
-      initialDate: DateTime(_month.year, _month.month, DateTime.now().day.clamp(1,
-        DateTime(_month.year, _month.month + 1, 0).day).toInt()),
-    )));
-    if (mounted) await _load();
+    if (_creating) return;
+    setState(() => _creating = true);
+    try {
+      final handled = await offerNewCheckoutReport(context, month: _month, workerId: widget.workerId);
+      if (!mounted) return;
+      if (!handled) {
+        await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => DailyReportPage(
+          initialDate: DateTime(_month.year, _month.month, DateTime.now().day.clamp(1,
+            DateTime(_month.year, _month.month + 1, 0).day).toInt()),
+        )));
+      }
+      if (mounted) await _load();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('勤務原本と日報作成の状態を確認できません。再読み込みしてください。')));
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
   }
 
   Future<void> _openCalendarEntry(DailyReportMonthEntry entry) async {
@@ -281,7 +295,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
   }
 
   Widget _monthBuild(BuildContext context) {
-    final busy = _loading || _exporting;
+    final busy = _loading || _exporting || _creating;
     final destinations = <String, List<DailyReportMonthEntry>>{};
     for (final entry in _entries) {
       destinations.putIfAbsent(dailyReportDestinationKey(entry), () => []).add(entry);

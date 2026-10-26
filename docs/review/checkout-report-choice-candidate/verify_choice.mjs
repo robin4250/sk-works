@@ -11,7 +11,7 @@ const pg=(await import(process.argv[2])).default;
 const db=new pg.Client({connectionString:url.href});await db.connect();
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const q=async(s,p=[]) => {
- const publicReader=/select public\.(read_pending_checkout_report_registration|read_checkout_report_registration_notification|choose_checkout_report_registration)\(/.test(s);
+ const publicReader=/select public\.(read_pending_checkout_report_registration|read_checkout_report_registration_notification|read_checkout_report_creation_sources|choose_checkout_report_registration)\(/.test(s);
  if(publicReader)await db.query('set role authenticated');
  try{return(await db.query(s,p)).rows[0]?.v;}finally{if(publicReader)await db.query('reset role');}
 };
@@ -173,8 +173,10 @@ try {
  await db.query("insert into attendance_verifications values($1,$3,$4,$5,null,'clock_in','2026-10-25 08:00Z','2026-10-25',null,null,null),($2,$3,$4,$5,null,'clock_out','2026-10-25 17:00Z','2026-10-25',$1,null,null)",[id(50),id(51),id(1),id(3),id(4)]);
  const target=async()=> (await read()).items.find(x=>x.source_clock_in_id===id(50));
  assert.equal((await target()).choice_available,undefined,'OFF keeps existing contract');
+ assert.equal((await read()).choice_enforcement_enabled,false);
  await db.query('insert into checkout_report_choice_private.rollout values($1,true)',[id(1)]);
  assert.equal((await target()).registration_state,'report_missing','Single member goes directly to report');
+ assert.equal((await read()).choice_enforcement_enabled,true);
  await db.query('insert into workers(id,company_id,user_id) values($1,$2,$3)',[id(6),id(1),id(99)]);
  await db.query('insert into company_members values($1,$2)',[id(1),id(99)]);
  await db.query("insert into attendance_verifications values($1,$2,$3,$4,null,'clock_in','2026-10-25 09:00Z','2026-10-25',null,null,null)",[id(52),id(1),id(6),id(4)]);
@@ -195,6 +197,17 @@ try {
  assert.equal((await target()).registration_state,'checkout_deferred');
  await choose(true);assert.equal((await target()).report_started,true);assert.equal((await target()).registration_state,'report_missing');assert.equal((await target()).blocking,true);
  await assert.rejects(()=>choose(false),/already_started/);
+ // Only explicitly selected historical sources cross starts_on. Other old
+ // records remain readable candidates without creating a global backlog gate.
+ await db.query("insert into attendance_verifications values($1,$3,$4,$5,null,'clock_in','2026-09-29 08:00Z','2026-09-29',null,null,null),($2,$3,$4,$5,null,'clock_out','2026-09-29 17:00Z','2026-09-29',$1,null,null),($6,$3,$4,$5,null,'clock_in','2026-09-30 08:00Z','2026-09-30',null,null,null),($7,$3,$4,$5,null,'clock_out','2026-09-30 17:00Z','2026-09-30',$6,null,null)",[id(100),id(101),id(1),id(3),id(4),id(102),id(103)]);
+ assert.equal((await read()).items.some(x=>x.source_clock_in_id===id(100)||x.source_clock_in_id===id(102)),false);
+ const oldCandidates=await q("select public.read_checkout_report_creation_sources('2026-09-01') v");
+ assert.equal(oldCandidates.items.length,2);
+ assert.equal((await read()).items.some(x=>x.source_clock_in_id===id(100)),false,'Candidate read never starts reporting');
+ const oldChoice=oldCandidates.items.find(x=>x.source_clock_in_id===id(102));
+ await q('select public.choose_checkout_report_registration($1,$2,true) v',[id(102),oldChoice.scope_fingerprint]);
+ assert.equal((await read()).items.find(x=>x.source_clock_in_id===id(102)).blocking,true,'Explicit historical start survives fresh read');
+ assert.equal((await read()).items.some(x=>x.source_clock_in_id===id(100)),false,'Unselected historical backlog stays outside gate');
  const history=await q('select (deferred_at is not null and started_at is not null) v from checkout_report_choice_private.choices where source_clock_in_id=$1',[id(50)]);assert.equal(history,true,'Later explicit create retains checkout-only history');
  await db.query("insert into daily_reports(id,company_id,site_id,report_date,status,updated_at,work_description,representative_signer_name,representative_signature_json) values($1,$2,$3,'2026-10-25','draft',now(),'synthetic work','Synthetic reporter','{\"strokes\":[[{}]]}')",[id(60),id(1),id(4)]);
  await db.query('insert into daily_report_workers(report_id,worker_id) values($1,$2)',[id(60),id(3)]);

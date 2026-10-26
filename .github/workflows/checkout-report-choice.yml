@@ -4,6 +4,9 @@ on:
     paths:
       - 'lib/features/attendance/checkout_report_gate*'
       - 'lib/features/attendance/checkout_report_resume_action.dart'
+      - 'lib/features/attendance/checkout_report_new_action.dart'
+      - 'lib/features/daily_reports/daily_report_month_page.dart'
+      - 'test/checkout_report_new_action_test.dart'
       - 'test/checkout_report_gate*'
       - 'docs/review/checkout-report-choice-candidate/**'
       - '.github/workflows/checkout-report-choice.yml'
@@ -46,5 +49,5 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: flutter analyze lib/features/attendance/checkout_report_gate.dart lib/features/attendance/checkout_report_gate_repository.dart lib/features/attendance/checkout_report_resume_action.dart test/checkout_report_gate_test.dart test/checkout_report_gate_repository_test.dart
-      - run: flutter test test/checkout_report_gate_test.dart test/checkout_report_gate_repository_test.dart test/checkout_report_resume_action_test.dart test/attendance_checkout_completion_widgets_test.dart
+      - run: flutter analyze lib/features/attendance/checkout_report_gate.dart lib/features/attendance/checkout_report_gate_repository.dart lib/features/attendance/checkout_report_resume_action.dart test/checkout_report_gate_test.dart test/checkout_report_gate_repository_test.dart lib/features/attendance/checkout_report_new_action.dart lib/features/daily_reports/daily_report_month_page.dart test/checkout_report_new_action_test.dart
+      - run: flutter test test/checkout_report_gate_test.dart test/checkout_report_gate_repository_test.dart test/checkout_report_resume_action_test.dart test/attendance_checkout_completion_widgets_test.dart test/checkout_report_new_action_test.dart test/daily_report_month_navigation_test.dart

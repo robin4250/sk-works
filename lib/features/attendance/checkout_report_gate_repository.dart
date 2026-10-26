@@ -25,6 +25,8 @@ class CheckoutReportGateRepository {
   CheckoutReportGateRepository(this.client);
   final SupabaseClient client;
   bool? _enforcementEnabled;
+  bool? _choiceEnforcementEnabled;
+  bool? get choiceEnforcementEnabled => _choiceEnforcementEnabled;
   String? _effectiveFrom;
   bool? get enforcementEnabled => _enforcementEnabled;
   String? get effectiveFrom => _effectiveFrom;
@@ -36,14 +38,35 @@ class CheckoutReportGateRepository {
     final actor = actorId;
     if (actor == null) { throw StateError('ログイン状態を確認してください。'); }
     _enforcementEnabled = null;
+    _choiceEnforcementEnabled = null;
     _effectiveFrom = null;
     final raw = await client.rpc('read_pending_checkout_report_registration');
     if (actorId != actor) { throw StateError('ログイン状態が変わりました。'); }
     final rows = parse(raw, actor);
     final envelope = raw as Map;
     _enforcementEnabled = envelope['enforcement_enabled'] as bool;
+    _choiceEnforcementEnabled = envelope['choice_enforcement_enabled'] == true;
     _effectiveFrom = envelope['effective_from'] as String?;
     return rows;
+  }
+
+  Future<List<PendingCheckoutRegistration>> readCreationSources(DateTime month) async {
+    final actor = actorId;
+    if (actor == null) throw StateError('ログイン状態を確認してください。');
+    final raw = await client.rpc('read_checkout_report_creation_sources', params: {
+      'p_month': '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}-01',
+    });
+    if (actorId != actor) throw StateError('ログイン状態が変わりました。');
+    return parse(raw, actor);
+  }
+
+  Future<bool> isOwnWorker(String workerId) async {
+    final actor = actorId;
+    if (actor == null) throw StateError('ログイン状態を確認してください。');
+    final row = await client.from('workers').select('id').eq('id', workerId)
+      .eq('user_id', actor).maybeSingle();
+    if (actorId != actor) throw StateError('ログイン状態が変わりました。');
+    return row != null;
   }
 
   Future<void> choose(PendingCheckoutRegistration target, {required bool createReport}) async {
@@ -64,6 +87,9 @@ class CheckoutReportGateRepository {
   static List<PendingCheckoutRegistration> parse(Object? raw, String actor) {
     if (raw is! Map || raw['schema'] != 1 || raw['actor_id'] != actor || raw['items'] is! List || raw['enforcement_enabled'] is! bool || !raw.containsKey('effective_from')) {
       throw StateError('日報の登録状態を確認できません。');
+    }
+    if (raw.containsKey('choice_enforcement_enabled') && raw['choice_enforcement_enabled'] is! bool) {
+      throw StateError('日報作成の提供状態を確認できません。');
     }
     final effective = raw['effective_from'];
     if (raw['enforcement_enabled'] == true) {
@@ -97,6 +123,9 @@ class CheckoutReportGateRepository {
         throw StateError('登録済み日報を確認できません。');
       }
       final choiceAvailable = row['choice_available'] == true;
+      if (choiceAvailable && raw['choice_enforcement_enabled'] != true) {
+        throw StateError('日報作成の提供状態が一致しません。');
+      }
       final memberCount = row['member_count'];
       if ((row['registration_state'] == 'report_choice_required' || row['registration_state'] == 'checkout_deferred') &&
           (!choiceAvailable || memberCount is! int || memberCount < 1 ||
