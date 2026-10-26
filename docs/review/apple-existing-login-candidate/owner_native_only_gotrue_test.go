@@ -101,8 +101,8 @@ func TestSKOAppleNativeLinkOriginalSession(t *testing.T){
  sql,err:=os.ReadFile(os.Getenv("SKO_APPLE_POLICY_FILE"));require.NoError(t,err)
  require.NoError(t,api.db.RawQuery(string(sql)).Exec())
  defer func(){require.NoError(t,api.db.RawQuery("drop schema if exists apple_owner_policy cascade").Exec())}()
- require.NoError(t,api.db.RawQuery("create table public.sko_apple_company_snapshot(user_id uuid primary key,company_id uuid not null,role text not null)").Exec())
- defer func(){require.NoError(t,api.db.RawQuery("drop table public.sko_apple_company_snapshot").Exec())}()
+ require.NoError(t,api.db.RawQuery("create table apple_owner_policy.company_snapshot(user_id uuid primary key,company_id uuid not null,role text not null)").Exec())
+ defer func(){require.NoError(t,api.db.RawQuery("drop table apple_owner_policy.company_snapshot").Exec())}()
  config.Security.ManualLinkingEnabled=true
  config.Hook.CustomAccessToken.Enabled=true
  config.Hook.CustomAccessToken.URI="pg-functions://postgres/apple_owner_policy/custom_access_token_hook"
@@ -118,18 +118,18 @@ func TestSKOAppleNativeLinkOriginalSession(t *testing.T){
   {name:"wrong original bearer never reaches native linking",permit:true,wrongBearer:true},
  }{t.Run(tc.name,func(t *testing.T){
   models.TruncateAll(api.db)
-  require.NoError(t,api.db.RawQuery("truncate apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout,public.sko_apple_company_snapshot").Exec())
+  require.NoError(t,api.db.RawQuery("truncate apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout,apple_owner_policy.company_snapshot").Exec())
   owner,err:=models.NewUser("","existing-google@example.test","fixture-primary-password",config.JWT.Aud,map[string]interface{}{"full_name":"existing name","custom_field":"preserved"});require.NoError(t,err)
   confirmed:=time.Now();owner.EmailConfirmedAt=&confirmed;require.NoError(t,api.db.Create(owner))
   google,err:=models.NewIdentity(owner,"google",map[string]interface{}{"sub":"existing-google-sub","email":"existing-google@example.test","email_verified":true});require.NoError(t,err);require.NoError(t,api.db.Create(google))
   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.protected_users values(?)",owner.ID).Exec())
   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.rollout values(true,true)").Exec())
   if tc.permit{require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('verified-native-subject',?)",owner.ID).Exec())}
-  require.NoError(t,api.db.RawQuery("insert into public.sko_apple_company_snapshot values(?,'00000000-0000-0000-0000-000000000099','owner')",owner.ID).Exec())
+  require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.company_snapshot values(?,'00000000-0000-0000-0000-000000000099','owner')",owner.ID).Exec())
   originalSession,err:=models.NewSession(owner.ID,nil);require.NoError(t,err);require.NoError(t,api.db.Create(originalSession))
   originalRequest:=httptest.NewRequest(http.MethodPost,"/token?grant_type=password",nil)
   originalToken,_,err:=api.generateAccessToken(originalRequest,api.db,owner,&originalSession.ID,models.PasswordGrant);require.NoError(t,err)
-  snapshot:=func()string{var state string;require.NoError(t,api.db.RawQuery("select jsonb_build_object('user',(select jsonb_build_object('id',id,'email',email,'metadata',raw_user_meta_data)from auth.users where id=?),'google',(select to_jsonb(i)from auth.identities i where id=?),'company',(select to_jsonb(c)from public.sko_apple_company_snapshot c where user_id=?))::text",owner.ID,google.ID,owner.ID).First(&state));return state}
+  snapshot:=func()string{var state string;require.NoError(t,api.db.RawQuery("select jsonb_build_object('user',(select jsonb_build_object('id',id,'email',email,'metadata',raw_user_meta_data)from auth.users where id=?),'google',(select to_jsonb(i)from auth.identities i where id=?),'company',(select to_jsonb(c)from apple_owner_policy.company_snapshot c where user_id=?))::text",owner.ID,google.ID,owner.ID).First(&state));return state}
   before:=snapshot()
   count:=func(table string)int{var n int;require.NoError(t,api.db.RawQuery("select count(*)from auth."+table).First(&n));return n}
   users,identities,sessions:=count("users"),count("identities"),count("sessions")
