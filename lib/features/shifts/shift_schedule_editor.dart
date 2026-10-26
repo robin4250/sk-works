@@ -23,6 +23,7 @@ class ShiftScheduleEditor extends StatefulWidget {
 
 class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
   late ShiftDayDraft draft = widget.initial;
+  late Map<String, int> revisions = Map.of(widget.revisions);
   Set<String> selected = {};
   bool saving = false;
   String? message;
@@ -40,7 +41,7 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
       startMinute: draft.start.hour * 60 + draft.start.minute,
       endMinute: draft.end.hour * 60 + draft.end.minute,
       checkLate: draft.checkLate, checkEarly: draft.checkEarly,
-      revision: widget.revisions[id] ?? 0)];
+      revision: revisions[id] ?? 0)];
     final invalidSite = !draft.holiday && !widget.sites.any((s) => s.id == draft.siteId);
     final problem = invalidSite ? '出勤先を選択してください。' : requests.first.validate();
     if (problem != null) {
@@ -50,7 +51,12 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
     setState(() { saving = true; message = null; });
     try {
       await widget.save(List.unmodifiable(requests));
-      if (mounted) setState(() => message = '下書きを保存しました。');
+      if (mounted) setState(() {
+        for (final request in requests) {
+          revisions[request.workerId] = request.revision + 1;
+        }
+        message = '下書きを保存しました。';
+      });
     } catch (_) {
       if (mounted) setState(() => message = '保存結果を確認できません。再読み込みして確認してください。');
     } finally {

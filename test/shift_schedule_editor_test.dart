@@ -31,5 +31,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls, 2);
     expect(find.text('下書きを保存しました。'), findsOneWidget);
+    await tester.ensureVisible(find.text('下書きを保存'));
+    await tester.tap(find.text('下書きを保存'));
+    await tester.pumpAndSettle();
+    expect(calls, 3);
+    expect(received.single.revision, 3);
+    expect(find.text('下書きを保存しました。'), findsOneWidget);
   });
 }
