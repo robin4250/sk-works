@@ -11,6 +11,22 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test('PDFを既存の写真と共に申請し正しい形式で送信', () async {
+    final fixture = PhotoFixture();
+    final result = await fixture.repository.submitSelection(
+      row: fixture.row,
+      photos: [
+        WorkerDocumentPhoto.pending(Uint8List.fromList([37, 80, 68, 70]), 'license.pdf'),
+        ...fixture.photos,
+      ],
+    );
+    expect(result.status, 'pending');
+    expect(fixture.uploads.first, endsWith('.pdf'));
+    expect(fixture.types.first, 'application/pdf');
+    expect(fixture.types.skip(1), ['image/jpeg', 'image/png']);
+    expect(fixture.commands.single['photo_slots'][0]['extension'], 'pdf');
+  });
+
   test('displayed request mismatch refuses cancellation and recovery before any RPC', () async {
     final fixture = PhotoFixture()..failUploadAt = 1;
     await expectLater(
@@ -241,6 +257,7 @@ class PhotoFixture {
   Object? prepareError;
   final actions = <String>[];
   final uploads = <String>[];
+  final types = <String?>[];
   final successfulUploads = <String>{};
   final commands = <Map<String, dynamic>>[];
   final requests = <String, Map<String, dynamic>>{};
@@ -262,6 +279,7 @@ class PhotoFixture {
     upload: (path, bytes, options) async {
       expect(options.upsert, false);
       uploads.add(path);
+      types.add(options.contentType);
       if (uploads.length == failUploadAt) {
         throw StateError('upload interrupted');
       }

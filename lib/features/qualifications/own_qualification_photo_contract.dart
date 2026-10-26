@@ -85,7 +85,7 @@ class OwnQualificationPreparedPhotos {
           index >= slots.length ||
           uploads.containsKey(index) ||
           slots[index]['extension'] != extension ||
-          !const ['jpg', 'jpeg', 'png', 'heic', 'heif'].contains(extension)) {
+          !const ['jpg', 'jpeg', 'png', 'heic', 'heif', 'pdf'].contains(extension)) {
         throw StateError('写真の送信先が選択内容と一致しません。');
       }
       final expected =

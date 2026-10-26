@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
@@ -403,7 +404,7 @@ class _OwnDocumentRegistrationPageState
       Uint8List? attachmentBytes;
       String? originalFilename;
       if (draft['attachPhoto'] == true) {
-        final source = await showModalBottomSheet<ImageSource>(
+        final source = await showModalBottomSheet<String>(
           context: context,
           builder: (sheetContext) => Theme(
             data: _registrationTheme(sheetContext),
@@ -413,12 +414,17 @@ class _OwnDocumentRegistrationPageState
                   ListTile(
                     leading: const Icon(Icons.photo_camera_outlined),
                     title: const Text('カメラで撮影'),
-                    onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+                    onTap: () => Navigator.pop(sheetContext, 'camera'),
                   ),
                   ListTile(
                     leading: const Icon(Icons.photo_library_outlined),
                     title: const Text('写真から選ぶ'),
-                    onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+                    onTap: () => Navigator.pop(sheetContext, 'gallery'),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.picture_as_pdf_outlined),
+                    title: const Text('PDFを選ぶ'),
+                    onTap: () => Navigator.pop(sheetContext, 'pdf'),
                   ),
                 ],
               ),
@@ -426,16 +432,27 @@ class _OwnDocumentRegistrationPageState
           ),
         );
         if (source == null || !mounted) return;
-        final picked = widget.pickPhoto != null
-            ? await widget.pickPhoto!(source)
-            : await _picker.pickImage(
-                source: source,
-                imageQuality: 88,
-                maxWidth: 2400,
-              );
-        if (picked == null || !mounted) return;
-        attachmentBytes = await picked.readAsBytes();
-        originalFilename = picked.name;
+        if (source == 'pdf') {
+          final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: const ['pdf']);
+          if (file == null || !mounted) return;
+          final bytes = await file.readAsBytes();
+          if (bytes.length < 5 || String.fromCharCodes(bytes.take(5)) != '%PDF-') {
+            throw const FormatException('PDFファイルを選択してください。');
+          }
+          attachmentBytes = bytes;
+          originalFilename = file.name;
+        } else {
+          final picked = widget.pickPhoto != null
+              ? await widget.pickPhoto!(source == 'camera' ? ImageSource.camera : ImageSource.gallery)
+              : await _picker.pickImage(
+                  source: source == 'camera' ? ImageSource.camera : ImageSource.gallery,
+                  imageQuality: 88,
+                  maxWidth: 2400,
+                );
+          if (picked == null || !mounted) return;
+          attachmentBytes = await picked.readAsBytes();
+          originalFilename = picked.name;
+        }
         if (!mounted) return;
       }
 
