@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '24'}
       - run: npm ci --prefix tool/security/free-worker-candidate --ignore-scripts --no-audit --no-fund
-      - run: node --test tool/security/free-worker-candidate/issuer/issuer-server.test.mjs
+      - run: node --test tool/security/free-worker-candidate/issuer/issuer-server.test.mjs tool/security/free-worker-candidate/issuer/issuer-transport.test.mjs
   native-proof-ledger:
     runs-on: ubuntu-latest
     timeout-minutes: 10

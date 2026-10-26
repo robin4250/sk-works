@@ -70,14 +70,46 @@ after an abandoned lease can only yield the same deterministic Ed25519
 authorization for the same nonce/payload; exact-once external key-operation
 execution is not claimed. The Worker persistently consumes that nonce once.
 
+Each core claim/key-resolution/sign/complete/fail operation has a hard deadline
+(default3 seconds, server-configured maximum5 seconds). Cancellation is passed
+to ports; ignored/late resolver results cannot reach signing. Late completion
+acknowledgements remain pending and are recovered only through the same proof.
+
+## Request-local PostgREST and handler adapters
+
+`management-issuer-transport.mjs` adds an unconfigured request handler and
+dedicated transport ports. No listener is installed and OFF performs no reads,
+parsing, rate lookup, key resolution or RPC. An enabled handler requires an
+explicit trusted HTTPS origin, public API key, server service-role JWT, signing
+resolver and rate-limit port. No values are discovered from a request or env.
+
+The request's exact original authenticated bearer is verified with Auth getUser
+and reused only for prepare/claim. Its parsed UID/SID/expiry are merely binding
+checks, not replacements for Auth verification or live database authorization.
+The server bearer is used only for fixed complete/fail RPC routes at the same
+pinned origin. Caller-provided payloads, service routes, keys or destinations
+are never accepted. Redirects, wrong MIME, malformed/oversized bodies and
+cross-origin requests are rejected. Body streams and transport/request/key
+operations have bounded deadlines; a whole-request cancellation also prevents
+late resolver results from advancing to signing. Responses never include
+primary/secondary passwords, bearer tokens or server keys.
+
+This proves adapter behavior using synthetic HTTP Responses. It is not proof
+that a hosted endpoint, live caller/session, service JWT, public API key or
+external key resolver is correctly provisioned. Independent server rate-limit
+storage, secret delivery, exact hosted Auth/PostgREST behavior and real network
+delivery still require deployment-specific evidence.
+
 ## Verification status
 
 - Isolated PGlite40 cases use the captured **actual** password/session/Master
   helper definitions. The local cryptographic password function is explicitly a
   fixture stub: this proves SQL control flow/counter commit, not real bcrypt.
-- Eight Node/WebCrypto tests pass, including actual-workerd acceptance of the
+- Twenty-four Node/WebCrypto/transport tests pass, including actual-workerd acceptance of the
   envelope once by the unchanged management core and persistent nonce rejection,
-  OFF/no I/O, malformed binding, key failures, lost/malformed ACK and retry.
+  OFF/no I/O, malformed binding, key failures, lost/malformed ACK and retry,
+  original caller/server credential separation, HTTP/body/rate boundaries,
+  hard deadlines and late key/ACK/body results.
 - Native PostgreSQL17 with real pgcrypto/bcrypt and two connections is supplied
   for CI: same-proof contention, concurrent false-password counters and live
   session-deletion lock/commit ordering. **Not locally executed.**
@@ -91,7 +123,8 @@ The SQL is review-only with one transaction, fresh-schema checks,4 current core
 body pins, no root configuration rows and no core replacements. It is not yet
 the root's full production-catalog/business-digest guarded installer/unused
 restoration artifact. It has no public configuration/onboarding endpoint.
-The dedicated PostgREST caller/service transport adapters, hosted session/current
+The request-local PostgREST caller/service transport adapters are supplied but
+not hosted or tested with a real GoTrue→PostgREST deployment. Hosted session/current
 feature tests, managed database grants/metadata comparison, root key lifecycle
 and independent recovery ceremony, per-deployment enablement, monitoring,
 audit-history/retention/backup policy and iPhone confirmation remain explicit

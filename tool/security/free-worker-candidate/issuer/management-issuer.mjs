@@ -10,13 +10,15 @@ function validPayload(p,now){return exact(p,fields)&&p.v===1&&p.kind==='manageme
  [p.key_id,p.deployment_id].every(x=>typeof x==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(x))&&
  [p.subject,p.company_id,p.nonce].every(uuid)&&[p.key_version,p.expected_policy_revision,p.expected_trust_revision].every(x=>Number.isSafeInteger(x)&&x>0)&&
  Number.isSafeInteger(p.issued_at)&&Number.isSafeInteger(p.expires_at)&&p.issued_at<=now+30000&&p.issued_at>=now-60000&&p.expires_at>now&&p.expires_at>p.issued_at&&p.expires_at-p.issued_at<=60000;}
-export function createManagementIssuer({enabled=false,database,resolveSigningKey,now=()=>Date.now()}={}){
+export function createManagementIssuer({enabled=false,database,resolveSigningKey,now=()=>Date.now(),deadlineMs=3000}={}){
  if(typeof enabled!=='boolean')throw Error('Issuer configuration rejected');
+ if(!Number.isSafeInteger(deadlineMs)||deadlineMs<10||deadlineMs>5000)throw Error('Issuer deadline rejected');
  if(enabled&&(!database||!['claim','complete','fail'].every(x=>typeof database[x]==='function')||typeof resolveSigningKey!=='function'))throw Error('Issuer ports unavailable');
+ const bounded=async operation=>{const control=new AbortController();let timer;try{return await Promise.race([Promise.resolve().then(()=>operation(control.signal)),new Promise((_,reject)=>{timer=setTimeout(()=>{control.abort();reject(Error('Issuer operation deadline'));},deadlineMs);})]);}finally{clearTimeout(timer);control.abort();}};
  return Object.freeze({async issue({proof}={}){
   if(!enabled)return {state:'disabled'};
   if(typeof proof!=='string'||!/^[a-f0-9]{64}$/.test(proof))throw Error('Dedicated management proof required');
-  const c=await database.claim(proof);
+  const c=await bounded(signal=>database.claim(proof,{signal}));
   if(!c||typeof c!=='object'||!uuid(c.command_id))throw Error('Issuer claim unavailable');
   if(['pending','held'].includes(c.state))return {state:c.state,command_id:c.command_id};
   if(c.state==='signed'){
@@ -27,23 +29,23 @@ export function createManagementIssuer({enabled=false,database,resolveSigningKey
    return {state:'signed',command_id:c.command_id,receipt:c.receipt};
   }
   if(c.state!=='claimed'||c.operation!=='master.security_decoy.manage'||!uuid(c.actor_id)||!uuid(c.session_id)||!uuid(c.company_id)||!uuid(c.lease_id)||!validPayload(c.payload,now())||c.payload.subject!==c.actor_id||c.payload.company_id!==c.company_id||JSON.stringify(canonical(c.payload))!==c.payload_body||await hash(c.payload_body)!==c.payload_hash)throw Error('Issuer claim binding rejected');
-  const fail=async reason=>{try{await database.fail({command_id:c.command_id,lease_id:c.lease_id,failure:reason})}catch{}};
+  const fail=async reason=>{try{await bounded(signal=>database.fail({command_id:c.command_id,lease_id:c.lease_id,failure:reason},{signal}))}catch{}};
   let resolved;
-  try{resolved=await resolveSigningKey({deploymentId:c.payload.deployment_id,keyId:c.payload.key_id,keyVersion:c.payload.key_version})}catch{await fail('key_unavailable');return {state:'pending',command_id:c.command_id};}
+  try{resolved=await bounded(signal=>resolveSigningKey({deploymentId:c.payload.deployment_id,keyId:c.payload.key_id,keyVersion:c.payload.key_version},{signal}))}catch{await fail('key_unavailable');return {state:'pending',command_id:c.command_id};}
   let signature;
   try{
    const key=resolved?.key,jwk=publicJwk(c.manager_jwk);
    if(!key||key.extractable!==false||key.algorithm?.name!=='Ed25519'||key.usages?.join(',')!=='sign'||JSON.stringify(publicJwk(resolved.publicJwk))!==JSON.stringify(jwk)||!validPayload(c.payload,now()))throw Error('Signing key unavailable');
-   signature=await signBytes(key,'sko-decoy-management-v1',c.payload_body);
+   signature=await bounded(()=>signBytes(key,'sko-decoy-management-v1',c.payload_body));
    if(!await verified(jwk,'sko-decoy-management-v1',c.payload_body,signature))throw Error('Signing key differs');
   }catch{await fail('signing_failed');return {state:'pending',command_id:c.command_id};}
   let receipt;
-  try{receipt=await database.complete({command_id:c.command_id,lease_id:c.lease_id,payload_hash:c.payload_hash,signature})}catch{
+  try{receipt=await bounded(signal=>database.complete({command_id:c.command_id,lease_id:c.lease_id,payload_hash:c.payload_hash,signature},{signal}))}catch{
    // Completion could have committed. Do not reopen the lease or expose an
    // unacknowledged envelope. The same proof retrieves the durable receipt.
    return {state:'pending',command_id:c.command_id};
   }
-  if(!exact(receipt,'payload,signature')||JSON.stringify(canonical(receipt.payload))!==c.payload_body||receipt.signature!==signature||!validPayload(receipt.payload,now()))return {state:'pending',command_id:c.command_id};
+  if(!exact(receipt,'payload,signature')||!validPayload(receipt.payload,now())||JSON.stringify(canonical(receipt.payload))!==c.payload_body||receipt.signature!==signature)return {state:'pending',command_id:c.command_id};
   return {state:'signed',command_id:c.command_id,receipt};
  }});
 }

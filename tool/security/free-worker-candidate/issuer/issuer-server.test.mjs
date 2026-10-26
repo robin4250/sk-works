@@ -47,3 +47,30 @@ test('malformed completion ACK also retains pending state and same-proof lookup 
  const f=await setup(),complete=f.database.complete;f.database.complete=async r=>{await complete(r);return {unexpected:true}};
  assert.equal((await f.issuer.issue({proof})).state,'pending');assert.ok(f.getReceipt());assert.equal((await f.issuer.issue({proof})).state,'signed');assert.equal(f.getSigns(),1);
 });
+
+test('late or nonsettling key resolver has a hard deadline and cannot sign later',async()=>{
+ const f=await setup();let release,complete=0,aborted=false;
+ const issuer=createManagementIssuer({enabled:true,deadlineMs:20,database:{...f.database,complete:async()=>{complete++;throw Error('must not complete')}},
+  resolveSigningKey:(_,options)=>new Promise(resolve=>{release=resolve;options.signal.addEventListener('abort',()=>aborted=true)}),now:()=>f.now});
+ assert.deepEqual(await issuer.issue({proof}),{state:'pending',command_id:f.claim.command_id});assert.equal(aborted,true);
+ release({key:f.key,publicJwk:f.jwk});await Promise.resolve();await Promise.resolve();assert.equal(complete,0);assert.equal(f.getReceipt(),null);
+});
+test('completion deadline returns pending and never leaks a late receipt',async()=>{
+ const f=await setup();let release,committed;
+ const complete=f.database.complete;f.database.complete=r=>new Promise(resolve=>{release=async()=>{committed=await complete(r);resolve(committed)}});
+ const issuer=createManagementIssuer({enabled:true,deadlineMs:20,database:f.database,resolveSigningKey:async()=>({key:f.key,publicJwk:f.jwk}),now:()=>f.now});
+ const response=await issuer.issue({proof});assert.deepEqual(response,{state:'pending',command_id:f.claim.command_id});assert.equal(f.getReceipt(),null);
+ await release();assert.equal(response.receipt,undefined);assert.equal((await issuer.issue({proof})).state,'signed');assert.ok(committed.signature);
+});
+test('claim and failure recording are bounded even when adapters ignore cancellation',async()=>{
+ const f=await setup(),never=()=>new Promise(()=>{});
+ const claim=createManagementIssuer({enabled:true,deadlineMs:20,database:{...f.database,claim:never},resolveSigningKey:never});
+ await assert.rejects(claim.issue({proof}),/deadline/);
+ const failing=createManagementIssuer({enabled:true,deadlineMs:20,database:{...f.database,fail:never},resolveSigningKey:never,now:()=>f.now});
+ assert.equal((await failing.issue({proof})).state,'pending');
+ assert.throws(()=>createManagementIssuer({deadlineMs:6000}),/deadline/);
+});
+test('null payload completion acknowledgement remains pending without discarding a committed receipt',async()=>{
+ const f=await setup(),complete=f.database.complete;f.database.complete=async r=>{await complete(r);return{payload:null,signature:'a'.repeat(128)}};
+ assert.equal((await f.issuer.issue({proof})).state,'pending');assert.equal((await f.issuer.issue({proof})).state,'signed');assert.equal(f.getSigns(),1);
+});
