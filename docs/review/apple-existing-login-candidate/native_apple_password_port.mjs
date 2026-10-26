@@ -17,10 +17,14 @@ function verifiedIdentity(access,expected,now){
   access.claims.session_id===expected.session_id&&uuid.test(expected.session_id)&&Number.isSafeInteger(access.claims.exp)&&access.claims.exp>now;
 }
 function sameContext(current,expected){
+ const membership=value=>Array.isArray(value)&&value.length<=32?JSON.stringify(value.map(m=>[m?.company_id,m?.role]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))):null;
+ const google=value=>Array.isArray(value)&&value.length<=8?JSON.stringify(value.map(i=>[i?.id,i?.provider_id]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))):null;
+ const apple=value=>Array.isArray(value)?JSON.stringify([...value].sort()):null;
  return current?.account_allowed===true&&current.primary_password_configured===true&&current.actor_id===expected.actor_id&&current.session_id===expected.session_id&&
   current.primary_credential_version===expected.primary_credential_version&&
-  JSON.stringify(current.memberships)===JSON.stringify(expected.memberships)&&JSON.stringify(current.google_identities)===JSON.stringify(expected.google_identities)&&
-  JSON.stringify(current.apple_subjects)===JSON.stringify(expected.apple_subjects);
+  membership(current.memberships)!==null&&membership(current.memberships)===membership(expected.memberships)&&
+  google(current.google_identities)!==null&&google(current.google_identities)===google(expected.google_identities)&&
+  apple(current.apple_subjects)!==null&&apple(current.apple_subjects)===apple(expected.apple_subjects);
 }
 export function createNativeApplePasswordPort({enabled=false,passwordSessionIsolationReviewed=false,baseUrl,publicKey,authenticateExactBearer,loadExactContext,fetcher=fetch,now=()=>Math.floor(Date.now()/1000),timeoutMs=10000}={}){
  if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>10000)throw unavailable();

@@ -3,14 +3,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-const {PGlite}=await import(process.env.SKO_APPLE_ENROLLMENT_PGLITE);
+const native=!!process.env.SKO_APPLE_ENROLLMENT_NATIVE_URL;
+const Runtime=native?(await import('./native_apple_enrollment_native_runtime.mjs')).NativeRuntime:
+ (await import(process.env.SKO_APPLE_ENROLLMENT_PGLITE)).PGlite;
 const uid='00000000-0000-0000-0000-000000000001',sid='00000000-0000-0000-0000-000000000002';
 const other='00000000-0000-0000-0000-000000000003',company='00000000-0000-0000-0000-000000000010';
 const subject='verified-subject',token='a'.repeat(64);
 async function fixture(fn){
- const db=new PGlite();
+ const db=new Runtime();
  try{
-  await db.exec(`create role anon;create role authenticated;create role service_role;create role supabase_auth_admin;
+  await db.exec(`do $$declare r text;begin foreach r in array array['anon','authenticated','service_role','supabase_auth_admin'] loop
+   if not exists(select 1 from pg_roles where rolname=r) then execute format('create role %I',r);end if;end loop;end$$;
    create schema auth;create schema private;
    create function auth.jwt() returns jsonb language sql stable as $$select coalesce(current_setting('test.claims',true),'{}')::jsonb$$;
    create table auth.users(id uuid primary key,encrypted_password text,is_anonymous boolean default false,deleted_at timestamptz,banned_until timestamptz);
@@ -124,4 +127,14 @@ test('completion audit failure rolls back success but never deletes its permit o
  assert.equal((await f.sql('select status from apple_native_enrollment_private.requests'))[0].status,'reserved');
  assert.equal((await f.sql('select count(*)::int n from apple_owner_policy.subject_permits'))[0].n,1);
  assert.equal((await f.sql("select count(*)::int n from auth.identities where provider='apple'"))[0].n,1);
+}));
+test('Native two-connection same-subject reservation admits exactly one complete transaction',{skip:!native},()=>fixture(async f=>{
+ await f.enable();const snap=await f.snapshot(),raw=JSON.stringify(snap),hash=createHash('sha256').update(raw).digest('hex');
+ const at=Number((await f.sql('select floor(extract(epoch from clock_timestamp()))::bigint n'))[0].n);
+ const peer=await f.db.peer();await peer.query("select set_config('test.claims','{\"role\":\"service_role\"}',false)");
+ const sql='select public.reserve_apple_native_subject($1,$2,$3,$4,$5,$6,$7) r',params=[uid,sid,subject,token,hash,raw,at];
+ const result=await Promise.all([f.db.query(sql,params),peer.query(sql,params)]);
+ assert.equal(result.filter(r=>r.rows[0].r?.status==='reserved').length,1);
+ assert.equal(result.filter(r=>r.rows[0].r===null).length,1);
+ for(const table of ['apple_owner_policy.subject_permits','apple_native_enrollment_private.requests','apple_native_enrollment_private.events'])assert.equal((await f.sql('select count(*)::int n from '+table))[0].n,1);
 }));
