@@ -1,0 +1,63 @@
+name: Apple native-only hosted-version boundary
+on:
+  pull_request:
+    paths:
+      - 'docs/review/apple-existing-login-candidate/owner_native_only_gotrue_test.go'
+      - 'docs/review/apple-existing-login-candidate/google_primary_ports*'
+      - '.github/workflows/apple-native-only-boundary.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bounded-google-ports:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test docs/review/apple-existing-login-candidate/google_primary_verifier.test.mjs docs/review/apple-existing-login-candidate/google_primary_ports_deadline.test.mjs
+  reported-hosted-auth-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: supabase/auth
+          ref: 4eee58f296d9698a1c2c0ae14d7a0b379c7622d3
+          path: gotrue
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: gotrue/go.mod
+          cache-dependency-path: gotrue/go.sum
+      - name: Disposable official Auth schema
+        working-directory: gotrue
+        run: psql -f hack/init_postgres.sql postgresql://postgres:root@localhost:5432/postgres
+      - name: Official GoTrue migrations
+        working-directory: gotrue
+        run: make migrate_dev
+      - name: Reuse unchanged transaction proof plus native-only configuration boundary
+        run: |
+          cp candidate/docs/review/apple-existing-login-candidate/owner_policy_gotrue_test.go gotrue/internal/api/sko_owner_policy_test.go
+          cp candidate/docs/review/apple-existing-login-candidate/owner_native_only_gotrue_test.go gotrue/internal/api/sko_native_only_test.go
+      - name: Actual reported-version provider and transaction code
+        working-directory: gotrue
+        env:
+          SKO_APPLE_POLICY_FILE: ${{ github.workspace }}/candidate/docs/review/apple-existing-login-candidate/owner-policy.sql.review-only
+        run: go test ./internal/api -run '^TestSKOApple(OwnerPolicyTransaction|NativeOnlyConfigurationBoundary)$' -count=1 -v
