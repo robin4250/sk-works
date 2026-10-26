@@ -72,6 +72,13 @@ jobs:
       - name: Disposable official Auth schema
         working-directory: gotrue
         run: psql -f hack/init_postgres.sql postgresql://postgres:root@localhost:5432/postgres
+      - name: Standard Supabase API roles in the disposable bare-Auth fixture
+        run: |
+          psql -v ON_ERROR_STOP=1 postgresql://postgres:root@localhost:5432/postgres <<'SQL'
+          do $$declare r text;begin foreach r in array array['anon','authenticated','service_role'] loop
+            if not exists(select 1 from pg_roles where rolname=r) then execute format('create role %I',r);end if;
+          end loop;end$$;
+          SQL
       - name: Official GoTrue migrations
         working-directory: gotrue
         run: make migrate_dev
