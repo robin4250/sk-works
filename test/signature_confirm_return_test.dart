@@ -29,7 +29,7 @@ void main() {
   testWidgets('confirm returns genuine strokes and requests normal iPhone portrait policy', (tester) async {
     await landscape(tester);
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    try {
     tester.view.display.size = const Size(1170, 2532);
     tester.view.display.devicePixelRatio = 3;
     tester.view.physicalSize = const Size(2532, 1170);
@@ -59,6 +59,10 @@ void main() {
     expect(requests.any((r) => r.contains('DeviceOrientation.landscapeLeft') &&
       r.contains('DeviceOrientation.landscapeRight')), isTrue);
     expect(tester.takeException(), isNull);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+      await SkoOrientationPolicy.initialize(tester.view);
+    }
   });
 
   testWidgets('cancel returns null and leaves the original screen', (tester) async {
