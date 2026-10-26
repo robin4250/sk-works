@@ -25,6 +25,17 @@ void main() {
       'company_document_selection', {'rows': []}, 'company');
     expect(rows.single.state, TutorialEvidenceState.unknown);
   });
+  test('registered company requirements show their actual purpose', () {
+    final rows = TutorialEvidenceRepository.operationalCheckpoints(
+      'company_document_selection', {'rows': [
+        {'id': 'a', 'name': '社内書類', 'scope': 'internal'},
+        {'id': 'b', 'name': '取引先書類', 'scope': 'upstream'},
+        {'id': 'c', 'name': '共通書類', 'scope': 'both'},
+      ]}, 'company');
+    expect(rows.map((row) => row.label), [
+      '社内：社内書類', '取引会社：取引先書類', '社内・取引会社：共通書類']);
+    expect(rows.every((row) => row.state == TutorialEvidenceState.saved), isTrue);
+  });
   test('qualification remains optional saved registration evidence', () {
     final rows = TutorialEvidenceRepository.operationalCheckpoints(
       'personal_qualifications', {'rows': [{'id': 'qualification'}]}, 'company');

@@ -296,11 +296,23 @@ class TutorialEvidenceRepository {
           key == 'company_document_selection' || rows is! List ? null : false)];
     }
     return [for (final row in rows.whereType<Map>())
-      checkpoint('record:${row['id']}', row['name']?.toString() ??
-          (key == 'company_document_selection' ? '必要書類' : '本人の資格'),
+      checkpoint('record:${row['id']}', key == 'company_document_selection'
+          ? _companyDocumentLabel(row) : row['name']?.toString() ?? '本人の資格',
           row['id']?.toString().isNotEmpty == true ? true : null,
           rowId: row['id']?.toString()),
     ];
+  }
+
+  static String _companyDocumentLabel(Map row) {
+    final name = row['name']?.toString().trim();
+    final scope = switch (row['scope']) {
+      'internal' => '社内',
+      'upstream' => '取引会社',
+      'both' => '社内・取引会社',
+      _ => null,
+    };
+    final label = name == null || name.isEmpty ? '必要書類' : name;
+    return scope == null ? label : '$scope：$label';
   }
 
   static List<TutorialEvidenceCheckpoint> setupCheckpoints(
@@ -405,7 +417,7 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
         return null;
       }
       final rows = await client.from('document_requirements')
-          .select('id,name,is_required').eq('company_id', companyId).eq('is_active', true);
+          .select('id,name,scope,is_required').eq('company_id', companyId).eq('is_active', true);
       return {'rows': rows};
     }
     final worker = await client.from('workers').select('id')
