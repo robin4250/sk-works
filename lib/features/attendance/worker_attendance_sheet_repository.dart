@@ -4,6 +4,7 @@ import '../../data/supabase_backend.dart';
 import 'attendance_work_date.dart';
 import '../daily_reports/daily_report_company_allowance_selection.dart';
 import 'worker_attendance_registered_allowances.dart';
+import 'attendance_pending_report_details.dart';
 
 class AttendanceWorker {
   const AttendanceWorker({required this.id, required this.name});
@@ -28,6 +29,7 @@ class WorkerAttendanceDay {
     this.allowanceNames = const <String>[],
     this.companyAllowanceSelections = const <DailyReportCompanyAllowanceSelection>[],
     this.allowanceUnits = const <String, String>{},
+    this.pendingReports = const <AttendancePendingReportDetails>[],
     this.paidLeave = false,
     this.paidLeaveOrdinal = 0,
     this.paidLeaveRemaining = 0,
@@ -55,6 +57,7 @@ class WorkerAttendanceDay {
           ? name
           : '${name}1${allowanceUnits[name] ?? "回"}';
   final Map<String, String> allowanceUnits;
+  final List<AttendancePendingReportDetails> pendingReports;
   final bool paidLeave;
   final int paidLeaveOrdinal;
   final double paidLeaveRemaining;
@@ -248,6 +251,15 @@ class WorkerAttendanceSheetRepository {
                 .inFilter('report_id', reportIds.toList()),
             reportIds: reportIds, workerId: targetWorkerId);
 
+    final pendingReports = AttendancePendingReportDetails.parse(
+      await _client.from('daily_report_workers')
+          .select('report_id,worker_id,overtime_hours,early_hours,night_hours,allowance_label,company_allowance_selections,daily_reports!inner(id,report_date,status,sites(name))')
+          .eq('worker_id', targetWorkerId)
+          .eq('daily_reports.status', 'draft')
+          .gte('daily_reports.report_date', startText)
+          .lt('daily_reports.report_date', endText),
+      workerId: targetWorkerId, month: start);
+
     final verificationRows = await _client
         .from('attendance_verifications')
         .select(
@@ -302,6 +314,11 @@ class WorkerAttendanceSheetRepository {
           }
         }
       }
+    }
+
+    for (final report in pendingReports) {
+      final draft = drafts.putIfAbsent(report.date, () => _DayDraft(report.date));
+      draft.pendingReports.add(report);
     }
 
     for (final raw in verificationRows) {
@@ -428,6 +445,7 @@ class _DayDraft {
   int allowanceYen = 0;
   final List<String> allowanceNames = <String>[];
   final List<DailyReportCompanyAllowanceSelection> companyAllowanceSelections = [];
+  final List<AttendancePendingReportDetails> pendingReports = [];
   bool paidLeave = false;
   int paidLeaveOrdinal = 0;
   double paidLeaveRemaining = 0;
@@ -458,9 +476,11 @@ class _DayDraft {
         allowanceNames: List<String>.unmodifiable(allowanceNames),
         companyAllowanceSelections: List.unmodifiable(companyAllowanceSelections),
         allowanceUnits: Map<String, String>.unmodifiable(allowanceUnits),
+        pendingReports: List.unmodifiable(pendingReports),
         paidLeave: paidLeave,
         paidLeaveOrdinal: paidLeaveOrdinal,
         paidLeaveRemaining: paidLeaveRemaining,
       );
 }
+
 

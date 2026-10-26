@@ -91,6 +91,18 @@ void main() {
             'site_id': 'site', 'base_man_days': 1, 'allowance_amount': 0,
             'allowance_names': [], 'sites': {'name': '合成現場'}},
         ];
+      } else if (path.endsWith('/daily_report_workers') &&
+          request.url.queryParameters['daily_reports.status'] == 'eq.draft') {
+        expect(request.url.queryParameters['worker_id'], 'eq.$worker');
+        expect(request.url.queryParametersAll['daily_reports.report_date'],
+            containsAll(['gte.2026-10-01', 'lt.2026-11-01']));
+        result = [{
+          'report_id': draftReport, 'worker_id': worker,
+          'overtime_hours': 2, 'early_hours': 0.5, 'night_hours': 0,
+          'allowance_label': null,
+          'company_allowance_selections': choices([selection(name: '未確定の登録手当')]),
+          'daily_reports': {'id': draftReport, 'report_date': '2026-10-28',
+            'status': 'draft', 'sites': {'name': '合成現場'}}}];
       } else if (path.endsWith('/daily_report_workers')) {
         expect(request.url.queryParameters['worker_id'], 'eq.$worker');
         expect(request.url.queryParameters['report_id'], contains(report));
@@ -124,11 +136,16 @@ void main() {
       final draftDay = month.days[DateTime(2026, 10, 28)]!;
       expect(draftDay.allowanceNames, ['既存確定出勤の手当']);
       expect(draftDay.companyAllowanceSelections, isEmpty);
+      expect(draftDay.pendingReports.single.overtimeHours, 2);
+      expect(draftDay.pendingReports.single.allowanceNames, ['未確定の登録手当']);
+      expect(month.overtimeHours, 0);
+      expect(month.allowanceCounts, isNot(contains('未確定の登録手当')));
       expect(month.days.length, 3);
-      expect(seen.where((uri) => uri.path.endsWith('/daily_report_workers')).length, 1);
+      expect(seen.where((uri) => uri.path.endsWith('/daily_report_workers')).length, 2);
     } finally {
       await client.dispose();
     }
   });
 
 }
+
