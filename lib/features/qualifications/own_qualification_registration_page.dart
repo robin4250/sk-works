@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../people/worker_document_photo_editor.dart';
+import '../people/worker_document_photos.dart';
 import 'own_qualification_photo_contract.dart';
 import 'own_qualification_photo_submission_repository.dart';
 
@@ -334,6 +335,7 @@ class _OwnQualificationRegistrationPageState
     final notesController = TextEditingController();
     DateTime? issuedAt;
     DateTime? expiresAt;
+    List<WorkerDocumentPhoto> selectedAttachments = [];
 
     setState(() => _registrationDialogOpen = true);
     Future<dynamic>? dialogCompleted;
@@ -404,11 +406,27 @@ class _OwnQualificationRegistrationPageState
                     }
                   },
                 ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: !_photoCapability.available ||
+                          !_photoCapability.uploadAllowed || _pendingPhotos != null
+                      ? null
+                      : () async {
+                          final selected = await editWorkerDocumentPhotos(
+                            dialogContext,
+                            paths: const [],
+                            signedUrl: (_) async => '',
+                            initialPhotos: selectedAttachments,
+                          );
+                          if (!dialogContext.mounted || selected == null) return;
+                          setDialogState(() => selectedAttachments = selected);
+                        },
+                  icon: const Icon(Icons.attach_file),
+                  label: Text('資格証を選択（${selectedAttachments.length}件）'),
+                ),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text(
-                    '資格の情報はここで登録します。資格証写真の変更申請は登録後に一覧から開き、承認後に反映します。新しい写真の送信が停止中の場合も保存済み写真は確認できます。',
-                  ),
+                  child: Text('資格情報の登録後、資格証を変更申請として送信します。承認後に反映されます。送信が停止中の場合は登録後に追加できます。'),
                 ),
                 TextField(
                   controller: notesController,
@@ -434,6 +452,7 @@ class _OwnQualificationRegistrationPageState
                       'issuedAt': issuedAt,
                       'expiresAt': expiresAt,
                       'notes': notesController.text.trim(),
+                      'attachments': selectedAttachments,
                     }),
               child: const Text('登録'),
             ),
@@ -460,7 +479,7 @@ class _OwnQualificationRegistrationPageState
     if (draft == null) return;
 
     try {
-      await repository.insertOwnQualification(
+      final inserted = await repository.insertOwnQualification(
         qualificationMasterId: draft['masterId'] as String,
         certificateNumber: draft['certificateNumber'] as String,
         issuer: draft['issuer'] as String,
@@ -469,10 +488,27 @@ class _OwnQualificationRegistrationPageState
         notes: draft['notes'] as String,
       );
       if (!mounted) return;
+      final attachments = draft['attachments'] as List<WorkerDocumentPhoto>;
+      if (attachments.isNotEmpty) {
+        final photoRepository = _photoRepository;
+        try {
+          if (photoRepository == null) throw StateError('資格証の申請を利用できません。');
+          await photoRepository.submitSelection(row: inserted, photos: attachments);
+        } catch (_) {
+          if (!mounted) return;
+          await _load();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('資格情報は登録済みです。資格証の申請結果を一覧で確認してください。'),
+          ));
+          return;
+        }
+      }
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('自分の資格を登録しました')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(attachments.isEmpty ? '自分の資格を登録しました' : '資格情報を登録し、資格証を申請しました。'),
+      ));
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
