@@ -14,7 +14,8 @@ def once(text,old,new):
     if text.count(old)!=1: raise ValueError('Anchor count '+str(text.count(old))+': '+old[:90])
     return text.replace(old,new)
 def literal(text): return "'"+text.replace("'","''")+"'"
-originals={row['signature']:row['definition'] for row in json.loads((HERE/'source-originals.json').read_text())}
+original_rows=json.loads((HERE/'source-originals.json').read_text())
+originals={row['signature']:row['definition'] for row in original_rows}
 patches={}
 for sig,source in originals.items():
     source=re.sub(r'(?i)^create function','create or replace function',source)
@@ -41,13 +42,57 @@ for sig,source in originals.items():
         source=once(source,'  delete from public.daily_report_workers where report_id=v_report_id;',"  select coalesce(jsonb_object_agg(worker_id::text,work_category),'{}'::jsonb) into explicit_previous_categories from public.daily_report_workers where report_id=v_report_id;\n  delete from public.daily_report_workers where report_id=v_report_id;")
         source=once(source,"      nullif(v_worker->>'work_category',''),checkout_choices,checkout_legacy_labels", "      coalesce(nullif(v_worker->>'work_category',''),explicit_previous_categories->>v_worker_id::text),checkout_choices,checkout_legacy_labels")
     patches[sig]=source
-pins=[{'signature':sig,'body_md5':hashlib.md5(body(source).encode()).hexdigest()} for sig,source in originals.items()]
+pins=[{k:v for k,v in row.items() if k!='definition'} for row in original_rows]
 feature=next(x for x in json.loads((HERE/'financial-source-originals.json').read_text()) if x['identity']=='private.has_company_feature(uuid,text)')
-pins.append({'signature':'private.has_company_feature(uuid,text)','body_md5':feature['body_md5']})
-checks='\n'.join(" if not exists(select 1 from pg_proc p where p.oid=to_regprocedure("+literal(x['signature'])+") and md5(p.prosrc)="+literal(x['body_md5'])+" and pg_get_userbyid(p.proowner)='postgres') then raise exception 'explicit_finalization_source_changed: "+x['signature']+"';end if;" for x in pins)
+pins.append({'signature':'private.has_company_feature(uuid,text)',**{k:v for k,v in feature.items() if k not in ('identity','definition')}})
+def meta_guard(x):
+    conditions=["p.oid=to_regprocedure("+literal(x['signature'])+")","md5(p.prosrc)="+literal(x['body_md5']),"pg_get_userbyid(p.proowner)="+literal(x.get('owner','postgres'))]
+    if 'security_definer' in x: conditions.append("p.prosecdef="+str(x['security_definer']).lower())
+    if 'volatility' in x: conditions.append("p.provolatile="+literal(x['volatility']))
+    if 'config' in x: conditions.append("p.proconfig is not distinct from "+("array["+','.join(literal(v) for v in x['config'])+"]::text[]" if x['config'] is not None else 'null::text[]'))
+    if 'acl' in x: conditions.append("p.proacl is not distinct from "+(literal(x['acl'])+'::aclitem[]' if x['acl'] is not None else 'null::aclitem[]'))
+    return " if not exists(select 1 from pg_proc p where "+' and '.join(conditions)+") then raise exception 'explicit_finalization_source_changed: "+x['signature']+"';end if;"
+checks='\n'.join(meta_guard(x) for x in pins)
 core=(HERE/'core.sql').read_text()
-sql='-- REVIEW ONLY. Default OFF. No production activation or employee data mutation.\nbegin;\ndo $pins$ begin\n'+checks+'\nend $pins$;\n'+core+'\n'+'\n'.join(patches.values())+'\ncommit;\n'
+sql='-- REVIEW ONLY. Default OFF. No production activation or employee data mutation.\nbegin;\nset local lock_timeout=\'5s\';set local statement_timeout=\'45s\';\ndo $install$ begin if current_user<>\'postgres\' or to_regnamespace(\'explicit_report_finalization_private\') is not null then raise exception \'explicit_finalization_install_precondition\';end if;end $install$;\ndo $pins$ begin\n'+checks+'\nend $pins$;\n'+core+'\n'+'\n'.join(patches.values())+'\ncommit;\n'
 (HERE/'explicit-finalization.sql.review-only').write_text(sql)
 (HERE/'source-pins.json').write_text(json.dumps(pins,indent=2)+'\n')
-(HERE/'source-originals.json').write_text(json.dumps([{'signature':k,'body_md5':hashlib.md5(body(v).encode()).hexdigest(),'definition':v} for k,v in originals.items()],ensure_ascii=False,separators=(',',':'))+'\n')
+# source-originals.json remains the exact readonly production catalog, including ACL/owner/config.
 print(json.dumps({'functions':len(originals),'sql_sha256':hashlib.sha256(sql.encode()).hexdigest()}))
+
+# Independent route-visit document contract; no normal financial schema dependency.
+route_originals=json.loads((HERE/'route-source-originals.json').read_text())
+route_patches=[]
+for row in route_originals:
+    source=re.sub(r'(?i)^create function','create or replace function',row['definition'])
+    source=once(source,'r.created_by<>auth.uid()',"(case when explicit_route_finalization_private.required(r.id) then not explicit_route_finalization_private.actor_allowed(r.id) else r.created_by<>auth.uid() end)")
+    if '.route_visit_report_command(' in row['signature']:
+        source=once(source,'  if r.created_by', '  if r.created_by') if '  if r.created_by' in source else source
+        source=once(source," if p_command='draft' and r.status='draft' then", " if explicit_route_finalization_private.required(r.id) then perform explicit_route_finalization_private.lock_actor(r.id);end if;\n if p_command='draft' and r.status='draft' then")
+        source=once(source," if p_command='read' then return c; end if;", " if p_command='read' then return explicit_route_finalization_private.decorate(c); end if;")
+    else:
+        source=once(source," if p_role not in ('reporter','responsible')", " if explicit_route_finalization_private.required(r.id) then\n  perform explicit_route_finalization_private.lock_actor(r.id);perform explicit_route_finalization_private.enroll(r.id);\n  if (case when p_role='reporter' then r.representative_signature_json else r.supervisor_signature_json end) is not null then\n   if (case when p_role='reporter' then r.representative_signature_json else r.supervisor_signature_json end) is distinct from p_signature_json or (case when p_role='reporter' then r.representative_signer_name else r.supervisor_signer_name end) is distinct from trim(p_signer_name) then raise sqlstate '55000' using message='explicit_route_signature_already_saved';end if;\n   return explicit_route_finalization_private.decorate(to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name)));\n  end if;\n end if;\n if p_role not in ('reporter','responsible')")
+        source=once(source,"status='completed',signed_at=now(),", "status=case when explicit_route_finalization_private.required(r.id) then 'reporter_signed' else 'completed' end,signed_at=case when explicit_route_finalization_private.required(r.id) then null else now() end,")
+        source=once(source,"then return to_jsonb(r); end if;", "then return explicit_route_finalization_private.decorate(to_jsonb(r)); end if;")
+    source=once(source," return to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name));", " return explicit_route_finalization_private.decorate(to_jsonb(r)||jsonb_build_object('daily_report_workers',r.workers,'sites',jsonb_build_object('name',r.site_name)));")
+    route_patches.append(source)
+route_checks='\n'.join(meta_guard(x) for x in route_originals)
+route_sql='-- REVIEW ONLY. Default OFF. Independent visit documents; no financial-row mutation.\nbegin;\nset local lock_timeout=\'5s\';set local statement_timeout=\'45s\';\ndo $install$ begin if current_user<>\'postgres\' or to_regnamespace(\'explicit_route_finalization_private\') is not null then raise exception \'explicit_route_install_precondition\';end if;end $install$;\ndo $pins$ begin\n'+route_checks+'\nend $pins$;\n'+(HERE/'route-core.sql').read_text()+'\n'+'\n'.join(route_patches)+'\ncommit;\n'
+(HERE/'explicit-route-finalization.sql.review-only').write_text(route_sql)
+
+# Unused OFF restoration only. Existing definitions/owner/config/ACL must match.
+def restore(namespace,original_rows,patched_sources,new_functions,triggers):
+    post=[]
+    for row,source in zip(original_rows,patched_sources):
+        post.append({**row,'body_md5':hashlib.md5(body(source).encode()).hexdigest()})
+    sql="-- REVIEW ONLY. Refuses used/enabled modules. Exact post-source restoration.\nbegin;\nset local lock_timeout='5s';set local statement_timeout='45s';\ndo $unused$ begin\n if current_user<>'postgres' then raise exception 'unused_restore_postgres_required';end if;\n"
+    tables=['states','events','receipts','permits']
+    for table in tables:sql+=" if exists(select 1 from "+namespace+'.'+table+") then raise exception 'explicit_finalization_restore_used_module';end if;\n"
+    for table in ['rollout','reports']:sql+=" if exists(select 1 from "+namespace+'.'+table+" where enabled) then raise exception 'explicit_finalization_restore_enabled_module';end if;\n"
+    sql+='\n'.join(meta_guard(x) for x in post)+"\nend $unused$;\n"
+    for row in reversed(original_rows):sql+=re.sub(r'(?i)^create function','create or replace function',row['definition'])+';\n'
+    for function in reversed(new_functions):sql+='drop function '+function+';\n'
+    for trigger,table in reversed(triggers):sql+='drop trigger '+trigger+' on '+table+';\n'
+    return sql+'drop schema '+namespace+' cascade;\ncommit;\n'
+(HERE/'explicit-finalization-restore-unused.sql.review-only').write_text(restore('explicit_report_finalization_private',original_rows,list(patches.values()),['public.start_shared_report_finalization_edit(uuid,timestamptz,text,text)','public.finalize_shared_daily_report(uuid,timestamptz,text)'],[('zzzz_explicit_report_receipts','public.daily_reports')]))
+(HERE/'explicit-route-finalization-restore-unused.sql.review-only').write_text(restore('explicit_route_finalization_private',route_originals,route_patches,['public.start_route_visit_report_finalization_edit(uuid,timestamptz,text,text)','public.finalize_route_visit_report(uuid,timestamptz,text)'],[('zzzz_explicit_route_receipts','private.route_visit_reports'),('explicit_route_completion_gate','private.route_visit_reports')]))
