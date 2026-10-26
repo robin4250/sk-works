@@ -76,10 +76,11 @@ class _RpcFixture {
     'work_basis': {'contract_version': 2, 'report': {'id': _report, 'company_id': _company,
       'work_date': '2026-10-26', 'site_id': _source, 'route_assignment_id': null,
       'work_description': '実際の作業'}, 'roster': [{'worker_id': _worker}]}};
-  SharedDailyReportContext before({bool ready = false}) => SharedDailyReportContext(actorId: _actor,
+  SharedDailyReportContext before({bool ready = false, bool provisional = false}) => SharedDailyReportContext(actorId: _actor,
     companyId: _company, workerId: _worker, reportId: _report, sourceClockInId: _source,
     workDate: DateTime(2026, 10, 26), state: 'reporter_required', enabled: true,
-    canManageAttendance: false, reporterSaved: ready, supervisorSaved: ready, sourceAttached: true,
+    canManageAttendance: false, reporterSaved: ready || provisional, supervisorSaved: ready, sourceAttached: true,
+    reportStatus: 'draft', firstReporterCoversWorkOnly: true,
     expectedUpdatedAt: _stamp, signatureScopeFingerprint: _scope, supervisorReady: true,
     explicitFinalizationRequired: explicit, explicitFinalizationReady: ready,
     documentOnly: document, financialConfirmationRequired: document);
@@ -119,6 +120,36 @@ void main() {
     expect(fixture.requests.single, {'p_report_id': _report,
       'p_expected_updated_at': _stamp.toIso8601String(), 'p_expected_signature_scope': _scope});
     expect(after.explicitFinalizationCompleted, isTrue);
+  });
+  for (final switchAba in [false, true]) {
+    test('late-checkout preparation sends exact displayed scope and raw input; auth switch=$switchAba', () async {
+      final fixture = _RpcFixture()..explicit = true;
+      addTearDown(fixture.client.dispose); await fixture.login(); fixture.switchAba = switchAba;
+      final action = fixture.repository.prepareProvisionalFacts(before: fixture.before(provisional: true), workers: [_workerInput()]);
+      if (switchAba) {
+        await expectLater(action, throwsStateError);
+      } else {
+        final after = await action;
+        expect(after.reporterSaved, isTrue); expect(after.supervisorSaved, isFalse);
+      }
+      expect(fixture.calls, ['prepare_shared_report_provisional_facts']);
+      expect(fixture.requests.single, {'p_report_id': _report,
+        'p_expected_updated_at': _stamp.toIso8601String(), 'p_expected_signature_scope': _scope,
+        'p_workers': [_workerInput()]});
+    });
+  }
+  test('late-checkout preparation is unavailable on legacy or already signed context', () async {
+    final fixture = _RpcFixture(); addTearDown(fixture.client.dispose); await fixture.login();
+    await expectLater(fixture.repository.prepareProvisionalFacts(before: fixture.before(provisional: true), workers: [_workerInput()]), throwsStateError);
+    fixture.explicit = true;
+    await expectLater(fixture.repository.prepareProvisionalFacts(before: fixture.before(ready: true), workers: [_workerInput()]), throwsStateError);
+    expect(fixture.calls, isEmpty);
+  });
+  test('late-checkout preparation never treats an unexpected final state as readiness', () async {
+    final fixture = _RpcFixture()..explicit = true..complete = true;
+    addTearDown(fixture.client.dispose); await fixture.login();
+    await expectLater(fixture.repository.prepareProvisionalFacts(before: fixture.before(provisional: true), workers: [_workerInput()]), throwsStateError);
+    expect(fixture.calls, ['prepare_shared_report_provisional_facts']);
   });
   const visit = RouteVisitReportContext(sourceClockInId: _source, routeAssignmentId: 'route',
     routeStopId: 'stop', startCaptureId: 'arrival', endCaptureId: 'move');

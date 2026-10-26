@@ -388,6 +388,27 @@ class SharedDailyReportRepository {
     }
     return after;
   }
+  Future<SharedDailyReportContext> prepareProvisionalFacts({required SharedDailyReportContext before,
+    required List<Map<String, dynamic>> workers}) async {
+    if (!before.enabled || !before.explicitFinalizationRequired || !before.reporterSaved ||
+        before.supervisorSaved || before.explicitFinalizationCompleted || before.reportId == null ||
+        before.expectedUpdatedAt == null || before.signatureScopeFingerprint == null || before.reportStatus != 'draft') {
+      throw StateError('仮保存した日報と報告者サインの状態を確認してください。');
+    }
+    final raw = await _rpc('prepare_shared_report_provisional_facts', {
+      'p_report_id': before.reportId,
+      'p_expected_updated_at': before.expectedUpdatedAt!.toUtc().toIso8601String(),
+      'p_expected_signature_scope': before.signatureScopeFingerprint, 'p_workers': workers,
+    }, expectedActor: before.actorId);
+    final after = SharedDailyReportContext.parse(raw, actorId: before.actorId,
+      companyId: before.companyId, reportId: before.reportId, workDate: before.workDate);
+    if (!after.explicitFinalizationRequired || !after.reporterSaved || after.supervisorSaved ||
+        after.explicitFinalizationCompleted || after.reportStatus != 'draft') {
+      throw StateError('退勤後の勤務実績の準備状態を確認できません。日報を再読み込みしてください。');
+    }
+    return after;
+  }
+
   Future<SharedDailyReportContext> finalize({required SharedDailyReportContext before}) async {
     if (!before.canFinalize) { throw StateError('報告者・責任者のサインと勤務実績を確認してから保存してください。'); }
     final raw = await _rpc('finalize_shared_daily_report', {

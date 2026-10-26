@@ -47,6 +47,15 @@ String dailyReportActionErrorMessage(Object error) {
   }
   final raw = error.toString();
   const messages = {
+    'employee_report_cannot_set_allowance_money': '保存済みの調整額は日報から変更・確定できません。金額を消さず、管理者の勤怠管理で確認してください。',
+    'shared_report_manual_cash_requires_trusted_source': '保存済みの調整額の承認元を確認できません。金額や手当名を消さず、管理者の勤怠管理で確認してください。',
+    'explicit_report_site_coordinator_unavailable': '当日の現場メンバーとして勤務実績を確認できません。日報を再読み込みし、管理者に確認してください。',
+    'explicit_report_saved_preview_changed': '保存済みの日報と表示内容が一致しません。日報を再読み込みして確認してください。',
+    'explicit_report_provisional_preparation_unavailable': '仮保存後の勤務実績を準備できる状態ではありません。日報を再読み込みして確認してください。',
+    'explicit_report_closed_source_ambiguous': '対象者の出退勤記録が複数あり、勤務原本を決められません。管理者に確認してください。',
+    'explicit_report_closed_source_invalid': '対象者の出退勤記録に矛盾があります。記録を移動・削除せず管理者に確認してください。',
+    'explicit_report_source_binding_changed': '勤務原本と日報の関連付けが更新されました。日報を再読み込みして確認してください。',
+    'shared_report_source_conflict': '勤務原本が別の日報に関連付いています。別の日報の記録は移動せず、管理者に確認してください。',
     'explicit_report_finalized_payroll_protected': '対象月の給与が確定済みのため保存できません。確定済みの給与は変更せず、管理者に確認してください。',
     'explicit_report_finalized_invoice_protected': '対象月の請求書が確定済みのため保存できません。確定済みの請求書は変更せず、管理者に確認してください。',
     'explicit_report_payroll_projection_missing': '給与への反映結果を確認できないため、日報の確定を保留しました。管理者に給与設定を確認してもらってください。',
@@ -764,14 +773,22 @@ class _DailyReportPageState extends State<DailyReportPage> {
     await _loadSelectedSite();
   }
 
+  double _optionalReportHours(TextEditingController? controller, String label) {
+    final text = controller?.text.trim() ?? '';
+    if (text.isEmpty) return 0;
+    final value = double.tryParse(text);
+    if (!RegExp(r'^(?:0|[1-9]\d?)(?:\.\d{1,4})?$').hasMatch(text) ||
+        value == null || !value.isFinite || value < 0 || value > 24) {
+      throw FormatException('$labelを0〜24の数値で入力してください。該当なしの場合は空欄にできます。');
+    }
+    return value;
+  }
+
   void _applyControllers() {
     for (final worker in _workers) {
-      worker.overtimeHours =
-          double.tryParse(_overtime[worker.workerId]?.text ?? '') ?? 0;
-      worker.earlyHours =
-          double.tryParse(_early[worker.workerId]?.text ?? '') ?? 0;
-      worker.nightHours =
-          double.tryParse(_night[worker.workerId]?.text ?? '') ?? 0;
+      worker.overtimeHours = _optionalReportHours(_overtime[worker.workerId], '残業時間');
+      worker.earlyHours = _optionalReportHours(_early[worker.workerId], '早出時間');
+      worker.nightHours = _optionalReportHours(_night[worker.workerId], '夜間時間');
       // Preserve the saved monetary value; employee reports do not edit money.
       worker.allowanceLabel =
           _allowanceLabel[worker.workerId]?.text.trim() ?? '';
@@ -1069,12 +1086,9 @@ class _DailyReportPageState extends State<DailyReportPage> {
   // signatures, previews and reloads never publish notifications.
   Future<void> _register() async {
     if (_saving) return;
-    if (_visitReport) {
-      await _saveDraft();
-      return;
-    }
     setState(() => _saving = true);
     try {
+      if (_visitReport) { await _saveDraft(ownsBusyState: false); return; }
       final completeGroup = groupReportPublicationEligible(
         anchorSourceId: _currentGroupAnchor, siteId: _siteId,
         routeAssignmentId: _routeAssignmentId,
@@ -1094,6 +1108,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
           await _publishSavedReport(retry);
         },
       );
+    } catch (error) {
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(dailyReportActionErrorMessage(error)))); }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1360,6 +1376,22 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
+  String _reporterSignatureSummary(Map<String, double?> enteredHours) {
+    const categoryNames = {'day': '日勤', 'night': '夜勤', 'holiday': '休日勤務', 'holiday_night': '休日夜勤'};
+    final lines = <String>[_workDescription.text.trim()];
+    for (final worker in _workers) {
+      final selected = worker.companyAllowanceSelections?.items;
+      lines.add('${worker.workerName}：${categoryNames[worker.workCategory] ?? '勤務区分未確認'} / 残業${worker.overtimeHours}h / 早出${worker.earlyHours}h / 夜間${worker.nightHours}h');
+      lines.add(selected == null ? '登録手当：未確認' : selected.isEmpty
+        ? '登録手当：選択なし（保存済みの文字・調整額は保持）'
+        : '登録手当：${selected.map((item) => item.nameSnapshot).join('、')}');
+      if (worker.allowanceLabel.trim().isNotEmpty) lines.add('保存済みの手当名：${worker.allowanceLabel.trim()}');
+      if (enteredHours[worker.workerId] != null) lines.add('実勤務時間：${enteredHours[worker.workerId]}時間');
+    }
+    lines.add('この内容を報告者サインで仮保存します。給与・請求への反映は⑤「保存して確定」の成功後です。');
+    return lines.join('\n');
+  }
+
   Future<void> _signReporter() async {
     if (_managementHold || _saving || _signed || _visitReporterLocked || _sharedFactsReadOnly) return;
     if (_workDescription.text.trim().isEmpty) {
@@ -1406,10 +1438,31 @@ class _DailyReportPageState extends State<DailyReportPage> {
       await _checkPaidHoursBeforeSignature(reportId, checkSigningContext);
       if (!mounted) return;
       checkSigningContext();
-      final sharedBefore = _sharedContext;
+      var sharedBefore = _sharedContext;
       if (sharedBefore?.explicitFinalizationRequired == true &&
           _workers.any((worker) => worker.workCategory == null)) {
         throw const FormatException('②の勤務区分（日勤・夜勤など）を選んでください。');
+      }
+      if (sharedBefore?.explicitFinalizationRequired == true &&
+          _workers.any((worker) => worker.companyAllowanceSelections == null)) {
+        if (_companyAllowanceActor != signingActor || _companyAllowanceNamesLoading ||
+            _companyAllowanceNamesUnavailable || _workers.any((worker) => !_companyAllowanceEligibility.containsKey(worker.workerId))) {
+          throw StateError('②の会社手当の候補を確認できません。選択なしとして扱わず、日報を再読み込みしてください。');
+        }
+        for (final worker in _workers.where((worker) => worker.companyAllowanceSelections == null)) {
+          worker.companyAllowanceSelections = DailyReportCompanyAllowanceSelections([]);
+        }
+        final savedId = await _saveDraft(ownsBusyState: false, quiet: true);
+        if (!mounted) return;
+        checkSigningContext();
+        if (savedId != reportId || _report?.id != reportId || _error != null) {
+          throw StateError('サイン前の入力内容を保存できません。日報を再読み込みしてください。');
+        }
+        sharedBefore = _sharedContext;
+        if (sharedBefore?.explicitFinalizationRequired != true || sharedBefore?.reporterSaved == true ||
+            sharedBefore?.supervisorSaved == true) {
+          throw StateError('サイン対象の日報が更新されました。日報を再読み込みしてください。');
+        }
       }
       if (sharedBefore?.firstReporterCoversWorkOnly == true &&
           (_workDescription.text.trim().isEmpty || _workers.isEmpty || !_sharedWorkMatchesEditor(sharedBefore!))) {
@@ -1421,6 +1474,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
           signerLabel: SkoLanguageController.tr('報告者名'),
           submitLabel: SkoLanguageController.tr('報告者サインを保存'),
           initialSignerName: _report?.reporterSignerName ?? '',
+          reviewText: sharedBefore?.explicitFinalizationRequired == true
+            ? _reporterSignatureSummary(enteredHours) : null,
           signerNameOptions: [for (final worker in _workers) worker.workerName,
             ],
           ),
@@ -1520,6 +1575,20 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (!mounted) return;
       checkSigningContext();
       if (sharedBefore?.isManagementHold == true) return;
+      if (sharedBefore?.explicitFinalizationRequired == true && sharedBefore?.reporterSaved == true &&
+          sharedBefore?.supervisorSaved != true) {
+        final before = sharedBefore!;
+        final prepared = await _sharedReportRepository!.prepareProvisionalFacts(before: before,
+          workers: [for (final worker in _workers) {...worker.toRpcJson(),
+            'confirmed_hours': _enteredConfirmedHours(worker.workerId),
+            'confirmation_reason': worker.workerId == before.workerId || _managementFactsReason.text.trim().isEmpty
+              ? null : _managementFactsReason.text.trim()}]);
+        if (!mounted) return;
+        checkSigningContext();
+        _verifySharedContext(prepared, reportId: reportId);
+        sharedBefore = prepared;
+        _sharedContext = prepared;
+      }
       if (sharedBefore?.explicitFinalizationRequired == true && !sharedBefore!.supervisorReady) {
         await _confirmPendingFactsBeforeSupervisor(sharedBefore, checkSigningContext);
         sharedBefore = await _readSharedContext(reportId: reportId);
