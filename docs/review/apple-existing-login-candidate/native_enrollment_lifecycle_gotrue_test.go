@@ -13,14 +13,16 @@ func TestSKOAppleNativeEnrollmentLedgerLifecycle(t *testing.T){
  require.NoError(t,api.db.RawQuery("create table apple_owner_policy.sko_apple_company_snapshot(user_id uuid primary key,company_id uuid not null,role text not null)").Exec())
  defer func(){require.NoError(t,api.db.RawQuery("drop table apple_owner_policy.sko_apple_company_snapshot").Exec())}()
 
+ originalJWT:=rootQuery("select pg_get_functiondef('auth.jwt()'::regprocedure)")
+ defer func(){rootQuery(originalJWT)}()
  rootQuery(`do $$declare r text;begin foreach r in array array['anon','authenticated','service_role']loop if not exists(select 1 from pg_roles where rolname=r)then execute format('create role %I nologin',r);end if;end loop;end$$;
  create schema if not exists private;
  create table public.company_members(user_id uuid,company_id uuid,role text);
  create table private.account_deletion_access_restrictions(user_id uuid primary key);
- create function auth.jwt()returns jsonb language sql stable as $$select jsonb_build_object('role',concat('service','_role'))$$;`)
+ create or replace function auth.jwt()returns jsonb language sql stable as $$select jsonb_build_object('role',concat('service','_role'))$$;`)
  ledgerSQL,err:=os.ReadFile(os.Getenv("SKO_APPLE_ENROLLMENT_FILE"));require.NoError(t,err)
  rootQuery(string(ledgerSQL))
- defer func(){rootQuery(`drop schema apple_native_enrollment_private cascade;drop function public.read_apple_native_enrollment_context(uuid,uuid);drop function public.reserve_apple_native_subject(uuid,uuid,text,text,text,text,bigint);drop function public.complete_apple_native_subject(uuid,uuid,uuid,text,text,text);drop function public.hold_apple_native_subject(uuid,uuid,uuid);drop function auth.jwt();drop table public.company_members;drop table private.account_deletion_access_restrictions;`)}()
+ defer func(){rootQuery(`drop schema apple_native_enrollment_private cascade;drop function public.read_apple_native_enrollment_context(uuid,uuid);drop function public.reserve_apple_native_subject(uuid,uuid,text,text,text,text,bigint);drop function public.complete_apple_native_subject(uuid,uuid,uuid,text,text,text);drop function public.hold_apple_native_subject(uuid,uuid,uuid);drop table public.company_members;drop table private.account_deletion_access_restrictions;`)}()
  config.Security.ManualLinkingEnabled=true
  config.Hook.CustomAccessToken.Enabled=true
  config.Hook.CustomAccessToken.URI="pg-functions://postgres/apple_owner_policy/custom_access_token_hook"
