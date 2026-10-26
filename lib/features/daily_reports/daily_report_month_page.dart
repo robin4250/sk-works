@@ -248,8 +248,10 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
       }
       if (mounted) await _load();
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('勤務原本と日報作成の状態を確認できません。再読み込みしてください。')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('勤務原本と日報作成の状態を確認できません。再読み込みしてください。')));
+      }
     } finally {
       if (mounted) setState(() => _creating = false);
     }

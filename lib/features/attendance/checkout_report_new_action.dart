@@ -33,8 +33,10 @@ Future<bool> offerNewCheckoutReport(BuildContext context, {
     row.workDate.year == month.year && row.workDate.month == month.month &&
     (workerId == null || row.workerId == workerId)).toList();
   if (pending.isEmpty) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('この月に作成・再開できる本人の退勤記録がありません。出勤表で勤務日を確認してください。')));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('この月に作成・再開できる本人の退勤記録がありません。出勤表で勤務日を確認してください。')));
+    }
     return true;
   }
   final resume = resumeRepository ?? CheckoutReportResumeRepository.maybeCreate();
