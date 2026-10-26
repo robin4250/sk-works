@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sk_works/features/attendance/worker_attendance_sheet_repository.dart';
 
 void main() {
   test('device review fixes stay wired for TestFlight candidate', () {
@@ -54,7 +55,12 @@ void main() {
     expect(employeePreview, contains('InteractiveViewer'));
     expect(employeePreview, contains('maxScale: 5'));
 
-    expect(attendance, contains("allowanceUnits[name] ?? '回'"));
+    expect(
+      WorkerAttendanceDay(date: DateTime(2026, 10, 26),
+        allowanceUnits: const {'自由記入手当': '時間'})
+          .allowanceDisplayText('自由記入手当'),
+      '自由記入手当1時間',
+    );
     expect(attendance, contains('if (data.overtimeHours > 0)'));
     expect(attendancePdf, contains('_hoursCell'));
     expect(attendancePdf, contains('_summaryText'));
@@ -132,3 +138,4 @@ void main() {
     );
   });
 }
+

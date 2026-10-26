@@ -32,6 +32,13 @@ void main() {
     expect(day.allowanceDisplayText(saved.nameSnapshot), '保存済み共通手当');
     expect(day.allowanceDisplayText('自由記入'), '自由記入1回');
   });
+  test('legacy free-name hour units and missing-unit fallback remain visible', () {
+    final day = WorkerAttendanceDay(date: DateTime(2026, 10, 26),
+        allowanceNames: const ['自由記入時間手当', '単位未登録'],
+        allowanceUnits: const {'自由記入時間手当': '時間'});
+    expect(day.allowanceDisplayText('自由記入時間手当'), '自由記入時間手当1時間');
+    expect(day.allowanceDisplayText('単位未登録'), '単位未登録1回');
+  });
   test('hour choice shows its name without inventing one paid hour', () {
     final saved = workerAttendanceRegisteredAllowances([row(choices([selection(unit: 'hour')]))],
         reportIds: {report}, workerId: worker)[report]!.single;
