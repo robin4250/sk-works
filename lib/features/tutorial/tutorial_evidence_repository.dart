@@ -296,11 +296,23 @@ class TutorialEvidenceRepository {
           key == 'company_document_selection' || rows is! List ? null : false)];
     }
     return [for (final row in rows.whereType<Map>())
-      checkpoint('record:${row['id']}', row['name']?.toString() ??
-          (key == 'company_document_selection' ? '必要書類' : '本人の資格'),
+      checkpoint('record:${row['id']}', key == 'company_document_selection'
+          ? _companyDocumentLabel(row) : row['name']?.toString() ?? '本人の資格',
           row['id']?.toString().isNotEmpty == true ? true : null,
           rowId: row['id']?.toString()),
     ];
+  }
+
+  static String _companyDocumentLabel(Map row) {
+    final name = row['name']?.toString().trim();
+    final scope = switch (row['scope']) {
+      'internal' => '社内',
+      'upstream' => '取引会社',
+      'both' => '社内・取引会社',
+      _ => null,
+    };
+    final label = name == null || name.isEmpty ? '必要書類' : name;
+    return scope == null ? label : '$scope：$label';
   }
 
   static List<TutorialEvidenceCheckpoint> setupCheckpoints(
@@ -356,6 +368,15 @@ class TutorialEvidenceRepository {
         if (['not_submitted', 'missing', 'expired'].contains(status)) {
           state = TutorialEvidenceState.missing;
         } else if (status == 'submitted' || status == 'verified') {
+          final name = requirement['name']?.toString();
+          if (name == null || name.isEmpty || name == '銀行口座情報' ||
+              !row.containsKey('attachment_path')) {
+            // Bank evidence is held separately, and cannot be inferred from status.
+            state = TutorialEvidenceState.unknown;
+          } else if ((row['attachment_path']?.toString() ?? '').isEmpty) {
+            // Matches the current required-document attention rule.
+            state = TutorialEvidenceState.missing;
+          } else {
           final rawExpiry = row['expires_at']?.toString() ?? '';
           final expiry = DateTime.tryParse(rawExpiry);
           if (rawExpiry.isNotEmpty && expiry == null) {
@@ -368,6 +389,7 @@ class TutorialEvidenceRepository {
             state = TutorialEvidenceState.missing;
           } else {
             state = TutorialEvidenceState.saved;
+          }
           }
         }
       }
@@ -405,7 +427,7 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
         return null;
       }
       final rows = await client.from('document_requirements')
-          .select('id,name,is_required').eq('company_id', companyId).eq('is_active', true);
+          .select('id,name,scope,is_required').eq('company_id', companyId).eq('is_active', true);
       return {'rows': rows};
     }
     final worker = await client.from('workers').select('id')
@@ -491,7 +513,7 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
         .select('id,name,is_active,is_required,expiry_required')
         .eq('company_id', companyId).eq('is_active', true).eq('is_required', true);
     final statuses = await client.from('worker_document_statuses')
-        .select('id,requirement_id,worker_id,status,expires_at')
+        .select('id,requirement_id,worker_id,status,expires_at,attachment_path')
         .eq('company_id', companyId).eq('worker_id', workerId);
     return {'worker_id': workerId, 'requirements': requirements, 'statuses': statuses};
   }
