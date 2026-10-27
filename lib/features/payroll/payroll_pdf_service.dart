@@ -1,4 +1,5 @@
 import '../expenses/expense_document_repository.dart';
+import 'payroll_recorded_income_tax_evidence.dart';
 import '../expenses/expense_detail_pdf.dart';
 import '../../domain/company_seal_snapshot.dart';
 import 'dart:typed_data';
@@ -245,6 +246,8 @@ class PayrollPdfService {
     final leaveAllocation = _monthlyPaidLeaveAllocationNote(detail);
     final evidenceMonth = '${statement.periodStart.year.toString().padLeft(4, '0')}-${statement.periodStart.month.toString().padLeft(2, '0')}-01';
     final insuranceEvidence = PayrollInsuranceCalculationEvidence.fromDetail(detail, month: evidenceMonth);
+    final incomeEvidence = recordedPayrollIncomeTaxEvidence(detail, month: evidenceMonth,
+        displayedAmount: (_asNumber(detail['所得税']) ?? 0).abs());
     final payType = _payTypeLabel(detail);
     return pw.Container(
       width: 559.275590551,
@@ -615,10 +618,10 @@ class PayrollPdfService {
                 child: text(leaveAllocation, size: 7),
               ),
             ),
-          if (pageIndex == 0 && !insuranceEvidence.isEmpty)
+          if (pageIndex == 0 && (!insuranceEvidence.isEmpty || incomeEvidence.calculationLines.isNotEmpty))
             at(20, leaveAllocation.isEmpty ? 655 : 672, width,
               leaveAllocation.isEmpty ? 68 : 55,
-              _insuranceEvidenceBox(insuranceEvidence, blue, paleBlue)),
+              _insuranceEvidenceBox(insuranceEvidence, blue, paleBlue, incomeEvidence.calculationLines)),
           at(
             20,
             731.88976378,
@@ -1051,18 +1054,22 @@ class PayrollPdfService {
   }
 
   static pw.Widget _insuranceEvidenceBox(PayrollInsuranceCalculationEvidence evidence,
-      PdfColor accent, PdfColor pale) => pw.Container(
+      PdfColor accent, PdfColor pale, List<String> incomeCalculationLines) => pw.Container(
     padding: const pw.EdgeInsets.all(2),
     decoration: pw.BoxDecoration(color: pale,
       border: pw.Border.all(color: accent, width: .4),
       borderRadius: pw.BorderRadius.circular(3)),
     child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-      pw.Text('保険料の計算根拠（保存値・端数処理後／平均との採用関係は未記録）',
-        style: pw.TextStyle(fontSize: 5.4, fontWeight: pw.FontWeight.bold, color: accent)),
+      pw.Text(evidence.isEmpty ? '所得税の計算根拠（この明細の保存値）'
+        : '保険料の計算根拠（保存値・端数処理後／平均との採用関係は未記録）'
+          '${incomeCalculationLines.isNotEmpty ? '／${evidence.referenceText}' : ''}',
+        style: pw.TextStyle(fontSize: incomeCalculationLines.isEmpty ? 5.4 : 5.2,
+            fontWeight: pw.FontWeight.bold, color: accent)),
       pw.SizedBox(height: .5),
-      pw.Text(evidence.referenceText, style: const pw.TextStyle(fontSize: 5)),
+      if (!evidence.isEmpty && incomeCalculationLines.isEmpty)
+        pw.Text(evidence.referenceText, style: const pw.TextStyle(fontSize: 5)),
       for (var i = 0; i < evidence.rows.length; i += 2)
-        pw.SizedBox(height: 10, child: pw.Row(children: [
+        pw.SizedBox(height: incomeCalculationLines.isEmpty ? 10 : 8, child: pw.Row(children: [
           for (var j = i; j < i + 2 && j < evidence.rows.length; j++)
             pw.Expanded(child: pw.Padding(
               padding: const pw.EdgeInsets.only(top: .6, right: 4),
@@ -1072,6 +1079,8 @@ class PayrollPdfService {
             )),
           if (i + 1 == evidence.rows.length) pw.Expanded(child: pw.SizedBox()),
         ])),
+      for (final line in incomeCalculationLines)
+        pw.Text(line, style: const pw.TextStyle(fontSize: 5.2)),
     ]),
   );
 
@@ -1104,6 +1113,10 @@ class PayrollPdfService {
   }
 
   static String _moneyExplanation(String label, Map<String, dynamic> detail, String month) {
+    if (label == '所得税') {
+      return recordedPayrollIncomeTaxExplanation(detail, month: month,
+          displayedAmount: (_asNumber(detail['所得税']) ?? 0).abs());
+    }
     final direct = detail['$label計算内容'] ?? detail['$label備考'];
     if (direct != null && direct.toString().trim().isNotEmpty) {
       return direct.toString().trim();
@@ -1117,11 +1130,6 @@ class PayrollPdfService {
     }
     final tax = detail['tax_calculation'];
     if (tax is Map) {
-      final conditions = tax['conditions'];
-      if (label == '所得税' && tax['income_table'] != null && conditions is Map) {
-        final column = conditions['income_mode'] == 'koh' ? '甲' : '乙';
-        return '月額表 $column${conditions['dependents']}人';
-      }
       final kind = const {'健康保険料':'health_insurance', '介護保険料':'nursing_insurance',
         '厚生年金保険':'pension_insurance', '雇用保険料':'employment_insurance',
         '子ども・子育て支援金':'child_support'}[label];
@@ -1497,6 +1505,7 @@ class PayrollPdfService {
 
   static String _yen(int value) => '¥${_number(value)}';
 }
+
 
 
 
