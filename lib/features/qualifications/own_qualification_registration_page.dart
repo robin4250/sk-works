@@ -635,13 +635,7 @@ class _OwnQualificationRegistrationPageState
       for (final row in _masters) row['id']?.toString() ?? '': row,
     };
     final needle = _query.trim().toLowerCase();
-    final allQualifications = <Map<String, dynamic>>[
-      ..._qualifications,
-      for (final master in _masters)
-        if (!_qualifications.any((row) => row['qualification_master_id'] == master['id']))
-          {'qualification_master_id': master['id'], '_unregistered': true},
-    ];
-    final qualifications = allQualifications
+    final qualifications = _qualifications
         .where((row) {
           if (needle.isEmpty) return true;
           final master =
@@ -794,8 +788,13 @@ class _OwnQualificationRegistrationPageState
                               return ResourceRegistrationCard(
                                 key: ValueKey('own-qualification:${_worker?['id']}:${row['id'] ?? row['qualification_master_id']}'),
                                 title: title, icon: Icons.badge_outlined, registered: !unregistered,
-                                dateLabel: (row['issued_at']?.toString() ?? '').isEmpty
-                                  ? '' : '取得日 ${row['issued_at']}',
+                                dateLabel: [
+                                  if ((row['issued_at']?.toString() ?? '').isNotEmpty)
+                                    '取得日 ${row['issued_at']}',
+                                  ((master?['category']?.toString() ?? '').trim().isEmpty)
+                                    ? '区分未設定'
+                                    : master!['category'].toString().trim(),
+                                ].join(' / '),
                                 statusLabel: unregistered ? '未登録' : '登録済み',
                                 detailLabel: [...resourceQualificationMetadata(row),
                                   if (_photoStatus(row['id'].toString()) != null) _photoStatus(row['id'].toString())!,

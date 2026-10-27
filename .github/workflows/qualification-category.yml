@@ -1,0 +1,21 @@
+name: Qualification category display
+on:
+  pull_request:
+    paths:
+      - 'lib/features/qualifications/qualification_cloud_page.dart'
+      - 'lib/features/qualifications/qualification_cloud_repository.dart'
+      - '.github/workflows/qualification-category.yml'
+      - 'test/qualification_category_edit_test.dart'
+permissions:
+  contents: read
+jobs:
+  qualification-category:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/qualifications/qualification_cloud_page.dart lib/features/qualifications/qualification_cloud_repository.dart
+      - run: flutter test test/qualification_registration_dialog_size_test.dart test/qualification_category_edit_test.dart --reporter expanded
