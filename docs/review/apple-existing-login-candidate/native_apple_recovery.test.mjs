@@ -147,3 +147,16 @@ test('Native owner recovery serializes disable and session deletion in both orde
  }
  await a.query('rollback');assert.equal((await f.state(r)).status,'held');
 }));
+
+test('Native existing root reconciliation blocks unrelated identity writes until transaction ends',{skip:!native},()=>fixture(async f=>{
+ await f.db.exec(fs.readFileSync(new URL('self-recovery/self-recovery-command.sql.review-only',import.meta.url),'utf8'));
+ const other=randomUUID(),otherIdentity=randomUUID();await f.q("insert into auth.users(id,encrypted_password,raw_user_meta_data)values($1,'fixture','{}')",[other]);
+ const r=await f.reserve();await f.hold(r);const c=(await f.q('select apple_native_enrollment_private.self_recovery_command($1,$2,$3) c',[r.request_id,uid,sid]))[0].c;
+ const a=await f.db.peer(),b=await f.db.peer();await a.query('begin');
+ await a.query('select apple_native_enrollment_private.self_recovery_reconcile($1,$2,$3,$4)',[c.command_id,r.request_id,uid,sid]);
+ await b.query('begin');await b.query("set local lock_timeout='250ms'");
+ const insert="insert into auth.identities values($1,$2,'google','other-google',jsonb_build_object('sub','other-google'))";
+ await assert.rejects(b.query(insert,[otherIdentity,other]),/lock timeout/);await b.query('rollback');await a.query('rollback');
+ await b.query('begin');await b.query(insert,[otherIdentity,other]);await b.query('rollback');
+ assert.equal((await f.state(r)).status,'held');
+}));
