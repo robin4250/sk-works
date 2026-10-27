@@ -38,7 +38,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('資格マスター管理'));
     await tester.pumpAndSettle();
-    final button = tester.widget<IconButton>(find.byTooltip('削除は準備中'));
+    final button = tester.widget<IconButton>(find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == '削除は準備中'));
     expect(button.onPressed, isNull);
     expect(find.byTooltip('区分を変更'), findsOneWidget);
     expect(repo.deletes, 0);
