@@ -32,5 +32,20 @@ begin
  return true;
 end $$;
 revoke all on function private.commit_document_upload_inspection(uuid,uuid,uuid,text,text,bigint,text) from public,anon,authenticated,service_role;
+create function private.check_document_upload_for_approval(
+ p_id uuid, p_request uuid, p_company uuid, p_worker uuid, p_requirement uuid, p_path text
+) returns boolean language plpgsql security definer set search_path='' as $$
+declare r private.document_upload_inspection_candidates%rowtype; obj storage.objects%rowtype;
+begin
+ select * into r from private.document_upload_inspection_candidates where id=p_id for share;
+ if not found or r.status <> 'inspected' or r.request_id is distinct from p_request
+  or r.company_id is distinct from p_company or r.worker_id is distinct from p_worker
+  or r.requirement_id is distinct from p_requirement or r.object_path is distinct from p_path
+  or r.sha256 is null or r.byte_count is null or r.mime is null then return false; end if;
+ select * into obj from storage.objects where bucket_id='worker-documents' and name=r.object_path for share;
+ if not found or obj.version is distinct from r.object_version or obj.is_delete_marker then return false; end if;
+ return true;
+end $$;
+revoke all on function private.check_document_upload_for_approval(uuid,uuid,uuid,uuid,uuid,text) from public,anon,authenticated,service_role;
 -- Explicit grant is intentionally withheld until the enclosing transaction and
 -- trusted service are implemented and audited.

@@ -19,6 +19,11 @@ try {
  assert.equal(await inspect('00000000-0000-4000-8000-000000000002','v1',null),false);
  assert.equal(await inspect('00000000-0000-4000-8000-000000000002','v1'),true);
  assert.equal(await inspect('00000000-0000-4000-8000-000000000002','v1'),false);
+ const approval = async company => (await db.query(`select private.check_document_upload_for_approval('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000006',$1,'00000000-0000-4000-8000-000000000004','00000000-0000-4000-8000-000000000005','document-change/test') ok`,[company])).rows[0].ok;
+ assert.equal(await approval('00000000-0000-4000-8000-000000000009'),false);
+ assert.equal(await approval('00000000-0000-4000-8000-000000000003'),true);
+ await db.exec("update storage.objects set version='v2' where name='document-change/test'");
+ assert.equal(await approval('00000000-0000-4000-8000-000000000003'),false);
  const perms=await db.query(`select has_function_privilege('authenticated','private.commit_document_upload_inspection(uuid,uuid,uuid,text,text,bigint,text)','execute') permitted`);
  assert.equal(perms.rows[0].permitted,false);
  console.log('isolated SQL: foreign actor/version/null/replay denied; authenticated cannot execute');
