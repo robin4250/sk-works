@@ -6,6 +6,30 @@ class ShiftDraftGateway {
   const ShiftDraftGateway(this.call);
   final Future<Object?> Function(String name, Map<String, Object?> params) call;
 
+  Future<void> publish(List<ShiftDraftRequest> requests) async {
+    if (requests.isEmpty || requests.length > 100) throw const FormatException('従業員を選択してください。');
+    final company = requests.first.companyId;
+    if (company.trim().isEmpty || requests.any((r) => r.companyId != company || r.revision <= 0 || r.validate() != null)) {
+      throw const FormatException('保存済みシフトを確認してください。');
+    }
+    final expected = {for (final r in requests) '${r.workerId}:${r.toJson()['work_date']}': r.revision};
+    if (expected.length != requests.length) throw const FormatException('勤務日が重複しています。');
+    final rows = [for (final r in requests) {'worker_id': r.workerId,
+      'work_date': r.toJson()['work_date'], 'revision': r.revision}];
+    final result = await call('publish_shift_drafts', {'p_company': company, 'p_rows': rows});
+    if (result is! List || result.length != expected.length) throw const FormatException('確定結果を確認できません。');
+    final observed = <String, int>{};
+    for (final row in result) {
+      if (row is! Map || row['worker_id'] is! String || row['work_date'] is! String || row['revision'] is! int) {
+        throw const FormatException('確定結果を確認できません。');
+      }
+      final key = '${row['worker_id']}:${row['work_date']}';
+      if (observed.containsKey(key)) throw const FormatException('確定結果を確認できません。');
+      observed[key] = row['revision'] as int;
+    }
+    if (expected.entries.any((e) => observed[e.key] != e.value)) throw const FormatException('確定結果を確認できません。');
+  }
+
   /// Read server-authorized management drafts; an invalid response is never
   /// treated as an empty schedule because that could hide saved work.
   Future<List<ShiftDraftRequest>> listMonth(String company, DateTime month) async {

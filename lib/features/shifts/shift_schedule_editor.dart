@@ -8,7 +8,7 @@ import 'shift_people_picker.dart';
 class ShiftScheduleEditor extends StatefulWidget {
   const ShiftScheduleEditor({super.key, required this.companyId,
     required this.date, required this.people, required this.sites,
-    required this.initial, required this.revisions, required this.save});
+    required this.initial, required this.revisions, required this.save, this.publish});
   final String companyId;
   final DateTime date;
   final List<ShiftPersonOption> people;
@@ -16,6 +16,8 @@ class ShiftScheduleEditor extends StatefulWidget {
   final ShiftDayDraft initial;
   final Map<String, int> revisions;
   final Future<void> Function(List<ShiftDraftRequest>) save;
+  /// The server rechecks manager permission, revision and rollout atomically.
+  final Future<void> Function(List<ShiftDraftRequest>)? publish;
 
   @override
   State<ShiftScheduleEditor> createState() => _ShiftScheduleEditorState();
@@ -27,6 +29,7 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
   Set<String> selected = {};
   bool saving = false;
   String? message;
+  List<ShiftDraftRequest>? savedForPublication;
 
   Future<void> submit() async {
     if (saving) return;
@@ -51,16 +54,34 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
     setState(() { saving = true; message = null; });
     try {
       await widget.save(List.unmodifiable(requests));
-      if (mounted) {
-        setState(() {
-          for (final request in requests) {
-            revisions[request.workerId] = request.revision + 1;
-          }
-          message = '下書きを保存しました。';
-        });
-      }
+      if (mounted) setState(() {
+        for (final request in requests) {
+          revisions[request.workerId] = request.revision + 1;
+        }
+        savedForPublication = [for (final request in requests) ShiftDraftRequest(
+          companyId: request.companyId, workerId: request.workerId, siteId: request.siteId,
+          workDate: request.workDate, holiday: request.holiday, night: request.night,
+          startMinute: request.startMinute, endMinute: request.endMinute,
+          checkLate: request.checkLate, checkEarly: request.checkEarly,
+          revision: request.revision + 1)];
+        message = '下書きを保存しました。';
+      });
     } catch (_) {
       if (mounted) setState(() => message = '保存結果を確認できません。再読み込みして確認してください。');
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> publishSaved() async {
+    final rows = savedForPublication;
+    if (saving || rows == null || widget.publish == null) return;
+    setState(() { saving = true; message = null; });
+    try {
+      await widget.publish!(List.unmodifiable(rows));
+      if (mounted) setState(() { savedForPublication = null; message = 'シフトを確定しました。'; });
+    } catch (_) {
+      if (mounted) setState(() => message = '確定結果を確認できません。再読み込みしてください。');
     } finally {
       if (mounted) setState(() => saving = false);
     }
@@ -72,11 +93,14 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
     body: SingleChildScrollView(child: Column(children: [
       Text('${widget.date.year}年${widget.date.month}月${widget.date.day}日'),
       ShiftPeoplePicker(people: widget.people, selectedIds: selected,
-        onChanged: saving ? (_) {} : (ids) => setState(() => selected = ids)),
+        onChanged: saving ? (_) {} : (ids) => setState(() { selected = ids; savedForPublication = null; })),
       ShiftDayEditor(value: draft, sites: widget.sites,
-        onChanged: saving ? (_) {} : (value) => setState(() => draft = value)),
+        onChanged: saving ? (_) {} : (value) => setState(() { draft = value; savedForPublication = null; })),
       if (message != null) Text(message!),
       FilledButton(onPressed: saving ? null : submit, child: const Text('下書きを保存')),
+      if (widget.publish != null)
+        FilledButton(onPressed: saving || savedForPublication == null ? null : publishSaved,
+          child: const Text('保存したシフトを確定')),
     ])),
   );
 }

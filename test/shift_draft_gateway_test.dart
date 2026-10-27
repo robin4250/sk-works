@@ -6,6 +6,18 @@ void main() {
   final draft = ShiftDraftRequest(companyId: 'c', workerId: 'w', siteId: 's',
     workDate: DateTime(2026, 10, 26), holiday: false, night: false,
     startMinute: 480, endMinute: 1020, checkLate: true, checkEarly: true, revision: 2);
+  test('publication requires an exact server receipt for the saved revision', () async {
+    final gateway = ShiftDraftGateway((name, params) async {
+      expect(name, 'publish_shift_drafts');
+      expect(params['p_company'], 'c');
+      return [{'worker_id': 'w', 'work_date': '2026-10-26', 'revision': 2}];
+    });
+    await gateway.publish([draft]);
+    final bad = ShiftDraftGateway((_, _) async => [
+      {'worker_id': 'w', 'work_date': '2026-10-26', 'revision': 3}]);
+    await expectLater(bad.publish([draft]), throwsFormatException);
+    await expectLater(gateway.publish([draft, draft]), throwsFormatException);
+  });
   test('validates the server receipt against saved worker, date and revision', () async {
     final gateway = ShiftDraftGateway((name, params) async {
       expect(name, 'save_shift_drafts');
