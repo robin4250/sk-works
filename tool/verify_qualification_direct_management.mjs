@@ -41,6 +41,7 @@ try{
  await db.exec(await read('supabase/migrations/20261003120833_allow_self_qualification_registration.sql'));
  await db.exec(await own('tool/fixtures/qualification_management/official_history.sql'));
  await db.exec(await own('tool/fixtures/qualification_management/reauthentication.sql'));
+ await db.exec(await own('tool/fixtures/qualification_management/cron.sql'));
  const personalBefore=(await db.query("select md5(prosrc) m from pg_proc where oid='private.personal_qualification_submission(text,jsonb)'::regprocedure")).rows[0].m;
  const sql=await own('docs/candidates/qualification_direct_management_20261027.sql.review-only');
  const id=n=>`30000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
@@ -56,7 +57,13 @@ try{
  await db.query("insert into worker_qualifications(id,company_id,worker_id,qualification_master_id,certificate_number,issuer,notes,attachment_path,attachment_back_path)values($1,$2,$3,$4,'original','issuer','original notes',$5,$6)",[target,company,worker,master,front,back]);
  const actor=async uid=>{await db.exec('reset role');await db.query("select set_config('test.uid',$1,false)",[uid??'']);await db.exec('set role authenticated');};
  const owner=()=>db.exec('reset role');
- const rpc=async(action,data={})=>(await db.query('select public.qualification_direct_management($1,$2::jsonb) v',[action,JSON.stringify({company_id:company,...data})])).rows[0].v;
+ const rawRpc=async(action,data={})=>(await db.query('select public.qualification_direct_management($1,$2::jsonb) v',[action,JSON.stringify({company_id:company,...data})])).rows[0].v;
+ const rpc=async(action,data={})=>{
+  if(action!=='apply')return rawRpc(action,data);
+  const prepared=await rawRpc('prepare',data);
+  if(prepared.status==='applied')return prepared;
+  return rawRpc('apply',{request_id:data.request_id});
+ };
  const personal=async(action,data={})=>(await db.query('select private.personal_qualification_submission($1,$2::jsonb) v',[action,JSON.stringify(data)])).rows[0].v;
  const row=async tid=>{await owner();return (await db.query('select to_jsonb(q) v from worker_qualifications q where id=$1',[tid??target])).rows[0]?.v;};
  const fields={certificate_number:'updated',issuer:'issuer updated',issued_at:'2026-10-01',expires_at:null,notes:'corrected'};
@@ -79,7 +86,8 @@ try{
  await db.exec(guarded.install);assert.equal((await fingerprints()).business,beforeInstall.business);
  const firstInstalled=await fingerprints();
  const unused=await generate(beforeInstall,firstInstalled.catalog);
- await db.exec(unused.restore);assert.deepEqual(await fingerprints(),beforeInstall,'unused restore returns exact source catalog and business');
+ await db.exec("insert into cron.job values(1,'sko-qualification-command-expiry','* * * * *','select private.purge_qualification_management_pending();',true,current_database());insert into cron.job_run_details values(0,1,'succeeded',clock_timestamp())");
+ await db.exec(unused.restore);assert.equal((await db.query('select count(*)::int n from cron.job')).rows[0].n,0,'unused restore removes only exact cleanup job');assert.equal((await db.query('select count(*)::int n from cron.job_run_details')).rows[0].n,1,'job run audit retained');assert.deepEqual(await fingerprints(),beforeInstall,'unused restore returns exact source catalog and business');
  await assert.rejects(db.exec(unused.restore),e=>e.code==='42P01');await db.exec('rollback');
  await db.exec(guarded.install);
  await assert.rejects(db.exec(guarded.install),e=>e.code==='55000');await db.exec('rollback');
@@ -89,6 +97,9 @@ try{
  await actor(admin);assert.equal((await rpc('capability')).available,false,'installed OFF');
  await assert.rejects(rpc('apply',command),e=>e.code==='55000');
  await owner();await db.exec('update private.qualification_management_state set enabled=true');
+ await actor(admin);assert.equal((await rpc('capability')).available,false,'missing scheduler never enables plaintext server drafts');
+ await owner();await db.exec("insert into cron.job values(1,'sko-qualification-command-expiry','* * * * *','select private.purge_qualification_management_pending();',true,current_database());insert into cron.job_run_details values(1,1,'succeeded',clock_timestamp())");
+
  if(native){
   const mod=await import(pathToFileURL(path.resolve(process.argv[2])).href),Client=mod.Client??mod.default?.Client;
   const a=new Client({connectionString:native}),b=new Client({connectionString:native});
@@ -108,13 +119,14 @@ try{
     throw Error('expected state/operation lock wait not observed');
    };
    await a.query('begin');
-   await a.query('select public.qualification_direct_management($1,$2::jsonb)',['apply',JSON.stringify({company_id:company,...command,request_id:id(60)})]);
+   await a.query('select public.qualification_direct_management($1,$2::jsonb)',['prepare',JSON.stringify({company_id:company,...command,request_id:id(60)})]);
+   await a.query('select public.qualification_direct_management($1,$2::jsonb)',['apply',JSON.stringify({company_id:company,request_id:id(60)})]);
    const disabling=b.query('update private.qualification_management_state set enabled=false');disabling.catch(()=>{});
    await waitForLock(pidB,pidA);await a.query('rollback');await disabling;
    assert.deepEqual(await row(),initial,'rolled-back in-flight operation leaves original intact');
    await b.query('begin');await b.query('update private.qualification_management_state set enabled=false');
    await a.query('begin');
-   const saving=a.query('select public.qualification_direct_management($1,$2::jsonb)',['apply',JSON.stringify({company_id:company,...command,request_id:id(61)})]);saving.catch(()=>{});
+   const saving=a.query('select public.qualification_direct_management($1,$2::jsonb)',['prepare',JSON.stringify({company_id:company,...command,request_id:id(61)})]);saving.catch(()=>{});
    await waitForLock(pidA,pidB);await b.query('commit');
    await assert.rejects(saving,e=>e.code==='55000');await a.query('rollback');
    await db.exec('update private.qualification_management_state set enabled=true');
@@ -171,6 +183,32 @@ try{
  // Own first registration INSERT remains allowed; restrictive role applies only UPDATE/DELETE.
  await actor(user);await db.query('insert into worker_qualifications(id,company_id,worker_id,qualification_master_id) values($1,$2,$3,$4)',[id(31),company,worker,master]);
  await owner();assert.equal((await db.query("select md5(prosrc) m from pg_proc where oid='private.personal_qualification_submission(text,jsonb)'::regprocedure")).rows[0].m,personalBefore,'personal RPC source unchanged');
+ const dormant=await row(id(31));await actor(admin);
+ const pendingCommand={request_id:id(80),target_id:id(31),operation:'update',expected_snapshot:dormant,fields};
+ const preparedOnly=await rawRpc('prepare',pendingCommand);assert.equal(preparedOnly.status,'prepared');
+ assert.equal('command' in preparedOnly,false);assert.equal('fields' in preparedOnly,false);
+ assert.deepEqual(await row(id(31)),dormant,'prepare must not alter qualification');
+ await actor(manager);await assert.rejects(rawRpc('get',{request_id:id(80)}),e=>e.code==='42501');
+ await owner();await db.exec("update private.qualification_management_pending set expires_at=clock_timestamp()-interval '1 second' where request_id='"+id(80)+"'");
+ assert.equal((await db.query('select private.purge_qualification_management_pending() n')).rows[0].n,1);
+ assert.equal((await db.query('select command from private.qualification_management_pending where request_id=$1',[id(80)])).rows[0].command,null);
+ await actor(admin);assert.equal((await rawRpc('get',{request_id:id(80)})).status,'expired');
+ await assert.rejects(rawRpc('apply',{request_id:id(80)}),e=>e.code==='55000');
+ assert.equal((await rawRpc('prepare',pendingCommand)).status,'expired','late retry cannot revive expired command');
+ const cancelCommand={company_id:company,request_id:id(81),target_id:id(31),operation:'update',worker_id:worker,qualification_master_id:master};
+ assert.equal((await rawRpc('cancel',cancelCommand)).status,'cancelled');
+ assert.equal((await rawRpc('prepare',{...pendingCommand,request_id:id(81)})).status,'cancelled','cancelled missing request is a tombstone');
+ await rawRpc('prepare',{...pendingCommand,request_id:id(82)});
+ await assert.rejects(rawRpc('prepare',{...pendingCommand,request_id:id(83)}),e=>e.code==='55000');
+ await rawRpc('cancel',{request_id:id(82)});
+ await rawRpc('prepare',{...pendingCommand,request_id:id(83)});await rawRpc('apply',{request_id:id(83)});
+ await owner();assert.equal((await db.query('select count(*)::int n from private.qualification_management_pending where command is not null')).rows[0].n,0,'applied/expired/cancelled commands retain IDs only');
+ await db.exec("insert into cron.job_run_details values(2,1,'failed',clock_timestamp())");
+ await actor(admin);assert.equal((await rpc('capability')).available,false,'scheduler failure fails closed');
+ await assert.rejects(rawRpc('prepare',{...pendingCommand,request_id:id(84)}),e=>e.code==='55000');
+ assert.equal((await rawRpc('get',{request_id:id(20)})).status,'applied','cleanup outage must not hide committed outcome');
+ await owner();await db.exec("insert into cron.job_run_details values(3,1,'succeeded',clock_timestamp())");
+
  await assert.rejects(db.exec("delete from private.qualification_management_operations"),e=>e.code==='42501');
  await db.exec('update private.qualification_management_state set enabled=false');
  await actor(admin);assert.equal((await rpc('get',{request_id:id(20)})).status,'applied','OFF retains committed outcome');

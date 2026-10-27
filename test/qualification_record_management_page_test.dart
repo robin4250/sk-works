@@ -12,7 +12,7 @@ void main(){
     final events=StreamController<String?>.broadcast(sync:true);
     final repo=QualificationRecordManagementRepository.forTesting(actor:()=> 'actor',authChanges:events.stream,
       rpc:(action,data)async{
-        if(action=='capability') { return {'version':1,'contract':'qualification_direct_management',
+        if(action=='capability') { return {'version':2,'contract':'qualification_direct_management',
           'company_id':'company','actor_id':'actor','available':enabled}; }
         if(action=='inspect') { return {'version':1,'contract':'qualification_direct_management',
           'snapshot':{'id':'target','company_id':'company','worker_id':'worker',

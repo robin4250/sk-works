@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'docs/candidates/qualification_direct_management_20261027*'
+      - 'docs/candidates/qualification_management_pending_privacy_20261027*'
       - 'docs/review/qualification-direct-management/**'
       - 'tool/verify_qualification_direct_management.mjs'
       - 'tool/fixtures/qualification_management/**'

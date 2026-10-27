@@ -13,3 +13,5 @@
 旧PR #1493の独立承認案は保存済み試作であり、この直接管理方式には必須化しない。旧review-onlyの `guard_qualification_registered_update` が導入済みなら本候補は不明な迂回を行わず導入を拒否する。本番にはそのguardが存在しないことを読み取り確認した。
 
 本番・main未変更、Release未作成。本番OFF導入・有効化・実GoTrue・実Storage bytes・iPhone操作の成功とは区別する。PGliteとNative PostgreSQL17のAuth/Storageは合成fixtureである。未使用復旧は操作履歴が0件で既定OFFのときだけ許可し、使用後は機能OFFで監査を保持する。
+
+再試行のprivacy-v2補修は qualification_management_pending_privacy_20261027.sql.review-only と pending-privacy.md を参照。v1全文保存クライアントは有効化せず、v2で端末は不透明IDだけを保持する。実Cronの本文消去と正常実行を確認するまで新管理capabilityはOFF。未使用復旧は管理操作・準備・取消を一度も行っていない場合だけ許可する。

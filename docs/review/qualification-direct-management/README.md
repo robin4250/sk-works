@@ -31,3 +31,5 @@ OFF導入直後にcatalog-query.sqlを独立して再取得する。その insta
 実GoTrue/実Storage・iPhone、管理者の新規写真送信契約、既存監査の保持期限／消去手順と閲覧画面の整合は未確認。これらをコード完成やCI成功で代用しない。旧独立承認試作 #1493 と旧 saved-photo approval guard をこの機能へ併用しない。
 
 Native/PGliteのセッション境界は本番から読み取った require_reauthentication_session と account_deletion_barrier_key の実関数本文を使う。Auth.users/sessions/JWTは合成で、BAN・匿名・失効・他人session IDの拒否を検証する。実GoTrueの署名検証成功ではない。
+
+配布前のretry個人情報保護は pending-privacy.md のv2仕様を必須とする。端末への全文保存はしない。サーバー本文の15分期限と毎分purge、直近cleanup成功を確認するまでcapabilityは有効にしない。既存本人写真申請の保存方式はこの補修で変更しない。

@@ -1,0 +1,17 @@
+-- REVIEW ONLY. No scheduling was performed. Requires the reviewed OFF installation.
+begin;
+do $$begin
+ if to_regprocedure('cron.schedule(text,text,text)') is null or to_regclass('cron.job') is null
+  or to_regprocedure('private.purge_qualification_management_pending()') is null then
+  raise exception 'reviewed Cron/runtime prerequisites required' using errcode='55000';end if;
+ if (select enabled from private.qualification_management_state where singleton) is distinct from false then
+  raise exception 'install cleanup while management is OFF' using errcode='55000';end if;
+end$$;
+lock table cron.job in share row exclusive mode;
+do $$begin
+ if exists(select 1 from cron.job where jobname='sko-qualification-command-expiry') then
+  raise exception 'never overwrite an existing scheduled job' using errcode='55000';end if;
+end$$;
+select cron.schedule('sko-qualification-command-expiry','* * * * *',
+ 'select private.purge_qualification_management_pending();');
+commit;

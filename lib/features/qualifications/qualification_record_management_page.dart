@@ -55,7 +55,7 @@ class _ChangeState extends State<QualificationRecordManagementPage> {
       return switch(error.code) {
         '40001' => '資格情報が更新されています。内容を再確認してください。',
         '42501' => '現在の権限・ログイン状態を確認してください。',
-        '22023' => '入力内容・日付・変更理由を確認してください。',
+        '22023' => '入力内容・日付を確認してください。',
         '23505' => '同じ操作番号の内容が一致しません。再送せず管理者へ確認してください。',
         _ => '保存結果を確認できません。同じ保存結果を再確認してください。',
       };
@@ -126,13 +126,13 @@ class _ChangeState extends State<QualificationRecordManagementPage> {
     if (mounted) setState(() => _busy = false);
   }
 
-  Future<void> _recover() async {
+  Future<void> _recover({bool cancel = false}) async {
     if (_busy) return;
     setState(() { _busy = true; _error = null; });
     try {
-      await _repository!.recover(widget.companyId);
+      final result = cancel ? await _repository!.cancelUncertain(widget.companyId) : await _repository!.recover(widget.companyId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('同じ資格操作の保存完了を確認しました。')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['status']=='applied' ? '同じ資格操作の保存完了を確認しました。' : '未完了の操作を取り消しました。')));
       Navigator.pop(context, true);
     } catch (error) {
       if (mounted) setState(() => _error = _message(error));
@@ -160,6 +160,7 @@ class _ChangeState extends State<QualificationRecordManagementPage> {
         if (_pending != null) ...[
           const Text('保存結果が未確認の資格操作があります。別の操作をせず、同じ保存結果を確認してください。'),
           FilledButton(onPressed: _busy ? null : () => _recover(), child: const Text('同じ保存結果を再確認')),
+          TextButton(onPressed: _busy ? null : () => _recover(cancel:true), child: const Text('未完了の操作を取り消す')),
         ] else if (_available && _snapshot != null) ...[
           const Text('① 変更内容を確認'), const SizedBox(height: 12),
           if (!widget.delete) ...[
