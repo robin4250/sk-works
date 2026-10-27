@@ -35,3 +35,23 @@ begin
  return result;
 end $$;
 revoke all on function invoice_month_close_candidate.prepare_notice(uuid,uuid) from public,anon,authenticated,service_role;
+-- Recheck immediately before a future delivery/open action. This function
+-- does not deliver anything and the trusted readiness adapter is still absent.
+create function invoice_month_close_candidate.notice_current(p_notice uuid)
+returns boolean language plpgsql security definer set search_path='' set timezone='UTC' as $$
+declare enabled boolean;n invoice_month_close_candidate.notice_intents%rowtype;inv public.invoices%rowtype; proof jsonb;
+begin
+ select s.enabled into enabled from invoice_month_close_candidate.notice_settings s where singleton for share;
+ if not coalesce(enabled,false) then return false;end if;
+ select * into n from invoice_month_close_candidate.notice_intents where id=p_notice;
+ if not found then return false;end if;
+ select * into inv from public.invoices where id=n.invoice_id and company_id=n.company_id for share;
+ if not found or inv.updated_at is distinct from n.invoice_revision then return false;end if;
+ perform 1 from public.company_members m join public.invoice_approvals a on a.company_id=m.company_id and a.approver_user_id=m.user_id where m.company_id=n.company_id and m.user_id=n.recipient_id and a.invoice_id=n.invoice_id and a.status='pending' for share of m,a;
+ if not found or to_regprocedure('invoice_month_close_candidate.notification_readiness(uuid,uuid)') is null then return false;end if;
+ execute 'select invoice_month_close_candidate.notification_readiness($1,$2)' into proof using n.invoice_id,n.recipient_id;
+ return coalesce(jsonb_typeof(proof)='object' and proof->>'status'='ready' and proof->>'invoice_revision'=inv.updated_at::text and proof->>'source_fingerprint'=n.source_fingerprint,false);
+exception when query_canceled then raise;
+ when others then return false;
+end $$;
+revoke all on function invoice_month_close_candidate.notice_current(uuid) from public,anon,authenticated,service_role;

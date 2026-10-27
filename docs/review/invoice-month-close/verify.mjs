@@ -84,19 +84,21 @@ await db.exec(await readFile(process.env.SKO_NOTICE_SQL,'utf8'));
 const notice=()=>db.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker]);
 await assert.rejects(notice(),/notice_disabled/);await db.exec('update invoice_month_close_candidate.notice_settings set enabled=true');
 await assert.rejects(notice(),/notice_readiness_unavailable/);
-await db.exec("create function invoice_month_close_candidate.notification_readiness(i uuid,u uuid) returns jsonb language sql as $$select jsonb_build_object('status',coalesce(nullif(current_setting('test.notice_status',true),''),'ready'),'invoice_revision',updated_at::text,'source_fingerprint',repeat('a',64)) from public.invoices where id=i$$;");
+await db.exec("create function invoice_month_close_candidate.notification_readiness(i uuid,u uuid) returns jsonb language sql as $$select jsonb_build_object('status',coalesce(nullif(current_setting('test.notice_status',true),''),'ready'),'invoice_revision',updated_at::text,'source_fingerprint',coalesce(nullif(current_setting('test.notice_fp',true),''),repeat('a',64))) from public.invoices where id=i$$;");
 await db.query("select set_config('test.notice_status','pending',false)");await assert.rejects(notice(),/notice_not_ready/);
 await db.query("select set_config('test.notice_status','ready',false)");const firstNotice=(await notice()).rows[0].v;assert.equal((await notice()).rows[0].v,firstNotice);
 assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,1);
-await db.query("update public.invoice_approvals set status='approved' where invoice_id=$1",[invoice]);await assert.rejects(notice(),/notice_unavailable/);
+const current=async n=>(await db.query('select invoice_month_close_candidate.notice_current($1) v',[n])).rows[0].v;
+assert.equal(await current(firstNotice),true);await db.query("select set_config('test.notice_fp',repeat('b',64),false)");assert.equal(await current(firstNotice),false);await db.query("select set_config('test.notice_fp',repeat('a',64),false)");
+await db.query("update public.invoice_approvals set status='approved' where invoice_id=$1",[invoice]);assert.equal(await current(firstNotice),false);await assert.rejects(notice(),/notice_unavailable/);
 await db.query("update public.invoice_approvals set status='pending' where invoice_id=$1",[invoice]);await db.query("update public.invoices set updated_at=updated_at+interval '1 second' where id=$1",[invoice]);
-assert.notEqual((await notice()).rows[0].v,firstNotice);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,2);
+assert.equal(await current(firstNotice),false);assert.notEqual((await notice()).rows[0].v,firstNotice);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,2);
 if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
  await db.query('delete from invoice_month_close_candidate.notice_intents');const {connectFixture}=await import(process.argv[2]);const a=await connectFixture(),b=await connectFixture();
  try{const items=await Promise.all([a.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker]),b.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker])]);assert.equal(items[0].rows[0].v,items[1].rows[0].v);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,1);}finally{await a.end();await b.end();}
 }
-for(const role of ['anon','authenticated','service_role'])assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.prepare_notice(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);
-console.log(JSON.stringify({fixture_notice_off_by_default:true,missing_trusted_readiness_denied:true,pending_approver_checked:true,duplicate_intent_deduplicated:true,changed_revision_new_intent:true,actual_delivery_absent:true}));
+for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.prepare_notice(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.notice_current(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
+console.log(JSON.stringify({fixture_notice_off_by_default:true,missing_trusted_readiness_denied:true,pending_approver_checked:true,duplicate_intent_deduplicated:true,changed_revision_new_intent:true,stale_notice_rejected:true,actual_delivery_absent:true}));
 // Site-only late-change audit experiment: no invoice rewrite and no delivery.
 await db.exec(await readFile(process.env.SKO_LATE_CHANGE_SQL,'utf8'));
 await db.exec("alter table public.invoices add column approval_finalized_at timestamptz;create trigger fixture_late_change after insert or update or delete on public.attendance_entries for each row execute function invoice_month_close_candidate.record_site_attendance_change()");
