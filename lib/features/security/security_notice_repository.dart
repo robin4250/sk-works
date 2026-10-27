@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'security_collector_repository.dart';
+
+class SecurityNoticeRejected implements Exception {}
 
 class SecurityNoticeCommand {
   SecurityNoticeCommand({required this.eventId, required this.action,
@@ -67,7 +70,15 @@ class SecurityNoticeRepository {
     if(password.isEmpty || !await collector.availableCheck().timeout(const Duration(seconds:20))) throw SecurityCollectorUnavailable();
     check();final proof=await collector.issueProof(password).timeout(const Duration(seconds:30));check();
     if(!RegExp(r'^[0-9a-f]{64}$').hasMatch(proof)) throw SecurityCollectorUnavailable();
-    final raw=await updateRpc(c,proof).timeout(const Duration(seconds:20));check();
+    dynamic raw;
+    try { raw=await updateRpc(c,proof).timeout(const Duration(seconds:20)); }
+    on PostgrestException catch (error) {
+      // A SQLSTATE rejection guarantees this request's transaction rolled back.
+      // An earlier unknown attempt may still have committed; the page reloads.
+      if(const {'40001','22023','23505','42501','55000','PT405'}.contains(error.code)) throw SecurityNoticeRejected();
+      rethrow;
+    }
+    check();
     if(raw is! Map || raw['event_id']!=c.eventId || raw['revision']!=c.revision+1 || raw['replayed'] is! bool) throw const FormatException('対応結果を確認できません');
   },isActive:isActive);
 }

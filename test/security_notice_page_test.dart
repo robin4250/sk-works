@@ -1,11 +1,26 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/security/security_collector_repository.dart';
 import 'package:sk_works/features/security/security_notice_page.dart';
 import 'package:sk_works/features/security/security_notice_repository.dart';
 
 void main(){
+  test('explicit SQL rejection differs from unknown acknowledgement',() async {
+    final events=StreamController<String?>.broadcast(sync:true);
+    final base=SecurityCollectorRepository(sessionKey:()=> 'user/session',availableCheck:()async=>true,
+      issueProof:(_)async=>'a'*64,readWithProof:(_)async=>{},sessionChanges:events.stream);
+    var definite=true;
+    final repo=SecurityNoticeRepository(collector:base,readRpc:(_)async=>{},updateRpc:(cmd,proof)async {
+      if(definite) throw const PostgrestException(message:'notice_changed_reload',code:'40001');
+      throw StateError('transport outcome unknown');
+    });
+    final cmd=SecurityNoticeCommand(eventId:'00000000-0000-4000-8000-000000000001',action:'read',reason:'',revision:1,commandId:'00000000-0000-4000-8000-000000000002');
+    await expectLater(repo.update(cmd,'fixture'),throwsA(isA<SecurityNoticeRejected>()));
+    definite=false;await expectLater(repo.update(cmd,'fixture'),throwsA(isA<StateError>()));
+    await events.close();
+  });
   testWidgets('unconfirmed update retries the same command and displays saved status', (tester) async {
     final events=StreamController<String?>.broadcast(sync:true);addTearDown(events.close);
     var actor='user/session';var readAt=false;var calls=0, availabilityCalls=0, proofCalls=0, readCalls=0;final commandIds=<String>[];
