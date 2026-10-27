@@ -34,3 +34,5 @@
 `legacy-retirement.sql.review-only` は旧IDを一般SELECTから除外するRESTRICTIVE policyと承認行変更の拒否だけを合成環境で実験する候補であり導入禁止。既存SECURITY DEFINER読み取り、端末キャッシュ、同時有効化時の競合、新版作成、新承認、通知、RLS bypassへの対応は未完成。holdを設定する公開手段はなく、既存データへの変更を行わない。合成PG17では承認更新とhold有効化を原本行ロックで直列化するが、他の全経路には拡張されていない。これだけでは切替え・発行の原子性を証明できない。
 
 `definer-hold.sql.review-only` は2026-10-27時点の現catalog本体hash/ACL/owner/設定を固定し、承認履歴・承認状態2種・trade_document_source の4関数本体にhold拒否を追加する限定実験。元OID・ACLを維持し、関数driftがあれば全取消。STABLEな経費詳細、LINE、その他のRPCやStorage、既存PDF、新規承認と発行は未保護。実行不可・未配備。合成fixtureは実関数定義を使うが、正規ログインと完全な本番データ依存は模していない。
+
+`owner-preview.sql.review-only` は既存previewをマスター本人・同社の請求管理権限・live sessionで包む非公開の参考試算候補。既定OFF・grantなし、通知や書込み、印影の承認流用なし。実サービス・アプリ未接続であり、合成fixtureの認証とモック計算ではGoTrue本人確認、実入力完全性や同時変更、実額は証明できない。未発行を明示し、安全な読み取り条件と実本人操作が揃うまで実データへ接続しない。
