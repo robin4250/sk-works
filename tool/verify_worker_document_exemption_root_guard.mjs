@@ -1,0 +1,63 @@
+// Only disposable PGlite/PostgreSQL17 fixtures. Reuse the pinned product SQL
+// verifier; do not reimplement its auth/company/CAS behavior in a mock.
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const guards=path.join(root,'docs/review/worker-document-exemption-root-guard');
+const candidate=path.join(root,'docs/candidates/worker_document_exemption_20261027');
+const module=process.argv[2];
+assert.ok(module && path.isAbsolute(module),'Explicit disposable fixture runtime required');
+const fixture=await fs.mkdtemp(path.join(os.tmpdir(),'sko-document-exemption-guard-'));
+const source=path.join(root,'tool/verify_worker_document_exemption.mjs');
+let text=await fs.readFile(source,'utf8');
+assert.equal(createHash('sha256').update(text).digest('hex'),'38f1569fa58c588a3cd677e00952d644b7c9df9ec2025667e5e608c130a386a9','Product verifier changed: review harness markers and evidence before proceeding');
+function replaceOne(from,to){assert.equal(text.split(from).length,2,`Unique marker required: ${from}`);text=text.replace(from,to);}
+try {
+ replaceOne("import assert from 'node:assert/strict';","import assert from 'node:assert/strict';\nimport {execFileSync} from 'node:child_process';");
+ text=text.replace(/new URL\('([^']+)',import.meta.url\)/g,(_,relative)=>JSON.stringify(fileURLToPath(new URL(relative,'file://'+source))));
+ replaceOne(' await db.exec(attention);',` await db.exec(attention);
+ await db.exec("create table public.companies(id uuid primary key,name text); create table public.worker_document_status_history(id uuid primary key,notes text)");
+ await db.query('insert into public.companies values($1,$2)',[company,'retained company']);
+ await db.query('insert into public.worker_document_status_history values($1,$2)',[id(97),'retained original history']);`);
+ replaceOne(' const install=await fs.readFile(',' let install=await fs.readFile(');
+ replaceOne(' const attentionCatalog = async () =>',` const snapshotSql=await fs.readFile(${JSON.stringify(path.join(guards,'read-snapshot.sql'))},'utf8');
+ const before=(await db.query(snapshotSql)).rows[0].snapshot;
+ await fs.writeFile(${JSON.stringify(path.join(fixture,'before.json'))},JSON.stringify(before));
+ execFileSync('python3',[${JSON.stringify(path.join(guards,'prepare_guard.py'))},'--before',${JSON.stringify(path.join(fixture,'before.json'))},'--candidate-dir',${JSON.stringify(candidate)},'--output',${JSON.stringify(fixture)}]);
+ install=await fs.readFile(${JSON.stringify(path.join(fixture,'install-off.guarded.sql.review-only'))},'utf8');
+ const rejectGuard=async sql=>{await assert.rejects(db.exec(sql),e=>e.code==='55000');await db.exec('rollback');};
+ await db.exec("update public.companies set name='concurrent edit'");
+ await rejectGuard(install);
+ assert.equal((await db.query("select to_regclass('private.worker_document_exemptions') relation")).rows[0].relation,null);
+ await db.exec("update public.companies set name='retained company'");
+ await db.exec('grant execute on function public.current_user_required_document_attention() to anon');
+ await rejectGuard(install);
+ await db.exec('revoke execute on function public.current_user_required_document_attention() from anon');
+ await db.exec("create or replace function private.account_access_allowed() returns boolean language sql stable as 'select false'");
+ await rejectGuard(install);
+ await db.exec(before.functions['private.account_access_allowed()'].definition);
+ const attentionCatalog = async () =>`);
+ replaceOne(' const restore=await fs.readFile(',` const after=(await db.query(snapshotSql)).rows[0].snapshot;
+ assert.deepEqual(after.business,before.business);
+ await fs.writeFile(${JSON.stringify(path.join(fixture,'after.json'))},JSON.stringify(after));
+ execFileSync('python3',[${JSON.stringify(path.join(guards,'prepare_guard.py'))},'--before',${JSON.stringify(path.join(fixture,'before.json'))},'--after',${JSON.stringify(path.join(fixture,'after.json'))},'--candidate-dir',${JSON.stringify(candidate)},'--output',${JSON.stringify(fixture)}]);
+ const restore=await fs.readFile(`);
+ replaceOne(JSON.stringify(path.join(candidate,'restore-unused.sql.review-only')),JSON.stringify(path.join(fixture,'restore-unused.guarded.sql.review-only')));
+ replaceOne(' await db.exec(restore);',` await db.exec('revoke execute on function public.worker_document_exemption(text,jsonb) from authenticated');
+ await rejectGuard(restore);
+ assert.ok((await db.query("select to_regclass('private.worker_document_exemptions') relation")).rows[0].relation);
+ await db.exec('grant execute on function public.worker_document_exemption(text,jsonb) to authenticated');
+ await db.exec("update public.worker_document_status_history set notes='concurrent history edit'");
+ await rejectGuard(restore);
+ await db.exec("update public.worker_document_status_history set notes='retained original history'");
+ await db.exec(restore);`);
+ const runner=path.join(fixture,'run.mjs');await fs.writeFile(runner,text);
+ const output=execFileSync('node',[runner,module],{encoding:'utf8',maxBuffer:16000,timeout:180000});
+ process.stdout.write(output);
+ console.log('PASS root guards: pinned candidates, exact body/ACL/helper/data drift rejection, nonempty original-row preservation, guarded OFF install, actual-after bound unused restore and reinstallation, after-use rejection');
+} finally {await fs.rm(fixture,{recursive:true,force:true});}
