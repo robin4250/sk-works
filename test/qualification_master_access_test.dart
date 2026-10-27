@@ -49,7 +49,7 @@ void main() {
     final repo = _Repository(false);
     await tester.pumpWidget(MaterialApp(home: QualificationCloudPage(repository: repo, certificateRepository: _Certificates())));
     await tester.pumpAndSettle();
-    final button = tester.widget<IconButton>(find.byTooltip('資格マスター管理'));
+    final button = tester.widget<IconButton>(find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == '資格マスター管理'));
     expect(button.onPressed, isNull);
   });
 }

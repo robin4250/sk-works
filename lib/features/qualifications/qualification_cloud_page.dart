@@ -750,7 +750,8 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-          child: Column(
+          child: SingleChildScrollView(
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -808,6 +809,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                   label: Text(SkoLanguageController.tr('登録後の変更について')),
                 ),
             ],
+            ),
           ),
         ),
       ),
