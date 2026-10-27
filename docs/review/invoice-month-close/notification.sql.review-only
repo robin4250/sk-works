@@ -75,7 +75,7 @@ begin
  if not found or not invoice_month_close_candidate.notice_current(p_notice) then raise exception 'notice_unavailable' using errcode='42501';end if;
  insert into invoice_month_close_candidate.notice_open_tickets(notice_id,actor_id,session_id,expires_at)
  values(n.id,actor,sid,clock_timestamp()+interval '5 minutes') returning * into t;
- return jsonb_build_object('ticket_id',t.id,'expires_at',t.expires_at);
+ return jsonb_build_object('ticket_id',t.id,'expires_at',t.expires_at,'invoice_id',n.invoice_id);
 end $$;
 revoke all on function invoice_month_close_candidate.issue_notice_ticket(uuid) from public,anon,authenticated,service_role;
 create function invoice_month_close_candidate.consume_notice_ticket(p_ticket uuid)

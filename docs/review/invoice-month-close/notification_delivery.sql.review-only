@@ -26,7 +26,7 @@ end $$;
 revoke all on function invoice_month_close_candidate.deliver_notice(uuid) from public,anon,authenticated,service_role;
 create function invoice_month_close_candidate.ticket_from_notification(p_notification uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare notice uuid;
+declare notice uuid; result jsonb;
 begin
  -- The existing real session helper is also called again by issue_notice_ticket.
  perform private.require_reauthentication_session();
@@ -36,6 +36,7 @@ begin
  join public.app_notifications a on a.id=r.notification_id and a.recipient_user_id=r.recipient_id and a.action_key='invoice_approval' and a.action_id=n.invoice_id
  where r.notification_id=p_notification and r.recipient_id=auth.uid();
  if notice is null then raise exception 'notice_unavailable' using errcode='42501';end if;
- return invoice_month_close_candidate.issue_notice_ticket(notice);
+ result:=invoice_month_close_candidate.issue_notice_ticket(notice);
+ return result||jsonb_build_object('notification_id',p_notification);
 end $$;
 revoke all on function invoice_month_close_candidate.ticket_from_notification(uuid) from public,anon,authenticated,service_role;
