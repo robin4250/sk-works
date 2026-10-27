@@ -21,3 +21,16 @@ test('parser deadline and oversized output fail closed',async()=>{
  }finally{await rm(dir,{recursive:true,force:true});}
 });
 test('configuration refuses unsafe inputs',()=>{assert.throws(()=>createBoundedQualificationParser({workerPath:'relative'}));assert.throws(()=>createBoundedQualificationParser({workerPath:'/tmp/x',timeoutMs:0}));});
+
+test('concurrent work is bounded and capacity is released after timeout',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'sko-parser-test-')); const worker=join(dir,'worker.cjs');
+ try {
+  await writeFile(worker,'process.stdin.resume();setInterval(()=>{},1000);');
+  const parse=createBoundedQualificationParser({workerPath:worker,timeoutMs:500,maxConcurrent:1});
+  const first=parse({bytes,mime:'application/pdf'});
+  assert.equal(await parse({bytes,mime:'application/pdf'}),false);
+  assert.equal(await first,false);
+  await writeFile(worker,"process.stdin.resume();process.stdin.on('end',()=>process.stdout.write('VALID\\n'));\n");
+  assert.equal(await parse({bytes,mime:'application/pdf'}),true);
+ } finally {await rm(dir,{recursive:true,force:true});}
+});
