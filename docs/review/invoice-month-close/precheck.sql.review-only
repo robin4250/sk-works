@@ -8,6 +8,7 @@ declare inv public.invoices%rowtype;
 begin
  select * into inv from public.invoices where id=p_invoice;
  if not found or inv.company_id is null or inv.customer_id is null or inv.billing_period_start is null or inv.billing_period_end is null or inv.billing_period_end<inv.billing_period_start then return 'unavailable';end if;
+ if inv.billing_period_start<>date_trunc('month',inv.billing_period_start)::date or inv.billing_period_end<>(date_trunc('month',inv.billing_period_start)+interval '1 month - 1 day')::date then return 'period_unverified';end if;
  if (clock_timestamp() at time zone 'Asia/Tokyo')::date<=inv.billing_period_end then return 'period_open';end if;
  -- Route attribution spans multiple customers and needs the existing route contract;
  -- fail closed rather than attributing another customer's visit by guesswork.
