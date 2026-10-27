@@ -202,6 +202,15 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await db.query('begin');await db.query('delete from public.daily_reports where id=$1',[id(984)]);
   await writer.query('begin');childDone=false;pendingChild=writer.query('insert into public.daily_report_workers(report_id) values($1)',[id(984)]).then(()=>{childDone=true;return null;},e=>{childDone=true;return e;});
   await pause(200);assert.equal(childDone,false);await db.query('commit');rejectedChild=await pendingChild;assert.match(rejectedChild?.message||'',/synthetic_parent_moved/);await writer.query('rollback');
+  // REPEATABLE READ keeps the old parent snapshot after waiting. Demonstrate why
+  // this READ COMMITTED-only fixture barrier cannot be used indiscriminately.
+  await db.query('insert into public.daily_reports(id,company_id) values($1,$2)',[id(984),company]);
+  await db.query('begin');await db.query('update public.daily_reports set company_id=$1 where id=$2',[id(985),id(984)]);
+  await writer.query('begin isolation level repeatable read');await writer.query('select company_id from public.daily_reports where id=$1',[id(984)]);
+  childDone=false;pendingChild=writer.query('insert into public.daily_report_workers(report_id) values($1)',[id(984)]).then(v=>{childDone=true;return v;},e=>{childDone=true;throw e;});
+  await pause(200);assert.equal(childDone,false);await db.query('commit');const staleInsert=await pendingChild;assert.equal(staleInsert.rowCount,1);await writer.query('rollback');
+  await db.query('delete from public.daily_reports where id=$1',[id(984)]);
+  console.log(JSON.stringify({repeatable_read_stale_parent_reproduced:true,barrier_not_safe_for_all_isolation_levels:true}));
   await db.query('delete from companies where id=$1',[id(985)]);await db.exec('drop trigger synthetic_parent_barrier on public.daily_reports');
   console.log(JSON.stringify({fixture_parent_move_and_delete_fail_closed:true}));
   await db.query('delete from public.daily_reports where id=$1',[id(992)]);
