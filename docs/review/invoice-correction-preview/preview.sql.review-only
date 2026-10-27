@@ -538,7 +538,7 @@ revoke all on function invoice_correction_preview_private.locked_preview(uuid) f
 -- No grants. Global locks are unsuitable without production-like duration and impact evidence.
 create function invoice_correction_preview_private.revalidate_for_commit(p_invoice_id uuid,p_source text,p_original text) returns void
 language plpgsql volatile security definer set search_path='' set timezone='UTC' set lock_timeout='500ms' as $gate$
-declare cid uuid; invoice_hash text; actual_source text;
+declare cid uuid; invoice_hash text; actual_source text; member_role text; can_manage boolean;
 begin
  if auth.uid() is null then raise exception 'login_required';end if;
  perform private.require_reauthentication_session();
@@ -573,7 +573,13 @@ begin
  lock table public.trade_companies in share mode;
  lock table public.trade_company_contracts in share mode;
  perform private.require_reauthentication_session();
- if not exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=auth.uid() and m.role::text in ('owner','admin','manager')) or private.has_company_feature(cid,'can_manage_invoices') is not true then raise exception 'invoice_revision_not_allowed';end if;
+ select m.role::text into member_role from public.company_members m where m.company_id=cid and m.user_id=auth.uid() for share;
+ if member_role not in ('owner','admin','manager') or member_role is null then raise exception 'invoice_revision_not_allowed';end if;
+ if member_role='manager' then
+  select p.can_manage_invoices into can_manage from public.member_feature_permissions p where p.company_id=cid and p.user_id=auth.uid() for share;
+  if can_manage is distinct from true then raise exception 'invoice_revision_not_allowed';end if;
+ end if;
+ if private.has_company_feature(cid,'can_manage_invoices') is not true then raise exception 'invoice_revision_not_allowed';end if;
  select encode(sha256(convert_to(to_jsonb(i)::text,'UTF8')),'hex') into invoice_hash from public.invoices i where i.id=p_invoice_id and i.company_id=cid;
  actual_source:=invoice_correction_preview_private.source_fingerprint(cid);
  if invoice_hash is distinct from p_original or actual_source is distinct from p_source then raise exception 'invoice_revision_stale';end if;

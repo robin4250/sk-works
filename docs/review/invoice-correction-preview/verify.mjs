@@ -11,6 +11,7 @@ const payload=`
 // Only isolated, synthetic fixture data. Preserve the invoice/approval record.
 await db.exec("create or replace function private.has_company_feature(p_company uuid,p_feature text) returns boolean language sql as $$select true$$;");
 await db.exec("create or replace function private.account_access_allowed() returns boolean language sql as $$select true$$;");
+await db.exec("create table if not exists public.member_feature_permissions(company_id uuid,user_id uuid,can_manage_invoices boolean,primary key(company_id,user_id));");
 await db.exec(${JSON.stringify(candidate)});
 await db.exec("create table if not exists private.route_journey_captures(id uuid,company_id uuid); create table if not exists private.route_journey_visit_events(capture_id uuid); create table if not exists public.invoice_approval_audit(invoice_id uuid,company_id uuid); create table if not exists public.daily_reports(id uuid,company_id uuid); create table if not exists public.daily_report_workers(report_id uuid); create table if not exists public.route_stops(company_id uuid); create table if not exists private.route_billing_quantity_requests(id uuid,company_id uuid); create table if not exists private.route_billing_quantity_evidence(request_id uuid); create table if not exists private.expense_amount_consumptions(company_id uuid);");
 await db.query("update site_financial_settings set billing_allowance_1_name='合成手当',billing_allowance_1_amount_yen=10,billing_overtime_hour_rate_yen=20 where company_id=$1 and site_id=$2",[company,site]);
@@ -269,18 +270,17 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await writer.query('rollback');
   assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
   console.log(JSON.stringify({synthetic_final_gate_ms:syntheticGateMs,stale_rejected:true,gate_timeout_no_invoice_change:true}));
-  // Model a real nonparticipant in authorization: permissions are not among the 28 locks.
-  const featureBody=(await db.query("select pg_get_functiondef('private.has_company_feature(uuid,text)'::regprocedure) v")).rows[0].v;
-  await db.exec("create table public.synthetic_permission(company_id uuid primary key, allowed boolean not null); create or replace function private.has_company_feature(p_company uuid,p_feature text) returns boolean language sql as $$select coalesce((select allowed from public.synthetic_permission where company_id=p_company),false)$$;");
-  await db.query('insert into public.synthetic_permission values($1,true)',[company]);
-  const authPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
-  await db.query('begin');
-  await db.query('select invoice_correction_preview_private.revalidate_for_commit($1,$2,$3)',[frozen.id,authPreview.source_fingerprint,authPreview.original_invoice_fingerprint]);
-  await writer.query('update public.synthetic_permission set allowed=false where company_id=$1',[company]);
-  await db.query('commit');
-  await assert.rejects(db.query('select invoice_correction_preview_private.preview($1)',[frozen.id]),/invoice_revision_not_allowed/);
-  await db.exec(featureBody);await db.exec('drop table public.synthetic_permission');
-  console.log(JSON.stringify({permission_revocation_race_reproduced:true,publication_must_remain_disabled:true}));
+  // Real manager permission row is locked and checked directly after the gate.
+  await db.query("update company_members set role='manager' where company_id=$1 and user_id=$2",[company,actor]);
+  await db.query('insert into public.member_feature_permissions(company_id,user_id,can_manage_invoices) values($1,$2,true)',[company,actor]);
+  const managerPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+  await db.query('begin');await db.query('select invoice_correction_preview_private.revalidate_for_commit($1,$2,$3)',[frozen.id,managerPreview.source_fingerprint,managerPreview.original_invoice_fingerprint]);
+  let revoked=false;const revoke=writer.query('update public.member_feature_permissions set can_manage_invoices=false where company_id=$1 and user_id=$2',[company,actor]).then(()=>{revoked=true;});
+  await pause(200);assert.equal(revoked,false);await db.query('commit');await revoke;
+  await assert.rejects(db.query('select invoice_correction_preview_private.revalidate_for_commit($1,$2,$3)',[frozen.id,managerPreview.source_fingerprint,managerPreview.original_invoice_fingerprint]),/invoice_revision_not_allowed/);
+  await db.query('delete from public.member_feature_permissions where company_id=$1 and user_id=$2',[company,actor]);
+  await db.query("update company_members set role='admin' where company_id=$1 and user_id=$2",[company,actor]);
+  console.log(JSON.stringify({fixture_manager_revocation_waits:true,fixture_revoked_manager_denied:true}));
   // Bound the entire final-gate SQL statement, not just each lock attempt.
   // The writer is a synthetic concurrent transaction and is rolled back too.
   await writer.query('begin');await writer.query('update companies set tax_rate=tax_rate where id=$1',[company]);
