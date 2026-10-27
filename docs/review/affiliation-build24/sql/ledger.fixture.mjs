@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 let db;
-if(process.env.DATABASE_URL){const {Client}=await import(process.env.PG_MODULE);const c=new Client({connectionString:process.env.DATABASE_URL});await c.connect();db={exec:q=>c.query(q),query:(q,p)=>c.query(q,p),close:()=>c.end()};}
+if(process.env.DATABASE_URL){const pg=await import(process.env.PG_MODULE);const Client=pg.Client||pg.default?.Client;const c=new Client({connectionString:process.env.DATABASE_URL});await c.connect();db={exec:q=>c.query(q),query:(q,p)=>c.query(q,p),close:()=>c.end()};}
 else{const {PGlite}=await import(process.env.PGLITE_MODULE || new URL('../../apple-enrollment-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js',import.meta.url).href);db=new PGlite();}
 await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create schema private;
 create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.actor',true),'')::uuid$$;
