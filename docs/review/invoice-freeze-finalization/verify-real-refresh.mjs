@@ -1,0 +1,33 @@
+import {readFile,writeFile,unlink} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
+import {resolve} from 'node:path';
+import assert from 'node:assert/strict';
+const root=resolve(process.env.SKO_ADJUSTMENT_ROOT||'../doc-adjustment-buttons-candidate');
+const source=resolve(root,'tool/verify_adjustment_real_refresh.mjs');
+const original=await readFile(source,'utf8');
+const oldFn=await readFile(resolve(process.env.SKO_OLD_ASSERT||'../invoice-freeze-finalization-candidate/original.sql.review-only'),'utf8');
+const newFn=await readFile(resolve(process.env.SKO_NEW_ASSERT||'../invoice-freeze-finalization-candidate/patched.sql.review-only'),'utf8');
+const marker='let checks=0;';assert.equal(original.split(marker).length,2);
+const payload=`
+await db.exec('create schema if not exists explicit_report_finalization_private; create table if not exists public.daily_reports (id uuid,site_id uuid); alter table public.invoices add column if not exists created_at timestamptz default now()');
+await db.exec(${JSON.stringify(oldFn)});
+assert.equal((await db.query("select md5(prosrc) h from pg_proc where oid='private.refresh_automatic_invoice(uuid,uuid,date)'::regprocedure")).rows[0].h,'00cf0c91a9430f50c9734fadcf37ec52');
+const rid=id(8888);await db.query('insert into public.daily_reports(id,site_id) values($1,$2)',[rid,site]);
+const beforeFreeze=(await db.query('select * from invoices where company_id=$1 and customer_id=$2',[company,customer])).rows[0];
+await db.query("update invoices set status='finalized',finalized_at=now() where id=$1",[beforeFreeze.id]);
+await db.query("update invoices set status='draft',finalized_at=null where id=$1",[beforeFreeze.id]);
+const frozen=(await db.query('select * from invoices where id=$1',[beforeFreeze.id])).rows[0];assert.equal(frozen.invoice_seal_frozen,true);
+await db.exec('begin');
+await db.query("insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days,overtime_hours,allowance_names) values($1,$2,$3,'2026-10-25','day',1,0,ARRAY['合成手当']),($1,$2,$3,'2026-10-27','day',1,1,ARRAY['合成手当'])",[company,site,worker]);
+await db.query('select private.refresh_automatic_invoice($1,$2,$3)',[company,customer,'2026-10-01']);
+assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
+await db.query('select explicit_report_finalization_private.assert_invoice($1,$2,$3,$4,$5)',[rid,company,customer,'2026-10-01','2026-10-31']);
+await db.exec(${JSON.stringify(newFn)});
+await assert.rejects(db.query('select explicit_report_finalization_private.assert_invoice($1,$2,$3,$4,$5)',[rid,company,customer,'2026-10-01','2026-10-31']),/explicit_report_finalized_invoice_protected/);
+await db.exec('rollback');
+assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
+assert.equal((await db.query("select count(*)::int n from attendance_entries where company_id=$1 and work_date in ('2026-10-25','2026-10-27')",[company])).rows[0].n,0);
+console.log(JSON.stringify({real_refresh:true,old_false_success_reproduced:true,corrected_guard_rejects:true,transaction_rollback_preserved:true}));await db.close();process.exit(0);
+`;
+const output=resolve(root,'tool/verify_invoice_freeze_real.generated.mjs');
+try {await writeFile(output,original.replace(marker,()=>payload+marker));const r=spawnSync(process.execPath,[output,...process.argv.slice(2)],{stdio:'inherit',env:process.env});process.exitCode=r.status??1;}finally{await unlink(output).catch(()=>{});}

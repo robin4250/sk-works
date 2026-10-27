@@ -1,0 +1,19 @@
+CREATE OR REPLACE FUNCTION explicit_report_finalization_private.assert_invoice(rid uuid, cid uuid, customer uuid, first_day date, last_day date)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare v public.invoices%rowtype;site uuid;
+begin
+ if customer is null or not exists(select 1 from public.customers where id=customer and company_id=cid and nullif(btrim(name),'') is not null and notes is distinct from 'sko_system_unassigned_invoice_customer') then raise sqlstate '55000' using message='explicit_report_invoice_customer_required';end if;
+ select * into v from public.invoices where company_id=cid and customer_id=customer and billing_period_start=first_day and billing_period_end=last_day and automatic_calculation is true order by created_at,id limit 1;
+ if v.id is null then
+  if exists(select 1 from public.invoices where company_id=cid and customer_id=customer and billing_period_start=first_day and billing_period_end=last_day and (automatic_calculation is distinct from true or status is distinct from 'draft' or finalized_at is not null)) then raise sqlstate '55000' using message='explicit_report_finalized_invoice_protected';end if;
+  raise sqlstate '55000' using message='explicit_report_invoice_projection_missing';end if;
+ if v.status is distinct from 'draft' or v.finalized_at is not null then raise sqlstate '55000' using message='explicit_report_finalized_invoice_protected';end if;
+ if v.calculation_blocked is distinct from false then raise sqlstate '55000' using message='explicit_report_invoice_projection_blocked';end if;
+ select site_id into site from public.daily_reports where id=rid;
+ if site is not null and not exists(select 1 from jsonb_array_elements(v.snapshot->'sites') x where x->>'site_id'=site::text) then raise sqlstate '55000' using message='explicit_report_invoice_source_missing';end if;
+end $function$
+;
