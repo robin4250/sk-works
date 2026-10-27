@@ -24,7 +24,7 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
-          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "insert into public.qualification_master values (5)"
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "insert into public.qualification_master(id) values (5)"
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "begin; insert into public.qualification_master_aliases values (5,5); select pg_sleep(3); commit" &
           writer=$!
           sleep 1
