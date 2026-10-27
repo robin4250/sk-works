@@ -52,7 +52,7 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
  })}
  ctx:=oidc.ClientContext(context.Background(),client)
  type tokenResult struct{AccessToken string `json:"access_token"`;RefreshToken string `json:"refresh_token"`;User struct{ID string `json:"id"`} `json:"user"`}
- for _,name:=range []string{"existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID"}{t.Run(name,func(t *testing.T){
+ for _,name:=range []string{"existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID","Apple subject cannot transfer between existing users"}{t.Run(name,func(t *testing.T){
   models.TruncateAll(api.db)
   require.NoError(t,api.db.RawQuery("truncate apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout,apple_google_protection.rollout,apple_google_protection.google_subject_owners,apple_google_protection.company_snapshot").Exec())
   createUser:=func(email,googleSub string)*models.User{
@@ -85,6 +85,21 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
   if name=="reverse Google automatic merge denied"{
    owner:=createUser("apple-first@example.test","");require.NoError(t,api.db.RawQuery("update auth.users set raw_app_meta_data='{\"provider\":\"apple\",\"providers\":[\"apple\"]}'::jsonb where id=?",owner.ID).Exec());i,e:=models.NewIdentity(owner,"apple",map[string]interface{}{"sub":"apple-first","email":string(owner.Email),"email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(i));enable()
    before:=counts();denied(idToken("google","new-google",string(owner.Email),"",false),before);return
+  }
+  if name=="Apple subject cannot transfer between existing users"{
+   owner:=createUser("owner@example.test","owner-google-sub")
+   other:=createUser("other@example.test","other-google-sub")
+   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('foreign-apple-sub',?)",other.ID).Exec())
+   identity,e:=models.NewIdentity(other,"apple",map[string]interface{}{"sub":"foreign-apple-sub","email":"other@example.test","email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(identity))
+   enable();beforeOwner,beforeOther:=snapshot(owner),snapshot(other)
+   ownerSession:=result(idToken("google","owner-google-sub",string(owner.Email),"",false))
+   otherSession:=result(idToken("google","other-google-sub",string(other.Email),"",false))
+   require.Equal(t,owner.ID.String(),ownerSession.User.ID);require.Equal(t,other.ID.String(),otherSession.User.ID)
+   before:=counts();denied(idToken("apple","foreign-apple-sub",string(owner.Email),ownerSession.AccessToken,true),before)
+   require.Equal(t,beforeOwner,snapshot(owner));require.Equal(t,beforeOther,snapshot(other))
+   var bound string;require.NoError(t,api.db.RawQuery("select user_id::text from auth.identities where provider='apple' and provider_id='foreign-apple-sub'").First(&bound));require.Equal(t,other.ID.String(),bound)
+   ownerAgain:=result(idToken("google","owner-google-sub",string(owner.Email),"",false));otherAgain:=result(idToken("google","other-google-sub",string(other.Email),"",false))
+   require.Equal(t,owner.ID.String(),ownerAgain.User.ID);require.Equal(t,other.ID.String(),otherAgain.User.ID);return
   }
   owner:=createUser("existing-google@example.test","existing-google-sub");enable();originalSnapshot:=snapshot(owner)
   if name=="token-hook flag drift retains write guard"{require.NoError(t,api.db.RawQuery("update apple_owner_policy.rollout set enabled=false").Exec())}
