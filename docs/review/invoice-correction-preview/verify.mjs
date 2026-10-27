@@ -105,6 +105,18 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await writer.query('rollback');
   assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
   console.log(JSON.stringify({synthetic_final_gate_ms:syntheticGateMs,stale_rejected:true,gate_timeout_no_invoice_change:true}));
+  // Model a real nonparticipant in authorization: permissions are not among the 28 locks.
+  const featureBody=(await db.query("select pg_get_functiondef('private.has_company_feature(uuid,text)'::regprocedure) v")).rows[0].v;
+  await db.exec("create table public.synthetic_permission(company_id uuid primary key, allowed boolean not null); create or replace function private.has_company_feature(p_company uuid,p_feature text) returns boolean language sql as $$select coalesce((select allowed from public.synthetic_permission where company_id=p_company),false)$$;");
+  await db.query('insert into public.synthetic_permission values($1,true)',[company]);
+  const authPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+  await db.query('begin');
+  await db.query('select invoice_correction_preview_private.revalidate_for_commit($1,$2,$3)',[frozen.id,authPreview.source_fingerprint,authPreview.original_invoice_fingerprint]);
+  await writer.query('update public.synthetic_permission set allowed=false where company_id=$1',[company]);
+  await db.query('commit');
+  await assert.rejects(db.query('select invoice_correction_preview_private.preview($1)',[frozen.id]),/invoice_revision_not_allowed/);
+  await db.exec(featureBody);await db.exec('drop table public.synthetic_permission');
+  console.log(JSON.stringify({permission_revocation_race_reproduced:true,publication_must_remain_disabled:true}));
   // Experimental global locking does block an unrelated company's insert.
   await db.query('begin');await readLocked();
   await writer.query("set lock_timeout='500ms'");const started=Date.now();
