@@ -1,6 +1,6 @@
 # Qualification inspection: Storage read binding source review
 
-Read-only research, 2026-10-27. This note changes no SQL, application code, Auth, Storage policy, bucket setting, or production data. No real qualification object was downloaded. PR 1506 remains OFF / NO GRANT. The existing `readImmutableVersion` injection is not connected to a production reader by this review.
+Read-only research, 2026-10-27. This note changes no SQL, application code, Auth, Storage policy, bucket setting, or production data. No real qualification object was downloaded. PR 1506 remains OFF / NO GRANT. The candidate inspector now requires `readSelectedVersion` with expected byte count and SHA-256; it is not connected to production Storage. The old name `readImmutableVersion` is deliberately rejected, because this review does not establish permanent immutability.
 
 ## Result and deployment limit
 
@@ -48,3 +48,7 @@ Even after a mock HTTP reader passes, it is a candidate only. Current unresolved
 ## Changelog check
 
 The official [changelog index](https://supabase.com/changelog.md) was read; the relevant current HTTP transport notice is [CBC TLS cipher deprecation](https://supabase.com/changelog/cbc-tls-ciphers-deprecated), announced 2026-10-12 for removal no earlier than 2026-11-10. A modern verified TLS connection is required; this notice is not evidence that REST versionId support is deployed. No infrastructure or TLS setting was changed.
+
+## Isolated integration evidence
+
+The real candidate reader and inspector are composed in six synthetic integration tests: exact parser bytes and one scoped receipt; metadata race; wrong selected version; wrong downloaded hash; deadline; and unknown deployment. All six passed locally without network access to Storage. The CI workflow also runs the eight reader boundary tests and inspector contract tests. These tests use fake HTTP responses, fake metadata, fake session/DB dependencies, and a synthetic parser callback. They do not prove a real deployed version query, a real parser, real credentials, Storage writer constraints, or production authorization.

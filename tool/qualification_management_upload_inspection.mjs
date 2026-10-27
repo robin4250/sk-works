@@ -4,9 +4,10 @@ const maxBytes=20*1024*1024;
 const isUuid=value=>typeof value==='string'&&uuid.test(value);
 
 // The parser is the existing createDocumentFileValidator({sharp,pdfjs}). A
-// trusted immutable reader and transaction-bound DB adapter are still required.
+// trusted version-bound reader and transaction-bound DB adapter are required.
+// This boundary does not assert permanent immutability of the Storage backend.
 export function createQualificationUploadInspector({verifySession,db,storage,validateFile}){
- if(typeof verifySession!=='function'||typeof validateFile!=='function'||!db||!storage)throw Error('inspection_unavailable');
+ if(typeof verifySession!=='function'||typeof validateFile!=='function'||typeof db?.authorizedPendingSlot!=='function'||typeof db?.commitReceiptAtomically!=='function'||typeof storage?.readSelectedVersion!=='function')throw Error('inspection_unavailable');
  return async function inspect({bearerToken,requestId,slotId}){
   if(typeof bearerToken!=='string'||!bearerToken||!isUuid(requestId)||!isUuid(slotId))throw Error('inspection_unavailable');
   const verifiedSession=await verifySession(bearerToken);
@@ -18,7 +19,8 @@ export function createQualificationUploadInspector({verifySession,db,storage,val
   for(const key of ['companyId','workerId','qualificationMasterId','targetId','objectId'])if(!isUuid(p[key]))throw Error('inspection_unavailable');
   const prefix=`${p.companyId}/${p.workerId}/${p.targetId}/management/${requestId}/`;
   if(p.bucket!=='qualification-certificates'||typeof p.path!=='string'||p.path.length>1024||!p.path.startsWith(prefix)||p.path.length===prefix.length||p.path.includes('..')||p.path.includes('\\')||p.path.includes('//')||typeof p.objectVersion!=='string'||!p.objectVersion||p.objectVersion.length>256)throw Error('inspection_unavailable');
-  const o=await storage.readImmutableVersion({bucket:p.bucket,path:p.path,objectId:p.objectId,version:p.objectVersion,maxBytes});
+  if(!Number.isSafeInteger(p.declaredBytes)||p.declaredBytes<8||p.declaredBytes>maxBytes||typeof p.declaredSha256!=='string'||!/^[a-f0-9]{64}$/.test(p.declaredSha256)||!['image/jpeg','image/png','image/heic','application/pdf'].includes(p.mime))throw Error('inspection_unavailable');
+  const o=await storage.readSelectedVersion({bucket:p.bucket,path:p.path,objectId:p.objectId,version:p.objectVersion,maxBytes,expectedBytes:p.declaredBytes,expectedSha256:p.declaredSha256});
   if(!o||o.objectId!==p.objectId||o.version!==p.objectVersion||!(o.bytes instanceof Uint8Array)||o.bytes.length<8||o.bytes.length>maxBytes)throw Error('invalid_file');
   const bytes=Uint8Array.from(o.bytes),ascii=(a,b)=>String.fromCharCode(...bytes.slice(a,b));
   const mime=ascii(0,5)==='%PDF-'?'application/pdf':bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':[137,80,78,71,13,10,26,10].every((v,i)=>bytes[i]===v)?'image/png':ascii(4,8)==='ftyp'&&['heic','heix','hevc','hevx','mif1','msf1'].includes(ascii(8,12))?'image/heic':null;

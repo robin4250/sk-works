@@ -27,7 +27,7 @@ async function bodyIds(request,timeoutMs){
 // verifier and an atomic shared limiter. clientKey is a host-generated HMAC of
 // trusted network context, never X-Forwarded-For or another request field.
 export function createQualificationInspectionHttpEndpoint({pathname,verifySession,rateLimiter,db,storage,validateFile,bodyTimeoutMs=2000,dependencyTimeoutMs=2000}){
- if(typeof pathname!=='string'||!/^\/[A-Za-z0-9/_-]{1,127}$/.test(pathname)||typeof verifySession!=='function'||typeof rateLimiter?.take!=='function'||typeof db?.authorizedPendingSlot!=='function'||typeof db?.commitReceiptAtomically!=='function'||typeof storage?.readImmutableVersion!=='function'||typeof validateFile!=='function'||!Number.isSafeInteger(bodyTimeoutMs)||bodyTimeoutMs<10||bodyTimeoutMs>5000||!Number.isSafeInteger(dependencyTimeoutMs)||dependencyTimeoutMs<10||dependencyTimeoutMs>5000)throw Error('inspection_unavailable');
+ if(typeof pathname!=='string'||!/^\/[A-Za-z0-9/_-]{1,127}$/.test(pathname)||typeof verifySession!=='function'||typeof rateLimiter?.take!=='function'||typeof db?.authorizedPendingSlot!=='function'||typeof db?.commitReceiptAtomically!=='function'||typeof storage?.readSelectedVersion!=='function'||typeof validateFile!=='function'||!Number.isSafeInteger(bodyTimeoutMs)||bodyTimeoutMs<10||bodyTimeoutMs>5000||!Number.isSafeInteger(dependencyTimeoutMs)||dependencyTimeoutMs<10||dependencyTimeoutMs>5000)throw Error('inspection_unavailable');
  async function charge(input){
   const result=await timed(()=>rateLimiter.take(Object.freeze(input)),dependencyTimeoutMs,new HttpFailure(503,'inspection_unavailable'));
   if(result?.allowed===true)return;
