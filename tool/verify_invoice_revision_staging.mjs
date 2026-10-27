@@ -78,6 +78,14 @@ if (native) {
   await setPreview({...preview,original_invoice_id:nextId,original_invoice_fingerprint:nextHash});
   const a=new NativeClient({connectionString:process.env.DATABASE_URL}),b=new NativeClient({connectionString:process.env.DATABASE_URL});
   await Promise.all([a.connect(),b.connect()]);
+  const waitingPid=(await b.query('select pg_backend_pid() pid')).rows[0].pid;
+  const waitForBlock=async()=>{
+    for(let i=0;i<50;i++){
+      if((await db.query('select cardinality(pg_blocking_pids($1))>0 blocked',[waitingPid])).rows[0].blocked)return;
+      await new Promise(resolve=>setTimeout(resolve,30));
+    }
+    throw Error('expected transaction lock wait was not observed');
+  };
   const setup=`select set_config('test.actor','00000000-0000-0000-0000-000000000003',false),set_config('test.sid','00000000-0000-0000-0000-000000000004',false),set_config('test.company','00000000-0000-0000-0000-000000000002',false),set_config('test.allowed','true',false)`;
   await Promise.all([a.query(setup),b.query(setup)]);
   const query='select invoice_revision_candidate.stage($1,$2,$3,$4,$5) v';
@@ -95,11 +103,25 @@ if (native) {
   await a.query(query,[thirdId,'00000000-0000-0000-0000-000000000025',src,thirdHash,'追加']);
   let revoked=false;
   const revocation=b.query("update public.company_members set role='worker' where user_id='00000000-0000-0000-0000-000000000003'").then(()=>{revoked=true;});
-  await new Promise(resolve=>setTimeout(resolve,150));
+  await waitForBlock();
   assert.equal(revoked,false,'role revocation must wait for proposal transaction');
   await a.query('commit');
   await revocation;
   await assert.rejects(a.query(query,[thirdId,'00000000-0000-0000-0000-000000000026',src,thirdHash,'追加']),/revision_denied/);
+  await db.exec("update public.company_members set role='manager'; insert into public.member_feature_permissions values('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000003',true)");
+  const fourthId='00000000-0000-0000-0000-000000000031';
+  await db.query('insert into public.invoices(id,company_id,invoice_seal_frozen,snapshot,created_at) select $1,company_id,invoice_seal_frozen,snapshot,created_at from public.invoices where id=$2',[fourthId,id]);
+  const fourthHash=(await db.query(`select encode(sha256(convert_to(to_jsonb(i)::text,'UTF8')),'hex') h from invoices i where id=$1`,[fourthId])).rows[0].h;
+  await setPreview({...preview,original_invoice_id:fourthId,original_invoice_fingerprint:fourthHash});
+  await a.query('begin');
+  await a.query(query,[fourthId,'00000000-0000-0000-0000-000000000035',src,fourthHash,'追加']);
+  let permissionRevoked=false;
+  const revokePermission=b.query('update public.member_feature_permissions set can_manage_invoices=false').then(()=>{permissionRevoked=true;});
+  await waitForBlock();
+  assert.equal(permissionRevoked,false,'permission revocation must wait for proposal transaction');
+  await a.query('commit');
+  await revokePermission;
+  await assert.rejects(a.query(query,[fourthId,'00000000-0000-0000-0000-000000000036',src,fourthHash,'追加']),/revision_denied/);
   await Promise.all([a.end(),b.end()]);
 }
 await db.query('delete from invoices where id=$1',[id]);

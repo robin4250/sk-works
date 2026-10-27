@@ -23,7 +23,8 @@ revoke all on all tables in schema invoice_revision_candidate from public, anon,
 create function invoice_revision_candidate.stage(p_invoice_id uuid,p_command_id uuid,
  p_expected_source text,p_expected_original text,p_reason text)
 returns jsonb language plpgsql security definer set search_path='' set timezone='UTC' as $$
-declare actor uuid:=auth.uid(); sid uuid; cid uuid; old_invoice public.invoices%rowtype;
+declare actor uuid:=auth.uid(); sid uuid; cid uuid; locked_role text; locked_manage boolean;
+ old_invoice public.invoices%rowtype;
  prior invoice_revision_candidate.proposals%rowtype; v jsonb; original_hash text; enabled boolean;
 begin
  sid:=private.require_reauthentication_session();
@@ -37,9 +38,11 @@ begin
  select company_id into cid from public.invoices where id=p_invoice_id;
  if cid is null then raise exception 'revision_denied' using errcode='42501'; end if;
  -- Serialize a concurrent role/permission revoke with this transaction.
- perform 1 from public.company_members m where m.company_id=cid and m.user_id=actor for share;
+ select m.role::text into locked_role from public.company_members m where m.company_id=cid and m.user_id=actor for share;
  if not found then raise exception 'revision_denied' using errcode='42501'; end if;
- perform 1 from public.member_feature_permissions m where m.company_id=cid and m.user_id=actor for share;
+ select m.can_manage_invoices into locked_manage from public.member_feature_permissions m where m.company_id=cid and m.user_id=actor for share;
+ if locked_role not in ('owner','admin') and not coalesce(locked_manage,false) then
+  raise exception 'revision_denied' using errcode='42501'; end if;
  if not coalesce(private.has_company_feature(cid,'can_manage_invoices'),false)
     or not coalesce(private.account_access_allowed(),false) then raise exception 'revision_denied' using errcode='42501'; end if;
  perform pg_advisory_xact_lock(hashtextextended(p_invoice_id::text, 271011));
