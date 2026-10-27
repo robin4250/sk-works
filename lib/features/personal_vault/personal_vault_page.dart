@@ -50,7 +50,7 @@ class _PersonalVaultPageState extends State<PersonalVaultPage> {
         if (state.hasError) {
           return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('書類一覧を確認できませんでした。'),
-            TextButton(onPressed: () => setState(() => _entries = widget.loadMine()),
+            TextButton(onPressed: () => setState(() { _entries = widget.loadMine(); }),
               child: const Text('再読み込み')),
           ]));
         }
