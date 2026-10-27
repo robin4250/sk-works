@@ -368,6 +368,15 @@ class TutorialEvidenceRepository {
         if (['not_submitted', 'missing', 'expired'].contains(status)) {
           state = TutorialEvidenceState.missing;
         } else if (status == 'submitted' || status == 'verified') {
+          final name = requirement['name']?.toString();
+          if (name == null || name.isEmpty || name == '銀行口座情報' ||
+              !row.containsKey('attachment_path')) {
+            // Bank evidence is held separately, and cannot be inferred from status.
+            state = TutorialEvidenceState.unknown;
+          } else if ((row['attachment_path']?.toString() ?? '').isEmpty) {
+            // Matches the current required-document attention rule.
+            state = TutorialEvidenceState.missing;
+          } else {
           final rawExpiry = row['expires_at']?.toString() ?? '';
           final expiry = DateTime.tryParse(rawExpiry);
           if (rawExpiry.isNotEmpty && expiry == null) {
@@ -380,6 +389,7 @@ class TutorialEvidenceRepository {
             state = TutorialEvidenceState.missing;
           } else {
             state = TutorialEvidenceState.saved;
+          }
           }
         }
       }
@@ -503,7 +513,7 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
         .select('id,name,is_active,is_required,expiry_required')
         .eq('company_id', companyId).eq('is_active', true).eq('is_required', true);
     final statuses = await client.from('worker_document_statuses')
-        .select('id,requirement_id,worker_id,status,expires_at')
+        .select('id,requirement_id,worker_id,status,expires_at,attachment_path')
         .eq('company_id', companyId).eq('worker_id', workerId);
     return {'worker_id': workerId, 'requirements': requirements, 'statuses': statuses};
   }

@@ -177,7 +177,7 @@ void main() {
       'requirements': [{'id': 'r1', 'name': '免許', 'is_active': true,
         'is_required': true, 'expiry_required': true}],
       'statuses': [{'id': 's1', 'worker_id': 'w1', 'requirement_id': 'r1',
-        'status': 'submitted', 'expires_at': expiry}],
+        'status': 'submitted', 'expires_at': expiry, 'attachment_path': 'synthetic/path'}],
     };
     TutorialEvidenceState state(String expiry) =>
       TutorialEvidenceRepository.documentCheckpoints(docs(expiry), today: today).single.state;
@@ -189,6 +189,23 @@ void main() {
     (otherWorker['statuses'] as List).single['worker_id'] = 'w2';
     expect(TutorialEvidenceRepository.documentCheckpoints(otherWorker, today: today).single.state,
       TutorialEvidenceState.missing);
+  });
+
+  test('required attachments match attention without assuming bank evidence', () {
+    Map<String, dynamic> docs(String name, Map<String, dynamic> status) => {
+      'worker_id': 'w1',
+      'requirements': [{'id': 'r1', 'name': name, 'is_active': true,
+        'is_required': true, 'expiry_required': false}],
+      'statuses': [{'id': 's1', 'worker_id': 'w1', 'requirement_id': 'r1',
+        'status': 'submitted', ...status}],
+    };
+    TutorialEvidenceState state(String name, Map<String, dynamic> status) =>
+      TutorialEvidenceRepository.documentCheckpoints(docs(name, status), today: today).single.state;
+    expect(state('免許', {'attachment_path': null}), TutorialEvidenceState.missing);
+    expect(state('免許', {'attachment_path': ''}), TutorialEvidenceState.missing);
+    expect(state('免許', {'attachment_path': 'synthetic/path'}), TutorialEvidenceState.saved);
+    expect(state('免許', {}), TutorialEvidenceState.unknown);
+    expect(state('銀行口座情報', {'attachment_path': null}), TutorialEvidenceState.unknown);
   });
 
   test('disabled routes yield no tasks and no company read', () async {
