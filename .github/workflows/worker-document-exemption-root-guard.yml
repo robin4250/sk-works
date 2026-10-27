@@ -1,0 +1,33 @@
+name: Individual document exemption root deployment guards
+on:
+  pull_request:
+    paths:
+      - 'docs/review/worker-document-exemption-root-guard/**'
+      - 'docs/candidates/worker_document_exemption_20261027/**'
+      - 'tool/verify_worker_document_exemption_root_guard.mjs'
+      - 'tool/verify_worker_document_exemption.mjs'
+      - '.github/workflows/worker-document-exemption-root-guard.yml'
+permissions:
+  contents: read
+jobs:
+  native-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: sko_trade_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_trade_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --no-audit --no-fund --ignore-scripts
+      - run: python3 -m py_compile docs/review/worker-document-exemption-root-guard/prepare_guard.py
+      - run: node tool/verify_worker_document_exemption_root_guard.mjs "$GITHUB_WORKSPACE/tool/trade_document_pg_adapter.mjs"
+        env:
+          SKO_TRADE_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_trade_fixture
