@@ -122,6 +122,47 @@ try {
   assert.equal(observed.rows[0].n,1);
   await approval.query('rollback');
   console.log('PASS: negative controls reproduce INSERT, DELETE and destination-company move bypass');
+  // Test-only improvement: cover all three row operations and both companies
+  // on a move. Try-lock (rather than wait) avoids row/advisory inversion.
+  // This still does not establish production table coverage or retry safety.
+  await setup.query('drop trigger synthetic_try on public.synthetic_work');
+  await setup.query(`create function public.synthetic_all_write_guard() returns trigger
+    language plpgsql as $guard$
+    declare company uuid;
+    begin
+      for company in select distinct x from unnest(array[
+        case when TG_OP <> 'INSERT' then OLD.company_id end,
+        case when TG_OP <> 'DELETE' then NEW.company_id end
+      ]) as ids(x) where x is not null order by x loop
+        if not pg_try_advisory_xact_lock(hashtextextended(company::text,319847)) then
+          raise exception using errcode='55P03', message='synthetic company busy';
+        end if;
+      end loop;
+      if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
+    end $guard$`);
+  await setup.query('create trigger synthetic_all_write before insert or update or delete on public.synthetic_work for each row execute function public.synthetic_all_write_guard()');
+  await setup.query("insert into public.synthetic_work values($1,'move source')",[b]);
+  await approval.query('begin');
+  await approval.query(sql,[a]);
+  for (const [query,params] of [
+    ["insert into public.synthetic_work values($1,'blocked insert')",[a]],
+    ["delete from public.synthetic_work where company_id=$1 and v='prior writer'",[a]],
+    ["update public.synthetic_work set company_id=$1 where company_id=$2 and v='move source'",[a,b]],
+    ["update public.synthetic_work set company_id=$1 where company_id=$2 and v='prior writer'",[b,a]],
+  ]) {
+    await same.query('begin');
+    await same.query("set local statement_timeout='2s'");
+    await assert.rejects(() => same.query(query,params),e => e.code === '55P03');
+    await same.query('rollback');
+  }
+  await other.query('begin');
+  await other.query("set local statement_timeout='2s'");
+  await other.query("insert into public.synthetic_work values($1,'unrelated insert')",[b]);
+  await other.query("update public.synthetic_work set v='unrelated changed' where company_id=$1 and v='unrelated insert'",[b]);
+  await other.query("delete from public.synthetic_work where company_id=$1 and v='unrelated changed'",[b]);
+  await other.query('commit');
+  await approval.query('rollback');
+  console.log('PASS: synthetic all-write guard rejects both move directions, insert and delete while another company proceeds');
   console.log('PASS: synthetic try-lock fails promptly; other company and approver proceed');
   console.log('PASS: row trigger lock inversion produces 40P01');
   console.log('PASS: cooperative same-company serialization; other company proceeds; direct-write bypass reproduced');
