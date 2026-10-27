@@ -61,6 +61,21 @@ test('existing independent authority anchors archive audit before immutable stor
  assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:batch.latestIndependentAnchor,now})).status,200);
 });
 
+test('archive alone cannot establish ancestry of a higher signed anchor; authority rejects fork',async t=>{
+ const f=await fixture(t), first=createBatch(f);
+ assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ first.anchor=await(await f.call('latest',{},'AUTHORITY')).json();first.latestIndependentAnchor=first.anchor;
+ assert.equal((await f.call('store',first)).status,200);
+ const fork=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:'f'.repeat(64)});
+ const rejected=await f.call('publish',{publication:{expected_sequence:1,expected_hash:first.audit.hash,records:[fork.audit]},now},'AUTHORITY');
+ assert.equal(rejected.status,409);
+ // Deliberately model a trusted anchor key issuing an inconsistent head. The
+ // archive checks signatures and increasing sequence, not intervening ancestry.
+ // Acceptance here is a counterexample, not a claim that the real authority
+ // issues such a receipt, nor permission to connect this fixture to production.
+ assert.equal((await f.call('store',fork)).status,200);
+});
+
 test('stale signed authority receipt is not evidence of a fresh head',async t=>{
  const f=await fixture(t),first=createBatch(f);
  assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
