@@ -9,6 +9,8 @@ begin
  select i.company_id into cid from public.invoices i join public.company_members cm
   on cm.company_id=i.company_id and cm.user_id=uid where i.id=p_invoice_id;
  if cid is null then raise exception 'invoice not found'; end if;
+ -- Check eligibility before the potentially expensive global lock attempt.
+ if not exists(select 1 from public.invoice_approvals a where a.invoice_id=p_invoice_id and a.approver_user_id=uid) and not exists(select 1 from public.invoice_approvers a where a.company_id=cid and a.user_id=uid) then raise exception 'invoice approver permission required';end if;
  perform 1 from public.companies where id=cid for update;
  perform 1 from public.invoices where id=p_invoice_id and company_id=cid for update;
  if not found then raise exception 'invoice not found'; end if;
