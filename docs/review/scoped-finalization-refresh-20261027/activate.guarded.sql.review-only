@@ -1,10 +1,10 @@
 begin;
 set local timezone='UTC'; set local search_path=''; set local lock_timeout='5s'; set local statement_timeout='45s';
 lock table explicit_report_finalization_private.reports,explicit_report_finalization_private.rollout,explicit_report_finalization_private.states,explicit_report_finalization_private.events,explicit_report_finalization_private.receipts in share row exclusive mode;
-lock table public.daily_reports,public.daily_report_workers,public.attendance_entries,public.attendance_verifications,public.payroll_statements,public.invoices,public.invoice_detail_lines in share row exclusive mode;
+lock table public.daily_reports,public.daily_report_workers,public.attendance_entries,public.attendance_verifications,public.sites,public.workers,public.payroll_statements,public.invoices,public.invoice_detail_lines in share row exclusive mode;
 create temporary table activation_protected_rows(relation text primary key,n bigint,h text) on commit drop;
 do $capture$ declare t text;n bigint;h text;begin
- foreach t in array array['public.daily_reports','public.daily_report_workers','public.attendance_entries','public.attendance_verifications','public.payroll_statements','public.invoices','public.invoice_detail_lines'] loop
+ foreach t in array array['public.daily_reports','public.daily_report_workers','public.attendance_entries','public.attendance_verifications','public.sites','public.workers','public.payroll_statements','public.invoices','public.invoice_detail_lines'] loop
  execute format($q$select count(*)::bigint,md5(coalesce(string_agg(h,'' order by h),'')) from (select md5(to_jsonb(x)::text) h from %s x)a$q$,t) into n,h;
  insert into pg_temp.activation_protected_rows values(t,n,h);
  end loop;
@@ -14,6 +14,8 @@ do $guard$ begin
  if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.daily_report_workers' and n=990002 and h='00000000000000000000000000000002') then raise exception 'scope_activation_business_drift'; end if;
  if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.attendance_entries' and n=990003 and h='00000000000000000000000000000003') then raise exception 'scope_activation_business_drift'; end if;
  if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.attendance_verifications' and n=990004 and h='00000000000000000000000000000004') then raise exception 'scope_activation_business_drift'; end if;
+ if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.sites' and n=990008 and h='00000000000000000000000000000008') then raise exception 'scope_activation_business_drift'; end if;
+ if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.workers' and n=990009 and h='00000000000000000000000000000009') then raise exception 'scope_activation_business_drift'; end if;
  if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.payroll_statements' and n=990005 and h='00000000000000000000000000000005') then raise exception 'scope_activation_business_drift'; end if;
  if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.invoices' and n=990006 and h='00000000000000000000000000000006') then raise exception 'scope_activation_business_drift'; end if;
  if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.invoice_detail_lines' and n=990007 and h='00000000000000000000000000000007') then raise exception 'scope_activation_business_drift'; end if;
