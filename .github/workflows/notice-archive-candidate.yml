@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: '24'
       - run: npm ci --prefix tool/security/free-worker-candidate --ignore-scripts --no-audit --no-fund
-      - run: node --test tool/security/notice-archive-candidate/tests/notice-archive.test.mjs
+      - run: node --test tool/security/notice-archive-candidate/tests/*.test.mjs
         env:
           SKO_WORKER_TEST_ROOT: ${{ github.workspace }}/tool/security/free-worker-candidate
           SKO_AUDIT_CORE: ${{ github.workspace }}/tool/security/free-worker-candidate/src/security-audit.mjs
