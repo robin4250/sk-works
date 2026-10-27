@@ -75,6 +75,20 @@ await db.query("insert into private.route_journey_captures values($1,$2,$3,$4,da
 await db.query("insert into private.route_journey_visit_events values($1,'start',$2,$2,$3),($1,'end',$4,$2,$3)",[late,id(81),id(80),id(82)]);
 const realRoute=(await db.query('select count(*)::int n from private.route_signed_checkout_sources($1,$2::date,$3::date) where source_ready and customer_id=$4',[company,(await db.query('select billing_period_start from invoices where id=$1',[invoice])).rows[0].billing_period_start,(await db.query('select billing_period_end from invoices where id=$1',[invoice])).rows[0].billing_period_end,customer])).rows[0].n;
 assert.equal(realRoute,1);const realComponent=(await db.query("select private.route_signed_checkout_components($1,$2,(select billing_period_start from invoices where id=$3),(select billing_period_end from invoices where id=$3)) v",[company,customer,invoice])).rows[0].v;assert.equal(realComponent.blocked,false);assert.equal(realComponent.has_sources,true);assert.ok(realComponent.subtotal>0);assert.equal(await check(),'source_proof_missing');
+// Known limitation: an unfinished route for a different customer in the same
+// company currently blocks this otherwise-ready invoice. Keep this evidence
+// until customer attribution is implemented without excluding unknown visits.
+await db.query("insert into public.route_stops values($1,$2,$3)",[id(70),id(71),otherSite]);
+await db.query("update public.attendance_verifications set route_assignment_id=$1 where id=$2",[id(71),id(99)]);
+await db.query("insert into private.route_journey_captures values($1,$2,$3,$4,date_trunc('month',current_date)-interval '1 day',$5,$6,now())",[id(72),company,id(99),id(71),worker,id(70)]);
+await db.query("insert into private.route_journey_visit_events values($1,'start',$2,$2,$3)",[id(99),id(72),id(70)]);
+assert.equal(await check(),'route_unverified');
+await db.query('delete from private.route_journey_visit_events where capture_id=$1',[id(72)]);
+await db.query('delete from private.route_journey_captures where id=$1',[id(72)]);
+await db.query('delete from public.route_stops where id=$1',[id(70)]);
+await db.query('update public.attendance_verifications set route_assignment_id=null where id=$1',[id(99)]);
+assert.equal(await check(),'source_proof_missing');
+console.log(JSON.stringify({known_unrelated_customer_route_blocks:true}));
 await db.query('delete from private.route_journey_visit_events where capture_id=$1',[id(82)]);assert.equal(await check(),'route_unverified');
 console.log(JSON.stringify({production_route_source_body:true,production_route_blocked_body:true,synthetic_complete_route:true,route_missing_exit_rejected:true,rate_helper_stub:true,production_route_component_body:true}));
 // Review-only notification intent, no enqueue or external delivery.
