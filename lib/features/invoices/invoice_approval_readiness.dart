@@ -57,7 +57,7 @@ class InvoiceApprovalReadinessNotice extends StatelessWidget {
     final label = switch (state) {
       InvoiceApprovalReadinessState.checking => '承認できる状態を確認しています',
       InvoiceApprovalReadinessState.unavailable => '承認できる状態を確認できません。管理者に確認してください。',
-      InvoiceApprovalReadinessState.monthNotClosed => '対象月が終わると承認できます。',
+      InvoiceApprovalReadinessState.monthNotClosed => '対象月が終わるまで承認できません。',
       InvoiceApprovalReadinessState.checkoutPending => '対象となる勤務の退勤が必要です。',
       InvoiceApprovalReadinessState.reportPending => '対象となる日報の確定が必要です。',
       InvoiceApprovalReadinessState.ready => '対象月の退勤と日報の確定を確認しました。',

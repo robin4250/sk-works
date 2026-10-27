@@ -14,7 +14,7 @@ void main() {
     }
   });
   testWidgets('every pending condition explains why approval is unavailable', (tester) async {
-    for (final entry in {'period_open': '対象月が終わると承認できます。', 'checkout_pending': '対象となる勤務の退勤が必要です。', 'report_pending': '対象となる日報の確定が必要です。'}.entries) {
+    for (final entry in {'period_open': '対象月が終わるまで承認できません。', 'checkout_pending': '対象となる勤務の退勤が必要です。', 'report_pending': '対象となる日報の確定が必要です。'}.entries) {
       await tester.pumpWidget(page(from(entry.key), onApprove: () => fail('must not approve')));
       expect(find.text(entry.value), findsOneWidget);
       expect(find.text('承認する'), findsNothing);
