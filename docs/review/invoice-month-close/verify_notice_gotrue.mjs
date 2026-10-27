@@ -72,6 +72,13 @@ try {
  phase='actual-jwt';let response;
  for(let i=0;i<40;i++){response=await open(tokens.owner);if(response.status!==404&&response.status!==503)break;await new Promise(r=>setTimeout(r,250));}
  assert.equal(response.status,200);let ticket=await response.json();assert.equal(ticket.notification_id,notification);assert.equal(ticket.invoice_id,iid);
+ // A second login is the same person, but may not consume the first session's ticket.
+ const secondLogin=await request('/auth/v1/token?grant_type=password',{body:{email:users.owner.email,password}});assert.equal(secondLogin.status,200);
+ const secondToken=(await secondLogin.json()).access_token;
+ const firstClaims=JSON.parse(Buffer.from(tokens.owner.split('.')[1],'base64url').toString('utf8'));
+ const secondClaims=JSON.parse(Buffer.from(secondToken.split('.')[1],'base64url').toString('utf8'));
+ assert.equal(secondClaims.sub,firstClaims.sub);assert.notEqual(secondClaims.session_id,firstClaims.session_id);
+ assert.notEqual((await approve(ticket.ticket_id,secondToken)).status,200);
  for(const t of [tokens.admin,tokens.foreign,undefined]) assert.notEqual((await open(t)).status,200);
  assert.notEqual((await approve(ticket.ticket_id,tokens.foreign)).status,200);
  assert.equal((await approve(ticket.ticket_id,tokens.owner)).status,200);
