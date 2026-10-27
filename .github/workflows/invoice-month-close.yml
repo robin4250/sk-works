@@ -30,6 +30,7 @@ jobs:
           SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
           SKO_APPROVAL_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approve.sql.review-only
           SKO_GUARDED_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/guarded.sql.review-only
+          SKO_ROUTE_COMPONENTS: ${{ github.workspace }}/docs/review/invoice-month-close/route_components.production.sql.review-only
           SKO_ROUTE_HELPERS: ${{ github.workspace }}/docs/review/invoice-month-close/route_helpers.production.sql.review-only
           SKO_MONTH_CLOSE_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/precheck.sql.review-only
   integrated-calculation:

@@ -53,13 +53,18 @@ await db.query('update private.route_fixture set source_ready=true');await db.qu
 // The components helper is deliberately a stub; this is not full route integration.
 await db.exec(`drop function private.route_signed_checkout_sources(uuid,date,date);drop function private.route_billing_invoice_blocked(uuid,uuid,date,date);
  create function private.route_signed_checkout_components(uuid,uuid,date,date) returns jsonb language sql as $$select jsonb_build_object('blocked',false)$$;
+ create function private.route_signed_site_rates(uuid,uuid,text) returns jsonb language sql as $$select jsonb_build_object('daily',true,'unit_price_yen',100,'welfare_rate',0,'overtime_rate',20,'early_rate',20,'allowance_rates',jsonb_build_object('合成手当',10))$$;
+ create table public.companies(id uuid,tax_rate numeric);create table public.customers(id uuid,company_id uuid,notes text);
+ alter table private.route_billing_quantity_requests add column worker_id uuid;alter table private.route_billing_quantity_requests add column status text;
  alter table public.daily_reports add column signature_json jsonb;
  alter table public.sites add column formal_name text;alter table public.sites add column name text;
  create table public.route_stops(id uuid,route_assignment_id uuid,site_id uuid);
  create table private.route_journey_captures(id uuid,company_id uuid,source_clock_in_id uuid,route_assignment_id uuid,work_date date,worker_id uuid,route_stop_id uuid,recorded_at timestamptz);
  create table private.route_journey_visit_events(source_clock_in_id uuid,kind text,capture_id uuid,start_capture_id uuid,route_stop_id uuid);`);
-await db.exec(await readFile(process.env.SKO_ROUTE_HELPERS,'utf8'));
+await db.exec(await readFile(process.env.SKO_ROUTE_HELPERS,'utf8'));await db.exec(await readFile(process.env.SKO_ROUTE_COMPONENTS,'utf8'));
+await db.query('insert into public.companies values($1,10)',[company]);await db.query('insert into public.customers values($1,$2,null)',[customer,company]);
 const helperHashes=(await db.query("select proname,md5(prosrc) h from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and proname in ('route_signed_checkout_sources','route_billing_invoice_blocked')")).rows;
+const componentHash=(await db.query("select md5(prosrc) h from pg_proc where oid='private.route_signed_checkout_components(uuid,uuid,date,date)'::regprocedure")).rows[0].h;assert.equal(componentHash,'55ec3b7eaaf288986bea1c32c3e0be50');
 assert.equal(helperHashes.find(x=>x.proname==='route_signed_checkout_sources').h,'657a3e0a3511f600e440e23026d8a73d');assert.equal(helperHashes.find(x=>x.proname==='route_billing_invoice_blocked').h,'2601bbc4fe21fa0a609c52686e315ee7');
 await db.query("update public.sites set name='合成現場' where id=$1",[site]);
 await db.query("update public.attendance_verifications set site_id=null,daily_report_id=$1 where id in ($2,$3)",[reportLate,late,outLate]);
@@ -69,8 +74,8 @@ await db.query('insert into public.route_stops values($1,$2,$3)',[id(80),id(98),
 await db.query("insert into private.route_journey_captures values($1,$2,$3,$4,date_trunc('month',current_date)-interval '2 day',$5,$6,(select confirmed_at from public.attendance_verifications where id=$3)),($7,$2,$3,$4,date_trunc('month',current_date)-interval '2 day',$5,$6,(select confirmed_at from public.attendance_verifications where id=$3))",[id(81),company,late,id(98),worker,id(80),id(82)]);
 await db.query("insert into private.route_journey_visit_events values($1,'start',$2,$2,$3),($1,'end',$4,$2,$3)",[late,id(81),id(80),id(82)]);
 const realRoute=(await db.query('select count(*)::int n from private.route_signed_checkout_sources($1,$2::date,$3::date) where source_ready and customer_id=$4',[company,(await db.query('select billing_period_start from invoices where id=$1',[invoice])).rows[0].billing_period_start,(await db.query('select billing_period_end from invoices where id=$1',[invoice])).rows[0].billing_period_end,customer])).rows[0].n;
-assert.equal(realRoute,1);assert.equal(await check(),'source_proof_missing');
+assert.equal(realRoute,1);const realComponent=(await db.query("select private.route_signed_checkout_components($1,$2,(select billing_period_start from invoices where id=$3),(select billing_period_end from invoices where id=$3)) v",[company,customer,invoice])).rows[0].v;assert.equal(realComponent.blocked,false);assert.equal(realComponent.has_sources,true);assert.ok(realComponent.subtotal>0);assert.equal(await check(),'source_proof_missing');
 await db.query('delete from private.route_journey_visit_events where capture_id=$1',[id(82)]);assert.equal(await check(),'route_unverified');
-console.log(JSON.stringify({production_route_source_body:true,production_route_blocked_body:true,synthetic_complete_route:true,route_missing_exit_rejected:true,components_helper_stub:true}));
+console.log(JSON.stringify({production_route_source_body:true,production_route_blocked_body:true,synthetic_complete_route:true,route_missing_exit_rejected:true,rate_helper_stub:true,production_route_component_body:true}));
 for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.precheck(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.guarded(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
 console.log(JSON.stringify({fixture_month_end:true,all_days_and_customer_scope:true,missing_signatures_fail_closed:true,route_fixture_ready_and_blocked:true,precheck_never_ready:true,no_public_grant:true}));await db.close();
