@@ -87,7 +87,7 @@ void main() {
     final retained = Map.of(repo.status);
     await open(tester);
     final button = find.text('この社員の提出を免除');
-    await tester.ensureVisible(button); await tester.tap(button); await tester.pumpAndSettle();
+    await tester.ensureVisible(button); await tester.pumpAndSettle(); await tester.tap(button); await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '免除を保存'));
     await tester.pumpAndSettle(); expect(repo.writes, 0);
     await tester.enterText(find.byType(TextField).last, '本人の事情を確認');
@@ -96,6 +96,7 @@ void main() {
     expect(repo.writes, 1); expect(find.text('提出免除'), findsOneWidget);
     expect(repo.status, retained);
     await tester.ensureVisible(find.text('免除を解除'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('免除を解除')); await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '提出対象へ戻す');
     await tester.tap(find.widgetWithText(FilledButton, '免除を解除'));

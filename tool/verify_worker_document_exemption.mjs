@@ -43,9 +43,16 @@ try {
  const install=await fs.readFile(new URL('../docs/candidates/worker_document_exemption_20261027/install.sql.review-only',import.meta.url),'utf8');
  const attentionCatalog = async () => (await db.query("select proowner,prosecdef,provolatile,proconfig,proacl from pg_proc where oid='public.current_user_required_document_attention()'::regprocedure")).rows;
  const attentionBefore = await attentionCatalog();
+ const attentionOriginal = (await db.query("select pg_get_functiondef('public.current_user_required_document_attention()'::regprocedure) definition")).rows[0].definition;
  assert.equal(attentionBefore[0].prosecdef, true);
  await db.exec(install);
  assert.deepEqual(await attentionCatalog(), attentionBefore);
+ const restore=await fs.readFile(new URL('../docs/candidates/worker_document_exemption_20261027/restore-unused.sql.review-only',import.meta.url),'utf8');
+ await db.exec(restore);
+ assert.deepEqual(await attentionCatalog(), attentionBefore);
+ assert.equal((await db.query("select pg_get_functiondef('public.current_user_required_document_attention()'::regprocedure) definition")).rows[0].definition,attentionOriginal);
+ assert.equal((await db.query("select to_regclass('private.worker_document_exemptions') relation")).rows[0].relation,null);
+ await db.exec(install);
  await assert.rejects(db.exec(install),e=>e.code==='55000');await db.exec('rollback');
  await db.query("insert into public.company_members values($1,$3,'owner'),($1,$4,'manager'),($1,$5,'worker'),($1,$6,'viewer'),($2,$7,'admin')",[company,other,owner,manager,employee,another,foreign]);
  await db.query("insert into public.workers values($1,$2,$3,'active'),($4,$2,$5,'active')",[worker,company,employee,worker2,another]);
@@ -86,7 +93,9 @@ try {
  await db.exec('reset role');await db.query("update auth.sessions set not_after=now()-interval '1 second' where user_id=$1",[manager]);
  await actor(manager);await assert.rejects(call('list',{company_id:company}),e=>e.code==='42501');
  await actor('', 'anon');await assert.rejects(call('list',{company_id:company}),e=>e.code==='42501');
- await db.exec('reset role');assert.deepEqual((await db.query('select to_jsonb(s) row from public.worker_document_statuses s')).rows,retained);
+ await db.exec('reset role');
+ await assert.rejects(db.exec(restore),e=>e.code==='55000');await db.exec('rollback');
+ assert.deepEqual((await db.query('select to_jsonb(s) row from public.worker_document_statuses s')).rows,retained);
  assert.equal((await db.query('select count(*)::int n from private.worker_document_exemption_events')).rows[0].n,3);
  await db.exec('update private.worker_document_exemption_settings set enabled=false');
  await actor(owner);await assert.rejects(set(3,false),e=>e.code==='42501');
@@ -94,5 +103,5 @@ try {
  assert.equal((await call('list',{company_id:company})).can_manage,false);
  await db.exec('reset role');
  assert.equal((await db.query("select count(*)::int n from pg_policies where schemaname='private' and tablename like 'worker_document_exemption%'")).rows[0].n,0);
- console.log('PASS individual exemption: owner/manager, same-worker read, other-company/viewer/anon/expired/blocked rejection, stale CAS, revoke restores attention, attention definer/owner/search_path/ACL retained, submitted/photo unchanged, audit append and direct denial');
+ console.log('PASS individual exemption: owner/manager, same-worker read, other-company/viewer/anon/expired/blocked rejection, stale CAS, revoke restores attention, attention definer/owner/search_path/ACL retained, submitted/photo unchanged, audit append and direct denial, unused restore/reinstall and after-use restore denial');
 } finally {await db.close();}
