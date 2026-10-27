@@ -44,6 +44,9 @@ assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id
 const correctionPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
 assert.match(correctionPreview.source_fingerprint,/^[0-9a-f]{64}$/);assert.match(correctionPreview.original_invoice_fingerprint,/^[0-9a-f]{64}$/);
 const unchangedPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;assert.equal(unchangedPreview.source_fingerprint,correctionPreview.source_fingerprint);
+await db.query("update private.route_visit_reports set site_name='合成変更' where id=$1",[routeReport]);
+const routeChanged=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;assert.notEqual(routeChanged.source_fingerprint,correctionPreview.source_fingerprint);
+await db.query("update private.route_visit_reports set site_name='合成ルート現場' where id=$1",[routeReport]);
 await db.query("update attendance_entries set overtime_hours=2 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]);
 const changedPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;assert.notEqual(changedPreview.source_fingerprint,correctionPreview.source_fingerprint);
 await db.query("update attendance_entries set overtime_hours=1 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]);
