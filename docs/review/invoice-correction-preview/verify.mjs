@@ -58,6 +58,36 @@ assert.equal(Number(frozen.snapshot.sites.find(item=>item.route_billing_request_
 const expectedSnapshot={...expected.snapshot};delete expectedSnapshot.company_seal_snapshot;
 assert.deepEqual(correctionPreview.proposed_snapshot,expectedSnapshot);assert.equal(correctionPreview.subtotal,expected.subtotal);assert.equal(correctionPreview.tax,expected.tax);assert.equal(correctionPreview.welfare,expected.welfare_amount);assert.equal(correctionPreview.grand_total,expected.grand_total);
 assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
+
+// The two-session checks run only against the explicitly isolated native PG17 fixture.
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ const {connectFixture}=await import(process.argv[2]);const writer=await connectFixture();
+ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ const readLocked=async()=>(await db.query('select invoice_correction_preview_private.locked_preview($1) v',[frozen.id])).rows[0].v;
+ try {
+  await writer.query('begin');
+  await writer.query("update attendance_entries set overtime_hours=2 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]);
+  let pending=readLocked();await pause(200);await writer.query('commit');
+  let result=await pending;assert.notEqual(result.source_fingerprint,correctionPreview.source_fingerprint);
+  let resultSite=result.proposed_snapshot.sites.find(item=>item.site_id===site);
+  assert.notDeepEqual(resultSite,newSite);
+  await db.query("update attendance_entries set overtime_hours=1 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]);
+  await writer.query('begin');
+  await writer.query("insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days) values($1,$2,$3,'2026-10-28','day',1)",[company,site,worker]);
+  pending=readLocked();await pause(200);await writer.query('commit');result=await pending;
+  resultSite=result.proposed_snapshot.sites.find(item=>item.site_id===site);assert.equal(Number(resultSite.lines[0].quantity),7);
+  assert.notEqual(result.source_fingerprint,correctionPreview.source_fingerprint);
+  await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
+  await db.query('begin');result=await readLocked();
+  let finished=false;
+  pending=writer.query("insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days) values($1,$2,$3,'2026-10-28','day',1)",[company,site,worker]).then(()=>{finished=true;});
+  await pause(200);assert.equal(finished,false);await db.query('commit');await pending;assert.equal(finished,true);
+  const afterInsert=await readLocked();assert.notEqual(afterInsert.source_fingerprint,result.source_fingerprint);
+  await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
+  console.log(JSON.stringify({native_two_session_update_wait:true,native_insert_phantom_wait:true,writer_blocked_until_commit:true,staged_fingerprint_recheck:true}));
+ }finally{await writer.query('rollback').catch(()=>{});await writer.end();}
+}
+
 await db.query('update site_financial_settings set billing_unit_price_yen=billing_unit_price_yen+1 where company_id=$1 and site_id=$2',[company,site]);
 await assert.rejects(db.query('select invoice_correction_preview_private.preview($1)',[frozen.id]),/invoice_revision_saved_basis_changed/);
 await db.query('update site_financial_settings set billing_unit_price_yen=billing_unit_price_yen-1 where company_id=$1 and site_id=$2',[company,site]);

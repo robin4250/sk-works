@@ -489,3 +489,47 @@ begin
  return jsonb_build_object('source_fingerprint',source_after,'original_invoice_id',existing.id,'original_invoice_fingerprint',encode(sha256(convert_to(to_jsonb(existing)::text,'UTF8')),'hex'),'proposed_snapshot',snapshot_value,'subtotal',total_pre_tax::int,'tax',total_tax::int,'welfare',total_welfare::int,'grand_total',(total_pre_tax+total_tax+expense_amount+named_final)::int,'calculation_blocked',route_blocked);
 end $body$;
 revoke all on function invoice_correction_preview_private.preview(uuid) from public,anon,authenticated,service_role;
+
+-- Review-only: short transaction; locks persist until caller commits or rolls back.
+-- Whole-table locks conflict with existing INSERT/UPDATE/DELETE writers, including phantoms.
+-- This global scope may delay normal traffic; no public grant and no deployment approval.
+create function invoice_correction_preview_private.locked_preview(p_invoice_id uuid) returns jsonb
+language plpgsql volatile security definer set search_path='' set timezone='UTC' set lock_timeout='5s' as $locked$
+declare cid uuid;
+begin
+ if auth.uid() is null then raise exception 'login_required';end if;
+ perform private.require_reauthentication_session();
+ select company_id into cid from public.invoices where id=p_invoice_id;
+ if cid is null or not exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=auth.uid() and m.role::text in ('owner','admin','manager')) or private.has_company_feature(cid,'can_manage_invoices') is not true then raise exception 'invoice_revision_not_allowed';end if;
+ lock table document_adjustment_private.occurrences in share mode;
+ lock table document_adjustment_private.rollout in share mode;
+ lock table document_adjustment_private.template_versions in share mode;
+ lock table document_adjustment_private.templates in share mode;
+ lock table private.expense_amount_consumptions in share mode;
+ lock table private.expense_claims in share mode;
+ lock table private.expense_settlement_choices in share mode;
+ lock table private.route_billing_quantity_evidence in share mode;
+ lock table private.route_billing_quantity_requests in share mode;
+ lock table private.route_journey_captures in share mode;
+ lock table private.route_journey_visit_events in share mode;
+ lock table private.route_visit_reports in share mode;
+ lock table public.attendance_entries in share mode;
+ lock table public.attendance_verifications in share mode;
+ lock table public.companies in share mode;
+ lock table public.company_members in share mode;
+ lock table public.customers in share mode;
+ lock table public.daily_report_workers in share mode;
+ lock table public.daily_reports in share mode;
+ lock table public.invoice_approval_audit in share mode;
+ lock table public.invoice_approvals in share mode;
+ lock table public.invoices in share mode;
+ lock table public.route_stops in share mode;
+ lock table public.site_calculation_source_preferences in share mode;
+ lock table public.site_financial_settings in share mode;
+ lock table public.sites in share mode;
+ lock table public.trade_companies in share mode;
+ lock table public.trade_company_contracts in share mode;
+ -- Reauthorizes after waiting; VOLATILE reads use current READ COMMITTED snapshots.
+ return invoice_correction_preview_private.preview(p_invoice_id);
+end $locked$;
+revoke all on function invoice_correction_preview_private.locked_preview(uuid) from public,anon,authenticated,service_role;
