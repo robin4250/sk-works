@@ -24,3 +24,20 @@ test('both registered and requesting devices sign the same intent before one ato
   assert.match(results.find(Boolean),/^[0-9a-f]{64}$/);
   assert.equal(await issueDualProofApproval({...args,session:'00000000-0000-0000-0000-000000000006'}),null);
 });
+
+test('security counterexample: approver signature is transferable across active owner sessions',async()=>{
+  const old=generateKeyPairSync('ec',{namedCurve:'prime256v1'}),fresh=generateKeyPairSync('ec',{namedCurve:'prime256v1'}),now=1700000000000;
+  const actor='00000000-0000-0000-0000-000000000002';
+  const sessionA='00000000-0000-0000-0000-000000000003',sessionB='00000000-0000-0000-0000-000000000006';
+  const pem=fresh.publicKey.export({type:'spki',format:'pem'});
+  const intent={id:'00000000-0000-0000-0000-000000000001',actor,requesterSession:'00000000-0000-0000-0000-000000000005',deviceKeyHash:createHash('sha256').update(pem).digest('hex'),deviceType:'ipad',nonce:'b'.repeat(64),createdMs:now,expiresMs:now+120000,consumed:false};
+  const device={id:'00000000-0000-0000-0000-000000000004',actor,active:true,publicKeyPem:old.publicKey.export({type:'spki',format:'pem'})};
+  const payload=approvalPayload(intent,device);
+  const approvingSignature=sign('sha256',payload,old.privateKey),newSignature=sign('sha256',Buffer.concat([Buffer.from('sko-master-new-device-proof-v1\n'),payload]),fresh.privateKey);
+  // Session B did not ask the trusted device to sign; it obtains the same signed
+  // intent. Both adapters model an otherwise fresh, eligible server state.
+  const adapter={loadTrustedContext:async({session})=>({sessionActive:true,master:true,sessionActor:actor,sessionId:session,intent,device}),claimVerifiedApproval:async()=>true};
+  const args={adapter,actor,intentId:intent.id,deviceId:device.id,approvingSignature,newPublicKeyPem:pem,newSignature,nowMs:now+1};
+  assert.ok(await issueDualProofApproval({...args,session:sessionA}));
+  assert.ok(await issueDualProofApproval({...args,session:sessionB}));
+});
