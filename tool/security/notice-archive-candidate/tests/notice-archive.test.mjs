@@ -76,6 +76,37 @@ test('archive alone cannot establish ancestry of a higher signed anchor; authori
  assert.equal((await f.call('store',fork)).status,200);
 });
 
+test('strict archive checks signed continuity, rejects forks and allows exact retry',async t=>{
+ const f=await fixture(t),first=createBatch(f);
+ first.auditExtension=[first.audit];
+ assert.equal((await f.call('store-strict',first)).status,200);
+ const firstHash=sha(JSON.stringify(first.manifest));
+ const fork=createBatch(f,{seq:2,previous:firstHash,anchorSeq:2,previousAudit:'f'.repeat(64)});
+ fork.auditExtension=[fork.audit];
+ const before=await(await f.call('snapshot')).json();
+ assert.equal((await f.call('store-strict',fork)).status,409);
+ assert.deepEqual(await(await f.call('snapshot')).json(),before);
+ const next=createBatch(f,{seq:2,previous:firstHash,anchorSeq:2,previousAudit:first.audit.hash});
+ assert.equal((await f.call('store-strict',{...next,auditExtension:[]})).status,409);
+ const changed=structuredClone(next.audit);changed.body=changed.body.replace('retention_expired','changed');
+ assert.equal((await f.call('store-strict',{...next,auditExtension:[changed]})).status,409);
+ assert.equal((await f.call('store-strict',{...next,auditExtension:[next.audit]})).status,200);
+ assert.equal((await(await f.call('store-strict',{...next,auditExtension:[]})).json()).replayed,true);
+});
+
+test('strict archive accepts complete intermediate history but rejects missing or reordered rows',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('store-strict',{...first,auditExtension:[first.audit]})).status,200);
+ const previous=sha(JSON.stringify(first.manifest));
+ const intermediate=createBatch(f,{seq:2,previous,anchorSeq:2,previousAudit:first.audit.hash});
+ const last=createBatch(f,{seq:2,previous,anchorSeq:3,previousAudit:intermediate.audit.hash});
+ for(const rows of [[last.audit],[last.audit,intermediate.audit],[intermediate.audit]]){
+  assert.equal((await f.call('store-strict',{...last,auditExtension:rows})).status,409);
+ }
+ const results=await Promise.all([f.call('store-strict',{...last,auditExtension:[intermediate.audit,last.audit]}),f.call('store-strict',{...last,auditExtension:[intermediate.audit,last.audit]})]);
+ assert.ok(results.some(r=>r.status===200));
+ const state=await(await f.call('snapshot')).json();assert.equal(state.rows.length,2);assert.equal(state.state[0].anchor_sequence,3);
+});
+
 test('stale signed authority receipt is not evidence of a fresh head',async t=>{
  const f=await fixture(t),first=createBatch(f);
  assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
