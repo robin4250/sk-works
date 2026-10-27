@@ -37,6 +37,6 @@ jobs:
         with:
           name: payroll-common-income-display
           path: |
-            build/pdf-fixtures/payroll_common_income_evidence.pdf
-            build/pdf-fixtures/payroll_common_income_evidence.pdf.png
+            build/pdf-fixtures/payroll_common_income_evidence*.pdf
+            build/pdf-fixtures/payroll_common_income_evidence*.pdf.png
           if-no-files-found: warn

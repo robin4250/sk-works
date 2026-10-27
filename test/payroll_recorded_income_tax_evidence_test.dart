@@ -24,6 +24,36 @@ void main() {
     expect(read(detail), endsWith('乙欄'));
     expect(read(detail), isNot(contains('扶養')));
   });
+  test('complete saved basis exposes the actual subtraction and table lookup', () {
+    final detail = saved();
+    final before = jsonEncode(detail);
+    final result = recordedPayrollIncomeTaxEvidence(detail, month: '2026-09-01', displayedAmount: 7020);
+    expect(result.calculationLines, [
+      '所得税対象額：支給額 420,000円 − 非課税額 0円 − 社会保険料等 63,400円 − その他社会保険料等控除 0円 ＝ 356,600円',
+      '令和8年月額表：甲欄・扶養2人、対象 356,600円 → 自動計算 7,020円',
+    ]);
+    expect(jsonEncode(detail), before);
+    final tax = detail['tax_calculation'] as Map;
+    tax['income_tax_yen'] = 8000;
+    tax['deduction_overrides'] = {'income_tax': 8000};
+    expect(recordedPayrollIncomeTaxEvidence(detail, month: '2026-09-01', displayedAmount: 8000)
+        .calculationLines.last, endsWith('自動計算 7,020円／手動修正後 8,000円'));
+    (tax['conditions'] as Map)['income_mode'] = 'otsu';
+    expect(recordedPayrollIncomeTaxEvidence(detail, month: '2026-09-01', displayedAmount: 8000)
+        .calculationLines.last, contains('乙欄・従たる給与の申告扶養2人'));
+  });
+  test('missing saved operands never invent an actual formula', () {
+    for (final key in ['gross_with_adjustments', 'social_yen', 'income_tax_base_yen']) {
+      final detail = saved();
+      (detail['tax_calculation'] as Map).remove(key);
+      expect(recordedPayrollIncomeTaxEvidence(detail, month: '2026-09-01', displayedAmount: 7020)
+          .calculationLines, isEmpty);
+    }
+    final detail = saved();
+    ((detail['tax_calculation'] as Map)['conditions'] as Map).remove('non_taxable_yen');
+    expect(recordedPayrollIncomeTaxEvidence(detail, month: '2026-09-01', displayedAmount: 7020)
+        .calculationLines, isEmpty);
+  });
   test('explicit fixed and override values are distinguished from automatic results', () {
     final detail = saved();
     final tax = detail['tax_calculation'] as Map;

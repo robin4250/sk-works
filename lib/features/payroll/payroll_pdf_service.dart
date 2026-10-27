@@ -246,6 +246,8 @@ class PayrollPdfService {
     final leaveAllocation = _monthlyPaidLeaveAllocationNote(detail);
     final evidenceMonth = '${statement.periodStart.year.toString().padLeft(4, '0')}-${statement.periodStart.month.toString().padLeft(2, '0')}-01';
     final insuranceEvidence = PayrollInsuranceCalculationEvidence.fromDetail(detail, month: evidenceMonth);
+    final incomeEvidence = recordedPayrollIncomeTaxEvidence(detail, month: evidenceMonth,
+        displayedAmount: (_asNumber(detail['所得税']) ?? 0).abs());
     final payType = _payTypeLabel(detail);
     return pw.Container(
       width: 559.275590551,
@@ -616,10 +618,10 @@ class PayrollPdfService {
                 child: text(leaveAllocation, size: 7),
               ),
             ),
-          if (pageIndex == 0 && !insuranceEvidence.isEmpty)
+          if (pageIndex == 0 && (!insuranceEvidence.isEmpty || incomeEvidence.calculationLines.isNotEmpty))
             at(20, leaveAllocation.isEmpty ? 655 : 672, width,
               leaveAllocation.isEmpty ? 68 : 55,
-              _insuranceEvidenceBox(insuranceEvidence, blue, paleBlue)),
+              _insuranceEvidenceBox(insuranceEvidence, blue, paleBlue, incomeEvidence.calculationLines)),
           at(
             20,
             731.88976378,
@@ -1052,18 +1054,20 @@ class PayrollPdfService {
   }
 
   static pw.Widget _insuranceEvidenceBox(PayrollInsuranceCalculationEvidence evidence,
-      PdfColor accent, PdfColor pale) => pw.Container(
+      PdfColor accent, PdfColor pale, List<String> incomeCalculationLines) => pw.Container(
     padding: const pw.EdgeInsets.all(2),
     decoration: pw.BoxDecoration(color: pale,
       border: pw.Border.all(color: accent, width: .4),
       borderRadius: pw.BorderRadius.circular(3)),
     child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-      pw.Text('保険料の計算根拠（保存値・端数処理後／平均との採用関係は未記録）',
+      pw.Text(evidence.isEmpty ? '所得税の計算根拠（この明細の保存値）'
+        : '保険料の計算根拠（保存値・端数処理後／平均との採用関係は未記録）',
         style: pw.TextStyle(fontSize: 5.4, fontWeight: pw.FontWeight.bold, color: accent)),
       pw.SizedBox(height: .5),
-      pw.Text(evidence.referenceText, style: const pw.TextStyle(fontSize: 5)),
+      if (!evidence.isEmpty)
+        pw.Text(evidence.referenceText, style: const pw.TextStyle(fontSize: 5)),
       for (var i = 0; i < evidence.rows.length; i += 2)
-        pw.SizedBox(height: 10, child: pw.Row(children: [
+        pw.SizedBox(height: incomeCalculationLines.isEmpty ? 10 : 8, child: pw.Row(children: [
           for (var j = i; j < i + 2 && j < evidence.rows.length; j++)
             pw.Expanded(child: pw.Padding(
               padding: const pw.EdgeInsets.only(top: .6, right: 4),
@@ -1073,6 +1077,8 @@ class PayrollPdfService {
             )),
           if (i + 1 == evidence.rows.length) pw.Expanded(child: pw.SizedBox()),
         ])),
+      for (final line in incomeCalculationLines)
+        pw.Text(line, style: const pw.TextStyle(fontSize: 5.2)),
     ]),
   );
 
