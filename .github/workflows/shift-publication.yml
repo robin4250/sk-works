@@ -1,0 +1,38 @@
+name: Shift publication candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/shift-draft-candidate/**'
+      - '.github/workflows/shift-publication.yml'
+permissions:
+  contents: read
+jobs:
+  storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGPASSWORD: fixture
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          psql -v ON_ERROR_STOP=1 -f docs/review/shift-draft-candidate/shift-fixture.sql
+          psql -v ON_ERROR_STOP=1 -f docs/review/shift-draft-candidate/require-session.fixture.sql
+          psql -v ON_ERROR_STOP=1 -f docs/review/shift-draft-candidate/shift-draft-storage.sql.review-only
+          psql -v ON_ERROR_STOP=1 -f docs/review/shift-draft-candidate/shift-storage-test.sql
+          psql -v ON_ERROR_STOP=1 -f docs/review/shift-draft-candidate/shift-publish.sql.review-only
+          psql -v ON_ERROR_STOP=1 -f docs/review/shift-draft-candidate/shift-publish-test.sql
