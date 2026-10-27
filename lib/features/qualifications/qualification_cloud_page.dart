@@ -10,6 +10,8 @@ import 'qualification_cloud_repository.dart';
 import 'qualification_send_page.dart';
 import 'qualification_certificate_page.dart';
 import 'qualification_certificate_repository.dart';
+import 'qualification_record_management_repository.dart';
+import 'qualification_record_management_page.dart';
 import '../shared/resource_registration_card.dart';
 
 class QualificationCloudPage extends StatefulWidget {
@@ -37,6 +39,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   bool _canManageWorkerQualifications = false;
   bool _showExpiringOnly = false;
   bool _canEditCertificates = false;
+  bool _canChangeRegisteredQualifications = false;
+  Map<String,dynamic>? _pendingManagement;
+  String? _managementCompanyId;
   late final QualificationCertificateRepository? _certificateRepository;
   String _workerQuery = '';
   String _qualificationQuery = '';
@@ -77,6 +82,23 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         _certificateRepository?.canManageCertificates() ?? Future.value(false),
       ]);
       final data = values[0] as Map<String, dynamic>;
+      var canChangeRegistered = false;
+      Map<String,dynamic>? managementPending;
+      String? managementCompanyId;
+      final probe = values[2] == true ? QualificationRecordManagementRepository.maybeCreate() : null;
+      if (probe != null) {
+        try {
+          final membership = await repository.membership();
+          canChangeRegistered = await probe.available(membership.companyId);
+          managementPending = await probe.pending(membership.companyId);
+          managementCompanyId = membership.companyId;
+        } catch (_) {
+          // Unknown/absent management contract never enables an edit route.
+          canChangeRegistered = false;
+        } finally {
+          await probe.dispose();
+        }
+      }
       if (!mounted) return;
       setState(() {
         _masters = List<Map<String, dynamic>>.from(data['masters'] as List);
@@ -85,6 +107,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         _canManageMaster = values[1] as bool;
         _canManageWorkerQualifications = values[2] as bool;
         _canEditCertificates = values[3] as bool;
+        _canChangeRegisteredQualifications = canChangeRegistered;
+        _pendingManagement = managementPending;
+        _managementCompanyId = managementCompanyId;
         _loading = false;
         _error = null;
       });
@@ -185,6 +210,15 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       body: SafeArea(
         child: Column(
           children: [
+            if (_pendingManagement != null && _managementCompanyId != null)
+              Card(child: ListTile(title: const Text('資格の保存結果が未確認です'),
+                subtitle: const Text('同じ操作の結果を確認してください。'),
+                trailing: TextButton(onPressed: () async {
+                  await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => QualificationRecordManagementPage(
+                    companyId: _managementCompanyId!, targetId: _pendingManagement!['target_id'] as String,
+                    workerName: '資格情報', qualificationName: '保存結果の再確認')));
+                  if (mounted) await _load();
+                }, child: const Text('再確認')))),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
               child: TextField(
@@ -753,7 +787,17 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                       signedResourceAttachment(label: photo.label, path: photo.path,
                         signedUrl: detailSignedUrl),
                   ]), child: const Text('すべての添付を確認')),
-              if (_canManageWorkerQualifications)
+              if (_canManageWorkerQualifications && _canChangeRegisteredQualifications) ...[
+                OutlinedButton.icon(onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _openRecordChange(row, master, worker);
+                }, icon: const Icon(Icons.edit_outlined), label: const Text('登録情報を編集')),
+                OutlinedButton.icon(onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _openRecordChange(row, master, worker, delete: true);
+                }, icon: const Icon(Icons.delete_outline), label: const Text('資格を削除')),
+              ],
+              if (_canManageWorkerQualifications && !_canChangeRegisteredQualifications)
                 OutlinedButton.icon(
                   onPressed: () async {
                     Navigator.pop(sheetContext);
@@ -768,6 +812,25 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _openRecordChange(Map<String, dynamic> row,
+    Map<String, dynamic>? master, Map<String, dynamic>? worker, {bool delete = false}) async {
+    try {
+      final repository = _repository;
+      final actor = repository?.currentUserId;
+      if (repository == null || actor == null) throw StateError('ログインを確認してください。');
+      final membership = await repository.membership();
+      if (!mounted || repository.currentUserId != actor) return;
+      await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => QualificationRecordManagementPage(
+        companyId: membership.companyId, targetId: row['id'] as String,
+        workerName: worker?['name']?.toString() ?? '従業員',
+        qualificationName: master?['name']?.toString() ?? '資格', delete: delete)));
+      if (mounted) await _load();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('資格変更申請を開けません。ログインと権限を確認してください。')));
+    }
   }
 
   Future<void> _delete(String id) async {
