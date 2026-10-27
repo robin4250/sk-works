@@ -37,7 +37,7 @@ void main(){
     expect(jsonDecode(persisted),ref);
     await f.repository.dispose();f.recreate();f.losePrepareReply=false;
     expect((await f.repository.recover('company'))['request_id'],ref!['request_id']);
-    expect(f.preparedIds,hasLength(1),'recovery needs no personal payload on the client');
+    expect(f.preparedIds,hasLength(1),reason:'recovery needs no personal payload on the client');
     expect(f.serverCommand!['expected_snapshot'],_Fixture.snapshot);
     expect(await f.repository.pending('company'),isNull);
   });
