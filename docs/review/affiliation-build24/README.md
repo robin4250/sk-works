@@ -23,3 +23,9 @@ YESは既存の会社間連携の申請・承認条件を守る。取引先登�
 ## 候補の範囲
 
 transition_plan.mjs は隔離されたオフライン計画部品。証拠refの中身を検証せず、認可・予約・DB変更は一切しない。合成テストは計画の不変条件のみを確認する。実スキーマ、RPC、UI、権限書換、PDF生成、実本人承認、履歴保存、CI・本番・実機は未完成。rootへの事前報告なく共有schema/認証ファイルを編集していない。
+
+## 隔離申請ledger追加（未導入）
+
+`sql/request-ledger.sql.review-only` は私有schema内だけに作成。既存認証helper・元会社管理者・workerとcompanyとpartnerの一致・既存5gateの共有ロック・正規証拠4種を照合し、10分のprepared申請を保存する。planは変更/削除不可、applied化は未実装のため拒否する。同一申請は同じactor/session/planでのみ再利用可能。証拠テーブルへの公開入力APIも実行権もないため、実本人同意/代表確認/PDF receipt発行のadapterが完成するまでは利用できない。
+
+テストの認証helperは合成fixtureの代役。実GoTrue・DB同時操作・実所属切替・時間指定実行・復旧・全APIの会社休止制御は未検証/未実装。prepared申請の取消は履歴を保持するが、適用後の巻戻し処理はない。本番は変更していない。
