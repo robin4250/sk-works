@@ -6,7 +6,9 @@ const root=resolve(process.env.SKO_ADJUSTMENT_ROOT);
 let wrapper=await readFile(resolve(process.env.SKO_PREVIEW_WRAPPER),'utf8');
 const checkSql=await readFile(process.env.SKO_MONTH_CLOSE_SQL,'utf8');
 const guardedSql=await readFile(process.env.SKO_GUARDED_SQL,'utf8');
-const declarations=`const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};\n`;
+const approvalSql=await readFile(process.env.SKO_APPROVAL_SQL,'utf8');
+const ensureApprovals=await readFile(resolve(root,'supabase/tests/fixtures/trade_document_adjustments_20261026/private.ensure_invoice_approval_rows.sql'),'utf8');
+const declarations=`const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};const approvalSql=${JSON.stringify(approvalSql)};const ensureApprovals=${JSON.stringify(ensureApprovals)};\n`;
 const injection=`
 // Synthetic past month: reuse existing real refresh/preview and frozen snapshot.
 await db.exec("alter table public.attendance_entries add column if not exists source_report_id uuid;alter table public.attendance_verifications add column if not exists id uuid;alter table public.attendance_verifications add column if not exists worker_id uuid;alter table public.attendance_verifications add column if not exists site_id uuid;alter table public.attendance_verifications add column if not exists work_date date;alter table public.attendance_verifications add column if not exists confirmed_at timestamptz;alter table public.attendance_verifications add column if not exists daily_report_id uuid;alter table public.attendance_verifications add column if not exists route_assignment_id uuid;alter table public.daily_reports add column if not exists site_id uuid;alter table public.daily_reports add column if not exists report_date date;alter table public.daily_reports add column if not exists status text;alter table public.daily_reports add column if not exists signed_at timestamptz;alter table public.daily_reports add column if not exists representative_signature_json jsonb;alter table public.daily_reports add column if not exists supervisor_signature_json jsonb;alter table public.daily_reports add column if not exists route_assignment_id uuid;alter table public.daily_report_workers add column if not exists worker_id uuid;");
@@ -30,11 +32,33 @@ await db.query('insert into private.fixture_route_source values($1,$2,$3,$4,true
 await db.exec(\${JSON.stringify(closeSql)});await db.exec(\${JSON.stringify(guardedSql)});
 const readiness=async()=>(await db.query('select invoice_month_close_candidate.guarded($1) v',[frozen.id])).rows[0].v;
 assert.equal(await readiness(),'ready');
-await addExtras();assert.equal(await readiness(),'data_changed');
+// Real approval mutation contract, isolated and rolled back after verification.
+await db.exec("create table public.invoice_approvers(company_id uuid,user_id uuid,position integer);alter table public.invoice_approvals add column company_id uuid;alter table public.invoice_approvals add column approver_user_id uuid;alter table public.invoice_approvals add column position integer;alter table public.invoice_approvals add column approved_at timestamptz;create unique index fixture_invoice_approval_unique on public.invoice_approvals(invoice_id,approver_user_id);alter table public.invoice_approval_audit add column actor_user_id uuid;alter table public.invoice_approval_audit add column action text;");
+await db.exec(\${JSON.stringify(ensureApprovals)});await db.exec(\${JSON.stringify(approvalSql)});
+await db.query('insert into public.invoice_approvers values($1,$2,1)',[company,actor]);await db.query('select private.ensure_invoice_approval_rows($1)',[frozen.id]);
+await db.query('begin');assert.equal((await db.query('select invoice_month_close_candidate.approve($1) v',[frozen.id])).rows[0].v,true);
+assert.equal((await db.query("select count(*)::int n from public.invoice_approvals where invoice_id=$1 and status='approved'",[frozen.id])).rows[0].n,1);
+assert.equal((await db.query("select count(*)::int n from public.invoice_approval_audit where invoice_id=$1 and action='approved'",[frozen.id])).rows[0].n,1);await db.query('rollback');
+assert.equal((await db.query("select count(*)::int n from public.invoice_approvals where invoice_id=$1 and status='pending'",[frozen.id])).rows[0].n,1);
+await addExtras();assert.equal(await readiness(),'data_changed');await assert.rejects(db.query('select invoice_month_close_candidate.approve($1)',[frozen.id]),/invoice_not_ready/);
+assert.equal((await db.query("select count(*)::int n from public.invoice_approvals where invoice_id=$1 and status='pending'",[frozen.id])).rows[0].n,1);
 await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date in ('2020-10-25','2020-10-27')",[company,site]);
 await db.query("update daily_reports set status='draft' where id=$1",[id(900)]);assert.equal(await readiness(),'report_pending');
+await assert.rejects(db.query('select invoice_month_close_candidate.approve($1)',[frozen.id]),/invoice_not_ready/);
+await db.query("update daily_reports set status='signed' where id=$1",[id(900)]);
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ const {connectFixture}=await import(process.argv[2]);const writer=await connectFixture();
+ try{
+  await writer.query('begin');await writer.query("update attendance_entries set overtime_hours=2 where company_id=$1 and site_id=$2 and work_date='2020-10-22'",[company,site]);
+  await assert.rejects(db.query('select invoice_month_close_candidate.approve($1)',[frozen.id]),/lock timeout/);
+  await writer.query('rollback');
+  assert.equal((await db.query("select count(*)::int n from public.invoice_approvals where invoice_id=$1 and status='pending'",[frozen.id])).rows[0].n,1);
+  assert.equal((await db.query('select count(*)::int n from public.invoice_approval_audit where invoice_id=$1',[frozen.id])).rows[0].n,0);
+  console.log(JSON.stringify({fixture_approval_writer_conflict_fails_closed:true,fixture_approval_no_partial_write:true}));
+ }finally{await writer.query('rollback').catch(()=>{});await writer.end();}
+}
 assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
-console.log(JSON.stringify({real_refresh_preview_gate_readiness:true,matching_snapshot_ready:true,late_extra_work_rejected:true,old_report_pending_rejected:true,original_invoice_unchanged:true,route_source_stub:true,approval_not_connected:true}));
+console.log(JSON.stringify({real_refresh_preview_gate_readiness:true,matching_snapshot_ready:true,late_extra_work_rejected:true,old_report_pending_rejected:true,original_invoice_unchanged:true,route_source_stub:true,candidate_approval_ready_and_rollback:true,actual_public_approval_unchanged:true}));
 `;
 const marker='console.log(JSON.stringify({invoice_correction_preview:true';assert.equal(wrapper.split(marker).length,2);
 wrapper=wrapper.replaceAll('2026-10-','2020-10-').replace("const original=await readFile(originalPath,'utf8');","const original=(await readFile(originalPath,'utf8')).replaceAll('2026-10-','2020-10-');").replace("const marker='let checks=0;'",()=>declarations+"const marker='let checks=0;'").replace(marker,()=>injection+marker);
