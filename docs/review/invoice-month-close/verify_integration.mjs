@@ -23,9 +23,9 @@ const ensureApprovals=await readFile(resolve(root,'supabase/tests/fixtures/trade
 const liveApprove=await readFile(resolve(root,'supabase/tests/fixtures/trade_document_adjustments_20261026/public.approve_invoice.sql'),'utf8');
 const approvalMigration=await readFile(resolve(root,'supabase/migrations/20261007221757_invoice_stamp_policy_and_approval_history.sql'),'utf8');
 const cancelStart=approvalMigration.indexOf('create or replace function public.cancel_invoice_approval(');
-const cancelEnd=approvalMigration.indexOf('end; $;',cancelStart);
+const cancelEnd=approvalMigration.indexOf('end; $$;',cancelStart);
 assert.ok(cancelStart>=0 && cancelEnd>cancelStart);
-const cancelSql=approvalMigration.slice(cancelStart,cancelEnd+'end; $;'.length);
+const cancelSql=approvalMigration.slice(cancelStart,cancelEnd+'end; $$;'.length);
 const declarations=`const cancelSql=${JSON.stringify(cancelSql)};const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};const approvalSql=${JSON.stringify(approvalSql)};const approverCore=${JSON.stringify(approverCore)};const noticeSql=${JSON.stringify(noticeSql)};const noticeReadiness=${JSON.stringify(noticeReadiness)};const deliverySql=${JSON.stringify(deliverySql)};const entrySql=${JSON.stringify(entrySql)};const approvalGuard=${JSON.stringify(approvalGuard)};const publicEntry=${JSON.stringify(publicEntry)};const legacyNoticeGuard=${JSON.stringify(legacyNoticeGuard)};const enqueueBody=${JSON.stringify(enqueueBody)};const liveApprove=${JSON.stringify(liveApprove)};const ensureApprovals=${JSON.stringify(ensureApprovals)};\n`;
 const injection=`
 // Synthetic past month: reuse existing real refresh/preview and frozen snapshot.
