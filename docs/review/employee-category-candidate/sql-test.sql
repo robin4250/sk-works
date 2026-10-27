@@ -3,6 +3,7 @@ select public.ensure_employee_categories('10000000-0000-0000-0000-000000000001')
 select public.ensure_employee_categories('10000000-0000-0000-0000-000000000001');
 do $$ declare cid uuid:='10000000-0000-0000-0000-000000000001'; wid uuid:='30000000-0000-0000-0000-000000000001'; category uuid; payload jsonb; result jsonb; begin
  assert (select count(*) from employee_category_private.categories where company_id=cid)=3, 'defaults must be idempotent';
+ assert not exists(select 1 from employee_category_private.assignments), 'opening setup must not assign existing employees';
  select id into category from employee_category_private.categories where company_id=cid and name='正社員';
  perform private.apply_worker_personnel_payload(wid,jsonb_build_object('name','合成社員','family_members','[]'::jsonb),auth.uid());
  payload:=private.worker_personnel_payload(wid)||jsonb_build_object('employee_category_id',category);
@@ -35,6 +36,28 @@ do $$ declare req uuid; r jsonb; begin
  r:=public.decide_worker_personnel_change(req,true);
  assert r->>'status'='approved';
  assert (private.employee_personnel_view('10000000-0000-0000-0000-000000000001')#>>'{records,0,employeeCategoryName}')='派遣社員';
+end $$;
+
+-- An archived category remains the employee's saved category; selecting a
+-- different archived category must not revive it or silently clear the current one.
+do $$ declare cid uuid:='10000000-0000-0000-0000-000000000001'; wid uuid:='30000000-0000-0000-0000-000000000001'; current_id uuid; other_id uuid; payload jsonb; result jsonb; before_audit bigint; begin
+ select category_id into current_id from employee_category_private.assignments where worker_id=wid;
+ select id into other_id from employee_category_private.categories where company_id=cid and name='アルバイト';
+ update employee_category_private.categories set active=false where id in(current_id,other_id);
+ select count(*) into before_audit from employee_category_private.audit;
+ payload:=private.worker_personnel_payload(wid);
+ result:=public.save_worker_personnel_profile(wid,payload);
+ assert result->>'status'='unchanged','unchanged archived category rejected';
+ assert (select category_id from employee_category_private.assignments where worker_id=wid)=current_id,'archived assignment lost';
+ begin
+  perform public.save_worker_personnel_profile(wid,payload||jsonb_build_object('employee_category_id',other_id));
+  raise exception 'different archived category accepted';
+ exception when raise_exception then
+  if sqlerrm='different archived category accepted' then raise; end if;
+ end;
+ assert (select count(*) from employee_category_private.audit)=before_audit,'rejected category changed audit';
+ assert (select category_id from employee_category_private.assignments where worker_id=wid)=current_id,'rejected category changed assignment';
+ update employee_category_private.categories set active=true where id in(current_id,other_id);
 end $$;
 
 -- Real session helper: reject foreign, revoked, anonymous and banned sessions.
