@@ -1305,6 +1305,11 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
               final canApprove = approvals.any(
                 (item) => item.canCurrentUserApprove,
               );
+              final actorId = SupabaseBackend.isInitialized
+                  ? SupabaseBackend.client.auth.currentUser?.id : null;
+              final isPendingApprover = actorId != null && approvals.any(
+                (item) => item.userId == actorId && item.status == 'pending',
+              );
               return Column(
                 children: [
                   if (previewData.missingAcceptanceCount == 0 &&
@@ -1352,7 +1357,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         ],
                       ),
                     ),
-                  if (canApprove)
+                  if (isPendingApprover)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
                       // Fail closed until the server exposes a revision-bound,
