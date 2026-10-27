@@ -8,9 +8,13 @@ const wrapper=await readFile(resolve('docs/review/invoice-correction-preview/ver
 const stage=await readFile(resolve(version,'revision.sql.review-only'),'utf8');
 const hold=await readFile(resolve(version,'legacy-retirement.sql.review-only'),'utf8');
 const shadow=await readFile(resolve(version,'private-switch.sql.review-only'),'utf8');
-const stageDecl=`const stageCandidate=${JSON.stringify(stage)};const holdCandidate=${JSON.stringify(hold)};const shadowCandidate=${JSON.stringify(shadow)};\n`;
+const actualTriggers=await readFile(resolve('docs/review/invoice-correction-preview/integration_trigger_bodies.sql.review-only'),'utf8');
+const stageDecl=`const stageCandidate=${JSON.stringify(stage)};const holdCandidate=${JSON.stringify(hold)};const shadowCandidate=${JSON.stringify(shadow)};const actualTriggers=${JSON.stringify(actualTriggers)};\n`;
 const injection=`
-await db.exec("create table public.invoice_approvers(company_id uuid,user_id uuid,position smallint); create table public.app_notifications(id uuid);");
+await db.exec("create table public.invoice_approvers(company_id uuid,user_id uuid,position smallint);create table public.app_notifications(id uuid primary key default gen_random_uuid(),company_id uuid,recipient_user_id uuid,kind text,title text,body text,action_key text,action_id uuid);create table private.invoice_number_counters(company_id uuid primary key,last_number bigint,updated_at timestamptz);alter table public.invoices add column invoice_number text;alter table public.invoices add column issue_date date;alter table public.invoice_approvals add column company_id uuid;alter table public.invoice_approvals add column approver_user_id uuid;alter table public.invoice_approvals add column position integer;create unique index fixture_approval_unique on public.invoice_approvals(invoice_id,approver_user_id);");
+await db.exec(\${JSON.stringify(actualTriggers)});
+await db.exec('create trigger fixture_actual_invoice_approval after insert or update on public.invoices for each row execute function private.invoice_approval_rows_trigger();create trigger fixture_actual_invoice_number before insert or update on public.invoices for each row execute function private.assign_invoice_number_and_issue_date();');
+const originalWithTriggers=(await db.query('select * from invoices where id=$1',[frozen.id])).rows[0];
 await db.query('insert into public.invoice_approvers values($1,$2,1)',[company,actor]);
 await db.exec(\${JSON.stringify(stageCandidate)});await db.exec(\${JSON.stringify(holdCandidate)});await db.exec(\${JSON.stringify(shadowCandidate)});
 await db.exec('update invoice_revision_candidate.settings set enabled=true;update invoice_revision_candidate.shadow_switch_settings set enabled=true');
@@ -32,7 +36,7 @@ const result=(await callShadow()).rows[0].v;assert.equal(result.status,'private_
 assert.equal((await callShadow()).rows[0].v.replayed,true);
 assert.equal((await db.query('select count(*)::int n from invoice_revision_candidate.shadow_approvals where state=$1',['pending'])).rows[0].n,1);
 assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,0);
-assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
+assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],originalWithTriggers);
 console.log(JSON.stringify({fixture_real_preview_stage_gate_shadow_integrated:true,stale_rejected:true,abort_rolled_back:true,original_unchanged:true,no_notification:true,retry_idempotent:true,private_shadow_only:true}));
 `;
 const marker='console.log(JSON.stringify({invoice_correction_preview:true';assert.equal(wrapper.split(marker).length,2);
