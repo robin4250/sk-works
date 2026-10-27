@@ -41,6 +41,8 @@ export async function enrollNativeApple(input,ports){
  const afterPassword=context(await ports.loadExactContext(input.exactBearer));
  if(!same(before,afterPassword)||JSON.stringify(before.apple_subjects)!==JSON.stringify(afterPassword.apple_subjects))deny();
  const snapshotHash=await sha256Hex(JSON.stringify(before));
+ const beforeReserve=ports.now();
+ if(!Number.isSafeInteger(beforeReserve)||beforeReserve<checkedAt||beforeReserve>=credential.expiresAt||credential.issuedAt<beforeReserve-300)deny();
  // The adapter must atomically recheck live SID/deletion/account, exact Google
  // and company snapshot, native-only rollout and unconsumed token hash. It
  // reserves a verified subject for THIS UID, never by email or client-selected UID.
@@ -50,6 +52,8 @@ export async function enrollNativeApple(input,ports){
  reservation.subject!==credential.subject||reservation.token_sha256!==credential.tokenHash||reservation.status!=='reserved')deny();
  let temporaryAccess=null;let accepted=false;
  try{
+  const beforeLink=ports.now();
+  if(!Number.isSafeInteger(beforeLink)||beforeLink<beforeReserve||beforeLink>=credential.expiresAt||credential.issuedAt<beforeLink-300)deny();
   const result=await ports.linkNativeIdentity({exactBearer:input.exactBearer,idToken:input.idToken,rawNonce:input.rawNonce});
   if(!result||typeof result.access_token!=='string'||!result.access_token||result.token_type!=='bearer')deny();
   const verified=await ports.authenticateIssuedSession(result.access_token);

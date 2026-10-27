@@ -51,7 +51,7 @@ export async function verifyAppleCredential({idToken, rawNonce, audiences, now, 
       encoder.encode(parts[0] + '.' + parts[1]))) deny();
   } catch { return deny(); }
   return Object.freeze({subject:claims.sub, audience:claims.aud,
-    tokenHash:await sha256Hex(idToken)});
+    tokenHash:await sha256Hex(idToken), expiresAt:claims.exp, issuedAt:claims.iat});
 }
 export async function loginRegisteredApple(input, ports) {
   if (ports.enabled !== true) deny();
