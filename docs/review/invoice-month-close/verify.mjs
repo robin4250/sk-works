@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 const {PGlite}=await import(process.argv[2]);const db=new PGlite();
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const [company,customer,site,worker,invoice,early,late,outEarly,outLate,reportEarly,reportLate,otherCustomer,otherSite]=Array.from({length:13},(_,i)=>id(i+1));
-await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create function auth.uid() returns uuid language sql as $$select null::uuid$$;
+await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
 create table public.invoices(id uuid primary key,company_id uuid,customer_id uuid,billing_period_start date,billing_period_end date,calculation_blocked boolean default false,snapshot jsonb default '{}',subtotal integer default 10,tax integer default 1,welfare_amount integer default 0,grand_total integer default 11);
 create table public.sites(id uuid primary key,company_id uuid,customer_id uuid);
 create table public.attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,site_id uuid,work_date date,event_type text,confirmed_at timestamptz,source_clock_in_id uuid,daily_report_id uuid,route_assignment_id uuid);
@@ -80,6 +80,7 @@ console.log(JSON.stringify({production_route_source_body:true,production_route_b
 // Review-only notification intent, no enqueue or external delivery.
 await db.exec("alter table public.invoices add column updated_at timestamptz default now();create table public.company_members(company_id uuid,user_id uuid);create table public.invoice_approvals(invoice_id uuid,company_id uuid,approver_user_id uuid,status text);");
 await db.query('insert into public.company_members values($1,$2)',[company,worker]);await db.query("insert into public.invoice_approvals values($1,$2,$3,'pending')",[invoice,company,worker]);
+await db.exec("create function private.require_reauthentication_session() returns uuid language sql as $$select nullif(current_setting('test.sid',true),'')::uuid$$;");
 await db.exec(await readFile(process.env.SKO_NOTICE_SQL,'utf8'));
 const notice=()=>db.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker]);
 await assert.rejects(notice(),/notice_disabled/);await db.exec('update invoice_month_close_candidate.notice_settings set enabled=true');
@@ -89,7 +90,16 @@ await db.query("select set_config('test.notice_status','pending',false)");await 
 await db.query("select set_config('test.notice_status','ready',false)");const firstNotice=(await notice()).rows[0].v;assert.equal((await notice()).rows[0].v,firstNotice);
 assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,1);
 const current=async n=>(await db.query('select invoice_month_close_candidate.notice_current($1) v',[n])).rows[0].v;
-assert.equal(await current(firstNotice),true);await db.query("select set_config('test.notice_fp',repeat('b',64),false)");assert.equal(await current(firstNotice),false);await db.query("select set_config('test.notice_fp',repeat('a',64),false)");
+assert.equal(await current(firstNotice),true);
+await db.query("select set_config('test.uid',$1,false),set_config('test.sid',$2,false)",[worker,id(70)]);
+const issue=async()=>(await db.query('select invoice_month_close_candidate.issue_notice_ticket($1) v',[firstNotice])).rows[0].v.ticket_id;
+const use=async ticket=>(await db.query('select invoice_month_close_candidate.consume_notice_ticket($1) v',[ticket])).rows[0].v;
+let ticket=await issue();await db.query("select set_config('test.uid',$1,false)",[id(71)]);await assert.rejects(use(ticket),/notice_unavailable/);
+await db.query("select set_config('test.uid',$1,false),set_config('test.sid',$2,false)",[worker,id(72)]);await assert.rejects(use(ticket),/notice_unavailable/);
+await db.query("select set_config('test.sid',$1,false)",[id(70)]);assert.equal(await use(ticket),invoice);await assert.rejects(use(ticket),/notice_unavailable/);
+ticket=await issue();await db.query("update invoice_month_close_candidate.notice_open_tickets set expires_at=clock_timestamp()-interval '1 second' where id=$1",[ticket]);await assert.rejects(use(ticket),/notice_unavailable/);
+ticket=await issue();await db.query("update public.invoice_approvals set status='approved' where invoice_id=$1",[invoice]);await assert.rejects(use(ticket),/notice_unavailable/);await db.query("update public.invoice_approvals set status='pending' where invoice_id=$1",[invoice]);
+await db.query("select set_config('test.notice_fp',repeat('b',64),false)");assert.equal(await current(firstNotice),false);await db.query("select set_config('test.notice_fp',repeat('a',64),false)");
 await db.query("update public.invoice_approvals set status='approved' where invoice_id=$1",[invoice]);assert.equal(await current(firstNotice),false);await assert.rejects(notice(),/notice_unavailable/);
 await db.query("update public.invoice_approvals set status='pending' where invoice_id=$1",[invoice]);await db.query("update public.invoices set updated_at=updated_at+interval '1 second' where id=$1",[invoice]);
 assert.equal(await current(firstNotice),false);assert.notEqual((await notice()).rows[0].v,firstNotice);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,2);
@@ -97,8 +107,8 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
  await db.query('delete from invoice_month_close_candidate.notice_intents');const {connectFixture}=await import(process.argv[2]);const a=await connectFixture(),b=await connectFixture();
  try{const items=await Promise.all([a.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker]),b.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker])]);assert.equal(items[0].rows[0].v,items[1].rows[0].v);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,1);}finally{await a.end();await b.end();}
 }
-for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.prepare_notice(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.notice_current(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
-console.log(JSON.stringify({fixture_notice_off_by_default:true,missing_trusted_readiness_denied:true,pending_approver_checked:true,duplicate_intent_deduplicated:true,changed_revision_new_intent:true,stale_notice_rejected:true,actual_delivery_absent:true}));
+for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.issue_notice_ticket(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.consume_notice_ticket(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.prepare_notice(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.notice_current(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
+console.log(JSON.stringify({fixture_notice_off_by_default:true,missing_trusted_readiness_denied:true,pending_approver_checked:true,duplicate_intent_deduplicated:true,changed_revision_new_intent:true,recipient_session_expiry_replay_checked:true,stale_notice_rejected:true,actual_delivery_absent:true}));
 // Site-only late-change audit experiment: no invoice rewrite and no delivery.
 await db.exec(await readFile(process.env.SKO_LATE_CHANGE_SQL,'utf8'));
 await db.exec("alter table public.invoices add column approval_finalized_at timestamptz;create trigger fixture_late_change after insert or update or delete on public.attendance_entries for each row execute function invoice_month_close_candidate.record_site_attendance_change()");
