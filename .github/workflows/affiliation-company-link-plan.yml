@@ -1,0 +1,17 @@
+name: Affiliation company link planner
+on:
+  pull_request:
+    paths:
+      - 'docs/review/companylink-build24/**'
+      - '.github/workflows/affiliation-company-link-plan.yml'
+permissions:
+  contents: read
+jobs:
+  planner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test docs/review/companylink-build24/tool/company_link_plan.test.mjs
