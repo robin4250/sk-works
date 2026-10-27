@@ -14,13 +14,13 @@ await c.query(`create role anon; create role authenticated; create role service_
  alter table public.invoices enable row level security;
  grant select on public.invoices to authenticated;
  create policy old_permissive on public.invoices for select to authenticated using(true);
- insert into public.invoices values('00000000-0000-0000-0000-000000000001','old');
- insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000001','approved');`);
+ insert into public.invoices values('00000000-0000-0000-0000-000000000001','old'),('00000000-0000-0000-0000-000000000002','old2');
+ insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000001','approved'),('00000000-0000-0000-0000-000000000002','approved');`);
 await c.query(await readFile(process.argv[2],'utf8'));
 await a.query('begin');
-await a.query('select * from public.invoice_approvals for update');
+await a.query("select * from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000001' for update");
 const pid=(await b.query('select pg_backend_pid() pid')).rows[0].pid;
-const blockedUpdate=b.query("update public.invoice_approvals set status='pending'");
+const blockedUpdate=b.query("update public.invoice_approvals set status='pending' where invoice_id='00000000-0000-0000-0000-000000000001'").then(()=>null,e=>e);
 let blocked=false;
 for(let i=0;i<100;i++) {
  if((await c.query('select cardinality(pg_blocking_pids($1))>0 blocked',[pid])).rows[0].blocked){blocked=true;break;}
@@ -29,7 +29,14 @@ for(let i=0;i<100;i++) {
 assert.equal(blocked,true,'approval update must really wait on the other transaction');
 await c.query("insert into invoice_retirement_guard_candidate.holds values('00000000-0000-0000-0000-000000000001')");
 await a.query('commit');
-await blockedUpdate;
-assert.equal((await c.query('select status from public.invoice_approvals')).rows[0].status,'pending');
-console.log('PASS unsafe race reproduced: statement snapshot may permit stale old approval mutation; do not deploy');
+const blockedResult=await blockedUpdate;
+assert.match(blockedResult?.message ?? '', /invoice_retired/);
+assert.equal((await c.query("select status from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000001'")).rows[0].status,'approved');
+// Reverse order: an update already past its trigger can commit after hold.
+await a.query('begin');
+await a.query("update public.invoice_approvals set status='pending' where invoice_id='00000000-0000-0000-0000-000000000002'");
+await c.query("insert into invoice_retirement_guard_candidate.holds values('00000000-0000-0000-0000-000000000002')");
+await a.query('commit');
+assert.equal((await c.query("select status from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000002'")).rows[0].status,'pending');
+console.log('PASS: blocked update denied; earlier uncommitted update can commit after hold, so no atomic activation');
 await Promise.all(clients.map(c=>c.end()));
