@@ -42,6 +42,8 @@ export class AuthorityFixture{
   if(path==='/recovery-init')return Response.json(initializeRecoveryProposalFixture(s,input));
   if(path==='/recovery-stage')return Response.json(await stageRecoveryProposalFixture(s,input));
   if(path==='/recovery-list')return Response.json(s.sql.exec('SELECT nonce FROM recovery_proposals').toArray());
+  // Test only: simulate an authority restore from before the nonce was stored.
+  if(path==='/recovery-simulate-old-restore'){s.sql.exec('DELETE FROM recovery_proposals');return Response.json(true);}
   if(path==='/rotate')return Response.json(await rotateAuthorityFixture(s,{...input,oldKey:await crypto.subtle.importKey('jwk',input.oldKey,'Ed25519',false,['sign']),newKey:await crypto.subtle.importKey('jwk',input.newKey,'Ed25519',false,['sign'])}));
   if(path==='/historical-receipt')return Response.json(await verifyHistoricalReceiptFixture(s,input));
   if(path==='/rotation-history')return Response.json(await verifyRotationHistoryFixture(s,input));

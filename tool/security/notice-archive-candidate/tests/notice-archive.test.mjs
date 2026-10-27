@@ -243,4 +243,9 @@ test('lost-key recovery proposal requires independent signers and never changes 
  for(const altered of [{...proof,witnessSignature:'0'.repeat(128)},{...proof,newSignature:'0'.repeat(128)},{...proof,now:now+30001},{...proof,proposal:{...proposal,company_id:'other'}}])assert.equal((await f.call('recovery-stage',altered,'AUTHORITY')).status,409);
  const attempts=await Promise.all([f.call('recovery-stage',proof,'AUTHORITY'),f.call('recovery-stage',proof,'AUTHORITY')]);assert.equal(attempts.filter(x=>x.status===200).length,1);assert.equal(attempts.filter(x=>x.status===409).length,1);
  await f.restart();assert.deepEqual(await(await f.call('latest',{},'AUTHORITY')).json(),before);assert.equal((await(await f.call('recovery-list',{},'AUTHORITY')).json()).length,1);
+ // A rollback of the local proposal ledger erases its nonce: this counterexample
+ // is why a separately retained, authenticated replay ledger is mandatory.
+ assert.equal((await f.call('recovery-simulate-old-restore',{},'AUTHORITY')).status,200);
+ assert.equal((await f.call('recovery-stage',proof,'AUTHORITY')).status,200);
+ assert.deepEqual(await(await f.call('latest',{},'AUTHORITY')).json(),before);
 });
