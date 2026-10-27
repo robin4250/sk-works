@@ -78,6 +78,14 @@ await db.exec(\${JSON.stringify(liveApprove)});assert.equal((await db.query("sel
 assert.equal((await db.query("select md5(prosrc) h from pg_proc where oid='private.enqueue_notification(uuid,uuid,text,text,text,text,uuid)'::regprocedure")).rows[0].h,'260ef8dc60ec1917cc0c8dc85ea52872');
 const deliver=()=>db.query('select invoice_month_close_candidate.deliver_notice($1) v',[noticeId]);
 await assert.rejects(deliver(),/delivery_disabled/);await db.exec('update invoice_month_close_candidate.delivery_settings set enabled=true');await assert.rejects(deliver(),/delivery_disabled/);await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=true');
+// Legacy clients and direct PostgREST writes must not bypass the ON gate.
+// Check every invoice finalization field independently, retaining the original.
+const invoiceBeforeDirectGate=(await db.query('select status,finalized_at,approval_finalized_at from public.invoices where id=$1',[frozen.id])).rows[0];
+for(const sql of ["update public.invoices set status='finalized' where id=$1","update public.invoices set finalized_at=clock_timestamp() where id=$1","update public.invoices set approval_finalized_at=clock_timestamp() where id=$1"]){
+ await assert.rejects(db.query(sql,[frozen.id]),/notification_approval_required/);
+ assert.deepEqual((await db.query('select status,finalized_at,approval_finalized_at from public.invoices where id=$1',[frozen.id])).rows[0],invoiceBeforeDirectGate);
+}
+console.log(JSON.stringify({fixture_direct_invoice_finalization_columns_guarded:true}));
 await db.exec("create function invoice_month_close_candidate.fixture_delivery_abort() returns trigger language plpgsql as $$begin raise exception 'fixture_delivery_abort';end$$;create trigger fixture_delivery_abort before insert on invoice_month_close_candidate.delivery_receipts for each row execute function invoice_month_close_candidate.fixture_delivery_abort()");
 await assert.rejects(deliver(),/fixture_delivery_abort/);assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,0);
 await db.exec('drop trigger fixture_delivery_abort on invoice_month_close_candidate.delivery_receipts');
