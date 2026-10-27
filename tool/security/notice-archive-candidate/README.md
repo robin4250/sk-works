@@ -16,6 +16,13 @@ Capacity recovery must also change the notice read path: PR #1494 verifies every
 
 ## Synthetic retirement model
 
+The Node-only evidence fixture additionally exercises key rotation: decrypt
+the old ciphertext, verify its original HMAC and expected metadata, encrypt
+with a distinct new key, and independently decrypt and verify the replacement.
+The old copy remains unchanged. This is not an atomic storage update or a
+key-management service; production rotation needs separately held keys,
+durable version history, authorization, backup, recovery and deletion rules.
+
 `retirement-model-fixture.mjs` is an in-memory state machine used only to test the desired semantics: terminal review and elapsed retention, matching full snapshot including original evidence and command audit, atomic slot release with history and a retry tombstone, isolated owner/company reads, and exact command replay. It does not use real independent storage, authentication, encryption, network, or SQL, and its `fixture_only` marker is not a trust proof. It must never be deployed. No source or SQL row is deleted and no capacity is recovered by this experiment. Persisted tombstone retention and bounded growth, complete SQL lock ordering and crash/restart/reconciliation, trusted signed receipts and original evidence custody are still to be implemented. Existing PR #1494 also retains queue/publication audit entries separately; the model represents only action history and must not be treated as a complete export schema.
 
 ## Durable SQLite transaction experiment

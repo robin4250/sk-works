@@ -32,3 +32,18 @@ export function decryptFixtureEvidence(box,companyId,archiveKey){
  const dec=createDecipheriv('aes-256-gcm',archiveKey,iv);dec.setAAD(Buffer.from(`sko-archive-v1\n${companyId}\n${box.event_id}\n${box.raw_sha256}`));dec.setAuthTag(tag);
  const e=JSON.parse(Buffer.concat([dec.update(Buffer.from(box.ciphertext,'base64')),dec.final()]).toString('utf8'));if(!b64(e.body_base64)||hex(Buffer.from(e.body_base64,'base64'))!==box.raw_sha256)throw Error('archive digest mismatch');return e;
 }
+
+// Fixture rotation: authenticate the old ciphertext and reverify the source
+// MAC before producing a replacement. The caller owns atomic persistence and
+// must keep the old key/copy until the replacement has been independently
+// restored and verified. This function has no storage or deletion effects.
+export function rotateFixtureEvidence(box,companyId,sourceKey,oldArchiveKey,newArchiveKey,expected){
+ if(!Buffer.isBuffer(oldArchiveKey)||!Buffer.isBuffer(newArchiveKey)||oldArchiveKey.length!==32||newArchiveKey.length!==32||timingSafeEqual(oldArchiveKey,newArchiveKey))throw Error('invalid rotation keys');
+ const source=decryptFixtureEvidence(box,companyId,oldArchiveKey);
+ const checked=verifyFixtureSource(source,expected,sourceKey);
+ if(checked.event_id!==box.event_id||checked.raw_sha256!==box.raw_sha256)throw Error('rotation association mismatch');
+ const replacement=encryptFixtureEvidence(source,expected,sourceKey,newArchiveKey,companyId);
+ const restored=decryptFixtureEvidence(replacement,companyId,newArchiveKey);
+ verifyFixtureSource(restored,expected,sourceKey);
+ return replacement;
+}
