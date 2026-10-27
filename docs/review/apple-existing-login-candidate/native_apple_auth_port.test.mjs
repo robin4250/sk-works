@@ -53,3 +53,5 @@ test('composed endpoint verifies RSA, authenticates exact original, reserves onc
  const denied=await stalled(new Request('https://broker.invalid',{method:'POST',headers:{authorization:'Bearer '+original,'content-type':'application/json'},body:JSON.stringify({id_token:credential,nonce,password:'fixture-password'})}));
  assert.equal(denied.status,403);assert.equal(calls.filter(x=>x.url.endsWith('reserve_apple_native_subject')).length,1);
 });
+
+test('failure does not promise the original Google session survived',async()=>{const config={enabled:true,nativeOnlyReviewed:true,passwordSessionIsolationReviewed:true,globalGoogleProtectionReviewed:true,baseUrl:project,publicKey:'sb_publishable_fixture',serviceKey:secretPrefix+'fixture',audiences:['com.skworks.skWorks']};const handler=createNativeAppleEnrollmentHandler(config,{resolveKey:async()=>null});const result=await handler(new Request('https://broker.invalid',{method:'POST'}));assert.equal(result.status,403);const body=await result.json();assert.equal(body.message,'Apple連携を確認できません。ログイン状態を確認し、管理者にお問い合わせください。');assert.ok(!body.message.includes('維持'));});
