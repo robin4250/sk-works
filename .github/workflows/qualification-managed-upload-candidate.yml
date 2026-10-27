@@ -1,0 +1,35 @@
+name: Qualification managed upload isolated contract
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/qualification_management_upload_20261027*'
+      - 'docs/candidates/qualification_management_storage*'
+      - 'tool/qualification_management_upload*'
+      - 'tool/qualification_management_storage_reader*'
+      - '.github/workflows/qualification-managed-upload-candidate.yml'
+permissions:
+  contents: read
+jobs:
+  native-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_qualification_upload_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_qualification_upload_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --test tool/qualification_management_upload_http.test.mjs tool/qualification_management_upload_db_adapter.test.mjs tool/qualification_management_storage_reader.test.mjs tool/qualification_management_upload_inspection.test.mjs tool/qualification_management_storage_integration.test.mjs tool/qualification_management_upload_bounded_parser.test.mjs
+      - run: node tool/qualification_management_upload_native.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+        env:
+          SKO_QUALIFICATION_UPLOAD_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_qualification_upload_fixture
