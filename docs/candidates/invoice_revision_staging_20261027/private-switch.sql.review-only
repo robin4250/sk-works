@@ -1,0 +1,67 @@
+-- REVIEW ONLY. This is a private shadow switch, not an invoice publication.
+-- No public invoice INSERT, signature/approval copy, issue, share or notify.
+-- The required independently verified publication safety adapter DOES NOT
+-- EXIST in production. Do not create a public RPC or grant this function.
+begin;
+create table invoice_revision_candidate.shadow_switch_settings(singleton boolean primary key default true check(singleton), enabled boolean not null default false);
+insert into invoice_revision_candidate.shadow_switch_settings values(true,false);
+create table invoice_revision_candidate.shadow_versions(
+ version_id uuid primary key, original_invoice_id uuid not null unique,
+ proposal_id uuid not null unique, company_id uuid not null, actor_id uuid not null,
+ source_fingerprint text not null, original_fingerprint text not null,
+ proposed_snapshot jsonb not null, subtotal numeric not null, tax numeric not null,
+ welfare numeric not null, grand_total numeric not null,
+ state text not null default 'pending_new_approval' check(state='pending_new_approval'),
+ created_at timestamptz not null default clock_timestamp());
+create table invoice_revision_candidate.shadow_approvals(
+ version_id uuid not null, approver_user_id uuid not null, position smallint not null,
+ state text not null default 'pending' check(state='pending'),
+ primary key(version_id,approver_user_id), unique(version_id,position));
+create table invoice_revision_candidate.shadow_switch_audit(
+ version_id uuid primary key, original_invoice_id uuid not null, actor_id uuid not null,
+ action text not null check(action='shadow_created'), created_at timestamptz not null default clock_timestamp());
+alter table invoice_revision_candidate.shadow_switch_settings enable row level security;
+alter table invoice_revision_candidate.shadow_versions enable row level security;
+alter table invoice_revision_candidate.shadow_approvals enable row level security;
+alter table invoice_revision_candidate.shadow_switch_audit enable row level security;
+revoke all on invoice_revision_candidate.shadow_switch_settings, invoice_revision_candidate.shadow_versions,
+ invoice_revision_candidate.shadow_approvals, invoice_revision_candidate.shadow_switch_audit from public,anon,authenticated,service_role;
+create function invoice_revision_candidate.shadow_switch(p_proposal uuid,p_version uuid)
+returns jsonb language plpgsql security definer set search_path='' set timezone='UTC' as $$
+declare actor uuid:=auth.uid(); p invoice_revision_candidate.proposals%rowtype; v jsonb; enabled boolean; safe boolean; n integer;
+begin
+ if actor is null or p_proposal is null or p_version is null or p_proposal=p_version then
+  raise exception 'shadow_request_invalid' using errcode='22023'; end if;
+ select s.enabled into enabled from invoice_revision_candidate.shadow_switch_settings s where singleton for share;
+ if not coalesce(enabled,false) then raise exception 'shadow_disabled' using errcode='42501'; end if;
+ -- Reuse real session, role/feature locks, old original and trusted preview checks.
+ v:=invoice_revision_candidate.read_prepared(p_proposal);
+ select * into p from invoice_revision_candidate.proposals where id=p_proposal and actor_id=actor and state='prepared' for update;
+ if not found or v->>'status' is distinct from 'review_only' then raise exception 'shadow_denied' using errcode='42501'; end if;
+ -- No bypass/fallback. The real adapter must acquire/validate ALL input and
+ -- legacy writer barriers, no-notification paths, permissions, and drift in
+ -- this same transaction. It is deliberately absent, not a demo gate.
+ if to_regprocedure('invoice_publication_guard_private.assert_safe(uuid,uuid,text,text)') is null then
+  raise exception 'shadow_publication_guard_unavailable' using errcode='55000'; end if;
+ execute 'select invoice_publication_guard_private.assert_safe($1,$2,$3,$4)' into safe
+  using p.original_invoice_id,p.company_id,p.source_fingerprint,p.original_fingerprint;
+ if safe is distinct from true then raise exception 'shadow_publication_guard_denied' using errcode='55000'; end if;
+ if exists(select 1 from invoice_revision_candidate.shadow_versions where original_invoice_id=p.original_invoice_id or version_id=p_version or proposal_id=p_proposal) then
+  raise exception 'shadow_already_exists' using errcode='40001'; end if;
+ -- Do not permit silent approval when no actual company approvers exist.
+ perform 1 from public.invoice_approvers where company_id=p.company_id order by position for share;
+ select count(*) into n from public.invoice_approvers where company_id=p.company_id;
+ if n<1 or n>3 then raise exception 'shadow_approvers_unavailable' using errcode='55000'; end if;
+ -- Only the experimental RLS/definer hold; known other access paths remain
+ -- unguarded, so this is not allowed to be enabled on production.
+ perform invoice_retirement_guard_candidate.activate(p.original_invoice_id);
+ insert into invoice_revision_candidate.shadow_versions(version_id,original_invoice_id,proposal_id,company_id,actor_id,source_fingerprint,original_fingerprint,proposed_snapshot,subtotal,tax,welfare,grand_total)
+ values(p_version,p.original_invoice_id,p.id,p.company_id,actor,p.source_fingerprint,p.original_fingerprint,p.proposed_snapshot,p.subtotal,p.tax,p.welfare,p.grand_total);
+ insert into invoice_revision_candidate.shadow_approvals(version_id,approver_user_id,position)
+ select p_version,a.user_id,a.position from public.invoice_approvers a where a.company_id=p.company_id;
+ insert into invoice_revision_candidate.shadow_switch_audit(version_id,original_invoice_id,actor_id,action)
+ values(p_version,p.original_invoice_id,actor,'shadow_created');
+ return jsonb_build_object('status','private_shadow_pending_new_approval','version_id',p_version,'original_invoice_id',p.original_invoice_id);
+end $$;
+revoke all on function invoice_revision_candidate.shadow_switch(uuid,uuid) from public,anon,authenticated,service_role;
+commit;

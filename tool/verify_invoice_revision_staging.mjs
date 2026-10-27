@@ -93,6 +93,35 @@ for(const role of ['anon','authenticated','service_role']) {
  assert.deepEqual(access.rows[0],{s:false,f:false});
  assert.equal((await db.query("select has_function_privilege($1,'invoice_revision_candidate.read_prepared(uuid)','EXECUTE') f",[role])).rows[0].f,false);
 }
+if(process.env.SKO_SHADOW_SQL && process.env.SKO_HOLD_SQL) {
+ await db.exec("create table public.invoice_approvals(invoice_id uuid,status text); create table public.invoice_approvers(company_id uuid,user_id uuid,position smallint); insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000001','approved'); insert into public.invoice_approvers values('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000003',1)");
+ await db.exec(await readFile(process.env.SKO_HOLD_SQL,'utf8'));
+ await db.exec(await readFile(process.env.SKO_SHADOW_SQL,'utf8'));
+ const version='00000000-0000-0000-0000-000000000091';
+ const shadow=()=>db.query('select invoice_revision_candidate.shadow_switch($1,$2) v',[cmd,version]);
+ await assert.rejects(shadow(),/shadow_disabled/);
+ await db.exec('update invoice_revision_candidate.shadow_switch_settings set enabled=true');
+ await assert.rejects(shadow(),/shadow_publication_guard_unavailable/);
+ await db.exec(`create schema invoice_publication_guard_private;
+  create function invoice_publication_guard_private.assert_safe(uuid,uuid,text,text) returns boolean language sql as $$select false$$`);
+ await assert.rejects(shadow(),/shadow_publication_guard_denied/);
+ // Synthetic adapter is only for transaction/rollback proof, never deployed.
+ await db.exec('create or replace function invoice_publication_guard_private.assert_safe(uuid,uuid,text,text) returns boolean language sql as $$select true$$');
+ await db.exec(`create function invoice_revision_candidate.fixture_fail() returns trigger language plpgsql as $$begin raise exception 'fixture_failure'; end$$;
+ create trigger fixture_fail before insert on invoice_revision_candidate.shadow_approvals for each row execute function invoice_revision_candidate.fixture_fail()`);
+ await assert.rejects(shadow(),/fixture_failure/);
+ for(const table of ['shadow_versions','shadow_approvals','shadow_switch_audit'])
+  assert.equal((await db.query(`select count(*)::int n from invoice_revision_candidate.${table}`)).rows[0].n,0);
+ assert.equal((await db.query('select count(*)::int n from invoice_retirement_guard_candidate.holds')).rows[0].n,0);
+ await db.exec('drop trigger fixture_fail on invoice_revision_candidate.shadow_approvals');
+ assert.equal((await shadow()).rows[0].v.status,'private_shadow_pending_new_approval');
+ assert.equal((await db.query("select count(*)::int n from invoice_revision_candidate.shadow_approvals where state='pending'")).rows[0].n,1);
+ assert.equal((await db.query('select status from public.invoice_approvals')).rows[0].status,'approved');
+ assert.deepEqual((await db.query('select to_jsonb(i) j from invoices i where id=$1',[id])).rows[0].j,original);
+ await assert.rejects(shadow(),/shadow_already_exists/);
+ for(const role of ['anon','authenticated','service_role']) assert.equal((await db.query("select has_function_privilege($1,'invoice_revision_candidate.shadow_switch(uuid,uuid)','EXECUTE') f",[role])).rows[0].f,false);
+ console.log('PASS private shadow transaction, no original mutation/notification, missing guard fails closed and injected failure rolls back');
+}
 if (native) {
   const nextId='00000000-0000-0000-0000-000000000011';
   await db.query('insert into public.invoices(id,company_id,invoice_seal_frozen,snapshot,created_at) select $1,company_id,invoice_seal_frozen,snapshot,created_at from public.invoices where id=$2',[nextId,id]);

@@ -38,3 +38,5 @@
 `owner-preview.sql.review-only` は既存previewをマスター本人・同社の請求管理権限・live sessionで包む非公開の参考試算候補。既定OFF・grantなし、通知や書込み、印影の承認流用なし。実サービス・アプリ未接続であり、合成fixtureの認証とモック計算ではGoTrue本人確認、実入力完全性や同時変更、実額は証明できない。未発行を明示し、安全な読み取り条件と実本人操作が揃うまで実データへ接続しない。
 
 `owner-preview-api.sql.review-only` は初回参考試算・2回目の原本/入力指紋一致確認を行う候補で、公開GRANTは一切設定しない。隔離CIではGoTrueの実sessionとPostgRESTに限定し、一時grantで本人・非マスター・別会社・ログアウト後・古い指紋を試験する。CSRFはクロスオリジンcookieのみで拒否される一例のみで、運用環境のCORS・セッション設定の監査ではない。fixtureの金額・請求は架空、DB source依存はモック。通知・発行・実ユーザーデータを扱わない。
+
+`private-switch.sql.review-only` はstage済み提案から非公開hold・shadow版・承認者のpending影・監査だけを1 transactionで作る試作。信頼済み全writer/旧client/通知barrierを保証する独立adapterがない場合は必ず停止し、adapterは本番未存在。shadowは正規invoiceでも新しい承認でもなく、通知・印影・公開は起こさない。失敗時rollback/旧行不変を合成fixtureで試験するが、現行承認者設定の同時追加を含む全競合や本番triggerとの統合、正式発行は未実装。公開禁止。
