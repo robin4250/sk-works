@@ -1,0 +1,34 @@
+name: Personal PDF vault candidate
+on:
+  pull_request:
+    paths:
+      - 'tool/personal_vault_manifest.mjs'
+      - 'test/personal_vault_manifest.test.mjs'
+      - 'lib/features/personal_vault/**'
+      - 'test/own_payroll_archive_pdf_test.dart'
+      - '.github/workflows/personal-pdf-vault-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - run: node --test test/personal_vault_manifest.test.mjs
+  payroll-renderer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/personal_vault/own_payroll_archive_pdf.dart test/own_payroll_archive_pdf_test.dart
+      - run: flutter test test/own_payroll_archive_pdf_test.dart
