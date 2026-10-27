@@ -44,6 +44,24 @@ gate = gate[:start] + """ perform 1 from public.company_members m where m.compan
 def body_hash(definition, dollar):
     return hashlib.md5(definition.split('as '+dollar, 1)[1].rsplit(dollar+';', 1)[0].encode(), usedforsecurity=False).hexdigest()
 
+# The notification worker has no user session. Its private core takes an
+# explicit recipient and checks that recipient's current pending approval;
+# it never changes auth.uid or impersonates a person.
+notice_preview = one(preview, 'preview_for_approver(p_invoice_id uuid)', 'preview_for_notice(p_invoice_id uuid,p_recipient uuid)')
+notice_preview = one(notice_preview, " if auth.uid() is null then raise exception 'login_required'; end if;\n", '')
+notice_preview = one(notice_preview, ' perform private.require_reauthentication_session();\n', '')
+notice_preview = notice_preview.replace('auth.uid()', 'p_recipient').replace("a.status in ('pending','approved')", "a.status='pending'")
+notice_gate = one(gate, 'revalidate_for_approver(p_invoice_id uuid,p_source text,p_original text)', 'revalidate_for_notice(p_invoice_id uuid,p_recipient uuid,p_source text,p_original text)')
+notice_gate = one(notice_gate, " if auth.uid() is null then raise exception 'login_required';end if;\n", '')
+if notice_gate.count(' perform private.require_reauthentication_session();\n') != 2:
+    raise ValueError('unexpected gate session checks')
+notice_gate = notice_gate.replace(' perform private.require_reauthentication_session();\n', '')
+notice_gate = notice_gate.replace('auth.uid()', 'p_recipient').replace("a.status in ('pending','approved')", "a.status='pending'")
+if 'auth.uid()' in notice_preview or 'auth.uid()' in notice_gate:
+    raise ValueError('notification core must not impersonate user session')
+notice_preview_md5 = body_hash(notice_preview, '$body$')
+notice_gate_md5 = body_hash(notice_gate, '$gate$')
+
 preview_md5 = body_hash(preview, '$body$')
 gate_md5 = body_hash(gate, '$gate$')
 catalog = f"""
@@ -52,6 +70,11 @@ language sql volatile security definer set search_path='' as $$
  select exists(select 1 from pg_proc p where p.oid=to_regprocedure('invoice_month_close_candidate.preview_for_approver(uuid)') and md5(p.prosrc)='{preview_md5}')
  and exists(select 1 from pg_proc p where p.oid=to_regprocedure('invoice_month_close_candidate.revalidate_for_approver(uuid,text,text)') and md5(p.prosrc)='{gate_md5}')
 $$;
-revoke all on function invoice_month_close_candidate.preview_for_approver(uuid), invoice_month_close_candidate.revalidate_for_approver(uuid,text,text), invoice_month_close_candidate.approver_core_intact() from public,anon,authenticated,service_role;
+create function invoice_month_close_candidate.notice_core_intact() returns boolean
+language sql volatile security definer set search_path='' as $$
+ select exists(select 1 from pg_proc p where p.oid=to_regprocedure('invoice_month_close_candidate.preview_for_notice(uuid,uuid)') and md5(p.prosrc)='{notice_preview_md5}')
+ and exists(select 1 from pg_proc p where p.oid=to_regprocedure('invoice_month_close_candidate.revalidate_for_notice(uuid,uuid,text,text)') and md5(p.prosrc)='{notice_gate_md5}')
+$$;
+revoke all on function invoice_month_close_candidate.preview_for_approver(uuid), invoice_month_close_candidate.revalidate_for_approver(uuid,text,text), invoice_month_close_candidate.approver_core_intact(), invoice_month_close_candidate.preview_for_notice(uuid,uuid), invoice_month_close_candidate.revalidate_for_notice(uuid,uuid,text,text), invoice_month_close_candidate.notice_core_intact() from public,anon,authenticated,service_role;
 """
-output.write_text('-- Generated review-only candidate; never run in production.\n'+preview+gate+catalog)
+output.write_text('-- Generated review-only candidate; never run in production.\n'+preview+gate+notice_preview+notice_gate+catalog)

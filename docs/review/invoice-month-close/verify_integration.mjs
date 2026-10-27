@@ -8,8 +8,15 @@ const checkSql=await readFile(process.env.SKO_MONTH_CLOSE_SQL,'utf8');
 const guardedSql=await readFile(process.env.SKO_GUARDED_SQL,'utf8');
 const approvalSql=await readFile(process.env.SKO_APPROVAL_SQL,'utf8');
 const approverCore=await readFile(process.env.SKO_APPROVER_CORE,'utf8');
+const noticeSql=await readFile(process.env.SKO_NOTICE_SQL,'utf8');
+const noticeReadiness=await readFile(process.env.SKO_NOTIFICATION_READINESS_SQL,'utf8');
+const deliverySql=await readFile(process.env.SKO_DELIVERY_SQL,'utf8');
+const triggerFile=await readFile(process.env.SKO_NOTIFY_TRIGGER,'utf8');
+const triggerStart=triggerFile.indexOf('CREATE OR REPLACE FUNCTION private.enqueue_notification(');assert.ok(triggerStart>=0);
+const triggerEnd=triggerFile.indexOf('$function$;',triggerStart);assert.ok(triggerEnd>triggerStart);
+const enqueueBody=triggerFile.slice(triggerStart,triggerEnd+'$function$;'.length);
 const ensureApprovals=await readFile(resolve(root,'supabase/tests/fixtures/trade_document_adjustments_20261026/private.ensure_invoice_approval_rows.sql'),'utf8');
-const declarations=`const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};const approvalSql=${JSON.stringify(approvalSql)};const approverCore=${JSON.stringify(approverCore)};const ensureApprovals=${JSON.stringify(ensureApprovals)};\n`;
+const declarations=`const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};const approvalSql=${JSON.stringify(approvalSql)};const approverCore=${JSON.stringify(approverCore)};const noticeSql=${JSON.stringify(noticeSql)};const noticeReadiness=${JSON.stringify(noticeReadiness)};const deliverySql=${JSON.stringify(deliverySql)};const enqueueBody=${JSON.stringify(enqueueBody)};const ensureApprovals=${JSON.stringify(ensureApprovals)};\n`;
 const injection=`
 // Synthetic past month: reuse existing real refresh/preview and frozen snapshot.
 await db.exec("alter table public.attendance_entries add column if not exists source_report_id uuid;alter table public.attendance_verifications add column if not exists id uuid;alter table public.attendance_verifications add column if not exists worker_id uuid;alter table public.attendance_verifications add column if not exists site_id uuid;alter table public.attendance_verifications add column if not exists work_date date;alter table public.attendance_verifications add column if not exists confirmed_at timestamptz;alter table public.attendance_verifications add column if not exists daily_report_id uuid;alter table public.attendance_verifications add column if not exists route_assignment_id uuid;alter table public.daily_reports add column if not exists site_id uuid;alter table public.daily_reports add column if not exists report_date date;alter table public.daily_reports add column if not exists status text;alter table public.daily_reports add column if not exists signed_at timestamptz;alter table public.daily_reports add column if not exists representative_signature_json jsonb;alter table public.daily_reports add column if not exists supervisor_signature_json jsonb;alter table public.daily_reports add column if not exists route_assignment_id uuid;alter table public.daily_report_workers add column if not exists worker_id uuid;");
@@ -43,6 +50,47 @@ assert.equal(await readiness(),'ready');
 const savedCore=(await db.query("select pg_get_functiondef('invoice_month_close_candidate.preview_for_approver(uuid)'::regprocedure) v")).rows[0].v;
 const changedCore=savedCore.replace('declare'+String.fromCharCode(10),'declare'+String.fromCharCode(10)+' -- synthetic drift'+String.fromCharCode(10));assert.notEqual(changedCore,savedCore);
 await db.exec(changedCore);assert.equal(await readiness(),'source_proof_missing');await db.exec(savedCore);assert.equal(await readiness(),'ready');
+await db.exec(\${JSON.stringify(noticeSql)});await db.exec(\${JSON.stringify(noticeReadiness)});
+await db.exec('update invoice_month_close_candidate.notice_settings set enabled=true');
+// Trusted private background path has no auth.uid; it checks the explicit
+// recipient against pending approval and does not impersonate any account.
+await db.query("select set_config('test.uid','',false)");
+const notice=() => db.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[frozen.id,actor]);
+await assert.rejects(db.query('select invoice_month_close_candidate.prepare_notice($1,$2)',[frozen.id,id(969)]),/notice_unavailable/);
+const noticeId=(await notice()).rows[0].v;assert.equal((await notice()).rows[0].v,noticeId);
+assert.equal((await db.query('select invoice_month_close_candidate.notice_current($1) v',[noticeId])).rows[0].v,true);
+await db.exec("create table public.app_notifications(id uuid primary key default gen_random_uuid(),company_id uuid,recipient_user_id uuid,kind text,title text,body text,action_key text,action_id uuid);");
+await db.exec(\${JSON.stringify(enqueueBody)});await db.exec(\${JSON.stringify(deliverySql)});
+assert.equal((await db.query("select md5(prosrc) h from pg_proc where oid='private.enqueue_notification(uuid,uuid,text,text,text,text,uuid)'::regprocedure")).rows[0].h,'260ef8dc60ec1917cc0c8dc85ea52872');
+const deliver=()=>db.query('select invoice_month_close_candidate.deliver_notice($1) v',[noticeId]);
+await assert.rejects(deliver(),/delivery_disabled/);await db.exec('update invoice_month_close_candidate.delivery_settings set enabled=true');
+await db.exec("create function invoice_month_close_candidate.fixture_delivery_abort() returns trigger language plpgsql as $$begin raise exception 'fixture_delivery_abort';end$$;create trigger fixture_delivery_abort before insert on invoice_month_close_candidate.delivery_receipts for each row execute function invoice_month_close_candidate.fixture_delivery_abort()");
+await assert.rejects(deliver(),/fixture_delivery_abort/);assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,0);
+await db.exec('drop trigger fixture_delivery_abort on invoice_month_close_candidate.delivery_receipts');
+let notificationId=(await deliver()).rows[0].v;assert.equal((await deliver()).rows[0].v,notificationId);
+assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,1);
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ // Start a new synthetic delivery race after cleaning the prior fixture-only result.
+ await db.query('delete from invoice_month_close_candidate.delivery_receipts where notice_id=$1',[noticeId]);await db.query('delete from public.app_notifications where id=$1',[notificationId]);
+ const {connectFixture}=await import(process.argv[2]);const d1=await connectFixture(),d2=await connectFixture();
+ try{
+  const delivered=await Promise.all([d1.query('select invoice_month_close_candidate.deliver_notice($1) v',[noticeId]),d2.query('select invoice_month_close_candidate.deliver_notice($1) v',[noticeId])]);
+  notificationId=delivered[0].rows[0].v;assert.equal(delivered[1].rows[0].v,notificationId);
+  assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,1);
+  assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.delivery_receipts')).rows[0].n,1);
+  console.log(JSON.stringify({fixture_concurrent_delivery_exactly_once:true}));
+ }finally{await d1.end();await d2.end();}
+}
+await db.query("select set_config('test.uid',$1,false)",[id(969)]);await assert.rejects(db.query('select invoice_month_close_candidate.ticket_from_notification($1)',[notificationId]),/notice_unavailable/);
+await db.query("select set_config('test.uid',$1,false)",[actor]);const ticket=(await db.query('select invoice_month_close_candidate.ticket_from_notification($1) v',[notificationId])).rows[0].v.ticket_id;
+assert.equal((await db.query('select invoice_month_close_candidate.consume_notice_ticket($1) v',[ticket])).rows[0].v,frozen.id);
+await db.query("select set_config('test.uid','',false)");
+await addExtras();assert.equal((await db.query('select invoice_month_close_candidate.notice_current($1) v',[noticeId])).rows[0].v,false);await assert.rejects(notice(),/notice_not_ready/);await assert.rejects(deliver(),/notice_not_ready/);
+await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date in ('2020-10-25','2020-10-27')",[company,site]);
+await db.query("update daily_reports set status='draft' where id=$1",[id(900)]);assert.equal((await db.query('select invoice_month_close_candidate.notice_current($1) v',[noticeId])).rows[0].v,false);await db.query("update daily_reports set status='signed' where id=$1",[id(900)]);
+await db.query("select set_config('test.uid',$1,false)",[actor]);
+for(const role of ['anon','authenticated','service_role'])assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.notification_readiness(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);
+console.log(JSON.stringify({fixture_private_real_notice_readiness:true,no_recipient_impersonation:true,wrong_recipient_denied:true,stale_notice_denied:true,fixture_internal_delivery_once:true,fixture_delivery_rollback:true,no_real_notification:true,route_source_stub:true}));
 await db.query('begin');assert.equal((await db.query('select invoice_month_close_candidate.approve($1) v',[frozen.id])).rows[0].v,true);
 assert.equal((await db.query("select count(*)::int n from public.invoice_approvals where invoice_id=$1 and status='approved'",[frozen.id])).rows[0].n,1);
 assert.equal((await db.query("select count(*)::int n from public.invoice_approval_audit where invoice_id=$1 and action='approved'",[frozen.id])).rows[0].n,1);await db.query('rollback');

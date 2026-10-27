@@ -61,6 +61,10 @@ jobs:
         env:
           SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
           SKO_ADJUSTMENT_ROOT: ${{ github.workspace }}
+          SKO_NOTICE_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification.sql.review-only
+          SKO_DELIVERY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification_delivery.sql.review-only
+          SKO_NOTIFY_TRIGGER: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/integration_trigger_bodies.sql.review-only
+          SKO_NOTIFICATION_READINESS_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification_readiness.sql.review-only
           SKO_APPROVER_CORE: ${{ runner.temp }}/approver-core.sql
           SKO_PREVIEW_WRAPPER: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/verify.mjs
           SKO_PREVIEW_SQL: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/preview.sql.review-only
