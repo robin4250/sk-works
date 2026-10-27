@@ -1,0 +1,155 @@
+-- ISOLATED REVIEW CANDIDATE. No public RPC, Storage policy or client grant.
+-- Requests are upload staging, not a second approval/financial audit ledger.
+begin;
+create schema qualification_upload_candidate;
+revoke all on schema qualification_upload_candidate from public,anon,authenticated,service_role;
+create table qualification_upload_candidate.control(singleton boolean primary key default true check(singleton),enabled boolean not null default false);
+insert into qualification_upload_candidate.control values(true,false);
+create table qualification_upload_candidate.requests(
+ id uuid primary key,company_id uuid not null,actor_id uuid not null,session_id uuid not null,
+ target_id uuid not null,worker_id uuid not null,master_id uuid not null,
+ snapshot jsonb,slots jsonb,paths text[] not null,status text not null default 'prepared' check(status in('prepared','applied','expired','cancelled')),
+ created_at timestamptz not null default clock_timestamp(),expires_at timestamptz not null default clock_timestamp()+interval '15 minutes',
+ check((status='prepared')=(snapshot is not null and slots is not null))
+);
+create unique index qualification_upload_one_prepared_owner on qualification_upload_candidate.requests(company_id,actor_id) where status='prepared';
+create table qualification_upload_candidate.files(
+ id uuid primary key default gen_random_uuid(),request_id uuid not null references qualification_upload_candidate.requests(id),
+ slot integer not null check(slot>=0 and slot<20),path text not null unique,mime text not null check(mime in('image/jpeg','image/png','image/heic','application/pdf')),
+ declared_bytes bigint not null check(declared_bytes between 8 and 20971520),declared_sha256 text not null check(declared_sha256~'^[a-f0-9]{64}$'),unique(request_id,slot)
+);
+create table qualification_upload_candidate.receipts(
+ file_id uuid primary key references qualification_upload_candidate.files(id),object_id uuid not null,
+ object_version text not null check(length(object_version) between 1 and 256),bytes bigint not null check(bytes between 8 and 20971520),
+ sha256 text not null check(sha256~'^[a-f0-9]{64}$'),mime text not null,inspected_at timestamptz not null default clock_timestamp()
+);
+alter table qualification_upload_candidate.control enable row level security;
+alter table qualification_upload_candidate.requests enable row level security;
+alter table qualification_upload_candidate.files enable row level security;
+alter table qualification_upload_candidate.receipts enable row level security;
+revoke all on all tables in schema qualification_upload_candidate from public,anon,authenticated,service_role;
+create function qualification_upload_candidate.immutable_receipt() returns trigger language plpgsql security definer set search_path='' as $$begin raise exception 'inspection receipts are immutable' using errcode='42501';end$$;
+create trigger immutable_receipt before update or delete on qualification_upload_candidate.receipts for each row execute function qualification_upload_candidate.immutable_receipt();
+create function qualification_upload_candidate.purge_expired() returns integer language plpgsql security definer set search_path='' as $$declare n integer;begin
+ with expired as(select id from qualification_upload_candidate.requests where status='prepared' and expires_at<=clock_timestamp() order by expires_at,id for update skip locked limit 1000) update qualification_upload_candidate.requests r set status='expired',snapshot=null,slots=null from expired e where r.id=e.id;get diagnostics n=row_count;return n;end$$;
+create function qualification_upload_candidate.cleanup_healthy() returns boolean language plpgsql security definer set search_path='' as $$declare ok boolean;begin
+ if to_regclass('cron.job') is null or to_regclass('cron.job_run_details') is null then return false;end if;
+ execute $q$select exists(select 1 from cron.job j join lateral(select status,end_time from cron.job_run_details d where d.jobid=j.jobid and d.status in('succeeded','failed') order by d.runid desc limit 1) d on true where j.jobname='sko-qualification-upload-expiry' and j.schedule='* * * * *' and j.command='select qualification_upload_candidate.purge_expired();' and j.active and j.database=current_database() and d.status='succeeded' and d.end_time>clock_timestamp()-interval '2 minutes')$q$ into ok;return ok is true;
+ exception when others then return false;end$$;
+create function qualification_upload_candidate.live(r qualification_upload_candidate.requests) returns void language plpgsql security definer set search_path='' as $$begin
+ if public.account_server_access_allowed(r.actor_id) is not true then raise exception 'actor unavailable' using errcode='42501';end if;
+ if not pg_try_advisory_xact_lock_shared(private.account_deletion_barrier_key(r.actor_id)) then raise exception 'actor unavailable' using errcode='42501';end if;
+ perform 1 from auth.users where id=r.actor_id and not coalesce(is_anonymous,false) and(banned_until is null or banned_until<=clock_timestamp()) for share;
+ if not found then raise exception 'actor unavailable' using errcode='42501';end if;
+ perform 1 from auth.sessions where id=r.session_id and user_id=r.actor_id and(not_after is null or not_after>clock_timestamp()) for share;
+ if not found then raise exception 'original session unavailable' using errcode='42501';end if;
+ perform 1 from public.company_members m where m.company_id=r.company_id and m.user_id=r.actor_id and(m.role::text in('owner','admin') or(m.role::text='manager' and exists(select 1 from public.member_feature_permissions f where f.company_id=m.company_id and f.user_id=m.user_id and f.can_manage_people))) for share;
+ if not found then raise exception 'current manager required' using errcode='42501';end if;
+ perform 1 from public.member_feature_permissions where company_id=r.company_id and user_id=r.actor_id for share;
+ perform 1 from qualification_upload_candidate.control where singleton and enabled for share;if not found then raise exception 'upload candidate disabled' using errcode='55000';end if;
+ perform 1 from private.qualification_management_state where singleton and enabled for share;
+ if not found or not private.qualification_management_cleanup_healthy() or not qualification_upload_candidate.cleanup_healthy() then raise exception 'cleanup or management unavailable' using errcode='55000';end if;
+end$$;
+create function qualification_upload_candidate.assert_source(r qualification_upload_candidate.requests) returns void language plpgsql security definer set search_path='' as $$declare q jsonb;begin
+ perform pg_advisory_xact_lock(hashtextextended(r.worker_id::text||r.master_id::text,0));
+ select to_jsonb(x) into q from public.worker_qualifications x join public.workers w on w.id=x.worker_id and w.company_id=x.company_id join public.qualification_master m on m.id=x.qualification_master_id and m.company_id=x.company_id where x.id=r.target_id and x.company_id=r.company_id and x.worker_id=r.worker_id and x.qualification_master_id=r.master_id for share of x,w,m;
+ if q is distinct from r.snapshot then raise exception 'qualification source changed' using errcode='40001';end if;
+end$$;
+create function qualification_upload_candidate.manifest(r qualification_upload_candidate.requests) returns jsonb language sql security invoker set search_path='' as $$select jsonb_build_object('contract','qualification_management_upload_v1','id',r.id,'status',r.status,'expires_at',r.expires_at,'paths',to_jsonb(r.paths),'files',coalesce((select jsonb_agg(jsonb_build_object('slot_id',f.id,'slot',f.slot,'path',f.path,'mime',f.mime,'bytes',f.declared_bytes,'sha256',f.declared_sha256) order by f.slot) from qualification_upload_candidate.files f where request_id=r.id),'[]'::jsonb));$$;
+create function qualification_upload_candidate.prepare(cid uuid,target uuid,request uuid,expected jsonb,selection jsonb) returns jsonb language plpgsql security definer set search_path='' as $$declare a uuid:=auth.uid();sid uuid;r qualification_upload_candidate.requests%rowtype;q jsonb;s jsonb;newpaths text[]:='{}';oldpaths text[];p text;mime text;ext text;idx integer:=0;fid uuid;begin
+ sid:=private.require_reauthentication_session();if not private.qualification_manager_can_write(cid) then raise exception 'manager required' using errcode='42501';end if;
+ if request is null or target is null or cid is null or jsonb_typeof(expected) is distinct from 'object' or jsonb_typeof(selection) is distinct from 'array' or jsonb_array_length(selection)>20 then raise exception 'exact selection required' using errcode='22023';end if;
+ r.id:=request;r.company_id:=cid;r.actor_id:=a;r.session_id:=sid;r.target_id:=target;r.worker_id:=(expected->>'worker_id')::uuid;r.master_id:=(expected->>'qualification_master_id')::uuid;
+ perform qualification_upload_candidate.live(r);
+ perform pg_advisory_xact_lock(hashtextextended('qualification-management:'||request::text,0));
+ perform qualification_upload_candidate.purge_expired();
+ select * into r from qualification_upload_candidate.requests where id=request for update;
+ if found then
+  if r.company_id is distinct from cid or r.actor_id is distinct from a or r.session_id is distinct from sid or r.target_id is distinct from target or(r.status='prepared' and(r.snapshot is distinct from expected or r.slots is distinct from selection)) then raise exception 'request conflict' using errcode='23505';end if;
+  perform qualification_upload_candidate.live(r);return qualification_upload_candidate.manifest(r);end if;
+ if exists(select 1 from private.qualification_management_operations where request_id=request) or exists(select 1 from private.qualification_management_pending where request_id=request) then raise exception 'request ID already used' using errcode='23505';end if;
+ perform pg_advisory_xact_lock(hashtextextended(r.worker_id::text||r.master_id::text,0));
+ select to_jsonb(x) into q from public.worker_qualifications x join public.workers w on w.id=x.worker_id and w.company_id=x.company_id join public.qualification_master m on m.id=x.qualification_master_id and m.company_id=x.company_id where x.id=target and x.company_id=cid for update of x for share of w,m;
+ if q is distinct from expected then raise exception 'qualification changed' using errcode='40001';end if;
+ oldpaths:=array_remove(array[q->>'attachment_path',q->>'attachment_back_path']||array(select jsonb_array_elements_text(coalesce(q->'attachment_extra_paths','[]'::jsonb))),null);
+ r.id:=request;r.company_id:=cid;r.actor_id:=a;r.session_id:=sid;r.target_id:=target;r.worker_id:=(q->>'worker_id')::uuid;r.master_id:=(q->>'qualification_master_id')::uuid;
+ perform qualification_upload_candidate.live(r);
+ insert into qualification_upload_candidate.requests(id,company_id,actor_id,session_id,target_id,worker_id,master_id,snapshot,slots,paths) values(request,cid,a,sid,target,r.worker_id,r.master_id,q,selection,'{}');
+ for s in select value from jsonb_array_elements(selection) loop
+  if jsonb_typeof(s) is distinct from 'object' then raise exception 'slot invalid' using errcode='22023';end if;
+  if s?'existing_path' then
+   if(select count(*) from jsonb_object_keys(s))<>1 or jsonb_typeof(s->'existing_path') is distinct from 'string' or not coalesce((s->>'existing_path')=any(oldpaths),false) then raise exception 'saved photo required' using errcode='22023';end if;p:=s->>'existing_path';
+  else
+   if(select count(*) from jsonb_object_keys(s))<>3 or not(s?'mime' and s?'bytes' and s?'sha256') or jsonb_typeof(s->'mime') is distinct from 'string' or jsonb_typeof(s->'bytes') is distinct from 'number' then raise exception 'upload declaration required' using errcode='22023';end if;
+   mime:=s->>'mime';ext:=case mime when 'image/jpeg' then 'jpg' when 'image/png' then 'png' when 'image/heic' then 'heic' when 'application/pdf' then 'pdf' end;
+   if ext is null or(s->>'bytes')::bigint not between 8 and 20971520 or coalesce(s->>'sha256','')!~'^[a-f0-9]{64}$' then raise exception 'upload type/size invalid' using errcode='22023';end if;
+   fid:=gen_random_uuid();p:=cid::text||'/'||r.worker_id::text||'/'||target::text||'/management/'||request::text||'/'||fid::text||'.'||ext;
+   insert into qualification_upload_candidate.files(id,request_id,slot,path,mime,declared_bytes,declared_sha256) values(fid,request,idx,p,mime,(s->>'bytes')::bigint,s->>'sha256');
+  end if;
+  if p=any(newpaths) then raise exception 'duplicate photo' using errcode='22023';end if;newpaths:=array_append(newpaths,p);idx:=idx+1;
+ end loop;
+ update qualification_upload_candidate.requests set paths=newpaths where id=request returning * into r;
+ return qualification_upload_candidate.manifest(r);
+end$$;
+create function qualification_upload_candidate.inspection_slot(request uuid,slot_id uuid,verified_actor uuid,verified_session uuid) returns jsonb language plpgsql security definer set search_path='' as $$declare r qualification_upload_candidate.requests%rowtype;f qualification_upload_candidate.files%rowtype;o storage.objects%rowtype;begin
+ select * into r from qualification_upload_candidate.requests where id=request for update;
+ if not found or r.actor_id is distinct from verified_actor or r.session_id is distinct from verified_session or r.status<>'prepared' or r.expires_at<=clock_timestamp() then raise exception 'inspection request unavailable' using errcode='42501';end if;
+ perform qualification_upload_candidate.live(r);perform qualification_upload_candidate.assert_source(r);
+ select * into f from qualification_upload_candidate.files where id=slot_id and request_id=request;if not found then raise exception 'inspection slot unavailable' using errcode='42501';end if;
+ select * into o from storage.objects where bucket_id='qualification-certificates' and name=f.path for share;
+ if not found or o.archived_at is not null or coalesce(o.is_delete_marker,false) then raise exception 'uploaded object unavailable' using errcode='55000';end if;
+ return jsonb_build_object('contract','qualification_management_upload_v1','state',r.status,'actorId',r.actor_id,'sessionId',r.session_id,'companyId',r.company_id,'workerId',r.worker_id,'qualificationMasterId',r.master_id,'targetId',r.target_id,'requestId',r.id,'slotId',f.id,'bucket','qualification-certificates','path',f.path,'mime',f.mime,'declaredBytes',f.declared_bytes,'declaredSha256',f.declared_sha256,'objectId',o.id,'objectVersion',o.version);
+end$$;
+create function qualification_upload_candidate.cancel(cid uuid,target uuid,request uuid) returns jsonb language plpgsql security definer set search_path='' as $$declare a uuid:=auth.uid();sid uuid;r qualification_upload_candidate.requests%rowtype;q public.worker_qualifications%rowtype;begin
+ sid:=private.require_reauthentication_session();if cid is null or target is null or request is null or not private.qualification_manager_can_write(cid) then raise exception 'manager required' using errcode='42501';end if;
+ perform pg_advisory_xact_lock(hashtextextended('qualification-management:'||request::text,0));
+ select * into r from qualification_upload_candidate.requests where id=request for update;
+ if not found then
+  if exists(select 1 from private.qualification_management_operations where request_id=request) then raise exception 'operation already applied' using errcode='55000';end if;
+  select * into q from public.worker_qualifications where id=target and company_id=cid for share;
+  if not found then raise exception 'qualification unavailable' using errcode='42501';end if;
+  insert into qualification_upload_candidate.requests(id,company_id,actor_id,session_id,target_id,worker_id,master_id,snapshot,slots,paths,status)values(request,cid,a,sid,target,q.worker_id,q.qualification_master_id,null,null,'{}','cancelled')returning * into r;
+ else
+  if r.actor_id is distinct from a or r.company_id is distinct from cid or r.target_id is distinct from target then raise exception 'upload request unavailable' using errcode='42501';end if;
+  if r.status='prepared' then update qualification_upload_candidate.requests set status='cancelled',snapshot=null,slots=null where id=request returning * into r;end if;
+ end if;
+ return qualification_upload_candidate.manifest(r);
+end$$;
+create function qualification_upload_candidate.record_receipt(request uuid,slot_id uuid,verified_actor uuid,proof jsonb) returns boolean language plpgsql security definer set search_path='' as $$declare r qualification_upload_candidate.requests%rowtype;f qualification_upload_candidate.files%rowtype;old qualification_upload_candidate.receipts%rowtype;o storage.objects%rowtype;begin
+ select * into r from qualification_upload_candidate.requests where id=request for update;
+ if not found or r.actor_id is distinct from verified_actor or r.status<>'prepared' or r.expires_at<=clock_timestamp() then raise exception 'inspection request unavailable' using errcode='42501';end if;
+ perform qualification_upload_candidate.live(r);perform qualification_upload_candidate.assert_source(r);
+ select * into f from qualification_upload_candidate.files where id=slot_id and request_id=request for update;if not found then raise exception 'upload slot unavailable' using errcode='42501';end if;
+ if proof->>'contract' is distinct from 'qualification_management_upload_v1' or proof->>'requestId' is distinct from request::text or proof->>'slotId' is distinct from f.id::text or proof->>'actorId' is distinct from r.actor_id::text or proof->>'sessionId' is distinct from r.session_id::text or proof->>'companyId' is distinct from r.company_id::text or proof->>'workerId' is distinct from r.worker_id::text or proof->>'qualificationMasterId' is distinct from r.master_id::text or proof->>'targetId' is distinct from r.target_id::text or proof->>'bucket' is distinct from 'qualification-certificates' or proof->>'path' is distinct from f.path or proof->>'mime' is distinct from f.mime or(proof->>'bytes')::bigint is distinct from f.declared_bytes or proof->>'sha256' is distinct from f.declared_sha256 then raise exception 'inspection identity mismatch' using errcode='22023';end if;
+ select * into o from storage.objects where bucket_id='qualification-certificates' and name=f.path for share;
+ if not found or o.id::text is distinct from proof->>'objectId' or o.version is distinct from proof->>'objectVersion' or o.archived_at is not null or coalesce(o.is_delete_marker,false) then raise exception 'immutable object changed' using errcode='40001';end if;
+ select * into old from qualification_upload_candidate.receipts where file_id=f.id;
+ if found then
+  if old.object_id is distinct from o.id or old.object_version is distinct from o.version or old.bytes is distinct from f.declared_bytes or old.sha256 is distinct from proof->>'sha256' or old.mime is distinct from f.mime then raise exception 'receipt conflict' using errcode='23505';end if;return true;end if;
+ insert into qualification_upload_candidate.receipts(file_id,object_id,object_version,bytes,sha256,mime) values(f.id,o.id,o.version,f.declared_bytes,proof->>'sha256',f.mime);return true;
+end$$;
+create function qualification_upload_candidate.apply(request uuid) returns jsonb language plpgsql security definer set search_path='' as $$declare sid uuid;a uuid:=auth.uid();r qualification_upload_candidate.requests%rowtype;saved private.qualification_management_operations%rowtype;q jsonb;after_row jsonb;cmd jsonb;p text;f qualification_upload_candidate.files%rowtype;v qualification_upload_candidate.receipts%rowtype;o storage.objects%rowtype;begin
+ sid:=private.require_reauthentication_session();perform pg_advisory_xact_lock(hashtextextended('qualification-management:'||request::text,0));
+ select * into r from qualification_upload_candidate.requests where id=request for update;
+ if not found or r.actor_id is distinct from a or not private.qualification_manager_can_write(r.company_id) then raise exception 'upload request unavailable' using errcode='42501';end if;
+ if r.status='applied' then select * into saved from private.qualification_management_operations where request_id=request and actor_id=a and company_id=r.company_id and target_id=r.target_id;if not found then raise exception 'applied audit unavailable';end if;return private.qualification_management_result(saved);end if;
+ if r.session_id is distinct from sid or r.status<>'prepared' or r.expires_at<=clock_timestamp() then raise exception 'upload request stale' using errcode='42501';end if;
+ perform qualification_upload_candidate.live(r);perform pg_advisory_xact_lock(hashtextextended(r.worker_id::text||r.master_id::text,0));
+ select to_jsonb(x) into q from public.worker_qualifications x join public.workers w on w.id=x.worker_id and w.company_id=x.company_id join public.qualification_master m on m.id=x.qualification_master_id and m.company_id=x.company_id where x.id=r.target_id and x.company_id=r.company_id and x.worker_id=r.worker_id and x.qualification_master_id=r.master_id for update of x for share of w,m;
+ if q is distinct from r.snapshot then raise exception 'qualification changed' using errcode='40001';end if;
+ for f in select * from qualification_upload_candidate.files where request_id=request order by slot loop
+  select * into v from qualification_upload_candidate.receipts where file_id=f.id;if not found then raise exception 'inspection incomplete' using errcode='55000';end if;
+  select * into o from storage.objects where bucket_id='qualification-certificates' and name=f.path for share;
+  if not found or o.id is distinct from v.object_id or o.version is distinct from v.object_version or o.archived_at is not null or coalesce(o.is_delete_marker,false) then raise exception 'inspected object changed' using errcode='40001';end if;
+ end loop;
+ foreach p in array r.paths loop perform 1 from storage.objects where bucket_id='qualification-certificates' and name=p for share;if not found then raise exception 'retained photo missing' using errcode='40001';end if;end loop;
+ if exists(select 1 from private.qualification_management_operations where request_id=request) then raise exception 'audit request conflict' using errcode='23505';end if;
+ update public.worker_qualifications set attachment_path=r.paths[1],attachment_back_path=r.paths[2],attachment_extra_paths=coalesce(r.paths[3:cardinality(r.paths)],'{}'::text[]),updated_at=now() where id=r.target_id and company_id=r.company_id;
+ select to_jsonb(x) into after_row from public.worker_qualifications x where id=r.target_id;
+ cmd:=jsonb_build_object('company_id',r.company_id,'target_id',r.target_id,'actor_id',a,'operation','photos','worker_id',r.worker_id,'qualification_master_id',r.master_id,'fields',jsonb_build_object('photo_paths',to_jsonb(r.paths)),'expected_snapshot',r.snapshot);
+ insert into private.qualification_management_operations(request_id,company_id,actor_id,target_id,worker_id,qualification_master_id,operation,command,before_snapshot,after_snapshot) values(request,r.company_id,a,r.target_id,r.worker_id,r.master_id,'photos',cmd,q,after_row) returning * into saved;
+ update qualification_upload_candidate.requests set status='applied',snapshot=null,slots=null where id=request;
+ return private.qualification_management_result(saved);
+end$$;
+revoke all on all functions in schema qualification_upload_candidate from public,anon,authenticated,service_role;
+commit;
