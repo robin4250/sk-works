@@ -4,6 +4,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/notifications/notification_bell.dart';
 
 void main() {
+  test('認証エラーで旧応答を破棄し、回復時に再取得', () async {
+    final state = NotificationBadgeRefresh();
+    final pending = Completer<void>();
+    final old = state.refresh(currentActor: () => 'a',
+      loadUnread: () async { await pending.future; return []; },
+      loadPending: () async => []);
+    state.authError();
+    expect(state.uncertain, isTrue);
+    pending.complete();
+    await old;
+    expect(state.uncertain, isTrue);
+    await state.refresh(currentActor: () => 'a', loadUnread: () async => [],
+      loadPending: () async => []);
+    expect(state.uncertain, isFalse);
+  });
+
   test('失敗は0件と区別し回復後に解除', () async {
     final state = NotificationBadgeRefresh();
     await state.refresh(currentActor: () => 'a', loadUnread: () async => [],
