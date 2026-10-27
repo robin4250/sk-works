@@ -32,3 +32,5 @@
 `invoice_output_guard.dart` は出力前とPDF生成後の2回オンライン照合する未接続の部品。全請求ID・版の一致、重複なし、欠落・拒否・通信失敗時の停止を試験する。既存UI・RPCには未接続。照合後からOS引き渡しまでの競合、旧アプリ、保存済みPDF、真正なサーバー応答や発行の原子性は保証できず、これだけでは配布・発行を許可しない。
 
 `legacy-retirement.sql.review-only` は旧IDを一般SELECTから除外するRESTRICTIVE policyと承認行変更の拒否だけを合成環境で実験する候補であり導入禁止。既存SECURITY DEFINER読み取り、端末キャッシュ、同時有効化時の競合、新版作成、新承認、通知、RLS bypassへの対応は未完成。holdを設定する公開手段はなく、既存データへの変更を行わない。合成PG17では承認更新とhold有効化を原本行ロックで直列化するが、他の全経路には拡張されていない。これだけでは切替え・発行の原子性を証明できない。
+
+`definer-hold.sql.review-only` は2026-10-27時点の現catalog本体hash/ACL/owner/設定を固定し、承認履歴・承認状態2種・trade_document_source の4関数本体にhold拒否を追加する限定実験。元OID・ACLを維持し、関数driftがあれば全取消。STABLEな経費詳細、LINE、その他のRPCやStorage、既存PDF、新規承認と発行は未保護。実行不可・未配備。合成fixtureは実関数定義を使うが、正規ログインと完全な本番データ依存は模していない。
