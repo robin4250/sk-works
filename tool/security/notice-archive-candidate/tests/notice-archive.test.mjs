@@ -61,6 +61,21 @@ test('existing independent authority anchors archive audit before immutable stor
  assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:batch.latestIndependentAnchor,now})).status,200);
 });
 
+test('stale signed authority receipt is not evidence of a fresh head',async t=>{
+ const f=await fixture(t),first=createBatch(f);
+ assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ first.anchor=await(await f.call('latest',{},'AUTHORITY')).json();first.latestIndependentAnchor=first.anchor;
+ assert.equal((await f.call('store',first)).status,200);
+ const second=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:first.audit.hash});
+ assert.equal((await f.call('publish',{publication:{expected_sequence:1,expected_hash:first.audit.hash,records:[second.audit]},now},'AUTHORITY')).status,200);
+ const actualHead=await(await f.call('latest',{},'AUTHORITY')).json();
+ assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:actualHead,now})).status,409);
+ // A legitimate but stale signed receipt matches the old archive and is accepted.
+ // This intentionally exposes why external fresh, authenticated head retrieval
+ // is a mandatory prerequisite; the fixture is not rollback protection.
+ assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:first.anchor,now})).status,200);
+});
+
 // Integration experiment: real existing signed audit/anchor and workerd archive,
 // fixture source HMAC and encrypted copy on a separate local file. Not a real
 // DB export or authenticated independent-host / key custody implementation.
