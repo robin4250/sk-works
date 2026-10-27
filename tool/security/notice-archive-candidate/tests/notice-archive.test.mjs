@@ -221,3 +221,14 @@ test('two rotations preserve each original receipt and reject tampered transitio
  const ctx={genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'};for(const receipt of [r1,r2])assert.equal((await f.call('historical-receipt',{...ctx,receipt},'AUTHORITY')).status,200);
  assert.equal((await f.call('rotation-tamper',{value:'0'.repeat(128)},'AUTHORITY')).status,200);assert.equal((await f.call('historical-receipt',{...ctx,receipt:r2},'AUTHORITY')).status,409);
 });
+
+
+test('fixture archive client reads historical receipt after rotation but holds for newer authority head',async t=>{
+ const f=await fixture(t),first=createBatch(f),pub=await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY');assert.equal(pub.status,200);
+ first.anchor=await pub.json();first.latestIndependentAnchor=first.anchor;assert.equal((await f.call('store-strict',{...first,auditExtension:[first.audit]})).status,200);
+ const replacement=key();assert.equal((await f.call('rotate',{newId:'anchor_2',newJwk:replacement.pub,oldKey:f.anchor.privateJwk,newKey:replacement.privateJwk,now:now+1},'AUTHORITY')).status,200);await f.restart();
+ const newReceipt=await(await f.call('latest',{},'AUTHORITY')).json();assert.equal((await f.call('read-strict',{batchSequence:1,now:now+1,latestIndependentAnchor:newReceipt})).status,409);
+ const args={batchSequence:1,now:now+1,genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'},compatible=await f.call('read-rotated',args);assert.equal(compatible.status,200);assert.deepEqual(await compatible.json(),first.manifest);
+ const second=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:first.audit.hash});assert.equal((await f.call('publish-with-key',{publication:{expected_sequence:1,expected_hash:first.audit.hash,records:[second.audit]},now:now+2,key:replacement.privateJwk},'AUTHORITY')).status,200);
+ assert.equal((await f.call('read-rotated',{...args,now:now+2})).status,409);
+});

@@ -3,11 +3,25 @@ import {rotateAuthorityFixture,verifyRotationHistoryFixture,verifyHistoricalRece
 import {initializeAnchorAuthority,preserveIndependentAnchor,latestIndependentAnchor} from '../src/anchor-authority.mjs';
 import {initializeNoticeArchive,storeNoticeArchive,storeNoticeArchiveWithContinuity,readNoticeArchive,readNoticeArchiveWithContinuity} from '../src/notice-archive.mjs';
 export class ArchiveFixture{
- constructor(ctx){this.ctx=ctx;}
+ constructor(ctx,env){this.ctx=ctx;this.env=env;}
  async fetch(request){const path=new URL(request.url).pathname,s=this.ctx.storage,input=await request.json();try{
   if(path==='/initialize')return Response.json(initializeNoticeArchive(s,input));
   if(path==='/store')return Response.json(await storeNoticeArchive(s,input));
   if(path==='/store-strict')return Response.json(await storeNoticeArchiveWithContinuity(s,input));
+  if(path==='/read-rotated'){
+   // Test-only bridge to another local Durable Object. It does not establish
+   // independent custody, transport authentication, or a protected root key.
+   const ns=this.env.AUTHORITY,stub=ns.get(ns.idFromName('fixture'));
+   const call=async(route,data)=>stub.fetch('https://fixture.invalid/'+route,{method:'POST',body:JSON.stringify(data)});
+   const currentResponse=await call('latest',{});if(!currentResponse.ok)throw Error('authority unavailable');const current=await currentResponse.json();
+   const q=s.sql.exec('SELECT * FROM notice_archive_state WHERE id=1').toArray()[0];
+   const last=s.sql.exec('SELECT anchor FROM notice_archive_batches WHERE sequence=?',q?.batch_sequence).toArray()[0];
+   if(!last||!current||current.payload.sequence!==q.anchor_sequence||current.payload.hash!==q.anchor_hash)throw Error('authority head differs');
+   const oldAnchor=JSON.parse(last.anchor),proof=await call('historical-receipt',{receipt:oldAnchor,genesisKey:input.genesisKey,genesisId:input.genesisId});if(!proof.ok)throw Error('history unavailable');
+   const value=await readNoticeArchiveWithContinuity(s,{batchSequence:input.batchSequence,now:input.now,latestIndependentAnchor:oldAnchor});
+   const afterResponse=await call('latest',{});if(!afterResponse.ok||JSON.stringify(await afterResponse.json())!==JSON.stringify(current))throw Error('authority changed; retry');
+   return Response.json(value);
+  }
   if(path==='/read-strict')return Response.json(await readNoticeArchiveWithContinuity(s,input));
   if(path==='/tamper-extension') {s.sql.exec('UPDATE notice_archive_extensions SET rows_json=? WHERE batch_sequence=?',input.rows,input.sequence);return Response.json(true);}
   if(path==='/delete-extension') {s.sql.exec('DELETE FROM notice_archive_extensions WHERE batch_sequence=?',input.sequence);return Response.json(true);}
