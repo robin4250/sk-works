@@ -66,6 +66,28 @@ create table invoice_month_close_candidate.notice_open_tickets(
 alter table invoice_month_close_candidate.notice_open_tickets enable row level security;
 revoke all on invoice_month_close_candidate.notice_open_tickets from public,anon,authenticated,service_role;
 create index notice_ticket_cleanup on invoice_month_close_candidate.notice_open_tickets(notice_id,expires_at);
+-- Maintenance entrypoint is intentionally private and unscheduled. A trusted
+-- future scheduler may run bounded batches after installation review.
+create index notice_ticket_expiry_cleanup on invoice_month_close_candidate.notice_open_tickets(expires_at,id);
+create function invoice_month_close_candidate.cleanup_expired_notice_tickets(p_limit integer)
+returns integer language plpgsql security definer set search_path='' as $
+declare removed integer;
+begin
+ if p_limit is null or p_limit < 1 or p_limit > 500 then
+  raise exception 'invalid cleanup batch' using errcode='22023';
+ end if;
+ with doomed as (
+  select id from invoice_month_close_candidate.notice_open_tickets
+   where expires_at <= clock_timestamp()
+   order by expires_at,id
+   for update skip locked limit p_limit
+ ), deleted as (
+  delete from invoice_month_close_candidate.notice_open_tickets t
+   using doomed d where t.id=d.id returning t.id
+ ) select count(*)::integer into removed from deleted;
+ return removed;
+end $;
+revoke all on function invoice_month_close_candidate.cleanup_expired_notice_tickets(integer) from public,anon,authenticated,service_role;
 create function invoice_month_close_candidate.issue_notice_ticket(p_notice uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare actor uuid:=auth.uid();sid uuid;n invoice_month_close_candidate.notice_intents%rowtype;t invoice_month_close_candidate.notice_open_tickets%rowtype;

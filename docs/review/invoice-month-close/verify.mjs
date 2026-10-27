@@ -132,7 +132,24 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   console.log(JSON.stringify({fixture_concurrent_ticket_exactly_once:true}));
  }finally{await a.end();await b.end();}
 }
-for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.issue_notice_ticket(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.consume_notice_ticket(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.prepare_notice(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.notice_current(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
+// Maintenance is bounded, private and never deletes a currently valid ticket.
+const gcExpired=id(770),gcActive=id(771);
+await db.query("insert into invoice_month_close_candidate.notice_open_tickets(id,notice_id,actor_id,session_id,expires_at) values($1,$3,$4,$5,clock_timestamp()-interval '1 second'),($2,$3,$4,$5,clock_timestamp()+interval '5 minutes')",[gcExpired,gcActive,firstNotice,worker,id(70)]);
+await assert.rejects(db.query('select invoice_month_close_candidate.cleanup_expired_notice_tickets(0)'),/invalid cleanup batch/);
+await assert.rejects(db.query('select invoice_month_close_candidate.cleanup_expired_notice_tickets(501)'),/invalid cleanup batch/);
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ const {connectFixture}=await import(process.argv[2]);const a=await connectFixture(),b=await connectFixture();
+ try{
+  await a.query('begin');await a.query('select id from invoice_month_close_candidate.notice_open_tickets where id=$1 for update',[gcExpired]);
+  await b.query("set statement_timeout='1s'");await b.query('select invoice_month_close_candidate.cleanup_expired_notice_tickets(500)');
+  assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_open_tickets where id=$1',[gcExpired])).rows[0].n,1);
+  await a.query('rollback');
+ }finally{await a.end();await b.end();}
+}
+await db.query('select invoice_month_close_candidate.cleanup_expired_notice_tickets(500)');
+assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_open_tickets where id=$1',[gcExpired])).rows[0].n,0);
+assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_open_tickets where id=$1',[gcActive])).rows[0].n,1);
+for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.cleanup_expired_notice_tickets(integer)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.issue_notice_ticket(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.consume_notice_ticket(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.prepare_notice(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.notice_current(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
 console.log(JSON.stringify({fixture_notice_off_by_default:true,missing_trusted_readiness_denied:true,pending_approver_checked:true,duplicate_intent_deduplicated:true,changed_revision_new_intent:true,recipient_session_expiry_replay_checked:true,stale_notice_rejected:true,actual_delivery_absent:true}));
 // Site-only late-change audit experiment: no invoice rewrite and no delivery.
 await db.exec(await readFile(process.env.SKO_LATE_CHANGE_SQL,'utf8'));
