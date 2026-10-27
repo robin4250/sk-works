@@ -26,6 +26,9 @@ jobs:
           node-version: '22'
       - run: npm install --no-save --ignore-scripts pg@8.16.3
       - run: node --check docs/review/invoice-correction-preview/verify.mjs
+      - run: node docs/review/invoice-correction-preview/verify_invoice_trigger_contract.mjs
+        env:
+          SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
       - run: node docs/review/invoice-correction-preview/verify.mjs "$PWD/tool/trade_document_adjustments_native_pg17_runtime.mjs"
         env:
           SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
