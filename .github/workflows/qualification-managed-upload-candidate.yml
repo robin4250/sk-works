@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
-      - run: node --test tool/qualification_management_upload_http.test.mjs tool/qualification_management_upload_db_adapter.test.mjs tool/qualification_management_storage_reader.test.mjs tool/qualification_management_upload_inspection.test.mjs tool/qualification_management_storage_integration.test.mjs
+      - run: node --test tool/qualification_management_upload_http.test.mjs tool/qualification_management_upload_db_adapter.test.mjs tool/qualification_management_storage_reader.test.mjs tool/qualification_management_upload_inspection.test.mjs tool/qualification_management_storage_integration.test.mjs tool/qualification_management_upload_bounded_parser.test.mjs
       - run: node tool/qualification_management_upload_native.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
         env:
           SKO_QUALIFICATION_UPLOAD_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_qualification_upload_fixture
