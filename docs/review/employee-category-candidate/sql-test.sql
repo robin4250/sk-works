@@ -15,6 +15,11 @@ do $$ declare cid uuid:='10000000-0000-0000-0000-000000000001'; wid uuid:='30000
  result:=public.save_worker_personnel_profile(wid,payload);
  assert result->>'status'='unchanged';
  assert (select category_id from employee_category_private.assignments where worker_id=wid)=category;
+ payload:=payload || jsonb_build_object('department','合成部署');
+ result:=public.save_worker_personnel_profile(wid,payload);
+ assert result->>'status'='saved','existing field update failed';
+ assert (select department from public.workers where id=wid)='合成部署';
+ assert (select category_id from employee_category_private.assignments where worker_id=wid)=category,'category was cleared';
  begin
    perform public.add_employee_category('10000000-0000-0000-0000-000000000002','不正');
    raise exception 'cross-company write succeeded';
