@@ -12,7 +12,7 @@ begin
  end loop;
  select encode(sha256(convert_to(coalesce(string_agg(n.nspname||'.'||p.proname||':'||pg_get_function_identity_arguments(p.oid)||':'||p.prosrc,'' order by n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)),''),'UTF8')),'hex') into routines_hash
  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
- where (n.nspname='private' and p.proname in ('refresh_automatic_invoice','route_billing_invoice_components','route_signed_checkout_components','route_signed_checkout_sources','route_signed_site_rates','route_billing_invoice_blocked','route_billing_site_daily_rate','resolve_rate_formula','rate_formula_label','has_company_feature','require_reauthentication_session','expense_cost_components','document_company_seal_snapshot','uploaded_company_seal_snapshot','aoyagi_reisho_name_supported'))
+ where (n.nspname='private' and p.proname in ('refresh_automatic_invoice','route_billing_invoice_components','route_signed_checkout_components','route_signed_checkout_sources','route_signed_site_rates','route_billing_invoice_blocked','route_billing_site_daily_rate','resolve_rate_formula','rate_formula_label','has_company_feature','require_reauthentication_session','account_access_allowed','account_deletion_barrier_key','expense_cost_components','document_company_seal_snapshot','uploaded_company_seal_snapshot','aoyagi_reisho_name_supported'))
     or (n.nspname='document_adjustment_private' and p.proname in ('active_items','ledger_items'))
     or (n.nspname='invoice_correction_preview_private' and p.proname='preview');
  return encode(sha256(convert_to(digest_parts||'|'||routines_hash,'UTF8')),'hex');

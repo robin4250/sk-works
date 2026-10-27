@@ -10,6 +10,7 @@ const marker='let checks=0;';assert.equal(original.split(marker).length,2);
 const payload=`
 // Only isolated, synthetic fixture data. Preserve the invoice/approval record.
 await db.exec("create or replace function private.has_company_feature(p_company uuid,p_feature text) returns boolean language sql as $$select true$$;");
+await db.exec("create or replace function private.account_access_allowed() returns boolean language sql as $$select true$$;");
 await db.exec(${JSON.stringify(candidate)});
 await db.exec("create table if not exists private.route_journey_captures(id uuid,company_id uuid); create table if not exists private.route_journey_visit_events(capture_id uuid); create table if not exists public.invoice_approval_audit(invoice_id uuid,company_id uuid); create table if not exists public.daily_reports(id uuid,company_id uuid); create table if not exists public.daily_report_workers(report_id uuid); create table if not exists public.route_stops(company_id uuid); create table if not exists private.route_billing_quantity_requests(id uuid,company_id uuid); create table if not exists private.route_billing_quantity_evidence(request_id uuid); create table if not exists private.expense_amount_consumptions(company_id uuid);");
 await db.query("update site_financial_settings set billing_allowance_1_name='合成手当',billing_allowance_1_amount_yen=10,billing_overtime_hour_rate_yen=20 where company_id=$1 and site_id=$2",[company,site]);
@@ -44,6 +45,9 @@ assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id
 const correctionPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
 assert.match(correctionPreview.source_fingerprint,/^[0-9a-f]{64}$/);assert.match(correctionPreview.original_invoice_fingerprint,/^[0-9a-f]{64}$/);
 const unchangedPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;assert.equal(unchangedPreview.source_fingerprint,correctionPreview.source_fingerprint);
+await db.exec("create or replace function private.account_access_allowed() returns boolean language sql as $$select false$$;");
+const authDrift=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;assert.notEqual(authDrift.source_fingerprint,correctionPreview.source_fingerprint);
+await db.exec("create or replace function private.account_access_allowed() returns boolean language sql as $$select true$$;");
 await db.query("update private.route_visit_reports set site_name='合成変更' where id=$1",[routeReport]);
 const routeChanged=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;assert.notEqual(routeChanged.source_fingerprint,correctionPreview.source_fingerprint);
 await db.query("update private.route_visit_reports set site_name='合成ルート現場' where id=$1",[routeReport]);
