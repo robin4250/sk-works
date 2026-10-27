@@ -1,0 +1,38 @@
+-- Offline candidate only. Upload registration/Storage policy and trusted file
+-- inspection service are not yet connected; never deploy or enable.
+create table private.document_change_upload_rollout (singleton boolean primary key default true check(singleton), enabled boolean not null default false);
+insert into private.document_change_upload_rollout(singleton,enabled) values(true,false);
+alter table private.document_change_upload_rollout enable row level security;
+revoke all on private.document_change_upload_rollout from public,anon,authenticated,service_role;
+create function private.document_change_upload_allowed(p_request uuid,p_company uuid,p_worker uuid,p_requirement uuid,p_path text,p_actor uuid) returns boolean
+language plpgsql security definer set search_path='' as $$
+begin
+ perform 1 from private.document_change_upload_rollout where singleton and enabled for share;
+ if not found then return false; end if;
+ return exists(select 1 from private.document_upload_inspection_candidates i
+ where i.request_id=p_request and i.company_id=p_company and i.worker_id=p_worker and i.requirement_id=p_requirement
+ and i.object_path=p_path and i.actor_id=p_actor and i.status='inspected'
+ and private.check_document_upload_for_approval(i.id,p_request,p_company,p_worker,p_requirement,p_path));
+end;
+$$;
+revoke all on function private.document_change_upload_allowed(uuid,uuid,uuid,uuid,text,uuid) from public,anon,authenticated,service_role;
+do $overlay$
+declare body text; before_text text; after_text text;
+begin
+ select pg_get_functiondef('private.worker_document_change(text,jsonb)'::regprocedure) into body;
+ before_text := $a$if path is null or not(path=any(oldpaths)) then raise exception 'New document uploads are unavailable' using errcode='22023';end if;$a$;
+ after_text := $b$if path is null or (not(path=any(oldpaths)) and not private.document_change_upload_allowed(rid,official.company_id,official.worker_id,official.requirement_id,path,actor)) then raise exception 'New document uploads are unavailable' using errcode='22023';end if;$b$;
+ if position(before_text in body)=0 then raise exception 'prepare anchor missing'; end if;
+ body:=replace(body,before_text,after_text);
+ before_text := $a$if not exists(select 1 from storage.objects o where o.bucket_id='worker-documents' and o.name=path) then
+   raise exception 'Saved document attachment unavailable' using errcode='22023';end if;$a$;
+ after_text := $b$if not exists(select 1 from storage.objects o where o.bucket_id='worker-documents' and o.name=path) then
+   raise exception 'Saved document attachment unavailable' using errcode='22023';end if;
+  if not(path=any(case when jsonb_typeof(r.previous->'attachment_paths')='array' then array(select jsonb_array_elements_text(r.previous->'attachment_paths')) else '{}'::text[] end))
+   and path is distinct from r.previous->>'attachment_path'
+   and not private.document_change_upload_allowed(r.id,r.company_id,r.worker_id,r.requirement_id,path,r.requested_by) then
+   raise exception 'Document upload changed or unavailable' using errcode='22023';end if;$b$;
+ if position(before_text in body)=0 then raise exception 'approval anchor missing'; end if;
+ body:=replace(body,before_text,after_text);
+ execute body;
+end $overlay$;

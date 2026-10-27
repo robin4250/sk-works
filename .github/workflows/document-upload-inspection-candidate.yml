@@ -1,0 +1,23 @@
+name: Document upload inspection candidate
+on:
+  pull_request:
+    paths:
+      - 'tool/document_upload_*'
+      - 'tool/document_file_validator.mjs'
+      - 'tool/document_validator_limits.test.mjs'
+      - '.github/workflows/document-upload-inspection-candidate.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-inspection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node --test tool/document_upload_evidence.test.mjs tool/document_upload_inspection.test.mjs tool/document_validator_limits.test.mjs
+      - run: node tool/document_upload_inspection_sql.test.mjs
+      - run: node tool/document_upload_approval_overlay.test.mjs

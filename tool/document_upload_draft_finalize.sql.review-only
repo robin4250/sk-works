@@ -1,0 +1,41 @@
+-- Offline proposal; no external execute privileges. Existing prepare remains
+-- immutable/idempotent. An inspected upload may be added to an own draft by
+-- this separate, guarded transaction; pending requests can never be altered.
+create function private.document_change_finalize_inspected_draft(p_request uuid,p_proposed jsonb)
+returns boolean language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid(); r private.worker_document_changes%rowtype;
+ official public.worker_document_statuses%rowtype; paths text[]; oldpaths text[]; path text;
+begin
+ if actor is null then return false; end if;
+ perform private.require_reauthentication_session();
+ perform 1 from private.document_change_upload_rollout where singleton and enabled for share;
+ if not found then return false; end if;
+ select * into r from private.worker_document_changes where id=p_request for update;
+ if not found or r.requested_by is distinct from actor or r.status <> 'draft' then return false; end if;
+ select * into official from public.worker_document_statuses where id=r.target_id and company_id=r.company_id for update;
+ if not found or private.worker_document_change_snapshot(to_jsonb(official)) is distinct from r.previous then return false; end if;
+ if not exists(select 1 from public.workers w join public.company_members m on m.company_id=w.company_id
+   where w.id=r.worker_id and w.company_id=r.company_id and m.user_id=actor
+   and (w.user_id=actor or m.role::text in ('owner','admin','manager')))
+   or not exists(select 1 from public.document_requirements d where d.id=r.requirement_id and d.company_id=r.company_id and d.is_active) then return false; end if;
+ if jsonb_typeof(p_proposed) is distinct from 'object' or p_proposed-array['attachment_paths','expires_at','notes'] <> '{}'::jsonb
+   or not (p_proposed ?& array['attachment_paths','expires_at','notes'])
+   or jsonb_typeof(p_proposed->'attachment_paths') is distinct from 'array'
+   or jsonb_array_length(p_proposed->'attachment_paths')>20
+   or (p_proposed->'notes'<>'null'::jsonb and (jsonb_typeof(p_proposed->'notes')<>'string'
+       or length(p_proposed->>'notes')>4000 or nullif(btrim(p_proposed->>'notes'),'') is distinct from p_proposed->>'notes')) then return false; end if;
+ if p_proposed->>'expires_at' is not null and (p_proposed->>'expires_at' !~ '^\d{4}-\d{2}-\d{2}$'
+   or to_char((p_proposed->>'expires_at')::date,'YYYY-MM-DD')<>p_proposed->>'expires_at') then return false; end if;
+ if exists(select 1 from jsonb_array_elements(p_proposed->'attachment_paths') x where jsonb_typeof(x)<>'string') then return false; end if;
+ paths:=array(select jsonb_array_elements_text(p_proposed->'attachment_paths'));
+ if cardinality(paths)<>(select count(distinct p) from unnest(paths) p) then return false; end if;
+ oldpaths:=case when cardinality(official.attachment_paths)>0 then official.attachment_paths
+   when official.attachment_path is not null then array[official.attachment_path] else '{}'::text[] end;
+ foreach path in array paths loop
+   if path is null or (not(path=any(oldpaths)) and not private.document_change_upload_allowed(r.id,r.company_id,r.worker_id,r.requirement_id,path,actor)) then return false; end if;
+ end loop;
+ update private.worker_document_changes set proposed=p_proposed where id=r.id and status='draft';
+ return found;
+exception when invalid_datetime_format or datetime_field_overflow then return false;
+end $$;
+revoke all on function private.document_change_finalize_inspected_draft(uuid,jsonb) from public,anon,authenticated,service_role;

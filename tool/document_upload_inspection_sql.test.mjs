@@ -1,0 +1,53 @@
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
+const modulePath = process.env.SKO_PGLITE_MODULE ?? 'tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js';
+const { PGlite } = await import(pathToFileURL(resolve(modulePath)));
+const db = new PGlite();
+try {
+ await db.exec(`create role anon; create role authenticated; create role service_role;
+ create schema private; create schema storage; create schema auth;
+ create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.actor',true),'')::uuid$$;
+ create function private.require_reauthentication_session() returns void language plpgsql as $$begin if current_setting('test.session',true) is distinct from 'live' then raise exception 'session invalid'; end if; end$$;
+ create table private.document_change_upload_rollout(singleton boolean primary key,enabled boolean not null);
+ insert into private.document_change_upload_rollout values(true,false);
+ create table private.worker_document_changes(id uuid primary key,requested_by uuid,status text,company_id uuid,worker_id uuid,requirement_id uuid);
+ create table storage.objects(bucket_id text,name text,version text,is_delete_marker boolean default false);`);
+ await db.exec(await readFile(new URL('./document_upload_inspection.sql.review-only',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('./document_upload_commit_boundary.sql.review-only',import.meta.url),'utf8'));
+ await db.exec(`insert into storage.objects values ('worker-documents','document-change/test','v1',false);
+ insert into private.document_upload_inspection_candidates(id,actor_id,company_id,worker_id,requirement_id,request_id,object_path,object_version,status,expires_at)
+ values ('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000004','00000000-0000-4000-8000-000000000005','00000000-0000-4000-8000-000000000006','document-change/test','v1','awaiting_inspection',clock_timestamp()+interval '2 minutes');`);
+ const inspect = async (actor,version,sha='a'.repeat(64)) => (await db.query(`select private.commit_document_upload_inspection('00000000-0000-4000-8000-000000000001',$1,'00000000-0000-4000-8000-000000000006',$2,$3,16,'application/pdf') ok`,[actor,version,sha])).rows[0].ok;
+ assert.equal(await inspect('00000000-0000-4000-8000-000000000009','v1'),false);
+ assert.equal(await inspect('00000000-0000-4000-8000-000000000002','v2'),false);
+ assert.equal(await inspect('00000000-0000-4000-8000-000000000002','v1',null),false);
+ assert.equal(await inspect('00000000-0000-4000-8000-000000000002','v1'),true);
+ assert.equal(await inspect('00000000-0000-4000-8000-000000000002','v1'),false);
+ const approval = async company => (await db.query(`select private.check_document_upload_for_approval('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000006',$1,'00000000-0000-4000-8000-000000000004','00000000-0000-4000-8000-000000000005','document-change/test') ok`,[company])).rows[0].ok;
+ assert.equal(await approval('00000000-0000-4000-8000-000000000009'),false);
+ assert.equal(await approval('00000000-0000-4000-8000-000000000003'),true);
+ await db.exec("update storage.objects set version='v2' where name='document-change/test'");
+ assert.equal(await approval('00000000-0000-4000-8000-000000000003'),false);
+ const perms=await db.query(`select has_function_privilege('authenticated','private.commit_document_upload_inspection(uuid,uuid,uuid,text,text,bigint,text)','execute') permitted`);
+ assert.equal(perms.rows[0].permitted,false);
+ await db.exec(`update storage.objects set version='v1' where name='document-change/test';
+ update private.document_upload_inspection_candidates set status='awaiting_inspection',sha256=null,byte_count=null,mime=null;
+ insert into private.worker_document_changes values ('00000000-0000-4000-8000-000000000006','00000000-0000-4000-8000-000000000002','draft','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000004','00000000-0000-4000-8000-000000000005');
+ select set_config('test.actor','00000000-0000-4000-8000-000000000002',false); select set_config('test.session','live',false);`);
+ const boundary=async()=> (await db.query(`select private.commit_document_upload_inspection_authorized('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000006','v1',$1,16,'application/pdf') ok`,['a'.repeat(64)])).rows[0].ok;
+ assert.equal(await boundary(),false); // OFF is fail closed
+ await db.exec("update private.document_change_upload_rollout set enabled=true; select set_config('test.session','expired',false)");
+ await assert.rejects(boundary(),/session invalid/);
+ await db.exec("select set_config('test.session','live',false); select set_config('test.actor','00000000-0000-4000-8000-000000000009',false)");
+ assert.equal(await boundary(),false);
+ await db.exec("select set_config('test.actor','00000000-0000-4000-8000-000000000002',false); update private.worker_document_changes set status='pending'");
+ assert.equal(await boundary(),false);
+ await db.exec("update private.worker_document_changes set status='draft'");
+ assert.equal(await boundary(),true);
+ assert.equal(await boundary(),false);
+ const boundaryPerms=await db.query(`select has_function_privilege('authenticated','private.commit_document_upload_inspection_authorized(uuid,uuid,text,text,bigint,text)','execute') permitted`);
+ assert.equal(boundaryPerms.rows[0].permitted,false);
+ console.log('isolated SQL: foreign actor/version/null/replay denied; authenticated cannot execute');
+} finally { await db.close(); }

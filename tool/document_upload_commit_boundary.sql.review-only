@@ -1,0 +1,26 @@
+-- Offline-only integration boundary. No external role is granted execution.
+-- The caller must obtain the bytes and metadata through a trusted inspector.
+create function private.commit_document_upload_inspection_authorized(
+ p_id uuid, p_request uuid, p_version text, p_sha text, p_bytes bigint, p_mime text
+) returns boolean language plpgsql security definer set search_path='' as $$
+declare actor uuid; rec private.document_upload_inspection_candidates%rowtype;
+begin
+ actor := auth.uid();
+ if actor is null then return false; end if;
+ perform private.require_reauthentication_session();
+ -- Lock the switch so an OFF change cannot race a successful commit.
+ perform 1 from private.document_change_upload_rollout where singleton and enabled for share;
+ if not found then return false; end if;
+ select * into rec from private.document_upload_inspection_candidates where id=p_id for update;
+ if not found or rec.actor_id is distinct from actor or rec.request_id is distinct from p_request
+   or rec.status <> 'awaiting_inspection' or rec.expires_at <= clock_timestamp() then return false; end if;
+ -- The existing change request remains the authority for tenant, actor, target
+ -- and lifecycle. This must be checked again after the bytes were inspected.
+ perform 1 from private.worker_document_changes r
+ where r.id=rec.request_id and r.requested_by=actor and r.status='draft'
+   and r.company_id=rec.company_id and r.worker_id=rec.worker_id
+   and r.requirement_id=rec.requirement_id for update;
+ if not found then return false; end if;
+ return private.commit_document_upload_inspection(p_id,actor,p_request,p_version,p_sha,p_bytes,p_mime);
+end $$;
+revoke all on function private.commit_document_upload_inspection_authorized(uuid,uuid,text,text,bigint,text) from public,anon,authenticated,service_role;
