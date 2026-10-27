@@ -73,11 +73,13 @@ jobs:
           SKO_ADJUSTMENT_ROOT: ${{ github.workspace }}
           SKO_PREVIEW_SQL: ${{ github.workspace }}/_invoice_preview_dependency/docs/review/invoice-correction-preview/preview.sql.review-only
           SKO_STAGE_SQL: ${{ github.workspace }}/docs/candidates/invoice_revision_staging_20261027/revision.sql.review-only
+          SKO_OWNER_PREVIEW_SQL: ${{ github.workspace }}/docs/candidates/invoice_revision_staging_20261027/owner-preview.sql.review-only
       - run: node tool/verify_invoice_preview_stage_wrapper.generated.mjs "$PWD/tool/trade_document_adjustments_native_pg17_runtime.mjs"
         env:
           SKO_ADJUSTMENT_ROOT: ${{ github.workspace }}
           SKO_PREVIEW_SQL: ${{ github.workspace }}/_invoice_preview_dependency/docs/review/invoice-correction-preview/preview.sql.review-only
           SKO_STAGE_SQL: ${{ github.workspace }}/docs/candidates/invoice_revision_staging_20261027/revision.sql.review-only
+          SKO_OWNER_PREVIEW_SQL: ${{ github.workspace }}/docs/candidates/invoice_revision_staging_20261027/owner-preview.sql.review-only
           SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
   review-ui:
     runs-on: ubuntu-latest
