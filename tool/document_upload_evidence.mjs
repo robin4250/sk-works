@@ -10,7 +10,8 @@ export function uploadEvidenceMatches(expected, actual) {
     if (typeof expected[key] !== 'string' || !uuid.test(expected[key]) || actual[key] !== expected[key]) return false;
   }
   if (expected.bucket !== 'worker-documents' || actual.bucket !== expected.bucket) return false;
-  if (typeof expected.path !== 'string' || expected.path.length > 1024 || !expected.path.startsWith('document-change/')) return false;
+  const prefix = `${expected.companyId}/${expected.workerId}/${expected.requirementId}/${expected.requestId}/`;
+  if (typeof expected.path !== 'string' || expected.path.length > 1024 || !expected.path.startsWith(prefix) || expected.path.length === prefix.length) return false;
   if (expected.path.includes('..') || expected.path.includes('\\') || expected.path.includes('//') || actual.path !== expected.path) return false;
   if (!types.has(expected.mime) || actual.mime !== expected.mime) return false;
   if (!Number.isSafeInteger(expected.bytes) || expected.bytes <= 0 || expected.bytes > 20 * 1024 * 1024 || actual.bytes !== expected.bytes) return false;

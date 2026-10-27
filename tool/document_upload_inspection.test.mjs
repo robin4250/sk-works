@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectPendingUpload } from './document_upload_inspection.mjs';
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const row = { actorId:id(1), requestId:id(2), companyId:id(3), workerId:id(4), requirementId:id(5), bucket:'worker-documents', path:'document-change/r/object', mime:'application/pdf', status:'awaiting_inspection', objectVersion:'v1' };
+const row = { actorId:id(1), requestId:id(2), companyId:id(3), workerId:id(4), requirementId:id(5), bucket:'worker-documents', path:`${id(3)}/${id(4)}/${id(5)}/${id(2)}/object.pdf`, mime:'application/pdf', status:'awaiting_inspection', objectVersion:'v1' };
 const bytes = new TextEncoder().encode('%PDF-1.7\nexample');
 function adapters() { let used = false; return { db: { async getAuthorizedPendingInspection(){return {...row}}, async commitInspectionAtomically({verified}) {if (used || verified.sha256.length !== 64) return false; used=true; return true;} }, storage: {async readImmutableVersion(){return {bytes, version:'v1'}}} }; }
 test('trusted bytes produce one committed inspection and replay fails', async () => { const a=adapters(); assert.deepEqual(await inspectPendingUpload({actorId:row.actorId,requestId:row.requestId,...a}),{inspected:true}); await assert.rejects(inspectPendingUpload({actorId:row.actorId,requestId:row.requestId,...a}),/inspection_conflict/); });
