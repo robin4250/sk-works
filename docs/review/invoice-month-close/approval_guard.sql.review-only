@@ -8,6 +8,14 @@ create table invoice_month_close_candidate.approval_permits(
 alter table invoice_month_close_candidate.approval_guard_settings enable row level security;
 alter table invoice_month_close_candidate.approval_permits enable row level security;
 revoke all on invoice_month_close_candidate.approval_guard_settings,invoice_month_close_candidate.approval_permits from public,anon,authenticated,service_role;
+create function invoice_month_close_candidate.notification_rollout_enabled() returns boolean
+language plpgsql volatile security definer set search_path='' as $$
+declare enabled boolean;
+begin
+ select s.enabled into enabled from invoice_month_close_candidate.approval_guard_settings s where singleton for share;
+ return coalesce(enabled,false);
+end $$;
+revoke all on function invoice_month_close_candidate.notification_rollout_enabled() from public,anon,authenticated,service_role;
 create function invoice_month_close_candidate.require_approval_permit(p_invoice uuid) returns void
 language plpgsql security definer set search_path='' as $$
 declare enabled boolean;actor uuid:=auth.uid();sid uuid;
