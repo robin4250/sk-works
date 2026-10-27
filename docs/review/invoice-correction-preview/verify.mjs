@@ -115,6 +115,11 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   const afterBarrier=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
   assert.notEqual(afterBarrier.source_fingerprint,beforeBarrier.source_fingerprint);
   await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
+  await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture:'||$1::text,0))",[company]);
+  let updateDone=false;const barrierUpdate=writer.query("update attendance_entries set overtime_hours=2 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]).then(()=>{updateDone=true;});
+  await pause(200);assert.equal(updateDone,false);await db.query('commit');await barrierUpdate;assert.equal(updateDone,true);
+  await db.query("update attendance_entries set overtime_hours=1 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]);
+  console.log(JSON.stringify({fixture_legacy_update_waits_company_lock:true}));
   await db.exec('drop trigger synthetic_writer_barrier on public.attendance_entries;drop function private.synthetic_company_writer_lock();');
   console.log(JSON.stringify({fixture_legacy_insert_waits_company_lock:true,other_company_lock_independent:true,scope_limited_to_one_fixture_table:true}));
   // SERIALIZABLE can commit before a non-participating writer in serialization order.
