@@ -122,6 +122,27 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   console.log(JSON.stringify({fixture_legacy_update_waits_company_lock:true}));
   await db.exec('drop trigger synthetic_writer_barrier on public.attendance_entries;drop function private.synthetic_company_writer_lock();');
   console.log(JSON.stringify({fixture_legacy_insert_waits_company_lock:true,other_company_lock_independent:true,scope_limited_to_one_fixture_table:true}));
+  // Synthetic integration only: exercise existing fixture triggers and company-key changes.
+  // Joined-child tables and all production deployment effects remain unverified.
+  await db.exec("create function private.synthetic_company_barrier_v2() returns trigger language plpgsql as $$declare v uuid;begin for v in select distinct c from (values (case when TG_OP <> 'INSERT' then old.company_id end),(case when TG_OP <> 'DELETE' then new.company_id end)) s(c) where c is not null order by c loop perform pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||v::text,0));end loop;if TG_OP='DELETE' then return old;end if;return new;end$$;");
+  const protectedTables=['public.attendance_entries','public.site_financial_settings','private.route_billing_quantity_requests','private.expense_claims','document_adjustment_private.rollout'];
+  for(const table of protectedTables)await db.exec('create trigger synthetic_barrier_v2 before insert or update or delete on '+table+' for each row execute function private.synthetic_company_barrier_v2()');
+  for(const table of protectedTables){
+   await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||$1::text,0))",[company]);
+   await writer.query('begin');let finished=false;
+   const q=writer.query('update '+table+' set company_id=company_id where company_id=$1',[company]).then(()=>{finished=true;});
+   await pause(200);assert.equal(finished,false,'writer did not wait for '+table);await db.query('commit');await q;await writer.query('rollback');
+  }
+  // A legacy update moving a row into a second company must acquire both company keys.
+  await db.query("insert into companies(id,tax_rate,name) values($1,10,'別の合成会社')",[id(997)]);
+  await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||$1::text,0))",[id(997)]);
+  await writer.query('begin');let moveFinished=false;
+  const move=writer.query("update attendance_entries set company_id=$1 where company_id=$2 and site_id=$3 and work_date='2026-10-27'",[id(997),company,site]).then(()=>{moveFinished=true;});
+  await pause(200);assert.equal(moveFinished,false);await db.query('commit');await move;await writer.query('rollback');
+  await db.query('delete from companies where id=$1',[id(997)]);
+  for(const table of protectedTables)await db.exec('drop trigger synthetic_barrier_v2 on '+table);
+  await db.exec('drop function private.synthetic_company_barrier_v2()');
+  console.log(JSON.stringify({fixture_existing_writer_updates_wait:true,fixture_five_real_tables:true,company_move_checks_old_and_new:true,joined_children_not_covered:true}));
   // SERIALIZABLE can commit before a non-participating writer in serialization order.
   // Stage therefore becomes stale after commit; a later publish must revalidate.
   await db.query('begin isolation level serializable');
