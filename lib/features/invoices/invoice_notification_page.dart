@@ -50,7 +50,9 @@ class SupabaseInvoiceNoticeSource implements InvoiceNoticeSource {
       final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
       final sid = claims is Map ? claims['session_id'] : null;
       if (claims is! Map || claims['sub'] != userId || sid is! String ||
-          !RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(sid)) return null;
+          !RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(sid)) {
+        return null;
+      }
       return '$userId/$sid';
     } catch (_) {
       return null;
