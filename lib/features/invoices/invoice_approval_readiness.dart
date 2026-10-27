@@ -43,10 +43,11 @@ class InvoiceApprovalReadiness {
 /// callback must call a server-side atomic approval gate, not a legacy RPC.
 class InvoiceApprovalReadinessNotice extends StatelessWidget {
   const InvoiceApprovalReadinessNotice({super.key, required this.readiness,
-    required this.isApprover, required this.busy, required this.onApprove,
+    required this.isApprover, required this.fromNotification, required this.busy, required this.onApprove,
     required this.onReload});
   final InvoiceApprovalReadiness readiness;
   final bool isApprover;
+  final bool fromNotification;
   final bool busy;
   final VoidCallback? onApprove;
   final VoidCallback? onReload;
@@ -67,11 +68,13 @@ class InvoiceApprovalReadinessNotice extends StatelessWidget {
         ? Colors.green.shade700 : Theme.of(context).colorScheme.onSurface;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: TextStyle(color: color)),
+      if (state == InvoiceApprovalReadinessState.ready && isApprover && !fromNotification)
+        const Text('承認は通知から請求書を開いて行います。'),
       if (state == InvoiceApprovalReadinessState.ready && !isApprover)
         const Text('承認は担当者が行います。'),
       if (state == InvoiceApprovalReadinessState.unavailable && onReload != null)
         TextButton(onPressed: busy ? null : onReload, child: const Text('再読み込み')),
-      if (state == InvoiceApprovalReadinessState.ready && isApprover)
+      if (state == InvoiceApprovalReadinessState.ready && isApprover && fromNotification)
         FilledButton.icon(
           onPressed: busy ? null : onApprove,
           icon: const Icon(Icons.approval_outlined),

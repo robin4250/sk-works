@@ -1003,11 +1003,13 @@ class InvoicePdfPreviewPage extends StatefulWidget {
     required this.invoices,
     this.title,
     this.allowLegacyApprovalInitialization = true,
+    this.approvalFromNotification = false,
   });
 
   final List<InvoiceCalculationResult> invoices;
   final String? title;
   final bool allowLegacyApprovalInitialization;
+  final bool approvalFromNotification;
 
   @override
   State<InvoicePdfPreviewPage> createState() => _InvoicePdfPreviewPageState();
@@ -1357,7 +1359,12 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         ],
                       ),
                     ),
-                  if (isPendingApprover)
+                  if (isPendingApprover && !widget.approvalFromNotification)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(12, 6, 12, 0),
+                      child: Text('承認は通知から請求書を開いて行います。'),
+                    ),
+                  if (isPendingApprover && widget.approvalFromNotification)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
                       // Fail closed until the server exposes a revision-bound,
@@ -1367,6 +1374,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                           invoiceId: _singleInvoice?.invoiceId ?? '',
                           revision: _singleInvoice?.documentUpdatedAt ?? ''),
                         isApprover: canApprove,
+                        fromNotification: widget.approvalFromNotification,
                         busy: _approving,
                         onApprove: _approve,
                         onReload: null,

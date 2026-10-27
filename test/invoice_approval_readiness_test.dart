@@ -5,8 +5,8 @@ import 'package:sk_works/features/invoices/invoice_approval_readiness.dart';
 void main() {
   InvoiceApprovalReadiness from(String status, {String id = 'invoice', String rev = 'revision'}) =>
       InvoiceApprovalReadiness.fromServer({'status': status, 'invoice_id': id, 'source_revision': rev}, invoiceId: 'invoice', revision: 'revision');
-  Widget page(InvoiceApprovalReadiness state, {bool approver = true, bool busy = false, VoidCallback? onApprove}) =>
-      MaterialApp(home: Scaffold(body: InvoiceApprovalReadinessNotice(readiness: state, isApprover: approver, busy: busy, onApprove: onApprove, onReload: () {})));
+  Widget page(InvoiceApprovalReadiness state, {bool approver = true, bool notification = true, bool busy = false, VoidCallback? onApprove}) =>
+      MaterialApp(home: Scaffold(body: InvoiceApprovalReadinessNotice(readiness: state, isApprover: approver, fromNotification: notification, busy: busy, onApprove: onApprove, onReload: () {})));
 
   test('unknown, malformed, wrong invoice and stale revision fail closed', () {
     for (final state in [from('unknown'), from('route_unverified'), from('work_unverified'), from('source_proof_missing'), from('period_unverified'), from('data_changed'), from('ready', id: 'other'), from('ready', rev: 'old'), InvoiceApprovalReadiness.fromServer(null, invoiceId: 'invoice', revision: 'revision')]) {
@@ -24,7 +24,7 @@ void main() {
     var calls = 0;
     final state = InvoiceApprovalReadiness.fromServer(null, invoiceId: 'invoice', revision: 'revision');
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: InvoiceApprovalReadinessNotice(
-      readiness: state, isApprover: true, busy: false, onApprove: () => calls++, onReload: null))));
+      readiness: state, isApprover: true, fromNotification: true, busy: false, onApprove: () => calls++, onReload: null))));
     expect(find.text('承認できる状態を確認できません。管理者に確認してください。'), findsOneWidget);
     expect(find.text('承認する'), findsNothing);
     expect(find.text('再読み込み'), findsNothing);
@@ -35,6 +35,9 @@ void main() {
     await tester.pumpWidget(page(from('ready'), onApprove: () => calls++));
     await tester.tap(find.text('承認する'));
     expect(calls, 1);
+    await tester.pumpWidget(page(from('ready'), notification: false, onApprove: () => calls++));
+    expect(find.text('承認する'), findsNothing);
+    expect(find.text('承認は通知から請求書を開いて行います。'), findsOneWidget);
     await tester.pumpWidget(page(from('ready'), approver: false, onApprove: () => calls++));
     expect(find.text('承認する'), findsNothing);
     await tester.pumpWidget(page(from('ready'), busy: true, onApprove: () => calls++));

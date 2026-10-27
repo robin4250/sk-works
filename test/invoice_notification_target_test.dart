@@ -73,6 +73,8 @@ void main() {
     final noticePreview = invoiceNotificationPreview(saved);
     expect(noticePreview.invoice, same(saved));
     expect(noticePreview.allowLegacyApprovalInitialization, isFalse);
+    expect(noticePreview.approvalFromNotification, isTrue);
+    expect(InvoicePreviewPage(invoice: saved).approvalFromNotification, isFalse);
     expect(InvoicePreviewPage(invoice: saved).allowLegacyApprovalInitialization, isTrue);
   });
 

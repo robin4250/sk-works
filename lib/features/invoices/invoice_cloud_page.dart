@@ -580,9 +580,11 @@ class InvoicePreviewPage extends StatefulWidget {
     super.key,
     required this.invoice,
     this.allowLegacyApprovalInitialization = true,
+    this.approvalFromNotification = false,
   });
   final InvoiceCalculationResult invoice;
   final bool allowLegacyApprovalInitialization;
+  final bool approvalFromNotification;
 
   @override
   State<InvoicePreviewPage> createState() => _InvoicePreviewPageState();
@@ -814,6 +816,7 @@ class _InvoicePreviewPageState extends State<InvoicePreviewPage> {
       key: ValueKey(_revision),
       invoices: [widget.invoice],
       allowLegacyApprovalInitialization: widget.allowLegacyApprovalInitialization,
+      approvalFromNotification: widget.approvalFromNotification,
       title: SkoLanguageController.isEnglish ? 'Invoice Preview' : '請求書プレビュー',
     ),
     bottomNavigationBar: _approvals == null || widget.invoice.invoiceId.isEmpty

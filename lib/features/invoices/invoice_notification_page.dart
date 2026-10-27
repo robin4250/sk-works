@@ -13,7 +13,7 @@ import 'invoice_list_card.dart';
 
 /// Notification previews never initialize approval data via a legacy lookup.
 InvoicePreviewPage invoiceNotificationPreview(InvoiceCalculationResult invoice) =>
-    InvoicePreviewPage(invoice: invoice, allowLegacyApprovalInitialization: false);
+    InvoicePreviewPage(invoice: invoice, allowLegacyApprovalInitialization: false, approvalFromNotification: true);
 
 abstract interface class InvoiceNoticeSource {
   String? get actor;
