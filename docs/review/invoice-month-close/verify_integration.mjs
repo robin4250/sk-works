@@ -58,6 +58,24 @@ await db.query("select set_config('test.uid',$1,false)",[id(969)]);await assert.
 await db.query("select set_config('test.uid',$1,false)",[actor]);
 const readiness=async()=>(await db.query('select invoice_month_close_candidate.guarded($1) v',[frozen.id])).rows[0].v;
 assert.equal(await readiness(),'ready');
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ const {connectFixture}=await import(process.argv[2]);
+ const holding=await connectFixture(),other=await connectFixture();
+ const otherCompany=id(987),otherSite=id(988);
+ try{
+  await db.query("insert into public.companies(id,tax_rate) values($1,10)",[otherCompany]);
+  await db.query("insert into public.attendance_entries(company_id,site_id,work_date,work_category,base_man_days) values($1,$2,'2020-10-22','day',1)",[otherCompany,otherSite]);
+  await holding.query("select set_config('test.uid',$1,false)",[actor]);
+  await holding.query('begin');
+  assert.equal((await holding.query('select invoice_month_close_candidate.guarded($1) v',[frozen.id])).rows[0].v,'ready');
+  await other.query("set lock_timeout='250ms'");
+  await assert.rejects(other.query("update public.attendance_entries set overtime_hours=7 where company_id=$1 and site_id=$2",[otherCompany,otherSite]),e=>e.code==='55P03');
+  await holding.query('rollback');
+  const updated=await other.query("update public.attendance_entries set overtime_hours=7 where company_id=$1 and site_id=$2",[otherCompany,otherSite]);assert.equal(updated.rowCount,1);
+  console.log(JSON.stringify({other_company_write_blocked_by_global_share_lock:true,other_company_write_recovers_after_rollback:true}));
+ }finally{await holding.query('rollback').catch(()=>{});await holding.end();await other.end();await db.query('delete from public.attendance_entries where company_id=$1',[otherCompany]);await db.query('delete from public.companies where id=$1',[otherCompany]);}
+}
+
 const savedCore=(await db.query("select pg_get_functiondef('invoice_month_close_candidate.preview_for_approver(uuid)'::regprocedure) v")).rows[0].v;
 const changedCore=savedCore.replace('declare'+String.fromCharCode(10),'declare'+String.fromCharCode(10)+' -- synthetic drift'+String.fromCharCode(10));assert.notEqual(changedCore,savedCore);
 await db.exec(changedCore);assert.equal(await readiness(),'source_proof_missing');await db.exec(savedCore);assert.equal(await readiness(),'ready');
