@@ -127,6 +127,8 @@ test('isolated PostgreSQL port binds owner, session, durable command and audited
  const done=await port.reconcileOwnHeld({...i,command_id:c.command_id});assert.equal(done.status,'cancelled');
  assert.deepEqual(await port.reconcileOwnHeld({...i,command_id:c.command_id}),done);assert.deepEqual(await f.identities(),before);
  assert.equal((await f.q('select count(*)::int n from apple_native_enrollment_private.recovery_events'))[0].n,1);
+ await f.q("update auth.users set banned_until=now()+interval '1 day' where id=$1",[uid]);
+ await assert.rejects(port.reconcileOwnHeld({...i,command_id:c.command_id}),/unavailable/);
  await assert.rejects(f.db.exec('delete from apple_native_enrollment_private.self_recovery_commands'),/append_only/);
  await assert.rejects(f.db.exec('truncate apple_native_enrollment_private.self_recovery_commands'),/append_only/);
 }));

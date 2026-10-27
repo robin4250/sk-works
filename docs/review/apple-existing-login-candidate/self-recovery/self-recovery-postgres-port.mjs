@@ -25,6 +25,11 @@ export function createSelfRecoveryPostgresPort({enabled=false,operatorBoundaryRe
    // Read the append-only command without taking the request row lock. The
    // original reconciliation routine owns its established Auth lock order.
    await q('select apple_native_enrollment_private.root_operator()');
+   // The existing reconcile routine returns a recorded command before its own
+   // live-context check. Check the session again even on idempotent replay;
+   // production also needs a proven revocation lock around this transaction.
+   const live=(await q('select apple_native_enrollment_private.context($1,$2) c',[a[1],a[2]])).rows[0]?.c;
+   if(!live||live.account_allowed!==true)reject();
    const c=(await q('select command_id from apple_native_enrollment_private.self_recovery_commands where request_id=$1 and actor_id=$2 and session_id=$3',a)).rows[0];
    if(!c||c.command_id!==input.command_id)reject();
    const v=(await q('select apple_native_enrollment_private.reconcile_request($1,$2,$3,$4) r',[input.command_id,a[0],a[2],reason])).rows[0]?.r;
