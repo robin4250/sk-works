@@ -1,0 +1,40 @@
+-- REVIEW ONLY. Seed default-OFF rows BEFORE creating this trigger.
+-- Direct clients have no permissions on these private tables/functions.
+create table private.lifecycle_feature_audit (
+  id bigint generated always as identity primary key,
+  feature_key text not null,
+  old_enabled boolean,
+  enabled boolean not null,
+  actor_id uuid not null,
+  session_id uuid not null,
+  changed_at timestamptz not null default clock_timestamp()
+);
+alter table private.lifecycle_feature_audit enable row level security;
+revoke all on private.lifecycle_feature_audit from public,anon,authenticated,service_role;
+create or replace function private.audit_lifecycle_feature_change()
+returns trigger language plpgsql security definer set search_path='' as $function$
+declare sid uuid; k text; old_k text; keys constant text[]:=array['affiliation_switch','sko_id_linking','personal_pdf_vault','partner_auto_link','company_lifecycle'];
+begin
+  if tg_op<>'INSERT' then old_k:=old.feature_key; end if;
+  if tg_op<>'DELETE' then k:=new.feature_key; end if;
+  if not (coalesce(k=any(keys),false) or coalesce(old_k=any(keys),false)) then
+    if tg_op='DELETE' then return old; else return new; end if;
+  end if;
+  if tg_op='UPDATE' and old.feature_key is distinct from new.feature_key then
+    raise sqlstate '42501' using message='lifecycle_feature_key_immutable';
+  end if;
+  if tg_op='DELETE' then
+    raise sqlstate '42501' using message='lifecycle_feature_delete_forbidden';
+  end if;
+  sid:=private.require_reauthentication_session();
+  if not public.is_current_user_master_admin() or new.updated_by is distinct from auth.uid() then
+    raise sqlstate '42501' using message='master_administrator_access_required';
+  end if;
+  insert into private.lifecycle_feature_audit(feature_key,old_enabled,enabled,actor_id,session_id)
+    values(new.feature_key,case when tg_op='INSERT' then null else old.enabled end,new.enabled,auth.uid(),sid);
+  return new;
+end $function$;
+revoke all on function private.audit_lifecycle_feature_change() from public,anon,authenticated,service_role;
+create trigger lifecycle_feature_change after insert or update or delete
+on private.master_feature_settings for each row
+execute function private.audit_lifecycle_feature_change();

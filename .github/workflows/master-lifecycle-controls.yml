@@ -1,0 +1,41 @@
+name: Master lifecycle controls candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/settings/master_feature_*'
+      - 'test/master_lifecycle_flags_test.dart'
+      - 'docs/review/master-lifecycle-controls/**'
+      - '.github/workflows/master-lifecycle-controls.yml'
+permissions:
+  contents: read
+jobs:
+  native-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql -h localhost -U postgres -d testdb -f synthetic-test.sql
+        working-directory: docs/review/master-lifecycle-controls/sql
+        env:
+          PGPASSWORD: postgres
+  flutter-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/settings/master_feature_availability.dart lib/features/settings/master_feature_controls_repository.dart lib/features/settings/master_feature_controls_page.dart test/master_lifecycle_flags_test.dart
+      - run: flutter test test/master_lifecycle_flags_test.dart test/master_feature_availability_test.dart test/master_feature_controls_contract_test.dart test/master_feature_controls_ui_contract_test.dart
