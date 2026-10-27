@@ -34,7 +34,13 @@ void main() {
         'premiums': {'健康保険料': 20000, '厚生年金保険': 40000, '介護保険料': 4000,
           '雇用保険料': 2000, '子ども・子育て支援金': 1000}, 'rates': [],
         'conditions': {'income_mode': 'koh', 'dependents': 2,
-          'insurance_mode': 'fixed', 'non_taxable_yen': 0,
+          'insurance_mode': 'manual', 'non_taxable_yen': 0,
+          'health': true, 'pension': true, 'employment': true, 'nursing': true, 'child_support': true,
+          'manual_insurance_premiums': {'health_insurance': 20000, 'pension_insurance': 40000,
+            'nursing_insurance': 4000, 'employment_insurance': 2000, 'child_support': 1000},
+          'insurance_basis_reference': {'schema': 1, 'from': '2026-04-01', 'to': '2026-06-01',
+            'average_monthly_income_yen': 500000, 'source': 'manual',
+            'observed_months': 0, 'history_fingerprint': null},
           'additional_social_deduction_yen': 0},
       },
     };
@@ -78,6 +84,7 @@ print(json.dumps({'pages':len(pdf),'text':norm(p.get_text()),'earnings':money(24
     expect(report['text'], contains('349,580'));
     expect(report['formula_font_min'] as num, greaterThanOrEqualTo(5.1));
     expect(report['evidence_bottom'] as num, lessThan(749));
+    expect(report['text'], contains('R8.4〜R8.6'));
     if (paidLeave) expect(report['text'], contains('有給内訳'));
     expect(report['earnings'], 423600);
     expect(report['deductions'], 74020);
