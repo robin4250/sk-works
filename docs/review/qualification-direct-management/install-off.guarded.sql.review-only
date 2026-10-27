@@ -1,0 +1,444 @@
+-- REVIEW ONLY. All original rows must remain unchanged. Initial state is OFF.
+begin;
+set local search_path='';
+lock table public.worker_qualifications,public.workers,public.qualification_master,
+ public.company_members,public.member_feature_permissions,private.worker_qualification_history,
+ private.qualification_photo_history,private.qualification_submissions in share row exclusive mode;
+do $guard$
+declare catalog_value text; business_value text;
+begin
+ select catalog_md5 into catalog_value from (with relations as (
+ select c.oid,n.nspname,c.relname,c.relkind,c.relowner,c.relacl,c.relrowsecurity,c.relforcerowsecurity,c.reloptions
+ from pg_class c join pg_namespace n on n.oid=c.relnamespace
+ where (n.nspname='public' and c.relname in ('worker_qualifications','workers','qualification_master','company_members','member_feature_permissions'))
+ or (n.nspname='private' and c.relname in ('worker_qualification_history','qualification_photo_history','qualification_submissions','qualification_management_operations','qualification_management_state','qualification_management_pending'))
+), functions as (
+ select n.nspname,p.proname,p.oid::text identity,p.proowner,p.proacl,p.prosecdef,p.provolatile,p.proparallel,p.proleakproof,p.proconfig,p.prorettype,p.proargtypes::text args,md5(p.prosrc) body_md5
+ from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+ where (n.nspname='private' and p.proname in ('require_reauthentication_session','account_deletion_barrier_key','account_access_allowed','has_company_feature',
+ 'capture_official_qualification_history','validate_qualification_extra_photos','archive_qualification_photos',
+ 'personal_qualification_submission','personal_qualification_photo_submission',
+ 'qualification_management_audit_immutable','qualification_manager_can_write','qualification_management_result','qualification_direct_management','qualification_direct_management_writer',
+ 'qualification_management_pending_result','qualification_management_cleanup_healthy','purge_qualification_management_pending'))
+ or (n.nspname='public' and p.proname='qualification_direct_management')
+)
+select md5(jsonb_build_object(
+ 'relations',(select jsonb_agg(to_jsonb(r) order by nspname,relname) from relations r),
+ 'columns',(select jsonb_agg(jsonb_build_array(a.attrelid,a.attnum,a.attname,a.atttypid,a.atttypmod,a.attnotnull,a.attidentity,a.attgenerated,d.adbin::text) order by a.attrelid,a.attnum)
+  from pg_attribute a left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum where a.attrelid in(select oid from relations) and a.attnum>0 and not a.attisdropped),
+ 'constraints',(select jsonb_agg(to_jsonb(c) order by c.conrelid,c.conname) from pg_constraint c where c.conrelid in(select oid from relations)),
+ 'triggers',(select jsonb_agg(to_jsonb(t) order by t.tgrelid,t.tgname) from pg_trigger t where t.tgrelid in(select oid from relations) and not t.tgisinternal),
+ 'policies',(select jsonb_agg(to_jsonb(p) order by p.polname) from pg_policy p where p.polrelid='public.worker_qualifications'::regclass),
+ 'functions',(select jsonb_agg(to_jsonb(f) order by nspname,identity) from functions f)
+)::text) catalog_md5) checked;
+ select business_md5 into business_value from (select md5(jsonb_build_object(
+ 'qualifications',(select jsonb_agg(to_jsonb(q) order by id) from public.worker_qualifications q),
+ 'official_history',(select jsonb_agg(to_jsonb(q) order by id) from private.worker_qualification_history q),
+ 'photo_history',(select jsonb_agg(to_jsonb(q) order by id) from private.qualification_photo_history q),
+ 'submissions',(select jsonb_agg(to_jsonb(q) order by id) from private.qualification_submissions q),
+ 'workers',(select jsonb_agg(to_jsonb(q) order by id) from public.workers q),
+ 'master',(select jsonb_agg(to_jsonb(q) order by id) from public.qualification_master q),
+ 'members',(select jsonb_agg(to_jsonb(q) order by company_id,user_id) from public.company_members q),
+ 'member_permissions',(select jsonb_agg(to_jsonb(q) order by company_id,user_id) from public.member_feature_permissions q)
+)::text) business_md5) checked;
+ if catalog_value is distinct from 'f0790f5e71a310397f0937c4c9631324' or business_value is distinct from '15cf6c247af6a34666c0a8a1af915576' then
+  raise exception 'qualification management catalog/business drift' using errcode='55000';end if;
+end $guard$;
+-- REVIEW ONLY. Management edits do not enter the personal approval queue.
+-- Preserve personal photo requests, official history and all photo objects.
+do $$begin
+ if to_regprocedure('private.require_reauthentication_session()') is null
+ or to_regprocedure('private.account_access_allowed()') is null
+ or to_regprocedure('private.has_company_feature(uuid,text)') is null
+ or to_regclass('private.worker_qualification_history') is null
+ or to_regclass('private.qualification_photo_history') is null
+ or to_regprocedure('private.guard_qualification_registered_update()') is not null
+ or not exists(select 1 from pg_trigger t join pg_proc p on p.oid=t.tgfoid
+  where t.tgrelid='public.worker_qualifications'::regclass and not t.tgisinternal
+   and t.tgenabled<>'D' and p.oid='private.capture_official_qualification_history()'::regprocedure
+   and md5(p.prosrc)='0881ea7010156e4878c8940b7d373faf')
+ or not exists(select 1 from pg_trigger t where t.tgrelid='public.worker_qualifications'::regclass
+  and not t.tgisinternal and t.tgenabled<>'D' and t.tgfoid='private.archive_qualification_photos()'::regprocedure) then
+  raise exception 'qualification management prerequisite drift; review required' using errcode='55000';end if;
+end$$;
+
+create table private.qualification_management_state (
+ singleton boolean primary key default true check(singleton),
+ enabled boolean not null default false
+);
+insert into private.qualification_management_state(singleton,enabled) values(true,false);
+alter table private.qualification_management_state enable row level security;
+revoke all on private.qualification_management_state from public,anon,authenticated,service_role;
+
+-- No FK/cascade: an approved historical record must survive affiliation or
+-- company changes. Existing privacy retention procedures need a separate review.
+create table private.qualification_management_operations (
+ request_id uuid primary key, company_id uuid not null, actor_id uuid not null,
+ target_id uuid not null, worker_id uuid not null, qualification_master_id uuid not null,
+ operation text not null check(operation in ('create','update','delete','photos')),
+ command jsonb not null, before_snapshot jsonb, after_snapshot jsonb,
+ recorded_at timestamptz not null default clock_timestamp()
+);
+alter table private.qualification_management_operations enable row level security;
+revoke all on private.qualification_management_operations from public,anon,authenticated,service_role;
+
+create function private.qualification_management_audit_immutable() returns trigger
+language plpgsql security definer set search_path='' as $$begin
+ raise exception 'qualification management audit is append only' using errcode='42501';
+end$$;
+revoke all on function private.qualification_management_audit_immutable() from public,anon,authenticated,service_role;
+create trigger qualification_management_audit_immutable before update or delete on private.qualification_management_operations
+ for each row execute function private.qualification_management_audit_immutable();
+
+create function private.qualification_manager_can_write(c uuid) returns boolean
+language plpgsql security definer set search_path='' as $$begin
+ perform private.require_reauthentication_session();
+ return auth.uid() is not null and private.account_access_allowed() is true
+  and private.has_company_feature(c,'can_manage_people') is true
+  and exists(select 1 from public.company_members where company_id=c and user_id=auth.uid()
+   and role::text in ('owner','admin','manager'));
+end$$;
+revoke all on function private.qualification_manager_can_write(uuid) from public,anon,service_role;
+grant execute on function private.qualification_manager_can_write(uuid) to authenticated;
+
+-- Do not restrict the existing own first-registration INSERT or SELECT policy.
+-- SECURITY DEFINER personal-photo approvals retain their existing behavior.
+create policy qualification_management_update_role_boundary on public.worker_qualifications
+ as restrictive for update to authenticated
+ using(private.qualification_manager_can_write(company_id))
+ with check(private.qualification_manager_can_write(company_id));
+create policy qualification_management_delete_role_boundary on public.worker_qualifications
+ as restrictive for delete to authenticated
+ using(private.qualification_manager_can_write(company_id));
+
+create function private.qualification_management_result(r private.qualification_management_operations)
+returns jsonb language sql stable security invoker set search_path='' as $$
+ select jsonb_build_object('version',1,'contract','qualification_direct_management','status','applied',
+  'request_id',r.request_id,'company_id',r.company_id,'actor_id',r.actor_id,'target_id',r.target_id,
+  'operation',r.operation,'before',r.before_snapshot,'after',r.after_snapshot,'recorded_at',r.recorded_at);
+$$;
+revoke all on function private.qualification_management_result(private.qualification_management_operations)
+ from public,anon,authenticated,service_role;
+
+create function private.qualification_direct_management(p_action text,p_data jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid(); cid uuid; target uuid; request uuid; wid uuid; mid uuid;
+ op text; paths text[]; oldpaths text[]; photo text; patch jsonb; command jsonb; before_row jsonb; after_row jsonb; key text; enabled boolean;
+ saved private.qualification_management_operations%rowtype;
+begin
+ perform private.require_reauthentication_session();
+ if actor is null or private.account_access_allowed() is not true then raise exception 'account unavailable' using errcode='42501';end if;
+ cid:=nullif(p_data->>'company_id','')::uuid;
+ if cid is null then raise exception 'exact company required' using errcode='22023';end if;
+ perform 1 from public.company_members where company_id=cid and user_id=actor for share;
+ perform 1 from public.member_feature_permissions where company_id=cid and user_id=actor for share;
+ if not private.qualification_manager_can_write(cid) then raise exception 'people manager required' using errcode='42501';end if;
+ select s.enabled into enabled from private.qualification_management_state s where singleton for share;
+ if p_action='capability' then return jsonb_build_object('version',1,'contract','qualification_direct_management',
+  'company_id',cid,'actor_id',actor,'available',enabled is true);end if;
+ if p_action='get' then
+  select * into saved from private.qualification_management_operations where request_id=(p_data->>'request_id')::uuid;
+  if not found or saved.company_id is distinct from cid or saved.actor_id is distinct from actor then
+   raise exception 'operation unavailable' using errcode='42501';end if;
+  return private.qualification_management_result(saved);
+ end if;
+ if enabled is not true then raise exception 'qualification management stopped' using errcode='55000';end if;
+ target:=(p_data->>'target_id')::uuid;
+ if target is null then raise exception 'exact qualification required' using errcode='22023';end if;
+ if p_action='inspect' then
+  select to_jsonb(q) into before_row from public.worker_qualifications q
+   join public.workers w on w.id=q.worker_id and w.company_id=q.company_id
+   join public.qualification_master m on m.id=q.qualification_master_id and m.company_id=q.company_id
+   where q.id=target and q.company_id=cid;
+  if before_row is null then raise exception 'qualification unavailable' using errcode='42501';end if;
+  return jsonb_build_object('version',1,'contract','qualification_direct_management','snapshot',before_row);
+ end if;
+ if p_action<>'apply' then raise exception 'unsupported management action' using errcode='22023';end if;
+ request:=(p_data->>'request_id')::uuid;op:=p_data->>'operation';patch:=p_data->'fields';
+ if request is null or op is null or op not in ('create','update','delete','photos') then
+  raise exception 'exact operation required' using errcode='22023';end if;
+ if op in ('create','update') then
+  if jsonb_typeof(patch) is distinct from 'object' or (select count(*) from jsonb_object_keys(patch))<>5
+   or exists(select 1 from jsonb_object_keys(patch) k where k not in ('certificate_number','issuer','issued_at','expires_at','notes')) then
+   raise exception 'qualification fields required' using errcode='22023';end if;
+  for key in select jsonb_object_keys(patch) loop
+   if jsonb_typeof(patch->key) not in ('string','null') or length(patch->>key)>4000 then
+    raise exception 'qualification field invalid' using errcode='22023';end if;
+  end loop;
+  patch:=patch||jsonb_build_object('issued_at',nullif(patch->>'issued_at','')::date,'expires_at',nullif(patch->>'expires_at','')::date);
+ elsif op='photos' then
+  if jsonb_typeof(patch) is distinct from 'object' or (select count(*) from jsonb_object_keys(patch))<>1
+   or not patch ? 'photo_paths' or jsonb_typeof(patch->'photo_paths') is distinct from 'array'
+   or jsonb_array_length(patch->'photo_paths')>20 or exists(select 1 from jsonb_array_elements(patch->'photo_paths') p
+    where jsonb_typeof(p) is distinct from 'string' or trim(p#>>'{}')='') then
+   raise exception 'saved photo selection required' using errcode='22023';end if;
+  paths:=array(select jsonb_array_elements_text(patch->'photo_paths'));
+  if cardinality(paths)<>(select count(distinct p) from unnest(paths) p) then
+   raise exception 'duplicate photo selection' using errcode='22023';end if;
+ elsif patch is not null and patch<>'null'::jsonb then
+  raise exception 'delete has no replacement fields' using errcode='22023';end if;
+ if op='create' then
+  wid:=(p_data->>'worker_id')::uuid;mid:=(p_data->>'qualification_master_id')::uuid;
+  if wid is null or mid is null or (p_data->'expected_snapshot' is not null and p_data->'expected_snapshot'<>'null'::jsonb) then
+   raise exception 'new qualification identity required' using errcode='22023';end if;
+ else
+  if jsonb_typeof(p_data->'expected_snapshot') is distinct from 'object'
+   or p_data->'expected_snapshot'->>'id' is distinct from target::text
+   or p_data->'expected_snapshot'->>'company_id' is distinct from cid::text then
+   raise exception 'reviewed qualification snapshot required' using errcode='22023';end if;
+  wid:=(p_data->'expected_snapshot'->>'worker_id')::uuid;mid:=(p_data->'expected_snapshot'->>'qualification_master_id')::uuid;
+ end if;
+ command:=jsonb_build_object('company_id',cid,'target_id',target,'actor_id',actor,'operation',op,
+  'worker_id',wid,'qualification_master_id',mid,'fields',patch,'expected_snapshot',p_data->'expected_snapshot');
+ -- Request lock precedes the qualification lock for all retries and mutations.
+ perform pg_advisory_xact_lock(hashtextextended('qualification-management:'||request::text,0));
+ select * into saved from private.qualification_management_operations where request_id=request;
+ if found then
+  if saved.command is distinct from command then raise exception 'management request conflict' using errcode='23505';end if;
+  return private.qualification_management_result(saved);end if;
+ perform pg_advisory_xact_lock(hashtextextended(wid::text||mid::text,0));
+ perform 1 from public.workers where id=wid and company_id=cid for share;
+ if not found then raise exception 'worker unavailable' using errcode='42501';end if;
+ perform 1 from public.qualification_master where id=mid and company_id=cid for share;
+ if not found then raise exception 'qualification type unavailable' using errcode='42501';end if;
+ select to_jsonb(q) into before_row from public.worker_qualifications q where id=target and company_id=cid for update;
+ if op='create' then
+  if before_row is not null or exists(select 1 from public.worker_qualifications where id=target) then
+   raise exception 'qualification ID already used' using errcode='23505';end if;
+ elsif before_row is distinct from p_data->'expected_snapshot' then
+  raise exception 'qualification changed; reload before saving' using errcode='40001';end if;
+ if op in ('create','update') and patch->>'expires_at' is null and exists(select 1 from public.qualification_master
+  where id=mid and company_id=cid and expiry_required) then raise exception 'expiry required' using errcode='22023';end if;
+ if op='create' then
+  insert into public.worker_qualifications(id,company_id,worker_id,qualification_master_id,certificate_number,issuer,issued_at,expires_at,notes)
+   values(target,cid,wid,mid,patch->>'certificate_number',patch->>'issuer',(patch->>'issued_at')::date,(patch->>'expires_at')::date,patch->>'notes');
+ elsif op='update' then
+  update public.worker_qualifications set certificate_number=patch->>'certificate_number',issuer=patch->>'issuer',
+   issued_at=(patch->>'issued_at')::date,expires_at=(patch->>'expires_at')::date,notes=patch->>'notes',updated_at=now()
+   where id=target and company_id=cid;
+ elsif op='photos' then
+  oldpaths:=array_remove(array[before_row->>'attachment_path',before_row->>'attachment_back_path']||
+   array(select jsonb_array_elements_text(coalesce(before_row->'attachment_extra_paths','[]'::jsonb))),null);
+  foreach photo in array paths loop
+   if not coalesce(photo=any(oldpaths),false) then
+    raise exception 'only currently saved photos may be retained' using errcode='22023';end if;
+   perform 1 from storage.objects where bucket_id='qualification-certificates' and name=photo for share;
+   if not found then raise exception 'saved photo object missing' using errcode='22023';end if;
+  end loop;
+  update public.worker_qualifications set attachment_path=paths[1],attachment_back_path=paths[2],
+   attachment_extra_paths=coalesce(paths[3:cardinality(paths)],'{}'::text[]),updated_at=now()
+   where id=target and company_id=cid;
+ else delete from public.worker_qualifications where id=target and company_id=cid;end if;
+ if op<>'delete' then select to_jsonb(q) into after_row from public.worker_qualifications q where id=target;end if;
+ insert into private.qualification_management_operations(request_id,company_id,actor_id,target_id,worker_id,
+  qualification_master_id,operation,command,before_snapshot,after_snapshot)
+ values(request,cid,actor,target,wid,mid,op,command,before_row,after_row) returning * into saved;
+ return private.qualification_management_result(saved);
+end$$;
+revoke all on function private.qualification_direct_management(text,jsonb) from public,anon,authenticated,service_role;
+
+create function public.qualification_direct_management(p_action text,p_data jsonb default '{}'::jsonb)
+returns jsonb language sql security invoker set search_path='' as $$
+ select private.qualification_direct_management(p_action,p_data);
+$$;
+revoke all on function public.qualification_direct_management(text,jsonb) from public,anon,service_role;
+-- The wrapper requires a private entry grant. Both enforce the exact live actor.
+grant execute on function private.qualification_direct_management(text,jsonb) to authenticated;
+grant execute on function public.qualification_direct_management(text,jsonb) to authenticated;
+-- REVIEW ONLY. No full qualification command is persisted in client preferences.
+-- Server prepare/apply is one user action, not a second-person approval flow.
+do $$begin
+ if not exists(select 1 from pg_proc where oid=to_regprocedure('private.qualification_direct_management(text,jsonb)') and md5(prosrc)='da3749e9548f85a993549c1adf7d8961')
+ or to_regprocedure('private.qualification_direct_management_writer(text,jsonb)') is not null
+ or exists(select 1 from private.qualification_management_operations)
+ or (select enabled from private.qualification_management_state where singleton) is distinct from false then
+  raise exception 'unused OFF management prerequisite required' using errcode='55000';end if;
+end$$;
+
+create table private.qualification_management_pending (
+ request_id uuid primary key,company_id uuid not null,actor_id uuid not null,
+ target_id uuid not null,worker_id uuid not null,qualification_master_id uuid not null,
+ operation text not null check(operation in ('create','update','delete','photos')),
+ command jsonb,status text not null check(status in ('prepared','applied','cancelled','expired')),
+ created_at timestamptz not null default clock_timestamp(),expires_at timestamptz not null,
+ check((status='prepared')=(command is not null))
+);
+create unique index qualification_management_one_prepared_owner on private.qualification_management_pending(company_id,actor_id) where status='prepared';
+alter table private.qualification_management_pending enable row level security;
+revoke all on private.qualification_management_pending from public,anon,authenticated,service_role;
+
+create function private.purge_qualification_management_pending() returns integer
+language plpgsql security definer set search_path='' as $$declare affected integer;
+begin
+ with expired as (select request_id from private.qualification_management_pending
+  where command is not null and expires_at<=clock_timestamp() for update skip locked limit 1000)
+ update private.qualification_management_pending p set status='expired',command=null
+ from expired e where p.request_id=e.request_id;
+ get diagnostics affected=row_count;
+ return affected;
+end$$;
+revoke all on function private.purge_qualification_management_pending() from public,anon,authenticated,service_role;
+
+create function private.qualification_management_cleanup_healthy() returns boolean
+language plpgsql security definer set search_path='' as $$declare ready boolean;
+begin
+ if to_regclass('cron.job') is null or to_regclass('cron.job_run_details') is null then return false;end if;
+ execute $query$select exists(select 1 from cron.job j join lateral (
+  select status,end_time from cron.job_run_details d where d.jobid=j.jobid and d.status in ('succeeded','failed')
+   order by d.runid desc limit 1) d on true
+  where j.jobname='sko-qualification-command-expiry' and j.active and j.database=current_database()
+   and j.schedule='* * * * *' and j.command='select private.purge_qualification_management_pending();'
+   and d.status='succeeded' and d.end_time>clock_timestamp()-interval '2 minutes')$query$ into ready;
+ return ready is true;
+exception when others then return false;
+end$$;
+revoke all on function private.qualification_management_cleanup_healthy() from public,anon,authenticated,service_role;
+
+create function private.qualification_management_pending_result(r private.qualification_management_pending)
+returns jsonb language sql stable security invoker set search_path='' as $$
+ select jsonb_build_object('version',2,'contract','qualification_management_pending',
+  'request_id',r.request_id,'company_id',r.company_id,'actor_id',r.actor_id,'target_id',r.target_id,
+  'worker_id',r.worker_id,'qualification_master_id',r.qualification_master_id,'operation',r.operation,
+  'status',r.status,'expires_at',r.expires_at);
+$$;
+revoke all on function private.qualification_management_pending_result(private.qualification_management_pending)
+ from public,anon,authenticated,service_role;
+
+alter function private.qualification_direct_management(text,jsonb) rename to qualification_direct_management_writer;
+revoke all on function private.qualification_direct_management_writer(text,jsonb) from public,anon,authenticated,service_role;
+-- The private writer also validates a prepare without changing any official row.
+do $patch$declare body text;definition text;patched text;
+begin
+ select prosrc,pg_get_functiondef(oid) into body,definition from pg_proc
+  where oid='private.qualification_direct_management_writer(text,jsonb)'::regprocedure;
+ patched:=replace(body,$old$if p_action<>'apply' then$old$,$new$if p_action not in ('apply','prepare_check') then$new$);
+ if patched=body then raise exception 'management validation action anchor drift' using errcode='55000';end if;
+ patched:=replace(patched,$old$ if op='create' then
+  insert into public.worker_qualifications$old$,$new$ if p_action='prepare_check' and op<>'photos' then
+  return jsonb_build_object('checked',true,'command',command||jsonb_build_object('request_id',request));end if;
+ if op='create' then
+  insert into public.worker_qualifications$new$);
+ patched:=replace(patched,$old$  update public.worker_qualifications set attachment_path=paths[1]$old$,
+ $new$  if p_action='prepare_check' then
+   return jsonb_build_object('checked',true,'command',command||jsonb_build_object('request_id',request));end if;
+  update public.worker_qualifications set attachment_path=paths[1]$new$);
+ if strpos(patched,$anchor$p_action='prepare_check' and op<>'photos'$anchor$)=0 then raise exception 'management checked result anchor drift' using errcode='55000';end if;
+ execute replace(definition,body,patched);
+end $patch$;
+
+create function private.qualification_direct_management(p_action text,p_data jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();cid uuid;request uuid;checked jsonb;payload jsonb;result jsonb;
+ r private.qualification_management_pending%rowtype; saved private.qualification_management_operations%rowtype;
+ enabled boolean;target uuid;op text;wid uuid;mid uuid;
+begin
+ perform private.require_reauthentication_session();
+ cid:=(p_data->>'company_id')::uuid;
+ if cid is null or private.qualification_manager_can_write(cid) is not true then
+  raise exception 'people manager required' using errcode='42501';end if;
+ select s.enabled into enabled from private.qualification_management_state s where singleton for share;
+ if p_action='capability' then return jsonb_build_object('version',2,'contract','qualification_direct_management',
+  'company_id',cid,'actor_id',actor,'available',enabled is true and private.qualification_management_cleanup_healthy());end if;
+ if p_action='inspect' then
+  if enabled is not true or not private.qualification_management_cleanup_healthy() then
+   raise exception 'qualification management unavailable' using errcode='55000';end if;
+  return private.qualification_direct_management_writer('inspect',p_data);
+ end if;
+ request:=(p_data->>'request_id')::uuid;
+ if request is null then raise exception 'exact operation ID required' using errcode='22023';end if;
+ perform pg_advisory_xact_lock(hashtextextended('qualification-management:'||request::text,0));
+ select * into saved from private.qualification_management_operations where request_id=request;
+ if found then
+  if saved.company_id is distinct from cid or saved.actor_id is distinct from actor then
+   raise exception 'operation unavailable' using errcode='42501';end if;
+  if p_action='prepare' then
+   checked:=private.qualification_direct_management_writer('prepare_check',p_data);
+   return checked;
+  end if;
+  if p_action not in ('get','apply','cancel') then raise exception 'unsupported action' using errcode='22023';end if;
+  return private.qualification_management_result(saved);
+ end if;
+ select * into r from private.qualification_management_pending where request_id=request for update;
+ if found and (r.company_id is distinct from cid or r.actor_id is distinct from actor) then
+  raise exception 'operation unavailable' using errcode='42501';end if;
+ if found and r.status='prepared' and r.expires_at<=clock_timestamp() then
+  update private.qualification_management_pending set status='expired',command=null where request_id=request returning * into r;
+ end if;
+ if p_action='get' then
+  if r.request_id is null then raise exception 'operation unavailable' using errcode='42501';end if;
+  return private.qualification_management_pending_result(r);
+ end if;
+ if p_action='cancel' then
+  if r.request_id is null then
+   target:=(p_data->>'target_id')::uuid;op:=p_data->>'operation';
+   if target is null or op is null or op not in ('create','update','delete','photos') then
+    raise exception 'exact cancelled operation required' using errcode='22023';end if;
+   if op='create' then wid:=(p_data->>'worker_id')::uuid;mid:=(p_data->>'qualification_master_id')::uuid;
+   else select worker_id,qualification_master_id into wid,mid from public.worker_qualifications where id=target and company_id=cid;end if;
+   if not exists(select 1 from public.workers where id=wid and company_id=cid)
+    or not exists(select 1 from public.qualification_master where id=mid and company_id=cid) then
+    raise exception 'operation target unavailable' using errcode='42501';end if;
+   insert into private.qualification_management_pending(request_id,company_id,actor_id,target_id,worker_id,
+    qualification_master_id,operation,command,status,expires_at)
+   values(request,cid,actor,target,wid,mid,op,null,'cancelled',clock_timestamp()) returning * into r;
+  elsif r.status='prepared' then
+   update private.qualification_management_pending set status='cancelled',command=null where request_id=request returning * into r;
+  end if;
+  return private.qualification_management_pending_result(r);
+ end if;
+ if enabled is not true or not private.qualification_management_cleanup_healthy() then
+  raise exception 'qualification management unavailable' using errcode='55000';end if;
+ if p_action='prepare' then
+  if r.request_id is not null then
+   if r.status<>'prepared' then return private.qualification_management_pending_result(r);end if;
+   checked:=private.qualification_direct_management_writer('prepare_check',p_data);
+   if checked->'command' is distinct from r.command then raise exception 'operation ID conflict' using errcode='23505';end if;
+   return private.qualification_management_pending_result(r);
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('qualification-management-owner:'||cid::text||actor::text,0));
+  perform private.purge_qualification_management_pending();
+  if exists(select 1 from private.qualification_management_pending where company_id=cid and actor_id=actor and status='prepared') then
+   raise exception 'another operation is being prepared' using errcode='55000';end if;
+  checked:=private.qualification_direct_management_writer('prepare_check',p_data);
+  if checked->>'checked' is distinct from 'true' then raise exception 'management prepare unavailable' using errcode='55000';end if;
+  payload:=checked->'command';
+  insert into private.qualification_management_pending(request_id,company_id,actor_id,target_id,worker_id,
+   qualification_master_id,operation,command,status,expires_at)
+  values(request,cid,actor,(payload->>'target_id')::uuid,(payload->>'worker_id')::uuid,
+   (payload->>'qualification_master_id')::uuid,payload->>'operation',payload,'prepared',clock_timestamp()+interval '15 minutes')
+   returning * into r;
+  return private.qualification_management_pending_result(r);
+ elsif p_action='apply' then
+  if r.request_id is null or r.status<>'prepared' or r.command is null then
+   raise exception 'prepared operation required' using errcode='55000';end if;
+  result:=private.qualification_direct_management_writer('apply',r.command);
+  update private.qualification_management_pending set status='applied',command=null where request_id=request;
+  return result;
+ else raise exception 'unsupported action' using errcode='22023';end if;
+end$$;
+revoke all on function private.qualification_direct_management(text,jsonb) from public,anon,service_role;
+grant execute on function private.qualification_direct_management(text,jsonb) to authenticated;
+create or replace function public.qualification_direct_management(p_action text,p_data jsonb default '{}'::jsonb)
+returns jsonb language sql security invoker set search_path='' as $$
+ select private.qualification_direct_management(p_action,p_data);
+$$;
+revoke all on function public.qualification_direct_management(text,jsonb) from public,anon,service_role;
+grant execute on function public.qualification_direct_management(text,jsonb) to authenticated;
+do $guard$ declare actual text;begin
+ select business_md5 into actual from (select md5(jsonb_build_object(
+ 'qualifications',(select jsonb_agg(to_jsonb(q) order by id) from public.worker_qualifications q),
+ 'official_history',(select jsonb_agg(to_jsonb(q) order by id) from private.worker_qualification_history q),
+ 'photo_history',(select jsonb_agg(to_jsonb(q) order by id) from private.qualification_photo_history q),
+ 'submissions',(select jsonb_agg(to_jsonb(q) order by id) from private.qualification_submissions q),
+ 'workers',(select jsonb_agg(to_jsonb(q) order by id) from public.workers q),
+ 'master',(select jsonb_agg(to_jsonb(q) order by id) from public.qualification_master q),
+ 'members',(select jsonb_agg(to_jsonb(q) order by company_id,user_id) from public.company_members q),
+ 'member_permissions',(select jsonb_agg(to_jsonb(q) order by company_id,user_id) from public.member_feature_permissions q)
+)::text) business_md5) checked;
+ if actual is distinct from '15cf6c247af6a34666c0a8a1af915576' then raise exception 'qualification management changed original business data' using errcode='55000';end if;
+ if (select enabled from private.qualification_management_state where singleton) is distinct from false
+  or exists(select 1 from private.qualification_management_operations)
+  or exists(select 1 from private.qualification_management_pending) then
+  raise exception 'qualification management must install unused and OFF' using errcode='55000';end if;
+end $guard$;
+commit;

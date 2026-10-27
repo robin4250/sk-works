@@ -1,0 +1,51 @@
+name: Qualification direct management
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/qualification_direct_management_20261027*'
+      - 'docs/candidates/qualification_management_pending_privacy_20261027*'
+      - 'docs/review/qualification-direct-management/**'
+      - 'tool/verify_qualification_direct_management.mjs'
+      - 'tool/fixtures/qualification_management/**'
+      - 'lib/features/qualifications/qualification_record_management*'
+      - 'lib/features/qualifications/qualification_cloud_page.dart'
+      - 'lib/features/qualifications/qualification_cloud_repository.dart'
+      - 'test/qualification_record_management*'
+      - '.github/workflows/qualification-direct-management.yml'
+permissions:
+  contents: read
+jobs:
+  native-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_qualification_management_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_qualification_management_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node tool/verify_qualification_direct_management.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_qualification_direct_management.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+        env:
+          SKO_QUALIFICATION_MANAGEMENT_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_qualification_management_fixture
+  flutter-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/qualifications/qualification_record_management_repository.dart lib/features/qualifications/qualification_record_management_page.dart lib/features/qualifications/qualification_cloud_page.dart lib/features/qualifications/qualification_cloud_repository.dart
+      - run: flutter test test/qualification_record_management_repository_test.dart test/qualification_record_management_page_test.dart test/qualification_registered_edit_hold_test.dart test/qualification_category_edit_test.dart test/own_qualification_photo_submission_test.dart test/qualification_photo_submission_review_http_test.dart --reporter expanded

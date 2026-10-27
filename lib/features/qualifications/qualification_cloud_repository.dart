@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import 'qualification_record_management_repository.dart';
 
 class QualificationCloudRepository {
   QualificationCloudRepository._(this._client);
@@ -344,6 +345,23 @@ class QualificationCloudRepository {
   }) async {
     await _requireManageWorkerQualifications();
     final companyId = await _companyId();
+    final management = QualificationRecordManagementRepository.maybeCreate();
+    if (management != null) {
+      try {
+        final mode = await management.mode(companyId);
+        if (mode == QualificationManagementMode.enabled) {
+          if (_nullable(attachmentPath) != null) throw StateError('写真は資格証の写真登録から追加してください。');
+          final result = await management.create(companyId:companyId, workerId:workerId,
+            masterId:qualificationMasterId, fields:{
+              'certificate_number':_nullable(certificateNumber), 'issued_at':_date(issuedAt),
+              'expires_at':_date(expiresAt), 'issuer':_nullable(issuer), 'notes':_nullable(notes)});
+          return Map<String,dynamic>.from(result['after'] as Map);
+        }
+        if (mode != QualificationManagementMode.absent) throw StateError('資格の管理機能は停止中、または確認できません。');
+      } finally {
+        await management.dispose();
+      }
+    }
     final inserted = await _client
         .from('worker_qualifications')
         .insert({
