@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'test/security_notice_page_test.dart'
+      - 'lib/features/security/security_notice_repository.dart'
       - '.github/workflows/security-notice-diagnostic.yml'
 permissions:
   contents: read

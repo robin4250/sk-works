@@ -48,7 +48,7 @@ class SecurityNoticeRepository {
     try{check();final value=await work(check);check();return value;}finally{await sub.cancel();}
   }
   Future<SecurityNoticeSnapshot> load(String password,{bool Function()? isActive}) => _bound((check) async {
-    if(password.isEmpty || !await collector.available()) throw SecurityCollectorUnavailable();
+    if(password.isEmpty || !await collector.availableCheck().timeout(const Duration(seconds:20))) throw SecurityCollectorUnavailable();
     check();final proof=await collector.issueProof(password).timeout(const Duration(seconds:30));check();
     if(!RegExp(r'^[0-9a-f]{64}$').hasMatch(proof)) throw SecurityCollectorUnavailable();
     final raw=await readRpc(proof).timeout(const Duration(seconds:20));check();
@@ -64,7 +64,7 @@ class SecurityNoticeRepository {
     return SecurityNoticeSnapshot(List.unmodifiable(rows),raw['capacity_gaps']);
   },isActive:isActive);
   Future<void> update(SecurityNoticeCommand c,String password,{bool Function()? isActive}) => _bound((check) async {
-    if(password.isEmpty || !await collector.available()) throw SecurityCollectorUnavailable();
+    if(password.isEmpty || !await collector.availableCheck().timeout(const Duration(seconds:20))) throw SecurityCollectorUnavailable();
     check();final proof=await collector.issueProof(password).timeout(const Duration(seconds:30));check();
     if(!RegExp(r'^[0-9a-f]{64}$').hasMatch(proof)) throw SecurityCollectorUnavailable();
     final raw=await updateRpc(c,proof).timeout(const Duration(seconds:20));check();
