@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -29,10 +30,32 @@ class SupabaseInvoiceNoticeSource implements InvoiceNoticeSource {
   final SupabaseClient client;
   final InvoiceCloudRepository repository;
   @override
-  String? get actor => client.auth.currentUser?.id;
+  String? get actor => sessionKey(client.auth.currentSession);
   @override
   Stream<String?> get actorChanges =>
-      client.auth.onAuthStateChange.map((state) => state.session?.user.id);
+      client.auth.onAuthStateChange.map((state) => sessionKey(state.session));
+
+  /// UI invalidation only; the server verifies the session and permissions.
+  @visibleForTesting
+  static String? sessionKey(Session? session) {
+    if (session == null) return null;
+    return sessionKeyForToken(session.accessToken, session.user.id);
+  }
+
+  @visibleForTesting
+  static String? sessionKeyForToken(String token, String userId) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+      final sid = claims is Map ? claims['session_id'] : null;
+      if (claims is! Map || claims['sub'] != userId || sid is! String ||
+          !RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(sid)) return null;
+      return '$userId/$sid';
+    } catch (_) {
+      return null;
+    }
+  }
   @override
   Future<List<InvoiceCalculationResult>> load() => repository.loadAll();
 }
