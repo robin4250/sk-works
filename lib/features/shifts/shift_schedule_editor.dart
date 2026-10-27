@@ -54,7 +54,8 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
     setState(() { saving = true; message = null; });
     try {
       await widget.save(List.unmodifiable(requests));
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         for (final request in requests) {
           revisions[request.workerId] = request.revision + 1;
         }
@@ -65,7 +66,8 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
           checkLate: request.checkLate, checkEarly: request.checkEarly,
           revision: request.revision + 1)];
         message = '下書きを保存しました。';
-      });
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => message = '保存結果を確認できません。再読み込みして確認してください。');
     } finally {
