@@ -79,7 +79,7 @@ print(json.dumps({'pages':len(pdf),'text':norm(p.get_text()),'earnings':money(24
     expect(report['pages'], 1);
     expect(report['text'], contains('1,200円×3日'));
     expect(report['text'], contains('対象356,600円/R8月額表甲欄・扶養2人'));
-    expect(report['text'], contains('所得税対象額:支給額423,600円−非課税額0円−社会保険料等67,000円−その他社会保険料等控除0円=356,600円'));
+    expect(report['text'], contains('所得税対象額:支給額423,600円−非課税額0円−社会保険料等67,000円−他項目で控除済みの社会保険料等0円=356,600円'));
     expect(report['text'], contains('令和8年月額表:甲欄・扶養2人、対象356,600円→自動計算7,020円'));
     expect(report['text'], contains('349,580'));
     expect(report['formula_font_min'] as num, greaterThanOrEqualTo(5.1));

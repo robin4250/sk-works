@@ -29,7 +29,7 @@ void main() {
     final before = jsonEncode(detail);
     final result = recordedPayrollIncomeTaxEvidence(detail, month: '2026-09-01', displayedAmount: 7020);
     expect(result.calculationLines, [
-      '所得税対象額：支給額 420,000円 − 非課税額 0円 − 社会保険料等 63,400円 − その他社会保険料等控除 0円 ＝ 356,600円',
+      '所得税対象額：支給額 420,000円 − 非課税額 0円 − 社会保険料等 63,400円 − 他項目で控除済みの社会保険料等 0円 ＝ 356,600円',
       '令和8年月額表：甲欄・扶養2人、対象 356,600円 → 自動計算 7,020円',
     ]);
     expect(jsonEncode(detail), before);

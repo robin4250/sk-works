@@ -66,7 +66,7 @@ PayrollRecordedIncomeTaxEvidence recordedPayrollIncomeTaxEvidence(Map<String, dy
   final summary = '対象${_money(base)}円／R8月額表 $column${overridden ? '・手動修正' : ''}';
   final beforeFloor = gross - nonTaxable - social - additional;
   final basis = '所得税対象額：支給額 ${_money(gross)}円 − 非課税額 ${_money(nonTaxable)}円'
-      ' − 社会保険料等 ${_money(social)}円 − その他社会保険料等控除 ${_money(additional)}円'
+      ' − 社会保険料等 ${_money(social)}円 − 他項目で控除済みの社会保険料等 ${_money(additional)}円'
       ' ＝ ${_money(base)}円${beforeFloor < 0 ? '（0円未満は0円）' : ''}';
   final tableColumn = mode == 'koh' ? column
       : '乙欄・従たる給与の申告扶養${conditions['dependents']}人';
