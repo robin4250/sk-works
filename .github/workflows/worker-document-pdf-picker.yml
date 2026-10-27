@@ -1,0 +1,24 @@
+name: Worker document PDF picker
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/worker_document_photo_editor.dart'
+      - 'lib/features/people/worker_document_repository.dart'
+      - 'lib/features/people/own_document_registration_page.dart'
+      - 'test/worker_document_pdf_editor_test.dart'
+      - '.github/workflows/worker-document-pdf-picker.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/people/worker_document_photo_editor.dart lib/features/people/worker_document_repository.dart lib/features/people/own_document_registration_page.dart test/worker_document_pdf_editor_test.dart
+      - run: flutter test --reporter expanded test/worker_document_pdf_editor_test.dart test/own_document_registration_save_test.dart test/worker_document_managed_photo_draft_test.dart

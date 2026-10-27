@@ -1,0 +1,20 @@
+name: Tutorial document purposes
+on:
+  pull_request:
+    paths:
+      - 'lib/features/tutorial/tutorial_evidence_repository.dart'
+      - 'test/tutorial_operational_evidence_test.dart'
+      - '.github/workflows/tutorial-document-purposes.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/tutorial/tutorial_evidence_repository.dart test/tutorial_operational_evidence_test.dart
+      - run: flutter test test/tutorial_operational_evidence_test.dart test/tutorial_evidence_repository_test.dart --reporter expanded

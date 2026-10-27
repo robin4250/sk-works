@@ -1,0 +1,24 @@
+name: Independent anchor authority storage
+on:
+  pull_request:
+    paths:
+      - 'tool/security/free-worker-candidate/src/anchor-authority.mjs'
+      - 'tool/security/free-worker-candidate/src/security-audit.mjs'
+      - 'tool/security/free-worker-candidate/tests/anchor-authority*'
+      - '.github/workflows/independent-anchor-authority.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actual-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/security/free-worker-candidate --ignore-scripts --no-audit --no-fund
+      - run: node --test tool/security/free-worker-candidate/tests/anchor-authority.test.mjs

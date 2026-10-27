@@ -5,6 +5,29 @@ import 'package:sk_works/features/payroll/payroll_insurance_calculation_evidence
 import 'fixtures/payroll_insurance_evidence_fixture.dart';
 
 void main() {
+  test('saved non-enrollment hides only zero rows without changing money', () {
+    for (final mode in ['rates', 'manual']) {
+      final detail = insuranceEvidenceFixture();
+      final tax = detail['tax_calculation'] as Map;
+      final conditions = tax['conditions'] as Map;
+      conditions['insurance_mode'] = mode;
+      conditions['employment'] = false;
+      detail['雇用保険料'] = 0;
+      final before = jsonEncode(detail);
+      final evidence = PayrollInsuranceCalculationEvidence.fromDetail(detail, month: '2026-10-01');
+      expect(evidence.rows.where((r) => r.name == '雇用保険料'), isEmpty);
+      expect(evidence.rows.any((r) => r.name == '健康保険料'), isTrue);
+      expect(jsonEncode(detail), before);
+      detail['雇用保険料'] = 123;
+      expect(PayrollInsuranceCalculationEvidence.fromDetail(detail, month: '2026-10-01')
+        .rows.singleWhere((r) => r.name == '雇用保険料').amountYen, 123);
+    }
+    final unknown = insuranceEvidenceFixture();
+    ((unknown['tax_calculation'] as Map)['conditions'] as Map).remove('employment');
+    unknown['雇用保険料'] = 0;
+    expect(PayrollInsuranceCalculationEvidence.fromDetail(unknown, month: '2026-10-01')
+      .rows.any((r) => r.name == '雇用保険料'), isTrue);
+  });
   PayrollInsuranceCalculationEvidence read(Map<String, dynamic> detail) =>
       PayrollInsuranceCalculationEvidence.fromDetail(detail, month: '2026-10-01');
   test('uses each saved base/rate/amount and declares average only a reference', () {
@@ -188,3 +211,4 @@ void main() {
   });
 
 }
+

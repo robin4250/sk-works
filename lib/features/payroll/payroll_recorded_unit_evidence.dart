@@ -13,7 +13,22 @@ PayrollRecordedUnitEvidence? recordedPayrollUnitEvidence(
   required String section,
   required num displayedAmount,
 }) {
-  final resolution = detail['unit_resolution'];
+  // These sources are saved alongside the statement, never today's settings.
+  // Legacy attendance totals alone do not contain an attributable unit price.
+  final primary = detail['unit_resolution'];
+  final attendance = detail['attendance_unit_evidence'];
+  if (primary is Map && primary['blocked'] == true) {
+    return null;
+  }
+  final primaryItems = primary is Map && primary['items'] is List
+      ? (primary['items'] as List).whereType<Map>().where((item) =>
+          item['name']?.toString().trim() == name.trim() && item['section'] == section)
+      : const Iterable<Map>.empty();
+  if (primaryItems.isEmpty && attendance is Map) {
+    return _attendanceEvidence(attendance, name: name, section: section,
+        displayedAmount: displayedAmount);
+  }
+  final resolution = primary;
   if (resolution is! Map || resolution['contract_version'] != 1 ||
       resolution['blocked'] == true || resolution['items'] is! List ||
       !displayedAmount.isFinite || displayedAmount <= 0) {
@@ -53,3 +68,36 @@ String _money(num value) {
       RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
   return parts.length == 1 ? whole : '$whole.${parts.last}';
 }
+
+PayrollRecordedUnitEvidence? _attendanceEvidence(Map resolution, {
+  required String name, required String section, required num displayedAmount,
+}) {
+  if (resolution['contract_version'] != 1 || resolution['blocked'] == true ||
+      resolution['items'] is! List || !displayedAmount.isFinite || displayedAmount <= 0) {
+    return null;
+  }
+  final items = (resolution['items'] as List).whereType<Map>().where((item) =>
+      item['name']?.toString().trim() == name.trim() && item['section'] == section).toList();
+  if (items.isEmpty) return null;
+  num amount = 0, quantity = 0;
+  final formulas = <String>[];
+  final units = <String>{};
+  for (final item in items) {
+    final rate = item['rate_yen'], count = item['quantity'], money = item['amount_yen'];
+    final suffix = const {'hour': '時間', 'day': '日', 'month': '月', 'count': '回'}[item['unit']];
+    if (suffix == null || rate is! num || count is! num || money is! num ||
+        !rate.isFinite || !count.isFinite || !money.isFinite || rate < 0 || count < 0 ||
+        !(rate * count).isFinite || (rate * count).round() != money ||
+        num.tryParse(_decimal(rate)) != rate || num.tryParse(_decimal(count)) != count) {
+      return null;
+    }
+    amount += money; quantity += count; units.add(suffix);
+    final category = const {'day': '日勤', 'night': '夜勤',
+      'holiday': '休日', 'holiday_night': '休日夜勤'}[item['category']];
+    formulas.add('${items.length > 1 && category != null ? '$category ' : ''}${_money(rate)}円 × ${_decimal(count)}$suffix');
+  }
+  if (amount != displayedAmount) return null;
+  return PayrollRecordedUnitEvidence(units.length == 1 ? '${_decimal(quantity)}${units.single}' : '内訳参照',
+      formulas.join('／'));
+}
+

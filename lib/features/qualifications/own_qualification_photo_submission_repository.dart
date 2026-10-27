@@ -253,7 +253,9 @@ class OwnQualificationPhotoSubmissionRepository {
       await _write(command);
       final options = FileOptions(
         upsert: false,
-        contentType: entry.value.extension == 'png'
+        contentType: entry.value.extension == 'pdf'
+            ? 'application/pdf'
+            : entry.value.extension == 'png'
             ? 'image/png'
             : entry.value.extension == 'heic'
             ? 'image/heic'
@@ -415,8 +417,8 @@ class OwnQualificationPhotoSubmissionRepository {
 
   String _extension(String name) {
     final extension = name.split('.').last.toLowerCase();
-    if (!const ['jpg', 'jpeg', 'png', 'heic', 'heif'].contains(extension)) {
-      throw StateError('JPEG・PNG・HEIC形式の写真を選択してください。');
+    if (!const ['jpg', 'jpeg', 'png', 'heic', 'heif', 'pdf'].contains(extension)) {
+      throw StateError('JPEG・PNG・HEIC形式の写真またはPDFを選択してください。');
     }
     return extension;
   }

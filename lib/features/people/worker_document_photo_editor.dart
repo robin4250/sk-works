@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -55,6 +56,25 @@ class _PhotoEditorState extends State<_PhotoEditor> {
   bool _busy = false;
   String? _error;
 
+  Future<void> _pickPdf() async {
+    if (!widget.canEdit || !widget.allowNewPhotos) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: const ['pdf']);
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.length < 5 || String.fromCharCodes(bytes.take(5)) != '%PDF-') {
+        throw const FormatException('PDFファイルを選択してください。');
+      }
+      if (_photos.length >= 20) throw StateError('書類は20件以内で選択してください。');
+      if (mounted) setState(() => _photos.add(WorkerDocumentPhoto.pending(bytes, file.name)));
+    } catch (_) {
+      if (mounted) setState(() => _error = 'PDFを選択できませんでした。ファイルを確認してください。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _pick({bool camera = false, int? replace}) async {
     if (!widget.canEdit || !widget.allowNewPhotos) return;
     setState(() {
@@ -101,6 +121,9 @@ class _PhotoEditorState extends State<_PhotoEditor> {
   }
 
   Widget _image(WorkerDocumentPhoto photo, {double height = 120}) {
+    if ((photo.path ?? photo.filename ?? '').toLowerCase().endsWith('.pdf')) {
+      return const Text('PDF書類');
+    }
     if (photo.bytes != null) {
       return Image.memory(
         photo.bytes!,
@@ -239,6 +262,11 @@ class _PhotoEditorState extends State<_PhotoEditor> {
                       : () => _pick(),
                   icon: const Icon(Icons.photo_library_outlined),
                   label: const Text('複数選択'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _busy || !widget.canEdit || !widget.allowNewPhotos ? null : _pickPdf,
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: const Text('PDFを選択'),
                 ),
               ],
             ),

@@ -1,0 +1,43 @@
+-- Additive read-only candidate. Root deployment only after isolated verification.
+begin;
+set local lock_timeout='5s';set local statement_timeout='30s';
+do $fresh$ begin
+ if current_user<>'postgres' or to_regprocedure('public.list_pending_route_visit_reports(uuid,uuid,date,uuid,integer)') is not null then
+  raise exception 'pending_visit_listing_fresh_install_required';
+ end if;
+end $fresh$;
+create function public.list_pending_route_visit_reports(
+ p_company_id uuid,p_worker_id uuid default null,p_after_date date default null,p_after_id uuid default null,p_limit integer default 200
+)returns jsonb language plpgsql volatile security definer set search_path='' as $body$
+declare actor uuid:=auth.uid();result jsonb;
+begin
+ perform private.require_reauthentication_session();
+ if actor is null or not private.account_access_allowed() or p_company_id is null or not exists(
+  select 1 from public.company_members where company_id=p_company_id and user_id=actor
+ )then raise sqlstate '42501' using message='pending_report_account_unavailable';end if;
+ if p_limit is null or p_limit<1 or p_limit>200 or (p_after_date is null)<>(p_after_id is null) then
+  raise sqlstate '22023' using message='pending_report_page_rejected';end if;
+ if p_worker_id is not null and not exists(select 1 from public.workers where id=p_worker_id and company_id=p_company_id)then
+  raise sqlstate '42501' using message='pending_report_worker_unavailable';end if;
+ if p_after_id is not null and not exists(select 1 from private.route_visit_reports r where r.id=p_after_id
+  and r.report_date=p_after_date and r.company_id=p_company_id and r.created_by=actor
+  and(p_worker_id is null or exists(select 1 from jsonb_array_elements(r.workers)w where w->>'worker_id'=p_worker_id::text)))then
+  raise sqlstate '42501' using message='pending_report_cursor_unavailable';end if;
+ select coalesce(jsonb_agg(row.document order by row.report_date,row.id),'[]'::jsonb)into result from(
+  select r.report_date,r.id,jsonb_build_object('id',r.id,'company_id',r.company_id,'report_date',r.report_date,
+   'created_at',r.created_at,'site_id',r.site_id,'site_name',r.site_name,'status',r.status,
+   'reporter_signed',r.representative_signature_json is not null,'supervisor_signed',r.supervisor_signature_json is not null,
+   'source_clock_in_id',r.source_clock_in_id,'route_assignment_id',r.route_assignment_id,'route_stop_id',r.route_stop_id,
+   'start_capture_id',r.start_capture_id,'end_capture_id',r.end_capture_id)document
+  from private.route_visit_reports r where r.company_id=p_company_id and r.created_by=actor
+   and r.status='reporter_signed' and r.representative_signature_json is not null and r.supervisor_signature_json is null
+   and length(btrim(r.work_description))>0
+   and(p_worker_id is null or exists(select 1 from jsonb_array_elements(r.workers)w where w->>'worker_id'=p_worker_id::text))
+   and(p_after_id is null or(r.report_date,r.id)>(p_after_date,p_after_id))
+  order by r.report_date,r.id limit p_limit
+ )row;
+ return jsonb_build_object('actor_id',actor,'company_id',p_company_id,'entries',result);
+end $body$;
+revoke all on function public.list_pending_route_visit_reports(uuid,uuid,date,uuid,integer)from public,anon,authenticated,service_role;
+grant execute on function public.list_pending_route_visit_reports(uuid,uuid,date,uuid,integer)to authenticated;
+commit;

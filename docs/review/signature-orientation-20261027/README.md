@@ -1,0 +1,19 @@
+# 署名画面の横向き専用表示・入力順の枠線
+
+Base PR #1450 head: `7d9b10b93deff119a0ed62cc0165cefb40082050`。
+
+署名routeのenter直後にlandscapeLeft/landscapeRightのみを要求し、名前欄・toolbar・サイン枠・確定buttonを横向きviewportだけで表示する。OSが縦viewportを返す間は入力フォームを一切表示せず、戻れる案内画面だけにする。横表示が可能になれば全フォームを表示する。viewportは物理方向sensorではないため「端末を物理的に横へ回したことを検知」とは扱わない。
+
+確定・戻る・取消・disposeで最後の署名routeを閉じると通常policyへ復帰する。iPhoneはportraitUp、iPad/他端末はアプリ従来のplatform-controlled policy([])。ネストした署名routeが残る間は横向きを維持し、重複cleanupでpolicyを書き換えない。Flutterに任意のOS設定を読み出すAPIはないため、アプリ自身が管理する既定policyの復元である。
+
+iPadではmultitasking有効時にorientation要求が無視され得る。既存のiPad固有plist、UIRequiresFullScreen、nativechannelは変更していない。回転制限下の縦入力を許可せず案内を維持するが、iPad強制回転の実機保証は未達。公式根拠: https://api.flutter.dev/flutter/services/SystemChrome/setPreferredOrientations.html 。iPhone/iPadの実機回転・元画面復帰は配布候補導入後に確認が必要。
+
+日報①作業内容、②任意項目の見出し、③報告者、④責任者、⑤最終保存を同じ細いprimary青線(1dp)で囲み、番号位置を揃える。既存のworker個別カードへさらに大きな入れ子枠を追加しない。参照情報には操作番号を付けない。緑サイン済み表示とプレビュー、保存RPC・必須項目・折畳み条件は変更しない。
+
+描画途中で縦へ戻っても保存済みstrokeと最初のcapture寸法を保持する。入力を止め、横へ戻ったら新strokeで続ける。Flutterのupright viewport座標を使うため左右両landscapeを個別に推測して回転しない。筆跡から天地を推測する処理はない。回転ロックなどでviewportが縦のままなら案内を維持する。
+
+既存のnormalized vectorとcanvas_width/canvas_heightを保持し、PNGへの保存形式変更やRPC/署名ハッシュ変更は行わない。日報previewとPDFは既存の同寸法metadata・uniform containを使用。既存署名/確定帳票を書き換えず、採用枠も変更しない。枠内の目印や案内はstroke/PDFへ保存されない。
+
+電話/タブレットの縦フォーム非表示、横表示切替、回転後の値保持・再開・消去、文字拡大、保存vectorを描画したピクセルの上下左右と比率を検証する候補を追加。既存member名・vector寸法・orientation・inkframeもCIで検証する。ローカルFlutter/Dartは未実行。今回追加差分のCI/実iPhone/タブレットは未確認。本番DB変更ゼロ。
+
+報告者/責任者の緑「サイン済み」は、それぞれ保存済みの該当署名だけをread-only拡大プレビューするbutton。名前・元capture寸法を表示し、閉じると日報へ戻る。空/不正な保存payloadはgreen/preview対象にしない。責任者の旧signature_json fallbackは責任者にだけ使用し、報告者へ流用しない。親の日報保存RPC・署名履歴を変えない。

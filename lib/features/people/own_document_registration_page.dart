@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
@@ -284,7 +285,9 @@ class _OwnDocumentRegistrationPageState
                     ),
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
+                  _documentRegistrationStep(
+                    '①', '書類種類', requirementId == null ? '必須' : '選択済み',
+                    DropdownButtonFormField<String>(
                     initialValue: requirementId,
                     decoration: const InputDecoration(labelText: '書類種類'),
                     items: [
@@ -298,9 +301,11 @@ class _OwnDocumentRegistrationPageState
                       requirementId = value;
                       attachPhoto = false;
                     }),
-                  ),
+                  )),
                   const SizedBox(height: 8),
-                  ListTile(
+                  _documentRegistrationStep(
+                    '②', '有効期限', expiresAt == null ? '任意' : '設定済み',
+                    ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('有効期限'),
                     subtitle: Text(
@@ -321,17 +326,23 @@ class _OwnDocumentRegistrationPageState
                         setDialogState(() => expiresAt = picked);
                       }
                     },
-                  ),
-                  TextField(
+                  )),
+                  const SizedBox(height: 8),
+                  _documentRegistrationStep(
+                    '③', '備考', '任意',
+                    TextField(
                     controller: notes,
                     decoration: const InputDecoration(labelText: '備考'),
                     maxLines: 2,
-                  ),
+                  )),
+                  const SizedBox(height: 8),
                   if (!photoEditingAvailable)
                     const Text(
                       '複数写真は準備中です。会社で写真の送信が許可された書類のみ、写真未登録なら1枚を初回登録できます。保存済みの写真は保持します。',
                     ),
-                  CheckboxListTile(
+                  _documentRegistrationStep(
+                    '④', '添付', attachPhoto ? '次に選択' : '任意',
+                    CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('写真を添付する'),
                     value: attachPhoto,
@@ -342,7 +353,7 @@ class _OwnDocumentRegistrationPageState
                         ? null
                         : (value) =>
                               setDialogState(() => attachPhoto = value ?? false),
-                  ),
+                  )),
                 ],
               ),
             ),
@@ -360,7 +371,7 @@ class _OwnDocumentRegistrationPageState
                         'notes': notes.text.trim(),
                         'attachPhoto': attachPhoto,
                       }),
-                child: const Text('登録'),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [Text('⑤ '), Text('登録')]),
               ),
             ],
           ),
@@ -403,7 +414,7 @@ class _OwnDocumentRegistrationPageState
       Uint8List? attachmentBytes;
       String? originalFilename;
       if (draft['attachPhoto'] == true) {
-        final source = await showModalBottomSheet<ImageSource>(
+        final source = await showModalBottomSheet<String>(
           context: context,
           builder: (sheetContext) => Theme(
             data: _registrationTheme(sheetContext),
@@ -413,12 +424,17 @@ class _OwnDocumentRegistrationPageState
                   ListTile(
                     leading: const Icon(Icons.photo_camera_outlined),
                     title: const Text('カメラで撮影'),
-                    onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+                    onTap: () => Navigator.pop(sheetContext, 'camera'),
                   ),
                   ListTile(
                     leading: const Icon(Icons.photo_library_outlined),
                     title: const Text('写真から選ぶ'),
-                    onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+                    onTap: () => Navigator.pop(sheetContext, 'gallery'),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.picture_as_pdf_outlined),
+                    title: const Text('PDFを選ぶ'),
+                    onTap: () => Navigator.pop(sheetContext, 'pdf'),
                   ),
                 ],
               ),
@@ -426,16 +442,27 @@ class _OwnDocumentRegistrationPageState
           ),
         );
         if (source == null || !mounted) return;
-        final picked = widget.pickPhoto != null
-            ? await widget.pickPhoto!(source)
-            : await _picker.pickImage(
-                source: source,
-                imageQuality: 88,
-                maxWidth: 2400,
-              );
-        if (picked == null || !mounted) return;
-        attachmentBytes = await picked.readAsBytes();
-        originalFilename = picked.name;
+        if (source == 'pdf') {
+          final file = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: const ['pdf']);
+          if (file == null || !mounted) return;
+          final bytes = await file.readAsBytes();
+          if (bytes.length < 5 || String.fromCharCodes(bytes.take(5)) != '%PDF-') {
+            throw const FormatException('PDFファイルを選択してください。');
+          }
+          attachmentBytes = bytes;
+          originalFilename = file.name;
+        } else {
+          final picked = widget.pickPhoto != null
+              ? await widget.pickPhoto!(source == 'camera' ? ImageSource.camera : ImageSource.gallery)
+              : await _picker.pickImage(
+                  source: source == 'camera' ? ImageSource.camera : ImageSource.gallery,
+                  imageQuality: 88,
+                  maxWidth: 2400,
+                );
+          if (picked == null || !mounted) return;
+          attachmentBytes = await picked.readAsBytes();
+          originalFilename = picked.name;
+        }
         if (!mounted) return;
       }
 
@@ -656,7 +683,32 @@ class _OwnDocumentRegistrationPageState
                                   _repository is OwnDocumentPhotoGateway &&
                                   !(_repository as OwnDocumentPhotoGateway)
                                       .photoEditingAvailable);
-                          final label = needsRegistration ? '未登録' : '登録済み';
+                          // Mirror the required-document attention predicate: the
+                          // primary attachment is required except for bank information,
+                          // whose completion depends on a separate private bank record.
+                          final statusValue = status?['status']?.toString();
+                          final isBank = requirement['name']?.toString() == '銀行口座情報';
+                          final isRequired = requirement['is_required'] == true;
+                          final primaryPath =
+                              status?['attachment_path']?.toString() ?? '';
+                          final attachmentMissing = status != null && isRequired &&
+                              !isBank && primaryPath.isEmpty;
+                          final bankUnconfirmed =
+                              status != null && isRequired && isBank;
+                          final statusMissing = statusValue == 'not_submitted' ||
+                              statusValue == 'missing' || statusValue == 'expired';
+                          final incomplete = needsRegistration || attachmentMissing ||
+                              bankUnconfirmed || statusMissing;
+                          final label = status == null || statusValue == 'not_submitted' ||
+                                  statusValue == 'missing'
+                              ? '未登録'
+                              : statusValue == 'expired'
+                                  ? '期限切れ'
+                                  : attachmentMissing
+                                      ? '添付待ち'
+                                      : bankUnconfirmed
+                                          ? '口座情報を確認'
+                                          : '登録済み';
                           final gateway = _repository;
                           final attachments = [
                             for (var i = 0; i < paths.length; i++)
@@ -664,7 +716,12 @@ class _OwnDocumentRegistrationPageState
                                 path: paths[i], signedUrl: gateway is OwnDocumentPhotoGateway
                                   ? gateway.signedUrl : (_) async => throw StateError('Attachment unavailable')),
                           ];
-                          final action = _saving ? null : needsRegistration
+                          final action = _saving ? null : attachmentMissing &&
+                                  workerDocumentHasRegisteredContent(status)
+                            ? () => ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text(
+                                  '登録済み書類への添付追加は準備中です。')))
+                            : needsRegistration
                             ? () => _registerDocument(initialRequirementId: id)
                             : gateway is OwnDocumentPhotoGateway
                               ? () => _editPhotos(status)
@@ -675,7 +732,7 @@ class _OwnDocumentRegistrationPageState
                             key: ValueKey('own-document:${gateway is _OwnDocumentRepositoryGateway ? gateway.actorId : ''}:${_worker?['id']}:$id'),
                             title: requirement['name']?.toString() ?? '書類',
                             icon: Icons.description_outlined,
-                            registered: !needsRegistration,
+                            registered: !incomplete,
                             statusLabel: label,
                             dateLabel: dates.isEmpty ? '' : dates.first,
                             detailLabel: [if (status != null) resourceDocumentReviewLabel(status['status']),
@@ -697,3 +754,32 @@ class _OwnDocumentRegistrationPageState
   }
 }
 
+
+
+Widget _documentRegistrationStep(
+    String number, String label, String status, Widget child) {
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      border: Border.all(color: const Color(0xFF1976D2), width: 1),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Text(number, style: const TextStyle(
+              color: Color(0xFF1976D2), fontWeight: FontWeight.bold)),
+          const SizedBox(width: 6),
+          Expanded(child: Text(label,
+              style: const TextStyle(fontWeight: FontWeight.bold))),
+          Text(status, style: TextStyle(
+              color: status == '選択済み' || status == '設定済み'
+                  ? Colors.green.shade700 : Colors.black54, fontSize: 12)),
+        ]),
+        child,
+      ],
+    ),
+  );
+}

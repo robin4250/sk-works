@@ -5,6 +5,7 @@ import 'package:sk_works/branding/sko_theme.dart';
 import 'package:sk_works/features/attendance/worker_attendance_sheet_page.dart';
 import 'package:sk_works/features/attendance/worker_attendance_sheet_repository.dart';
 import 'package:sk_works/features/daily_reports/daily_report_month_page.dart';
+import 'package:sk_works/features/daily_reports/daily_report_calendar_model.dart';
 import 'package:sk_works/features/daily_reports/daily_report_month_repository.dart';
 import 'package:sk_works/features/daily_reports/daily_report_pdf_service.dart';
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
@@ -38,6 +39,10 @@ class _Reports extends DailyReportMonthRepository {
       DailyReportMonthEntry(id: 'yesterday', date: DateTime(2026,10,11), name: '前日の日報', status: 'signed', siteId: 'site'),
     ];
   }
+  @override
+  Future<DailyReportSiteHistoryResult> listSiteHistory(DailyReportMonthEntry anchor, {String? workerId}) async =>
+    DailyReportSiteHistoryResult((await list(anchor.date, workerId: workerId)).where((entry) =>
+      dailyReportDestinationKey(entry) == dailyReportDestinationKey(anchor) && entry.saveState == anchor.saveState).toList());
   @override
   Future<DailyReportMonthDocument> loadOne(DailyReportMonthEntry entry, {required String expectedActor}) async {
     checkActor(expectedActor);
@@ -96,8 +101,13 @@ void main() {
     expect(repository.subject, 'selected-worker');
     expect(find.text('前日の日報'), findsNothing);
     for (final label in ['訪問先1', '訪問先2', '訪問先3', '退勤ルート']) {
-      await tester.ensureVisible(find.text(label));
-      await tester.tap(find.text(label));
+      await tester.scrollUntilVisible(find.text(label), 100, scrollable: find.byType(Scrollable).last);
+      expect(find.text(label), findsOneWidget);
+      final tile = find.ancestor(of: find.text(label), matching: find.byType(ListTile));
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+      expect(tile.hitTestable(), findsOneWidget);
+      await tester.tap(tile.hitTestable());
       await tester.pumpAndSettle();
       expect(find.text('保存済みの作業'), findsOneWidget);
       await tester.pageBack();
@@ -115,9 +125,14 @@ void main() {
     expect(find.textContaining('この日をまとめて保存・共有 (4件)'), findsOneWidget);
     expect(find.textContaining('この日に閲覧できる'), findsOneWidget);
     for (var i = 0; i < 3; i++) {
-      final subtitle = find.text('2026-10-12 / 訪問日報 / ${i + 1}／3件目 / 作成 10:0$i / 署名済み');
-      await tester.ensureVisible(subtitle);
-      await tester.tap(subtitle);
+      final subtitle = find.text('2026-10-12 / 訪問日報 / ${i + 1}／3件目 / 作成 10:0$i / 保存済み');
+      await tester.scrollUntilVisible(subtitle, 100, scrollable: find.byType(Scrollable).last);
+      expect(subtitle, findsOneWidget);
+      final tile = find.ancestor(of: subtitle, matching: find.byType(ListTile));
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+      expect(tile.hitTestable(), findsOneWidget);
+      await tester.tap(tile.hitTestable());
       await tester.pumpAndSettle();
       expect(find.text('preview:visit-$i'), findsOneWidget);
       await tester.pageBack();

@@ -155,6 +155,17 @@ class QualificationCloudRepository {
     return Map<String, dynamic>.from(inserted);
   }
 
+  Future<void> updateMasterCategory(String masterId, String category) async {
+    if (!await canManageMaster()) throw StateError('資格区分を変更する権限がありません。');
+    const allowed = {'国家資格', '技能講習', '実技講習', '安全教育', '特別教育'};
+    if (!allowed.contains(category)) throw ArgumentError('資格区分が正しくありません。');
+    final companyId = await _companyId();
+    final updated = await _client.from('qualification_master')
+        .update({'category': category}).eq('company_id', companyId)
+        .eq('id', masterId).select('id');
+    if (updated.length != 1) throw StateError('資格区分を更新できませんでした。');
+  }
+
   Future<({String workerId, String workerName})> currentWorker() async {
     final workerIdRaw = await _client.rpc('ensure_current_user_worker');
     final workerId = workerIdRaw?.toString() ?? '';
@@ -370,4 +381,5 @@ class QualificationCloudRepository {
     return text.isEmpty ? null : text;
   }
 }
+
 

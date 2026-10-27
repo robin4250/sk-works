@@ -1,0 +1,56 @@
+name: Apple OFF deployment and root recovery
+on:
+  pull_request:
+    paths:
+      - 'docs/review/apple-existing-login-candidate/deployment/**'
+      - 'docs/review/apple-existing-login-candidate/native-enrollment-recovery.sql.review-only'
+      - 'docs/review/apple-existing-login-candidate/native_apple_recovery.test.mjs'
+      - 'docs/review/apple-existing-login-candidate/*sql.review-only'
+      - '.github/workflows/apple-deployment-recovery.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-catalogue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix "$RUNNER_TEMP/sko-apple-recovery" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
+      - run: node --test docs/review/apple-existing-login-candidate/native_apple_recovery.test.mjs
+        env:
+          SKO_APPLE_ENROLLMENT_PGLITE: ${{ runner.temp }}/sko-apple-recovery/node_modules/@electric-sql/pglite/dist/index.js
+      - run: node docs/review/apple-existing-login-candidate/deployment/verify_isolated.mjs "$RUNNER_TEMP/sko-apple-recovery/node_modules/@electric-sql/pglite/dist/index.js" "$PWD/docs/review/apple-existing-login-candidate"
+  native-restoration-and-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_apple_enrollment_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix "$RUNNER_TEMP/sko-apple-recovery-native" --no-save --ignore-scripts pg@8.16.3
+      - run: node --test docs/review/apple-existing-login-candidate/native_apple_recovery.test.mjs
+        env:
+          SKO_APPLE_ENROLLMENT_NATIVE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_apple_enrollment_fixture
+          SKO_APPLE_ENROLLMENT_NATIVE_DRIVER: ${{ runner.temp }}/sko-apple-recovery-native/node_modules/pg/lib/index.js
+      - run: node docs/review/apple-existing-login-candidate/deployment/verify_isolated.mjs "$PWD/docs/review/apple-existing-login-candidate/native_apple_enrollment_native_runtime.mjs" "$PWD/docs/review/apple-existing-login-candidate"
+        env:
+          SKO_APPLE_ENROLLMENT_NATIVE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_apple_enrollment_fixture
+          SKO_APPLE_ENROLLMENT_NATIVE_DRIVER: ${{ runner.temp }}/sko-apple-recovery-native/node_modules/pg/lib/index.js

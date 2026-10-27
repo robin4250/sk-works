@@ -35,6 +35,7 @@ class _Reports implements DailyReportRepository {
   String savedAllowanceLabel = '';
   int savedAdjustment = 0;
   List<Map<String, Object?>>? savedWorkerPayload;
+  bool emptySavedInk = false, malformedSavedInk = false;
   String description = '保存済みの作業';
   bool get persistedSupervisor => supervisorSaved && !staleSupervisorRead;
   int draftWrites = 0, ordinaryReporterWrites = 0, anchorReads = 0;
@@ -59,9 +60,9 @@ class _Reports implements DailyReportRepository {
       date: date, siteId: _site, siteName: '対象現場', workDescription: description,
       status: (explicitMode ? finalized : persistedSupervisor && !documentMode) ? 'signed' : 'draft', workers: workers,
       reporterSignerName: reporterSaved ? '最初の報告者' : null,
-      reporterSignatureJson: reporterSaved ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null,
+      reporterSignatureJson: reporterSaved ? {'strokes': emptySavedInk ? [] : malformedSavedInk ? [[{'x': 'invalid', 'y': 0.2}]] : [[{'x': 0.1, 'y': 0.2, 'canvas_width': 800, 'canvas_height': 200}]]} : null,
       responsibleSignerName: persistedSupervisor ? '責任者' : null,
-      responsibleSignatureJson: persistedSupervisor ? {'strokes': [[{'x': 0.1, 'y': 0.2}]]} : null);
+      responsibleSignatureJson: persistedSupervisor ? {'strokes': emptySavedInk ? [] : malformedSavedInk ? [[{'x': 0.7, 'y': -0.8}]] : [[{'x': 0.7, 'y': 0.8, 'canvas_width': 600, 'canvas_height': 180}]]} : null);
   @override Future<List<DailyReportEvidenceRecord>> loadAttendanceEvidence({String? reportId,
     required DateTime date, String? siteId, String? routeAssignmentId}) async => [];
   @override Future<List<DailyReportWorkerDraft>> loadAnchoredWorkers({required String anchorId,
@@ -279,8 +280,11 @@ void main() {
     SharedPreferencesAsyncPlatform.instance = InMemorySharedPreferencesAsync.empty();
     addTearDown(() => SharedPreferencesAsyncPlatform.instance = previous);
   });
-  Future<void> open(WidgetTester tester, _Reports reports, _Hours hours, _Shared shared, {_Facts? facts}) async {
-    await tester.pumpWidget(MaterialApp(home: DailyReportPage(initialDate: _date,
+  Future<void> open(WidgetTester tester, _Reports reports, _Hours hours, _Shared shared, {_Facts? facts, double textScale = 1}) async {
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(
+        textScaler: TextScaler.linear(textScale)), child: child!),
+      home: DailyReportPage(initialDate: _date,
       initialSiteId: _site, initialReportId: _report, repositoryForTesting: reports,
       paidHoursRepositoryForTesting: hours, sharedReportRepositoryForTesting: shared,
       workerFactsRepositoryForTesting: facts)));
@@ -319,6 +323,56 @@ void main() {
       }
     });
   }
+  for (final role in ['reporter', 'supervisor']) {
+    testWidgets('saved $role badge previews only its persisted signature and closes read-only', (tester) async {
+      final reports = _Reports()..reporterSaved = true..supervisorSaved = true;
+      await open(tester, reports, _Hours(), _Shared(reports));
+      await reveal(tester, role == 'reporter' ? '報告者サイン' : '責任者サイン');
+      final badge = find.byKey(ValueKey('daily-report-$role-preview'));
+      await tester.ensureVisible(badge);
+      await tester.tap(badge); await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text(role == 'reporter' ? '報告者サイン：最初の報告者' : '責任者サイン：責任者'), findsOneWidget);
+      final preview = tester.widget<SignaturePreview>(find.byType(SignaturePreview));
+      expect(preview.strokes.single.single, role == 'reporter' ? const Offset(.1, .2) : const Offset(.7, .8));
+      expect(preview.canvasSize, role == 'reporter' ? const Size(800, 200) : const Size(600, 180));
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+      expect(find.byType(SignatureCapturePage), findsNothing);
+      expect(reports.ordinaryReporterWrites, 0);
+      expect(reports.draftWrites, 0);
+      await tester.tap(find.text('閉じる')); await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(DailyReportPage), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  for (final invalid in ['empty', 'malformed']) {
+  testWidgets('$invalid saved payloads are neither green nor preview buttons', (tester) async {
+    final reports = _Reports()..reporterSaved = true..supervisorSaved = true..emptySavedInk = invalid == 'empty'..malformedSavedInk = invalid == 'malformed';
+    await open(tester, reports, _Hours(), _Shared(reports));
+    await reveal(tester, '報告者サイン');
+    for (final role in ['reporter', 'supervisor']) {
+      expect(find.byKey(ValueKey('daily-report-$role-saved')), findsNothing);
+      expect(find.byKey(ValueKey('daily-report-$role-preview')), findsNothing);
+    }
+    expect(find.byType(SignatureCapturePage), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  }
+  testWidgets('saved badge has an accessible preview action with enlarged labels', (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+    final reports = _Reports()..reporterSaved = true..supervisorSaved = true;
+    await open(tester, reports, _Hours(), _Shared(reports), textScale: 1.5);
+    await reveal(tester, '報告者サイン');
+    for (final entry in [('reporter', '報告者サイン'), ('supervisor', '責任者サイン')]) {
+      final node = tester.getSemantics(find.byKey(ValueKey('daily-report-${entry.$1}-preview-semantics')));
+      expect(node, matchesSemantics(label: '${entry.$2}：サイン済み。プレビューを開く',
+        isButton: true, hasTapAction: true));
+    }
+    expect(tester.takeException(), isNull);
+    } finally { semantics.dispose(); }
+  });
   testWidgets('reopened signature reset removes both saved labels', (tester) async {
     final reports = _Reports()..reporterSaved = true..supervisorSaved = true;
     await open(tester, reports, _Hours(), _Shared(reports));
@@ -1040,6 +1094,7 @@ void main() {
     expect(reports.draftWrites, 0);
   });
 }
+
 
 
 

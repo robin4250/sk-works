@@ -1,0 +1,49 @@
+name: Apple owner policy GoTrue proof
+on:
+  pull_request:
+    paths:
+      - 'docs/review/apple-existing-login-candidate/owner*'
+      - '.github/workflows/apple-owner-policy-proof.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  auth-transaction:
+    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          repository: supabase/auth
+          ref: c3348e8f1cb31454e9783e4eb9eab1e71ad9652f
+          path: gotrue
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: gotrue/go.mod
+          cache-dependency-path: gotrue/go.sum
+      - name: Disposable official Auth schema
+        working-directory: gotrue
+        run: psql -f hack/init_postgres.sql postgresql://postgres:root@localhost:5432/postgres
+      - name: Official GoTrue migrations
+        working-directory: gotrue
+        run: make migrate_dev
+      - name: Copy isolated candidate transaction test
+        run: cp candidate/docs/review/apple-existing-login-candidate/owner_policy_gotrue_test.go gotrue/internal/api/sko_owner_policy_test.go
+      - name: Real GoTrue transaction and hook proof
+        working-directory: gotrue
+        env:
+          SKO_APPLE_POLICY_FILE: ${{ github.workspace }}/candidate/docs/review/apple-existing-login-candidate/owner-policy.sql.review-only
+        run: go test ./internal/api -run '^TestSKOAppleOwnerPolicyTransaction$' -count=1 -v

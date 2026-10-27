@@ -244,11 +244,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
 
   bool get _signed => _report?.signed == true;
   bool get _reporterSignatureSaved => _report?.id.isNotEmpty == true &&
-      _report?.reporterSignatureJson != null &&
+      _savedSignatureHasInk(_report?.reporterSignatureJson) &&
       (_sharedContext?.enabled != true ||
         (_sharedContext?.reportId == _report?.id && _sharedContext?.reporterSaved == true));
   bool get _supervisorSignatureSaved => _report?.id.isNotEmpty == true &&
-      _report?.responsibleSignatureJson != null &&
+      _savedSignatureHasInk(_report?.responsibleSignatureJson ?? _report?.signatureJson) &&
       (_sharedContext?.enabled != true ||
         (_sharedContext?.reportId == _report?.id && _sharedContext?.supervisorSaved == true));
 
@@ -264,21 +264,52 @@ class _DailyReportPageState extends State<DailyReportPage> {
         input['source_current'] == true).length == 1);
   }
 
-  Widget _stepTitle(String title, {required String step, required bool complete, required String status}) =>
-      Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Text(SkoLanguageController.tr(title), style: const TextStyle(fontWeight: FontWeight.w900)),
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          if (complete) ...[
-            Icon(Icons.check_circle, size: 14, color: Colors.green.shade800),
-            const SizedBox(width: 3),
-          ],
-          Text(SkoLanguageController.tr(status),
-            key: ValueKey('daily-report-$step-${complete ? 'saved' : 'status'}'),
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: complete ? Colors.green.shade800 : Theme.of(context).colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600)),
-        ]),
-      ]);
+  bool _savedSignatureHasInk(Object? signature) {
+    try {
+      final points = SignatureResult.fromJson(signature).expand((stroke) => stroke).toList();
+      return points.isNotEmpty && points.every((point) => point.dx.isFinite && point.dy.isFinite &&
+        point.dx >= 0 && point.dx <= 1 && point.dy >= 0 && point.dy <= 1);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  RoundedRectangleBorder get _stepCardShape => RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(12),
+    side: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1),
+  );
+
+  OutlineInputBorder get _stepInputBorder => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1),
+  );
+
+  Widget _stepTitle(String title, {required String step, required bool complete,
+      required String status, VoidCallback? onSavedTap}) {
+    final badge = Row(mainAxisSize: MainAxisSize.min, children: [
+      if (complete) ...[
+        Icon(Icons.check_circle, size: 14, color: Colors.green.shade800),
+        const SizedBox(width: 3),
+      ],
+      Text(SkoLanguageController.tr(status),
+        key: ValueKey('daily-report-$step-${complete ? 'saved' : 'status'}'),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: complete ? Colors.green.shade800 : Theme.of(context).colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600)),
+    ]);
+    return Wrap(spacing: 8, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      Text(SkoLanguageController.tr(title), style: const TextStyle(fontWeight: FontWeight.w900)),
+      if (complete && onSavedTap != null)
+        Semantics(key: ValueKey('daily-report-$step-preview-semantics'),
+          container: true, button: true, excludeSemantics: true, onTap: onSavedTap,
+          label: '$title：サイン済み。プレビューを開く',
+          child: Tooltip(message: 'サインを表示', child: InkWell(
+            key: ValueKey('daily-report-$step-preview'), onTap: onSavedTap,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8), child: badge))))
+      else badge,
+    ]);
+  }
   bool get _documentComplete => _sharedContext?.explicitFinalizationRequired != true &&
       _sharedContext?.documentOnly == true &&
       _sharedContext?.documentComplete == true && _sharedContext?.reportId == _report?.id &&
@@ -1534,7 +1565,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         MaterialPageRoute(builder: (_) => SignatureCapturePage(
           title: SkoLanguageController.tr('報告者サイン'),
           signerLabel: SkoLanguageController.tr('報告者名'),
-          submitLabel: SkoLanguageController.tr('報告者サインを保存'),
+          submitLabel: SkoLanguageController.tr('サインを確定'),
           initialSignerName: _report?.reporterSignerName ?? '',
           reviewText: sharedBefore?.explicitFinalizationRequired == true
             ? _reporterSignatureSummary(enteredHours) : null,
@@ -1715,9 +1746,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
           title: SkoLanguageController.tr('責任者サイン'),
           signerLabel: SkoLanguageController.tr('現場責任者名'),
           reviewText: sharedBefore?.documentOnly == true ? _documentSignatureSummary(sharedBefore!) : null,
-          submitLabel: _editingApprovedReport
-              ? SkoLanguageController.tr('このサインを確認') : SkoLanguageController.tr(
-                  _explicitFinalizationRequired ? '責任者サインを保存' : '責任者サインで確定'),
+          submitLabel: SkoLanguageController.tr('サインを確定'),
         ),
         ),
       );
@@ -2319,25 +2348,25 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
-  Future<void> _showSignature() async {
+  Future<void> _showSignature({bool reporter = false}) async {
     final report = _report;
-    if (report == null) return;
-    final signature =
-        report.responsibleSignatureJson ?? report.signatureJson;
-    if (signature == null) return;
+    if (report == null || (reporter ? !_reporterSignatureSaved : !_supervisorSignatureSaved)) { return; }
+    final signature = reporter ? report.reporterSignatureJson
+      : report.responsibleSignatureJson ?? report.signatureJson;
     final strokes = SignatureResult.fromJson(signature);
+    final signerName = reporter ? report.reporterSignerName ?? ''
+      : report.responsibleSignerName ?? report.signerName ?? '';
+    final height = (MediaQuery.sizeOf(context).height * .4).clamp(80.0, 220.0).toDouble();
 
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(
-          SkoLanguageController.trParams('責任者サイン：{name}', {'name': report.responsibleSignerName ?? report.signerName ?? '',
-          }),
-        ),
-        content: SizedBox(
-          width: 460,
-          child: SignaturePreview(strokes: strokes, height: 220, canvasSize: SignatureResult.sizeFromJson(signature)),
-        ),
+        scrollable: true,
+        title: Text('${reporter ? '報告者サイン' : '責任者サイン'}：$signerName'),
+        content: SizedBox(width: 460, height: height,
+          child: InteractiveViewer(minScale: 1, maxScale: 4,
+            child: SignaturePreview(strokes: strokes, height: height,
+              canvasSize: SignatureResult.sizeFromJson(signature)))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
@@ -2503,19 +2532,25 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 builder: (context, value, child) => _stepTitle('作業内容', step: 'work',
                                   complete: value.text.trim().isNotEmpty,
                                   status: value.text.trim().isNotEmpty ? '記入済み' : '未記入')),
+                              border: _stepInputBorder,
+                              enabledBorder: _stepInputBorder,
+                              disabledBorder: _stepInputBorder,
+                              focusedBorder: _stepInputBorder,
+                              prefixIconConstraints: const BoxConstraints(minWidth: 56, minHeight: 40),
                               prefixIcon: const _ReportStepBadge('①'),
                               alignLabelWithHint: true,
                               hintText: SkoLanguageController.tr('本日の作業内容を入力'),
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Row(children: [
+                          Card(shape: _stepCardShape, margin: EdgeInsets.zero,
+                            child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              child: Row(children: [
                             _ReportStepBadge(_dailyStep(2)),
                             const SizedBox(width: 8),
                             Expanded(child: _stepTitle('メンバー別 残業・早出・手当', step: 'facts',
                               complete: _optionalFactsConfirmed, status: _optionalFactsConfirmed ? '確認済み' : '任意')),
-                          ]),
-                          const SizedBox(height: 8),
+                          ]))),
                           if (!_sharedFactsReadOnly || _sharedContext?.explicitFinalizationRequired == true) for (final worker in _workers) ...[
                             _WorkerDetailCard(
                               worker: worker,
@@ -2606,10 +2641,14 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               controller: _managementFactsReason, enabled: !_saving && !_signed,
                               decoration: const InputDecoration(labelText: '本人に代わって勤務実績を確認する理由'))),
                           Card(
+                            shape: _stepCardShape, margin: EdgeInsets.zero,
                             child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                              horizontalTitleGap: 8, minLeadingWidth: 40,
                               leading: _ReportStepBadge(_dailyStep(3)),
                               title: _stepTitle('報告者サイン', step: 'reporter', complete: _reporterSignatureSaved,
-                                status: _reporterSignatureSaved ? 'サイン済み' : '未サイン'),
+                                status: _reporterSignatureSaved ? 'サイン済み' : '未サイン',
+                                onSavedTap: _reporterSignatureSaved ? () => _showSignature(reporter: true) : null),
                               subtitle: _report?.reporterSignatureJson == null ? null : Text(
                                 _report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み')),
                               trailing: _managementHold || _signed || _visitReporterLocked || _sharedFactsReadOnly
@@ -2622,30 +2661,39 @@ class _DailyReportPageState extends State<DailyReportPage> {
                           if (_signed || _documentComplete || _sharedContext?.supervisorSaved == true ||
                               (_visitReport && _report?.responsibleSignatureJson != null))
                             Card(
+                              shape: _stepCardShape, margin: EdgeInsets.zero,
                               child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                horizontalTitleGap: 8, minLeadingWidth: 40,
                                 leading: _ReportStepBadge(_dailyStep(4)),
                                 title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
-                                  status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン'),
+                                  status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン',
+                                  onSavedTap: _supervisorSignatureSaved ? () => _showSignature() : null),
                                 subtitle: Text(
                                   _report?.responsibleSignerName ?? _report?.signerName ?? SkoLanguageController.tr('責任者サイン済み'),
                                 ),
                                 trailing: const Icon(Icons.chevron_right),
-                                onTap: _showSignature,
+                                onTap: _supervisorSignatureSaved ? () => _showSignature() : null,
                               ),
                             )
                           else
                             Card(
+                              shape: _stepCardShape, margin: EdgeInsets.zero,
                               child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                horizontalTitleGap: 8, minLeadingWidth: 40,
                                 leading: _ReportStepBadge(_dailyStep(4)),
                                 title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
-                                  status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン'),
+                                  status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン',
+                                  onSavedTap: _supervisorSignatureSaved ? () => _showSignature() : null),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: _managementHold || _saving || (widget.restrictedReporterRegistration &&
                                     _sharedContext?.canAccessSupervisorCollection != true) ? null : _sign,
                               ),
                             ),
                           const SizedBox(height: 16),
-                          if (!_editingApprovedReport) Card(child: Padding(padding: const EdgeInsets.all(16),
+                          if (!_editingApprovedReport) Card(shape: _stepCardShape, margin: EdgeInsets.zero,
+                            child: Padding(padding: const EdgeInsets.all(8),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                               Row(children: [const _ReportStepBadge('⑤'), const SizedBox(width: 8),
                                 Expanded(child: _stepTitle('保存して確定', step: 'finalize', complete: _signed,
@@ -3844,6 +3892,7 @@ class _ReportStepBadge extends StatelessWidget {
       color: Theme.of(context).colorScheme.primary,
       fontSize: 28, fontWeight: FontWeight.w800))));
 }
+
 
 
 
