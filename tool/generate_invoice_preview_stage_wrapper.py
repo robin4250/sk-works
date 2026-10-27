@@ -15,6 +15,8 @@ assert.equal((await stageCall(correctionPreview.source_fingerprint,correctionPre
 const staged=(await db.query('select original_record,proposed_snapshot,grand_total from invoice_revision_candidate.proposals where id=$1',[revisionCommand])).rows[0];
 assert.deepEqual(staged.proposed_snapshot,correctionPreview.proposed_snapshot);
 assert.equal(Number(staged.grand_total),correctionPreview.grand_total);
+const review=(await db.query('select invoice_revision_candidate.read_prepared($1) v',[revisionCommand])).rows[0].v;
+assert.equal(review.status,'review_only');assert.deepEqual(review.proposed_snapshot,correctionPreview.proposed_snapshot);
 assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
 console.log(JSON.stringify({staged_trusted_preview:true,original_invoice_untouched:true,full_totals_match:true}));
 '''

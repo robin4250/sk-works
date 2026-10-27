@@ -52,7 +52,7 @@ jobs:
       - run: npm install --no-save --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8 pg@8.16.3
       - uses: actions/checkout@v4
         with:
-          ref: c2fca76383fe24ae404c4f769c56c26f53033631
+          ref: 91804de11c4116021e096c08c226c9f3d5c00314
           path: _invoice_preview_dependency
       - run: python3 tool/generate_invoice_preview_stage_wrapper.py
         env:

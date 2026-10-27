@@ -21,7 +21,7 @@ if (native) {
   db = new PGlite({ extensions: { pgcrypto } });
 }
 await db.exec(`
- create role anon; create role authenticated; create schema auth; create schema private; create schema extensions;
+ create role anon; create role authenticated; create role service_role; create schema auth; create schema private; create schema extensions;
  create extension pgcrypto with schema extensions;
  create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.actor',true),'')::uuid $$;
  create function private.require_reauthentication_session() returns uuid language sql stable as $$ select nullif(current_setting('test.sid',true),'')::uuid $$;
@@ -65,12 +65,29 @@ await db.exec("set timezone='Asia/Tokyo'");
 assert.equal((await stage()).rows[0].v.replayed,false);
 await db.exec("set timezone='UTC'");
 assert.equal((await stage()).rows[0].v.replayed,true);
+const review=async()=> (await db.query('select invoice_revision_candidate.read_prepared($1) v',[cmd])).rows[0].v;
+const shown=await review();assert.equal(shown.status,'review_only');assert.deepEqual(shown.proposed_snapshot,preview.proposed_snapshot);
+assert.equal('original_record' in shown,false);assert.equal('actor_id' in shown,false);assert.equal('session_id' in shown,false);
+await db.exec("select set_config('test.actor','00000000-0000-0000-0000-000000000099',false)");
+await assert.rejects(review(),/revision_denied/);
+await db.exec("select set_config('test.actor','00000000-0000-0000-0000-000000000003',false);select set_config('test.sid','',false)");
+await assert.rejects(review(),/revision_denied/);
+await db.exec("select set_config('test.sid','00000000-0000-0000-0000-000000000004',false)");
+await setPreview({...preview,source_fingerprint:'b'.repeat(64)});await assert.rejects(review(),/revision_preview_changed/);await setPreview(preview);
+await db.query("update invoices set snapshot=snapshot||'{\"changed\":true}'::jsonb where id=$1",[id]);
+await assert.rejects(review(),/revision_original_changed/);
+await db.query('update invoices set snapshot=$1::jsonb where id=$2',[JSON.stringify(original.snapshot),id]);
+await db.exec('update invoice_revision_candidate.settings set enabled=false');await assert.rejects(review(),/revision_disabled/);await db.exec('update invoice_revision_candidate.settings set enabled=true');
+assert.equal((await review()).status,'review_only');
 await assert.rejects(stage(cmd,src,hash,'別の理由'),/revision_request_reuse_conflict/);
 await assert.rejects(stage('00000000-0000-0000-0000-000000000006'),/revision_existing_proposal/);
 assert.deepEqual((await db.query('select to_jsonb(i) j from invoices i where id=$1',[id])).rows[0].j,original);
 assert.equal((await db.query('select count(*)::int n from invoices')).rows[0].n,1);
-const access=await db.query("select has_schema_privilege('authenticated','invoice_revision_candidate','USAGE') s,has_function_privilege('authenticated','invoice_revision_candidate.stage(uuid,uuid,text,text,text)','EXECUTE') f");
-assert.deepEqual(access.rows[0],{s:false,f:false});
+for(const role of ['anon','authenticated','service_role']) {
+ const access=await db.query("select has_schema_privilege($1,'invoice_revision_candidate','USAGE') s,has_function_privilege($1,'invoice_revision_candidate.stage(uuid,uuid,text,text,text)','EXECUTE') f",[role]);
+ assert.deepEqual(access.rows[0],{s:false,f:false});
+ assert.equal((await db.query("select has_function_privilege($1,'invoice_revision_candidate.read_prepared(uuid)','EXECUTE') f",[role])).rows[0].f,false);
+}
 if (native) {
   const nextId='00000000-0000-0000-0000-000000000011';
   await db.query('insert into public.invoices(id,company_id,invoice_seal_frozen,snapshot,created_at) select $1,company_id,invoice_seal_frozen,snapshot,created_at from public.invoices where id=$2',[nextId,id]);
