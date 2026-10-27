@@ -88,6 +88,19 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await pause(200);assert.equal(finished,false);await db.query('commit');await pending;assert.equal(finished,true);
   const afterInsert=await readLocked();assert.notEqual(afterInsert.source_fingerprint,result.source_fingerprint);
   await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
+  // A company-scoped advisory lock and locks on existing rows cannot protect a missing row
+  // when a legacy writer does not acquire the same advisory lock.
+  await db.query('begin');await db.query('select pg_advisory_xact_lock($1)',[618273]);
+  await db.query('select 1 from attendance_entries where company_id=$1 and site_id=$2 for share',[company,site]);
+  const scopedBefore=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+  await writer.query("insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days) values($1,$2,$3,'2026-10-28','day',1)",[company,site,worker]);
+  await writer.query("insert into companies(id,tax_rate,name) values($1,10,'別の合成会社')",[id(998)]);
+  await db.query('commit');
+  const scopedAfter=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+  assert.notEqual(scopedBefore.source_fingerprint,scopedAfter.source_fingerprint);
+  await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
+  await writer.query('delete from companies where id=$1',[id(998)]);
+  console.log(JSON.stringify({nonparticipant_insert_bypasses_scoped_lock:true,unrelated_company_write_allowed:true}));
   // SERIALIZABLE can commit before a non-participating writer in serialization order.
   // Stage therefore becomes stale after commit; a later publish must revalidate.
   await db.query('begin isolation level serializable');
