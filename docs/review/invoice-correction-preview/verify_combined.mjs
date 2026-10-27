@@ -38,6 +38,6 @@ console.log(JSON.stringify({fixture_real_preview_stage_gate_shadow_integrated:tr
 const marker='console.log(JSON.stringify({invoice_correction_preview:true';assert.equal(wrapper.split(marker).length,2);
 const generated=resolve(root,'tool/verify_combined.generated.mjs');
 try{
- await writeFile(generated,wrapper.replace("const marker='let checks=0;'",stageDecl+"const marker='let checks=0;'").replace(marker,injection+marker));
+ await writeFile(generated,wrapper.replace("const marker='let checks=0;'",()=>stageDecl+"const marker='let checks=0;'").replace(marker,()=>injection+marker));
  const r=spawnSync(process.execPath,[generated,...process.argv.slice(2)],{stdio:'inherit',env:process.env});process.exitCode=r.status??1;
 }finally{await unlink(generated).catch(()=>{});}
