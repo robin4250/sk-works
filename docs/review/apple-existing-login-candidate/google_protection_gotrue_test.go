@@ -89,6 +89,7 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
   if name=="Apple subject cannot transfer between existing users"{
    owner:=createUser("owner@example.test","owner-google-sub")
    other:=createUser("other@example.test","other-google-sub")
+   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.protected_users values(?)",other.ID).Exec())
    require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('foreign-apple-sub',?)",other.ID).Exec())
    identity,e:=models.NewIdentity(other,"apple",map[string]interface{}{"sub":"foreign-apple-sub","email":"other@example.test","email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(identity))
    enable();beforeOwner,beforeOther:=snapshot(owner),snapshot(other)
