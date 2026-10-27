@@ -15,6 +15,9 @@ test('atomic durable actor window, session recheck, fail-closed and expiry',asyn
  assert.equal((await take(actor,'cccccccc-cccc-cccc-cccc-cccccccccccc')).allowed,false);
  const results=await Promise.all(Array.from({length:7},()=>take()));assert.equal(results.filter(x=>x.allowed).length,5);
  assert.equal((await take()).allowed,false);await db.exec("update apple_enrollment_rate_private.windows set window_started=clock_timestamp()-interval '16 minutes'");assert.equal((await take()).allowed,true);
+ const event='dddddddd-dddd-dddd-dddd-dddddddddddd';
+ const recover=async(reason='誤検知を確認')=>(await db.query('select apple_enrollment_rate_private.clear_actor($1,$2,$3) as v',[event,actor,reason])).rows[0].v;
+ assert.equal((await recover()).had_window,true);await take();assert.equal((await recover()).replayed,true);assert.equal((await db.query('select attempts from apple_enrollment_rate_private.windows')).rows[0].attempts,1);await assert.rejects(recover('別の理由'));
  await db.exec("select set_config('request.role','authenticated',false)");await assert.rejects(take());await db.close();
 });
 test('handler checks verified user and durable rate before password or Apple calls',async()=>{

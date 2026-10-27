@@ -6,6 +6,10 @@ revoke all on schema apple_enrollment_rate_private from public,anon,authenticate
 create table apple_enrollment_rate_private.rollout(singleton boolean primary key default true check(singleton), enabled boolean not null default false);
 insert into apple_enrollment_rate_private.rollout values(true,false);
 create table apple_enrollment_rate_private.windows(actor_id uuid primary key, window_started timestamptz not null, attempts integer not null check(attempts between 1 and 6));
+create table apple_enrollment_rate_private.recovery_events(
+ event_id uuid primary key, actor_id uuid not null, reason text not null check(char_length(btrim(reason)) between 1 and 500),
+ had_window boolean not null, operator text not null, at timestamptz not null default clock_timestamp());
+alter table apple_enrollment_rate_private.recovery_events enable row level security;
 alter table apple_enrollment_rate_private.rollout enable row level security;
 alter table apple_enrollment_rate_private.windows enable row level security;
 revoke all on all tables in schema apple_enrollment_rate_private from public,anon,authenticated,service_role;
@@ -29,4 +33,24 @@ begin
 end $$;
 revoke all on function public.take_apple_enrollment_attempt(uuid,uuid) from public,anon,authenticated,service_role;
 grant execute on function public.take_apple_enrollment_attempt(uuid,uuid) to service_role;
+-- Explicit operator-only false-positive recovery. Same command cannot clear a
+-- later window on retry; audit history remains even if the counter is absent.
+create function apple_enrollment_rate_private.clear_actor(p_event_id uuid,p_actor_id uuid,p_reason text)
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare old apple_enrollment_rate_private.recovery_events; n integer;
+begin
+ if p_event_id is null or p_actor_id is null or p_reason is null or char_length(btrim(p_reason)) not between 1 and 500 then raise exception 'invalid_recovery';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_event_id::text,8142));
+ select * into old from apple_enrollment_rate_private.recovery_events where event_id=p_event_id;
+ if found then
+  if old.actor_id is distinct from p_actor_id or old.reason is distinct from btrim(p_reason) then raise exception 'recovery_command_mismatch';end if;
+  return jsonb_build_object('had_window',old.had_window,'replayed',true);
+ end if;
+ delete from apple_enrollment_rate_private.windows where actor_id=p_actor_id;
+ get diagnostics n=row_count;
+ insert into apple_enrollment_rate_private.recovery_events(event_id,actor_id,reason,had_window,operator)
+ values(p_event_id,p_actor_id,btrim(p_reason),n>0,session_user::text);
+ return jsonb_build_object('had_window',n>0,'replayed',false);
+end $$;
+revoke all on function apple_enrollment_rate_private.clear_actor(uuid,uuid,text) from public,anon,authenticated,service_role;
 commit;
