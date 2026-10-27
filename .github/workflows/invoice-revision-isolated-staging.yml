@@ -5,6 +5,8 @@ on:
       - 'docs/candidates/invoice_revision_staging_20261027/**'
       - 'tool/verify_invoice_revision_staging.mjs'
       - 'tool/generate_invoice_preview_stage_wrapper.py'
+      - 'lib/features/invoices/invoice_revision_review_page.dart'
+      - 'test/invoice_revision_review_page_test.dart'
       - '.github/workflows/invoice-revision-isolated-staging.yml'
 permissions:
   contents: read
@@ -69,3 +71,16 @@ jobs:
           SKO_PREVIEW_SQL: ${{ github.workspace }}/_invoice_preview_dependency/docs/review/invoice-correction-preview/preview.sql.review-only
           SKO_STAGE_SQL: ${{ github.workspace }}/docs/candidates/invoice_revision_staging_20261027/revision.sql.review-only
           SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
+  review-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/invoices/invoice_revision_review_page.dart test/invoice_revision_review_page_test.dart
+      - run: flutter test --reporter expanded test/invoice_revision_review_page_test.dart
