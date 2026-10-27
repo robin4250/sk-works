@@ -3,6 +3,8 @@ on:
   pull_request:
     branches: [draft/shift-status-20261027]
     paths:
+      - 'lib/features/shifts/shift_schedule_editor.dart'
+      - 'test/shift_schedule_editor_test.dart'
       - 'lib/features/shifts/shift_attendance_status.dart'
       - 'test/shift_attendance_status_test.dart'
       - '.github/workflows/shift-complete-read.yml'
@@ -20,5 +22,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/features/shifts/shift_attendance_status.dart test/shift_attendance_status_test.dart
-      - run: flutter test --reporter expanded test/shift_attendance_status_test.dart
+      - run: flutter analyze lib/features/shifts/shift_attendance_status.dart test/shift_attendance_status_test.dart lib/features/shifts/shift_schedule_editor.dart test/shift_schedule_editor_test.dart
+      - run: flutter test --reporter expanded test/shift_attendance_status_test.dart test/shift_schedule_editor_test.dart
