@@ -51,6 +51,16 @@ try{
  const bad={...event,event_id:randomUUID()};await assert.rejects(a.query('select public.ingest_signed_security_collector_event($1)',[envelope(bad,randomBytes(32))]));eq(await count('outbox'),1,'bad MAC no notice');
  const lost={...event,event_id:randomUUID()};await a.query('begin');await a.query('select public.ingest_signed_security_collector_event($1)',[envelope(lost)]);await a.query('rollback');eq(await count('outbox'),1,'rollback leaves no notice');
  const notices=await Promise.all([a.query('select security_observation_notice_private.publish($1)v',[event.event_id]),b.query('select security_observation_notice_private.publish($1)v',[event.event_id])]);eq(notices.map(x=>x.rows[0].v),['available','available'],'concurrent publish idempotent');eq(await count('inbox'),1,'one inbox');eq(await count('audit'),2,'one publish audit');
+ // A role revocation committed before publication prevents delivery. The
+ // current Master row is locked through the enqueue transaction.
+ const race={...event,event_id:randomUUID()};await a.query('select public.ingest_signed_security_collector_event($1)',[envelope(race)]);
+ await a.query('begin');await a.query('update private.master_admins set enabled=false where user_id=$1',[actor]);
+ const pid=(await b.query('select pg_backend_pid() pid')).rows[0].pid;
+ const waitingPublish=b.query('select security_observation_notice_private.publish($1)v',[race.event_id]);let waiting=false;
+ for(let i=0;i<100;i++){const x=await db.query("select wait_event_type='Lock' as waiting from pg_stat_activity where pid=$1",[pid]);if(x.rows[0]?.waiting){waiting=true;break;}await new Promise(r=>setTimeout(r,10));}
+ eq(waiting,true,'publish waits for concurrent Master revocation');await a.query('commit');
+ eq((await waitingPublish).rows[0].v,'held_binding','revoked Master cannot receive queued event');eq(await count('inbox'),1,'revocation did not add inbox item');
+ await db.query('update private.master_admins set enabled=true where user_id=$1',[actor]);
  const proof=randomBytes(32).toString('hex');await claims(db,'service_role');await db.query('select public.issue_reauthentication_proof($1,$2,$3,$4,$5)',[actor,sid,'master.security_collector.read',{scope:'decoy_collector'},sha(proof)]);
  await claims(db,'authenticated');await db.query('set role authenticated');await db.query("select set_config('request.method','GET',false)");await assert.rejects(db.query('select public.read_security_observation_notices($1)',[proof]));await db.query("select set_config('request.method','POST',false)");
  const result=(await db.query('select public.read_security_observation_notices($1)v',[proof])).rows[0].v;eq(result.events.length,1,'Master proof reads notice');eq(result.attack_confirmed,false,'never attacker attribution');eq('correlation_key' in result.events[0],false,'no correlation secret');await assert.rejects(db.query('select public.read_security_observation_notices($1)',[proof]));await db.query('reset role');

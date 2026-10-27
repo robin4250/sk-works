@@ -43,3 +43,15 @@ jobs:
           node-version: '24'
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
       - run: node tool/security/observation-notice-candidate/verify-native.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+  real-gotrue-notice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node tool/security/observation-notice-candidate/verify-gotrue.mjs
