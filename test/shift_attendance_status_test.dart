@@ -5,8 +5,8 @@ void main() {
   final start = DateTime.utc(2026, 10, 26, 13);
   final end = DateTime.utc(2026, 10, 26, 22);
   ShiftAttendanceStatus status({DateTime? input, DateTime? output,
-      bool confirmed = true, bool holiday = false, DateTime? now}) =>
-    compareConfirmedShift(planConfirmed: confirmed, plannedHoliday: holiday,
+      bool confirmed = true, bool holiday = false, bool readComplete = true, DateTime? now}) =>
+    compareConfirmedShift(planConfirmed: confirmed, attendanceReadComplete: readComplete, plannedHoliday: holiday,
       scheduledStart: start, scheduledEnd: end, now: now ?? end,
       lateGrace: const Duration(minutes: 5), earlyGrace: const Duration(minutes: 5),
       absenceDecisionTime: end, checkLate: true, checkEarlyLeave: true,
@@ -15,6 +15,14 @@ void main() {
   test('absence is pending until explicit decision time', () {
     expect(status(now: start).pending, isTrue);
     expect(status().flags, contains(ShiftAttendanceFlag.absent));
+  });
+  test('failed or partial event read cannot assert absence or a late arrival', () {
+    final missing = status(readComplete: false);
+    expect(missing.pending, isTrue);
+    expect(missing.flags, isEmpty);
+    final partial = status(readComplete: false, input: start.add(const Duration(minutes: 6)));
+    expect(partial.pending, isTrue);
+    expect(partial.flags, isEmpty);
   });
   test('overnight shift uses actual end and grace boundaries', () {
     final result = status(input: start.add(const Duration(minutes: 6)),
