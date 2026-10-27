@@ -22,6 +22,12 @@ if actual != 't':
     print(psql("select polname || ':' || pg_get_expr(polwithcheck,polrelid) from pg_policy where polrelid='storage.objects'::regclass and not polpermissive order by polname"))
     print(psql(session + "select auth.uid(),private.account_access_allowed(),(select count(*) from public.workers w join public.company_members m on w.company_id=m.company_id and w.user_id=m.user_id where w.user_id=auth.uid() and w.status='active')"))
 assert actual == 't', 'active authorized member should be enabled'
+psql(session + "set role authenticated; insert into storage.objects(bucket_id,name) values ('qualification-certificates','draft/approved.jpg'); reset role;")
+try:
+    psql(session + "set role authenticated; insert into storage.objects(bucket_id,name) values ('qualification-certificates','draft/unauthorized.jpg');")
+    raise AssertionError('unprepared qualification upload should be rejected by RLS')
+except subprocess.CalledProcessError as error:
+    assert 'row-level security' in error.stderr, error.stderr
 assert psql("select private.qualification_photo_upload_capability()") == 'f', 'anonymous must be rejected'
 assert psql(session + "select set_config('test.account','false',false); select private.qualification_photo_upload_capability()").splitlines()[-1] == 'f', 'restricted account must be rejected'
 psql("create policy unreviewed_restrictive on storage.objects as restrictive for insert to authenticated with check (true)")
