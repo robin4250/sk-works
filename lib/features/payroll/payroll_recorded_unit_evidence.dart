@@ -34,10 +34,16 @@ PayrollRecordedUnitEvidence? recordedPayrollUnitEvidence(
       !displayedAmount.isFinite || displayedAmount <= 0) {
     return null;
   }
-  final matches = (resolution['items'] as List).whereType<Map>().where((item) =>
+  final namedItems = (resolution['items'] as List).whereType<Map>().where((item) =>
       item['name']?.toString().trim() == name.trim() && item['section'] == section).toList();
-  // The table merges equal labels. Never attribute one item's basis to a
-  // combined amount, an adjustment, or a different item sharing its label.
+  // A published common item may coexist with an unused same-name individual
+  // item. Only a valid zero-quantity, zero-amount row is inert. Validate its
+  // saved basis before excluding it; malformed evidence must stay unavailable.
+  if (namedItems.any((item) => !_validPrimaryItem(item))) return null;
+  final matches = namedItems.where((item) => item['quantity'] != 0 ||
+      item['amount_yen'] != 0).toList();
+  // Positive duplicate labels, adjustments and combined amounts remain
+  // ambiguous: never attribute one item's basis to another item's money.
   if (matches.length != 1) return null;
   final item = matches.single;
   final amount = item['amount_yen'];
@@ -57,6 +63,18 @@ PayrollRecordedUnitEvidence? recordedPayrollUnitEvidence(
   final count = _decimal(quantity);
   return PayrollRecordedUnitEvidence('$count$suffix',
       '${_money(rate)}円 × $count$suffix');
+}
+
+bool _validPrimaryItem(Map item) {
+  final rate = item['rate_yen'], quantity = item['quantity'], amount = item['amount_yen'];
+  if (!const {'hour', 'day', 'month'}.contains(item['unit']) ||
+      rate is! num || quantity is! num || amount is! num ||
+      !rate.isFinite || !quantity.isFinite || !amount.isFinite ||
+      rate < 0 || quantity < 0 || amount < 0) return false;
+  final product = rate * quantity;
+  return product.isFinite && product.round() == amount &&
+      num.tryParse(_decimal(rate)) == rate &&
+      num.tryParse(_decimal(quantity)) == quantity;
 }
 
 String _decimal(num value) => value.toStringAsFixed(4)
@@ -100,4 +118,5 @@ PayrollRecordedUnitEvidence? _attendanceEvidence(Map resolution, {
   return PayrollRecordedUnitEvidence(units.length == 1 ? '${_decimal(quantity)}${units.single}' : '内訳参照',
       formulas.join('／'));
 }
+
 
