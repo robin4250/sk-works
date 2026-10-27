@@ -24,7 +24,7 @@ class InvoiceNoticeTicketController {
   bool get hasValidTicket {
     final valid = _ticket != null && _actor != null && _session != null &&
         actor() == _actor && session() == _session && _expires != null && _now().toUtc().isBefore(_expires!);
-    if (!valid) invalidate();
+    if (!valid) { invalidate(); }
     return valid;
   }
 
@@ -33,21 +33,21 @@ class InvoiceNoticeTicketController {
   /// A ticket alone never enables approval or replaces seal consent.
   Future<bool> open(String notificationId, {required String invoiceId}) async {
     invalidate();
-    if (!_uuid.hasMatch(notificationId) || !_uuid.hasMatch(invoiceId)) return false;
+    if (!_uuid.hasMatch(notificationId) || !_uuid.hasMatch(invoiceId)) { return false; }
     final currentActor = actor(), currentSession = session();
-    if (currentActor == null || currentActor.isEmpty || currentSession == null || currentSession.isEmpty) return false;
+    if (currentActor == null || currentActor.isEmpty || currentSession == null || currentSession.isEmpty) { return false; }
     final generation = _generation;
     try {
       final result = await openTicket(notificationId);
       if (generation != _generation || actor() != currentActor || session() != currentSession || result is! Map ||
-          result['notification_id'] != notificationId || result['invoice_id'] != invoiceId) return false;
+          result['notification_id'] != notificationId || result['invoice_id'] != invoiceId) { return false; }
       final ticket = result['ticket_id'];
       final expires = result['expires_at'];
       if (ticket is! String || !_uuid.hasMatch(ticket) || expires is! String ||
-          !RegExp(r'(?:Z|[+-][0-9]{2}:[0-9]{2})$').hasMatch(expires)) return false;
+          !RegExp(r'(?:Z|[+-][0-9]{2}:[0-9]{2})$').hasMatch(expires)) { return false; }
       final at = DateTime.tryParse(expires)?.toUtc();
       final remaining = at?.difference(_now().toUtc());
-      if (at == null || remaining == null || remaining <= Duration.zero || remaining > const Duration(minutes: 6)) return false;
+      if (at == null || remaining == null || remaining <= Duration.zero || remaining > const Duration(minutes: 6)) { return false; }
       _actor = currentActor; _session = currentSession; _ticket = ticket; _expires = at;
       return true;
     } catch (_) {
