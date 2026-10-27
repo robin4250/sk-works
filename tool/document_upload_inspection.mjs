@@ -4,8 +4,10 @@ import { uploadEvidenceMatches } from './document_upload_evidence.mjs';
 // Server-side adapter candidate. All adapters must use privileged, trusted
 // credentials and enforce the actor/session scope server side. No caller may
 // supply bytes, object metadata, or an inspection result.
-export async function inspectPendingUpload({ actorId, requestId, db, storage }) {
-  if (!db || !storage || typeof actorId !== 'string' || typeof requestId !== 'string') throw Error('inspection_unavailable');
+export async function inspectPendingUpload({ actorId, requestId, db, storage, validateFile }) {
+  // A header alone is not proof of a valid image or PDF. Until a trusted,
+  // bounded parser is installed, inspection must remain unavailable.
+  if (!db || !storage || typeof validateFile !== 'function' || typeof actorId !== 'string' || typeof requestId !== 'string') throw Error('inspection_unavailable');
   const pending = await db.getAuthorizedPendingInspection({ actorId, requestId });
   if (!pending || pending.status !== 'awaiting_inspection' || pending.actorId !== actorId || pending.requestId !== requestId) throw Error('inspection_unavailable');
   const object = await storage.readImmutableVersion({ bucket: pending.bucket, path: pending.path, version: pending.objectVersion, maxBytes: 20 * 1024 * 1024 });
@@ -17,6 +19,7 @@ export async function inspectPendingUpload({ actorId, requestId, db, storage }) 
     : b.length >= 8 && [137,80,78,71,13,10,26,10].every((x,i) => b[i] === x) ? 'image/png'
     : b.length >= 12 && ascii(4,8) === 'ftyp' && ['heic','heix','hevc','hevx','mif1','msf1'].includes(ascii(8,12)) ? 'image/heic' : null;
   if (detected !== pending.mime || object.version !== pending.objectVersion) throw Error('invalid_file');
+  if (await validateFile({ bytes: b, mime: detected }) !== true) throw Error('invalid_file');
   const sha256 = createHash('sha256').update(b).digest('hex');
   const verified = { ...pending, status: 'inspected', sha256, bytes: b.byteLength };
   if (!uploadEvidenceMatches(verified, {...verified, objectVersion: object.version})) throw Error('invalid_file');
