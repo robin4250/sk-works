@@ -35,3 +35,9 @@ transition_plan.mjs は隔離されたオフライン計画部品。証拠refの
 `archive-consent.sql.review-only` は本人セッションでのみvault既存 assert_transition_ready を同一transaction内で呼び、会社・worker・切替request・snapshot・完了を照合して本人確認receiptを保存する。管理者が本人の代わりに同意できない。gateと申請行とmanifestを保持し、OFF後は既存receiptがあっても成功としない。実Storageの保存保証はvault側の未完成条件に依存する。
 
 Native専用CIはPostgres17で本番由来session helperと実vault候補SQLを合成テーブルに組み合わせる。既存user/membership切替は実行しない。本人・代表権限の証拠発行、会社間連携RPCへの書込接続は未完成。YESでも相互承認を飛ばす権限は付与しない。
+
+## 代表者確認・既存連携への参照接続
+
+`representative-link-consent.sql.review-only` は既存対象会社ownerと正規の代表権限証拠が揃った申請だけ承認receiptを記録する。会社ownerが存在しない場合の初回代表者検証/登記照合は未接続であり拒否する。会社間連携YESは元会社管理者が既存 private.trade_company_link_requests の同じ会社組・accepted・responded_byありの行をロック照合して参照するだけ。既存リンクを作成/承認せず、権限や取引先を自動作成しない。実connectionの現状態・開始月・取引先重複解消は担当の既存連携adapterで引き続き確認が必要。
+
+Native fixtureに対象会社owner/証拠照合・pending link拒否/accepted link参照を追加。これは実所属適用や会社間連携の自動書込の完成を意味しない。

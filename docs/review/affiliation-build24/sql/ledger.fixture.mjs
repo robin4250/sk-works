@@ -56,4 +56,24 @@ await db.query('select affiliation_transition_candidate.confirm_archive($1,$2,$3
 assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.archive_consents')).rows[0].n,1);
 await db.exec("update private.master_feature_settings set enabled=false where feature_key='personal_pdf_vault'");
 await assert.rejects(db.query('select affiliation_transition_candidate.confirm_archive($1,$2,$3)',[id,manifest,snapshot]),/feature_off/);
+
+await db.exec("update private.master_feature_settings set enabled=true;insert into private.master_feature_settings values('partner_auto_link',true)");
+await db.exec(`create table private.trade_company_link_requests(id uuid primary key,sender_company_id uuid,target_company_id uuid,status text,responded_by uuid);`);
+await db.exec(fs.readFileSync(new URL('./representative-link-consent.sql.review-only',import.meta.url),'utf8'));
+await assert.rejects(db.query('select affiliation_transition_candidate.confirm_target_authority($1)',[id]),/target_owner_required/);
+const owner='00000000-0000-0000-0000-000000000003';
+await db.query('insert into public.company_members values($1,$2,$3)',[p.target_company_id,owner,'owner']);
+await db.query('update auth.sessions set user_id=$1',[owner]);await db.query("select set_config('test.actor',$1,false)",[owner]);
+await db.query('select affiliation_transition_candidate.confirm_target_authority($1)',[id]);
+await db.exec("update affiliation_transition_candidate.requests set state='cancelled'");
+const nextId='00000000-0000-0000-0000-000000000081',yes={...p,link_companies:true};
+await db.query('update auth.sessions set user_id=$1',['00000000-0000-0000-0000-000000000001']);await db.exec("set test.actor='00000000-0000-0000-0000-000000000001'");
+await db.query(`insert into affiliation_transition_candidate.evidence select $1,k,$2,clock_timestamp()+interval '1 hour' from unnest(array['identity_consent','company_match','representative_authority','personal_archive']) k`,[nextId,yes]);
+await db.query('select affiliation_transition_candidate.prepare($1,$2)',[nextId,yes]);
+const link='00000000-0000-0000-0000-000000000060';
+await db.query('insert into private.trade_company_link_requests values($1,$2,$3,$4,$5)',[link,p.source_company_id,p.target_company_id,'pending',null]);
+await assert.rejects(db.query('select affiliation_transition_candidate.record_accepted_company_link($1,$2)',[nextId,link]),/accepted_company_link_required/);
+await db.query("update private.trade_company_link_requests set status='accepted',responded_by=$1",[owner]);
+await db.query('select affiliation_transition_candidate.record_accepted_company_link($1,$2)',[nextId,link]);
+assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.link_receipts')).rows[0].n,1);
 await db.close();console.log('ledger synthetic checks passed; no real auth or transition execution');
