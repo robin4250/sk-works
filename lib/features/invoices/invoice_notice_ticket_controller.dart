@@ -29,17 +29,18 @@ class InvoiceNoticeTicketController {
   }
 
   /// Server revalidates recipient, notice, session, invoice and expiry.
-  /// Response does not identify the invoice, so it must not be used to enable
-  /// approval or bind a preview until an authoritative binding API exists.
-  Future<bool> open(String notificationId) async {
+  /// The response must bind both notification and invoice to the server receipt.
+  /// A ticket alone never enables approval or replaces seal consent.
+  Future<bool> open(String notificationId, {required String invoiceId}) async {
     invalidate();
-    if (!_uuid.hasMatch(notificationId)) return false;
+    if (!_uuid.hasMatch(notificationId) || !_uuid.hasMatch(invoiceId)) return false;
     final currentActor = actor(), currentSession = session();
     if (currentActor == null || currentActor.isEmpty || currentSession == null || currentSession.isEmpty) return false;
     final generation = _generation;
     try {
       final result = await openTicket(notificationId);
-      if (generation != _generation || actor() != currentActor || session() != currentSession || result is! Map) return false;
+      if (generation != _generation || actor() != currentActor || session() != currentSession || result is! Map ||
+          result['notification_id'] != notificationId || result['invoice_id'] != invoiceId) return false;
       final ticket = result['ticket_id'];
       final expires = result['expires_at'];
       if (ticket is! String || !_uuid.hasMatch(ticket) || expires is! String ||
