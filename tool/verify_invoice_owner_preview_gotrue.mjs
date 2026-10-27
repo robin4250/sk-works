@@ -59,6 +59,10 @@ try {
  const original={days:5};await db.query('insert into public.invoices values($1,$2,$3)',[invoice,company,JSON.stringify(original)]);
  const proposal={original_invoice_id:invoice,original_invoice_fingerprint:'a'.repeat(64),source_fingerprint:'b'.repeat(64),calculation_blocked:false,proposed_snapshot:{sites:[{days:6},{days:1}]},subtotal:700,tax:70,welfare:0,grand_total:770};
  await db.query('insert into invoice_correction_preview_private.fixture values($1,$2)',[invoice,JSON.stringify(proposal)]);
+ for(const role of ['anon','authenticated','service_role']) {
+  const acl=(await db.query("select has_function_privilege($1,'public.invoice_owner_reference_preview_candidate(uuid,text,text)','EXECUTE') allowed",[role])).rows[0].allowed;
+  assert.equal(acl,false,'candidate must ship with no client grant');
+ }
  // ONLY in disposable DB: expose candidate RPC to authenticated for HTTP proof.
  await db.query('grant execute on function public.invoice_owner_reference_preview_candidate(uuid,text,text) to authenticated');
  await db.query("notify pgrst,'reload schema'");
