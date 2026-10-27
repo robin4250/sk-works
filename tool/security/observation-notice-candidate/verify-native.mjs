@@ -50,7 +50,9 @@ try{
  const signed=envelope(event);const jobs=await Promise.all([a.query('select public.ingest_signed_security_collector_event($1)v',[signed]),b.query('select public.ingest_signed_security_collector_event($1)v',[signed])]);eq(jobs.map(x=>x.rows[0].v),[event.event_id,event.event_id],'simultaneous signed retries');eq(await count('outbox'),1,'one outbox');eq(await count('audit'),1,'one queue audit');
  const bad={...event,event_id:randomUUID()};await assert.rejects(a.query('select public.ingest_signed_security_collector_event($1)',[envelope(bad,randomBytes(32))]));eq(await count('outbox'),1,'bad MAC no notice');
  const lost={...event,event_id:randomUUID()};await a.query('begin');await a.query('select public.ingest_signed_security_collector_event($1)',[envelope(lost)]);await a.query('rollback');eq(await count('outbox'),1,'rollback leaves no notice');
- const notices=await Promise.all([a.query('select security_observation_notice_private.publish($1)v',[event.event_id]),b.query('select security_observation_notice_private.publish($1)v',[event.event_id])]);eq(notices.map(x=>x.rows[0].v),['available','available'],'concurrent publish idempotent');eq(await count('inbox'),1,'one inbox');eq(await count('audit'),2,'one publish audit');
+ await a.query('set role service_role');await b.query('set role service_role');
+ const notices=await Promise.all([a.query('select public.publish_security_observation_notice($1)v',[event.event_id]),b.query('select public.publish_security_observation_notice($1)v',[event.event_id])]);
+ await a.query('reset role');await b.query('reset role');eq(notices.map(x=>x.rows[0].v),['available','available'],'concurrent publish idempotent');eq(await count('inbox'),1,'one inbox');eq(await count('audit'),2,'one publish audit');
  // Existing seven-day purge must wait for concurrent evidence insertion, then
  // see its outbox pin and preserve the source and key.
  const retained={...event,event_id:randomUUID()};await a.query('begin');await a.query('select public.ingest_signed_security_collector_event($1)',[envelope(retained)]);

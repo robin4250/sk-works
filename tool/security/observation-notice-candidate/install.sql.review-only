@@ -97,6 +97,16 @@ begin
  return outcome;
 end $$;
 revoke all on function security_observation_notice_private.publish(uuid) from public,anon,authenticated,service_role;
+-- A fixed service-only POST may move a previously authenticated observation
+-- into the pinned Master inbox. It cannot choose a recipient or edit content.
+create function public.publish_security_observation_notice(p_event_id uuid) returns text language plpgsql security definer set search_path='' as $$
+begin
+ if current_setting('request.method',true) is distinct from 'POST' then raise sqlstate 'PT405' using message='post_required';end if;
+ if auth.role() is distinct from 'service_role' then raise exception 'notice_denied' using errcode='42501';end if;
+ return security_observation_notice_private.publish(p_event_id);
+end $$;
+revoke all on function public.publish_security_observation_notice(uuid) from public,anon,authenticated,service_role;
+grant execute on function public.publish_security_observation_notice(uuid) to service_role;
 -- Only caller's own currently enabled Master and company membership may read.
 -- The existing collector-specific one-use proof is consumed in this transaction.
 create function public.read_security_observation_notices(p_proof text) returns jsonb language plpgsql security definer set search_path='' as $$
@@ -194,6 +204,6 @@ create function security_observation_notice_private.retention_status() returns j
 $$;
 revoke all on function security_observation_notice_private.retention_status() from public,anon,authenticated,service_role;
 -- No trusted archive, unpin, or public retention-status endpoint exists here.
--- Publication is intentionally not exposed until the fixed service endpoint,
--- authorization, deadlines and hosted delivery are independently reviewed.
+-- Publication is service-only and not scheduled or configured by this candidate.
+-- Hosted endpoint, independent key lifecycle, deadlines and real delivery require review.
 commit;

@@ -24,6 +24,7 @@ create function private.purge_expired_security_collector_events() returns jsonb 
 await db.exec(sql);
 const priv=(await db.query(`select has_function_privilege('anon','public.read_security_observation_notices(text)','execute') anon_read,has_function_privilege('authenticated','public.read_security_observation_notices(text)','execute') auth_read,has_function_privilege('service_role','security_observation_notice_private.publish(uuid)','execute') service_publish,has_table_privilege('authenticated','security_observation_notice_private.inbox','select') auth_table`)).rows[0];
 assert.deepEqual(priv,{anon_read:false,auth_read:true,service_publish:false,auth_table:false});
+const publicPriv=(await db.query(`select has_function_privilege('service_role','public.publish_security_observation_notice(uuid)','execute') service_publish,has_function_privilege('authenticated','public.publish_security_observation_notice(uuid)','execute') auth_publish,has_function_privilege('anon','public.publish_security_observation_notice(uuid)','execute') anon_publish`)).rows[0];assert.deepEqual(publicPriv,{service_publish:true,auth_publish:false,anon_publish:false});
 const collector='00000000-0000-4000-8000-000000000001',company='00000000-0000-4000-8000-000000000002',master='00000000-0000-4000-8000-000000000003', e1='00000000-0000-4000-8000-000000000004',e2='00000000-0000-4000-8000-000000000005',e3='00000000-0000-4000-8000-000000000006';
 await db.exec(`insert into private.master_admins values('${master}',true);insert into public.company_members values('${company}','${master}','owner');
 insert into private.security_collector_events(event_id,collector_id,occurred_at,event_kind,generation,correlation_key,key_epoch) values('${e1}','${collector}',now(),'current_lure_touched',1,repeat('a',64),current_date),('${e2}','${collector}',now(),'retired_lure_touched',2,repeat('b',64),current_date),('${e3}','${collector}',now(),'current_lure_touched',3,repeat('c',64),current_date);
@@ -36,8 +37,10 @@ assert.equal(await count('outbox'),0,'failed verification rolls back evidence an
 await db.exec(`insert into private.security_collector_evidence values('${e2}','${collector}',true);`);
 assert.equal(await count('outbox'),1);assert.equal(await count('audit'),1);
 await assert.rejects(db.query(`select security_observation_notice_private.publish('${e2}')`));
-await db.exec("select set_config('test.role','service_role',false)");
-assert.equal((await db.query(`select security_observation_notice_private.publish('${e2}') s`)).rows[0].s,'available');
+await db.exec("select set_config('test.role','service_role',false),set_config('request.method','GET',false)");
+await assert.rejects(db.query(`select public.publish_security_observation_notice('${e2}')`));
+await db.exec("select set_config('request.method','POST',false)");
+assert.equal((await db.query(`select public.publish_security_observation_notice('${e2}') s`)).rows[0].s,'available');
 assert.equal((await db.query(`select security_observation_notice_private.publish('${e2}') s`)).rows[0].s,'available');
 assert.equal(await count('inbox'),1);assert.equal(await count('audit'),2,'retry does not duplicate');
 await db.exec(`select set_config('test.uid','${master}',false),set_config('test.sid','${collector}',false),set_config('test.allowed','yes',false),set_config('request.method','POST',false);insert into private.fake_proofs values('fixture-proof','${master}')`);

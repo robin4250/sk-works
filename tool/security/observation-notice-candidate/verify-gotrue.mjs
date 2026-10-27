@@ -29,8 +29,10 @@ const addition=String.raw`
  await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({role:'service_role'})]);
  const envelope={collector_id:collector,key_version:1,timestamp:stamp,body_base64:raw.toString('base64'),signature};
  eq((await db.query('select public.ingest_signed_security_collector_event($1)v',[envelope])).rows[0].v,eventId,'Real pgcrypto collector evidence accepted');
- eq((await db.query('select security_observation_notice_private.publish($1)v',[eventId])).rows[0].v,'available','Private inbox available once');
  await db.query("notify pgrst,'reload schema'");
+ let publishReady=false;for(let i=0;i<70;i++){const z=await rpc('publish_security_observation_notice',{p_event_id:eventId},undefined,true);if(z.status===200){eq(await z.json(),'available','Fixed service-only publication');publishReady=true;break;}await wait(200);}eq(publishReady,true,'Actual PostgREST service publication ready');
+ eq((await rpc('publish_security_observation_notice',{p_event_id:eventId},master.access_token)).status===200,false,'Authenticated user cannot impersonate delivery service');
+ eq((await rpc('publish_security_observation_notice',{p_event_id:eventId},undefined,true)).status,200,'Service retries without duplicate');
  phase='actual-notice-master-proof';
  let readyNotice=false;for(let i=0;i<70;i++){const z=await rpc('read_security_observation_notices',{p_proof:'bad'},master.access_token);if(z.status===403){readyNotice=true;break;}await wait(200);}eq(readyNotice,true,'Actual PostgREST sees notice RPC');
  const p=await edge(master.access_token);eq(p.status,200,'Real Edge issues session-bound collector proof');const noticeProof=await p.json();
