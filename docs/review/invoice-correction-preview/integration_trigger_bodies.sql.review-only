@@ -1,0 +1,171 @@
+CREATE OR REPLACE FUNCTION private.assign_invoice_number_and_issue_date()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_number bigint;
+begin
+  if nullif(trim(coalesce(new.invoice_number, '')), '') is null then
+    insert into private.invoice_number_counters(company_id, last_number, updated_at)
+    values (new.company_id, 1, now())
+    on conflict (company_id) do update
+      set last_number = private.invoice_number_counters.last_number + 1,
+          updated_at = now()
+    returning last_number into v_number;
+
+    new.invoice_number := v_number::text;
+  end if;
+
+  if new.issue_date is null then
+    new.issue_date := new.billing_period_end;
+  end if;
+
+  return new;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION private.enqueue_notification(p_company_id uuid, p_recipient_user_id uuid, p_kind text, p_title text, p_body text DEFAULT NULL::text, p_action_key text DEFAULT NULL::text, p_action_id uuid DEFAULT NULL::uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'private', 'pg_temp'
+AS $function$
+declare
+  v_id uuid;
+begin
+  insert into public.app_notifications(
+    company_id,
+    recipient_user_id,
+    kind,
+    title,
+    body,
+    action_key,
+    action_id
+  )
+  values(
+    p_company_id,
+    p_recipient_user_id,
+    coalesce(nullif(trim(p_kind), ''), 'info'),
+    p_title,
+    p_body,
+    p_action_key,
+    p_action_id
+  )
+  returning id into v_id;
+
+  return v_id;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION private.ensure_invoice_approval_rows(p_invoice_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+  insert into public.invoice_approvals(
+    invoice_id,company_id,approver_user_id,position,status
+  )
+  select i.id,i.company_id,ia.user_id,ia.position,'pending'
+  from public.invoices i
+  join public.invoice_approvers ia on ia.company_id=i.company_id
+  where i.id=p_invoice_id
+  on conflict(invoice_id,approver_user_id) do nothing;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION private.invoice_approval_rows_trigger()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  r record;
+begin
+  perform private.ensure_invoice_approval_rows(new.id);
+
+  if new.billing_period_end <=
+      (current_timestamp at time zone 'Asia/Tokyo')::date then
+    for r in
+      select a.approver_user_id
+      from public.invoice_approvals a
+      where a.invoice_id=new.id
+        and a.status='pending'
+        and not exists (
+          select 1 from public.app_notifications n
+          where n.recipient_user_id=a.approver_user_id
+            and n.action_key='invoice_approval'
+            and n.action_id=new.id
+        )
+    loop
+      perform private.enqueue_notification(
+        new.company_id,
+        r.approver_user_id,
+        'approval',
+        '請求書の確認',
+        '月末の請求書を確認して承認してください。',
+        'invoice_approval',
+        new.id
+      );
+    end loop;
+  end if;
+
+  return null;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.enqueue_due_invoice_approval_notifications()
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_uid uuid := auth.uid();
+  v_company_id uuid;
+  r record;
+  v_count integer := 0;
+begin
+  if v_uid is null then raise exception 'authentication required'; end if;
+
+  select cm.company_id into v_company_id
+  from public.company_members cm
+  where cm.user_id=v_uid
+  limit 1;
+
+  if v_company_id is null then return 0; end if;
+
+  for r in
+    select a.invoice_id,a.approver_user_id
+    from public.invoice_approvals a
+    join public.invoices i on i.id=a.invoice_id
+    where a.company_id=v_company_id
+      and a.status='pending'
+      and i.billing_period_end <= (current_timestamp at time zone 'Asia/Tokyo')::date
+      and not exists (
+        select 1 from public.app_notifications n
+        where n.recipient_user_id=a.approver_user_id
+          and n.action_key='invoice_approval'
+          and n.action_id=a.invoice_id
+      )
+  loop
+    perform private.enqueue_notification(
+      v_company_id,
+      r.approver_user_id,
+      'approval',
+      '請求書の確認',
+      '月末の請求書を確認して承認してください。',
+      'invoice_approval',
+      r.invoice_id
+    );
+    v_count := v_count + 1;
+  end loop;
+
+  return v_count;
+end;
+$function$;
+
