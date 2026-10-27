@@ -27,13 +27,13 @@ const cancelEnd=approvalMigration.indexOf('end; $$;',cancelStart);
 assert.ok(cancelStart>=0 && cancelEnd>cancelStart);
 const cancelSql=approvalMigration.slice(cancelStart,cancelEnd+'end; $$;'.length);
 const displayStart=approvalMigration.indexOf('create or replace function public.set_invoice_stamp_display_date(');
-const displayEnd=approvalMigration.indexOf('end; $;',displayStart);
+const displayEnd=approvalMigration.indexOf('end; $$;',displayStart);
 assert.ok(displayStart>=0 && displayEnd>displayStart);
-const displaySql=approvalMigration.slice(displayStart,displayEnd+'end; $;'.length);
+const displaySql=approvalMigration.slice(displayStart,displayEnd+'end; $$;'.length);
 const invalidateStart=approvalMigration.indexOf('create or replace function private.invalidate_invoice_approval(');
-const invalidateEnd=approvalMigration.indexOf('end; $;',invalidateStart);
+const invalidateEnd=approvalMigration.indexOf('end; $$;',invalidateStart);
 assert.ok(invalidateStart>=0 && invalidateEnd>invalidateStart);
-const invalidateSql=approvalMigration.slice(invalidateStart,invalidateEnd+'end; $;'.length);
+const invalidateSql=approvalMigration.slice(invalidateStart,invalidateEnd+'end; $$;'.length);
 const declarations=`const cancelSql=${JSON.stringify(cancelSql)};const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};const approvalSql=${JSON.stringify(approvalSql)};const approverCore=${JSON.stringify(approverCore)};const noticeSql=${JSON.stringify(noticeSql)};const noticeReadiness=${JSON.stringify(noticeReadiness)};const deliverySql=${JSON.stringify(deliverySql)};const entrySql=${JSON.stringify(entrySql)};const approvalGuard=${JSON.stringify(approvalGuard)};const publicEntry=${JSON.stringify(publicEntry)};const legacyNoticeGuard=${JSON.stringify(legacyNoticeGuard)};const enqueueBody=${JSON.stringify(enqueueBody)};const liveApprove=${JSON.stringify(liveApprove)};const ensureApprovals=${JSON.stringify(ensureApprovals)};\n`;
 const injection=`
 // Synthetic past month: reuse existing real refresh/preview and frozen snapshot.
