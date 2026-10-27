@@ -1,0 +1,17 @@
+name: Personal vault byte verification
+on:
+  pull_request:
+    paths:
+      - 'tool/verify_archive_bytes*'
+      - '.github/workflows/personal-vault-byte-verification.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tool/verify_archive_bytes.test.mjs
