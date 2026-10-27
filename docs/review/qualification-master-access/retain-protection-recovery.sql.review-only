@@ -1,0 +1,38 @@
+-- SYNTHETIC TEST CANDIDATE ONLY. NOT A PRODUCTION RESTORE.
+-- Revoke only candidate manager additions while keeping reference protection.
+-- Exact live policy, catalog, data and ACL binding plus independent backup and
+-- operational authorization remain necessary before any production design.
+begin;
+set local search_path = '';
+set local lock_timeout = '5s';
+set local statement_timeout = '45s';
+lock table public.qualification_master, public.qualification_master_aliases,
+  public.worker_qualifications, private.qualification_submissions,
+  public.company_members in share row exclusive mode;
+do $guard$
+begin
+  if current_user <> 'postgres' then raise exception 'wrong_operator'; end if;
+  if (select md5(prosrc) from pg_proc where oid=to_regprocedure('private.guard_qualification_master_references()'))
+     is distinct from '163c9463866c34d29a96a499853b1544' then raise exception 'reference_guard_mismatch'; end if;
+  if not exists (select 1 from pg_trigger where tgrelid='public.qualification_master'::regclass
+      and tgname='qualification_master_preserve_references' and not tgisinternal
+      and tgenabled='O' and tgfoid=to_regprocedure('private.guard_qualification_master_references()'))
+      then raise exception 'reference_trigger_missing'; end if;
+  if (select count(*) from pg_policies where schemaname='public' and tablename='qualification_master'
+      and policyname in ('managers can update qualification master','managers can delete qualification master')) <> 2
+      then raise exception 'manager_policies_missing'; end if;
+end
+$guard$;
+drop trigger qualification_master_manager_company_immutable on public.qualification_master;
+drop function private.guard_qualification_master_manager_company_move();
+drop policy "managers can update qualification master" on public.qualification_master;
+drop policy "managers can delete qualification master" on public.qualification_master;
+do $guard$
+begin
+  if not exists (select 1 from pg_trigger where tgrelid='public.qualification_master'::regclass
+      and tgname='qualification_master_preserve_references' and not tgisinternal
+      and tgenabled='O' and tgfoid=to_regprocedure('private.guard_qualification_master_references()'))
+      then raise exception 'reference_trigger_lost'; end if;
+end
+$guard$;
+commit;
