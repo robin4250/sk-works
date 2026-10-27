@@ -29,3 +29,9 @@ transition_plan.mjs は隔離されたオフライン計画部品。証拠refの
 `sql/request-ledger.sql.review-only` は私有schema内だけに作成。既存認証helper・元会社管理者・workerとcompanyとpartnerの一致・既存5gateの共有ロック・正規証拠4種を照合し、10分のprepared申請を保存する。planは変更/削除不可、applied化は未実装のため拒否する。同一申請は同じactor/session/planでのみ再利用可能。証拠テーブルへの公開入力APIも実行権もないため、実本人同意/代表確認/PDF receipt発行のadapterが完成するまでは利用できない。
 
 テストの認証helperは合成fixtureの代役。実GoTrue・DB同時操作・実所属切替・時間指定実行・復旧・全APIの会社休止制御は未検証/未実装。prepared申請の取消は履歴を保持するが、適用後の巻戻し処理はない。本番は変更していない。
+
+## Vault本人確認接続（未公開）
+
+`archive-consent.sql.review-only` は本人セッションでのみvault既存 assert_transition_ready を同一transaction内で呼び、会社・worker・切替request・snapshot・完了を照合して本人確認receiptを保存する。管理者が本人の代わりに同意できない。gateと申請行とmanifestを保持し、OFF後は既存receiptがあっても成功としない。実Storageの保存保証はvault側の未完成条件に依存する。
+
+Native専用CIはPostgres17で本番由来session helperと実vault候補SQLを合成テーブルに組み合わせる。既存user/membership切替は実行しない。本人・代表権限の証拠発行、会社間連携RPCへの書込接続は未完成。YESでも相互承認を飛ばす権限は付与しない。

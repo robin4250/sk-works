@@ -1,10 +1,17 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
-const {PGlite}=await import(process.env.PGLITE_MODULE || new URL('../../apple-enrollment-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js',import.meta.url).href);
-const db=new PGlite();
+let db;
+if(process.env.DATABASE_URL){const {Client}=await import(process.env.PG_MODULE);const c=new Client({connectionString:process.env.DATABASE_URL});await c.connect();db={exec:q=>c.query(q),query:(q,p)=>c.query(q,p),close:()=>c.end()};}
+else{const {PGlite}=await import(process.env.PGLITE_MODULE || new URL('../../apple-enrollment-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js',import.meta.url).href);db=new PGlite();}
 await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create schema private;
 create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.actor',true),'')::uuid$$;
-create function private.require_reauthentication_session() returns uuid language plpgsql as $$begin if current_setting('test.live',true) is distinct from 'yes' then raise exception 'session_invalid';end if;return '00000000-0000-0000-0000-000000000090';end$$;
+create function auth.jwt() returns jsonb language sql as $$select jsonb_build_object('role','authenticated','is_anonymous',false,'session_id','00000000-0000-0000-0000-000000000090')$$;
+create function private.account_access_allowed() returns boolean language sql as $$select current_setting('test.live',true)='yes'$$;
+create function private.account_deletion_barrier_key(uuid) returns bigint language sql as $$select 42::bigint$$;
+create table auth.users(id uuid primary key,is_anonymous boolean,banned_until timestamptz);
+create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
+insert into auth.users values('00000000-0000-0000-0000-000000000001',false,null),('00000000-0000-0000-0000-000000000003',false,null);
+insert into auth.sessions values('00000000-0000-0000-0000-000000000090','00000000-0000-0000-0000-000000000001',null);
 create table private.master_feature_settings(feature_key text primary key,enabled boolean);
 create table public.company_members(company_id uuid,user_id uuid,role text);
 create table public.workers(id uuid,company_id uuid,user_id uuid);
@@ -16,6 +23,7 @@ insert into public.companies values('00000000-0000-0000-0000-000000000010'),('00
 insert into public.company_members values('00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000001','admin');
 insert into public.workers values('00000000-0000-0000-0000-000000000030','00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000002');
 insert into public.partner_companies values('00000000-0000-0000-0000-000000000040','00000000-0000-0000-0000-000000000010');`);
+await db.exec(fs.readFileSync(new URL('./require-session.fixture.sql',import.meta.url),'utf8'));
 await db.exec(fs.readFileSync(new URL('./request-ledger.sql.review-only',import.meta.url),'utf8'));
 const id='00000000-0000-0000-0000-000000000080';
 const p={direction:'employee_to_representative',effective_date:'2099-01-01',link_companies:false,partner_registration_id:'00000000-0000-0000-0000-000000000040',source_company_id:'00000000-0000-0000-0000-000000000010',source_worker_id:'00000000-0000-0000-0000-000000000030',subject_id:'00000000-0000-0000-0000-000000000002',target_company_id:'00000000-0000-0000-0000-000000000020'};
@@ -28,8 +36,24 @@ await assert.rejects(db.exec("update affiliation_transition_candidate.requests s
 await assert.rejects(db.exec('delete from affiliation_transition_candidate.requests'),/transition_history_required/);
 assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.requests')).rows[0].n,1);
 await assert.rejects(prepare({...p,effective_date:'2099-01-02'}),/request_reuse_mismatch/);
-await db.exec("set test.actor='00000000-0000-0000-0000-000000000003'");await assert.rejects(prepare(p),/source_admin_required/);
-await db.exec("set test.actor='00000000-0000-0000-0000-000000000001';set test.live='no'");await assert.rejects(prepare(p),/session_invalid/);
+await db.exec("set test.actor='00000000-0000-0000-0000-000000000003'");await assert.rejects(prepare(p),/reauthentication_required/);
+await db.exec("set test.actor='00000000-0000-0000-0000-000000000001';set test.live='no'");await assert.rejects(prepare(p),/reauthentication_required/);
 await db.exec("set test.live='yes';update private.master_feature_settings set enabled=false where feature_key='affiliation_switch'");await assert.rejects(prepare(p),/feature_off/);
 assert.equal((await db.query("select has_function_privilege('authenticated','affiliation_transition_candidate.prepare(uuid,jsonb)','execute') allowed")).rows[0].allowed,false);
+
+await db.exec("update private.master_feature_settings set enabled=true;set test.live='yes'");
+await db.exec(`create function private.require_lifecycle_features(keys text[]) returns void language plpgsql as $$declare k text;begin foreach k in array keys loop perform 1 from private.master_feature_settings where feature_key=k and enabled for share;if not found then raise exception 'feature_off';end if;end loop;end$$;`);
+await db.exec(fs.readFileSync(new URL('./vault-catalog.fixture.sql',import.meta.url),'utf8'));
+await db.exec(fs.readFileSync(new URL('./archive-consent.sql.review-only',import.meta.url),'utf8'));
+const manifest='00000000-0000-0000-0000-000000000070',snapshot='a'.repeat(64);
+await db.query(`insert into auth.users values($1,false,null)`,[p.subject_id]);
+await db.query(`insert into personal_vault24_candidate.manifests(id,owner_id,source_company_id,source_worker_id,transition_request_id,snapshot_hash,manifest_hash,expected_count,status,completed_at) values($1,$2,$3,$4,$5,$6,$6,1,'complete',now())`,[manifest,p.subject_id,p.source_company_id,p.source_worker_id,id,snapshot]);
+await assert.rejects(db.query('select affiliation_transition_candidate.confirm_archive($1,$2,$3)',[id,manifest,snapshot]),/subject_consent_required/);
+await db.query(`update auth.sessions set user_id=$1`,[p.subject_id]);await db.query("select set_config('test.actor',$1,false)",[p.subject_id]);
+await assert.rejects(db.query('select affiliation_transition_candidate.confirm_archive($1,$2,$3)',[id,manifest,'b'.repeat(64)]),/vault_transition_rejected/);
+await db.query('select affiliation_transition_candidate.confirm_archive($1,$2,$3)',[id,manifest,snapshot]);
+await db.query('select affiliation_transition_candidate.confirm_archive($1,$2,$3)',[id,manifest,snapshot]);
+assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.archive_consents')).rows[0].n,1);
+await db.exec("update private.master_feature_settings set enabled=false where feature_key='personal_pdf_vault'");
+await assert.rejects(db.query('select affiliation_transition_candidate.confirm_archive($1,$2,$3)',[id,manifest,snapshot]),/feature_off/);
 await db.close();console.log('ledger synthetic checks passed; no real auth or transition execution');
