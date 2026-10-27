@@ -27,7 +27,10 @@ export async function downloadOwnVaultPdf({manifestId, artifactKey}, services) {
       object.contentType !== 'application/pdf' || object.byteLength !== row.byte_length) throw Error('vault_storage_object_rejected');
   // The real adapter must enforce this limit while streaming, before buffering.
   const downloaded = await services.download(path, row.object_version, {maxBytes: row.byte_length});
-  if (!Buffer.isBuffer(downloaded)) throw Error('vault_download_invalid');
+  // Reject a buffer with the wrong length before copying it. The real adapter
+  // must still enforce the limit while streaming.
+  if (!Buffer.isBuffer(downloaded) || downloaded.length !== row.byte_length)
+    throw Error('vault_download_invalid');
   // Detach from a mutable storage-owned buffer before any further awaits.
   const bytes = Buffer.from(downloaded);
   const receipt = {status:'verified',contentType:'application/pdf',byteLength:row.byte_length,
