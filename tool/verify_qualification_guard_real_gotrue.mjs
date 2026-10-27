@@ -48,7 +48,15 @@ const test=String.raw`
  eq((await db.query('select count(*)::int n from private.qualification_submissions where id=$1',[id(32)])).rows[0].n,1);
  // Exercise a forward recovery: remove candidate manager permissions only.
  await db.query(await read('docs/review/qualification-master-access/policy.sql.review-only'));
+ await db.query("insert into company_members values($1,$2,'manager')",[company,users.outsider.id]);
+ await db.query("insert into qualification_master values($1,$3,'fixture'),($2,$3,'fixture')",[id(15),id(16),company]);
+ response=await request('/rest/v1/qualification_master?id=eq.'+id(15),{method:'DELETE',token:sessions.outsider.access_token});
+ assert.ok([200,204].includes(response.status));checks++;
+ eq((await db.query('select count(*)::int n from qualification_master where id=$1',[id(15)])).rows[0].n,0);
  await db.query(await read('docs/review/qualification-master-access/retain-protection-recovery.sql.review-only'));
+ response=await request('/rest/v1/qualification_master?id=eq.'+id(16),{method:'DELETE',token:sessions.outsider.access_token});
+ assert.ok([200,204].includes(response.status));checks++;
+ eq((await db.query('select count(*)::int n from qualification_master where id=$1',[id(16)])).rows[0].n,1);
  response=await request('/rest/v1/qualification_master?id=eq.'+id(11),{method:'DELETE',token:sessions.owner.access_token});
  eq(response.status,409);eq((await response.json()).code,'23503');
  eq((await db.query('select count(*)::int n from qualification_master_aliases where id=$1',[id(31)])).rows[0].n,1);
