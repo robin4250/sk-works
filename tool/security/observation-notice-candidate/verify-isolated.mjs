@@ -15,15 +15,18 @@ create function private.consume_reauthentication_proof(op text,target jsonb,proo
 create table private.master_admins(user_id uuid primary key,enabled boolean not null);
 create function public.is_current_user_master_admin() returns boolean language sql stable as $$ select exists(select 1 from private.master_admins where user_id=auth.uid() and enabled) $$;
 create table public.company_members(company_id uuid,user_id uuid,role text,primary key(company_id,user_id));
-create table private.security_collector_events(event_id uuid primary key,collector_id uuid,occurred_at timestamptz,event_kind text,generation integer,correlation_key text,key_epoch date);
+create table private.security_collector_events(event_id uuid primary key,collector_id uuid,occurred_at timestamptz,event_kind text,generation integer,correlation_key text,key_epoch date,received_at timestamptz default now());
 create table private.security_collector_evidence(event_id uuid primary key,collector_id uuid,valid boolean);
-create function private.verify_collector_event_evidence(eid uuid) returns boolean language sql stable as $$ select coalesce((select valid from private.security_collector_evidence where event_id=eid),false) $$;`);
+create function private.verify_collector_event_evidence(eid uuid) returns boolean language sql stable as $$ select coalesce((select valid from private.security_collector_evidence where event_id=eid),false) $$;
+create function private.purge_expired_security_collector_events() returns jsonb language plpgsql security definer set search_path='' as $$ declare cutoff timestamptz:=clock_timestamp()-interval '7 days'; ids uuid[]; begin
+ select coalesce(array_agg(event_id),'{}'::uuid[]) into ids from(select event_id from private.security_collector_events where received_at<cutoff order by received_at,event_id limit 1000)s;
+ delete from private.security_collector_evidence where event_id=any(ids);delete from private.security_collector_events where event_id=any(ids);return jsonb_build_object('removed',cardinality(ids));end $$;`);
 await db.exec(sql);
 const priv=(await db.query(`select has_function_privilege('anon','public.read_security_observation_notices(text)','execute') anon_read,has_function_privilege('authenticated','public.read_security_observation_notices(text)','execute') auth_read,has_function_privilege('service_role','security_observation_notice_private.publish(uuid)','execute') service_publish,has_table_privilege('authenticated','security_observation_notice_private.inbox','select') auth_table`)).rows[0];
 assert.deepEqual(priv,{anon_read:false,auth_read:true,service_publish:false,auth_table:false});
 const collector='00000000-0000-4000-8000-000000000001',company='00000000-0000-4000-8000-000000000002',master='00000000-0000-4000-8000-000000000003', e1='00000000-0000-4000-8000-000000000004',e2='00000000-0000-4000-8000-000000000005',e3='00000000-0000-4000-8000-000000000006';
 await db.exec(`insert into private.master_admins values('${master}',true);insert into public.company_members values('${company}','${master}','owner');
-insert into private.security_collector_events values('${e1}','${collector}',now(),'current_lure_touched',1,repeat('a',64),current_date),('${e2}','${collector}',now(),'retired_lure_touched',2,repeat('b',64),current_date),('${e3}','${collector}',now(),'current_lure_touched',3,repeat('c',64),current_date);
+insert into private.security_collector_events(event_id,collector_id,occurred_at,event_kind,generation,correlation_key,key_epoch) values('${e1}','${collector}',now(),'current_lure_touched',1,repeat('a',64),current_date),('${e2}','${collector}',now(),'retired_lure_touched',2,repeat('b',64),current_date),('${e3}','${collector}',now(),'current_lure_touched',3,repeat('c',64),current_date);
 insert into private.security_collector_evidence values('${e1}','${collector}',true);`);
 const count=async t=>(await db.query(`select count(*)::int as n from security_observation_notice_private.${t}`)).rows[0].n;
 assert.equal(await count('outbox'),0,'OFF produces no outbox and no implicit coverage');
@@ -45,10 +48,28 @@ await db.exec(`insert into private.fake_proofs values('fixture-proof-2','${maste
 await assert.rejects(db.query("select public.read_security_observation_notices('fixture-proof-2')"));
 await db.exec(`update security_observation_notice_private.inbox set generation=2 where event_id='${e2}'`);
 assert.equal((await db.query("select public.read_security_observation_notices('fixture-proof-2') r")).rows[0].r.events.length,1,'failed integrity rolls proof use back');
+const cmd='00000000-0000-4000-8000-000000000007';
+await db.exec(`insert into private.fake_proofs values('fixture-action','${master}')`);
+await assert.rejects(db.query(`select public.update_security_observation_notice('${e2}','resolved','',1,'${cmd}','fixture-action')`));
+const marked=(await db.query(`select public.update_security_observation_notice('${e2}','resolved','誤検知の確認',1,'${cmd}','fixture-action') r`)).rows[0].r;assert.equal(marked.revision,2);assert.equal(marked.replayed,false);
+const retried=(await db.query(`select public.update_security_observation_notice('${e2}','resolved','誤検知の確認',1,'${cmd}','') r`)).rows[0].r;assert.equal(retried.replayed,true);assert.equal(retried.revision,2);
+await assert.rejects(db.query(`select public.update_security_observation_notice('${e2}','investigating','誤検知の確認',1,'${cmd}','')`));
 await db.exec("select set_config('test.sid','',false)");await assert.rejects(db.query("select public.read_security_observation_notices('other')"));
+await assert.rejects(db.query(`select public.update_security_observation_notice('${e2}','resolved','誤検知の確認',1,'${cmd}','')`));
 await db.exec(`select set_config('test.sid','${collector}',false)`);
 const inbox=(await db.query('select * from security_observation_notice_private.inbox')).rows[0];assert.equal('correlation_key' in inbox,false);
 await db.exec(`insert into private.security_collector_evidence values('${e3}','${collector}',true);update private.master_admins set enabled=false where user_id='${master}'`);
 assert.equal((await db.query(`select security_observation_notice_private.publish('${e3}') s`)).rows[0].s,'held_binding');assert.equal(await count('inbox'),1);
 await db.exec(`update security_observation_notice_private.config set enabled=false`);assert.equal(await count('outbox'),2);
+// Expired unreferenced source is removed by the unchanged 7-day policy while
+// any referenced source and evidence stay pinned until an independent archive.
+await db.exec(`update private.security_collector_events set received_at=now()-interval '8 days' where event_id in ('${e1}','${e2}');select private.purge_expired_security_collector_events()`);
+assert.equal((await db.query(`select count(*)::int n from private.security_collector_events where event_id='${e1}'`)).rows[0].n,0);
+assert.equal((await db.query(`select count(*)::int n from private.security_collector_evidence where event_id='${e2}'`)).rows[0].n,1);
+// With cap reached, keep collector evidence and record explicit coverage gap.
+await db.exec(`update security_observation_notice_private.config set enabled=true;insert into security_observation_notice_private.outbox(event_id,collector_id,company_id,recipient_id,config_revision) select gen_random_uuid(),'${collector}','${company}','${master}',1 from generate_series(1,998)`);
+const e4='00000000-0000-4000-8000-000000000008';
+await db.exec(`insert into private.security_collector_events(event_id,collector_id,occurred_at,event_kind,generation,correlation_key,key_epoch) values('${e4}','${collector}',now(),'current_lure_touched',1,repeat('d',64),current_date);insert into private.security_collector_evidence values('${e4}','${collector}',true)`);
+assert.equal(await count('outbox'),1000);assert.equal((await db.query('select capacity_gaps::int n from security_observation_notice_private.coverage')).rows[0].n,1);
+assert.equal((await db.query(`select count(*)::int n from private.security_collector_evidence where event_id='${e4}'`)).rows[0].n,1);
 await db.close();console.log('isolated tests passed: OFF, rejection rollback, fixed recipient, service gate, idempotent publication, revoked Master hold, data minimization');

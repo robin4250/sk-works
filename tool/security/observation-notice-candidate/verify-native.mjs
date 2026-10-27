@@ -51,6 +51,23 @@ try{
  const bad={...event,event_id:randomUUID()};await assert.rejects(a.query('select public.ingest_signed_security_collector_event($1)',[envelope(bad,randomBytes(32))]));eq(await count('outbox'),1,'bad MAC no notice');
  const lost={...event,event_id:randomUUID()};await a.query('begin');await a.query('select public.ingest_signed_security_collector_event($1)',[envelope(lost)]);await a.query('rollback');eq(await count('outbox'),1,'rollback leaves no notice');
  const notices=await Promise.all([a.query('select security_observation_notice_private.publish($1)v',[event.event_id]),b.query('select security_observation_notice_private.publish($1)v',[event.event_id])]);eq(notices.map(x=>x.rows[0].v),['available','available'],'concurrent publish idempotent');eq(await count('inbox'),1,'one inbox');eq(await count('audit'),2,'one publish audit');
+ // Existing seven-day purge must wait for concurrent evidence insertion, then
+ // see its outbox pin and preserve the source and key.
+ const retained={...event,event_id:randomUUID()};await a.query('begin');await a.query('select public.ingest_signed_security_collector_event($1)',[envelope(retained)]);
+ await a.query("update private.security_collector_events set received_at=clock_timestamp()-interval '8 days' where event_id=$1",[retained.event_id]);
+ const purgePid=(await b.query('select pg_backend_pid() pid')).rows[0].pid;
+ const waitingPurge=b.query('select private.purge_expired_security_collector_events()');let purgeWait=false;
+ for(let i=0;i<100;i++){const x=await db.query("select wait_event_type='Lock' waiting from pg_stat_activity where pid=$1",[purgePid]);if(x.rows[0]?.waiting){purgeWait=true;break;}await new Promise(r=>setTimeout(r,10));}
+ eq(purgeWait,true,'retention waits for in-flight signed evidence');await a.query('commit');await waitingPurge;
+ eq((await db.query('select count(*)::int n from private.security_collector_evidence where event_id=$1',[retained.event_id])).rows[0].n,1,'concurrent retention preserves pinned evidence');
+ eq((await db.query('select count(*)::int n from private.security_collector_keys where collector_id=$1',[collector])).rows[0].n,1,'key remains with pinned evidence');
+ // A genuinely unreferenced event still follows the existing seven-day rule.
+ await db.query('update security_observation_notice_private.config set enabled=false');
+ const legacy={...event,event_id:randomUUID()};await a.query('select public.ingest_signed_security_collector_event($1)',[envelope(legacy)]);
+ await db.query("update private.security_collector_events set received_at=clock_timestamp()-interval '8 days' where event_id=$1",[legacy.event_id]);
+ await db.query('select private.purge_expired_security_collector_events()');
+ eq((await db.query('select count(*)::int n from private.security_collector_events where event_id=$1',[legacy.event_id])).rows[0].n,0,'unreferenced expired event retains existing purge');
+ await db.query('update security_observation_notice_private.config set enabled=true');
  // A role revocation committed before publication prevents delivery. The
  // current Master row is locked through the enqueue transaction.
  const race={...event,event_id:randomUUID()};await a.query('select public.ingest_signed_security_collector_event($1)',[envelope(race)]);
@@ -62,7 +79,21 @@ try{
  eq((await waitingPublish).rows[0].v,'held_binding','revoked Master cannot receive queued event');eq(await count('inbox'),1,'revocation did not add inbox item');
  await db.query('update private.master_admins set enabled=true where user_id=$1',[actor]);
  const proof=randomBytes(32).toString('hex');await claims(db,'service_role');await db.query('select public.issue_reauthentication_proof($1,$2,$3,$4,$5)',[actor,sid,'master.security_collector.read',{scope:'decoy_collector'},sha(proof)]);
+ // Two independently issued, valid one-use proofs race to update the same
+ // record. Revision CAS accepts only one and rolls back the rejected command.
+ const proofA=randomBytes(32).toString('hex'),proofB=randomBytes(32).toString('hex');
+ await db.query('select public.issue_reauthentication_proof($1,$2,$3,$4,$5)',[actor,sid,'master.security_collector.read',{scope:'decoy_collector'},sha(proofA)]);
+ await db.query('select public.issue_reauthentication_proof($1,$2,$3,$4,$5)',[actor,sid,'master.security_collector.read',{scope:'decoy_collector'},sha(proofB)]);
+ await claims(a,'authenticated');await claims(b,'authenticated');
+ const c1=randomUUID(),c2=randomUUID();const raceCommands=await Promise.allSettled([
+  a.query('select public.update_security_observation_notice($1,$2,$3,$4,$5,$6)v',[event.event_id,'resolved','reviewed fixture',1,c1,proofA]),
+  b.query('select public.update_security_observation_notice($1,$2,$3,$4,$5,$6)v',[event.event_id,'investigating','reviewed fixture',1,c2,proofB])]);
+ eq(raceCommands.filter(x=>x.status==='fulfilled').length,1,'concurrent CAS allows exactly one action');
+ eq((await db.query('select count(*)::int n from security_observation_notice_private.audit where command_id is not null')).rows[0].n,1,'one durable review action');
  await claims(db,'authenticated');await db.query('set role authenticated');await db.query("select set_config('request.method','GET',false)");await assert.rejects(db.query('select public.read_security_observation_notices($1)',[proof]));await db.query("select set_config('request.method','POST',false)");
  const result=(await db.query('select public.read_security_observation_notices($1)v',[proof])).rows[0].v;eq(result.events.length,1,'Master proof reads notice');eq(result.attack_confirmed,false,'never attacker attribution');eq('correlation_key' in result.events[0],false,'no correlation secret');await assert.rejects(db.query('select public.read_security_observation_notices($1)',[proof]));await db.query('reset role');
+ await db.query("update private.security_collector_keys set valid_until=clock_timestamp()-interval '8 days' where collector_id=$1",[collector]);
+ await db.query('select private.purge_expired_security_collector_events()');
+ eq((await db.query('select count(*)::int n from private.security_collector_keys where collector_id=$1',[collector])).rows[0].n,1,'expired historical key is retained while pinned signed evidence exists');
  console.log(JSON.stringify({ok:true,postgres17:true,actual_collector_sql:true,real_pgcrypto:true,concurrent_signed_retries:true,concurrent_publication:true,post_only:true,actual_proof_sql:true,synthetic_auth_surroundings:true,real_gotrue:false,actual_notifications:false}));
 }finally{for(const c of [a,b,db]){await c.query('rollback').catch(()=>{});await c.end();}}
