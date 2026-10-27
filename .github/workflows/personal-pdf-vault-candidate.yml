@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'tool/personal_vault_manifest.mjs'
+      - 'docs/review/personal-vault24/**'
       - 'test/personal_vault_manifest.test.mjs'
       - 'lib/features/personal_vault/**'
       - 'test/own_payroll_archive_pdf_test.dart'
@@ -32,3 +33,19 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze lib/features/personal_vault/own_payroll_archive_pdf.dart test/own_payroll_archive_pdf_test.dart
       - run: flutter test test/own_payroll_archive_pdf_test.dart
+  persistent-catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: vault_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: fixture-only
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/catalog-test.sql
