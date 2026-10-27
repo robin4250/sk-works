@@ -54,6 +54,20 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await writer.query('rollback');
   assert.equal((await db.query("select count(*)::int n from public.invoice_approvals where invoice_id=$1 and status='pending'",[frozen.id])).rows[0].n,1);
   assert.equal((await db.query('select count(*)::int n from public.invoice_approval_audit where invoice_id=$1',[frozen.id])).rows[0].n,0);
+  // Legacy attendance writer holds a row then runs the actual refresh, which
+  // takes the invoice lock. Approval holds the invoice then waits on its gate.
+  // The gate timeout must break the wait without partial approval.
+  await writer.query("select set_config('test.uid',$1,false)",[actor]);
+  await writer.query('begin');await writer.query("set local statement_timeout='2s'");
+  await writer.query("update attendance_entries set overtime_hours=2 where company_id=$1 and site_id=$2 and work_date='2020-10-22'",[company,site]);
+  const pendingApproval=db.query('select invoice_month_close_candidate.approve($1)',[frozen.id]).then(()=>null,e=>e);
+  await new Promise(resolve=>setTimeout(resolve,100));
+  const pendingRefresh=writer.query('select private.refresh_automatic_invoice($1,$2,$3)',[company,customer,'2020-10-01']).then(()=>null,e=>e);
+  const [approvalErr,refreshErr]=await Promise.all([pendingApproval,pendingRefresh]);assert.match(approvalErr?.message||'',/lock timeout/);assert.equal(refreshErr,null);
+  await writer.query('rollback');
+  assert.equal((await db.query("select count(*)::int n from public.invoice_approvals where invoice_id=$1 and status='pending'",[frozen.id])).rows[0].n,1);
+  assert.equal((await db.query('select count(*)::int n from public.invoice_approval_audit where invoice_id=$1',[frozen.id])).rows[0].n,0);
+  console.log(JSON.stringify({fixture_refresh_approval_cycle_timeout_safe:true}));
   console.log(JSON.stringify({fixture_approval_writer_conflict_fails_closed:true,fixture_approval_no_partial_write:true}));
  }finally{await writer.query('rollback').catch(()=>{});await writer.end();}
 }
