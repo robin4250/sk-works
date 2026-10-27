@@ -39,3 +39,18 @@ export async function verifyRotationHistoryFixture(s,{genesisKey,genesisId}){
  }
  const q=state(s);if(q.anchor_key_id!==id||q.anchor_jwk!==JSON.stringify(pub))throw Error('history head differs');await latestIndependentAnchor(s);return {key_id:id,rotations:rows.length};
 }
+
+// Test-only verification for already-issued receipts, not a freshness proof.
+// Callers must obtain the genesis key from independent protected custody.
+export async function verifyHistoricalReceiptFixture(s,{receipt,genesisKey,genesisId}){
+ await verifyRotationHistoryFixture(s,{genesisKey,genesisId});
+ const q=state(s);if(!receipt||!receipt.payload||typeof receipt.signature!=='string')throw Error('historical receipt invalid');
+ const p=receipt.payload,rows=s.sql.exec('SELECT * FROM anchor_rotation_history ORDER BY id').toArray();
+ const candidates=[{id:genesisId,key:publicJwk(genesisKey)}];
+ const known=new Set();
+ for(const row of rows){const transition=JSON.parse(row.transition);candidates.push({id:transition.new_key_id,key:publicJwk(transition.new_jwk)});known.add(transition.old_receipt);known.add(row.new_receipt);}
+ const ordinary=one(s,'SELECT * FROM anchor_receipts WHERE sequence=?',p.sequence);if(ordinary)known.add(ordinary.receipt);
+ const key=candidates.find(x=>x.id===p.key_id);
+ if(!key||!Number.isSafeInteger(p.sequence)||p.sequence<1||p.sequence>q.sequence||p.v!==1||p.deployment_id!==q.deployment_id||typeof p.hash!=='string'||!(/^[a-f0-9]{64}$/.test(p.hash))||!Number.isSafeInteger(p.issued_at)||!known.has(JSON.stringify(receipt))||!await verified(key.key,'sko-decoy-anchor-v1',JSON.stringify(p),receipt.signature))throw Error('historical receipt rejected');
+ return {sequence:p.sequence,hash:p.hash,key_id:p.key_id};
+}

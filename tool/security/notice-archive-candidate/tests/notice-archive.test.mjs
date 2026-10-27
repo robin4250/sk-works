@@ -204,3 +204,20 @@ test('concurrent planned rotations allow one successor and retain one verifiable
  assert.equal(results.filter(x=>x.status===200).length,1);assert.equal(results.filter(x=>x.status===409).length,1);
  const verify={genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'},history=await f.call('rotation-history',verify,'AUTHORITY');assert.equal(history.status,200);assert.equal((await history.json()).rotations,1);
 });
+
+
+test('old signed receipts stay verifiable after rotation and restart while forged retired-key receipts fail',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const original=await(await f.call('latest',{},'AUTHORITY')).json(),replacement=key(),args={newId:'anchor_2',newJwk:replacement.pub,oldKey:f.anchor.privateJwk,newKey:replacement.privateJwk,now:now+1};assert.equal((await f.call('rotate',args,'AUTHORITY')).status,200);await f.restart();
+ const request={receipt:original,genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'};assert.equal((await f.call('historical-receipt',request,'AUTHORITY')).status,200);
+ const forged=structuredClone(original);forged.payload.hash='f'.repeat(64);forged.signature=signature(f.anchor.priv,'sko-decoy-anchor-v1',JSON.stringify(forged.payload));assert.equal((await f.call('historical-receipt',{...request,receipt:forged},'AUTHORITY')).status,409);
+ const invalid=structuredClone(original);invalid.signature='0'.repeat(128);assert.equal((await f.call('historical-receipt',{...request,receipt:invalid},'AUTHORITY')).status,409);
+});
+
+test('two rotations preserve each original receipt and reject tampered transition history',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const a=key(),b=key(),r1=await(await f.call('latest',{},'AUTHORITY')).json();assert.equal((await f.call('rotate',{newId:'anchor_2',newJwk:a.pub,oldKey:f.anchor.privateJwk,newKey:a.privateJwk,now:now+1},'AUTHORITY')).status,200);
+ const r2=await(await f.call('latest',{},'AUTHORITY')).json();assert.equal((await f.call('rotate',{newId:'anchor_3',newJwk:b.pub,oldKey:a.privateJwk,newKey:b.privateJwk,now:now+2},'AUTHORITY')).status,200);await f.restart();
+ const ctx={genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'};for(const receipt of [r1,r2])assert.equal((await f.call('historical-receipt',{...ctx,receipt},'AUTHORITY')).status,200);
+ assert.equal((await f.call('rotation-tamper',{value:'0'.repeat(128)},'AUTHORITY')).status,200);assert.equal((await f.call('historical-receipt',{...ctx,receipt:r2},'AUTHORITY')).status,409);
+});

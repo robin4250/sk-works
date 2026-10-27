@@ -1,5 +1,5 @@
 // TEST ONLY. This fixture is never a production route and contains no real key.
-import {rotateAuthorityFixture,verifyRotationHistoryFixture} from '../src/anchor-rotation-fixture.mjs';
+import {rotateAuthorityFixture,verifyRotationHistoryFixture,verifyHistoricalReceiptFixture} from '../src/anchor-rotation-fixture.mjs';
 import {initializeAnchorAuthority,preserveIndependentAnchor,latestIndependentAnchor} from '../src/anchor-authority.mjs';
 import {initializeNoticeArchive,storeNoticeArchive,storeNoticeArchiveWithContinuity,readNoticeArchive,readNoticeArchiveWithContinuity} from '../src/notice-archive.mjs';
 export class ArchiveFixture{
@@ -25,6 +25,7 @@ export class AuthorityFixture{
  async fetch(request){const path=new URL(request.url).pathname,s=this.ctx.storage,input=await request.json();try{
   if(path==='/initialize')return Response.json(initializeAnchorAuthority(s,input));
   if(path==='/rotate')return Response.json(await rotateAuthorityFixture(s,{...input,oldKey:await crypto.subtle.importKey('jwk',input.oldKey,'Ed25519',false,['sign']),newKey:await crypto.subtle.importKey('jwk',input.newKey,'Ed25519',false,['sign'])}));
+  if(path==='/historical-receipt')return Response.json(await verifyHistoricalReceiptFixture(s,input));
   if(path==='/rotation-history')return Response.json(await verifyRotationHistoryFixture(s,input));
   if(path==='/rotation-tamper'){s.sql.exec('UPDATE anchor_rotation_history SET old_signature=? WHERE id=1',input.value);return Response.json(true);}
   if(path==='/rotation-fail'){s.sql.exec("CREATE TRIGGER rotation_failure BEFORE UPDATE ON anchor_authority BEGIN SELECT RAISE(ABORT,'fixture fail');END");return Response.json(true);}
