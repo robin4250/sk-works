@@ -928,19 +928,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     if (repository == null || workerId == null || requirementId == null ||
         actor == null || actor != repository.actorId || !_canManageStatuses) { return; }
     final active = previous?['active'] != true;
-    final reason = TextEditingController();
-    final confirmed = await showDialog<bool>(context: context, builder: (context) =>
-      AlertDialog(title: Text(active ? 'この社員の提出を免除' : '提出免除を解除'),
-        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('${requirement['name']}\nこの社員だけに適用します。登録済み書類・写真は保持します。'),
-          TextField(controller: reason, maxLength: 500, minLines: 2, maxLines: 4,
-            decoration: const InputDecoration(labelText: '理由（必須）')),
-        ])), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('キャンセル')),
-          FilledButton(onPressed: () { if (reason.text.trim().isNotEmpty) Navigator.pop(context, true); },
-            child: Text(active ? '免除を保存' : '免除を解除'))]));
-    final text = reason.text.trim();
-    reason.dispose();
-    if (confirmed != true || !mounted || workerId != _selectedWorkerId || actor != repository.actorId) return;
+    final text = await showDialog<String>(context: context, builder: (_) =>
+      _DocumentExemptionReasonDialog(active: active,
+        documentName: requirement['name']?.toString() ?? '書類'));
+    if (text == null || !mounted || workerId != _selectedWorkerId || actor != repository.actorId) { return; }
     try {
       await repository.setDocumentExemption(workerId: workerId, requirementId: requirementId,
         active: active, expectedVersion: previous?['version'] as int? ?? 0, reason: text);
@@ -1242,6 +1233,39 @@ String? _expiryHint(Map<String, dynamic> requirement, DateTime? expiry, DateTime
   if (days == 0) { return '本日期限'; }
   if (days <= _reminderDays(requirement)) { return 'あと$days日'; }
   return null;
+}
+
+class _DocumentExemptionReasonDialog extends StatefulWidget {
+  const _DocumentExemptionReasonDialog({required this.active, required this.documentName});
+  final bool active;
+  final String documentName;
+  @override
+  State<_DocumentExemptionReasonDialog> createState() => _DocumentExemptionReasonDialogState();
+}
+
+class _DocumentExemptionReasonDialogState extends State<_DocumentExemptionReasonDialog> {
+  final _reason = TextEditingController();
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.active ? 'この社員の提出を免除' : '提出免除を解除'),
+    content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Text('${widget.documentName}\nこの社員だけに適用します。登録済み書類・写真は保持します。'),
+      TextField(controller: _reason, maxLength: 500, minLines: 2, maxLines: 4,
+        onChanged: (_) => setState(() {}),
+        decoration: const InputDecoration(labelText: '理由（必須）')),
+    ])),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル')),
+      FilledButton(onPressed: _reason.text.trim().isEmpty ? null
+          : () => Navigator.pop(context, _reason.text.trim()),
+        child: Text(widget.active ? '免除を保存' : '免除を解除')),
+    ],
+  );
 }
 
 class _EmptyState extends StatelessWidget {
