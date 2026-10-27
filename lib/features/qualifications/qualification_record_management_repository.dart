@@ -7,6 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
 
+enum QualificationManagementMode { absent, stopped, enabled, unavailable }
+
 /// Management operations are immediate, audited and independent of the personal
 /// photo approval queue. Unknown capability always disables new operations.
 class QualificationRecordManagementRepository {
@@ -49,24 +51,30 @@ class QualificationRecordManagementRepository {
     _check(); final value = await _rpc(action, data); _check(); return value;
   }
 
-  Future<bool> available(String companyId) async {
+  Future<QualificationManagementMode> mode(String companyId) async {
     Object? value;
     try { value = await _call('capability', {'company_id': companyId}); }
     on PostgrestException catch (error) {
-      if (const ['PGRST202','42883'].contains(error.code)) return false;
+      if (const ['PGRST202','42883'].contains(error.code)) return QualificationManagementMode.absent;
       rethrow;
     }
-    return value is Map && value.length == 5 && value['version'] == 1 &&
+    final known = value is Map && value.length == 5 && value['version'] == 1 &&
       value['contract'] == 'qualification_direct_management' &&
-      value['company_id'] == companyId && value['actor_id'] == _boundActor && value['available'] == true;
+      value['company_id'] == companyId && value['actor_id'] == _boundActor && value['available'] is bool;
+    if (!known) return QualificationManagementMode.unavailable;
+    return (value as Map)['available'] == true ? QualificationManagementMode.enabled : QualificationManagementMode.stopped;
   }
+
+  Future<bool> available(String companyId) async => await mode(companyId) == QualificationManagementMode.enabled;
 
   Future<Map<String,dynamic>> inspect(String companyId, String targetId) async {
     if (!await available(companyId)) throw StateError('資格情報の管理操作は準備中です。');
     final value = await _call('inspect', {'company_id': companyId, 'target_id': targetId});
     if (value is! Map || value['version'] != 1 || value['contract'] != 'qualification_direct_management' ||
         value['snapshot'] is! Map || value['snapshot']['id'] != targetId ||
-        value['snapshot']['company_id'] != companyId) throw StateError('資格情報の対象を確認できません。');
+        value['snapshot']['company_id'] != companyId) {
+      throw StateError('資格情報の対象を確認できません。');
+    }
     return Map<String,dynamic>.from(value['snapshot'] as Map);
   }
 
@@ -78,7 +86,7 @@ class QualificationRecordManagementRepository {
     final raw = jsonDecode(value);
     if (raw is! Map || raw['version'] != 1 || raw['actor_id'] != _boundActor ||
         raw['company_id'] != companyId || raw['request_id'] is! String || raw['target_id'] is! String ||
-        !const ['create','update','delete'].contains(raw['operation'])) {
+        !const ['create','update','delete','photos'].contains(raw['operation'])) {
       throw StateError('保存結果の再確認情報が一致しません。');
     }
     return Map<String,dynamic>.from(raw);
@@ -122,7 +130,7 @@ class QualificationRecordManagementRepository {
   }) => _exclusive(() async {
     if (!await available(companyId)) throw StateError('資格情報の管理操作は準備中です。');
     if (await pending(companyId) != null) throw StateError('先に同じ資格操作の保存結果を再確認してください。');
-    if (!const ['create','update','delete'].contains(operation) ||
+    if (!const ['create','update','delete','photos'].contains(operation) ||
         (operation != 'create' && (snapshot?['company_id'] != companyId || snapshot?['id'] != targetId))) {
       throw ArgumentError('資格の対象・操作を確認してください。');
     }

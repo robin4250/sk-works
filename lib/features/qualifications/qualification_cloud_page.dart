@@ -12,6 +12,7 @@ import 'qualification_certificate_page.dart';
 import 'qualification_certificate_repository.dart';
 import 'qualification_record_management_repository.dart';
 import 'qualification_record_management_page.dart';
+import '../people/worker_document_photo_editor.dart';
 import '../shared/resource_registration_card.dart';
 
 class QualificationCloudPage extends StatefulWidget {
@@ -790,6 +791,10 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               if (_canManageWorkerQualifications && _canChangeRegisteredQualifications) ...[
                 OutlinedButton.icon(onPressed: () {
                   Navigator.pop(sheetContext);
+                  _editManagedSavedPhotos(row);
+                }, icon: const Icon(Icons.photo_library_outlined), label: const Text('保存済み写真を整理')),
+                OutlinedButton.icon(onPressed: () {
+                  Navigator.pop(sheetContext);
                   _openRecordChange(row, master, worker);
                 }, icon: const Icon(Icons.edit_outlined), label: const Text('登録情報を編集')),
                 OutlinedButton.icon(onPressed: () {
@@ -814,6 +819,39 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     );
   }
 
+  Future<void> _editManagedSavedPhotos(Map<String,dynamic> row) async {
+    final management = QualificationRecordManagementRepository.maybeCreate();
+    if (management == null) return;
+    try {
+      final membership = await _repository!.membership();
+      if (await management.pending(membership.companyId) != null) {
+        throw StateError('先に同じ資格操作の保存結果を再確認してください。');
+      }
+      final snapshot = await management.inspect(membership.companyId,row['id'] as String);
+      final paths = QualificationCloudRepository.ownPhotoAttachments(snapshot).map((p)=>p.path).toList();
+      if (!mounted) return;
+      final selected = await editWorkerDocumentPhotos(context, paths:paths,
+        signedUrl:(path) async {
+          if (!paths.contains(path) || _certificateRepository == null) throw StateError('資格証写真を確認できません。');
+          return _certificateRepository.createSignedUrl(path);
+        }, allowNewPhotos:false,
+        uploadNotice:'保存済み写真の並べ替え・一覧からの削除ができます。元の写真は履歴に保持します。新しい写真の追加・差し替えは準備中です。');
+      if (selected == null || !mounted) return;
+      if (selected.any((p)=>p.path==null||p.bytes!=null)) throw StateError('保存済みの写真だけ選択してください。');
+      await management.save(companyId:membership.companyId,operation:'photos',targetId:row['id'] as String,
+        snapshot:snapshot,fields:{'photo_paths':selected.map((p)=>p.path!).toList()});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('資格証写真を保存しました。')));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:Text('写真の保存結果を確認できません。再読み込みして同じ操作の結果を確認してください。')));
+      }
+    } finally {
+      await management.dispose();
+      if (mounted) await _load();
+    }
+  }
+
   Future<void> _openRecordChange(Map<String, dynamic> row,
     Map<String, dynamic>? master, Map<String, dynamic>? worker, {bool delete = false}) async {
     try {
@@ -828,8 +866,10 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
         qualificationName: master?['name']?.toString() ?? '資格', delete: delete)));
       if (mounted) await _load();
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('資格変更申請を開けません。ログインと権限を確認してください。')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('資格情報の編集画面を開けません。ログインと権限を確認してください。')));
+      }
     }
   }
 

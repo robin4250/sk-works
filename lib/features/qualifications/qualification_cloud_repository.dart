@@ -348,7 +348,8 @@ class QualificationCloudRepository {
     final management = QualificationRecordManagementRepository.maybeCreate();
     if (management != null) {
       try {
-        if (await management.available(companyId)) {
+        final mode = await management.mode(companyId);
+        if (mode == QualificationManagementMode.enabled) {
           if (_nullable(attachmentPath) != null) throw StateError('写真は資格証の写真登録から追加してください。');
           final result = await management.create(companyId:companyId, workerId:workerId,
             masterId:qualificationMasterId, fields:{
@@ -356,6 +357,7 @@ class QualificationCloudRepository {
               'expires_at':_date(expiresAt), 'issuer':_nullable(issuer), 'notes':_nullable(notes)});
           return Map<String,dynamic>.from(result['after'] as Map);
         }
+        if (mode != QualificationManagementMode.absent) throw StateError('資格の管理機能は停止中、または確認できません。');
       } finally {
         await management.dispose();
       }

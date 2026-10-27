@@ -30,7 +30,7 @@ revoke all on private.qualification_management_state from public,anon,authentica
 create table private.qualification_management_operations (
  request_id uuid primary key, company_id uuid not null, actor_id uuid not null,
  target_id uuid not null, worker_id uuid not null, qualification_master_id uuid not null,
- operation text not null check(operation in ('create','update','delete')),
+ operation text not null check(operation in ('create','update','delete','photos')),
  command jsonb not null, before_snapshot jsonb, after_snapshot jsonb,
  recorded_at timestamptz not null default clock_timestamp()
 );
@@ -78,7 +78,7 @@ revoke all on function private.qualification_management_result(private.qualifica
 create function private.qualification_direct_management(p_action text,p_data jsonb)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare actor uuid:=auth.uid(); cid uuid; target uuid; request uuid; wid uuid; mid uuid;
- op text; patch jsonb; command jsonb; before_row jsonb; after_row jsonb; key text; enabled boolean;
+ op text; paths text[]; oldpaths text[]; photo text; patch jsonb; command jsonb; before_row jsonb; after_row jsonb; key text; enabled boolean;
  saved private.qualification_management_operations%rowtype;
 begin
  perform private.require_reauthentication_session();
@@ -110,7 +110,7 @@ begin
  end if;
  if p_action<>'apply' then raise exception 'unsupported management action' using errcode='22023';end if;
  request:=(p_data->>'request_id')::uuid;op:=p_data->>'operation';patch:=p_data->'fields';
- if request is null or op is null or op not in ('create','update','delete') then
+ if request is null or op is null or op not in ('create','update','delete','photos') then
   raise exception 'exact operation required' using errcode='22023';end if;
  if op in ('create','update') then
   if jsonb_typeof(patch) is distinct from 'object' or (select count(*) from jsonb_object_keys(patch))<>5
@@ -121,6 +121,15 @@ begin
     raise exception 'qualification field invalid' using errcode='22023';end if;
   end loop;
   patch:=patch||jsonb_build_object('issued_at',nullif(patch->>'issued_at','')::date,'expires_at',nullif(patch->>'expires_at','')::date);
+ elsif op='photos' then
+  if jsonb_typeof(patch) is distinct from 'object' or (select count(*) from jsonb_object_keys(patch))<>1
+   or not patch ? 'photo_paths' or jsonb_typeof(patch->'photo_paths') is distinct from 'array'
+   or jsonb_array_length(patch->'photo_paths')>20 or exists(select 1 from jsonb_array_elements(patch->'photo_paths') p
+    where jsonb_typeof(p) is distinct from 'string' or trim(p#>>'{}')='') then
+   raise exception 'saved photo selection required' using errcode='22023';end if;
+  paths:=array(select jsonb_array_elements_text(patch->'photo_paths'));
+  if cardinality(paths)<>(select count(distinct p) from unnest(paths) p) then
+   raise exception 'duplicate photo selection' using errcode='22023';end if;
  elsif patch is not null and patch<>'null'::jsonb then
   raise exception 'delete has no replacement fields' using errcode='22023';end if;
  if op='create' then
@@ -161,6 +170,17 @@ begin
  elsif op='update' then
   update public.worker_qualifications set certificate_number=patch->>'certificate_number',issuer=patch->>'issuer',
    issued_at=(patch->>'issued_at')::date,expires_at=(patch->>'expires_at')::date,notes=patch->>'notes',updated_at=now()
+   where id=target and company_id=cid;
+ elsif op='photos' then
+  oldpaths:=array_remove(array[before_row->>'attachment_path',before_row->>'attachment_back_path']||
+   array(select jsonb_array_elements_text(coalesce(before_row->'attachment_extra_paths','[]'::jsonb))),null);
+  foreach photo in array paths loop
+   if not coalesce(photo=any(oldpaths),false) or not exists(select 1 from storage.objects
+    where bucket_id='qualification-certificates' and name=photo) then
+    raise exception 'only currently saved photos may be retained' using errcode='22023';end if;
+  end loop;
+  update public.worker_qualifications set attachment_path=paths[1],attachment_back_path=paths[2],
+   attachment_extra_paths=coalesce(paths[3:cardinality(paths)],'{}'::text[]),updated_at=now()
    where id=target and company_id=cid;
  else delete from public.worker_qualifications where id=target and company_id=cid;end if;
  if op<>'delete' then select to_jsonb(q) into after_row from public.worker_qualifications q where id=target;end if;
