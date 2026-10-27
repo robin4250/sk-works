@@ -85,8 +85,11 @@ class _EmployeePersonnelEditPageState extends State<EmployeePersonnelEditPage> {
           _categories = [for (final row in rows)
             EmployeeCategoryOption(id: row['id'].toString(), name: row['name'].toString(), active: row['active'] == true)];
           _categoryReady = true;
-        } catch (_) {
-          _categoryError = '区分を読み込めません。再読み込みしてください。';
+        } catch (error) {
+          if (!mounted) return;
+          _categoryError = employeeCategoryLoadMessage(
+            error, hasSavedCategory: _categoryId != null,
+          );
         }
       }
       if (!mounted) return;
