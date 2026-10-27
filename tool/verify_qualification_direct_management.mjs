@@ -2,6 +2,9 @@
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {pathToFileURL} from 'node:url';
 const sourceRoot=process.env.SKO_SOURCE_ROOT?path.resolve(process.env.SKO_SOURCE_ROOT):new URL('../',import.meta.url);
 const read=p=>fs.readFile(typeof sourceRoot==='string'?path.join(sourceRoot,p):new URL(p,sourceRoot),'utf8');
@@ -41,7 +44,6 @@ try{
  await db.exec(await own('tool/fixtures/qualification_management/official_history.sql'));
  const personalBefore=(await db.query("select md5(prosrc) m from pg_proc where oid='private.personal_qualification_submission(text,jsonb)'::regprocedure")).rows[0].m;
  const sql=await own('docs/candidates/qualification_direct_management_20261027.sql.review-only');
- await db.exec(sql);
  const id=n=>`30000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
  const [company,admin,manager,user,worker,master,target,otherCompany,otherAdmin]=[1,2,3,4,5,6,7,8,9].map(id);
  const front=`${company}/${worker}/${master}/legacy/front.jpg`,back=`${company}/${worker}/${master}/legacy/back.jpg`;
@@ -58,11 +60,68 @@ try{
  const personal=async(action,data={})=>(await db.query('select private.personal_qualification_submission($1,$2::jsonb) v',[action,JSON.stringify(data)])).rows[0].v;
  const row=async tid=>{await owner();return (await db.query('select to_jsonb(q) v from worker_qualifications q where id=$1',[tid??target])).rows[0]?.v;};
  const fields={certificate_number:'updated',issuer:'issuer updated',issued_at:'2026-10-01',expires_at:null,notes:'corrected'};
+ const catalogQuery=(await own('docs/review/qualification-direct-management/catalog-query.sql')).trim().replace(/;$/,'');
+ const businessQuery=(await own('docs/review/qualification-direct-management/business-query.sql')).trim().replace(/;$/,'');
+ const fingerprints=async()=>({catalog:(await db.query(catalogQuery)).rows[0].catalog_md5,business:(await db.query(businessQuery)).rows[0].business_md5});
+ const generated=await fs.mkdtemp(path.join(os.tmpdir(),'sko-qualification-management-guard-'));
+ const generate=async(before,installed)=>{
+  execFileSync('python3',[fileURLToPath(new URL('../docs/review/qualification-direct-management/prepare-guards.py',import.meta.url)),
+   '--before-catalog-md5',before.catalog,'--business-md5',before.business,'--output-dir',generated,
+   ...(installed?['--installed-catalog-md5',installed]:[])],{stdio:'pipe'});
+  return {install:await fs.readFile(path.join(generated,'install-off.guarded.sql.review-only'),'utf8'),
+   restore:installed?await fs.readFile(path.join(generated,'restore-unused.guarded.sql.review-only'),'utf8'):null};
+ };
  const initial=await row();
+ const beforeInstall=await fingerprints();
+ const guarded=await generate(beforeInstall);
+ await assert.rejects(db.exec(guarded.install.replaceAll(beforeInstall.catalog,'00000000000000000000000000000000')),e=>e.code==='55000');await db.exec('rollback');
+ assert.equal((await db.query("select to_regclass('private.qualification_management_state') r")).rows[0].r,null);
+ await db.exec(guarded.install);assert.equal((await fingerprints()).business,beforeInstall.business);
+ const firstInstalled=await fingerprints();
+ const unused=await generate(beforeInstall,firstInstalled.catalog);
+ await db.exec(unused.restore);assert.deepEqual(await fingerprints(),beforeInstall,'unused restore returns exact source catalog and business');
+ await assert.rejects(db.exec(unused.restore),e=>e.code==='42P01');await db.exec('rollback');
+ await db.exec(guarded.install);
+ await assert.rejects(db.exec(guarded.install),e=>e.code==='55000');await db.exec('rollback');
+ const installed=await fingerprints();
+
  const command={request_id:id(20),target_id:target,operation:'update',expected_snapshot:initial,fields};
  await actor(admin);assert.equal((await rpc('capability')).available,false,'installed OFF');
  await assert.rejects(rpc('apply',command),e=>e.code==='55000');
  await owner();await db.exec('update private.qualification_management_state set enabled=true');
+ if(native){
+  const mod=await import(pathToFileURL(path.resolve(process.argv[2])).href),Client=mod.Client??mod.default?.Client;
+  const a=new Client({connectionString:native}),b=new Client({connectionString:native});
+  await a.connect();await b.connect();
+  try{
+   for(const c of [a,b])await c.query("set statement_timeout='10s';set lock_timeout='8s'");
+   await a.query("select set_config('test.uid',$1,false)",[admin]);await a.query('set role authenticated');
+   const pidA=(await a.query('select pg_backend_pid() p')).rows[0].p,pidB=(await b.query('select pg_backend_pid() p')).rows[0].p;
+   const waitForLock=async(pid,blocker)=>{
+    const until=Date.now()+5000;
+    while(Date.now()<until){
+     await db.query('select pg_stat_clear_snapshot()');
+     const r=(await db.query('select wait_event_type,pg_blocking_pids(pid) blockers from pg_stat_activity where pid=$1',[pid])).rows[0];
+     if(r?.wait_event_type==='Lock'&&r.blockers.includes(blocker))return;
+     await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    throw Error('expected state/operation lock wait not observed');
+   };
+   await a.query('begin');
+   await a.query('select public.qualification_direct_management($1,$2::jsonb)',['apply',JSON.stringify({company_id:company,...command,request_id:id(60)})]);
+   const disabling=b.query('update private.qualification_management_state set enabled=false');disabling.catch(()=>{});
+   await waitForLock(pidB,pidA);await a.query('rollback');await disabling;
+   assert.deepEqual(await row(),initial,'rolled-back in-flight operation leaves original intact');
+   await b.query('begin');await b.query('update private.qualification_management_state set enabled=false');
+   await a.query('begin');
+   const saving=a.query('select public.qualification_direct_management($1,$2::jsonb)',['apply',JSON.stringify({company_id:company,...command,request_id:id(61)})]);saving.catch(()=>{});
+   await waitForLock(pidA,pidB);await b.query('commit');
+   await assert.rejects(saving,e=>e.code==='55000');await a.query('rollback');
+   await db.exec('update private.qualification_management_state set enabled=true');
+   console.log('PASS native state lock: OFF waits for in-flight operation; new operation waits for OFF and refuses');
+  }finally{await a.end();await b.end();}
+ }
+
  await actor(user);await assert.rejects(rpc('capability'),e=>e.code==='42501');
  assert.equal((await db.query("update worker_qualifications set notes='worker bypass' where id=$1 returning id",[target])).rows.length,0,'worker direct UPDATE denied');
  await actor(otherAdmin);await assert.rejects(rpc('inspect',{target_id:target}),e=>e.code==='42501');
@@ -104,6 +163,11 @@ try{
  await db.exec('update private.qualification_management_state set enabled=false');
  await actor(admin);assert.equal((await rpc('get',{request_id:id(20)})).status,'applied','OFF retains committed outcome');
  await assert.rejects(rpc('apply',command),e=>e.code==='55000');
- await owner();await assert.rejects(db.exec(sql),e=>e.code==='42P07');await db.exec('rollback');
- console.log(`PASS direct qualification management (${native?'native PostgreSQL17':'PGlite'}): create/update/delete without independent approval; live role/company/snapshot/request boundaries, unchanged personal photos, immutable audit and retained official history/photos`);
+ await owner();
+ const usedFingerprint=await fingerprints();
+ const usedRestore=await generate({catalog:beforeInstall.catalog,business:usedFingerprint.business},installed.catalog);
+ await assert.rejects(db.exec(usedRestore.restore),e=>e.code==='55000');await db.exec('rollback');
+ assert.ok((await db.query('select count(*)::int n from private.qualification_management_operations')).rows[0].n>=3,'used restore keeps all audits');
+ await fs.rm(generated,{recursive:true,force:true});
+ console.log(`PASS direct qualification management (${native?'native PostgreSQL17':'PGlite'}): create/update/delete without independent approval; live role/company/snapshot/request boundaries, unchanged personal photos, immutable audit, saved-photo-only edits, unused restore/reinstall and used-restore refusal`);
 }finally{await close();}

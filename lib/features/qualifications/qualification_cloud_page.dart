@@ -215,8 +215,10 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               Card(child: ListTile(title: const Text('資格の保存結果が未確認です'),
                 subtitle: const Text('同じ操作の結果を確認してください。'),
                 trailing: TextButton(onPressed: () async {
+                  final companyId = _managementCompanyId; final pending = _pendingManagement;
+                  if (companyId == null || pending == null) return;
                   await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => QualificationRecordManagementPage(
-                    companyId: _managementCompanyId!, targetId: _pendingManagement!['target_id'] as String,
+                    companyId: companyId, targetId: pending['target_id'] as String,
                     workerName: '資格情報', qualificationName: '保存結果の再確認')));
                   if (mounted) await _load();
                 }, child: const Text('再確認')))),
@@ -830,10 +832,12 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       final snapshot = await management.inspect(membership.companyId,row['id'] as String);
       final paths = QualificationCloudRepository.ownPhotoAttachments(snapshot).map((p)=>p.path).toList();
       if (!mounted) return;
+      final certificateRepository = _certificateRepository;
+      if (certificateRepository == null) throw StateError('資格証写真を確認できません。');
       final selected = await editWorkerDocumentPhotos(context, paths:paths,
         signedUrl:(path) async {
-          if (!paths.contains(path) || _certificateRepository == null) throw StateError('資格証写真を確認できません。');
-          return _certificateRepository.createSignedUrl(path);
+          if (!paths.contains(path)) throw StateError('資格証写真を確認できません。');
+          return certificateRepository.createSignedUrl(path);
         }, allowNewPhotos:false,
         uploadNotice:'保存済み写真の並べ替え・一覧からの削除ができます。元の写真は履歴に保持します。新しい写真の追加・差し替えは準備中です。');
       if (selected == null || !mounted) return;

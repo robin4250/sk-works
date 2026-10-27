@@ -175,9 +175,10 @@ begin
   oldpaths:=array_remove(array[before_row->>'attachment_path',before_row->>'attachment_back_path']||
    array(select jsonb_array_elements_text(coalesce(before_row->'attachment_extra_paths','[]'::jsonb))),null);
   foreach photo in array paths loop
-   if not coalesce(photo=any(oldpaths),false) or not exists(select 1 from storage.objects
-    where bucket_id='qualification-certificates' and name=photo) then
+   if not coalesce(photo=any(oldpaths),false) then
     raise exception 'only currently saved photos may be retained' using errcode='22023';end if;
+   perform 1 from storage.objects where bucket_id='qualification-certificates' and name=photo for share;
+   if not found then raise exception 'saved photo object missing' using errcode='22023';end if;
   end loop;
   update public.worker_qualifications set attachment_path=paths[1],attachment_back_path=paths[2],
    attachment_extra_paths=coalesce(paths[3:cardinality(paths)],'{}'::text[]),updated_at=now()

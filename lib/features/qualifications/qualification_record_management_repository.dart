@@ -62,7 +62,7 @@ class QualificationRecordManagementRepository {
       value['contract'] == 'qualification_direct_management' &&
       value['company_id'] == companyId && value['actor_id'] == _boundActor && value['available'] is bool;
     if (!known) return QualificationManagementMode.unavailable;
-    return (value as Map)['available'] == true ? QualificationManagementMode.enabled : QualificationManagementMode.stopped;
+    return value['available'] == true ? QualificationManagementMode.enabled : QualificationManagementMode.stopped;
   }
 
   Future<bool> available(String companyId) async => await mode(companyId) == QualificationManagementMode.enabled;

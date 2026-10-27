@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'docs/candidates/qualification_direct_management_20261027*'
+      - 'docs/review/qualification-direct-management/**'
       - 'tool/verify_qualification_direct_management.mjs'
       - 'tool/fixtures/qualification_management/**'
       - 'lib/features/qualifications/qualification_record_management*'
@@ -46,4 +47,4 @@ jobs:
         with: {flutter-version: '3.47.5', channel: stable, cache: true}
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze lib/features/qualifications/qualification_record_management_repository.dart lib/features/qualifications/qualification_record_management_page.dart lib/features/qualifications/qualification_cloud_page.dart lib/features/qualifications/qualification_cloud_repository.dart
-      - run: flutter test test/qualification_record_management_repository_test.dart test/qualification_registered_edit_hold_test.dart test/qualification_category_edit_test.dart test/own_qualification_photo_submission_test.dart test/qualification_photo_submission_review_http_test.dart --reporter expanded
+      - run: flutter test test/qualification_record_management_repository_test.dart test/qualification_record_management_page_test.dart test/qualification_registered_edit_hold_test.dart test/qualification_category_edit_test.dart test/own_qualification_photo_submission_test.dart test/qualification_photo_submission_review_http_test.dart --reporter expanded
