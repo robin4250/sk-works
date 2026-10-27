@@ -26,6 +26,14 @@ const cancelStart=approvalMigration.indexOf('create or replace function public.c
 const cancelEnd=approvalMigration.indexOf('end; $$;',cancelStart);
 assert.ok(cancelStart>=0 && cancelEnd>cancelStart);
 const cancelSql=approvalMigration.slice(cancelStart,cancelEnd+'end; $$;'.length);
+const displayStart=approvalMigration.indexOf('create or replace function public.set_invoice_stamp_display_date(');
+const displayEnd=approvalMigration.indexOf('end; $;',displayStart);
+assert.ok(displayStart>=0 && displayEnd>displayStart);
+const displaySql=approvalMigration.slice(displayStart,displayEnd+'end; $;'.length);
+const invalidateStart=approvalMigration.indexOf('create or replace function private.invalidate_invoice_approval(');
+const invalidateEnd=approvalMigration.indexOf('end; $;',invalidateStart);
+assert.ok(invalidateStart>=0 && invalidateEnd>invalidateStart);
+const invalidateSql=approvalMigration.slice(invalidateStart,invalidateEnd+'end; $;'.length);
 const declarations=`const cancelSql=${JSON.stringify(cancelSql)};const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};const approvalSql=${JSON.stringify(approvalSql)};const approverCore=${JSON.stringify(approverCore)};const noticeSql=${JSON.stringify(noticeSql)};const noticeReadiness=${JSON.stringify(noticeReadiness)};const deliverySql=${JSON.stringify(deliverySql)};const entrySql=${JSON.stringify(entrySql)};const approvalGuard=${JSON.stringify(approvalGuard)};const publicEntry=${JSON.stringify(publicEntry)};const legacyNoticeGuard=${JSON.stringify(legacyNoticeGuard)};const enqueueBody=${JSON.stringify(enqueueBody)};const liveApprove=${JSON.stringify(liveApprove)};const ensureApprovals=${JSON.stringify(ensureApprovals)};\n`;
 const injection=`
 // Synthetic past month: reuse existing real refresh/preview and frozen snapshot.
@@ -161,6 +169,20 @@ assert.equal((await db.query('select count(*)::int n from public.app_notificatio
 // Existing owner may withdraw their approval even when the new notification guard is ON.
 // Production body fingerprint protects against stale fixture assumptions.
 await db.exec('alter table public.invoice_approvals add column if not exists display_date_override date');
+// Exercise existing non-approval actions with the gate enabled. These bodies
+// come from a versioned migration; live production catalog remains unverified.
+await db.exec(Buffer.from('${Buffer.from(displaySql).toString('base64')}','base64').toString('utf8'));
+await db.exec(Buffer.from('${Buffer.from(invalidateSql).toString('base64')}','base64').toString('utf8'));
+await db.query("select public.set_invoice_stamp_display_date($1,$2,'2020-10-30')",[frozen.id,actor]);
+assert.equal((await db.query("select display_date_override::text v from public.invoice_approvals where invoice_id=$1 and approver_user_id=$2",[frozen.id,actor])).rows[0].v,'2020-10-30');
+assert.equal((await db.query("select count(*)::int n from public.invoice_approval_audit where invoice_id=$1 and action='display_date_changed'",[frozen.id])).rows[0].n,1);
+await db.query('savepoint fixture_invalidate');
+await db.query('select private.invalidate_invoice_approval($1)',[frozen.id]);
+assert.equal((await db.query("select count(*)::int n from public.invoice_approvals where invoice_id=$1 and status='approved'",[frozen.id])).rows[0].n,0);
+assert.equal((await db.query('select approval_finalized_at is null v from public.invoices where id=$1',[frozen.id])).rows[0].v,true);
+assert.equal((await db.query("select count(*)::int n from public.invoice_approval_audit where invoice_id=$1 and action='content_changed'",[frozen.id])).rows[0].n,1);
+await db.query('rollback to savepoint fixture_invalidate');
+console.log(JSON.stringify({fixture_legacy_stamp_display_and_invalidation_with_guard:true,production_catalog_not_verified:true}));
 await db.exec(Buffer.from('${Buffer.from(cancelSql).toString('base64')}','base64').toString('utf8'));
 assert.equal((await db.query("select md5(prosrc) h from pg_proc where oid='public.cancel_invoice_approval(uuid)'::regprocedure")).rows[0].h,'230e478080979e8efc2719a5f639b6b5');
 await db.query('select public.cancel_invoice_approval($1)',[frozen.id]);
