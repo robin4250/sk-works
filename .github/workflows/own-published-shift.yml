@@ -1,0 +1,22 @@
+name: Own published shift candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/shifts/own_published_shift_gateway.dart'
+      - 'test/own_published_shift_gateway_test.dart'
+      - '.github/workflows/own-published-shift.yml'
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/shifts/own_published_shift_gateway.dart test/own_published_shift_gateway_test.dart
+      - run: flutter test test/own_published_shift_gateway_test.dart
