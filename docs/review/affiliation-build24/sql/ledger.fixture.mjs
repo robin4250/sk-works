@@ -76,4 +76,11 @@ await assert.rejects(db.query('select affiliation_transition_candidate.record_ac
 await db.query("update private.trade_company_link_requests set status='accepted',responded_by=$1",[owner]);
 await db.query('select affiliation_transition_candidate.record_accepted_company_link($1,$2)',[nextId,link]);
 assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.link_receipts')).rows[0].n,1);
+await db.exec(fs.readFileSync(new URL('./cancel-prepared.sql.review-only',import.meta.url),'utf8'));
+await db.exec("update private.master_feature_settings set enabled=false");
+await assert.rejects(db.query('select affiliation_transition_candidate.cancel_prepared($1,$2)',[nextId,null]),/cancellation_reason_required/);
+await db.query('select affiliation_transition_candidate.cancel_prepared($1,$2)',[nextId,'Cancel pending transition']);
+await db.query('select affiliation_transition_candidate.cancel_prepared($1,$2)',[nextId,'Cancel pending transition']);
+assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.cancellations')).rows[0].n,1);
+assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.requests')).rows[0].n,2);
 await db.close();console.log('ledger synthetic checks passed; no real auth or transition execution');

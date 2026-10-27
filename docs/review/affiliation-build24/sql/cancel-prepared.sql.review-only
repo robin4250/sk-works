@@ -1,0 +1,29 @@
+-- Cancellation only. No applied membership changes exist in this candidate.
+begin;
+create table affiliation_transition_candidate.cancellations(
+ request_id uuid primary key references affiliation_transition_candidate.requests(request_id) on delete restrict,
+ cancelled_by uuid not null, session_id uuid not null,
+ reason text not null check(length(trim(reason)) between 1 and 500),
+ cancelled_at timestamptz not null default clock_timestamp());
+alter table affiliation_transition_candidate.cancellations enable row level security;
+revoke all on affiliation_transition_candidate.cancellations from public,anon,authenticated,service_role;
+create function affiliation_transition_candidate.cancel_prepared(rid uuid,reason_text text) returns uuid
+language plpgsql security invoker set search_path='' as $$
+declare r affiliation_transition_candidate.requests;sid uuid;a uuid:=auth.uid();
+begin
+ sid:=private.require_reauthentication_session();
+ if reason_text is null or length(trim(reason_text)) not between 1 and 500 then raise exception 'cancellation_reason_required';end if;
+ select * into r from affiliation_transition_candidate.requests where request_id=rid for update;
+ if not found then raise exception 'request_not_found';end if;
+ perform 1 from public.company_members where company_id=r.source_company_id and user_id=a and role::text in('owner','admin') for share;
+ if not found then raise sqlstate '42501' using message='source_admin_required';end if;
+ if r.state='cancelled' then return rid;end if;
+ if r.state<>'prepared' then raise exception 'applied_transition_cannot_be_cancelled';end if;
+ -- Deliberately allowed while gates are OFF: cancelling a not-applied request
+ -- must not strand pending work or delete its evidence/history.
+ insert into affiliation_transition_candidate.cancellations(request_id,cancelled_by,session_id,reason) values(rid,a,sid,trim(reason_text));
+ update affiliation_transition_candidate.requests set state='cancelled' where request_id=rid;
+ return rid;
+end $$;
+revoke all on function affiliation_transition_candidate.cancel_prepared(uuid,text) from public,anon,authenticated,service_role;
+commit;
