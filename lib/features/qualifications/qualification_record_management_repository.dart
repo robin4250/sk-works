@@ -119,7 +119,9 @@ class QualificationRecordManagementRepository {
       final value=prefs.getString(key);if(value==null)continue;
       final raw=jsonDecode(value);
       if(raw is Map&&raw['request_id']==reference['request_id']&&
-          !await prefs.remove(key))throw StateError('保存結果は確認済みです。保留表示を再確認してください。');
+          !await prefs.remove(key)){
+        throw StateError('保存結果は確認済みです。保留表示を再確認してください。');
+      }
       _check();
     }
   }
