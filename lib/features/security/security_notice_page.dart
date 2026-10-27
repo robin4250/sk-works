@@ -17,7 +17,7 @@ class _SecurityNoticePageState extends State<SecurityNoticePage> with WidgetsBin
   bool _busy=false,_revoked=false,_active=true;
   int _generation=0;
   @override void initState(){super.initState();_repo=widget.repository??SecurityNoticeRepository.maybeCreate();_session=_repo?.collector.sessionKey();_active=(WidgetsBinding.instance.lifecycleState??AppLifecycleState.resumed)==AppLifecycleState.resumed;WidgetsBinding.instance.addObserver(this);
-    _subscription=_repo?.collector.sessionChanges.listen((value){if(value!=_session || _repo?.collector.sessionKey()!=_session)_revoke();},onError:(Object _)=>_revoke());}
+    _subscription=_repo?.collector.sessionChanges.listen((value){if(value!=_session || _repo.collector.sessionKey()!=_session)_revoke();},onError:(Object _)=>_revoke());}
   void _revoke(){if(!mounted)return;setState((){_generation++;_password.clear();_items=null;_busy=false;_revoked=true;_error='本人確認が失効しました。操作結果は再ログイン後に一覧で確認してください。';});}
   @override void didChangeAppLifecycleState(AppLifecycleState state){_active=state==AppLifecycleState.resumed;if(!_active && mounted)setState((){_generation++;_password.clear();_items=null;_busy=false;_error='表示を消しました。再認証して確認してください。';});}
   bool _current(int generation)=>mounted&&_active&&!_revoked&&generation==_generation;
@@ -82,5 +82,5 @@ class _SecurityNoticePageState extends State<SecurityNoticePage> with WidgetsBin
 }
 class _ReasonDialog extends StatefulWidget {const _ReasonDialog();@override State<_ReasonDialog> createState()=>_ReasonDialogState();}
 class _ReasonDialogState extends State<_ReasonDialog>{final _reason=TextEditingController();@override void dispose(){_reason.dispose();super.dispose();}
-  @override Widget build(BuildContext context)=>AlertDialog(title:const Text('対応内容を記録'),content:TextField(controller:_reason,maxLength:500,onChanged:(_)=>setState((){}),decoration:const InputDecoration(labelText:'理由・対応内容（必須）')),actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('戻る')),TextButton(onPressed:_reason.text.trim().isEmpty?null:()=>Navigator.pop(context,_reason.text.trim()),child:const Text('決定'))]);}
+  @override Widget build(BuildContext context)=>AlertDialog(title:const Text('対応内容を記録'),content:TextField(controller:_reason,maxLength:500,onChanged:(_)=>setState((){}),decoration:const InputDecoration(labelText:'理由・対応内容（必須）')),actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('戻る')),TextButton(onPressed:_reason.text.trim().isEmpty?null:()=>Navigator.pop(context,_reason.text.trim()),child:const Text('決定'))]);
 }

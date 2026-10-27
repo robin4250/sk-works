@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/supabase_backend.dart';
 import 'security_collector_repository.dart';
 
@@ -53,7 +52,7 @@ class SecurityNoticeRepository {
     for(final row in raw['events'] as List){
       if(row is! Map || row.length!=keys.length || !row.keys.every(keys.contains) || row['event_id'] is! String || !RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$').hasMatch(row['event_id']) || !seen.add(row['event_id']) ||
         !const {'current_lure_touched','retired_lure_touched'}.contains(row['event_kind']) || row['generation'] is! int || row['generation']<1 || row['generation']>1000000 || row['revision'] is! int || row['revision']<1 || row['scope']!='decoy_generation_only' || row['state']!='observed' || !const {'unreviewed','investigating','false_positive','resolved'}.contains(row['review_state']) ||
-        row['occurred_at'] is! String || DateTime.tryParse(row['occurred_at'])==null || row['available_at'] is! String || DateTime.tryParse(row['available_at'])==null || (row['read_at']!=null && (row['read_at'] is! String || DateTime.tryParse(row['read_at'])==null)) || (row['review_reason']!=null && (row['review_reason'] is! String || (row['review_reason'] as String).length>500))) throw const FormatException('通知情報を確認できません');
+        row['occurred_at'] is! String || DateTime.tryParse(row['occurred_at'])==null || row['available_at'] is! String || DateTime.tryParse(row['available_at'])==null || (row['read_at']!=null && (row['read_at'] is! String || DateTime.tryParse(row['read_at'])==null)) || (row['review_reason']!=null && (row['review_reason'] is! String || (row['review_reason'] as String).length>500))) { throw const FormatException('通知情報を確認できません'); }
       rows.add(Map<String,dynamic>.unmodifiable(Map<String,dynamic>.from(row)));
     }
     return List.unmodifiable(rows);
