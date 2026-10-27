@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:sk_works/features/expenses/expense_document_repository.dart';
 import 'package:sk_works/features/payroll/payroll_pdf_service.dart';
 import 'package:sk_works/features/payroll/payroll_statement_repository.dart';
 
@@ -42,7 +41,7 @@ void main() {
       periodStart: DateTime(2026, 9, 1), periodEnd: DateTime(2026, 9, 30),
       grossPay: 423600, deductions: 74020, netPay: 349580, detail: detail);
     final bytes = await PayrollPdfService.buildPdf(record,
-      expenseDetails: ExpenseDocumentDetails.empty, regularFont: font, boldFont: font);
+      regularFont: font, boldFont: font);
     expect(jsonEncode(detail), before);
     final folder = Platform.environment['SKO_PDF_OUTPUT_DIR'] ??
       (await Directory.systemTemp.createTemp('common-income-pdf-')).path;
@@ -63,7 +62,7 @@ print(json.dumps({'pages':len(pdf),'text':norm(p.get_text()),'earnings':money(24
     final report = jsonDecode(result.stdout.toString()) as Map;
     expect(report['pages'], 1);
     expect(report['text'], contains('1,200円×3日'));
-    expect(report['text'], contains('対象356,600円/R8月額表甲2人'));
+    expect(report['text'], contains('対象356,600円/R8月額表甲欄・扶養2人'));
     expect(report['text'], contains('349,580'));
     expect(report['earnings'], 423600);
     expect(report['deductions'], 74020);

@@ -17,11 +17,12 @@ void main() {
       recordedPayrollIncomeTaxExplanation(detail, month: '2026-09-01', displayedAmount: amount);
   test('saved taxable base and table are displayed without recalculating money', () {
     final detail = saved(), before = jsonEncode(saved());
-    expect(read(detail), '対象356,600円／R8月額表 甲2人');
+    expect(read(detail), '対象356,600円／R8月額表 甲欄・扶養2人');
     expect(jsonEncode(detail), before);
     final tax = detail['tax_calculation'] as Map;
     (tax['conditions'] as Map)['income_mode'] = 'otsu';
-    expect(read(detail), contains('乙2人'));
+    expect(read(detail), endsWith('乙欄'));
+    expect(read(detail), isNot(contains('扶養')));
   });
   test('explicit fixed and override values are distinguished from automatic results', () {
     final detail = saved();
@@ -30,9 +31,9 @@ void main() {
     tax['deduction_overrides'] = {'income_tax': 8000};
     expect(read(detail, amount: 8000), endsWith('・手動修正'));
     (tax['conditions'] as Map)['income_mode'] = 'fixed';
-    expect(read(detail, amount: 8000), '月額固定・手動修正（保存額）');
+    expect(read(detail, amount: 8000), '手動修正（保存額）');
     tax['deduction_overrides'] = <String, dynamic>{};
-    expect(read(detail, amount: 8000), '月額固定（保存額）');
+    expect(read(detail, amount: 8000), '固定額の計算根拠は未記録');
   });
   test('a saved amount mismatch and false arithmetic do not print an authoritative basis', () {
     expect(read(saved(), amount: 8000), '保存された所得税額と不一致');

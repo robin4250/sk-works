@@ -12,20 +12,32 @@ String recordedPayrollIncomeTaxExplanation(Map<String, dynamic> detail, {
       !_month(tax['conditions_start']) || !_month(month) ||
       (tax['conditions_start'] as String).compareTo(month) > 0 ||
       tax['conditions'] is! Map || !displayedAmount.isFinite ||
-      displayedAmount < 0 || displayedAmount != displayedAmount.round()) return unavailable;
+      displayedAmount < 0 || displayedAmount != displayedAmount.round()) {
+    return unavailable;
+  }
   final amount = _yen(tax['income_tax_yen']);
-  if (amount == null || amount != displayedAmount) return '保存された所得税額と不一致';
+  if (amount == null || amount != displayedAmount) {
+    return '保存された所得税額と不一致';
+  }
   final conditions = tax['conditions'] as Map;
   final mode = conditions['income_mode'];
   final overrides = tax['deduction_overrides'];
   final overridden = overrides is Map && overrides.containsKey('income_tax');
-  if (overridden && _yen(overrides['income_tax']) != amount) return unavailable;
-  if (mode == 'fixed') return overridden ? '月額固定・手動修正（保存額）' : '月額固定（保存額）';
+  if (overridden && _yen(overrides['income_tax']) != amount) {
+    return unavailable;
+  }
+  // Legacy fixed settings are not part of this snapshot; an explicit saved
+  // override can be identified, but the original fixed amount cannot be proved.
+  if (mode == 'fixed') {
+    return overridden ? '手動修正（保存額）' : '固定額の計算根拠は未記録';
+  }
   if (!const {'koh', 'otsu'}.contains(mode) ||
       tax['income_table'] != 'nta-monthly-2026-c583c9c3' ||
       !_paymentIn2026(tax['payment_date']) ||
       conditions['dependents'] is! int || conditions['dependents'] < 0 ||
-      conditions['dependents'] > 99) return unavailable;
+      conditions['dependents'] > 99) {
+    return unavailable;
+  }
   final gross = _yen(tax['gross_with_adjustments']), social = _yen(tax['social_yen']);
   final nonTaxable = _yen(conditions['non_taxable_yen']);
   final additional = _yen(conditions['additional_social_deduction_yen']);
@@ -36,10 +48,12 @@ String recordedPayrollIncomeTaxExplanation(Map<String, dynamic> detail, {
   }
   final automatic = tax['calculator_version'] == 'payroll-tax-20261010-v1'
       ? amount : _yen(tax['automatic_income_tax_yen']);
-  if (automatic == null || (!overridden && automatic != amount)) return unavailable;
-  final column = mode == 'koh' ? '甲' : '乙';
+  if (automatic == null || (!overridden && automatic != amount)) {
+    return unavailable;
+  }
+  final column = mode == 'koh' ? '甲欄・扶養${conditions['dependents']}人' : '乙欄';
   final money = base.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
-  return '対象${money}円／R8月額表 $column${conditions['dependents']}人${overridden ? '・手動修正' : ''}';
+  return '対象$money円／R8月額表 $column${overridden ? '・手動修正' : ''}';
 }
 
 int? _yen(Object? value) => value is num && value.isFinite && value >= 0 &&
@@ -47,7 +61,9 @@ int? _yen(Object? value) => value is num && value.isFinite && value >= 0 &&
 bool _month(Object? value) => value is String &&
     RegExp(r'^20\d{2}-(0[1-9]|1[0-2])-01$').hasMatch(value);
 bool _paymentIn2026(Object? value) {
-  if (value is! String || !RegExp(r'^2026-\d{2}-\d{2}$').hasMatch(value)) return false;
+  if (value is! String || !RegExp(r'^2026-\d{2}-\d{2}$').hasMatch(value)) {
+    return false;
+  }
   final parsed = DateTime.tryParse(value);
   return parsed != null && parsed.toIso8601String().substring(0, 10) == value;
 }

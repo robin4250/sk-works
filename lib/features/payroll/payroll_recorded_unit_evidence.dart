@@ -70,7 +70,9 @@ bool _validPrimaryItem(Map item) {
   if (!const {'hour', 'day', 'month'}.contains(item['unit']) ||
       rate is! num || quantity is! num || amount is! num ||
       !rate.isFinite || !quantity.isFinite || !amount.isFinite ||
-      rate < 0 || quantity < 0 || amount < 0) return false;
+      rate < 0 || quantity < 0 || amount < 0) {
+    return false;
+  }
   final product = rate * quantity;
   return product.isFinite && product.round() == amount &&
       num.tryParse(_decimal(rate)) == rate &&
