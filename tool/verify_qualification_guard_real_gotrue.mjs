@@ -46,6 +46,13 @@ const test=String.raw`
  eq((await db.query('select count(*)::int n from qualification_master where id=$1',[id(14)])).rows[0].n,0);
  eq((await db.query('select count(*)::int n from qualification_master_aliases where id=$1',[id(31)])).rows[0].n,1);
  eq((await db.query('select count(*)::int n from private.qualification_submissions where id=$1',[id(32)])).rows[0].n,1);
+ // Exercise a forward recovery: remove candidate manager permissions only.
+ await db.query(await read('docs/review/qualification-master-access/policy.sql.review-only'));
+ await db.query(await read('docs/review/qualification-master-access/retain-protection-recovery.sql.review-only'));
+ response=await request('/rest/v1/qualification_master?id=eq.'+id(11),{method:'DELETE',token:sessions.owner.access_token});
+ eq(response.status,409);eq((await response.json()).code,'23503');
+ eq((await db.query('select count(*)::int n from qualification_master_aliases where id=$1',[id(31)])).rows[0].n,1);
+ eq((await db.query("select count(*)::int n from pg_policies where schemaname='public' and tablename='qualification_master' and policyname like 'managers can %'")).rows[0].n,0);
  eq((await db.query("select md5(pg_get_functiondef('auth.uid()'::regprocedure)) v")).rows[0].v,authUidBefore);
  console.log(JSON.stringify({pass:true,checks,real_gotrue:true,real_postgrest:true,fixture_permissions:true,production_changed:false}));
 `;
