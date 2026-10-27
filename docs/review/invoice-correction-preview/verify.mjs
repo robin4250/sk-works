@@ -221,6 +221,18 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await pause(200);assert.equal(childDone,false);await db.query('commit');rejectedChild=await pendingChild;assert.equal(rejectedChild?.code,'40001');await writer.query('rollback');
   await db.query('delete from public.daily_reports where id=$1',[id(984)]);
   console.log(JSON.stringify({fixture_parent_row_lock_stale_snapshot_rejected:true,global_lock_order_unverified:true}));
+  // Different lock orders (company advisory first vs parent row first) form a real
+  // cycle with a legacy UPDATE's BEFORE trigger. Both transactions are rolled back.
+  await db.query('insert into public.daily_reports(id,company_id) values($1,$2)',[id(984),company]);
+  await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||$1::text,0))",[company]);
+  await writer.query('begin');
+  const writerCycle=writer.query('update public.daily_reports set company_id=company_id where id=$1',[id(984)]).then(()=>null,e=>e);
+  await pause(200);
+  const publisherCycle=db.query('select 1 from public.daily_reports where id=$1 for share',[id(984)]).then(()=>null,e=>e);
+  const [writerError,publisherError]=await Promise.all([writerCycle,publisherCycle]);
+  assert.ok(writerError?.code==='40P01'||publisherError?.code==='40P01');
+  await writer.query('rollback');await db.query('rollback');await db.query('delete from public.daily_reports where id=$1',[id(984)]);
+  console.log(JSON.stringify({fixture_opposite_lock_order_deadlock_reproduced:true}));
   await db.query('delete from companies where id=$1',[id(985)]);await db.exec('drop trigger synthetic_parent_barrier on public.daily_reports');
   console.log(JSON.stringify({fixture_parent_move_and_delete_fail_closed:true}));
   await db.query('delete from public.daily_reports where id=$1',[id(992)]);
