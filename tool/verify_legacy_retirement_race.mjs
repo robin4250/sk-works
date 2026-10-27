@@ -27,16 +27,28 @@ for(let i=0;i<100;i++) {
  await new Promise(resolve=>setTimeout(resolve,30));
 }
 assert.equal(blocked,true,'approval update must really wait on the other transaction');
-await c.query("insert into invoice_retirement_guard_candidate.holds values('00000000-0000-0000-0000-000000000001')");
+await c.query("select invoice_retirement_guard_candidate.activate('00000000-0000-0000-0000-000000000001')");
 await a.query('commit');
 const blockedResult=await blockedUpdate;
 assert.match(blockedResult?.message ?? '', /invoice_retired/);
 assert.equal((await c.query("select status from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000001'")).rows[0].status,'approved');
-// Reverse order: an update already past its trigger can commit after hold.
+// Reverse order: the in-progress writer holds the original row shared,
+// so activating a hold waits until the earlier write has committed.
 await a.query('begin');
 await a.query("update public.invoice_approvals set status='pending' where invoice_id='00000000-0000-0000-0000-000000000002'");
-await c.query("insert into invoice_retirement_guard_candidate.holds values('00000000-0000-0000-0000-000000000002')");
+const holdPid=(await c.query('select pg_backend_pid() pid')).rows[0].pid;
+let holdDone=false;
+const activation=c.query("select invoice_retirement_guard_candidate.activate('00000000-0000-0000-0000-000000000002')").then(()=>{holdDone=true;});
+let holdBlocked=false;
+for(let i=0;i<100;i++) {
+ if((await b.query('select cardinality(pg_blocking_pids($1))>0 blocked',[holdPid])).rows[0].blocked){holdBlocked=true;break;}
+ await new Promise(resolve=>setTimeout(resolve,30));
+}
+assert.equal(holdBlocked,true,'hold activation must wait for the approval writer');
+assert.equal(holdDone,false);
 await a.query('commit');
+await activation;
+await assert.rejects(a.query("update public.invoice_approvals set status='approved' where invoice_id='00000000-0000-0000-0000-000000000002'"),/invoice_retired/);
 assert.equal((await c.query("select status from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000002'")).rows[0].status,'pending');
-console.log('PASS: blocked update denied; earlier uncommitted update can commit after hold, so no atomic activation');
+console.log('PASS: approval writes and hold activation serialize in both observed orderings; SECDEF reads and cached PDFs are not protected');
 await Promise.all(clients.map(c=>c.end()));

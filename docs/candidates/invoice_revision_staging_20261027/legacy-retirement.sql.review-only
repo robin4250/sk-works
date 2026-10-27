@@ -8,7 +8,7 @@ create table invoice_retirement_guard_candidate.holds(invoice_id uuid primary ke
 alter table invoice_retirement_guard_candidate.holds enable row level security;
 revoke all on invoice_retirement_guard_candidate.holds from public, anon, authenticated, service_role;
 create function invoice_retirement_guard_candidate.is_held(p_id uuid)
- returns boolean language sql stable security definer set search_path='' as $$
+ returns boolean language sql volatile security definer set search_path='' as $$
  select exists(select 1 from invoice_retirement_guard_candidate.holds where invoice_id=p_id)
 $$;
 revoke all on function invoice_retirement_guard_candidate.is_held(uuid) from public, anon, authenticated, service_role;
@@ -18,9 +18,28 @@ grant execute on function invoice_retirement_guard_candidate.is_held(uuid) to au
 create policy invoice_retirement_guard_candidate_select on public.invoices
  as restrictive for select to authenticated
  using (not invoice_retirement_guard_candidate.is_held(id));
+-- Lock ordering: all approval writers and hold activation serialize on the
+-- same original invoice row. Activation is private; no caller is granted it.
+create function invoice_retirement_guard_candidate.activate(p_id uuid)
+ returns void language plpgsql security definer set search_path='' as $$
+begin
+ perform 1 from public.invoices where id=p_id for update;
+ if not found then raise exception 'invoice_missing' using errcode='55000'; end if;
+ insert into invoice_retirement_guard_candidate.holds values(p_id) on conflict do nothing;
+end $$;
+revoke all on function invoice_retirement_guard_candidate.activate(uuid) from public, anon, authenticated, service_role;
 create function invoice_retirement_guard_candidate.deny_approval_mutation()
  returns trigger language plpgsql security definer set search_path='' as $$
+declare target uuid;
 begin
+ -- Ascending order handles a change in invoice_id without inverted row locks.
+ for target in select distinct x from unnest(array[
+    case when tg_op <> 'INSERT' then old.invoice_id end,
+    case when tg_op <> 'DELETE' then new.invoice_id end]) x where x is not null order by x
+ loop
+  perform 1 from public.invoices where id=target for share;
+  if not found then raise exception 'invoice_missing' using errcode='55000'; end if;
+ end loop;
  if (tg_op <> 'INSERT' and invoice_retirement_guard_candidate.is_held(old.invoice_id))
  or (tg_op <> 'DELETE' and invoice_retirement_guard_candidate.is_held(new.invoice_id)) then
    raise exception 'invoice_retired' using errcode='55000';

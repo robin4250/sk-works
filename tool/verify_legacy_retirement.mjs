@@ -15,7 +15,7 @@ await db.exec(`
  insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000001','approved'),('00000000-0000-0000-0000-000000000002','pending');
 `);
 await db.exec(await readFile(process.argv[2], 'utf8'));
-await db.exec(`insert into invoice_retirement_guard_candidate.holds values('00000000-0000-0000-0000-000000000001'); set role authenticated`);
+await db.exec(`select invoice_retirement_guard_candidate.activate('00000000-0000-0000-0000-000000000001'); set role authenticated`);
 assert.deepEqual((await db.query('select snapshot from public.invoices order by snapshot')).rows.map(r=>r.snapshot),['unrelated']);
 await db.exec('reset role');
 for(const sql of [
