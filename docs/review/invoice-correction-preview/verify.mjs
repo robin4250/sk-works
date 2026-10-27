@@ -93,6 +93,18 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   const serialAfter=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
   assert.notEqual(serialPreview.source_fingerprint,serialAfter.source_fingerprint);
   await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
+  // A short final gate checks the staged data before any publish operation.
+  await db.query('begin');const gateStart=Date.now();
+  await db.query('select invoice_correction_preview_private.revalidate_for_commit($1,$2,$3)',[frozen.id,correctionPreview.source_fingerprint,correctionPreview.original_invoice_fingerprint]);
+  const syntheticGateMs=Date.now()-gateStart;await db.query('rollback');
+  await writer.query("insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days) values($1,$2,$3,'2026-10-28','day',1)",[company,site,worker]);
+  await assert.rejects(db.query('select invoice_correction_preview_private.revalidate_for_commit($1,$2,$3)',[frozen.id,correctionPreview.source_fingerprint,correctionPreview.original_invoice_fingerprint]),/invoice_revision_stale/);
+  await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
+  await writer.query('begin');await writer.query('update companies set tax_rate=tax_rate where id=$1',[company]);
+  await assert.rejects(db.query('select invoice_correction_preview_private.revalidate_for_commit($1,$2,$3)',[frozen.id,correctionPreview.source_fingerprint,correctionPreview.original_invoice_fingerprint]),/lock timeout/);
+  await writer.query('rollback');
+  assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
+  console.log(JSON.stringify({synthetic_final_gate_ms:syntheticGateMs,stale_rejected:true,gate_timeout_no_invoice_change:true}));
   // Experimental global locking does block an unrelated company's insert.
   await db.query('begin');await readLocked();
   await writer.query("set lock_timeout='500ms'");const started=Date.now();
