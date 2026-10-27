@@ -661,6 +661,30 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     );
   }
 
+  Future<void> _changeMasterCategory(Map<String, dynamic> master) async {
+    final repository = _repository;
+    final masterId = master['id']?.toString() ?? '';
+    if (repository == null || masterId.isEmpty || !_canManageMaster) return;
+    final choice = await showDialog<String>(context: context, builder: (context) =>
+      SimpleDialog(title: const Text('資格区分を変更'), children: [
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 24),
+          child: Text('同じ資格を持つ全員の区分に反映されます。')),
+        for (final category in const ['国家資格', '技能講習', '実技講習', '安全教育', '特別教育'])
+          SimpleDialogOption(onPressed: () => Navigator.pop(context, category), child: Text(category)),
+      ]));
+    if (choice == null) return;
+    try {
+      await repository.updateMasterCategory(masterId, choice);
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('資格区分を更新しました')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('資格区分を更新できませんでした')));
+    }
+  }
+
   void _showDetails(
     Map<String, dynamic> row,
     Map<String, dynamic>? master,
@@ -693,6 +717,9 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               Text('保有者: ${worker?['name'] ?? '不明'}'),
               if ((master?['category']?.toString() ?? '').isNotEmpty)
                 Text('分類: ${master?['category']}'),
+              if (_canManageMaster && master != null)
+                TextButton(onPressed: () { Navigator.pop(sheetContext); _changeMasterCategory(master); },
+                  child: const Text('資格区分を変更')),
               if ((row['issuer']?.toString() ?? '').isNotEmpty)
                 Text('発行元: ${row['issuer']}'),
               if ((row['certificate_number']?.toString() ?? '').isNotEmpty)
