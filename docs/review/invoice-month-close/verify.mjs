@@ -30,6 +30,7 @@ await db.query("insert into daily_reports(id,company_id,site_id,report_date,stat
 await db.query('insert into daily_report_workers values($1,$2),($3,$2)',[reportLate,worker,reportEarly]);assert.equal(await check(),'report_pending');
 await db.query("update daily_reports set status='signed',signed_at=now() where id=$1",[reportEarly]);assert.equal(await check(),'data_changed');
 await db.query("insert into public.attendance_entries(company_id,worker_id,source_report_id,site_id,work_date) values($1,$2,$3,$4,date_trunc('month',current_date)-interval '4 day'),($1,$2,$5,$4,date_trunc('month',current_date)-interval '2 day')",[company,worker,reportEarly,site,reportLate]);assert.equal(await check(),'source_proof_missing');
+await db.query("update daily_reports set representative_signature_json='[]' where id=$1",[reportEarly]);assert.equal(await check(),'report_pending');await db.query("update daily_reports set representative_signature_json='{}' where id=$1",[reportEarly]);
 await db.query('update daily_reports set supervisor_signature_json=null where id=$1',[reportEarly]);assert.equal(await check(),'report_pending');
 await db.query("update daily_reports set supervisor_signature_json='{}' where id=$1",[reportEarly]);
 await db.query('delete from public.attendance_entries where source_report_id=$1',[reportLate]);
@@ -72,4 +73,4 @@ assert.equal(realRoute,1);assert.equal(await check(),'source_proof_missing');
 await db.query('delete from private.route_journey_visit_events where capture_id=$1',[id(82)]);assert.equal(await check(),'route_unverified');
 console.log(JSON.stringify({production_route_source_body:true,production_route_blocked_body:true,synthetic_complete_route:true,route_missing_exit_rejected:true,components_helper_stub:true}));
 for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.precheck(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.guarded(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
-console.log(JSON.stringify({fixture_month_end:true,all_days_and_customer_scope:true,missing_signatures_fail_closed:true,route_fixture_ready_and_blocked:true,proof_missing_never_ready:true,no_public_grant:true}));await db.close();
+console.log(JSON.stringify({fixture_month_end:true,all_days_and_customer_scope:true,missing_signatures_fail_closed:true,route_fixture_ready_and_blocked:true,precheck_never_ready:true,no_public_grant:true}));await db.close();
