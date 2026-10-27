@@ -1,0 +1,23 @@
+name: Invoice approval readiness review
+on:
+  pull_request:
+    paths:
+      - 'lib/features/invoices/invoice_approval_readiness.dart'
+      - 'test/invoice_approval_readiness_test.dart'
+      - '.github/workflows/invoice-approval-readiness-review.yml'
+permissions:
+  contents: read
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/invoices/invoice_approval_readiness.dart test/invoice_approval_readiness_test.dart
+      - run: flutter test --reporter expanded test/invoice_approval_readiness_test.dart
