@@ -1,0 +1,7 @@
+# Trusted observation notice projection — isolated candidate
+
+This pure function generates a fixed, sanitized in-app notice from an already authenticated seven-field decoy observation and an independently resolved current Master recipient. It never receives or records request headers, raw IP, body, credentials, salaries or company data. It calls a contact an observation, not a confirmed attack. Correlation scope remains only `decoy_generation_only`; no person or source identity is inferred.
+
+This module **does not authenticate** a collector, resolve or authorize a recipient, write an outbox, deduplicate across transactions, send or display a notification, create a real incident, retain an audit, or operate MTD. Passing a value as `trustedRecipient` is safe only from a verified server-side registration. No public endpoint or service is connected. Do not expose it to clients or treat it as a complete notification/security system.
+
+Before integration: bind the caller to the existing authenticated collector transaction; resolve Master and company under server authority; atomically persist evidence plus notification candidate with unique recipient/event/type; test concurrent and conflicting retries, rejected writes and restart; add bounded delivery/hold, recipient revocation, retention, Master proof, actual UI notification and iPhone verification. Do not reuse the synthetic incident outbox for live events. No production change is included.
