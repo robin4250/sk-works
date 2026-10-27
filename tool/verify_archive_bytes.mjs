@@ -5,7 +5,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 // This detects corrupt or substituted bytes; it does not prove PDF privacy,
 // authenticate the caller, or guarantee provider-level immutable storage.
 export function verifyVaultPdfBytes(bytes, receipt, object) {
-  if (!Buffer.isBuffer(bytes) || bytes.length < 12 || bytes.length > 20 * 1024 * 1024 ||
+  if (!Buffer.isBuffer(bytes) || bytes.length < 12 || bytes.length > 50 * 1024 * 1024 ||
       receipt?.status !== 'verified' || receipt?.contentType !== 'application/pdf' ||
       !Number.isSafeInteger(receipt.byteLength) || receipt.byteLength !== bytes.length ||
       typeof receipt.pdfSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.pdfSha256) ||
