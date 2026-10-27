@@ -6,6 +6,8 @@ on:
       - 'tool/verify_invoice_revision_staging.mjs'
       - 'tool/reauthentication-helper.fixture.sql'
       - 'tool/generate_invoice_preview_stage_wrapper.py'
+      - 'lib/features/invoices/invoice_output_guard.dart'
+      - 'test/invoice_output_guard_test.dart'
       - 'lib/features/invoices/invoice_revision_review_page.dart'
       - 'test/invoice_revision_review_page_test.dart'
       - '.github/workflows/invoice-revision-isolated-staging.yml'
@@ -83,5 +85,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/features/invoices/invoice_revision_review_page.dart test/invoice_revision_review_page_test.dart
-      - run: flutter test --reporter expanded test/invoice_revision_review_page_test.dart
+      - run: flutter analyze lib/features/invoices/invoice_revision_review_page.dart test/invoice_revision_review_page_test.dart lib/features/invoices/invoice_output_guard.dart test/invoice_output_guard_test.dart
+      - run: flutter test --reporter expanded test/invoice_revision_review_page_test.dart test/invoice_output_guard_test.dart
