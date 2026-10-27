@@ -48,6 +48,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/fixture.sql
           psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/live-session-fixture.sql
           psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/require_session.fixture.sql
+          for name in apply_worker_personnel_payload worker_personnel_payload save_worker_personnel_profile; do psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/$name.before.sql; done
+          psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/legacy-client-compat-test.sql
           python3 docs/review/employee-category-candidate/native-install-guard-test.py
           psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/worker_personnel_payload.after.sql
           psql -v ON_ERROR_STOP=1 -f docs/review/employee-category-candidate/employee_personnel_view.after.sql
