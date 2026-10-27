@@ -1,0 +1,68 @@
+-- Independent candidate. No production deployment. Requires shift draft schema.
+begin;
+create table shift_draft_private.published (
+ company_id uuid not null, worker_id uuid not null, work_date date not null,
+ revision integer not null, snapshot jsonb not null, published_by uuid not null,
+ published_at timestamptz not null default clock_timestamp(),
+ primary key(company_id, worker_id, work_date));
+create table shift_draft_private.publish_audit (
+ id bigint generated always as identity primary key, company_id uuid not null,
+ worker_id uuid not null, work_date date not null, revision integer not null,
+ actor uuid not null, snapshot jsonb not null, published_at timestamptz not null default clock_timestamp());
+revoke all on shift_draft_private.published, shift_draft_private.publish_audit from public, anon, authenticated;
+revoke all on sequence shift_draft_private.publish_audit_id_seq from public, anon, authenticated;
+
+-- Publish selected current draft versions atomically. Existing attendance,
+-- salary and invoice rows are never touched. Stale drafts abort the full batch.
+create function public.publish_shift_drafts(p_company uuid, p_rows jsonb) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid(); r jsonb; d record; wid uuid; day date; rev integer; out_rows jsonb:='[]'; snap jsonb;
+begin
+ perform private.require_reauthentication_session();
+ if private.account_access_allowed() is not true or p_company is null or not exists
+ (select 1 from public.company_members where company_id=p_company and user_id=actor and role::text in ('owner','admin')) then
+  raise sqlstate '42501' using message='shift_access_denied'; end if;
+ perform 1 from shift_draft_private.rollout where company_id=p_company and enabled for share;
+ if not found then raise sqlstate '42501' using message='shift_feature_disabled'; end if;
+ if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) not between 1 and 100 then raise exception 'shift_invalid_batch'; end if;
+ if exists(select 1 from jsonb_array_elements(p_rows) x group by x->>'worker_id',x->>'work_date' having count(*)>1) then raise exception 'shift_duplicate_worker_date'; end if;
+ for r in select x from jsonb_array_elements(p_rows) x order by x->>'worker_id',x->>'work_date' loop
+  wid:=(r->>'worker_id')::uuid; day:=(r->>'work_date')::date; rev:=(r->>'revision')::integer;
+  if wid is null or day is null or rev is null or rev<1 then raise exception 'shift_invalid_payload'; end if;
+  perform pg_advisory_xact_lock(hashtextextended('sko-shift:'||p_company::text||':'||wid::text||':'||day::text,0));
+  select * into d from shift_draft_private.plans where company_id=p_company and worker_id=wid and work_date=day for update;
+  if not found or d.revision<>rev then raise exception 'shift_revision_conflict'; end if;
+  if not exists(select 1 from public.workers w where w.id=wid and w.company_id=p_company) then raise exception 'shift_invalid_worker'; end if;
+  snap:=jsonb_build_object('site_id',d.site_id,'holiday',d.holiday,'night',d.night,'start_minute',d.start_minute,'end_minute',d.end_minute,'check_late',d.check_late,'check_early',d.check_early);
+  if exists(select 1 from shift_draft_private.published where company_id=p_company and worker_id=wid and work_date=day and revision=rev and snapshot=snap) then
+   out_rows:=out_rows||jsonb_build_array(jsonb_build_object('worker_id',wid,'work_date',day,'revision',rev));
+   continue;
+  end if;
+  insert into shift_draft_private.published(company_id,worker_id,work_date,revision,snapshot,published_by)
+   values(p_company,wid,day,rev,snap,actor)
+   on conflict(company_id,worker_id,work_date) do update set revision=excluded.revision,snapshot=excluded.snapshot,published_by=actor,published_at=clock_timestamp();
+  insert into shift_draft_private.publish_audit(company_id,worker_id,work_date,revision,actor,snapshot) values(p_company,wid,day,rev,actor,snap);
+  out_rows:=out_rows||jsonb_build_array(jsonb_build_object('worker_id',wid,'work_date',day,'revision',rev));
+ end loop;
+ return out_rows;
+end $$;
+revoke all on function public.publish_shift_drafts(uuid,jsonb) from public,anon,service_role;
+grant execute on function public.publish_shift_drafts(uuid,jsonb) to authenticated;
+
+-- A worker can read only the confirmed rows linked to their own account.
+create function public.list_own_published_shifts(p_company uuid,p_from date,p_to date) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();
+begin
+ perform private.require_reauthentication_session();
+ if private.account_access_allowed() is not true or p_company is null then raise sqlstate '42501' using message='shift_access_denied'; end if;
+ perform 1 from shift_draft_private.rollout where company_id=p_company and enabled for share;
+ if not found then raise sqlstate '42501' using message='shift_feature_disabled'; end if;
+ if p_from is null or p_to is null or p_to<p_from or p_to-p_from>30 then raise exception 'shift_invalid_range'; end if;
+ return coalesce((select jsonb_agg(jsonb_build_object('work_date',p.work_date,'revision',p.revision,'plan',p.snapshot) order by p.work_date,p.worker_id)
+  from shift_draft_private.published p join public.workers w on w.id=p.worker_id and w.company_id=p.company_id
+  where p.company_id=p_company and w.user_id=actor and w.status='active' and p.work_date between p_from and p_to),'[]'::jsonb);
+end $$;
+revoke all on function public.list_own_published_shifts(uuid,date,date) from public,anon,service_role;
+grant execute on function public.list_own_published_shifts(uuid,date,date) to authenticated;
+commit;

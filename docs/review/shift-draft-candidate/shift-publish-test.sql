@@ -1,0 +1,26 @@
+alter table public.workers add column user_id uuid, add column status text default 'active';
+update public.workers set user_id='00000000-0000-0000-0000-000000000001' where id='00000000-0000-0000-0000-000000000031';
+select set_config('test.actor','00000000-0000-0000-0000-000000000001',false);
+select set_config('test.session','00000000-0000-0000-0000-000000000011',false);
+select set_config('test.anonymous','false',false);
+do $$ declare c uuid:='00000000-0000-0000-0000-000000000021'; rows jsonb:=jsonb_build_array(jsonb_build_object('worker_id','00000000-0000-0000-0000-000000000031','work_date','2026-10-26','revision',1)); failed boolean:=false;
+begin
+ assert jsonb_array_length(public.list_own_published_shifts(c,'2026-10-01','2026-10-31'))=0,'draft invisible';
+ perform public.publish_shift_drafts(c,rows);
+ assert jsonb_array_length(public.list_own_published_shifts(c,'2026-10-01','2026-10-31'))=1,'published visible';
+ perform public.publish_shift_drafts(c,rows);
+ assert (select count(*) from shift_draft_private.publish_audit)=1,'retry duplicates audit';
+ begin perform public.publish_shift_drafts(c,jsonb_build_array((rows->0)||jsonb_build_object('revision',2))); exception when others then failed:=true; end;
+ assert failed and (select count(*) from shift_draft_private.publish_audit)=1,'stale accepted';
+ perform set_config('test.actor','00000000-0000-0000-0000-000000000002',false);
+ insert into auth.sessions(id,user_id) values('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000002');
+ perform set_config('test.session','00000000-0000-0000-0000-000000000012',false);
+ assert jsonb_array_length(public.list_own_published_shifts(c,'2026-10-01','2026-10-31'))=0,'other worker can read';
+ failed:=false; begin perform public.publish_shift_drafts(c,rows); exception when insufficient_privilege then failed:=true; end;
+ assert failed,'non-admin can publish';
+ update shift_draft_private.rollout set enabled=false where company_id=c;
+ failed:=false; begin perform public.list_own_published_shifts(c,'2026-10-01','2026-10-31'); exception when insufficient_privilege then failed:=true; end;
+ assert failed,'off can read';
+ assert not has_function_privilege('anon','public.list_own_published_shifts(uuid,date,date)','EXECUTE'),'anon can read';
+ assert not has_table_privilege('authenticated','shift_draft_private.published','SELECT'),'direct table read';
+end $$;
