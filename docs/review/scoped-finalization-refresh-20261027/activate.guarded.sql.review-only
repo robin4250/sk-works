@@ -1,0 +1,37 @@
+begin;
+set local timezone='UTC'; set local search_path=''; set local lock_timeout='5s'; set local statement_timeout='45s';
+lock table explicit_report_finalization_private.reports,explicit_report_finalization_private.rollout,explicit_report_finalization_private.states,explicit_report_finalization_private.events,explicit_report_finalization_private.receipts in share row exclusive mode;
+lock table public.daily_reports,public.daily_report_workers,public.attendance_entries,public.attendance_verifications,public.payroll_statements,public.invoices,public.invoice_detail_lines in share row exclusive mode;
+create temporary table activation_protected_rows(relation text primary key,n bigint,h text) on commit drop;
+do $capture$ declare t text;n bigint;h text;begin
+ foreach t in array array['public.daily_reports','public.daily_report_workers','public.attendance_entries','public.attendance_verifications','public.payroll_statements','public.invoices','public.invoice_detail_lines'] loop
+ execute format($q$select count(*)::bigint,md5(coalesce(string_agg(h,'' order by h),'')) from (select md5(to_jsonb(x)::text) h from %s x)a$q$,t) into n,h;
+ insert into pg_temp.activation_protected_rows values(t,n,h);
+ end loop;
+end $capture$;
+do $guard$ begin
+  if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.daily_reports' and n=990001 and h='00000000000000000000000000000001') then raise exception 'scope_activation_business_drift'; end if;
+ if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.daily_report_workers' and n=990002 and h='00000000000000000000000000000002') then raise exception 'scope_activation_business_drift'; end if;
+ if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.attendance_entries' and n=990003 and h='00000000000000000000000000000003') then raise exception 'scope_activation_business_drift'; end if;
+ if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.attendance_verifications' and n=990004 and h='00000000000000000000000000000004') then raise exception 'scope_activation_business_drift'; end if;
+ if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.payroll_statements' and n=990005 and h='00000000000000000000000000000005') then raise exception 'scope_activation_business_drift'; end if;
+ if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.invoices' and n=990006 and h='00000000000000000000000000000006') then raise exception 'scope_activation_business_drift'; end if;
+ if not exists(select 1 from pg_temp.activation_protected_rows where relation='public.invoice_detail_lines' and n=990007 and h='00000000000000000000000000000007') then raise exception 'scope_activation_business_drift'; end if;
+
+ if current_user<>'postgres' then raise exception 'scope_activation_wrong_operator';end if;
+ if (select md5(string_agg(p.oid::text||':'||md5(to_jsonb(p)::text),',' order by p.oid)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('explicit_report_finalization_private','explicit_route_finalization_private','shared_daily_report_private','checkout_shared_hours_private') or (n.nspname='public' and p.proname in ('start_shared_report_finalization_edit','finalize_shared_daily_report','read_shared_daily_report_context','sign_daily_report'))) <> '11111111111111111111111111111111' then raise exception 'scope_activation_routine_drift';end if;
+ if not exists(select 1 from public.daily_reports d where d.id='00000000-0000-0000-0000-000000000901' and d.company_id='00000000-0000-0000-0000-000000000902' and d.report_date='2026-10-25' and d.status='draft' and md5(to_jsonb(d)::text)='22222222222222222222222222222222') then raise exception 'scope_activation_report_changed';end if;
+ if (select md5(coalesce(string_agg(h,'' order by h),'')) from(select md5(to_jsonb(w)::text)h from public.daily_report_workers w where report_id='00000000-0000-0000-0000-000000000901')x)<>'33333333333333333333333333333333' then raise exception 'scope_activation_workers_changed';end if;
+ if exists(select 1 from explicit_report_finalization_private.rollout where company_id='00000000-0000-0000-0000-000000000902' and enabled) then raise exception 'scope_activation_company_rollout_changed';end if;
+ if exists(select 1 from explicit_report_finalization_private.states where report_id='00000000-0000-0000-0000-000000000901') or exists(select 1 from explicit_report_finalization_private.events where report_id='00000000-0000-0000-0000-000000000901') or exists(select 1 from explicit_report_finalization_private.receipts where report_id='00000000-0000-0000-0000-000000000901') then raise exception 'scope_activation_already_used';end if;
+end $guard$;
+do $absent$ begin if exists(select 1 from explicit_report_finalization_private.reports where report_id='00000000-0000-0000-0000-000000000901') then raise exception 'scope_activation_report_already_configured';end if;end $absent$;
+insert into explicit_report_finalization_private.reports(company_id,report_id,enabled) values('00000000-0000-0000-0000-000000000902','00000000-0000-0000-0000-000000000901',true);
+do $enabled$ begin if explicit_report_finalization_private.enabled('00000000-0000-0000-0000-000000000901') is distinct from true or explicit_report_finalization_private.required('00000000-0000-0000-0000-000000000901') is distinct from true then raise exception 'scope_activation_failed';end if; if explicit_report_finalization_private.ready('00000000-0000-0000-0000-000000000901') is distinct from false then raise exception 'scope_activation_old_signatures_cannot_finalize';end if;end $enabled$;
+do $post$ declare r record;n bigint;h text;begin
+ for r in select * from pg_temp.activation_protected_rows loop
+ execute format($q$select count(*)::bigint,md5(coalesce(string_agg(h,'' order by h),'')) from(select md5(to_jsonb(x)::text)h from %s x)a$q$,r.relation) into n,h;
+ if n<>r.n or h<>r.h then raise exception 'scope_activation_business_data_changed';end if;
+ end loop;
+end $post$;
+commit;
