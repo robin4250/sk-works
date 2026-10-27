@@ -1,0 +1,35 @@
+import {readFile,writeFile,unlink} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
+import {resolve} from 'node:path';
+import assert from 'node:assert/strict';
+const root=resolve(process.env.SKO_ADJUSTMENT_ROOT||'../doc-adjustment-buttons-candidate');
+const originalPath=resolve(root,'tool/verify_adjustment_real_refresh.mjs');
+const original=await readFile(originalPath,'utf8');
+const candidate=await readFile(resolve(process.env.SKO_PREVIEW_SQL||'../invoice-correction-preview-candidate/preview.sql.review-only'),'utf8');
+const marker='let checks=0;';assert.equal(original.split(marker).length,2);
+const payload=`
+// Only isolated, synthetic fixture data. Preserve the invoice/approval record.
+await db.exec("create or replace function private.has_company_feature(p_company uuid,p_feature text) returns boolean language sql as $$select true$$;");
+await db.exec(${JSON.stringify(candidate)});
+await db.query("update site_financial_settings set billing_allowance_1_name='合成手当',billing_allowance_1_amount_yen=10,billing_overtime_hour_rate_yen=20 where company_id=$1 and site_id=$2",[company,site]);
+const addExtras=()=>db.query("insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days,overtime_hours,early_hours,allowance_names) values($1,$2,$3,'2026-10-25','day',1,0,0,ARRAY['合成手当']),($1,$2,$3,'2026-10-27','day',1,1,0,ARRAY['合成手当'])",[company,site,worker]);
+await addExtras();await db.query('select private.refresh_automatic_invoice($1,$2,$3)',[company,customer,'2026-10-01']);
+const expected=(await db.query('select snapshot,subtotal,tax,welfare_amount,grand_total from invoices where company_id=$1 and customer_id=$2',[company,customer])).rows[0];
+await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date in ('2026-10-25','2026-10-27')",[company,site]);
+await db.query('select private.refresh_automatic_invoice($1,$2,$3)',[company,customer,'2026-10-01']);
+await db.query("update invoices set status='finalized',finalized_at=now() where company_id=$1 and customer_id=$2",[company,customer]);
+await db.query("update invoices set status='draft',finalized_at=null where company_id=$1 and customer_id=$2",[company,customer]);
+const frozen=(await db.query('select * from invoices where company_id=$1 and customer_id=$2',[company,customer])).rows[0];assert.equal(frozen.invoice_seal_frozen,true);
+await addExtras();await db.query('select private.refresh_automatic_invoice($1,$2,$3)',[company,customer,'2026-10-01']);
+assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
+const correctionPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+const expectedSnapshot={...expected.snapshot};delete expectedSnapshot.company_seal_snapshot;
+assert.deepEqual(correctionPreview.proposed_snapshot,expectedSnapshot);assert.equal(correctionPreview.subtotal,expected.subtotal);assert.equal(correctionPreview.tax,expected.tax);assert.equal(correctionPreview.welfare,expected.welfare_amount);assert.equal(correctionPreview.grand_total,expected.grand_total);
+assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
+await db.query('update site_financial_settings set billing_unit_price_yen=billing_unit_price_yen+1 where company_id=$1 and site_id=$2',[company,site]);
+await assert.rejects(db.query('select invoice_correction_preview_private.preview($1)',[frozen.id]),/invoice_revision_saved_basis_changed/);
+await db.query('update site_financial_settings set billing_unit_price_yen=billing_unit_price_yen-1 where company_id=$1 and site_id=$2',[company,site]);
+console.log(JSON.stringify({invoice_correction_preview:true,real_refresh_equality:true,original_frozen_unchanged:true,saved_price_drift_rejected:true}));await db.close();process.exit(0);
+`;
+const generated=resolve(root,'tool/verify_correction_preview.generated.mjs');
+try {await writeFile(generated,original.replace(marker,()=>payload+marker).replace('error:error.message,where:error.where','error:error.message,where:error.where,query:error.query?.slice(0,1500)'));const r=spawnSync(process.execPath,[generated,...process.argv.slice(2)],{stdio:'inherit',env:process.env});process.exitCode=r.status??1;}finally{await unlink(generated).catch(()=>{});}

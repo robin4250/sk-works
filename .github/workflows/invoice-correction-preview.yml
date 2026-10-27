@@ -1,0 +1,33 @@
+name: Invoice correction preview isolated verification
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/review/invoice-correction-preview/**'
+      - '.github/workflows/invoice-correction-preview.yml'
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_document_adjustment_fixture
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts pg@8.16.3
+      - run: node --check docs/review/invoice-correction-preview/verify.mjs
+      - run: node docs/review/invoice-correction-preview/verify.mjs "$PWD/tool/trade_document_adjustments_native_pg17_runtime.mjs"
+        env:
+          SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
+          SKO_ADJUSTMENT_ROOT: ${{ github.workspace }}
+          SKO_PREVIEW_SQL: ${{ github.workspace }}/docs/review/invoice-correction-preview/preview.sql.review-only
