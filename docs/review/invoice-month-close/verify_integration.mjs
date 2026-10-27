@@ -84,6 +84,29 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
  }finally{await holding.query('rollback').catch(()=>{});await holding.end();await other.end();await db.query('delete from public.attendance_entries where company_id=$1',[otherCompany]);await db.query('delete from public.companies where id=$1',[otherCompany]);}
 }
 
+
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ // Evidence only: existing-row locks do not protect against new qualifying rows.
+ // Do not replace the candidate table locks with these row locks.
+ const {connectFixture}=await import(process.argv[2]);
+ const reader=await connectFixture(), writer=await connectFixture();
+ const phantomSite=id(985);
+ try{
+  await reader.query('begin');
+  await reader.query("select * from public.attendance_entries where company_id=$1 and site_id=$2 and work_date='2020-10-09' for update",[company,phantomSite]);
+  await writer.query('begin');await writer.query("set local lock_timeout='250ms'");
+  await writer.query("insert into public.attendance_entries(company_id,site_id,work_date,work_category,base_man_days) values($1,$2,'2020-10-09','day',1)",[company,phantomSite]);
+  await writer.query('commit');
+  const appeared=await reader.query("select count(*)::int n from public.attendance_entries where company_id=$1 and site_id=$2 and work_date='2020-10-09'",[company,phantomSite]);
+  assert.equal(appeared.rows[0].n,1);
+  console.log(JSON.stringify({fixture_row_locks_do_not_block_phantom_attendance:true}));
+ }finally{
+  await writer.query('rollback').catch(()=>{});await reader.query('rollback').catch(()=>{});
+  await writer.end();await reader.end();
+  await db.query('delete from public.attendance_entries where company_id=$1 and site_id=$2',[company,phantomSite]);
+ }
+}
+
 const savedCore=(await db.query("select pg_get_functiondef('invoice_month_close_candidate.preview_for_approver(uuid)'::regprocedure) v")).rows[0].v;
 const changedCore=savedCore.replace('declare'+String.fromCharCode(10),'declare'+String.fromCharCode(10)+' -- synthetic drift'+String.fromCharCode(10));assert.notEqual(changedCore,savedCore);
 await db.exec(changedCore);assert.equal(await readiness(),'source_proof_missing');await db.exec(savedCore);assert.equal(await readiness(),'ready');
