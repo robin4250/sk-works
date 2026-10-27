@@ -1061,10 +1061,12 @@ class PayrollPdfService {
       borderRadius: pw.BorderRadius.circular(3)),
     child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
       pw.Text(evidence.isEmpty ? '所得税の計算根拠（この明細の保存値）'
-        : '保険料の計算根拠（保存値・端数処理後／平均との採用関係は未記録）',
-        style: pw.TextStyle(fontSize: 5.4, fontWeight: pw.FontWeight.bold, color: accent)),
+        : '保険料の計算根拠（保存値・端数処理後／平均との採用関係は未記録）'
+          '${incomeCalculationLines.isNotEmpty ? '／${evidence.referenceText}' : ''}',
+        style: pw.TextStyle(fontSize: incomeCalculationLines.isEmpty ? 5.4 : 5.2,
+            fontWeight: pw.FontWeight.bold, color: accent)),
       pw.SizedBox(height: .5),
-      if (!evidence.isEmpty)
+      if (!evidence.isEmpty && incomeCalculationLines.isEmpty)
         pw.Text(evidence.referenceText, style: const pw.TextStyle(fontSize: 5)),
       for (var i = 0; i < evidence.rows.length; i += 2)
         pw.SizedBox(height: incomeCalculationLines.isEmpty ? 10 : 8, child: pw.Row(children: [
