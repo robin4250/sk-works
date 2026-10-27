@@ -36,7 +36,22 @@ const result=(await callShadow()).rows[0].v;assert.equal(result.status,'private_
 assert.equal((await callShadow()).rows[0].v.replayed,true);
 assert.equal((await db.query('select count(*)::int n from invoice_revision_candidate.shadow_approvals where state=$1',['pending'])).rows[0].n,1);
 assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,0);
+assert.equal((await db.query('select count(*)::int n from private.invoice_number_counters')).rows[0].n,0);
+assert.equal((await db.query('select count(*)::int n from public.invoice_approvals where invoice_id=$1',[frozen.id])).rows[0].n,0);
 assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],originalWithTriggers);
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ await db.exec('delete from invoice_revision_candidate.shadow_approvals;delete from invoice_revision_candidate.shadow_switch_audit;delete from invoice_revision_candidate.shadow_versions;delete from invoice_retirement_guard_candidate.holds');
+ const {connectFixture}=await import(process.argv[2]);const first=await connectFixture(),second=await connectFixture();
+ try{
+  await first.query("select set_config('test.uid',$1,false)",[actor]);await second.query("select set_config('test.uid',$1,false)",[actor]);
+  const calls=await Promise.all([first.query('select invoice_revision_candidate.shadow_switch($1,$2) v',[proposal,version]),second.query('select invoice_revision_candidate.shadow_switch($1,$2) v',[proposal,version])]);
+  assert.deepEqual(calls.map(x=>x.rows[0].v.replayed).sort(),[false,true]);
+  assert.equal((await db.query('select count(*)::int n from invoice_revision_candidate.shadow_versions')).rows[0].n,1);
+  assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,0);
+  assert.equal((await db.query('select count(*)::int n from private.invoice_number_counters')).rows[0].n,0);
+  console.log(JSON.stringify({fixture_concurrent_same_request_one_shadow:true,fixture_concurrent_no_notify_number:true}));
+ }finally{await first.end();await second.end();}
+}
 console.log(JSON.stringify({fixture_real_preview_stage_gate_shadow_integrated:true,stale_rejected:true,abort_rolled_back:true,original_unchanged:true,no_notification:true,retry_idempotent:true,private_shadow_only:true}));
 `;
 const marker='console.log(JSON.stringify({invoice_correction_preview:true';assert.equal(wrapper.split(marker).length,2);
