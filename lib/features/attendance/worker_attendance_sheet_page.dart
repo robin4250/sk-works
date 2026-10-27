@@ -935,23 +935,31 @@ class _MonthCalendar extends StatelessWidget {
             const Divider(height: 1),
             LayoutBuilder(
               builder: (context, constraints) {
-                final cellHeight =
-                    MediaQuery.textScalerOf(context).scale(11) * 14 + 24;
-                return GridView.count(
-                  crossAxisCount: 7,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  childAspectRatio: (constraints.maxWidth / 7) / cellHeight,
+                final cellWidth = constraints.maxWidth / 7;
+                return Column(
                   children: [
-                    for (final date in days)
-                      _MonthCalendarCell(
-                        date: date,
-                        inMonth: date.month == month.month,
-                        day: data.days[DateTime(date.year, date.month, date.day)],
-                        onTap: data.days[DateTime(date.year, date.month, date.day)]
-                                    ?.paidLeave == true
-                            ? () {}
-                            : () => onDateTap(date),
+                    for (var week = 0; week < days.length; week += 7)
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final date in days.skip(week).take(7))
+                              Expanded(
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(minHeight: cellWidth),
+                                  child: _MonthCalendarCell(
+                                    date: date,
+                                    inMonth: date.month == month.month,
+                                    day: data.days[DateTime(date.year, date.month, date.day)],
+                                    onTap: data.days[DateTime(date.year, date.month, date.day)]
+                                                ?.paidLeave == true
+                                        ? () {}
+                                        : () => onDateTap(date),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                   ],
                 );
@@ -1000,6 +1008,7 @@ class _MonthCalendarCell extends StatelessWidget {
       child: Opacity(
         opacity: inMonth ? 1 : 0.35,
         child: Container(
+        key: ValueKey('attendance-calendar-day-${date.year}-${date.month}-${date.day}'),
         margin: const EdgeInsets.all(1.5),
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
@@ -1012,6 +1021,7 @@ class _MonthCalendarCell extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Align(
               alignment: Alignment.topRight,
@@ -1028,7 +1038,7 @@ class _MonthCalendarCell extends StatelessWidget {
                 ),
               ),
             ),
-            const Spacer(),
+            const SizedBox(height: 2),
             Text(
               paidLeave ? '有給' : worked ? shortSite : day?.pendingReports.isNotEmpty == true ? '日報' : day?.hasAllowance == true ? '手当' : '休',
               maxLines: 1,
@@ -1066,7 +1076,6 @@ class _MonthCalendarCell extends StatelessWidget {
               const SizedBox(height: 10),
             if (day?.pendingReports.isNotEmpty == true)
               _PendingReportLabels(day: day!, compact: true),
-            const Spacer(),
           ],
         ),
         ),
