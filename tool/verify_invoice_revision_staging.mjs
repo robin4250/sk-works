@@ -145,6 +145,7 @@ if (native) {
   await revokePermission;
   await assert.rejects(a.query(query,[fourthId,'00000000-0000-0000-0000-000000000036',src,fourthHash,'追加']),/revision_denied/);
   await db.exec("update public.member_feature_permissions set can_manage_invoices=true");
+  await setPreview(preview);
   const revokeCases=[
     ["ban", "update auth.users set banned_until=clock_timestamp()+interval '1 hour' where id='00000000-0000-0000-0000-000000000003'", "update auth.users set banned_until=null"],
     ["session deletion", "delete from auth.sessions where id='00000000-0000-0000-0000-000000000004'", "insert into auth.sessions(id,user_id) values('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000003')"]
