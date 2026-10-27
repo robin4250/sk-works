@@ -113,11 +113,11 @@ jobs:
           ref: 4f04488f77ff909d0d48a9a74247eb549823ca83
           path: invoice-calculation-candidate
           persist-credentials: false
-      - name: Disposable GoTrue and PostgREST notice ticket
-        env:
-          SKO_INVOICE_NOTICE_AUTH_HOOK: contract-v1
-        run: node docs/review/invoice-month-close/verify_notice_gotrue.mjs
       - name: Disposable GoTrue with real financial readiness
         env:
           SKO_INVOICE_NOTICE_AUTH_HOOK: contract-v1
         run: node docs/review/invoice-month-close/verify_gotrue_finance.mjs
+      - name: Disposable GoTrue and PostgREST notice ticket
+        env:
+          SKO_INVOICE_NOTICE_AUTH_HOOK: contract-v1
+        run: node docs/review/invoice-month-close/verify_notice_gotrue.mjs

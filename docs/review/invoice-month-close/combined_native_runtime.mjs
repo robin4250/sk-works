@@ -8,12 +8,12 @@ pg.types.setTypeParser(20,value=>{const n=Number(value);if(!Number.isSafeInteger
 let fixture;
 export class PGlite{
  constructor(){if(fixture)throw Error('one fixture only');fixture=this;this.client=new pg.Client({connectionString:raw});this.ready=this.client.connect().then(async()=>{if((await this.client.query("select to_regclass('public.companies') x")).rows[0].x)throw Error('empty public fixture required');});}
- async query(q,a){await this.ready;return this.client.query(q,a);}
+ async query(q,a){await this.ready;try{return await this.client.query(q,a);}catch(e){console.error('fixture query:',q.slice(0,300));throw e;}}
  async exec(q){await this.ready;if(q.startsWith('create schema private;create schema auth;')){
   q=q.replace('create schema private;create schema auth;','create schema private;');
   q=q.replace("create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;", ()=>"create or replace function auth.uid() returns uuid language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claim.sub',true),''),nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub',nullif(current_setting('test.uid',true),''))::uuid$$;");
   q=q.replace('create role anon;create role authenticated;','');
- }try{return await this.client.query(q);}catch(e){const n=Number(e.position||0);if(n)console.error('fixture SQL error near:',q.slice(Math.max(0,n-100),n+100));throw e;}}
+ }try{return await this.client.query(q);}catch(e){const n=Number(e.position||0);if(n)console.error('fixture SQL error near:',q.slice(Math.max(0,n-100),n+100));else console.error('fixture statement:',q.slice(0,300));throw e;}}
  async close(){await this.client.end();}
 }
 export async function connectFixture(){const c=new pg.Client({connectionString:raw});await c.connect();return c;}
