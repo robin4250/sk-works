@@ -12,6 +12,12 @@ test('signed transition binds the separately trusted exact previous checkpoint',
  for(const p of [{...payload,previous_hash:token()},{...payload,previous_sequence:2},{...payload,sequence:5},{...payload,challenge:token()},{...payload,scope:'other'}])assert.throws(()=>validateTransition(signed(p),context),/unavailable/);
  assert.throws(()=>validateTransition(signed(payload),{...context,now:31001}),/unavailable/);
  assert.throws(()=>validateTransition(signed(payload),{...context,checkpoint:{sequence:3,hash:token()}}),/unavailable/);
+ // Unknown fields must not be interpreted by a future consumer even if the
+ // signature was produced over the known subset. Signatures are also scoped
+ // to this protocol; a signature over bare canonical JSON is not accepted.
+ assert.throws(()=>validateTransition(signed({...payload,role:'administrator'}),context),/unavailable/);
+ const bare=Buffer.from(JSON.stringify(payload));
+ assert.throws(()=>validateTransition({payload,signature:sign(null,bare,pair.privateKey).toString('hex')},context),/unavailable/);
 });
 test('stateless signed transition verification alone cannot prevent concurrent replay',()=>{
  const pair=generateKeyPairSync('ed25519'),checkpoint={sequence:0,hash:token()},challenge=token(),nonce=token(),proposalHash=token();
