@@ -173,6 +173,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('資格証を確認'), findsOneWidget);
       expect(find.text('資格登録を削除'), findsNothing);
+      await tester.ensureVisible(find.text('登録後の変更について'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('登録後の変更について'));
       await tester.pumpAndSettle();
       expect(find.text(registeredQualificationChangeNotice), findsOneWidget);
