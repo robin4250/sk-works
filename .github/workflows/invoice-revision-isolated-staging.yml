@@ -4,6 +4,7 @@ on:
     paths:
       - 'docs/candidates/invoice_revision_staging_20261027/**'
       - 'tool/verify_legacy_retirement.mjs'
+      - 'tool/verify_legacy_retirement_race.mjs'
       - 'tool/verify_invoice_revision_staging.mjs'
       - 'tool/reauthentication-helper.fixture.sql'
       - 'tool/generate_invoice_preview_stage_wrapper.py'
@@ -89,3 +90,25 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze lib/features/invoices/invoice_revision_review_page.dart test/invoice_revision_review_page_test.dart lib/features/invoices/invoice_output_guard.dart test/invoice_output_guard_test.dart
       - run: flutter test --reporter expanded test/invoice_revision_review_page_test.dart test/invoice_output_guard_test.dart
+  legacy-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: revision_legacy_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:fixture-only-password@localhost:5432/revision_legacy_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/revision-race" --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - run: node tool/verify_legacy_retirement_race.mjs docs/candidates/invoice_revision_staging_20261027/legacy-retirement.sql.review-only "$RUNNER_TEMP/revision-race/node_modules/pg/lib/index.js"
