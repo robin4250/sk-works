@@ -1004,12 +1004,14 @@ class InvoicePdfPreviewPage extends StatefulWidget {
     this.title,
     this.allowLegacyApprovalInitialization = true,
     this.approvalFromNotification = false,
+    this.approvalNotificationId,
   });
 
   final List<InvoiceCalculationResult> invoices;
   final String? title;
   final bool allowLegacyApprovalInitialization;
   final bool approvalFromNotification;
+  final String? approvalNotificationId;
 
   @override
   State<InvoicePdfPreviewPage> createState() => _InvoicePdfPreviewPageState();

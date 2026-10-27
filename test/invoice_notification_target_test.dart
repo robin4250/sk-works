@@ -70,11 +70,14 @@ Future<void> _show(
 void main() {
   test('notification preview disallows legacy initialization while normal entry keeps compatibility', () {
     final saved = _invoice();
-    final noticePreview = invoiceNotificationPreview(saved);
+    final noticePreview = invoiceNotificationPreview(saved, notificationId: '00000000-0000-0000-0000-000000000123');
     expect(noticePreview.invoice, same(saved));
     expect(noticePreview.allowLegacyApprovalInitialization, isFalse);
     expect(noticePreview.approvalFromNotification, isTrue);
+    expect(noticePreview.approvalNotificationId, '00000000-0000-0000-0000-000000000123');
     expect(InvoicePreviewPage(invoice: saved).approvalFromNotification, isFalse);
+    expect(invoiceNotificationPreview(saved).approvalFromNotification, isFalse);
+    expect(invoiceNotificationPreview(saved, notificationId: 'bad-id').approvalFromNotification, isFalse);
     expect(InvoicePreviewPage(invoice: saved).allowLegacyApprovalInitialization, isTrue);
   });
 

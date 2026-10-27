@@ -12,8 +12,10 @@ import 'invoice_cloud_repository.dart';
 import 'invoice_list_card.dart';
 
 /// Notification previews never initialize approval data via a legacy lookup.
-InvoicePreviewPage invoiceNotificationPreview(InvoiceCalculationResult invoice) =>
-    InvoicePreviewPage(invoice: invoice, allowLegacyApprovalInitialization: false, approvalFromNotification: true);
+InvoicePreviewPage invoiceNotificationPreview(InvoiceCalculationResult invoice, {String? notificationId}) =>
+    InvoicePreviewPage(invoice: invoice, allowLegacyApprovalInitialization: false,
+      approvalFromNotification: notificationId != null && RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$').hasMatch(notificationId),
+      approvalNotificationId: notificationId);
 
 abstract interface class InvoiceNoticeSource {
   String? get actor;
@@ -39,10 +41,12 @@ class InvoiceNotificationPage extends StatefulWidget {
   const InvoiceNotificationPage({
     super.key,
     required this.invoiceId,
+    this.notificationId,
     this.source,
     this.previewBuilder,
   });
   final String invoiceId;
+  final String? notificationId;
   final InvoiceNoticeSource? source;
   @visibleForTesting
   final Widget Function(InvoiceCalculationResult)? previewBuilder;
@@ -90,7 +94,8 @@ class _InvoiceNotificationPageState extends State<InvoiceNotificationPage>
   void didUpdateWidget(covariant InvoiceNotificationPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.source != widget.source ||
-        oldWidget.invoiceId != widget.invoiceId) {
+        oldWidget.invoiceId != widget.invoiceId ||
+        oldWidget.notificationId != widget.notificationId) {
       _invalidate();
     }
   }
@@ -200,7 +205,7 @@ class _InvoiceNotificationPageState extends State<InvoiceNotificationPage>
     if (visible && target != null && _preview && _canPreview(target)) {
       return NotificationPreviewHost(
         builder: (_) => widget.previewBuilder?.call(target) ??
-            invoiceNotificationPreview(target),
+            invoiceNotificationPreview(target, notificationId: widget.notificationId),
         onClose: () {
           if (mounted) setState(() => _preview = false);
         },
