@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sk_works/features/daily_reports/daily_report_month_repository.dart';
 import 'package:sk_works/features/daily_reports/daily_report_repository.dart';
 import 'package:sk_works/features/daily_reports/daily_report_saved_preview_pager.dart';
+import 'package:sk_works/features/daily_reports/daily_report_save_badge.dart';
 
 const actor='00000000-0000-4000-8000-000000000001';
 const site='00000000-0000-4000-8000-000000000002';
@@ -46,6 +47,9 @@ void main(){
    entries:[anchor],initialEntryId:anchor.id,allPeriodNavigation:true,
    previewBuilderForTesting:(doc)=>Scaffold(body:Center(child:Text('report:${doc.report.id}'))))));
   await tester.pumpAndSettle();expect(find.text('2 / 4件'),findsOneWidget);expect(find.text(pending?'サイン待ち':'保存済み'),findsOneWidget);
+  expect(find.byType(DailyReportSaveBadge), findsOneWidget);
+  final badge=tester.widget<DailyReportSaveBadge>(find.byType(DailyReportSaveBadge));
+  expect(badge.state,pending?DailyReportSaveState.supervisorPending:DailyReportSaveState.saved);
   final previous=find.byKey(const ValueKey('daily-report-previous')),next=find.byKey(const ValueKey('daily-report-next'));
   expect(tester.getSize(previous).height,greaterThanOrEqualTo(48));expect(tester.getSize(next).width,greaterThanOrEqualTo(48));
   await tester.tap(previous);await tester.pumpAndSettle();expect(find.text('2024年'),findsOneWidget);expect(find.text('1月2日'),findsOneWidget);

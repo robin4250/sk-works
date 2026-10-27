@@ -1,0 +1,26 @@
+name: Daily report visible status badges
+on:
+  pull_request:
+    paths:
+      - 'lib/features/daily_reports/daily_report_save_badge.dart'
+      - 'lib/features/daily_reports/daily_report_month_page.dart'
+      - 'lib/features/daily_reports/daily_report_saved_preview_pager.dart'
+      - 'test/daily_report_visible_status_test.dart'
+      - 'test/daily_report_site_history_navigation_test.dart'
+      - '.github/workflows/daily-report-visible-status.yml'
+permissions:
+  contents: read
+jobs:
+  badges:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/daily_reports/daily_report_save_badge.dart lib/features/daily_reports/daily_report_month_page.dart lib/features/daily_reports/daily_report_saved_preview_pager.dart test/daily_report_visible_status_test.dart test/daily_report_site_history_navigation_test.dart
+      - run: flutter test --reporter expanded test/daily_report_visible_status_test.dart test/daily_report_site_history_navigation_test.dart test/daily_report_pending_site_test.dart
