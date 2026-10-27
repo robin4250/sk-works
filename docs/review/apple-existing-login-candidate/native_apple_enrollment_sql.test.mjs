@@ -139,3 +139,30 @@ test('Native two-connection same-subject reservation admits exactly one complete
  assert.equal(result.filter(r=>r.rows[0].r===null).length,1);
  for(const table of ['apple_owner_policy.subject_permits','apple_native_enrollment_private.requests','apple_native_enrollment_private.events'])assert.equal((await f.sql('select count(*)::int n from '+table))[0].n,1);
 }));
+
+test('Native concurrent different accounts cannot claim the same Apple subject',{skip:!native},()=>fixture(async f=>{
+ await f.enable();
+ const otherSid='00000000-0000-0000-0000-000000000004',otherCompany='00000000-0000-0000-0000-000000000020';
+ await f.db.query('insert into auth.sessions(id,user_id) values($1,$2)',[otherSid,other]);
+ await f.db.query('insert into public.company_members values($1,$2,$3)',[other,otherCompany,'owner']);
+ await f.db.query("insert into auth.identities values($1,$2,'google','other-google',jsonb_build_object('sub','other-google'))",['00000000-0000-0000-0000-000000000012',other]);
+ const before=(await f.sql("select jsonb_agg(to_jsonb(c) order by user_id) data from public.company_members c"))[0].data;
+ const params=async(actor,session,hashToken)=>{
+  const c=(await f.sql('select public.read_apple_native_enrollment_context($1,$2) r',[actor,session]))[0].r;
+  assert.ok(c);delete c.account_allowed;delete c.primary_password_configured;
+  const raw=JSON.stringify(c), hash=createHash('sha256').update(raw).digest('hex');
+  const at=Number((await f.sql('select floor(extract(epoch from clock_timestamp()))::bigint n'))[0].n);
+  return [actor,session,subject,hashToken,hash,raw,at];
+ };
+ const a=await params(uid,sid,token),b=await params(other,otherSid,'b'.repeat(64));
+ const peer=await f.db.peer();await peer.query("select set_config('test.claims','{\\"role\\":\\"service_role\\"}',false)");
+ const q='select public.reserve_apple_native_subject($1,$2,$3,$4,$5,$6,$7) r';
+ const results=await Promise.all([f.db.query(q,a),peer.query(q,b)]);
+ const winners=results.map(r=>r.rows[0].r).filter(Boolean);
+ assert.equal(winners.length,1);assert.ok([uid,other].includes(winners[0].actor_id));
+ const permits=await f.sql('select expected_user_id from apple_owner_policy.subject_permits where apple_subject=$1',[subject]);
+ assert.equal(permits.length,1);assert.equal(permits[0].expected_user_id,winners[0].actor_id);
+ assert.deepEqual((await f.sql('select jsonb_agg(to_jsonb(c) order by user_id) data from public.company_members c'))[0].data,before);
+ assert.equal((await f.sql("select count(*)::int n from auth.identities where provider='google'"))[0].n,2);
+ assert.equal((await f.sql("select count(*)::int n from auth.identities where provider='apple'"))[0].n,0);
+}));
