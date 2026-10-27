@@ -10,3 +10,16 @@ test('fetch and response body that ignore abort cannot hang',async()=>{let resol
 test('concurrent refresh coalesces and errors do not produce a cached key',async()=>{let calls=0;const resolve=createAppleKeyResolver({fetcher:async()=>{calls++;return json({keys:[key]});}});await Promise.all([resolve('key1'),resolve('key1')]);assert.equal(calls,1);});
 test('durable trusted actor limiter defaults off and fails closed',async()=>{const actorId='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',sessionId='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';let calls=0;const disabled=createAppleEnrollmentRateGate({take:async()=>({allowed:true,durable:true})});await assert.rejects(disabled.check({actorId,sessionId}));const gate=createAppleEnrollmentRateGate({enabled:true,take:async x=>{calls++;assert.deepEqual(x,{actorId,sessionId});return {allowed:true,durable:true};}});await gate.check({actorId,sessionId});assert.equal(calls,1);for(const answer of [{allowed:false,durable:true},{allowed:true,durable:false},null]){const bad=createAppleEnrollmentRateGate({enabled:true,take:async()=>answer});await assert.rejects(bad.check({actorId,sessionId}));}});
 test('late response after timeout cannot populate the cache',async()=>{let release,calls=0;const resolve=createAppleKeyResolver({timeoutMs:20,fetcher:()=>{calls++;if(calls===1)return new Promise(r=>{release=r;});return Promise.resolve(json({keys:[key]}));}});await assert.rejects(resolve('key1'));release(json({keys:[key]}));await new Promise(r=>setTimeout(r,0));await resolve('key1');assert.equal(calls,2);});
+
+test('oversized streaming JWKS is denied and the reader is cancelled',async()=>{
+  let cancelled=false;
+  const stream=new ReadableStream({start(c){c.enqueue(new Uint8Array(65537));},cancel(){cancelled=true;}});
+  const resolve=createAppleKeyResolver({fetcher:async()=>new Response(stream)});
+  await assert.rejects(resolve('key1'));
+  assert.equal(cancelled,true);
+});
+test('expired key is never served if a later refresh fails',async()=>{
+  let clock=0,calls=0;
+  const resolve=createAppleKeyResolver({now:()=>clock,ttlMs:10,fetcher:async()=>{if(++calls===1)return json({keys:[key]});throw Error('network');}});
+  await resolve('key1');clock=10;await assert.rejects(resolve('key1'));assert.equal(calls,2);
+});

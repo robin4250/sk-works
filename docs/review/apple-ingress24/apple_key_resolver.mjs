@@ -18,7 +18,7 @@ export function createAppleKeyResolver({fetcher=fetch, now=()=>Date.now(), timeo
       if(length!==null && (!/^\d+$/.test(length) || Number(length)>65536)) throw denied();
       const reader=response.body.getReader(); let size=0; const chunks=[];
       controller.signal.addEventListener('abort',()=>{void reader.cancel().catch(()=>{});},{once:true});
-      try { for (;;) {const {done,value}=await reader.read();if(done) break;size+=value.byteLength;if(size>65536)throw denied();chunks.push(value);} }
+      try { for (;;) {const {done,value}=await reader.read();if(done) break;size+=value.byteLength;if(size>65536){void reader.cancel().catch(()=>{});throw denied();}chunks.push(value);} }
       finally {reader.releaseLock();}
       const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
       const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
