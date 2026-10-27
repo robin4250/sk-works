@@ -21,3 +21,21 @@ jobs:
       - run: |
           export VAULT_PGLITE_MODULE="file://$RUNNER_TEMP/vault-ci/node_modules/@electric-sql/pglite/dist/index.js"
           node --test tool/verify_archive_bytes.test.mjs tool/personal_vault_delivery_candidate.test.mjs
+  native-rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql 'postgresql://postgres:fixture-only@localhost:5432/postgres' -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/read-api-test.sql
