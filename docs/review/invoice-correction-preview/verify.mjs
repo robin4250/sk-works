@@ -162,7 +162,7 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
    await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||$1::text,0))",[c.lock]);
    await writer.query('begin');let done=false;
    const insert=writer.query(c.sql,c.args).then(result=>{done=true;return result;});
-   await pause(200);assert.equal(done,false);await db.query('commit');const inserted=await insert;assert.equal(inserted.rowCount,1);await writer.query('rollback');
+   await pause(200);assert.equal(done,false);await db.query('commit');const inserted=await insert;assert.equal(inserted.rowCount,1);if(c.args[0]===id(994)){const audits=await writer.query('select count(*)::int n from private.route_billing_quantity_audit where request_id=$1',[id(994)]);assert.equal(audits.rows[0].n,1);}await writer.query('rollback');
   }
   await db.query('delete from sites where id=$1',[id(995)]);await db.query('delete from companies where id=$1',[id(996)]);
   console.log(JSON.stringify({five_distinct_fixture_inserts_wait_and_succeed:true,rolled_back:true,route_audit_trigger_preserved:true}));
