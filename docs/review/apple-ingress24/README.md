@@ -1,0 +1,7 @@
+# Apple key and ingress candidate
+
+Independent, not deployed, not connected to the native enrollment handler. The key resolver fetches Apple's official HTTPS JWKS endpoint only, rejects redirects, private RSA material, invalid/duplicate key IDs and oversized bodies, coalesces concurrent refreshes, caches up to five minutes, and applies a hard deadline even when an injected network adapter ignores cancellation. Expired keys are never used after refresh failure. Unknown keys fail closed until refresh; this may delay legitimate key rotation by at most the configured cache period.
+
+The rate-gate adapter is only a fail-closed contract for a trusted, atomic, shared and durable limiter; the injected implementation is **not supplied**. It must derive actor/session after GoTrue verifies the exact bearer, not from a client field. A verified trusted ingress limit is separately required before authentication; forwarded IP headers from the caller cannot be trusted. Neither a per-process counter nor a bare boolean demonstrates durable enforcement. Thresholds, policy for lockout, expiry and alerting require operational review before activation.
+
+Existing reviewed root HOLD reconciliation and bounded redaction are in PR #1420; this candidate does not duplicate or bypass them. Real managed ingress, durable storage, resolver network deployment and direct-GoTrue bypass protection, actual Apple credentials, and iPhone verification remain incomplete. No provider, Auth, key, data, or production configuration has been changed.
