@@ -1364,10 +1364,7 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                         isApprover: canApprove,
                         busy: _approving,
                         onApprove: _approve,
-                        onReload: () => setState(() {
-                          _previewRevision++;
-                          _previewData = _buildPreviewData().timeout(const Duration(seconds: 90));
-                        }),
+                        onReload: null,
                       ),
                     ),
                   if (_singleInvoice != null)

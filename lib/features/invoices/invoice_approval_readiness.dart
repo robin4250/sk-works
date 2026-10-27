@@ -56,7 +56,7 @@ class InvoiceApprovalReadinessNotice extends StatelessWidget {
     final state = readiness.state;
     final label = switch (state) {
       InvoiceApprovalReadinessState.checking => '承認できる状態を確認しています',
-      InvoiceApprovalReadinessState.unavailable => '承認できる状態を確認できません。再読み込みしてください。',
+      InvoiceApprovalReadinessState.unavailable => '承認できる状態を確認できません。管理者に確認してください。',
       InvoiceApprovalReadinessState.monthNotClosed => '対象月が終わると承認できます。',
       InvoiceApprovalReadinessState.checkoutPending => '対象となる勤務の退勤が必要です。',
       InvoiceApprovalReadinessState.reportPending => '対象となる日報の確定が必要です。',
@@ -69,7 +69,7 @@ class InvoiceApprovalReadinessNotice extends StatelessWidget {
       Text(label, style: TextStyle(color: color)),
       if (state == InvoiceApprovalReadinessState.ready && !isApprover)
         const Text('承認は担当者が行います。'),
-      if (state == InvoiceApprovalReadinessState.unavailable)
+      if (state == InvoiceApprovalReadinessState.unavailable && onReload != null)
         TextButton(onPressed: busy ? null : onReload, child: const Text('再読み込み')),
       if (state == InvoiceApprovalReadinessState.ready && isApprover)
         FilledButton.icon(
