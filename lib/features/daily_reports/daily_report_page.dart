@@ -1585,7 +1585,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         MaterialPageRoute(fullscreenDialog: true, builder: (_) => SignatureCapturePage(
           title: SkoLanguageController.tr('報告者サイン'),
           signerLabel: SkoLanguageController.tr('報告者名'),
-          submitLabel: SkoLanguageController.tr('サインを確定'),
+          submitLabel: SkoLanguageController.tr('確定'),
           initialSignerName: _report?.reporterSignerName ?? '',
           reviewText: sharedBefore?.explicitFinalizationRequired == true
             ? _reporterSignatureSummary(enteredHours) : null,
@@ -1766,7 +1766,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
           title: SkoLanguageController.tr('責任者サイン'),
           signerLabel: SkoLanguageController.tr('現場責任者名'),
           reviewText: sharedBefore?.documentOnly == true ? _documentSignatureSummary(sharedBefore!) : null,
-          submitLabel: SkoLanguageController.tr('サインを確定'),
+          submitLabel: SkoLanguageController.tr('確定'),
         ),
         ),
       );
