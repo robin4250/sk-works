@@ -3,15 +3,21 @@ on:
   pull_request:
     paths:
       - 'tool/verify_archive_bytes*'
+      - 'tool/personal_vault_delivery_candidate*'
+      - 'docs/review/personal-vault24/**'
       - '.github/workflows/personal-vault-byte-verification.yml'
 permissions:
   contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tool/verify_archive_bytes.test.mjs
+      - run: npm install --prefix "$RUNNER_TEMP/vault-ci" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
+      - run: |
+          export VAULT_PGLITE_MODULE="file://$RUNNER_TEMP/vault-ci/node_modules/@electric-sql/pglite/dist/index.js"
+          node --test tool/verify_archive_bytes.test.mjs tool/personal_vault_delivery_candidate.test.mjs
