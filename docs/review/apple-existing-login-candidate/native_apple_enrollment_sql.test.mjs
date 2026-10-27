@@ -155,7 +155,7 @@ test('Native concurrent different accounts cannot claim the same Apple subject',
   return [actor,session,subject,hashToken,hash,raw,at];
  };
  const a=await params(uid,sid,token),b=await params(other,otherSid,'b'.repeat(64));
- const peer=await f.db.peer();await peer.query("select set_config('test.claims','{\\"role\\":\\"service_role\\"}',false)");
+ const peer=await f.db.peer();await peer.query("select set_config('test.claims',$1,false)",[JSON.stringify({role:'service_role'})]);
  const q='select public.reserve_apple_native_subject($1,$2,$3,$4,$5,$6,$7) r';
  const results=await Promise.all([f.db.query(q,a),peer.query(q,b)]);
  const winners=results.map(r=>r.rows[0].r).filter(Boolean);
