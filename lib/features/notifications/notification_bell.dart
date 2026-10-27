@@ -53,9 +53,22 @@ class _SkoNotificationBellState extends State<SkoNotificationBell> with WidgetsB
     await _badge.refresh(
       currentActor: () => client.auth.currentUser?.id,
       loadUnread: repository.unreadTargets,
-      loadPending: () async => mapRouteBillingQuantityAttention(
-        await client.rpc('pending_route_billing_quantity_rows'),
-      ),
+      loadPending: () async {
+        final sources = await Future.wait([
+          () async {
+            try { return mapRouteBillingQuantityAttention(
+              await client.rpc('pending_route_billing_quantity_rows'));
+            } catch (_) { return <AttentionCenterItem>[]; }
+          }(),
+          () async {
+            try { return mapQualificationPhotoAttention(
+              await client.rpc('personal_qualification_submission',
+                params: {'p_action': 'list', 'p_data': <String, dynamic>{}}));
+            } catch (_) { return <AttentionCenterItem>[]; }
+          }(),
+        ]);
+        return sources.expand((items) => items).toList();
+      },
     );
     if (mounted) setState(() {});
   }
@@ -85,11 +98,12 @@ int routeAwareNotificationBadgeCount(
   List<AppNotificationRecord> unread, List<AttentionCenterItem> pending,
 ) {
   final targets = {for (final notice in unread)
-    if (!notice.read && notice.actionKey == 'route_billing_quantity_request' &&
-        notice.actionId != null) notice.actionId};
+    if (!notice.read &&
+        const {'route_billing_quantity_request', 'qualification_photo_request'}.contains(notice.actionKey) &&
+        notice.actionId != null) '${notice.actionKey}:${notice.actionId}'};
   final extra = {for (final task in pending)
-    if (task.actionable && task.needsAction && !targets.contains(task.actionId))
-      task.actionId};
+    if (task.actionable && task.needsAction && !targets.contains('${task.actionKey}:${task.actionId}'))
+      '${task.actionKey}:${task.actionId}'};
   return unread.where((notice) => !notice.read).length + extra.length;
 }
 

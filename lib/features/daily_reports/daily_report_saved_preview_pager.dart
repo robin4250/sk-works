@@ -4,6 +4,7 @@ import '../../international/language_controller.dart';
 
 import 'daily_report_calendar_model.dart';
 import 'daily_report_month_repository.dart';
+import 'daily_report_save_badge.dart';
 import 'daily_report_page.dart';
 
 /// Resolves saved IDs independently and keeps the opening destination/status category.
@@ -214,9 +215,7 @@ class _DailyReportSavedPreviewPagerState extends State<DailyReportSavedPreviewPa
               Text(entry == null ? '' : '${entry.date.month}月${entry.date.day}日', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
               Text(entry == null ? '' : '${_index + 1} / ${_entries.length}件${_historyComplete ? '' : '（取得済み）'}',
                 style: const TextStyle(fontSize: 13)),
-              if (category != null) Text(category.label, style: TextStyle(fontWeight: FontWeight.bold,
-                color: category == DailyReportSaveState.supervisorPending ? Colors.red.shade900
-                  : category == DailyReportSaveState.saved ? Colors.green.shade800 : null)),
+              if (category != null) DailyReportSaveBadge(state: category),
             ])), arrow(newer: true)]),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Text(_index == 0 ? _historyComplete ? '最も古い日報' : '範囲未確認' : ''),

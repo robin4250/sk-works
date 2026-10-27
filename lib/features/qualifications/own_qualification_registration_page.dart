@@ -195,7 +195,7 @@ class _OwnQualificationRegistrationPageState
           content: Text(
             result.status == 'approved'
                 ? '写真の変更は承認済みです。'
-                : '写真申請を送信しました。承認後に登録内容へ反映します。',
+                : '写真申請を送信しました。会社の管理者・承認担当者が「承認待ち」→「資格写真の承認待ち」で確認します。承認後に反映します。',
           ),
         ),
       );

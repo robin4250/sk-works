@@ -119,7 +119,7 @@ void main() {
     expect(repository.saves.last.single.allowanceLabel, 'PC手当');
     expect(repository.saves.last.single.companyAllowanceSelections!.items.single.nameSnapshot, 'PC手当');
     expect(find.byType(SignatureCapturePage), findsOneWidget);
-    await tester.pageBack(); await tester.pumpAndSettle();
+    await tester.tap(find.byType(CloseButton)); await tester.pumpAndSettle();
   });
 
   test('labels use every selected worker and report company, never first membership', () {
@@ -325,4 +325,5 @@ void main() {
     expect(controller.text, '保存した旧名');
   });
 }
+
 

@@ -24,6 +24,8 @@ class PersonRecord {
     this.phone = '',
     this.email = '',
     this.role = '',
+    this.employeeCategoryId,
+    this.employeeCategoryName = '',
     this.employeeNumber = '',
     this.department = '',
     this.hireDate = '',
@@ -48,6 +50,8 @@ class PersonRecord {
   final String phone;
   final String email;
   final String role;
+  final String? employeeCategoryId;
+  final String employeeCategoryName;
   final String employeeNumber;
   final String department;
   final String hireDate;
@@ -72,6 +76,8 @@ class PersonRecord {
     'phone': phone,
     'email': email,
     'role': role,
+    'employeeCategoryId': employeeCategoryId,
+    'employeeCategoryName': employeeCategoryName,
     'employeeNumber': employeeNumber,
     'department': department,
     'hireDate': hireDate,
@@ -101,6 +107,8 @@ class PersonRecord {
       phone: json['phone']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
       role: json['role']?.toString() ?? '',
+      employeeCategoryId: json['employeeCategoryId']?.toString(),
+      employeeCategoryName: json['employeeCategoryName']?.toString() ?? '',
       employeeNumber:
           (json['employeeNumber'] ?? json['employee_number'])?.toString() ?? '',
       department: json['department']?.toString() ?? '',
@@ -542,3 +550,4 @@ class _PersonFormPageState extends State<PersonFormPage> {
     );
   }
 }
+

@@ -70,9 +70,6 @@ class _TutorialHomeCardState extends State<TutorialHomeCard> with WidgetsBinding
   }
 
   Future<void> _refresh() async {
-    if (_completed) {
-      return;
-    } // Terminal flag survives registry additions and refreshes.
     final request = ++_request;
     final userId = widget.userId;
     final companyId = widget.companyId;
@@ -81,12 +78,8 @@ class _TutorialHomeCardState extends State<TutorialHomeCard> with WidgetsBinding
     }
     try {
       final preferences = widget.preferences ?? TutorialPreferences();
-      if (await preferences.initialCompleted(userId: userId, companyId: companyId)) {
-        if (mounted && request == _request) {
-          setState(() { _completed = true; _loading = false; });
-        }
-        return;
-      }
+      // Completion preferences record past success, not current required evidence.
+      // Re-evaluate after company requirements or saved documents change.
       final loader = widget.loadSnapshot;
       final repository = widget.repository ?? TutorialEvidenceRepository.maybeCreate();
       if (loader == null && repository == null) {
@@ -114,7 +107,7 @@ class _TutorialHomeCardState extends State<TutorialHomeCard> with WidgetsBinding
       if (!mounted || request != _request) {
         return;
       }
-      setState(() { _workspace = null; _loading = false; _error = '準備状況を確認できません。再読み込みしてください。'; });
+      setState(() { _completed = false; _workspace = null; _loading = false; _error = '準備状況を確認できません。再読み込みしてください。'; });
     }
   }
 

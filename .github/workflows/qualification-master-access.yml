@@ -1,0 +1,35 @@
+name: Qualification master permissions
+on:
+  pull_request:
+    paths:
+      - 'lib/features/qualifications/qualification_cloud*'
+      - 'docs/review/qualification-master-access/**'
+      - 'test/qualification_master_access_test.dart'
+      - '.github/workflows/qualification-master-access.yml'
+jobs:
+  native-rls:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f docs/review/qualification-master-access/native-test.sql
+        env:
+          PGPASSWORD: postgres
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/qualifications/qualification_cloud_page.dart lib/features/qualifications/qualification_cloud_repository.dart test/qualification_master_access_test.dart
+      - run: flutter test test/qualification_master_access_test.dart test/qualification_category_edit_test.dart

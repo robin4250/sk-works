@@ -31,6 +31,7 @@ import 'daily_report_company_allowance_selection.dart';
 import '../shared/company_allowance_label_repository.dart';
 import 'daily_report_edit_session.dart';
 import 'signature_capture_page.dart';
+import 'signature_entry_frame.dart';
 import 'daily_report_zoom_pages.dart';
 import 'route_visit_report_context.dart';
 import 'daily_report_checkout_navigation.dart';
@@ -532,10 +533,27 @@ class _DailyReportPageState extends State<DailyReportPage> {
     }
   }
 
+  String? _responsibleFrameName;
+
+  Future<void> _loadResponsibleFrameName(int generation) async {
+    final repository = _repository;
+    if (repository == null) return;
+    final actor = repository.currentActorId;
+    try {
+      final name = await repository.loadResponsibleName(siteId: _siteId,
+        routeAssignmentId: _visitReport ? null : _routeAssignmentId);
+      if (!mounted || generation != _loadGeneration || repository.currentActorId != actor) return;
+      setState(() { _responsibleFrameName = name.trim().isEmpty ? null : name; });
+    } catch (_) {
+      // Signing still uses its existing validated lookup and manual entry path.
+    }
+  }
+
   Future<void> _loadSelectedSite() async {
     final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
+      _responsibleFrameName = null;
       _managementFactsReason.clear();
       _companyAllowanceItems = const [];
       _companyAllowanceActor = null;
@@ -593,6 +611,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         _resetWorkerControllers();
         _savedDraftFingerprint = _draftFingerprint();
         await _loadCompanyAllowanceNames(generation);
+      unawaited(_loadResponsibleFrameName(generation));
         return;
       }
       var shared = await _readSharedContext();
@@ -723,6 +742,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       _resetWorkerControllers();
       _savedDraftFingerprint = _draftFingerprint();
       await _loadCompanyAllowanceNames(generation);
+      unawaited(_loadResponsibleFrameName(generation));
       await _proposeWorkCategories(generation);
       if (mounted && generation == _loadGeneration && shared?.sourceAttached == true &&
           shared?.reporterSaved == true) { widget.onRegistrationSaved?.call(); }
@@ -1562,7 +1582,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
         throw StateError('作業内容とメンバーが更新されています。保存済みの日報を再読み込みして確認してください。');
       }
       final result = await Navigator.of(context).push<SignatureResult>(
-        MaterialPageRoute(builder: (_) => SignatureCapturePage(
+        MaterialPageRoute(fullscreenDialog: true, builder: (_) => SignatureCapturePage(
           title: SkoLanguageController.tr('報告者サイン'),
           signerLabel: SkoLanguageController.tr('報告者名'),
           submitLabel: SkoLanguageController.tr('サインを確定'),
@@ -1741,7 +1761,7 @@ class _DailyReportPageState extends State<DailyReportPage> {
       if (!mounted) return;
       checkSigningContext();
       final result = await Navigator.of(context).push<SignatureResult>(
-        MaterialPageRoute(builder: (_) => SignatureCapturePage(
+        MaterialPageRoute(fullscreenDialog: true, builder: (_) => SignatureCapturePage(
           initialSignerName: responsibleName,
           title: SkoLanguageController.tr('責任者サイン'),
           signerLabel: SkoLanguageController.tr('現場責任者名'),
@@ -2649,8 +2669,11 @@ class _DailyReportPageState extends State<DailyReportPage> {
                               title: _stepTitle('報告者サイン', step: 'reporter', complete: _reporterSignatureSaved,
                                 status: _reporterSignatureSaved ? 'サイン済み' : '未サイン',
                                 onSavedTap: _reporterSignatureSaved ? () => _showSignature(reporter: true) : null),
-                              subtitle: _report?.reporterSignatureJson == null ? null : Text(
-                                _report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み')),
+                              subtitle: _reporterSignatureSaved ? Text(
+                                _report?.reporterSignerName ?? SkoLanguageController.tr('報告者サイン済み'))
+                                : SignatureEntryFrame(role: '報告者',
+                                  signerName: _report?.reporterSignerName ??
+                                    (_workers.length == 1 ? _workers.single.workerName : '出勤メンバーから選択')),
                               trailing: _managementHold || _signed || _visitReporterLocked || _sharedFactsReadOnly
                                   ? null
                                   : const Icon(Icons.chevron_right),
@@ -2686,6 +2709,8 @@ class _DailyReportPageState extends State<DailyReportPage> {
                                 title: _stepTitle('責任者サイン', step: 'supervisor', complete: _supervisorSignatureSaved,
                                   status: _supervisorSignatureSaved ? 'サイン済み' : '未サイン',
                                   onSavedTap: _supervisorSignatureSaved ? () => _showSignature() : null),
+                                subtitle: SignatureEntryFrame(role: '責任者',
+                                  signerName: _report?.responsibleSignerName ?? _report?.signerName ?? _responsibleFrameName ?? '現場責任者名を確認'),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: _managementHold || _saving || (widget.restrictedReporterRegistration &&
                                     _sharedContext?.canAccessSupervisorCollection != true) ? null : _sign,
@@ -3892,6 +3917,7 @@ class _ReportStepBadge extends StatelessWidget {
       color: Theme.of(context).colorScheme.primary,
       fontSize: 28, fontWeight: FontWeight.w800))));
 }
+
 
 
 
