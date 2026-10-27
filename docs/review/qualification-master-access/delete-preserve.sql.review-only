@@ -1,0 +1,16 @@
+-- Candidate only: prevent any master deletion that would discard referenced data.
+-- Definer is needed to inspect all three referencing relations despite caller RLS.
+create function private.guard_qualification_master_references()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if exists (select 1 from public.worker_qualifications w where w.qualification_master_id = old.id)
+     or exists (select 1 from private.qualification_submissions s where s.qualification_master_id = old.id)
+     or exists (select 1 from public.qualification_master_aliases a where a.qualification_master_id = old.id) then
+    raise exception '関連する資格記録があるため削除できません' using errcode = '23503';
+  end if;
+  return old;
+end $$;
+revoke all on function private.guard_qualification_master_references() from public;
+create trigger qualification_master_preserve_references
+before delete on public.qualification_master for each row
+execute function private.guard_qualification_master_references();

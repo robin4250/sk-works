@@ -1,0 +1,66 @@
+name: Qualification master preserve references
+on:
+  pull_request:
+    paths:
+      - 'docs/review/qualification-master-access/delete-preserve*'
+      - '.github/workflows/qualification-master-preserve.yml'
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f docs/review/qualification-master-access/delete-preserve-test.sql
+        env:
+          PGPASSWORD: postgres
+      - name: Preserve concurrent alias creation
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "insert into public.qualification_master(id) values (5)"
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "begin; insert into public.qualification_master_aliases values (5,5); select pg_sleep(3); commit" &
+          writer=$!
+          sleep 1
+          if psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "delete from public.qualification_master where id=5"; then
+            echo 'concurrent deletion unexpectedly succeeded'; exit 1
+          fi
+          wait "$writer"
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "do \$\$ begin assert exists(select 1 from public.qualification_master where id=5); assert exists(select 1 from public.qualification_master_aliases where id=5); end \$\$"
+  deployment-guard:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise guarded install and exact restore
+        run: |
+          set -eu
+          dir=docs/review/qualification-master-access
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$dir/guard-fixture.sql"
+          policy_hash=$(psql -h localhost -U postgres -d postgres -qAtc "set search_path=''; select md5(coalesce((select jsonb_agg(to_jsonb(p) order by policyname)::text from pg_policies p where schemaname='public' and tablename='qualification_master'),'[]'))")
+          fk_hash=$(psql -h localhost -U postgres -d postgres -qAtc "set search_path=''; select md5(coalesce((select jsonb_agg(to_jsonb(c) order by c.conname)::text from pg_constraint c where c.confrelid='public.qualification_master'::regclass),'[]'))")
+          python3 "$dir/prepare-production-guard.py"
+          sed -e "s/944941ef563914fa63b1c8edf99eb0f8/$policy_hash/g" -e "s/5ec84e79953a91f1fc2d92da8855f014/$fk_hash/g" "$dir/root-install.guarded.sql.review-only" > /tmp/qualification-guard-fixture.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f /tmp/qualification-guard-fixture.sql
+          if psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f /tmp/qualification-guard-fixture.sql; then echo 'duplicate install accepted'; exit 1; fi
+          installed=$(psql -h localhost -U postgres -d postgres -qAt -f "$dir/installed-catalog-md5.sql")
+          python3 "$dir/prepare-restore-guard.py" --expected-installed-catalog-md5 "$installed"
+          sed "s/944941ef563914fa63b1c8edf99eb0f8/$policy_hash/g" "$dir/root-restore.guarded.sql.review-only" > /tmp/qualification-restore-fixture.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f /tmp/qualification-restore-fixture.sql
+          if psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f /tmp/qualification-restore-fixture.sql; then echo 'duplicate restore accepted'; exit 1; fi
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "do \$\$ begin assert (select count(*)=1 from public.qualification_master); assert (select count(*)=1 from public.qualification_master_aliases); end \$\$"
