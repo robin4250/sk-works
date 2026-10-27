@@ -72,6 +72,7 @@ declare
   route_parts jsonb; route_blocked boolean:=false;
 begin
  if auth.uid() is null then raise exception 'login_required'; end if;
+ if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.refresh_automatic_invoice(uuid,uuid,date)') and md5(p.prosrc)='00cf0c91a9430f50c9734fadcf37ec52') then raise exception 'invoice_revision_calculator_changed';end if;
  perform private.require_reauthentication_session();
  select * into existing from public.invoices where id=p_invoice_id for share;
  if existing.id is null then raise exception 'invoice_not_found';end if;

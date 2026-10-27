@@ -35,6 +35,11 @@ assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id
 await db.query('update site_financial_settings set billing_unit_price_yen=billing_unit_price_yen+1 where company_id=$1 and site_id=$2',[company,site]);
 await assert.rejects(db.query('select invoice_correction_preview_private.preview($1)',[frozen.id]),/invoice_revision_saved_basis_changed/);
 await db.query('update site_financial_settings set billing_unit_price_yen=billing_unit_price_yen-1 where company_id=$1 and site_id=$2',[company,site]);
+const originalRefresh=(await db.query("select pg_get_functiondef('private.refresh_automatic_invoice(uuid,uuid,date)'::regprocedure) v")).rows[0].v;
+const changedRefresh=originalRefresh.replace('declare'+String.fromCharCode(10),'declare'+String.fromCharCode(10)+' -- synthetic calculator drift'+String.fromCharCode(10));assert.notEqual(changedRefresh,originalRefresh);
+await db.exec(changedRefresh);await assert.rejects(db.query('select invoice_correction_preview_private.preview($1)',[frozen.id]),/invoice_revision_calculator_changed/);
+await db.exec(originalRefresh);
+
 console.log(JSON.stringify({invoice_correction_preview:true,real_refresh_equality:true,original_frozen_unchanged:true,saved_price_drift_rejected:true}));await db.close();process.exit(0);
 `;
 const generated=resolve(root,'tool/verify_correction_preview.generated.mjs');
