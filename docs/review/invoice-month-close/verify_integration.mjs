@@ -134,7 +134,7 @@ assert.equal((await db.query('select count(*)::int n from public.app_notificatio
 // Existing owner may withdraw their approval even when the new notification guard is ON.
 // Production body fingerprint protects against stale fixture assumptions.
 await db.exec('alter table public.invoice_approvals add column if not exists display_date_override date');
-await db.exec(cancelSql);
+await db.exec(${JSON.stringify(cancelSql)});
 assert.equal((await db.query("select md5(prosrc) h from pg_proc where oid='public.cancel_invoice_approval(uuid)'::regprocedure")).rows[0].h,'230e478080979e8efc2719a5f639b6b5');
 await db.query('select public.cancel_invoice_approval($1)',[frozen.id]);
 assert.equal((await db.query("select count(*)::int n from public.invoice_approvals where invoice_id=$1 and status='pending'",[frozen.id])).rows[0].n,1);
