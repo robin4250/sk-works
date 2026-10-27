@@ -117,14 +117,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       ].whereType<Object>().join(' ').toLowerCase().contains(workerNeedle);
     }).toList(growable: false);
 
-    final listed = <Map<String, dynamic>>[
-      ..._qualifications,
-      if (_selectedWorkerId != null)
-        for (final master in _masters)
-          if (!_qualifications.any((row) => row['worker_id']?.toString() == _selectedWorkerId &&
-              row['qualification_master_id'] == master['id']))
-            {'worker_id': _selectedWorkerId, 'qualification_master_id': master['id'], '_unregistered': true},
-    ];
+    final listed = _qualifications;
     final filtered = listed.where((row) {
       final master = masterById[row['qualification_master_id']?.toString() ?? ''];
       final expiry = _parseDate(row['expires_at']);
@@ -303,7 +296,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                                   title: master?['name']?.toString() ?? '資格', icon: Icons.badge_outlined,
                                   registered: !unregistered,
                                   registeredActionLabel: '詳細を確認',
-                                  dateLabel: (row['issued_at']?.toString() ?? '').isEmpty ? '' : '取得日 ${row['issued_at']}',
+                                  dateLabel: '${(row['issued_at']?.toString() ?? '').isEmpty ? '取得日 未設定' : '取得日 ${row['issued_at']}'}　区分 ${(master?['category']?.toString().trim().isNotEmpty ?? false) ? master!['category'] : '未設定'}',
                                   detailLabel: worker?['name']?.toString() ?? '', attachments: attachments,
                                   onAction: unregistered ? _canManageWorkerQualifications
                                     ? () => _addQualification(initialMasterId: row['qualification_master_id']?.toString()) : null
@@ -359,7 +352,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
     final repository = _repository;
     if (repository == null) return;
     final nameController = TextEditingController();
-    final categoryController = TextEditingController();
+    String? selectedCategory;
     final issuerController = TextEditingController();
     final notesController = TextEditingController();
     var expiryRequired = false;
@@ -387,9 +380,17 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                   decoration: const InputDecoration(labelText: '資格・免許・講習名 *'),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: categoryController,
-                  decoration: const InputDecoration(labelText: '分類'),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedCategory,
+                  decoration: const InputDecoration(labelText: '区分'),
+                  items: const [
+                    DropdownMenuItem(value: '国家資格', child: Text('国家資格')),
+                    DropdownMenuItem(value: '技能講習', child: Text('技能講習')),
+                    DropdownMenuItem(value: '実技講習', child: Text('実技講習')),
+                    DropdownMenuItem(value: '安全教育', child: Text('安全教育')),
+                    DropdownMenuItem(value: '特別教育', child: Text('特別教育')),
+                  ],
+                  onChanged: (value) => setDialogState(() => selectedCategory = value),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -421,7 +422,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
                 if (nameController.text.trim().isEmpty) return;
                 Navigator.pop(dialogContext, {
                   'name': nameController.text.trim(),
-                  'category': categoryController.text.trim(),
+                  'category': selectedCategory ?? '',
                   'issuer': issuerController.text.trim(),
                   'expiryRequired': expiryRequired,
                   'notes': notesController.text.trim(),
@@ -437,7 +438,6 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
 
     void disposeDraft() {
       nameController.dispose();
-      categoryController.dispose();
       issuerController.dispose();
       notesController.dispose();
       if (mounted) {
@@ -879,4 +879,5 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+
 
