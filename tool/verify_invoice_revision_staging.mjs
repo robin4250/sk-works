@@ -118,7 +118,8 @@ if(process.env.SKO_SHADOW_SQL && process.env.SKO_HOLD_SQL) {
  assert.equal((await db.query("select count(*)::int n from invoice_revision_candidate.shadow_approvals where state='pending'")).rows[0].n,1);
  assert.equal((await db.query('select status from public.invoice_approvals')).rows[0].status,'approved');
  assert.deepEqual((await db.query('select to_jsonb(i) j from invoices i where id=$1',[id])).rows[0].j,original);
- await assert.rejects(shadow(),/shadow_already_exists/);
+ assert.equal((await shadow()).rows[0].v.replayed,true);
+ await assert.rejects(db.query('select invoice_revision_candidate.shadow_switch($1,$2)',[cmd,'00000000-0000-0000-0000-000000000092']),/shadow_already_exists/);
  for(const role of ['anon','authenticated','service_role']) assert.equal((await db.query("select has_function_privilege($1,'invoice_revision_candidate.shadow_switch(uuid,uuid)','EXECUTE') f",[role])).rows[0].f,false);
  console.log('PASS private shadow transaction, no original mutation/notification, missing guard fails closed and injected failure rolls back');
 }
@@ -188,6 +189,18 @@ if (native) {
     await a.query('commit');await pending;
     await assert.rejects(a.query('select invoice_revision_candidate.read_prepared($1)',[cmd]),/reauthentication_required/);
     await db.exec(restore);
+  }
+  if(process.env.SKO_SHADOW_SQL && process.env.SKO_HOLD_SQL) {
+    const raceInvoice='00000000-0000-0000-0000-000000000041';
+    const raceProposal='00000000-0000-0000-0000-000000000045';
+    const raceVersion='00000000-0000-0000-0000-000000000049';
+    await db.query('insert into public.invoices(id,company_id,invoice_seal_frozen,snapshot,created_at) select $1,company_id,invoice_seal_frozen,snapshot,created_at from public.invoices where id=$2',[raceInvoice,id]);
+    const raceHash=(await db.query(`select encode(sha256(convert_to(to_jsonb(i)::text,'UTF8')),'hex') h from invoices i where id=$1`,[raceInvoice])).rows[0].h;
+    await setPreview({...preview,original_invoice_id:raceInvoice,original_invoice_fingerprint:raceHash});
+    await a.query(query,[raceInvoice,raceProposal,src,raceHash,'追加']);
+    const results=await Promise.all([a.query('select invoice_revision_candidate.shadow_switch($1,$2) v',[raceProposal,raceVersion]),b.query('select invoice_revision_candidate.shadow_switch($1,$2) v',[raceProposal,raceVersion])]);
+    assert.deepEqual(results.map(r=>r.rows[0].v.replayed).sort(),[false,true]);
+    assert.equal((await db.query('select count(*)::int n from invoice_revision_candidate.shadow_versions where original_invoice_id=$1',[raceInvoice])).rows[0].n,1);
   }
   await Promise.all([a.end(),b.end()]);
 }

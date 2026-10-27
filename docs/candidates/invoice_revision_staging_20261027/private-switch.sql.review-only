@@ -28,12 +28,15 @@ revoke all on invoice_revision_candidate.shadow_switch_settings, invoice_revisio
  invoice_revision_candidate.shadow_approvals, invoice_revision_candidate.shadow_switch_audit from public,anon,authenticated,service_role;
 create function invoice_revision_candidate.shadow_switch(p_proposal uuid,p_version uuid)
 returns jsonb language plpgsql security definer set search_path='' set timezone='UTC' as $$
-declare actor uuid:=auth.uid(); p invoice_revision_candidate.proposals%rowtype; v jsonb; enabled boolean; safe boolean; n integer;
+declare actor uuid:=auth.uid(); p invoice_revision_candidate.proposals%rowtype; prior invoice_revision_candidate.shadow_versions%rowtype; v jsonb; enabled boolean; safe boolean; n integer;
 begin
  if actor is null or p_proposal is null or p_version is null or p_proposal=p_version then
   raise exception 'shadow_request_invalid' using errcode='22023'; end if;
  select s.enabled into enabled from invoice_revision_candidate.shadow_switch_settings s where singleton for share;
  if not coalesce(enabled,false) then raise exception 'shadow_disabled' using errcode='42501'; end if;
+ -- Serialize retries before read_prepared's proposal lock to avoid two
+ -- concurrent callers upgrading shared proposal row locks against each other.
+ perform pg_advisory_xact_lock(hashtextextended(p_proposal::text, 271012));
  -- Reuse real session, role/feature locks, old original and trusted preview checks.
  v:=invoice_revision_candidate.read_prepared(p_proposal);
  select * into p from invoice_revision_candidate.proposals where id=p_proposal and actor_id=actor and state='prepared' for update;
@@ -46,7 +49,16 @@ begin
  execute 'select invoice_publication_guard_private.assert_safe($1,$2,$3,$4)' into safe
   using p.original_invoice_id,p.company_id,p.source_fingerprint,p.original_fingerprint;
  if safe is distinct from true then raise exception 'shadow_publication_guard_denied' using errcode='55000'; end if;
- if exists(select 1 from invoice_revision_candidate.shadow_versions where original_invoice_id=p.original_invoice_id or version_id=p_version or proposal_id=p_proposal) then
+ select * into prior from invoice_revision_candidate.shadow_versions where version_id=p_version for share;
+ if found then
+  if prior.proposal_id=p_proposal and prior.original_invoice_id=p.original_invoice_id and prior.actor_id=actor
+   and prior.source_fingerprint=p.source_fingerprint and prior.original_fingerprint=p.original_fingerprint then
+   return jsonb_build_object('status','private_shadow_pending_new_approval','version_id',prior.version_id,
+    'original_invoice_id',prior.original_invoice_id,'replayed',true);
+  end if;
+  raise exception 'shadow_request_reuse_conflict' using errcode='40001';
+ end if;
+ if exists(select 1 from invoice_revision_candidate.shadow_versions where original_invoice_id=p.original_invoice_id or proposal_id=p_proposal) then
   raise exception 'shadow_already_exists' using errcode='40001'; end if;
  -- Do not permit silent approval when no actual company approvers exist.
  perform 1 from public.invoice_approvers where company_id=p.company_id order by position for share;
@@ -61,7 +73,7 @@ begin
  select p_version,a.user_id,a.position from public.invoice_approvers a where a.company_id=p.company_id;
  insert into invoice_revision_candidate.shadow_switch_audit(version_id,original_invoice_id,actor_id,action)
  values(p_version,p.original_invoice_id,actor,'shadow_created');
- return jsonb_build_object('status','private_shadow_pending_new_approval','version_id',p_version,'original_invoice_id',p.original_invoice_id);
+ return jsonb_build_object('status','private_shadow_pending_new_approval','version_id',p_version,'original_invoice_id',p.original_invoice_id,'replayed',false);
 end $$;
 revoke all on function invoice_revision_candidate.shadow_switch(uuid,uuid) from public,anon,authenticated,service_role;
 commit;
