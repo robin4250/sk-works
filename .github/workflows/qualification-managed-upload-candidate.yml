@@ -1,5 +1,7 @@
 name: Qualification managed upload isolated contract
 on:
+  push:
+    branches: [review/qualification-managed-upload-contract-20261027]
   pull_request:
     paths:
       - 'docs/candidates/qualification_management_upload_20261027*'
