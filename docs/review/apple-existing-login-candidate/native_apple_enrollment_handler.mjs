@@ -42,6 +42,6 @@ export function createNativeAppleEnrollmentHandler(config={},dependencies={}){
    const result=await enrollNativeApple({exactBearer,password:data.password,idToken:data.id_token,rawNonce:data.nonce},
     {...sql,...auth,verifyPrimaryPassword,enabled:true,nativeOnlyReviewed:true,audiences,now,resolveKey:boundedResolveKey});
    return response(200,result);
-  }catch{return response(403,{error:'apple_native_enrollment_unavailable',message:'Apple連携を確認できません。現在のGoogleログインを維持して管理者に確認してください。'});}
+  }catch{return response(403,{error:'apple_native_enrollment_unavailable',message:'Apple連携を確認できません。ログイン状態を確認し、管理者にお問い合わせください。'});}
  };
 }
