@@ -4,6 +4,7 @@ create function invoice_month_close_candidate.approve_from_notice(p_ticket uuid)
 returns boolean language plpgsql security definer set search_path='' as $$
 declare invoice uuid;actor uuid:=auth.uid();sid uuid;result boolean;
 begin
+ if not invoice_month_close_candidate.notification_rollout_enabled() then raise exception 'notice_unavailable' using errcode='42501';end if;
  sid:=private.require_reauthentication_session();
  if actor is null or sid is null then raise exception 'notice_unavailable' using errcode='42501';end if;
  invoice:=invoice_month_close_candidate.consume_notice_ticket(p_ticket);

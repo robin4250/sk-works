@@ -68,7 +68,7 @@ await db.exec('create trigger fixture_invoice_approval_guard before insert or up
 await db.exec(\${JSON.stringify(legacyNoticeGuard)});await db.exec('create trigger fixture_legacy_invoice_notice after insert or update on public.invoices for each row execute function private.invoice_approval_rows_trigger()');
 assert.equal((await db.query("select md5(prosrc) h from pg_proc where oid='private.enqueue_notification(uuid,uuid,text,text,text,text,uuid)'::regprocedure")).rows[0].h,'260ef8dc60ec1917cc0c8dc85ea52872');
 const deliver=()=>db.query('select invoice_month_close_candidate.deliver_notice($1) v',[noticeId]);
-await assert.rejects(deliver(),/delivery_disabled/);await db.exec('update invoice_month_close_candidate.delivery_settings set enabled=true');
+await assert.rejects(deliver(),/delivery_disabled/);await db.exec('update invoice_month_close_candidate.delivery_settings set enabled=true');await assert.rejects(deliver(),/delivery_disabled/);await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=true');
 await db.exec("create function invoice_month_close_candidate.fixture_delivery_abort() returns trigger language plpgsql as $$begin raise exception 'fixture_delivery_abort';end$$;create trigger fixture_delivery_abort before insert on invoice_month_close_candidate.delivery_receipts for each row execute function invoice_month_close_candidate.fixture_delivery_abort()");
 await assert.rejects(deliver(),/fixture_delivery_abort/);assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,0);
 await db.exec('drop trigger fixture_delivery_abort on invoice_month_close_candidate.delivery_receipts');
@@ -87,7 +87,7 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
  }finally{await d1.end();await d2.end();}
 }
 await db.query("select set_config('test.uid',$1,false)",[id(969)]);await assert.rejects(db.query('select invoice_month_close_candidate.ticket_from_notification($1)',[notificationId]),/notice_unavailable/);
-await db.query("select set_config('test.uid',$1,false)",[actor]);const ticket=(await db.query('select invoice_month_close_candidate.ticket_from_notification($1) v',[notificationId])).rows[0].v.ticket_id;
+await db.query("select set_config('test.uid',$1,false)",[actor]);await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=false');await assert.rejects(db.query('select invoice_month_close_candidate.ticket_from_notification($1)',[notificationId]),/notice_unavailable/);await assert.rejects(deliver(),/delivery_disabled/);await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=true');const ticket=(await db.query('select invoice_month_close_candidate.ticket_from_notification($1) v',[notificationId])).rows[0].v.ticket_id;
 assert.equal((await db.query('select invoice_month_close_candidate.consume_notice_ticket($1) v',[ticket])).rows[0].v,frozen.id);
 const approvalTicket=(await db.query('select invoice_month_close_candidate.ticket_from_notification($1) v',[notificationId])).rows[0].v.ticket_id;
 await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=true');
