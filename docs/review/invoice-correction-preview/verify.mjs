@@ -146,6 +146,26 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
    }
   }
   console.log(JSON.stringify({fixture_five_table_insert_delete_wait:true,fixture_delete_constraint_rejections:deleteRejected}));
+  // Actual new rows (not ON CONFLICT): each legacy insert is rolled back after verifying
+  // it waited, preserving the fixture; route submission's existing audit trigger runs.
+  await db.query("insert into companies(id,tax_rate,name) values($1,10,'別の合成会社')",[id(996)]);
+  await db.query("insert into sites(id,company_id,customer_id,name) values($1,$2,$3,'合成新現場')",[id(995),company,customer]);
+  await writer.query("select set_config('test.uid',$1,false)",[actor]);
+  const newInserts=[
+   {sql:"insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days) values($1,$2,$3,'2026-10-29','day',1)",args:[company,site,worker],lock:company},
+   {sql:'insert into site_financial_settings(company_id,site_id,billing_unit_price_yen,welfare_rate) values($1,$2,200,5)',args:[company,id(995)],lock:company},
+   {sql:"insert into private.route_billing_quantity_requests(id,company_id,worker_id,worker_name,work_date,customer_id,customer_name,requested_quantity,quantity,status,requested_by) values($1,$2,$3,'合成作業者','2026-10-29',$4,'合成取引先',1,1,'pending',$5)",args:[id(994),company,worker,customer,actor],lock:company},
+   {sql:"insert into private.expense_claims(id,company_id,applicant_id,applicant_name,created_by,incurred_on,description,amount_yen,approval,allocation,counterparty_id,revision) values($1,$2,$3,'合成作業者',$4,'2026-10-29','合成経費',4,'approved','customer',$5,2)",args:[id(993),company,worker,actor,customer],lock:company},
+   {sql:'insert into document_adjustment_private.rollout(company_id,enabled) values($1,true)',args:[id(996)],lock:id(996)}
+  ];
+  for(const c of newInserts){
+   await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||$1::text,0))",[c.lock]);
+   await writer.query('begin');let done=false;
+   const insert=writer.query(c.sql,c.args).then(result=>{done=true;return result;});
+   await pause(200);assert.equal(done,false);await db.query('commit');const inserted=await insert;assert.equal(inserted.rowCount,1);await writer.query('rollback');
+  }
+  await db.query('delete from sites where id=$1',[id(995)]);await db.query('delete from companies where id=$1',[id(996)]);
+  console.log(JSON.stringify({five_distinct_fixture_inserts_wait_and_succeed:true,rolled_back:true,route_audit_trigger_preserved:true}));
   // A legacy update moving a row into a second company must acquire both company keys.
   await db.query("insert into companies(id,tax_rate,name) values($1,10,'別の合成会社')",[id(997)]);
   await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||$1::text,0))",[id(997)]);
