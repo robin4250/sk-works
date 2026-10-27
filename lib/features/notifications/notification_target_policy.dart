@@ -6,6 +6,7 @@ bool notificationTargetIsValid(String? actionKey, String? actionId) {
     'site_share_approval',
     'paid_leave_request',
     'route_billing_quantity_request',
+    'qualification_photo_request',
     'daily_report_edit_request',
     'checkout_report_registration',
     'site_information_request',

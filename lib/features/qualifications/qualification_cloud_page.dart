@@ -161,6 +161,11 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
             icon: const Icon(Icons.print_outlined),
           ),
           IconButton(
+            tooltip: '資格マスター管理',
+            onPressed: _loading || !_canManageWorkerQualifications ? null : _manageMasters,
+            icon: const Icon(Icons.manage_accounts_outlined),
+          ),
+          IconButton(
             tooltip: '資格マスター追加',
             onPressed: _loading || !_canManageMaster ? null : _addMaster,
             icon: const Icon(Icons.library_add_outlined),
@@ -664,7 +669,7 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
   Future<void> _changeMasterCategory(Map<String, dynamic> master) async {
     final repository = _repository;
     final masterId = master['id']?.toString() ?? '';
-    if (repository == null || masterId.isEmpty || !_canManageMaster) return;
+    if (repository == null || masterId.isEmpty || !_canManageWorkerQualifications) return;
     final choice = await showDialog<String>(context: context, builder: (context) =>
       SimpleDialog(title: const Text('資格区分を変更'), children: [
         const Padding(padding: EdgeInsets.symmetric(horizontal: 24),
@@ -683,6 +688,22 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('資格区分を更新できませんでした')));
     }
+  }
+
+  Future<void> _manageMasters() async {
+    if (!_canManageWorkerQualifications) return;
+    await showDialog<void>(context: context, builder: (dialogContext) =>
+      SimpleDialog(title: const Text('資格マスター管理'), children: [
+        for (final master in _masters)
+          ListTile(title: Text(master['name']?.toString() ?? '資格'),
+            subtitle: Text(master['category']?.toString() ?? '区分未設定'),
+            trailing: Wrap(children: [
+              IconButton(tooltip: '区分を変更', icon: const Icon(Icons.edit_outlined),
+                onPressed: () { Navigator.pop(dialogContext); _changeMasterCategory(master); }),
+              const IconButton(tooltip: '削除は準備中', icon: Icon(Icons.delete_outline),
+                onPressed: null),
+            ])),
+      ]));
   }
 
   void _showDetails(
@@ -718,9 +739,11 @@ class _QualificationCloudPageState extends State<QualificationCloudPage> {
               Text('保有者: ${worker?['name'] ?? '不明'}'),
               if ((master?['category']?.toString() ?? '').isNotEmpty)
                 Text('分類: ${master?['category']}'),
-              if (_canManageMaster && master != null)
+              if (_canManageWorkerQualifications && master != null)
                 TextButton(onPressed: () { Navigator.pop(sheetContext); _changeMasterCategory(master); },
                   child: const Text('資格区分を変更')),
+              if (_canManageWorkerQualifications && master != null)
+                const Text('資格マスターの削除は準備中です。'),
               if ((row['issuer']?.toString() ?? '').isNotEmpty)
                 Text('発行元: ${row['issuer']}'),
               if ((row['certificate_number']?.toString() ?? '').isNotEmpty)

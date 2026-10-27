@@ -66,6 +66,12 @@ class AttentionCenterRepository {
           await _client.rpc('pending_route_billing_quantity_rows'),
         ));
       }),
+      readSource('qualification_photos', () async {
+        items.addAll(mapQualificationPhotoAttention(
+          await _client.rpc('personal_qualification_submission',
+              params: {'p_action': 'list', 'p_data': <String, dynamic>{}}),
+        ));
+      }),
       readSource('generation_settings', () async {
         items.addAll(mapGenerationAttention(
           await _client.rpc('current_generation_setting_attention'),
@@ -195,6 +201,25 @@ List<AttentionCenterItem> mapRouteBillingQuantityAttention(Object? raw) {
         targetName: _text(row['customer_name']),
         targetDate: _date(row['work_date']),
         createdAt: _date(row['created_at']),
+        evidenceRank: 30, actionable: true,
+      ),
+  ];
+}
+
+List<AttentionCenterItem> mapQualificationPhotoAttention(Object? raw) {
+  if (raw is! List) throw StateError('資格写真申請を確認できません。');
+  final uuid = RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
+  return [for (final row in raw)
+    if (row is Map && row['status'] == 'pending' &&
+        row['can_review'] == true && row['photo_contract_version'] == 1 &&
+        uuid.hasMatch(row['id']?.toString() ?? ''))
+      AttentionCenterItem(
+        id: row['id'].toString(), source: 'qualification_photos',
+        title: '資格写真の承認待ち',
+        body: _text(row['qualification_name']) ?? '',
+        state: AttentionCenterState.pending,
+        actionKey: 'qualification_photo_request', actionId: row['id'].toString(),
+        targetName: _text(row['worker_name']), createdAt: _date(row['created_at']),
         evidenceRank: 30, actionable: true,
       ),
   ];

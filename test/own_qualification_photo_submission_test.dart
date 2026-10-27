@@ -27,6 +27,16 @@ void main() {
     expect(fixture.commands.single['photo_slots'][0]['extension'], 'pdf');
   });
 
+  test('pending server request prevents another upload for the same target', () async {
+    final fixture = PhotoFixture();
+    await fixture.repository.submitSelection(row: fixture.row, photos: fixture.photos);
+    final uploaded = fixture.uploads.length;
+    await expectLater(fixture.repository.submitSelection(row: fixture.row, photos: fixture.photos),
+      throwsStateError);
+    expect(fixture.uploads.length, uploaded);
+    expect(fixture.requests.length, 1);
+  });
+
   test('displayed request mismatch refuses cancellation and recovery before any RPC', () async {
     final fixture = PhotoFixture()..failUploadAt = 1;
     await expectLater(
@@ -135,6 +145,7 @@ void main() {
       expect(fixture.uploads, hasLength(2));
       expect(fixture.actions, [
         'photo_capability',
+        'list',
         'prepare_photos',
         'submit',
         'get_photos',
@@ -204,7 +215,7 @@ void main() {
         throwsStateError,
       );
       expect(fixture.uploads, isEmpty);
-      expect(fixture.actions, ['photo_capability', 'prepare_photos']);
+      expect(fixture.actions, ['photo_capability', 'list', 'prepare_photos']);
       fixture.actor = 'user';
       expect(await fixture.repository.pending(), isNotNull);
     },
@@ -288,6 +299,7 @@ class PhotoFixture {
   );
   Future<Object?> rpc(String action, Map<String, dynamic> data) async {
     actions.add(action);
+    if (action == 'list') return requests.values.map((row) => {...row, 'photo_contract_version': 1}).toList();
     if (action == 'photo_capability') {
       if (capabilityError != null) throw capabilityError!;
       return {

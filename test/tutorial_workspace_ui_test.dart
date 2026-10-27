@@ -69,7 +69,7 @@ void main() {
     expect(await prefs.initialCompleted(userId: 'u', companyId: 'c'), isTrue);
   });
 
-  testWidgets('adding later tasks cannot resurrect an already cleared initial card', (tester) async {
+  testWidgets('updated required evidence is rechecked after a previous completion', (tester) async {
     final prefs = TutorialPreferences();
     await prefs.markInitialCompleted(userId: 'u', companyId: 'c');
     var reads = 0;
@@ -79,8 +79,9 @@ void main() {
       loadSnapshot: (_) async { reads++; return snapshot(TutorialEvidenceState.missing); },
     ))));
     await tester.pumpAndSettle();
-    expect(find.text('SKOの初期準備'), findsNothing);
-    expect(reads, 0);
+    expect(find.text('SKOの初期準備'), findsOneWidget);
+    expect(reads, 1);
+    expect(await prefs.initialCompleted(userId: 'u', companyId: 'c'), isTrue);
   });
 
   testWidgets('manual guide restart keeps evidence and cleared flag intact', (tester) async {
@@ -98,4 +99,43 @@ void main() {
     expect(find.textContaining('準備 100% / 残り 0%'), findsOneWidget);
     expect(await prefs.initialCompleted(userId: 'u', companyId: 'c'), isTrue);
   });
+  testWidgets('refresh token rechecks requirements after in-memory completion', (tester) async {
+    var saved = true;
+    var reads = 0;
+    Widget view(int token) => MaterialApp(home: Scaffold(body: TutorialHomeCard(
+      userId: 'u', companyId: 'c', availableActionKeys: const {'profile'},
+      refreshToken: token, onOpenAction: (_) async {},
+      loadSnapshot: (_) async { reads++; return snapshot(saved
+          ? TutorialEvidenceState.saved : TutorialEvidenceState.missing); },
+    )));
+    await tester.pumpWidget(view(0));
+    await tester.pumpAndSettle();
+    expect(find.text('SKOの初期準備'), findsNothing);
+    saved = false;
+    await tester.pumpWidget(view(1));
+    await tester.pumpAndSettle();
+    expect(find.text('SKOの初期準備'), findsOneWidget);
+    expect(reads, 2);
+  });
+
+  testWidgets('failed refresh never hides unknown evidence behind previous completion', (tester) async {
+    var fail = false;
+    Widget view(int token) => MaterialApp(home: Scaffold(body: TutorialHomeCard(
+      userId: 'u', companyId: 'c', availableActionKeys: const {'profile'},
+      refreshToken: token, onOpenAction: (_) async {},
+      loadSnapshot: (_) async {
+        if (fail) { throw StateError('fixture unavailable'); }
+        return snapshot(TutorialEvidenceState.saved);
+      },
+    )));
+    await tester.pumpWidget(view(0));
+    await tester.pumpAndSettle();
+    expect(find.text('SKOの初期準備'), findsNothing);
+    fail = true;
+    await tester.pumpWidget(view(1));
+    await tester.pumpAndSettle();
+    expect(find.text('準備状況：未確定'), findsOneWidget);
+    expect(find.text('準備状況を確認できません。再読み込みしてください。'), findsOneWidget);
+  });
+
 }

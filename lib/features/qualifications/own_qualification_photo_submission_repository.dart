@@ -201,7 +201,12 @@ class OwnQualificationPhotoSubmissionRepository {
       throw StateError('新しい資格証写真の送信は停止中です。');
     }
     if (await pending() != null) throw StateError('先に保留中の写真申請を再確認してください。');
+    final existing = await submissions();
     _check(scope.userId);
+    if (existing.any((request) =>
+        request['target_id'] == row['id'] && request['status'] == 'pending')) {
+      throw StateError('この資格は写真の承認待ちです。再送せず、承認待ち→資格写真の承認待ちで確認してください。');
+    }
     final slots = <Map<String, dynamic>>[
       for (final photo in selected)
         if (photo.path != null)

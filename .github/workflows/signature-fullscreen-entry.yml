@@ -1,0 +1,24 @@
+name: Signature fullscreen entry
+on:
+  pull_request:
+    paths:
+      - 'lib/features/daily_reports/signature*'
+      - 'lib/features/daily_reports/daily_report_page.dart'
+      - 'test/signature*'
+      - '.github/workflows/signature-fullscreen-entry.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/daily_reports/signature_entry_frame.dart lib/features/daily_reports/signature_capture_page.dart lib/features/daily_reports/daily_report_page.dart test/signature_entry_frame_test.dart
+      - run: flutter test test/signature_entry_frame_test.dart test/signature_orientation_guidance_test.dart test/signature_confirm_return_test.dart test/signature_capture_member_names_test.dart test/daily_report_signature_aspect_test.dart test/daily_report_shared_hours_integration_test.dart

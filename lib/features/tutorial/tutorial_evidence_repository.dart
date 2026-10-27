@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/supabase_backend.dart';
+import '../people/worker_document_exemption.dart';
 
 enum TutorialEvidenceState { unknown, missing, saved, notApplicable }
 
@@ -351,11 +352,21 @@ class TutorialEvidenceRepository {
         docs['requirements'] is! List || docs['statuses'] is! List) { return unknown; }
     final requirements = (docs['requirements'] as List).whereType<Map>();
     final statuses = (docs['statuses'] as List).whereType<Map>();
+    final exemptions = docs['exemptions'] is List
+        ? (docs['exemptions'] as List).whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList()
+        : const <Map<String, dynamic>>[];
     final result = <TutorialEvidenceCheckpoint>[];
     for (final requirement in requirements) {
       if (requirement['is_active'] != true || requirement['is_required'] != true) { continue; }
       final id = requirement['id']?.toString();
       if (id == null || id.isEmpty) { return unknown; }
+      final exemption = documentExemptionFor(exemptions, docs['worker_id'].toString(), id);
+      if (exemption?['active'] == true) {
+        result.add(TutorialEvidenceCheckpoint('document:$id', TutorialEvidenceState.notApplicable,
+          label: '${requirement['name'] ?? '必須書類'}（提出免除）',
+          evidenceKey: 'exemption:$id:${exemption!['version']}'));
+        continue;
+      }
       final matches = statuses.where((row) =>
         row['requirement_id']?.toString() == id &&
         row['worker_id']?.toString() == docs['worker_id'].toString()).toList();
@@ -515,6 +526,19 @@ class _SupabaseTutorialEvidenceSource implements TutorialEvidenceSource, Tutoria
     final statuses = await client.from('worker_document_statuses')
         .select('id,requirement_id,worker_id,status,expires_at,attachment_path')
         .eq('company_id', companyId).eq('worker_id', workerId);
-    return {'worker_id': workerId, 'requirements': requirements, 'statuses': statuses};
+    List<Map<String, dynamic>> exemptions = [];
+    try {
+      final raw = await client.rpc('worker_document_exemption', params: {
+        'p_action': 'list', 'p_data': {'company_id': companyId},
+      });
+      if (raw is! Map || raw['capability_version'] != 1 || raw['items'] is! List) {
+        throw StateError('Exemption evidence unavailable');
+      }
+      exemptions = (raw['items'] as List).map((row) => Map<String, dynamic>.from(row as Map)).toList();
+    } on PostgrestException catch (error) {
+      if (error.code != 'PGRST202' || !error.message.contains('worker_document_exemption')) rethrow;
+    }
+    return {'worker_id': workerId, 'requirements': requirements, 'statuses': statuses,
+      'exemptions': exemptions};
   }
 }

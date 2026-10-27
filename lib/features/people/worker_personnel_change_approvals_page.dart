@@ -228,6 +228,8 @@ class _WorkerPersonnelChangeApprovalsPageState
                         _line('血液型', proposed['blood_type']),
                         _line('社員番号', proposed['employee_number']),
                         _line('所属', proposed['department']),
+                        if (proposed.containsKey('employee_category_id'))
+                          _line('従業員区分', proposed['employee_category_name'] ?? '未設定'),
                         _line('職種', proposed['role']),
                         _line('入社日', proposed['hire_date']),
                         _line('電話番号', proposed['phone']),
@@ -284,3 +286,4 @@ class _WorkerPersonnelChangeApprovalsPageState
     );
   }
 }
+

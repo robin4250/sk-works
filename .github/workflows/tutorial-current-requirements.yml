@@ -1,0 +1,23 @@
+name: Current required document setup refresh
+on:
+  pull_request:
+    paths:
+      - 'lib/features/tutorial/tutorial_home_card.dart'
+      - 'test/tutorial_workspace_ui_test.dart'
+      - '.github/workflows/tutorial-current-requirements.yml'
+permissions:
+  contents: read
+jobs:
+  current-requirements:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/tutorial/tutorial_home_card.dart test/tutorial_workspace_ui_test.dart
+      - run: flutter test --reporter expanded test/tutorial_workspace_ui_test.dart test/tutorial_evidence_repository_test.dart

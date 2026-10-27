@@ -156,7 +156,7 @@ class QualificationCloudRepository {
   }
 
   Future<void> updateMasterCategory(String masterId, String category) async {
-    if (!await canManageMaster()) throw StateError('資格区分を変更する権限がありません。');
+    if (!await canManageWorkerQualifications()) throw StateError('資格区分を変更する権限がありません。');
     const allowed = {'国家資格', '技能講習', '実技講習', '安全教育', '特別教育'};
     if (!allowed.contains(category)) throw ArgumentError('資格区分が正しくありません。');
     final companyId = await _companyId();
@@ -164,6 +164,12 @@ class QualificationCloudRepository {
         .update({'category': category}).eq('company_id', companyId)
         .eq('id', masterId).select('id');
     if (updated.length != 1) throw StateError('資格区分を更新できませんでした。');
+  }
+
+  // No client deletion until the server reference-preservation guard has been
+  // installed and independently verified. Never infer it from a UI flag.
+  Future<void> deleteMaster(String masterId) async {
+    throw StateError('資格マスターの削除は準備中です。');
   }
 
   Future<({String workerId, String workerName})> currentWorker() async {

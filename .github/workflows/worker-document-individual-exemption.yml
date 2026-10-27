@@ -1,0 +1,56 @@
+name: Individual required-document exemptions
+on:
+  pull_request:
+    paths:
+      - 'lib/features/people/worker_document*'
+      - 'lib/features/people/own_document_registration_page.dart'
+      - 'lib/features/tutorial/tutorial_evidence_repository.dart'
+      - 'docs/candidates/worker_document_exemption_20261027/**'
+      - 'test/worker_document_exemption_test.dart'
+      - 'tool/verify_worker_document_exemption.mjs'
+      - '.github/workflows/worker-document-individual-exemption.yml'
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: fixture-only, POSTGRES_DB: sko_trade_fixture}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_trade_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --no-audit --no-fund --ignore-scripts
+      - run: node tool/verify_worker_document_exemption.mjs "$GITHUB_WORKSPACE/tool/trade_document_pg_adapter.mjs"
+        env:
+          SKO_TRADE_FIXTURE_URL: postgres://postgres:fixture-only@127.0.0.1:5432/sko_trade_fixture
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: subosito/flutter-action@v2
+        with: {flutter-version: '3.47.5', channel: stable, cache: true}
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - run: >-
+          flutter test test/worker_document_exemption_test.dart
+          test/worker_document_requirement_archive_page_test.dart
+          test/worker_document_requirement_edit_http_test.dart
+          test/worker_document_requirement_archive_http_test.dart
+          test/worker_document_managed_save_http_test.dart
+          test/worker_document_own_save_http_test.dart
+          test/own_document_registration_save_test.dart
+          test/own_required_document_status_test.dart
+          test/tutorial_evidence_repository_test.dart
+          test/tutorial_operational_evidence_test.dart
+          --reporter expanded

@@ -281,6 +281,8 @@ class _PeopleCloudPageState extends State<PeopleCloudPage> {
                                 final record = filtered[index];
                                 final subtitleParts = <String>[
                                   record.kind.label,
+                                  if (record.kind == PersonKind.employee)
+                                    record.employeeCategoryName.isNotEmpty ? record.employeeCategoryName : '区分未設定',
                                   if (record.companyName.isNotEmpty) record.companyName,
                                   if (record.role.isNotEmpty) record.role,
                                 ];
@@ -742,4 +744,5 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+
 

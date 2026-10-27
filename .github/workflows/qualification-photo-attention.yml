@@ -1,0 +1,25 @@
+name: Qualification photo attention
+on:
+  pull_request:
+    paths:
+      - 'lib/features/notifications/**'
+      - 'lib/features/qualifications/own_qualification*'
+      - 'test/qualification_attention_test.dart'
+      - 'test/own_qualification_photo_submission_test.dart'
+      - '.github/workflows/qualification-photo-attention.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  photo-attention:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.5'
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/notifications/attention_center_repository.dart lib/features/notifications/notification_bell.dart lib/features/notifications/notifications_page.dart lib/features/notifications/notification_target_policy.dart lib/features/qualifications/own_qualification_photo_submission_repository.dart test/qualification_attention_test.dart test/own_qualification_photo_submission_test.dart
+      - run: flutter test --reporter expanded test/qualification_attention_test.dart test/own_qualification_photo_submission_test.dart test/qualification_photo_submission_review_test.dart

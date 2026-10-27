@@ -7,6 +7,8 @@ import 'daily_report_pdf_service.dart';
 import 'daily_report_month_zip.dart';
 
 import 'daily_report_month_repository.dart';
+import 'daily_report_save_badge.dart';
+export 'daily_report_save_badge.dart';
 import 'daily_report_page.dart';
 import 'daily_report_calendar_model.dart';
 import 'daily_report_saved_preview_pager.dart';
@@ -122,7 +124,10 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
 
   Widget _listingControls() => Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4), child: Wrap(
     spacing: 8, runSpacing: 4, children: [
-      ChoiceChip(label: const Text('保存済み'), selected: !_showPending && !_showUnfinished,
+      ChoiceChip(label: const Text('保存済み'),
+        selectedColor: Colors.green.shade100,
+        labelStyle: TextStyle(color: Colors.green.shade900, fontWeight: FontWeight.bold),
+        side: BorderSide(color: Colors.green.shade800), selected: !_showPending && !_showUnfinished,
         onSelected: _exporting || _openingEntryId != null ? null : (_) => setState(() { _showPending = false; _showUnfinished = false; _siteKey = null; _siteName = null; })),
       ChoiceChip(key: const ValueKey('daily-report-pending-filter'),
         label: Text(_pending.isEmpty ? 'サイン待ち' : 'サイン待ち ${_pending.length}件'),
@@ -668,21 +673,3 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
 
 
 
-class DailyReportSaveBadge extends StatelessWidget {
-  const DailyReportSaveBadge({super.key, required this.state, this.count});
-  final DailyReportSaveState state;
-  final int? count;
-  @override
-  Widget build(BuildContext context) {
-    final color = state == DailyReportSaveState.saved ? Colors.green.shade800
-        : state == DailyReportSaveState.supervisorPending ? Colors.red.shade900
-        : Theme.of(context).colorScheme.onSurfaceVariant;
-    return Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: state == DailyReportSaveState.saved ? Colors.green.shade50
-        : state == DailyReportSaveState.supervisorPending ? Colors.red.shade50
-        : Theme.of(context).colorScheme.surfaceContainerHighest,
-        border: Border.all(color: color), borderRadius: BorderRadius.circular(8)),
-      child: Text('${state.label}${count == null ? '' : ' $count件'}',
-        style: TextStyle(color: color, fontWeight: FontWeight.bold)));
-  }
-}

@@ -60,6 +60,23 @@ void main() {
     expect(data.allowanceCounts, isNot(contains('未確定手当')));
   });
   }
+  for (final width in [320.0, 390.0, 428.0]) {
+    testWidgets('calendar rows fit their content on a $width px phone', (tester) async {
+      tester.view.physicalSize = Size(width, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+        child: attendanceCalendarForTesting(month: date, data: data)))));
+      final emptyDay = tester.getSize(find.byKey(const ValueKey('attendance-calendar-day-2026-10-1')));
+      final detailedDay = tester.getSize(find.byKey(const ValueKey('attendance-calendar-day-2026-10-26')));
+      expect(emptyDay.height, lessThanOrEqualTo(emptyDay.width * 1.3));
+      expect(detailedDay.height, greaterThan(emptyDay.height));
+      expect(find.text('残業2.5h 早出0.5h 夜間1h'), findsOneWidget);
+      expect(find.textContaining('日報未確定・残業3h・未確定手当'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
   test('draft binding rejects other workers, dates, finalized and duplicate rows', () {
     Map<String, Object?> row() => {'report_id': 'r', 'worker_id': 'w',
       'overtime_hours': 1, 'early_hours': 0, 'night_hours': 0,
