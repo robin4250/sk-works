@@ -281,6 +281,15 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await assert.rejects(db.query('select invoice_correction_preview_private.preview($1)',[frozen.id]),/invoice_revision_not_allowed/);
   await db.exec(featureBody);await db.exec('drop table public.synthetic_permission');
   console.log(JSON.stringify({permission_revocation_race_reproduced:true,publication_must_remain_disabled:true}));
+  // Bound the entire final-gate SQL statement, not just each lock attempt.
+  // The writer is a synthetic concurrent transaction and is rolled back too.
+  await writer.query('begin');await writer.query('update companies set tax_rate=tax_rate where id=$1',[company]);
+  await db.query('begin');await db.query("set local statement_timeout='250ms'");const deadlineStart=Date.now();
+  await assert.rejects(db.query('select invoice_correction_preview_private.revalidate_for_commit($1,$2,$3)',[frozen.id,correctionPreview.source_fingerprint,correctionPreview.original_invoice_fingerprint]),/statement timeout/);
+  const deadlineMs=Date.now()-deadlineStart;assert.ok(deadlineMs>=200&&deadlineMs<2000);
+  await db.query('rollback');await writer.query('rollback');
+  assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
+  console.log(JSON.stringify({fixture_gate_statement_timeout_ms:deadlineMs,fixture_timeout_preserved_invoice:true}));
   // Experimental global locking does block an unrelated company's insert.
   await db.query('begin');await readLocked();
   await writer.query("set lock_timeout='500ms'");const started=Date.now();
