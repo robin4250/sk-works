@@ -98,7 +98,11 @@ let ticket=await issue();assert.equal(await issue(),ticket);assert.equal((await 
 await db.query("select set_config('test.uid',$1,false),set_config('test.sid',$2,false)",[worker,id(72)]);await assert.rejects(use(ticket),/notice_unavailable/);
 await db.query("select set_config('test.sid',$1,false)",[id(70)]);assert.equal(await use(ticket),invoice);await assert.rejects(use(ticket),/notice_unavailable/);
 ticket=await issue();await db.query("update invoice_month_close_candidate.notice_open_tickets set expires_at=clock_timestamp()-interval '1 second' where id=$1",[ticket]);await assert.rejects(use(ticket),/notice_unavailable/);const expired=ticket;ticket=await issue();assert.notEqual(ticket,expired);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_open_tickets where id=$1',[expired])).rows[0].n,0);
-ticket=await issue();await db.query("update public.invoice_approvals set status='approved' where invoice_id=$1",[invoice]);await assert.rejects(use(ticket),/notice_unavailable/);await db.query("update public.invoice_approvals set status='pending' where invoice_id=$1",[invoice]);
+// A shared notice has a hard cap even if many distinct sessions keep asking.
+for(let j=0;j<19;j++){await db.query("select set_config('test.sid',$1,false)",[id(500+j)]);await issue();}
+await db.query("select set_config('test.sid',$1,false)",[id(600)]);await assert.rejects(issue(),/notice_unavailable/);
+await db.query("select set_config('test.sid',$1,false)",[id(70)]);assert.equal(await issue(),ticket);
+await db.query("update public.invoice_approvals set status='approved' where invoice_id=$1",[invoice]);await assert.rejects(use(ticket),/notice_unavailable/);await db.query("update public.invoice_approvals set status='pending' where invoice_id=$1",[invoice]);
 await db.query("select set_config('test.notice_fp',repeat('b',64),false)");assert.equal(await current(firstNotice),false);await db.query("select set_config('test.notice_fp',repeat('a',64),false)");
 await db.query("update public.invoice_approvals set status='approved' where invoice_id=$1",[invoice]);assert.equal(await current(firstNotice),false);await assert.rejects(notice(),/notice_unavailable/);
 await db.query("update public.invoice_approvals set status='pending' where invoice_id=$1",[invoice]);await db.query("update public.invoices set updated_at=updated_at+interval '1 second' where id=$1",[invoice]);
