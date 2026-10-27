@@ -10,6 +10,9 @@ class ShiftAttendanceStatus {
 
 ShiftAttendanceStatus compareConfirmedShift({
   required bool planConfirmed,
+  // True only after a complete, authorized server read of the relevant events.
+  // A failed or partial read must never turn a missing clock-in into absence.
+  required bool attendanceReadComplete,
   required bool plannedHoliday,
   required DateTime scheduledStart,
   required DateTime scheduledEnd,
@@ -23,7 +26,7 @@ ShiftAttendanceStatus compareConfirmedShift({
   DateTime? confirmedClockIn,
   DateTime? linkedConfirmedClockOut,
 }) {
-  final invalid = !planConfirmed || plannedHoliday ||
+  final invalid = !planConfirmed || !attendanceReadComplete || plannedHoliday ||
       !scheduledEnd.isAfter(scheduledStart) ||
       lateGrace.isNegative || earlyGrace.isNegative ||
       absenceDecisionTime.isBefore(scheduledStart) ||
