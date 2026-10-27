@@ -18,6 +18,11 @@ class _Fixture {
   late SupabaseClient client;
   final requests = <({String method, Uri uri, List<int> body})>[];
   bool existingStatus = true;
+  bool absentExemption = true;
+  bool denyExemptionRead = false;
+  Map<String, dynamic> exemptionResponse = {
+    'capability_version': 1, 'can_manage': false, 'items': <Object>[],
+  };
   String? existingPath = 'synthetic/old.jpg';
   bool rejectUpload = false;
   bool loseStatusResponse = false;
@@ -78,6 +83,23 @@ class _Fixture {
           'created_at': '2026-01-01T00:00:00Z',
         },
       };
+    } else if (path == '/rest/v1/rpc/worker_document_exemption') {
+      if (absentExemption) {
+        request.response.statusCode = 404;
+        response = {'code': 'PGRST202', 'message': 'Could not find public.worker_document_exemption'};
+      } else if (denyExemptionRead) {
+        request.response.statusCode = 403;
+        response = {'code': '42501', 'message': 'Exemption access denied'};
+      } else {
+        final data = jsonDecode(utf8.decode(body)) as Map;
+        if (data['p_action'] == 'set') {
+          final proposed = data['p_data'] as Map;
+          response = {'capability_version': 1, 'item': {...proposed,
+            'version': (proposed['expected_version'] as int) + 1}};
+        } else {
+          response = exemptionResponse;
+        }
+      }
     } else if (path == '/rest/v1/rpc/ensure_current_user_worker') {
       response = _worker;
     } else if (path == '/rest/v1/company_members') {
@@ -525,4 +547,46 @@ void main() {
       expect(requirements.uri.queryParameters['is_active'], 'eq.true');
     },
   );
+  test('absent exemption endpoint keeps old documents; OFF blocks changes while keeping saved exemption', () async {
+    final repo = WorkerDocumentRepository.forTesting(fixture.client);
+    final old = await repo.loadOwnDocuments();
+    expect(old['statuses'], isNotEmpty);
+    expect(repo.exemptionEditingAvailable, false);
+    fixture.absentExemption = false;
+    fixture.exemptionResponse = {'capability_version': 1, 'can_manage': false, 'items': [
+      {'company_id': _company, 'worker_id': _worker, 'requirement_id': _requirement,
+        'active': true, 'version': 2, 'reason': '保存済み免除'},
+    ]};
+    final off = await repo.loadOwnDocuments();
+    expect(off['exemptions']!.single['active'], true);
+    expect(repo.exemptionEditingAvailable, false);
+    await expectLater(repo.setDocumentExemption(workerId: _worker,
+      requirementId: _requirement, active: false, expectedVersion: 2, reason: '解除'),
+      throwsStateError);
+  });
+  test('permission and malformed exemption responses cannot fall back to no exemption', () async {
+    final repo = WorkerDocumentRepository.forTesting(fixture.client);
+    fixture.absentExemption = false; fixture.denyExemptionRead = true;
+    await expectLater(repo.loadOwnDocuments(), throwsA(isA<PostgrestException>()));
+    fixture.denyExemptionRead = false;
+    fixture.exemptionResponse = {'capability_version': 1, 'items': 'invalid'};
+    await expectLater(repo.loadOwnDocuments(), throwsStateError);
+  });
+  test('saved exemption version and IDs are bound to a confirmed RPC result', () async {
+    final repo = WorkerDocumentRepository.forTesting(fixture.client);
+    fixture.absentExemption = false;
+    fixture.exemptionResponse = {'capability_version': 1, 'can_manage': true, 'items': <Object>[]};
+    await repo.loadOwnDocuments();
+    expect(repo.exemptionEditingAvailable, true);
+    await repo.setDocumentExemption(workerId: _worker, requirementId: _requirement,
+      active: true, expectedVersion: 0, reason: ' 管理者確認 ');
+    final request = fixture.requests.where((row) =>
+      row.uri.path == '/rest/v1/rpc/worker_document_exemption' &&
+      (jsonDecode(utf8.decode(row.body)) as Map)['p_action'] == 'set').single;
+    final payload = (jsonDecode(utf8.decode(request.body)) as Map)['p_data'] as Map;
+    expect(payload, {'company_id': _company, 'worker_id': _worker,
+      'requirement_id': _requirement, 'active': true, 'expected_version': 0, 'reason': '管理者確認'});
+    expect(payload.containsKey('actor_id'), false);
+  });
+
 }

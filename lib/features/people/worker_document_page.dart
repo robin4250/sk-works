@@ -144,7 +144,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     final needsAttention = visibleRequirements.where((requirement) {
       final status = statusByRequirement[requirement['id']?.toString()];
       if (documentExemptionFor(_exemptions, workerId,
-          requirement['id']?.toString())?['active'] == true) return false;
+          requirement['id']?.toString())?['active'] == true) { return false; }
       return _documentNeedsAttention(requirement, status, today);
     }).length;
 
@@ -926,7 +926,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     final actor = _loadedActorId;
     final requirementId = requirement['id']?.toString();
     if (repository == null || workerId == null || requirementId == null ||
-        actor == null || actor != repository.actorId || !_canManageStatuses) return;
+        actor == null || actor != repository.actorId || !_canManageStatuses) { return; }
     final active = previous?['active'] != true;
     final reason = TextEditingController();
     final confirmed = await showDialog<bool>(context: context, builder: (context) =>
@@ -947,8 +947,10 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       if (!mounted || actor != repository.actorId || workerId != _selectedWorkerId) return;
       await _load();
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('免除を保存できませんでした。書類を再読み込みして確認してください。')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('免除を保存できませんでした。書類を再読み込みして確認してください。')));
+      }
     }
   }
 

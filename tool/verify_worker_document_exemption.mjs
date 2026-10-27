@@ -41,7 +41,11 @@ try {
         select 1 from public.worker_private_bank_accounts ba where ba.worker_id = v_worker_id and ba.company_id = v_company_id))`);
  await db.exec(attention);
  const install=await fs.readFile(new URL('../docs/candidates/worker_document_exemption_20261027/install.sql.review-only',import.meta.url),'utf8');
+ const attentionCatalog = async () => (await db.query("select proowner,prosecdef,provolatile,proconfig,proacl from pg_proc where oid='public.current_user_required_document_attention()'::regprocedure")).rows;
+ const attentionBefore = await attentionCatalog();
+ assert.equal(attentionBefore[0].prosecdef, true);
  await db.exec(install);
+ assert.deepEqual(await attentionCatalog(), attentionBefore);
  await assert.rejects(db.exec(install),e=>e.code==='55000');await db.exec('rollback');
  await db.query("insert into public.company_members values($1,$3,'owner'),($1,$4,'manager'),($1,$5,'worker'),($1,$6,'viewer'),($2,$7,'admin')",[company,other,owner,manager,employee,another,foreign]);
  await db.query("insert into public.workers values($1,$2,$3,'active'),($4,$2,$5,'active')",[worker,company,employee,worker2,another]);
@@ -66,6 +70,7 @@ try {
  await assert.rejects(set(1,false,{reason:'  '}),e=>e.code==='22023');
  await assert.rejects(set(1,false,{worker_id:worker2}),e=>e.code==='40001');
  await assert.rejects(set(1,false,{company_id:other}),e=>e.code==='42501');
+ await assert.rejects(db.exec('select * from private.worker_document_exemptions'),e=>e.code==='42501');
  await assert.rejects(db.exec('delete from private.worker_document_exemptions'),e=>e.code==='42501');
  await assert.rejects(db.exec('delete from private.worker_document_exemption_events'),e=>e.code==='42501');
  await actor(employee);assert.equal((await call('list',{company_id:company})).items.length,1);
@@ -89,5 +94,5 @@ try {
  assert.equal((await call('list',{company_id:company})).can_manage,false);
  await db.exec('reset role');
  assert.equal((await db.query("select count(*)::int n from pg_policies where schemaname='private' and tablename like 'worker_document_exemption%'")).rows[0].n,0);
- console.log('PASS individual exemption: owner/manager, same-worker read, other-company/viewer/anon/expired/blocked rejection, stale CAS, revoke restores attention, submitted/photo unchanged, audit append and direct denial');
+ console.log('PASS individual exemption: owner/manager, same-worker read, other-company/viewer/anon/expired/blocked rejection, stale CAS, revoke restores attention, attention definer/owner/search_path/ACL retained, submitted/photo unchanged, audit append and direct denial');
 } finally {await db.close();}
