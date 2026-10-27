@@ -2,11 +2,17 @@
 -- This does not replace public.approve_invoice or grant access to any client.
 create function invoice_month_close_candidate.approve_from_notice(p_ticket uuid)
 returns boolean language plpgsql security definer set search_path='' as $$
-declare invoice uuid;
+declare invoice uuid;actor uuid:=auth.uid();sid uuid;result boolean;
 begin
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null then raise exception 'notice_unavailable' using errcode='42501';end if;
  invoice:=invoice_month_close_candidate.consume_notice_ticket(p_ticket);
+ insert into invoice_month_close_candidate.approval_permits(tx,invoice_id,actor_id,session_id)
+ values(txid_current(),invoice,actor,sid);
  -- Approval revalidates readiness, recipient authorization and source locks.
  -- If it fails, consuming the ticket is rolled back by the same transaction.
- return invoice_month_close_candidate.approve(invoice);
+ result:=invoice_month_close_candidate.approve(invoice);
+ delete from invoice_month_close_candidate.approval_permits where tx=txid_current() and invoice_id=invoice and actor_id=actor and session_id=sid;
+ return result;
 end $$;
 revoke all on function invoice_month_close_candidate.approve_from_notice(uuid) from public,anon,authenticated,service_role;
