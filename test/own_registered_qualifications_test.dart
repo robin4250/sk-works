@@ -43,6 +43,8 @@ void main() {
     expect(find.text('取得済み資格'), findsNothing);
     await tester.tap(find.text('資格を登録'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
     expect(find.text('未取得資格'), findsWidgets);
   });
 }
