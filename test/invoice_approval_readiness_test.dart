@@ -13,6 +13,26 @@ void main() {
       expect(state.state, InvoiceApprovalReadinessState.unavailable);
     }
   });
+  testWidgets('candidate ticket and boolean approval are not readiness evidence', (tester) async {
+    // PR #1508 returns a ticket receipt from the open RPC and a boolean from
+    // approval. Neither contains the required status and source revision.
+    final ticketReceipt = <String, Object>{
+      'notification_id': '00000000-0000-0000-0000-000000000001',
+      'invoice_id': 'invoice',
+      'ticket_id': '00000000-0000-0000-0000-000000000002',
+      'expires_at': '2026-10-28T00:05:00Z',
+    };
+    for (final result in <Object?>[ticketReceipt, true, false, 'ready',
+      {'status': 'ready', 'invoice_id': 'invoice'}]) {
+      final state = InvoiceApprovalReadiness.fromServer(
+        result, invoiceId: 'invoice', revision: 'revision');
+      expect(state.state, InvoiceApprovalReadinessState.unavailable);
+      var calls = 0;
+      await tester.pumpWidget(page(state, onApprove: () => calls++));
+      expect(find.text('承認する'), findsNothing);
+      expect(calls, 0);
+    }
+  });
   testWidgets('every pending condition explains why approval is unavailable', (tester) async {
     for (final entry in {'period_open': '対象月が終わるまで承認できません。', 'checkout_pending': '対象となる勤務の退勤が必要です。', 'report_pending': '対象となる日報の確定が必要です。'}.entries) {
       await tester.pumpWidget(page(from(entry.key), onApprove: () => fail('must not approve')));
