@@ -51,4 +51,24 @@ await activation;
 await assert.rejects(a.query("update public.invoice_approvals set status='approved' where invoice_id='00000000-0000-0000-0000-000000000002'"),/invoice_retired/);
 assert.equal((await c.query("select status from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000002'")).rows[0].status,'pending');
 console.log('PASS: approval writes and hold activation serialize in both observed orderings; SECDEF reads and cached PDFs are not protected');
+// Existing RPCs first lock invoices, whereas a direct approval UPDATE locks
+// the approval row before its row trigger locks invoices. Exercise that exact
+// inversion; Postgres must abort one side and neither path can be deemed safe.
+await c.query("insert into public.invoices values('00000000-0000-0000-0000-000000000003','old3')");
+await c.query("insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000003','approved')");
+await a.query('begin');
+await a.query("select * from public.invoices where id='00000000-0000-0000-0000-000000000003' for update");
+const inverseB=b.query("update public.invoice_approvals set status='pending' where invoice_id='00000000-0000-0000-0000-000000000003'").then(()=>null,e=>e);
+let inverseBlocked=false;
+for(let i=0;i<100;i++) {
+ if((await c.query('select cardinality(pg_blocking_pids($1))>0 blocked',[pid])).rows[0].blocked){inverseBlocked=true;break;}
+ await new Promise(resolve=>setTimeout(resolve,30));
+}
+assert.equal(inverseBlocked,true,'approval writer must be blocked on invoice row');
+const inverseA=a.query("update public.invoice_approvals set status='pending' where invoice_id='00000000-0000-0000-0000-000000000003'").then(()=>null,e=>e);
+const deadlockRace=await Promise.race([inverseA.then(e=>({side:'a',e})), inverseB.then(e=>({side:'b',e}))]);
+assert.equal(deadlockRace.e?.code,'40P01','the first completed transaction must be rejected as a deadlock');
+await a.query('rollback');
+await Promise.all([inverseA,inverseB]);
+console.log('PASS lock-order inversion reproduced: approval row trigger is NOT safe to deploy');
 await Promise.all(clients.map(c=>c.end()));
