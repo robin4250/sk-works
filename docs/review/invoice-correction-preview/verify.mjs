@@ -133,6 +133,19 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
    const q=writer.query('update '+table+' set company_id=company_id where company_id=$1',[company]).then(()=>{finished=true;});
    await pause(200);assert.equal(finished,false,'writer did not wait for '+table);await db.query('commit');await q;await writer.query('rollback');
   }
+  let deleteRejected=0;
+  for(const table of protectedTables){
+   for(const verb of ['insert','delete']){
+    await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||$1::text,0))",[company]);
+    await writer.query('begin');let finished=false;
+    const sql=verb==='insert'?'insert into '+table+' select * from '+table+' where company_id=$1 on conflict do nothing':'delete from '+table+' where company_id=$1';
+    const pendingWrite=writer.query(sql,[company]).then(()=>{finished=true;return true;},()=>{finished=true;return false;});
+    await pause(200);assert.equal(finished,false,verb+' did not wait for '+table);
+    await db.query('commit');const ok=await pendingWrite;if(!ok){if(verb==='insert')throw Error('fixture insert rejected on '+table);deleteRejected++;}
+    await writer.query('rollback');
+   }
+  }
+  console.log(JSON.stringify({fixture_five_table_insert_delete_wait:true,fixture_delete_constraint_rejections:deleteRejected}));
   // A legacy update moving a row into a second company must acquire both company keys.
   await db.query("insert into companies(id,tax_rate,name) values($1,10,'別の合成会社')",[id(997)]);
   await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||$1::text,0))",[id(997)]);
