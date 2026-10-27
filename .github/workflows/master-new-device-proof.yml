@@ -4,6 +4,7 @@ on:
     paths:
       - 'tool/security/master-device-enrollment-candidate/new-device-proof*'
       - 'tool/security/master-device-enrollment-candidate/verified-dual-proof*'
+      - 'tool/security/master-device-enrollment-candidate/session-bound-approval*'
       - '.github/workflows/master-new-device-proof.yml'
   workflow_dispatch:
 permissions:
@@ -16,4 +17,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: node --test tool/security/master-device-enrollment-candidate/new-device-proof.test.mjs tool/security/master-device-enrollment-candidate/verified-dual-proof.test.mjs
+      - run: node --test tool/security/master-device-enrollment-candidate/new-device-proof.test.mjs tool/security/master-device-enrollment-candidate/verified-dual-proof.test.mjs tool/security/master-device-enrollment-candidate/session-bound-approval.test.mjs
