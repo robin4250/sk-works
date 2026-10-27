@@ -132,3 +132,18 @@ test('isolated PostgreSQL port binds owner, session, durable command and audited
  await assert.rejects(f.db.exec('delete from apple_native_enrollment_private.self_recovery_commands'),/append_only/);
  await assert.rejects(f.db.exec('truncate apple_native_enrollment_private.self_recovery_commands'),/append_only/);
 }));
+
+test('Native owner recovery serializes disable and session deletion in both orders',{skip:!native},()=>fixture(async f=>{
+ await f.db.exec(fs.readFileSync(new URL('self-recovery/self-recovery-command.sql.review-only',import.meta.url),'utf8'));
+ const r=await f.reserve();await f.hold(r);const c=(await f.q('select apple_native_enrollment_private.self_recovery_command($1,$2,$3) c',[r.request_id,uid,sid]))[0].c;
+ const a=await f.db.peer(),b=await f.db.peer(),sql='select apple_native_enrollment_private.self_recovery_reconcile($1,$2,$3,$4) r',args=[c.command_id,r.request_id,uid,sid];
+ for(const writer of ["update auth.users set banned_until=now()+interval '1 day' where id=$1",'delete from auth.sessions where id=$1']){
+  await a.query('begin');await a.query(writer,[writer.startsWith('update')?uid:sid]);
+  await b.query('begin');await b.query("set local lock_timeout='250ms'");await assert.rejects(b.query(sql,args));await b.query('rollback');await a.query('rollback');
+ }
+ await a.query('begin');const done=(await a.query(sql,args)).rows[0].r;assert.equal(done.status,'cancelled');
+ for(const writer of ["update auth.users set banned_until=now()+interval '1 day' where id=$1",'delete from auth.sessions where id=$1']){
+  await b.query('begin');await b.query("set local lock_timeout='250ms'");await assert.rejects(b.query(writer,[writer.startsWith('update')?uid:sid]));await b.query('rollback');
+ }
+ await a.query('rollback');assert.equal((await f.state(r)).status,'held');
+}));

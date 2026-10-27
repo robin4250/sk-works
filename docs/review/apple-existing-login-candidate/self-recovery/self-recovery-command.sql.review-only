@@ -33,4 +33,31 @@ begin
  return jsonb_build_object('request_id',p_request,'actor_id',p_actor,'session_id',p_session,'command_id',v);
 end $$;
 revoke all on function apple_native_enrollment_private.self_recovery_command(uuid,uuid,uuid) from public,anon,authenticated,service_role;
+-- Same lock order as the existing root reconciliation (command, subject, actor,
+-- identities, memberships, user, session). The identity table lock has broad
+-- impact and is acceptable only in the isolated fixture, not production.
+create function apple_native_enrollment_private.self_recovery_reconcile(p_command uuid,p_request uuid,p_actor uuid,p_session uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare r apple_native_enrollment_private.requests%rowtype; v uuid; c jsonb;
+begin
+ perform apple_native_enrollment_private.root_operator();
+ if p_command is null or p_request is null or p_actor is null or p_session is null then raise exception 'apple_self_recovery_unavailable';end if;
+ select command_id into v from apple_native_enrollment_private.self_recovery_commands where request_id=p_request and actor_id=p_actor and session_id=p_session;
+ if v is distinct from p_command then raise exception 'apple_self_recovery_unavailable';end if;
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request;
+ if not found or r.actor_id<>p_actor then raise exception 'apple_self_recovery_unavailable';end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-recovery-command:'||p_command::text,0));
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-subject:'||r.subject,0));
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-actor:'||p_actor::text,0));
+ lock table auth.identities in share row exclusive mode;
+ lock table public.company_members in share mode nowait;
+ perform 1 from auth.users where id=p_actor for share nowait;
+ if not found then raise exception 'apple_self_recovery_unavailable';end if;
+ perform 1 from auth.sessions where id=p_session and user_id=p_actor for share nowait;
+ if not found then raise exception 'apple_self_recovery_unavailable';end if;
+ c:=apple_native_enrollment_private.context(p_actor,p_session);
+ if c is null or not apple_google_protection.ready() or not apple_native_enrollment_private.ready() then raise exception 'apple_self_recovery_unavailable';end if;
+ return apple_native_enrollment_private.reconcile_request(p_command,p_request,p_session,'本人のApple連携の保留状態を安全に照合');
+end $$;
+revoke all on function apple_native_enrollment_private.self_recovery_reconcile(uuid,uuid,uuid,uuid) from public,anon,authenticated,service_role;
 commit;
