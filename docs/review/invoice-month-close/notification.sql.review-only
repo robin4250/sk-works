@@ -70,7 +70,7 @@ create index notice_ticket_cleanup on invoice_month_close_candidate.notice_open_
 -- future scheduler may run bounded batches after installation review.
 create index notice_ticket_expiry_cleanup on invoice_month_close_candidate.notice_open_tickets(expires_at,id);
 create function invoice_month_close_candidate.cleanup_expired_notice_tickets(p_limit integer)
-returns integer language plpgsql security definer set search_path='' as $
+returns integer language plpgsql security definer set search_path='' as $cleanup$
 declare removed integer;
 begin
  if p_limit is null or p_limit < 1 or p_limit > 500 then
@@ -86,7 +86,7 @@ begin
    using doomed d where t.id=d.id returning t.id
  ) select count(*)::integer into removed from deleted;
  return removed;
-end $;
+end $cleanup$;
 revoke all on function invoice_month_close_candidate.cleanup_expired_notice_tickets(integer) from public,anon,authenticated,service_role;
 create function invoice_month_close_candidate.issue_notice_ticket(p_notice uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
