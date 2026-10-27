@@ -103,7 +103,10 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await db.query("select set_config('test.uid',$1,false)",[actor]);await assert.rejects(db.query('select public.approve_invoice($1)',[frozen.id]),/notification_approval_required/);const publicTicket=(await db.query('select public.invoice_notice_open_candidate($1) v',[notificationId])).rows[0].v.ticket_id;
   await db.query('begin');assert.equal((await db.query('select public.invoice_approve_notice_candidate($1) v',[publicTicket])).rows[0].v,true);await db.query('rollback');
  }finally{await db.exec('reset role');}
- console.log(JSON.stringify({fixture_authenticated_public_entry_works:true,fixture_real_legacy_approve_blocked:true,fixture_wrong_recipient_denied:true,real_gotrue_not_tested:true}));
+ await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=false');await db.exec('set role authenticated');
+ try{await db.query("select set_config('test.uid',$1,false)",[actor]);await db.query('begin');assert.equal((await db.query('select public.approve_invoice($1) v',[frozen.id])).rows[0].v,true);await db.query('rollback');}finally{await db.exec('reset role');}
+ await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=true');
+ console.log(JSON.stringify({fixture_authenticated_public_entry_works:true,fixture_real_legacy_approve_blocked:true,fixture_legacy_approve_off_unchanged:true,fixture_wrong_recipient_denied:true,real_gotrue_not_tested:true}));
 }
 const approvalTicket=(await db.query('select invoice_month_close_candidate.ticket_from_notification($1) v',[notificationId])).rows[0].v.ticket_id;
 await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=true');
