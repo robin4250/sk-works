@@ -1,0 +1,18 @@
+name: Security observation durable delivery candidate
+on:
+  pull_request:
+    paths:
+      - 'tool/security/observation-notice-candidate/**'
+      - '.github/workflows/security-observation-delivery.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-pglite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/sko-notice" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
+      - run: PGLITE_MODULE="$RUNNER_TEMP/sko-notice/node_modules/@electric-sql/pglite/dist/index.js" node tool/security/observation-notice-candidate/verify-isolated.mjs
