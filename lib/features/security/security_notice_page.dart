@@ -52,11 +52,11 @@ class _SecurityNoticePageState extends State<SecurityNoticePage> with WidgetsBin
       if(_current(g))setState(()=>_pending=null);
       final snapshot=await repo.load(pwd,isActive:()=>_current(g));
       if(_current(g))setState((){_items=snapshot.events;_capacityGaps=snapshot.capacityGaps;_error='対応を保存しました。';});
-    }catch(error){if(_current(g))setState((){
+    }catch(error){if(_current(g)){setState((){
       if(saved){_items=null;_error='対応は保存済みです。再認証して一覧を更新してください。';}
       else if(error is SecurityNoticeRejected){_pending=null;_items=null;_error='操作結果を確認できません。再認証し、最新の一覧で確認してください。';}
       else {_error='結果を確認できません。同じ操作を再確認してください。';}
-    });}
+    });}}
     finally{if(_current(g))setState(()=>_busy=false);}
   }
   String _state(String x)=>const {'unreviewed':'未対応','investigating':'確認中','false_positive':'誤検知','resolved':'対応済み'}[x]??'状態不明';
