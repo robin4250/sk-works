@@ -91,6 +91,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '免除を保存'));
     await tester.pumpAndSettle(); expect(repo.writes, 0);
     await tester.enterText(find.byType(TextField).last, '本人の事情を確認');
+    await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '免除を保存'));
     await tester.pumpAndSettle();
     expect(repo.writes, 1); expect(find.text('提出免除'), findsOneWidget);
@@ -99,6 +100,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('免除を解除')); await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '提出対象へ戻す');
+    await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '免除を解除'));
     await tester.pumpAndSettle();
     expect(repo.writes, 2); expect(repo.exemption!['active'], false);
