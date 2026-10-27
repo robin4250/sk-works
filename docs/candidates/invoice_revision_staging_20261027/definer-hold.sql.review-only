@@ -1,0 +1,43 @@
+-- REVIEW ONLY. Selected legacy definer paths only; NOT a migration.
+-- Requires the independent hold experiment, has no public entry point, and
+-- leaves STABLE expense, LINE, caches, storage and version issuance unguarded.
+begin;
+create function invoice_retirement_guard_candidate.require_visible(p_id uuid)
+ returns void language plpgsql security definer set search_path='' as $$
+begin
+ perform 1 from public.invoices where id=p_id for share;
+ if not found or invoice_retirement_guard_candidate.is_held(p_id) then
+  raise exception 'invoice_unavailable' using errcode='42501';
+ end if;
+end $$;
+revoke all on function invoice_retirement_guard_candidate.require_visible(uuid) from public,anon,authenticated,service_role;
+do $patch$
+declare t record; f record; anchor integer; body text; patched text;
+begin
+ for t in select * from (values
+ ('public.invoice_approval_history(uuid)','0781e1902a1eb8d6e5b36f644091a9eb','{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}', 'perform invoice_retirement_guard_candidate.require_visible(p_invoice_id);'),
+ ('public.invoice_approval_status_rows(uuid)','1e2db926b510083956617e41ff4e9b52','{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}', 'perform invoice_retirement_guard_candidate.require_visible(p_invoice_id);'),
+ ('public.invoice_approval_status_rows_v2(uuid)','b28a4dff38c401d5374e2930d9028540','{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}', 'perform invoice_retirement_guard_candidate.require_visible(p_invoice_id);'),
+ ('private.trade_document_source(text,uuid,text)','ebcc70935938482054943560390038b2','{postgres=X/postgres}', 'if p_kind=''invoice'' then perform invoice_retirement_guard_candidate.require_visible(p_subject); end if;')
+ ) z(signature,expected_hash,expected_acl,guard_sql) loop
+  select p.oid,p.prosrc,p.prosecdef,p.proowner,p.proacl,p.proconfig,p.provolatile,
+   pg_get_functiondef(p.oid) definition into f from pg_proc p where p.oid=to_regprocedure(t.signature);
+  if not found or md5(f.prosrc)<>t.expected_hash or not f.prosecdef
+   or pg_get_userbyid(f.proowner)<>'postgres' or f.proacl::text is distinct from t.expected_acl
+   or f.proconfig is distinct from array['search_path=""']::text[] or f.provolatile<>'v' then
+   raise exception 'invoice_hold_definition_or_acl_drift' using errcode='55000';
+  end if;
+  anchor:=strpos(f.prosrc,E'\nbegin\n');
+  if anchor=0 then raise exception 'invoice_hold_anchor_drift' using errcode='55000'; end if;
+  body:=substr(f.prosrc,1,anchor+6)||E'\n '||t.guard_sql||substr(f.prosrc,anchor+7);
+  if strpos(f.definition,f.prosrc)=0 then raise exception 'invoice_hold_layout_drift' using errcode='55000'; end if;
+  patched:=replace(f.definition,f.prosrc,body);
+  execute patched;
+  if not exists(select 1 from pg_proc p where p.oid=f.oid and p.proowner=f.proowner
+   and p.proacl is not distinct from f.proacl and p.proconfig is not distinct from f.proconfig
+   and p.provolatile=f.provolatile and p.prosecdef=f.prosecdef) then
+   raise exception 'invoice_hold_metadata_changed' using errcode='55000';
+  end if;
+ end loop;
+end $patch$;
+commit;

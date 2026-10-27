@@ -1,0 +1,183 @@
+name: Invoice revision isolated staging
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/invoice_revision_staging_20261027/**'
+      - 'tool/verify_invoice_owner_preview.mjs'
+      - 'tool/verify_invoice_owner_preview_gotrue.mjs'
+      - 'tool/verify_invoice_definer_hold.mjs'
+      - 'tool/verify_legacy_retirement.mjs'
+      - 'tool/verify_legacy_retirement_race.mjs'
+      - 'tool/verify_invoice_revision_staging.mjs'
+      - 'tool/reauthentication-helper.fixture.sql'
+      - 'tool/generate_invoice_preview_stage_wrapper.py'
+      - 'lib/features/invoices/invoice_output_guard.dart'
+      - 'test/invoice_output_guard_test.dart'
+      - 'lib/features/invoices/invoice_revision_review_page.dart'
+      - 'test/invoice_revision_review_page_test.dart'
+      - '.github/workflows/invoice-revision-isolated-staging.yml'
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: revision_candidate
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:fixture-only-password@localhost:5432/revision_candidate
+      SKO_HOLD_SQL: docs/candidates/invoice_revision_staging_20261027/legacy-retirement.sql.review-only
+      SKO_SHADOW_SQL: docs/candidates/invoice_revision_staging_20261027/private-switch.sql.review-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/revision-runtime" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8 pg@8.16.3
+      - run: node tool/verify_invoice_revision_staging.mjs "$RUNNER_TEMP/revision-runtime/node_modules/@electric-sql/pglite/dist/index.js" docs/candidates/invoice_revision_staging_20261027/revision.sql.review-only
+      - run: node tool/verify_legacy_retirement.mjs docs/candidates/invoice_revision_staging_20261027/legacy-retirement.sql.review-only "$RUNNER_TEMP/revision-runtime/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_invoice_revision_staging.mjs "$RUNNER_TEMP/revision-runtime/node_modules/@electric-sql/pglite/dist/index.js" docs/candidates/invoice_revision_staging_20261027/revision.sql.review-only "$RUNNER_TEMP/revision-runtime/node_modules/pg/lib/index.js" --native
+  real-preview-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_document_adjustment_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8 pg@8.16.3
+      - uses: actions/checkout@v4
+        with:
+          ref: 91804de11c4116021e096c08c226c9f3d5c00314
+          path: _invoice_preview_dependency
+      - run: python3 tool/generate_invoice_preview_stage_wrapper.py
+        env:
+          SKO_PREVIEW_WRAPPER: ${{ github.workspace }}/_invoice_preview_dependency/docs/review/invoice-correction-preview/verify.mjs
+          SKO_ADJUSTMENT_ROOT: ${{ github.workspace }}
+      - run: node tool/verify_invoice_preview_stage_wrapper.generated.mjs "file://$PWD/node_modules/@electric-sql/pglite/dist/index.js"
+        env:
+          SKO_ADJUSTMENT_ROOT: ${{ github.workspace }}
+          SKO_PREVIEW_SQL: ${{ github.workspace }}/_invoice_preview_dependency/docs/review/invoice-correction-preview/preview.sql.review-only
+          SKO_STAGE_SQL: ${{ github.workspace }}/docs/candidates/invoice_revision_staging_20261027/revision.sql.review-only
+          SKO_OWNER_PREVIEW_SQL: ${{ github.workspace }}/docs/candidates/invoice_revision_staging_20261027/owner-preview.sql.review-only
+      - run: node tool/verify_invoice_preview_stage_wrapper.generated.mjs "$PWD/tool/trade_document_adjustments_native_pg17_runtime.mjs"
+        env:
+          SKO_ADJUSTMENT_ROOT: ${{ github.workspace }}
+          SKO_PREVIEW_SQL: ${{ github.workspace }}/_invoice_preview_dependency/docs/review/invoice-correction-preview/preview.sql.review-only
+          SKO_STAGE_SQL: ${{ github.workspace }}/docs/candidates/invoice_revision_staging_20261027/revision.sql.review-only
+          SKO_OWNER_PREVIEW_SQL: ${{ github.workspace }}/docs/candidates/invoice_revision_staging_20261027/owner-preview.sql.review-only
+          SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
+  review-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/invoices/invoice_revision_review_page.dart test/invoice_revision_review_page_test.dart lib/features/invoices/invoice_output_guard.dart test/invoice_output_guard_test.dart
+      - run: flutter test --reporter expanded test/invoice_revision_review_page_test.dart test/invoice_output_guard_test.dart
+  legacy-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: revision_legacy_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:fixture-only-password@localhost:5432/revision_legacy_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/revision-race" --ignore-scripts --no-audit --no-fund pg@8.16.3
+      - run: node tool/verify_legacy_retirement_race.mjs docs/candidates/invoice_revision_staging_20261027/legacy-retirement.sql.review-only "$RUNNER_TEMP/revision-race/node_modules/pg/lib/index.js"
+  definer-hold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: revision_definer_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:fixture-only-password@localhost:5432/revision_definer_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/revision-definer" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8 pg@8.16.3
+      - run: node tool/verify_invoice_definer_hold.mjs docs/candidates/invoice_revision_staging_20261027 "$RUNNER_TEMP/revision-definer/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_invoice_definer_hold.mjs docs/candidates/invoice_revision_staging_20261027 "$RUNNER_TEMP/revision-definer/node_modules/@electric-sql/pglite/dist/index.js" "$RUNNER_TEMP/revision-definer/node_modules/pg/lib/index.js" --native
+  owner-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: revision_owner_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:fixture-only-password@localhost:5432/revision_owner_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/revision-owner" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8 pg@8.16.3
+      - run: node tool/verify_invoice_owner_preview.mjs docs/candidates/invoice_revision_staging_20261027 "$RUNNER_TEMP/revision-owner/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_invoice_owner_preview.mjs docs/candidates/invoice_revision_staging_20261027 "$RUNNER_TEMP/revision-owner/node_modules/@electric-sql/pglite/dist/index.js" "$RUNNER_TEMP/revision-owner/node_modules/pg/lib/index.js" --native
+  owner-preview-real-gotrue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/verify_invoice_owner_preview_gotrue.mjs
+      - name: Disposable local GoTrue and PostgREST owner preview
+        env:
+          SKO_OWNER_PREVIEW_AUTH_HOOK: contract-v1
+        run: node tool/verify_invoice_owner_preview_gotrue.mjs
