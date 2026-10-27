@@ -105,6 +105,23 @@ try {
   const approvalResult = await approval.query("update public.synthetic_work set v='approval changed' where company_id=$1 and v='prior writer'",[a]);
   assert.equal(approvalResult.rowCount,1);
   await approval.query('rollback');
+  // Negative controls: an UPDATE-only OLD-company guard cannot cover other
+  // write operations or moves into a company locked by an approver.
+  await approval.query('begin');
+  await approval.query(sql,[a]);
+  await same.query('begin');
+  await same.query("set local statement_timeout='2s'");
+  const inserted=await same.query("insert into public.synthetic_work values($1,'unguarded insert')",[a]);
+  assert.equal(inserted.rowCount,1);
+  const deleted=await same.query("delete from public.synthetic_work where company_id=$1 and v='unguarded insert'",[a]);
+  assert.equal(deleted.rowCount,1);
+  const moved=await same.query("update public.synthetic_work set company_id=$1 where company_id=$2 and v='other changed'",[a,b]);
+  assert.equal(moved.rowCount,1);
+  await same.query('commit');
+  const observed=await approval.query("select count(*)::int as n from public.synthetic_work where company_id=$1 and v='other changed'",[a]);
+  assert.equal(observed.rows[0].n,1);
+  await approval.query('rollback');
+  console.log('PASS: negative controls reproduce INSERT, DELETE and destination-company move bypass');
   console.log('PASS: synthetic try-lock fails promptly; other company and approver proceed');
   console.log('PASS: row trigger lock inversion produces 40P01');
   console.log('PASS: cooperative same-company serialization; other company proceeds; direct-write bypass reproduced');
