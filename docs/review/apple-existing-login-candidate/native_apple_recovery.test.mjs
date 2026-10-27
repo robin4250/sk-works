@@ -160,3 +160,24 @@ test('Native existing root reconciliation blocks unrelated identity writes until
  await b.query('begin');await b.query(insert,[otherIdentity,other]);await b.query('rollback');
  assert.equal((await f.state(r)).status,'held');
 }));
+
+
+test('expired not_after blocks owner reconciliation without consuming held request',()=>fixture(async f=>{
+ await f.db.exec(fs.readFileSync(new URL('self-recovery/self-recovery-command.sql.review-only',import.meta.url),'utf8'));
+ const r=await f.reserve();await f.hold(r);
+ const command=(await f.q('select apple_native_enrollment_private.self_recovery_command($1,$2,$3) c',[r.request_id,uid,sid]))[0].c;
+ const before=await f.identities();
+ await f.q("update auth.sessions set not_after=now()-interval '1 second' where id=$1",[sid]);
+ assert.equal((await f.q('select apple_native_enrollment_private.context($1,$2) c',[uid,sid]))[0].c,null);
+ await assert.rejects(f.q('select apple_native_enrollment_private.self_recovery_reconcile($1,$2,$3,$4)',[command.command_id,r.request_id,uid,sid]),/unavailable/);
+ assert.equal((await f.state(r)).status,'held');assert.deepEqual(await f.identities(),before);
+ assert.equal((await f.q('select count(*)::int n from apple_native_enrollment_private.recovery_events'))[0].n,0);
+}));
+
+test('synthetic stale activity is not a validated Supabase inactivity policy',()=>fixture(async f=>{
+ // Regression evidence only: the candidate lacks a policy input. A stale
+ // timestamp alone does not establish actual hosted-session invalidity.
+ await f.db.exec("alter table auth.sessions add column updated_at timestamptz");
+ await f.q("update auth.sessions set updated_at=now()-interval '90 days',not_after=now()+interval '1 day' where id=$1",[sid]);
+ assert.notEqual((await f.q('select apple_native_enrollment_private.context($1,$2) c',[uid,sid]))[0].c,null);
+}));
