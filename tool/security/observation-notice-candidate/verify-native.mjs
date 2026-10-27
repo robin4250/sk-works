@@ -94,6 +94,17 @@ try{
  eq((await db.query('select count(*)::int n from security_observation_notice_private.audit where command_id is not null')).rows[0].n,1,'one durable review action');
  await claims(db,'authenticated');await db.query('set role authenticated');await db.query("select set_config('request.method','GET',false)");await assert.rejects(db.query('select public.read_security_observation_notices($1)',[proof]));await db.query("select set_config('request.method','POST',false)");
  const result=(await db.query('select public.read_security_observation_notices($1)v',[proof])).rows[0].v;eq(result.events.length,1,'Master proof reads notice');eq(result.attack_confirmed,false,'never attacker attribution');eq('correlation_key' in result.events[0],false,'no correlation secret');await assert.rejects(db.query('select public.read_security_observation_notices($1)',[proof]));await db.query('reset role');
+ // Separate signed events race for the final slot. Capture at most one and
+ // account explicitly for the missing notice; both real collector evidences
+ // remain intact and neither caller controls the recipient.
+ await db.query(`insert into security_observation_notice_private.outbox(event_id,collector_id,company_id,recipient_id,config_revision)
+  select gen_random_uuid(),$1,$2,$3,1 from generate_series(1,999-(select count(*)::int from security_observation_notice_private.outbox))`,[collector,cid,actor]);
+ await claims(a,'service_role');await claims(b,'service_role');
+ const capacityA={...event,event_id:randomUUID()},capacityB={...event,event_id:randomUUID()};
+ await Promise.all([a.query('select public.ingest_signed_security_collector_event($1)',[envelope(capacityA)]),b.query('select public.ingest_signed_security_collector_event($1)',[envelope(capacityB)])]);
+ eq(await count('outbox'),1000,'concurrent capture never exceeds bound');
+ eq((await db.query('select capacity_gaps::int n from security_observation_notice_private.coverage')).rows[0].n,1,'one missing notification is explicitly counted');
+ eq((await db.query('select count(*)::int n from private.security_collector_evidence where event_id=any($1::uuid[])',[[capacityA.event_id,capacityB.event_id]])).rows[0].n,2,'both signed observations remain in collector');
  await db.query("update private.security_collector_keys set valid_from=clock_timestamp()-interval '9 days',valid_until=clock_timestamp()-interval '8 days' where collector_id=$1",[collector]);
  await db.query('select private.purge_expired_security_collector_events()');
  eq((await db.query('select count(*)::int n from private.security_collector_keys where collector_id=$1',[collector])).rows[0].n,1,'expired historical key is retained while pinned signed evidence exists');
