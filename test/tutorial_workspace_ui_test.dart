@@ -118,4 +118,24 @@ void main() {
     expect(reads, 2);
   });
 
+  testWidgets('failed refresh never hides unknown evidence behind previous completion', (tester) async {
+    var fail = false;
+    Widget view(int token) => MaterialApp(home: Scaffold(body: TutorialHomeCard(
+      userId: 'u', companyId: 'c', availableActionKeys: const {'profile'},
+      refreshToken: token, onOpenAction: (_) async {},
+      loadSnapshot: (_) async {
+        if (fail) { throw StateError('fixture unavailable'); }
+        return snapshot(TutorialEvidenceState.saved);
+      },
+    )));
+    await tester.pumpWidget(view(0));
+    await tester.pumpAndSettle();
+    expect(find.text('SKOの初期準備'), findsNothing);
+    fail = true;
+    await tester.pumpWidget(view(1));
+    await tester.pumpAndSettle();
+    expect(find.text('準備状況：未確定'), findsOneWidget);
+    expect(find.text('準備状況を確認できません。再読み込みしてください。'), findsOneWidget);
+  });
+
 }

@@ -107,7 +107,7 @@ class _TutorialHomeCardState extends State<TutorialHomeCard> with WidgetsBinding
       if (!mounted || request != _request) {
         return;
       }
-      setState(() { _workspace = null; _loading = false; _error = '準備状況を確認できません。再読み込みしてください。'; });
+      setState(() { _completed = false; _workspace = null; _loading = false; _error = '準備状況を確認できません。再読み込みしてください。'; });
     }
   }
 
