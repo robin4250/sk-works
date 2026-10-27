@@ -28,7 +28,7 @@ revoke all on invoice_revision_candidate.shadow_switch_settings, invoice_revisio
  invoice_revision_candidate.shadow_approvals, invoice_revision_candidate.shadow_switch_audit from public,anon,authenticated,service_role;
 create function invoice_revision_candidate.shadow_switch(p_proposal uuid,p_version uuid)
 returns jsonb language plpgsql security definer set search_path='' set timezone='UTC' as $$
-declare actor uuid:=auth.uid(); p invoice_revision_candidate.proposals%rowtype; prior invoice_revision_candidate.shadow_versions%rowtype; v jsonb; enabled boolean; safe boolean; n integer;
+declare actor uuid:=auth.uid(); sid uuid; company_id_to_lock uuid; p invoice_revision_candidate.proposals%rowtype; prior invoice_revision_candidate.shadow_versions%rowtype; v jsonb; enabled boolean; safe boolean; n integer;
 begin
  if actor is null or p_proposal is null or p_version is null or p_proposal=p_version then
   raise exception 'shadow_request_invalid' using errcode='22023'; end if;
@@ -37,6 +37,14 @@ begin
  -- Serialize retries before read_prepared's proposal lock to avoid two
  -- concurrent callers upgrading shared proposal row locks against each other.
  perform pg_advisory_xact_lock(hashtextextended(p_proposal::text, 271012));
+ -- Existing set_invoice_approvers locks company before invoice. Preserve that
+ -- order and serialize the normal company-wide approver configuration writer.
+ sid:=private.require_reauthentication_session();
+ if sid is null then raise exception 'shadow_denied' using errcode='42501'; end if;
+ select company_id into company_id_to_lock from invoice_revision_candidate.proposals where id=p_proposal and actor_id=actor and state='prepared';
+ if not found then raise exception 'shadow_denied' using errcode='42501'; end if;
+ perform 1 from public.companies where id=company_id_to_lock for share;
+ if not found then raise exception 'shadow_denied' using errcode='42501'; end if;
  -- Reuse real session, role/feature locks, old original and trusted preview checks.
  v:=invoice_revision_candidate.read_prepared(p_proposal);
  select * into p from invoice_revision_candidate.proposals where id=p_proposal and actor_id=actor and state='prepared' for update;

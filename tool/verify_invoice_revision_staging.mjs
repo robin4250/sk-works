@@ -94,7 +94,7 @@ for(const role of ['anon','authenticated','service_role']) {
  assert.equal((await db.query("select has_function_privilege($1,'invoice_revision_candidate.read_prepared(uuid)','EXECUTE') f",[role])).rows[0].f,false);
 }
 if(process.env.SKO_SHADOW_SQL && process.env.SKO_HOLD_SQL) {
- await db.exec("create table public.invoice_approvals(invoice_id uuid,status text); create table public.invoice_approvers(company_id uuid,user_id uuid,position smallint); insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000001','approved'); insert into public.invoice_approvers values('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000003',1)");
+ await db.exec("create table public.companies(id uuid primary key); insert into public.companies values('00000000-0000-0000-0000-000000000002'); create table public.invoice_approvals(invoice_id uuid,status text); create table public.invoice_approvers(company_id uuid,user_id uuid,position smallint); insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000001','approved'); insert into public.invoice_approvers values('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000003',1)");
  await db.exec(await readFile(process.env.SKO_HOLD_SQL,'utf8'));
  await db.exec(await readFile(process.env.SKO_SHADOW_SQL,'utf8'));
  const version='00000000-0000-0000-0000-000000000091';
@@ -201,6 +201,20 @@ if (native) {
     const results=await Promise.all([a.query('select invoice_revision_candidate.shadow_switch($1,$2) v',[raceProposal,raceVersion]),b.query('select invoice_revision_candidate.shadow_switch($1,$2) v',[raceProposal,raceVersion])]);
     assert.deepEqual(results.map(r=>r.rows[0].v.replayed).sort(),[false,true]);
     assert.equal((await db.query('select count(*)::int n from invoice_revision_candidate.shadow_versions where original_invoice_id=$1',[raceInvoice])).rows[0].n,1);
+    const configInvoice='00000000-0000-0000-0000-000000000051', configProposal='00000000-0000-0000-0000-000000000055', configVersion='00000000-0000-0000-0000-000000000059';
+    await db.query('insert into public.invoices(id,company_id,invoice_seal_frozen,snapshot,created_at) select $1,company_id,invoice_seal_frozen,snapshot,created_at from public.invoices where id=$2',[configInvoice,id]);
+    const configHash=(await db.query(`select encode(sha256(convert_to(to_jsonb(i)::text,'UTF8')),'hex') h from invoices i where id=$1`,[configInvoice])).rows[0].h;
+    await setPreview({...preview,original_invoice_id:configInvoice,original_invoice_fingerprint:configHash});
+    await a.query(query,[configInvoice,configProposal,src,configHash,'追加']);
+    await a.query('begin');
+    await a.query('select * from public.companies for update');
+    await a.query("insert into public.invoice_approvers values('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000007',2)");
+    const configBlocked=b.query('select invoice_revision_candidate.shadow_switch($1,$2) v',[configProposal,configVersion]);
+    await waitForBlock();
+    await a.query('commit');
+    await configBlocked;
+    assert.equal((await db.query('select count(*)::int n from invoice_revision_candidate.shadow_approvals where version_id=$1',[configVersion])).rows[0].n,2,'shadow must reflect the approver configuration committed before its company lock');
+
   }
   await Promise.all([a.end(),b.end()]);
 }
