@@ -54,13 +54,14 @@ class _SkoNotificationBellState extends State<SkoNotificationBell> with WidgetsB
       currentActor: () => client.auth.currentUser?.id,
       loadUnread: repository.unreadTargets,
       loadPending: () async {
-        final sources = await Future.wait([
-          () async => mapRouteBillingQuantityAttention(
-            await client.rpc('pending_route_billing_quantity_rows'))(),
-          () async => mapQualificationPhotoAttention(
-            await client.rpc('personal_qualification_submission',
-              params: {'p_action': 'list', 'p_data': <String, dynamic>{}}))(),
-        ]);
+        Future<List<AttentionCenterItem>> route() async =>
+            mapRouteBillingQuantityAttention(
+              await client.rpc('pending_route_billing_quantity_rows'));
+        Future<List<AttentionCenterItem>> photos() async =>
+            mapQualificationPhotoAttention(
+              await client.rpc('personal_qualification_submission',
+                params: {'p_action': 'list', 'p_data': <String, dynamic>{}}));
+        final sources = await Future.wait([route(), photos()]);
         return sources.expand((items) => items).toList();
       },
     );
