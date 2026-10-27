@@ -27,7 +27,7 @@ export function createDocumentFileValidator({ sharp, pdfjs }) {
     try {
       const input = sharp(Buffer.from(bytes), { failOn: 'warning', limitInputPixels: 40000000, sequentialRead: true, animated: false });
       const metadata = await input.metadata();
-      if (metadata.format !== expected || !metadata.width || !metadata.height || (metadata.pages ?? 1) !== 1) return false;
+      if (metadata.format !== expected || !Number.isSafeInteger(metadata.width) || !Number.isSafeInteger(metadata.height) || metadata.width <= 0 || metadata.height <= 0 || metadata.width * metadata.height > 40000000 || (metadata.pages ?? 1) !== 1) return false;
       // Decode the entire image, not only its header. Output is discarded.
       await input.raw().toBuffer();
       return true;
