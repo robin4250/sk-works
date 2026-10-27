@@ -16,7 +16,7 @@ export function createAppleSharedRatePort({enabled=false,baseUrl,serviceKey,fetc
    const size=response.headers.get('content-length');if(size!==null&&(!/^\d+$/.test(size)||Number(size)>4096))throw deny();
    const reader=response.body.getReader();let n=0;const parts=[];
    controller.signal.addEventListener('abort',()=>{void reader.cancel().catch(()=>{});},{once:true});
-   try{for(;;){const {done,value}=await reader.read();if(done)break;n+=value.length;if(n>4096)throw deny();parts.push(value);}}finally{reader.releaseLock();}
+   try{for(;;){const {done,value}=await reader.read();if(done)break;n+=value.length;if(n>4096){void reader.cancel().catch(()=>{});throw deny();}parts.push(value);}}finally{reader.releaseLock();}
    const bytes=new Uint8Array(n);let at=0;for(const p of parts){bytes.set(p,at);at+=p.length;}
    const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
    if(!value||value.version!==1||value.allowed!==true)throw deny();return true;

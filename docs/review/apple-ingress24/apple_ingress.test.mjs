@@ -23,3 +23,14 @@ test('expired key is never served if a later refresh fails',async()=>{
   const resolve=createAppleKeyResolver({now:()=>clock,ttlMs:10,fetcher:async()=>{if(++calls===1)return json({keys:[key]});throw Error('network');}});
   await resolve('key1');clock=10;await assert.rejects(resolve('key1'));assert.equal(calls,2);
 });
+
+test('shared rate port denies mismatched identities and cancels oversized replies',async()=>{
+ const {createAppleSharedRatePort}=await import('./wired/apple_shared_rate_port.mjs');
+ const actor='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',sid='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+ let calls=0,cancelled=false;
+ const gate=createAppleSharedRatePort({enabled:true,baseUrl:'https://ztktgquxvcxcjxtluspu.supabase.co',serviceKey:'fixture-service',fetcher:async()=>{calls++;return new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(4097));},cancel(){cancelled=true;}}));}});
+ await assert.rejects(gate.takeVerified({user:{id:actor},claims:{sub:sid,session_id:sid}}));
+ assert.equal(calls,0);
+ await assert.rejects(gate.takeVerified({user:{id:actor},claims:{sub:actor,session_id:sid}}));
+ assert.equal(calls,1);assert.equal(cancelled,true);
+});
