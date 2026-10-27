@@ -77,6 +77,41 @@ export async function storeNoticeArchive(s,{manifest,audit,anchor,latestIndepend
   return {batch_sequence:manifest.batch_sequence,manifest_hash:proof.manifestHash,replayed:false};
  });
 }
+// Review-only strict entry point. The archive requires every signed audit row
+// since its own last checkpoint, including non-archive events. This is not a
+// freshness proof: the trusted authority and independent witness must supply an
+// authenticated current head and retained rows. The older entry point remains
+// for fixture compatibility and MUST NOT be used as a production entry point.
+export async function storeNoticeArchiveWithContinuity(s,input){
+ const q=state(s), rows=input.auditExtension;
+ if(!Array.isArray(rows)||rows.length>100||te.encode(JSON.stringify(rows)).length>450000)throw Error('Audit extension bound');
+ // Exact latest-batch retry uses the existing immutable comparison in store.
+ if(rows.length===0){
+  if(input.audit?.sequence!==q.anchor_sequence||input.audit?.hash!==q.anchor_hash)throw Error('Audit extension required');
+ }else{
+  let sequence=q.anchor_sequence,previous=q.anchor_hash,lastTime=-1;
+  for(const row of rows){
+   if(!exact(row,'body,hash,key_id,occurred_at,previous_hash,sequence,signature')||
+    !Number.isSafeInteger(row.sequence)||row.sequence!==sequence+1||row.previous_hash!==previous||
+    row.key_id!==q.audit_key_id||typeof row.body!=='string'||te.encode(row.body).length>4096||
+    !digest(row.hash)||await hash(row.body)!==row.hash||
+    !await verified(JSON.parse(q.audit_jwk),'sko-decoy-audit-v1',row.body,row.signature))throw Error('Audit extension rejected');
+   let b;try{b=JSON.parse(row.body);}catch{throw Error('Audit extension rejected');}
+   if(!exact(b,'action,actor_id,after,before,company_id,deployment_id,kind,occurred_at,previous_hash,reason,sequence,v')||
+    b.v!==1||b.deployment_id!==q.deployment_id||b.company_id!==q.company_id||b.sequence!==row.sequence||
+    b.previous_hash!==previous||b.occurred_at!==row.occurred_at||!Number.isSafeInteger(row.occurred_at)||
+    row.occurred_at<0||row.occurred_at>input.now||row.occurred_at<lastTime||
+    !['management','recovery','retention'].includes(b.kind)||
+    (b.kind==='retention'?b.actor_id!=='system_retention':b.actor_id!==q.owner_id))throw Error('Audit extension binding rejected');
+   sequence=row.sequence;previous=row.hash;lastTime=row.occurred_at;
+  }
+  const last=rows.at(-1), a=input.audit;
+  if(!a||['body','hash','key_id','occurred_at','previous_hash','sequence','signature'].some(k=>last[k]!==a[k]))throw Error('Audit extension head differs');
+ }
+ const current=state(s);
+ if(current.batch_sequence!==q.batch_sequence||current.manifest_hash!==q.manifest_hash||current.anchor_sequence!==q.anchor_sequence||current.anchor_hash!==q.anchor_hash)throw Error('Archive changed; retry');
+ return storeNoticeArchive(s,input);
+}
 export async function readNoticeArchive(s,{batchSequence,latestIndependentAnchor,now}){
  const q=state(s);await verifyStoredChain(s,q,now);const row=one(s,'SELECT * FROM notice_archive_batches WHERE sequence=?',batchSequence);if(!row)throw Error('Archive batch unavailable');
  // This initial candidate requires the independent stream to have exactly the
