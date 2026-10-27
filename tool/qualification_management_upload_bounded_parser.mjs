@@ -9,7 +9,7 @@ export function createBoundedQualificationParser({workerPath, timeoutMs=5000, ex
  let active=0;
  return async function validateFile({bytes,mime}) {
   if(!(bytes instanceof Uint8Array)||bytes.length<8||bytes.length>20*1024*1024||!['image/jpeg','image/png','image/heic','application/pdf'].includes(mime))return false;
-  if(active>=maxConcurrent)return false;
+  if(active>=maxConcurrent)throw Error('parser_busy');
   active++;
   try { return await new Promise(resolve=>{
    let child, timer, done=false, output=Buffer.alloc(0), overflow=false;
