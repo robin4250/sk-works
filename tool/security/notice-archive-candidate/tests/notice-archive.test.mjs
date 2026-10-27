@@ -14,7 +14,7 @@ const signature=(key,domain,body)=>sign(null,Buffer.from(domain+'\n'+body),key).
 const now=Date.UTC(2026,9,27),day=86400000,zero='0'.repeat(64),owner='owner_1',company='10000000-0000-0000-0000-000000000001',deployment='notice_archive_1';
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'sko-notice-archive-')),src=join(dir,'src'),tests=join(dir,'tests');await mkdir(src);await mkdir(tests);
- await copyFile(source,join(src,'security-audit.mjs'));await copyFile(anchorSource,join(src,'anchor-authority.mjs'));await copyFile(new URL('../src/notice-archive.mjs', import.meta.url),join(src,'notice-archive.mjs'));await copyFile(new URL('./notice-archive-fixture.mjs', import.meta.url),join(tests,'notice-archive-fixture.mjs'));
+ await copyFile(source,join(src,'security-audit.mjs'));await copyFile(anchorSource,join(src,'anchor-authority.mjs'));await copyFile(new URL('../src/notice-archive.mjs', import.meta.url),join(src,'notice-archive.mjs'));await copyFile(new URL('../src/anchor-rotation-fixture.mjs', import.meta.url),join(src,'anchor-rotation-fixture.mjs'));await copyFile(new URL('./notice-archive-fixture.mjs', import.meta.url),join(tests,'notice-archive-fixture.mjs'));
  const audit=key(),anchor=key(),config={deploymentId:deployment,companyId:company,ownerId:owner,auditKeyId:'archive_audit_1',anchorKeyId:'archive_anchor_1',auditJwk:audit.pub,anchorJwk:anchor.pub,retentionMs:7*day};
  const options={modules:true,scriptPath:join(tests,'notice-archive-fixture.mjs'),modulesRoot:dir,compatibilityDate:'2026-07-30',durableObjects:{ARCHIVE:{className:'ArchiveFixture',useSQLite:true},AUTHORITY:{className:'AuthorityFixture',useSQLite:true}},bindings:{FIXTURE_ANCHOR_PRIVATE:JSON.stringify(anchor.privateJwk)},durableObjectsPersist:join(dir,'state'),log:new Log(LogLevel.ERROR)};
  let mf=new Miniflare(options);t.after(async()=>{await mf.dispose();await rm(dir,{recursive:true,force:true});});
@@ -176,4 +176,23 @@ test('isolated planned rotation is bound to the existing independent authority r
  assert.throws(()=>verifyRotation(proof,{...context,checkpoint:{...context.checkpoint,hash:'f'.repeat(64)}}));
  await f.restart();const restored=await(await f.call('latest',{},'AUTHORITY')).json();assert.deepEqual(restored,authority);
  // No live key is switched by this test; the original authority is unchanged.
+});
+
+
+test('isolated existing authority rotates keys atomically and verifies retained receipt history',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const prior=await(await f.call('latest',{},'AUTHORITY')).json(),replacement=key(),args={newId:'anchor_2',newJwk:replacement.pub,oldKey:f.anchor.privateJwk,newKey:replacement.privateJwk,now:now+1};
+ assert.equal((await f.call('rotate',args,'AUTHORITY')).status,200);await f.restart();const current=await(await f.call('latest',{},'AUTHORITY')).json();assert.equal(current.payload.hash,prior.payload.hash);assert.equal(current.payload.key_id,'anchor_2');
+ const check={genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'};assert.equal((await f.call('rotation-history',check,'AUTHORITY')).status,200);
+ const second=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:first.audit.hash});
+ assert.equal((await f.call('publish-with-key',{publication:{expected_sequence:1,expected_hash:first.audit.hash,records:[second.audit]},now:now+2,key:replacement.privateJwk},'AUTHORITY')).status,200);
+ assert.equal((await f.call('rotation-history',check,'AUTHORITY')).status,200);
+ assert.equal((await f.call('rotate',args,'AUTHORITY')).status,409);
+ assert.equal((await f.call('rotation-tamper',{value:'0'.repeat(128)},'AUTHORITY')).status,200);assert.equal((await f.call('rotation-history',check,'AUTHORITY')).status,409);
+});
+test('isolated rotation failure restores the pre-rotation authority receipt',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const prior=await(await f.call('latest',{},'AUTHORITY')).json(),replacement=key();assert.equal((await f.call('rotation-fail',{},'AUTHORITY')).status,200);
+ assert.equal((await f.call('rotate',{newId:'anchor_2',newJwk:replacement.pub,oldKey:f.anchor.privateJwk,newKey:replacement.privateJwk,now:now+1},'AUTHORITY')).status,409);
+ assert.deepEqual(await(await f.call('latest',{},'AUTHORITY')).json(),prior);
 });
