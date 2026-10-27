@@ -44,6 +44,12 @@ test('uncommitted held link can be released only under active global guard; late
  assert.equal((await f.q('select count(*)::int n from apple_owner_policy.subject_permits'))[0].n,0);
  await assert.rejects(f.db.query("insert into auth.identities values(gen_random_uuid(),$1,'apple','apple-subject',jsonb_build_object('sub','apple-subject'))",[uid]),/identity verification/);
  assert.equal((await f.state(r)).token_sha256,r.token_sha256);
+ // Expired credentials remain consumed after root recovery; only a new
+ // independently verified Apple credential can establish a new reservation.
+ const c=(await f.q('select public.read_apple_native_enrollment_context($1,$2)c',[uid,sid]))[0].c;
+ delete c.account_allowed;delete c.primary_password_configured;
+ const raw=JSON.stringify(c), replay=(await f.q("select public.reserve_apple_native_subject($1,$2,'apple-subject',$3,$4,$5,floor(extract(epoch from clock_timestamp()))::bigint)r",[uid,sid,r.token_sha256,hash(raw),raw]))[0].r;
+ assert.equal(replay,null);assert.deepEqual(await f.identities(),before);
  const fresh=await f.reserve();assert.ok(fresh);assert.notEqual(fresh.request_id,r.request_id);
  assert.equal((await f.q('select user_id from apple_google_protection.google_subject_owners'))[0].user_id,uid);
 }));
