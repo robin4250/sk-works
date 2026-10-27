@@ -1,0 +1,110 @@
+-- Candidate only. Root must prepare production catalog/data guards and backup.
+begin;
+set local lock_timeout='5s';
+do $guard$ begin
+ if to_regprocedure('private.require_reauthentication_session()') is null
+  or to_regclass('private.worker_document_exemptions') is not null
+  or to_regprocedure('public.worker_document_exemption(text,jsonb)') is not null then
+  raise exception 'Exemption prerequisites changed; inspect rather than replace' using errcode='55000';
+ end if;
+end $guard$;
+-- No cascade references: preserve exemption/audit IDs when related records are
+-- archived or removed by an independently authorized retention process.
+-- Deployment defaults OFF. Only the root deployment owner may change this
+-- private switch; company administrators cannot enable their own capability.
+create table private.worker_document_exemption_settings (
+ singleton boolean primary key default true check(singleton), enabled boolean not null default false
+);
+insert into private.worker_document_exemption_settings(singleton,enabled) values(true,false);
+alter table private.worker_document_exemption_settings enable row level security;
+revoke all on private.worker_document_exemption_settings from public,anon,authenticated;
+create table private.worker_document_exemptions (
+ company_id uuid not null, worker_id uuid not null, requirement_id uuid not null,
+ active boolean not null, version bigint not null check(version>0),
+ reason text not null check(char_length(btrim(reason)) between 1 and 500),
+ changed_by uuid not null, session_id uuid not null, changed_at timestamptz not null,
+ primary key(company_id,worker_id,requirement_id)
+);
+create table private.worker_document_exemption_events (
+ id bigint generated always as identity primary key,
+ company_id uuid not null, worker_id uuid not null, requirement_id uuid not null,
+ previous jsonb, current jsonb not null, changed_at timestamptz not null
+);
+alter table private.worker_document_exemptions enable row level security;
+alter table private.worker_document_exemption_events enable row level security;
+revoke all on private.worker_document_exemptions,private.worker_document_exemption_events from public,anon,authenticated;
+revoke all on sequence private.worker_document_exemption_events_id_seq from public,anon,authenticated;
+create function private.worker_document_exemption(p_action text,p_data jsonb)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();sid uuid;cid uuid;wid uuid;rid uuid;
+ manager boolean;next_active boolean;why text;previous jsonb;after_row jsonb;
+ expected bigint;current_version bigint;result jsonb;enabled boolean;
+begin
+ sid:=private.require_reauthentication_session();
+ if jsonb_typeof(p_data)<>'object' then raise exception 'Invalid exemption request' using errcode='22023';end if;
+ cid:=(p_data->>'company_id')::uuid;
+ if cid is null then raise exception 'Company required' using errcode='22023';end if;
+ perform 1 from public.company_members m where m.company_id=cid and m.user_id=actor for share;
+ if not found then raise exception 'Company access denied' using errcode='42501';end if;
+ select exists(select 1 from public.company_members m where m.company_id=cid and m.user_id=actor
+  and m.role::text in ('owner','admin','manager')) into manager;
+ select s.enabled into enabled from private.worker_document_exemption_settings s where singleton for share;
+ if p_action='list' then
+  select coalesce(jsonb_agg(jsonb_build_object('company_id',e.company_id,'worker_id',e.worker_id,
+   'requirement_id',e.requirement_id,'active',e.active,'version',e.version,'reason',e.reason,
+   'changed_at',e.changed_at) order by e.worker_id,e.requirement_id),'[]'::jsonb) into result
+  from private.worker_document_exemptions e where e.company_id=cid
+   and exists(select 1 from public.workers w where w.id=e.worker_id and w.company_id=cid
+    and (manager or (w.user_id=actor and w.status::text='active')));
+  return jsonb_build_object('capability_version',1,'can_manage',coalesce(enabled,false) and manager,'items',result);
+ end if;
+ if p_action<>'set' or not manager or not coalesce(enabled,false) then raise exception 'Exemption management denied' using errcode='42501';end if;
+ wid:=(p_data->>'worker_id')::uuid;rid:=(p_data->>'requirement_id')::uuid;
+ if jsonb_typeof(p_data->'active')<>'boolean' or jsonb_typeof(p_data->'expected_version')<>'number'
+  or (p_data->>'expected_version')!~'^[0-9]+$' then
+  raise exception 'Exemption version and state required' using errcode='22023';end if;
+ next_active:=(p_data->>'active')::boolean;expected:=(p_data->>'expected_version')::bigint;
+ why:=btrim(p_data->>'reason');
+ if why is null or char_length(why) not between 1 and 500 then
+  raise exception 'Exemption reason required' using errcode='22023';end if;
+ perform 1 from public.workers w where w.id=wid and w.company_id=cid and w.status::text='active' for share;
+ if not found then raise exception 'Worker unavailable' using errcode='42501';end if;
+ perform 1 from public.document_requirements r where r.id=rid and r.company_id=cid and r.is_active for share;
+ if not found then raise exception 'Requirement unavailable' using errcode='42501';end if;
+ -- Serialize first insert as well as later edits of the same company/worker/item.
+ perform pg_advisory_xact_lock(hashtextextended(cid::text||':'||wid::text||':'||rid::text, 972711));
+ select to_jsonb(e),e.version into previous,current_version from private.worker_document_exemptions e
+  where e.company_id=cid and e.worker_id=wid and e.requirement_id=rid for update;
+ if coalesce(current_version,0)<>expected then raise exception 'Exemption changed; reload' using errcode='40001';end if;
+ if previous is not null and (previous->>'active')::boolean=next_active then
+  raise exception 'Exemption state unchanged; reload' using errcode='22023';end if;
+ if previous is null and not next_active then raise exception 'No exemption to revoke' using errcode='22023';end if;
+ insert into private.worker_document_exemptions as e values(cid,wid,rid,next_active,expected+1,why,actor,sid,clock_timestamp())
+ on conflict(company_id,worker_id,requirement_id) do update set active=excluded.active,version=excluded.version,
+  reason=excluded.reason,changed_by=excluded.changed_by,session_id=excluded.session_id,changed_at=excluded.changed_at
+ returning to_jsonb(e) into after_row;
+ insert into private.worker_document_exemption_events(company_id,worker_id,requirement_id,previous,current,changed_at)
+  values(cid,wid,rid,previous,after_row,clock_timestamp());
+ return jsonb_build_object('capability_version',1,'item',after_row-'changed_by'-'session_id');
+end $$;
+revoke all on function private.worker_document_exemption(text,jsonb) from public,anon,authenticated;
+grant execute on function private.worker_document_exemption(text,jsonb) to authenticated;
+create function public.worker_document_exemption(p_action text,p_data jsonb default '{}'::jsonb)
+returns jsonb language sql security invoker set search_path='' as $$
+ select private.worker_document_exemption(p_action,p_data)
+$$;
+revoke all on function public.worker_document_exemption(text,jsonb) from public,anon;
+grant execute on function public.worker_document_exemption(text,jsonb) to authenticated;
+
+-- Patch only the reviewed deployed attention predicate, keeping the existing
+-- bank/photo completion rules. The production wrapper needs exact catalog hash.
+do $attention$
+declare source text;needle text:=E'    and dr.is_required\n    and (';
+begin
+ source:=pg_get_functiondef('public.current_user_required_document_attention()'::regprocedure);
+ if (length(source)-length(replace(source,needle,'')))/length(needle)<>1
+  or source not like '%worker_private_bank_accounts%' then
+  raise exception 'Required-document attention changed; inspect before deployment' using errcode='55000';end if;
+ execute replace(source,needle,E'    and dr.is_required\n    and not exists (select 1 from private.worker_document_exemptions e\n      where e.company_id=v_company_id and e.worker_id=v_worker_id\n        and e.requirement_id=dr.id and e.active)\n    and (');
+end $attention$;
+commit;

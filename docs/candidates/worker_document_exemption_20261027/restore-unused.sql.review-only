@@ -1,0 +1,27 @@
+-- Candidate only. Root must bind the complete production catalog/backup.
+-- Once any decision/history exists, retain it and use forward recovery.
+begin;
+set local lock_timeout='5s';
+do $unused$
+declare source text;needle text:=E'    and dr.is_required\n    and not exists (select 1 from private.worker_document_exemptions e\n      where e.company_id=v_company_id and e.worker_id=v_worker_id\n        and e.requirement_id=dr.id and e.active)\n    and (';
+begin
+ if md5((select prosrc from pg_proc where oid=to_regprocedure('private.worker_document_exemption(text,jsonb)'))) is distinct from 'cd1308a2f256ab83b5b0f00988e20d16'
+  or md5((select prosrc from pg_proc where oid=to_regprocedure('public.worker_document_exemption(text,jsonb)'))) is distinct from '5aabd4833f6e1ff3b40392401c792bce' then
+  raise exception 'Exemption functions changed; inspect before restore' using errcode='55000';end if;
+ lock table private.worker_document_exemption_settings,private.worker_document_exemptions,private.worker_document_exemption_events in access exclusive mode;
+ if (select count(*) from private.worker_document_exemption_settings)<>1
+  or exists(select 1 from private.worker_document_exemption_settings where enabled)
+  or exists(select 1 from private.worker_document_exemptions)
+  or exists(select 1 from private.worker_document_exemption_events) then
+  raise exception 'Exemption in use; retain decisions and audit, use forward recovery' using errcode='55000';end if;
+ source:=pg_get_functiondef('public.current_user_required_document_attention()'::regprocedure);
+ if (length(source)-length(replace(source,needle,'')))/length(needle)<>1 then
+  raise exception 'Attention function changed; inspect before restore' using errcode='55000';end if;
+ execute replace(source,needle,E'    and dr.is_required\n    and (');
+end $unused$;
+drop function public.worker_document_exemption(text,jsonb);
+drop function private.worker_document_exemption(text,jsonb);
+drop table private.worker_document_exemption_events;
+drop table private.worker_document_exemptions;
+drop table private.worker_document_exemption_settings;
+commit;

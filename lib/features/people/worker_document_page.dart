@@ -8,6 +8,7 @@ import '../help/floating_help_controller.dart';
 import '../common/data_date_labels.dart';
 import 'personnel_export_page.dart';
 import 'worker_document_repository.dart';
+import 'worker_document_exemption.dart';
 import 'worker_document_change_flow.dart';
 import 'worker_document_change_review_page.dart';
 import '../shared/resource_registration_card.dart';
@@ -42,6 +43,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
   List<Map<String, dynamic>> _retainedRequirements = [];
   List<Map<String, dynamic>> _archivedRequirements = [];
   List<Map<String, dynamic>> _statuses = [];
+  List<Map<String, dynamic>> _exemptions = [];
   bool _loading = true;
   bool _canManageRequirements = false;
   bool _canManageStatuses = false;
@@ -90,6 +92,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
         _archivedRequirements = _retainedRequirements
             .where((row) => row['archived_at'] != null).toList();
         _statuses = data['statuses'] ?? const <Map<String, dynamic>>[];
+        _exemptions = data['exemptions'] ?? const <Map<String, dynamic>>[];
         _canManageRequirements = values[1] as bool;
         _canManageStatuses = values[2] as bool;
         if (_selectedWorkerId == null ||
@@ -136,8 +139,12 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
       );
       return effectiveStatus == 'submitted' || effectiveStatus == 'verified';
     }).length;
+    final exemptCount = visibleRequirements.where((requirement) =>
+        documentExemptionFor(_exemptions, workerId, requirement['id']?.toString())?['active'] == true).length;
     final needsAttention = visibleRequirements.where((requirement) {
       final status = statusByRequirement[requirement['id']?.toString()];
+      if (documentExemptionFor(_exemptions, workerId,
+          requirement['id']?.toString())?['active'] == true) { return false; }
       return _documentNeedsAttention(requirement, status, today);
     }).length;
 
@@ -271,6 +278,7 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                           onSelected: (_) =>
                               setState(() => _scope = 'upstream'),
                         ),
+                        if (exemptCount > 0) Text('提出免除 $exemptCount件'),
                         Text(
                           needsAttention == 0
                               ? '完了 $completed/${visibleRequirements.length}'
@@ -319,13 +327,16 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                               final effective = _effectiveDocumentStatus(requirement, status, today);
                               final dates = DataDateLabels.labels(createdAt: status?['created_at'],
                                 updatedAt: status?['updated_at']);
-                              return ResourceRegistrationCard(
+                              final exemption = documentExemptionFor(_exemptions, workerId, requirement['id']?.toString());
+                              final exempt = exemption?['active'] == true;
+                              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                              ResourceRegistrationCard(
                                 key: ValueKey('managed-document:$actor:$workerId:${requirement['id']}'),
                                 title: requirement['name']?.toString() ?? '書類',
-                                icon: Icons.description_outlined, registered: status != null,
-                                statusLabel: status == null ? '未登録' : '登録済み',
+                                icon: Icons.description_outlined, registered: exempt || status != null,
+                                statusLabel: exempt ? '提出免除' : status == null ? '未登録' : '登録済み',
                                 dateLabel: dates.isEmpty ? '' : dates.first,
-                                detailLabel: [resourceDocumentReviewLabel(effective),
+                                detailLabel: [if (exempt) '免除理由：${exemption!['reason']}', resourceDocumentReviewLabel(effective),
                                   workerDocumentScopeLabel(requirement['scope']),
                                   requirement['is_required'] == true ? '必須' : '任意',
                                   if ((status?['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${status?['expires_at']}',
@@ -342,7 +353,13 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
                                 onOpenDetail: _canManageStatuses ? () => _editStatus(requirement, status)
                                   : paths.isEmpty ? null : () => showResourceAttachments(
                                     context, title: requirement['name']?.toString() ?? '書類', attachments: attachments),
-                              );
+                              ),
+                              if (_canManageStatuses && _repository?.exemptionEditingAvailable == true)
+                                Align(alignment: Alignment.centerRight, child: TextButton.icon(
+                                  icon: Icon(exempt ? Icons.undo : Icons.rule_outlined),
+                                  label: Text(exempt ? '免除を解除' : 'この社員の提出を免除'),
+                                  onPressed: () => _setExemption(requirement, exemption))),
+                              ]);
                             },
                           ),
                   ),
@@ -902,6 +919,32 @@ class _WorkerDocumentPageState extends State<WorkerDocumentPage> {
     await _editStatus(matches.single, rows.isEmpty ? null : rows.single);
   }
 
+  Future<void> _setExemption(Map<String, dynamic> requirement,
+      Map<String, dynamic>? previous) async {
+    final repository = _repository;
+    final workerId = _selectedWorkerId;
+    final actor = _loadedActorId;
+    final requirementId = requirement['id']?.toString();
+    if (repository == null || workerId == null || requirementId == null ||
+        actor == null || actor != repository.actorId || !_canManageStatuses) { return; }
+    final active = previous?['active'] != true;
+    final text = await showDialog<String>(context: context, builder: (_) =>
+      _DocumentExemptionReasonDialog(active: active,
+        documentName: requirement['name']?.toString() ?? '書類'));
+    if (text == null || !mounted || workerId != _selectedWorkerId || actor != repository.actorId) { return; }
+    try {
+      await repository.setDocumentExemption(workerId: workerId, requirementId: requirementId,
+        active: active, expectedVersion: previous?['version'] as int? ?? 0, reason: text);
+      if (!mounted || actor != repository.actorId || workerId != _selectedWorkerId) return;
+      await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('免除を保存できませんでした。書類を再読み込みして確認してください。')));
+      }
+    }
+  }
+
   Future<void> _editStatus(
     Map<String, dynamic> requirement,
     Map<String, dynamic>? current,
@@ -1190,6 +1233,39 @@ String? _expiryHint(Map<String, dynamic> requirement, DateTime? expiry, DateTime
   if (days == 0) { return '本日期限'; }
   if (days <= _reminderDays(requirement)) { return 'あと$days日'; }
   return null;
+}
+
+class _DocumentExemptionReasonDialog extends StatefulWidget {
+  const _DocumentExemptionReasonDialog({required this.active, required this.documentName});
+  final bool active;
+  final String documentName;
+  @override
+  State<_DocumentExemptionReasonDialog> createState() => _DocumentExemptionReasonDialogState();
+}
+
+class _DocumentExemptionReasonDialogState extends State<_DocumentExemptionReasonDialog> {
+  final _reason = TextEditingController();
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.active ? 'この社員の提出を免除' : '提出免除を解除'),
+    content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Text('${widget.documentName}\nこの社員だけに適用します。登録済み書類・写真は保持します。'),
+      TextField(controller: _reason, maxLength: 500, minLines: 2, maxLines: 4,
+        onChanged: (_) => setState(() {}),
+        decoration: const InputDecoration(labelText: '理由（必須）')),
+    ])),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル')),
+      FilledButton(onPressed: _reason.text.trim().isEmpty ? null
+          : () => Navigator.pop(context, _reason.text.trim()),
+        child: Text(widget.active ? '免除を保存' : '免除を解除')),
+    ],
+  );
 }
 
 class _EmptyState extends StatelessWidget {

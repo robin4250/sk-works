@@ -1,0 +1,118 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sk_works/features/people/worker_document_exemption.dart';
+import 'package:sk_works/features/people/worker_document_page.dart';
+import 'package:sk_works/features/people/worker_document_repository.dart';
+import 'package:sk_works/features/tutorial/tutorial_evidence_repository.dart';
+
+class _Repository extends WorkerDocumentRepository {
+  _Repository(super.client) : super.forTesting();
+  bool manager = true;
+  bool enabled = true;
+  String actor = 'admin';
+  int writes = 0;
+  Map<String, dynamic>? exemption;
+  final status = <String, dynamic>{'id': 'saved', 'worker_id': 'worker',
+    'requirement_id': 'requirement', 'status': 'submitted',
+    'attachment_path': 'retained/original.pdf'};
+  @override
+  String? get actorId => actor;
+  @override
+  bool get exemptionEditingAvailable => enabled;
+  @override
+  Future<bool> canManageRequirements() async => manager;
+  @override
+  Future<bool> canManageStatuses() async => manager;
+  @override
+  Future<Map<String, List<Map<String, dynamic>>>> loadAll({bool includeHiddenRequirements = false}) async => {
+    'workers': [{'id': 'worker', 'name': '対象社員', 'status': 'active'}],
+    'requirements': [{'id': 'requirement', 'name': '本人書類', 'scope': 'internal',
+      'is_required': true, 'is_active': true, 'expiry_required': false}],
+    'statuses': [Map.of(status)], 'exemptions': [if (exemption != null) Map.of(exemption!)],
+  };
+  @override
+  Future<void> setDocumentExemption({required String workerId, required String requirementId,
+    required bool active, required int expectedVersion, required String reason}) async {
+    expect(workerId, 'worker'); expect(requirementId, 'requirement');
+    expect(expectedVersion, exemption?['version'] ?? 0);
+    expect(reason.trim(), isNotEmpty);
+    writes++;
+    exemption = {'worker_id': workerId, 'requirement_id': requirementId,
+      'active': active, 'version': expectedVersion + 1, 'reason': reason};
+  }
+}
+
+void main() {
+  test('setup exemption is not a submitted document; revoke restores original evidence', () {
+    final docs = <String, dynamic>{'worker_id': 'worker',
+      'requirements': [{'id': 'requirement', 'name': '本人書類', 'is_active': true, 'is_required': true}],
+      'statuses': <Map<String, dynamic>>[],
+      'exemptions': [{'worker_id': 'worker', 'requirement_id': 'requirement', 'active': true,
+        'version': 1, 'reason': '管理者確認'}]};
+    var rows = TutorialEvidenceRepository.documentCheckpoints(docs, today: DateTime(2026, 10, 27));
+    expect(rows.single.state, TutorialEvidenceState.notApplicable);
+    expect(rows.single.label, '本人書類（提出免除）');
+    expect(rows.single.evidenceKey, 'exemption:requirement:1');
+    (docs['exemptions'] as List).single['active'] = false;
+    rows = TutorialEvidenceRepository.documentCheckpoints(docs, today: DateTime(2026, 10, 27));
+    expect(rows.single.state, TutorialEvidenceState.missing);
+    expect(docs['statuses'], isEmpty);
+  });
+  test('other worker, duplicate and unverified rows cannot exempt this document', () {
+    final row = <String, dynamic>{'worker_id': 'other', 'requirement_id': 'requirement',
+      'active': true, 'version': 1, 'reason': '確認'};
+    expect(documentExemptionFor([row], 'worker', 'requirement'), isNull);
+    row['worker_id'] = 'worker';
+    expect(documentExemptionFor([row, row], 'worker', 'requirement'), isNull);
+    row['version'] = '1';
+    expect(documentExemptionFor([row], 'worker', 'requirement'), isNull);
+  });
+  late SupabaseClient client;
+  late _Repository repo;
+  setUp(() {
+    client = SupabaseClient('https://synthetic.invalid', 'fixture',
+      authOptions: const AuthClientOptions(autoRefreshToken: false));
+    repo = _Repository(client);
+  });
+  tearDown(() async => client.dispose());
+  Future<void> open(WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(home: WorkerDocumentPage(
+      view: WorkerDocumentView.workers, repositoryOverride: repo)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('対象社員'));
+    await tester.pumpAndSettle();
+  }
+  testWidgets('manager exempts one employee with reason and can revoke; saved document stays', (tester) async {
+    final retained = Map.of(repo.status);
+    await open(tester);
+    final button = find.text('この社員の提出を免除');
+    await tester.ensureVisible(button); await tester.pumpAndSettle(); await tester.tap(button); await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '免除を保存'));
+    await tester.pumpAndSettle(); expect(repo.writes, 0);
+    await tester.enterText(find.byType(TextField).last, '本人の事情を確認');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '免除を保存'));
+    await tester.pumpAndSettle();
+    expect(repo.writes, 1); expect(find.text('提出免除'), findsOneWidget);
+    expect(repo.status, retained);
+    await tester.ensureVisible(find.text('免除を解除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('免除を解除')); await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '提出対象へ戻す');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '免除を解除'));
+    await tester.pumpAndSettle();
+    expect(repo.writes, 2); expect(repo.exemption!['active'], false);
+    expect(repo.status, retained); expect(find.text('提出免除'), findsNothing);
+  });
+  testWidgets('worker role and disabled backend do not offer exemption action', (tester) async {
+    repo.manager = false;
+    await open(tester);
+    expect(find.text('この社員の提出を免除'), findsNothing);
+    repo.manager = true; repo.enabled = false;
+    await tester.pumpWidget(const SizedBox()); await tester.pumpAndSettle();
+    await open(tester);
+    expect(find.text('この社員の提出を免除'), findsNothing);
+  });
+}
