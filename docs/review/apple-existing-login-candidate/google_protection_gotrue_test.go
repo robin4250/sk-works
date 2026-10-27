@@ -52,7 +52,7 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
  })}
  ctx:=oidc.ClientContext(context.Background(),client)
  type tokenResult struct{AccessToken string `json:"access_token"`;RefreshToken string `json:"refresh_token"`;User struct{ID string `json:"id"`} `json:"user"`}
- for _,name:=range []string{"single session temporary logout before refresh preserves original","inactivity refresh rejects despite live session row","existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID","Apple subject cannot transfer between existing users"}{t.Run(name,func(t *testing.T){
+ for _,name:=range []string{"single session original refresh while temporary session remains","single session temporary logout before refresh preserves original","inactivity refresh rejects despite live session row","existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID","Apple subject cannot transfer between existing users"}{t.Run(name,func(t *testing.T){
   models.TruncateAll(api.db)
   require.NoError(t,api.db.RawQuery("truncate apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout,apple_google_protection.rollout,apple_google_protection.google_subject_owners,apple_google_protection.company_snapshot").Exec())
   createUser:=func(email,googleSub string)*models.User{
@@ -117,6 +117,18 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    var old string;require.NoError(t,api.db.RawQuery("select user_id::text from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&old));require.Equal(t,owner.ID.String(),old);return
   }
   original:=result(idToken("google","existing-google-sub",string(owner.Email),"",false));require.Equal(t,owner.ID.String(),original.User.ID)
+  if name=="single session original refresh while temporary session remains"{
+   // An original-device refresh can race the password verifier's temporary
+   // session cleanup; test the live official endpoint, not getUser alone.
+   config.Sessions.SinglePerUser=true
+   defer func(){config.Sessions.SinglePerUser=false}()
+   temporary:=result(call("/token?grant_type=password",map[string]interface{}{"email":string(owner.Email),"password":"fixture-primary-password"},""))
+   require.Equal(t,owner.ID.String(),temporary.User.ID)
+   oldRefresh:=call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"")
+   require.NotEqual(t,http.StatusOK,oldRefresh.Code,"original refresh while temporary session exists must be treated as a possible disruption")
+   require.Equal(t,originalSnapshot,snapshot(owner),"UID, Google identity, profile and company preserved")
+   return
+  }
   if name=="single session temporary logout before refresh preserves original"{
    // Isolated official Auth only: verify the original session's refresh after
    // a same-user password login while the single-session policy is enabled.
