@@ -31,8 +31,8 @@ jobs:
           flutter-version: '3.47.5'
           channel: stable
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/features/personal_vault/own_payroll_archive_pdf.dart test/own_payroll_archive_pdf_test.dart test/personal_vault_page_test.dart lib/features/personal_vault/personal_vault_page.dart
-      - run: flutter test test/own_payroll_archive_pdf_test.dart test/personal_vault_page_test.dart
+      - run: flutter analyze lib/features/personal_vault test/own_payroll_archive_pdf_test.dart test/personal_vault_page_test.dart test/personal_vault_repository_test.dart
+      - run: flutter test test/own_payroll_archive_pdf_test.dart test/personal_vault_page_test.dart test/personal_vault_repository_test.dart
   persistent-catalog:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -48,7 +48,7 @@ jobs:
       PGPASSWORD: fixture-only
     steps:
       - uses: actions/checkout@v4
-      - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/storage-test.sql
+      - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/read-api-test.sql
       - run: createdb -h localhost -U postgres vault_native
       - run: psql -h localhost -U postgres -d vault_native -v ON_ERROR_STOP=1 -f vault-native-test.sql
         working-directory: docs/review/personal-vault24/feature-fixture
