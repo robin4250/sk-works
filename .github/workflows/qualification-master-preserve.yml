@@ -52,15 +52,15 @@ jobs:
           set -eu
           dir=docs/review/qualification-master-access
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$dir/guard-fixture.sql"
-          policy_hash=$(psql -h localhost -U postgres -d postgres -Atc "select md5(coalesce((select jsonb_agg(to_jsonb(p) order by policyname)::text from pg_policies p where schemaname='public' and tablename='qualification_master'),'[]'))")
-          fk_hash=$(psql -h localhost -U postgres -d postgres -Atc "select md5(coalesce((select jsonb_agg(jsonb_build_object('name',conname,'rel',conrelid::regclass::text,'def',pg_get_constraintdef(oid)) order by conname)::text from pg_constraint where confrelid='public.qualification_master'::regclass),'[]'))")
+          policy_hash=$(psql -h localhost -U postgres -d postgres -qAtc "set search_path=''; select md5(coalesce((select jsonb_agg(to_jsonb(p) order by policyname)::text from pg_policies p where schemaname='public' and tablename='qualification_master'),'[]'))")
+          fk_hash=$(psql -h localhost -U postgres -d postgres -qAtc "set search_path=''; select md5(coalesce((select jsonb_agg(to_jsonb(c) order by c.conname)::text from pg_constraint c where c.confrelid='public.qualification_master'::regclass),'[]'))")
           python3 "$dir/prepare-production-guard.py"
-          sed -e "s/d715335814ec7db55087289953b4ce02/$policy_hash/g" -e "s/2a280241e183f7db08cc711c9197b092/$fk_hash/g" "$dir/root-install.guarded.sql.review-only" > /tmp/qualification-guard-fixture.sql
+          sed -e "s/944941ef563914fa63b1c8edf99eb0f8/$policy_hash/g" -e "s/5ec84e79953a91f1fc2d92da8855f014/$fk_hash/g" "$dir/root-install.guarded.sql.review-only" > /tmp/qualification-guard-fixture.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f /tmp/qualification-guard-fixture.sql
           if psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f /tmp/qualification-guard-fixture.sql; then echo 'duplicate install accepted'; exit 1; fi
-          installed=$(psql -h localhost -U postgres -d postgres -At -f "$dir/installed-catalog-md5.sql")
+          installed=$(psql -h localhost -U postgres -d postgres -qAt -f "$dir/installed-catalog-md5.sql")
           python3 "$dir/prepare-restore-guard.py" --expected-installed-catalog-md5 "$installed"
-          sed "s/d715335814ec7db55087289953b4ce02/$policy_hash/g" "$dir/root-restore.guarded.sql.review-only" > /tmp/qualification-restore-fixture.sql
+          sed "s/944941ef563914fa63b1c8edf99eb0f8/$policy_hash/g" "$dir/root-restore.guarded.sql.review-only" > /tmp/qualification-restore-fixture.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f /tmp/qualification-restore-fixture.sql
           if psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f /tmp/qualification-restore-fixture.sql; then echo 'duplicate restore accepted'; exit 1; fi
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "do \$\$ begin assert (select count(*)=1 from public.qualification_master); assert (select count(*)=1 from public.qualification_master_aliases); end \$\$"

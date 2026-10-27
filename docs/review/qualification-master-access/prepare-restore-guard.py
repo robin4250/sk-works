@@ -28,7 +28,7 @@ drop function private.guard_qualification_master_manager_company_move();
 drop policy "managers can update qualification master" on public.qualification_master;
 drop policy "managers can delete qualification master" on public.qualification_master;
 do $guard$ begin
-  if md5(coalesce((select jsonb_agg(to_jsonb(p) order by policyname)::text from pg_policies p where schemaname='public' and tablename='qualification_master'),'[]')) <> 'd715335814ec7db55087289953b4ce02' then raise exception 'original_policy_mismatch'; end if;
+  if md5(coalesce((select jsonb_agg(to_jsonb(p) order by policyname)::text from pg_policies p where schemaname='public' and tablename='qualification_master'),'[]')) <> '944941ef563914fa63b1c8edf99eb0f8' then raise exception 'original_policy_mismatch'; end if;
   if exists(select 1 from pg_trigger where tgrelid='public.qualification_master'::regclass and not tgisinternal) then raise exception 'unexpected_trigger'; end if;
 end $guard$;
 commit;
