@@ -12,7 +12,7 @@ const marker="await client.query('insert into explicit_report_finalization_priva
 assert.equal(original.split(marker).length,2);
 const activate=await readFile(resolve(root,'activate.guarded.sql.review-only'),'utf8');
 const restore=await readFile(resolve(root,'restore-unused.guarded.sql.review-only'),'utf8');
-const before=JSON.parse(await readFile(resolve(root,'before.private.json'),'utf8'))[0].result;
+const before=JSON.parse(await readFile(resolve(root,'before.fixture.json'),'utf8'))[0].result;
 let payload=`
  // Only fixture-specific UUID/row/catalog fingerprints are substituted.
  await client.query('create table if not exists public.invoice_detail_lines (id uuid primary key)');
