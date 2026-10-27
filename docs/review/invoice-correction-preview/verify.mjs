@@ -168,7 +168,7 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   console.log(JSON.stringify({five_distinct_fixture_inserts_wait_and_succeed:true,rolled_back:true,route_audit_trigger_preserved:true}));
   // Join-owned child tables have no company_id; fixture-only barrier derives it from parent.
   // Parent moves/deletes and absent-parent races are not covered by this experiment.
-  await db.exec("create function private.synthetic_child_barrier() returns trigger language plpgsql as $$declare r jsonb;c uuid;k text;begin r:=case when TG_OP='DELETE' then to_jsonb(old) else to_jsonb(new) end;if TG_TABLE_NAME='route_billing_quantity_evidence' then select company_id into c from private.route_billing_quantity_requests where id=(r->>'request_id')::uuid;else select company_id into c from public.daily_reports where id=(r->>'report_id')::uuid;end if;if c is null then raise exception 'synthetic_parent_missing';end if;perform pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||c::text,0));if TG_OP='DELETE' then return old;end if;return new;end$$;create trigger synthetic_child_barrier before insert or update or delete on private.route_billing_quantity_evidence for each row execute function private.synthetic_child_barrier();create trigger synthetic_child_barrier before insert or update or delete on public.daily_report_workers for each row execute function private.synthetic_child_barrier();");
+  await db.exec("create function private.synthetic_child_barrier() returns trigger language plpgsql as $$declare r jsonb;c uuid;companies uuid[]:='{}';begin for r in select j from (values(case when TG_OP<>'INSERT' then to_jsonb(old) end),(case when TG_OP<>'DELETE' then to_jsonb(new) end)) x(j) where j is not null loop if TG_TABLE_NAME='route_billing_quantity_evidence' then select company_id into c from private.route_billing_quantity_requests where id=(r->>'request_id')::uuid;else select company_id into c from public.daily_reports where id=(r->>'report_id')::uuid;end if;if c is null then raise exception 'synthetic_parent_missing';end if;companies:=array_append(companies,c);end loop;for c in select distinct unnest(companies) order by 1 loop perform pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||c::text,0));end loop;if TG_OP='DELETE' then return old;end if;return new;end$$;create trigger synthetic_child_barrier before insert or update or delete on private.route_billing_quantity_evidence for each row execute function private.synthetic_child_barrier();create trigger synthetic_child_barrier before insert or update or delete on public.daily_report_workers for each row execute function private.synthetic_child_barrier();");
   await db.query('insert into public.daily_reports(id,company_id) values($1,$2)',[id(992),company]);
   const childInserts=[
    {sql:"insert into private.route_billing_quantity_evidence(request_id,report_id,source_clock_in_id,start_capture_id,end_capture_id,site_id,site_name,customer_id) values($1,$2,$3,$4,$5,$6,'合成現場',$7)",args:[routeRows[0].id,id(991),id(990),id(989),id(988),site,customer]},
@@ -179,6 +179,17 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
    await writer.query('begin');let done=false;const pending=writer.query(c.sql,c.args).then(v=>{done=true;return v;});
    await pause(200);assert.equal(done,false);await db.query('commit');const inserted=await pending;assert.equal(inserted.rowCount,1);await writer.query('rollback');
   }
+  await db.query("insert into companies(id,tax_rate,name) values($1,10,'別の合成会社')",[id(987)]);
+  await db.query('insert into public.daily_reports(id,company_id) values($1,$2)',[id(986),id(987)]);
+  await db.query('insert into public.daily_report_workers(report_id) values($1)',[id(992)]);
+  for(const lockCompany of [company,id(987)]){
+   await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||$1::text,0))",[lockCompany]);
+   await writer.query('begin');let done=false;const move=writer.query('update public.daily_report_workers set report_id=$1 where report_id=$2',[id(986),id(992)]).then(()=>{done=true;});
+   await pause(200);assert.equal(done,false);await db.query('commit');await move;await writer.query('rollback');
+  }
+  await db.query('delete from public.daily_report_workers where report_id=$1',[id(992)]);
+  await db.query('delete from public.daily_reports where id=$1',[id(986)]);await db.query('delete from companies where id=$1',[id(987)]);
+  console.log(JSON.stringify({fixture_child_move_old_and_new_lock:true,parent_concurrent_move_unverified:true}));
   await db.query('delete from public.daily_reports where id=$1',[id(992)]);
   await db.exec('drop trigger synthetic_child_barrier on private.route_billing_quantity_evidence;drop trigger synthetic_child_barrier on public.daily_report_workers;drop function private.synthetic_child_barrier();');
   console.log(JSON.stringify({fixture_two_joined_child_inserts_wait:true,parent_move_delete_unverified:true}));
