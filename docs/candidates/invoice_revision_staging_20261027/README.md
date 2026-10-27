@@ -26,3 +26,5 @@
 - 原本の実データは一切取得・保存していない。合成環境で既存自動計算の実fixtureと訂正preview PR #1503（head 91804de11c4116021e096c08c226c9f3d5c00314）を使い、現場・ルート・経費・調整・手当・残業を含む実refreshと同じproposal全額、原本不変、source不一致拒否を検証。GoTrueは合成session、Native/二接続のCIは進行中。実GoTrue・本番RLS・実Storage/実機・移行・復旧は未完了。必須バックアップ/実catalog guard後もroot以外は本番変更しない。
 
 独立候補は復旧成功を意味しない。安全な発行経路とユーザーの実機確認が揃うまでは、現行の5日版を旧版として保持し、7日版を発行しない。
+
+追加の失効競合試験は本番catalogから採った認証helper本体と合成Auth/JWTテーブルを使う。BAN・session削除が進行中のprivate reviewトランザクションを待ち、その後の再試行を拒否するかNative 2接続で確認する。実GoTrue試験や、未実装の発行トランザクションに対する検証ではない。

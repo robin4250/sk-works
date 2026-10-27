@@ -4,6 +4,7 @@ on:
     paths:
       - 'docs/candidates/invoice_revision_staging_20261027/**'
       - 'tool/verify_invoice_revision_staging.mjs'
+      - 'tool/reauthentication-helper.fixture.sql'
       - 'tool/generate_invoice_preview_stage_wrapper.py'
       - 'lib/features/invoices/invoice_revision_review_page.dart'
       - 'test/invoice_revision_review_page_test.dart'

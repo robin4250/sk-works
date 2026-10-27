@@ -24,7 +24,11 @@ await db.exec(`
  create role anon; create role authenticated; create role service_role; create schema auth; create schema private; create schema extensions;
  create extension pgcrypto with schema extensions;
  create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.actor',true),'')::uuid $$;
- create function private.require_reauthentication_session() returns uuid language sql stable as $$ select nullif(current_setting('test.sid',true),'')::uuid $$;
+ create table auth.users(id uuid primary key,is_anonymous boolean not null default false,banned_until timestamptz);
+ create table auth.sessions(id uuid primary key,user_id uuid not null,not_after timestamptz);
+ create function auth.jwt() returns jsonb language sql stable as $$ select jsonb_build_object('role','authenticated','is_anonymous','false','session_id',nullif(current_setting('test.sid',true),'')) $$;
+ insert into auth.users(id) values('00000000-0000-0000-0000-000000000003');
+ insert into auth.sessions(id,user_id) values('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000003');
  create function private.account_access_allowed() returns boolean language sql stable as $$ select coalesce(nullif(current_setting('test.allowed',true),'')::boolean,false) $$;
  create table public.company_members(company_id uuid not null,user_id uuid not null,role text,primary key(company_id,user_id));
  create table public.member_feature_permissions(company_id uuid not null,user_id uuid not null,can_manage_invoices boolean not null,primary key(company_id,user_id));
@@ -34,6 +38,7 @@ await db.exec(`
  insert into public.invoices(id,company_id,invoice_seal_frozen,snapshot) values('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002',true,'{"sites":[{"days":5}],"company_seal_snapshot":{"synthetic":true}}');
  select set_config('test.actor','00000000-0000-0000-0000-000000000003',false),set_config('test.sid','00000000-0000-0000-0000-000000000004',false),set_config('test.company','00000000-0000-0000-0000-000000000002',false),set_config('test.allowed','true',false);
 `);
+await db.exec(await readFile(new URL('./reauthentication-helper.fixture.sql', import.meta.url),'utf8'));
 await db.exec(await readFile(sql,'utf8'));
 const id='00000000-0000-0000-0000-000000000001', cmd='00000000-0000-0000-0000-000000000005', src='a'.repeat(64);
 await db.exec("set timezone='UTC'");
@@ -43,9 +48,9 @@ await assert.rejects(stage(),/revision_disabled/);
 await db.exec('update invoice_revision_candidate.settings set enabled=true');
 await assert.rejects(stage(cmd,src,null),/revision_request_invalid/);
 await db.exec("select set_config('test.allowed','false',false)");
-await assert.rejects(stage(),/revision_denied/);
+await assert.rejects(stage(),/reauthentication_required/);
 await db.exec("select set_config('test.allowed','true',false);select set_config('test.sid','',false)");
-await assert.rejects(stage(),/revision_request_invalid/);
+await assert.rejects(stage(),/reauthentication_required/);
 await db.exec("select set_config('test.sid','00000000-0000-0000-0000-000000000004',false);select set_config('test.company','00000000-0000-0000-0000-000000000099',false)");
 await assert.rejects(stage(),/revision_denied/);
 await db.exec("select set_config('test.company','00000000-0000-0000-0000-000000000002',false)");
@@ -69,9 +74,9 @@ const review=async()=> (await db.query('select invoice_revision_candidate.read_p
 const shown=await review();assert.equal(shown.status,'review_only');assert.deepEqual(shown.proposed_snapshot,preview.proposed_snapshot);
 assert.equal('original_record' in shown,false);assert.equal('actor_id' in shown,false);assert.equal('session_id' in shown,false);
 await db.exec("select set_config('test.actor','00000000-0000-0000-0000-000000000099',false)");
-await assert.rejects(review(),/revision_denied/);
+await assert.rejects(review(),/reauthentication_required/);
 await db.exec("select set_config('test.actor','00000000-0000-0000-0000-000000000003',false);select set_config('test.sid','',false)");
-await assert.rejects(review(),/revision_denied/);
+await assert.rejects(review(),/reauthentication_required/);
 await db.exec("select set_config('test.sid','00000000-0000-0000-0000-000000000004',false)");
 await setPreview({...preview,source_fingerprint:'b'.repeat(64)});await assert.rejects(review(),/revision_preview_changed/);await setPreview(preview);
 await db.query("update invoices set snapshot=snapshot||'{\"changed\":true}'::jsonb where id=$1",[id]);
@@ -139,6 +144,21 @@ if (native) {
   await a.query('commit');
   await revokePermission;
   await assert.rejects(a.query(query,[fourthId,'00000000-0000-0000-0000-000000000036',src,fourthHash,'追加']),/revision_denied/);
+  await db.exec("update public.member_feature_permissions set can_manage_invoices=true");
+  const revokeCases=[
+    ["ban", "update auth.users set banned_until=clock_timestamp()+interval '1 hour' where id='00000000-0000-0000-0000-000000000003'", "update auth.users set banned_until=null"],
+    ["session deletion", "delete from auth.sessions where id='00000000-0000-0000-0000-000000000004'", "insert into auth.sessions(id,user_id) values('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000003')"]
+  ];
+  for(const [label,revoke,restore] of revokeCases){
+    await a.query('begin');
+    assert.equal((await a.query('select invoice_revision_candidate.read_prepared($1) v',[cmd])).rows[0].v.status,'review_only');
+    let done=false;
+    const pending=b.query(revoke).then(()=>{done=true;});
+    await waitForBlock();assert.equal(done,false,`${label} must wait for review transaction`);
+    await a.query('commit');await pending;
+    await assert.rejects(a.query('select invoice_revision_candidate.read_prepared($1)',[cmd]),/reauthentication_required/);
+    await db.exec(restore);
+  }
   await Promise.all([a.end(),b.end()]);
 }
 await db.query('delete from invoices where id=$1',[id]);
