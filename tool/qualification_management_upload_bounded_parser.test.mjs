@@ -22,6 +22,12 @@ test('parser deadline and oversized output fail closed',async()=>{
 });
 test('configuration refuses unsafe inputs',()=>{assert.throws(()=>createBoundedQualificationParser({workerPath:'relative'}));assert.throws(()=>createBoundedQualificationParser({workerPath:'/tmp/x',timeoutMs:0}));});
 
+test('spawn failure releases the slot after the child closes',async()=>{
+ const parse=createBoundedQualificationParser({workerPath:'/not-present/worker.cjs',executable:'/not-present/node',timeoutMs:1000,maxConcurrent:1});
+ assert.equal(await parse({bytes,mime:'application/pdf'}),false);
+ assert.equal(await parse({bytes,mime:'application/pdf'}),false);
+});
+
 test('concurrent work is bounded and capacity is released after timeout',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'sko-parser-test-')); const worker=join(dir,'worker.cjs');
  try {
