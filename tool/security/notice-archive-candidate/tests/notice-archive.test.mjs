@@ -196,3 +196,11 @@ test('isolated rotation failure restores the pre-rotation authority receipt',asy
  assert.equal((await f.call('rotate',{newId:'anchor_2',newJwk:replacement.pub,oldKey:f.anchor.privateJwk,newKey:replacement.privateJwk,now:now+1},'AUTHORITY')).status,409);
  assert.deepEqual(await(await f.call('latest',{},'AUTHORITY')).json(),prior);
 });
+
+test('concurrent planned rotations allow one successor and retain one verifiable transition',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const a=key(),b=key(),mk=(k,id)=>({newId:id,newJwk:k.pub,oldKey:f.anchor.privateJwk,newKey:k.privateJwk,now:now+1});
+ const results=await Promise.all([f.call('rotate',mk(a,'next_a'),'AUTHORITY'),f.call('rotate',mk(b,'next_b'),'AUTHORITY')]);
+ assert.equal(results.filter(x=>x.status===200).length,1);assert.equal(results.filter(x=>x.status===409).length,1);
+ const verify={genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'},history=await f.call('rotation-history',verify,'AUTHORITY');assert.equal(history.status,200);assert.equal((await history.json()).rotations,1);
+});
