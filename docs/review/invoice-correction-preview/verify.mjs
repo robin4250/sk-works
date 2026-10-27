@@ -211,6 +211,16 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await pause(200);assert.equal(childDone,false);await db.query('commit');const staleInsert=await pendingChild;assert.equal(staleInsert.rowCount,1);await writer.query('rollback');
   await db.query('delete from public.daily_reports where id=$1',[id(984)]);
   console.log(JSON.stringify({repeatable_read_stale_parent_reproduced:true,barrier_not_safe_for_all_isolation_levels:true}));
+  // Fixture-only alternative: parent FOR SHARE makes a stale repeatable-read
+  // transaction fail with serialization error; full lock-order safety is unproved.
+  await db.exec("create or replace function private.synthetic_child_barrier() returns trigger language plpgsql as $$declare c uuid;begin select company_id into c from public.daily_reports where id=new.report_id for share;if c is null then raise exception 'synthetic_parent_missing';end if;perform pg_advisory_xact_lock(hashtextextended('invoice-fixture-v2:'||c::text,0));return new;end$$;");
+  await db.query('insert into public.daily_reports(id,company_id) values($1,$2)',[id(984),company]);
+  await db.query('begin');await db.query('update public.daily_reports set company_id=$1 where id=$2',[id(985),id(984)]);
+  await writer.query('begin isolation level repeatable read');await writer.query('select company_id from public.daily_reports where id=$1',[id(984)]);
+  childDone=false;pendingChild=writer.query('insert into public.daily_report_workers(report_id) values($1)',[id(984)]).then(()=>{childDone=true;return null;},e=>{childDone=true;return e;});
+  await pause(200);assert.equal(childDone,false);await db.query('commit');rejectedChild=await pendingChild;assert.equal(rejectedChild?.code,'40001');await writer.query('rollback');
+  await db.query('delete from public.daily_reports where id=$1',[id(984)]);
+  console.log(JSON.stringify({fixture_parent_row_lock_stale_snapshot_rejected:true,global_lock_order_unverified:true}));
   await db.query('delete from companies where id=$1',[id(985)]);await db.exec('drop trigger synthetic_parent_barrier on public.daily_reports');
   console.log(JSON.stringify({fixture_parent_move_and_delete_fail_closed:true}));
   await db.query('delete from public.daily_reports where id=$1',[id(992)]);
