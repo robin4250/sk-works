@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 const {PGlite}=await import(process.argv[2]);const db=new PGlite();
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const [company,customer,site,worker,invoice,early,late,outEarly,outLate,reportEarly,reportLate,otherCustomer,otherSite]=Array.from({length:13},(_,i)=>id(i+1));
-await db.exec(`create role anon;create role authenticated;create role service_role;
+await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create function auth.uid() returns uuid language sql as $$select null::uuid$$;
 create table public.invoices(id uuid primary key,company_id uuid,customer_id uuid,billing_period_start date,billing_period_end date,calculation_blocked boolean default false,snapshot jsonb default '{}',subtotal integer default 10,tax integer default 1,welfare_amount integer default 0,grand_total integer default 11);
 create table public.sites(id uuid primary key,company_id uuid,customer_id uuid);
 create table public.attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,site_id uuid,work_date date,event_type text,confirmed_at timestamptz,source_clock_in_id uuid,daily_report_id uuid,route_assignment_id uuid);
@@ -12,7 +12,7 @@ create schema private;create table private.route_billing_quantity_requests(compa
 create function private.route_signed_checkout_sources(uuid,date,date) returns table(report_id uuid,worker_id uuid,customer_id uuid,source_clock_in_id uuid,source_ready boolean) language sql as $$select report_id,worker_id,customer_id,source_clock_in_id,source_ready from private.route_fixture$$;
 create function private.route_billing_invoice_blocked(uuid,uuid,date,date) returns boolean language sql as $$select flag from private.route_blocked$$;
 create table public.daily_report_workers(report_id uuid,worker_id uuid);
-create table public.attendance_entries(company_id uuid,worker_id uuid,source_report_id uuid,route_assignment_id uuid,site_id uuid,work_date date,base_man_days numeric,work_category text,overtime_hours numeric,early_hours numeric,allowance_names text[]);`);
+create table public.attendance_entries(id uuid default gen_random_uuid(),company_id uuid,worker_id uuid,source_report_id uuid,route_assignment_id uuid,site_id uuid,work_date date,base_man_days numeric,work_category text,overtime_hours numeric,early_hours numeric,allowance_names text[],updated_at timestamptz,updated_by uuid);`);
 await db.exec(await readFile(process.env.SKO_MONTH_CLOSE_SQL,'utf8'));await db.exec(await readFile(process.env.SKO_GUARDED_SQL,'utf8'));
 await db.query("insert into invoices(id,company_id,customer_id,billing_period_start,billing_period_end) values($1,$2,$3,date_trunc('month',current_date),date_trunc('month',current_date)+interval '1 month - 1 day')",[invoice,company,customer]);
 const check=async()=>(await db.query('select invoice_month_close_candidate.precheck($1) v',[invoice])).rows[0].v;
@@ -69,7 +69,7 @@ assert.equal(helperHashes.find(x=>x.proname==='route_signed_checkout_sources').h
 await db.query("update public.sites set name='合成現場' where id=$1",[site]);
 await db.query("update public.attendance_verifications set site_id=null,daily_report_id=$1 where id in ($2,$3)",[reportLate,late,outLate]);
 await db.query("update public.daily_reports set site_id=null,signature_json='[1]' where id=$1",[reportLate]);
-await db.query("insert into public.attendance_entries values($1,$2,$3,$4,null,date_trunc('month',current_date)-interval '2 day',1,'day',1,0,ARRAY['合成手当'])",[company,worker,reportLate,id(98)]);
+await db.query("insert into public.attendance_entries(company_id,worker_id,source_report_id,route_assignment_id,site_id,work_date,base_man_days,work_category,overtime_hours,early_hours,allowance_names) values($1,$2,$3,$4,null,date_trunc('month',current_date)-interval '2 day',1,'day',1,0,ARRAY['合成手当'])",[company,worker,reportLate,id(98)]);
 await db.query('insert into public.route_stops values($1,$2,$3)',[id(80),id(98),site]);
 await db.query("insert into private.route_journey_captures values($1,$2,$3,$4,date_trunc('month',current_date)-interval '2 day',$5,$6,(select confirmed_at from public.attendance_verifications where id=$3)),($7,$2,$3,$4,date_trunc('month',current_date)-interval '2 day',$5,$6,(select confirmed_at from public.attendance_verifications where id=$3))",[id(81),company,late,id(98),worker,id(80),id(82)]);
 await db.query("insert into private.route_journey_visit_events values($1,'start',$2,$2,$3),($1,'end',$4,$2,$3)",[late,id(81),id(80),id(82)]);
@@ -97,5 +97,18 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
 }
 for(const role of ['anon','authenticated','service_role'])assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.prepare_notice(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);
 console.log(JSON.stringify({fixture_notice_off_by_default:true,missing_trusted_readiness_denied:true,pending_approver_checked:true,duplicate_intent_deduplicated:true,changed_revision_new_intent:true,actual_delivery_absent:true}));
+// Site-only late-change audit experiment: no invoice rewrite and no delivery.
+await db.exec(await readFile(process.env.SKO_LATE_CHANGE_SQL,'utf8'));
+await db.exec("alter table public.invoices add column approval_finalized_at timestamptz;create trigger fixture_late_change after insert or update or delete on public.attendance_entries for each row execute function invoice_month_close_candidate.record_site_attendance_change()");
+await db.query('update public.invoices set approval_finalized_at=now() where id=$1',[invoice]);
+await db.query('update public.attendance_entries set overtime_hours=5 where source_report_id=$1',[reportEarly]);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,0);
+await db.exec('update invoice_month_close_candidate.late_change_settings set enabled=true');
+await db.query('update public.attendance_entries set overtime_hours=6 where source_report_id=$1',[reportEarly]);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,1);
+await db.query('update public.attendance_entries set updated_at=now() where source_report_id=$1',[reportEarly]);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,1);
+await db.query('begin');await db.query("insert into public.attendance_entries(company_id,worker_id,site_id,work_date) values($1,$2,$3,date_trunc('month',current_date)-interval '3 day')",[company,worker,site]);
+assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,2);
+await db.query("delete from public.attendance_entries where company_id=$1 and site_id=$2 and work_date=date_trunc('month',current_date)-interval '3 day'",[company,site]);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,3);await db.query('rollback');
+assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.late_change_events')).rows[0].n,1);
+console.log(JSON.stringify({site_only_late_change_audited:true,late_change_does_not_rewrite_invoice:true,other_dependencies_uncovered:true,delivery_absent:true}));
 for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.precheck(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.guarded(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
 console.log(JSON.stringify({fixture_month_end:true,all_days_and_customer_scope:true,missing_signatures_fail_closed:true,route_fixture_ready_and_blocked:true,precheck_never_ready:true,no_public_grant:true}));await db.close();
