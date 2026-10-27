@@ -8,7 +8,7 @@ create table public.invoices(id uuid primary key,company_id uuid,customer_id uui
 create table public.sites(id uuid primary key,company_id uuid,customer_id uuid);
 create table public.attendance_verifications(id uuid primary key,company_id uuid,worker_id uuid,site_id uuid,work_date date,event_type text,confirmed_at timestamptz,source_clock_in_id uuid,daily_report_id uuid,route_assignment_id uuid);
 create table public.daily_reports(id uuid primary key,company_id uuid,site_id uuid,report_date date,status text,signed_at timestamptz,representative_signature_json jsonb,supervisor_signature_json jsonb,route_assignment_id uuid);
-create schema private;create table private.route_billing_quantity_requests(company_id uuid,customer_id uuid,work_date date);create table private.route_fixture(report_id uuid,worker_id uuid,customer_id uuid,source_clock_in_id uuid,source_ready boolean);create table private.route_blocked(flag boolean);insert into private.route_blocked values(false);
+create schema private;create table public.route_stops(id uuid,route_assignment_id uuid,site_id uuid);create table private.route_journey_captures(id uuid,company_id uuid,source_clock_in_id uuid,route_assignment_id uuid,work_date date,worker_id uuid,route_stop_id uuid,recorded_at timestamptz);create table private.route_journey_visit_events(source_clock_in_id uuid,kind text,capture_id uuid,start_capture_id uuid,route_stop_id uuid);create table private.route_billing_quantity_requests(company_id uuid,customer_id uuid,work_date date);create table private.route_fixture(report_id uuid,worker_id uuid,customer_id uuid,source_clock_in_id uuid,source_ready boolean);create table private.route_blocked(flag boolean);insert into private.route_blocked values(false);
 create function private.route_signed_checkout_sources(uuid,date,date) returns table(report_id uuid,worker_id uuid,customer_id uuid,source_clock_in_id uuid,source_ready boolean) language sql as $$select report_id,worker_id,customer_id,source_clock_in_id,source_ready from private.route_fixture$$;
 create function private.route_billing_invoice_blocked(uuid,uuid,date,date) returns boolean language sql as $$select flag from private.route_blocked$$;
 create table public.daily_report_workers(report_id uuid,worker_id uuid);
@@ -58,9 +58,9 @@ await db.exec(`drop function private.route_signed_checkout_sources(uuid,date,dat
  alter table private.route_billing_quantity_requests add column worker_id uuid;alter table private.route_billing_quantity_requests add column status text;
  alter table public.daily_reports add column signature_json jsonb;
  alter table public.sites add column formal_name text;alter table public.sites add column name text;
- create table public.route_stops(id uuid,route_assignment_id uuid,site_id uuid);
- create table private.route_journey_captures(id uuid,company_id uuid,source_clock_in_id uuid,route_assignment_id uuid,work_date date,worker_id uuid,route_stop_id uuid,recorded_at timestamptz);
- create table private.route_journey_visit_events(source_clock_in_id uuid,kind text,capture_id uuid,start_capture_id uuid,route_stop_id uuid);`);
+
+
+`);
 await db.exec(await readFile(process.env.SKO_ROUTE_HELPERS,'utf8'));await db.exec(await readFile(process.env.SKO_ROUTE_COMPONENTS,'utf8'));
 await db.query('insert into public.companies values($1,10)',[company]);await db.query('insert into public.customers values($1,$2,null)',[customer,company]);
 const helperHashes=(await db.query("select proname,md5(prosrc) h from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and proname in ('route_signed_checkout_sources','route_billing_invoice_blocked')")).rows;
@@ -75,6 +75,20 @@ await db.query("insert into private.route_journey_captures values($1,$2,$3,$4,da
 await db.query("insert into private.route_journey_visit_events values($1,'start',$2,$2,$3),($1,'end',$4,$2,$3)",[late,id(81),id(80),id(82)]);
 const realRoute=(await db.query('select count(*)::int n from private.route_signed_checkout_sources($1,$2::date,$3::date) where source_ready and customer_id=$4',[company,(await db.query('select billing_period_start from invoices where id=$1',[invoice])).rows[0].billing_period_start,(await db.query('select billing_period_end from invoices where id=$1',[invoice])).rows[0].billing_period_end,customer])).rows[0].n;
 assert.equal(realRoute,1);const realComponent=(await db.query("select private.route_signed_checkout_components($1,$2,(select billing_period_start from invoices where id=$3),(select billing_period_end from invoices where id=$3)) v",[company,customer,invoice])).rows[0].v;assert.equal(realComponent.blocked,false);assert.equal(realComponent.has_sources,true);assert.ok(realComponent.subtotal>0);assert.equal(await check(),'source_proof_missing');
+// An attributed route for another customer does not block this invoice;
+// an unknown attribution still fails closed.
+await db.query("insert into public.route_stops values($1,$2,$3)",[id(70),id(71),otherSite]);
+await db.query("update public.attendance_verifications set route_assignment_id=$1 where id=$2",[id(71),id(99)]);
+await db.query("insert into private.route_journey_captures values($1,$2,$3,$4,date_trunc('month',current_date)-interval '1 day',$5,$6,now())",[id(72),company,id(99),id(71),worker,id(70)]);
+await db.query("insert into private.route_journey_visit_events values($1,'start',$2,$2,$3)",[id(99),id(72),id(70)]);
+assert.equal(await check(),'source_proof_missing');
+await db.query('delete from private.route_journey_visit_events where capture_id=$1',[id(72)]);
+assert.equal(await check(),'route_unverified'); // Unknown attribution remains fail-closed.
+await db.query('delete from private.route_journey_captures where id=$1',[id(72)]);
+await db.query('delete from public.route_stops where id=$1',[id(70)]);
+await db.query('update public.attendance_verifications set route_assignment_id=null where id=$1',[id(99)]);
+assert.equal(await check(),'source_proof_missing');
+console.log(JSON.stringify({other_customer_attributed_route_does_not_block:true,unknown_route_still_fails_closed:true}));
 await db.query('delete from private.route_journey_visit_events where capture_id=$1',[id(82)]);assert.equal(await check(),'route_unverified');
 console.log(JSON.stringify({production_route_source_body:true,production_route_blocked_body:true,synthetic_complete_route:true,route_missing_exit_rejected:true,rate_helper_stub:true,production_route_component_body:true}));
 // Review-only notification intent, no enqueue or external delivery.
@@ -98,7 +112,6 @@ let ticket=await issue();assert.equal(await issue(),ticket);assert.equal((await 
 await db.query("select set_config('test.uid',$1,false),set_config('test.sid',$2,false)",[worker,id(72)]);await assert.rejects(use(ticket),/notice_unavailable/);
 await db.query("select set_config('test.sid',$1,false)",[id(70)]);assert.equal(await use(ticket),invoice);await assert.rejects(use(ticket),/notice_unavailable/);
 ticket=await issue();await db.query("update invoice_month_close_candidate.notice_open_tickets set expires_at=clock_timestamp()-interval '1 second' where id=$1",[ticket]);await assert.rejects(use(ticket),/notice_unavailable/);const expired=ticket;ticket=await issue();assert.notEqual(ticket,expired);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_open_tickets where id=$1',[expired])).rows[0].n,0);
-// A shared notice has a hard cap even if many distinct sessions keep asking.
 for(let j=0;j<19;j++){await db.query("select set_config('test.sid',$1,false)",[id(500+j)]);await issue();}
 await db.query("select set_config('test.sid',$1,false)",[id(600)]);await assert.rejects(issue(),/notice_unavailable/);
 await db.query("select set_config('test.sid',$1,false)",[id(70)]);assert.equal(await issue(),ticket);
