@@ -14,3 +14,8 @@ The prototype uses a transaction advisory lock scoped to a company. Both the pro
 - Confirm deployment/rollback preserve old app operation and existing data; validate RLS/ACL and real GoTrue, run full integrated candidate and on-device tests before any enablement.
 
 Serializable mode alone is not a replacement without proving the isolation level and participation of every relevant transaction and correct retry semantics. The current production-style global table lock remains untouched; this experiment must not be used to unlock or deploy #1508.
+
+
+## Fail-fast row-trigger experiment
+
+The isolated fixture also tries a nonblocking advisory lock from a row trigger. A conflicting synthetic update raises SQLSTATE 55P03 instead of waiting while holding a tuple lock; another company and the approver can proceed. This is an experiment, not a production fix: existing clients may display an error, whole statements roll back, current writers, deletes/inserts, changed company IDs, cascades, all source tables and deterministic multi-company scope remain unproven. A retry must start a fresh transaction and may only occur when rollback is confirmed; never retry an unknown commit. The test does not prove absence of other deadlocks or starvation. CI outcome is separate.
