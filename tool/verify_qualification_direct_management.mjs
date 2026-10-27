@@ -33,8 +33,6 @@ try{
  const bootstrap=oldVerifier.match(/await db\.exec\(`(alter table workers add column status[\s\S]*?)`\);/);assert.ok(bootstrap);
  await db.exec(bootstrap[1]);
  await db.exec(`create table public.member_feature_permissions(company_id uuid,user_id uuid,can_manage_people boolean);
- create function private.require_reauthentication_session() returns void language plpgsql security definer set search_path='' as $$begin
-  if auth.uid() is null or coalesce(current_setting('test.live_sid',true),'true')<>'true' then raise exception 'live session required' using errcode='42501';end if;end$$;
  create or replace function private.has_company_feature(c uuid,f text) returns boolean language sql stable security definer set search_path='' as $$select coalesce(current_setting('test.manage_people',true),'true')='true' and exists(select 1 from public.company_members m where company_id=c and user_id=auth.uid() and (role in('owner','admin') or exists(select 1 from public.member_feature_permissions fp where fp.company_id=c and fp.user_id=m.user_id and fp.can_manage_people)))$$;
  alter table qualification_master add column is_active boolean not null default true;
  grant select on public.qualification_master to authenticated;
@@ -42,6 +40,7 @@ try{
  create policy fixture_admin_delete on public.worker_qualifications for delete to authenticated using(private.has_company_feature(company_id,'can_manage_people'));`);
  await db.exec(await read('supabase/migrations/20261003120833_allow_self_qualification_registration.sql'));
  await db.exec(await own('tool/fixtures/qualification_management/official_history.sql'));
+ await db.exec(await own('tool/fixtures/qualification_management/reauthentication.sql'));
  const personalBefore=(await db.query("select md5(prosrc) m from pg_proc where oid='private.personal_qualification_submission(text,jsonb)'::regprocedure")).rows[0].m;
  const sql=await own('docs/candidates/qualification_direct_management_20261027.sql.review-only');
  const id=n=>`30000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
@@ -50,6 +49,7 @@ try{
  await db.query('insert into companies values($1),($2)',[company,otherCompany]);
  await db.query("insert into company_members values($1,$2,'admin'),($1,$3,'manager'),($1,$4,'member'),($5,$6,'admin')",[company,admin,manager,user,otherCompany,otherAdmin]);
  await db.query('insert into member_feature_permissions values($1,$2,true),($1,$3,true)',[company,manager,user]);
+ await db.exec("insert into auth.users(id) select distinct user_id from company_members;insert into auth.sessions(id,user_id) select md5(id::text||':session')::uuid,id from auth.users");
  await db.query('insert into workers(id,company_id,user_id) values($1,$2,$3)',[worker,company,user]);
  await db.query("insert into qualification_master(id,company_id,name,expiry_required) values($1,$2,'Synthetic qualification',false)",[master,company]);
  await db.query("insert into storage.objects(bucket_id,name)values('qualification-certificates',$1),('qualification-certificates',$2)",[front,back]);
@@ -127,6 +127,18 @@ try{
  await actor(otherAdmin);await assert.rejects(rpc('inspect',{target_id:target}),e=>e.code==='42501');
  await actor(admin);await db.exec("set test.live_sid='false'");await assert.rejects(rpc('apply',command),e=>e.code==='42501');await db.exec("set test.live_sid='true'");
  await db.exec("set test.active='false'");await assert.rejects(rpc('apply',command),e=>e.code==='42501');await db.exec("set test.active='true'");
+ await db.exec("set test.jwt_role='anon'");await assert.rejects(rpc('apply',command),e=>e.code==='42501');await db.exec("set test.jwt_role='authenticated'");
+ await db.exec("set test.jwt_anon='true'");await assert.rejects(rpc('apply',command),e=>e.code==='42501');await db.exec("set test.jwt_anon='false'");
+ await owner();await db.query("update auth.users set banned_until=clock_timestamp()+interval '1 day' where id=$1",[admin]);
+ await actor(admin);await assert.rejects(rpc('apply',command),e=>e.code==='42501');
+ await owner();await db.query('update auth.users set banned_until=null where id=$1',[admin]);
+ await db.query("update auth.sessions set not_after=clock_timestamp()-interval '1 second' where user_id=$1",[admin]);
+ await actor(admin);await assert.rejects(rpc('apply',command),e=>e.code==='42501');
+ await owner();await db.query('update auth.sessions set not_after=null where user_id=$1',[admin]);
+ const otherSession=(await db.query('select id from auth.sessions where user_id=$1',[user])).rows[0].id;
+ await actor(admin);await db.query("select set_config('test.session_override',$1,false)",[otherSession]);
+ await assert.rejects(rpc('apply',command),e=>e.code==='42501');await db.exec("set test.session_override=''");
+
  await assert.rejects(rpc('apply',{...command,expected_snapshot:{...initial,notes:'stale'}}),e=>e.code==='40001');
  const changed=await rpc('apply',command);assert.equal(changed.status,'applied');assert.equal(changed.after.certificate_number,'updated');
  assert.equal(changed.after.attachment_path,front);assert.equal(changed.after.attachment_back_path,back);

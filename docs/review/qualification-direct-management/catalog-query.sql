@@ -6,7 +6,7 @@ with relations as (
 ), functions as (
  select n.nspname,p.proname,p.oid::text identity,p.proowner,p.proacl,p.prosecdef,p.provolatile,p.proparallel,p.proleakproof,p.proconfig,p.prorettype,p.proargtypes::text args,md5(p.prosrc) body_md5
  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
- where (n.nspname='private' and p.proname in ('require_reauthentication_session','account_access_allowed','has_company_feature',
+ where (n.nspname='private' and p.proname in ('require_reauthentication_session','account_deletion_barrier_key','account_access_allowed','has_company_feature',
  'capture_official_qualification_history','validate_qualification_extra_photos','archive_qualification_photos',
  'personal_qualification_submission','personal_qualification_photo_submission',
  'qualification_management_audit_immutable','qualification_manager_can_write','qualification_management_result','qualification_direct_management'))
