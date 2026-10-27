@@ -36,3 +36,5 @@
 `definer-hold.sql.review-only` は2026-10-27時点の現catalog本体hash/ACL/owner/設定を固定し、承認履歴・承認状態2種・trade_document_source の4関数本体にhold拒否を追加する限定実験。元OID・ACLを維持し、関数driftがあれば全取消。STABLEな経費詳細、LINE、その他のRPCやStorage、既存PDF、新規承認と発行は未保護。実行不可・未配備。合成fixtureは実関数定義を使うが、正規ログインと完全な本番データ依存は模していない。
 
 `owner-preview.sql.review-only` は既存previewをマスター本人・同社の請求管理権限・live sessionで包む非公開の参考試算候補。既定OFF・grantなし、通知や書込み、印影の承認流用なし。実サービス・アプリ未接続であり、合成fixtureの認証とモック計算ではGoTrue本人確認、実入力完全性や同時変更、実額は証明できない。未発行を明示し、安全な読み取り条件と実本人操作が揃うまで実データへ接続しない。
+
+`owner-preview-api.sql.review-only` は初回参考試算・2回目の原本/入力指紋一致確認を行う候補で、公開GRANTは一切設定しない。隔離CIではGoTrueの実sessionとPostgRESTに限定し、一時grantで本人・非マスター・別会社・ログアウト後・古い指紋を試験する。CSRFはクロスオリジンcookieのみで拒否される一例のみで、運用環境のCORS・セッション設定の監査ではない。fixtureの金額・請求は架空、DB source依存はモック。通知・発行・実ユーザーデータを扱わない。

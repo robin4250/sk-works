@@ -1,0 +1,21 @@
+-- REVIEW ONLY, NO PUBLIC GRANTS. Expose only in disposable auth fixture.
+-- Requires independent owner-preview and trusted calculation candidates.
+-- No issue/share/notification; output is a non-final reference calculation.
+begin;
+create function public.invoice_owner_reference_preview_candidate(
+ p_invoice_id uuid, p_expected_source text default null, p_expected_original text default null)
+ returns jsonb language plpgsql security definer set search_path='' as $$
+declare v jsonb;
+begin
+ if (p_expected_source is null) <> (p_expected_original is null) or
+    (p_expected_source is not null and (p_expected_source !~ '^[0-9a-f]{64}$' or p_expected_original !~ '^[0-9a-f]{64}$')) then
+  raise exception 'preview_request_invalid' using errcode='22023'; end if;
+ if to_regprocedure('invoice_owner_preview_candidate.read(uuid)') is null then raise exception 'preview_unavailable' using errcode='55000'; end if;
+ v:=invoice_owner_preview_candidate.read(p_invoice_id);
+ if p_expected_source is not null and (v->>'source_fingerprint' is distinct from p_expected_source
+   or v->>'original_invoice_fingerprint' is distinct from p_expected_original) then
+   raise exception 'preview_stale' using errcode='40001'; end if;
+ return v;
+end $$;
+revoke all on function public.invoice_owner_reference_preview_candidate(uuid,text,text) from public,anon,authenticated,service_role;
+commit;
