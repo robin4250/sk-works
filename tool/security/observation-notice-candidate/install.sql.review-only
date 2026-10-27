@@ -127,7 +127,7 @@ begin
   where company_id=cfg.company_id and recipient_id=actor
   order by occurred_at desc,event_id limit 100
  ) x;
- return jsonb_build_object('version',1,'coverage','collector_observations_only','attack_confirmed',false,'events',result);
+ return jsonb_build_object('version',1,'coverage','collector_observations_only','attack_confirmed',false,'capacity_gaps',(select capacity_gaps from security_observation_notice_private.coverage where singleton),'events',result);
 end $$;
 revoke all on function public.read_security_observation_notices(text) from public,anon,service_role;
 grant execute on function public.read_security_observation_notices(text) to authenticated;

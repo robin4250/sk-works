@@ -15,11 +15,11 @@ class _SecurityNoticePageState extends State<SecurityNoticePage> with WidgetsBin
   List<Map<String,dynamic>>? _items;
   SecurityNoticeCommand? _pending;
   bool _busy=false,_revoked=false,_active=true;
-  int _generation=0;
+  int _generation=0, _capacityGaps=0;
   @override void initState(){super.initState();_repo=widget.repository??SecurityNoticeRepository.maybeCreate();_session=_repo?.collector.sessionKey();_active=(WidgetsBinding.instance.lifecycleState??AppLifecycleState.resumed)==AppLifecycleState.resumed;WidgetsBinding.instance.addObserver(this);
     _subscription=_repo?.collector.sessionChanges.listen((value){if(value!=_session || _repo.collector.sessionKey()!=_session)_revoke();},onError:(Object _)=>_revoke());}
-  void _revoke(){if(!mounted)return;setState((){_generation++;_password.clear();_items=null;_busy=false;_revoked=true;_error='本人確認が失効しました。操作結果は再ログイン後に一覧で確認してください。';});}
-  @override void didChangeAppLifecycleState(AppLifecycleState state){_active=state==AppLifecycleState.resumed;if(!_active && mounted)setState((){_generation++;_password.clear();_items=null;_busy=false;_error='表示を消しました。再認証して確認してください。';});}
+  void _revoke(){if(!mounted)return;setState((){_generation++;_password.clear();_items=null;_capacityGaps=0;_busy=false;_revoked=true;_error='本人確認が失効しました。操作結果は再ログイン後に一覧で確認してください。';});}
+  @override void didChangeAppLifecycleState(AppLifecycleState state){_active=state==AppLifecycleState.resumed;if(!_active && mounted)setState((){_generation++;_password.clear();_items=null;_capacityGaps=0;_busy=false;_error='表示を消しました。再認証して確認してください。';});}
   bool _current(int generation)=>mounted&&_active&&!_revoked&&generation==_generation;
   @override void dispose(){WidgetsBinding.instance.removeObserver(this);_generation++;_subscription?.cancel();_password.clear();_password.dispose();super.dispose();}
   Future<void> _load() async {
@@ -27,7 +27,7 @@ class _SecurityNoticePageState extends State<SecurityNoticePage> with WidgetsBin
     if(repo==null||_password.text.isEmpty||_busy||_revoked||!_active||_pending!=null)return;
     FocusScope.of(context).unfocus();final pwd=_password.text;_password.clear();final g=++_generation;
     setState((){_busy=true;_error=null;_items=null;});
-    try{final rows=await repo.load(pwd,isActive:()=>_current(g));if(_current(g))setState(()=>_items=rows);}
+    try{final snapshot=await repo.load(pwd,isActive:()=>_current(g));if(_current(g))setState((){_items=snapshot.events;_capacityGaps=snapshot.capacityGaps;});}
     catch(_){if(_current(g))setState(()=>_error='通知は準備中か、本人確認・接続を確認できません。記録なしを意味しません。');}
     finally{if(_current(g))setState(()=>_busy=false);}
   }
@@ -50,8 +50,8 @@ class _SecurityNoticePageState extends State<SecurityNoticePage> with WidgetsBin
     try{
       await repo.update(cmd,pwd,isActive:()=>_current(g));saved=true;
       if(_current(g))setState(()=>_pending=null);
-      final rows=await repo.load(pwd,isActive:()=>_current(g));
-      if(_current(g))setState((){_items=rows;_error='対応を保存しました。';});
+      final snapshot=await repo.load(pwd,isActive:()=>_current(g));
+      if(_current(g))setState((){_items=snapshot.events;_capacityGaps=snapshot.capacityGaps;_error='対応を保存しました。';});
     }catch(_){if(_current(g))setState((){_error=saved?'対応は保存済みです。再認証して一覧を更新してください。':'結果を確認できません。同じ操作を再確認してください。';if(saved)_items=null;});}
     finally{if(_current(g))setState(()=>_busy=false);}
   }
@@ -66,6 +66,7 @@ class _SecurityNoticePageState extends State<SecurityNoticePage> with WidgetsBin
         if(_pending!=null) FilledButton(onPressed:_busy?null:_runPending,child:const Text('同じ操作を再確認')),
       ],
       if(_busy)const LinearProgressIndicator(),
+      if(_items!=null && _capacityGaps>0) Text('上限に達し、通知に記録できなかった観測が$_capacityGaps件あります。収集記録を管理者が確認してください。',style:const TextStyle(color:Colors.red)),
       if(_items case final rows?) ...[
         if(rows.isEmpty)const Text('対象範囲の通知はありません。監視の正常性を示すものではありません。'),
         for(final row in rows) Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[

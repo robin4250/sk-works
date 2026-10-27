@@ -18,6 +18,12 @@ class SecurityNoticeCommand {
   }
 }
 
+class SecurityNoticeSnapshot {
+  const SecurityNoticeSnapshot(this.events,this.capacityGaps);
+  final List<Map<String,dynamic>> events;
+  final int capacityGaps;
+}
+
 class SecurityNoticeRepository {
   SecurityNoticeRepository({required this.collector, required this.readRpc, required this.updateRpc});
   final SecurityCollectorRepository collector;
@@ -41,12 +47,12 @@ class SecurityNoticeRepository {
     void check(){if(changed || collector.sessionKey()!=initial || isActive?.call()==false) throw SecurityCollectorUnavailable();}
     try{check();final value=await work(check);check();return value;}finally{await sub.cancel();}
   }
-  Future<List<Map<String,dynamic>>> load(String password,{bool Function()? isActive}) => _bound((check) async {
+  Future<SecurityNoticeSnapshot> load(String password,{bool Function()? isActive}) => _bound((check) async {
     if(password.isEmpty || !await collector.available()) throw SecurityCollectorUnavailable();
     check();final proof=await collector.issueProof(password).timeout(const Duration(seconds:30));check();
     if(!RegExp(r'^[0-9a-f]{64}$').hasMatch(proof)) throw SecurityCollectorUnavailable();
     final raw=await readRpc(proof).timeout(const Duration(seconds:20));check();
-    if(raw is! Map || raw['version']!=1 || raw['coverage']!='collector_observations_only' || raw['attack_confirmed']!=false || raw['events'] is! List || (raw['events'] as List).length>100 || utf8.encode(jsonEncode(raw)).length>128*1024) throw const FormatException('通知情報を確認できません');
+    if(raw is! Map || raw['version']!=1 || raw['coverage']!='collector_observations_only' || raw['attack_confirmed']!=false || raw['capacity_gaps'] is! int || raw['capacity_gaps']<0 || raw['events'] is! List || (raw['events'] as List).length>100 || utf8.encode(jsonEncode(raw)).length>128*1024) throw const FormatException('通知情報を確認できません');
     final rows=<Map<String,dynamic>>[]; final seen=<String>{};
     const keys={'event_id','event_kind','generation','occurred_at','available_at','read_at','review_state','review_reason','revision','scope','state'};
     for(final row in raw['events'] as List){
@@ -55,7 +61,7 @@ class SecurityNoticeRepository {
         row['occurred_at'] is! String || DateTime.tryParse(row['occurred_at'])==null || row['available_at'] is! String || DateTime.tryParse(row['available_at'])==null || (row['read_at']!=null && (row['read_at'] is! String || DateTime.tryParse(row['read_at'])==null)) || (row['review_reason']!=null && (row['review_reason'] is! String || (row['review_reason'] as String).length>500))) { throw const FormatException('通知情報を確認できません'); }
       rows.add(Map<String,dynamic>.unmodifiable(Map<String,dynamic>.from(row)));
     }
-    return List.unmodifiable(rows);
+    return SecurityNoticeSnapshot(List.unmodifiable(rows),raw['capacity_gaps']);
   },isActive:isActive);
   Future<void> update(SecurityNoticeCommand c,String password,{bool Function()? isActive}) => _bound((check) async {
     if(password.isEmpty || !await collector.available()) throw SecurityCollectorUnavailable();
