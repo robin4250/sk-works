@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/payroll/payroll_recorded_unit_evidence.dart';
 
 void main() {
-  Map<String, dynamic> saved() => {'unit_resolution': {
-    'contract_version': 1, 'blocked': false, 'items': [
+  Map<String, dynamic> saved() => {'unit_resolution': <String, dynamic>{
+    'contract_version': 1, 'blocked': false, 'items': <Map<String, dynamic>>[
       {'id': 'individual-unused', 'name': '合成共通手当', 'section': 'earning',
        'unit': 'day', 'rate_yen': 800, 'quantity': 0, 'amount_yen': 0},
       {'id': 'common-used', 'name': '合成共通手当', 'section': 'earning',
@@ -26,12 +26,12 @@ void main() {
   test('two paid same-name items still cannot borrow one basis', () {
     final detail = saved();
     final unused = ((detail['unit_resolution'] as Map)['items'] as List).first as Map;
-    unused.addAll({'quantity': 1, 'amount_yen': 800});
+    unused.addAll(<String, dynamic>{'quantity': 1, 'amount_yen': 800});
     expect(read(detail, amount: 4400), isNull);
     expect(read(detail), isNull);
   });
   test('invalid zero evidence is not silently ignored', () {
-    for (final invalid in [
+    for (final invalid in <Map<String, dynamic>>[
       {'rate_yen': -1}, {'rate_yen': double.nan}, {'unit': 'unknown'},
       {'quantity': 1}, {'amount_yen': 1}, {'quantity': null},
     ]) {
