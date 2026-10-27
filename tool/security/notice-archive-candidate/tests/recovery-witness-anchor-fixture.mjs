@@ -4,6 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash} from 'node:crypto';
 const zero='0'.repeat(64);
 const valid=x=>typeof x==='string'&&/^[a-f0-9]{64}$/.test(x);
+const maxRows=10000;
 export class AnchoredWitnessFixture {
  constructor(path){this.db=new DatabaseSync(path);this.db.exec(`PRAGMA journal_mode=WAL;
  CREATE TABLE IF NOT EXISTS ledger(scope TEXT NOT NULL, nonce TEXT NOT NULL, proposal_hash TEXT NOT NULL, seq INTEGER NOT NULL, hash TEXT NOT NULL, PRIMARY KEY(scope,nonce));
@@ -16,7 +17,7 @@ export class AnchoredWitnessFixture {
  verifyHistory(){
   let seq=0,previous=zero;
   for(const row of this.db.prepare('SELECT scope,nonce,proposal_hash,seq,hash FROM ledger ORDER BY seq').iterate()){
-   if(row.seq!==seq+1||typeof row.scope!=='string'||!row.scope||!valid(row.nonce)||!valid(row.proposal_hash)||!valid(row.hash))throw Error('witness history corrupt');
+   if(row.seq!==seq+1||seq>=maxRows||typeof row.scope!=='string'||!row.scope||Buffer.byteLength(row.scope,'utf8')>256||!valid(row.nonce)||!valid(row.proposal_hash)||!valid(row.hash))throw Error('witness history corrupt');
    const expectedHash=createHash('sha256').update(JSON.stringify({v:1,previous,seq:row.seq,scope:row.scope,nonce:row.nonce,proposalHash:row.proposal_hash})).digest('hex');
    if(row.hash!==expectedHash)throw Error('witness history corrupt');
    seq=row.seq;previous=row.hash;
@@ -24,10 +25,11 @@ export class AnchoredWitnessFixture {
   const state=this.head();if(!state||state.seq!==seq||state.hash!==previous)throw Error('witness history corrupt');
  }
  consume({scope,nonce,proposalHash,expected}){
-  if(typeof scope!=='string'||!scope||!valid(nonce)||!valid(proposalHash)||!expected||!Number.isSafeInteger(expected.seq)||expected.seq<0||!valid(expected.hash))throw Error('invalid request');
+  if(typeof scope!=='string'||!scope||Buffer.byteLength(scope,'utf8')>256||!valid(nonce)||!valid(proposalHash)||!expected||!Number.isSafeInteger(expected.seq)||expected.seq<0||!valid(expected.hash))throw Error('invalid request');
   this.db.exec('BEGIN IMMEDIATE');try{
    this.verifyHistory();const old=this.head();if(old.seq!==expected.seq||old.hash!==expected.hash)throw Error('witness checkpoint mismatch');
    if(this.db.prepare('SELECT nonce FROM ledger WHERE scope=? AND nonce=?').get(scope,nonce))throw Error('already consumed');
+   if(old.seq>=maxRows)throw Error('witness capacity reached');
    const seq=old.seq+1,hash=createHash('sha256').update(JSON.stringify({v:1,previous:old.hash,seq,scope,nonce,proposalHash})).digest('hex');
    this.db.prepare('INSERT INTO ledger VALUES(?,?,?,?,?)').run(scope,nonce,proposalHash,seq,hash);
    this.db.prepare('UPDATE state SET seq=?,hash=? WHERE id=1').run(seq,hash);

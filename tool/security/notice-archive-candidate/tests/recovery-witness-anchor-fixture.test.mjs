@@ -1,9 +1,21 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {mkdtempSync,copyFileSync,rmSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';import {randomBytes} from 'node:crypto';
+import {mkdtempSync,copyFileSync,rmSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';import {randomBytes,createHash} from 'node:crypto';
 import {AnchoredWitnessFixture} from './recovery-witness-anchor-fixture.mjs';
 import {Worker} from 'node:worker_threads';
 import {DatabaseSync} from 'node:sqlite';
 const token=()=>randomBytes(32).toString('hex');
+test('bounded history refuses new claims at capacity without changing state',t=>{
+ const dir=mkdtempSync(join(tmpdir(),'sko-witness-cap-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const path=join(dir,'witness.db'),witness=new AnchoredWitnessFixture(path),db=witness.db;
+ const insert=db.prepare('INSERT INTO ledger VALUES(?,?,?,?,?)');let previous='0'.repeat(64);
+ db.exec('BEGIN');for(let seq=1;seq<=10000;seq++){
+  const scope='fixture',nonce=seq.toString(16).padStart(64,'0'),proposalHash='a'.repeat(64);
+  const hash=createHash('sha256').update(JSON.stringify({v:1,previous,seq,scope,nonce,proposalHash})).digest('hex');
+  insert.run(scope,nonce,proposalHash,seq,hash);previous=hash;
+ }db.prepare('UPDATE state SET seq=?,hash=? WHERE id=1').run(10000,previous);db.exec('COMMIT');
+ const pin=witness.head();assert.throws(()=>witness.consume({scope:'fixture',nonce:token(),proposalHash:token(),expected:pin}),/capacity reached/);
+ assert.deepEqual(witness.head(),pin);assert.throws(()=>witness.consume({scope:'界'.repeat(86),nonce:token(),proposalHash:token(),expected:pin}),/invalid request/);witness.close();
+});
 test('partial loss or tampering of consumed nonce history fails closed',t=>{
  for(const corruption of ['delete','nonce','hash','state']){
   const dir=mkdtempSync(join(tmpdir(),'sko-witness-corrupt-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
