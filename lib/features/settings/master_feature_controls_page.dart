@@ -239,6 +239,16 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
                             ),
                           ),
                           const SizedBox(height: 12),
+                          for (final entry in MasterFeatureAvailability.lifecycleFeatures.entries)
+                            if (availability.lifecycleSupported(entry.key)) ...[
+                              _featureTile(
+                                featureKey: entry.key,
+                                label: entry.value,
+                                description: 'SKO全体の新しい処理を制御。OFFでも保存済みデータは保持します',
+                                enabled: availability.lifecycleEnabled(entry.key),
+                              ),
+                              const SizedBox(height: 10),
+                            ],
                           if (availability.companySealImageToolsSupported) ...[
                             _featureTile(
                               featureKey: 'company_seal_image_tools',
@@ -322,4 +332,5 @@ class _MasterFeatureControlsPageState extends State<MasterFeatureControlsPage>
     );
   }
 }
+
 

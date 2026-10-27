@@ -11,6 +11,8 @@ class MasterFeatureControlsRepository {
   MasterFeatureControlsRepository.forTesting(this._client);
 
   static const supportedFeatures = {
+    'affiliation_switch', 'sko_id_linking', 'personal_pdf_vault',
+    'partner_auto_link', 'company_lifecycle',
     'vehicle_management', 'route_assignment', 'traffic_nearest_station',
     'traffic_train_transfer', 'traffic_bus_stop', 'company_seal_image_tools',
   };
@@ -86,4 +88,5 @@ class MasterFeatureControlsRepository {
     return MasterFeatureAvailability.fromJson(Map<String, dynamic>.from(raw));
   }
 }
+
 

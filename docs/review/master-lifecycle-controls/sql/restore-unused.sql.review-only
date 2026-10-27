@@ -1,0 +1,86 @@
+-- REVIEW ONLY. Unused restore; any Master change audit makes this invalid.
+begin;
+set local search_path='';
+lock table private.master_feature_settings in share row exclusive mode;
+lock table private.lifecycle_feature_audit in share row exclusive mode;
+do $g$ begin
+if exists(select 1 from private.lifecycle_feature_audit) or exists(select 1 from private.master_feature_settings where feature_key in ('affiliation_switch','sko_id_linking','personal_pdf_vault','partner_auto_link','company_lifecycle') and enabled) then raise exception 'lifecycle_restore_used'; end if;
+if not exists(select 1 from pg_proc where oid=to_regprocedure('public.current_master_feature_flags()') and md5(prosrc)='a266d7133c4b1f92ac3e90c4f23cf384') then raise exception 'lifecycle_restore_drift';end if;
+if not exists(select 1 from pg_proc where oid=to_regprocedure('public.set_master_feature_enabled_with_proof(text,boolean,text)') and md5(prosrc)='836dce9ed12177a9606a731806a0f3ab') then raise exception 'lifecycle_restore_drift';end if;
+if not exists(select 1 from pg_proc where oid=to_regprocedure('public.set_master_feature_enabled(text,boolean)') and md5(prosrc)='e0a9e42b2514d1435621e12c6700976a') then raise exception 'lifecycle_restore_drift';end if;
+if not exists(select 1 from pg_proc where oid=to_regprocedure('private.require_lifecycle_features(text[])') and md5(prosrc)='f66cf64c8b5d5c615a86e3ddd641cf03') then raise exception 'lifecycle_restore_drift';end if;
+if not exists(select 1 from pg_proc where oid=to_regprocedure('private.audit_lifecycle_feature_change()') and md5(prosrc)='8e868e5e2110e0c4769b3c7de1512eef') then raise exception 'lifecycle_restore_drift';end if;
+end $g$;
+drop trigger lifecycle_feature_change on private.master_feature_settings;
+CREATE OR REPLACE FUNCTION public.current_master_feature_flags()
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  select case
+    when auth.uid() is null then null
+    else jsonb_build_object(
+      'vehicle_management',
+        coalesce((
+          select mfs.enabled
+          from private.master_feature_settings mfs
+          where mfs.feature_key = 'vehicle_management'
+        ), true),
+      'route_assignment',
+        coalesce((
+          select mfs.enabled
+          from private.master_feature_settings mfs
+          where mfs.feature_key = 'route_assignment'
+        ), true),
+      'traffic_nearest_station', coalesce((select enabled from private.master_feature_settings where feature_key='traffic_nearest_station'),false),
+      'traffic_train_transfer', coalesce((select enabled from private.master_feature_settings where feature_key='traffic_train_transfer'),false),
+      'traffic_bus_stop', coalesce((select enabled from private.master_feature_settings where feature_key='traffic_bus_stop'),false)
+    )
+  end;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.set_master_feature_enabled_with_proof(p_feature_key text, p_enabled boolean, p_proof text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+ perform private.consume_reauthentication_proof('master.feature.set',jsonb_build_object('feature_key',p_feature_key,'enabled',p_enabled),p_proof);
+ if p_feature_key not in ('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop') or p_enabled is null then
+  raise sqlstate '22023' using message='unsupported_master_feature';
+ end if;
+ insert into private.master_feature_settings(feature_key,enabled,updated_at,updated_by)
+ values(p_feature_key,p_enabled,now(),auth.uid()) on conflict(feature_key) do update
+ set enabled=excluded.enabled,updated_at=excluded.updated_at,updated_by=excluded.updated_by;
+ return public.current_master_feature_flags();
+end $function$
+;
+CREATE OR REPLACE FUNCTION public.set_master_feature_enabled(p_feature_key text, p_enabled boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+ if auth.uid() is null or not public.is_current_user_master_admin() or not private.account_access_allowed() then
+  raise sqlstate '42501' using message='master_administrator_access_required';
+ end if;
+ if private.reauthentication_required('master_feature') then raise sqlstate '42501' using message='reauthentication_required'; end if;
+ if p_feature_key is null or p_feature_key not in ('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop') then
+  raise exception 'unsupported master feature';
+ end if;
+ insert into private.master_feature_settings(feature_key,enabled,updated_at,updated_by)
+ values(p_feature_key,p_enabled,now(),auth.uid()) on conflict(feature_key) do update
+ set enabled=excluded.enabled,updated_at=excluded.updated_at,updated_by=excluded.updated_by;
+ return public.current_master_feature_flags();
+end $function$
+;
+drop function private.require_lifecycle_features(text[]);
+drop function private.audit_lifecycle_feature_change();
+drop table private.lifecycle_feature_audit;
+delete from private.master_feature_settings where feature_key in ('affiliation_switch','sko_id_linking','personal_pdf_vault','partner_auto_link','company_lifecycle');
+alter table private.master_feature_settings drop constraint master_feature_settings_feature_key_check;
+alter table private.master_feature_settings add constraint master_feature_settings_feature_key_check check(feature_key in('vehicle_management','route_assignment','traffic_nearest_station','traffic_train_transfer','traffic_bus_stop'));
+commit;
