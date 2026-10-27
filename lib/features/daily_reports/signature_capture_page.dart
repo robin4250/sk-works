@@ -194,6 +194,11 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          TextButton.icon(
+            key: const ValueKey('signature-confirm-corner'),
+            onPressed: _landscape ? _submit : null,
+            icon: const Icon(Icons.check_circle_outline),
+            label: Text(widget.submitLabel)),
           if (widget.reviewText != null) IconButton(
             tooltip: 'サインする日報を確認', icon: const Icon(Icons.description_outlined),
             onPressed: () => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
@@ -251,9 +256,6 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
               ]);
             }),
           )),
-          Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: FilledButton.icon(onPressed: _landscape ? _submit : null,
-              icon: const Icon(Icons.check_circle_outline), label: Text(widget.submitLabel))),
         ],
       ))),
     );
@@ -380,4 +382,5 @@ Rect signatureInkBounds(List<List<Offset>> strokes, Size source) {
   }
   return Rect.fromLTRB(left - 2.4, top - 2.4, right + 2.4, bottom + 2.4);
 }
+
 
