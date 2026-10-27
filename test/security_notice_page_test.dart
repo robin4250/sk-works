@@ -29,11 +29,13 @@ void main(){
     await tester.tap(find.text('確認済みにする'));await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey('notice-password')));await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('notice-password')),'fixture');
-    await tester.tap(find.text('同じ操作を再確認'));await tester.pumpAndSettle();
+    await tester.tap(find.text('同じ操作を再確認'));await tester.pump();
+    await tester.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:50));});await tester.pumpAndSettle();
     expect(find.textContaining('結果を確認できません'),findsOneWidget);
     await tester.ensureVisible(find.byKey(const ValueKey('notice-password')));await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('notice-password')),'fixture');
-    await tester.tap(find.text('同じ操作を再確認'));await tester.pumpAndSettle();
+    await tester.tap(find.text('同じ操作を再確認'));await tester.pump();
+    await tester.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:50));});await tester.pumpAndSettle();
     expect(commandIds.length,2);expect(commandIds[0],commandIds[1]);
     expect(find.text('確認済み'),findsOneWidget);
     actor='other/session';events.add(actor);await tester.pumpAndSettle();
