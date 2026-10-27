@@ -1,0 +1,14 @@
+-- REVIEW ONLY: never deployed. No default grants, public API names are
+-- candidates only. The notification/approval helpers recheck session,
+-- recipient, notice, revision, deadline, readiness and current source.
+create function public.invoice_notice_open_candidate(p_notification uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+begin
+ return invoice_month_close_candidate.ticket_from_notification(p_notification);
+end $$;
+create function public.invoice_approve_notice_candidate(p_ticket uuid)
+returns boolean language plpgsql security definer set search_path='' as $$
+begin
+ return invoice_month_close_candidate.approve_from_notice(p_ticket);
+end $$;
+revoke all on function public.invoice_notice_open_candidate(uuid),public.invoice_approve_notice_candidate(uuid) from public,anon,authenticated,service_role;

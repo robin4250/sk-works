@@ -13,13 +13,14 @@ const noticeReadiness=await readFile(process.env.SKO_NOTIFICATION_READINESS_SQL,
 const deliverySql=await readFile(process.env.SKO_DELIVERY_SQL,'utf8');
 const entrySql=await readFile(process.env.SKO_APPROVAL_ENTRY_SQL,'utf8');
 const approvalGuard=await readFile(process.env.SKO_APPROVAL_GUARD_SQL,'utf8');
+const publicEntry=await readFile(process.env.SKO_PUBLIC_ENTRY_SQL,'utf8');
 const legacyNoticeGuard=await readFile(process.env.SKO_LEGACY_GUARD_SQL,'utf8');
 const triggerFile=await readFile(process.env.SKO_NOTIFY_TRIGGER,'utf8');
 const triggerStart=triggerFile.indexOf('CREATE OR REPLACE FUNCTION private.enqueue_notification(');assert.ok(triggerStart>=0);
 const triggerEnd=triggerFile.indexOf('$function$;',triggerStart);assert.ok(triggerEnd>triggerStart);
 const enqueueBody=triggerFile.slice(triggerStart,triggerEnd+'$function$;'.length);
 const ensureApprovals=await readFile(resolve(root,'supabase/tests/fixtures/trade_document_adjustments_20261026/private.ensure_invoice_approval_rows.sql'),'utf8');
-const declarations=`const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};const approvalSql=${JSON.stringify(approvalSql)};const approverCore=${JSON.stringify(approverCore)};const noticeSql=${JSON.stringify(noticeSql)};const noticeReadiness=${JSON.stringify(noticeReadiness)};const deliverySql=${JSON.stringify(deliverySql)};const entrySql=${JSON.stringify(entrySql)};const approvalGuard=${JSON.stringify(approvalGuard)};const legacyNoticeGuard=${JSON.stringify(legacyNoticeGuard)};const enqueueBody=${JSON.stringify(enqueueBody)};const ensureApprovals=${JSON.stringify(ensureApprovals)};\n`;
+const declarations=`const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};const approvalSql=${JSON.stringify(approvalSql)};const approverCore=${JSON.stringify(approverCore)};const noticeSql=${JSON.stringify(noticeSql)};const noticeReadiness=${JSON.stringify(noticeReadiness)};const deliverySql=${JSON.stringify(deliverySql)};const entrySql=${JSON.stringify(entrySql)};const approvalGuard=${JSON.stringify(approvalGuard)};const publicEntry=${JSON.stringify(publicEntry)};const legacyNoticeGuard=${JSON.stringify(legacyNoticeGuard)};const enqueueBody=${JSON.stringify(enqueueBody)};const ensureApprovals=${JSON.stringify(ensureApprovals)};\n`;
 const injection=`
 // Synthetic past month: reuse existing real refresh/preview and frozen snapshot.
 await db.exec("alter table public.attendance_entries add column if not exists source_report_id uuid;alter table public.attendance_verifications add column if not exists id uuid;alter table public.attendance_verifications add column if not exists worker_id uuid;alter table public.attendance_verifications add column if not exists site_id uuid;alter table public.attendance_verifications add column if not exists work_date date;alter table public.attendance_verifications add column if not exists confirmed_at timestamptz;alter table public.attendance_verifications add column if not exists daily_report_id uuid;alter table public.attendance_verifications add column if not exists route_assignment_id uuid;alter table public.daily_reports add column if not exists site_id uuid;alter table public.daily_reports add column if not exists report_date date;alter table public.daily_reports add column if not exists status text;alter table public.daily_reports add column if not exists signed_at timestamptz;alter table public.daily_reports add column if not exists representative_signature_json jsonb;alter table public.daily_reports add column if not exists supervisor_signature_json jsonb;alter table public.daily_reports add column if not exists route_assignment_id uuid;alter table public.daily_report_workers add column if not exists worker_id uuid;");
@@ -63,7 +64,7 @@ await assert.rejects(db.query('select invoice_month_close_candidate.prepare_noti
 const noticeId=(await notice()).rows[0].v;assert.equal((await notice()).rows[0].v,noticeId);
 assert.equal((await db.query('select invoice_month_close_candidate.notice_current($1) v',[noticeId])).rows[0].v,true);
 await db.exec("create table public.app_notifications(id uuid primary key default gen_random_uuid(),company_id uuid,recipient_user_id uuid,kind text,title text,body text,action_key text,action_id uuid);");
-await db.exec(\${JSON.stringify(enqueueBody)});await db.exec(\${JSON.stringify(deliverySql)});await db.exec(\${JSON.stringify(approvalGuard)});await db.exec(\${JSON.stringify(entrySql)});
+await db.exec(\${JSON.stringify(enqueueBody)});await db.exec(\${JSON.stringify(deliverySql)});await db.exec(\${JSON.stringify(approvalGuard)});await db.exec(\${JSON.stringify(entrySql)});await db.exec(\${JSON.stringify(publicEntry)});
 await db.exec('create trigger fixture_invoice_approval_guard before insert or update on public.invoices for each row execute function invoice_month_close_candidate.guard_invoice_transition();create trigger fixture_approval_transition_guard before insert or update on public.invoice_approvals for each row execute function invoice_month_close_candidate.guard_approval_transition()');
 await db.exec(\${JSON.stringify(legacyNoticeGuard)});await db.exec('create trigger fixture_legacy_invoice_notice after insert or update on public.invoices for each row execute function private.invoice_approval_rows_trigger()');
 assert.equal((await db.query("select md5(prosrc) h from pg_proc where oid='private.enqueue_notification(uuid,uuid,text,text,text,text,uuid)'::regprocedure")).rows[0].h,'260ef8dc60ec1917cc0c8dc85ea52872');
@@ -89,6 +90,19 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
 await db.query("select set_config('test.uid',$1,false)",[id(969)]);await assert.rejects(db.query('select invoice_month_close_candidate.ticket_from_notification($1)',[notificationId]),/notice_unavailable/);
 await db.query("select set_config('test.uid',$1,false)",[actor]);await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=false');await assert.rejects(db.query('select invoice_month_close_candidate.ticket_from_notification($1)',[notificationId]),/notice_unavailable/);await assert.rejects(deliver(),/delivery_disabled/);await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=true');const ticket=(await db.query('select invoice_month_close_candidate.ticket_from_notification($1) v',[notificationId])).rows[0].v.ticket_id;
 assert.equal((await db.query('select invoice_month_close_candidate.consume_notice_ticket($1) v',[ticket])).rows[0].v,frozen.id);
+// Grant only candidate public entrypoints in the isolated fixture. The
+// financial core and private schemas remain unavailable to authenticated.
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ for(const role of ['anon','authenticated','service_role'])assert.equal((await db.query("select has_function_privilege($1,'public.invoice_notice_open_candidate(uuid)','EXECUTE') v",[role])).rows[0].v,false);
+ await db.exec('grant execute on function public.invoice_notice_open_candidate(uuid),public.invoice_approve_notice_candidate(uuid) to authenticated');
+ await db.exec('set role authenticated');
+ try{
+  await db.query("select set_config('test.uid',$1,false)",[id(969)]);await assert.rejects(db.query('select public.invoice_notice_open_candidate($1)',[notificationId]),/notice_unavailable/);
+  await db.query("select set_config('test.uid',$1,false)",[actor]);const publicTicket=(await db.query('select public.invoice_notice_open_candidate($1) v',[notificationId])).rows[0].v.ticket_id;
+  await db.query('begin');assert.equal((await db.query('select public.invoice_approve_notice_candidate($1) v',[publicTicket])).rows[0].v,true);await db.query('rollback');
+ }finally{await db.exec('reset role');}
+ console.log(JSON.stringify({fixture_authenticated_public_entry_works:true,fixture_wrong_recipient_denied:true,real_gotrue_not_tested:true}));
+}
 const approvalTicket=(await db.query('select invoice_month_close_candidate.ticket_from_notification($1) v',[notificationId])).rows[0].v.ticket_id;
 await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=true');
 assert.equal((await db.query('select public.enqueue_due_invoice_approval_notifications() n')).rows[0].n,0);

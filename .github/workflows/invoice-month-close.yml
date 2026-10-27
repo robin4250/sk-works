@@ -35,6 +35,7 @@ jobs:
           SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
           SKO_LEGACY_TEST: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/verify_invoice_trigger_contract.mjs
           SKO_NOTIFY_TRIGGER: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/integration_trigger_bodies.sql.review-only
+          SKO_PUBLIC_ENTRY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/public_entry.sql.review-only
           SKO_APPROVAL_GUARD_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approval_guard.sql.review-only
           SKO_LEGACY_GUARD_SQL: ${{ runner.temp }}/legacy-notice-guard.sql
           SKO_TEMP_DIR: ${{ github.workspace }}/docs/review/invoice-month-close
@@ -77,6 +78,7 @@ jobs:
           SKO_ADJUSTMENT_ROOT: ${{ github.workspace }}
           SKO_NOTICE_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification.sql.review-only
           SKO_LEGACY_GUARD_SQL: ${{ runner.temp }}/legacy-notice-guard.sql
+          SKO_PUBLIC_ENTRY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/public_entry.sql.review-only
           SKO_APPROVAL_GUARD_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approval_guard.sql.review-only
           SKO_APPROVAL_ENTRY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approval_entry.sql.review-only
           SKO_DELIVERY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification_delivery.sql.review-only
