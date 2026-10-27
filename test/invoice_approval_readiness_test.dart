@@ -9,7 +9,7 @@ void main() {
       MaterialApp(home: Scaffold(body: InvoiceApprovalReadinessNotice(readiness: state, isApprover: approver, busy: busy, onApprove: onApprove, onReload: () {})));
 
   test('unknown, malformed, wrong invoice and stale revision fail closed', () {
-    for (final state in [from('unknown'), from('ready', id: 'other'), from('ready', rev: 'old'), InvoiceApprovalReadiness.fromServer(null, invoiceId: 'invoice', revision: 'revision')]) {
+    for (final state in [from('unknown'), from('route_unverified'), from('work_unverified'), from('source_proof_missing'), from('period_unverified'), from('data_changed'), from('ready', id: 'other'), from('ready', rev: 'old'), InvoiceApprovalReadiness.fromServer(null, invoiceId: 'invoice', revision: 'revision')]) {
       expect(state.state, InvoiceApprovalReadinessState.unavailable);
     }
   });
@@ -19,6 +19,16 @@ void main() {
       expect(find.text(entry.value), findsOneWidget);
       expect(find.text('承認する'), findsNothing);
     }
+  });
+  testWidgets('missing endpoint never offers approval or a fake retry', (tester) async {
+    var calls = 0;
+    final state = InvoiceApprovalReadiness.fromServer(null, invoiceId: 'invoice', revision: 'revision');
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: InvoiceApprovalReadinessNotice(
+      readiness: state, isApprover: true, busy: false, onApprove: () => calls++, onReload: null))));
+    expect(find.text('承認できる状態を確認できません。管理者に確認してください。'), findsOneWidget);
+    expect(find.text('承認する'), findsNothing);
+    expect(find.text('再読み込み'), findsNothing);
+    expect(calls, 0);
   });
   testWidgets('only eligible assigned approver can use the button', (tester) async {
     var calls = 0;
