@@ -11,9 +11,9 @@ export class PGlite{
  async query(q,a){await this.ready;return this.client.query(q,a);}
  async exec(q){await this.ready;if(q.startsWith('create schema private;create schema auth;')){
   q=q.replace('create schema private;create schema auth;','create schema private;');
-  q=q.replace("create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;", "create or replace function auth.uid() returns uuid language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claim.sub',true),''),nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub',nullif(current_setting('test.uid',true),''))::uuid$$;");
+  q=q.replace("create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;", ()=>"create or replace function auth.uid() returns uuid language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claim.sub',true),''),nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub',nullif(current_setting('test.uid',true),''))::uuid$$;");
   q=q.replace('create role anon;create role authenticated;','');
- }return this.client.query(q);}
+ }try{return await this.client.query(q);}catch(e){const n=Number(e.position||0);if(n)console.error('fixture SQL error near:',q.slice(Math.max(0,n-100),n+100));throw e;}}
  async close(){await this.client.end();}
 }
 export async function connectFixture(){const c=new pg.Client({connectionString:raw});await c.connect();return c;}
