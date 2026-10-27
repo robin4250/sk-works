@@ -19,8 +19,11 @@ export async function inspectPendingUpload({ actorId, requestId, db, storage, va
     : b.length >= 8 && [137,80,78,71,13,10,26,10].every((x,i) => b[i] === x) ? 'image/png'
     : b.length >= 12 && ascii(4,8) === 'ftyp' && ['heic','heix','hevc','hevx','mif1','msf1'].includes(ascii(8,12)) ? 'image/heic' : null;
   if (detected !== pending.mime || object.version !== pending.objectVersion) throw Error('invalid_file');
+  const inspectedHash = createHash('sha256').update(b).digest('hex');
   if (await validateFile({ bytes: b, mime: detected }) !== true) throw Error('invalid_file');
   const sha256 = createHash('sha256').update(b).digest('hex');
+  // Do not commit evidence for bytes changed by a parser or asynchronous adapter.
+  if (sha256 !== inspectedHash) throw Error('invalid_file');
   const verified = { ...pending, status: 'inspected', sha256, bytes: b.byteLength };
   if (!uploadEvidenceMatches(verified, {...verified, objectVersion: object.version})) throw Error('invalid_file');
   // This transaction MUST lock and recheck live authorization, request state,

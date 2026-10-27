@@ -8,3 +8,13 @@ function adapters() { let used = false; return { validateFile: async () => true,
 test('trusted bytes produce one committed inspection and replay fails', async () => { const a=adapters(); assert.deepEqual(await inspectPendingUpload({actorId:row.actorId,requestId:row.requestId,...a}),{inspected:true}); await assert.rejects(inspectPendingUpload({actorId:row.actorId,requestId:row.requestId,...a}),/inspection_conflict/); });
 test('wrong caller, MIME and object replacement fail closed', async () => { let a=adapters(); await assert.rejects(inspectPendingUpload({actorId:id(9),requestId:row.requestId,...a}),/inspection_unavailable/); a=adapters(); a.storage.readImmutableVersion=async()=>({bytes:new TextEncoder().encode('not a pdf'),version:'v1'}); await assert.rejects(inspectPendingUpload({actorId:row.actorId,requestId:row.requestId,...a}),/invalid_file/); a=adapters(); a.storage.readImmutableVersion=async()=>({bytes,version:'v2'}); await assert.rejects(inspectPendingUpload({actorId:row.actorId,requestId:row.requestId,...a}),/invalid_file/); });
 test('missing parser and invalid file must not commit', async () => { let a=adapters(); delete a.validateFile; await assert.rejects(inspectPendingUpload({actorId:row.actorId,requestId:row.requestId,...a}),/inspection_unavailable/); a=adapters(); a.validateFile=async()=>false; await assert.rejects(inspectPendingUpload({actorId:row.actorId,requestId:row.requestId,...a}),/invalid_file/); });
+test('parser mutation of bytes is rejected before committing', async () => {
+  const a = adapters();
+  const local = Uint8Array.from(bytes);
+  a.storage.readImmutableVersion = async () => ({ bytes: local, version: 'v1' });
+  let committed = false;
+  a.db.commitInspectionAtomically = async () => { committed = true; return true; };
+  a.validateFile = async ({ bytes: input }) => { input[input.length - 1] ^= 1; return true; };
+  await assert.rejects(inspectPendingUpload({ actorId: row.actorId, requestId: row.requestId, ...a }), /invalid_file/);
+  assert.equal(committed, false);
+});
