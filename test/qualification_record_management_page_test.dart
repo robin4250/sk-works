@@ -12,11 +12,11 @@ void main(){
     final events=StreamController<String?>.broadcast(sync:true);
     final repo=QualificationRecordManagementRepository.forTesting(actor:()=> 'actor',authChanges:events.stream,
       rpc:(action,data)async{
-        if(action=='capability')return {'version':1,'contract':'qualification_direct_management',
-          'company_id':'company','actor_id':'actor','available':enabled};
-        if(action=='inspect')return {'version':1,'contract':'qualification_direct_management',
+        if(action=='capability') { return {'version':1,'contract':'qualification_direct_management',
+          'company_id':'company','actor_id':'actor','available':enabled}; }
+        if(action=='inspect') { return {'version':1,'contract':'qualification_direct_management',
           'snapshot':{'id':'target','company_id':'company','worker_id':'worker',
-            'qualification_master_id':'master','certificate_number':'123','issuer':'発行元'}};
+            'qualification_master_id':'master','certificate_number':'123','issuer':'発行元'}}; }
         throw StateError('No mutation expected while viewing or cancelling');
       });
     addTearDown(()async{await repo.dispose();await events.close();});return repo;
