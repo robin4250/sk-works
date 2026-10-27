@@ -21,7 +21,12 @@ const triggerEnd=triggerFile.indexOf('$function$;',triggerStart);assert.ok(trigg
 const enqueueBody=triggerFile.slice(triggerStart,triggerEnd+'$function$;'.length);
 const ensureApprovals=await readFile(resolve(root,'supabase/tests/fixtures/trade_document_adjustments_20261026/private.ensure_invoice_approval_rows.sql'),'utf8');
 const liveApprove=await readFile(resolve(root,'supabase/tests/fixtures/trade_document_adjustments_20261026/public.approve_invoice.sql'),'utf8');
-const declarations=`const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};const approvalSql=${JSON.stringify(approvalSql)};const approverCore=${JSON.stringify(approverCore)};const noticeSql=${JSON.stringify(noticeSql)};const noticeReadiness=${JSON.stringify(noticeReadiness)};const deliverySql=${JSON.stringify(deliverySql)};const entrySql=${JSON.stringify(entrySql)};const approvalGuard=${JSON.stringify(approvalGuard)};const publicEntry=${JSON.stringify(publicEntry)};const legacyNoticeGuard=${JSON.stringify(legacyNoticeGuard)};const enqueueBody=${JSON.stringify(enqueueBody)};const liveApprove=${JSON.stringify(liveApprove)};const ensureApprovals=${JSON.stringify(ensureApprovals)};\n`;
+const approvalMigration=await readFile(resolve(root,'supabase/migrations/20261007221757_invoice_stamp_policy_and_approval_history.sql'),'utf8');
+const cancelStart=approvalMigration.indexOf('create or replace function public.cancel_invoice_approval(');
+const cancelEnd=approvalMigration.indexOf('end; $;',cancelStart);
+assert.ok(cancelStart>=0 && cancelEnd>cancelStart);
+const cancelSql=approvalMigration.slice(cancelStart,cancelEnd+'end; $;'.length);
+const declarations=`const cancelSql=${JSON.stringify(cancelSql)};const closeSql=${JSON.stringify(checkSql)};const guardedSql=${JSON.stringify(guardedSql)};const approvalSql=${JSON.stringify(approvalSql)};const approverCore=${JSON.stringify(approverCore)};const noticeSql=${JSON.stringify(noticeSql)};const noticeReadiness=${JSON.stringify(noticeReadiness)};const deliverySql=${JSON.stringify(deliverySql)};const entrySql=${JSON.stringify(entrySql)};const approvalGuard=${JSON.stringify(approvalGuard)};const publicEntry=${JSON.stringify(publicEntry)};const legacyNoticeGuard=${JSON.stringify(legacyNoticeGuard)};const enqueueBody=${JSON.stringify(enqueueBody)};const liveApprove=${JSON.stringify(liveApprove)};const ensureApprovals=${JSON.stringify(ensureApprovals)};\n`;
 const injection=`
 // Synthetic past month: reuse existing real refresh/preview and frozen snapshot.
 await db.exec("alter table public.attendance_entries add column if not exists source_report_id uuid;alter table public.attendance_verifications add column if not exists id uuid;alter table public.attendance_verifications add column if not exists worker_id uuid;alter table public.attendance_verifications add column if not exists site_id uuid;alter table public.attendance_verifications add column if not exists work_date date;alter table public.attendance_verifications add column if not exists confirmed_at timestamptz;alter table public.attendance_verifications add column if not exists daily_report_id uuid;alter table public.attendance_verifications add column if not exists route_assignment_id uuid;alter table public.daily_reports add column if not exists site_id uuid;alter table public.daily_reports add column if not exists report_date date;alter table public.daily_reports add column if not exists status text;alter table public.daily_reports add column if not exists signed_at timestamptz;alter table public.daily_reports add column if not exists representative_signature_json jsonb;alter table public.daily_reports add column if not exists supervisor_signature_json jsonb;alter table public.daily_reports add column if not exists route_assignment_id uuid;alter table public.daily_report_workers add column if not exists worker_id uuid;");
@@ -125,7 +130,18 @@ await db.query("select set_config('test.uid',$1,false)",[actor]);
 await db.query('begin');assert.equal((await db.query('select invoice_month_close_candidate.approve_from_notice($1) v',[approvalTicket])).rows[0].v,true);
 assert.equal((await db.query("select md5(prosrc) h from pg_proc where oid='private.preserve_invoice_company_seal_snapshot()'::regprocedure")).rows[0].h,'78ab702df260b8004ad18923ad6dbd97');
 const sealed=(await db.query('select snapshot,invoice_seal_frozen from public.invoices where id=$1',[frozen.id])).rows[0];assert.equal(sealed.invoice_seal_frozen,true);assert.deepEqual(sealed.snapshot.company_seal_snapshot,frozen.snapshot.company_seal_snapshot);
-assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,1);await db.query('rollback');
+assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,1);
+// Existing owner may withdraw their approval even when the new notification guard is ON.
+// Production body fingerprint protects against stale fixture assumptions.
+await db.exec('alter table public.invoice_approvals add column if not exists display_date_override date');
+await db.exec(cancelSql);
+assert.equal((await db.query("select md5(prosrc) h from pg_proc where oid='public.cancel_invoice_approval(uuid)'::regprocedure")).rows[0].h,'230e478080979e8efc2719a5f639b6b5');
+await db.query('select public.cancel_invoice_approval($1)',[frozen.id]);
+assert.equal((await db.query("select count(*)::int n from public.invoice_approvals where invoice_id=$1 and status='pending'",[frozen.id])).rows[0].n,1);
+assert.equal((await db.query('select approval_finalized_at is null v from public.invoices where id=$1',[frozen.id])).rows[0].v,true);
+assert.equal((await db.query("select count(*)::int n from public.invoice_approval_audit where invoice_id=$1 and action='cancelled'",[frozen.id])).rows[0].n,1);
+console.log(JSON.stringify({fixture_existing_cancel_approval_with_guard:true}));
+await db.query('rollback');
 assert.equal((await db.query('select consumed_at is null v from invoice_month_close_candidate.notice_open_tickets where id=$1',[approvalTicket])).rows[0].v,true);
 assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.approval_permits')).rows[0].n,0);await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=false');
 for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.approve_from_notice(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.notification_readiness(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);}
