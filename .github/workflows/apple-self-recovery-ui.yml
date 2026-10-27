@@ -1,0 +1,26 @@
+name: Apple self recovery notice candidate
+on:
+  pull_request:
+    paths:
+      - 'lib/features/auth/apple_recovery_notice.dart'
+      - 'test/apple_recovery_notice_test.dart'
+      - '.github/workflows/apple-self-recovery-ui.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  notice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze lib/features/auth/apple_recovery_notice.dart test/apple_recovery_notice_test.dart
+      - run: flutter test test/apple_recovery_notice_test.dart
