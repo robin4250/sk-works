@@ -44,13 +44,19 @@ for(let i=0;i<100;i++) {
 assert.equal(waiting,true);
 await a.query('commit'); await activation;
 await assert.rejects(a.query("update public.invoice_approvals set status='approved' where invoice_id='00000000-0000-0000-0000-000000000002'"),/invoice_retired/);
-// A new uncommitted approval has no existing row for the activator to lock.
-// This deliberate counterexample keeps the entire candidate unpublishable.
+// INSERT holds the invoice row shared before creating an approval, so
+// activation must wait for the insert transaction before holding that ID.
 await c.query("insert into public.invoices values('00000000-0000-0000-0000-000000000003','old3')");
 await a.query('begin');
 await a.query("insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000003','pending')");
-await c.query("select invoice_retirement_guard_candidate.activate('00000000-0000-0000-0000-000000000003')");
-await a.query('commit');
-assert.equal((await c.query("select count(*)::int n from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000003'")).rows[0].n,1);
-console.log('PASS existing rows serialize; concurrent new approval INSERT remains unsafe: NO DEPLOY');
+const insertActivation=c.query("select invoice_retirement_guard_candidate.activate('00000000-0000-0000-0000-000000000003')");
+let insertWait=false;
+for(let i=0;i<100;i++) {
+ if((await b.query('select cardinality(pg_blocking_pids($1))>0 blocked',[holdPid])).rows[0].blocked){insertWait=true;break;}
+ await new Promise(resolve=>setTimeout(resolve,30));
+}
+assert.equal(insertWait,true,'hold must wait for approval insert');
+await a.query('commit'); await insertActivation;
+await assert.rejects(a.query("insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000003','pending')"),/invoice_retired/);
+console.log('PASS: existing and newly inserted approval rows serialize with hold; other access paths remain unsafe');
 await Promise.all(clients.map(c=>c.end()));
