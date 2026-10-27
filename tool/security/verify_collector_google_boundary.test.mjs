@@ -44,3 +44,13 @@ test('foreign bearer session cannot consume an existing collector challenge',asy
   const f=setup();f.challenge.session_id='00000000-0000-0000-0000-000000000003';
   await assert.rejects(verifyGooglePrimary(await input(),f.ports),GooglePrimaryDenied);assert.equal(f.calls.length,0);
 });
+test('the generic verifier does not turn another operation or target into collector evidence',async()=>{
+  for(const other of [{operation:'master.feature.set',target:{feature_key:'vehicle_management',enabled:true}},
+    {operation,target:{scope:'platform'}}]) {
+    const f=setup();Object.assign(f.challenge,other);
+    const value=await verifyGooglePrimary(await input(),f.ports);
+    assert.equal(value.operation===operation && value.target.scope==='decoy_collector',false);
+    assert.deepEqual(value.target,other.target);
+    assert.equal('proof' in value,false);
+  }
+});
