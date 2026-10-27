@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'worker_document_repository.dart';
+import 'worker_document_exemption.dart';
 import 'worker_document_change_flow.dart';
 import 'worker_document_change_repository.dart';
 import '../shared/resource_registration_card.dart';
@@ -144,6 +145,7 @@ class _OwnDocumentRegistrationPageState
 
   List<Map<String, dynamic>> _requirements = const [];
   List<Map<String, dynamic>> _statuses = const [];
+  List<Map<String, dynamic>> _exemptions = const [];
   Map<String, dynamic>? _worker;
   bool _loading = true;
   bool _saving = false;
@@ -185,6 +187,7 @@ class _OwnDocumentRegistrationPageState
             .where((row) => row['is_active'] != false)
             .toList(growable: false);
         _statuses = data['statuses'] ?? const <Map<String, dynamic>>[];
+        _exemptions = data['exemptions'] ?? const <Map<String, dynamic>>[];
         _loading = false;
       });
     } catch (error) {
@@ -676,6 +679,8 @@ class _OwnDocumentRegistrationPageState
                           final requirement = requirements[index];
                           final id = requirement['id']?.toString() ?? '';
                           final status = _statusFor(id);
+                          final exemption = documentExemptionFor(_exemptions, _worker?['id']?.toString(), id);
+                          final exempt = exemption?['active'] == true;
                           final paths = workerDocumentPaths(status);
                           final needsRegistration =
                               status == null ||
@@ -732,16 +737,16 @@ class _OwnDocumentRegistrationPageState
                             key: ValueKey('own-document:${gateway is _OwnDocumentRepositoryGateway ? gateway.actorId : ''}:${_worker?['id']}:$id'),
                             title: requirement['name']?.toString() ?? '書類',
                             icon: Icons.description_outlined,
-                            registered: !incomplete,
-                            statusLabel: label,
+                            registered: exempt || !incomplete,
+                            statusLabel: exempt ? '提出免除' : label,
                             dateLabel: dates.isEmpty ? '' : dates.first,
-                            detailLabel: [if (status != null) resourceDocumentReviewLabel(status['status']),
+                            detailLabel: [if (exempt) '管理者設定：${exemption!['reason']}', if (status != null) resourceDocumentReviewLabel(status['status']),
                               workerDocumentScopeLabel(requirement['scope']),
                               if ((status?['expires_at']?.toString() ?? '').isNotEmpty) '期限 ${status?['expires_at']}',
                               if (paths.length > 2) '添付 ${paths.length}件（詳細で確認）'].join(' / '),
                             attachments: attachments,
-                            onAction: action,
-                            onOpenDetail: action,
+                            onAction: exempt ? null : action,
+                            onOpenDetail: exempt ? null : action,
                           );
                         },
                       ),

@@ -156,6 +156,72 @@ class WorkerDocumentRepository {
     }
   }
 
+  bool _exemptionEditingAvailable = false;
+  bool get exemptionEditingAvailable => _exemptionEditingAvailable;
+
+  Future<List<Map<String, dynamic>>> _loadExemptions(String companyId) async {
+    final actor = actorId;
+    final token = _client.auth.currentSession?.accessToken;
+    try {
+      final raw = await _client.rpc('worker_document_exemption', params: {
+        'p_action': 'list', 'p_data': {'company_id': companyId},
+      });
+      if (actor == null || actor != actorId ||
+          token != _client.auth.currentSession?.accessToken || raw is! Map ||
+          raw['capability_version'] != 1 || raw['items'] is! List) {
+        throw StateError('書類免除の情報を確認できません。再読み込みしてください。');
+      }
+      final rows = (raw['items'] as List).map((row) =>
+          Map<String, dynamic>.from(row as Map)).toList();
+      if (rows.any((row) => row['company_id'] != companyId ||
+          row['worker_id'] is! String || row['requirement_id'] is! String ||
+          row['active'] is! bool || row['version'] is! int ||
+          (row['version'] as int) < 1 || row['reason'] is! String)) {
+        throw StateError('書類免除の情報を確認できません。');
+      }
+      _exemptionEditingAvailable = raw['can_manage'] == true;
+      return rows;
+    } on PostgrestException catch (error) {
+      // Only a confirmed absent candidate endpoint is compatible with the old
+      // backend. Authorization/network/data errors must not erase known state.
+      if (error.code != 'PGRST202' ||
+          !error.message.contains('worker_document_exemption')) { rethrow; }
+      _exemptionEditingAvailable = false;
+      return [];
+    }
+  }
+
+  Future<void> setDocumentExemption({required String workerId,
+    required String requirementId, required bool active,
+    required int expectedVersion, required String reason}) async {
+    final actor = actorId;
+    final token = _client.auth.currentSession?.accessToken;
+    if (!_exemptionEditingAvailable || actor == null || token == null ||
+        reason.trim().isEmpty || reason.trim().length > 500 || expectedVersion < 0) {
+      throw StateError('書類免除の情報と理由を確認してください。');
+    }
+    await _requireManagePeople();
+    final companyId = await _companyId();
+    if (actorId != actor || token != _client.auth.currentSession?.accessToken) {
+      throw StateError('ログイン情報が変更されました。');
+    }
+    final raw = await _client.rpc('worker_document_exemption', params: {
+      'p_action': 'set', 'p_data': {'company_id': companyId,
+        'worker_id': workerId, 'requirement_id': requirementId, 'active': active,
+        'expected_version': expectedVersion, 'reason': reason.trim()},
+    });
+    if (actorId != actor || token != _client.auth.currentSession?.accessToken ||
+        raw is! Map || raw['capability_version'] != 1 || raw['item'] is! Map) {
+      throw StateError('免除の保存結果を確認できません。再読み込みしてください。');
+    }
+    final item = raw['item'] as Map;
+    if (item['company_id'] != companyId || item['worker_id'] != workerId ||
+        item['requirement_id'] != requirementId || item['active'] != active ||
+        item['version'] != expectedVersion + 1) {
+      throw StateError('免除の保存結果を確認できません。再読み込みしてください。');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> loadArchivedRequirements() async {
     final actor = actorId;
     await _requireManagePeople();
@@ -224,6 +290,7 @@ class WorkerDocumentRepository {
   Future<Map<String, List<Map<String, dynamic>>>> loadAll({bool includeHiddenRequirements = false}) async {
     final companyId = await _companyId();
     final canManage = await canManageStatuses();
+    final exemptions = await _loadExemptions(companyId);
 
     String? ownWorkerId;
     if (!canManage) {
@@ -274,6 +341,7 @@ class WorkerDocumentRepository {
       'requirements': List<Map<String, dynamic>>.from(requirements),
       'retained_requirements': retainedRequirements,
       'statuses': List<Map<String, dynamic>>.from(statuses),
+      'exemptions': exemptions,
     };
   }
 
@@ -282,6 +350,7 @@ class WorkerDocumentRepository {
     final companyId = await _companyId();
     final requirements = await _readRequirementRows(companyId);
     final retainedRequirements = requirements;
+    final exemptions = await _loadExemptions(companyId);
     final workers = await _client
         .from('workers')
         .select('id, name, affiliation, status')
@@ -302,6 +371,7 @@ class WorkerDocumentRepository {
       'requirements': List<Map<String, dynamic>>.from(requirements),
       'retained_requirements': retainedRequirements,
       'statuses': List<Map<String, dynamic>>.from(statuses),
+      'exemptions': exemptions,
     };
   }
 
