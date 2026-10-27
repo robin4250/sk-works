@@ -1,0 +1,35 @@
+
+// Disposable GoTrue + real financial-readiness + candidate approval.
+if(process.env.SKO_COMBINED_ACTOR){
+ const liveActor=process.env.SKO_COMBINED_ACTOR,liveToken=process.env.SKO_COMBINED_TOKEN,anonKey=process.env.SKO_COMBINED_ANON,api=new URL(process.env.SKO_COMBINED_API);
+ if(!/^[0-9a-f-]{36}$/.test(liveActor)||!['127.0.0.1','localhost','[::1]'].includes(api.hostname)||api.port!=='53911'||api.protocol!=='http:')throw Error('local combined fixture required');
+ await db.query("update attendance_entries set overtime_hours=0 where company_id=$1 and site_id=$2 and work_date='2020-10-22'",[company,site]);
+ await db.query('update public.invoices set approval_finalized_at=null where id=$1',[frozen.id]);
+ await db.query('delete from public.invoice_approvals where invoice_id=$1',[frozen.id]);
+ await db.query('delete from public.invoice_approvers where company_id=$1',[company]);
+ await db.query("insert into public.company_members(company_id,user_id,role) values($1,$2,'worker')",[company,liveActor]);
+ await db.query('insert into public.invoice_approvers values($1,$2,1)',[company,liveActor]);
+ await db.query("insert into public.invoice_approvals(invoice_id,company_id,approver_user_id,status,position) values($1,$2,$3,'pending',1)",[frozen.id,company,liveActor]);
+ await db.exec(fs.readFileSync('reauth-source/tool/reauthentication-helper.fixture.sql','utf8'));
+ await db.query("select set_config('test.uid','',false)");
+ await db.exec('update invoice_month_close_candidate.approval_guard_settings set enabled=true');
+ await db.exec('update invoice_month_close_candidate.delivery_settings set enabled=true');
+ const proof=(await db.query('select invoice_month_close_candidate.notification_readiness($1,$2) v',[frozen.id,liveActor])).rows[0].v;
+ assert.equal(proof.status,'ready');
+ const nid=(await db.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[frozen.id,liveActor])).rows[0].v;
+ const notified=(await db.query('select invoice_month_close_candidate.deliver_notice($1) v',[nid])).rows[0].v;
+ await db.exec('grant execute on function public.invoice_notice_open_candidate(uuid),public.invoice_approve_notice_candidate(uuid) to authenticated');
+ await db.exec("notify pgrst,'reload schema'");
+ const request=async(name,body)=>fetch(new URL('/rest/v1/rpc/'+name,api),{method:'POST',redirect:'error',signal:AbortSignal.timeout(20000),headers:{apikey:anonKey,Authorization:'Bearer '+liveToken,'Content-Type':'application/json'},body:JSON.stringify(body)});
+ let opened;for(let i=0;i<40;i++){opened=await request('invoice_notice_open_candidate',{p_notification:notified});if(opened.status!==404&&opened.status!==503)break;await new Promise(r=>setTimeout(r,250));}
+ assert.equal(opened.status,200);const received=await opened.json();assert.equal(received.invoice_id,frozen.id);assert.equal(received.notification_id,notified);
+ await db.query("update attendance_entries set overtime_hours=2 where company_id=$1 and site_id=$2 and work_date='2020-10-22'",[company,site]);
+ assert.notEqual((await request('invoice_approve_notice_candidate',{p_ticket:received.ticket_id})).status,200);
+ assert.equal((await db.query("select status from public.invoice_approvals where invoice_id=$1 and approver_user_id=$2",[frozen.id,liveActor])).rows[0].status,'pending');
+ await db.query("update attendance_entries set overtime_hours=0 where company_id=$1 and site_id=$2 and work_date='2020-10-22'",[company,site]);
+ opened=await request('invoice_notice_open_candidate',{p_notification:notified});assert.equal(opened.status,200);const fresh=await opened.json();
+ const approved=await request('invoice_approve_notice_candidate',{p_ticket:fresh.ticket_id});assert.equal(approved.status,200);
+ assert.equal((await db.query("select status from public.invoice_approvals where invoice_id=$1 and approver_user_id=$2",[frozen.id,liveActor])).rows[0].status,'approved');
+ assert.ok((await db.query('select approval_finalized_at from public.invoices where id=$1',[frozen.id])).rows[0].approval_finalized_at);
+ console.log(JSON.stringify({disposable_gotrue_real_readiness_notification_approval:true,route_source_synthetic:true,stale_rejected:true}));
+}

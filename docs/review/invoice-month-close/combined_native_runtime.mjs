@@ -1,0 +1,19 @@
+import {pathToFileURL} from 'node:url';
+import path from 'node:path';
+const pg=(await import(pathToFileURL(path.resolve('tool/security/fixture_dependencies/node_modules/pg/lib/index.js')).href)).default;
+const raw=process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL;
+const u=new URL(raw||'http://invalid');
+if(process.env.CI!=='true'||process.env.SKO_INVOICE_NOTICE_AUTH_HOOK!=='contract-v1'||u.protocol!=='postgresql:'||!['127.0.0.1','localhost'].includes(u.hostname)||u.port!=='53912'||u.pathname!=='/postgres'||Object.keys(process.env).some(k=>/^SUPABASE_(ACCESS_TOKEN|DB_PASSWORD|URL|SERVICE_ROLE_KEY|SECRET_KEY|PROJECT_REF)$/.test(k)))throw Error('isolated GoTrue fixture only');
+pg.types.setTypeParser(20,value=>{const n=Number(value);if(!Number.isSafeInteger(n))throw Error('unsafe bigint');return n;});
+let fixture;
+export class PGlite{
+ constructor(){if(fixture)throw Error('one fixture only');fixture=this;this.client=new pg.Client({connectionString:raw});this.ready=this.client.connect().then(async()=>{if((await this.client.query("select to_regclass('public.companies') x")).rows[0].x)throw Error('empty public fixture required');});}
+ async query(q,a){await this.ready;return this.client.query(q,a);}
+ async exec(q){await this.ready;if(q.startsWith('create schema private;create schema auth;')){
+  q=q.replace('create schema private;create schema auth;','create schema private;');
+  q=q.replace("create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;", "create or replace function auth.uid() returns uuid language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claim.sub',true),''),nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub',nullif(current_setting('test.uid',true),''))::uuid$$;");
+  q=q.replace('create role anon;create role authenticated;','');
+ }return this.client.query(q);}
+ async close(){await this.client.end();}
+}
+export async function connectFixture(){const c=new pg.Client({connectionString:raw});await c.connect();return c;}
