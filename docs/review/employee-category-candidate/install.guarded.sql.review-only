@@ -203,9 +203,7 @@ begin
     );
   end loop;
 end
-$function$
-
-
+$function$;
 CREATE OR REPLACE FUNCTION private.employee_personnel_view(p_company uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -233,9 +231,7 @@ begin
  ) order by w.name) from public.workers w
  left join public.worker_personnel_profiles p on p.company_id=w.company_id and p.worker_id=w.id
  where w.company_id=p_company and w.status::text='active'),'[]'::jsonb));
-end $function$
-
-
+end $function$;
 CREATE OR REPLACE FUNCTION private.worker_personnel_payload(p_worker_id uuid)
  RETURNS jsonb
  LANGUAGE sql
@@ -273,9 +269,7 @@ AS $function$
   left join public.worker_personnel_profiles p on p.worker_id=w.id
   where w.id=p_worker_id
   limit 1
-$function$
-
-
+$function$;
 CREATE OR REPLACE FUNCTION public.save_worker_personnel_profile(p_worker_id uuid, p_payload jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -429,9 +423,7 @@ begin
     'saved_directly',false
   );
 end
-$function$
-
-
+$function$;
 do $g$ declare t text;n bigint;h text;r record;begin for r in select * from pg_temp.employee_guard_rows loop t:=r.name;execute format($q$select count(*)::bigint,md5(coalesce(string_agg(h,'' order by h),'')) from (select md5(to_jsonb(x)::text) h from %s x)a$q$,t) into n,h;if n<>r.n or h<>r.h then raise exception 'employee_category_business_rows_changed';end if;end loop;
 if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.apply_worker_personnel_payload(uuid,jsonb,uuid)') and md5(p.prosrc)='58f513bcc005e002422688a843586263' and md5((to_jsonb(p)-'prosrc')::text)='55a6db4beb2111dca77ff666c7f58748') then raise exception 'employee_category_function_drift'; end if;
 if not exists(select 1 from pg_proc p where p.oid=to_regprocedure('private.employee_personnel_view(uuid)') and md5(p.prosrc)='3bd4627dbb43a058651083fcf2a057e3' and md5((to_jsonb(p)-'prosrc')::text)='092d2b58a18aae7cd91d599da4548d04') then raise exception 'employee_category_function_drift'; end if;
