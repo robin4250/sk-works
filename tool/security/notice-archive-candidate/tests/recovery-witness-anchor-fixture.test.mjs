@@ -2,7 +2,24 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtempSync,copyFileSync,rmSync} from 'node:fs';import {join} from 'node:path';import {tmpdir} from 'node:os';import {randomBytes} from 'node:crypto';
 import {AnchoredWitnessFixture} from './recovery-witness-anchor-fixture.mjs';
 import {Worker} from 'node:worker_threads';
+import {DatabaseSync} from 'node:sqlite';
 const token=()=>randomBytes(32).toString('hex');
+test('partial loss or tampering of consumed nonce history fails closed',t=>{
+ for(const corruption of ['delete','nonce','hash','state']){
+  const dir=mkdtempSync(join(tmpdir(),'sko-witness-corrupt-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  const path=join(dir,'witness.db');let witness=new AnchoredWitnessFixture(path),pin=witness.head();
+  pin=witness.consume({scope:'synthetic',nonce:token(),proposalHash:token(),expected:pin});
+  pin=witness.consume({scope:'synthetic',nonce:token(),proposalHash:token(),expected:pin});witness.close();
+  const db=new DatabaseSync(path);
+  if(corruption==='delete')db.exec('DELETE FROM ledger WHERE seq=1');
+  if(corruption==='nonce')db.prepare('UPDATE ledger SET nonce=? WHERE seq=1').run(token());
+  if(corruption==='hash')db.prepare('UPDATE ledger SET hash=? WHERE seq=2').run(token());
+  if(corruption==='state')db.prepare('UPDATE state SET hash=? WHERE id=1').run(token());
+  db.close();witness=new AnchoredWitnessFixture(path);
+  assert.throws(()=>witness.consume({scope:'synthetic',nonce:token(),proposalHash:token(),expected:pin}),/witness history corrupt/);
+  witness.close();
+ }
+});
 test('separately pinned checkpoint refuses stale restored witness and same-height fork',t=>{
  const dir=mkdtempSync(join(tmpdir(),'sko-witness-anchor-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));const path=join(dir,'witness.db'),snapshot=join(dir,'old.db');
  let witness=new AnchoredWitnessFixture(path);let pin=witness.head();
