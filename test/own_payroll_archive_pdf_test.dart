@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:sk_works/features/personal_vault/own_payroll_archive_pdf.dart';
@@ -22,10 +24,11 @@ void main() {
   });
   test('actual existing renderer succeeds without Supabase or network fonts', () async {
     final source = record(); final before = jsonEncode(source.detail);
+    final font = pw.Font.ttf(ByteData.sublistView(await File(
+      'assets/fonts/company-seal/NotoSansJP-Bold.ttf').readAsBytes()));
     final bytes = await OwnPayrollArchivePdf.build(source: source,
       verifiedPersonId: 'fixture-person', snapshotPersonId: 'fixture-person',
-      sourceCompanyId: 'fixture-company', regularFont: pw.Font.helvetica(),
-      boldFont: pw.Font.helveticaBold());
+      sourceCompanyId: 'fixture-company', regularFont: font, boldFont: font);
     expect(ascii.decode(bytes.take(5).toList()), '%PDF-');
     expect(jsonEncode(source.detail), before);
   });

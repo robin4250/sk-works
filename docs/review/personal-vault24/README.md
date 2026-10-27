@@ -31,3 +31,6 @@ Master gate `personal_pdf_vault` を既存の全体制御へ追加する担当�
 未完: auth/SKO identity対応、実原本projection、実PDF adapter・本文検査、DB catalog/RLS・Storage、Master画面、画面導線、切替transaction、実認証・CI・本番/実機。既定OFFの設計候補であり機能完成ではない。
 
 検証: `node --test test/personal_vault_manifest.test.mjs` 合成3件成功。実データ・署名・資格情報未使用。本番書込み0。ローカルFlutter/Dart0。
+
+## 追加renderer adapter
+`OwnPayrollArchivePdf` は本人確定明細の固定数値項目だけを渡し、経費詳細を空で明示して既存rendererの暗黙DB取得を止める。氏名・会社名は正規本人snapshot由来であることが呼出元の責務。固定内訳合計がgross/deduction/netと一致しない場合、追加支給/控除がある場合は未対応として拒否するため、通常の全明細をまだ出力できるわけではない。Fontを引数で受け、既存印影取得とネットワークfont取得を避ける。実rendererのCIはSupabase未初期化のまま実行し、元snapshot不変とPDF bytes生成を確認する。本文目視・日本語フォント・保存元ownerの実認可は未検証。
