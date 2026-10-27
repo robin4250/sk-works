@@ -51,4 +51,20 @@ void main() {
     await first;
     expect(state.uncertain, isTrue);
   });
+
+  test('同じ本人の再ログインでも古いセッションの応答を破棄', () async {
+    final state = NotificationBadgeRefresh();
+    final oldPending = Completer<void>();
+    final first = state.refresh(currentActor: () => 'a',
+      loadUnread: () async { await oldPending.future; throw StateError('old session'); },
+      loadPending: () async => []);
+    state.invalidate(); // Authイベントにより本人が同じでも世代を更新する。
+    await state.refresh(currentActor: () => 'a', loadUnread: () async => [],
+      loadPending: () async => []);
+    expect(state.uncertain, isFalse);
+    oldPending.complete();
+    await first;
+    expect(state.uncertain, isFalse);
+  });
+
 }

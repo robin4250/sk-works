@@ -20,11 +20,19 @@ class _SkoNotificationBellState extends State<SkoNotificationBell> with WidgetsB
   final _repository = AppNotificationRepository.maybeCreate();
   final _badge = NotificationBadgeRefresh();
   Timer? _refreshTimer;
+  StreamSubscription<dynamic>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (SupabaseBackend.isInitialized) {
+      _authSubscription = SupabaseBackend.client.auth.onAuthStateChange.listen((_) {
+        if (!mounted) return;
+        setState(_badge.invalidate);
+        _refresh();
+      });
+    }
     _refresh();
     _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
@@ -36,6 +44,7 @@ class _SkoNotificationBellState extends State<SkoNotificationBell> with WidgetsB
   @override
   void dispose() {
     _badge.invalidate();
+    _authSubscription?.cancel();
     _refreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
