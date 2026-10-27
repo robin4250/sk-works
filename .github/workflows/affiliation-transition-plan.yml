@@ -1,0 +1,18 @@
+name: Affiliation transition planning candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/affiliation-build24/**'
+      - '.github/workflows/affiliation-transition-plan.yml'
+permissions:
+  contents: read
+jobs:
+  planning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test docs/review/affiliation-build24/transition_plan.test.mjs
