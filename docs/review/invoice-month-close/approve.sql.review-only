@@ -23,9 +23,6 @@ begin
  if readiness is distinct from 'ready' then
   raise exception 'invoice_not_ready' using errcode='55000',detail=coalesce(readiness,'unavailable');
  end if;
- perform private.ensure_invoice_approval_rows(p_invoice_id);
- if not exists(select 1 from public.invoice_approvals where invoice_id=p_invoice_id and approver_user_id=uid) then
-  raise exception 'invoice approver permission required'; end if;
  update public.invoice_approvals set status='approved',approved_at=clock_timestamp()
   where invoice_id=p_invoice_id and approver_user_id=uid and status='pending';
  if found then

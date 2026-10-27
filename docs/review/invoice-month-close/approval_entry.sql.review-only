@@ -1,0 +1,12 @@
+-- REVIEW ONLY: notification entry and approval share a single transaction.
+-- This does not replace public.approve_invoice or grant access to any client.
+create function invoice_month_close_candidate.approve_from_notice(p_ticket uuid)
+returns boolean language plpgsql security definer set search_path='' as $$
+declare invoice uuid;
+begin
+ invoice:=invoice_month_close_candidate.consume_notice_ticket(p_ticket);
+ -- Approval revalidates readiness, recipient authorization and source locks.
+ -- If it fails, consuming the ticket is rolled back by the same transaction.
+ return invoice_month_close_candidate.approve(invoice);
+end $$;
+revoke all on function invoice_month_close_candidate.approve_from_notice(uuid) from public,anon,authenticated,service_role;
