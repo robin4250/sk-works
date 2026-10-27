@@ -84,7 +84,22 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await pause(200);assert.equal(finished,false);await db.query('commit');await pending;assert.equal(finished,true);
   const afterInsert=await readLocked();assert.notEqual(afterInsert.source_fingerprint,result.source_fingerprint);
   await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
-  console.log(JSON.stringify({native_two_session_update_wait:true,native_insert_phantom_wait:true,writer_blocked_until_commit:true,staged_fingerprint_recheck:true}));
+  // SERIALIZABLE can commit before a non-participating writer in serialization order.
+  // Stage therefore becomes stale after commit; a later publish must revalidate.
+  await db.query('begin isolation level serializable');
+  const serialPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+  await writer.query("insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days) values($1,$2,$3,'2026-10-28','day',1)",[company,site,worker]);
+  await db.query('commit');
+  const serialAfter=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+  assert.notEqual(serialPreview.source_fingerprint,serialAfter.source_fingerprint);
+  await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
+  // Experimental global locking does block an unrelated company's insert.
+  await db.query('begin');await readLocked();
+  await writer.query("set lock_timeout='500ms'");const started=Date.now();
+  await assert.rejects(writer.query("insert into companies(id,tax_rate,name) values($1,10,'別の合成会社')",[id(999)]),/lock timeout/);
+  const blockedMs=Date.now()-started;assert.ok(blockedMs>=400&&blockedMs<4000);
+  await db.query('rollback');await writer.query('reset lock_timeout');
+  console.log(JSON.stringify({native_two_session_update_wait:true,native_insert_phantom_wait:true,writer_blocked_until_commit:true,staged_fingerprint_recheck:true,serializable_stage_can_be_stale:true,unrelated_company_blocked_ms:blockedMs}));
  }finally{await writer.query('rollback').catch(()=>{});await writer.end();}
 }
 
