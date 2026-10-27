@@ -7,13 +7,15 @@ declare status text; v jsonb; inv public.invoices%rowtype;
 begin
  status:=invoice_month_close_candidate.precheck(p_invoice);
  if status<>'source_proof_missing' then return status;end if;
- if to_regprocedure('invoice_correction_preview_private.preview(uuid)') is null or to_regprocedure('invoice_correction_preview_private.revalidate_for_commit(uuid,text,text)') is null then return 'source_proof_missing';end if;
+ if to_regprocedure('invoice_month_close_candidate.preview_for_approver(uuid)') is null or to_regprocedure('invoice_month_close_candidate.revalidate_for_approver(uuid,text,text)') is null or to_regprocedure('invoice_month_close_candidate.approver_core_intact()') is null then return 'source_proof_missing';end if;
+ if invoice_month_close_candidate.approver_core_intact() is distinct from true then return 'source_proof_missing';end if;
  begin
-  execute 'select invoice_correction_preview_private.preview($1)' into v using p_invoice;
+  execute 'select invoice_month_close_candidate.preview_for_approver($1)' into v using p_invoice;
   if jsonb_typeof(v) is distinct from 'object' or v->>'original_invoice_id' is distinct from p_invoice::text or v->'calculation_blocked' is distinct from 'false'::jsonb or v->>'source_fingerprint' !~ '^[0-9a-f]{64}$' or v->>'original_invoice_fingerprint' !~ '^[0-9a-f]{64}$' then return 'source_proof_missing';end if;
-  execute 'select invoice_correction_preview_private.revalidate_for_commit($1,$2,$3)' using p_invoice,v->>'source_fingerprint',v->>'original_invoice_fingerprint';
+  execute 'select invoice_month_close_candidate.revalidate_for_approver($1,$2,$3)' using p_invoice,v->>'source_fingerprint',v->>'original_invoice_fingerprint';
   -- Re-check after acquiring all locks; this status is diagnostic unless the
   -- caller performs the approval in the very same transaction.
+  if invoice_month_close_candidate.approver_core_intact() is distinct from true then return 'source_proof_missing';end if;
   status:=invoice_month_close_candidate.precheck(p_invoice);
   if status<>'source_proof_missing' then return status;end if;
   select * into inv from public.invoices where id=p_invoice;
