@@ -3,7 +3,7 @@ on:
   pull_request:
     paths:
       - 'tool/verify_archive_bytes*'
-      - 'tool/personal_vault_delivery_candidate*'
+      - 'tool/personal_vault_delivery_candidate*'\n      - 'test/personal_vault_content_evidence_test.dart'
       - 'docs/review/personal-vault24/**'
       - '.github/workflows/personal-vault-byte-verification.yml'
 permissions:
@@ -39,3 +39,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: psql 'postgresql://postgres:fixture-only@localhost:5432/postgres' -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/read-api-test.sql
+  flutter-content:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: python3 -m pip install PyMuPDF==1.26.6
+      - run: flutter analyze test/personal_vault_content_evidence_test.dart
+      - run: flutter test --reporter expanded test/own_payroll_archive_pdf_test.dart test/personal_vault_content_evidence_test.dart
