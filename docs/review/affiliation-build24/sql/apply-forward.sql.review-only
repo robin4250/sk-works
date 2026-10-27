@@ -1,0 +1,73 @@
+-- NOT DEPLOYABLE. Existing account/RLS/worker lifecycle review is incomplete.
+-- All readiness flags start false; no application or service grants exist.
+begin;
+create table affiliation_transition_candidate.runtime_readiness(
+ singleton boolean primary key check(singleton),
+ verified_identity_issuer boolean not null default false,
+ source_access_boundary boolean not null default false,
+ worker_lifecycle_boundary boolean not null default false,
+ rollback_reviewed boolean not null default false);
+insert into affiliation_transition_candidate.runtime_readiness(singleton) values(true);
+create table affiliation_transition_candidate.applications(
+ request_id uuid primary key references affiliation_transition_candidate.requests(request_id) on delete restrict,
+ subject_id uuid not null, source_company_id uuid not null,target_company_id uuid not null,
+ source_membership jsonb not null,target_membership jsonb,
+ applied_at timestamptz not null default clock_timestamp());
+alter table affiliation_transition_candidate.runtime_readiness enable row level security;
+alter table affiliation_transition_candidate.applications enable row level security;
+revoke all on affiliation_transition_candidate.runtime_readiness,affiliation_transition_candidate.applications from public,anon,authenticated,service_role;
+create or replace function affiliation_transition_candidate.protect_plan() returns trigger language plpgsql set search_path='' as $$
+begin
+ if tg_op='DELETE' then raise exception 'transition_history_required';end if;
+ if (to_jsonb(new)-'state') is distinct from (to_jsonb(old)-'state') then raise exception 'immutable_transition_plan';end if;
+ if old.state='prepared' and new.state='cancelled' then return new;end if;
+ if old.state='prepared' and new.state='applied' and exists(select 1 from affiliation_transition_candidate.applications where request_id=old.request_id) then return new;end if;
+ raise exception 'transition_execution_unavailable';
+end $$;
+create function affiliation_transition_candidate.apply_forward(rid uuid) returns uuid
+language plpgsql security invoker set search_path='' as $$
+declare r affiliation_transition_candidate.requests;v affiliation_transition_candidate.archive_consents;
+ s public.company_members;t public.company_members;k text;a uuid:=auth.uid();
+begin
+ perform private.require_reauthentication_session();
+ perform private.require_lifecycle_features(array['affiliation_switch','sko_id_linking','personal_pdf_vault']);
+ perform 1 from affiliation_transition_candidate.runtime_readiness where singleton and verified_identity_issuer and source_access_boundary and worker_lifecycle_boundary and rollback_reviewed for share;
+ if not found then raise exception 'transition_runtime_not_ready';end if;
+ select * into r from affiliation_transition_candidate.requests where request_id=rid for update;
+ if not found or a is distinct from r.subject_id then raise sqlstate '42501' using message='subject_required';end if;
+ if r.state='applied' and exists(select 1 from affiliation_transition_candidate.applications where request_id=rid and subject_id=a) then return rid;end if;
+ if r.state<>'prepared' or r.expires_at<=clock_timestamp() or r.plan->>'direction'<>'employee_to_representative' then raise exception 'forward_transition_not_ready';end if;
+ if (r.plan->>'effective_date')::date<>(current_timestamp at time zone 'Asia/Tokyo')::date then raise exception 'effective_date_not_today';end if;
+ perform pg_advisory_xact_lock(hashtextextended(a::text,0));
+ perform 1 from public.companies where id in(r.source_company_id,r.target_company_id) order by id for update;
+ perform 1 from public.company_members where company_id=r.source_company_id and user_id=r.actor_id and role::text in('owner','admin') for share;
+ if not found then raise exception 'source_admin_revoked';end if;
+ perform 1 from affiliation_transition_candidate.authority_consents c join public.company_members m on m.company_id=r.target_company_id and m.user_id=c.approved_by and m.role::text='owner' where c.request_id=rid for share of c,m;
+ if not found then raise exception 'target_owner_revoked';end if;
+ foreach k in array array['identity_consent','company_match','representative_authority','personal_archive'] loop
+  perform 1 from affiliation_transition_candidate.evidence where request_id=rid and kind=k and plan=r.plan and valid_until>clock_timestamp() for share;
+  if not found then raise exception 'verified_evidence_expired';end if;
+ end loop;
+ select * into v from affiliation_transition_candidate.archive_consents where request_id=rid and subject_id=a for update;
+ if not found then raise exception 'personal_archive_not_confirmed';end if;
+ perform personal_vault24_candidate.assert_transition_ready(v.manifest_id,a,r.source_company_id,(r.plan->>'source_worker_id')::uuid,rid,v.snapshot_hash);
+ if r.plan->'link_companies'='true'::jsonb then
+  -- Actual link status/directory side effects need the company-link adapter.
+  -- Do not pretend that an accepted request alone finishes automatic linking.
+  raise exception 'automatic_company_link_apply_unavailable';
+ end if;
+ select * into s from public.company_members where company_id=r.source_company_id and user_id=a for update;
+ if not found or s.role::text<>'worker' then raise exception 'source_employee_membership_changed';end if;
+ select * into t from public.company_members where company_id=r.target_company_id and user_id=a for update;
+ if found and t.role::text not in('viewer','owner') then raise exception 'target_membership_conflict';end if;
+ -- Immutable operational receipt; never copy attendance/payroll/personnel rows.
+ insert into affiliation_transition_candidate.applications(request_id,subject_id,source_company_id,target_company_id,source_membership,target_membership)
+ values(rid,a,r.source_company_id,r.target_company_id,to_jsonb(s),case when t.user_id is null then null else to_jsonb(t) end);
+ insert into public.company_members(company_id,user_id,role) values(r.target_company_id,a,'owner') on conflict(company_id,user_id) do update set role='owner';
+ delete from public.company_members where company_id=r.source_company_id and user_id=a and role::text='worker';
+ if not found then raise exception 'source_membership_raced';end if;
+ update affiliation_transition_candidate.requests set state='applied' where request_id=rid;
+ return rid;
+end $$;
+revoke all on function affiliation_transition_candidate.apply_forward(uuid) from public,anon,authenticated,service_role;
+commit;
