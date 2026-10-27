@@ -23,7 +23,10 @@ export async function downloadOwnVaultPdf({manifestId, artifactKey}, services) {
   const object = await services.storageMetadata(path, row.object_version);
   if (!object || object.objectPath !== path || object.version !== row.object_version ||
       object.contentType !== 'application/pdf') throw Error('vault_storage_object_rejected');
-  const bytes = await services.download(path, row.object_version);
+  const downloaded = await services.download(path, row.object_version);
+  if (!Buffer.isBuffer(downloaded)) throw Error('vault_download_invalid');
+  // Detach from a mutable storage-owned buffer before any further awaits.
+  const bytes = Buffer.from(downloaded);
   const receipt = {status:'verified',contentType:'application/pdf',byteLength:row.byte_length,
     pdfSha256:row.pdf_hash,objectPath:path,immutableVersion:row.object_version};
   verifyVaultPdfBytes(bytes, receipt, object);
