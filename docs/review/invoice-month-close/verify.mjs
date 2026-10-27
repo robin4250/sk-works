@@ -77,5 +77,25 @@ const realRoute=(await db.query('select count(*)::int n from private.route_signe
 assert.equal(realRoute,1);const realComponent=(await db.query("select private.route_signed_checkout_components($1,$2,(select billing_period_start from invoices where id=$3),(select billing_period_end from invoices where id=$3)) v",[company,customer,invoice])).rows[0].v;assert.equal(realComponent.blocked,false);assert.equal(realComponent.has_sources,true);assert.ok(realComponent.subtotal>0);assert.equal(await check(),'source_proof_missing');
 await db.query('delete from private.route_journey_visit_events where capture_id=$1',[id(82)]);assert.equal(await check(),'route_unverified');
 console.log(JSON.stringify({production_route_source_body:true,production_route_blocked_body:true,synthetic_complete_route:true,route_missing_exit_rejected:true,rate_helper_stub:true,production_route_component_body:true}));
+// Review-only notification intent, no enqueue or external delivery.
+await db.exec("alter table public.invoices add column updated_at timestamptz default now();create table public.company_members(company_id uuid,user_id uuid);create table public.invoice_approvals(invoice_id uuid,company_id uuid,approver_user_id uuid,status text);");
+await db.query('insert into public.company_members values($1,$2)',[company,worker]);await db.query("insert into public.invoice_approvals values($1,$2,$3,'pending')",[invoice,company,worker]);
+await db.exec(await readFile(process.env.SKO_NOTICE_SQL,'utf8'));
+const notice=()=>db.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker]);
+await assert.rejects(notice(),/notice_disabled/);await db.exec('update invoice_month_close_candidate.notice_settings set enabled=true');
+await assert.rejects(notice(),/notice_readiness_unavailable/);
+await db.exec("create function invoice_month_close_candidate.notification_readiness(i uuid,u uuid) returns jsonb language sql as $$select jsonb_build_object('status',coalesce(nullif(current_setting('test.notice_status',true),''),'ready'),'invoice_revision',updated_at::text,'source_fingerprint',repeat('a',64)) from public.invoices where id=i$$;");
+await db.query("select set_config('test.notice_status','pending',false)");await assert.rejects(notice(),/notice_not_ready/);
+await db.query("select set_config('test.notice_status','ready',false)");const firstNotice=(await notice()).rows[0].v;assert.equal((await notice()).rows[0].v,firstNotice);
+assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,1);
+await db.query("update public.invoice_approvals set status='approved' where invoice_id=$1",[invoice]);await assert.rejects(notice(),/notice_unavailable/);
+await db.query("update public.invoice_approvals set status='pending' where invoice_id=$1",[invoice]);await db.query("update public.invoices set updated_at=updated_at+interval '1 second' where id=$1",[invoice]);
+assert.notEqual((await notice()).rows[0].v,firstNotice);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,2);
+if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
+ await db.query('delete from invoice_month_close_candidate.notice_intents');const {connectFixture}=await import(process.argv[2]);const a=await connectFixture(),b=await connectFixture();
+ try{const items=await Promise.all([a.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker]),b.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker])]);assert.equal(items[0].rows[0].v,items[1].rows[0].v);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,1);}finally{await a.end();await b.end();}
+}
+for(const role of ['anon','authenticated','service_role'])assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.prepare_notice(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);
+console.log(JSON.stringify({fixture_notice_off_by_default:true,missing_trusted_readiness_denied:true,pending_approver_checked:true,duplicate_intent_deduplicated:true,changed_revision_new_intent:true,actual_delivery_absent:true}));
 for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.precheck(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.guarded(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
 console.log(JSON.stringify({fixture_month_end:true,all_days_and_customer_scope:true,missing_signatures_fail_closed:true,route_fixture_ready_and_blocked:true,precheck_never_ready:true,no_public_grant:true}));await db.close();

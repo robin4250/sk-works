@@ -1,0 +1,37 @@
+-- REVIEW ONLY. Private durable intent prototype; no notification is sent.
+-- No production grants, scheduler, RPC, feature activation or trigger.
+create table invoice_month_close_candidate.notice_settings(singleton boolean primary key default true check(singleton), enabled boolean not null default false);
+insert into invoice_month_close_candidate.notice_settings values(true,false);
+create table invoice_month_close_candidate.notice_intents(
+ id uuid primary key default gen_random_uuid(), invoice_id uuid not null, company_id uuid not null,
+ recipient_id uuid not null, invoice_revision timestamptz not null,
+ source_fingerprint text not null check(source_fingerprint ~ '^[0-9a-f]{64}$'),
+ created_at timestamptz not null default clock_timestamp(),
+ unique(invoice_id,recipient_id,invoice_revision,source_fingerprint));
+alter table invoice_month_close_candidate.notice_settings enable row level security;
+alter table invoice_month_close_candidate.notice_intents enable row level security;
+revoke all on invoice_month_close_candidate.notice_settings,invoice_month_close_candidate.notice_intents from public,anon,authenticated,service_role;
+-- Private safety adapter is intentionally NOT implemented. It must perform
+-- authenticated scope checks, complete source comparison, lock/revalidation
+-- and return {status:'ready',invoice_revision,source_fingerprint}. Never
+-- substitute a caller-supplied result or pretend auth.uid is the recipient.
+create function invoice_month_close_candidate.prepare_notice(p_invoice uuid,p_recipient uuid)
+returns uuid language plpgsql security definer set search_path='' set timezone='UTC' as $$
+declare enabled boolean;inv public.invoices%rowtype; proof jsonb;result uuid;
+begin
+ select s.enabled into enabled from invoice_month_close_candidate.notice_settings s where singleton for share;
+ if not coalesce(enabled,false) then raise exception 'notice_disabled' using errcode='55000';end if;
+ if p_invoice is null or p_recipient is null then raise exception 'notice_unavailable' using errcode='42501';end if;
+ select * into inv from public.invoices where id=p_invoice for share;
+ if not found or inv.updated_at is null then raise exception 'notice_unavailable' using errcode='42501';end if;
+ perform 1 from public.company_members m join public.invoice_approvals a on a.company_id=m.company_id and a.approver_user_id=m.user_id where m.company_id=inv.company_id and m.user_id=p_recipient and a.invoice_id=inv.id and a.status='pending' for share of m,a;
+ if not found then raise exception 'notice_unavailable' using errcode='42501';end if;
+ if to_regprocedure('invoice_month_close_candidate.notification_readiness(uuid,uuid)') is null then raise exception 'notice_readiness_unavailable' using errcode='55000';end if;
+ execute 'select invoice_month_close_candidate.notification_readiness($1,$2)' into proof using p_invoice,p_recipient;
+ if jsonb_typeof(proof) is distinct from 'object' or proof->>'status' is distinct from 'ready' or proof->>'invoice_revision' is distinct from inv.updated_at::text or proof->>'source_fingerprint' is null or proof->>'source_fingerprint' !~ '^[0-9a-f]{64}$' then raise exception 'notice_not_ready' using errcode='55000';end if;
+ insert into invoice_month_close_candidate.notice_intents(invoice_id,company_id,recipient_id,invoice_revision,source_fingerprint)
+ values(inv.id,inv.company_id,p_recipient,inv.updated_at,proof->>'source_fingerprint') on conflict(invoice_id,recipient_id,invoice_revision,source_fingerprint) do nothing returning id into result;
+ if result is null then select id into result from invoice_month_close_candidate.notice_intents where invoice_id=inv.id and recipient_id=p_recipient and invoice_revision=inv.updated_at and source_fingerprint=proof->>'source_fingerprint';end if;
+ return result;
+end $$;
+revoke all on function invoice_month_close_candidate.prepare_notice(uuid,uuid) from public,anon,authenticated,service_role;
