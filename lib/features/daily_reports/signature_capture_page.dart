@@ -194,7 +194,7 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
-          TextButton.icon(
+          FilledButton.icon(
             key: const ValueKey('signature-confirm-corner'),
             onPressed: _landscape ? _submit : null,
             icon: const Icon(Icons.check_circle_outline),
