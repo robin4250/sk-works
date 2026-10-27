@@ -5,6 +5,7 @@ on:
       - 'docs/review/apple-existing-login-candidate/deployment/**'
       - 'docs/review/apple-existing-login-candidate/native-enrollment-recovery.sql.review-only'
       - 'docs/review/apple-existing-login-candidate/native_apple_recovery.test.mjs'
+      - 'docs/review/apple-existing-login-candidate/self-recovery/**'
       - 'docs/review/apple-existing-login-candidate/*sql.review-only'
       - '.github/workflows/apple-deployment-recovery.yml'
   workflow_dispatch:
@@ -25,6 +26,7 @@ jobs:
       - run: node --test docs/review/apple-existing-login-candidate/native_apple_recovery.test.mjs
         env:
           SKO_APPLE_ENROLLMENT_PGLITE: ${{ runner.temp }}/sko-apple-recovery/node_modules/@electric-sql/pglite/dist/index.js
+      - run: node --test docs/review/apple-existing-login-candidate/self-recovery/self-recovery.test.mjs
       - run: node docs/review/apple-existing-login-candidate/deployment/verify_isolated.mjs "$RUNNER_TEMP/sko-apple-recovery/node_modules/@electric-sql/pglite/dist/index.js" "$PWD/docs/review/apple-existing-login-candidate"
   native-restoration-and-recovery:
     runs-on: ubuntu-latest
