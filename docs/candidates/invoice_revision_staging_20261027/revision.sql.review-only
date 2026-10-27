@@ -5,7 +5,7 @@ revoke all on schema invoice_revision_candidate from public, anon, authenticated
 create table invoice_revision_candidate.settings(singleton boolean primary key default true check(singleton), enabled boolean not null default false);
 insert into invoice_revision_candidate.settings values(true,false);
 create table invoice_revision_candidate.proposals(
- id uuid primary key, original_invoice_id uuid not null references public.invoices(id) on delete restrict,
+ id uuid primary key, original_invoice_id uuid not null,
  company_id uuid not null, actor_id uuid not null, session_id uuid not null,
  source_fingerprint text not null check(source_fingerprint ~ '^[0-9a-f]{64}$'),
  original_fingerprint text not null check(original_fingerprint ~ '^[0-9a-f]{64}$'),

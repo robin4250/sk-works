@@ -6,9 +6,11 @@ const runtime = process.argv[2] ?? '../apple-enrollment-sql-runtime/node_modules
 const sql = process.argv[3] ?? new URL('./revision.sql.review-only', import.meta.url);
 const native = process.argv.includes('--native');
 let db;
+let NativeClient;
 if (native) {
   const pg = await import(pathToFileURL(path.resolve(process.argv[4])).href);
   const Client = pg.Client ?? pg.default?.Client;
+  NativeClient = Client;
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   db = { exec: s => client.query(s), query: (s, p) => client.query(s, p), close: () => client.end() };
@@ -57,8 +59,27 @@ await assert.rejects(stage(cmd,src,hash,'別の理由'),/revision_request_reuse_
 await assert.rejects(stage('00000000-0000-0000-0000-000000000006'),/revision_existing_proposal/);
 assert.deepEqual((await db.query('select to_jsonb(i) j from invoices i where id=$1',[id])).rows[0].j,original);
 assert.equal((await db.query('select count(*)::int n from invoices')).rows[0].n,1);
-await assert.rejects(db.query('delete from invoices where id=$1',[id]),/foreign key/);
 const access=await db.query("select has_schema_privilege('authenticated','invoice_revision_candidate','USAGE') s,has_function_privilege('authenticated','invoice_revision_candidate.stage(uuid,uuid,text,text,text)','EXECUTE') f");
 assert.deepEqual(access.rows[0],{s:false,f:false});
+if (native) {
+  const nextId='00000000-0000-0000-0000-000000000011';
+  await db.query('insert into public.invoices select $1,company_id,invoice_seal_frozen,snapshot from public.invoices where id=$2',[nextId,id]);
+  const nextHash=(await db.query(`select encode(extensions.digest(convert_to(to_jsonb(i)::text,'UTF8'),'sha256'),'hex') h from invoices i where id=$1`,[nextId])).rows[0].h;
+  await setPreview({...preview,original_invoice_id:nextId,original_invoice_fingerprint:nextHash});
+  const a=new NativeClient({connectionString:process.env.DATABASE_URL}),b=new NativeClient({connectionString:process.env.DATABASE_URL});
+  await Promise.all([a.connect(),b.connect()]);
+  const setup=`select set_config('test.actor','00000000-0000-0000-0000-000000000003',false),set_config('test.sid','00000000-0000-0000-0000-000000000004',false),set_config('test.company','00000000-0000-0000-0000-000000000002',false),set_config('test.allowed','true',false)`;
+  await Promise.all([a.query(setup),b.query(setup)]);
+  const query='select invoice_revision_candidate.stage($1,$2,$3,$4,$5) v';
+  const race=await Promise.allSettled([
+    a.query(query,[nextId,'00000000-0000-0000-0000-000000000015',src,nextHash,'追加']),
+    b.query(query,[nextId,'00000000-0000-0000-0000-000000000016',src,nextHash,'追加'])]);
+  assert.equal(race.filter(r=>r.status==='fulfilled').length,1);
+  assert.match(race.find(r=>r.status==='rejected').reason.message,/revision_existing_proposal/);
+  assert.equal((await db.query('select count(*)::int n from invoice_revision_candidate.proposals where original_invoice_id=$1',[nextId])).rows[0].n,1);
+  await Promise.all([a.end(),b.end()]);
+}
+await db.query('delete from invoices where id=$1',[id]);
+assert.deepEqual((await db.query('select original_record from invoice_revision_candidate.proposals where id=$1',[cmd])).rows[0].original_record,original);
 console.log('PASS isolated revision staging: gate, identity, scope, stale source, seal refusal, immutable original, idempotency and no publication');
 await db.close();
