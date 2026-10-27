@@ -17,6 +17,9 @@ await db.query("update site_financial_settings set billing_allowance_1_name='合
 // Existing approved route allocation, accepted extra expense and one adjustment
 // are present before both original and corrected views are built.
 const routeSite=id(104),routeReport=id(105),routeStart=id(106),routeCap1=id(107),routeCap2=id(108),expenseId=id(109);
+await db.query("update attendance_entries set work_date='2026-10-16',work_category=null where company_id=$1 and site_id=$2 and work_date='2026-10-01'",[company,site]);
+await db.query("insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days) values($1,$2,$3,'2026-10-22','day',1),($1,$2,$3,'2026-10-24','day',1),($1,$2,$3,'2026-10-26','day',1)",[company,site,worker]);
+
 await db.query("insert into sites(id,company_id,customer_id,name) values($1,$2,$3,'合成ルート現場')",[routeSite,company,customer]);
 await db.query('insert into site_financial_settings(company_id,site_id,billing_unit_price_yen,welfare_rate) values($1,$2,150,5)',[company,routeSite]);
 await db.query("insert into private.route_visit_reports(id,company_id,created_by,report_date,status,workers,roster_workers,site_id,site_name,source_clock_in_id,start_capture_id,end_capture_id) values($1,$2,$3,'2026-10-12','completed',$4::jsonb,$4::jsonb,$5,'合成ルート現場',$6,$7,$8)",[routeReport,company,actor,JSON.stringify([{worker_id:worker,worker_name:'合成社員'}]),routeSite,routeStart,routeCap1,routeCap2]);
@@ -46,6 +49,9 @@ const changedPreview=(await db.query('select invoice_correction_preview_private.
 await db.query("update attendance_entries set overtime_hours=1 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]);
 assert.ok(expected.snapshot.sites.some(item=>item.route_billing_request_id));assert.equal(expected.snapshot.expense_extra_amount_yen,4);assert.equal(expected.snapshot.document_adjustments_v1.length,1);assert.equal(Object.hasOwn(correctionPreview.proposed_snapshot,'company_seal_snapshot'),false);
 await db.query("update company_members set role='worker' where company_id=$1 and user_id=$2",[company,actor]);await assert.rejects(db.query('select invoice_correction_preview_private.preview($1)',[frozen.id]),/invoice_revision_not_allowed/);await db.query("update company_members set role='admin' where company_id=$1 and user_id=$2",[company,actor]);
+const oldSite=frozen.snapshot.sites.find(item=>item.site_id===site);const newSite=correctionPreview.proposed_snapshot.sites.find(item=>item.site_id===site);
+assert.equal(Number(oldSite.lines[0].quantity),4);assert.equal(Number(newSite.lines[0].quantity),6);
+assert.equal(Number(frozen.snapshot.sites.find(item=>item.route_billing_request_id).lines[0].quantity),1);assert.equal(Number(correctionPreview.proposed_snapshot.sites.find(item=>item.route_billing_request_id).lines[0].quantity),1);
 const expectedSnapshot={...expected.snapshot};delete expectedSnapshot.company_seal_snapshot;
 assert.deepEqual(correctionPreview.proposed_snapshot,expectedSnapshot);assert.equal(correctionPreview.subtotal,expected.subtotal);assert.equal(correctionPreview.tax,expected.tax);assert.equal(correctionPreview.welfare,expected.welfare_amount);assert.equal(correctionPreview.grand_total,expected.grand_total);
 assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
@@ -57,7 +63,7 @@ const changedRefresh=originalRefresh.replace('declare'+String.fromCharCode(10),'
 await db.exec(changedRefresh);await assert.rejects(db.query('select invoice_correction_preview_private.preview($1)',[frozen.id]),/invoice_revision_calculator_changed/);
 await db.exec(originalRefresh);
 
-console.log(JSON.stringify({invoice_correction_preview:true,real_refresh_equality:true,original_frozen_unchanged:true,saved_price_drift_rejected:true,route_expense_adjustment_equality:true,unauthorized_denied:true}));await db.close();process.exit(0);
+console.log(JSON.stringify({invoice_correction_preview:true,real_refresh_equality:true,original_frozen_unchanged:true,saved_price_drift_rejected:true,route_expense_adjustment_equality:true,unauthorized_denied:true,synthetic_five_to_seven_days:true}));await db.close();process.exit(0);
 `;
 const generated=resolve(root,'tool/verify_correction_preview.generated.mjs');
 try {await writeFile(generated,original.replace(marker,()=>payload+marker).replace('error:error.message,where:error.where','error:error.message,where:error.where,query:error.query?.slice(0,1500)'));const r=spawnSync(process.execPath,[generated,...process.argv.slice(2)],{stdio:'inherit',env:process.env});process.exitCode=r.status??1;}finally{await unlink(generated).catch(()=>{});}
