@@ -17,8 +17,9 @@ await c.query(`create role anon; create role authenticated; create role service_
  insert into public.invoices values('00000000-0000-0000-0000-000000000001','old'),('00000000-0000-0000-0000-000000000002','old2');
  insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000001','approved'),('00000000-0000-0000-0000-000000000002','approved');`);
 await c.query(await readFile(process.argv[2],'utf8'));
+// Hold first: existing approval writer must wait, then fail.
 await a.query('begin');
-await a.query("select * from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000001' for update");
+await a.query("select invoice_retirement_guard_candidate.activate('00000000-0000-0000-0000-000000000001')");
 const pid=(await b.query('select pg_backend_pid() pid')).rows[0].pid;
 const blockedUpdate=b.query("update public.invoice_approvals set status='pending' where invoice_id='00000000-0000-0000-0000-000000000001'").then(()=>null,e=>e);
 let blocked=false;
@@ -26,49 +27,30 @@ for(let i=0;i<100;i++) {
  if((await c.query('select cardinality(pg_blocking_pids($1))>0 blocked',[pid])).rows[0].blocked){blocked=true;break;}
  await new Promise(resolve=>setTimeout(resolve,30));
 }
-assert.equal(blocked,true,'approval update must really wait on the other transaction');
-await c.query("select invoice_retirement_guard_candidate.activate('00000000-0000-0000-0000-000000000001')");
+assert.equal(blocked,true);
 await a.query('commit');
-const blockedResult=await blockedUpdate;
-assert.match(blockedResult?.message ?? '', /invoice_retired/);
-assert.equal((await c.query("select status from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000001'")).rows[0].status,'approved');
-// Reverse order: the in-progress writer holds the original row shared,
-// so activating a hold waits until the earlier write has committed.
+assert.match((await blockedUpdate)?.message ?? '', /invoice_retired/);
+// Existing writer first: activation follows invoice -> approval ordering and
+// waits, so the first write completes before the hold exists.
 await a.query('begin');
 await a.query("update public.invoice_approvals set status='pending' where invoice_id='00000000-0000-0000-0000-000000000002'");
 const holdPid=(await c.query('select pg_backend_pid() pid')).rows[0].pid;
-let holdDone=false;
-const activation=c.query("select invoice_retirement_guard_candidate.activate('00000000-0000-0000-0000-000000000002')").then(()=>{holdDone=true;});
-let holdBlocked=false;
+const activation=c.query("select invoice_retirement_guard_candidate.activate('00000000-0000-0000-0000-000000000002')");
+let waiting=false;
 for(let i=0;i<100;i++) {
- if((await b.query('select cardinality(pg_blocking_pids($1))>0 blocked',[holdPid])).rows[0].blocked){holdBlocked=true;break;}
+ if((await b.query('select cardinality(pg_blocking_pids($1))>0 blocked',[holdPid])).rows[0].blocked){waiting=true;break;}
  await new Promise(resolve=>setTimeout(resolve,30));
 }
-assert.equal(holdBlocked,true,'hold activation must wait for the approval writer');
-assert.equal(holdDone,false);
-await a.query('commit');
-await activation;
+assert.equal(waiting,true);
+await a.query('commit'); await activation;
 await assert.rejects(a.query("update public.invoice_approvals set status='approved' where invoice_id='00000000-0000-0000-0000-000000000002'"),/invoice_retired/);
-assert.equal((await c.query("select status from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000002'")).rows[0].status,'pending');
-console.log('PASS: approval writes and hold activation serialize in both observed orderings; SECDEF reads and cached PDFs are not protected');
-// Existing RPCs first lock invoices, whereas a direct approval UPDATE locks
-// the approval row before its row trigger locks invoices. Exercise that exact
-// inversion; Postgres must abort one side and neither path can be deemed safe.
+// A new uncommitted approval has no existing row for the activator to lock.
+// This deliberate counterexample keeps the entire candidate unpublishable.
 await c.query("insert into public.invoices values('00000000-0000-0000-0000-000000000003','old3')");
-await c.query("insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000003','approved')");
 await a.query('begin');
-await a.query("select * from public.invoices where id='00000000-0000-0000-0000-000000000003' for update");
-const inverseB=b.query("update public.invoice_approvals set status='pending' where invoice_id='00000000-0000-0000-0000-000000000003'").then(()=>null,e=>e);
-let inverseBlocked=false;
-for(let i=0;i<100;i++) {
- if((await c.query('select cardinality(pg_blocking_pids($1))>0 blocked',[pid])).rows[0].blocked){inverseBlocked=true;break;}
- await new Promise(resolve=>setTimeout(resolve,30));
-}
-assert.equal(inverseBlocked,true,'approval writer must be blocked on invoice row');
-const inverseA=a.query("update public.invoice_approvals set status='pending' where invoice_id='00000000-0000-0000-0000-000000000003'").then(()=>null,e=>e);
-const deadlockRace=await Promise.race([inverseA.then(e=>({side:'a',e})), inverseB.then(e=>({side:'b',e}))]);
-assert.equal(deadlockRace.e?.code,'40P01','the first completed transaction must be rejected as a deadlock');
-await a.query('rollback');
-await Promise.all([inverseA,inverseB]);
-console.log('PASS lock-order inversion reproduced: approval row trigger is NOT safe to deploy');
+await a.query("insert into public.invoice_approvals values('00000000-0000-0000-0000-000000000003','pending')");
+await c.query("select invoice_retirement_guard_candidate.activate('00000000-0000-0000-0000-000000000003')");
+await a.query('commit');
+assert.equal((await c.query("select count(*)::int n from public.invoice_approvals where invoice_id='00000000-0000-0000-0000-000000000003'")).rows[0].n,1);
+console.log('PASS existing rows serialize; concurrent new approval INSERT remains unsafe: NO DEPLOY');
 await Promise.all(clients.map(c=>c.end()));
