@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,6 +69,29 @@ Future<void> _show(
 }
 
 void main() {
+  test('notification session key distinguishes sessions and rejects invalid claims', () {
+    String token(Map<String, Object> claims) => 'header.${base64Url.encode(utf8.encode(jsonEncode(claims))).replaceAll('=', '')}.signature';
+    final first = token({'sub': 'actor', 'session_id': _id});
+    final second = token({'sub': 'actor', 'session_id': _otherId});
+    final key = SupabaseInvoiceNoticeSource.sessionKeyForToken;
+    expect(key(first, 'actor'), 'actor/$_id');
+    expect(key(second, 'actor'), 'actor/$_otherId');
+    expect(key(first, 'someone-else'), isNull);
+    expect(key(token({'sub': 'actor', 'session_id': 'bad'}), 'actor'), isNull);
+    expect(key('malformed', 'actor'), isNull);
+  });
+
+  testWidgets('same actor in a different session invalidates an in-flight read', (tester) async {
+    final source = _Source()..actor = 'actor/$_id'..gate = Completer<List<InvoiceCalculationResult>>();
+    await _show(tester, source);
+    source.actor = 'actor/$_otherId';
+    source.changes.add(source.actor);
+    source.gate!.complete(source.rows);
+    await tester.pump();
+    expect(find.byType(InvoiceListCard), findsNothing);
+    expect(find.text('請求書を開く'), findsNothing);
+    await source.changes.close();
+  });
   test('notification preview disallows legacy initialization while normal entry keeps compatibility', () {
     final saved = _invoice();
     final noticePreview = invoiceNotificationPreview(saved, notificationId: '00000000-0000-0000-0000-000000000123');
