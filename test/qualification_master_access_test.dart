@@ -32,18 +32,16 @@ class _Certificates implements QualificationCertificateRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 void main() {
-  testWidgets('manager confirms master deletion', (tester) async {
+  testWidgets('master deletion stays unavailable before server protection', (tester) async {
     final repo = _Repository(true);
     await tester.pumpWidget(MaterialApp(home: QualificationCloudPage(repository: repo, certificateRepository: _Certificates())));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('資格マスター管理'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('削除'));
-    await tester.pumpAndSettle();
-    expect(find.text('登録済みの資格に使われている場合は削除できません。'), findsOneWidget);
-    await tester.tap(find.text('削除').last);
-    await tester.pumpAndSettle();
-    expect(repo.deletes, 1);
+    final button = tester.widget<IconButton>(find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == '削除は準備中'));
+    expect(button.onPressed, isNull);
+    expect(find.byTooltip('区分を変更'), findsOneWidget);
+    expect(repo.deletes, 0);
   });
   testWidgets('viewer cannot open management', (tester) async {
     final repo = _Repository(false);

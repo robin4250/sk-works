@@ -166,12 +166,10 @@ class QualificationCloudRepository {
     if (updated.length != 1) throw StateError('資格区分を更新できませんでした。');
   }
 
+  // No client deletion until the server reference-preservation guard has been
+  // installed and independently verified. Never infer it from a UI flag.
   Future<void> deleteMaster(String masterId) async {
-    if (!await canManageWorkerQualifications()) throw StateError('資格マスターを削除する権限がありません。');
-    final companyId = await _companyId();
-    final deleted = await _client.from('qualification_master').delete()
-        .eq('company_id', companyId).eq('id', masterId).select('id');
-    if (deleted.length != 1) throw StateError('資格マスターを削除できませんでした。');
+    throw StateError('資格マスターの削除は準備中です。');
   }
 
   Future<({String workerId, String workerName})> currentWorker() async {
