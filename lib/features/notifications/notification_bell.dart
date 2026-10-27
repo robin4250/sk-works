@@ -110,7 +110,7 @@ class NotificationBadgeRefresh {
   int _generation = 0;
   bool _busy = false;
 
-  void invalidate() { ++_generation; count = 0; uncertain = false; _actor = null; }
+  void invalidate() { ++_generation; count = 0; uncertain = false; _actor = null; _busy = false; }
 
   Future<void> refresh({
     required String? Function() currentActor,
@@ -125,22 +125,21 @@ class NotificationBadgeRefresh {
     final generation = ++_generation;
     try {
       final unread = await loadUnread();
-      if (generation != _generation || currentActor() != actor) {
-        invalidate(); return;
-      }
+      if (generation != _generation) return;
+      if (currentActor() != actor) { invalidate(); return; }
       var pending = const <AttentionCenterItem>[];
       var pendingFailed = false;
       try { pending = await loadPending(); } catch (_) {
         pendingFailed = true;
       }
-      if (generation != _generation || currentActor() != actor) {
-        invalidate(); return;
-      }
+      if (generation != _generation) return;
+      if (currentActor() != actor) { invalidate(); return; }
       count = routeAwareNotificationBadgeCount(unread, pending);
       uncertain = pendingFailed;
     } catch (_) {
+      if (generation != _generation) return;
       if (currentActor() != actor) { invalidate(); } else { uncertain = true; }
       // Keep the last count, but mark it as unverified.
-    } finally { _busy = false; }
+    } finally { if (generation == _generation) _busy = false; }
   }
 }

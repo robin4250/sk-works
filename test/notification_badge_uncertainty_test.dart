@@ -35,4 +35,20 @@ void main() {
     expect(state.uncertain, isFalse);
     expect(state.count, 0);
   });
+
+  test('取得中に切替えた新しい本人の結果は古い失敗で消えない', () async {
+    final state = NotificationBadgeRefresh();
+    final firstPending = Completer<void>();
+    var actor = 'a';
+    final first = state.refresh(currentActor: () => actor,
+      loadUnread: () async { await firstPending.future; throw StateError('old'); },
+      loadPending: () async => []);
+    actor = 'b';
+    await state.refresh(currentActor: () => actor, loadUnread: () async => [],
+      loadPending: () async => throw StateError('new'));
+    expect(state.uncertain, isTrue);
+    firstPending.complete();
+    await first;
+    expect(state.uncertain, isTrue);
+  });
 }
