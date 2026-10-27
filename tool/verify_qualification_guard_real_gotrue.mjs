@@ -11,7 +11,8 @@ const test=String.raw`
  phase='qualification-reference-fixture';
  await db.query(\`create schema private;
  create table public.company_members(company_id uuid,user_id uuid,role text);
- create table public.qualification_master(id uuid primary key,company_id uuid not null,category text);
+ create table public.companies(id uuid primary key);
+ create table public.qualification_master(id uuid primary key,company_id uuid not null references public.companies(id) on delete cascade,category text);
  create table public.worker_qualifications(id uuid primary key,qualification_master_id uuid references public.qualification_master(id) on delete restrict);
  create table public.qualification_master_aliases(id uuid primary key,qualification_master_id uuid references public.qualification_master(id) on delete cascade);
  create table private.qualification_submissions(id uuid primary key,qualification_master_id uuid references public.qualification_master(id));
@@ -24,6 +25,7 @@ const test=String.raw`
  await db.query(await read('docs/review/qualification-master-access/delete-preserve.sql.review-only'));
  const id=n=>\`00000000-0000-0000-0000-\${String(n).padStart(12,'0')}\`;
  const company=id(1),foreign=id(2);
+ await db.query('insert into public.companies values($1),($2)',[company,foreign]);
  await db.query("insert into company_members values($1,$2,'owner'),($3,$4,'owner')",[company,users.owner.id,foreign,users.othercompany.id]);
  for(let n=10;n<=14;n++)await db.query("insert into qualification_master values($1,$2,'fixture')",[id(n),company]);
  await db.query('insert into worker_qualifications values($1,$2)',[id(30),id(10)]);
@@ -61,6 +63,16 @@ const test=String.raw`
  eq(response.status,409);eq((await response.json()).code,'23503');
  eq((await db.query('select count(*)::int n from qualification_master_aliases where id=$1',[id(31)])).rows[0].n,1);
  eq((await db.query("select count(*)::int n from pg_policies where schemaname='public' and tablename='qualification_master' and policyname like 'managers can %'")).rows[0].n,0);
+
+ // A company cascade must fail atomically rather than deleting reference data.
+ let cascadeError;
+ try { await db.query('delete from public.companies where id=$1',[company]); }
+ catch(error) { cascadeError=error; }
+ eq(cascadeError?.code,'23503');
+ eq((await db.query('select count(*)::int n from public.companies where id=$1',[company])).rows[0].n,1);
+ eq((await db.query('select count(*)::int n from public.qualification_master_aliases where id=$1',[id(31)])).rows[0].n,1);
+ eq((await db.query('select count(*)::int n from private.qualification_submissions where id=$1',[id(32)])).rows[0].n,1);
+
  eq((await db.query("select md5(pg_get_functiondef('auth.uid()'::regprocedure)) v")).rows[0].v,authUidBefore);
  console.log(JSON.stringify({pass:true,checks,real_gotrue:true,real_postgrest:true,fixture_permissions:true,production_changed:false}));
 `;
