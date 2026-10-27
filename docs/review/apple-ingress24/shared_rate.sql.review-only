@@ -1,0 +1,32 @@
+-- OFF, isolated review candidate. Requires the existing Apple native enrollment
+-- ready() and context() security-definer implementations. No Auth or company writes.
+begin;
+create schema apple_enrollment_rate_private;
+revoke all on schema apple_enrollment_rate_private from public,anon,authenticated,service_role;
+create table apple_enrollment_rate_private.rollout(singleton boolean primary key default true check(singleton), enabled boolean not null default false);
+insert into apple_enrollment_rate_private.rollout values(true,false);
+create table apple_enrollment_rate_private.windows(actor_id uuid primary key, window_started timestamptz not null, attempts integer not null check(attempts between 1 and 6));
+alter table apple_enrollment_rate_private.rollout enable row level security;
+alter table apple_enrollment_rate_private.windows enable row level security;
+revoke all on all tables in schema apple_enrollment_rate_private from public,anon,authenticated,service_role;
+create function public.take_apple_enrollment_attempt(p_actor_id uuid,p_session_id uuid)
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare active boolean; t timestamptz:=clock_timestamp(); n integer; c jsonb;
+begin
+ if auth.jwt()->>'role' is distinct from 'service_role' then raise exception 'server_only' using errcode='42501';end if;
+ select enabled into active from apple_enrollment_rate_private.rollout where singleton for share;
+ if active is distinct from true or not apple_native_enrollment_private.ready() then return jsonb_build_object('version',1,'allowed',false);end if;
+ -- Live user/session, company and Google identity are checked server-side.
+ c:=apple_native_enrollment_private.context(p_actor_id,p_session_id);
+ if c is null then return jsonb_build_object('version',1,'allowed',false);end if;
+ insert into apple_enrollment_rate_private.windows as w(actor_id,window_started,attempts)
+ values(p_actor_id,t,1)
+ on conflict(actor_id) do update set
+  window_started=case when w.window_started+interval '15 minutes'<=t then t else w.window_started end,
+  attempts=case when w.window_started+interval '15 minutes'<=t then 1 else least(w.attempts+1,6) end
+ returning attempts into n;
+ return jsonb_build_object('version',1,'allowed',n<=5);
+end $$;
+revoke all on function public.take_apple_enrollment_attempt(uuid,uuid) from public,anon,authenticated,service_role;
+grant execute on function public.take_apple_enrollment_attempt(uuid,uuid) to service_role;
+commit;
