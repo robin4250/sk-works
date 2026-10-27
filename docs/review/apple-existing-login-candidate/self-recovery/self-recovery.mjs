@@ -10,7 +10,7 @@ export async function requestSelfRecovery(input,ports){
  if(!expected||!uuid.test(expected.actor_id??'')||!uuid.test(expected.session_id??'')||expected.account_allowed!==true||expected.primary_password_configured!==true)unavailable();
  // The adapter must not reveal another account's request, or accept identity,
  // actor, session, status, outcome, or command values from app input.
- const request=await ports.readOwnRequest({request_id:input.requestId,actor_id:expected.actor_id});
+ const request=await ports.readOwnRequest({request_id:input.requestId,actor_id:expected.actor_id,session_id:expected.session_id});
  if(!request||request.request_id!==input.requestId||request.actor_id!==expected.actor_id||!['held','completed','cancelled'].includes(request.status))unavailable();
  const proof=await ports.verifyPrimaryPassword({exactBearer:input.exactBearer,password:input.password,expected});
  const now=ports.now();

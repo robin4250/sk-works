@@ -9,6 +9,11 @@ create table apple_native_enrollment_private.self_recovery_commands(
 );
 alter table apple_native_enrollment_private.self_recovery_commands enable row level security;
 revoke all on apple_native_enrollment_private.self_recovery_commands from public,anon,authenticated,service_role;
+create function apple_native_enrollment_private.immutable_self_recovery_commands() returns trigger language plpgsql security definer set search_path='' as $$
+begin raise exception 'apple_self_recovery_commands_append_only';end $$;
+revoke all on function apple_native_enrollment_private.immutable_self_recovery_commands() from public,anon,authenticated,service_role;
+create trigger apple_self_recovery_commands_immutable before update or delete on apple_native_enrollment_private.self_recovery_commands for each row execute function apple_native_enrollment_private.immutable_self_recovery_commands();
+create trigger apple_self_recovery_commands_no_truncate before truncate on apple_native_enrollment_private.self_recovery_commands for each statement execute function apple_native_enrollment_private.immutable_self_recovery_commands();
 create function apple_native_enrollment_private.self_recovery_command(p_request uuid,p_actor uuid,p_session uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare r apple_native_enrollment_private.requests%rowtype; c jsonb; v uuid;

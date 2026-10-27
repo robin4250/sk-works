@@ -112,3 +112,21 @@ test('self recovery commands are durable, owner scoped and inaccessible to app r
  await f.reconcile(r,a.command_id);assert.deepEqual((await f.q(sql,[r.request_id,uid,sid]))[0].c,a);
  assert.equal((await f.q('select count(*)::int n from apple_native_enrollment_private.self_recovery_commands'))[0].n,1);
 }));
+
+test('isolated PostgreSQL port binds owner, session, durable command and audited reconciliation',()=>fixture(async f=>{
+ await f.db.exec(fs.readFileSync(new URL('self-recovery/self-recovery-command.sql.review-only',import.meta.url),'utf8'));
+ const {createSelfRecoveryPostgresPort}=await import('./self-recovery/self-recovery-postgres-port.mjs');
+ const transaction=async fn=>{await f.db.exec('begin');try{const value=await fn((...args)=>f.db.query(...args));await f.db.exec('commit');return value;}catch(e){await f.db.exec('rollback');throw e;}};
+ const port=createSelfRecoveryPostgresPort({enabled:true,operatorBoundaryReviewed:true,transaction});
+ const r=await f.reserve();await f.hold(r);const before=await f.identities(),i={request_id:r.request_id,actor_id:uid,session_id:sid};
+ assert.equal((await port.readOwnRequest(i)).status,'held');
+ await assert.rejects(port.readOwnRequest({...i,actor_id:randomUUID()}),/unavailable/);
+ await assert.rejects(port.readOwnRequest({...i,session_id:randomUUID()}),/unavailable/);
+ const c=await port.getOrCreateRecoveryCommand(i);assert.deepEqual(await port.getOrCreateRecoveryCommand(i),c);
+ await assert.rejects(port.reconcileOwnHeld({...i,command_id:randomUUID()}),/unavailable/);
+ const done=await port.reconcileOwnHeld({...i,command_id:c.command_id});assert.equal(done.status,'cancelled');
+ assert.deepEqual(await port.reconcileOwnHeld({...i,command_id:c.command_id}),done);assert.deepEqual(await f.identities(),before);
+ assert.equal((await f.q('select count(*)::int n from apple_native_enrollment_private.recovery_events'))[0].n,1);
+ await assert.rejects(f.db.exec('delete from apple_native_enrollment_private.self_recovery_commands'),/append_only/);
+ await assert.rejects(f.db.exec('truncate apple_native_enrollment_private.self_recovery_commands'),/append_only/);
+}));
