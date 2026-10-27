@@ -65,14 +65,34 @@ create table invoice_month_close_candidate.notice_open_tickets(
  created_at timestamptz not null default clock_timestamp());
 alter table invoice_month_close_candidate.notice_open_tickets enable row level security;
 revoke all on invoice_month_close_candidate.notice_open_tickets from public,anon,authenticated,service_role;
+create index notice_ticket_cleanup on invoice_month_close_candidate.notice_open_tickets(notice_id,expires_at);
 create function invoice_month_close_candidate.issue_notice_ticket(p_notice uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare actor uuid:=auth.uid();sid uuid;n invoice_month_close_candidate.notice_intents%rowtype;t invoice_month_close_candidate.notice_open_tickets%rowtype;
 begin
  sid:=private.require_reauthentication_session();
  if actor is null or sid is null then raise exception 'notice_unavailable' using errcode='42501';end if;
- select * into n from invoice_month_close_candidate.notice_intents where id=p_notice and recipient_id=actor;
+ -- Serialize issuance per notice. A second tap in the same session reuses
+ -- the live ticket rather than creating an unbounded stream of rows.
+ select * into n from invoice_month_close_candidate.notice_intents where id=p_notice and recipient_id=actor for update;
  if not found or not invoice_month_close_candidate.notice_current(p_notice) then raise exception 'notice_unavailable' using errcode='42501';end if;
+ -- Tickets are transient, not approval audit records. Prune only this
+ -- recipient's expired tickets, in bounded batches, without touching live
+ -- tickets from other sessions.
+ delete from invoice_month_close_candidate.notice_open_tickets where id in (
+  select id from invoice_month_close_candidate.notice_open_tickets
+  where notice_id=n.id and actor_id=actor and (expires_at<=clock_timestamp() or consumed_at is not null)
+  order by expires_at,id limit 100
+ );
+ select * into t from invoice_month_close_candidate.notice_open_tickets
+ where notice_id=n.id and actor_id=actor and session_id=sid
+   and consumed_at is null and expires_at>clock_timestamp()
+ order by created_at desc limit 1;
+ if found then return jsonb_build_object('ticket_id',t.id,'expires_at',t.expires_at,'invoice_id',n.invoice_id);end if;
+ if (select count(*) from invoice_month_close_candidate.notice_open_tickets
+     where notice_id=n.id and actor_id=actor and consumed_at is null and expires_at>clock_timestamp())>=20 then
+  raise exception 'notice_unavailable' using errcode='42501';
+ end if;
  insert into invoice_month_close_candidate.notice_open_tickets(notice_id,actor_id,session_id,expires_at)
  values(n.id,actor,sid,clock_timestamp()+interval '5 minutes') returning * into t;
  return jsonb_build_object('ticket_id',t.id,'expires_at',t.expires_at,'invoice_id',n.invoice_id);
