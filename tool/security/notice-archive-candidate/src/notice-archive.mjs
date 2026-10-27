@@ -90,6 +90,11 @@ export async function storeNoticeArchiveWithContinuity(s,input){
   if(input.audit?.sequence!==q.anchor_sequence||input.audit?.hash!==q.anchor_hash)throw Error('Audit extension required');
  }else{
   let sequence=q.anchor_sequence,previous=q.anchor_hash,lastTime=-1;
+  if(q.batch_sequence>0){
+   const lastStored=one(s,'SELECT audit FROM notice_archive_batches WHERE sequence=?',q.batch_sequence);
+   try{lastTime=JSON.parse(lastStored.audit).occurred_at;}catch{throw Error('Archive checkpoint unavailable');}
+   if(!Number.isSafeInteger(lastTime))throw Error('Archive checkpoint unavailable');
+  }
   for(const row of rows){
    if(!exact(row,'body,hash,key_id,occurred_at,previous_hash,sequence,signature')||
     !Number.isSafeInteger(row.sequence)||row.sequence!==sequence+1||row.previous_hash!==previous||
