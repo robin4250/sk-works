@@ -100,3 +100,15 @@ test('Native in-flight identity commit is drained before held-request reconcilia
   assert.equal((await f.q("select count(*)::int n from auth.identities where user_id=$1 and provider='apple'and provider_id='apple-subject'",[uid]))[0].n,1);
  }catch(error){await writer.query('rollback');await outcome;throw error;}
 }));
+
+test('self recovery commands are durable, owner scoped and inaccessible to app roles',()=>fixture(async f=>{
+ await f.db.exec(fs.readFileSync(new URL('self-recovery/self-recovery-command.sql.review-only',import.meta.url),'utf8'));
+ const r=await f.reserve();await f.hold(r);const sql='select apple_native_enrollment_private.self_recovery_command($1,$2,$3) c';
+ const a=(await f.q(sql,[r.request_id,uid,sid]))[0].c,b=(await f.q(sql,[r.request_id,uid,sid]))[0].c;assert.deepEqual(a,b);
+ assert.equal(a.actor_id,uid);assert.equal(a.session_id,sid);
+ for(const role of ['anon','authenticated','service_role']){const v=(await f.q("select has_function_privilege($1,'apple_native_enrollment_private.self_recovery_command(uuid,uuid,uuid)','EXECUTE')e",[role]))[0];assert.equal(v.e,false);}
+ await assert.rejects(f.q(sql,[r.request_id,randomUUID(),sid]),/unavailable/);
+ await assert.rejects(f.q(sql,[r.request_id,uid,randomUUID()]),/unavailable/);
+ await f.reconcile(r,a.command_id);assert.deepEqual((await f.q(sql,[r.request_id,uid,sid]))[0].c,a);
+ assert.equal((await f.q('select count(*)::int n from apple_native_enrollment_private.self_recovery_commands'))[0].n,1);
+}));

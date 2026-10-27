@@ -1,0 +1,31 @@
+-- Isolated candidate only. No grants or deployment; caller must already have
+-- verified the owner and a fresh primary-password proof outside this routine.
+begin;
+create table apple_native_enrollment_private.self_recovery_commands(
+ request_id uuid not null references apple_native_enrollment_private.requests(request_id),
+ actor_id uuid not null, session_id uuid not null, command_id uuid not null unique default gen_random_uuid(),
+ created_at timestamptz not null default clock_timestamp(),
+ primary key(request_id,actor_id,session_id)
+);
+alter table apple_native_enrollment_private.self_recovery_commands enable row level security;
+revoke all on apple_native_enrollment_private.self_recovery_commands from public,anon,authenticated,service_role;
+create function apple_native_enrollment_private.self_recovery_command(p_request uuid,p_actor uuid,p_session uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare r apple_native_enrollment_private.requests%rowtype; c jsonb; v uuid;
+begin
+ perform apple_native_enrollment_private.root_operator();
+ if p_request is null or p_actor is null or p_session is null then raise exception 'apple_self_recovery_unavailable';end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-self-recovery:'||p_request::text,0));
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request for update;
+ if not found or r.actor_id<>p_actor then raise exception 'apple_self_recovery_unavailable';end if;
+ c:=apple_native_enrollment_private.context(p_actor,p_session);
+ if not apple_google_protection.ready() or not apple_native_enrollment_private.ready() or c is null then raise exception 'apple_self_recovery_unavailable';end if;
+ select command_id into v from apple_native_enrollment_private.self_recovery_commands where request_id=p_request and actor_id=p_actor and session_id=p_session;
+ if v is null then
+  if r.status<>'held' then raise exception 'apple_self_recovery_unavailable';end if;
+  insert into apple_native_enrollment_private.self_recovery_commands(request_id,actor_id,session_id) values(p_request,p_actor,p_session) returning command_id into v;
+ end if;
+ return jsonb_build_object('request_id',p_request,'actor_id',p_actor,'session_id',p_session,'command_id',v);
+end $$;
+revoke all on function apple_native_enrollment_private.self_recovery_command(uuid,uuid,uuid) from public,anon,authenticated,service_role;
+commit;

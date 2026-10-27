@@ -11,15 +11,16 @@ export async function requestSelfRecovery(input,ports){
  // The adapter must not reveal another account's request, or accept identity,
  // actor, session, status, outcome, or command values from app input.
  const request=await ports.readOwnRequest({request_id:input.requestId,actor_id:expected.actor_id});
- if(!request||request.request_id!==input.requestId||request.actor_id!==expected.actor_id||request.status!=='held')unavailable();
+ if(!request||request.request_id!==input.requestId||request.actor_id!==expected.actor_id||!['held','completed','cancelled'].includes(request.status))unavailable();
  const proof=await ports.verifyPrimaryPassword({exactBearer:input.exactBearer,password:input.password,expected});
  const now=ports.now();
  if(!Number.isSafeInteger(now)||now<start||now-start>120||!proof||proof.source!=='auth_primary_password'||proof.actor_id!==expected.actor_id||proof.original_session_id!==expected.session_id||proof.temporary_session_closed!==true||!Number.isSafeInteger(proof.verified_at)||proof.verified_at<start||proof.verified_at>now)unavailable();
  // Use the existing root routine, never unlink an identity or create a permit.
  // Its transaction rechecks current session, ownership, context, identity and
  // all rollout gates; any mismatch remains held for independent review.
- const command=ports.newCommandId();if(!uuid.test(command??''))unavailable();
- const outcome=await ports.reconcileOwnHeld({command_id:command,request_id:input.requestId,actor_id:expected.actor_id,session_id:expected.session_id});
+ const command=await ports.getOrCreateRecoveryCommand({request_id:input.requestId,actor_id:expected.actor_id,session_id:expected.session_id});
+ if(!command||!uuid.test(command.command_id??'')||command.request_id!==input.requestId||command.actor_id!==expected.actor_id||command.session_id!==expected.session_id)unavailable();
+ const outcome=await ports.reconcileOwnHeld({command_id:command.command_id,request_id:input.requestId,actor_id:expected.actor_id,session_id:expected.session_id});
  if(!outcome||outcome.request_id!==input.requestId||outcome.reconciled!==true||!['completed','cancelled'].includes(outcome.status))return Object.freeze({status:'review_required'});
  return Object.freeze({status:outcome.status==='completed'?'linked':'restart_with_new_apple_credential'});
 }
