@@ -1,11 +1,28 @@
 -- Review-only candidate. No production grants or changes.
 create schema if not exists invoice_correction_preview_private;
 revoke all on schema invoice_correction_preview_private from public,anon,authenticated;
-create function invoice_correction_preview_private.preview(p_invoice_id uuid) returns jsonb language plpgsql security definer set search_path='' as $body$
+create function invoice_correction_preview_private.source_fingerprint(cid uuid) returns text language plpgsql stable security definer set search_path='' set timezone='UTC' as $hash$
+declare item record; rows_hash text; digest_parts text:='invoice-correction-v1'; routines_hash text;
+begin
+ if cid is null then raise exception 'invoice_revision_company_required';end if;
+ for item in select * from (values ('public.companies','x.id=$1'),('public.company_members','x.company_id=$1'),('public.customers','x.company_id=$1'),('public.invoices','x.company_id=$1'),('public.invoice_approvals','exists(select 1 from public.invoices i where i.id=x.invoice_id and i.company_id=$1)'),('public.invoice_approval_audit','x.company_id=$1'),('public.sites','x.company_id=$1'),('public.attendance_entries','x.company_id=$1'),('public.daily_reports','x.company_id=$1'),('public.daily_report_workers','exists(select 1 from public.daily_reports d where d.id=x.report_id and d.company_id=$1)'),('public.attendance_verifications','x.company_id=$1'),('public.site_financial_settings','x.company_id=$1'),('public.site_calculation_source_preferences','x.company_id=$1'),('public.trade_companies','x.company_id=$1'),('public.trade_company_contracts','x.company_id=$1'),('public.route_stops','x.company_id=$1'),('private.route_journey_captures','x.company_id=$1'),('private.route_journey_visit_events','exists(select 1 from private.route_journey_captures c where c.id=x.capture_id and c.company_id=$1)'),('private.route_billing_quantity_requests','x.company_id=$1'),('private.route_billing_quantity_evidence','exists(select 1 from private.route_billing_quantity_requests r where r.id=x.request_id and r.company_id=$1)'),('private.expense_claims','x.company_id=$1'),('private.expense_settlement_choices','x.company_id=$1'),('private.expense_amount_consumptions','x.company_id=$1'),('document_adjustment_private.rollout','x.company_id=$1'),('document_adjustment_private.templates','x.company_id=$1'),('document_adjustment_private.template_versions','exists(select 1 from document_adjustment_private.templates t where t.id=x.template_id and t.company_id=$1)'),('document_adjustment_private.occurrences','exists(select 1 from document_adjustment_private.templates t where t.id=x.template_id and t.company_id=$1)')) v(relation_name,filter_sql) order by relation_name loop
+   if to_regclass(item.relation_name) is null then raise exception 'invoice_revision_dependency_missing: %',item.relation_name;end if;
+   execute format($sql$select encode(sha256(convert_to(coalesce(string_agg(h,'' order by h),''),'UTF8')),'hex') from (select encode(sha256(convert_to(to_jsonb(x)::text,'UTF8')),'hex') h from %s x where %s) rows$sql$,item.relation_name,item.filter_sql) into rows_hash using cid;
+   digest_parts:=digest_parts||'|'||item.relation_name||':'||rows_hash;
+ end loop;
+ select encode(sha256(convert_to(coalesce(string_agg(n.nspname||'.'||p.proname||':'||pg_get_function_identity_arguments(p.oid)||':'||p.prosrc,'' order by n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)),''),'UTF8')),'hex') into routines_hash
+ from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+ where (n.nspname='private' and p.proname in ('refresh_automatic_invoice','route_billing_invoice_components','route_signed_checkout_components','route_signed_checkout_sources','route_signed_site_rates','route_billing_invoice_blocked','route_billing_site_daily_rate','resolve_rate_formula','rate_formula_label','has_company_feature','require_reauthentication_session','expense_cost_components','document_company_seal_snapshot','uploaded_company_seal_snapshot','aoyagi_reisho_name_supported'))
+    or (n.nspname='document_adjustment_private' and p.proname in ('active_items','ledger_items'))
+    or (n.nspname='invoice_correction_preview_private' and p.proname='preview');
+ return encode(sha256(convert_to(digest_parts||'|'||routines_hash,'UTF8')),'hex');
+end $hash$;
+revoke all on function invoice_correction_preview_private.source_fingerprint(uuid) from public,anon,authenticated,service_role;
+create function invoice_correction_preview_private.preview(p_invoice_id uuid) returns jsonb language plpgsql security definer set search_path='' set timezone='UTC' as $body$
 declare
   named_items jsonb; named_item jsonb; named_final numeric:=0;
   expense_component jsonb; expense_amount numeric:=0;
-  cid uuid; customer uuid; day date; first_day date;
+  cid uuid; customer uuid; day date; first_day date; source_before text; source_after text;
   last_day date;
   existing public.invoices%rowtype;
   s record;
@@ -65,6 +82,7 @@ begin
  select name,coalesce(notes='sko_system_unassigned_invoice_customer',false) into customer_name,v_system_customer from public.customers where id=customer and company_id=cid;
  if customer_name is null or v_system_customer then raise exception 'invoice_revision_customer_unavailable';end if;
  if existing.snapshot?'document_adjustments_v1' and not exists(select 1 from document_adjustment_private.rollout r where r.company_id=cid and r.enabled) then raise exception 'invoice_revision_adjustment_gate_off';end if;
+ source_before:=invoice_correction_preview_private.source_fingerprint(cid);
  named_items:=document_adjustment_private.active_items(cid,'invoice',customer,first_day);
  select greatest(coalesce(c.tax_rate,0),0) into v_tax_rate from public.companies c where c.id=cid;
  if v_tax_rate is null or existing.snapshot->>'tax_rate_bps' is null or (existing.snapshot->>'tax_rate_bps')::numeric is distinct from v_tax_rate*100 then raise exception 'invoice_revision_tax_basis_changed';end if;
@@ -465,6 +483,8 @@ begin
              and old_line->'unit_price' is not distinct from new_line->'unit_price')))) then
    raise exception 'invoice_revision_saved_basis_changed';end if;
 
- return jsonb_build_object('original_invoice_id',existing.id,'original_snapshot_fingerprint',md5(coalesce(existing.snapshot::text,'')),'proposed_snapshot',snapshot_value,'subtotal',total_pre_tax::int,'tax',total_tax::int,'welfare',total_welfare::int,'grand_total',(total_pre_tax+total_tax+expense_amount+named_final)::int,'calculation_blocked',route_blocked);
+ source_after:=invoice_correction_preview_private.source_fingerprint(cid);
+ if source_before is distinct from source_after then raise exception 'invoice_revision_sources_changed';end if;
+ return jsonb_build_object('source_fingerprint',source_after,'original_invoice_id',existing.id,'original_invoice_fingerprint',encode(sha256(convert_to(to_jsonb(existing)::text,'UTF8')),'hex'),'proposed_snapshot',snapshot_value,'subtotal',total_pre_tax::int,'tax',total_tax::int,'welfare',total_welfare::int,'grand_total',(total_pre_tax+total_tax+expense_amount+named_final)::int,'calculation_blocked',route_blocked);
 end $body$;
 revoke all on function invoice_correction_preview_private.preview(uuid) from public,anon,authenticated,service_role;

@@ -11,6 +11,7 @@ const payload=`
 // Only isolated, synthetic fixture data. Preserve the invoice/approval record.
 await db.exec("create or replace function private.has_company_feature(p_company uuid,p_feature text) returns boolean language sql as $$select true$$;");
 await db.exec(${JSON.stringify(candidate)});
+await db.exec("create table if not exists private.route_journey_captures(id uuid,company_id uuid); create table if not exists private.route_journey_visit_events(capture_id uuid); create table if not exists public.invoice_approval_audit(invoice_id uuid,company_id uuid); create table if not exists public.daily_reports(id uuid,company_id uuid); create table if not exists public.daily_report_workers(report_id uuid); create table if not exists public.route_stops(company_id uuid); create table if not exists private.route_billing_quantity_requests(id uuid,company_id uuid); create table if not exists private.route_billing_quantity_evidence(request_id uuid); create table if not exists private.expense_amount_consumptions(company_id uuid);");
 await db.query("update site_financial_settings set billing_allowance_1_name='合成手当',billing_allowance_1_amount_yen=10,billing_overtime_hour_rate_yen=20 where company_id=$1 and site_id=$2",[company,site]);
 const addExtras=()=>db.query("insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days,overtime_hours,early_hours,allowance_names) values($1,$2,$3,'2026-10-25','day',1,0,0,ARRAY['合成手当']),($1,$2,$3,'2026-10-27','day',1,1,0,ARRAY['合成手当'])",[company,site,worker]);
 await addExtras();await db.query('select private.refresh_automatic_invoice($1,$2,$3)',[company,customer,'2026-10-01']);
@@ -23,6 +24,11 @@ const frozen=(await db.query('select * from invoices where company_id=$1 and cus
 await addExtras();await db.query('select private.refresh_automatic_invoice($1,$2,$3)',[company,customer,'2026-10-01']);
 assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
 const correctionPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+assert.match(correctionPreview.source_fingerprint,/^[0-9a-f]{64}$/);assert.match(correctionPreview.original_invoice_fingerprint,/^[0-9a-f]{64}$/);
+const unchangedPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;assert.equal(unchangedPreview.source_fingerprint,correctionPreview.source_fingerprint);
+await db.query("update attendance_entries set overtime_hours=2 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]);
+const changedPreview=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;assert.notEqual(changedPreview.source_fingerprint,correctionPreview.source_fingerprint);
+await db.query("update attendance_entries set overtime_hours=1 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]);
 const expectedSnapshot={...expected.snapshot};delete expectedSnapshot.company_seal_snapshot;
 assert.deepEqual(correctionPreview.proposed_snapshot,expectedSnapshot);assert.equal(correctionPreview.subtotal,expected.subtotal);assert.equal(correctionPreview.tax,expected.tax);assert.equal(correctionPreview.welfare,expected.welfare_amount);assert.equal(correctionPreview.grand_total,expected.grand_total);
 assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
