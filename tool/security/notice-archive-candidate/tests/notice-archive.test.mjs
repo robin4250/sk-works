@@ -162,3 +162,18 @@ test('strict read verifies retained intermediate signatures after restart and re
  assert.equal((await f.call('tamper-extension',{sequence:2,rows:original})).status,200);assert.equal((await f.call('read-strict',args)).status,200);
  assert.equal((await f.call('delete-extension',{sequence:2})).status,200);assert.equal((await f.call('read-strict',args)).status,409);
 });
+
+test('isolated planned rotation is bound to the existing independent authority receipt',async t=>{
+ const {verifyRotation,rotationBytes}=await import('../src/head-trust-fixture.mjs');
+ const f=await fixture(t),first=createBatch(f);
+ const sent=await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY');assert.equal(sent.status,200);
+ const authority=await sent.json(),replacement=key();
+ const payload={v:1,scope:deployment,from_epoch:1,to_epoch:2,checkpoint_sequence:authority.payload.sequence,checkpoint_hash:authority.payload.hash,new_key:replacement.pub};
+ const bytes=rotationBytes(payload),proof={payload,old_signature:sign(null,bytes,f.anchor.priv).toString('hex'),new_signature:sign(null,bytes,replacement.priv).toString('hex')};
+ const context={scope:deployment,checkpoint:{sequence:authority.payload.sequence,hash:authority.payload.hash},oldKey:f.anchor.pub,oldEpoch:1};
+ assert.equal(verifyRotation(proof,context).key.x,replacement.pub.x);
+ assert.throws(()=>verifyRotation(proof,{...context,scope:'another_deployment'}));
+ assert.throws(()=>verifyRotation(proof,{...context,checkpoint:{...context.checkpoint,hash:'f'.repeat(64)}}));
+ await f.restart();const restored=await(await f.call('latest',{},'AUTHORITY')).json();assert.deepEqual(restored,authority);
+ // No live key is switched by this test; the original authority is unchanged.
+});
