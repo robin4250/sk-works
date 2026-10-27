@@ -1,0 +1,27 @@
+name: Employee category legacy real auth compatibility
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/employee-category-legacy-gotrue.yml'
+      - 'tool/verify_employee_legacy_gotrue.mjs'
+      - 'docs/review/employee-category-candidate/**'
+permissions:
+  contents: read
+concurrency:
+  group: employee-category-legacy-auth-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  legacy-gotrue-postgrest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check tool/verify_employee_legacy_gotrue.mjs
+      - name: Synthetic old application database with real local GoTrue and PostgREST
+        run: node tool/verify_employee_legacy_gotrue.mjs

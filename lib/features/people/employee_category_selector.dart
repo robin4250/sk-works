@@ -1,4 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// A missing bootstrap endpoint may also indicate a stale schema cache; do not
+/// treat other RPC, permission, or network failures as an uninstalled feature.
+String employeeCategoryLoadMessage(Object error, {required bool hasSavedCategory}) {
+  if (!hasSavedCategory && error is PostgrestException &&
+      error.code == 'PGRST202' &&
+      RegExp(r'\bensure_employee_categories\b').hasMatch(error.message)) {
+    return '従業員区分は現在利用できません。社員情報は引き続き編集できます。';
+  }
+  return '区分を読み込めません。再読み込みしてください。';
+}
 
 /// Persisted options must come from the current company; no default is assigned
 /// to existing workers until an administrator explicitly chooses one.
