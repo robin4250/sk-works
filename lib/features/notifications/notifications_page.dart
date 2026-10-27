@@ -1,3 +1,4 @@
+import '../qualifications/qualification_photo_submission_review_page.dart';
 import 'dart:async';
 import 'notification_open_session.dart';
 import 'checkout_report_notification_repository.dart';
@@ -555,6 +556,7 @@ Widget? notificationDestination(
   'company_profile_review' => item.actionId == null || item.actionId!.isEmpty
       ? null
       : CompanyProfileReviewPage(initialReviewId: item.actionId),
+  'qualification_photo_request' => const QualificationPhotoSubmissionReviewPage(),
   'route_billing_quantity_request' => RouteBillingQuantityApprovalsPage(
     initialRequestId: item.actionId,
   ),
