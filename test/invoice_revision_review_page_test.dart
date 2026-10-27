@@ -5,14 +5,14 @@ import 'package:sk_works/features/invoices/invoice_revision_review_page.dart';
 void main() {
   Map<String, dynamic> synthetic() => {
     'status': 'review_only', 'grand_total': 120000,
-    'proposed_snapshot': {'sites': [
-      {'site_name': '合成現場', 'lines': [
-        {'work_content': '日勤', 'quantity': 6, 'amount': 90000},
-        {'work_content': '残業', 'quantity': 1, 'amount': 3000},
-        {'work_content': '共通手当', 'quantity': 2, 'amount': 6000},
+    'proposed_snapshot': <String, dynamic>{'sites': <Map<String, dynamic>>[
+      <String, dynamic>{'site_name': '合成現場', 'lines': <Map<String, dynamic>>[
+        <String, dynamic>{'work_content': '日勤', 'quantity': 6, 'amount': 90000},
+        <String, dynamic>{'work_content': '残業', 'quantity': 1, 'amount': 3000},
+        <String, dynamic>{'work_content': '共通手当', 'quantity': 2, 'amount': 6000},
       ]},
-      {'site_name': '合成ルート', 'lines': [
-        {'work_content': '複数現場', 'quantity': 1, 'amount': 21000},
+      <String, dynamic>{'site_name': '合成ルート', 'lines': <Map<String, dynamic>>[
+        <String, dynamic>{'work_content': '複数現場', 'quantity': 1, 'amount': 21000},
       ]},
     ]},
   };
