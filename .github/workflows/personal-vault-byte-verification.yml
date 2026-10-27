@@ -1,0 +1,56 @@
+name: Personal vault byte verification
+on:
+  pull_request:
+    paths:
+      - 'tool/verify_archive_bytes*'
+      - 'tool/personal_vault_delivery_candidate*'
+      - 'test/personal_vault_content_evidence_test.dart'
+      - 'docs/review/personal-vault24/**'
+      - '.github/workflows/personal-vault-byte-verification.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/vault-ci" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
+      - run: |
+          export VAULT_PGLITE_MODULE="file://$RUNNER_TEMP/vault-ci/node_modules/@electric-sql/pglite/dist/index.js"
+          node --test tool/verify_archive_bytes.test.mjs tool/personal_vault_delivery_candidate.test.mjs
+  native-rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql 'postgresql://postgres:fixture-only@localhost:5432/postgres' -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/read-api-test.sql
+  flutter-content:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: python3 -m pip install PyMuPDF==1.26.6
+      - run: flutter analyze test/personal_vault_content_evidence_test.dart
+      - run: flutter test --reporter expanded test/own_payroll_archive_pdf_test.dart test/personal_vault_content_evidence_test.dart
