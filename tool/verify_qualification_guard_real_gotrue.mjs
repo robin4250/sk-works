@@ -16,6 +16,7 @@ const test=String.raw`
  create table public.qualification_master_aliases(id uuid primary key,qualification_master_id uuid references public.qualification_master(id) on delete cascade);
  create table private.qualification_submissions(id uuid primary key,qualification_master_id uuid references public.qualification_master(id));
  alter table public.qualification_master enable row level security;
+ revoke all on public.qualification_master from public, anon;
  grant select on public.company_members to authenticated;
  grant select,delete on public.qualification_master to authenticated;
  create policy read_member on public.qualification_master for select to authenticated using (exists(select 1 from public.company_members cm where cm.company_id=qualification_master.company_id and cm.user_id=auth.uid()));
