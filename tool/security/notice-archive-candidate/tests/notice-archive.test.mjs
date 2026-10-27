@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {createHash,generateKeyPairSync,sign,randomUUID} from 'node:crypto';
-import {mkdtemp,rm,mkdir,copyFile,readFile} from 'node:fs/promises';
+import {createHash,createHmac,generateKeyPairSync,randomBytes,sign,randomUUID} from 'node:crypto';
+import {verifyFixtureSource,encryptFixtureEvidence,decryptFixtureEvidence} from '../src/source-evidence-fixture.mjs';
+import {mkdtemp,rm,mkdir,copyFile,readFile,writeFile} from 'node:fs/promises';
 import {resolve,join} from 'node:path';import {tmpdir} from 'node:os';import {createRequire} from 'node:module';
 const require=createRequire(resolve(process.env.SKO_WORKER_TEST_ROOT??'../security-free-worker-candidate','package.json'));
 const {Miniflare,Log,LogLevel}=require('miniflare');
@@ -10,7 +11,7 @@ const anchorSource=resolve(process.env.SKO_ANCHOR_CORE??'../security-off-finish/
 if(createHash('sha256').update(await readFile(anchorSource)).digest('hex')!=='7b9425407013d9441486e9a1c8d8538f260a0176da79fc9d8333ed9636623ec4')throw Error('Existing anchor authority differs');
 const sha=x=>createHash('sha256').update(x).digest('hex');const key=()=>{const x=generateKeyPairSync('ed25519');return{priv:x.privateKey,pub:x.publicKey.export({format:'jwk'}),privateJwk:x.privateKey.export({format:'jwk'})}};
 const signature=(key,domain,body)=>sign(null,Buffer.from(domain+'\n'+body),key).toString('hex');
-const now=Date.UTC(2026,9,27),day=86400000,zero='0'.repeat(64),owner='owner_1',company='company_1',deployment='notice_archive_1';
+const now=Date.UTC(2026,9,27),day=86400000,zero='0'.repeat(64),owner='owner_1',company='10000000-0000-0000-0000-000000000001',deployment='notice_archive_1';
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'sko-notice-archive-')),src=join(dir,'src'),tests=join(dir,'tests');await mkdir(src);await mkdir(tests);
  await copyFile(source,join(src,'security-audit.mjs'));await copyFile(anchorSource,join(src,'anchor-authority.mjs'));await copyFile(new URL('../src/notice-archive.mjs', import.meta.url),join(src,'notice-archive.mjs'));await copyFile(new URL('./notice-archive-fixture.mjs', import.meta.url),join(tests,'notice-archive-fixture.mjs'));
@@ -21,8 +22,8 @@ async function fixture(t){
  assert.equal((await call('initialize',config)).status,200);const {retentionMs,...authorityConfig}=config;assert.equal((await call('initialize',authorityConfig,'AUTHORITY')).status,200);
  return{call,audit,anchor,config,restart:async()=>{await mf.dispose();mf=new Miniflare(options)}};
 }
-function createBatch(f,{seq=1,previous=zero,anchorSeq=1,previousAudit=zero,eventId=randomUUID(),reviewed=now-8*day}={}){
- const m={v:1,deployment_id:deployment,company_id:company,batch_sequence:seq,previous_hash:previous,archived_at:now,events:[{event_id:eventId,event_kind:'current_lure_touched',evidence_digest:sha('synthetic signed event'),generation:1,occurred_at:reviewed-1000,review_state:'resolved',reviewed_at:reviewed,history:[{action:'resolved',actor_id:owner,occurred_at:reviewed,reason:'fixture reviewed'}]}]};
+function createBatch(f,{seq=1,previous=zero,anchorSeq=1,previousAudit=zero,eventId=randomUUID(),reviewed=now-8*day,evidenceDigest=sha('synthetic signed event')}={}){
+ const m={v:1,deployment_id:deployment,company_id:company,batch_sequence:seq,previous_hash:previous,archived_at:now,events:[{event_id:eventId,event_kind:'current_lure_touched',evidence_digest:evidenceDigest,generation:1,occurred_at:reviewed-1000,review_state:'resolved',reviewed_at:reviewed,history:[{action:'resolved',actor_id:owner,occurred_at:reviewed,reason:'fixture reviewed'}]}]};
  const body=JSON.stringify({v:1,deployment_id:deployment,sequence:anchorSeq,previous_hash:previousAudit,kind:'retention',action:'archive_notice_batch',reason:'retention_expired',actor_id:'system_retention',company_id:company,occurred_at:now,before:{},after:{manifest_sha256:sha(JSON.stringify(m)),batch_sequence:seq,event_count:m.events.length}});
  const audit={sequence:anchorSeq,previous_hash:previousAudit,hash:sha(body),body,signature:signature(f.audit.priv,'sko-decoy-audit-v1',body),key_id:'archive_audit_1',occurred_at:now};
  const payload={v:1,deployment_id:deployment,sequence:anchorSeq,hash:audit.hash,issued_at:now,key_id:'archive_anchor_1'},anchor={payload,signature:signature(f.anchor.priv,'sko-decoy-anchor-v1',JSON.stringify(payload))};
@@ -58,4 +59,20 @@ test('existing independent authority anchors archive audit before immutable stor
  assert.equal((await f.call('store',batch)).status,200);await f.restart();
  batch.latestIndependentAnchor=await(await f.call('latest',{},'AUTHORITY')).json();
  assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:batch.latestIndependentAnchor,now})).status,200);
+});
+
+// Integration experiment: real existing signed audit/anchor and workerd archive,
+// fixture source HMAC and encrypted copy on a separate local file. Not a real
+// DB export or authenticated independent-host / key custody implementation.
+test('fixture source MAC and encrypted original match independently anchored manifest after restart',async t=>{
+ const f=await fixture(t),eventId=randomUUID(),collector=randomUUID(),sourceKey=randomBytes(32),archiveKey=randomBytes(32),reviewed=now-8*day,occurred=reviewed-1000;
+ const metadata={event_id:eventId,collector_id:collector,occurred_at:new Date(occurred).toISOString(),event_kind:'current_lure_touched',generation:1,correlation_key:sha('synthetic correlation'),key_epoch:new Date(occurred).toISOString().slice(0,10)};
+ const raw=Buffer.from(JSON.stringify(metadata)),timestamp=now,source={collector_id:collector,key_version:1,timestamp,body_base64:raw.toString('base64'),signature:createHmac('sha256',sourceKey).update(`sko-collector-v2\n${collector}\n1\n${timestamp}\n`).update(raw).digest('hex')};
+ const proof=verifyFixtureSource(source,metadata,sourceKey),box=encryptFixtureEvidence(source,metadata,sourceKey,archiveKey,company),batch=createBatch(f,{eventId,reviewed,evidenceDigest:proof.raw_sha256});
+ const dir=await mkdtemp(join(tmpdir(),'sko-fixture-envelope-'));t.after(()=>rm(dir,{recursive:true,force:true}));const file=join(dir,'encrypted-fixture.json');await writeFile(file,JSON.stringify(box));
+ const publication={expected_sequence:0,expected_hash:zero,records:[batch.audit]},anchored=await f.call('publish',{publication,now},'AUTHORITY');assert.equal(anchored.status,200);
+ batch.anchor=await anchored.json();batch.latestIndependentAnchor=await(await f.call('latest',{},'AUTHORITY')).json();assert.equal((await f.call('store',batch)).status,200);await f.restart();
+ const latest=await(await f.call('latest',{},'AUTHORITY')).json(),saved=await f.call('read',{batchSequence:1,latestIndependentAnchor:latest,now});assert.equal(saved.status,200);const manifest=await saved.json();
+ const restored=decryptFixtureEvidence(JSON.parse(await readFile(file,'utf8')),company,archiveKey),verified=verifyFixtureSource(restored,metadata,sourceKey);assert.equal(manifest.events[0].event_id,verified.event_id);assert.equal(manifest.events[0].evidence_digest,verified.raw_sha256);assert.equal(manifest.events[0].occurred_at,occurred);
+ assert.throws(()=>verifyFixtureSource({...restored,signature:'0'.repeat(64)},metadata,sourceKey));assert.throws(()=>decryptFixtureEvidence({...box,tag:Buffer.alloc(16).toString('base64')},company,archiveKey));
 });
