@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,writeFile,rm,access} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createBoundedQualificationParser} from './qualification_management_upload_bounded_parser.mjs';
@@ -38,5 +38,21 @@ test('concurrent work is bounded and capacity is released after timeout',async()
   assert.equal(await first,false);
   await writeFile(worker,"process.stdin.resume();process.stdin.on('end',()=>process.stdout.write('VALID\\n'));\n");
   assert.equal(await parse({bytes,mime:'application/pdf'}),true);
+ } finally {await rm(dir,{recursive:true,force:true});}
+});
+
+test('deadline terminates a worker and its inherited process group', {skip:process.platform==='win32'}, async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'sko-parser-group-'));
+ const worker=join(dir,'worker.cjs'),marker=join(dir,'unexpected-marker'),ready=join(dir,'child-started');
+ try {
+  const program=`const {spawn}=require('node:child_process');\n`+
+    `spawn(process.execPath,['-e',${JSON.stringify(`const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>fs.writeFileSync(${JSON.stringify(marker)},'unexpected'),1500)`) }],{stdio:'ignore'});\n`+
+    `process.stdin.resume();setInterval(()=>{},1000);\n`;
+  await writeFile(worker,program);
+  const parse=createBoundedQualificationParser({workerPath:worker,timeoutMs:1000,maxConcurrent:1});
+  assert.equal(await parse({bytes,mime:'application/pdf'}),false);
+  await access(ready);
+  await new Promise(resolve=>setTimeout(resolve,1700));
+  await assert.rejects(access(marker),{code:'ENOENT'});
  } finally {await rm(dir,{recursive:true,force:true});}
 });
