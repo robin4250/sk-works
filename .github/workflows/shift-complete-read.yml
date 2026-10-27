@@ -1,7 +1,7 @@
 name: Shift complete attendance read
 on:
   pull_request:
-    branches: [draft/shift-status-20261027]
+    branches: [main, draft/shift-status-20261027]
     paths:
       - 'lib/features/shifts/shift_schedule_editor.dart'
       - 'test/shift_schedule_editor_test.dart'
