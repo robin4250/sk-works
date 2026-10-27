@@ -13,3 +13,12 @@ test('signed transition binds the separately trusted exact previous checkpoint',
  assert.throws(()=>validateTransition(signed(payload),{...context,now:31001}),/unavailable/);
  assert.throws(()=>validateTransition(signed(payload),{...context,checkpoint:{sequence:3,hash:token()}}),/unavailable/);
 });
+test('stateless signed transition verification alone cannot prevent concurrent replay',()=>{
+ const pair=generateKeyPairSync('ed25519'),checkpoint={sequence:0,hash:token()},challenge=token(),nonce=token(),proposalHash=token();
+ const context={scope:'synthetic',checkpoint,challenge,nonce,proposalHash,now:1000,key:pair.publicKey.export({format:'jwk'})};
+ const payload={v:1,scope:context.scope,challenge,nonce,proposal_hash:proposalHash,previous_sequence:0,previous_hash:checkpoint.hash,sequence:1,issued:1000};
+ const receipt={payload,signature:sign(null,transitionBytes(payload),pair.privateKey).toString('hex')};
+ // Two callers sharing the same stale trusted checkpoint both pass: atomic
+ // compare-and-set of separately held checkpoint and nonce is mandatory.
+ assert.deepEqual(validateTransition(receipt,context),validateTransition(receipt,context));
+});
