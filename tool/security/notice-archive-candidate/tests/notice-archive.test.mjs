@@ -137,3 +137,16 @@ test('fixture source MAC and encrypted original match independently anchored man
  const restored=decryptFixtureEvidence(JSON.parse(await readFile(file,'utf8')),company,archiveKey),verified=verifyFixtureSource(restored,metadata,sourceKey);assert.equal(manifest.events[0].event_id,verified.event_id);assert.equal(manifest.events[0].evidence_digest,verified.raw_sha256);assert.equal(manifest.events[0].occurred_at,occurred);
  assert.throws(()=>verifyFixtureSource({...restored,signature:'0'.repeat(64)},metadata,sourceKey));assert.throws(()=>decryptFixtureEvidence({...box,tag:Buffer.alloc(16).toString('base64')},company,archiveKey));
 });
+
+
+test('strict extension rows persist through restart and failed insertion rolls back batch',async t=>{
+ const f=await fixture(t),first=createBatch(f);
+ assert.equal((await f.call('store-strict',{...first,auditExtension:[first.audit]})).status,200);
+ await f.restart();let rows=await(await f.call('extensions')).json();
+ assert.equal(rows.length,1);assert.deepEqual(JSON.parse(rows[0].rows_json),[first.audit]);
+ const before=await(await f.call('snapshot')).json(),second=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:first.audit.hash});
+ assert.equal((await f.call('fail-extension')).status,200);
+ assert.equal((await f.call('store-strict',{...second,auditExtension:[second.audit]})).status,409);
+ assert.deepEqual(await(await f.call('snapshot')).json(),before);
+ assert.deepEqual(await(await f.call('extensions')).json(),rows);
+});

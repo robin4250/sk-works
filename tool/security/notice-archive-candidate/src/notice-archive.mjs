@@ -17,6 +17,7 @@ export function initializeNoticeArchive(s,c){
  return s.transactionSync(()=>{
   s.sql.exec('CREATE TABLE IF NOT EXISTS notice_archive_state(id INTEGER PRIMARY KEY CHECK(id=1),deployment_id TEXT NOT NULL,company_id TEXT NOT NULL,owner_id TEXT NOT NULL,audit_key_id TEXT NOT NULL,audit_jwk TEXT NOT NULL,anchor_key_id TEXT NOT NULL,anchor_jwk TEXT NOT NULL,retention_ms INTEGER NOT NULL,batch_sequence INTEGER NOT NULL,manifest_hash TEXT NOT NULL,anchor_sequence INTEGER NOT NULL,anchor_hash TEXT NOT NULL)');
   s.sql.exec('CREATE TABLE IF NOT EXISTS notice_archive_batches(sequence INTEGER PRIMARY KEY,manifest_hash TEXT NOT NULL,manifest TEXT NOT NULL,audit TEXT NOT NULL,anchor TEXT NOT NULL)');
+  s.sql.exec('CREATE TABLE IF NOT EXISTS notice_archive_extensions(batch_sequence INTEGER PRIMARY KEY,rows_json TEXT NOT NULL)');
   const old=one(s,'SELECT * FROM notice_archive_state WHERE id=1');
   if(old){if(old.deployment_id!==c.deploymentId||old.company_id!==c.companyId||old.owner_id!==c.ownerId||old.audit_key_id!==c.auditKeyId||old.audit_jwk!==JSON.stringify(a)||old.anchor_key_id!==c.anchorKeyId||old.anchor_jwk!==JSON.stringify(b)||old.retention_ms!==c.retentionMs)throw Error('Existing archive trust differs');return {batch_sequence:old.batch_sequence,manifest_hash:old.manifest_hash};}
   s.sql.exec('INSERT INTO notice_archive_state VALUES(1,?,?,?,?,?,?,?,?,0,?,0,?)',c.deploymentId,c.companyId,c.ownerId,c.auditKeyId,JSON.stringify(a),c.anchorKeyId,JSON.stringify(b),c.retentionMs,ZERO,ZERO);
@@ -64,7 +65,8 @@ async function verifyStoredChain(s,q,now){
 }
 // caller supplies the latest receipt fetched from a genuinely independent
 // authority. A caller-provided old receipt cannot prove global freshness.
-export async function storeNoticeArchive(s,{manifest,audit,anchor,latestIndependentAnchor,now}){
+export async function storeNoticeArchive(s,input){return storeNoticeArchiveInternal(s,input,null);}
+async function storeNoticeArchiveInternal(s,{manifest,audit,anchor,latestIndependentAnchor,now},strictRows){
  const q=state(s),body=canonicalManifest(q,manifest,now),proof=await verifyEvidence(q,body,audit,anchor,now);
  await verifyStoredChain(s,q,now);
  if(JSON.stringify(anchor)!==JSON.stringify(latestIndependentAnchor))throw Error('Latest independent anchor required');
@@ -73,6 +75,7 @@ export async function storeNoticeArchive(s,{manifest,audit,anchor,latestIndepend
   if(old){if(old.manifest_hash!==proof.manifestHash||old.manifest!==body||old.audit!==JSON.stringify(audit)||old.anchor!==JSON.stringify(anchor)||current.batch_sequence!==manifest.batch_sequence||current.manifest_hash!==proof.manifestHash)throw Error('Archive retry conflict');return {batch_sequence:manifest.batch_sequence,manifest_hash:proof.manifestHash,replayed:true};}
   if(current.batch_sequence!==q.batch_sequence||current.manifest_hash!==q.manifest_hash||manifest.batch_sequence!==q.batch_sequence+1||manifest.previous_hash!==q.manifest_hash||proof.anchorSequence<=q.anchor_sequence||one(s,'SELECT count(*) AS n FROM notice_archive_batches').n>=1000||one(s,'SELECT coalesce(sum(length(cast(manifest as blob))+length(cast(audit as blob))+length(cast(anchor as blob))),0) AS n FROM notice_archive_batches').n+te.encode(body).length+te.encode(JSON.stringify(audit)).length+te.encode(JSON.stringify(anchor)).length>16*1024*1024)throw Error('Archive monotonic capacity rejected');
   s.sql.exec('INSERT INTO notice_archive_batches VALUES(?,?,?,?,?)',manifest.batch_sequence,proof.manifestHash,body,JSON.stringify(audit),JSON.stringify(anchor));
+  if(strictRows!==null)s.sql.exec('INSERT INTO notice_archive_extensions VALUES(?,?)',manifest.batch_sequence,JSON.stringify(strictRows));
   s.sql.exec('UPDATE notice_archive_state SET batch_sequence=?,manifest_hash=?,anchor_sequence=?,anchor_hash=? WHERE id=1',manifest.batch_sequence,proof.manifestHash,proof.anchorSequence,proof.anchorHash);
   return {batch_sequence:manifest.batch_sequence,manifest_hash:proof.manifestHash,replayed:false};
  });
@@ -115,7 +118,7 @@ export async function storeNoticeArchiveWithContinuity(s,input){
  }
  const current=state(s);
  if(current.batch_sequence!==q.batch_sequence||current.manifest_hash!==q.manifest_hash||current.anchor_sequence!==q.anchor_sequence||current.anchor_hash!==q.anchor_hash)throw Error('Archive changed; retry');
- return storeNoticeArchive(s,input);
+ return storeNoticeArchiveInternal(s,input,rows.length===0?null:rows);
 }
 export async function readNoticeArchive(s,{batchSequence,latestIndependentAnchor,now}){
  const q=state(s);await verifyStoredChain(s,q,now);const row=one(s,'SELECT * FROM notice_archive_batches WHERE sequence=?',batchSequence);if(!row)throw Error('Archive batch unavailable');

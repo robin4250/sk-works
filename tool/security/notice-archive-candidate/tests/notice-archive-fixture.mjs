@@ -8,6 +8,8 @@ export class ArchiveFixture{
   if(path==='/store')return Response.json(await storeNoticeArchive(s,input));
   if(path==='/store-strict')return Response.json(await storeNoticeArchiveWithContinuity(s,input));
   if(path==='/read')return Response.json(await readNoticeArchive(s,input));
+  if(path==='/extensions')return Response.json(s.sql.exec('SELECT * FROM notice_archive_extensions ORDER BY batch_sequence').toArray());
+  if(path==='/fail-extension') {s.sql.exec("CREATE TRIGGER injected_extension_failure BEFORE INSERT ON notice_archive_extensions BEGIN SELECT RAISE(ABORT,'fixture extension failure');END");return Response.json(true);}
   if(path==='/snapshot')return Response.json({state:s.sql.exec('SELECT * FROM notice_archive_state').toArray(),rows:s.sql.exec('SELECT * FROM notice_archive_batches ORDER BY sequence').toArray()});
   if(path==='/tamper') {s.sql.exec('UPDATE notice_archive_batches SET manifest=? WHERE sequence=?',input.manifest,input.sequence);return Response.json(true);}
   if(path==='/delete') {s.sql.exec('DELETE FROM notice_archive_batches WHERE sequence=?',input.sequence);return Response.json(true);}
