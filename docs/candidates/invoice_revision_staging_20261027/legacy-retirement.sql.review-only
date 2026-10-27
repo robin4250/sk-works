@@ -1,0 +1,35 @@
+-- REVIEW ONLY: incomplete legacy-client hold experiment, NOT a migration.
+-- No operation to activate holds is provided, no issuance or external notice.
+-- Does not guard SECURITY DEFINER reads, previously cached data, or OS files.
+begin;
+create schema invoice_retirement_guard_candidate;
+revoke all on schema invoice_retirement_guard_candidate from public, anon, authenticated, service_role;
+create table invoice_retirement_guard_candidate.holds(invoice_id uuid primary key);
+alter table invoice_retirement_guard_candidate.holds enable row level security;
+revoke all on invoice_retirement_guard_candidate.holds from public, anon, authenticated, service_role;
+create function invoice_retirement_guard_candidate.is_held(p_id uuid)
+ returns boolean language sql stable security definer set search_path='' as $$
+ select exists(select 1 from invoice_retirement_guard_candidate.holds where invoice_id=p_id)
+$$;
+revoke all on function invoice_retirement_guard_candidate.is_held(uuid) from public, anon, authenticated, service_role;
+grant usage on schema invoice_retirement_guard_candidate to authenticated;
+grant execute on function invoice_retirement_guard_candidate.is_held(uuid) to authenticated;
+-- Restrictive is required: a permissive policy would OR with existing policies.
+create policy invoice_retirement_guard_candidate_select on public.invoices
+ as restrictive for select to authenticated
+ using (not invoice_retirement_guard_candidate.is_held(id));
+create function invoice_retirement_guard_candidate.deny_approval_mutation()
+ returns trigger language plpgsql security definer set search_path='' as $$
+begin
+ if (tg_op <> 'INSERT' and invoice_retirement_guard_candidate.is_held(old.invoice_id))
+ or (tg_op <> 'DELETE' and invoice_retirement_guard_candidate.is_held(new.invoice_id)) then
+   raise exception 'invoice_retired' using errcode='55000';
+ end if;
+ if tg_op='DELETE' then return old; end if;
+ return new;
+end $$;
+revoke all on function invoice_retirement_guard_candidate.deny_approval_mutation() from public, anon, authenticated, service_role;
+create trigger invoice_retirement_guard_candidate_approvals
+ before insert or update or delete on public.invoice_approvals
+ for each row execute function invoice_retirement_guard_candidate.deny_approval_mutation();
+commit;

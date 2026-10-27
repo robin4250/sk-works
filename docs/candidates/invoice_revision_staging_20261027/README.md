@@ -30,3 +30,5 @@
 追加の失効競合試験は本番catalogから採った認証helper本体と合成Auth/JWTテーブルを使う。BAN・session削除が進行中のprivate reviewトランザクションを待ち、その後の再試行を拒否するかNative 2接続で確認する。実GoTrue試験や、未実装の発行トランザクションに対する検証ではない。
 
 `invoice_output_guard.dart` は出力前とPDF生成後の2回オンライン照合する未接続の部品。全請求ID・版の一致、重複なし、欠落・拒否・通信失敗時の停止を試験する。既存UI・RPCには未接続。照合後からOS引き渡しまでの競合、旧アプリ、保存済みPDF、真正なサーバー応答や発行の原子性は保証できず、これだけでは配布・発行を許可しない。
+
+`legacy-retirement.sql.review-only` は旧IDを一般SELECTから除外するRESTRICTIVE policyと承認行変更の拒否だけを合成環境で実験する候補であり導入禁止。既存SECURITY DEFINER読み取り、端末キャッシュ、同時有効化時の競合、新版作成、新承認、通知、RLS bypassへの対応は未完成。hold設定機能もなく、既存データへの変更を行わない。これだけでは切替え・発行の原子性を証明できない。
