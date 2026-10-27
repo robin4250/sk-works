@@ -1,0 +1,37 @@
+name: Qualification registered record changes
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/qualification_admin_record_changes_20261027.sql.review-only'
+      - 'tool/verify_qualification_admin_record_changes.mjs'
+      - '.github/workflows/qualification-record-changes.yml'
+      - 'lib/features/qualifications/qualification_record_change*'
+      - 'test/qualification_record_change*'
+permissions:
+  contents: read
+jobs:
+  native-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_qualification_record_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sko_qualification_record_fixture"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node tool/verify_qualification_admin_record_changes.mjs "$PWD/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - run: node tool/verify_qualification_admin_record_changes.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+        env:
+          SKO_QUALIFICATION_RECORD_FIXTURE_URL: postgres://postgres:fixture-only-password@127.0.0.1:5432/sko_qualification_record_fixture
