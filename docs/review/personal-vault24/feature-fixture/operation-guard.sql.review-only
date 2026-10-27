@@ -1,0 +1,25 @@
+-- REVIEW ONLY. Install after extension, before any feature API becomes reachable.
+-- Call from a trusted business RPC in the SAME transaction as every mutation.
+create or replace function private.require_lifecycle_features(p_keys text[])
+returns void language plpgsql security definer set search_path='' as $function$
+declare k text;
+begin
+  perform private.require_reauthentication_session();
+  if p_keys is null or cardinality(p_keys)=0 or cardinality(p_keys)>5 then
+    raise sqlstate '22023' using message='unsupported_lifecycle_feature';
+  end if;
+  foreach k in array p_keys loop
+    if k is null or k not in ('affiliation_switch','sko_id_linking','personal_pdf_vault','partner_auto_link','company_lifecycle') then
+      raise sqlstate '22023' using message='unsupported_lifecycle_feature';
+    end if;
+  end loop;
+  -- Lock in canonical order to serialize with OFF without lock-order inversion.
+  perform 1 from private.master_feature_settings s
+    where s.feature_key=any(p_keys) order by s.feature_key for share;
+  foreach k in array p_keys loop
+    if not exists(select 1 from private.master_feature_settings s where s.feature_key=k and s.enabled is true) then
+      raise sqlstate '42501' using message='lifecycle_feature_disabled';
+    end if;
+  end loop;
+end $function$;
+revoke all on function private.require_lifecycle_features(text[]) from public,anon,authenticated,service_role;
