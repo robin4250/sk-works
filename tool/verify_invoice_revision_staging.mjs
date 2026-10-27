@@ -1,0 +1,64 @@
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+const runtime = process.argv[2] ?? '../apple-enrollment-sql-runtime/node_modules/@electric-sql/pglite/dist/index.js';
+const sql = process.argv[3] ?? new URL('./revision.sql.review-only', import.meta.url);
+const native = process.argv.includes('--native');
+let db;
+if (native) {
+  const pg = await import(pathToFileURL(path.resolve(process.argv[4])).href);
+  const Client = pg.Client ?? pg.default?.Client;
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  db = { exec: s => client.query(s), query: (s, p) => client.query(s, p), close: () => client.end() };
+} else {
+  const entry = path.resolve(path.dirname(new URL(import.meta.url).pathname), runtime);
+  const { PGlite } = await import(pathToFileURL(entry).href);
+  const { pgcrypto } = await import(pathToFileURL(path.join(path.dirname(entry), 'contrib/pgcrypto.js')).href);
+  db = new PGlite({ extensions: { pgcrypto } });
+}
+await db.exec(`
+ create role anon; create role authenticated; create schema auth; create schema private; create schema extensions;
+ create extension pgcrypto with schema extensions;
+ create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.actor',true),'')::uuid $$;
+ create function private.require_reauthentication_session() returns uuid language sql stable as $$ select nullif(current_setting('test.sid',true),'')::uuid $$;
+ create function private.account_access_allowed() returns boolean language sql stable as $$ select coalesce(nullif(current_setting('test.allowed',true),'')::boolean,false) $$;
+ create function private.has_company_feature(c uuid,f text) returns boolean language sql stable as $$ select c=nullif(current_setting('test.company',true),'')::uuid and f='can_manage_invoices' $$;
+ create table public.invoices(id uuid primary key,company_id uuid not null,invoice_seal_frozen boolean not null,snapshot jsonb not null);
+ insert into public.invoices values('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002',true,'{"sites":[{"days":5}],"company_seal_snapshot":{"synthetic":true}}');
+ select set_config('test.actor','00000000-0000-0000-0000-000000000003',false),set_config('test.sid','00000000-0000-0000-0000-000000000004',false),set_config('test.company','00000000-0000-0000-0000-000000000002',false),set_config('test.allowed','true',false);
+`);
+await db.exec(await readFile(sql,'utf8'));
+const id='00000000-0000-0000-0000-000000000001', cmd='00000000-0000-0000-0000-000000000005', src='a'.repeat(64);
+const hash=(await db.query(`select encode(extensions.digest(convert_to(to_jsonb(i)::text,'UTF8'),'sha256'),'hex') h from invoices i where id=$1`,[id])).rows[0].h;
+const stage=(command=cmd,source=src,original=hash,reason='勤務実績の追加')=>db.query('select invoice_revision_candidate.stage($1,$2,$3,$4,$5) v',[id,command,source,original,reason]);
+await assert.rejects(stage(),/revision_disabled/);
+await db.exec('update invoice_revision_candidate.settings set enabled=true');
+await assert.rejects(stage(cmd,src,null),/revision_request_invalid/);
+await db.exec("select set_config('test.allowed','false',false)");
+await assert.rejects(stage(),/revision_denied/);
+await db.exec("select set_config('test.allowed','true',false);select set_config('test.sid','',false)");
+await assert.rejects(stage(),/revision_request_invalid/);
+await db.exec("select set_config('test.sid','00000000-0000-0000-0000-000000000004',false);select set_config('test.company','00000000-0000-0000-0000-000000000099',false)");
+await assert.rejects(stage(),/revision_denied/);
+await db.exec("select set_config('test.company','00000000-0000-0000-0000-000000000002',false)");
+await assert.rejects(stage(cmd,src,'b'.repeat(64)),/revision_original_changed/);
+await assert.rejects(stage(),/revision_preview_unavailable/);
+await db.exec(`create schema invoice_correction_preview_private;
+ create table invoice_correction_preview_private.fixture(value jsonb);
+ create function invoice_correction_preview_private.preview(uuid) returns jsonb language sql as $$ select value from invoice_correction_preview_private.fixture $$;`);
+const preview={original_invoice_id:id,source_fingerprint:src,original_invoice_fingerprint:hash,calculation_blocked:false,proposed_snapshot:{sites:[{days:6},{days:1}]},subtotal:1,tax:1,welfare:0,grand_total:2};
+const setPreview=async p=>{await db.exec('delete from invoice_correction_preview_private.fixture');await db.query('insert into invoice_correction_preview_private.fixture values($1::jsonb)',[JSON.stringify(p)]);};
+for(const bad of [{...preview,source_fingerprint:'b'.repeat(64)},{...preview,calculation_blocked:true},{...preview,proposed_snapshot:{company_seal_snapshot:{}}},{...preview,grand_total:null}]){await setPreview(bad);await assert.rejects(stage(),/revision_preview_invalid_or_changed/);}
+await setPreview(preview);const original=(await db.query('select to_jsonb(i) j from invoices i where id=$1',[id])).rows[0].j;
+assert.equal((await stage()).rows[0].v.replayed,false);assert.equal((await stage()).rows[0].v.replayed,true);
+await assert.rejects(stage(cmd,src,hash,'別の理由'),/revision_request_reuse_conflict/);
+await assert.rejects(stage('00000000-0000-0000-0000-000000000006'),/revision_existing_proposal/);
+assert.deepEqual((await db.query('select to_jsonb(i) j from invoices i where id=$1',[id])).rows[0].j,original);
+assert.equal((await db.query('select count(*)::int n from invoices')).rows[0].n,1);
+await assert.rejects(db.query('delete from invoices where id=$1',[id]),/foreign key/);
+const access=await db.query("select has_schema_privilege('authenticated','invoice_revision_candidate','USAGE') s,has_function_privilege('authenticated','invoice_revision_candidate.stage(uuid,uuid,text,text,text)','EXECUTE') f");
+assert.deepEqual(access.rows[0],{s:false,f:false});
+console.log('PASS isolated revision staging: gate, identity, scope, stale source, seal refusal, immutable original, idempotency and no publication');
+await db.close();

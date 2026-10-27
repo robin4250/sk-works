@@ -1,0 +1,32 @@
+name: Invoice revision isolated staging
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/invoice_revision_staging_20261027/**'
+      - 'tool/verify_invoice_revision_staging.mjs'
+      - '.github/workflows/invoice-revision-isolated-staging.yml'
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: revision_candidate
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/revision_candidate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/revision-runtime" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8 pg@8.16.3
+      - run: node tool/verify_invoice_revision_staging.mjs "$RUNNER_TEMP/revision-runtime/node_modules/@electric-sql/pglite/dist/index.js" docs/candidates/invoice_revision_staging_20261027/revision.sql.review-only
+      - run: node tool/verify_invoice_revision_staging.mjs "$RUNNER_TEMP/revision-runtime/node_modules/@electric-sql/pglite/dist/index.js" docs/candidates/invoice_revision_staging_20261027/revision.sql.review-only "$RUNNER_TEMP/revision-runtime/node_modules/pg/lib/index.js" --native
