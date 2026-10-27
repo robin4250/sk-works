@@ -26,7 +26,8 @@ try {
  await db.exec('reset role');await db.exec('update private.document_change_upload_rollout set enabled=true');
  await actor(outsider);await assert.rejects(rpc('prepare',command));
  await actor(owner);assert.equal((await rpc('prepare',command)).status,'draft');await rpc('submit',{request_id:id});await assert.rejects(rpc('approve',{request_id:id}));
- await actor(reviewer);await db.exec('reset role');await db.exec(`update storage.objects set version='v2' where name='${path}'`);await actor(reviewer);await assert.rejects(rpc('approve',{request_id:id}));
+ await db.exec('reset role');await db.exec('update private.document_change_upload_rollout set enabled=false');await actor(reviewer);await assert.rejects(rpc('approve',{request_id:id}));
+ await db.exec('reset role');await db.exec('update private.document_change_upload_rollout set enabled=true');await db.exec(`update storage.objects set version='v2' where name='${path}'`);await actor(reviewer);await assert.rejects(rpc('approve',{request_id:id}));
  await db.exec('reset role');await db.exec(`update storage.objects set version='v1' where name='${path}'`);await actor(reviewer);assert.equal((await rpc('approve',{request_id:id})).status,'approved');
  const updated=(await db.query(`select attachment_path from public.worker_document_statuses where id='${target}'`)).rows[0];assert.equal(updated.attachment_path,path);
  console.log('offline overlay: OFF, outsider, self-review and modified version denied; authorized approval applied');

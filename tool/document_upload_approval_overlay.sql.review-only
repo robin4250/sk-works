@@ -5,12 +5,15 @@ insert into private.document_change_upload_rollout(singleton,enabled) values(tru
 alter table private.document_change_upload_rollout enable row level security;
 revoke all on private.document_change_upload_rollout from public,anon,authenticated,service_role;
 create function private.document_change_upload_allowed(p_request uuid,p_company uuid,p_worker uuid,p_requirement uuid,p_path text,p_actor uuid) returns boolean
-language sql security definer set search_path='' as $$
- select coalesce((select enabled from private.document_change_upload_rollout where singleton),false)
- and exists(select 1 from private.document_upload_inspection_candidates i
+language plpgsql security definer set search_path='' as $$
+begin
+ perform 1 from private.document_change_upload_rollout where singleton and enabled for share;
+ if not found then return false; end if;
+ return exists(select 1 from private.document_upload_inspection_candidates i
  where i.request_id=p_request and i.company_id=p_company and i.worker_id=p_worker and i.requirement_id=p_requirement
  and i.object_path=p_path and i.actor_id=p_actor and i.status='inspected'
  and private.check_document_upload_for_approval(i.id,p_request,p_company,p_worker,p_requirement,p_path));
+end;
 $$;
 revoke all on function private.document_change_upload_allowed(uuid,uuid,uuid,uuid,text,uuid) from public,anon,authenticated,service_role;
 do $overlay$
