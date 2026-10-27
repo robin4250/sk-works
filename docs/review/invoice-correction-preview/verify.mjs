@@ -101,6 +101,22 @@ if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
   await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
   await writer.query('delete from companies where id=$1',[id(998)]);
   console.log(JSON.stringify({nonparticipant_insert_bypasses_scoped_lock:true,unrelated_company_write_allowed:true}));
+  // Experimental fixture-only writer barrier: plain legacy INSERT/UPDATE participates through
+  // a trigger; a different company's write must remain independent. Not production migration.
+  await db.exec("create function private.synthetic_company_writer_lock() returns trigger language plpgsql as $$begin perform pg_advisory_xact_lock(hashtextextended('invoice-fixture:'||coalesce(new.company_id,old.company_id)::text,0));return coalesce(new,old);end$$; create trigger synthetic_writer_barrier before insert or update or delete on public.attendance_entries for each row execute function private.synthetic_company_writer_lock();");
+  await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture:'||$1::text,0))",[company]);
+  const beforeBarrier=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+  let barrierDone=false;const barrierInsert=writer.query("insert into attendance_entries(company_id,site_id,worker_id,work_date,work_category,base_man_days) values($1,$2,$3,'2026-10-28','day',1)",[company,site,worker]).then(()=>{barrierDone=true;});
+  await pause(200);assert.equal(barrierDone,false);
+  // The locked transaction does not block another company's independent lock.
+  const {connectFixture:anotherConnect}=await import(process.argv[2]);const other=await anotherConnect();
+  try{await other.query("select pg_advisory_xact_lock(hashtextextended('invoice-fixture:'||$1::text,0))",[id(998)]);}finally{await other.end();}
+  await db.query('commit');await barrierInsert;assert.equal(barrierDone,true);
+  const afterBarrier=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+  assert.notEqual(afterBarrier.source_fingerprint,beforeBarrier.source_fingerprint);
+  await db.query("delete from attendance_entries where company_id=$1 and site_id=$2 and work_date='2026-10-28'",[company,site]);
+  await db.exec('drop trigger synthetic_writer_barrier on public.attendance_entries;drop function private.synthetic_company_writer_lock();');
+  console.log(JSON.stringify({fixture_legacy_insert_waits_company_lock:true,other_company_lock_independent:true,scope_limited_to_one_fixture_table:true}));
   // SERIALIZABLE can commit before a non-participating writer in serialization order.
   // Stage therefore becomes stale after commit; a later publish must revalidate.
   await db.query('begin isolation level serializable');
