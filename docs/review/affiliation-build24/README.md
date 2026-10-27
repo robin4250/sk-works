@@ -41,3 +41,9 @@ Native専用CIはPostgres17で本番由来session helperと実vault候補SQLを�
 `representative-link-consent.sql.review-only` は既存対象会社ownerと正規の代表権限証拠が揃った申請だけ承認receiptを記録する。会社ownerが存在しない場合の初回代表者検証/登記照合は未接続であり拒否する。会社間連携YESは元会社管理者が既存 private.trade_company_link_requests の同じ会社組・accepted・responded_byありの行をロック照合して参照するだけ。既存リンクを作成/承認せず、権限や取引先を自動作成しない。実connectionの現状態・開始月・取引先重複解消は担当の既存連携adapterで引き続き確認が必要。
 
 Native fixtureに対象会社owner/証拠照合・pending link拒否/accepted link参照を追加。これは実所属適用や会社間連携の自動書込の完成を意味しない。
+
+## Forward適用候補（運用不可）
+
+`apply-forward.sql.review-only` は本人セッションと最新証拠・元会社管理者・対象会社owner・本人vault完了を同一transactionで再照合し、当日の従業員→代表者切替だけを対象にcompany_membersの更新を実行する候補。元workerの会社や過去の勤怠・給与は変更しない。失敗時は権限変更とreceiptを一緒にrollback、再試行は既存receiptを返す。実連携YESと逆方向はまだ拒否。
+
+重要：運用readinessは全false、外部GRANT0。本人/代表者証拠issuer、旧会社へのアクセス境界、在籍workerの扱い、適用後復旧が実装・レビューされるまで必ず拒否する。既存company_members削除はpayroll_access/member_language_preferencesをCASCADE削除するため実データをそのまま適用してはいけない。Native fixtureのtrue変更は試験専用で本番手順ではない。これは本番有効化可能な完成品ではない。

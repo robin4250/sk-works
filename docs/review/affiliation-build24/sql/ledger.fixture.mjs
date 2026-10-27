@@ -13,7 +13,7 @@ create table auth.sessions(id uuid primary key,user_id uuid,not_after timestampt
 insert into auth.users values('00000000-0000-0000-0000-000000000001',false,null),('00000000-0000-0000-0000-000000000003',false,null);
 insert into auth.sessions values('00000000-0000-0000-0000-000000000090','00000000-0000-0000-0000-000000000001',null);
 create table private.master_feature_settings(feature_key text primary key,enabled boolean);
-create table public.company_members(company_id uuid,user_id uuid,role text);
+create table public.company_members(company_id uuid,user_id uuid,role text,primary key(company_id,user_id));
 create table public.workers(id uuid,company_id uuid,user_id uuid);
 create table public.companies(id uuid primary key);
 create table public.partner_companies(id uuid primary key,company_id uuid);
@@ -83,4 +83,32 @@ await db.query('select affiliation_transition_candidate.cancel_prepared($1,$2)',
 await db.query('select affiliation_transition_candidate.cancel_prepared($1,$2)',[nextId,'Cancel pending transition']);
 assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.cancellations')).rows[0].n,1);
 assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.requests')).rows[0].n,2);
+
+await db.exec(fs.readFileSync(new URL('./apply-forward.sql.review-only',import.meta.url),'utf8'));
+await db.exec("update private.master_feature_settings set enabled=true");
+await assert.rejects(db.query('select affiliation_transition_candidate.apply_forward($1)',[nextId]),/transition_runtime_not_ready/);
+const applyId='00000000-0000-0000-0000-000000000082';
+const today=(await db.query("select to_char((current_timestamp at time zone 'Asia/Tokyo')::date,'YYYY-MM-DD') d")).rows[0].d;
+const forward={...p,effective_date:today};
+await db.query(`insert into affiliation_transition_candidate.evidence select $1,k,$2,clock_timestamp()+interval '1 hour' from unnest(array['identity_consent','company_match','representative_authority','personal_archive']) k`,[applyId,forward]);
+await db.query('select affiliation_transition_candidate.prepare($1,$2)',[applyId,forward]);
+await db.query('insert into public.company_members values($1,$2,$3)',[p.source_company_id,p.subject_id,'worker']);
+const am='00000000-0000-0000-0000-000000000071';
+await db.query(`insert into personal_vault24_candidate.manifests(id,owner_id,source_company_id,source_worker_id,transition_request_id,snapshot_hash,manifest_hash,expected_count,status,completed_at) values($1,$2,$3,$4,$5,$6,$6,1,'complete',now())`,[am,p.subject_id,p.source_company_id,p.source_worker_id,applyId,snapshot]);
+await db.query('update auth.sessions set user_id=$1',[owner]);await db.query("select set_config('test.actor',$1,false)",[owner]);await db.query('select affiliation_transition_candidate.confirm_target_authority($1)',[applyId]);
+await db.query('update auth.sessions set user_id=$1',[p.subject_id]);await db.query("select set_config('test.actor',$1,false)",[p.subject_id]);await db.query('select affiliation_transition_candidate.confirm_archive($1,$2,$3)',[applyId,am,snapshot]);
+// Fixture-only switch: never an application API or production instruction.
+await db.exec('update affiliation_transition_candidate.runtime_readiness set verified_identity_issuer=true,source_access_boundary=true,worker_lifecycle_boundary=true,rollback_reviewed=true');
+await db.exec(`create function public.fixture_deny_delete() returns trigger language plpgsql as $$begin raise exception 'synthetic_delete_failure';end$$;create trigger fixture_deny_delete before delete on public.company_members for each row execute function public.fixture_deny_delete();`);
+await assert.rejects(db.query('select affiliation_transition_candidate.apply_forward($1)',[applyId]),/synthetic_delete_failure/);
+assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.applications')).rows[0].n,0);
+assert.equal((await db.query('select count(*)::int n from public.company_members where company_id=$1 and user_id=$2',[p.target_company_id,p.subject_id])).rows[0].n,0);
+await db.exec('drop trigger fixture_deny_delete on public.company_members;drop function public.fixture_deny_delete()');
+await db.query('begin');await db.query('select affiliation_transition_candidate.apply_forward($1)',[applyId]);await db.query('commit');
+await db.query('select affiliation_transition_candidate.apply_forward($1)',[applyId]);
+assert.equal((await db.query('select count(*)::int n from public.company_members where company_id=$1 and user_id=$2',[p.source_company_id,p.subject_id])).rows[0].n,0);
+assert.equal((await db.query('select role from public.company_members where company_id=$1 and user_id=$2',[p.target_company_id,p.subject_id])).rows[0].role,'owner');
+assert.equal((await db.query('select count(*)::int n from affiliation_transition_candidate.applications')).rows[0].n,1);
+assert.equal((await db.query('select company_id from public.workers where id=$1',[p.source_worker_id])).rows[0].company_id,p.source_company_id);
+await assert.rejects(db.query('select affiliation_transition_candidate.cancel_prepared($1,$2)',[applyId,'cannot undo applied with cancellation']),/source_admin_required/);
 await db.close();console.log('ledger synthetic checks passed; no real auth or transition execution');
