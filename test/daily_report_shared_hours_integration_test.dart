@@ -569,7 +569,7 @@ void main() {
     expect(find.byType(SignatureCapturePage), findsOneWidget);
     expect(tester.widget<SignatureCapturePage>(find.byType(SignatureCapturePage)).reviewText, contains('7.25時間'));
     expect(reports.reporterSaved, isFalse); expect(shared.supervisorWrites, 0);
-    await tester.pageBack(); await tester.pumpAndSettle();
+    await tester.tap(find.byType(CloseButton)); await tester.pumpAndSettle();
     await tester.scrollUntilVisible(field, -160, scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(field); await tester.pumpAndSettle();
     expect(tester.widget<TextField>(field).controller!.text, '7.25');
@@ -980,7 +980,7 @@ void main() {
     expect(find.byType(SignatureCapturePage), findsOneWidget);
     expect(hours.workersRead.toSet(), containsAll([_worker, _peer]));
     expect(reports.ordinaryReporterWrites, 0);
-    await tester.pageBack();
+    await tester.tap(find.byType(CloseButton));
     await tester.pumpAndSettle();
   });
   testWidgets('supervisor capture waits for server-ready personal facts and shows the frozen report', (tester) async {
@@ -1094,6 +1094,7 @@ void main() {
     expect(reports.draftWrites, 0);
   });
 }
+
 
 
 
