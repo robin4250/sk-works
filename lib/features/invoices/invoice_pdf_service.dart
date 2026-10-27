@@ -23,6 +23,7 @@ import '../../domain/invoice_engine.dart';
 import '../../international/language_controller.dart';
 import '../shared/company_seal_pdf.dart';
 import 'invoice_approval_repository.dart';
+import 'invoice_approval_readiness.dart';
 import 'invoice_preview_raster.dart';
 import 'invoice_preview_failure.dart';
 import 'invoice_native_pdf_view.dart';
@@ -1348,15 +1349,25 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                               icon: const Icon(Icons.badge_outlined),
                               label: Text(SkoLanguageController.isEnglish ? 'Seal surname' : '名字設定'),
                             ),
-                          if (canApprove)
-                            FilledButton.icon(
-                              onPressed: _approving ? null : _approve,
-                              icon: const Icon(Icons.approval_outlined),
-                              label: Text(_approving
-                                  ? (SkoLanguageController.isEnglish ? 'Approving…' : '承認中…')
-                                  : (SkoLanguageController.isEnglish ? 'Approve' : '承認')),
-                            ),
                         ],
+                      ),
+                    ),
+                  if (canApprove)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                      // Fail closed until the server exposes a revision-bound,
+                      // transactionally enforced readiness/approval contract.
+                      child: InvoiceApprovalReadinessNotice(
+                        readiness: InvoiceApprovalReadiness.fromServer(null,
+                          invoiceId: _singleInvoice?.invoiceId ?? '',
+                          revision: _singleInvoice?.documentUpdatedAt ?? ''),
+                        isApprover: canApprove,
+                        busy: _approving,
+                        onApprove: _approve,
+                        onReload: () => setState(() {
+                          _previewRevision++;
+                          _previewData = _buildPreviewData().timeout(const Duration(seconds: 90));
+                        }),
                       ),
                     ),
                   if (_singleInvoice != null)

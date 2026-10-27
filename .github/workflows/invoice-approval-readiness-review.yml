@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'lib/features/invoices/invoice_approval_readiness.dart'
+      - 'lib/features/invoices/invoice_pdf_service.dart'
       - 'test/invoice_approval_readiness_test.dart'
       - '.github/workflows/invoice-approval-readiness-review.yml'
 permissions:
@@ -19,5 +20,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/features/invoices/invoice_approval_readiness.dart test/invoice_approval_readiness_test.dart
+      - run: flutter analyze lib/features/invoices/invoice_pdf_service.dart lib/features/invoices/invoice_approval_readiness.dart test/invoice_approval_readiness_test.dart
       - run: flutter test --reporter expanded test/invoice_approval_readiness_test.dart
