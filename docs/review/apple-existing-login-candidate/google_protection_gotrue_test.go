@@ -52,7 +52,7 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
  })}
  ctx:=oidc.ClientContext(context.Background(),client)
  type tokenResult struct{AccessToken string `json:"access_token"`;RefreshToken string `json:"refresh_token"`;User struct{ID string `json:"id"`} `json:"user"`}
- for _,name:=range []string{"existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID","Apple subject cannot transfer between existing users"}{t.Run(name,func(t *testing.T){
+ for _,name:=range []string{"inactivity refresh rejects despite live session row","existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID","Apple subject cannot transfer between existing users"}{t.Run(name,func(t *testing.T){
   models.TruncateAll(api.db)
   require.NoError(t,api.db.RawQuery("truncate apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout,apple_google_protection.rollout,apple_google_protection.google_subject_owners,apple_google_protection.company_snapshot").Exec())
   createUser:=func(email,googleSub string)*models.User{
@@ -117,6 +117,24 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    var old string;require.NoError(t,api.db.RawQuery("select user_id::text from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&old));require.Equal(t,owner.ID.String(),old);return
   }
   original:=result(idToken("google","existing-google-sub",string(owner.Email),"",false));require.Equal(t,owner.ID.String(),original.User.ID)
+  if name=="inactivity refresh rejects despite live session row"{
+   // Isolated official Auth v2.197.0: config is changed only in this fixture.
+   timeout:=time.Hour;config.Sessions.InactivityTimeout=&timeout
+   defer func(){config.Sessions.InactivityTimeout=nil}()
+   parsed,_,e:=jwt.NewParser().ParseUnverified(original.AccessToken,jwt.MapClaims{});require.NoError(t,e)
+   claims,ok:=parsed.Claims.(jwt.MapClaims);require.True(t,ok)
+   sid,ok:=claims["session_id"].(string);require.True(t,ok);require.NotEmpty(t,sid)
+   require.NoError(t,api.db.RawQuery("update auth.sessions set refreshed_at=now()-interval '2 hours' where id=?",sid).Exec())
+   var n int;require.NoError(t,api.db.RawQuery("select count(*) from auth.sessions where id=?",sid).First(&n));require.Equal(t,1,n)
+   req:=httptest.NewRequest(http.MethodGet,"http://localhost/user",nil);req.Header.Set("Authorization","Bearer "+original.AccessToken)
+   user:=httptest.NewRecorder();api.handler.ServeHTTP(user,req)
+   require.Equal(t,http.StatusOK,user.Code,"getUser can accept an unexpired access token before refresh checks inactivity")
+   require.NotEmpty(t,original.RefreshToken)
+   refreshed:=call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"")
+   require.NotEqual(t,http.StatusOK,refreshed.Code,"the real refresh endpoint enforces inactivity")
+   require.Contains(t,strings.ToLower(refreshed.Body.String()),"inactivity")
+   return
+  }
   if name=="official soft deletion keeps old subject ownership"{
    require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('registered-old-subject',?)",owner.ID).Exec())
    i,e:=models.NewIdentity(owner,"apple",map[string]interface{}{"sub":"registered-old-subject","email":string(owner.Email),"email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(i))
