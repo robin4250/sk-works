@@ -1,0 +1,43 @@
+import {readFile,writeFile,unlink} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
+import {resolve} from 'node:path';
+import assert from 'node:assert/strict';
+const root=resolve(process.env.SKO_ADJUSTMENT_ROOT);
+const version=resolve(process.env.SKO_VERSION_CANDIDATE);
+const wrapper=await readFile(resolve('docs/review/invoice-correction-preview/verify.mjs'),'utf8');
+const stage=await readFile(resolve(version,'revision.sql.review-only'),'utf8');
+const hold=await readFile(resolve(version,'legacy-retirement.sql.review-only'),'utf8');
+const shadow=await readFile(resolve(version,'private-switch.sql.review-only'),'utf8');
+const stageDecl=`const stageCandidate=${JSON.stringify(stage)};const holdCandidate=${JSON.stringify(hold)};const shadowCandidate=${JSON.stringify(shadow)};\n`;
+const injection=`
+await db.exec("create table public.invoice_approvers(company_id uuid,user_id uuid,position smallint); create table public.app_notifications(id uuid);");
+await db.query('insert into public.invoice_approvers values($1,$2,1)',[company,actor]);
+await db.exec(\${JSON.stringify(stageCandidate)});await db.exec(\${JSON.stringify(holdCandidate)});await db.exec(\${JSON.stringify(shadowCandidate)});
+await db.exec('update invoice_revision_candidate.settings set enabled=true;update invoice_revision_candidate.shadow_switch_settings set enabled=true');
+const live=(await db.query('select invoice_correction_preview_private.preview($1) v',[frozen.id])).rows[0].v;
+const proposal=id(970),version=id(971);
+await db.query('select invoice_revision_candidate.stage($1,$2,$3,$4,$5)',[frozen.id,proposal,live.source_fingerprint,live.original_invoice_fingerprint,'合成訂正']);
+const callShadow=()=>db.query('select invoice_revision_candidate.shadow_switch($1,$2) v',[proposal,version]);
+await assert.rejects(callShadow(),/shadow_publication_guard_unavailable/);
+await db.exec("create schema invoice_publication_guard_private;create function invoice_publication_guard_private.assert_safe(p_invoice uuid,p_company uuid,p_source text,p_original text) returns boolean language plpgsql security definer set search_path='' as $$begin if not exists(select 1 from public.invoices where id=p_invoice and company_id=p_company) then return false;end if;perform invoice_correction_preview_private.revalidate_for_commit(p_invoice,p_source,p_original);return true;end$$;");
+await db.query("update attendance_entries set overtime_hours=2 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]);
+await assert.rejects(callShadow(),/revision_preview_changed|invoice_revision_stale/);
+await db.query("update attendance_entries set overtime_hours=1 where company_id=$1 and site_id=$2 and work_date='2026-10-27'",[company,site]);
+await db.exec("create function invoice_revision_candidate.fixture_abort() returns trigger language plpgsql as $$begin raise exception 'fixture_abort';end$$;create trigger fixture_abort before insert on invoice_revision_candidate.shadow_approvals for each row execute function invoice_revision_candidate.fixture_abort();");
+await assert.rejects(callShadow(),/fixture_abort/);
+for(const table of ['shadow_versions','shadow_approvals','shadow_switch_audit'])assert.equal((await db.query('select count(*)::int n from invoice_revision_candidate.'+table)).rows[0].n,0);
+assert.equal((await db.query('select count(*)::int n from invoice_retirement_guard_candidate.holds')).rows[0].n,0);
+await db.exec('drop trigger fixture_abort on invoice_revision_candidate.shadow_approvals');
+const result=(await callShadow()).rows[0].v;assert.equal(result.status,'private_shadow_pending_new_approval');assert.equal(result.replayed,false);
+assert.equal((await callShadow()).rows[0].v.replayed,true);
+assert.equal((await db.query('select count(*)::int n from invoice_revision_candidate.shadow_approvals where state=$1',['pending'])).rows[0].n,1);
+assert.equal((await db.query('select count(*)::int n from public.app_notifications')).rows[0].n,0);
+assert.deepEqual((await db.query('select * from invoices where id=$1',[frozen.id])).rows[0],frozen);
+console.log(JSON.stringify({fixture_real_preview_stage_gate_shadow_integrated:true,stale_rejected:true,abort_rolled_back:true,original_unchanged:true,no_notification:true,retry_idempotent:true,private_shadow_only:true}));
+`;
+const marker='console.log(JSON.stringify({invoice_correction_preview:true';assert.equal(wrapper.split(marker).length,2);
+const generated=resolve(root,'tool/verify_combined.generated.mjs');
+try{
+ await writeFile(generated,wrapper.replace("const marker='let checks=0;'",stageDecl+"const marker='let checks=0;'").replace(marker,injection+marker));
+ const r=spawnSync(process.execPath,[generated,...process.argv.slice(2)],{stdio:'inherit',env:process.env});process.exitCode=r.status??1;
+}finally{await unlink(generated).catch(()=>{});}
