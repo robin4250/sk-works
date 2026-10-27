@@ -4,6 +4,8 @@ on:
     paths:
       - 'lib/features/shifts/own_published_shift_gateway.dart'
       - 'test/own_published_shift_gateway_test.dart'
+      - 'lib/features/shifts/own_published_shift_view.dart'
+      - 'test/own_published_shift_view_test.dart'
       - '.github/workflows/own-published-shift.yml'
 permissions:
   contents: read
@@ -18,5 +20,5 @@ jobs:
           flutter-version: '3.47.5'
           channel: stable
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/features/shifts/own_published_shift_gateway.dart test/own_published_shift_gateway_test.dart
-      - run: flutter test test/own_published_shift_gateway_test.dart
+      - run: flutter analyze lib/features/shifts/own_published_shift_gateway.dart test/own_published_shift_gateway_test.dart lib/features/shifts/own_published_shift_view.dart test/own_published_shift_view_test.dart
+      - run: flutter test test/own_published_shift_gateway_test.dart test/own_published_shift_view_test.dart
