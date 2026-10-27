@@ -55,17 +55,11 @@ class _SkoNotificationBellState extends State<SkoNotificationBell> with WidgetsB
       loadUnread: repository.unreadTargets,
       loadPending: () async {
         final sources = await Future.wait([
-          () async {
-            try { return mapRouteBillingQuantityAttention(
-              await client.rpc('pending_route_billing_quantity_rows'));
-            } catch (_) { return <AttentionCenterItem>[]; }
-          }(),
-          () async {
-            try { return mapQualificationPhotoAttention(
-              await client.rpc('personal_qualification_submission',
-                params: {'p_action': 'list', 'p_data': <String, dynamic>{}}));
-            } catch (_) { return <AttentionCenterItem>[]; }
-          }(),
+          () async => mapRouteBillingQuantityAttention(
+            await client.rpc('pending_route_billing_quantity_rows'))(),
+          () async => mapQualificationPhotoAttention(
+            await client.rpc('personal_qualification_submission',
+              params: {'p_action': 'list', 'p_data': <String, dynamic>{}}))(),
         ]);
         return sources.expand((items) => items).toList();
       },
@@ -83,11 +77,11 @@ class _SkoNotificationBellState extends State<SkoNotificationBell> with WidgetsB
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      tooltip: SkoLanguageController.tr('お知らせ'),
+      tooltip: SkoLanguageController.tr(_badge.uncertain ? 'お知らせを確認できません' : 'お知らせ'),
       onPressed: _open,
       icon: Badge(
-        isLabelVisible: _badge.count > 0,
-        label: Text(_badge.count > 99 ? '99+' : '${_badge.count}'),
+        isLabelVisible: _badge.uncertain || _badge.count > 0,
+        label: Text(_badge.uncertain ? '!' : _badge.count > 99 ? '99+' : '${_badge.count}'),
         child: const Icon(Icons.notifications_outlined, color: Color(0xFFFBC02D)),
       ),
     );
@@ -110,11 +104,12 @@ int routeAwareNotificationBadgeCount(
 /// Account-bound, overlap-safe badge refresh. Old account responses are discarded.
 class NotificationBadgeRefresh {
   int count = 0;
+  bool uncertain = false;
   String? _actor;
   int _generation = 0;
   bool _busy = false;
 
-  void invalidate() { ++_generation; count = 0; _actor = null; }
+  void invalidate() { ++_generation; count = 0; uncertain = false; _actor = null; }
 
   Future<void> refresh({
     required String? Function() currentActor,
@@ -125,6 +120,7 @@ class NotificationBadgeRefresh {
     if (_actor != actor) { invalidate(); _actor = actor; }
     if (actor == null || _busy) return;
     _busy = true;
+    uncertain = true;
     final generation = ++_generation;
     try {
       final unread = await loadUnread();
@@ -132,16 +128,18 @@ class NotificationBadgeRefresh {
         invalidate(); return;
       }
       var pending = const <AttentionCenterItem>[];
+      var pendingFailed = false;
       try { pending = await loadPending(); } catch (_) {
-        // Preserve existing unread notices when the optional task source fails.
+        pendingFailed = true;
       }
       if (generation != _generation || currentActor() != actor) {
         invalidate(); return;
       }
       count = routeAwareNotificationBadgeCount(unread, pending);
+      uncertain = pendingFailed;
     } catch (_) {
-      if (currentActor() != actor) invalidate();
-      // Existing same-account count remains usable on a temporary read failure.
+      if (currentActor() != actor) { invalidate(); } else { uncertain = true; }
+      // Keep the last count, but mark it as unverified.
     } finally { _busy = false; }
   }
 }
