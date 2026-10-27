@@ -1,7 +1,7 @@
 -- Review-only. Restore only if the installed function is unchanged.
 begin;
 set local search_path=''; set local lock_timeout='5s'; set local statement_timeout='45s';
-do $g$ begin if current_user <> 'postgres' or not exists(select 1 from pg_proc p where p.oid='private.qualification_photo_upload_capability()'::regprocedure and md5(p.prosrc)='51baa3933c820e2095ca956263077cd9' and md5((to_jsonb(p)-'prosrc')::text)='1e50d68e375a7b9ad4579ae4c9417306') then raise exception 'qualification_restore_drift'; end if; end $g$;
+do $g$ begin if current_user <> 'postgres' or not exists(select 1 from pg_proc p where p.oid='private.qualification_photo_upload_capability()'::regprocedure and md5(p.prosrc)='5fec9a904cdf5a5c6343891daee60282' and md5((to_jsonb(p)-'prosrc')::text)='1e50d68e375a7b9ad4579ae4c9417306') then raise exception 'qualification_restore_drift'; end if; end $g$;
 CREATE OR REPLACE FUNCTION private.qualification_photo_upload_capability()
  RETURNS boolean
  LANGUAGE sql
