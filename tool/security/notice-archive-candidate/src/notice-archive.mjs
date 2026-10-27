@@ -132,3 +132,29 @@ export async function readNoticeArchive(s,{batchSequence,latestIndependentAnchor
  const current=state(s);if(current.batch_sequence!==q.batch_sequence||current.manifest_hash!==q.manifest_hash||current.anchor_sequence!==q.anchor_sequence||current.anchor_hash!==q.anchor_hash)throw Error('Archive changed; retry');
  return m;
 }
+
+// Review-only read path: independently verify every retained signed audit row.
+// Fresh authenticated independent head and durable witness remain prerequisites.
+export async function readNoticeArchiveWithContinuity(s,input){
+ const result=await readNoticeArchive(s,input),q=state(s);
+ const batches=s.sql.exec('SELECT * FROM notice_archive_batches ORDER BY sequence').toArray();
+ const extensions=s.sql.exec('SELECT * FROM notice_archive_extensions ORDER BY batch_sequence').toArray();
+ if(batches.length!==q.batch_sequence||extensions.length!==batches.length)throw Error('Retained audit history missing');
+ let sequence=0,previous=ZERO,lastTime=-1;
+ for(let i=0;i<batches.length;i++){
+  const bch=batches[i],ext=extensions[i];let rows,audit;
+  try{rows=JSON.parse(ext.rows_json);audit=JSON.parse(bch.audit);}catch{throw Error('Retained audit history invalid');}
+  if(ext.batch_sequence!==i+1||bch.sequence!==i+1||!Array.isArray(rows)||rows.length<1||rows.length>100||te.encode(ext.rows_json).length>450000||JSON.stringify(rows)!==ext.rows_json)throw Error('Retained audit history invalid');
+  for(const row of rows){
+   if(!exact(row,'body,hash,key_id,occurred_at,previous_hash,sequence,signature')||!Number.isSafeInteger(row.sequence)||row.sequence!==sequence+1||row.previous_hash!==previous||row.key_id!==q.audit_key_id||typeof row.body!=='string'||te.encode(row.body).length>4096||!digest(row.hash)||await hash(row.body)!==row.hash||!await verified(JSON.parse(q.audit_jwk),'sko-decoy-audit-v1',row.body,row.signature))throw Error('Retained audit history rejected');
+   let body;try{body=JSON.parse(row.body);}catch{throw Error('Retained audit history rejected');}
+   if(!exact(body,'action,actor_id,after,before,company_id,deployment_id,kind,occurred_at,previous_hash,reason,sequence,v')||body.v!==1||body.deployment_id!==q.deployment_id||body.company_id!==q.company_id||body.sequence!==row.sequence||body.previous_hash!==previous||body.occurred_at!==row.occurred_at||!Number.isSafeInteger(row.occurred_at)||row.occurred_at<0||row.occurred_at>input.now||row.occurred_at<lastTime||!['management','recovery','retention'].includes(body.kind)||(body.kind==='retention'?body.actor_id!=='system_retention':body.actor_id!==q.owner_id))throw Error('Retained audit history binding rejected');
+   sequence=row.sequence;previous=row.hash;lastTime=row.occurred_at;
+  }
+  const last=rows.at(-1);
+  if(['body','hash','key_id','occurred_at','previous_hash','sequence','signature'].some(k=>last[k]!==audit[k]))throw Error('Retained audit history head differs');
+ }
+ if(sequence!==q.anchor_sequence||previous!==q.anchor_hash)throw Error('Retained audit checkpoint differs');
+ const current=state(s);if(current.batch_sequence!==q.batch_sequence||current.manifest_hash!==q.manifest_hash||current.anchor_sequence!==q.anchor_sequence||current.anchor_hash!==q.anchor_hash)throw Error('Archive changed; retry');
+ return result;
+}

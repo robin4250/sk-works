@@ -150,3 +150,15 @@ test('strict extension rows persist through restart and failed insertion rolls b
  assert.deepEqual(await(await f.call('snapshot')).json(),before);
  assert.deepEqual(await(await f.call('extensions')).json(),rows);
 });
+
+
+test('strict read verifies retained intermediate signatures after restart and rejects corruption or missing rows',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('store-strict',{...first,auditExtension:[first.audit]})).status,200);
+ const previous=sha(JSON.stringify(first.manifest)),middle=createBatch(f,{seq:2,previous,anchorSeq:2,previousAudit:first.audit.hash}),last=createBatch(f,{seq:2,previous,anchorSeq:3,previousAudit:middle.audit.hash});
+ assert.equal((await f.call('store-strict',{...last,auditExtension:[middle.audit,last.audit]})).status,200);await f.restart();
+ const args={batchSequence:1,latestIndependentAnchor:last.anchor,now};assert.equal((await f.call('read-strict',args)).status,200);
+ const rows=await(await f.call('extensions')).json(),original=rows[1].rows_json,broken=JSON.parse(original);broken[0].signature='0'.repeat(128);
+ assert.equal((await f.call('tamper-extension',{sequence:2,rows:JSON.stringify(broken)})).status,200);assert.equal((await f.call('read-strict',args)).status,409);
+ assert.equal((await f.call('tamper-extension',{sequence:2,rows:original})).status,200);assert.equal((await f.call('read-strict',args)).status,200);
+ assert.equal((await f.call('delete-extension',{sequence:2})).status,200);assert.equal((await f.call('read-strict',args)).status,409);
+});
