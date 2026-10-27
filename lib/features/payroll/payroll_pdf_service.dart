@@ -1,4 +1,5 @@
 import '../expenses/expense_document_repository.dart';
+import 'payroll_recorded_income_tax_evidence.dart';
 import '../expenses/expense_detail_pdf.dart';
 import '../../domain/company_seal_snapshot.dart';
 import 'dart:typed_data';
@@ -1104,6 +1105,10 @@ class PayrollPdfService {
   }
 
   static String _moneyExplanation(String label, Map<String, dynamic> detail, String month) {
+    if (label == '所得税') {
+      return recordedPayrollIncomeTaxExplanation(detail, month: month,
+          displayedAmount: (_asNumber(detail['所得税']) ?? 0).abs());
+    }
     final direct = detail['$label計算内容'] ?? detail['$label備考'];
     if (direct != null && direct.toString().trim().isNotEmpty) {
       return direct.toString().trim();
@@ -1117,11 +1122,6 @@ class PayrollPdfService {
     }
     final tax = detail['tax_calculation'];
     if (tax is Map) {
-      final conditions = tax['conditions'];
-      if (label == '所得税' && tax['income_table'] != null && conditions is Map) {
-        final column = conditions['income_mode'] == 'koh' ? '甲' : '乙';
-        return '月額表 $column${conditions['dependents']}人';
-      }
       final kind = const {'健康保険料':'health_insurance', '介護保険料':'nursing_insurance',
         '厚生年金保険':'pension_insurance', '雇用保険料':'employment_insurance',
         '子ども・子育て支援金':'child_support'}[label];
@@ -1497,6 +1497,7 @@ class PayrollPdfService {
 
   static String _yen(int value) => '¥${_number(value)}';
 }
+
 
 
 
