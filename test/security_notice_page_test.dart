@@ -21,6 +21,7 @@ void main(){
     await tester.pumpWidget(MaterialApp(home:SecurityNoticePage(repository:repo)));
     await tester.enterText(find.byKey(const ValueKey('notice-password')),'fixture');
     await tester.tap(find.text('本人確認して一覧を表示'));await tester.pump();
+    await tester.runAsync(() async {await Future<void>.delayed(const Duration(milliseconds:50));});await tester.pump();
     for(var i=0;i<50 && find.byType(LinearProgressIndicator).evaluate().isNotEmpty;i++){await tester.pump(const Duration(milliseconds:100));}
     await tester.pump();expect(find.byType(LinearProgressIndicator),findsNothing,reason:'一覧取得を完了できません: available=$availabilityCalls proof=$proofCalls read=$readCalls');
     expect(find.textContaining('未対応'),findsOneWidget);expect(find.textContaining('記録できなかった観測が1件'),findsOneWidget);
