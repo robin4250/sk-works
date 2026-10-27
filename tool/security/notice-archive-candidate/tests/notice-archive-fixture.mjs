@@ -1,4 +1,5 @@
 // TEST ONLY. This fixture is never a production route and contains no real key.
+import {initializeRecoveryProposalFixture,stageRecoveryProposalFixture} from '../src/recovery-proposal-fixture.mjs';
 import {rotateAuthorityFixture,verifyRotationHistoryFixture,verifyHistoricalReceiptFixture} from '../src/anchor-rotation-fixture.mjs';
 import {initializeAnchorAuthority,preserveIndependentAnchor,latestIndependentAnchor} from '../src/anchor-authority.mjs';
 import {initializeNoticeArchive,storeNoticeArchive,storeNoticeArchiveWithContinuity,readNoticeArchive,readNoticeArchiveWithContinuity} from '../src/notice-archive.mjs';
@@ -38,6 +39,9 @@ export class AuthorityFixture{
  constructor(ctx,env){this.ctx=ctx;this.env=env;}
  async fetch(request){const path=new URL(request.url).pathname,s=this.ctx.storage,input=await request.json();try{
   if(path==='/initialize')return Response.json(initializeAnchorAuthority(s,input));
+  if(path==='/recovery-init')return Response.json(initializeRecoveryProposalFixture(s,input));
+  if(path==='/recovery-stage')return Response.json(await stageRecoveryProposalFixture(s,input));
+  if(path==='/recovery-list')return Response.json(s.sql.exec('SELECT nonce FROM recovery_proposals').toArray());
   if(path==='/rotate')return Response.json(await rotateAuthorityFixture(s,{...input,oldKey:await crypto.subtle.importKey('jwk',input.oldKey,'Ed25519',false,['sign']),newKey:await crypto.subtle.importKey('jwk',input.newKey,'Ed25519',false,['sign'])}));
   if(path==='/historical-receipt')return Response.json(await verifyHistoricalReceiptFixture(s,input));
   if(path==='/rotation-history')return Response.json(await verifyRotationHistoryFixture(s,input));

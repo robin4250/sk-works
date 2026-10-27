@@ -14,7 +14,7 @@ const signature=(key,domain,body)=>sign(null,Buffer.from(domain+'\n'+body),key).
 const now=Date.UTC(2026,9,27),day=86400000,zero='0'.repeat(64),owner='owner_1',company='10000000-0000-0000-0000-000000000001',deployment='notice_archive_1';
 async function fixture(t){
  const dir=await mkdtemp(join(tmpdir(),'sko-notice-archive-')),src=join(dir,'src'),tests=join(dir,'tests');await mkdir(src);await mkdir(tests);
- await copyFile(source,join(src,'security-audit.mjs'));await copyFile(anchorSource,join(src,'anchor-authority.mjs'));await copyFile(new URL('../src/notice-archive.mjs', import.meta.url),join(src,'notice-archive.mjs'));await copyFile(new URL('../src/anchor-rotation-fixture.mjs', import.meta.url),join(src,'anchor-rotation-fixture.mjs'));await copyFile(new URL('./notice-archive-fixture.mjs', import.meta.url),join(tests,'notice-archive-fixture.mjs'));
+ await copyFile(source,join(src,'security-audit.mjs'));await copyFile(anchorSource,join(src,'anchor-authority.mjs'));await copyFile(new URL('../src/notice-archive.mjs', import.meta.url),join(src,'notice-archive.mjs'));await copyFile(new URL('../src/anchor-rotation-fixture.mjs', import.meta.url),join(src,'anchor-rotation-fixture.mjs'));await copyFile(new URL('../src/recovery-proposal-fixture.mjs', import.meta.url),join(src,'recovery-proposal-fixture.mjs'));await copyFile(new URL('./notice-archive-fixture.mjs', import.meta.url),join(tests,'notice-archive-fixture.mjs'));
  const audit=key(),anchor=key(),config={deploymentId:deployment,companyId:company,ownerId:owner,auditKeyId:'archive_audit_1',anchorKeyId:'archive_anchor_1',auditJwk:audit.pub,anchorJwk:anchor.pub,retentionMs:7*day};
  const options={modules:true,scriptPath:join(tests,'notice-archive-fixture.mjs'),modulesRoot:dir,compatibilityDate:'2026-07-30',durableObjects:{ARCHIVE:{className:'ArchiveFixture',useSQLite:true},AUTHORITY:{className:'AuthorityFixture',useSQLite:true}},bindings:{FIXTURE_ANCHOR_PRIVATE:JSON.stringify(anchor.privateJwk)},durableObjectsPersist:join(dir,'state'),log:new Log(LogLevel.ERROR)};
  let mf=new Miniflare(options);t.after(async()=>{await mf.dispose();await rm(dir,{recursive:true,force:true});});
@@ -231,4 +231,16 @@ test('fixture archive client reads historical receipt after rotation but holds f
  const args={batchSequence:1,now:now+1,genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'},compatible=await f.call('read-rotated',args);assert.equal(compatible.status,200);assert.deepEqual(await compatible.json(),first.manifest);
  const second=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:first.audit.hash});assert.equal((await f.call('publish-with-key',{publication:{expected_sequence:1,expected_hash:first.audit.hash,records:[second.audit]},now:now+2,key:replacement.privateJwk},'AUTHORITY')).status,200);
  assert.equal((await f.call('read-rotated',{...args,now:now+2})).status,409);
+});
+
+
+test('lost-key recovery proposal requires independent signers and never changes authority',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const before=await(await f.call('latest',{},'AUTHORITY')).json(),recovery=key(),witness=key(),replacement=key();
+ const config={recoveryKeyId:'recovery_1',recoveryJwk:recovery.pub,witnessKeyId:'witness_1',witnessJwk:witness.pub};assert.equal((await f.call('recovery-init',config,'AUTHORITY')).status,200);
+ const proposal={v:1,company_id:company,deployment_id:deployment,checkpoint_sequence:before.payload.sequence,checkpoint_hash:before.payload.hash,old_key_id:before.payload.key_id,new_key_id:'recovered_1',new_jwk:replacement.pub,nonce:randomBytes(32).toString('hex'),issued:now,expires:now+30000};
+ const proof={proposal,recoverySignature:signature(recovery.priv,'sko-anchor-recovery-proposal-fixture-v1',JSON.stringify(proposal)),witnessSignature:signature(witness.priv,'sko-anchor-recovery-proposal-fixture-v1',JSON.stringify(proposal)),newSignature:signature(replacement.priv,'sko-anchor-recovery-proposal-fixture-v1',JSON.stringify(proposal)),now};
+ for(const altered of [{...proof,witnessSignature:'0'.repeat(128)},{...proof,newSignature:'0'.repeat(128)},{...proof,now:now+30001},{...proof,proposal:{...proposal,company_id:'other'}}])assert.equal((await f.call('recovery-stage',altered,'AUTHORITY')).status,409);
+ const attempts=await Promise.all([f.call('recovery-stage',proof,'AUTHORITY'),f.call('recovery-stage',proof,'AUTHORITY')]);assert.equal(attempts.filter(x=>x.status===200).length,1);assert.equal(attempts.filter(x=>x.status===409).length,1);
+ await f.restart();assert.deepEqual(await(await f.call('latest',{},'AUTHORITY')).json(),before);assert.equal((await(await f.call('recovery-list',{},'AUTHORITY')).json()).length,1);
 });
