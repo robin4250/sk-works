@@ -69,12 +69,14 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-save --ignore-scripts pg@8.16.3
+      - run: python3 docs/review/invoice-month-close/generate_legacy_notice_guard.py invoice-calculation-candidate/docs/review/invoice-correction-preview/integration_trigger_bodies.sql.review-only "$RUNNER_TEMP/legacy-notice-guard.sql"
       - run: python3 docs/review/invoice-month-close/generate_approver_core.py invoice-calculation-candidate/docs/review/invoice-correction-preview/preview.sql.review-only "$RUNNER_TEMP/approver-core.sql"
       - run: node docs/review/invoice-month-close/verify_integration.mjs "$PWD/tool/trade_document_adjustments_native_pg17_runtime.mjs"
         env:
           SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
           SKO_ADJUSTMENT_ROOT: ${{ github.workspace }}
           SKO_NOTICE_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification.sql.review-only
+          SKO_LEGACY_GUARD_SQL: ${{ runner.temp }}/legacy-notice-guard.sql
           SKO_APPROVAL_GUARD_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approval_guard.sql.review-only
           SKO_APPROVAL_ENTRY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approval_entry.sql.review-only
           SKO_DELIVERY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification_delivery.sql.review-only
