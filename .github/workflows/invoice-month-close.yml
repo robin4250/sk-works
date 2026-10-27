@@ -28,5 +28,6 @@ jobs:
       - run: node docs/review/invoice-month-close/verify.mjs "$PWD/tool/trade_document_adjustments_native_pg17_runtime.mjs"
         env:
           SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
+          SKO_GUARDED_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/guarded.sql.review-only
           SKO_ROUTE_HELPERS: ${{ github.workspace }}/docs/review/invoice-month-close/route_helpers.production.sql.review-only
           SKO_MONTH_CLOSE_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/precheck.sql.review-only
