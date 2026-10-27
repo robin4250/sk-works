@@ -40,3 +40,8 @@ The existing #1494 full-outbox branch records a count but no affected event's or
 ## Fresh-head challenge boundary experiment
 
 `tests/fresh-head-challenge.test.mjs` uses synthetic Ed25519 keys and an isolated verifier to demonstrate that a signed response must match a freshly generated challenge, scope, time window, and monotonic checkpoint. It rejects replay, a lower sequence, a same-sequence fork, and tampering. This is a contract experiment only: a restored, compromised, or equivocating authority can still sign a stale head using the new challenge. Independent durable witnesses, anti-rollback persistence, authenticated channel, authority/key recovery, correct clock and replay handling, and production integration remain required. No endpoint or source deletion is enabled.
+
+
+## Synthetic chain continuity experiment
+
+`tests/chain-continuity.test.mjs` demonstrates that a larger signed sequence does not by itself prove that a head extends the previously accepted history. The test verifies every link of a short synthetic signed chain and rejects gaps, forks and edits. This is an isolated Node fixture using its own encoding and key; it is not the production audit format, an authenticated independent witness, a bounded scalable proof protocol, or protection against compromised and rolled-back custody. Do not use it for source release or enabling production.
