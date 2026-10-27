@@ -1,0 +1,22 @@
+name: Saved signatures pending finalization
+on:
+  pull_request:
+    paths:
+      - 'lib/features/attendance/checkout_report_resume_action.dart'
+      - 'test/checkout_report_resume_action_test.dart'
+      - '.github/workflows/checkout-signed-draft-label.yml'
+permissions:
+  contents: read
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/attendance/checkout_report_resume_action.dart test/checkout_report_resume_action_test.dart
+      - run: flutter test test/checkout_report_resume_action_test.dart test/checkout_report_resume_repository_test.dart

@@ -13,7 +13,10 @@ String checkoutReportStateLabel(CheckoutReportResumeTarget target) => switch (ta
   CheckoutReportState.missing => '退勤済み・日報未作成',
   CheckoutReportState.draft => '日報の報告者サインが未登録です',
   CheckoutReportState.partialSignature => target.reporterSignatureSaved
-      ? '現場責任者のサイン待ち' : '日報の報告者サインが未登録です',
+      ? target.responsibleSignatureSaved
+          ? 'サイン保存済み・確定待ち'
+          : '現場責任者のサイン待ち'
+      : '日報の報告者サインが未登録です',
   CheckoutReportState.complete => '日報確定済み',
   CheckoutReportState.signedWithoutAttendance => '日報から勤怠への反映確認が必要です',
   CheckoutReportState.protectedPeriod => '確定済み給与の対象です。管理者が確認してください',
@@ -112,9 +115,12 @@ Future<bool> offerCheckoutReportResumeForDay(
   if (!context.mounted) { return true; }
   final message = after.complete
       ? '日報の確定と正式勤怠への反映を確認しました。'
-      : after.reporterSignatureSaved && !after.responsibleSignatureSaved
-          ? '現場責任者のサインがないため、給与に未反映です。'
-          : '退勤は記録済みです。日報の登録・報告者サインを完了してください。';
+      : after.state == CheckoutReportState.partialSignature &&
+          after.reporterSignatureSaved && after.responsibleSignatureSaved
+          ? 'サインは保存済みです。日報の確定と給与・請求への反映は未完了です。'
+          : after.reporterSignatureSaved && !after.responsibleSignatureSaved
+              ? '現場責任者のサインがないため、給与に未反映です。'
+              : '退勤は記録済みです。日報の登録・報告者サインを完了してください。';
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text(SkoLanguageController.tr(message))));
   return true;
