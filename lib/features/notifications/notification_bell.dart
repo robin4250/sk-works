@@ -31,6 +31,9 @@ class _SkoNotificationBellState extends State<SkoNotificationBell> with WidgetsB
         if (!mounted) return;
         setState(_badge.invalidate);
         _refresh();
+      }, onError: (Object error, StackTrace stackTrace) {
+        if (!mounted) return;
+        setState(_badge.authError);
       });
     }
     _refresh();
@@ -120,6 +123,8 @@ class NotificationBadgeRefresh {
   bool _busy = false;
 
   void invalidate() { ++_generation; count = 0; uncertain = false; _actor = null; _busy = false; }
+
+  void authError() { invalidate(); uncertain = true; }
 
   Future<void> refresh({
     required String? Function() currentActor,
