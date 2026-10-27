@@ -22,8 +22,8 @@ revoke all on all tables in schema invoice_revision_candidate from public, anon,
 -- public RPC, publication, approval, share or changes to the original invoice.
 create function invoice_revision_candidate.stage(p_invoice_id uuid,p_command_id uuid,
  p_expected_source text,p_expected_original text,p_reason text)
-returns jsonb language plpgsql security definer set search_path='' as $$
-declare actor uuid:=auth.uid(); sid uuid; old_invoice public.invoices%rowtype;
+returns jsonb language plpgsql security definer set search_path='' set timezone='UTC' as $$
+declare actor uuid:=auth.uid(); sid uuid; cid uuid; old_invoice public.invoices%rowtype;
  prior invoice_revision_candidate.proposals%rowtype; v jsonb; original_hash text; enabled boolean;
 begin
  sid:=private.require_reauthentication_session();
@@ -34,10 +34,17 @@ begin
   raise exception 'revision_request_invalid' using errcode='22023'; end if;
  select s.enabled into enabled from invoice_revision_candidate.settings s where singleton for share;
  if not coalesce(enabled,false) then raise exception 'revision_disabled' using errcode='42501'; end if;
+ select company_id into cid from public.invoices where id=p_invoice_id;
+ if cid is null then raise exception 'revision_denied' using errcode='42501'; end if;
+ -- Serialize a concurrent role/permission revoke with this transaction.
+ perform 1 from public.company_members m where m.company_id=cid and m.user_id=actor for share;
+ if not found then raise exception 'revision_denied' using errcode='42501'; end if;
+ perform 1 from public.member_feature_permissions m where m.company_id=cid and m.user_id=actor for share;
+ if not coalesce(private.has_company_feature(cid,'can_manage_invoices'),false)
+    or not coalesce(private.account_access_allowed(),false) then raise exception 'revision_denied' using errcode='42501'; end if;
  perform pg_advisory_xact_lock(hashtextextended(p_invoice_id::text, 271011));
  select * into old_invoice from public.invoices where id=p_invoice_id for update;
- if not found or not coalesce(private.has_company_feature(old_invoice.company_id,'can_manage_invoices'),false)
-    or not coalesce(private.account_access_allowed(),false) then raise exception 'revision_denied' using errcode='42501'; end if;
+ if not found or old_invoice.company_id is distinct from cid then raise exception 'revision_denied' using errcode='42501'; end if;
  select * into prior from invoice_revision_candidate.proposals where id=p_command_id;
  if found then
    if prior.original_invoice_id<>p_invoice_id or prior.actor_id<>actor or prior.session_id<>sid
@@ -48,7 +55,7 @@ begin
  if old_invoice.invoice_seal_frozen is distinct from true then raise exception 'revision_original_not_frozen' using errcode='22023'; end if;
  if exists(select 1 from invoice_revision_candidate.proposals p where p.original_invoice_id=p_invoice_id and p.state='prepared') then
   raise exception 'revision_existing_proposal' using errcode='40001'; end if;
- original_hash:=encode(extensions.digest(convert_to(to_jsonb(old_invoice)::text,'UTF8'),'sha256'),'hex');
+ original_hash:=encode(sha256(convert_to(to_jsonb(old_invoice)::text,'UTF8')),'hex');
  if original_hash<>p_expected_original then raise exception 'revision_original_changed' using errcode='40001'; end if;
  -- The trusted read-only preview is independently owned and has not yet been
  -- wired. The function cannot operate until its real dependency is installed.
