@@ -15,3 +15,13 @@
 Nodeテストはparser・DB・readerをmockした契約境界試験。実Sharp/pdfjsの本番稼働確認ではない。PGlite/Native PostgreSQL17は合成Auth・Storage・Cron metadataを使い、実GoTrueや実Cron workerは実行しない。
 
 未完成：実GoTrue endpoint、権限付きDB adapter、実Storage immutable versionの保証、CPU/メモリ/時間制限付きparserの配備、全restrictive/permissive policyとの併用、本人写真能力の回帰、実Cron、孤立ファイルcleanupと保存期限、導入/復旧ガード、マスター制御、実機UI。これらが満たされるまで新規写真・差し替えを利用可能と表示しない。
+
+## HTTP・DB adapter候補（未登録）
+
+`createQualificationInspectionHttpEndpoint` はFetch handlerを返すだけで公開routeを登録しない。POST/HTTPS/登録path・Bearer・application/jsonを要求し、request_id/slot_idのliteral UUID二項目だけを受ける。duplicate/escaped keysや他項目は拒否する。bodyは1024 bytes/256 chunks、読み取り期限を設ける。Body/auth/rate依存だけの期限であり、検査全体の実行時間やparser停止を保証するものではない。応答はno-store、固定error codeのみでtoken・path・DB例外を記録/返却しない。
+
+rateLimiterはhost所有の共有・原子的なbackendを注入する契約。ingress 60件/分と検証済みactor 20件/分を要求し、未構成・障害時はfail closed。trusted contextのclientKeyはhostが実ネットワーク情報から作るHMACであり、bodyやX-Forwarded-For等のheaderから採らない。共有limiter/HMAC鍵/実session verifierの運用配備は未提供。
+
+`createQualificationUploadDbAdapter` はhost所有poolから専用clientを取得し、固定SQL・BEGIN/COMMIT/ROLLBACK、statement 5秒/lock 3秒を設定するコード。proofはallowlistを接続待ち前にコピーする。SQL/credentialsをHTTP入力から受けない。rollback異常はclientを破棄し、COMMIT結果不明は成功にしない。
+
+Nativeはfixture ownerだけで確認する。本番用の最小権限role/grants・TLS/CA・credential・bounded max poolとconnectionTimeoutMillisの設定は未提供。本番superuserやservice_roleを流用してNO GRANTを迂回する配備は禁止。pool取得期限、immutable reader期限、parser workerのCPU/メモリ/壁時計期限と実プロセス終了はhost側で必要。HTTP全体にPromise.raceを置くだけではunderlying処理を停止できない。実broker/reader/parser/GoTrue/Storage policy/実Cron/実機を完成扱いにしない。
