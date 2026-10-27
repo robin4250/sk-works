@@ -1071,9 +1071,7 @@ class _MonthCalendarCell extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900),
-              )
-            else
-              const SizedBox(height: 10),
+              ),
             if (day?.pendingReports.isNotEmpty == true)
               _PendingReportLabels(day: day!, compact: true),
           ],
