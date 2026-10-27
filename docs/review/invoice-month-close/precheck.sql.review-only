@@ -1,0 +1,24 @@
+-- REVIEW-ONLY: no grants, triggers, rollout, notification or production changes.
+-- This is an incomplete, fail-closed diagnostic. It never authorizes approval.
+create schema invoice_month_close_candidate;
+revoke all on schema invoice_month_close_candidate from public,anon,authenticated,service_role;
+create function invoice_month_close_candidate.precheck(p_invoice uuid)
+returns text language plpgsql volatile security definer set search_path='' as $$
+declare inv public.invoices%rowtype;
+begin
+ select * into inv from public.invoices where id=p_invoice;
+ if not found or inv.company_id is null or inv.customer_id is null or inv.billing_period_start is null or inv.billing_period_end is null or inv.billing_period_end<inv.billing_period_start then return 'unavailable';end if;
+ if (clock_timestamp() at time zone 'Asia/Tokyo')::date<=inv.billing_period_end then return 'period_open';end if;
+ -- Route attribution spans multiple customers and needs the existing route contract;
+ -- fail closed rather than attributing another customer's visit by guesswork.
+ if exists(select 1 from public.attendance_verifications a where a.company_id=inv.company_id and a.work_date between inv.billing_period_start and inv.billing_period_end and a.route_assignment_id is not null) then return 'route_unverified';end if;
+ if not exists(select 1 from public.attendance_verifications a join public.sites s on s.id=a.site_id and s.company_id=a.company_id where a.company_id=inv.company_id and s.customer_id=inv.customer_id and a.work_date between inv.billing_period_start and inv.billing_period_end and a.event_type='clock_in') then return 'work_unverified';end if;
+ -- All clock-ins for the customer, not just the last day, need their own checkout.
+ if exists(select 1 from public.attendance_verifications a join public.sites s on s.id=a.site_id and s.company_id=a.company_id where a.company_id=inv.company_id and s.customer_id=inv.customer_id and a.work_date between inv.billing_period_start and inv.billing_period_end and a.event_type='clock_in' and not exists(select 1 from public.attendance_verifications o where o.company_id=a.company_id and o.worker_id=a.worker_id and o.event_type='clock_out' and o.source_clock_in_id=a.id and o.confirmed_at>=a.confirmed_at)) then return 'checkout_pending';end if;
+ -- A signed report must be linked to each clock-in's checkout and worker.
+ if exists(select 1 from public.attendance_verifications a join public.sites s on s.id=a.site_id and s.company_id=a.company_id where a.company_id=inv.company_id and s.customer_id=inv.customer_id and a.work_date between inv.billing_period_start and inv.billing_period_end and a.event_type='clock_in' and not exists(select 1 from public.attendance_verifications o join public.daily_reports r on r.id=o.daily_report_id and r.company_id=a.company_id and r.site_id=a.site_id and r.report_date=a.work_date join public.daily_report_workers w on w.report_id=r.id and w.worker_id=a.worker_id where o.company_id=a.company_id and o.worker_id=a.worker_id and o.event_type='clock_out' and o.source_clock_in_id=a.id and o.confirmed_at>=a.confirmed_at and r.status='signed' and r.signed_at is not null and r.representative_signature_json is not null and r.supervisor_signature_json is not null)) then return 'report_pending';end if;
+ -- No reliable immutable source fingerprint is currently saved on the existing
+ -- invoice. Never claim ready even if the visible times and signatures match.
+ return 'source_proof_missing';
+end $$;
+revoke all on function invoice_month_close_candidate.precheck(uuid) from public,anon,authenticated,service_role;
