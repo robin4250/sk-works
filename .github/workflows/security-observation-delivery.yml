@@ -1,0 +1,72 @@
+name: Security observation durable delivery candidate
+on:
+  pull_request:
+    paths:
+      - 'tool/security/observation-notice-candidate/**'
+      - '.github/workflows/security-observation-delivery.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-pglite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/sko-notice" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
+      - run: PGLITE_MODULE="$RUNNER_TEMP/sko-notice/node_modules/@electric-sql/pglite/dist/index.js" node tool/security/observation-notice-candidate/verify-isolated.mjs
+  native-pg17-signed-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: notice-fixture-only
+          POSTGRES_DB: security_notice_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d security_notice_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SKO_NOTICE_PG_FIXTURE_URL: postgresql://postgres:notice-fixture-only@127.0.0.1:5432/security_notice_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node tool/security/observation-notice-candidate/verify-native.mjs "$PWD/tool/security/fixture_dependencies/node_modules/pg/lib/index.js"
+  real-gotrue-notice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node tool/security/observation-notice-candidate/verify-gotrue.mjs
+  notice-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze lib/features/security/security_notice_repository.dart lib/features/security/security_notice_page.dart lib/features/security/security_collector_page.dart test/security_notice_page_test.dart
+      - run: flutter test --reporter expanded test/security_notice_page_test.dart test/security_collector_page_test.dart

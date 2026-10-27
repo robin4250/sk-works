@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'security_collector_repository.dart';
+import 'security_notice_page.dart';
 
 /// Read-only UI; collection, keys and both server gates are never activated here.
 class SecurityCollectorPage extends StatefulWidget {
@@ -113,6 +114,9 @@ class _SecurityCollectorPageState extends State<SecurityCollectorPage> with Widg
       if (_error != null) Text(_error!),
       if (!_checking && !_available && _error == null)
         const Text('未接続または提供準備中です。記録なし・安全確認済みという意味ではありません。'),
+      if (_available && !_revoked)
+        OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SecurityNoticePage())),
+          icon: const Icon(Icons.notifications_outlined), label: const Text('監視の通知・対応')),
       if (_available && !_revoked) ...[
         TextField(key: const ValueKey('collector-password'), controller: _password,
           enabled: !_busy, obscureText: true, autocorrect: false, enableSuggestions: false,
