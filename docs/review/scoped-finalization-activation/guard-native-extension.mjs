@@ -12,9 +12,10 @@ const marker="await client.query('insert into explicit_report_finalization_priva
 assert.equal(original.split(marker).length,2);
 const activate=await readFile(resolve(root,'activate.guarded.sql.review-only'),'utf8');
 const restore=await readFile(resolve(root,'restore-unused.guarded.sql.review-only'),'utf8');
-const before=JSON.parse(await readFile(resolve(root,'before.fixture.json'),'utf8'))[0].result;
+const before=JSON.parse(await readFile(resolve(root,'before.private.json'),'utf8'))[0].result;
 let payload=`
  // Only fixture-specific UUID/row/catalog fingerprints are substituted.
+ await client.query('create table if not exists public.invoice_detail_lines (id uuid primary key)');
  const sourceTarget=${JSON.stringify(before.target)};
  const sourceRoutineHash=${JSON.stringify(before.routine_catalog_md5)};
  const guardCatalog=await q("select md5(string_agg(p.oid::text||':'||md5(to_jsonb(p)::text),',' order by p.oid)) v from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('explicit_report_finalization_private','explicit_route_finalization_private','shared_daily_report_private','checkout_shared_hours_private') or (n.nspname='public' and p.proname in ('start_shared_report_finalization_edit','finalize_shared_daily_report','read_shared_daily_report_context','sign_daily_report'))");
