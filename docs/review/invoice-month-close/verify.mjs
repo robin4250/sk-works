@@ -105,7 +105,14 @@ await db.query("update public.invoice_approvals set status='pending' where invoi
 assert.equal(await current(firstNotice),false);assert.notEqual((await notice()).rows[0].v,firstNotice);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,2);
 if(process.env.SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL){
  await db.query('delete from invoice_month_close_candidate.notice_intents');const {connectFixture}=await import(process.argv[2]);const a=await connectFixture(),b=await connectFixture();
- try{const items=await Promise.all([a.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker]),b.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker])]);assert.equal(items[0].rows[0].v,items[1].rows[0].v);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,1);}finally{await a.end();await b.end();}
+ try{
+  const items=await Promise.all([a.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker]),b.query('select invoice_month_close_candidate.prepare_notice($1,$2) v',[invoice,worker])]);assert.equal(items[0].rows[0].v,items[1].rows[0].v);assert.equal((await db.query('select count(*)::int n from invoice_month_close_candidate.notice_intents')).rows[0].n,1);
+  const fresh=items[0].rows[0].v;const token=(await db.query('select invoice_month_close_candidate.issue_notice_ticket($1) v',[fresh])).rows[0].v.ticket_id;
+  for(const c of [a,b])await c.query("select set_config('test.uid',$1,false),set_config('test.sid',$2,false)",[worker,id(70)]);
+  const results=await Promise.allSettled([a.query('select invoice_month_close_candidate.consume_notice_ticket($1) v',[token]),b.query('select invoice_month_close_candidate.consume_notice_ticket($1) v',[token])]);
+  assert.equal(results.filter(x=>x.status==='fulfilled').length,1);assert.equal(results.filter(x=>x.status==='rejected'&&/notice_unavailable/.test(x.reason.message)).length,1);
+  console.log(JSON.stringify({fixture_concurrent_ticket_exactly_once:true}));
+ }finally{await a.end();await b.end();}
 }
 for(const role of ['anon','authenticated','service_role']){assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.issue_notice_ticket(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.consume_notice_ticket(uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.prepare_notice(uuid,uuid)','EXECUTE') v",[role])).rows[0].v,false);assert.equal((await db.query("select has_function_privilege($1,'invoice_month_close_candidate.notice_current(uuid)','EXECUTE') v",[role])).rows[0].v,false);}
 console.log(JSON.stringify({fixture_notice_off_by_default:true,missing_trusted_readiness_denied:true,pending_approver_checked:true,duplicate_intent_deduplicated:true,changed_revision_new_intent:true,recipient_session_expiry_replay_checked:true,stale_notice_rejected:true,actual_delivery_absent:true}));
