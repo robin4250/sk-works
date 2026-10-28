@@ -82,6 +82,32 @@ class InspectionCandidateTest(unittest.TestCase):
                 self.inspect(data)
             self.assertEqual(data, original)
 
+    def test_associated_files_without_embedded_file_name_tree_rejected(self):
+        def associated(d, p):
+            stream = d.get_new_xref()
+            d.update_object(stream, '<< /Type /EmbeddedFile >>')
+            d.update_stream(stream, b'OTHER_PRIVATE')
+            spec = d.get_new_xref()
+            d.update_object(spec, f'<< /Type /Filespec /F (private.txt) /EF << /F {stream} 0 R >> >>')
+            d.xref_set_key(d.pdf_catalog(), "AF", f'[{spec} 0 R]')
+
+        def inline_associated(d, p):
+            d.xref_set_key(p.xref, "AF", '[<< /Type /Filespec /F (OTHER_PRIVATE) >>]')
+
+        def portfolio(d, p):
+            d.xref_set_key(d.pdf_catalog(), "Collection", '<< /Type /Collection >>')
+
+        for extra in (associated, inline_associated, portfolio):
+            data = self.build(extra)
+            with pymupdf.open(stream=data, filetype="pdf") as doc:
+                self.assertEqual(doc.embfile_count(), 0)
+                self.assertIn("Only Owner", doc[0].get_text())
+            original = bytes(data)
+            with self.subTest(extra=extra.__name__), self.assertRaisesRegex(
+                    ValueError, "vault_content_active_structure_rejected"):
+                self.inspect(data, forbidden_markers=["OTHER_PRIVATE"])
+            self.assertEqual(data, original)
+
     def test_action_words_in_normal_text_are_not_action_dictionaries(self):
         data = self.build(lambda d, p: p.insert_text((72, 110),
                          '/OpenAction /JavaScript are fixture text, not executable'))

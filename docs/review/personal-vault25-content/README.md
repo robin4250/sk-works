@@ -15,3 +15,10 @@ The text-only observation worker now rejects known document/page actions, JavaSc
 These checks are a narrow safety improvement to this review-only observer, not a full PDF security/privacy scanner, independent source-owner validation, or permission to issue a `passed` delivery proof. Hidden/unrecognized PDF data, source authenticity and immutable Storage remain unresolved. Legitimate signature/seal originals are unchanged and are not deleted or sanitized. The existing image limitation remains restricted to the text-only generated fixture.
 
 Reference: [PyMuPDF parsed dictionary inspection](https://pymupdf.readthedocs.io/en/latest/document.html#Document.xref_get_keys). Local Python 5 test methods pass with PyMuPDF 1.26.6. Flutter/rendered-document verification is left to the existing dedicated CI; no local Flutter/Dart was run.
+
+
+## Associated-file bypass regression (2026-10-28)
+
+The prior observer accepted a PDF whose catalog AF array pointed to a Filespec and EmbeddedFile stream containing a forbidden marker: embfile_count() was zero and visible page text belonged to the expected owner. The text-only observer now rejects associated-file (AF/EF), portfolio (Collection), Filespec and EmbeddedFile structures. Tests include catalog references, inline page-associated files and an empty-name-tree portfolio; original bytes remain unchanged. Six Python methods pass locally. Earlier head e351170d generated-renderer CI 40664038909 succeeded; this head requires its own CI.
+
+This closes the demonstrated structural bypass only. It does not authenticate owner/source, inspect every hidden PDF representation, issue a privacy proof, or establish immutable retention. Valid signature/seal originals and production renderer/Storage remain unchanged. No production deployment or activation is performed.

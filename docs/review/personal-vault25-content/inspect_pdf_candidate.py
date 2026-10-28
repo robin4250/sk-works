@@ -20,15 +20,21 @@ def reject_active_structures(doc):
     if doc.xref_length() > 50_000:
         raise ValueError("vault_content_object_limit")
     active_keys = {"OpenAction", "AA", "JS", "JavaScript", "XFA",
-                   "RichMediaContent", "RichMediaSettings"}
+                   "RichMediaContent", "RichMediaSettings",
+                   "AF", "EF", "Collection"}
     action_names = {"/GoTo", "/GoToR", "/GoToE", "/Launch", "/Thread", "/URI",
                     "/Sound", "/Movie", "/Hide", "/Named", "/SubmitForm",
                     "/ResetForm", "/ImportData", "/JavaScript", "/SetOCGState",
                     "/Rendition", "/Trans", "/GoTo3DView"}
     for xref in range(1, doc.xref_length()):
+        # Associated files need not appear in the EmbeddedFiles name tree.
+        # A visually text-only page can otherwise hide an arbitrary file stream.
         if active_keys.intersection(doc.xref_get_keys(xref)):
             raise ValueError("vault_content_active_structure_rejected")
         if doc.xref_get_key(xref, "Names/JavaScript")[0] != "null":
+            raise ValueError("vault_content_active_structure_rejected")
+        if doc.xref_get_key(xref, "Type") in (("name", "/Filespec"),
+                                                 ("name", "/EmbeddedFile")):
             raise ValueError("vault_content_active_structure_rejected")
         for key in ("S", "A/S", "Next/S"):
             kind, value = doc.xref_get_key(xref, key)
