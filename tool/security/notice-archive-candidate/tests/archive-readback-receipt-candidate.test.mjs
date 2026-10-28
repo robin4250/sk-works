@@ -95,13 +95,22 @@ test('store methods/public key are pinned and signer buffer/signature changes ca
  await assert.rejects(bad.observe({authority_id:authority,challenge:'7'.repeat(64),descriptor:f.descriptor}));
  assert.throws(()=>f.attestor({key:f.keys.privateKey.export({format:'jwk'})}));
 });
-test('restore deadline prevents late signing and signing timeout never auto-retries',async t=>{
+test('restore deadline prevents late signing and signing timeout never auto-retries',{timeout:5000},async t=>{
  const f=await fixture(t);let release;
  const wait=new Promise(r=>release=r),a=f.attestor({timeoutMs:5,store:{async restore(){await wait;return f.payload;}}}),i={authority_id:authority,challenge:'8'.repeat(64),descriptor:f.descriptor};
  await assert.rejects(a.observe(i),/readback unavailable/);release();await delay(10);assert.equal(f.signs(),0);
- let signs=0;
- const slow=f.attestor({timeoutMs:5,signObservation:async bytes=>{signs++;await delay(20);return sign(null,bytes,f.keys.privateKey);}});
- await assert.rejects(slow.observe(i));await delay(25);assert.equal(signs,1);
+ // Complete actual filesystem restore before starting this separate signer
+ // timeout case. Under broad CI load, restore itself may exceed 5 ms, which
+ // correctly prevents signing and cannot test a started signer's timeout.
+ const restored=await f.store.restore(f.descriptor);let signs=0,start,releaseSigner,finish;
+ const signerStarted=new Promise(r=>start=r),signerRelease=new Promise(r=>releaseSigner=r),signerFinished=new Promise(r=>finish=r);
+ const slow=f.attestor({timeoutMs:5,store:{async restore(){return Buffer.from(restored);}},signObservation:async bytes=>{
+  signs++;start();await signerRelease;
+  try{return sign(null,bytes,f.keys.privateKey);}finally{finish();}
+ }});
+ const unknown=assert.rejects(slow.observe(i),/readback unavailable/);
+ await signerStarted;await unknown;assert.equal(signs,1);
+ releaseSigner();await signerFinished;assert.equal(signs,1);
  let requests=0;const v=f.verifier({timeoutMs:5,fetchObservation:async()=>{requests++;await delay(20);throw Error('fixture token must not leak');}});
  await assert.rejects(v.verify(f.descriptor),e=>e.message==='archive readback unavailable');await delay(25);assert.equal(requests,1);
 });
