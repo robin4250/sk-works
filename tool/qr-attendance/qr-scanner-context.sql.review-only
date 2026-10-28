@@ -1,0 +1,54 @@
+-- Review-only internal context. Registration, public APIs and normal QR writer
+-- are absent. No existing employee RLS or verification-mode rule is replaced.
+begin;
+create table qr_attendance_private.registered_scanners(
+ device_id uuid primary key,
+ company_id uuid not null references public.companies(id) on delete no action,
+ actor_id uuid not null references auth.users(id) on delete no action,
+ public_key_der bytea not null check(octet_length(public_key_der)=44),
+ revoked_at timestamptz,
+ created_at timestamptz not null default clock_timestamp()
+);
+alter table qr_attendance_private.registered_scanners enable row level security;
+revoke all on qr_attendance_private.registered_scanners from public,anon,authenticated;
+
+create function qr_attendance_private.load_scanner_context(
+ p_company uuid,p_device uuid,p_worker uuid,p_subject_user uuid
+) returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();sid uuid;scanner qr_attendance_private.registered_scanners%rowtype;
+begin
+ perform qr_attendance_private.require_enabled();
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null then raise sqlstate '42501' using message='qr_context_denied';end if;
+ -- Keep the live scanner session through the same attendance transaction.
+ perform 1 from auth.sessions where id=sid and user_id=actor for share;
+ if not found then raise sqlstate '42501' using message='qr_context_denied';end if;
+ select * into scanner from qr_attendance_private.registered_scanners
+ where device_id=p_device and company_id=p_company and actor_id=actor and revoked_at is null for share;
+ if not found then
+   raise sqlstate '42501' using message='qr_context_denied';
+ end if;
+ -- This subset supports authorized company attendance managers only. A kiosk
+ -- operator without this existing permission is NOT implicitly elevated.
+ perform 1 from public.company_members where company_id=p_company and user_id=actor for share;
+ if not found or private.has_company_feature(p_company,'can_manage_attendance') is distinct from true then raise sqlstate '42501' using message='qr_context_denied';end if;
+ -- Lock account rows in UUID order; then repeat the existing live-session check
+ -- after any lock wait. Neither deleted/banned/anonymous account is accepted.
+ perform 1 from auth.users where id in (actor,p_subject_user) order by id for share;
+ if sid is distinct from private.require_reauthentication_session() or not exists(
+   select 1 from auth.users where id=actor and deleted_at is null
+    and coalesce(is_anonymous,false)=false and (banned_until is null or banned_until<=clock_timestamp())
+ ) or not exists(
+   select 1 from auth.users where id=p_subject_user and deleted_at is null
+    and coalesce(is_anonymous,false)=false and (banned_until is null or banned_until<=clock_timestamp())
+ ) then raise sqlstate '42501' using message='qr_context_denied';end if;
+ perform 1 from public.workers where id=p_worker and company_id=p_company
+   and user_id=p_subject_user and status='active' for share;
+ if not found then raise sqlstate '42501' using message='qr_context_denied';end if;
+ return jsonb_build_object('actor',actor,'session',sid,'sessionActive',true,
+   'scannerAuthorized',true,'deviceActive',true,'subjectActive',true,'qrEnabled',true,
+   'publicKeyHex',encode(scanner.public_key_der,'hex'));
+end $$;
+revoke all on function qr_attendance_private.load_scanner_context(uuid,uuid,uuid,uuid)
+ from public,anon,authenticated;
+commit;

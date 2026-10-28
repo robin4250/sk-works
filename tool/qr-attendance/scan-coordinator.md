@@ -75,3 +75,26 @@ There is no production FK mapping, enrollment/issuance endpoint, authorized
 scanner writer or production grant. Private-table ownership is not independent
 immutable storage. A privileged owner could delete data; no archival or recovery
 guarantee is established. All rollout flags remain OFF.
+
+## Internal scanner context candidate
+
+`qr-scanner-context.sql.review-only` adds a client-private registered scanner
+table and a private context loader using the existing live-session helper and
+company attendance permission. It locks the authenticated scanner's session,
+registration, membership and account rows, and the exact active subject worker.
+Accounts that are deleted, banned or anonymous are rejected. Permission is checked
+after membership locking; the existing session helper is repeated after lock waits.
+The scanner remains the actor: the subject's identity is never minted as a JWT.
+
+This limited subset requires the scanner operator's existing
+`can_manage_attendance` permission. It does not elevate an ordinary kiosk user.
+No registration procedure, key enrollment, public grant or endpoint exists.
+The Node SQL loader passes only locked server-ledger scope and checks the returned
+actor/session and Ed25519 public-key encoding before giving context to the verifier.
+
+Native tests use the actual new context and ledger SQL with synthetic Auth/session/
+permission fixtures and a toy attendance writer. They do not prove real GoTrue
+authorization or the SKO writer. The existing normal evidence schema does not
+support `qr` verification mode yet; it is NOT mislabeled as manual/GPS/photo.
+QR mode, route/photo/report compatibility, authoritative issuance and the real
+regular attendance writer remain unresolved activation blockers. Production stays OFF.
