@@ -10,6 +10,32 @@ import re
 import pymupdf
 
 
+def reject_active_structures(doc):
+    """Reject known active structures without rewriting the original PDF.
+
+    This bounded inspection is not a complete PDF content/privacy validator.
+    PyMuPDF resolves PDF name escaping and indirect dictionary paths here;
+    scanning the original byte string would miss encoded or compressed names.
+    """
+    if doc.xref_length() > 50_000:
+        raise ValueError("vault_content_object_limit")
+    active_keys = {"OpenAction", "AA", "JS", "JavaScript", "XFA",
+                   "RichMediaContent", "RichMediaSettings"}
+    action_names = {"/GoTo", "/GoToR", "/GoToE", "/Launch", "/Thread", "/URI",
+                    "/Sound", "/Movie", "/Hide", "/Named", "/SubmitForm",
+                    "/ResetForm", "/ImportData", "/JavaScript", "/SetOCGState",
+                    "/Rendition", "/Trans", "/GoTo3DView"}
+    for xref in range(1, doc.xref_length()):
+        if active_keys.intersection(doc.xref_get_keys(xref)):
+            raise ValueError("vault_content_active_structure_rejected")
+        if doc.xref_get_key(xref, "Names/JavaScript")[0] != "null":
+            raise ValueError("vault_content_active_structure_rejected")
+        for key in ("S", "A/S", "Next/S"):
+            kind, value = doc.xref_get_key(xref, key)
+            if kind == "name" and value in action_names:
+                raise ValueError("vault_content_active_structure_rejected")
+
+
 def inspect_candidate(data, *, expected_sha256, expected_owner, forbidden_markers=()):
     if (not isinstance(data, bytes) or not 12 <= len(data) <= 50 * 1024 * 1024
             or not isinstance(expected_sha256, str)
@@ -25,6 +51,7 @@ def inspect_candidate(data, *, expected_sha256, expected_owner, forbidden_marker
                 or not 1 <= doc.page_count <= 100 or doc.embfile_count()
                 or doc.get_ocgs() or doc.get_xml_metadata()):
             raise ValueError("vault_content_structure_rejected")
+        reject_active_structures(doc)
         pages = []
         for page in doc:
             if (list(page.annots() or ()) or list(page.widgets() or ())
@@ -44,3 +71,4 @@ def inspect_candidate(data, *, expected_sha256, expected_owner, forbidden_marker
             "page_count": doc.page_count,
             "text_sha256": hashlib.sha256(text.encode()).hexdigest(),
         }
+

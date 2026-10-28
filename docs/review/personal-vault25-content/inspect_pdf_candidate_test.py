@@ -51,6 +51,43 @@ class InspectionCandidateTest(unittest.TestCase):
             with self.subTest(extra=extra), self.assertRaises(ValueError):
                 self.inspect(self.build(extra))
 
+    def test_known_active_structures_rejected_without_page_annotations(self):
+        def direct_open_action(d, p):
+            d.xref_set_key(d.pdf_catalog(), "OpenAction",
+                           '<< /S /JavaScript /JS (fixture-script) >>')
+
+        def escaped_open_action(d, p):
+            direct_open_action(d, p)
+            catalog = d.xref_object(d.pdf_catalog()).replace('/OpenAction', '/#4fpenAction')
+            d.update_object(d.pdf_catalog(), catalog)
+
+        def named_script(d, p):
+            d.xref_set_key(d.pdf_catalog(), "Names",
+                           '<< /JavaScript << /Names [(fixture) << /S /JavaScript /JS (fixture-script) >>] >> >>')
+
+        def page_action(d, p):
+            d.xref_set_key(p.xref, "AA", '<< /O << /S /Launch /F (fixture) >> >>')
+
+        def indirect_script(d, p):
+            xref = d.get_new_xref()
+            d.update_object(xref, '<< /S /JavaScript /JS (fixture-script) >>')
+            d.xref_set_key(d.pdf_catalog(), "OpenAction", f'{xref} 0 R')
+
+        for extra in (direct_open_action, escaped_open_action, named_script,
+                      page_action, indirect_script):
+            data = self.build(extra)
+            original = bytes(data)
+            with self.subTest(extra=extra.__name__), self.assertRaisesRegex(
+                    ValueError, "vault_content_active_structure_rejected"):
+                self.inspect(data)
+            self.assertEqual(data, original)
+
+    def test_action_words_in_normal_text_are_not_action_dictionaries(self):
+        data = self.build(lambda d, p: p.insert_text((72, 110),
+                         '/OpenAction /JavaScript are fixture text, not executable'))
+        self.assertEqual(self.inspect(data)['page_count'], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
+
