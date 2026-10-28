@@ -107,6 +107,27 @@ void main() {
     expect(isolatedRequests.every((request) => request.method == 'GET'), isTrue);unchanged();
     preparation.invalidate();expect(preparation.ready, isFalse);
   });
+  test('separate preparations cannot concurrently receive for one application client', () async {
+    final received = Completer<void>(), delivered = Completer<Map<String, dynamic>>();
+    var calls = 0;
+    final first = make(enabled: true), second = make(enabled: true);
+    final result = first.prepare(requestId: requestId, receiveOnce: () async {
+      calls++; received.complete(); return delivered.future;
+    });
+    await received.future;
+    await expectLater(second.prepare(requestId: requestId, receiveOnce: () async {
+      calls++; return envelope();
+    }), throwsStateError);
+    // Disposing the rejected instance must not release the active owner's lease.
+    await second.dispose();
+    await expectLater(make(enabled: true).prepare(requestId: requestId, receiveOnce: () async {
+      calls++; return envelope();
+    }), throwsStateError);
+    delivered.complete(envelope());
+    await result;
+    expect(first.ready, isTrue); expect(calls, 1); expect(isolatedCreations, 1);
+    unchanged();
+  });
   test('foreign request, actor and near-expiry envelope are refused before isolated SDK mutation', () async {
     for (final mutate in <void Function(Map<String, dynamic>)>[
       (value) => value['request_id'] = other,

@@ -19,6 +19,9 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
   }) : _isolatedClientFactory = isolatedClientFactory,
        _authChanges = authChanges;
 
+  // One preparation owns a given application client at a time. This protects
+  // against duplicate route/controller instances; it is not a global SDK CAS.
+  static final _owners = Expando<AppleSuccessorClientPreparation>();
   final SupabaseClient applicationClient;
   final String projectUrl;
   final String publicKey;
@@ -44,6 +47,9 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
   void invalidate() {
     _generation++;
     _ready = false;
+    if (identical(_owners[applicationClient], this)) {
+      _owners[applicationClient] = null;
+    }
     final prepared = _preparedClient;
     _preparedClient = null;
     if (prepared != null) { unawaited(prepared.dispose()); }
@@ -85,7 +91,7 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
   Future<void> prepare({required String requestId,
     required Future<Map<String, dynamic>> Function() receiveOnce}) async {
     if (_disposed || !enabled || kIsWeb || defaultTargetPlatform != TargetPlatform.iOS ||
-        _attempted || !_uuid.hasMatch(requestId)) { throw _failure(); }
+        _attempted || _owners[applicationClient] != null || !_uuid.hasMatch(requestId)) { throw _failure(); }
     _attempted = true;
     final origin = Uri.tryParse(projectUrl);
     if (origin == null || origin.scheme != 'https' || origin.userInfo.isNotEmpty ||
@@ -94,6 +100,7 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
     }
     final initial = applicationClient.auth.currentSession;
     if (initial == null || initial.isExpired || !_uuid.hasMatch(initial.user.id)) { throw _failure(); }
+    _owners[applicationClient] = this;
     final actor = initial.user.id, originalToken = initial.accessToken;
     final generation = ++_generation;
     void check() {
