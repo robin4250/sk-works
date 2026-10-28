@@ -19,7 +19,9 @@ void main() {
         checkLate: true, checkEarly: true), revisions: const {'w': 8},
       save: (rows) async {
         saves.addAll(rows);
-        if (company == 'old') await pending.future;
+        if (company == 'old') {
+          await pending.future;
+        }
       }, publish: (_) async {},
     ));
     await tester.pumpWidget(page('old'));
