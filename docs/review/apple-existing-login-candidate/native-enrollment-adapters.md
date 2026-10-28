@@ -190,3 +190,40 @@ alone is not sufficient evidence of the full enrollment policy. The three new
 HTTP-fixture tests and the eleven existing Auth/handler tests pass locally; these
 are synthetic transport tests, not a new real-GoTrue reservation proof. All gates
 remain OFF and no production configuration or grant changed.
+
+
+## PW-successor snapshot transfer (2026-10-28, internal OFF)
+
+The new private SQL in `native-enrollment-password-successor.sql.review-only`
+anchors the original authenticated SID, company/Google/password/profile snapshot,
+Apple subject and token hash BEFORE the password login. That intent commits before
+the external Auth call and stores no credentials. The internal transfer then locks
+the intent, verifies the fresh same-user password SID against the official GoTrue
+v2.197.0 `auth.mfa_amr_claims` password record and DB time, compares the snapshot
+without SID, and calls the existing reservation SQL inside the same transaction.
+A request-bound trace retains the initial SID even if its Auth row is deleted.
+The final existing successor receipt references the PW SID; the intent links it
+back to the initial SID. Neither a failed audit nor a failed reservation creates a
+partial permit/transfer. Replayed intents and changed snapshots are rejected.
+
+`createNativeApplePasswordSuccessorBroker` connects the new Auth password port,
+intent/reservation DB adapter and existing durable successor broker. Apple token
+verification precedes all password operations; freshness is checked again at slow
+boundaries. The order is intent commit -> password login -> snapshot reservation
+commit -> durable pre-link claim -> Apple link -> completion -> trusted sink.
+All independent gates default OFF, the current public handler never calls this
+composition, and the functions have no client/service grants. A failed/unknown
+password flow may obsolete the original refresh and require a real sign-in;
+there is no fictional rollback/logout or automatic resubmission.
+
+Local validation: 21 PGlite tests succeeded, 4 Native-only tests skipped; the new
+Native test races the same PW intent on two real PostgreSQL connections. Node
+broker/DB composition tests: 10 succeeded. These are synthetic HTTP and Auth-table
+fixtures, not proof of managed Auth schema compatibility, real GoTrue-to-DB
+composition or client delivery. The official AMR model source is
+https://github.com/supabase/auth/blob/v2.197.0/internal/models/amr.go . Managed Auth
+schema/AMR timestamp compatibility, complete session-validity policy, deployment
+least privilege/rate limits, immutable delivery reconciliation, client adoption,
+owner iPhone/Face ID and recovery remain incomplete. This is not a deployable
+production activation or migration. No production settings, identities or company
+records were changed.

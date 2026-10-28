@@ -8,9 +8,11 @@ on:
       - 'docs/review/apple-existing-login-candidate/native_apple_successor_handoff*'
       - 'docs/review/apple-existing-login-candidate/native_apple_successor_db_port*'
       - 'docs/review/apple-existing-login-candidate/native_apple_successor_broker*'
+      - 'docs/review/apple-existing-login-candidate/native_apple_successor_password_broker*'
       - 'docs/review/apple-existing-login-candidate/native-enrollment-endpoint.md'
       - 'docs/review/apple-existing-login-candidate/native-enrollment.sql.review-only'
       - 'docs/review/apple-existing-login-candidate/native-enrollment-successor.sql.review-only'
+      - 'docs/review/apple-existing-login-candidate/native-enrollment-password-successor.sql.review-only'
       - 'docs/review/apple-existing-login-candidate/native-enrollment-adapters.md'
       - 'docs/review/apple-existing-login-candidate/owner-policy.sql.review-only'
       - 'docs/review/apple-existing-login-candidate/existing_apple_login.mjs'
@@ -29,7 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --test docs/review/apple-existing-login-candidate/native_apple_enrollment.test.mjs docs/review/apple-existing-login-candidate/native_apple_password_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_enrollment_sql_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_auth_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_handoff.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_db_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_broker.test.mjs docs/review/apple-existing-login-candidate/native_apple_auth_port_password_successor.test.mjs
+      - run: node --test docs/review/apple-existing-login-candidate/native_apple_enrollment.test.mjs docs/review/apple-existing-login-candidate/native_apple_password_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_enrollment_sql_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_auth_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_handoff.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_db_port.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_broker.test.mjs docs/review/apple-existing-login-candidate/native_apple_auth_port_password_successor.test.mjs docs/review/apple-existing-login-candidate/native_apple_successor_password_broker.test.mjs
       - name: Install isolated pinned PostgreSQL WASM runtime
         run: npm install --prefix "$RUNNER_TEMP/sko-apple-enrollment" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
       - name: Verify exact SQL reservation and completion with isolated synthetic users

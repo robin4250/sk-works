@@ -249,3 +249,85 @@ test('Native concurrent successor claim admits only one durable attempt',{skip:!
  assert.equal(results.filter(x=>x.rows[0].r!==null).length,1);
  assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.successor_attempts'))[0].n,1);
 }));
+
+const passwordSid='00000000-0000-0000-0000-000000000091';
+async function passwordSuccessorFixture(run){return fixture(async f=>{
+ await f.enable();
+ await f.db.exec(readFileSync(new URL('./native-enrollment-successor.sql.review-only',import.meta.url),'utf8'));
+ await f.db.exec(`create table auth.mfa_amr_claims(session_id uuid,authentication_method text,created_at timestamptz default clock_timestamp(),unique(session_id,authentication_method));`);
+ await f.db.exec(readFileSync(new URL('./native-enrollment-password-successor.sql.review-only',import.meta.url),'utf8'));
+ const begin=()=>f.sql('select apple_native_enrollment_private.begin_password_successor($1,$2,$3,$4) r',[uid,sid,subject,token]).then(r=>r[0].r);
+ const issuePassword=async()=>{await f.db.query('insert into auth.sessions(id,user_id) values($1,$2)',[passwordSid,uid]);
+  await f.db.query("insert into auth.mfa_amr_claims(session_id,authentication_method) values($1,'password')",[passwordSid]);};
+ const reserve=(intent,patch={})=>{const p={id:intent.intent_id,actor:uid,original:sid,password:passwordSid,...patch};return f.sql('select apple_native_enrollment_private.reserve_password_successor($1,$2,$3,$4) r',[p.id,p.actor,p.original,p.password]).then(r=>r[0].r);};
+ await run({...f,begin,issuePassword,reserve});
+});}
+test('PW successor reservation is OFF, internal only and snapshots original before authentication',()=>passwordSuccessorFixture(async f=>{
+ assert.equal(await f.begin(),null);
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');
+ const intent=await f.begin();assert.equal(intent.actor_id,uid);assert.equal(intent.original_session_id,sid);
+ assert.equal(await f.begin(),null);
+ assert.equal((await f.sql('select count(*)::int n from apple_owner_policy.subject_permits'))[0].n,0);
+ for(const role of ['anon','authenticated','service_role']){
+  assert.equal((await f.sql("select has_function_privilege($1,'apple_native_enrollment_private.begin_password_successor(uuid,uuid,text,text)','EXECUTE') ok",[role]))[0].ok,false);
+  assert.equal((await f.sql("select has_function_privilege($1,'apple_native_enrollment_private.reserve_password_successor(uuid,uuid,uuid,uuid)','EXECUTE') ok",[role]))[0].ok,false);
+ }
+}));
+test('PW successor atomically reserves same snapshot and traces original SID even after original session deletion',()=>passwordSuccessorFixture(async f=>{
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');
+ const intent=await f.begin();await f.issuePassword();
+ await f.db.query('delete from auth.sessions where id=$1',[sid]);
+ const r=await f.reserve(intent);assert.equal(r.actor_id,uid);assert.equal(r.session_id,passwordSid);assert.equal(r.original_session_id,sid);
+ const saved=(await f.sql('select * from apple_native_enrollment_private.password_successor_intents'))[0];
+ assert.equal(saved.request_id,r.request_id);assert.equal(saved.original_session_id,sid);assert.equal(saved.password_session_id,passwordSid);
+ const request=(await f.sql('select snapshot from apple_native_enrollment_private.requests'))[0].snapshot;
+ assert.equal(request.session_id,passwordSid);assert.equal(request.google_identities[0].provider_id,'original-google');assert.equal(request.memberships[0].company_id,company);
+ assert.equal(await f.reserve(intent),null);
+ await f.sql('select apple_native_enrollment_private.claim_successor_attempt($1,$2,$3)',[r.request_id,uid,passwordSid]);
+ await f.link();await f.db.query('insert into auth.sessions(id,user_id) values($1,$2)',[successorSid,uid]);
+ const hash=(await f.sql('select snapshot_sha256 from apple_native_enrollment_private.requests'))[0].snapshot_sha256;
+ const completed=(await f.sql('select apple_native_enrollment_private.complete_with_successor($1,$2,$3,$4,$5,$6,$7) r',[r.request_id,uid,passwordSid,successorSid,subject,token,hash]))[0].r;
+ assert.equal(completed.linked,true);assert.equal(completed.actor_id,uid);assert.equal(completed.session_id,successorSid);
+ assert.equal((await f.sql('select original_session_id from apple_native_enrollment_private.password_successor_intents'))[0].original_session_id,sid);
+}));
+test('PW successor rejects foreign/old/non-password sessions and changed company/Google/password/profile before reserving',()=>passwordSuccessorFixture(async f=>{
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');
+ const intent=await f.begin();await f.issuePassword();
+ for(const patch of [{actor:other},{original:other},{password:sid},{password:other}])assert.equal(await f.reserve(intent,patch),null);
+ for(const change of [
+  "delete from auth.mfa_amr_claims",
+  "update auth.mfa_amr_claims set authentication_method='oauth'",
+  "update auth.sessions set created_at=clock_timestamp()-interval '1 hour' where id='"+passwordSid+"'",
+  "update auth.mfa_amr_claims set created_at=clock_timestamp()-interval '1 hour'",
+  "update auth.sessions set not_after=clock_timestamp()-interval '1 second' where id='"+passwordSid+"'",
+  "update public.company_members set role='member'",
+  "update auth.identities set provider_id='changed' where provider='google'",
+  "update auth.users set encrypted_password='changed' where id='"+uid+"'",
+  "update auth.users set email='changed@example.invalid' where id='"+uid+"'",
+  "update apple_native_enrollment_private.password_successor_intents set expires_at=clock_timestamp()-interval '1 second'"
+ ]){await f.db.exec('begin');await f.db.exec(change);assert.equal(await f.reserve(intent),null,change);
+  assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.requests'))[0].n,0);
+  await f.db.exec('rollback');}
+ assert.equal((await f.sql('select count(*)::int n from apple_owner_policy.subject_permits'))[0].n,0);
+}));
+test('PW reservation audit failure rolls back permit and transfer without erasing original trace',()=>passwordSuccessorFixture(async f=>{
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');
+ const intent=await f.begin();await f.issuePassword();
+ await f.db.exec("create function public.reject_pw_audit() returns trigger language plpgsql as $$begin raise exception 'fixture-audit-failure';end$$;create trigger reject_pw_audit before insert on apple_native_enrollment_private.events for each row execute function public.reject_pw_audit()");
+ await assert.rejects(f.reserve(intent),/fixture-audit-failure/);
+ assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.requests'))[0].n,0);
+ assert.equal((await f.sql('select count(*)::int n from apple_owner_policy.subject_permits'))[0].n,0);
+ const trace=(await f.sql('select original_session_id,request_id from apple_native_enrollment_private.password_successor_intents'))[0];
+ assert.equal(trace.original_session_id,sid);assert.equal(trace.request_id,null);
+}));
+test('Native PW successor reservation admits one request and trace under concurrent calls',{skip:!native},()=>passwordSuccessorFixture(async f=>{
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');
+ const intent=await f.begin();await f.issuePassword();const a=await f.db.peer(),b=await f.db.peer();
+ for(const peer of [a,b])await peer.query("select set_config('test.claims','{\"role\":\"service_role\"}',false)");
+ const sql='select apple_native_enrollment_private.reserve_password_successor($1,$2,$3,$4) r',args=[intent.intent_id,uid,sid,passwordSid];
+ const results=await Promise.all([a.query(sql,args),b.query(sql,args)]);
+ assert.equal(results.filter(x=>x.rows[0].r!==null).length,1);
+ assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.requests'))[0].n,1);
+ assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.password_successor_intents where request_id is not null'))[0].n,1);
+}));
+
