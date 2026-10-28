@@ -127,3 +127,11 @@ checkpoint storage, a trusted clock or disaster recovery. Per-client rate limits
 access-log privacy/retention, real certificates and rotation, independent hosting,
 operational health checks, key-loss recovery and production activation remain
 unimplemented. No production listener was started and no external host was contacted.
+
+## External signer boundary candidate
+
+`src/recovery-witness-external-signer-candidate.mjs` accepts a pinned public key and a server-configured external signer callback, never a private key. It validates and snapshots an exact committed nonce record before requesting a signature over canonical receipt bytes, then independently checks the returned signature and time. Store/signing errors have a bounded wait and no automatic consume retry. Lookup is a separate explicit reconciliation operation.
+
+The tests keep a synthetic signing key outside the store adapter, prove lost-signature-response reconciliation, reject substituted/uncommitted rows and wrong signatures, and reopen a temporary SQLite ledger after a signer failure without consuming twice. Input, row, public-key and signing-buffer mutation tests prevent asynchronous rebinding. The existing Node24 workflow discovers these tests without workflow changes.
+
+This is **not a KMS/HSM integration or independent key custody**. The store callbacks are trusted configuration; a `committed` field is not cryptographic durability proof. The local SQLite fixture can be rolled back by its operator. Real authenticated signer transport, separate operator/key authorization, independent rollback-resistant checkpoint/backup, protected server clock, real restore/loss/compromise policy and actual deployment remain unimplemented. Do not enable production or recovery using this boundary.
