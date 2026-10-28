@@ -3,7 +3,7 @@
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const denied=()=>Error('apple_successor_handoff_unavailable');
 export function createSuccessorDBPorts({enabled=false,reviewed=false,pool,authenticateExactBearer,now=Date.now}={}){
- let binding=null,attempted=false;
+ let binding=null,holdBinding=null,attempted=false;
  const ready=()=>enabled===true&&reviewed===true&&typeof pool?.connect==='function'&&typeof authenticateExactBearer==='function';
  async function transaction(work){
   if(!ready())throw denied();const db=await pool.connect();
@@ -28,6 +28,7 @@ export function createSuccessorDBPorts({enabled=false,reviewed=false,pool,authen
    const row=await transaction(async db=>(await db.query('select apple_native_enrollment_private.claim_successor_attempt($1,$2,$3) r',[request_id,c.sub,c.session_id])).rows[0]?.r);
    if(!row||row.request_id!==request_id||row.actor_id!==c.sub||row.session_id!==c.session_id||row.status!=='reserved')throw denied();
    binding=Object.freeze({request_id,actor_id:c.sub,original_session_id:c.session_id,snapshot_sha256:row.snapshot_sha256});
+   holdBinding=binding;
    // COMMIT has succeeded before a caller can perform external Auth linking.
    return row;
   },
@@ -38,5 +39,14 @@ export function createSuccessorDBPorts({enabled=false,reviewed=false,pool,authen
    return transaction(async db=>(await db.query('select apple_native_enrollment_private.complete_with_successor($1,$2,$3,$4,$5,$6,$7) r',
     [expected.request_id,expected.actor_id,expected.original_session_id,info.successor_session_id,info.subject,info.token_sha256,expected.snapshot_sha256])).rows[0]?.r);
   },
+  async holdSubject(request_id){
+   const expected=holdBinding;holdBinding=null;
+   if(!expected||request_id!==expected.request_id)throw denied();
+   // The existing SQL only changes a still-reserved request. A committed
+   // completion is never rewritten even if its response was lost.
+   return transaction(async db=>(await db.query('select public.hold_apple_native_subject($1,$2,$3) r',
+    [expected.request_id,expected.actor_id,expected.original_session_id])).rows[0]?.r);
+  },
  });
 }
+

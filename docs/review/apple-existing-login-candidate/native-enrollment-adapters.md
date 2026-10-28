@@ -137,9 +137,33 @@ No credentials are stored or included in query arguments. Node mocks cover commi
 ordering/OFF/foreign claims/unknown commits; PGlite validates exact SQL and Native
 CI additionally races two connections. This is not real JWT-to-DB composition.
 
-The adapter is not wired to a public endpoint or the handoff runtime. A trusted
+The adapter has no public endpoint. The following internal broker candidate wires it to the handoff runtime. A trusted
 bearer verifier, deployment-scoped pool, durable receipt reconciliation and secure
 client delivery remain required. Password successor reservation, rollout/restore
 guards and iPhone session adoption are still incomplete. No grant, production
 connection or activation was made. Existing account UID/Google/company data is
 preserved; retaining an obsolete refresh token is not a requirement.
+
+
+## Request-scoped successor broker composition (2026-10-28, OFF)
+
+`native_apple_successor_broker.mjs` connects the existing Auth HTTP adapter,
+private transactional DB adapter and verified handoff in one request-scoped
+composition. It binds and verifies the original bearer using Auth, commits the
+durable reserved-request claim before linking, verifies the issued same-UID
+successor, completes private SQL bookkeeping and invokes the trusted delivery
+sink only after a matching receipt. An unknown delivery is never retried or
+rewritten as a held completed request. Failed or unknown completion may hold
+only the originally claimed request/actor/SID through the existing SQL, which
+cannot change a completed row. Local duplicate invocation is rejected.
+
+All independent gates default OFF. The composition accepts an already-reserved
+request and DOES NOT solve primary-password successor reservation or expose a
+public route. The delivery sink, deployment-specific privileged pool and key
+resolver are externally trusted dependencies, not proof of a deployed service.
+The new Node tests execute the adapter modules against synthetic HTTP/DB services:
+commit/link/complete/deliver order, denied claim, OFF, lost completion/delivery,
+credential non-output and no successor logout. They are not real GoTrue-to-DB
+composition, TLS delivery or iPhone adoption tests. Durable reconciliation,
+public endpoint authentication/rate limits, rollout/restore, PW reservation and
+client adoption remain incomplete. No production setting or grant changed.
