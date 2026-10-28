@@ -17,7 +17,7 @@ async function fixture(fn){
    create schema auth;create schema private;
    create function auth.jwt() returns jsonb language sql stable as $$select coalesce(current_setting('test.claims',true),'{}')::jsonb$$;
    create table auth.users(id uuid primary key,encrypted_password text,email text,phone text,raw_user_meta_data jsonb default '{}'::jsonb,is_anonymous boolean default false,deleted_at timestamptz,banned_until timestamptz);
-   create table auth.sessions(id uuid primary key,user_id uuid references auth.users,not_after timestamptz);
+   create table auth.sessions(id uuid primary key,user_id uuid references auth.users,not_after timestamptz,created_at timestamptz not null default clock_timestamp());
    create table auth.identities(id uuid primary key,user_id uuid references auth.users,provider text,provider_id text,identity_data jsonb,unique(provider,provider_id));
    create table public.company_members(user_id uuid,company_id uuid,role text,unique(user_id,company_id));
    create table private.account_deletion_access_restrictions(user_id uuid primary key);`);
@@ -165,4 +165,57 @@ test('Native concurrent different accounts cannot claim the same Apple subject',
  assert.deepEqual((await f.sql('select jsonb_agg(to_jsonb(c) order by user_id) data from public.company_members c'))[0].data,before);
  assert.equal((await f.sql("select count(*)::int n from auth.identities where provider='google'"))[0].n,2);
  assert.equal((await f.sql("select count(*)::int n from auth.identities where provider='apple'"))[0].n,0);
+}));
+
+const successorSid='00000000-0000-0000-0000-000000000090';
+async function successorFixture(run){return fixture(async f=>{
+ await f.enable();await f.db.exec(readFileSync(new URL('./native-enrollment-successor.sql.review-only',import.meta.url),'utf8'));
+ const reservation=await f.reserve();
+ const row=(await f.sql('select * from apple_native_enrollment_private.requests where request_id=$1',[reservation.request_id]))[0];
+ await f.link();await f.db.query('insert into auth.sessions(id,user_id) values($1,$2)',[successorSid,uid]);
+ const finish=async(patch={})=>{
+  const p={request:reservation.request_id,actor:uid,original:sid,successor:successorSid,subject,token,hash:row.snapshot_sha256,...patch};
+  return (await f.sql('select apple_native_enrollment_private.complete_with_successor($1,$2,$3,$4,$5,$6,$7) r',[p.request,p.actor,p.original,p.successor,p.subject,p.token,p.hash]))[0].r;
+ };
+ await run({...f,reservation,finish});
+});}
+test('successor completion stays OFF and is not executable by service or clients',()=>successorFixture(async f=>{
+ assert.equal(await f.finish(),null);
+ for(const role of ['anon','authenticated','service_role']){
+  assert.equal((await f.sql("select has_function_privilege($1,'apple_native_enrollment_private.complete_with_successor(uuid,uuid,uuid,uuid,text,text,text)','EXECUTE') ok",[role]))[0].ok,false);
+ }
+ assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.successor_receipts'))[0].n,0);
+}));
+test('same-UID fresh successor completes once without requiring original refresh or rewriting its SID',()=>successorFixture(async f=>{
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');
+ await f.db.query('delete from auth.sessions where id=$1',[sid]);
+ const result=await f.finish();assert.equal(result.linked,true);assert.equal(result.actor_id,uid);assert.equal(result.session_id,successorSid);
+ const row=(await f.sql('select * from apple_native_enrollment_private.successor_receipts'))[0];
+ assert.equal(row.original_session_id,sid);assert.equal(row.successor_session_id,successorSid);
+ assert.equal((await f.sql('select session_id from apple_native_enrollment_private.requests'))[0].session_id,sid);
+ assert.equal(await f.finish(),null);
+ assert.equal((await f.sql("select count(*)::int n from auth.identities where user_id=$1 and provider='google'",[uid]))[0].n,1);
+ assert.equal((await f.sql('select company_id from public.company_members where user_id=$1',[uid]))[0].company_id,company);
+}));
+test('successor rejects substitution, stale identity/account evidence and expiry before any receipt',()=>successorFixture(async f=>{
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');
+ for(const patch of [{actor:other},{original:other},{successor:sid},{successor:other},{subject:'other-subject'},{token:'b'.repeat(64)},{hash:'c'.repeat(64)}])assert.equal(await f.finish(patch),null);
+ await f.db.exec('begin');
+ for(const sql of [
+  "update auth.sessions set created_at=clock_timestamp()-interval '1 hour' where id='"+successorSid+"'",
+  "update auth.sessions set created_at=clock_timestamp()+interval '1 hour' where id='"+successorSid+"'",
+  "update auth.sessions set not_after=clock_timestamp()-interval '1 second' where id='"+successorSid+"'",
+  "update auth.users set encrypted_password='changed' where id='"+uid+"'",
+  "update auth.users set raw_user_meta_data='{\"changed\":true}' where id='"+uid+"'",
+  "update public.company_members set role='worker' where user_id='"+uid+"'",
+  "delete from auth.identities where provider='google'",
+  "delete from apple_owner_policy.subject_permits",
+  "update apple_native_enrollment_private.requests set expires_at=clock_timestamp()-interval '1 second'",
+ ]){
+  await f.db.exec('savepoint rejected_successor');await f.db.exec(sql);assert.equal(await f.finish(),null,sql);
+  assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.successor_receipts'))[0].n,0);
+  await f.db.exec('rollback to rejected_successor;release rejected_successor');
+ }
+ await f.db.exec('commit');
+ assert.equal((await f.finish()).linked,true);
 }));

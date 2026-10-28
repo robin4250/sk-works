@@ -90,3 +90,29 @@ Official references reviewed 2026-10-26: Supabase `signInWithPassword`, native
 `linkIdentityWithIdToken`, supported custom access-token hooks, and PostgreSQL 17
 `sha256(bytea)`/`convert_to`/`encode`. No production schema or Auth settings were
 read or changed by this candidate's tests.
+
+
+## Successor-session completion candidate (OFF, internal only)
+
+The real GoTrue successor tests establish that account UID, Google identity and
+company data can remain intact while adopting a new same-UID Auth session. They
+do not require keeping the original refresh token valid.
+
+`native-enrollment-successor.sql.review-only` adds a separate default-OFF gate
+and an ungranted private completion function. It atomically locks the existing
+reservation, checks a fresh same-UID successor SID and the exact password/profile,
+Google and membership snapshot, checks the reserved Apple subject and owner permit,
+then records both original and successor SIDs without rewriting the original SID.
+Repeat completion, wrong SID/actor, old/future/expired sessions and changed evidence
+are rejected. No tokens, users, sessions, identities or companies are written by
+this SQL. Tests use isolated synthetic Auth tables, not a real JWT boundary.
+
+This is NOT a deployed handoff or a new enrollment route. The existing reservation
+still uses the old password-isolation review gate; a reviewed primary-password
+successor flow is not connected. The broker must independently authenticate the
+exact returned successor bearer, bind the issued SID to this reserved operation,
+transfer the refresh credential only to the initiating client through a protected
+single-use channel, and handle uncertain results without fallback to an invalid
+old session. Those broker/client adapters, secure delivery, rollout/restore guards,
+concurrent behavior, real-GoTrue SQL composition and iPhone validation remain
+unimplemented. There are no service/client grants; keep every enrollment gate OFF.
