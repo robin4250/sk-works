@@ -183,14 +183,20 @@ void main() {
     await preparation.prepare(requestId: requestId, receiveOnce: () async => envelope());
     expect(preparation.ready, isTrue);
     final original = application.auth.currentSession!.toJson();
-    // Deliberately do not publish an event to changes: the getter must verify
-    // the application's current SDK state independently of this stream.
+    await Future<void>.delayed(Duration.zero);
+    var authEvents = 0;
+    final subscription = application.auth.onAuthStateChange.listen((_) { authEvents++; });
+    addTearDown(subscription.cancel);
+    // recoverSession restores a non-expired same-UID session without emitting
+    // an Auth event in the pinned SDK. Readiness must inspect current state.
     final changed = Map<String, dynamic>.from(original)
       ..['access_token'] = token(actor, successorSid)
       ..['refresh_token'] = 'synthetic-replacement';
-    await application.auth.setInitialSession(jsonEncode(changed));
+    await application.auth.recoverSession(jsonEncode(changed));
+    await Future<void>.delayed(Duration.zero);
+    expect(authEvents, 0);
     expect(preparation.ready, isFalse);
-    await application.auth.setInitialSession(jsonEncode(original));
+    await application.auth.recoverSession(jsonEncode(original));
     expect(preparation.ready, isFalse); // observed invalidation is terminal
   });
   test('readiness rejects a silently restored expired application token', () async {
