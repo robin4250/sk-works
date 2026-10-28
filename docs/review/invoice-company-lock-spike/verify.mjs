@@ -271,6 +271,39 @@ try {
   assert.equal((await setup.query('select count(*)::int as n from public.synthetic_child where parent_id=$1',[parentId])).rows[0].n,0);
   console.log('PASS: pre-delete parent cleanup preserves indirect scope and blocks busy company while unrelated deletion proceeds');
 
+  // TRUNCATE has no row event: even the BEFORE/AFTER row guards above do
+  // not cover this privileged writer. Never infer company scope for it.
+  const beforeTruncate=(await setup.query('select count(*)::int as n from public.synthetic_work')).rows[0].n;
+  assert.ok(beforeTruncate>0);
+  await approval.query('begin');
+  await approval.query(sql,[a]);
+  await same.query('begin');
+  await same.query("set local statement_timeout='2s'");
+  await same.query('truncate public.synthetic_work');
+  assert.equal((await same.query('select count(*)::int as n from public.synthetic_work')).rows[0].n,0);
+  await same.query('rollback');
+  await approval.query('rollback');
+  assert.equal((await setup.query('select count(*)::int as n from public.synthetic_work')).rows[0].n,beforeTruncate);
+  console.log('PASS: negative control reproduces TRUNCATE bypass of row guards');
+
+  // Test-only deny policy, not a production rollout. A whole-table operation
+  // cannot be authorized as a single-company write; maintenance needs a separate
+  // reviewed quiescence protocol. No caller-supplied bypass setting is accepted.
+  await setup.query(`create function public.synthetic_deny_truncate() returns trigger
+    language plpgsql security invoker as $deny$
+    begin
+      raise exception using errcode='55000',message='unscoped synthetic truncate refused';
+    end $deny$`);
+  await setup.query('create trigger synthetic_no_truncate before truncate on public.synthetic_work for each statement execute function public.synthetic_deny_truncate()');
+  await same.query('begin');
+  await assert.rejects(()=>same.query('truncate public.synthetic_work'),e=>e.code==='55000');
+  await assert.rejects(()=>same.query('select 1'),e=>e.code==='25P02');
+  await same.query('rollback');
+  assert.equal((await setup.query('select count(*)::int as n from public.synthetic_work')).rows[0].n,beforeTruncate);
+  await other.query("insert into public.synthetic_work values($1,'post truncate refusal')",[b]);
+  assert.equal((await setup.query("select count(*)::int as n from public.synthetic_work where v='post truncate refusal'")).rows[0].n,1);
+  console.log('PASS: statement guard refuses unscoped TRUNCATE without altering rows; normal writer still proceeds');
+
   console.log('PASS: synthetic all-write guard rejects both move directions, insert and delete while another company proceeds');
   console.log('PASS: synthetic try-lock fails promptly; other company and approver proceed');
   console.log('PASS: row trigger lock inversion produces 40P01');

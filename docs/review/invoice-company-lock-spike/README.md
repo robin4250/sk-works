@@ -24,3 +24,6 @@ The isolated fixture also tries a nonblocking advisory lock from a row trigger. 
 ## Final row scope after existing triggers
 
 The review fixture now reproduces a later alphabetically ordered BEFORE trigger changing an inserted/updated company after the first guard has accepted a different company. A test-only AFTER ROW recheck rejects the final busy company and rolls back the complete statement. This is not a generic production installer: actual trigger order, nested writes, RLS/ACL, partitions, TRUNCATE, deferred constraints and all real writers still require coverage before replacing global locks. No production data or permissions change.
+
+
+TRUNCATE coverage: the isolated fixture now demonstrates that row guards do not intercept TRUNCATE. A test-only BEFORE TRUNCATE statement guard refuses the unscoped operation (55000), preserves all rows on rollback, and allows ordinary writes afterward. This is not production table/ACL coverage: actual deployed TRUNCATE grants, owner/service jobs, cascade targets, partitions, trigger disable privileges and maintenance quiescence remain unverified. No GUC/client-provided bypass is added. Reference: https://www.postgresql.org/docs/17/sql-truncate.html
