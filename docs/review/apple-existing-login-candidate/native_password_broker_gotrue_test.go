@@ -16,6 +16,7 @@ import (
  "github.com/coreos/go-oidc/v3/oidc"
  "github.com/golang-jwt/jwt/v5"
  "github.com/stretchr/testify/require"
+ "golang.org/x/crypto/bcrypt"
  "github.com/supabase/auth/internal/api/provider"
  "github.com/supabase/auth/internal/models"
 )
@@ -52,7 +53,11 @@ func TestSKOApplePasswordSuccessorBroker(t *testing.T){
  for _,mode:=range []string{"success","wrong-password"}{t.Run(mode,func(t *testing.T){
   root("truncate apple_native_enrollment_private.successor_receipts,apple_native_enrollment_private.successor_attempts,apple_native_enrollment_private.password_successor_intents,apple_native_enrollment_private.events,apple_native_enrollment_private.requests,public.company_members,apple_native_enrollment_private.rollout,apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout")
   models.TruncateAll(api.db)
-  owner,e:=models.NewUser("","existing-google@example.test","fixture-primary-password",config.JWT.Aud,map[string]interface{}{"full_name":"existing name"});require.NoError(t,e)
+  // Official test setup selects MinCost, which Authenticate rehashes. Use
+  // the ordinary accepted cost so this success case tests an unchanged credential.
+  // The application snapshot guard remains strict for real credential changes.
+  passwordHash,e:=bcrypt.GenerateFromPassword([]byte("fixture-primary-password"),bcrypt.DefaultCost);require.NoError(t,e)
+  owner,e:=models.NewUserWithPasswordHash("","existing-google@example.test",string(passwordHash),config.JWT.Aud,map[string]interface{}{"full_name":"existing name"});require.NoError(t,e)
   owner.Role="authenticated";owner.AppMetaData=models.JSONMap{"provider":"google","providers":[]string{"google"}};confirmed:=time.Now();owner.EmailConfirmedAt=&confirmed;require.NoError(t,api.db.Create(owner))
   google,e:=models.NewIdentity(owner,"google",map[string]interface{}{"sub":"existing-google-sub","email":"existing-google@example.test","email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(google))
   root("insert into public.company_members values(?,'00000000-0000-0000-0000-000000000099','owner')",owner.ID)
