@@ -10,7 +10,7 @@ import {createScannerRegistrationProofIssuer} from './qr-scanner-proof-issuer.mj
 const base=dirname(new URL(import.meta.url).pathname),root=resolve(process.argv[3]??'.');
 const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const expand=p=>readFileSync(p,'utf8').split('\n').filter(x=>!x.startsWith('\\set')).map(x=>x.startsWith('\\ir ')?expand(resolve(dirname(p),x.slice(4))):x).join('\n');
-let admin,pool,created=false,database;let phase='setup';
+let admin,pool,created=false,database,tearingDown=false;let phase='setup';
 if(process.argv[2]){
  const {PGlite}=await import(resolve(process.argv[2]));const {pgcrypto}=await import(resolve(dirname(process.argv[2]),'contrib/pgcrypto.js'));
  const db=new PGlite({extensions:{pgcrypto}});const query=async(s,v)=>v?db.query(s,v):(await db.exec(s)).at(-1)||{rows:[]};
@@ -20,6 +20,7 @@ if(process.argv[2]){
  const pg=(await import(resolve('tool/security/fixture_dependencies/node_modules/pg/lib/index.js'))).default;
  admin=new pg.Client();await admin.connect();database='qr_proof_'+randomBytes(8).toString('hex');
  await admin.query(`create database ${database}`);created=true;pool=new pg.Pool({database,max:4});
+ pool.on('error',error=>{if(tearingDown&&error?.code==='57P01')return;console.error('QR proof fixture pool error');process.exitCode=1;});
 }
 const fixtureSession=async c=>{await c.query("select set_config('fixture.actor',$1,true),set_config('fixture.session',$2,true),set_config('fixture.live','yes',true),set_config('fixture.manage','yes',true),set_config('fixture.qr','yes',true),set_config('fixture.secondary','yes',true)",[id(5),id(6)]);return {actor:id(5),session:id(6)};};
 const issuer=()=>createScannerRegistrationProofIssuer({pool,initializeVerifiedSession:fixtureSession});
@@ -93,4 +94,4 @@ try{
  }
  console.log('QR exact-target second-password proof -> key possession -> registration: counters, lockout, credential rotation, rollback, replay, ACL passed');
  console.log('LIMIT synthetic Auth/session/permissions/rollout; no public route, real JWT boundary, device custody or attendance writer');
-}catch(error){console.error('QR proof integration failed phase='+phase+' code='+(typeof error?.code==='string'?error.code:'ASSERTION'));process.exitCode=1;}finally{if(pool)await pool.end();if(created)await admin.query(`drop database ${database} with (force)`);if(admin)await admin.end();}
+}catch(error){console.error('QR proof integration failed phase='+phase+' code='+(typeof error?.code==='string'?error.code:'ASSERTION'));process.exitCode=1;}finally{tearingDown=true;if(pool)await pool.end();if(created)await admin.query(`drop database ${database} with (force)`);if(admin)await admin.end();}
