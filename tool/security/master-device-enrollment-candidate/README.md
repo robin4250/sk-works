@@ -88,3 +88,13 @@ This is not an operational enrollment service. The trusted database adapter,
 atomic session/device revalidation, secure delivery, existing-device key
 migration, first-device recovery and real platform proofs remain unimplemented.
 No production settings, passwords, device registrations or DB were changed.
+
+## Trusted clock contract (2026-10-28)
+
+Dual-proof composition no longer accepts a request-supplied `nowMs`. It requires
+`databaseNowMs` from the trusted context; missing or invalid time is rejected.
+Tests show a forged request time cannot revive an expired intent. A real adapter
+must obtain this time from the database and check a fresh database time again
+inside the locked atomic claim, alongside current sessions, devices and nonce.
+The synthetic adapter only demonstrates the interface: neither a real database
+adapter nor first-device recovery/key migration is implemented. Keep OFF.

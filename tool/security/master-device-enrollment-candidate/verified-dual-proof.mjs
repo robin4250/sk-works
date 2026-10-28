@@ -7,10 +7,12 @@ import {createHash, randomBytes} from 'node:crypto';
 import {verifySessionBoundApproval} from './session-bound-approval.mjs';
 import {verifyNewDeviceProof} from './new-device-proof.mjs';
 
-export async function issueDualProofApproval({adapter,actor,session,intentId,deviceId,approvingSignature,newPublicKeyPem,newSignature,nowMs}) {
+export async function issueDualProofApproval({adapter,actor,session,intentId,deviceId,approvingSignature,newPublicKeyPem,newSignature}) {
   if (!adapter || typeof adapter.loadTrustedContext !== 'function' || typeof adapter.claimVerifiedApproval !== 'function') throw new TypeError('trusted adapter required');
   const context=await adapter.loadTrustedContext({actor,session,intentId,deviceId});
-  if (!context || context.sessionActive !== true || context.master !== true ||
+  // The clock comes only from the trusted database read, never the request.
+  const nowMs = context?.databaseNowMs;
+  if (!Number.isSafeInteger(nowMs) || !context || context.sessionActive !== true || context.master !== true ||
       context.sessionActor !== actor || context.sessionId !== session ||
       context.intent?.id !== intentId || context.intent?.actor !== actor ||
       context.device?.id !== deviceId || context.device?.actor !== actor ||
