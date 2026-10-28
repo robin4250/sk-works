@@ -27,7 +27,9 @@ class PersonalVaultPdfDownload {
         deadline <= Duration.zero) { throw _failure(); }
     // Snapshot before any asynchronous operation; caller changes cannot replace
     // the request authorization or expected receipt while bytes are arriving.
-    final requestHeaders = Map<String, String>.from(headers);
+    final requestHeaders = Map<String, String>.from(headers)
+      ..removeWhere((name, _) => name.toLowerCase() == 'accept-encoding')
+      ..['Accept-Encoding'] = 'identity';
     final client = _clientFactory();
     final result = Completer<Uint8List>();
     StreamSubscription<List<int>>? subscription;
