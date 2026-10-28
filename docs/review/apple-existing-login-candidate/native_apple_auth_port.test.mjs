@@ -53,3 +53,11 @@ test('composed endpoint verifies RSA, authenticates exact original, reserves onc
  const denied=await stalled(new Request('https://broker.invalid',{method:'POST',headers:{authorization:'Bearer '+original,'content-type':'application/json'},body:JSON.stringify({id_token:credential,nonce,password:'fixture-password'})}));
  assert.equal(denied.status,403);assert.equal(calls.filter(x=>x.url.endsWith('reserve_apple_native_subject')).length,1);
 });
+
+test('successor credential is internal opt-in and never cleanup-authorized as temporary',async()=>{
+ const off=fixture();await off.ports.bindOriginal(original);await assert.rejects(off.ports.linkNativeIdentitySuccessor({exactBearer:original,idToken:apple,rawNonce:nonce}));assert.equal(off.calls.length,1);
+ const f=fixture({successorReviewed:true});await f.ports.bindOriginal(original);
+ const r=await f.ports.linkNativeIdentitySuccessor({exactBearer:original,idToken:apple,rawNonce:nonce});assert.equal(r.refresh_token,'MUST_NOT_ESCAPE');
+ assert.equal((await f.ports.authenticateIssuedSession(r.access_token)).actor_id,actor);
+ await assert.rejects(f.ports.revokeLocal(r.access_token));assert.equal(f.calls.some(x=>x.url.includes('logout')),false);
+});
