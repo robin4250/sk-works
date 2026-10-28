@@ -27,7 +27,8 @@ void main() {
         'app_metadata':<String,dynamic>{},'user_metadata':<String,dynamic>{}}}));
     final value=OwnPublishedShiftRepository(client);
     try {
-      await expectLater(value.loadContext(),throwsStateError);
+      await expectLater(value.loadContext(),throwsA(isA<StateError>().having(
+        (error)=>error.message,'message','ログイン状態が変わりました。画面を開き直してください。')));
       expect(paths,hasLength(1)); expect(paths.single,endsWith('/company_members'));
     } finally { value.dispose(); await client.dispose(); }
   },skip:!const bool.fromEnvironment('SKO_SHIFT_REPLAY_BASELINE'));
