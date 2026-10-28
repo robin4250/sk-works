@@ -32,10 +32,12 @@ class _OwnPublishedShiftPageState extends State<OwnPublishedShiftPage> {
     body: !ownShiftEntryReleased ? const Center(child: Text('準備中です。')) :
       FutureBuilder<OwnShiftContext>(key: ObjectKey(_context), future: _context,
         builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (snapshot.hasError) {
+            return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('シフトを確認できません。'),
             TextButton(onPressed: () => setState(_reload), child: const Text('再読み込み')),
           ]));
+          }
           final data = snapshot.data;
           if (data == null) return const Center(child: CircularProgressIndicator());
           return SingleChildScrollView(padding: const EdgeInsets.all(12), child: OwnPublishedShiftView(
