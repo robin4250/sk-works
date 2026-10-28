@@ -118,6 +118,15 @@ test('uncompleted external result remains unavailable with no retry permission o
  assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.successor_attempts'))[0].n,1);
  assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.delivery_possession_acks'))[0].n,0);
 },{complete:false}));
+test('transaction-start now cannot keep a session alive past its wall-clock not_after',()=>fixture(async f=>{
+ await f.enable();await f.db.exec('begin');
+ try{
+  await f.db.query("update auth.sessions set not_after=clock_timestamp()+interval '20 milliseconds' where id=$1",[successor]);
+  await new Promise(resolve=>setTimeout(resolve,80));
+  assert.equal(await f.status(),null);assert.equal(await f.ack(),null);
+  assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.delivery_possession_acks'))[0].n,0);
+ }finally{await f.db.exec('rollback');}
+}));
 test('ACK insert failure rolls back and leaves Auth/receipt/claim untouched',()=>fixture(async f=>{
  await f.enable();const before=await f.authState();
  await f.db.exec("create function apple_native_enrollment_private.fail_ack() returns trigger language plpgsql as $$begin raise exception 'synthetic ACK failure';end$$;create trigger fail_ack before insert on apple_native_enrollment_private.delivery_possession_acks for each row execute function apple_native_enrollment_private.fail_ack()");
@@ -150,13 +159,17 @@ test('Native two-connection ACK race creates one possession row and returns the 
  for(const r of results)assert.deepEqual(r.rows[0].r,expected(p[0],'successor_possession_recorded'));
  assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.delivery_possession_acks'))[0].n,1);
 }));
-test('Native JWT expiry during an advisory-lock wait cannot record possession',{skip:!native},()=>fixture(async f=>{
+test('Native JWT and session not_after expiry during an advisory-lock wait cannot record possession',{skip:!native},()=>fixture(async f=>{
  await f.enable();const blocker=await f.db.peer(),waiter=await f.db.peer();
- await blocker.query('begin');await blocker.query("select pg_advisory_xact_lock(hashtextextended('apple-native-subject:'||$1,0))",[subject]);
- const expiry=Number((await f.sql('select floor(extract(epoch from clock_timestamp()))::bigint n'))[0].n)+2;
- await f.setClaims({exp:expiry},waiter);
- const result=waiter.query('select apple_native_enrollment_private.acknowledge_successor_possession($1,$2,$3) r',[f.reservation.request_id,actor,successor]);
- await new Promise(resolve=>setTimeout(resolve,2200));await blocker.query('commit');
- assert.equal((await result).rows[0].r,null);
+ for(const kind of ['jwt','session']){
+  await blocker.query('begin');await blocker.query("select pg_advisory_xact_lock(hashtextextended('apple-native-subject:'||$1,0))",[subject]);
+  const expiry=Number((await f.sql('select floor(extract(epoch from clock_timestamp()))::bigint n'))[0].n)+2;
+  if(kind==='session')await f.db.query('update auth.sessions set not_after=to_timestamp($1) where id=$2',[expiry,successor]);
+  await f.setClaims({exp:kind==='jwt'?expiry:expiry+120},waiter);
+  const result=waiter.query('select apple_native_enrollment_private.acknowledge_successor_possession($1,$2,$3) r',[f.reservation.request_id,actor,successor]);
+  await new Promise(resolve=>setTimeout(resolve,2200));await blocker.query('commit');
+  assert.equal((await result).rows[0].r,null,kind);
+  await f.db.query('update auth.sessions set not_after=null where id=$1',[successor]);
+ }
  assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.delivery_possession_acks'))[0].n,0);
 }));

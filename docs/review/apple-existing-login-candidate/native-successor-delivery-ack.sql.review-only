@@ -58,7 +58,9 @@ begin
   if ack.request_id is not null and (ack.actor_id is distinct from p_actor
    or ack.successor_session_id is distinct from rec.successor_session_id) then return null;end if;
  result:=case when ack.request_id is null then 'server_completed' else 'successor_possession_recorded' end;
- if (claims->>'exp')::bigint<=extract(epoch from clock_timestamp()) then return null;end if;
+ if (claims->>'exp')::bigint<=extract(epoch from clock_timestamp())
+ or not exists(select 1 from auth.sessions s where s.id=p_sid and s.user_id=p_actor
+  and (s.not_after is null or s.not_after>clock_timestamp())) then return null;end if;
  return jsonb_build_object('schema',1,'request_id',p_request,'status',result,
   'retry_allowed',false,'application_adoption_confirmed',false);
 end $$;
@@ -74,7 +76,9 @@ begin
  if status is null or status->>'status' not in('server_completed','successor_possession_recorded') then return null;end if;
  select * into rec from apple_native_enrollment_private.successor_receipts where request_id=p_request for share;
  if rec.actor_id is distinct from p_actor or rec.successor_session_id is distinct from p_sid
- or (auth.jwt()->>'exp')::bigint<=extract(epoch from clock_timestamp()) then return null;end if;
+ or (auth.jwt()->>'exp')::bigint<=extract(epoch from clock_timestamp())
+ or not exists(select 1 from auth.sessions s where s.id=p_sid and s.user_id=p_actor
+  and (s.not_after is null or s.not_after>clock_timestamp())) then return null;end if;
  insert into apple_native_enrollment_private.delivery_possession_acks(request_id,actor_id,successor_session_id)
  values(p_request,p_actor,p_sid) on conflict(request_id) do nothing;
  select * into ack from apple_native_enrollment_private.delivery_possession_acks where request_id=p_request;
