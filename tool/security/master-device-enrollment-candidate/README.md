@@ -74,3 +74,17 @@ and an unchanged legacy user/session. Test legitimate iPhone, iPad, Mac and
 lost-device recovery on the actual platforms. Verify accessibility, owner
 identity, explicit approval, key restoration and clear rollback. Do not activate
 or claim 3-device registration is available before these checks pass.
+
+## Session-bound dual-proof composition (2026-10-28)
+
+The isolated `issueDualProofApproval` now requires the existing session-bound
+v2 approver signature, rather than accepting a transferable v1 signature.
+The requesting device still proves possession of the exact intent key.
+Synthetic Node tests reject another active owner session and legacy v1
+approvals before the atomic claim is invoked, and retain concurrent single-use
+acceptance in the test adapter (7 Node tests pass).
+
+This is not an operational enrollment service. The trusted database adapter,
+atomic session/device revalidation, secure delivery, existing-device key
+migration, first-device recovery and real platform proofs remain unimplemented.
+No production settings, passwords, device registrations or DB were changed.

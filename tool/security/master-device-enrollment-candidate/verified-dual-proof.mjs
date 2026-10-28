@@ -4,7 +4,7 @@
 // server time and both device keys before atomically claiming an approval.
 // The return token has no implemented secure delivery channel.
 import {createHash, randomBytes} from 'node:crypto';
-import {verifyApprovalSignature} from './approval-signature.mjs';
+import {verifySessionBoundApproval} from './session-bound-approval.mjs';
 import {verifyNewDeviceProof} from './new-device-proof.mjs';
 
 export async function issueDualProofApproval({adapter,actor,session,intentId,deviceId,approvingSignature,newPublicKeyPem,newSignature,nowMs}) {
@@ -14,7 +14,7 @@ export async function issueDualProofApproval({adapter,actor,session,intentId,dev
       context.sessionActor !== actor || context.sessionId !== session ||
       context.intent?.id !== intentId || context.intent?.actor !== actor ||
       context.device?.id !== deviceId || context.device?.actor !== actor ||
-      !verifyApprovalSignature({intent:context.intent,device:context.device,signature:approvingSignature,nowMs}) ||
+      !verifySessionBoundApproval({intent:context.intent,device:context.device,approvingSession:session,sessionActor:context.sessionActor,sessionActive:context.sessionActive,signature:approvingSignature,nowMs}) ||
       !verifyNewDeviceProof({intent:context.intent,approvingDevice:context.device,newPublicKeyPem,signature:newSignature,nowMs})) return null;
   const token=randomBytes(32).toString('hex');
   const tokenHash=createHash('sha256').update(token).digest('hex');
