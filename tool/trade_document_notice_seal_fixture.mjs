@@ -18,7 +18,7 @@ export async function verifyNoticeSeal(db,c){
  const sid=id(9001);await db.query("select set_config('test.notice_sid',$1,false)",[sid]);
  const x=await prepare(21),p=await preview(x),before=await state(x),ticket=id(9021);
  const add=async(t,parent,session=sid)=>db.query('insert into invoice_month_close_candidate.fixture_tickets(id,invoice_id,actor_id,session_id)values($1,$2,$3,$4)',[t,parent,UA,session]);
- const call=(t,financial=true,seal=true)=>q('select trade_document_consent_private.confirm_invoice_from_notice($1,$2,$3,1,$4::jsonb,$5,$6,$7) v',[t,x.local,A,JSON.stringify(p),id(9100),financial,seal]);
+ const call=(t,financial=true,seal=true)=>q('select trade_document_consent_private.confirm_invoice_from_notice($1,$2,$3,1,$4::jsonb,$5,$6,$7) v',[t,x.local,A,JSON.stringify(p),id(29000),financial,seal]);
  const used=t=>q('select consumed v from invoice_month_close_candidate.fixture_tickets where id=$1',[t]);
  await add(ticket,x.parent);
  await deny(()=>call(ticket),/disabled/);check(await used(ticket),false);check(await state(x),before);

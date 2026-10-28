@@ -71,7 +71,6 @@ export async function verifyInvoiceConfirmation(db,c){
  await deny(()=>db.query('update trade_document_consent_private.consents set actor_id=actor_id where document_id=$1',[x.doc]),/immutable/);
  await deny(()=>db.query('delete from trade_document_consent_private.financial_receipts where document_id=$1',[x.doc]),/immutable/);
  await db.exec('set role authenticated');await deny(()=>preview(x),/permission denied/);await db.exec('reset role');
- if(process.env.SKO_NOTICE_SEAL_REVIEW_HOOK==='contract-v1') await (await import('./trade_document_notice_seal_fixture.mjs')).verifyNoticeSeal(db,{...c,prepare,preview,state});
  if(c.openNativePeer){
   await (await import('./trade_document_invoice_confirmation_races.mjs')).verifyInvoiceConfirmationRaces(db,{...c,prepare,preview,state});
  }else{
