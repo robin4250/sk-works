@@ -1,6 +1,8 @@
 // Disposable SQL fixture checks. No independent owner channel or active key.
 import assert from 'node:assert/strict';
-import {generateKeyPairSync} from 'node:crypto';
+import {generateKeyPairSync,sign} from 'node:crypto';
+import {ownerDecisionPayload} from './owner-decision-attestation.mjs';
+import {recordIndependentOwnerDecisionEvidence} from './owner-decision-evidence.mjs';
 import {requestIndependentOwnerApproval} from './key-migration-owner-request.mjs';
 import {cancelIndependentOwnerApprovalRequest,inspectIndependentOwnerApprovalRequest} from './key-migration-owner-request-lifecycle.mjs';
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
@@ -37,6 +39,36 @@ export async function checkOwnerApprovalRequest({pool,args,pendingId,concurrency
    await assert.rejects(next.query('select * from master_device_enrollment_candidate.owner_approval_request_cancellations'),e=>e.code==='42501');
   }finally{await next.query('rollback');next.release();}
  }
+ // Independently signed fixture evidence is stored against locked server state.
+ // This signer is synthetic, NOT a deployed independent identity issuer.
+ const issuer=generateKeyPairSync('ed25519');
+ const stored=(await pool.query(`select actor,requester_session,device_id,pending_id,challenge_id,key_sha256,review_nonce,
+  floor(extract(epoch from clock_timestamp())*1000)::float8 as now,expires_ms
+  from master_device_enrollment_candidate.owner_approval_requests where id=$1`,[first.id])).rows[0];
+ const unsigned={version:1,issuerKeyId:'synthetic-owner-issuer',decision:'approved',requestId:first.id,
+  actor:stored.actor,requesterSession:stored.requester_session,deviceId:stored.device_id,pendingId:stored.pending_id,
+  challengeId:stored.challenge_id,keySha256:stored.key_sha256,reviewNonce:stored.review_nonce,
+  issuedMs:stored.now,expiresMs:Math.min(stored.expires_ms,stored.now+60000)};
+ const signed=value=>({...value,signature:sign(null,ownerDecisionPayload(value),issuer.privateKey).toString('base64url')});
+ const input={...lifecycle,receipt:signed(unsigned),pinnedIssuer:{purpose:'sko-master-independent-owner-decision-v1',keyId:unsigned.issuerKeyId,publicKeyJwk:issuer.publicKey.export({format:'jwk'})}};
+ for(const patch of [{session:id(96)},{actor:id(97)},{receipt:signed({...unsigned,reviewNonce:'c'.repeat(64)})}])await assert.rejects(recordIndependentOwnerDecisionEvidence({...input,...patch}));
+ assert.equal(Number((await pool.query('select count(*) from master_device_enrollment_candidate.owner_decision_evidence')).rows[0].count),0);
+ // A failed insert commits no receipt, even though the signature is valid.
+ await pool.query(`create function master_device_enrollment_candidate.reject_evidence_fixture() returns trigger language plpgsql as $$ begin raise exception 'synthetic evidence failure';end $$;
+  create trigger reject_evidence_fixture before insert on master_device_enrollment_candidate.owner_decision_evidence for each row execute function master_device_enrollment_candidate.reject_evidence_fixture()`);
+ await assert.rejects(recordIndependentOwnerDecisionEvidence(input));
+ assert.equal(Number((await pool.query('select count(*) from master_device_enrollment_candidate.owner_decision_evidence')).rows[0].count),0);
+ await pool.query('drop trigger reject_evidence_fixture on master_device_enrollment_candidate.owner_decision_evidence');
+ // Mutating the caller's object during connection acquisition cannot replace the
+ // signed decision that was synchronously snapshotted by the adapter.
+ const mutable={...input.receipt};const racedPool={connect:async()=>{mutable.signature='x'.repeat(86);mutable.decision='denied';return input.pool.connect();}};
+ const recorded=await recordIndependentOwnerDecisionEvidence({...input,pool:racedPool,receipt:mutable});
+ assert.equal(recorded.status,'evidence_recorded');
+ assert.deepEqual(await recordIndependentOwnerDecisionEvidence(input),recorded);
+ if(concurrency){for(const result of await Promise.all([recordIndependentOwnerDecisionEvidence(input),recordIndependentOwnerDecisionEvidence(input)]))assert.deepEqual(result,recorded);}
+ await assert.rejects(recordIndependentOwnerDecisionEvidence({...input,receipt:signed({...unsigned,decision:'denied'})}));
+ assert.equal(Number((await pool.query('select count(*) from master_device_enrollment_candidate.owner_decision_evidence')).rows[0].count),1);
+ for(const role of ['anon','authenticated']){const c=await pool.connect();try{await c.query('begin');await c.query('set local role '+role);await assert.rejects(c.query('select * from master_device_enrollment_candidate.owner_decision_evidence'),e=>e.code==='42501');}finally{await c.query('rollback');c.release();}}
  // Expire only this synthetic possession proof; no new approval request can
  // renew its lifetime, even though the previous pending proof was consumed.
  await pool.query(`update master_device_enrollment_candidate.key_possession_challenges
@@ -55,6 +87,7 @@ export async function checkOwnerApprovalRequest({pool,args,pendingId,concurrency
  if(concurrency){const results=await Promise.all([cancelIndependentOwnerApprovalRequest(lifecycle),inspectIndependentOwnerApprovalRequest(lifecycle)]);for(const result of results)assert.deepEqual(result,cancelled);}
  assert.equal(Number((await pool.query('select count(*) from master_device_enrollment_candidate.owner_approval_request_cancellations')).rows[0].count),1);
  assert.deepEqual(await inspectIndependentOwnerApprovalRequest(lifecycle),cancelled);
+ await assert.rejects(recordIndependentOwnerDecisionEvidence(input),'recorded evidence cannot override cancellation');
  await pool.query('update private.master_devices set is_locked=false where id=$1',[args.deviceId]);
  // Even restoring a synthetic proof's time cannot resurrect a cancelled request.
  await pool.query(`update master_device_enrollment_candidate.key_possession_challenges
