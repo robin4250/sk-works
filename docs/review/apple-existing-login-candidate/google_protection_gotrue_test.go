@@ -52,7 +52,7 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
  })}
  ctx:=oidc.ClientContext(context.Background(),client)
  type tokenResult struct{AccessToken string `json:"access_token"`;RefreshToken string `json:"refresh_token"`;User struct{ID string `json:"id"`} `json:"user"`}
- for _,name:=range []string{"single session original refresh while temporary session remains","single session temporary logout before refresh preserves original","inactivity refresh rejects despite live session row","existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID","Apple subject cannot transfer between existing users"}{t.Run(name,func(t *testing.T){
+ for _,name:=range []string{"single session Apple native link while original refresh races","single session Apple native cleanup before original refresh","single session original refresh while temporary session remains","single session temporary logout before refresh preserves original","inactivity refresh rejects despite live session row","existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID","Apple subject cannot transfer between existing users"}{t.Run(name,func(t *testing.T){
   models.TruncateAll(api.db)
   require.NoError(t,api.db.RawQuery("truncate apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout,apple_google_protection.rollout,apple_google_protection.google_subject_owners,apple_google_protection.company_snapshot").Exec())
   createUser:=func(email,googleSub string)*models.User{
@@ -117,6 +117,29 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    var old string;require.NoError(t,api.db.RawQuery("select user_id::text from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&old));require.Equal(t,owner.ID.String(),old);return
   }
   original:=result(idToken("google","existing-google-sub",string(owner.Email),"",false));require.Equal(t,owner.ID.String(),original.User.ID)
+  if name=="single session Apple native link while original refresh races"||name=="single session Apple native cleanup before original refresh"{
+   // A native identity link issues its own new session, independently of the
+   // primary-password verifier. Do not infer whole-flow safety from PW cleanup.
+   config.Sessions.SinglePerUser=true
+   defer func(){config.Sessions.SinglePerUser=false}()
+   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('verified-native-subject',?)",owner.ID).Exec())
+   linked:=result(idToken("apple","verified-native-subject","private-relay@example.test",original.AccessToken,true))
+   require.Equal(t,owner.ID.String(),linked.User.ID)
+   if name=="single session Apple native link while original refresh races"{
+    oldRefresh:=call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"")
+    require.NotEqual(t,http.StatusOK,oldRefresh.Code,"a native-link session can disrupt a concurrent original-device refresh")
+   }
+   logout:=httptest.NewRequest(http.MethodPost,"http://localhost/logout?scope=local",nil)
+   logout.Header.Set("Authorization","Bearer "+linked.AccessToken)
+   closed:=httptest.NewRecorder();api.handler.ServeHTTP(closed,logout)
+   require.Equal(t,http.StatusNoContent,closed.Code)
+   if name=="single session Apple native cleanup before original refresh"{
+    oldRefresh:=call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"")
+    require.Equal(t,http.StatusOK,oldRefresh.Code,"serialized native cleanup is a control case, not concurrency safety")
+   }
+   require.Equal(t,originalSnapshot,snapshot(owner),"native session handling must preserve original UID, Google identity, profile and company")
+   return
+  }
   if name=="single session original refresh while temporary session remains"{
    // An original-device refresh can race the password verifier's temporary
    // session cleanup; test the live official endpoint, not getUser alone.
