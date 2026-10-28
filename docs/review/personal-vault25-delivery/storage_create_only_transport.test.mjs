@@ -52,7 +52,9 @@ test('ignored abort and never-settling cancellation cannot hold deadline or trig
   assert.equal((await cancel(request())).status,'created_unverified');
 });
 test('redirect and network errors cannot forward credentials or claim success',async()=>{
-  for(const fetchImpl of [async()=>({status:200,redirected:true}),async()=>{throw Error('Bearer SECRET');}]){
+  for(const fetchImpl of [async()=>({status:200,redirected:true}),
+      async()=>({status:200,url:'https://other.invalid/changed-path'}),
+      async()=>{throw Error('Bearer SECRET');}]){
     await assert.rejects(createVaultCreateOnlyUpload({...config,fetchImpl})(request()),{message:'vault_upload_outcome_unknown'});
   }
 });

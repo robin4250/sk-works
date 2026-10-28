@@ -85,14 +85,24 @@ try {
  const createOnly=createVaultCreateOnlyUpload({origin:uploadOrigin,bucket,
   publishableKey:'sb_publishable_isolated_gateway_marker',
   authorizationHeader:async()=>'Bearer fixture_exporter_marker',
-  fetchImpl:(url,options)=>{
+  fetchImpl:async(url,options)=>{
    const checked=new URL(url);assert.equal(checked.origin,uploadOrigin);
    const headers={...options.headers,apikey:service};
    if(service.startsWith('sb_secret_'))delete headers.Authorization;
    else headers.Authorization=`Bearer ${service}`;
-   return fetch(new URL(checked.pathname,api),{...options,headers});
+   const localUrl=new URL(checked.pathname,api);
+   const raw=await fetch(localUrl,{...options,headers});
+   lastStatus=raw.status;
+   // The production transport must keep its exact-origin response check. This
+   // fixture bridge verifies the actual loopback response then remaps it to the
+   // requested synthetic origin without exposing disposable gateway credentials.
+   assert.equal(raw.redirected,false);assert.equal(raw.url,localUrl.href);
+   const bridged=new Response(raw.body,{status:raw.status,statusText:raw.statusText,headers:raw.headers});
+   Object.defineProperty(bridged,'url',{value:checked.href});
+   return bridged;
   }});
  const uploadInput={ownerId:owner.user.id,artifactKey:artifact,pdfSha256:hash,bytes};
+ phase='create-only-upload';
  const uploaded=await createOnly(uploadInput);
  assert.equal(uploaded.status,'created_unverified');
  assert.equal('immutableVersion' in uploaded,false);
