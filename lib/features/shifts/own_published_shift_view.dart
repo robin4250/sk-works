@@ -47,10 +47,12 @@ class _OwnPublishedShiftViewState extends State<OwnPublishedShiftView> {
     key: ObjectKey(_future),
     future: _future,
     builder: (context, snapshot) {
-      if (snapshot.hasError) return Column(mainAxisSize: MainAxisSize.min, children: [
+      if (snapshot.hasError) {
+        return Column(mainAxisSize: MainAxisSize.min, children: [
         const Text('シフトを確認できません。もう一度開いてください。'),
         TextButton(onPressed: () => setState(_reload), child: const Text('再読み込み')),
       ]);
+      }
       if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
       final shifts = snapshot.data!;
       if (shifts.isEmpty) return const Text('公開されたシフトはありません。');
