@@ -98,3 +98,19 @@ must obtain this time from the database and check a fresh database time again
 inside the locked atomic claim, alongside current sessions, devices and nonce.
 The synthetic adapter only demonstrates the interface: neither a real database
 adapter nor first-device recovery/key migration is implemented. Keep OFF.
+
+
+## Pending public-key migration inventory (review only)
+
+`key-migration-proposal.mjs` accepts canonical P-256 SPKI public PEM only and
+hashes that exact PEM, matching the current intent hash contract. A legacy random
+device identifier is never interpreted as a key. The authoritative owner/device
+snapshot must come from the future locked server adapter, not request metadata.
+The SQL stores only `pending` proposals: no active/trusted state, client grant,
+registration endpoint, approval or migration of existing devices is provided.
+SQL itself does not verify cryptographic key validity or proof of possession.
+The private device FK intentionally rejects device deletion while evidence is
+referenced; retention, safe cancellation and owner/device deletion compatibility
+are unresolved and must be designed before deployment. Node and SQL tests use
+synthetic identities only. Real public-key custody, user-presence verification,
+atomic approval, bootstrap/recovery and platform testing remain incomplete.

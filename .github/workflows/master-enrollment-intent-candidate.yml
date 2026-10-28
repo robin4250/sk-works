@@ -53,3 +53,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/native-legacy-gate-tests.sql
           psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/native-tests.sql
           node tool/security/master-device-enrollment-candidate/native-concurrency.mjs
+
+      - run: |
+          psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/key-migration-registry.sql.review-only
+          psql -X -v ON_ERROR_STOP=1 -f tool/security/master-device-enrollment-candidate/key-migration-registry-tests.sql
