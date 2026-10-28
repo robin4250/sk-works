@@ -17,13 +17,30 @@ class OwnShiftContext {
 /// Read-only adapter. No worker identifier is accepted from the route: the RPC
 /// determines the caller's own worker and enforces publication and rollout.
 class OwnPublishedShiftRepository {
-  OwnPublishedShiftRepository(this.client) {
-    _subscription = client.auth.onAuthStateChange.listen((_) => _generation++);
+  OwnPublishedShiftRepository(this.client, {Stream<AuthState>? authChanges}) {
+    final initialActor = client.auth.currentSession?.user.id;
+    final initialToken = client.auth.currentSession?.accessToken;
+    var initialReplayPending = true;
+    _subscription = (authChanges ?? client.auth.onAuthStateChange).listen((state) {
+      final current = client.auth.currentSession;
+      final sameInitialReplay = initialReplayPending &&
+          state.event == AuthChangeEvent.initialSession && initialActor != null && initialToken != null &&
+          state.session?.user.id == initialActor && state.session?.accessToken == initialToken &&
+          current?.user.id == initialActor && current?.accessToken == initialToken;
+      initialReplayPending = false;
+      if (!sameInitialReplay) { _generation++; }
+    }, onError: (Object _) {
+      _authUnavailable = true;
+      _generation++;
+    }, onDone: () {
+      _authUnavailable = true;
+      _generation++;
+    });
   }
   final SupabaseClient client;
   late final StreamSubscription<AuthState> _subscription;
   int _generation = 0;
-  bool _disposed = false;
+  bool _disposed = false, _authUnavailable = false;
 
   static OwnPublishedShiftRepository? maybeCreate() =>
       SupabaseBackend.isInitialized && SupabaseBackend.client.auth.currentSession != null
@@ -37,19 +54,22 @@ class OwnPublishedShiftRepository {
 
   Future<OwnShiftContext> loadContext() async {
     final session = client.auth.currentSession;
-    if (session == null || session.user.isAnonymous) throw StateError('ログインを確認してください。');
+    if (session == null || session.isExpired || session.user.isAnonymous) throw StateError('ログインを確認してください。');
     final actor = session.user.id, token = session.accessToken, generation = _generation;
-    void check() {
+    Future<void> check() async {
+      // Drain queued Auth history before any read or accepted result. Current
+      // values alone cannot detect an observed actor/token A -> B -> A.
+      await Future<void>.delayed(Duration.zero);
       final current = client.auth.currentSession;
-      if (_disposed || _generation != generation || current == null ||
+      if (_disposed || _authUnavailable || _generation != generation || current == null || current.isExpired ||
           current.user.id != actor || current.accessToken != token) {
         throw StateError('ログイン状態が変わりました。画面を開き直してください。');
       }
     }
-    check();
+    await check();
     final memberships = await client.from('company_members').select('company_id')
         .eq('user_id', actor).limit(2);
-    check();
+    await check();
     // Do not guess a company when an account has multiple memberships.
     if (memberships.length != 1 || memberships.single['company_id'] is! String ||
         (memberships.single['company_id'] as String).trim().isEmpty) {
@@ -57,7 +77,7 @@ class OwnPublishedShiftRepository {
     }
     final company = memberships.single['company_id'] as String;
     final rows = await client.from('sites').select('id,name').eq('company_id', company);
-    check();
+    await check();
     final names = <String, String>{};
     for (final row in rows) {
       if (row['id'] is String && row['name'] is String) {
@@ -65,12 +85,12 @@ class OwnPublishedShiftRepository {
       }
     }
     final gateway = OwnPublishedShiftGateway((name, params) async {
-      check();
+      await check();
       if (name != 'list_own_published_shifts' || params['p_company'] != company) {
         throw StateError('本人のシフトを確認できません。');
       }
       final result = await client.rpc(name, params: params);
-      check();
+      await check();
       return result;
     });
     return OwnShiftContext(company, Map.unmodifiable(names), gateway);

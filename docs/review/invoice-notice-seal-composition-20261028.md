@@ -189,3 +189,25 @@ scenario is pending CI; it does not establish an unknown-COMMIT-ACK protocol.
 Live Auth/full public transport, secure client reconciliation across logout,
 deployment/restore/retention and device verification remain incomplete. No
 public function/grant, automatic retry, production change or activation is added.
+
+## OFF compatibility before any integration (2026-10-28)
+
+The earlier UI candidate removed the normal approval action even though its new
+notification controller was disabled. That was an OFF regression, not a desired
+restriction on existing approvals. The PDF preview now restores the exact
+`_approve` method from main `7355d28f` (SHA256 of the complete method:
+`ee97cf5da13fbad5dba45d1826dd7c096c4cc35eed23bca1378b97f8a8682c3d`).
+Its actor, assigned-approval, surname, explicit confirmation and saved-result
+checks remain byte-identical. The original approval button stays in its row.
+
+One fixed-false `invoiceNoticeApprovalReleased` constant selects the existing
+action and prevents candidate controller creation, messaging or panel mounting.
+The future ON branch receives no legacy callback and cannot fall back after a
+missing controller, failed ticket read or uncertain submission. It remains OFF;
+this is not authorization to enable the still-incomplete notification flow.
+
+Eight added contract/Widget cases pin the canonical method and production wiring,
+test the OFF normal/notification entries without candidate transport, preserve
+permission/busy restrictions and require ON failures to avoid legacy fallback.
+The local exact-source/gate checks and whitespace check pass; Flutter analysis
+and Widget execution are pending the dedicated CI, not claimed as locally run.

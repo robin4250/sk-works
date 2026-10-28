@@ -23,7 +23,7 @@ import '../../domain/invoice_engine.dart';
 import '../../international/language_controller.dart';
 import '../shared/company_seal_pdf.dart';
 import 'invoice_approval_repository.dart';
-import 'invoice_notice_approval_panel.dart';
+import 'invoice_approval_entry_actions.dart';
 import 'invoice_notice_candidate_rpc.dart';
 import 'invoice_preview_raster.dart';
 import 'invoice_preview_failure.dart';
@@ -1026,8 +1026,9 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
   bool _openingAcceptance = false;
   final _actorLease = TradeDocumentActorLease();
   // OFF until the server readiness receipt, grants and production tests pass.
-  late final _noticeController = SupabaseBackend.isInitialized
+  late final _noticeController = invoiceNoticeApprovalReleased && SupabaseBackend.isInitialized
       ? createInvoiceNoticeCandidateController(client: SupabaseBackend.client,
+          enabled: invoiceNoticeApprovalReleased,
           actor: () => SupabaseBackend.client.auth.currentUser?.id,
           session: () => SupabaseBackend.client.auth.currentSession?.accessToken)
       : null;
@@ -1155,6 +1156,90 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
     }
   }
 
+  Future<void> _approve() async {
+    if (_approving) return;
+    final invoice = _singleInvoice;
+    final repository = _approvalRepository;
+    if (invoice == null || repository == null || invoice.invoiceId.isEmpty) {
+      return;
+    }
+    final actor = SupabaseBackend.isInitialized
+        ? SupabaseBackend.client.auth.currentUser?.id : null;
+    if (actor == null) return;
+    void checkActor() {
+      if (!SupabaseBackend.isInitialized ||
+          SupabaseBackend.client.auth.currentUser?.id != actor) {
+        throw StateError(SkoLanguageController.isEnglish
+            ? 'Your account changed. Reopen this invoice before continuing.'
+            : 'アカウントが変わりました。請求書を開き直してください。');
+      }
+    }
+    setState(() => _approving = true);
+    try {
+      checkActor();
+      final rows = await repository.loadForInvoice(invoice.invoiceId,
+        allowLegacyInitialization: widget.allowLegacyApprovalInitialization);
+      checkActor();
+      if (!mounted) return;
+      final ownPending = rows.where((row) => row.canCurrentUserApprove).toList();
+      if (ownPending.length != 1) {
+        throw StateError(SkoLanguageController.isEnglish
+            ? 'Your approval status has changed. Reload the invoice and check your approval permissions.'
+            : '本人の承認状態が変わっています。請求書を再読み込みし、承認権限を確認してください。');
+      }
+      final row = ownPending.single;
+      if (row.canCurrentUserSetStampSurname && row.draftStampSurname == null) {
+        final saved = await editInvoiceStampSurname(context, repository, invoice.invoiceId, checkActor: checkActor);
+        checkActor();
+      if (!saved || !mounted) return;
+      }
+      checkActor();
+      if (!mounted) return;
+      final outcome = await openTradeDocumentConfirmation(context,
+        kind: 'invoice', parentId: invoice.invoiceId,
+        sourceRevision: invoice.documentUpdatedAt == null ? ''
+          : DateTime.parse(invoice.documentUpdatedAt!).toUtc().toIso8601String());
+      checkActor();
+      if (!mounted || outcome == TradeConfirmationFlowOutcome.cancelled) return;
+      final approved = outcome == TradeConfirmationFlowOutcome.confirmed ||
+        await repository.approve(invoice.invoiceId);
+      checkActor();
+      if (!approved) {
+        throw StateError(SkoLanguageController.isEnglish
+            ? 'Approval was not saved. Check your seal surname, invoice calculation and approval permissions.'
+            : '承認を保存できませんでした。承認印の名字・請求額の確定状態・承認権限を確認してください。');
+      }
+      final refreshed = _buildPreviewData().timeout(
+        const Duration(seconds: 90),
+        onTimeout: () => throw StateError(SkoLanguageController.tr('請求書の読み込みに時間がかかっています。通信を確認して再試行してください。')),
+      );
+      // Only report success after reading the server's actual saved approval.
+      final data = await refreshed;
+      checkActor();
+      if (!data.approvals.any((item) => item.userId == row.userId && item.approved)) {
+        throw StateError(SkoLanguageController.isEnglish
+            ? 'Could not confirm the saved approval. Reload before trying again.'
+            : '保存された承認を確認できませんでした。再操作の前に再読み込みしてください。');
+      }
+      if (!mounted) return;
+      setState(() {
+        _previewRevision++;
+        _previewData = Future.value(data);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        SkoLanguageController.isEnglish ? 'Invoice approved' : '請求書を承認しました',
+      )));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        error is StateError ? error.message.toString()
+            : (SkoLanguageController.isEnglish ? 'Could not confirm invoice approval. Check your surname, invoice calculation and approval permissions, then reload.' : '請求書の承認を確認できませんでした。名字・請求額の確定状態・承認権限を確認し、再読み込みしてください。'),
+      )));
+    } finally {
+      if (mounted) setState(() => _approving = false);
+    }
+  }
+
   Future<void> _openAcceptanceEditor() async {
     if (_openingAcceptance || _singleInvoice?.invoiceId.isNotEmpty != true ||
         _singleInvoice?.documentUpdatedAt == null) {
@@ -1237,6 +1322,31 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
               final isPendingApprover = actorId != null && approvals.any(
                 (item) => item.userId == actorId && item.status == 'pending',
               );
+              final approvalEntry = InvoiceApprovalEntryActions(
+                notificationOnly: invoiceNoticeApprovalReleased,
+                canApprove: canApprove,
+                isPendingApprover: isPendingApprover,
+                fromNotification: widget.approvalFromNotification,
+                busy: _approving,
+                onLegacyApprove: invoiceNoticeApprovalReleased ? null : _approve,
+                controller: _noticeController,
+                notificationId: widget.approvalNotificationId ?? '',
+                invoiceId: _singleInvoice?.invoiceId ?? '',
+                revision: _singleInvoice?.documentUpdatedAt ?? '',
+                confirmSavedApproval: () async {
+                  final actor = SupabaseBackend.isInitialized
+                      ? SupabaseBackend.client.auth.currentUser?.id : null;
+                  if (actor == null) { return false; }
+                  final data = await _buildPreviewData().timeout(const Duration(seconds: 90));
+                  if (!mounted || !SupabaseBackend.isInitialized ||
+                      SupabaseBackend.client.auth.currentUser?.id != actor) { return false; }
+                  final saved = data.approvals.any((row) => row.userId == actor && row.approved);
+                  if (saved) {
+                    setState(() { _previewRevision++; _previewData = Future.value(data); });
+                  }
+                  return saved;
+                },
+              );
               return Column(
                 children: [
                   if (previewData.missingAcceptanceCount == 0 &&
@@ -1281,37 +1391,14 @@ class _InvoicePdfPreviewPageState extends State<InvoicePdfPreviewPage> {
                               icon: const Icon(Icons.badge_outlined),
                               label: Text(SkoLanguageController.isEnglish ? 'Seal surname' : '名字設定'),
                             ),
+                          if (!invoiceNoticeApprovalReleased) approvalEntry,
                         ],
                       ),
                     ),
-                  if (isPendingApprover && !widget.approvalFromNotification)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(12, 6, 12, 0),
-                      child: Text('承認は通知から請求書を開いて行います。'),
-                    ),
-                  if (isPendingApprover && widget.approvalFromNotification)
+                  if (invoiceNoticeApprovalReleased)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                      child: InvoiceNoticeApprovalPanel(
-                        controller: _noticeController,
-                        notificationId: widget.approvalNotificationId ?? '',
-                        invoiceId: _singleInvoice?.invoiceId ?? '',
-                        revision: _singleInvoice?.documentUpdatedAt ?? '',
-                        isApprover: canApprove,
-                        confirmSavedApproval: () async {
-                          final actor = SupabaseBackend.isInitialized
-                              ? SupabaseBackend.client.auth.currentUser?.id : null;
-                          if (actor == null) { return false; }
-                          final data = await _buildPreviewData().timeout(const Duration(seconds: 90));
-                          if (!mounted || !SupabaseBackend.isInitialized ||
-                              SupabaseBackend.client.auth.currentUser?.id != actor) { return false; }
-                          final saved = data.approvals.any((row) => row.userId == actor && row.approved);
-                          if (saved) {
-                            setState(() { _previewRevision++; _previewData = Future.value(data); });
-                          }
-                          return saved;
-                        },
-                      ),
+                      child: approvalEntry,
                     ),
                   if (_singleInvoice != null)
                     TradeConfirmationAction(kind: 'invoice', parentId: _singleInvoice!.invoiceId,

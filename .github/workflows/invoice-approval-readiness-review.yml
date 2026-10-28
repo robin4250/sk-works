@@ -4,6 +4,8 @@ on:
     paths:
       - 'lib/features/invoices/invoice_approval_readiness.dart'
       - 'lib/features/invoices/invoice_pdf_service.dart'
+      - 'lib/features/invoices/invoice_approval_entry_actions.dart'
+      - 'test/invoice_approval_off_compatibility_test.dart'
       - 'lib/features/invoices/invoice_cloud_page.dart'
       - 'lib/features/invoices/invoice_notification_page.dart'
       - 'lib/features/notifications/notifications_page.dart'
@@ -30,5 +32,5 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/features/invoices/invoice_notice_approval_panel.dart test/invoice_notice_approval_panel_test.dart lib/features/invoices/invoice_notice_candidate_rpc.dart lib/features/notifications/notifications_page.dart lib/features/invoices/invoice_notice_ticket_controller.dart test/invoice_notice_ticket_controller_test.dart lib/features/invoices/invoice_cloud_page.dart lib/features/invoices/invoice_notification_page.dart test/invoice_notification_target_test.dart test/invoice_notification_route_scope_test.dart lib/features/invoices/invoice_pdf_service.dart lib/features/invoices/invoice_approval_readiness.dart test/invoice_approval_readiness_test.dart
-      - run: flutter test --reporter expanded test/invoice_notice_approval_panel_test.dart test/invoice_notice_ticket_controller_test.dart test/invoice_approval_readiness_test.dart test/invoice_notification_target_test.dart test/invoice_notification_route_scope_test.dart
+      - run: flutter analyze lib/features/invoices/invoice_approval_entry_actions.dart test/invoice_approval_off_compatibility_test.dart lib/features/invoices/invoice_notice_approval_panel.dart test/invoice_notice_approval_panel_test.dart lib/features/invoices/invoice_notice_candidate_rpc.dart lib/features/notifications/notifications_page.dart lib/features/invoices/invoice_notice_ticket_controller.dart test/invoice_notice_ticket_controller_test.dart lib/features/invoices/invoice_cloud_page.dart lib/features/invoices/invoice_notification_page.dart test/invoice_notification_target_test.dart test/invoice_notification_route_scope_test.dart lib/features/invoices/invoice_pdf_service.dart lib/features/invoices/invoice_approval_readiness.dart test/invoice_approval_readiness_test.dart
+      - run: flutter test --reporter expanded test/invoice_approval_off_compatibility_test.dart test/invoice_notice_approval_panel_test.dart test/invoice_notice_ticket_controller_test.dart test/invoice_approval_readiness_test.dart test/invoice_notification_target_test.dart test/invoice_notification_route_scope_test.dart
