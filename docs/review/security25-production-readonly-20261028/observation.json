@@ -56,5 +56,21 @@
       }
     ],
     "limits": "Catalog-only checks do not prove authenticated company/owner isolation or RPC authorization. No user records queried and no production changes."
+  },
+  "personnel_policy_observation": {
+    "date": "2026-10-28",
+    "tables": [
+      "worker_personnel_profiles",
+      "worker_family_members"
+    ],
+    "select_rule": "account_access_allowed AND matching worker/company AND (self user OR company personnel view permission with worker status/admin conditions)",
+    "personnel_view_roles": "owner/admin/viewer; manager additionally requires can_manage_people",
+    "data_api_pre_request": "private.check_account_access",
+    "hook_observation": "Read-committed account deletion advisory barrier and restriction recheck are present.",
+    "limits": [
+      "Catalog review only; no actual authenticated owner/company test executed against production.",
+      "Observed helper/hook does not itself establish general live-auth-session revocation; do not infer it from the deletion barrier.",
+      "Do not automatically rewrite existing roles, RLS, helpers or hooks based on this observation."
+    ]
   }
 }
