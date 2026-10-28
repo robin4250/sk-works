@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/shifts/shift_day_editor.dart';
@@ -6,6 +7,46 @@ import 'package:sk_works/features/shifts/shift_people_picker.dart';
 import 'package:sk_works/features/shifts/shift_schedule_editor.dart';
 
 void main() {
+  testWidgets('company change discards old save response and selection', (tester) async {
+    final pending = Completer<void>();
+    final saves = <ShiftDraftRequest>[];
+    Widget page(String company) => MaterialApp(home: ShiftScheduleEditor(
+      companyId: company, date: DateTime(2026, 10, 26),
+      people: const [ShiftPersonOption(id: 'w', name: '従業員')],
+      sites: const [ShiftSiteOption(id: 's', name: '現場')],
+      initial: const ShiftDayDraft(holiday: false, night: false, siteId: 's',
+        start: TimeOfDay(hour: 8, minute: 0), end: TimeOfDay(hour: 17, minute: 0),
+        checkLate: true, checkEarly: true), revisions: const {'w': 8},
+      save: (rows) async {
+        saves.addAll(rows);
+        if (company == 'old') await pending.future;
+      }, publish: (_) async {},
+    ));
+    await tester.pumpWidget(page('old'));
+    await tester.tap(find.text('従業員'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('下書きを保存'));
+    await tester.tap(find.text('下書きを保存'));
+    await tester.pump();
+    await tester.pumpWidget(page('new'));
+    pending.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('下書きを保存しました。'), findsNothing);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '保存したシフトを確定')).onPressed, isNull);
+    await tester.ensureVisible(find.text('下書きを保存'));
+    await tester.tap(find.text('下書きを保存'));
+    await tester.pumpAndSettle();
+    expect(saves.length, 1);
+    expect(find.text('従業員を選択してください。'), findsOneWidget);
+    await tester.tap(find.text('従業員'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('下書きを保存'));
+    await tester.tap(find.text('下書きを保存'));
+    await tester.pumpAndSettle();
+    expect(saves.last.companyId, 'new');
+    expect(saves.last.revision, 8);
+  });
+
   testWidgets('publish is enabled only for the saved revision', (tester) async {
     List<ShiftDraftRequest> published = [];
     await tester.pumpWidget(MaterialApp(home: ShiftScheduleEditor(

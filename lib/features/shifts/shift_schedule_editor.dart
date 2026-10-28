@@ -28,6 +28,23 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
   late Map<String, int> revisions = Map.of(widget.revisions);
   Set<String> selected = {};
   bool saving = false;
+  int generation = 0;
+
+  @override
+  void didUpdateWidget(covariant ShiftScheduleEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.companyId != widget.companyId ||
+        oldWidget.date != widget.date) {
+      generation++;
+      draft = widget.initial;
+      revisions = Map.of(widget.revisions);
+      selected = {};
+      saving = false;
+      requiresReload = false;
+      message = null;
+      savedForPublication = null;
+    }
+  }
   // An RPC may have committed even when its response was lost. Re-read the
   // authoritative revision before allowing another write from this editor.
   bool requiresReload = false;
@@ -54,10 +71,11 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
       setState(() => message = problem);
       return;
     }
+    final requestGeneration = generation;
     setState(() { saving = true; message = null; });
     try {
       await widget.save(List.unmodifiable(requests));
-      if (mounted) {
+      if (mounted && requestGeneration == generation) {
         setState(() {
         for (final request in requests) {
           revisions[request.workerId] = request.revision + 1;
@@ -72,7 +90,7 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && requestGeneration == generation) {
         setState(() {
         requiresReload = true;
         savedForPublication = null;
@@ -80,19 +98,20 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
         });
       }
     } finally {
-      if (mounted) setState(() => saving = false);
+      if (mounted && requestGeneration == generation) setState(() => saving = false);
     }
   }
 
   Future<void> publishSaved() async {
     final rows = savedForPublication;
     if (saving || requiresReload || rows == null || widget.publish == null) return;
+    final requestGeneration = generation;
     setState(() { saving = true; message = null; });
     try {
       await widget.publish!(List.unmodifiable(rows));
-      if (mounted) setState(() { savedForPublication = null; message = 'シフトを確定しました。'; });
+      if (mounted && requestGeneration == generation) setState(() { savedForPublication = null; message = 'シフトを確定しました。'; });
     } catch (_) {
-      if (mounted) {
+      if (mounted && requestGeneration == generation) {
         setState(() {
         requiresReload = true;
         savedForPublication = null;
@@ -100,7 +119,7 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
         });
       }
     } finally {
-      if (mounted) setState(() => saving = false);
+      if (mounted && requestGeneration == generation) setState(() => saving = false);
     }
   }
 
