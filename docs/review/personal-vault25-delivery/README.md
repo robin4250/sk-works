@@ -9,3 +9,11 @@ The Storage REST endpoint reads the current object. Matching bytes by saved hash
 Validation: 19 isolated Node/PGlite tests passed locally (including coordinator-to-transport composition). The dedicated dependency-free CI runs transport, shared bounded stream and byte verification tests; this is synthetic fetch, not a real Storage access test. No production requests/data/keys were used.
 
 Official API checked: Supabase Storage private bucket access and storage-js StorageFileApi.download (GET /storage/v1/object/{bucket}/{path}, user Authorization header). Changelog checked 2026-10-28: current TLS deprecation requires a current TLS stack; no new SDK dependency introduced.
+
+## Source snapshot binding candidate
+
+The owner-only `personal_vault25_source_mine` review-only RPC returns the saved catalog company/worker/source IDs, revision, source snapshot hash, manifest hash and kind. The delivery coordinator now requires an `own-snapshot-v2` trusted inspector receipt bound to all of these fields, in addition to actor, manifest, artifact and PDF hash. It rereads the binding after inspection and rejects changed context. Old v1 proofs and proofs for a different source/revision/snapshot are rejected. This adds no production endpoint and is not applied.
+
+The catalog records are still supplied by a trusted exporter; this binding does **not** prove that the source snapshot was independently owner-filtered or that arbitrary PDF content contains no third-party information. No proof issuer is implemented here. Text-only PDF observations must never be adapted to `passed:true`; existing signature/stamp images and original PDFs are unchanged. Storage immutable historical retention, actual source projection/provenance, inspector authority, deployment and device checks remain incomplete.
+
+Validation: 12 isolated Node/PGlite coordinator tests passed, including every source-binding field mismatch, stale binding after inspection, foreign/expired actor and anonymous/service ACL rejection. Native PostgreSQL source-binding checks are added to the catalog CI. Sessions in this new SQL test are synthetic; existing real GoTrue/Storage tests are separate.

@@ -4,6 +4,7 @@ on:
     paths:
       - 'tool/personal_vault_manifest.mjs'
       - 'docs/review/personal-vault24/**'
+      - 'docs/review/personal-vault25-delivery/source-binding*'
       - 'test/personal_vault_manifest.test.mjs'
       - 'lib/features/personal_vault/**'
       - 'test/own_payroll_archive_pdf_test.dart'
@@ -54,6 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/read-api-test.sql
       - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/receipt-immutability-test.sql
+      - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault25-delivery/source-binding-test.sql
       - run: createdb -h localhost -U postgres vault_native
       - run: psql -h localhost -U postgres -d vault_native -v ON_ERROR_STOP=1 -f vault-native-test.sql
         working-directory: docs/review/personal-vault24/feature-fixture
