@@ -49,13 +49,15 @@ export function verifyOwnerIssuerContinuity({enabled=false,trusted,authorityChec
   const pin=snapshot(trusted,['purpose','authorityId','epoch','keyId','publicKeyJwk','headSha256','retiredKeys']);
   // This separate checkpoint must be authenticated and fresh from the external
   // authority. A same-DB copy or caller-supplied assertion is not anti-rollback.
-  const checkpoint=snapshot(authorityCheckpoint,['authorityId','epoch','headSha256']);
+  const checkpoint=snapshot(authorityCheckpoint,['authorityId','epoch','headSha256','keyId','publicKeySha256']);
   pin.publicKeyJwk=publicKey(pin.publicKeyJwk);
+  const pinKeySha256=createHash('sha256').update(createPublicKey({key:pin.publicKeyJwk,format:'jwk'}).export({type:'spki',format:'der'})).digest('hex');
   if(pin.purpose!==purpose||typeof pin.authorityId!=='string'||!uuid.test(pin.authorityId)||
    !Number.isSafeInteger(pin.epoch)||pin.epoch<1||pin.epoch>65||typeof pin.keyId!=='string'||!keyId.test(pin.keyId)||
    typeof pin.headSha256!=='string'||!digest.test(pin.headSha256)||!Array.isArray(pin.retiredKeys)||
    pin.retiredKeys.length!==pin.epoch-1||!Number.isSafeInteger(databaseNowMs)||databaseNowMs<0||
-   checkpoint.authorityId!==pin.authorityId||checkpoint.epoch!==pin.epoch||checkpoint.headSha256!==pin.headSha256)throw Error('trusted pin and external checkpoint required');
+   checkpoint.authorityId!==pin.authorityId||checkpoint.epoch!==pin.epoch||checkpoint.headSha256!==pin.headSha256||
+   checkpoint.keyId!==pin.keyId||checkpoint.publicKeySha256!==pinKeySha256)throw Error('trusted pin and external checkpoint required');
   const ids=new Set([pin.keyId]),keys=new Set([pin.publicKeyJwk.x]);
   if(Object.getPrototypeOf(pin.retiredKeys)!==Array.prototype||Reflect.ownKeys(pin.retiredKeys).length!==pin.retiredKeys.length+1)throw Error('plain history required');
   const history=Array.from({length:pin.retiredKeys.length},(_,index)=>{

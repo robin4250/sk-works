@@ -5,7 +5,8 @@ import {ownerIssuerContinuityPayload,verifyOwnerIssuerContinuity} from './owner-
 import {ownerDecisionPayload,verifyOwnerDecisionAttestation} from './owner-decision-attestation.mjs';
 const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 const pair=()=>{const k=generateKeyPairSync('ed25519');return {...k,jwk:k.publicKey.export({format:'jwk'})};};
-const checkpoint=pin=>({authorityId:pin.authorityId,epoch:pin.epoch,headSha256:pin.headSha256});
+const checkpoint=pin=>({authorityId:pin.authorityId,epoch:pin.epoch,headSha256:pin.headSha256,keyId:pin.keyId,
+ publicKeySha256:createHash('sha256').update(createPublicKey({key:pin.publicKeyJwk,format:'jwk'}).export({type:'spki',format:'der'})).digest('hex')});
 function fixture(){
  const old=pair(),next=pair();
  const trusted={purpose:'sko-master-independent-owner-decision-v1',authorityId:id(1),epoch:1,keyId:'issuer_1',publicKeyJwk:old.jwk,headSha256:'a'.repeat(64),retiredKeys:[]};
@@ -80,9 +81,16 @@ test('missing or newer authenticated external checkpoint rejects a rolled-back l
  const f=fixture(),first=verifyOwnerIssuerContinuity(f.args);
  assert.equal(verifyOwnerIssuerContinuity({...f.args,authorityCheckpoint:undefined}),null);
  assert.equal(verifyOwnerIssuerContinuity({...f.args,authorityCheckpoint:checkpoint(first.next)}),null);
- for(const patch of [{authorityId:id(9)},{epoch:2},{headSha256:'b'.repeat(64)}])assert.equal(verifyOwnerIssuerContinuity({...f.args,authorityCheckpoint:{...f.args.authorityCheckpoint,...patch}}),null);
+ for(const patch of [{authorityId:id(9)},{epoch:2},{headSha256:'b'.repeat(64)},{keyId:'other_issuer'},{publicKeySha256:'b'.repeat(64)}])assert.equal(verifyOwnerIssuerContinuity({...f.args,authorityCheckpoint:{...f.args.authorityCheckpoint,...patch}}),null);
  // Two copies of a stale local snapshot would still satisfy this contract.
  // Only the future authority adapter can prove checkpoint freshness/independence.
+});
+test('authenticated checkpoint also binds current key bytes despite unchanged local epoch and head',()=>{
+ const f=fixture(),attacker=pair();
+ const substituted={...f.trusted,publicKeyJwk:attacker.jwk};
+ // Both signatures are cryptographically valid under the substituted local pin,
+ // but the independently authenticated current-key fingerprint must refuse it.
+ assert.equal(verifyOwnerIssuerContinuity({...f.args,trusted:substituted,proposal:f.signed(f.proposal,attacker,f.next)}),null);
 });
 test('retired keys permit historical cryptographic audit but never current owner-evidence ingestion',()=>{
  const f=fixture(),rotation=verifyOwnerIssuerContinuity(f.args);

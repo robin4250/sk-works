@@ -7,7 +7,9 @@ The new pure verifier prepares one bounded transition from an existing trusted
 pin/history to a successor public key. It is disabled unless explicitly enabled.
 
 It requires an externally authenticated current authority checkpoint (authority,
-epoch and prior transition digest), matching the independently configured pin.
+epoch, prior transition digest, current key identifier and SHA256 of its SPKI DER
+public-key bytes), matching the independently configured pin. A local key
+substitution is rejected even when the local epoch and prior digest are unchanged.
 The exact authority, next epoch, prior digest, old/new identifiers, new public
 key and short validity interval are signed by both the old issuer and new key.
 Both Ed25519 signatures must verify. It refuses stale checkpoints, skipped/reused
@@ -45,7 +47,7 @@ independent recovery process remains necessary. No fallback trusts same-app proo
 
 ## Validation
 
-Local Node 24 tests: ten new continuity cases and three existing owner-decision
+Local Node 24 tests: eleven new continuity cases and three existing owner-decision
 cases passed. Coverage includes two consecutive transitions across serialized
 pin state, old-key history, replay/retired-key reuse, authenticated-checkpoint
 mismatch, both signatures, time bounds, malformed inputs, caller metadata mutation and original owner
