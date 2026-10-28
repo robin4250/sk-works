@@ -1,0 +1,80 @@
+-- Internal review-only recovery. No migration/grant/rollout or attendance write.
+-- Only NEW receipt-bearing registrations gain this retention dependency. No
+-- original row is backfilled and no Auth/session/business FK or table is altered.
+begin;
+create table qr_attendance_private.scanner_registration_receipts(
+ challenge_id uuid primary key references qr_attendance_private.scanner_key_challenges(id) on delete no action,
+ device_id uuid not null references qr_attendance_private.registered_scanners(device_id) on delete no action,
+ registration_event_id bigint not null unique references qr_attendance_private.scanner_registration_events(id) on delete no action,
+ company_id uuid not null,actor_id uuid not null,session_id uuid not null,
+ public_key_hex text not null check(public_key_hex ~ '^302a300506032b6570032100[0-9a-f]{64}$'),
+ recorded_at timestamptz not null default clock_timestamp()
+);
+alter table qr_attendance_private.scanner_registration_receipts enable row level security;
+revoke all on qr_attendance_private.scanner_registration_receipts from public,anon,authenticated,service_role;
+create function qr_attendance_private.protect_scanner_registration_receipt()
+returns trigger language plpgsql set search_path='' as $$
+begin raise sqlstate '42501' using message='qr_registration_receipt_immutable';end$$;
+create trigger protect_scanner_registration_receipt before update or delete on qr_attendance_private.scanner_registration_receipts
+ for each row execute function qr_attendance_private.protect_scanner_registration_receipt();
+create trigger protect_scanner_registration_receipt_truncate before truncate on qr_attendance_private.scanner_registration_receipts
+ for each statement execute function qr_attendance_private.protect_scanner_registration_receipt();
+revoke all on function qr_attendance_private.protect_scanner_registration_receipt() from public,anon,authenticated,service_role;
+
+create function qr_attendance_private.complete_own_scanner_key_registration(p_challenge uuid,p_proof text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare c jsonb;before_event bigint;events bigint[];device uuid;
+begin
+ -- The trusted request adapter must verify the actual key signature first.
+ -- Re-load and lock the exact original scope inside the same transaction.
+ c:=qr_attendance_private.load_scanner_key_challenge(p_challenge);
+ if not pg_try_advisory_xact_lock(hashtextextended('sko-qr-scanner-registration:'||(c->>'device'),0)) then
+  raise sqlstate '55P03' using message='qr_registration_busy';
+ end if;
+ select coalesce(max(id),0) into before_event from qr_attendance_private.scanner_registration_events
+  where device_id=(c->>'device')::uuid;
+ device:=qr_attendance_private.register_own_scanner_with_proof((c->>'company')::uuid,(c->>'device')::uuid,c->>'keyHex',p_proof);
+ if device is distinct from (c->>'device')::uuid then raise sqlstate '42501';end if;
+ select array_agg(id order by id) into events from qr_attendance_private.scanner_registration_events
+  where device_id=device and id>before_event and company_id=(c->>'company')::uuid
+   and actor_id=(c->>'actor')::uuid and session_id=(c->>'session')::uuid;
+ if coalesce(array_length(events,1),0)<>1 then raise sqlstate '42501' using message='qr_registration_event_mismatch';end if;
+ perform qr_attendance_private.consume_scanner_key_challenge(p_challenge);
+ insert into qr_attendance_private.scanner_registration_receipts(challenge_id,device_id,registration_event_id,company_id,actor_id,session_id,public_key_hex)
+  values(p_challenge,device,events[1],(c->>'company')::uuid,(c->>'actor')::uuid,(c->>'session')::uuid,c->>'keyHex');
+ return jsonb_build_object('challengeId',p_challenge,'deviceId',device,'registrationEventId',events[1]::text,
+  'companyId',c->>'company','actor',c->>'actor','session',c->>'session','keyHex',c->>'keyHex');
+end$$;
+revoke all on function qr_attendance_private.complete_own_scanner_key_registration(uuid,text) from public,anon,authenticated,service_role;
+
+create function qr_attendance_private.read_own_scanner_key_registration(p_challenge uuid,p_company uuid,p_device uuid,p_key text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare principal jsonb;c qr_attendance_private.scanner_key_challenges%rowtype;
+ r qr_attendance_private.scanner_registration_receipts%rowtype;
+begin
+ principal:=qr_attendance_private.require_registration_actor(p_company);
+ if p_challenge is null or p_device is null or p_key is null or p_key !~ '^302a300506032b6570032100[0-9a-f]{64}$' then raise sqlstate '42501';end if;
+ select * into c from qr_attendance_private.scanner_key_challenges where id=p_challenge for share;
+ if not found or c.company_id is distinct from p_company or c.device_id is distinct from p_device
+  or c.public_key_hex is distinct from p_key or c.actor_id is distinct from (principal->>'actor')::uuid
+  or c.session_id is distinct from (principal->>'session')::uuid then return null;end if;
+ if not pg_try_advisory_xact_lock(hashtextextended('sko-qr-scanner-registration:'||p_device::text,0)) then raise sqlstate '55P03';end if;
+ select * into r from qr_attendance_private.scanner_registration_receipts where challenge_id=p_challenge for share;
+ if not found then return null;end if;
+ -- Expiry does not erase a committed command. Recovery never consumes a proof,
+ -- issues a nonce, extends a deadline, or re-registers a key. Current authority
+ -- and the same original SID remain mandatory even for this historical read.
+ if c.consumed_at is null or r.company_id is distinct from p_company or r.device_id is distinct from p_device
+  or r.actor_id is distinct from c.actor_id or r.session_id is distinct from c.session_id or r.public_key_hex is distinct from p_key then raise sqlstate '42501';end if;
+ perform 1 from qr_attendance_private.registered_scanners where device_id=p_device and company_id=p_company
+  and actor_id=c.actor_id and public_key_der=decode(p_key,'hex') and revoked_at is null for share;
+ if not found then raise sqlstate '42501';end if;
+ perform 1 from qr_attendance_private.scanner_registration_events where id=r.registration_event_id
+  and device_id=p_device and company_id=p_company and actor_id=c.actor_id and session_id=c.session_id for share;
+ if not found then raise sqlstate '42501';end if;
+ if (principal->>'session')::uuid is distinct from private.require_reauthentication_session() then raise sqlstate '42501';end if;
+ return jsonb_build_object('challengeId',p_challenge,'deviceId',p_device,'registrationEventId',r.registration_event_id::text,
+  'companyId',p_company,'actor',r.actor_id,'session',r.session_id,'keyHex',r.public_key_hex);
+end$$;
+revoke all on function qr_attendance_private.read_own_scanner_key_registration(uuid,uuid,uuid,text) from public,anon,authenticated,service_role;
+commit;

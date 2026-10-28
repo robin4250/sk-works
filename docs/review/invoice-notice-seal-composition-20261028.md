@@ -211,3 +211,45 @@ test the OFF normal/notification entries without candidate transport, preserve
 permission/busy restrictions and require ON failures to avoid legacy fallback.
 The local exact-source/gate checks and whitespace check pass; Flutter analysis
 and Widget execution are pending the dedicated CI, not claimed as locally run.
+
+## PostgreSQL COMMIT acknowledgement loss (2026-10-28, OFF)
+
+A new Native-only loopback fixture puts a bounded PostgreSQL wire proxy between
+the pg client and the disposable database. After the actual invoice/notice/seal
+command returns a provisional transaction result, the proxy is armed. It drops
+the backend's real `CommandComplete(COMMIT)` and following `ReadyForQuery`, then
+closes the transport. The client must receive a failed COMMIT future: a known
+successful ACK is not merely hidden later by the test. Synchronous commit is ON
+for that disposable connection. A fresh same-scope connection must then recover
+one immutable recorded result, one approval/seal/financial receipt and a consumed
+ticket, without calling the approval command again.
+The isolated synthetic wrong-SID and missing-SID contexts must still be refused
+before the original valid context can read that result again.
+
+The opposite case disconnects after the provisional command but before COMMIT.
+It waits for that backend to disappear, then requires the original complete
+financial/seal state and ticket to remain unchanged and the explicit result
+read to remain missing. Missing still means unknown to the future client; the
+fixture does not add automatic retry or infer success from a network exception.
+
+The proxy accepts only explicit CI review mode, loopback and the exact disposable
+database/user/password, binds an ephemeral loopback port and permits one client.
+It rejects hosted credential environments, caps each direction/buffer/frame at
+8 MiB and applies a 15-second absolute connection lifetime plus socket idle
+limits, and a 5-second drop-observation deadline.
+No URI, credential, raw protocol payload or SQL is logged. Six local Node tests
+exercise unarmed forwarding, fragmented/coalesced ACK loss, false-positive text,
+target/gate rejection and invalid/oversized frame lengths. Canonical fixture
+generation and the unchanged 357-check PGlite suite pass locally; the new real
+PostgreSQL failure scenario is pending CI and must not be called passed yet.
+
+This is deterministic PostgreSQL transport fault injection, not a completed
+HTTP/client recovery protocol, OS/network outage or database crash proof. Auth
+and SID setup remain the existing explicit synthetic adapters; real GoTrue
+logout/session invalidation and client reconciliation across logout are still
+unproven for this new result reader. No application/controller/rollout changes,
+public endpoint/grant, production write or deployment is introduced. The legacy
+OFF approval method and fixed-false rollout selection remain unchanged.
+
+Protocol reference: [PostgreSQL 17 message formats](https://www.postgresql.org/docs/17/protocol-message-formats.html)
+and [protocol flow](https://www.postgresql.org/docs/17/protocol-flow.html).

@@ -7,13 +7,14 @@ import {generateKeyPairSync,randomBytes,sign} from 'node:crypto';
 import {scannerRegistrationSigningBytes,createScannerRegistrationPossessionAdapter} from './qr-scanner-possession.mjs';
 const base=dirname(new URL(import.meta.url).pathname),id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const expand=p=>readFileSync(p,'utf8').split('\n').filter(x=>!x.startsWith('\\set')).map(x=>x.startsWith('\\ir ')?expand(resolve(dirname(p),x.slice(4))):x).join('\n');
-const pglite=process.argv[2];let admin,pool,created=false,db;
+const pglite=process.argv[2];let admin,pool,created=false,db,droppingOwnedFixture=false;
 if(pglite){const {PGlite}=await import(resolve(pglite));db=new PGlite();
  const query=async(s,v)=>v?db.query(s,v):(await db.exec(s)).at(-1)||{rows:[]};pool={query,connect:async()=>({query,release(){}}),end:async()=>db.close()};
 }else{
  if(process.env.CI!=='true'||process.env.PGHOST!=='127.0.0.1')throw Error('disposable loopback CI required');
  const pg=(await import(resolve('tool/security/fixture_dependencies/node_modules/pg/lib/index.js'))).default;
  admin=new pg.Client();await admin.connect();db='qr_register_'+randomBytes(8).toString('hex');await admin.query(`create database ${db}`);created=true;pool=new pg.Pool({database:db,max:4});
+ pool.on('error',error=>{if(droppingOwnedFixture&&error?.code==='57P01')return;console.error('QR possession fixture pool failure');process.exitCode=1;});
 }
 const keys=generateKeyPairSync('ed25519'),keyHex=keys.publicKey.export({type:'spki',format:'der'}).toString('hex');
 const fixtureSession=async c=>{await c.query("select set_config('fixture.actor',$1,true),set_config('fixture.session',$2,true),set_config('fixture.live','yes',true),set_config('fixture.manage','yes',true),set_config('fixture.qr','yes',true)",[id(5),id(6)]);return {actor:id(5),session:id(6)};};
@@ -57,4 +58,4 @@ try{
  if(!pglite){const concurrent=await make(id(33),'possession-33');const results=await Promise.allSettled([adapter.complete(concurrent),adapter.complete(concurrent)]);assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
   assert.equal((await pool.query('select count(*)::int as n from qr_attendance_private.scanner_registration_events where device_id=$1',[id(33)])).rows[0].n,1);}
  console.log('scanner registration key possession, replay, rollback, expiry and ACL composition passed');
-}finally{if(pool)await pool.end();if(created){await admin.query(`drop database ${db} with (force)`);}if(admin)await admin.end();}
+}finally{if(pool)await pool.end();if(created){droppingOwnedFixture=true;await admin.query(`drop database ${db} with (force)`);}if(admin)await admin.end();}

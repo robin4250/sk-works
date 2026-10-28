@@ -26,7 +26,7 @@ try{
    // suite invoices and its race fixtures retain their original dates.
    const original=`'2026-10-01','2026-10-31',clock_timestamp(),'draft',110000,10000,'{}')",[parent,A,CUSTOMER]);`;
    if(source.split(original).length!==2)throw Error('invoice fixture date anchor changed');
-   source=source.replace(original,`$4::date,$5::date,clock_timestamp(),'draft',110000,10000,'{}')",[parent,A,CUSTOMER,[21,22,23,24,25].includes(num)?'2020-10-01':'2026-10-01',[21,22,23,24,25].includes(num)?'2020-10-31':'2026-10-31']);`);
+   source=source.replace(original,`$4::date,$5::date,clock_timestamp(),'draft',110000,10000,'{}')",[parent,A,CUSTOMER,[21,22,23,24,25,26,27].includes(num)?'2020-10-01':'2026-10-01',[21,22,23,24,25,26,27].includes(num)?'2020-10-31':'2026-10-31']);`);
    const anchor=" console.log('PASS invoice adapter:";
    if(source.split(anchor).length!==2)throw Error('composition finish anchor changed');
    // Run after the unchanged native suite, not before it. This extension must not
@@ -37,6 +37,8 @@ try{
  }
  await fs.copyFile(path.join(root,'tool/trade_document_notice_seal_fixture.mjs'),path.join(temp,'tool/trade_document_notice_seal_fixture.mjs'));
  await fs.copyFile(path.join(root,'tool/trade_document_notice_result_races.mjs'),path.join(temp,'tool/trade_document_notice_result_races.mjs'));
+ await fs.copyFile(path.join(root,'tool/trade_document_notice_commit_ack_fixture.mjs'),path.join(temp,'tool/trade_document_notice_commit_ack_fixture.mjs'));
+ await fs.copyFile(path.join(root,'tool/trade_document_notice_commit_ack_proxy.mjs'),path.join(temp,'tool/trade_document_notice_commit_ack_proxy.mjs'));
  await fs.copyFile(path.join(root,'tool/trade_document_notice_source_integrity_fixture.mjs'),path.join(temp,'tool/trade_document_notice_source_integrity_fixture.mjs'));
  await fs.copyFile(path.join(root,'tool/trade_document_notice_adjustment_provider_fixture.mjs'),path.join(temp,'tool/trade_document_notice_adjustment_provider_fixture.mjs'));
  await fs.copyFile(path.join(root,'tool/trade_document_notice_route_provider_fixture.mjs'),path.join(temp,'tool/trade_document_notice_route_provider_fixture.mjs'));
@@ -45,7 +47,7 @@ try{
  await fs.copyFile(path.join(root,'tool/trade_document_notice_calculated_confirmation_fixture.mjs'),path.join(temp,'tool/trade_document_notice_calculated_confirmation_fixture.mjs'));
  await fs.copyFile(path.join(root,'supabase/migrations/20261014124714_monthly_trade_document_attachment.sql'),path.join(temp,'supabase/migrations/20261014124714_monthly_trade_document_attachment.sql'));
  if(process.argv[2]==='--check-generated'){
-  for(const name of [...names,'trade_document_notice_seal_fixture.mjs','trade_document_notice_result_races.mjs','trade_document_notice_source_integrity_fixture.mjs','trade_document_notice_daily_preview_fixture.mjs','trade_document_notice_calculated_confirmation_fixture.mjs','trade_document_notice_adjustment_provider_fixture.mjs','trade_document_notice_expense_provider_fixture.mjs','trade_document_notice_route_provider_fixture.mjs']){
+  for(const name of [...names,'trade_document_notice_seal_fixture.mjs','trade_document_notice_result_races.mjs','trade_document_notice_commit_ack_fixture.mjs','trade_document_notice_commit_ack_proxy.mjs','trade_document_notice_source_integrity_fixture.mjs','trade_document_notice_daily_preview_fixture.mjs','trade_document_notice_calculated_confirmation_fixture.mjs','trade_document_notice_adjustment_provider_fixture.mjs','trade_document_notice_expense_provider_fixture.mjs','trade_document_notice_route_provider_fixture.mjs']){
    const checked=spawnSync(process.execPath,['--check',path.join(temp,'tool',name)],{encoding:'utf8'});
    if(checked.status!==0)throw Error(checked.stderr);
   }

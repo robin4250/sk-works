@@ -109,6 +109,7 @@ export async function verifyNoticeSeal(db,c){
  }
  if(c.openNativePeer){
   await (await import('./trade_document_notice_result_races.mjs')).verifyNoticeResultRaces(db,{...c,prepare,preview,issue,state});
+  await (await import('./trade_document_notice_commit_ack_fixture.mjs')).verifyNoticeCommitAckLoss(db,{...c,prepare,preview,issue,state});
  }else{
   console.log('SKIP native notice-result concurrency: independent PostgreSQL connections required');
  }
