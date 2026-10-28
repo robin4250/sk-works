@@ -19,3 +19,8 @@ Serializable mode alone is not a replacement without proving the isolation level
 ## Fail-fast row-trigger experiment
 
 The isolated fixture also tries a nonblocking advisory lock from a row trigger. A conflicting synthetic update raises SQLSTATE 55P03 instead of waiting while holding a tuple lock; another company and the approver can proceed. This is an experiment, not a production fix: existing clients may display an error, whole statements roll back, current writers, deletes/inserts, changed company IDs, cascades, all source tables and deterministic multi-company scope remain unproven. A retry must start a fresh transaction and may only occur when rollback is confirmed; never retry an unknown commit. The test does not prove absence of other deadlocks or starvation. CI outcome is separate.
+
+
+## Final row scope after existing triggers
+
+The review fixture now reproduces a later alphabetically ordered BEFORE trigger changing an inserted/updated company after the first guard has accepted a different company. A test-only AFTER ROW recheck rejects the final busy company and rolls back the complete statement. This is not a generic production installer: actual trigger order, nested writes, RLS/ACL, partitions, TRUNCATE, deferred constraints and all real writers still require coverage before replacing global locks. No production data or permissions change.
