@@ -11,6 +11,7 @@ on:
       - 'tool/security/master-device-enrollment-candidate/key-migration-proven*'
       - 'tool/security/master-device-enrollment-candidate/key-migration-challenges*'
       - 'tool/security/master-device-enrollment-candidate/key-migration-owner-request*'
+      - 'tool/security/master-device-enrollment-candidate/owner-decision-attestation*'
       - 'tool/security/master-device-enrollment-candidate/key-migration-challenge-issuer*'
       - 'tool/security/master-device-enrollment-candidate/key-migration-challenge-http*'
       - '.github/workflows/master-new-device-proof.yml'
@@ -25,7 +26,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: node --test tool/security/master-device-enrollment-candidate/key-migration-challenge-http-candidate.test.mjs tool/security/master-device-enrollment-candidate/key-migration-proven-adapter.test.mjs tool/security/master-device-enrollment-candidate/key-migration-possession.test.mjs tool/security/master-device-enrollment-candidate/key-migration-pending-adapter.test.mjs tool/security/master-device-enrollment-candidate/key-migration-proposal.test.mjs tool/security/master-device-enrollment-candidate/new-device-proof.test.mjs tool/security/master-device-enrollment-candidate/verified-dual-proof.test.mjs tool/security/master-device-enrollment-candidate/session-bound-approval.test.mjs
+      - run: node --test tool/security/master-device-enrollment-candidate/owner-decision-attestation.test.mjs tool/security/master-device-enrollment-candidate/key-migration-challenge-http-candidate.test.mjs tool/security/master-device-enrollment-candidate/key-migration-proven-adapter.test.mjs tool/security/master-device-enrollment-candidate/key-migration-possession.test.mjs tool/security/master-device-enrollment-candidate/key-migration-pending-adapter.test.mjs tool/security/master-device-enrollment-candidate/key-migration-proposal.test.mjs tool/security/master-device-enrollment-candidate/new-device-proof.test.mjs tool/security/master-device-enrollment-candidate/verified-dual-proof.test.mjs tool/security/master-device-enrollment-candidate/session-bound-approval.test.mjs
 
   native-pending-adapter:
     runs-on: ubuntu-latest

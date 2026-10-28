@@ -256,3 +256,10 @@ composition succeeded; Native CI is separately recorded and is not a real owner
 or device test. This new private inventory is review-only and must not be deployed
 before retention, cleanup, account/device deletion compatibility and rollback are
 reviewed with the rest of the candidate.
+
+
+## Independent decision attestation check — not owner authentication
+
+`owner-decision-attestation.mjs` verifies an Ed25519 receipt against an independently pinned issuer key and the exact original pending request: actor/session/device/pending/challenge/key hash/review nonce, a bounded lifetime and the request's still-awaiting, uncancelled state. It accepts only exact data fields and canonical signature encoding, rejects private-key input and wrong-purpose trust, and returns evidence without changing the request or key. Three Node tests cover request substitution, decision alteration, cancellation/expiry, client-selected signers, malformed fields and key material.
+
+The pinned issuer configuration and database time are trusted inputs, not client assertions. A valid signature alone does **not** identify the human owner or prove that an independent confirmation occurred. The real issuer/channel, live-session and request revalidation under a database lock, atomic single-use decision claim, authenticated delivery, key activation/migration and lost-device recovery remain unimplemented. This primitive is not connected to lifecycle decisions, has no route/grant, does not prevent replay by itself, and cannot authorize device registration. Existing passwords, devices and production settings are unchanged.
