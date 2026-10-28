@@ -77,3 +77,24 @@ The synthetic anchored witness now caps its ledger at 10,000 records and rejects
 `src/recovery-witness-transport-candidate.mjs` implements a bounded HTTPS POST client for signed witness consume/lookup responses. Each call creates a fresh challenge, authenticates with an externally provisioned bearer, forbids redirects, limits response bytes, enforces a timeout, validates the pinned signature and scope, and never automatically retries an uncertain consume. Lookup is a separate explicit operation. Errors deliberately omit credentials and response content.
 
 Tests use a synthetic fetch adapter only; no actual service was contacted. This is not an authenticated production witness deployment: endpoint/bearer/key provisioning, independent custody, rollback-resistant checkpoints, durable outcome reconciliation and recovery activation remain absent. Keep the feature OFF.
+
+## Review-only witness HTTP boundary
+
+`src/recovery-witness-http-candidate.mjs` is an unhosted request handler candidate
+for the existing signed-receipt client. It accepts only the configured HTTPS
+endpoint and POST, checks the fixed bearer before reading a body, allows only
+configured scopes and exact bounded JSON fields, and invokes consume or lookup
+once. It enforces body/authority deadlines, verifies the returned signed receipt,
+and returns generic no-store failures without credentials or authority details.
+A timeout does not establish whether a consuming operation committed; use a
+separate lookup and never treat a repeated consume as reconciliation.
+
+The existing client is exercised through this handler and the synthetic SQLite
+witness fixture, including a lost committed response and later lookup. These are
+same-host synthetic integration tests, not real TLS, independent custody, a
+production signing service, or a deployment. The authority's atomic persistence,
+separately held key and rollback-resistant checkpoint remain trusted prerequisites.
+Credential/key provisioning, rotation, access logs, rate limits, independent
+hosting, availability/recovery policy and activation are still unimplemented.
+No listener, public route, credential, real network call or recovery action is
+created. Keep the feature OFF.
