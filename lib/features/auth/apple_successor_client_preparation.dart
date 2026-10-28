@@ -32,7 +32,25 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
   SupabaseClient? _preparedClient;
   bool _attempted = false, _disposed = false, _ready = false;
   int _generation = 0;
-  bool get ready => _ready && !_disposed;
+  String? _originalActor, _originalAccessToken, _successorAccessToken;
+
+  // Auth events are not a complete SDK mutation log. In particular, a restored
+  // same-UID session may be installed without the stream used by this instance
+  // observing a transition. Recheck scalar bindings whenever readiness is read.
+  // This still does not provide a global session-write CAS or ABA guarantee.
+  bool get ready {
+    if (!_ready || _disposed) { return false; }
+    final current = applicationClient.auth.currentSession;
+    final prepared = _preparedClient?.auth.currentSession;
+    if (current == null || current.isExpired || current.user.id != _originalActor ||
+        current.accessToken != _originalAccessToken || prepared == null ||
+        prepared.isExpired || prepared.user.id != _originalActor ||
+        prepared.accessToken != _successorAccessToken) {
+      invalidate();
+      return false;
+    }
+    return true;
+  }
 
   static final _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
   static StateError _failure() => StateError('ログイン状態の確認を完了できませんでした。再ログインして確認してください。');
@@ -47,6 +65,7 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
   void invalidate() {
     _generation++;
     _ready = false;
+    _originalActor = _originalAccessToken = _successorAccessToken = null;
     if (identical(_owners[applicationClient], this)) {
       _owners[applicationClient] = null;
     }
@@ -178,6 +197,9 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
       if ((claims['exp'] as int) <= DateTime.now().millisecondsSinceEpoch ~/ 1000 + 60) { throw _failure(); }
       _preparedClient = isolated;
       isolated = null;
+      _originalActor = actor;
+      _originalAccessToken = originalToken;
+      _successorAccessToken = access;
       _ready = true;
     } catch (_) {
       invalidate();
@@ -192,3 +214,4 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
     }
   }
 }
+

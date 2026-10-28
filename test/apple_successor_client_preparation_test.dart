@@ -178,6 +178,29 @@ void main() {
     await expectLater(preparation.prepare(requestId: requestId, receiveOnce: () async => envelope()), throwsStateError);
     expect(preparation.ready, isFalse);unchanged();
   });
+  test('readiness rejects a silent same-UID SDK session replacement', () async {
+    final preparation = make(enabled: true);
+    await preparation.prepare(requestId: requestId, receiveOnce: () async => envelope());
+    expect(preparation.ready, isTrue);
+    final original = application.auth.currentSession!.toJson();
+    // Deliberately do not publish an event to changes: the getter must verify
+    // the application's current SDK state independently of this stream.
+    final changed = Map<String, dynamic>.from(original)
+      ..['access_token'] = token(actor, successorSid)
+      ..['refresh_token'] = 'synthetic-replacement';
+    await application.auth.setInitialSession(jsonEncode(changed));
+    expect(preparation.ready, isFalse);
+    await application.auth.setInitialSession(jsonEncode(original));
+    expect(preparation.ready, isFalse); // observed invalidation is terminal
+  });
+  test('readiness rejects a silently restored expired application token', () async {
+    final preparation = make(enabled: true);
+    await preparation.prepare(requestId: requestId, receiveOnce: () async => envelope());
+    final expired = application.auth.currentSession!.toJson()
+      ..['access_token'] = token(actor, originalSid, expires: 1);
+    await application.auth.setInitialSession(jsonEncode(expired));
+    expect(preparation.ready, isFalse);
+  });
   test('unknown receive result has generic error and no automatic or manual retry in same operation', () async {
     final preparation = make(enabled: true);var calls = 0;
     try {
@@ -188,3 +211,4 @@ void main() {
     expect(calls, 1);unchanged();
   });
 }
+
