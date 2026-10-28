@@ -28,6 +28,7 @@ void main() {
   late List<String?> authorizations;
   late String emitAt;
   late void Function() emit;
+  late http.Client Function() makeHttp;
   final pdf = utf8.encode('%PDF-1.7\nfixture only');
   Map<String, dynamic> session(String id, String marker) {
     String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
@@ -44,9 +45,7 @@ void main() {
   setUp(() async {
     events = StreamController<AuthState>.broadcast(); paths = []; authorizations = [];
     emitAt = ''; emit = () {};
-    client = SupabaseClient('https://vault-fixture.invalid', 'synthetic-public',
-      authOptions: const AuthClientOptions(autoRefreshToken:false),
-      httpClient: MockClient((request) async {
+    makeHttp = () => MockClient((request) async {
         paths.add(request.url.path); authorizations.add(request.headers['Authorization']);
         if (request.url.path.contains(emitAt) && emitAt.isNotEmpty) { emit(); }
         if (request.url.path.contains('/storage/')) {
@@ -57,18 +56,21 @@ void main() {
           'object_version':'fixture-version', 'pdf_hash':sha256.convert(pdf).toString(),
           'byte_length':pdf.length}];
         return http.Response(jsonEncode(result), 200, headers:{'content-type':'application/json'}, request:request);
-      }));
+      });
+    client = SupabaseClient('https://vault-fixture.invalid', 'synthetic-public',
+      authOptions: const AuthClientOptions(autoRefreshToken:false), httpClient:makeHttp());
     await client.auth.setInitialSession(jsonEncode(session(actor, 'original')));
   });
   tearDown(() async { await events.close(); await client.dispose(); });
-  PersonalVaultRepository repository() => PersonalVaultRepository(client, authChanges:events.stream);
+  PersonalVaultRepository repository() => PersonalVaultRepository(client,
+    authChanges:events.stream, downloadClientFactory:makeHttp);
   const entry = PersonalVaultEntry(
     id:'10000000-0000-0000-0000-000000000001:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     label:'本人出勤表',sourceCompanyLabel:'元会社',periodLabel:'保管済み');
   test('same session returns own list and hash-verified bytes with exact RPC bearer', () async {
     expect(await repository().loadMine(), hasLength(1));
     expect(await repository().downloadMine(entry), pdf);
-    expect(authorizations.take(2), everyElement('Bearer ${client.auth.currentSession!.accessToken}'));
+    expect(authorizations, everyElement('Bearer ${client.auth.currentSession!.accessToken}'));
     expect(events.hasListener, isFalse);
   });
   test('queued A to B to A rejects list despite unchanged current session', () async {

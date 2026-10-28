@@ -1,15 +1,20 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'personal_vault_page.dart';
+import 'personal_vault_pdf_download.dart';
 
 /// Candidate RPCs are authenticated and own-only on the server. No service key.
 class PersonalVaultRepository {
-  PersonalVaultRepository(this._client, {Stream<AuthState>? authChanges})
-      : _authChanges = authChanges;
+  PersonalVaultRepository(this._client, {Stream<AuthState>? authChanges,
+    http.Client Function()? downloadClientFactory})
+      : _authChanges = authChanges,
+        _download = PersonalVaultPdfDownload(clientFactory: downloadClientFactory);
   final SupabaseClient _client;
   final Stream<AuthState>? _authChanges;
+  final PersonalVaultPdfDownload _download;
   static final _uuid = RegExp(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$');
   static final _hash = RegExp(r'^[a-f0-9]{64}$');
   String _session() {
@@ -79,7 +84,15 @@ class PersonalVaultRepository {
         (item['byte_length'] as int) < 1 || (item['byte_length'] as int) > 52428800) {
       throw StateError('本人PDFの保存記録を確認できません。');
     }
-    final bytes = await _client.storage.from('personal-pdf-vault').download(path);
+    final storage = _client.storage.from('personal-pdf-vault');
+    final headers = Map<String, String>.fromEntries(storage.headers.entries
+        .where((entry) => entry.key.toLowerCase() != 'authorization'))
+      ..['Authorization'] = 'Bearer ${scope.token}';
+    final bytes = await _download.download(
+      uri: Uri.parse('${storage.url}/object/personal-pdf-vault/$path'),
+      headers: headers, expectedLength: item['byte_length'] as int,
+      expectedHash: item['pdf_hash'] as String, invalidated: scope.invalidated,
+      validateSession: scope.check);
     await scope.check();
     if (bytes.length != item['byte_length'] || sha256.convert(bytes).toString() != item['pdf_hash']) {
       throw StateError('保存されたPDFの整合性を確認できません。');
@@ -96,14 +109,20 @@ class _VaultReadSession {
     subscription = events.listen((state) {
       if (state.event == AuthChangeEvent.signedOut ||
           state.session?.user.id != actor || state.session?.accessToken != token) {
-        invalid = true;
+        invalidate();
       }
-    }, onError: (Object _) { invalid = true; }, onDone: () { invalid = true; });
+    }, onError: (Object _) { invalidate(); }, onDone: invalidate);
   }
   final SupabaseClient client;
   final String actor, token;
   late final StreamSubscription<AuthState> subscription;
   bool invalid = false;
+  final _invalidated = Completer<void>();
+  Future<void> get invalidated => _invalidated.future;
+  void invalidate() {
+    invalid = true;
+    if (!_invalidated.isCompleted) { _invalidated.complete(); }
+  }
   Future<void> check() async {
     // Drain already queued Auth history before accepting a response, including
     // A -> B -> A where currentSession already looks unchanged.
@@ -111,6 +130,7 @@ class _VaultReadSession {
     final current = client.auth.currentSession;
     if (invalid || current == null || current.isExpired ||
         current.user.id != actor || current.accessToken != token) {
+      invalidate();
       throw StateError('ログイン状態が変更されました。');
     }
   }

@@ -50,3 +50,28 @@ serialize application Auth writes, bound the Dart Storage download stream, or
 connect the server's independent privacy proof/immutable storage to this UI.
 Those remain activation blockers. The candidate route is still unexposed and
 production DB, Storage, original PDFs and signatures are unchanged.
+# Bounded app PDF GET (2026-10-28, OFF)
+
+The Dart repository now uses a dedicated HTTP client for the exact authenticated
+Storage object path, with the captured bearer and SDK public headers. It never
+closes the shared application Auth client. Redirects, non-200 responses,
+non-PDF/compressed representations and mismatched Content-Length are rejected
+before body collection. Missing Content-Length is permitted only while the
+stream stays within the saved expected byte length (maximum 50 MiB); exact
+length and saved SHA-256 are checked before returning any bytes. One absolute
+30-second deadline includes headers and body. Auth history invalidation closes
+the dedicated client and cancels a stalled body without waiting for new chunks.
+There is no automatic retry and error bodies are never buffered or displayed.
+
+Fourteen focused HTTP-stream fixture cases cover exact success, captured headers,
+single/cumulative overflow, truncation/hash failure, redirects/errors, declared
+length, compression, stalled headers/body, late response, Auth cancellation and
+network errors. New CI must be confirmed; no local Flutter execution is claimed.
+Pinned storage_client 2.8.0 source was reviewed: its downloadStream buffers
+non-success response bodies and creates a redirect-following request, so using
+that method alone would not bound every response. The adapter reuses the SDK
+bucket URL/header configuration, without changing dependencies or RLS.
+
+This is still an unexposed candidate route. It does not prove immutable Storage,
+independent source-owner PDF privacy, global Auth write serialization or silent
+SDK ABA detection. Existing signature/seal originals and production are unchanged.
