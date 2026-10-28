@@ -45,8 +45,10 @@ modified function sources and the existing CHECK. The guard inputs in the
 isolated test are derived from its fixtures and are NOT production catalog
 approval. A production package still needs independently recorded current
 catalog hashes, compatible schema/ACL/dependency review, a backup and explicit
-restore SQL. The retained old reader is private to clients, but dependencies on
-its original OID must be reviewed before deployment. Do not apply this candidate
+restore SQL. The retained old reader is a client-private copy. The public reader is replaced
+in place to preserve its OID, ACL and existing view dependencies; the test
+checks an already-bound dependent view receives the QR contract. Other real
+dependencies still require production review. Do not apply this candidate
 or turn on the rollout based on CI alone.
 
 The common bridge test executes copied existing getter/proof/legacy setter

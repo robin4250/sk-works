@@ -110,6 +110,11 @@ begin
 end $$;
 revoke all on function public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text) from public,anon,authenticated;
 
+-- A dependent view binds the original function OID; it must observe the new
+-- contract after the public function is replaced, without dependency rewrites.
+create view private.flags_dependency_fixture as select public.current_master_feature_flags() as flags;
+create table private.reader_oid_fixture as select 'public.current_master_feature_flags()'::regprocedure::oid as original_oid;
+
 -- Expected hashes here are synthetic test inputs, not production evidence.
 do $$ declare signature text; begin
  foreach signature in array array['public.current_master_feature_flags()','qr_attendance_private.require_enabled()',
@@ -126,6 +131,11 @@ select set_config('fixture.session','live',false);
 select set_config('fixture.master','yes',false);
 do $$ declare before_flags jsonb; flags jsonb; begin
  flags:=public.current_master_feature_flags();
+ if 'public.current_master_feature_flags()'::regprocedure::oid is distinct from
+    (select original_oid from private.reader_oid_fixture) then raise exception 'public reader OID changed'; end if;
+ if (select dependency.flags->>'qr_attendance_contract_version' from private.flags_dependency_fixture dependency)<>'1' then
+  raise exception 'dependent reader bypassed QR contract';
+ end if;
  if flags->>'qr_attendance'<>'false' or flags->>'vehicle_management'<>'true' or flags->>'route_assignment'<>'true' then raise exception 'common flags not preserved/default OFF'; end if;
  begin perform public.set_master_feature_enabled_with_proof('qr_attendance',true,'fixture-bound-proof'); raise exception 'OFF permitted'; exception when insufficient_privilege then null; end;
  if (select used from private.proof_fixture) then raise exception 'OFF consumed proof'; end if;

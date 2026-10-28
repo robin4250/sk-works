@@ -114,11 +114,23 @@ begin
  end if;
 end $patch$;
 
--- Rename only in a review candidate: a separate immutable snapshot is required
--- before actual rollout/rollback. Existing readers get the same keys plus QR.
-alter function public.current_master_feature_flags() rename to current_master_feature_flags_before_qr_candidate;
+-- Copy the reviewed old body under a client-private snapshot name, then replace
+-- the public function in place. Renaming the original would leave existing view
+-- dependencies attached to the old body and bypass the new QR contract.
+do $copy_reader$
+declare definition text; declaration text := 'CREATE OR REPLACE FUNCTION public.current_master_feature_flags()';
+begin
+ if to_regprocedure('public.current_master_feature_flags_before_qr_candidate()') is not null then
+  raise exception 'QR reader snapshot already exists';
+ end if;
+ definition:=pg_get_functiondef('public.current_master_feature_flags()'::regprocedure);
+ if left(definition,length(declaration))<>declaration then
+  raise exception 'QR reader declaration differs';
+ end if;
+ execute 'CREATE FUNCTION public.current_master_feature_flags_before_qr_candidate()'||substr(definition,length(declaration)+1);
+end $copy_reader$;
 revoke all on function public.current_master_feature_flags_before_qr_candidate() from public,anon,authenticated;
-create function public.current_master_feature_flags() returns jsonb
+create or replace function public.current_master_feature_flags() returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare previous jsonb;
 begin
