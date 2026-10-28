@@ -75,6 +75,51 @@ lost-device recovery on the actual platforms. Verify accessibility, owner
 identity, explicit approval, key restoration and clear rollback. Do not activate
 or claim 3-device registration is available before these checks pass.
 
+## Session-bound dual-proof composition (2026-10-28)
+
+The isolated `issueDualProofApproval` now requires the existing session-bound
+v2 approver signature, rather than accepting a transferable v1 signature.
+The requesting device still proves possession of the exact intent key.
+Synthetic Node tests reject another active owner session and legacy v1
+approvals before the atomic claim is invoked, and retain concurrent single-use
+acceptance in the test adapter (7 Node tests pass).
+
+This is not an operational enrollment service. The trusted database adapter,
+atomic session/device revalidation, secure delivery, existing-device key
+migration, first-device recovery and real platform proofs remain unimplemented.
+No production settings, passwords, device registrations or DB were changed.
+
+## Trusted clock contract (2026-10-28)
+
+Dual-proof composition no longer accepts a request-supplied `nowMs`. It requires
+`databaseNowMs` from the trusted context; missing or invalid time is rejected.
+Tests show a forged request time cannot revive an expired intent. A real adapter
+must obtain this time from the database and check a fresh database time again
+inside the locked atomic claim, alongside current sessions, devices and nonce.
+The synthetic adapter only demonstrates the interface: neither a real database
+adapter nor first-device recovery/key migration is implemented. Keep OFF.
+
+
+## Pending public-key migration inventory (review only)
+
+`key-migration-proposal.mjs` accepts canonical P-256 SPKI public PEM only and
+hashes that exact PEM, matching the current intent hash contract. A legacy random
+device identifier is never interpreted as a key. The authoritative owner/device
+snapshot must come from the future locked server adapter, not request metadata.
+The SQL stores only `pending` proposals: no active/trusted state, client grant,
+registration endpoint, approval or migration of existing devices is provided.
+SQL itself does not verify cryptographic key validity or proof of possession.
+The private device FK intentionally rejects device deletion while evidence is
+referenced; retention, safe cancellation and owner/device deletion compatibility
+are unresolved and must be designed before deployment. Node and SQL tests use
+synthetic identities only. Real public-key custody, user-presence verification,
+atomic approval, bootstrap/recovery and platform testing remain incomplete.
+
+
+## Pending-key storage adapter candidate
+
+`key-migration-pending-adapter.mjs` uses a trusted PostgreSQL pool and a single transaction to reuse the existing live-session and master checks, lock the owned device, validate canonical P-256 material, and persist only a pending proposal. It does not install caller JWT context, expose an endpoint, grant a role access, activate a key, or make legacy devices trusted. The pool must carry independently verified auth context and the required private privileges. The adapter has only mock database tests so far; actual PostgreSQL/GoTrue, concurrency, pool-context isolation and production ACL verification remain required. A commit failure is returned as unknown and is never automatically retried. An explicit identical retry reads the same pending record.
+
 ## Pending adapter contention bound
 
 The internal pending-only adapter applies transaction-local 1 second lock and
