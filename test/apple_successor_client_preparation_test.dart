@@ -184,9 +184,15 @@ void main() {
     expect(preparation.ready, isTrue);
     final original = application.auth.currentSession!.toJson();
     await Future<void>.delayed(Duration.zero);
-    var authEvents = 0;
-    final subscription = application.auth.onAuthStateChange.listen((_) { authEvents++; });
+    final authEvents = <AuthState>[];
+    final subscription = application.auth.onAuthStateChange.listen(authEvents.add);
     addTearDown(subscription.cancel);
+    // The SDK ReplaySubject first replays initialSession to new subscribers.
+    // Drain and assert that baseline before observing recoverSession itself.
+    await Future<void>.delayed(Duration.zero);
+    expect(authEvents.map((state) => state.event), [AuthChangeEvent.initialSession]);
+    expect(authEvents.single.session!.accessToken, token(actor, originalSid));
+    authEvents.clear();
     // recoverSession restores a non-expired same-UID session without emitting
     // an Auth event in the pinned SDK. Readiness must inspect current state.
     final changed = Map<String, dynamic>.from(original)
@@ -194,7 +200,7 @@ void main() {
       ..['refresh_token'] = 'synthetic-replacement';
     await application.auth.recoverSession(jsonEncode(changed));
     await Future<void>.delayed(Duration.zero);
-    expect(authEvents, 0);
+    expect(authEvents, isEmpty);
     expect(preparation.ready, isFalse);
     await application.auth.recoverSession(jsonEncode(original));
     expect(preparation.ready, isFalse); // observed invalidation is terminal
