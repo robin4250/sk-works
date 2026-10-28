@@ -90,5 +90,33 @@
     "production_applied": false,
     "activation": false,
     "limits": "Fresh pre-write snapshot, reviewed activation/audit contract, actual GoTrue verification and required deployment approval remain necessary. Saved SQL is review-only. This record contains no business row hashes or personal row contents."
+  },
+  "document_exemption_deployment": {
+    "migration_version": "20261028093530",
+    "name": "worker_document_exemption_guarded_off",
+    "installed": true,
+    "enabled": false,
+    "exemptions": 0,
+    "events": 0,
+    "business_hashes_preserved": true,
+    "existing_helpers_and_attention_attributes_preserved": true,
+    "attention_body_md5": "251f4fcb8bd3f797005d69e6bf6cb071",
+    "anon_rpc_execute": false,
+    "authenticated_rpc_execute": true,
+    "client_direct_table_read": false,
+    "unused_restore_bound_to_actual_after": true,
+    "unused_restore_sha256": "29cbe969ca9014ef9dcedd65f6f4a240d432bc44ed351b1124d35890241cd131",
+    "unused_restore_executed": false,
+    "backup_version": 55,
+    "prior_archive_entries_preserved": 329,
+    "added_after_entries": 4,
+    "post_advisor_counts": {
+      "rls_enabled_no_policy_INFO": 231,
+      "authenticated_definer_WARN": 212,
+      "leaked_password_protection_disabled_WARN": 1
+    },
+    "activation": false,
+    "iphone_verified": false,
+    "limits": "OFF installation and before/after preservation are verified. Activation/audited master control, after-use recovery and owner iPhone verification remain incomplete. Private snapshots, business hashes and keys are not stored in this public record."
   }
 }
