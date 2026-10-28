@@ -170,3 +170,20 @@ This internal adapter has no public endpoint, client grants, secure delivery,
 second-password/user-presence proof, bootstrap/recovery or key activation.
 Owner confirmation and the remaining production deployment conditions are still
 unimplemented. Do not enable or register real devices using this candidate.
+
+## Original challenge readback (review only)
+
+`key-migration-challenge-delivery.mjs` supports an explicit readback after an
+uncertain issuance response. In a bounded transaction it rechecks the live master
+session and owned unlocked device, then returns only the original unconsumed,
+unexpired challenge for that exact canonical key and requesting session. It does
+not generate a nonce, extend expiry, write state, consume proof or activate a key.
+The existing issuance runner checks repeated readback equality, another actor,
+session/key substitution, consumed/expired challenge and locked-device refusal.
+PGlite uses synthetic auth and does not establish production identity assurance.
+
+This is an internal read adapter, not public delivery: no HTTP endpoint, client
+grants, second-password proof or independent owner approval is added. A trusted
+transport must bind request authentication and response delivery to the exact
+original owner session, prevent caching/logging, and be reviewed before exposure.
+No production database, password, device registration or signing key is changed.
