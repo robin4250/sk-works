@@ -36,3 +36,22 @@ ordering across both candidate systems. Separate native integration with the
 actual month-close adapters is required before merging or enabling this path.
 Payment-certificate confirmation, counterpart review/delivery, full UI/PDF stamp
 consumption, deployment guards/restore and iPhone verification remain incomplete.
+
+## Pinned source integrity and revalidation extension
+
+After the successful notice/financial/seal composition, a separate extension
+loads the verbatim source fingerprint function from pinned commit
+`4f04488f77ff909d0d48a9a74247eb549823ca83` and the existing exact
+`generate_approver_core.py` output. Missing source relations are explicit empty
+fixtures; existing attendance and financial rows are retained. It verifies
+company-source hash stability, other-company isolation, actual approver/notice
+revalidation and rejection after an attendance-source mutation. The real
+MD5 catalog guards must reject replacement preview bodies before granting ready
+or notification readiness. UTC is explicitly selected for independent invoice
+row hashing, matching the generated SQL's timezone contract.
+
+The successful financial/seal approval still uses a synthetic source proposal.
+This extension runs the actual fingerprint, source-locking revalidators and
+catalog guards, **not the full source calculator's successful preview**. It is
+not full source-calculation/GoTrue integration and is not production evidence.
+The broad existing table locks remain unchanged.

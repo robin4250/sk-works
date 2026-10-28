@@ -4,6 +4,8 @@ on:
     paths:
       - 'docs/candidates/trade_document_notice_seal_20261028.sql.review-only'
       - 'tool/trade_document_notice_seal_fixture.mjs'
+      - 'tool/trade_document_notice_source_integrity_fixture.mjs'
+      - 'docs/review/invoice-month-close/generate_approver_core.py'
       - 'tool/verify_trade_document_notice_seal.mjs'
       - 'docs/review/invoice-month-close/notification.sql.review-only'
       - 'docs/review/invoice-month-close/guarded.sql.review-only'
@@ -21,6 +23,9 @@ jobs:
       fail-fast: false
       matrix:
         runtime: [pglite, postgres]
+    env:
+      SKO_NOTICE_SOURCE_PREVIEW: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/preview.sql.review-only
+      SKO_NOTICE_APPROVER_CORE: ${{ runner.temp }}/notice-approver-core.sql
     services:
       database:
         image: postgres:17
@@ -33,6 +38,11 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 4f04488f77ff909d0d48a9a74247eb549823ca83
+          path: invoice-calculation-candidate
+      - run: python3 docs/review/invoice-month-close/generate_approver_core.py "$SKO_NOTICE_SOURCE_PREVIEW" "$SKO_NOTICE_APPROVER_CORE"
       - uses: actions/setup-node@v4
         with:
           node-version: '24'

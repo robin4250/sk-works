@@ -85,5 +85,7 @@ export async function verifyNoticeSeal(db,c){
  check(await q('select count(*)::int v from invoice_month_close_candidate.approval_permits'),0);
  await deny(()=>call(ticket),/unavailable/);check(await state(x),after);
  await db.exec('set role authenticated');await deny(()=>call(ticket),/permission denied/);await db.exec('reset role');
- console.log('PASS durable notice SQL + existing invoice/seal atomic composition; actual guarded/readiness SQL; source proposal/core integrity/session synthetic, no public grant or product delivery');
+ const pending=await prepare(24);await issue(pending);
+ await (await import('./trade_document_notice_source_integrity_fixture.mjs')).verifyNoticeSourceIntegrity(db,{A,B:c.B,UA,id,q,check,deny,pending});
+ console.log('PASS durable notice SQL + existing invoice/seal atomic composition; actual guarded/readiness SQL; successful approval source proposal/session synthetic, exact core guards checked separately, no public grant or product delivery');
 }

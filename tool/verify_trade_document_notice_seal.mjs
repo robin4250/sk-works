@@ -26,7 +26,7 @@ try{
    // suite invoices and its race fixtures retain their original dates.
    const original=`'2026-10-01','2026-10-31',clock_timestamp(),'draft',110000,10000,'{}')",[parent,A,CUSTOMER]);`;
    if(source.split(original).length!==2)throw Error('invoice fixture date anchor changed');
-   source=source.replace(original,`$4::date,$5::date,clock_timestamp(),'draft',110000,10000,'{}')",[parent,A,CUSTOMER,[21,22,23].includes(num)?'2020-10-01':'2026-10-01',[21,22,23].includes(num)?'2020-10-31':'2026-10-31']);`);
+   source=source.replace(original,`$4::date,$5::date,clock_timestamp(),'draft',110000,10000,'{}')",[parent,A,CUSTOMER,[21,22,23,24].includes(num)?'2020-10-01':'2026-10-01',[21,22,23,24].includes(num)?'2020-10-31':'2026-10-31']);`);
    const anchor=" console.log('PASS invoice adapter:";
    if(source.split(anchor).length!==2)throw Error('composition finish anchor changed');
    // Run after the unchanged native suite, not before it. This extension must not
@@ -36,9 +36,10 @@ try{
   await fs.writeFile(path.join(temp,'tool',name),source);
  }
  await fs.copyFile(path.join(root,'tool/trade_document_notice_seal_fixture.mjs'),path.join(temp,'tool/trade_document_notice_seal_fixture.mjs'));
+ await fs.copyFile(path.join(root,'tool/trade_document_notice_source_integrity_fixture.mjs'),path.join(temp,'tool/trade_document_notice_source_integrity_fixture.mjs'));
  await fs.copyFile(path.join(root,'supabase/migrations/20261014124714_monthly_trade_document_attachment.sql'),path.join(temp,'supabase/migrations/20261014124714_monthly_trade_document_attachment.sql'));
  if(process.argv[2]==='--check-generated'){
-  for(const name of [...names,'trade_document_notice_seal_fixture.mjs']){
+  for(const name of [...names,'trade_document_notice_seal_fixture.mjs','trade_document_notice_source_integrity_fixture.mjs']){
    const checked=spawnSync(process.execPath,['--check',path.join(temp,'tool',name)],{encoding:'utf8'});
    if(checked.status!==0)throw Error(checked.stderr);
   }
