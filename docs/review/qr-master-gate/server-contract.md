@@ -107,3 +107,15 @@ deployed JWT-to-database bridge, a real proof-issuance test, a test of all QR
 writers, production catalog approval, recovery after use or owner-device proof.
 CI success cannot enable QR. Local PGlite only checked expanded setup syntax
 with synthetic auth tables; the real GoTrue job is separate.
+
+## Concurrent OFF transition fixture
+
+`qr-common-concurrency.test.mjs` runs separate native PostgreSQL connections.
+A toy writer calls the installed candidate gate inside its transaction; a
+proof-bound common OFF waits until that transaction commits. Subsequent gate
+calls reject and abort the toy transaction, without adding its business row.
+The independent rollout OFF is also checked against an in-flight gate lock.
+The test observes PostgreSQL lock waits rather than relying on an arbitrary
+sleep. Auth and proofs are synthetic. This verifies participating transactions
+only: actual register/issue/scan writers, real proof issuance, production
+catalog, device authorization and after-use recovery remain incomplete.
