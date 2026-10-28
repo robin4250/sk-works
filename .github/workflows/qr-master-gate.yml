@@ -51,6 +51,10 @@ jobs:
       - name: Native internal scanner context
         run: psql -d qr_scanner_context_fixture -v ON_ERROR_STOP=1 -f tool/qr-attendance/qr-scanner-context-test.sql
 
+      - run: createdb qr_scanner_registration_fixture
+      - name: Native internal scanner registration
+        run: psql -d qr_scanner_registration_fixture -v ON_ERROR_STOP=1 -f tool/qr-attendance/qr-scanner-registration-test.sql
+
       - name: Native QR scan coordinator transaction
         env:
           CI: 'true'
