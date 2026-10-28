@@ -1,0 +1,53 @@
+name: Apple successor possession ACK review
+on:
+  pull_request:
+    paths:
+      - 'docs/review/apple-existing-login-candidate/native-successor-delivery-ack.sql.review-only'
+      - 'docs/review/apple-existing-login-candidate/native_successor_delivery_ack*'
+      - 'docs/review/apple-existing-login-candidate/successor-ack-recovery-20261028.md'
+      - '.github/workflows/apple-successor-ack-review.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-contract-and-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test docs/review/apple-existing-login-candidate/native_successor_delivery_ack_port.test.mjs
+      - run: npm install --prefix "$RUNNER_TEMP/apple-ack-review" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
+      - name: Verify OFF possession/status and lost post-COMMIT response in isolated SQL
+        env:
+          SKO_APPLE_ACK_PGLITE: ${{ runner.temp }}/apple-ack-review/node_modules/@electric-sql/pglite/dist/index.js
+        run: node --test docs/review/apple-existing-login-candidate/native_successor_delivery_ack_sql.test.mjs
+  native-possession-ack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only-password
+          POSTGRES_DB: sko_apple_enrollment_fixture
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --prefix "$RUNNER_TEMP/apple-ack-native" --no-save --ignore-scripts pg@8.16.3
+      - name: Verify real PostgreSQL concurrency, expiry during lock, and post-COMMIT recovery
+        env:
+          SKO_APPLE_ENROLLMENT_NATIVE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_apple_enrollment_fixture
+          SKO_APPLE_ENROLLMENT_NATIVE_DRIVER: ${{ runner.temp }}/apple-ack-native/node_modules/pg/lib/index.js
+        run: node --test docs/review/apple-existing-login-candidate/native_successor_delivery_ack_sql.test.mjs

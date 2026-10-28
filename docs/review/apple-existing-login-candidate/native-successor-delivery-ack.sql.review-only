@@ -1,0 +1,85 @@
+-- REVIEW ONLY. OFF private delivery possession ACK, never application adoption.
+-- No endpoint/client/service grant, Auth write, token storage or retry permit.
+begin;
+create table apple_native_enrollment_private.delivery_ack_rollout(
+ singleton boolean primary key check(singleton),enabled boolean not null default false
+);
+insert into apple_native_enrollment_private.delivery_ack_rollout values(true,false);
+create table apple_native_enrollment_private.delivery_possession_acks(
+ request_id uuid primary key references apple_native_enrollment_private.successor_receipts(request_id),
+ actor_id uuid not null,successor_session_id uuid not null,
+ acknowledged_at timestamptz not null default clock_timestamp()
+);
+alter table apple_native_enrollment_private.delivery_ack_rollout enable row level security;
+alter table apple_native_enrollment_private.delivery_possession_acks enable row level security;
+revoke all on apple_native_enrollment_private.delivery_ack_rollout,
+ apple_native_enrollment_private.delivery_possession_acks from public,anon,authenticated,service_role;
+
+create function apple_native_enrollment_private.successor_delivery_status(p_request uuid,p_actor uuid,p_sid uuid)
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare r apple_native_enrollment_private.requests;rec apple_native_enrollment_private.successor_receipts;
+ ack apple_native_enrollment_private.delivery_possession_acks;c jsonb;claims jsonb;allowed boolean;result text;
+begin
+ claims:=auth.jwt();
+ if claims->>'role' is distinct from 'service_role' then raise sqlstate '42501' using message='server_only';end if;
+ if claims->>'sub' is distinct from p_actor::text or claims->>'session_id' is distinct from p_sid::text
+ or coalesce(claims->>'exp','') !~ '^[0-9]{1,16}$' then return null;end if;
+ if (claims->>'exp')::bigint<=extract(epoch from clock_timestamp()) then return null;end if;
+ select enabled into allowed from apple_native_enrollment_private.delivery_ack_rollout where singleton for share;
+ if allowed is distinct from true or not apple_native_enrollment_private.ready() then return null;end if;
+ select enabled into allowed from apple_native_enrollment_private.successor_rollout where singleton for share;
+ if allowed is distinct from true then return null;end if;
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request;
+ if not found or r.actor_id is distinct from p_actor then return null;end if;
+ -- Match the existing completion lock order, and keep the decision/ACK atomic.
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-subject:'||r.subject,0));
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-actor:'||r.actor_id::text,0));
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request for update;
+ select * into rec from apple_native_enrollment_private.successor_receipts where request_id=p_request for share;
+ if r.actor_id is distinct from p_actor or rec.request_id is null
+ or p_sid is distinct from rec.successor_session_id or p_sid=r.session_id then return null;end if;
+ perform 1 from auth.users where id=p_actor for share;
+ perform 1 from auth.sessions where id=p_sid and user_id=p_actor for share;
+ perform 1 from public.company_members where user_id=p_actor for share;
+ perform 1 from auth.identities where user_id=p_actor for share;
+ perform 1 from apple_owner_policy.subject_permits where apple_subject=r.subject and expected_user_id=p_actor for share;
+ c:=apple_native_enrollment_private.context(p_actor,p_sid);
+ if c is null or (c-array['account_allowed','primary_password_configured','apple_subjects','session_id'])
+ is distinct from (r.snapshot-array['apple_subjects','session_id'])
+ or not exists(select 1 from apple_native_enrollment_private.successor_attempts a where a.request_id=p_request
+  and a.actor_id=p_actor and a.original_session_id=r.session_id and a.snapshot_sha256=r.snapshot_sha256)
+ or not exists(select 1 from apple_owner_policy.subject_permits where apple_subject=r.subject and expected_user_id=p_actor)
+ then return null;end if;
+ if r.status<>'completed' or rec.actor_id is distinct from p_actor or rec.original_session_id is distinct from r.session_id
+   or c->'apple_subjects' is distinct from jsonb_build_array(r.subject) then return null;end if;
+  select * into ack from apple_native_enrollment_private.delivery_possession_acks where request_id=p_request for share;
+  if ack.request_id is not null and (ack.actor_id is distinct from p_actor
+   or ack.successor_session_id is distinct from rec.successor_session_id) then return null;end if;
+ result:=case when ack.request_id is null then 'server_completed' else 'successor_possession_recorded' end;
+ if (claims->>'exp')::bigint<=extract(epoch from clock_timestamp()) then return null;end if;
+ return jsonb_build_object('schema',1,'request_id',p_request,'status',result,
+  'retry_allowed',false,'application_adoption_confirmed',false);
+end $$;
+revoke all on function apple_native_enrollment_private.successor_delivery_status(uuid,uuid,uuid)
+ from public,anon,authenticated,service_role;
+
+create function apple_native_enrollment_private.acknowledge_successor_possession(p_request uuid,p_actor uuid,p_sid uuid)
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare status jsonb;rec apple_native_enrollment_private.successor_receipts;
+ ack apple_native_enrollment_private.delivery_possession_acks;
+begin
+ status:=apple_native_enrollment_private.successor_delivery_status(p_request,p_actor,p_sid);
+ if status is null or status->>'status' not in('server_completed','successor_possession_recorded') then return null;end if;
+ select * into rec from apple_native_enrollment_private.successor_receipts where request_id=p_request for share;
+ if rec.actor_id is distinct from p_actor or rec.successor_session_id is distinct from p_sid
+ or (auth.jwt()->>'exp')::bigint<=extract(epoch from clock_timestamp()) then return null;end if;
+ insert into apple_native_enrollment_private.delivery_possession_acks(request_id,actor_id,successor_session_id)
+ values(p_request,p_actor,p_sid) on conflict(request_id) do nothing;
+ select * into ack from apple_native_enrollment_private.delivery_possession_acks where request_id=p_request;
+ if ack.actor_id is distinct from p_actor or ack.successor_session_id is distinct from p_sid then return null;end if;
+ return jsonb_build_object('schema',1,'request_id',p_request,'status','successor_possession_recorded',
+  'retry_allowed',false,'application_adoption_confirmed',false);
+end $$;
+revoke all on function apple_native_enrollment_private.acknowledge_successor_possession(uuid,uuid,uuid)
+ from public,anon,authenticated,service_role;
+commit;
