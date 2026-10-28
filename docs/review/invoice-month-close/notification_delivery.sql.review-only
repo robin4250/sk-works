@@ -1,0 +1,46 @@
+-- REVIEW ONLY. This candidate is not installed, enabled, scheduled or granted.
+-- It uses existing app_notifications, never email/SMS/push or a user impersonation.
+create table invoice_month_close_candidate.delivery_settings(singleton boolean primary key default true check(singleton), enabled boolean not null default false);
+insert into invoice_month_close_candidate.delivery_settings values(true,false);
+create table invoice_month_close_candidate.delivery_receipts(
+ notice_id uuid primary key, notification_id uuid not null unique,
+ recipient_id uuid not null, created_at timestamptz not null default clock_timestamp());
+alter table invoice_month_close_candidate.delivery_settings enable row level security;
+alter table invoice_month_close_candidate.delivery_receipts enable row level security;
+revoke all on invoice_month_close_candidate.delivery_settings,invoice_month_close_candidate.delivery_receipts from public,anon,authenticated,service_role;
+create function invoice_month_close_candidate.deliver_notice(p_notice uuid)
+returns uuid language plpgsql security definer set search_path='' as $$
+declare enabled boolean;n invoice_month_close_candidate.notice_intents%rowtype;out_id uuid;
+begin
+ select s.enabled into enabled from invoice_month_close_candidate.delivery_settings s where singleton for share;
+ if not coalesce(enabled,false) or not invoice_month_close_candidate.notification_rollout_enabled() then raise exception 'delivery_disabled' using errcode='55000';end if;
+ select * into n from invoice_month_close_candidate.notice_intents where id=p_notice for update;
+ if not found or not invoice_month_close_candidate.notice_current(p_notice) then raise exception 'notice_not_ready' using errcode='55000';end if;
+ select r.notification_id into out_id from invoice_month_close_candidate.delivery_receipts r where r.notice_id=n.id and r.recipient_id=n.recipient_id;
+ if found then return out_id;end if;
+ -- The real notification is written only if this entire transaction commits.
+ out_id:=private.enqueue_notification(n.company_id,n.recipient_id,'approval','請求書の承認','請求書の内容を確認してください。','invoice_approval',n.invoice_id);
+ insert into invoice_month_close_candidate.delivery_receipts(notice_id,notification_id,recipient_id) values(n.id,out_id,n.recipient_id);
+ return out_id;
+end $$;
+revoke all on function invoice_month_close_candidate.deliver_notice(uuid) from public,anon,authenticated,service_role;
+create function invoice_month_close_candidate.ticket_from_notification(p_notification uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare notice uuid; result jsonb; revision timestamptz; fingerprint text;
+begin
+ -- The existing real session helper is also called again by issue_notice_ticket.
+ perform private.require_reauthentication_session();
+ if not invoice_month_close_candidate.notification_rollout_enabled() then raise exception 'notice_unavailable' using errcode='42501';end if;
+ select r.notice_id,n.invoice_revision,n.source_fingerprint into notice,revision,fingerprint from invoice_month_close_candidate.delivery_receipts r
+ join invoice_month_close_candidate.notice_intents n on n.id=r.notice_id and n.recipient_id=r.recipient_id
+ join public.app_notifications a on a.id=r.notification_id and a.recipient_user_id=r.recipient_id and a.action_key='invoice_approval' and a.action_id=n.invoice_id
+ where r.notification_id=p_notification and r.recipient_id=auth.uid();
+ if notice is null then raise exception 'notice_unavailable' using errcode='42501';end if;
+ result:=invoice_month_close_candidate.issue_notice_ticket(notice);
+ -- The locked ticket issuance above revalidates the immutable notice against
+ -- current invoice/source state. Return its exact persisted revision, never
+ -- a client supplied revision or merely the notification's presence.
+ return result||jsonb_build_object('notification_id',p_notification,
+  'status','ready','source_revision',revision,'source_fingerprint',fingerprint);
+end $$;
+revoke all on function invoice_month_close_candidate.ticket_from_notification(uuid) from public,anon,authenticated,service_role;

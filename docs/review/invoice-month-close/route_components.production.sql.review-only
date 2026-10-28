@@ -1,0 +1,125 @@
+CREATE OR REPLACE FUNCTION private.route_signed_checkout_components(cid uuid, customer uuid, first_day date, last_day date)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare r record; visit record; cfg jsonb; chosen jsonb; named record;
+ sites_json jsonb:='[]'; lines jsonb; ordered_ids uuid[]; ordered_names text[];
+ report_ids uuid[]; source_ids uuid[]; visits uuid[]; source_ready boolean;
+ base numeric; extras numeric; welfare numeric; tax numeric; tax_rate numeric;
+ overtime numeric; early numeric; allowance_rate numeric; category text;
+ subtotal numeric:=0; tax_total numeric:=0; welfare_total numeric:=0;
+ blocked boolean:=false; has_sources boolean:=false; issues jsonb:='[]'; unassigned boolean:=false; source_data jsonb;
+begin
+ select coalesce(jsonb_agg(to_jsonb(x)),'[]') into source_data
+ from private.route_signed_checkout_sources(cid,first_day,last_day) x;
+ select coalesce(c.notes='sko_system_unassigned_invoice_customer',false) into unassigned
+ from public.customers c where c.company_id=cid and c.id=customer;
+ select greatest(coalesce(c.tax_rate,0),0) into tax_rate from public.companies c where c.id=cid;
+ for r in select x.worker_id,x.work_date,
+   min(x.work_category) min_category,max(x.work_category) max_category,
+   bool_and(x.source_ready) source_ready,
+   array_agg(distinct x.report_id) report_ids,
+   array_agg(distinct x.source_clock_in_id) source_ids,
+   sum(x.overtime_hours) overtime_hours,sum(x.early_hours) early_hours
+ from jsonb_to_recordset(source_data) as x(report_id uuid,worker_id uuid,work_date date,customer_id uuid,source_clock_in_id uuid,source_quantity numeric,quantity numeric,site_ids uuid[],site_names text[],visit_ids uuid[],visit_started_ats timestamptz[],visit_count bigint,work_category text,overtime_hours numeric,early_hours numeric,allowance_names text[],source_ready boolean,source_issue text)
+ where (x.customer_id=customer or (coalesce(unassigned,false) and x.customer_id is null))
+ group by x.worker_id,x.work_date order by x.work_date,x.worker_id loop
+  has_sources:=true;
+  -- Prior actual reviews are history, never manufactured or recalculated here.
+  if exists(select 1 from private.route_billing_quantity_requests q where q.company_id=cid
+    and q.worker_id=r.worker_id and q.work_date=r.work_date and q.customer_id=customer
+    and q.status='approved') then continue;end if;
+  chosen:=null;ordered_ids:='{}';ordered_names:='{}';visits:='{}';
+  source_ready:=r.source_ready and r.min_category=r.max_category
+    and r.min_category in ('day','night','holiday','holiday_night');
+  category:=r.min_category;
+  for visit in select v.site_id,v.site_name,v.visit_id,v.started_at
+   from jsonb_to_recordset(source_data) as x(report_id uuid,worker_id uuid,work_date date,customer_id uuid,source_clock_in_id uuid,source_quantity numeric,quantity numeric,site_ids uuid[],site_names text[],visit_ids uuid[],visit_started_ats timestamptz[],visit_count bigint,work_category text,overtime_hours numeric,early_hours numeric,allowance_names text[],source_ready boolean,source_issue text),
+   lateral unnest(x.site_ids,x.site_names,x.visit_ids,x.visit_started_ats)
+    v(site_id,site_name,visit_id,started_at)
+   where (x.customer_id=customer or (coalesce(unassigned,false) and x.customer_id is null)) and x.worker_id=r.worker_id and x.work_date=r.work_date
+   order by v.started_at,v.visit_id loop
+   ordered_ids:=array_append(ordered_ids,visit.site_id);
+   ordered_names:=array_append(ordered_names,visit.site_name);
+   visits:=array_append(visits,visit.visit_id);
+   cfg:=private.route_signed_site_rates(cid,visit.site_id,category);
+   source_ready:=source_ready and coalesce((cfg->>'daily')::boolean,false)
+     and coalesce((cfg->>'unit_price_yen')::numeric,0)>0;
+   if chosen is null then chosen:=cfg;
+   else
+    source_ready:=source_ready and chosen->'unit_price_yen'=cfg->'unit_price_yen'
+      and chosen->'welfare_rate'=cfg->'welfare_rate';
+    if r.overtime_hours>0 then source_ready:=source_ready
+      and chosen->'overtime_rate'=cfg->'overtime_rate';end if;
+    if r.early_hours>0 then source_ready:=source_ready
+      and chosen->'early_rate'=cfg->'early_rate';end if;
+    for named in select distinct label from jsonb_to_recordset(source_data) as x(report_id uuid,worker_id uuid,work_date date,customer_id uuid,source_clock_in_id uuid,source_quantity numeric,quantity numeric,site_ids uuid[],site_names text[],visit_ids uuid[],visit_started_ats timestamptz[],visit_count bigint,work_category text,overtime_hours numeric,early_hours numeric,allowance_names text[],source_ready boolean,source_issue text),
+      lateral unnest(x.allowance_names) label
+      where (x.customer_id=customer or (coalesce(unassigned,false) and x.customer_id is null)) and x.worker_id=r.worker_id and x.work_date=r.work_date loop
+      source_ready:=source_ready and chosen->'allowance_rates'->named.label
+       =cfg->'allowance_rates'->named.label;
+    end loop;
+   end if;
+  end loop;
+  -- Whole-report hours/allowances cannot be copied to several customers.
+  if exists(select 1 from jsonb_to_recordset(source_data) as x(report_id uuid,worker_id uuid,work_date date,customer_id uuid,source_clock_in_id uuid,source_quantity numeric,quantity numeric,site_ids uuid[],site_names text[],visit_ids uuid[],visit_started_ats timestamptz[],visit_count bigint,work_category text,overtime_hours numeric,early_hours numeric,allowance_names text[],source_ready boolean,source_issue text)
+    where x.report_id=any(r.report_ids) and x.worker_id=r.worker_id
+    and (x.overtime_hours>0 or x.early_hours>0 or cardinality(x.allowance_names)>0)
+    and (select count(distinct z.customer_id)+case when bool_or(z.customer_id is null) then 1 else 0 end from jsonb_to_recordset(source_data) as z(report_id uuid,worker_id uuid,work_date date,customer_id uuid,source_clock_in_id uuid,source_quantity numeric,quantity numeric,site_ids uuid[],site_names text[],visit_ids uuid[],visit_started_ats timestamptz[],visit_count bigint,work_category text,overtime_hours numeric,early_hours numeric,allowance_names text[],source_ready boolean,source_issue text)
+      where z.report_id=x.report_id and z.worker_id=x.worker_id)>1) then
+    source_ready:=false;
+  end if;
+  if not coalesce(source_ready,false) or chosen is null or cardinality(ordered_ids)=0 then
+   blocked:=true;issues:=issues||jsonb_build_array(jsonb_build_object('worker_id',r.worker_id,
+    'work_date',r.work_date,'source_report_ids',r.report_ids,'reason','signed_checkout_rate_or_source_unconfirmed'));
+   continue;
+  end if;
+  base:=round((chosen->>'unit_price_yen')::numeric);
+  lines:=jsonb_build_array(jsonb_build_object('site_label',array_to_string(ordered_names,'〜'),
+   'work_content','複数現場','quantity',1,'unit_price',(chosen->>'unit_price_yen')::numeric,
+   'unit_price_text',chosen->>'unit_price_yen','amount',base,'work_category',category,
+   'route_signed_checkout_version',1,'quantity_contract','one_per_worker_day_customer',
+   'source_report_ids',r.report_ids,'source_clock_in_ids',r.source_ids,'visit_ids',visits));
+  early:=r.early_hours;overtime:=r.overtime_hours;
+  if early>0 then
+   if coalesce((chosen->>'early_rate')::numeric,0)<=0 then blocked:=true;continue;end if;
+   extras:=round(early*(chosen->>'early_rate')::numeric);base:=base+extras;
+   lines:=lines||jsonb_build_array(jsonb_build_object('site_label','〃','work_content','（早出）',
+    'quantity',early,'unit_price',(chosen->>'early_rate')::numeric,'amount',extras));
+  end if;
+  if overtime>0 then
+   if coalesce((chosen->>'overtime_rate')::numeric,0)<=0 then blocked:=true;continue;end if;
+   extras:=round(overtime*(chosen->>'overtime_rate')::numeric);base:=base+extras;
+   lines:=lines||jsonb_build_array(jsonb_build_object('site_label','〃','work_content','（残業）',
+    'quantity',overtime,'unit_price',(chosen->>'overtime_rate')::numeric,'amount',extras));
+  end if;
+  for named in select label,count(*) quantity from jsonb_to_recordset(source_data) as x(report_id uuid,worker_id uuid,work_date date,customer_id uuid,source_clock_in_id uuid,source_quantity numeric,quantity numeric,site_ids uuid[],site_names text[],visit_ids uuid[],visit_started_ats timestamptz[],visit_count bigint,work_category text,overtime_hours numeric,early_hours numeric,allowance_names text[],source_ready boolean,source_issue text),
+   lateral unnest(x.allowance_names) label where (x.customer_id=customer or (coalesce(unassigned,false) and x.customer_id is null))
+    and x.worker_id=r.worker_id and x.work_date=r.work_date group by label order by label loop
+   allowance_rate:=(chosen->'allowance_rates'->>named.label)::numeric;
+   if coalesce(allowance_rate,0)<=0 then source_ready:=false;exit;end if;
+   extras:=round(named.quantity*allowance_rate);base:=base+extras;
+   lines:=lines||jsonb_build_array(jsonb_build_object('site_label','〃','work_content','（'||named.label||'）',
+    'allowance_name',named.label,'quantity',named.quantity,'unit_price',allowance_rate,'amount',extras));
+  end loop;
+  if not coalesce(source_ready,false) then blocked:=true;continue;end if;
+  welfare:=round(base*(chosen->>'welfare_rate')::numeric/100);
+  tax:=round((base+welfare)*tax_rate/100);
+  if welfare>0 then lines:=lines||jsonb_build_array(jsonb_build_object('site_label','〃',
+    'work_content','（法定福利費）','quantity',0,'unit_price',0,'unit_price_text','','amount',welfare));end if;
+  if tax>0 then lines:=lines||jsonb_build_array(jsonb_build_object('site_label','〃',
+    'work_content','（消費税）','quantity',0,'unit_price',0,'unit_price_text',tax_rate::text||'%','amount',tax));end if;
+  sites_json:=sites_json||jsonb_build_array(jsonb_build_object('site_id',ordered_ids[1],
+   'site_name',array_to_string(ordered_names,'〜'),'visited_site_ids',ordered_ids,
+   'source_report_ids',r.report_ids,'source_clock_in_ids',r.source_ids,
+   'route_signed_checkout_version',1,'quantity_contract','one_per_worker_day_customer',
+   'manual_adjustment',0,'welfare_rate_bps',(chosen->>'welfare_rate')::numeric*100,
+   'subtotal',base+welfare,'tax',tax,'grand_total',base+welfare+tax,'lines',lines));
+  subtotal:=subtotal+base+welfare;tax_total:=tax_total+tax;welfare_total:=welfare_total+welfare;
+ end loop;
+ return jsonb_build_object('sites',sites_json,'subtotal',subtotal,'tax',tax_total,
+  'welfare',welfare_total,'blocked',blocked,'has_sources',has_sources,'issues',issues);
+end $function$;
+
