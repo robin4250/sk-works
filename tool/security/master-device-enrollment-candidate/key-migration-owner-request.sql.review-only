@@ -1,0 +1,20 @@
+-- Review-only approval REQUEST inventory. This never approves or activates a key.
+-- Prerequisites: pending registry and possession challenge candidates.
+-- No public route/grants; independent owner verification and recovery are absent.
+begin;
+create table master_device_enrollment_candidate.owner_approval_requests (
+ id uuid primary key,
+ challenge_id uuid not null unique references master_device_enrollment_candidate.key_possession_challenges(id) on delete restrict,
+ pending_id uuid not null references master_device_enrollment_candidate.pending_key_migrations(id) on delete restrict,
+ actor uuid not null,
+ requester_session uuid not null,
+ device_id uuid not null references private.master_devices(id) on delete restrict,
+ key_sha256 text not null check(key_sha256 ~ '^[a-f0-9]{64}$'),
+ review_nonce text not null unique check(review_nonce ~ '^[a-f0-9]{64}$'),
+ status text not null default 'awaiting_independent_owner' check(status='awaiting_independent_owner'),
+ created_at timestamptz not null default clock_timestamp(),
+ expires_ms double precision not null check(expires_ms>=0 and expires_ms<=9007199254740991 and expires_ms=floor(expires_ms))
+);
+alter table master_device_enrollment_candidate.owner_approval_requests enable row level security;
+revoke all on master_device_enrollment_candidate.owner_approval_requests from public,anon,authenticated;
+commit;

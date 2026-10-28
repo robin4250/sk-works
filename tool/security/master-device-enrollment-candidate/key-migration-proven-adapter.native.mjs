@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {pendingDeviceKeyMigration} from './key-migration-proposal.mjs';
 import {migrationPossessionPayload} from './key-migration-possession.mjs';
 import {storeProvenPendingDeviceKey} from './key-migration-proven-adapter.mjs';
+import {checkOwnerApprovalRequest} from './key-migration-owner-request-check.mjs';
 const require=createRequire(process.cwd()+'/tool/security/fixture_dependencies/package.json');
 const {Pool}=require('pg');
 const pool=new Pool({max:4});
@@ -31,12 +32,13 @@ async function challenge({expired=false}={}){
 }
 const consumed=async id=>(await pool.query('select consumed_at is not null as consumed from master_device_enrollment_candidate.key_possession_challenges where id=$1',[id])).rows[0].consumed;
 try{
- for(const name of ['native-setup.sql','native-real-functions.sql','key-migration-registry.sql.review-only','key-migration-challenges.sql.review-only'])await pool.query(await readFile(new URL(name,import.meta.url),'utf8'));
+ for(const name of ['native-setup.sql','native-real-functions.sql','key-migration-registry.sql.review-only','key-migration-challenges.sql.review-only','key-migration-owner-request.sql.review-only'])await pool.query(await readFile(new URL(name,import.meta.url),'utf8'));
  await pool.query(`insert into private.master_devices(id,master_user_id,device_key,device_name,device_type)
  values ($1,$2,'synthetic-legacy-id','Synthetic iPhone','iphone')`,[deviceId,actor]);
- const first=await challenge();assert.equal((await storeProvenPendingDeviceKey(first)).status,'pending');
+ const first=await challenge();const firstSaved=await storeProvenPendingDeviceKey(first);assert.equal(firstSaved.status,'pending');
  assert.equal(await consumed(first.challengeId),true);assert.equal(await pendingCount(),1);
  await assert.rejects(storeProvenPendingDeviceKey(first));assert.equal(await pendingCount(),1);
+ await checkOwnerApprovalRequest({pool,args:first,pendingId:firstSaved.id,concurrency:true});
  const invalid=await challenge();const bad=Buffer.from(invalid.signature);bad[0]^=1;
  await assert.rejects(storeProvenPendingDeviceKey({...invalid,signature:bad}));
  assert.equal(await consumed(invalid.challengeId),false);assert.equal(await pendingCount(),1);

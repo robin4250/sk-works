@@ -213,3 +213,24 @@ The existing request boundary now connects `submit` to the server-owned, locked 
 A separate `status` action reconciles a lost submit response by joining the original consumed challenge to its exact actor/session/device/key pending row. It returns only pending ID/status, no nonce or signature; no reissue, new nonce, expiry extension, activation or write occurs. It rejects a foreign or no-longer-live session and locked device. An already consumed challenge can be reconciled after its signing deadline, but only through the same live original session. Lost/revoked-session recovery remains unimplemented.
 
 Eight request-boundary Node tests and the real internal issuer/proof-save/status composition in PGlite passed. The existing Native composition runner now includes the same submission/status checks, and the disposable real-GoTrue runner includes signed proof submission, replay refusal, exact pending reconciliation, and foreign/expired/deleted-session refusal. New Native and real-GoTrue CI results must be confirmed separately. Authentication/device fixtures and HTTP hosting limits remain as documented; no public route, grant, deployed configuration, independent owner approval, key activation or production change is added.
+
+
+## Independent owner approval request — not an approval
+
+The review-only `key-migration-owner-request` SQL/adapter binds a request to the
+original live master session, owned unlocked device, exact pending key and consumed
+possession challenge. The proof must still be within its original lifetime; a
+retry reuses the same request without extending the nonce/expiry. It remains
+`awaiting_independent_owner`, and the key remains `pending`. No active signing key,
+trust, approval boolean, public route or client grant is added. The independent
+owner verifier/channel, owner decision, key activation/migration and recovery are
+still absent. The original possession signature or second password must not be
+presented as independent owner approval.
+
+The existing proof-to-pending Native runner checks exact binding, retry identity,
+concurrent same-request results, foreign session/actor/key/source rejection,
+locked/expired rejection, client ACL and unchanged device inventory. Local PGlite
+composition succeeded; Native CI is separately recorded and is not a real owner
+or device test. This new private inventory is review-only and must not be deployed
+before retention, cleanup, account/device deletion compatibility and rollback are
+reviewed with the rest of the candidate.
