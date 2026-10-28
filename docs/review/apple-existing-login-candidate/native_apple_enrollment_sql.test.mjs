@@ -172,6 +172,9 @@ async function successorFixture(run){return fixture(async f=>{
  await f.enable();await f.db.exec(readFileSync(new URL('./native-enrollment-successor.sql.review-only',import.meta.url),'utf8'));
  const reservation=await f.reserve();
  const row=(await f.sql('select * from apple_native_enrollment_private.requests where request_id=$1',[reservation.request_id]))[0];
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');
+ await f.sql('select apple_native_enrollment_private.claim_successor_attempt($1,$2,$3)',[reservation.request_id,uid,sid]);
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=false');
  await f.link();await f.db.query('insert into auth.sessions(id,user_id) values($1,$2)',[successorSid,uid]);
  const finish=async(patch={})=>{
   const p={request:reservation.request_id,actor:uid,original:sid,successor:successorSid,subject,token,hash:row.snapshot_sha256,...patch};
@@ -218,4 +221,31 @@ test('successor rejects substitution, stale identity/account evidence and expiry
  }
  await f.db.exec('commit');
  assert.equal((await f.finish()).linked,true);
+}));
+
+test('durable successor claim is OFF, exact-bound and cannot be consumed twice',()=>fixture(async f=>{
+ await f.enable();await f.db.exec(readFileSync(new URL('./native-enrollment-successor.sql.review-only',import.meta.url),'utf8'));
+ const r=await f.reserve();const claim=(actor=uid,session=sid)=>f.sql('select apple_native_enrollment_private.claim_successor_attempt($1,$2,$3) r',[r.request_id,actor,session]).then(x=>x[0].r);
+ assert.equal(await claim(),null);
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');
+ assert.equal(await claim(other),null);assert.equal(await claim(uid,other),null);
+ assert.equal((await claim()).request_id,r.request_id);assert.equal(await claim(),null);
+ assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.successor_attempts'))[0].n,1);
+ for(const role of ['anon','authenticated','service_role'])assert.equal((await f.sql("select has_function_privilege($1,'apple_native_enrollment_private.claim_successor_attempt(uuid,uuid,uuid)','EXECUTE') ok",[role]))[0].ok,false);
+}));
+test('successor completion without a durable pre-link claim is denied',()=>successorFixture(async f=>{
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');
+ await f.db.exec('delete from apple_native_enrollment_private.successor_attempts');
+ assert.equal(await f.finish(),null);
+}));
+
+test('Native concurrent successor claim admits only one durable attempt',{skip:!native},()=>fixture(async f=>{
+ await f.enable();await f.db.exec(readFileSync(new URL('./native-enrollment-successor.sql.review-only',import.meta.url),'utf8'));
+ await f.db.exec('update apple_native_enrollment_private.successor_rollout set enabled=true');const r=await f.reserve();
+ const a=await f.db.peer(),b=await f.db.peer();
+ for(const c of [a,b])await c.query("select set_config('test.claims','{\"role\":\"service_role\"}',false)");
+ const q='select apple_native_enrollment_private.claim_successor_attempt($1,$2,$3) r';
+ const results=await Promise.all([a.query(q,[r.request_id,uid,sid]),b.query(q,[r.request_id,uid,sid])]);
+ assert.equal(results.filter(x=>x.rows[0].r!==null).length,1);
+ assert.equal((await f.sql('select count(*)::int n from apple_native_enrollment_private.successor_attempts'))[0].n,1);
 }));

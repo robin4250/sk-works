@@ -13,6 +13,43 @@ create table apple_native_enrollment_private.successor_receipts(
 alter table apple_native_enrollment_private.successor_rollout enable row level security;
 alter table apple_native_enrollment_private.successor_receipts enable row level security;
 revoke all on apple_native_enrollment_private.successor_rollout,apple_native_enrollment_private.successor_receipts from public,anon,authenticated,service_role;
+-- Durable claim is committed before any external identity-link request. An
+-- uncertain external result must never release this claim for another attempt.
+create table apple_native_enrollment_private.successor_attempts(
+ request_id uuid primary key references apple_native_enrollment_private.requests(request_id),
+ actor_id uuid not null,original_session_id uuid not null,snapshot_sha256 text not null,
+ claimed_at timestamptz not null default clock_timestamp()
+);
+alter table apple_native_enrollment_private.successor_attempts enable row level security;
+revoke all on apple_native_enrollment_private.successor_attempts from public,anon,authenticated,service_role;
+create function apple_native_enrollment_private.claim_successor_attempt(p_request uuid,p_actor uuid,p_sid uuid)
+returns jsonb language plpgsql volatile security definer set search_path='' as $$
+declare r apple_native_enrollment_private.requests;c jsonb;allowed boolean;
+begin
+ if auth.jwt()->>'role' is distinct from 'service_role' then raise sqlstate '42501' using message='server_only';end if;
+ select enabled into allowed from apple_native_enrollment_private.successor_rollout where singleton for share;
+ if allowed is distinct from true or not apple_native_enrollment_private.ready() then return null;end if;
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request;
+ if not found then return null;end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-subject:'||r.subject,0));
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-actor:'||r.actor_id::text,0));
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request for update;
+ if r.status<>'reserved' or r.expires_at<=clock_timestamp() or r.actor_id is distinct from p_actor
+ or r.session_id is distinct from p_sid then return null;end if;
+ perform 1 from auth.users where id=p_actor for share;
+ perform 1 from auth.sessions where id=p_sid and user_id=p_actor for share;
+ perform 1 from public.company_members where user_id=p_actor for share;
+ perform 1 from auth.identities where user_id=p_actor for share;
+ c:=apple_native_enrollment_private.context(p_actor,p_sid);
+ if c is null or (c-array['account_allowed','primary_password_configured']) is distinct from r.snapshot
+ or exists(select 1 from apple_native_enrollment_private.successor_attempts where request_id=p_request)
+ then return null;end if;
+ insert into apple_native_enrollment_private.successor_attempts(request_id,actor_id,original_session_id,snapshot_sha256)
+ values(p_request,p_actor,p_sid,r.snapshot_sha256);
+ return jsonb_build_object('request_id',r.request_id,'status',r.status,'actor_id',r.actor_id,
+ 'session_id',r.session_id,'subject',r.subject,'token_sha256',r.token_sha256,'snapshot_sha256',r.snapshot_sha256);
+end $$;
+revoke all on function apple_native_enrollment_private.claim_successor_attempt(uuid,uuid,uuid) from public,anon,authenticated,service_role;
 create function apple_native_enrollment_private.complete_with_successor(
  p_request uuid,p_actor uuid,p_original_sid uuid,p_successor_sid uuid,p_subject text,p_token_hash text,p_snapshot_hash text)
 returns jsonb language plpgsql volatile security definer set search_path='' as $$
@@ -30,6 +67,9 @@ begin
  or r.session_id is distinct from p_original_sid or p_successor_sid is null or p_successor_sid=p_original_sid
  or r.subject is distinct from p_subject or r.token_sha256 is distinct from p_token_hash
  or r.snapshot_sha256 is distinct from p_snapshot_hash then return null;end if;
+ if not exists(select 1 from apple_native_enrollment_private.successor_attempts
+ where request_id=p_request and actor_id=p_actor and original_session_id=p_original_sid and snapshot_sha256=p_snapshot_hash)
+ then return null;end if;
  perform 1 from auth.users where id=p_actor for share;
  select created_at into session_created from auth.sessions where id=p_successor_sid and user_id=p_actor for share;
  if not found or session_created is null or session_created<r.created_at or session_created>clock_timestamp() then return null;end if;

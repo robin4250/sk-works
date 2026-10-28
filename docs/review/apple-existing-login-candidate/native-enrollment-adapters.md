@@ -116,3 +116,30 @@ single-use channel, and handle uncertain results without fallback to an invalid
 old session. Those broker/client adapters, secure delivery, rollout/restore guards,
 concurrent behavior, real-GoTrue SQL composition and iPhone validation remain
 unimplemented. There are no service/client grants; keep every enrollment gate OFF.
+
+
+## Durable successor attempt candidate (2026-10-28, OFF)
+
+The private successor SQL now commits one request-bound attempt before external
+Auth linking. Its primary key plus request/advisory locks reject repeat and
+concurrent claims. Completion requires this exact actor/original SID/snapshot
+claim. A failed or uncertain external result never releases the claim for retry.
+The claim revalidates the original live session, account and immutable snapshot;
+completion still validates the new same-UID session independently.
+
+`native_apple_successor_db_port.mjs` is an internal request-scoped adapter for a
+separately provisioned privileged server pool and trusted exact-bearer verifier.
+It commits the private claim before returning it, uses parameterized SQL,
+transaction-local service context and bounded SQL/lock waits, rolls back failures,
+and permits only one completion call. An unknown COMMIT leaves no reusable local
+binding; the durable database claim may already exist and must be reconciled.
+No credentials are stored or included in query arguments. Node mocks cover commit
+ordering/OFF/foreign claims/unknown commits; PGlite validates exact SQL and Native
+CI additionally races two connections. This is not real JWT-to-DB composition.
+
+The adapter is not wired to a public endpoint or the handoff runtime. A trusted
+bearer verifier, deployment-scoped pool, durable receipt reconciliation and secure
+client delivery remain required. Password successor reservation, rollout/restore
+guards and iPhone session adoption are still incomplete. No grant, production
+connection or activation was made. Existing account UID/Google/company data is
+preserved; retaining an obsolete refresh token is not a requirement.
