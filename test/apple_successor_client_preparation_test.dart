@@ -94,6 +94,19 @@ void main() {
     expect(applicationRequests.every((request) => request.method == 'GET'), isTrue);
   }
 
+  test('fixture membership SDK result remains a list of scalar company values', () async {
+    try {
+      final rows = await application.from('company_members').select('company_id,role')
+          .eq('user_id', actor).setHeader('Authorization', 'Bearer ${application.auth.currentSession!.accessToken}');
+      expect(rows, isNotEmpty);
+      expect(rows.single['company_id'], isA<String>());
+      expect(rows.single['role'], isA<String>());
+      final values = rows.map((row) => jsonEncode([row['company_id'], row['role']])).toList()..sort();
+      expect(jsonEncode(values), jsonEncode([jsonEncode([requestId, 'owner'])]));
+    } catch (error) {
+      fail('Membership fixture type=${error.runtimeType}');
+    }
+  });
   test('default OFF does not receive credentials, create isolated client, or touch network', () async {
     var received = false;
     await expectLater(make().prepare(requestId: requestId, receiveOnce: () async {received = true;return envelope();}), throwsStateError);
