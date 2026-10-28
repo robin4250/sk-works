@@ -21,12 +21,6 @@
           "conclusion": null
         },
         {
-          "id": 40669553457,
-          "name": "Secret Scan",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
           "id": 40669553454,
           "name": "Apple native-only hosted-version boundary",
           "status": "queued",
@@ -63,12 +57,6 @@
           "conclusion": null
         },
         {
-          "id": 40669553484,
-          "name": "Apple owner policy GoTrue proof",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
           "id": 40669553319,
           "name": "Registered Apple login candidate",
           "status": "queued",
@@ -99,16 +87,28 @@
           "conclusion": null
         },
         {
+          "id": 40669553519,
+          "name": "Apple password successor real broker",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669553457,
+          "name": "Secret Scan",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
           "id": 40669553357,
           "name": "Existing Google login isolated client",
-          "status": "queued",
+          "status": "in_progress",
           "conclusion": null
         },
         {
-          "id": 40669553519,
-          "name": "Apple password successor real broker",
-          "status": "in_progress",
-          "conclusion": null
+          "id": 40669553484,
+          "name": "Apple owner policy GoTrue proof",
+          "status": "completed",
+          "conclusion": "success"
         },
         {
           "id": 40669539668,
@@ -132,12 +132,6 @@
         {
           "id": 40669213153,
           "name": "Security collector storage candidate",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669212978,
-          "name": "Collector current-core roleless connection",
           "status": "queued",
           "conclusion": null
         },
@@ -168,6 +162,12 @@
         {
           "id": 40669213097,
           "name": "Master new device proof candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669212978,
+          "name": "Collector current-core roleless connection",
           "status": "in_progress",
           "conclusion": null
         },
@@ -191,14 +191,26 @@
           "conclusion": null
         },
         {
-          "id": 40669405337,
-          "name": "Invoice runtime read check",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
           "id": 40669405440,
           "name": "Document numbered guidance",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669405337,
+          "name": "Invoice runtime read check",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669405075,
+          "name": "Vehicle document notification target",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669405282,
+          "name": "R33 preview initial text",
           "status": "in_progress",
           "conclusion": null
         },
@@ -227,81 +239,9 @@
           "conclusion": null
         },
         {
-          "id": 40669405193,
-          "name": "Flutter CI",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669405104,
-          "name": "Secret Scan",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669404971,
-          "name": "Four document totals PDF proof",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669405282,
-          "name": "R33 preview initial text",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669405121,
-          "name": "Trade document confirmation client",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669405146,
-          "name": "Checkout report notification routing",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669405227,
-          "name": "Trade document real Auth review",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669405191,
-          "name": "Company seal style contracts",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669405075,
-          "name": "Vehicle document notification target",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
           "id": 40669405086,
           "name": "Trade document adjustments",
           "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669405138,
-          "name": "Notification target regressions",
-          "status": "in_progress",
-          "conclusion": null
-        },
-        {
-          "id": 40669405085,
-          "name": "Qualification photo attention",
-          "status": "in_progress",
-          "conclusion": null
-        },
-        {
-          "id": 40669404938,
-          "name": "Invoice approval readiness review",
-          "status": "in_progress",
           "conclusion": null
         },
         {
@@ -323,28 +263,88 @@
           "conclusion": null
         },
         {
-          "id": 40669405094,
-          "name": "Resident tax notification integration",
-          "status": "in_progress",
-          "conclusion": null
-        },
-        {
           "id": 40669405024,
           "name": "Route visit reports check",
           "status": "completed",
           "conclusion": "success"
         },
         {
+          "id": 40669405104,
+          "name": "Secret Scan",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669405085,
+          "name": "Qualification photo attention",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669404938,
+          "name": "Invoice approval readiness review",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669405138,
+          "name": "Notification target regressions",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669405227,
+          "name": "Trade document real Auth review",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
           "id": 40669405210,
           "name": "Invoice order acceptance PDF proof",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669405193,
+          "name": "Flutter CI",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669405094,
+          "name": "Resident tax notification integration",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669404971,
+          "name": "Four document totals PDF proof",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669405146,
+          "name": "Checkout report notification routing",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669405121,
+          "name": "Trade document confirmation client",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669405191,
+          "name": "Company seal style contracts",
           "status": "in_progress",
           "conclusion": null
         },
         {
           "id": 40669394813,
           "name": "Secret Scan",
-          "status": "queued",
-          "conclusion": null
+          "status": "completed",
+          "conclusion": "success"
         }
       ]
     },
@@ -356,18 +356,6 @@
         {
           "id": 40669459105,
           "name": "Document numbered guidance",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669458948,
-          "name": "iOS CI",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669458921,
-          "name": "Attendance week and calendar details",
           "status": "queued",
           "conclusion": null
         },
@@ -396,12 +384,6 @@
           "conclusion": null
         },
         {
-          "id": 40669458988,
-          "name": "Shift draft storage candidate",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
           "id": 40669459139,
           "name": "Checkout report registration gate",
           "status": "queued",
@@ -420,38 +402,8 @@
           "conclusion": null
         },
         {
-          "id": 40669458903,
-          "name": "Secret Scan",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
           "id": 40669458919,
           "name": "Company seal image tools",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669459003,
-          "name": "Checkout report resume",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669459073,
-          "name": "QR device signature candidate",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669458901,
-          "name": "Shift status comparison",
-          "status": "queued",
-          "conclusion": null
-        },
-        {
-          "id": 40669459146,
-          "name": "Shift complete attendance read",
           "status": "queued",
           "conclusion": null
         },
@@ -474,10 +426,58 @@
           "conclusion": "success"
         },
         {
+          "id": 40669458903,
+          "name": "Secret Scan",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669458948,
+          "name": "iOS CI",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669458988,
+          "name": "Shift draft storage candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669459073,
+          "name": "QR device signature candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669458921,
+          "name": "Attendance week and calendar details",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669459003,
+          "name": "Checkout report resume",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669459146,
+          "name": "Shift complete attendance read",
+          "status": "in_progress",
+          "conclusion": null
+        },
+        {
+          "id": 40669458901,
+          "name": "Shift status comparison",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
           "id": 40669445555,
           "name": "Secret Scan",
-          "status": "queued",
-          "conclusion": null
+          "status": "completed",
+          "conclusion": "success"
         }
       ]
     },
@@ -499,22 +499,10 @@
           "conclusion": "success"
         },
         {
-          "id": 40669211188,
-          "name": "Personal vault bounded Storage transport",
-          "status": "in_progress",
-          "conclusion": null
-        },
-        {
           "id": 40669211270,
           "name": "Route visit reports check",
           "status": "completed",
           "conclusion": "success"
-        },
-        {
-          "id": 40669211222,
-          "name": "Personal PDF vault candidate",
-          "status": "in_progress",
-          "conclusion": null
         },
         {
           "id": 40669211263,
@@ -535,6 +523,18 @@
           "conclusion": "success"
         },
         {
+          "id": 40669211188,
+          "name": "Personal vault bounded Storage transport",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 40669211222,
+          "name": "Personal PDF vault candidate",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
           "id": 40669200656,
           "name": "Secret Scan",
           "status": "completed",
@@ -544,56 +544,68 @@
     },
     {
       "pr": 1509,
-      "head": "10cabf1ee71981a96f030e116b183824e7f4cf3c",
+      "head": "2482cb9421f52ad724d31b96cdfc937a76b1759a",
       "branch": "review/security-notice-archive-isolated-20261027",
       "runs": [
         {
-          "id": 40669201684,
-          "name": "Flutter CI",
-          "status": "in_progress",
+          "id": 40669859667,
+          "name": "Route visit reports check",
+          "status": "queued",
           "conclusion": null
         },
         {
-          "id": 40669201701,
-          "name": "Route visit reports check",
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 40669201697,
-          "name": "Secret Scan",
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 40669201693,
-          "name": "Security incident records",
-          "status": "completed",
-          "conclusion": "success"
-        },
-        {
-          "id": 40669201759,
+          "id": 40669859677,
           "name": "Isolated notice archive candidate",
-          "status": "completed",
-          "conclusion": "success"
+          "status": "queued",
+          "conclusion": null
         },
         {
-          "id": 40669201762,
+          "id": 40669859647,
+          "name": "Server reauthentication proofs",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669859767,
           "name": "Isolated deception lab",
-          "status": "completed",
-          "conclusion": "failure"
+          "status": "queued",
+          "conclusion": null
         },
         {
-          "id": 40669201714,
+          "id": 40669859614,
           "name": "Document numbered guidance",
-          "status": "completed",
-          "conclusion": "success"
+          "status": "queued",
+          "conclusion": null
         },
         {
-          "id": 40669189144,
+          "id": 40669859606,
+          "name": "Company seal central master gate",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669859608,
+          "name": "Security incident records",
+          "status": "queued",
+          "conclusion": null
+        },
+        {
+          "id": 40669859592,
+          "name": "Flutter CI",
+          "status": "pending",
+          "conclusion": null
+        },
+        {
+          "id": 40669859698,
           "name": "Secret Scan",
           "status": "completed",
           "conclusion": "success"
+        },
+        {
+          "id": 40669852239,
+          "name": "Secret Scan",
+          "status": "queued",
+          "conclusion": null
         }
       ]
     }
@@ -609,8 +621,12 @@
     },
     {
       "pr": 1509,
+      "head": "10cabf1ee71981a96f030e116b183824e7f4cf3c",
       "run": 40669201762,
-      "status": "assigned_to_security_owner_for_diagnosis"
+      "cause": "Reauthentication test regenerated time-dependent JWT instead of comparing issued token; fixed fixture captures actual issued token and checks logout equality.",
+      "correction_head": "2482cb9421f52ad724d31b96cdfc937a76b1759a",
+      "product_auth_changed": false,
+      "correction_ci_pending": true
     }
   ],
   "production_changed": false,
