@@ -31,3 +31,15 @@ wrong company/permission/session/key, replay, revoked device, fixed ownership,
 same-key confirmation, audit failure rollback and client/service-role ACL denial.
 Auth, permission and proof issuance are synthetic. Local PGlite passed; Native
 PostgreSQL is run by the QR master gate workflow. No production change was made.
+
+## Key-possession composition candidate
+
+The separate [key-possession candidate](key-possession.md) now adds a private
+server-issued challenge and a Node/PostgreSQL adapter that verifies the requested
+Ed25519 key before invoking this exact-proof registration primitive. Registration,
+proof consumption, audit and challenge consumption are one transaction. It is
+not a public route, hardware-backed device proof or a completed proof issuer.
+The primitive by itself still does not verify key possession, and must not be
+exposed directly. Existing registration remains unavailable until the genuine
+issuer, JWT/request-pool boundary, enrollment/revocation UX and rollout are
+reviewed and tested. No production change or feature activation was made.
