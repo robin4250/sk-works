@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {downloadOwnVaultPdf} from './personal_vault_delivery_candidate.mjs';
+import {createVaultStorageDownload} from './storage_download_transport.mjs';
 const {PGlite} = await import(process.env.VAULT_PGLITE_MODULE || '@electric-sql/pglite');
 const root = process.env.VAULT_FIXTURE_ROOT || 'docs/review/personal-vault24';
 async function expand(name) {
@@ -38,3 +39,16 @@ test('oversized receipt and mismatched storage size are rejected before download
 test('download adapter receives strict byte cap and changed metadata rejects delivery',async()=>{const f=await fixture();try{let limit;f.services.download=async(_path,_version,opts)=>{limit=opts.maxBytes;return Buffer.from(bytes)};assert.deepEqual(await downloadOwnVaultPdf({manifestId:mid,artifactKey:key},f.services),bytes);assert.equal(limit,bytes.length);let calls=0;const meta=f.services.storageMetadata;f.services.storageMetadata=async(...x)=>{const result=await meta(...x);return {...result,byteLength:++calls===1?bytes.length:bytes.length+1}};await assert.rejects(downloadOwnVaultPdf({manifestId:mid,artifactKey:key},f.services));}finally{await f.db.close();}});
 
 test('downloaded buffers with an unexpected size are rejected before privacy inspection',async()=>{const f=await fixture();try{let inspected=0;f.services.trustedPrivacyProof=async()=>{inspected++;throw Error('unexpected inspection')};for(const size of [bytes.length-1,bytes.length+1]){f.services.download=async()=>Buffer.alloc(size);await assert.rejects(downloadOwnVaultPdf({manifestId:mid,artifactKey:key},f.services),/vault_download_invalid/);}assert.equal(inspected,0);}finally{await f.db.close();}});
+
+test('coordinator passes trusted receipt hash to bounded private Storage GET',async()=>{
+  const f=await fixture();try{
+    let calls=0;
+    f.services.download=createVaultStorageDownload({origin:'https://synthetic.supabase.co',
+      bucket:'personal-documents',publishableKey:'sb_publishable_fixture',
+      authorizationHeader:async()=> 'Bearer synthetic.jwt.fixture',fetchImpl:async()=>{
+        calls++;return new Response(bytes,{headers:{'content-type':'application/pdf'}});
+      }});
+    assert.deepEqual(await downloadOwnVaultPdf({manifestId:mid,artifactKey:key},f.services),bytes);
+    assert.equal(calls,1);
+  }finally{await f.db.close();}
+});

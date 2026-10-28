@@ -1,3 +1,11 @@
-# 本人PDF取得のサイズ制限候補
+# Personal PDF private Storage transport candidate
 
-既存 #1482 に続く隔離候補。記録とStorageサイズの一致、50 MiB上限、取得adapterへのサイズ上限、取得後再照合を追加。隔離PGlite/Node 10件成功。実Storage adapterはストリーミング中の上限強制が必須で未実装。実認証、独立した本人内容検査、実Storage版固定・運用検証も未完。本番公開・有効化不可。
+Build25 review only. Based on download-size branch 2c3cb37a, which already contains the bounded-stream branch's shared helper. No parallel reimplementation of that helper.
+
+The delivery coordinator passes the saved receipt's exact size and SHA-256 into a server-only private Storage GET transport. It streams into the existing bounded reader, rejects redirects, error bodies, unexpected MIME/encoding/length, oversize/truncated bytes and receipt-hash mismatches. A global deadline also terminates unresponsive fetch/reader adapters; cancellation is not awaited indefinitely. There are no retries. Only a server-configured publishable key and an independently verified user bearer provider are accepted; no service key or public/signed download URL.
+
+The Storage REST endpoint reads the current object. Matching bytes by saved hash is not proof that immutable historical versions are retained. Real Storage RLS, live GoTrue/session binding, immutable retention, and an independent owner-only PDF content inspector remain unconnected and unverified. This is not a deployable endpoint and must not be enabled.
+
+Validation: 19 isolated Node/PGlite tests passed locally (including coordinator-to-transport composition). The dedicated dependency-free CI runs transport, shared bounded stream and byte verification tests; this is synthetic fetch, not a real Storage access test. No production requests/data/keys were used.
+
+Official API checked: Supabase Storage private bucket access and storage-js StorageFileApi.download (GET /storage/v1/object/{bucket}/{path}, user Authorization header). Changelog checked 2026-10-28: current TLS deprecation requires a current TLS stack; no new SDK dependency introduced.
