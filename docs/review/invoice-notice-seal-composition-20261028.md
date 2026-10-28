@@ -113,3 +113,26 @@ This replaces one empty provider boundary, not the adjustment mutation APIs.
 Auth/session, route and expense remain fixtures, production mapping and the
 full-source/GoTrue composition are incomplete. No production SQL, grant, approval
 or existing invoice was changed.
+
+
+## Approved expense cost reader integration (2026-10-28)
+
+The composition installs `private.expense_cost_components` verbatim from the
+existing original-cost migration, retaining its denied client EXECUTE rights.
+Synthetic claims cover explicit cost allocation and current approval, withdrawal,
+month/company/party/kind isolation, and consumption by the same versus another
+document. Pending, unapproved, unallocated and already-captured foreign-document
+claims do not add money. This does not create approval or allocation authority.
+
+A nonempty 2000-yen expense result is recalculated by the real daily preview.
+It is then combined with the real +1000/-250 adjustment reader and passed through
+notice, financial approval and seal confirmation in one transaction. Revoking an
+expense approval after ticket issue refuses confirmation without consuming the
+ticket or publishing a seal. The existing late-failure rollback and exactly-once
+successful confirmation checks run again for this combined scenario, and the
+outer fixture restores all synthetic rows.
+
+Expense approval/allocation/finalization mutation APIs, route providers, live
+Auth/session and production mapping remain incomplete. These fixture rows are
+not real expenses or business approvals. No product SQL, grant, source invoice,
+production database or signature is changed. Native CI must pass separately.
