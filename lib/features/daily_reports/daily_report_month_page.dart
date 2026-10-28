@@ -122,25 +122,29 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
     }
   }
 
-  Widget _listingControls() => Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4), child: Wrap(
-    spacing: 8, runSpacing: 4, children: [
-      ChoiceChip(label: const Text('保存済み'),
+  Widget _listingControls() => Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4), child: Row(
+    children: [
+      Expanded(child: ChoiceChip(showCheckmark: false,
+        label: const FittedBox(fit: BoxFit.scaleDown, child: Text('保存済', maxLines: 1)),
         selectedColor: Colors.green.shade100,
         labelStyle: TextStyle(color: Colors.green.shade900, fontWeight: FontWeight.bold),
         side: BorderSide(color: Colors.green.shade800), selected: !_showPending && !_showUnfinished,
-        onSelected: _exporting || _openingEntryId != null ? null : (_) => setState(() { _showPending = false; _showUnfinished = false; _siteKey = null; _siteName = null; })),
-      ChoiceChip(key: const ValueKey('daily-report-pending-filter'),
-        label: Text(_pending.isEmpty ? 'サイン待ち' : 'サイン待ち ${_pending.length}件'),
+        onSelected: _exporting || _openingEntryId != null ? null : (_) => setState(() { _showPending = false; _showUnfinished = false; _siteKey = null; _siteName = null; }))),
+      const SizedBox(width: 6),
+      Expanded(child: ChoiceChip(showCheckmark: false, key: const ValueKey('daily-report-pending-filter'),
+        label: const FittedBox(fit: BoxFit.scaleDown, child: Text('サイン待ち', maxLines: 1)),
         selected: _showPending, selectedColor: Colors.red.shade100,
         labelStyle: TextStyle(color: Colors.red.shade900, fontWeight: FontWeight.bold),
         side: BorderSide(color: Colors.red.shade700),
         onSelected: _exporting || _openingEntryId != null ? null : (_) {
           setState(() { _showPending = true; _showUnfinished = false; _siteKey = null; _siteName = null; }); _loadPending();
-        }),
-      ChoiceChip(label: const Text('入力・確定待ち'), selected: _showUnfinished,
+        })),
+      const SizedBox(width: 6),
+      Expanded(child: ChoiceChip(showCheckmark: false,
+        label: const FittedBox(fit: BoxFit.scaleDown, child: Text('入力待ち', maxLines: 1)), selected: _showUnfinished,
         onSelected: _exporting || _openingEntryId != null ? null : (_) => setState(() {
           _showPending = false; _showUnfinished = true; _siteKey = null; _siteName = null;
-        })),
+        }))),
     ]));
 
   Widget _withPendingControls(Widget normal) => Column(children: [
@@ -313,7 +317,7 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
 
   void _help() => showDialog<void>(context: context, builder: (context) => AlertDialog(
     title: Text(SkoLanguageController.tr('日報一覧の使い方')),
-    content: SingleChildScrollView(child: Text(SkoLanguageController.tr('現場名一覧から現場を選ぶと、上下にスクロールする月の日付一覧を開きます。日付・曜日は土曜日が青文字、日曜日と日本の祝日が赤文字です。祝日が土曜日と重なる場合は赤文字を優先します。◀・▶で月を切り替え、ヘッダーの「月まとめて共有・保存」で全現場または開いている現場の保存済み日報をZIPにまとめます。日報は面表紙のある帳票を1件と数え、添付写真の枚数は含みません。「写真無し」「写真付き」は日報の区分です。同じ日に複数の日報があれば古い順に選べます。プレビューは通常表示で右スライドすると次の日報登録日、左スライドすると古い日報へ進み、矢印でも切り替えできます。ダブルタップで帳票を拡大中は横移動で帳票内を確認します。再度ダブルタップで通常表示へ戻すと日報をスライド切替できます。拡大中も下の矢印で日報を変更できます。「編集」から選択した日報を開きます。署名済み日報の変更制限はそのままです。「＋」で新規日報を作成します。訪問先ごとの日報と、退勤時のルート日報を別々に表示します。日報を選ぶと、保存済みの内容とサインでプレビューを開きます。下の印刷ボタンで1件ずつ印刷でき、共有ボタンから「ファイルに保存」を選べます。同じ日に同じ現場の日報が複数ある場合は件目の番号で区別できます。作成時刻は日本時間です。まとめて保存はZIP形式です。ルートの日別一覧では「請求数量を申請」から、退勤済みの訪問日報を取引会社ごとにまとめて数量を申請できます。管理者の承認後に請求書の下書きへ反映し、給与や出勤表の人工は変更しません。'))),
+    content: SingleChildScrollView(child: Text(SkoLanguageController.tr('現場を選ぶと、上下にスクロールする月の日付一覧を開きます。日付・曜日は土曜日が青文字、日曜日と日本の祝日が赤文字です。祝日が土曜日と重なる場合は赤文字を優先します。◀・▶で月を切り替え、ヘッダーの「月まとめて共有・保存」で全現場または開いている現場の保存済み日報をZIPにまとめます。日報は面表紙のある帳票を1件と数え、添付写真の枚数は含みません。「写真無し」「写真付き」は日報の区分です。同じ日に複数の日報があれば古い順に選べます。プレビューは通常表示で右スライドすると次の日報登録日、左スライドすると古い日報へ進み、矢印でも切り替えできます。ダブルタップで帳票を拡大中は横移動で帳票内を確認します。再度ダブルタップで通常表示へ戻すと日報をスライド切替できます。拡大中も下の矢印で日報を変更できます。「編集」から選択した日報を開きます。署名済み日報の変更制限はそのままです。「＋」で新規日報を作成します。訪問先ごとの日報と、退勤時のルート日報を別々に表示します。日報を選ぶと、保存済みの内容とサインでプレビューを開きます。下の印刷ボタンで1件ずつ印刷でき、共有ボタンから「ファイルに保存」を選べます。同じ日に同じ現場の日報が複数ある場合は件目の番号で区別できます。作成時刻は日本時間です。まとめて保存はZIP形式です。ルートの日別一覧では「請求数量を申請」から、退勤済みの訪問日報を取引会社ごとにまとめて数量を申請できます。管理者の承認後に請求書の下書きへ反映し、給与や出勤表の人工は変更しません。'))),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(SkoLanguageController.tr('閉じる')))],
   ));
 
@@ -439,8 +443,6 @@ class _DailyReportMonthPageState extends State<DailyReportMonthPage> {
             child: _siteKey == null ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(12), children: [
-                Padding(padding: const EdgeInsets.all(8), child: Text(SkoLanguageController.tr('現場名一覧'),
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
                 if (destinations.isEmpty) Padding(padding: const EdgeInsets.all(24),
                   child: Text(SkoLanguageController.tr('この月の保存済み日報はありません。'), style: TextStyle(fontSize: 18))),
                 for (final destination in destinations.entries) Card(child: ListTile(
