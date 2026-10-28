@@ -7,6 +7,8 @@ on:
       - 'test/personal_vault_manifest.test.mjs'
       - 'lib/features/personal_vault/**'
       - 'test/own_payroll_archive_pdf_test.dart'
+      - 'test/personal_vault_content_evidence_test.dart'
+      - 'docs/review/personal-vault25-content/**'
       - '.github/workflows/personal-pdf-vault-candidate.yml'
   workflow_dispatch:
 permissions:
@@ -30,9 +32,11 @@ jobs:
         with:
           flutter-version: '3.47.5'
           channel: stable
+      - run: python3 -m pip install --disable-pip-version-check 'PyMuPDF==1.26.6'
+      - run: python3 -m unittest discover -s docs/review/personal-vault25-content -p '*_test.py' -v
       - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze lib/features/personal_vault test/own_payroll_archive_pdf_test.dart test/personal_vault_page_test.dart test/personal_vault_repository_test.dart
-      - run: flutter test test/own_payroll_archive_pdf_test.dart test/personal_vault_page_test.dart test/personal_vault_repository_test.dart
+      - run: flutter analyze test/personal_vault_content_evidence_test.dart lib/features/personal_vault test/own_payroll_archive_pdf_test.dart test/personal_vault_page_test.dart test/personal_vault_repository_test.dart
+      - run: flutter test test/personal_vault_content_evidence_test.dart test/own_payroll_archive_pdf_test.dart test/personal_vault_page_test.dart test/personal_vault_repository_test.dart
   persistent-catalog:
     runs-on: ubuntu-latest
     timeout-minutes: 8
