@@ -16,6 +16,7 @@ class InvoiceNoticeTicketController {
   final NoticeTicketOpener openTicket;
   final NoticeTicketApprover? submitApproval;
   bool _submitting = false;
+  static const _requestTimeout = Duration(seconds: 20);
   final DateTime Function() _now;
   String? _actor, _session, _ticket;
   DateTime? _expires;
@@ -57,7 +58,7 @@ class InvoiceNoticeTicketController {
     final generation = _generation;
     _submitting = true;
     try {
-      final result = await submit(ticket);
+      final result = await submit(ticket).timeout(_requestTimeout);
       return result == true && generation == _generation &&
           actor() == actorBefore && session() == sessionBefore
           ? InvoiceNoticeApprovalResult.confirmed
@@ -80,7 +81,7 @@ class InvoiceNoticeTicketController {
     if (currentActor == null || currentActor.isEmpty || currentSession == null || currentSession.isEmpty) { return false; }
     final generation = _generation;
     try {
-      final result = await openTicket(notificationId);
+      final result = await openTicket(notificationId).timeout(_requestTimeout);
       if (generation != _generation || actor() != currentActor || session() != currentSession || result is! Map ||
           result['notification_id'] != notificationId || result['invoice_id'] != invoiceId) { return false; }
       // The UI must bind readiness to the exact displayed revision. Older

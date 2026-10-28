@@ -100,4 +100,37 @@ void main() {
     }
   });
 
+
+  testWidgets('unresponsive ticket request times out and late receipt stays invalid', (tester) async {
+    final response = Completer<Object?>();
+    final c = InvoiceNoticeTicketController(actor: () => 'a', session: () => 's', now: () => start,
+      openTicket: (_) => response.future);
+    final opening = c.open(notice, invoiceId: invoice);
+    await tester.pump(const Duration(seconds: 21));
+    expect(await opening, isFalse);
+    response.complete({'notification_id': notice, 'invoice_id': invoice, 'ticket_id': ticket,
+      'expires_at': start.add(const Duration(minutes: 5)).toIso8601String()});
+    await tester.pump();
+    expect(c.hasValidTicket, isFalse);
+  });
+
+  testWidgets('approval timeout never retries or accepts a late success', (tester) async {
+    var calls = 0;
+    final response = Completer<Object?>();
+    final c = InvoiceNoticeTicketController(actor: () => 'a', session: () => 's', now: () => start,
+      openTicket: (_) async => {'notification_id': notice, 'invoice_id': invoice, 'ticket_id': ticket,
+        'expires_at': start.add(const Duration(minutes: 5)).toIso8601String()},
+      submitApproval: (_) { calls++; return response.future; });
+    expect(await c.open(notice, invoiceId: invoice), isTrue);
+    final approving = c.approve();
+    await tester.pump(const Duration(seconds: 21));
+    expect(await approving, InvoiceNoticeApprovalResult.unconfirmed);
+    expect(await c.approve(), InvoiceNoticeApprovalResult.notSubmitted);
+    response.complete(true);
+    await tester.pump();
+    expect(c.hasValidTicket, isFalse);
+    expect(await c.approve(), InvoiceNoticeApprovalResult.notSubmitted);
+    expect(calls, 1);
+  });
+
 }
