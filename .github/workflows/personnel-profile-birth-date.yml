@@ -1,0 +1,23 @@
+name: Personnel profile birth date
+on:
+  pull_request:
+    paths:
+      - 'lib/features/profile/profile_page.dart'
+      - 'lib/features/payroll/payroll_tax_conditions_page.dart'
+      - 'tool/staged/personnel_profile_birth_date.sql.review-only'
+      - 'tool/personnel_profile_birth_date_check.mjs'
+      - '.github/workflows/personnel-profile-birth-date.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-postgres:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/birthcheck" --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.5.8
+      - run: node tool/personnel_profile_birth_date_check.mjs
+        env:
+          PGLITE_PACKAGE_JSON: ${{ runner.temp }}/birthcheck/package.json
