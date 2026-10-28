@@ -9,6 +9,7 @@ import {promisify} from 'node:util';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createVaultStorageDownload} from './storage_download_transport.mjs';
 import {downloadOwnVaultPdf} from './personal_vault_delivery_candidate.mjs';
+import {createVaultCreateOnlyUpload} from './storage_create_only_transport.mjs';
 
 const run=promisify(execFile),root=process.cwd();
 const parent=path.resolve(process.env.RUNNER_TEMP??'');
@@ -77,14 +78,35 @@ try {
  const hash=digest(bytes);
  phase='private-bucket';
  await json(await request('/storage/v1/bucket',{admin:true,body:{id:bucket,name:bucket,public:false}}));
- const uploaded=await fetch(new URL(`/storage/v1/object/${bucket}/${objectPath}`,api),{method:'POST',redirect:'error',
-  signal:AbortSignal.timeout(15000),headers:{apikey:service,
-   ...(!service.startsWith('sb_secret_')?{Authorization:`Bearer ${service}`}:{ }),
-   'Content-Type':'application/pdf','x-upsert':'false'},body:bytes});
- lastStatus=uploaded.status;assert.equal(uploaded.status,200);
+ // Exercise the create-only candidate against actual Storage. This fixture
+ // bridge uses the disposable trusted exporter credential, not an owner upload
+ // policy or production service key. No app write grant is added.
+ const uploadOrigin='https://vault-disposable.invalid';
+ const createOnly=createVaultCreateOnlyUpload({origin:uploadOrigin,bucket,
+  publishableKey:'sb_publishable_isolated_gateway_marker',
+  authorizationHeader:async()=>'Bearer fixture_exporter_marker',
+  fetchImpl:(url,options)=>{
+   const checked=new URL(url);assert.equal(checked.origin,uploadOrigin);
+   const headers={...options.headers,apikey:service};
+   if(service.startsWith('sb_secret_'))delete headers.Authorization;
+   else headers.Authorization=`Bearer ${service}`;
+   return fetch(new URL(checked.pathname,api),{...options,headers});
+  }});
+ const uploadInput={ownerId:owner.user.id,artifactKey:artifact,pdfSha256:hash,bytes};
+ const uploaded=await createOnly(uploadInput);
+ assert.equal(uploaded.status,'created_unverified');
+ assert.equal('immutableVersion' in uploaded,false);
  const stored=(await db.query('select version from storage.objects where bucket_id=$1 and name=$2',[bucket,objectPath])).rows;
  assert.equal(stored.length,1);assert.equal(typeof stored[0].version,'string');
  const version=stored[0].version;
+ phase='create-only-duplicate';
+ const replacementBytes=Buffer.from('%PDF-1.7\nchanged snapshot must not replace original\n%%EOF\n');
+ await assert.rejects(createOnly({...uploadInput,bytes:replacementBytes,pdfSha256:digest(replacementBytes)}),
+  /vault_upload_outcome_unknown/);
+ const unchanged=(await db.query('select version from storage.objects where bucket_id=$1 and name=$2',[bucket,objectPath])).rows;
+ assert.equal(unchanged.length,1);assert.equal(unchanged[0].version,version);
+ const originalRead=await request(`/storage/v1/object/${bucket}/${objectPath}`,{admin:true,method:'GET'});
+ assert.equal(originalRead.status,200);assert.deepEqual(Buffer.from(await originalRead.arrayBuffer()),bytes);
  phase='existing-catalog-and-policies';
  // Reuse the existing read-only catalog and Storage policy candidate. The
  // exporter inventory/master gate is NOT exercised: catalog rows are fixtures.
@@ -210,6 +232,7 @@ try {
  await assert.rejects(download(owner.access_token)(objectPath,version,opts));
  assert.equal((await db.query('select count(*)::int n from storage.objects where bucket_id=$1',[bucket])).rows[0].n,1);
  console.log(JSON.stringify({result:'PASS isolated real GoTrue and Storage boundary',real_gotrue:true,real_storage:true,
+  create_only_post:true,duplicate_upload_preserves_original:true,upload_ack_not_immutable_proof:true,
   owner_download:true,foreign_and_anon_denied:true,public_path_denied:true,broad_policy_not_bypass:true,
   version_and_completion_bound:true,expired_and_revoked_session_denied:true,size_and_hash_rejected:true,
   loopback_gateway_bridge:true,real_postgrest_source_binding:true,v2_coordinator:true,
