@@ -4,6 +4,8 @@ on:
     paths:
       - 'lib/features/auth/apple_native_credential_preparation.dart'
       - 'test/apple_native_credential_preparation_test.dart'
+      - 'lib/features/auth/apple_successor_client_preparation.dart'
+      - 'test/apple_successor_client_preparation_test.dart'
       - 'docs/review/apple-existing-login-candidate/google_primary*'
       - '.github/workflows/apple-preparation-ports.yml'
 permissions:
@@ -29,5 +31,5 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: git diff --exit-code -- pubspec.lock
-      - run: dart analyze lib/features/auth/apple_native_credential_preparation.dart test/apple_native_credential_preparation_test.dart
-      - run: flutter test test/apple_native_credential_preparation_test.dart --reporter expanded
+      - run: dart analyze lib/features/auth/apple_native_credential_preparation.dart test/apple_native_credential_preparation_test.dart lib/features/auth/apple_successor_client_preparation.dart test/apple_successor_client_preparation_test.dart
+      - run: flutter test test/apple_native_credential_preparation_test.dart test/apple_successor_client_preparation_test.dart --reporter expanded
