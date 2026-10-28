@@ -77,3 +77,24 @@ test('file-backed committed nonce survives restart after signer failure, while l
     assert.equal(db.prepare('SELECT count(*) n FROM consumed').get().n,1);
   }finally{db?.close();rmSync(directory,{recursive:true,force:true});}
 });
+
+test('accessor and inherited bindings reject without invoking code or reaching the signer',async()=>{
+  let reads=0,consumes=0,signs=0;
+  const store={consumeCommitted:async()=>{consumes++;return committed();},readCommitted:async()=>committed()};
+  const signReceipt=bytes=>{signs++;return sign(null,bytes,keys.privateKey);};
+  const witness=createExternalSignerWitnessCandidate({store,key,now:()=>1000,signReceipt});
+  const accessor={...input};Object.defineProperty(accessor,'scope',{enumerable:true,get(){reads++;return input.scope;}});
+  for(const malformed of [accessor,Object.create(input),{...input,extra:'ignored?'}])await assert.rejects(witness.consume(malformed),/outcome unknown/);
+  assert.equal(reads,0);assert.equal(consumes,0);assert.equal(signs,0);
+  const row=committed();Object.defineProperty(row,'sequence',{enumerable:true,get(){reads++;return 1;}});
+  await assert.rejects(createExternalSignerWitnessCandidate({store:{consumeCommitted:async()=>row,readCommitted:async()=>row},key,now:()=>1000,signReceipt}).consume(input),/outcome unknown/);
+  assert.equal(reads,0);assert.equal(signs,0);
+});
+test('configured store methods remain bound when its public properties are replaced',async()=>{
+  let committedCalls=0,replacedCalls=0;
+  const store={consumeCommitted:async()=>{committedCalls++;return committed();},readCommitted:async()=>committed()};
+  const witness=createExternalSignerWitnessCandidate({store,key,now:()=>1000,signReceipt:bytes=>sign(null,bytes,keys.privateKey)});
+  store.consumeCommitted=async()=>{replacedCalls++;return committed();};
+  const receipt=await witness.consume(input);
+  assert.equal(receipt.payload.sequence,1);assert.equal(committedCalls,1);assert.equal(replacedCalls,0);
+});

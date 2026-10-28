@@ -4,6 +4,18 @@
 import {createPublicKey} from 'node:crypto';
 import {receiptBytes,validateWitnessReceipt} from './recovery-witness-model.mjs';
 
+// Callback return values and caller input are untrusted records. Read descriptors
+// once; invoking accessors would let a checked binding differ from the saved one.
+function snapshot(record,names) {
+  if(!record||typeof record!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(record)))throw Error('invalid record');
+  const descriptors=Object.getOwnPropertyDescriptors(record);
+  if(Reflect.ownKeys(descriptors).length!==names.length)throw Error('invalid record');
+  return Object.freeze(Object.fromEntries(names.map(name=>{
+    const descriptor=descriptors[name];
+    if(!descriptor||!Object.hasOwn(descriptor,'value'))throw Error('invalid record');
+    return [name,descriptor.value];
+  })));
+}
 const hex=x=>typeof x==='string'&&/^[a-f0-9]{64}$/.test(x);
 export function createExternalSignerWitnessCandidate({store,signReceipt,key,now=Date.now,timeoutMs=5000}) {
   if(!store||typeof store.consumeCommitted!=='function'||typeof store.readCommitted!=='function'||
@@ -12,8 +24,10 @@ export function createExternalSignerWitnessCandidate({store,signReceipt,key,now=
   let pin;
   try{pin=Object.freeze(createPublicKey({key:{kty:key.kty,crv:key.crv,x:key.x},format:'jwk'}).export({format:'jwk'}));}
   catch{throw Error('invalid witness signer configuration');}
+  const consumeCommitted=store.consumeCommitted.bind(store),readCommitted=store.readCommitted.bind(store);
   const operation=async(method,input)=>{
     const fail=()=>new Error('witness outcome unknown; reconcile before retry');
+    try{input=snapshot(input,['scope','nonce','proposalHash','challenge']);}catch{throw fail();}
     if(!input||typeof input.scope!=='string'||!input.scope||input.scope.length>200||
         !hex(input.nonce)||!hex(input.proposalHash)||!hex(input.challenge))throw fail();
     const scope=input.scope,nonce=input.nonce,proposalHash=input.proposalHash,challenge=input.challenge;
@@ -22,7 +36,7 @@ export function createExternalSignerWitnessCandidate({store,signReceipt,key,now=
     const bounded=p=>Promise.race([p,deadline]);
     try{
       // Exactly one call: timeout may occur after a durable remote commit.
-      const row=await bounded(store[method](Object.freeze({scope,nonce,proposalHash})));
+      const row=snapshot(await bounded(method(Object.freeze({scope,nonce,proposalHash}))),['committed','scope','nonce','proposalHash','sequence']);
       if(!row||row.committed!==true||row.scope!==scope||row.nonce!==nonce||row.proposalHash!==proposalHash||
           !Number.isSafeInteger(row.sequence)||row.sequence<1)throw fail();
       const issued=now();if(!Number.isSafeInteger(issued))throw fail();
@@ -36,5 +50,5 @@ export function createExternalSignerWitnessCandidate({store,signReceipt,key,now=
       return receipt;
     }catch{throw fail();}finally{clearTimeout(timer);}
   };
-  return Object.freeze({consume:args=>operation('consumeCommitted',args),lookup:args=>operation('readCommitted',args)});
+  return Object.freeze({consume:args=>operation(consumeCommitted,args),lookup:args=>operation(readCommitted,args)});
 }

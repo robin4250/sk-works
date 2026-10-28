@@ -135,3 +135,18 @@ unimplemented. No production listener was started and no external host was conta
 The tests keep a synthetic signing key outside the store adapter, prove lost-signature-response reconciliation, reject substituted/uncommitted rows and wrong signatures, and reopen a temporary SQLite ledger after a signer failure without consuming twice. Input, row, public-key and signing-buffer mutation tests prevent asynchronous rebinding. The existing Node24 workflow discovers these tests without workflow changes.
 
 This is **not a KMS/HSM integration or independent key custody**. The store callbacks are trusted configuration; a `committed` field is not cryptographic durability proof. The local SQLite fixture can be rolled back by its operator. Real authenticated signer transport, separate operator/key authorization, independent rollback-resistant checkpoint/backup, protected server clock, real restore/loss/compromise policy and actual deployment remain unimplemented. Do not enable production or recovery using this boundary.
+
+
+## External signer record binding hardening (2026-10-28)
+
+The review-only external signer boundary now snapshots exact own data fields of
+caller input and committed store rows, rejecting accessors, inherited bindings
+and unknown fields without invoking their getters. Store callbacks are bound at
+configuration time, so replacing a public method property later cannot redirect
+an in-flight configuration to another store. The prior implementation reproduced
+both new regression failures; the fixed external-signer tests pass (7 cases).
+This does not turn an untrusted store or signer into an authority: a Proxy can
+execute descriptor traps, callback execution is not sandboxed, and the configured
+store/issuer still require independent authentication and rollback-resistant
+custody. Real KMS, production host, retention/recovery and activation remain
+unimplemented. No production operation, real key or external notification ran.
