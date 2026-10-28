@@ -55,6 +55,14 @@ jobs:
       - name: Native internal scanner registration
         run: psql -d qr_scanner_registration_fixture -v ON_ERROR_STOP=1 -f tool/qr-attendance/qr-scanner-registration-test.sql
 
+      - name: Scanner registration key ownership
+        run: node --test tool/qr-attendance/qr-scanner-possession.test.mjs
+
+      - name: Native scanner registration key ownership
+        env:
+          CI: 'true'
+        run: node tool/qr-attendance/qr-scanner-possession-integration.mjs
+
       - name: Native QR scan coordinator transaction
         env:
           CI: 'true'
