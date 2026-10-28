@@ -30,3 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: psql -v ON_ERROR_STOP=1 -f docs/review/qr-master-gate/qr-master-gate-test.sql
+
+      - run: createdb qr_master_contract_fixture
+      - run: psql -d qr_master_contract_fixture -v ON_ERROR_STOP=1 -f docs/review/qr-master-gate/qr-master-contract-test.sql

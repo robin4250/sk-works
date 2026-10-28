@@ -1,0 +1,41 @@
+-- Review-only internal extension. Does not replace/grant the common public API.
+-- Install only after the existing QR gate candidate. This is not a rollout.
+begin;
+create function qr_attendance_private.master_feature_fragment() returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare is_enabled boolean;
+begin
+ perform private.require_reauthentication_session();
+ select enabled into is_enabled from private.master_feature_settings
+ where feature_key='qr_attendance';
+ return jsonb_build_object('qr_attendance_contract_version',1,
+   'qr_attendance',coalesce(is_enabled,false));
+end $$;
+revoke all on function qr_attendance_private.master_feature_fragment()
+ from public,anon,authenticated;
+
+create function qr_attendance_private.set_master_feature_with_proof(
+ p_enabled boolean,p_proof text) returns jsonb
+language plpgsql security definer set search_path='' as $$
+begin
+ perform private.require_reauthentication_session();
+ if public.is_current_user_master_admin() is distinct from true then
+   raise sqlstate '42501' using message='master_administrator_access_required';
+ end if;
+ if p_enabled is null then
+   raise sqlstate '22023' using message='unsupported_master_feature';
+ end if;
+ -- Existing verifier binds owner, live session, action and the exact target.
+ -- Its issuer whitelist and real locked proof contract still need deployment
+ -- review. No boolean or client-reported biometric result is accepted here.
+ perform private.consume_reauthentication_proof('master.feature.set',
+   jsonb_build_object('feature_key','qr_attendance','enabled',p_enabled),p_proof);
+ insert into private.master_feature_settings(feature_key,enabled,updated_at,updated_by)
+ values('qr_attendance',p_enabled,clock_timestamp(),auth.uid())
+ on conflict(feature_key) do update set enabled=excluded.enabled,
+   updated_at=excluded.updated_at,updated_by=excluded.updated_by;
+ return qr_attendance_private.master_feature_fragment();
+end $$;
+revoke all on function qr_attendance_private.set_master_feature_with_proof(boolean,text)
+ from public,anon,authenticated;
+commit;
