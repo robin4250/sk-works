@@ -1,5 +1,27 @@
 # Master device enrollment — safety design candidate
 
+## Review-only owner-request withdrawal
+
+`key-migration-owner-request-lifecycle.mjs` adds same-live-session status and
+terminal cancellation for the exact original independent-approval request.
+The separate private cancellation ledger preserves its original request, key,
+nonce and deadline; retries return the same cancellation, and the request helper
+will not resurrect it. Expired or locked-device requests can be withdrawn without
+unlocking a device, activating/revoking a key, or asserting independent approval.
+Lock order follows issuance (device, original challenge/pending, then request).
+The existing isolated PostgreSQL runner includes concurrent withdrawal/status,
+foreign identity/session, expiry, ACL and unchanged-device checks. Local PGlite
+composition passed; Native CI must be checked separately.
+
+This is not a public endpoint or an independent identity-verification issuer.
+Actual owner verification, delivery, an authenticated decision and key activation
+are still absent. A future decision path must lock and reject the cancellation
+ledger atomically before any approval or activation; a pending self-signature or
+password success must never be substituted for that decision. The new private
+ledger is review-only, requires deployment/retention/restore review, and must not
+be dropped with CASCADE to force rollback. No production changes were made.
+
+
 Status: design only, not deployed or enabled. Existing passwords, devices and
 access policies must be preserved. Device enrollment must be performed by the
 owner after the entire flow and recovery have been tested.

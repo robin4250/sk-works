@@ -42,6 +42,8 @@ export async function requestIndependentOwnerApproval({pool,actor,session,device
     and requester_session=private.require_reauthentication_session() and requester_session=$4
     and device_id=$5 and key_sha256=$6 and status='awaiting_independent_owner'
     and expires_ms=$7 and expires_ms>floor(extract(epoch from clock_timestamp())*1000)
+    and not exists(select 1 from master_device_enrollment_candidate.owner_approval_request_cancellations x
+     where x.request_id=owner_approval_requests.id)
     and public.is_current_user_master_admin() for share`,
    [challengeId,pendingId,actor,session,deviceId,proposal.key_sha256,source.rows[0].expires_ms]);
   if(saved.rows.length!==1||!uuid.test(saved.rows[0].id))throw Error('original owner review unavailable');

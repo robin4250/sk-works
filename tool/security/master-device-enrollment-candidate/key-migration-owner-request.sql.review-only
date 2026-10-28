@@ -17,4 +17,14 @@ create table master_device_enrollment_candidate.owner_approval_requests (
 );
 alter table master_device_enrollment_candidate.owner_approval_requests enable row level security;
 revoke all on master_device_enrollment_candidate.owner_approval_requests from public,anon,authenticated;
+-- A cancellation is terminal evidence, not an owner approval or key revocation.
+-- Keep the original request/nonce/deadline intact for later independent review.
+create table master_device_enrollment_candidate.owner_approval_request_cancellations (
+ request_id uuid primary key references master_device_enrollment_candidate.owner_approval_requests(id) on delete restrict,
+ actor uuid not null,
+ requester_session uuid not null,
+ cancelled_at timestamptz not null default clock_timestamp()
+);
+alter table master_device_enrollment_candidate.owner_approval_request_cancellations enable row level security;
+revoke all on master_device_enrollment_candidate.owner_approval_request_cancellations from public,anon,authenticated;
 commit;
