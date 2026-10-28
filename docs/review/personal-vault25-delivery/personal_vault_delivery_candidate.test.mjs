@@ -84,3 +84,22 @@ test('source binding RPC rejects foreign and expired sessions and anonymous ACL'
   assert.equal(privileges.rows[0].anon,false);assert.equal(privileges.rows[0].service,false);
  }finally{await f.db.close();}
 });
+
+test('receipt and metadata returned by adapters are detached before download awaits',async()=>{
+ const f=await fixture();try{
+  const row=(await f.services.itemMine(mid,key))[0];
+  const object=await f.services.storageMetadata(row.object_path,row.object_version);
+  const substituted=Buffer.from('%PDF-1.7\nsubstituted only\n%%EOF\n');
+  f.services.itemMine=async()=>[row];
+  f.services.storageMetadata=async()=>object;
+  f.services.download=async()=>{
+   row.pdf_hash=createHash('sha256').update(substituted).digest('hex');
+   row.byte_length=substituted.length;object.byteLength=substituted.length;
+   return substituted;
+  };
+  const inspect=f.services.trustedPrivacyProof;
+  f.services.trustedPrivacyProof=async()=>({...await inspect(),pdfSha256:row.pdf_hash});
+  // Neither the initial expected length nor digest may follow mutation.
+  await assert.rejects(downloadOwnVaultPdf({manifestId:mid,artifactKey:key},f.services),/vault_download_invalid|vault_pdf_digest_mismatch/);
+ }finally{await f.db.close();}
+});

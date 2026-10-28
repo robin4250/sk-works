@@ -10,7 +10,7 @@ const maxPdfBytes = 50 * 1024 * 1024;
 // are NOT wired; until they are, this must not be exposed as an endpoint.
 export async function downloadOwnVaultPdf({manifestId, artifactKey}, services) {
   if (!uuid.test(manifestId ?? '') || !hash.test(artifactKey ?? '')) throw Error('vault_request_invalid');
-  const actor = await services.liveActor();
+  const actor = Object.freeze({...await services.liveActor()});
   if (!uuid.test(actor?.ownerId ?? '') || !uuid.test(actor?.sessionId ?? '')) throw Error('vault_session_invalid');
   const entries = await services.listMine();
   const matches = entries.filter(x => x.manifest_id === manifestId && x.artifact_key === artifactKey &&
@@ -26,19 +26,20 @@ export async function downloadOwnVaultPdf({manifestId, artifactKey}, services) {
     throw Error('vault_source_binding_rejected');
   const rows = await services.itemMine(manifestId, artifactKey);
   if (!Array.isArray(rows) || rows.length !== 1) throw Error('vault_receipt_rejected');
-  const row = rows[0];
+  // Keep scalar receipt fields stable across asynchronous adapter calls.
+  const row = Object.freeze({...rows[0]});
   const path = `personal-vault/${actor.ownerId}/${artifactKey}.pdf`;
   if (row.object_path !== path || typeof row.object_version !== 'string' || !row.object_version ||
       !hash.test(row.pdf_hash ?? '') || !Number.isSafeInteger(row.byte_length) ||
       row.byte_length < 12 || row.byte_length > maxPdfBytes) throw Error('vault_receipt_rejected');
-  const object = await services.storageMetadata(path, row.object_version);
+  const object = Object.freeze({...await services.storageMetadata(path, row.object_version)});
   if (!object || object.objectPath !== path || object.version !== row.object_version ||
       object.contentType !== 'application/pdf' || object.byteLength !== row.byte_length) throw Error('vault_storage_object_rejected');
   // The real adapter must enforce this limit while streaming, before buffering.
   const downloaded = await services.download(path, row.object_version,
     {maxBytes: row.byte_length, expectedSha256: row.pdf_hash});
-  // Reject a buffer with the wrong length before copying it. The real adapter
-  // must still enforce the limit while streaming.
+  // Reject any adapter that ignored the limit before copying its buffer. This
+  // does not replace a streaming limit in the real Storage adapter.
   if (!Buffer.isBuffer(downloaded) || downloaded.length !== row.byte_length)
     throw Error('vault_download_invalid');
   // Detach from a mutable storage-owned buffer before any further awaits.
