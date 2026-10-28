@@ -1,5 +1,45 @@
 # Independent notice archive — isolated proof of concept
 
+## Review-only full-byte retention candidate (2026-10-28)
+
+`src/archive-byte-store-candidate.mjs` adds a default-OFF Node filesystem adapter
+for retaining an opaque encrypted export's full bytes rather than only its
+digest. It snapshots exact company/event/revision/snapshot-hash/payload-hash
+bindings and bytes before IO, bounds each payload to 64 KiB, writes a private
+temporary file, fsyncs it, and publishes a content-addressed name with a
+create-only hard link. It verifies the entire stored object before directory
+fsync and returns only `stored_unattested`. An existing object is never replaced;
+a corrupt/symlink/conflicting object fails closed. New revisions have distinct
+objects, leaving older originals untouched. Restore checks exact canonical
+metadata and all bytes against the caller's expected descriptor. No delete or
+source-pin-release method exists. Only each call's own temporary file is cleaned
+up; an uncertain post-publication sync leaves the published object intact.
+
+Ten real temporary-filesystem tests cover default OFF, full encrypted fixture
+source restore/HMAC reverification after reopening, twelve concurrent replays,
+version preservation, asynchronous input mutation, missing/corrupt/oversized
+objects, symlinks, partial writes/publication failure and lost directory-sync
+reconciliation. Together with the existing source fixture, 14 Node tests pass
+locally on Node 24.22.1. The dedicated archive CI's existing test glob discovers
+the new tests; its result is separate and must be checked before claiming success.
+
+This is **not independent custody, WORM retention, a production source exporter,
+or an authenticated signed storage receipt**. Expected bindings and the encrypted
+export must come from the future authenticated source-lock/export path. The
+directory and IO adapter are trusted private configuration and must remain
+protected from path replacement and operator mutation; the implementation cannot
+prevent an operator from changing or rolling back the filesystem. Per-object
+size is bounded, but aggregate quota/retention, orphan cleanup after a process
+crash, independent protected checkpoints/backups, actual power-loss/hardware
+durability, key recovery, ACL/service hosting and atomic source release remain
+unimplemented. Tests use same-host temporary files and synthetic keys only.
+Nothing is connected to the current manifest, real notification, production
+database or deployment. `stored_unattested` must never authorize unpin, purge,
+capacity recovery, key activation or production enablement.
+
+References: Node [filehandle.sync](https://nodejs.org/docs/latest-v24.x/api/fs.html#filehandlesync)
+and [fsPromises.link](https://nodejs.org/docs/latest-v24.x/api/fs.html#fspromiseslinkexistingpath-newpath).
+
 This code is not connected to an endpoint, a production database, a real notification, or any deployment. It does not delete or unpin source records, does not reclaim outbox capacity, and is not authorization to enable PR #1494. There is no completed production evidence archive or capacity recovery.
 
 The SQLite adapter accepts bounded terminal-status manifests linked to an existing signed audit record and an independent-anchor receipt. It validates the chain, prevents changed retries, stores each batch transactionally, and refuses to read after detected loss or modification. The synthetic test runs the real existing Worker audit verifier and independent anchor authority in workerd; all keys and records are fixtures.
