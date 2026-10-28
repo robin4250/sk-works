@@ -205,6 +205,38 @@ try {
   assert.equal(childCount.rows[0].n,1);
   console.log('PASS: cascade without parent scope fails closed and restores parent and child');
 
+  // Test-only candidate: clean up indirect children before the parent disappears.
+  // Real trigger order, RLS and FK semantics still require source-specific review.
+  await setup.query(`create function public.synthetic_parent_cleanup() returns trigger
+    language plpgsql security invoker as $cleanup$
+    begin
+      if not pg_try_advisory_xact_lock(hashtextextended(OLD.company_id::text,319847)) then
+        raise exception using errcode='55P03',message='synthetic company busy';
+      end if;
+      delete from public.synthetic_child where parent_id=OLD.id;
+      return OLD;
+    end $cleanup$`);
+  await setup.query('create trigger synthetic_parent_cleanup before delete on public.synthetic_parent for each row execute function public.synthetic_parent_cleanup()');
+  await approval.query('begin');
+  await approval.query(sql,[a]);
+  await same.query('begin');
+  await assert.rejects(() => same.query('delete from public.synthetic_parent where id=$1',[parentId]),e=>e.code==='55P03');
+  await same.query('rollback');
+  assert.equal((await setup.query('select count(*)::int as n from public.synthetic_parent where id=$1',[parentId])).rows[0].n,1);
+  assert.equal((await setup.query('select count(*)::int as n from public.synthetic_child where parent_id=$1',[parentId])).rows[0].n,1);
+  const otherParent='20000000-0000-0000-0000-000000000002';
+  await other.query('insert into public.synthetic_parent values($1,$2)',[otherParent,b]);
+  await other.query("insert into public.synthetic_child values($1,'other indirect')",[otherParent]);
+  await other.query('delete from public.synthetic_parent where id=$1',[otherParent]);
+  assert.equal((await setup.query('select count(*)::int as n from public.synthetic_child where parent_id=$1',[otherParent])).rows[0].n,0);
+  await approval.query('rollback');
+  await same.query('begin');
+  const removed=await same.query('delete from public.synthetic_parent where id=$1',[parentId]);
+  assert.equal(removed.rowCount,1);
+  await same.query('commit');
+  assert.equal((await setup.query('select count(*)::int as n from public.synthetic_child where parent_id=$1',[parentId])).rows[0].n,0);
+  console.log('PASS: pre-delete parent cleanup preserves indirect scope and blocks busy company while unrelated deletion proceeds');
+
   console.log('PASS: synthetic all-write guard rejects both move directions, insert and delete while another company proceeds');
   console.log('PASS: synthetic try-lock fails promptly; other company and approver proceed');
   console.log('PASS: row trigger lock inversion produces 40P01');
