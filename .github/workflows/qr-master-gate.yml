@@ -44,6 +44,9 @@ jobs:
           CI: 'true'
         run: node docs/review/qr-master-gate/qr-common-concurrency.test.mjs
 
+      - name: Candidate nonce ledger and locked hooks
+        run: node --test tool/qr-attendance/qr-scan-ledger.test.mjs
+
       - name: Native QR scan coordinator transaction
         env:
           CI: 'true'

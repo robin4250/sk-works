@@ -1,0 +1,35 @@
+-- Review-only nonce ledger. Requires the existing QR gate schema. No issuer,
+-- public endpoint, scanner authorization or regular attendance writer is added.
+begin;
+create table qr_attendance_private.scan_challenges(
+ id uuid primary key,
+ company_id uuid not null, device_id uuid not null,
+ scanner_actor uuid not null, scanner_session uuid not null,
+ subject_worker_id uuid not null, subject_user_id uuid not null,
+ action text not null check(action in ('clock_in','clock_out')),
+ source_clock_in_id uuid,
+ token_hash text not null unique check(token_hash ~ '^[a-f0-9]{64}$'),
+ created_at timestamptz not null default clock_timestamp(),
+ expires_at timestamptz not null,
+ receipt_id uuid unique, consumed_at timestamptz,
+ check((action='clock_in' and source_clock_in_id is null) or
+       (action='clock_out' and source_clock_in_id is not null)),
+ check(expires_at>created_at and expires_at<=created_at+interval '2 minutes'),
+ check((receipt_id is null)=(consumed_at is null))
+);
+alter table qr_attendance_private.scan_challenges enable row level security;
+revoke all on qr_attendance_private.scan_challenges from public,anon,authenticated;
+create function qr_attendance_private.protect_scan_challenge() returns trigger
+language plpgsql set search_path='' as $$
+begin
+ if (to_jsonb(new)-'receipt_id'-'consumed_at') is distinct from
+    (to_jsonb(old)-'receipt_id'-'consumed_at') or old.receipt_id is not null
+    or new.receipt_id is null or new.consumed_at is null then
+   raise sqlstate '42501' using message='qr_challenge_immutable';
+ end if;
+ return new;
+end $$;
+revoke all on function qr_attendance_private.protect_scan_challenge() from public,anon,authenticated;
+create trigger qr_challenge_immutable before update on qr_attendance_private.scan_challenges
+for each row execute function qr_attendance_private.protect_scan_challenge();
+commit;

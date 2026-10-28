@@ -47,3 +47,31 @@ HTTP endpoint, production grant or activation exists here.
 In particular, this does not prove every QR writer calls the master gate.
 Native SQL/GoTrue integration, all real writer paths, actual signing keys,
 recovery and iPhone operation remain activation blockers. Production stays OFF.
+
+## Candidate nonce-ledger connection
+
+The synthetic nonce table has been replaced in the Native coordinator test by
+`qr-scan-ledger.sql.review-only` and `qr-scan-ledger-hooks.mjs`.
+The private table stores only the token hash, exact scanner actor/session,
+company/device, subject worker/user, action/source and bounded expiry. No raw
+QR token is retained. The hook locks the matching nonce row, loads immutable
+scope and database time, and consumes it once using a conditional UPDATE on the
+same transaction connection. The update trigger rejects scope substitution,
+receipt replacement and reopening of a consumed challenge. Client table access
+is revoked with RLS enabled and no client policy.
+
+The trusted authorization callback cannot override ledger scope, time or receipt
+state. It still must authenticate the live scanner and subject, revalidate company,
+device public key, site/route/source and hold the relevant locks. It is NOT
+implemented by this ledger. The regular attendance writer is also still a
+trusted hook; the Native test uses toy attendance rows and synthetic authority.
+No ordinary employee JWT is minted to write another person's attendance.
+
+The PGlite test checks wrong actor/session, immutable scope, expired consumption,
+single consumption, rollback and table ACL. Native CI exercises the existing
+coordinator on this ledger with concurrent scan/retry and failed-consume rollback.
+This is a review-only schema candidate, not a production migration or an issuer.
+There is no production FK mapping, enrollment/issuance endpoint, authorized
+scanner writer or production grant. Private-table ownership is not independent
+immutable storage. A privileged owner could delete data; no archival or recovery
+guarantee is established. All rollout flags remain OFF.

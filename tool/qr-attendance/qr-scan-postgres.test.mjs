@@ -1,4 +1,4 @@
-// Native transaction integration using synthetic scanner/context/nonce and toy
+// Native transaction integration using real candidate nonce ledger, synthetic scanner/context and toy
 // attendance tables. The candidate common QR gate is real; auth/writer are not.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -6,6 +6,7 @@ import {resolve,dirname} from 'node:path';
 import {generateKeyPairSync,randomBytes,sign} from 'node:crypto';
 import {acceptQrScan} from './qr-scan-coordinator.mjs';
 import {createQrScanPostgresAdapter} from './qr-scan-postgres-adapter.mjs';
+import {createQrScanLedgerHooks} from './qr-scan-ledger-hooks.mjs';
 import {qrDeviceSigningBytes,qrTokenHash} from './qr-device-verification.mjs';
 if(process.env.CI!=='true'||process.env.PGHOST!=='127.0.0.1')throw Error('disposable loopback CI only');
 const pg=(await import(resolve('tool/security/fixture_dependencies/node_modules/pg/lib/index.js'))).default;
@@ -22,40 +23,44 @@ try {
  try {
   await setup.query(expand(resolve('docs/review/qr-master-gate/qr-common-public-contract-test.sql')));
   await setup.query(`create schema qr_scan_fixture;
-    create table qr_scan_fixture.challenges(id uuid primary key,doc jsonb not null,consumed boolean not null default false,receipt uuid);
+    
     create table qr_scan_fixture.attendance_receipts(id uuid primary key default gen_random_uuid(),challenge_id uuid unique not null);
     update qr_attendance_private.public_contract_rollout set enabled=true;
     update private.master_feature_settings set enabled=true where feature_key='qr_attendance';`);
-  await setup.query('insert into qr_scan_fixture.challenges(id,doc) values($1,$2)',[id(3),JSON.stringify(challenge)]);
+  await setup.query(readFileSync(resolve('tool/qr-attendance/qr-scan-ledger.sql.review-only'),'utf8'));
+  await setup.query(`insert into qr_attendance_private.scan_challenges(id,company_id,device_id,scanner_actor,scanner_session,subject_worker_id,subject_user_id,action,source_clock_in_id,token_hash,expires_at) values($1,$2,$3,$4,$5,$6,$7,'clock_out',$8,$9,clock_timestamp()+interval '90 seconds')`,[id(3),id(1),id(2),id(5),id(6),id(7),id(8),id(4),challenge.tokenHash]);
   await setup.query('reset all');
  } finally {setup.release();}
  const adapter=createQrScanPostgresAdapter({pool,
   initializeVerifiedSession:async c=>{await c.query("select set_config('fixture.actor',$1,true),set_config('fixture.session','live',true)",[id(5)]);},
-  loadLockedScan:async(c,request)=>{
-    const r=await c.query('select doc,consumed,receipt,(extract(epoch from clock_timestamp())*1000)::bigint as now from qr_scan_fixture.challenges where id=$1 for update',[request.challengeId]);
-    if(!r.rows[0])return null;const row=r.rows[0];
-    return {actor:id(5),session:id(6),sessionActive:true,scannerAuthorized:true,deviceActive:true,subjectActive:true,qrEnabled:true,
-      challenge:row.doc,publicKeyDer:publicKey.export({format:'der',type:'spki'}),nowMs:Number(row.now),expiresMs:Number(row.now)+1000,
-      consumed:row.consumed,receiptId:row.receipt};
-  },
+  ...createQrScanLedgerHooks({actor:id(5),session:id(6),loadAuthorizedContext:async(_c,{lockedChallenge})=>{
+    assert.equal(lockedChallenge.subjectWorkerId,id(7));assert.equal(lockedChallenge.subjectUserId,id(8));
+    return {sessionActive:true,scannerAuthorized:true,deviceActive:true,subjectActive:true,qrEnabled:true,publicKeyDer:publicKey.export({format:'der',type:'spki'})};
+  }}),
   // Toy insert exercises transaction coupling; it is not an existing SKO writer.
   writeRegularAttendance:async(c,{lockedState})=>{
     assert.equal(lockedState.challenge.sourceClockInId,id(4));
     return (await c.query('insert into qr_scan_fixture.attendance_receipts(challenge_id) values($1) returning id',[lockedState.challenge.challengeId])).rows[0].id;
   },
-  consumeWithReceipt:async(c,{challengeId,receiptId})=>{
+  consumeWithReceipt:async(c,args)=>{
     if(failConsume)return false;
-    return (await c.query('update qr_scan_fixture.challenges set consumed=true,receipt=$2 where id=$1 and not consumed returning id',[challengeId,receiptId])).rowCount===1;
+    return createQrScanLedgerHooks({actor:id(5),session:id(6),loadAuthorizedContext:async()=>null}).consumeWithReceipt(c,args);
   }});
+ await assert.rejects(pool.query('update qr_attendance_private.scan_challenges set company_id=$1,receipt_id=$2,consumed_at=clock_timestamp()',[id(9),id(90)]),e=>e.code==='42501');
  failConsume=true;await assert.rejects(acceptQrScan({...args,adapter}),/not_accepted/);failConsume=false;
  assert.equal(Number((await pool.query('select count(*) n from qr_scan_fixture.attendance_receipts')).rows[0].n),0);
- assert.equal((await pool.query('select consumed from qr_scan_fixture.challenges')).rows[0].consumed,false);
+ assert.equal((await pool.query('select (receipt_id is not null) consumed from qr_attendance_private.scan_challenges')).rows[0].consumed,false);
  const concurrent=await Promise.allSettled([acceptQrScan({...args,adapter}),acceptQrScan({...args,adapter})]);
  assert.ok(concurrent.some(r=>r.status==='fulfilled'));
  for(const r of concurrent)if(r.status==='rejected')assert.equal(r.reason.code,'40001');
  const retry=await acceptQrScan({...args,adapter});assert.equal(retry.alreadyRecorded,true);
  assert.equal(Number((await pool.query('select count(*) n from qr_scan_fixture.attendance_receipts')).rows[0].n),1);
- assert.equal(retry.receiptId,(await pool.query('select receipt from qr_scan_fixture.challenges')).rows[0].receipt);
+ assert.equal(retry.receiptId,(await pool.query('select receipt_id receipt from qr_attendance_private.scan_challenges')).rows[0].receipt);
+ await assert.rejects(acceptQrScan({...args,adapter,actor:id(9)}),/not_accepted/);
+ await assert.rejects(acceptQrScan({...args,adapter,session:id(9)}),/not_accepted/);
+ await assert.rejects(pool.query('update qr_attendance_private.scan_challenges set subject_user_id=$1',[id(9)]),e=>e.code==='42501');
+ await assert.rejects(pool.query('update qr_attendance_private.scan_challenges set receipt_id=$1,consumed_at=clock_timestamp()',[id(10)]),e=>e.code==='42501');
+ assert.equal((await pool.query("select has_table_privilege('authenticated','qr_attendance_private.scan_challenges','select') as allowed")).rows[0].allowed,false);
  // Gate runs before challenge reads/writes, including receipt retries.
  await pool.query("update private.master_feature_settings set enabled=false where feature_key='qr_attendance'");
  await assert.rejects(acceptQrScan({...args,adapter}),e=>e.code==='42501');
@@ -63,7 +68,7 @@ try {
  for(let i=0;i<4;i++){
    const c=await pool.connect();try{const r=await c.query("select nullif(current_setting('fixture.actor',true),'') as actor");assert.equal(r.rows[0].actor,null);}finally{c.release();}
  }
- console.log('Native QR coordinator: gate, transactional rollback, concurrent single receipt, explicit retry and pool cleanup passed (synthetic auth/writer)');
+ console.log('Native QR coordinator: gate, transactional rollback, concurrent single receipt, explicit retry and pool cleanup passed (candidate nonce ledger; synthetic auth/writer)');
 } finally {
  if(pool)await pool.end();if(created)await admin.query(`drop database ${db}`);await admin.end();
 }
