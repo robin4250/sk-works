@@ -41,6 +41,19 @@ try {
  await pool.query('update private.master_devices set is_locked=false where id=$1',[deviceId]);
  await assert.rejects(storePendingDeviceKey({...args,publicKeyPem:'invalid'}));
  assert.equal(await count(),1);
+ // A concurrent device update must not hold an enrollment worker indefinitely.
+ // The adapter must roll back on timeout and require an explicit new request.
+ const blockedKey=pem(), blocker=await pool.connect();
+ try {
+  await blocker.query('begin');
+  await blocker.query('select id from private.master_devices where id=$1 for update',[deviceId]);
+  const started=Date.now();
+  await assert.rejects(storePendingDeviceKey({...args,publicKeyPem:blockedKey}),error=>error.code==='55P03');
+  assert.ok(Date.now()-started<8000,'device contention must fail within a bounded interval');
+  assert.equal(await count(),1,'a timed-out save cannot leave a pending proposal');
+ }finally{await blocker.query('rollback');blocker.release();}
+ const explicitRetry=await storePendingDeviceKey({...args,publicKeyPem:blockedKey});
+ assert.equal(explicitRetry.status,'pending');assert.equal(await count(),2);
  // Client roles have neither schema access nor table rights; no activation API.
  for(const role of ['anon','authenticated']) {
   const c=await pool.connect();
@@ -49,5 +62,5 @@ try {
   }finally{await c.query('rollback');c.release();}
  }
  assert.equal((await pool.query('select device_key from private.master_devices where id=$1',[deviceId])).rows[0].device_key,'synthetic-identifier');
- console.log('Native pending adapter: idempotent save, foreign/expired session, locked device, malformed key, client ACL and unchanged legacy identifier passed. Synthetic auth only.');
+ console.log('Native pending adapter: idempotent save, foreign/expired session, locked device, malformed key, bounded contention rollback/explicit retry, client ACL and unchanged legacy identifier passed. Synthetic auth only.');
 }finally{await pool.end();}

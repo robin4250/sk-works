@@ -11,7 +11,9 @@ function fixture({identity={actor:id(1),session:id(2),master:true},device={id:id
 }
 test('pending insert rechecks live owner and locks device without activating a key',async()=>{
  const f=fixture();assert.deepEqual(await storePendingDeviceKey({...args,pool:f.pool}),{id:id(4),status:'pending'});
- assert.equal(f.calls[0][0],'begin');assert.equal(f.calls.at(-1)[0],'commit');assert.equal(f.released(),true);
+ assert.equal(f.calls[0][0],'begin');
+ assert.deepEqual(f.calls.slice(1,3).map(([sql])=>sql),["set local lock_timeout = '1s'","set local statement_timeout = '5s'"]);
+ assert.equal(f.calls.at(-1)[0],'commit');assert.equal(f.released(),true);
  assert.ok(f.calls.find(([sql])=>sql.includes('for share')));assert.equal(f.calls.some(([sql])=>/update|set_config/i.test(sql)),false);
 });
 test('foreign session and locked/revoked device fail before insert',async()=>{

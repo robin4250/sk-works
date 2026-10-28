@@ -8,6 +8,10 @@ export async function storePendingDeviceKey({pool,actor,session,deviceId,publicK
  const client=await pool.connect();
  try {
   await client.query('begin');
+  // Availability bound only; contention must roll back, never retry a write.
+  // LOCAL settings are discarded on commit/rollback before pool reuse.
+  await client.query("set local lock_timeout = '1s'");
+  await client.query("set local statement_timeout = '5s'");
   const identity=await client.query(`select auth.uid() as actor,
    private.require_reauthentication_session() as session,
    public.is_current_user_master_admin() as master`);
