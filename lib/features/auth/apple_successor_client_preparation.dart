@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'apple_successor_https_delivery.dart';
 
 /// Default-OFF, memory-only verification before any application-session adoption.
 /// The received refresh credential stays inside an isolated SDK client. This
@@ -114,6 +115,24 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
       return jsonEncode([row['company_id'], row['role']]);
     }).toList()..sort();
     return jsonEncode(values);
+  }
+
+  /// Internal composition only: binds the dedicated one-attempt HTTPS delivery
+  /// to the exact application session observed before preparation. The regular
+  /// preparation gates and isolated SDK checks still run; no global adoption.
+  Future<void> prepareFromHttps({required String requestId,
+    required AppleSuccessorHttpsDelivery delivery, required String password,
+    required String idToken, required String rawNonce}) async {
+    final initial = applicationClient.auth.currentSession;
+    if (initial == null || initial.isExpired) { throw _failure(); }
+    final actor = initial.user.id, bearer = initial.accessToken;
+    return prepare(requestId: requestId, receiveOnce: () {
+      final current = applicationClient.auth.currentSession;
+      if (current == null || current.isExpired || current.user.id != actor ||
+          current.accessToken != bearer) { throw _failure(); }
+      return delivery.receiveOnce(bearer: bearer, requestId: requestId, actor: actor,
+        password: password, idToken: idToken, rawNonce: rawNonce);
+    });
   }
 
   /// Call before sending the enrollment request. receiveOnce must be the
