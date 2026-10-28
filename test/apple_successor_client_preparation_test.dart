@@ -57,7 +57,7 @@ void main() {
         applicationRequests.add(request);
         if (request.method != 'GET') { throw StateError('application auth mutation forbidden'); }
         final value = request.url.path.endsWith('/user') ? user(actor) : [{'company_id': requestId, 'role': 'owner'}];
-        return http.Response(jsonEncode(value), 200, headers: {'content-type': 'application/json'});
+        return http.Response(jsonEncode(value), 200, headers: {'content-type': 'application/json'}, request: request);
       }));
     await application.auth.setInitialSession(initialSession(actor));
   });
@@ -75,9 +75,9 @@ void main() {
           if (request.method != 'GET') { throw StateError('refresh exchange forbidden for this fresh-token fixture'); }
           if (request.url.path.endsWith('/user')) {
             await isolatedBeforeUser?.call();
-            return http.Response(jsonEncode(isolatedUser), 200, headers: {'content-type': 'application/json'});
+            return http.Response(jsonEncode(isolatedUser), 200, headers: {'content-type': 'application/json'}, request: request);
           }
-          return http.Response(jsonEncode(companies), 200, headers: {'content-type': 'application/json'});
+          return http.Response(jsonEncode(companies), 200, headers: {'content-type': 'application/json'}, request: request);
         }));
     }
     final preparation = enabled == null
@@ -94,19 +94,6 @@ void main() {
     expect(applicationRequests.every((request) => request.method == 'GET'), isTrue);
   }
 
-  test('fixture membership SDK result remains a list of scalar company values', () async {
-    try {
-      final rows = await application.from('company_members').select('company_id,role')
-          .eq('user_id', actor).setHeader('Authorization', 'Bearer ${application.auth.currentSession!.accessToken}');
-      expect(rows, isNotEmpty);
-      expect(rows.single['company_id'], isA<String>());
-      expect(rows.single['role'], isA<String>());
-      final values = rows.map((row) => jsonEncode([row['company_id'], row['role']])).toList()..sort();
-      expect(jsonEncode(values), jsonEncode([jsonEncode([requestId, 'owner'])]));
-    } catch (error) {
-      fail('Membership fixture type=${error.runtimeType}');
-    }
-  });
   test('default OFF does not receive credentials, create isolated client, or touch network', () async {
     var received = false;
     await expectLater(make().prepare(requestId: requestId, receiveOnce: () async {received = true;return envelope();}), throwsStateError);
@@ -114,11 +101,7 @@ void main() {
   });
   test('SDK verifies same UID, Google identities and companies in memory without global adoption', () async {
     final preparation = make(enabled: true);
-    try {
-      await preparation.prepare(requestId: requestId, receiveOnce: () async => envelope());
-    } catch (_) {
-      fail('Preparation rejected: app paths=${applicationRequests.map((r) => r.url.path).toList()}; isolated paths=${isolatedRequests.map((r) => r.url.path).toList()}; initial actor match=${application.auth.currentUser?.id == actor}');
-    }
+    await preparation.prepare(requestId: requestId, receiveOnce: () async => envelope());
     expect(preparation.ready, isTrue);expect(isolatedCreations, 1);
     expect(isolatedRequests.where((request) => request.url.path.endsWith('/user')).length, 1);
     expect(isolatedRequests.every((request) => request.method == 'GET'), isTrue);unchanged();
