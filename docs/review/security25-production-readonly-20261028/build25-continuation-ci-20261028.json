@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "date_jst": "2026-10-28",
+  "main": "7355d28f341d1044db726d946edcde2c305d66ee",
+  "build24": "installed_by_owner_report",
+  "build25": {
+    "created": false,
+    "uploaded": false,
+    "iphone_verified": false
+  },
+  "verified_dedicated_runs": [
+    {
+      "pr": 1420,
+      "head": "30aae843b4bb9f8ded8b2ed94d7b4b6d9e1a56e3",
+      "run": 40665735744,
+      "result": "success"
+    },
+    {
+      "pr": 1515,
+      "head": "08160e2f54b383495d8ffd12ce9777a1016b3685",
+      "run": 40665718237,
+      "result": "success"
+    },
+    {
+      "pr": 1520,
+      "head": "63d3733a832ee1fe8e44089bdafe0460bf8f8229",
+      "run": 40665998532,
+      "result": "success"
+    },
+    {
+      "pr": 1522,
+      "head": "e351170d7b3a9e34b40475bc798bc9aded1ad5dc",
+      "run": 40664038909,
+      "result": "success"
+    },
+    {
+      "pr": 1509,
+      "head": "7511ece7c9ce0f645cf6dd29054f99a552bee064",
+      "run": 40663976692,
+      "result": "success"
+    }
+  ],
+  "limits": [
+    "A successful isolated workflow is not main integration, production deployment, activation or device verification.",
+    "Later commits require their own CI; these receipts apply only to listed heads.",
+    "Apple global session adoption, master identity issuer/key activation, full invoice source/writers, QR attendance writer and PDF custody remain incomplete.",
+    "No production change performed during this continuation.",
+    "Test invoice remains untouched; profile birthday request remains on hold."
+  ]
+}
