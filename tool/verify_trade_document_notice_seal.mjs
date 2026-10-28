@@ -22,6 +22,11 @@ try{
  for(const name of names){
   let source=await exact(name);
   if(name==='trade_document_invoice_confirmation_fixture.mjs'){
+   // Only extension invoices use a closed synthetic month; existing canonical
+   // suite invoices and its race fixtures retain their original dates.
+   const original=`'2026-10-01','2026-10-31',clock_timestamp(),'draft',110000,10000,'{}')",[parent,A,CUSTOMER]);`;
+   if(source.split(original).length!==2)throw Error('invoice fixture date anchor changed');
+   source=source.replace(original,`$4::date,$5::date,clock_timestamp(),'draft',110000,10000,'{}')",[parent,A,CUSTOMER,[21,22,23].includes(num)?'2020-10-01':'2026-10-01',[21,22,23].includes(num)?'2020-10-31':'2026-10-31']);`);
    const anchor=" console.log('PASS invoice adapter:";
    if(source.split(anchor).length!==2)throw Error('composition finish anchor changed');
    // Run after the unchanged native suite, not before it. This extension must not

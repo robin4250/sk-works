@@ -19,10 +19,12 @@ is introduced. Current broad month-close locks are not removed.
 The isolated composition test uses real existing invoice approval, freeze and
 issuer seal-consent writers and loads the existing durable notice prepare,
 current-revision check, ticket issuance and consumption SQL verbatim. It also
-loads the existing `guarded` and `notification_readiness` SQL verbatim, using
+loads the existing `precheck`, `guarded` and `notification_readiness` SQL verbatim, using
 a retained synthetic source proposal. Mutations during both notice revalidation
 and the final guarded revalidation must reject and roll back ticket/financial/seal
-writes. Session, precheck, source preview/fingerprint and core-integrity adapters
+writes. Its closed synthetic month has linked clock-in/checkout, signed report,
+worker and attendance rows; removing the supervisor signature is rejected by
+the actual precheck. Session, source preview/fingerprint and core-integrity adapters
 remain **synthetic**; this does not verify the actual source calculation or locks.
 It checks OFF, wrong financial parent, wrong session, readiness failure, missing
 explicit consent, rollback, changed invoice revision, one financial
