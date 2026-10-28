@@ -33,3 +33,24 @@ test('deadline settles a stalled reader even when cancellation does not finish',
   await assert.rejects(requestWitnessReceipt({...options,timeoutMs:10,fetchImpl}),{message:'witness outcome unknown; reconcile before retry'});
   assert.equal(cancelled,1);assert.equal(released,1);
 });
+
+test('invalid witness trust configuration never sends a consuming request',async()=>{
+  let calls=0;
+  const fetchImpl=async()=>{calls++;throw Error('must not send');};
+  const valid=options.key;
+  for(const key of [null,{}, {...valid,d:'synthetic-private-material'}, {...valid,crv:'X25519'}, {...valid,x:'bad'}, {...valid,x:valid.x.slice(0,-1)+'B'}]) {
+    await assert.rejects(requestWitnessReceipt({...options,key,fetchImpl}));
+  }
+  await assert.rejects(requestWitnessReceipt({...options,now:()=>NaN,fetchImpl}));
+  assert.equal(calls,0);
+});
+test('mutating the supplied public key during a request cannot replace its pin',async()=>{
+  const key={...options.key};
+  const other=generateKeyPairSync('ed25519');
+  const fetchImpl=async(_url,init)=>{
+    const body=JSON.parse(init.body);
+    key.x=other.publicKey.export({format:'jwk'}).x;
+    return Response.json(signed(body));
+  };
+  assert.equal((await requestWitnessReceipt({...options,key,fetchImpl})).sequence,1);
+});

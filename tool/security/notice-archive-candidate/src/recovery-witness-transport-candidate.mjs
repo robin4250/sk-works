@@ -1,7 +1,7 @@
 // Review-only transport. No deployed witness, credentials or recovery activation.
 // The caller must provision the endpoint, bearer and pinned witness key through
 // independently controlled configuration. A valid signature alone is not custody.
-import {randomBytes} from 'node:crypto';
+import {createPublicKey, randomBytes} from 'node:crypto';
 import {validateWitnessReceipt} from './recovery-witness-model.mjs';
 
 export async function requestWitnessReceipt({endpoint,bearer,key,operation,scope,nonce,proposalHash,minSequence,
@@ -14,6 +14,18 @@ export async function requestWitnessReceipt({endpoint,bearer,key,operation,scope
       /[\r\n]/.test(bearer)||typeof scope!=='string'||scope.length<1||scope.length>200||
       !/^[a-f0-9]{64}$/.test(nonce)||!/^[a-f0-9]{64}$/.test(proposalHash)||
       !Number.isSafeInteger(minSequence)||minSequence<1||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>30000) throw fail();
+  // Validate and freeze independent trust configuration before a consuming POST.
+  // A bad pin must never create an unknown remote outcome; caller mutation while
+  // the request is pending must not change which signer is accepted.
+  let pinnedKey;
+  try {
+    if(!key || key.kty!=='OKP' || key.crv!=='Ed25519' || 'd' in key ||
+        typeof key.x!=='string' || !/^[A-Za-z0-9_-]{43}$/.test(key.x)) throw fail();
+    const candidate={kty:key.kty,crv:key.crv,x:key.x};
+    const normalized=createPublicKey({key:candidate,format:'jwk'}).export({format:'jwk'});
+    if(normalized.x!==candidate.x || !Number.isSafeInteger(now())) throw fail();
+    pinnedKey=Object.freeze(candidate);
+  } catch { throw fail(); }
   const challenge=randomBytes(32).toString('hex');
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   const aborted=new Promise((_,reject)=>controller.signal.addEventListener('abort',()=>reject(fail()),{once:true}));
@@ -35,7 +47,7 @@ export async function requestWitnessReceipt({endpoint,bearer,key,operation,scope
       bytes.set(value,length);length+=value.length;
     }
     const receipt=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,length)));
-    return validateWitnessReceipt(receipt,{scope,nonce,proposalHash,challenge,key,now:now(),minSequence});
+    return validateWitnessReceipt(receipt,{scope,nonce,proposalHash,challenge,key:pinnedKey,now:now(),minSequence});
   } catch { throw fail(); }
   finally {
     clearTimeout(timer);controller.abort();
