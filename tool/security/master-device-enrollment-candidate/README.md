@@ -187,3 +187,10 @@ grants, second-password proof or independent owner approval is added. A trusted
 transport must bind request authentication and response delivery to the exact
 original owner session, prevent caching/logging, and be reviewed before exposure.
 No production database, password, device registration or signing key is changed.
+
+
+## Internal password-verified issuance (review only)
+
+`issuePasswordVerifiedMigrationKeyChallenge` composes the existing second-password verifier with challenge issuance in the same bounded transaction. It returns `accepted:false` normally on a wrong password and commits the verifier's failure counter; rolling back that rejection would disable lockout. A locked credential rejects issuance. A correct password permits only a pending key-possession challenge, with existing password hash and device identifier unchanged. The older low-level internal issuer is retained for isolated fixture compatibility, remains non-public and must not be exposed as a password bypass.
+
+PGlite synthetic-auth tests confirm five wrong attempts persist the counter and lock, locked credentials cannot issue a challenge, and successful verification after synthetic lock expiry resets the counter and issues the bound challenge. The existing Native PostgreSQL issuance runner now exercises the same checks using the existing SQL password verifier. Native CI is pending for this revision. This is not independent owner approval, biometric evidence, public delivery, key activation, migration or recovery. A public flow must bind independently verified auth and credentials securely, gate all lower-level paths and be tested before exposure. No production changes were made.

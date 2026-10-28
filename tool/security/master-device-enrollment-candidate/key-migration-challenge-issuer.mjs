@@ -6,6 +6,15 @@ import {pendingDeviceKeyMigration} from './key-migration-proposal.mjs';
 import {migrationPossessionPayload} from './key-migration-possession.mjs';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export async function issueMigrationKeyChallenge({pool,actor,session,deviceId,publicKeyPem}) {
+ return issueChallenge({pool,actor,session,deviceId,publicKeyPem},false);
+}
+// Additional internal composition: second-password verification is not owner
+// approval or a biometric assertion. No public endpoint is enabled by this.
+export async function issuePasswordVerifiedMigrationKeyChallenge({pool,actor,session,deviceId,publicKeyPem,secondPassword}) {
+ if(typeof secondPassword!=='string'||secondPassword.length>1024) throw Error('invalid password verification request');
+ return issueChallenge({pool,actor,session,deviceId,publicKeyPem,secondPassword},true);
+}
+async function issueChallenge({pool,actor,session,deviceId,publicKeyPem,secondPassword},verifyPassword) {
  if(!uuid.test(actor)||!uuid.test(session)||!uuid.test(deviceId)||!pool||typeof pool.connect!=='function') throw Error('invalid challenge request');
  const client=await pool.connect();
  try {
@@ -17,6 +26,16 @@ export async function issueMigrationKeyChallenge({pool,actor,session,deviceId,pu
    public.is_current_user_master_admin() as master`);
   const owner=identity.rows[0];
   if(identity.rows.length!==1||owner.actor!==actor||owner.session!==session||owner.master!==true) throw Error('eligible owner session required');
+  if(verifyPassword) {
+   const verification=await client.query('select public.verify_secondary_password($1) as verified',[secondPassword]);
+   if(verification.rows.length!==1||typeof verification.rows[0].verified!=='boolean') throw Error('password verification unavailable');
+   if(verification.rows[0].verified!==true) {
+    // A wrong password must commit the existing verifier's failure counter.
+    // Throwing/rolling back here would silently disable its lockout behavior.
+    await client.query('commit');
+    return Object.freeze({accepted:false});
+   }
+  }
   // Serialize issuance for the device, also excluding concurrent revoke/lock.
   const devices=await client.query(`select id,master_user_id,is_locked,revoked_at
    from private.master_devices where id=$1 and master_user_id=$2 for update`,[deviceId,actor]);
@@ -41,7 +60,7 @@ export async function issueMigrationKeyChallenge({pool,actor,session,deviceId,pu
   // Validate the exact canonical signing contract before committing/delivery.
   migrationPossessionPayload(challenge,proposal);
   await client.query('commit');
-  return Object.freeze(challenge);
+  return verifyPassword?Object.freeze({accepted:true,challenge:Object.freeze(challenge)}):Object.freeze(challenge);
  } catch(error) {
   try {await client.query('rollback');} catch { /* issuance may be unknown */ }
   throw error;

@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {generateKeyPairSync,sign} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {readOwnMigrationKeyChallenge} from './key-migration-challenge-delivery.mjs';
+import {checkPasswordBoundChallenge} from './key-migration-challenge-issuer-password.mjs';
 import {issueMigrationKeyChallenge} from './key-migration-challenge-issuer.mjs';
 import {storeProvenPendingDeviceKey} from './key-migration-proven-adapter.mjs';
 import {pendingDeviceKeyMigration} from './key-migration-proposal.mjs';
@@ -53,5 +54,6 @@ try {
  await pool.query('update master_device_enrollment_candidate.key_possession_challenges set created_ms=created_ms-240000,expires_ms=expires_ms-240000 where id=$1',[next.id]);
  await assert.rejects(readOwnMigrationKeyChallenge(args));
  assert.equal((await pool.query('select device_key from private.master_devices where id=$1',[deviceId])).rows[0].device_key,'unchanged-fixture-device');
- console.log('Internal challenge issuance: authenticated scope, canonical key, DB deadline, serialized one-active challenge, proof-to-pending, replay refusal and unchanged legacy key passed. Synthetic auth only.');
+ await checkPasswordBoundChallenge({pool,authenticatedPool,actor,session,publicKeyPem});
+ console.log('Internal challenge issuance: authenticated scope, canonical key, DB deadline, serialized one-active challenge, proof-to-pending, replay refusal, password failure-counter commit/lockout and unchanged legacy key passed. Synthetic auth only.');
 } finally {await pool.end();}
