@@ -33,6 +33,10 @@ create table master_device_enrollment_candidate.owner_decision_evidence (
  issuer_key_id text not null check(issuer_key_id ~ '^[A-Za-z0-9_-]{1,80}$'),
  decision text not null check(decision in ('approved','denied')),
  attestation_sha256 text not null unique check(attestation_sha256 ~ '^[a-f0-9]{64}$'),
+ -- Preserve the actual signed bytes: a digest alone cannot reverify a signature.
+ -- These are canonical protocol bytes, not a caller-selected JSON document.
+ attestation_payload bytea not null check(octet_length(attestation_payload) between 1 and 2048),
+ attestation_signature bytea not null check(octet_length(attestation_signature)=64),
  issued_ms double precision not null,
  expires_ms double precision not null,
  recorded_at timestamptz not null default clock_timestamp(),
@@ -41,4 +45,15 @@ create table master_device_enrollment_candidate.owner_decision_evidence (
 );
 alter table master_device_enrollment_candidate.owner_decision_evidence enable row level security;
 revoke all on master_device_enrollment_candidate.owner_decision_evidence from public,anon,authenticated;
+-- Application-level append-only protection; a privileged operator can still
+-- disable triggers. This is not independent immutable custody or a retention API.
+create function master_device_enrollment_candidate.reject_owner_evidence_rewrite()
+returns trigger language plpgsql set search_path=pg_catalog as $$
+begin
+ raise exception 'owner decision evidence is append-only' using errcode='55000';
+end $$;
+revoke all on function master_device_enrollment_candidate.reject_owner_evidence_rewrite() from public,anon,authenticated;
+create trigger owner_evidence_append_only before update or delete or truncate
+on master_device_enrollment_candidate.owner_decision_evidence
+for each statement execute function master_device_enrollment_candidate.reject_owner_evidence_rewrite();
 commit;

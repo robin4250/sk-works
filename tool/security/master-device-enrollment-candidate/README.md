@@ -266,3 +266,32 @@ The `08160e2f` head passed all nine reported workflow runs, including the dedica
 The PGlite composition passed signed-request mismatch, foreign actor/session, downstream rollback, input mutation during connection acquisition, idempotent recording, contradictory decision rejection, client ACL, and cancellation overriding previously recorded evidence. Node primitive/adapter tests: 29 passed. Native/GoTrue results for this new change must be checked separately.
 
 The result is explicitly `evidence_recorded`, **not** owner-approved or device-active. The signing issuer in tests is synthetic. No genuine independent verification channel, trusted issuer deployment, public route, key activation, existing-device migration, lost-device recovery, durable retention/privileged tamper protection, or iPhone/iPad/Mac UI is delivered. Future activation must lock and recheck cancellation, session and source again; stored evidence must not override withdrawal. No public grants, production changes, password resets or device registration were performed.
+
+## 2026-10-28: preserve the independently signed evidence bytes
+
+The prior evidence row retained only a digest and decision metadata. That could
+not reconstruct and verify the original independent signature after the request
+process ended. The private review-only inventory now retains the canonical
+protocol payload (at most 2 KiB) and exact 64-byte Ed25519 signature alongside
+its digest. Identical-response reconciliation compares these original bytes too;
+it cannot accept a row containing only matching summary metadata. The trusted
+issuer public key still comes from server configuration, never the receipt.
+
+A statement trigger refuses ordinary UPDATE, DELETE and TRUNCATE against this
+evidence table. This is application-level append-only protection: a privileged
+operator can disable triggers. It is not independent immutable custody, an
+audited retention/deletion policy, deployed restore compatibility, or protection
+against privileged rollback. No existing production evidence is migrated.
+
+The shared disposable PG/PGlite composition now reads preserved bytes through a
+separate query, recomputes their digest and verifies their signature, rejects
+changed bytes, invalid lengths, and attempted rewrites, and checks that expiry
+and cancellation preserve the historical original without permitting reuse.
+PGlite composition and six focused Node tests succeeded locally; the new head's
+native PostgreSQL/real-GoTrue CI must be checked separately. The dedicated CI
+path filter now includes owner-decision-evidence files.
+
+No independent human-verification issuer/channel, approval or active key is
+created. Pending keys and legacy device identifiers remain unchanged, and all
+deployment, activation, migration, loss recovery and device verification blockers
+described above remain. Production and public grants are unchanged.

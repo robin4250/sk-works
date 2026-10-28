@@ -12,6 +12,7 @@ on:
       - 'tool/security/master-device-enrollment-candidate/key-migration-challenges*'
       - 'tool/security/master-device-enrollment-candidate/key-migration-owner-request*'
       - 'tool/security/master-device-enrollment-candidate/owner-decision-attestation*'
+      - 'tool/security/master-device-enrollment-candidate/owner-decision-evidence*'
       - 'tool/security/master-device-enrollment-candidate/key-migration-challenge-issuer*'
       - 'tool/security/master-device-enrollment-candidate/key-migration-challenge-http*'
       - '.github/workflows/master-new-device-proof.yml'

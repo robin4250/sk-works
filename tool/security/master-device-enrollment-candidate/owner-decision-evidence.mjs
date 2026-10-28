@@ -2,7 +2,7 @@
 // Trust pin and request-scoped pool must come from server configuration. No route,
 // signer, active key or master_devices mutation exists here. Cancellation remains
 // terminal and may follow recording: future activation MUST recheck it atomically.
-import {verifyOwnerDecisionAttestation} from './owner-decision-attestation.mjs';
+import {ownerDecisionPayload,verifyOwnerDecisionAttestation} from './owner-decision-attestation.mjs';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function scalarSnapshot(value){
  if(!value||typeof value!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('plain scalar evidence required');
@@ -48,16 +48,18 @@ export async function recordIndependentOwnerDecisionEvidence({pool,actor,session
   if(state.rows.length!==1)throw Error('owner evidence state unavailable');
   const evidence=verifyOwnerDecisionAttestation({receipt:signed,request:{...locked.rows[0],cancelled:state.rows[0].cancelled},databaseNowMs:state.rows[0].now,pinnedIssuer:pin});
   if(!evidence)throw Error('signed owner evidence refused');
+  const payload=ownerDecisionPayload(signed),signature=Buffer.from(signed.signature,'base64url');
   const saved=await c.query(`insert into master_device_enrollment_candidate.owner_decision_evidence
-   (request_id,issuer_key_id,decision,attestation_sha256,issued_ms,expires_ms)
-   select $1,$2,$3,$4,$5::float8,$6::float8 where $6::float8>floor(extract(epoch from clock_timestamp())*1000)
+   (request_id,issuer_key_id,decision,attestation_sha256,issued_ms,expires_ms,attestation_payload,attestation_signature)
+   select $1,$2,$3,$4,$5::float8,$6::float8,$9::bytea,$10::bytea where $6::float8>floor(extract(epoch from clock_timestamp())*1000)
     and auth.uid()=$7 and private.require_reauthentication_session()=$8 and public.is_current_user_master_admin()
-   on conflict(request_id) do nothing returning request_id`,[requestId,evidence.issuerKeyId,evidence.decision,evidence.attestationSha256,evidence.issuedMs,evidence.expiresMs,actor,session]);
+   on conflict(request_id) do nothing returning request_id`,[requestId,evidence.issuerKeyId,evidence.decision,evidence.attestationSha256,evidence.issuedMs,evidence.expiresMs,actor,session,payload,signature]);
   // An unknown response is reconciled only to the same immutable receipt; another
   // signed decision cannot silently replace an earlier decision.
   const original=await c.query(`select attestation_sha256 from master_device_enrollment_candidate.owner_decision_evidence
-   where request_id=$1 and issuer_key_id=$2 and decision=$3 and attestation_sha256=$4 and issued_ms=$5 and expires_ms=$6`,
-   [requestId,evidence.issuerKeyId,evidence.decision,evidence.attestationSha256,evidence.issuedMs,evidence.expiresMs]);
+   where request_id=$1 and issuer_key_id=$2 and decision=$3 and attestation_sha256=$4 and issued_ms=$5 and expires_ms=$6
+    and attestation_payload=$7::bytea and attestation_signature=$8::bytea`,
+   [requestId,evidence.issuerKeyId,evidence.decision,evidence.attestationSha256,evidence.issuedMs,evidence.expiresMs,payload,signature]);
   if(original.rows.length!==1)throw Error('original evidence unavailable');
   await c.query('commit');return Object.freeze({requestId,status:'evidence_recorded',attestationSha256:evidence.attestationSha256});
  }catch(error){try{await c.query('rollback');}catch{}throw error;}finally{c.release();}

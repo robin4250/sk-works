@@ -1,6 +1,6 @@
 // Disposable SQL fixture checks. No independent owner channel or active key.
 import assert from 'node:assert/strict';
-import {generateKeyPairSync,sign} from 'node:crypto';
+import {createHash,generateKeyPairSync,sign,verify} from 'node:crypto';
 import {ownerDecisionPayload} from './owner-decision-attestation.mjs';
 import {recordIndependentOwnerDecisionEvidence} from './owner-decision-evidence.mjs';
 import {requestIndependentOwnerApproval} from './key-migration-owner-request.mjs';
@@ -68,6 +68,34 @@ export async function checkOwnerApprovalRequest({pool,args,pendingId,concurrency
  if(concurrency){for(const result of await Promise.all([recordIndependentOwnerDecisionEvidence(input),recordIndependentOwnerDecisionEvidence(input)]))assert.deepEqual(result,recorded);}
  await assert.rejects(recordIndependentOwnerDecisionEvidence({...input,receipt:signed({...unsigned,decision:'denied'})}));
  assert.equal(Number((await pool.query('select count(*) from master_device_enrollment_candidate.owner_decision_evidence')).rows[0].count),1);
+ // A new connection can reconstruct the independently signed evidence without
+ // the original request process or private signing key. This is historical
+ // signature verification only, never authorization to activate a device.
+ async function persistedEvidence(){
+  const row=(await pool.query(`select attestation_sha256,attestation_payload,attestation_signature
+   from master_device_enrollment_candidate.owner_decision_evidence where request_id=$1`,[first.id])).rows[0];
+  const payload=Buffer.from(row.attestation_payload),signature=Buffer.from(row.attestation_signature);
+  assert.deepEqual(payload,ownerDecisionPayload(unsigned));
+  assert.deepEqual(signature,Buffer.from(input.receipt.signature,'base64url'));
+  assert.equal(createHash('sha256').update(payload).update(signature).digest('hex'),row.attestation_sha256);
+  assert.equal(verify(null,payload,issuer.publicKey,signature),true);
+  const changed=Buffer.from(payload);changed[changed.length-2]^=1;
+  assert.equal(verify(null,changed,issuer.publicKey,signature),false);
+  return {payload:payload.toString('hex'),signature:signature.toString('hex'),digest:row.attestation_sha256};
+ }
+ const originalEvidence=await persistedEvidence();
+ for(const [payload,signature] of [[Buffer.alloc(0),Buffer.alloc(64)],[Buffer.alloc(2049),Buffer.alloc(64)],[Buffer.alloc(1),Buffer.alloc(63)]]){
+  await assert.rejects(pool.query(`insert into master_device_enrollment_candidate.owner_decision_evidence
+   (request_id,issuer_key_id,decision,attestation_sha256,issued_ms,expires_ms,attestation_payload,attestation_signature)
+   select request_id,issuer_key_id,decision,attestation_sha256,issued_ms,expires_ms,$1::bytea,$2::bytea
+   from master_device_enrollment_candidate.owner_decision_evidence where request_id=$3`,[payload,signature,first.id]),e=>e.code==='23514');
+ }
+ for(const sql of [
+  "update master_device_enrollment_candidate.owner_decision_evidence set attestation_payload=decode('00','hex')",
+  "delete from master_device_enrollment_candidate.owner_decision_evidence",
+  "truncate master_device_enrollment_candidate.owner_decision_evidence",
+ ])await assert.rejects(pool.query(sql),e=>e.code==='55000');
+ assert.deepEqual(await persistedEvidence(),originalEvidence,'rejected rewrites preserve the signed original');
  for(const role of ['anon','authenticated']){const c=await pool.connect();try{await c.query('begin');await c.query('set local role '+role);await assert.rejects(c.query('select * from master_device_enrollment_candidate.owner_decision_evidence'),e=>e.code==='42501');}finally{await c.query('rollback');c.release();}}
  // Expire only this synthetic possession proof; no new approval request can
  // renew its lifetime, even though the previous pending proof was consumed.
@@ -88,6 +116,7 @@ export async function checkOwnerApprovalRequest({pool,args,pendingId,concurrency
  assert.equal(Number((await pool.query('select count(*) from master_device_enrollment_candidate.owner_approval_request_cancellations')).rows[0].count),1);
  assert.deepEqual(await inspectIndependentOwnerApprovalRequest(lifecycle),cancelled);
  await assert.rejects(recordIndependentOwnerDecisionEvidence(input),'recorded evidence cannot override cancellation');
+ assert.deepEqual(await persistedEvidence(),originalEvidence,'expiry/withdrawal keep the historical original without authorizing its reuse');
  await pool.query('update private.master_devices set is_locked=false where id=$1',[args.deviceId]);
  // Even restoring a synthetic proof's time cannot resurrect a cancelled request.
  await pool.query(`update master_device_enrollment_candidate.key_possession_challenges
@@ -97,5 +126,5 @@ export async function checkOwnerApprovalRequest({pool,args,pendingId,concurrency
  await assert.rejects(requestIndependentOwnerApproval(request));
  assert.equal((await pool.query('select status from master_device_enrollment_candidate.pending_key_migrations where id=$1',[pendingId])).rows[0].status,'pending');
  assert.equal((await pool.query('select count(*) as count from private.master_devices')).rows[0].count,before);
- console.log('Owner review request: exact proof, retry/status/cancel, foreign/locked/expired rejection, client ACL and no key activation passed. Synthetic auth only.');
+ console.log('Owner review request: exact proof, retry/status/cancel, signed-byte retention/reverification, bounded evidence, update/delete/truncate refusal, foreign/locked/expired rejection, client ACL and no key activation passed. Synthetic auth only.');
 }
