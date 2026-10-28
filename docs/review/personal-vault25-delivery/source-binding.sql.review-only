@@ -1,0 +1,20 @@
+-- Review-only: owner-scoped catalog binding, not an independent source inspector.
+-- No production deployment. Run after the isolated read-api candidate.
+begin;
+create function public.personal_vault25_source_mine(mid uuid, artifact text)
+returns table(source_company_id uuid,source_worker_id uuid,source_id uuid,
+ source_revision text,snapshot_hash text,manifest_hash text,kind text)
+language plpgsql security definer set search_path='' as $$
+declare m personal_vault24_candidate.manifests;
+begin
+ select * into m from personal_vault24_candidate.manifests where id=mid;
+ if not found then raise exception 'vault_not_found';end if;
+ perform personal_vault24_candidate.assert_owner(m);
+ if m.status<>'complete' then raise exception 'vault_not_complete';end if;
+ return query select m.source_company_id,m.source_worker_id,i.source_id,
+  i.source_revision,i.snapshot_hash,m.manifest_hash,i.kind
+ from personal_vault24_candidate.items i where i.manifest_id=mid and i.artifact_key=artifact;
+end $$;
+revoke all on function public.personal_vault25_source_mine(uuid,text) from public,anon,authenticated,service_role;
+grant execute on function public.personal_vault25_source_mine(uuid,text) to authenticated;
+commit;

@@ -1,0 +1,22 @@
+-- Candidate only. Root must review with existing API surface and Storage policies.
+begin;
+create function public.personal_vault24_list_mine()
+returns table(manifest_id uuid,artifact_key text,kind text,source_company_id uuid,completed_at timestamptz)
+language plpgsql security definer set search_path='' as $$
+begin
+ perform private.require_reauthentication_session();
+ if auth.uid() is null then raise exception 'vault_owner_rejected' using errcode='42501';end if;
+ return query select m.id,i.artifact_key,i.kind,m.source_company_id,m.completed_at
+ from personal_vault24_candidate.manifests m join personal_vault24_candidate.items i on i.manifest_id=m.id
+ where m.owner_id=auth.uid() and m.status='complete' order by m.completed_at,m.id,i.artifact_key;
+end $$;
+create function public.personal_vault24_item_mine(mid uuid,artifact text)
+returns table(object_path text,object_version text,pdf_hash text,byte_length bigint)
+language sql security definer set search_path='' as $$
+ select * from personal_vault24_candidate.item_for_owner(mid,artifact);
+$$;
+revoke all on function public.personal_vault24_list_mine() from public,anon,authenticated,service_role;
+revoke all on function public.personal_vault24_item_mine(uuid,text) from public,anon,authenticated,service_role;
+grant execute on function public.personal_vault24_list_mine() to authenticated;
+grant execute on function public.personal_vault24_item_mine(uuid,text) to authenticated;
+commit;

@@ -1,0 +1,63 @@
+-- Isolated candidate only. No grants or deployment; caller must already have
+-- verified the owner and a fresh primary-password proof outside this routine.
+begin;
+create table apple_native_enrollment_private.self_recovery_commands(
+ request_id uuid not null references apple_native_enrollment_private.requests(request_id),
+ actor_id uuid not null, session_id uuid not null, command_id uuid not null unique default gen_random_uuid(),
+ created_at timestamptz not null default clock_timestamp(),
+ primary key(request_id,actor_id,session_id)
+);
+alter table apple_native_enrollment_private.self_recovery_commands enable row level security;
+revoke all on apple_native_enrollment_private.self_recovery_commands from public,anon,authenticated,service_role;
+create function apple_native_enrollment_private.immutable_self_recovery_commands() returns trigger language plpgsql security definer set search_path='' as $$
+begin raise exception 'apple_self_recovery_commands_append_only';end $$;
+revoke all on function apple_native_enrollment_private.immutable_self_recovery_commands() from public,anon,authenticated,service_role;
+create trigger apple_self_recovery_commands_immutable before update or delete on apple_native_enrollment_private.self_recovery_commands for each row execute function apple_native_enrollment_private.immutable_self_recovery_commands();
+create trigger apple_self_recovery_commands_no_truncate before truncate on apple_native_enrollment_private.self_recovery_commands for each statement execute function apple_native_enrollment_private.immutable_self_recovery_commands();
+create function apple_native_enrollment_private.self_recovery_command(p_request uuid,p_actor uuid,p_session uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare r apple_native_enrollment_private.requests%rowtype; c jsonb; v uuid;
+begin
+ perform apple_native_enrollment_private.root_operator();
+ if p_request is null or p_actor is null or p_session is null then raise exception 'apple_self_recovery_unavailable';end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-self-recovery:'||p_request::text,0));
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request for update;
+ if not found or r.actor_id<>p_actor then raise exception 'apple_self_recovery_unavailable';end if;
+ c:=apple_native_enrollment_private.context(p_actor,p_session);
+ if not apple_google_protection.ready() or not apple_native_enrollment_private.ready() or c is null then raise exception 'apple_self_recovery_unavailable';end if;
+ select command_id into v from apple_native_enrollment_private.self_recovery_commands where request_id=p_request and actor_id=p_actor and session_id=p_session;
+ if v is null then
+  if r.status<>'held' then raise exception 'apple_self_recovery_unavailable';end if;
+  insert into apple_native_enrollment_private.self_recovery_commands(request_id,actor_id,session_id) values(p_request,p_actor,p_session) returning command_id into v;
+ end if;
+ return jsonb_build_object('request_id',p_request,'actor_id',p_actor,'session_id',p_session,'command_id',v);
+end $$;
+revoke all on function apple_native_enrollment_private.self_recovery_command(uuid,uuid,uuid) from public,anon,authenticated,service_role;
+-- Same lock order as the existing root reconciliation (command, subject, actor,
+-- identities, memberships, user, session). The identity table lock has broad
+-- impact and is acceptable only in the isolated fixture, not production.
+create function apple_native_enrollment_private.self_recovery_reconcile(p_command uuid,p_request uuid,p_actor uuid,p_session uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare r apple_native_enrollment_private.requests%rowtype; v uuid; c jsonb;
+begin
+ perform apple_native_enrollment_private.root_operator();
+ if p_command is null or p_request is null or p_actor is null or p_session is null then raise exception 'apple_self_recovery_unavailable';end if;
+ select command_id into v from apple_native_enrollment_private.self_recovery_commands where request_id=p_request and actor_id=p_actor and session_id=p_session;
+ if v is distinct from p_command then raise exception 'apple_self_recovery_unavailable';end if;
+ select * into r from apple_native_enrollment_private.requests where request_id=p_request;
+ if not found or r.actor_id<>p_actor then raise exception 'apple_self_recovery_unavailable';end if;
+ perform pg_advisory_xact_lock(hashtextextended('apple-recovery-command:'||p_command::text,0));
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-subject:'||r.subject,0));
+ perform pg_advisory_xact_lock(hashtextextended('apple-native-actor:'||p_actor::text,0));
+ lock table auth.identities in share row exclusive mode;
+ lock table public.company_members in share mode nowait;
+ perform 1 from auth.users where id=p_actor for share nowait;
+ if not found then raise exception 'apple_self_recovery_unavailable';end if;
+ perform 1 from auth.sessions where id=p_session and user_id=p_actor for share nowait;
+ if not found then raise exception 'apple_self_recovery_unavailable';end if;
+ c:=apple_native_enrollment_private.context(p_actor,p_session);
+ if c is null or not apple_google_protection.ready() or not apple_native_enrollment_private.ready() then raise exception 'apple_self_recovery_unavailable';end if;
+ return apple_native_enrollment_private.reconcile_request(p_command,p_request,p_session,'本人のApple連携の保留状態を安全に照合');
+end $$;
+revoke all on function apple_native_enrollment_private.self_recovery_reconcile(uuid,uuid,uuid,uuid) from public,anon,authenticated,service_role;
+commit;

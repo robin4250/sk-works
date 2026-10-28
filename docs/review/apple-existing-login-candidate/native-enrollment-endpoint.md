@@ -22,3 +22,10 @@ Previous PR1420 head803f3990 remains all11 CI success: actual GoTrue12, Native15
 - Apple-only new-account whitelist remains outside the existing minimal Google-UID protection design; do not claim universal signup lockdown.
 
 No production/provider/identity/company/main/IPA change is part of this candidate.
+
+
+## Review-only successor credential handoff
+
+`native_apple_successor_handoff.mjs` and the explicit `successorReviewed` Auth-port method prepare same-UID session succession. The existing OFF handler still uses the original no-credential flow. The new path independently authenticates the issued access token, invokes the private atomic successor completion, and only then passes credentials once to a trusted request-bound delivery sink. Credentials never appear in normal results, SQL or errors; delivery uncertainty does not trigger logout, unlink, exchange retry or a false success. The successor token is not authorized for legacy temporary-session cleanup.
+
+This composition is not a deployable endpoint. `claimReservedForBearer` still needs an atomic durable single-attempt implementation, `completeWithSuccessor` needs a least-privilege DB adapter, and `deliverVerifiedSuccessor` needs reviewed authenticated HTTPS delivery and client adoption. The existing PW temporary session/reservation-SID handoff is not connected. Timeouts, real Auth+SQL+delivery composition, concurrency, lost-delivery recovery and iPhone verification remain required. No grant, flag enablement or production/provider change is included.

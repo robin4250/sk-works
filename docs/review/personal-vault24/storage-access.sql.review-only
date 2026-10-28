@@ -1,0 +1,32 @@
+-- Review-only Storage read boundary. Apply only after catalog and root's review
+-- of ALL existing permissive/restrictive Storage policies. No bucket is created.
+begin;
+create function personal_vault24_candidate.can_read_pdf(p_path text,p_version text)
+returns boolean language plpgsql security definer set search_path='' as $$
+begin
+ if auth.uid() is null or p_version is null or p_version='' then return false;end if;
+ perform private.require_reauthentication_session();
+ return exists(select 1 from personal_vault24_candidate.items i
+ join personal_vault24_candidate.manifests m on m.id=i.manifest_id
+ where i.object_path=p_path and i.object_version=p_version
+ and m.owner_id=auth.uid() and m.status='complete');
+end $$;
+revoke all on function personal_vault24_candidate.can_read_pdf(text,text) from public,anon,authenticated,service_role;
+grant usage on schema personal_vault24_candidate to anon,authenticated;
+grant execute on function personal_vault24_candidate.can_read_pdf(text,text) to anon,authenticated;
+create policy personal_vault24_select_allow on storage.objects for select to authenticated
+ using(bucket_id='personal-pdf-vault' and personal_vault24_candidate.can_read_pdf(name,version));
+-- A permissive policy elsewhere must not broaden access to this bucket.
+create policy personal_vault24_select_boundary on storage.objects as restrictive for select to public
+ using(bucket_id<>'personal-pdf-vault' or
+ personal_vault24_candidate.can_read_pdf(name,version));
+create policy personal_vault24_insert_boundary on storage.objects as restrictive for insert to public
+ with check(bucket_id<>'personal-pdf-vault');
+create policy personal_vault24_update_boundary on storage.objects as restrictive for update to public
+ using(bucket_id<>'personal-pdf-vault') with check(bucket_id<>'personal-pdf-vault');
+create policy personal_vault24_delete_boundary on storage.objects as restrictive for delete to public
+ using(bucket_id<>'personal-pdf-vault');
+-- service_role/BYPASSRLS storage writes remain a trusted exporter boundary.
+-- They MUST use upsert:false, verify bytes/version, commit receipt atomically,
+-- and never expose this credential to clients. This is not immutable object lock.
+commit;

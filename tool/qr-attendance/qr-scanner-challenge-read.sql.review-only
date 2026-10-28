@@ -1,0 +1,22 @@
+-- Private, review-only reconciliation. Never issues or extends a challenge.
+begin;
+create function qr_attendance_private.read_own_scanner_key_challenge(p_company uuid,p_device uuid,p_key text)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare principal jsonb;candidate uuid;stamp bigint;
+begin
+ principal:=qr_attendance_private.require_registration_actor(p_company);
+ if p_device is null or p_key is null or p_key !~ '^302a300506032b6570032100[0-9a-f]{64}$' then raise sqlstate '42501';end if;
+ -- Same ordering as issuance; do not wait across another registration change.
+ if not pg_try_advisory_xact_lock(hashtextextended('sko-qr-scanner-registration:'||p_device::text,0)) then raise sqlstate '55P03';end if;
+ stamp:=floor(extract(epoch from clock_timestamp())*1000)::bigint;
+ select id into candidate from qr_attendance_private.scanner_key_challenges
+ where company_id=p_company and device_id=p_device and public_key_hex=p_key
+ and actor_id=(principal->>'actor')::uuid and session_id=(principal->>'session')::uuid
+ and consumed_at is null and created_ms<=stamp and expires_ms>stamp
+ order by created_ms desc limit 1 for update;
+ if not found then return null;end if;
+ return qr_attendance_private.load_scanner_key_challenge(candidate);
+end$$;
+revoke all on function qr_attendance_private.read_own_scanner_key_challenge(uuid,uuid,text)
+ from public,anon,authenticated,service_role;
+commit;

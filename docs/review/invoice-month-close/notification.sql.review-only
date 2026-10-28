@@ -1,0 +1,136 @@
+-- REVIEW ONLY. Private durable intent prototype; no notification is sent.
+-- No production grants, scheduler, RPC, feature activation or trigger.
+create table invoice_month_close_candidate.notice_settings(singleton boolean primary key default true check(singleton), enabled boolean not null default false);
+insert into invoice_month_close_candidate.notice_settings values(true,false);
+create table invoice_month_close_candidate.notice_intents(
+ id uuid primary key default gen_random_uuid(), invoice_id uuid not null, company_id uuid not null,
+ recipient_id uuid not null, invoice_revision timestamptz not null,
+ source_fingerprint text not null check(source_fingerprint ~ '^[0-9a-f]{64}$'),
+ created_at timestamptz not null default clock_timestamp(),
+ unique(invoice_id,recipient_id,invoice_revision,source_fingerprint));
+alter table invoice_month_close_candidate.notice_settings enable row level security;
+alter table invoice_month_close_candidate.notice_intents enable row level security;
+revoke all on invoice_month_close_candidate.notice_settings,invoice_month_close_candidate.notice_intents from public,anon,authenticated,service_role;
+-- Private safety adapter is intentionally NOT implemented. It must perform
+-- authenticated scope checks, complete source comparison, lock/revalidation
+-- and return {status:'ready',invoice_revision,source_fingerprint}. Never
+-- substitute a caller-supplied result or pretend auth.uid is the recipient.
+create function invoice_month_close_candidate.prepare_notice(p_invoice uuid,p_recipient uuid)
+returns uuid language plpgsql security definer set search_path='' set timezone='UTC' as $$
+declare enabled boolean;inv public.invoices%rowtype; proof jsonb;result uuid;
+begin
+ select s.enabled into enabled from invoice_month_close_candidate.notice_settings s where singleton for share;
+ if not coalesce(enabled,false) then raise exception 'notice_disabled' using errcode='55000';end if;
+ if p_invoice is null or p_recipient is null then raise exception 'notice_unavailable' using errcode='42501';end if;
+ select * into inv from public.invoices where id=p_invoice for share;
+ if not found or inv.updated_at is null then raise exception 'notice_unavailable' using errcode='42501';end if;
+ perform 1 from public.company_members m join public.invoice_approvals a on a.company_id=m.company_id and a.approver_user_id=m.user_id where m.company_id=inv.company_id and m.user_id=p_recipient and a.invoice_id=inv.id and a.status='pending' for share of m,a;
+ if not found then raise exception 'notice_unavailable' using errcode='42501';end if;
+ if to_regprocedure('invoice_month_close_candidate.notification_readiness(uuid,uuid)') is null then raise exception 'notice_readiness_unavailable' using errcode='55000';end if;
+ execute 'select invoice_month_close_candidate.notification_readiness($1,$2)' into proof using p_invoice,p_recipient;
+ if jsonb_typeof(proof) is distinct from 'object' or proof->>'status' is distinct from 'ready' or proof->>'invoice_revision' is distinct from inv.updated_at::text or proof->>'source_fingerprint' is null or proof->>'source_fingerprint' !~ '^[0-9a-f]{64}$' then raise exception 'notice_not_ready' using errcode='55000';end if;
+ insert into invoice_month_close_candidate.notice_intents(invoice_id,company_id,recipient_id,invoice_revision,source_fingerprint)
+ values(inv.id,inv.company_id,p_recipient,inv.updated_at,proof->>'source_fingerprint') on conflict(invoice_id,recipient_id,invoice_revision,source_fingerprint) do nothing returning id into result;
+ if result is null then select id into result from invoice_month_close_candidate.notice_intents where invoice_id=inv.id and recipient_id=p_recipient and invoice_revision=inv.updated_at and source_fingerprint=proof->>'source_fingerprint';end if;
+ return result;
+end $$;
+revoke all on function invoice_month_close_candidate.prepare_notice(uuid,uuid) from public,anon,authenticated,service_role;
+-- Recheck immediately before a future delivery/open action. This function
+-- does not deliver anything and the trusted readiness adapter is still absent.
+create function invoice_month_close_candidate.notice_current(p_notice uuid)
+returns boolean language plpgsql security definer set search_path='' set timezone='UTC' as $$
+declare enabled boolean;n invoice_month_close_candidate.notice_intents%rowtype;inv public.invoices%rowtype; proof jsonb;
+begin
+ select s.enabled into enabled from invoice_month_close_candidate.notice_settings s where singleton for share;
+ if not coalesce(enabled,false) then return false;end if;
+ select * into n from invoice_month_close_candidate.notice_intents where id=p_notice;
+ if not found then return false;end if;
+ select * into inv from public.invoices where id=n.invoice_id and company_id=n.company_id for share;
+ if not found or inv.updated_at is distinct from n.invoice_revision then return false;end if;
+ perform 1 from public.company_members m join public.invoice_approvals a on a.company_id=m.company_id and a.approver_user_id=m.user_id where m.company_id=n.company_id and m.user_id=n.recipient_id and a.invoice_id=n.invoice_id and a.status='pending' for share of m,a;
+ if not found or to_regprocedure('invoice_month_close_candidate.notification_readiness(uuid,uuid)') is null then return false;end if;
+ execute 'select invoice_month_close_candidate.notification_readiness($1,$2)' into proof using n.invoice_id,n.recipient_id;
+ return coalesce(jsonb_typeof(proof)='object' and proof->>'status'='ready' and proof->>'invoice_revision'=inv.updated_at::text and proof->>'source_fingerprint'=n.source_fingerprint,false);
+exception when query_canceled then raise;
+ when others then return false;
+end $$;
+revoke all on function invoice_month_close_candidate.notice_current(uuid) from public,anon,authenticated,service_role;
+
+-- Short-lived open ticket for a future notification flow. It is not an
+-- approval, seal or authority to access any other company's records.
+create table invoice_month_close_candidate.notice_open_tickets(
+ id uuid primary key default gen_random_uuid(),notice_id uuid not null,
+ actor_id uuid not null,session_id uuid not null,
+ expires_at timestamptz not null,consumed_at timestamptz,
+ created_at timestamptz not null default clock_timestamp());
+alter table invoice_month_close_candidate.notice_open_tickets enable row level security;
+revoke all on invoice_month_close_candidate.notice_open_tickets from public,anon,authenticated,service_role;
+create index notice_ticket_cleanup on invoice_month_close_candidate.notice_open_tickets(notice_id,expires_at);
+-- Maintenance entrypoint is intentionally private and unscheduled. A trusted
+-- future scheduler may run bounded batches after installation review.
+create index notice_ticket_expiry_cleanup on invoice_month_close_candidate.notice_open_tickets(expires_at,id);
+create function invoice_month_close_candidate.cleanup_expired_notice_tickets(p_limit integer)
+returns integer language plpgsql security definer set search_path='' as $cleanup$
+declare removed integer;
+begin
+ if p_limit is null or p_limit < 1 or p_limit > 500 then
+  raise exception 'invalid cleanup batch' using errcode='22023';
+ end if;
+ with doomed as (
+  select id from invoice_month_close_candidate.notice_open_tickets
+   where expires_at <= clock_timestamp()
+   order by expires_at,id
+   for update skip locked limit p_limit
+ ), deleted as (
+  delete from invoice_month_close_candidate.notice_open_tickets t
+   using doomed d where t.id=d.id returning t.id
+ ) select count(*)::integer into removed from deleted;
+ return removed;
+end $cleanup$;
+revoke all on function invoice_month_close_candidate.cleanup_expired_notice_tickets(integer) from public,anon,authenticated,service_role;
+create function invoice_month_close_candidate.issue_notice_ticket(p_notice uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();sid uuid;n invoice_month_close_candidate.notice_intents%rowtype;t invoice_month_close_candidate.notice_open_tickets%rowtype;
+begin
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null then raise exception 'notice_unavailable' using errcode='42501';end if;
+ -- Serialize issuance per notice. A second tap in the same session reuses
+ -- the live ticket rather than creating an unbounded stream of rows.
+ select * into n from invoice_month_close_candidate.notice_intents where id=p_notice and recipient_id=actor for update;
+ if not found or not invoice_month_close_candidate.notice_current(p_notice) then raise exception 'notice_unavailable' using errcode='42501';end if;
+ -- Tickets are transient, not approval audit records. Prune only this
+ -- recipient's expired tickets, in bounded batches, without touching live
+ -- tickets from other sessions.
+ delete from invoice_month_close_candidate.notice_open_tickets where id in (
+  select id from invoice_month_close_candidate.notice_open_tickets
+  where notice_id=n.id and actor_id=actor and (expires_at<=clock_timestamp() or consumed_at is not null)
+  order by expires_at,id limit 100
+ );
+ select * into t from invoice_month_close_candidate.notice_open_tickets
+ where notice_id=n.id and actor_id=actor and session_id=sid
+   and consumed_at is null and expires_at>clock_timestamp()
+ order by created_at desc limit 1;
+ if found then return jsonb_build_object('ticket_id',t.id,'expires_at',t.expires_at,'invoice_id',n.invoice_id);end if;
+ if (select count(*) from invoice_month_close_candidate.notice_open_tickets
+     where notice_id=n.id and actor_id=actor and consumed_at is null and expires_at>clock_timestamp())>=20 then
+  raise exception 'notice_unavailable' using errcode='42501';
+ end if;
+ insert into invoice_month_close_candidate.notice_open_tickets(notice_id,actor_id,session_id,expires_at)
+ values(n.id,actor,sid,clock_timestamp()+interval '5 minutes') returning * into t;
+ return jsonb_build_object('ticket_id',t.id,'expires_at',t.expires_at,'invoice_id',n.invoice_id);
+end $$;
+revoke all on function invoice_month_close_candidate.issue_notice_ticket(uuid) from public,anon,authenticated,service_role;
+create function invoice_month_close_candidate.consume_notice_ticket(p_ticket uuid)
+returns uuid language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();sid uuid;t invoice_month_close_candidate.notice_open_tickets%rowtype;invoice uuid;
+begin
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null then raise exception 'notice_unavailable' using errcode='42501';end if;
+ select * into t from invoice_month_close_candidate.notice_open_tickets where id=p_ticket for update;
+ if not found or t.actor_id is distinct from actor or t.session_id is distinct from sid or t.consumed_at is not null or t.expires_at<=clock_timestamp() or not invoice_month_close_candidate.notice_current(t.notice_id) then raise exception 'notice_unavailable' using errcode='42501';end if;
+ select invoice_id into invoice from invoice_month_close_candidate.notice_intents where id=t.notice_id and recipient_id=actor;
+ if invoice is null then raise exception 'notice_unavailable' using errcode='42501';end if;
+ update invoice_month_close_candidate.notice_open_tickets set consumed_at=clock_timestamp() where id=t.id;
+ return invoice;
+end $$;
+revoke all on function invoice_month_close_candidate.consume_notice_ticket(uuid) from public,anon,authenticated,service_role;

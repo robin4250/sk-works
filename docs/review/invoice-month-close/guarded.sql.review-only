@@ -1,0 +1,34 @@
+-- REVIEW ONLY. No grant, trigger, RPC, rollout or production mutation.
+-- Caller must invoke this and the approval write in the same transaction;
+-- the underlying experimental gate uses company-wide table locks.
+create function invoice_month_close_candidate.guarded(p_invoice uuid)
+returns text language plpgsql volatile security definer set search_path='' set timezone='UTC' as $$
+declare status text; v jsonb; inv public.invoices%rowtype;
+begin
+ status:=invoice_month_close_candidate.precheck(p_invoice);
+ if status<>'source_proof_missing' then return status;end if;
+ if to_regprocedure('invoice_month_close_candidate.preview_for_approver(uuid)') is null or to_regprocedure('invoice_month_close_candidate.revalidate_for_approver(uuid,text,text)') is null or to_regprocedure('invoice_month_close_candidate.approver_core_intact()') is null then return 'source_proof_missing';end if;
+ if invoice_month_close_candidate.approver_core_intact() is distinct from true then return 'source_proof_missing';end if;
+ begin
+  execute 'select invoice_month_close_candidate.preview_for_approver($1)' into v using p_invoice;
+  if jsonb_typeof(v) is distinct from 'object' or v->>'original_invoice_id' is distinct from p_invoice::text or v->'calculation_blocked' is distinct from 'false'::jsonb or v->>'source_fingerprint' !~ '^[0-9a-f]{64}$' or v->>'original_invoice_fingerprint' !~ '^[0-9a-f]{64}$' then return 'source_proof_missing';end if;
+  execute 'select invoice_month_close_candidate.revalidate_for_approver($1,$2,$3)' using p_invoice,v->>'source_fingerprint',v->>'original_invoice_fingerprint';
+  -- Re-check after acquiring all locks; this status is diagnostic unless the
+  -- caller performs the approval in the very same transaction.
+  if invoice_month_close_candidate.approver_core_intact() is distinct from true then return 'source_proof_missing';end if;
+  status:=invoice_month_close_candidate.precheck(p_invoice);
+  if status<>'source_proof_missing' then return status;end if;
+  select * into inv from public.invoices where id=p_invoice;
+  if not found or inv.calculation_blocked is distinct from false or
+   (inv.snapshot-'company_seal_snapshot') is distinct from v->'proposed_snapshot' or
+   to_jsonb(inv.subtotal) is distinct from v->'subtotal' or
+   to_jsonb(inv.tax) is distinct from v->'tax' or
+   to_jsonb(inv.welfare_amount) is distinct from v->'welfare' or
+   to_jsonb(inv.grand_total) is distinct from v->'grand_total' then return 'data_changed';end if;
+  return 'ready';
+ exception when query_canceled then raise;
+ when lock_not_available or serialization_failure or deadlock_detected then raise;
+ when others then return 'source_proof_missing';
+ end;
+end $$;
+revoke all on function invoice_month_close_candidate.guarded(uuid) from public,anon,authenticated,service_role;

@@ -1,0 +1,20 @@
+-- Review-only server-owned proof challenges. Not an issue/approve/activation API.
+-- Prerequisite: key-migration-registry.sql.review-only. No client grants.
+begin;
+create table master_device_enrollment_candidate.key_possession_challenges (
+ id uuid primary key default gen_random_uuid(),
+ actor uuid not null,
+ session_id uuid not null,
+ device_id uuid not null references private.master_devices(id) on delete restrict,
+ key_sha256 text not null check(key_sha256 ~ '^[a-f0-9]{64}$'),
+ nonce text not null unique check(nonce ~ '^[a-f0-9]{64}$'),
+ created_ms double precision not null,
+ expires_ms double precision not null,
+ consumed_at timestamptz,
+ check(created_ms>=0 and created_ms<=9007199254740991 and created_ms=floor(created_ms)),
+ check(expires_ms<=9007199254740991 and expires_ms=floor(expires_ms)
+   and expires_ms>created_ms and expires_ms-created_ms<=120000)
+);
+alter table master_device_enrollment_candidate.key_possession_challenges enable row level security;
+revoke all on master_device_enrollment_candidate.key_possession_challenges from public,anon,authenticated;
+commit;

@@ -19,7 +19,8 @@ function claimsFromVerifiedToken(jwt,user,now){
  const raw=Uint8Array.from(atob(parts[1].replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
  const claims=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));
  if(!claims||claims.sub!==user?.id||!uuid.test(claims.sub??'')||!uuid.test(claims.session_id??'')||claims.role!=='authenticated'||
- !Number.isSafeInteger(claims.exp)||claims.exp<=now||claims.iss!==project+'/auth/v1'||claims.aud!=='authenticated'||user.is_anonymous===true)throw deny();
+ !Number.isSafeInteger(claims.exp)||claims.exp<=now||claims.iss!==project+'/auth/v1'||!(claims.aud==='authenticated'||
+  (Array.isArray(claims.aud)&&claims.aud.length===1&&claims.aud[0]==='authenticated'))||user.is_anonymous===true)throw deny();
  return claims;
 }
 function publicCredential(value){
@@ -27,10 +28,10 @@ function publicCredential(value){
  if(value.startsWith('sb_publishable_'))return true;
  try{const p=value.split('.');if(p.length!==3)return false;const c=JSON.parse(atob(p[1].replace(/-/g,'+').replace(/_/g,'/')));return c.role==='anon'&&c.iss==='supabase';}catch{return false;}
 }
-export function createNativeAppleAuthPorts({enabled=false,nativeOnlyReviewed=false,baseUrl,publicKey,fetcher=fetch,now=()=>Math.floor(Date.now()/1000),timeoutMs=10000}={}){
+export function createNativeAppleAuthPorts({enabled=false,nativeOnlyReviewed=false,successorReviewed=false,passwordSuccessorReviewed=false,baseUrl,publicKey,fetcher=fetch,now=()=>Math.floor(Date.now()/1000),timeoutMs=10000}={}){
  if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>10000)throw deny();
  const ready=enabled===true&&nativeOnlyReviewed===true&&baseUrl===project&&publicCredential(publicKey);
- let original=null;const temporary=new Set();
+ let original=null,passwordAttempted=false;const temporary=new Set(),successors=new Set();
  async function request(path,bearer,body,status=200){
   if(!ready||!token(bearer))throw deny();const controller=new AbortController();let timer;
   const work=(async()=>{const r=await fetcher(project+path,{method:body===undefined?'GET':'POST',redirect:'manual',signal:controller.signal,
@@ -44,22 +45,54 @@ export function createNativeAppleAuthPorts({enabled=false,nativeOnlyReviewed=fal
   const user=await request('/auth/v1/user',bearer);const clock=now();if(!Number.isSafeInteger(clock))throw deny();
   return {user,claims:claimsFromVerifiedToken(bearer,user,clock)};
  }
- return Object.freeze({authenticateExactBearer,
-  async bindOriginal(bearer){if(original)throw deny();const a=await authenticateExactBearer(bearer);original={bearer,actor:a.user.id,sid:a.claims.session_id};return a;},
-  async linkNativeIdentity({exactBearer,idToken,rawNonce}){
+ async function link({exactBearer,idToken,rawNonce}){
    if(!original||exactBearer!==original.bearer||!token(idToken)||typeof rawNonce!=='string'||!/^[A-Za-z0-9_-]{43,128}$/.test(rawNonce))throw deny();
    const current=await authenticateExactBearer(exactBearer);if(current.user.id!==original.actor||current.claims.session_id!==original.sid)throw deny();
    const result=await request('/auth/v1/token?grant_type=id_token',exactBearer,{provider:'apple',id_token:idToken,nonce:rawNonce,link_identity:true});
    if(!token(result?.access_token)||result.access_token===original.bearer||result.token_type!=='bearer')throw deny();
-   // Never retain a returned token as cleanup-authorized until independently
-   // verified for this UID and a distinct session. Unknown results stay HOLD.
    const issued=await authenticateExactBearer(result.access_token);
    if(issued.user.id!==original.actor||issued.claims.session_id===original.sid)throw deny();
-   temporary.add(result.access_token);
+   return result;
+ }
+ return Object.freeze({authenticateExactBearer,
+  async bindOriginal(bearer){if(original)throw deny();const a=await authenticateExactBearer(bearer);original={bearer,actor:a.user.id,sid:a.claims.session_id};return a;},
+  // Internal OFF path: a successful password login creates a successor session.
+  // Keep it available for a separately reviewed snapshot/reservation handoff;
+  // never claim that the former refresh credential remains usable. This method
+  // neither rebinds Apple linking nor exposes an HTTP response/client session.
+  async authenticatePrimaryPasswordSuccessor({exactBearer,password}){
+   if(passwordSuccessorReviewed!==true||successorReviewed!==true||!original||passwordAttempted||
+      exactBearer!==original.bearer||typeof password!=='string'||!password||password.length>1024)throw deny();
+   passwordAttempted=true;
+   const current=await authenticateExactBearer(exactBearer);
+   if(current.user.id!==original.actor||current.claims.session_id!==original.sid)throw deny();
+   const identifier=typeof current.user.email==='string'&&current.user.email?{email:current.user.email}:
+    typeof current.user.phone==='string'&&current.user.phone?{phone:current.user.phone}:null;
+   if(!identifier)throw deny();
+   const result=await request('/auth/v1/token?grant_type=password',exactBearer,{...identifier,password});
+   if(!token(result?.access_token)||!token(result.refresh_token)||result.token_type!=='bearer'||
+      result.user?.id!==original.actor||result.access_token===original.bearer)throw deny();
+   const verified=await authenticateExactBearer(result.access_token);
+   if(verified.user.id!==original.actor||verified.claims.session_id===original.sid)throw deny();
+   successors.add(result.access_token);
+   return Object.freeze({actor_id:original.actor,original_session_id:original.sid,
+    session_id:verified.claims.session_id,access_token:result.access_token,
+    refresh_token:result.refresh_token,token_type:'bearer'});
+  },
+  async linkNativeIdentity(info){
+   const result=await link(info);temporary.add(result.access_token);
    return {access_token:result.access_token,token_type:'bearer'};
   },
+  // Internal, default-OFF successor path. No handler exposes this credential.
+  async linkNativeIdentitySuccessor(info){
+   if(successorReviewed!==true)throw deny();
+   const result=await link(info);
+   if(!token(result.refresh_token))throw deny();
+   successors.add(result.access_token);
+   return Object.freeze({access_token:result.access_token,refresh_token:result.refresh_token,token_type:'bearer'});
+  },
   async authenticateIssuedSession(bearer){
-   if(!temporary.has(bearer))throw deny();const a=await authenticateExactBearer(bearer);
+   if(!temporary.has(bearer)&&!successors.has(bearer))throw deny();const a=await authenticateExactBearer(bearer);
    const identities=a.user.identities;
    if(!Array.isArray(identities))throw deny();
    return {actor_id:a.user.id,session_id:a.claims.session_id,apple_subjects:identities.filter(x=>x.provider==='apple').map(x=>x.identity_data?.sub??x.provider_id)};
@@ -70,3 +103,4 @@ export function createNativeAppleAuthPorts({enabled=false,nativeOnlyReviewed=fal
   },
  });
 }
+

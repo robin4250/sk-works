@@ -53,3 +53,23 @@ test('composed endpoint verifies RSA, authenticates exact original, reserves onc
  const denied=await stalled(new Request('https://broker.invalid',{method:'POST',headers:{authorization:'Bearer '+original,'content-type':'application/json'},body:JSON.stringify({id_token:credential,nonce,password:'fixture-password'})}));
  assert.equal(denied.status,403);assert.equal(calls.filter(x=>x.url.endsWith('reserve_apple_native_subject')).length,1);
 });
+
+test('successor credential is internal opt-in and never cleanup-authorized as temporary',async()=>{
+ const off=fixture();await off.ports.bindOriginal(original);await assert.rejects(off.ports.linkNativeIdentitySuccessor({exactBearer:original,idToken:apple,rawNonce:nonce}));assert.equal(off.calls.length,1);
+ const f=fixture({successorReviewed:true});await f.ports.bindOriginal(original);
+ const r=await f.ports.linkNativeIdentitySuccessor({exactBearer:original,idToken:apple,rawNonce:nonce});assert.equal(r.refresh_token,'MUST_NOT_ESCAPE');
+ assert.equal((await f.ports.authenticateIssuedSession(r.access_token)).actor_id,actor);
+ await assert.rejects(f.ports.revokeLocal(r.access_token));assert.equal(f.calls.some(x=>x.url.includes('logout')),false);
+});
+
+// The official GoTrue custom-hook path may serialize a singleton aud as an
+// array before its JWT serializer has normalized the first token in a process.
+// Auth /user must still verify the exact token before either form is accepted.
+test('verified singleton JWT audience array is supported without accepting other audience sets',async()=>{
+ const valid=fixture();await valid.ports.bindOriginal(jwt(sid,{aud:['authenticated']}));assert.equal(valid.calls.length,1);
+ for(const aud of [[],['wrong'],['authenticated','wrong'],['authenticated','authenticated'],[null],[1],{0:'authenticated'},null]){
+  const f=fixture();await assert.rejects(f.ports.bindOriginal(jwt(sid,{aud})));assert.equal(f.calls.length,1);
+ }
+ const denied=fixture({fetcher:async()=>new Response('denied',{status:401})});
+ await assert.rejects(denied.ports.bindOriginal(jwt(sid,{aud:['authenticated']})));
+});

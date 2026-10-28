@@ -1,0 +1,98 @@
+name: QR master gate candidate
+on:
+  pull_request:
+    paths:
+      - 'docs/review/qr-master-gate/**'
+      - 'tool/qr-attendance/**'
+      - '.github/workflows/qr-master-gate.yml'
+permissions:
+  contents: read
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGPASSWORD: fixture
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql -v ON_ERROR_STOP=1 -f docs/review/qr-master-gate/qr-master-gate-test.sql
+
+      - run: createdb qr_master_contract_fixture
+      - run: psql -d qr_master_contract_fixture -v ON_ERROR_STOP=1 -f docs/review/qr-master-gate/qr-master-contract-test.sql
+
+      - run: createdb qr_common_public_fixture
+      - run: psql -d qr_common_public_fixture -v ON_ERROR_STOP=1 -f docs/review/qr-master-gate/qr-common-public-contract-test.sql
+
+      - run: npm ci --prefix tool/security/fixture_dependencies
+      - name: Concurrent QR OFF transition
+        env:
+          CI: 'true'
+        run: node docs/review/qr-master-gate/qr-common-concurrency.test.mjs
+
+      - name: Candidate nonce ledger and locked hooks
+        run: node --test tool/qr-attendance/qr-scan-ledger.test.mjs
+
+      - run: createdb qr_scanner_context_fixture
+      - name: Native internal scanner context
+        run: psql -d qr_scanner_context_fixture -v ON_ERROR_STOP=1 -f tool/qr-attendance/qr-scanner-context-test.sql
+
+      - run: createdb qr_scanner_registration_fixture
+      - name: Native internal scanner registration
+        run: psql -d qr_scanner_registration_fixture -v ON_ERROR_STOP=1 -f tool/qr-attendance/qr-scanner-registration-test.sql
+
+      - name: Scanner registration key ownership
+        run: node --test tool/qr-attendance/qr-scanner-possession.test.mjs
+
+      - name: Native scanner registration key ownership
+        env:
+          CI: 'true'
+        run: node tool/qr-attendance/qr-scanner-possession-integration.mjs
+
+      - name: Scanner registration challenge delivery and reconciliation
+        run: node --test tool/qr-attendance/qr-scanner-challenge-adapter.test.mjs
+
+      - name: Exact-bearer scanner request session boundary
+        run: node --test tool/qr-attendance/qr-scanner-verified-session.test.mjs
+
+      - name: Scanner registration second-password proof issuer
+        run: node --test tool/qr-attendance/qr-scanner-proof-issuer.test.mjs
+
+      - name: Native scanner registration exact proof
+        env:
+          CI: 'true'
+        run: node tool/qr-attendance/qr-scanner-proof-integration.mjs
+
+      - name: Native QR scan coordinator transaction
+        env:
+          CI: 'true'
+        run: node tool/qr-attendance/qr-scan-postgres.test.mjs
+
+      - name: Unused common bridge restoration
+        run: node docs/review/qr-master-gate/qr-common-unused-restore.test.mjs
+
+  real-gotrue-common-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies
+      - name: Isolated real GoTrue common QR boundary
+        run: node docs/review/qr-master-gate/qr-common-real-gotrue.mjs

@@ -4,10 +4,10 @@ import {createReauthenticationHandler} from '../../supabase/functions/reauthenti
 const actor='10000000-0000-0000-0000-000000000001';
 const session='20000000-0000-0000-0000-000000000001';
 const temporary='20000000-0000-0000-0000-000000000002';
-const jwt=(sub=actor,sid=session)=>'fixture.'+btoa(JSON.stringify({sub,session_id:sid,role:'authenticated',exp:Math.floor(Date.now()/1000)+600}))+'.synthetic';
+const jwt=(sub=actor,sid=session,issuedAt=Date.now())=>'fixture.'+btoa(JSON.stringify({sub,session_id:sid,role:'authenticated',exp:Math.floor(issuedAt/1000)+600}))+'.synthetic';
 const target={user_id:actor};
 function fixture(overrides={}) {
- const calls=[]; let issued;
+ const calls=[]; let issued,temporaryAccessToken;
  const fetcher=async(url,options={})=>{
   const path=new URL(url).pathname+new URL(url).search; calls.push({path,options});
   if(overrides.throwAt===path)throw Error('synthetic sensitive upstream details');
@@ -19,13 +19,17 @@ function fixture(overrides={}) {
    const body=JSON.parse(options.body);issued={...body,p_actor:actor,p_session:session};
    return Response.json(new Date(Date.now()+120000).toISOString());
   }
-  if(path==='/auth/v1/token?grant_type=password')return Response.json({user:{id:overrides.verifiedActor??actor},access_token:jwt(overrides.verifiedActor??actor,overrides.tempSession??temporary),refresh_token:'NEVER_RETURN_THIS'},{status:overrides.passwordStatus??200});
+  if(path==='/auth/v1/token?grant_type=password'){
+   // Mint earlier than assertion time: logout must use these exact issued bytes.
+   temporaryAccessToken=jwt(overrides.verifiedActor??actor,overrides.tempSession??temporary,Date.now()-2000);
+   return Response.json({user:{id:overrides.verifiedActor??actor},access_token:temporaryAccessToken,refresh_token:'NEVER_RETURN_THIS'},{status:overrides.passwordStatus??200});
+  }
   if(path==='/auth/v1/logout?scope=local')return new Response(null,{status:overrides.logoutStatus??204});
   if(path==='/rest/v1/rpc/issue_reauthentication_proof') {issued=JSON.parse(options.body);return Response.json(new Date(Date.now()+120000).toISOString(),{status:overrides.issueStatus??200});}
   throw Error('Unexpected endpoint '+path);
  };
  const handler=createReauthenticationHandler({baseUrl:'https://fixture.invalid',publicKey:'public_fixture',serviceKey:'sb_'+'secret_'+'fixture-key',fetcher});
- return {calls,get issued(){return issued;},async invoke(body={operation:'secondary_password.replace',password:'synthetic-password',target},token=jwt()) {
+ return {calls,get temporaryAccessToken(){return temporaryAccessToken;},get issued(){return issued;},async invoke(body={operation:'secondary_password.replace',password:'synthetic-password',target},token=jwt()) {
   return handler(new Request('https://function.invalid',{method:'POST',headers:{Authorization:'Bearer '+token},body:JSON.stringify(body)}));
  }, handler};
 }
@@ -35,7 +39,7 @@ test('verified credentials issue bound nonce only after distinct session logout;
  assert.deepEqual(Object.keys(v).sort(),['expiresAt','operation','proof','protocol','target']);
  assert.equal(f.issued.p_actor,actor);assert.equal(f.issued.p_session,session);assert.notEqual(f.issued.p_proof_hash,v.proof);
  const passwordCall=f.calls.find(x=>x.path.includes('grant_type=password'));assert.equal(JSON.parse(passwordCall.options.body).phone,'synthetic-phone');
- const logout=f.calls.find(x=>x.path.includes('logout'));assert.equal(logout.options.headers.Authorization,'Bearer '+jwt(actor,temporary));
+ const logout=f.calls.find(x=>x.path.includes('logout'));assert.equal(logout.options.headers.Authorization,'Bearer '+f.temporaryAccessToken);
  assert.ok(f.calls.findIndex(x=>x.path.includes('logout'))<f.calls.findIndex(x=>x.path.includes('issue_reauthentication')));
  const issue=f.calls.find(x=>x.path.includes('issue_reauthentication'));assert.equal(issue.options.headers.Authorization,undefined,'opaque key must not be JWT');
  assert.equal(JSON.stringify(v).includes('synthetic-password'),false);
@@ -115,3 +119,4 @@ test('known secondary password change uses secondary verifier and exact existing
  assert.equal(f.calls.some(x=>x.path.endsWith('/issue_secondary_reauthentication_proof')),true);assert.equal(f.calls.some(x=>x.path.includes('/token')),false);
  const denied=fixture({secondaryResult:false});assert.equal((await denied.invoke({operation:'secondary_password.change',password:'synthetic-wrong',target})).status,403);assert.equal(denied.issued,undefined);
 });
+

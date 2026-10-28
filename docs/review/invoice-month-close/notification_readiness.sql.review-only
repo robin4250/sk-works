@@ -1,0 +1,25 @@
+-- REVIEW ONLY: internal worker calculation; no grants, RPC, scheduler or send.
+-- Recipient is checked directly against a pending approval, never impersonated.
+create function invoice_month_close_candidate.notification_readiness(p_invoice uuid,p_recipient uuid)
+returns jsonb language plpgsql volatile security definer set search_path='' set timezone='UTC' as $$
+declare status text;v jsonb;inv public.invoices%rowtype;
+begin
+ status:=invoice_month_close_candidate.precheck(p_invoice);
+ if status<>'source_proof_missing' then return jsonb_build_object('status',status);end if;
+ if to_regprocedure('invoice_month_close_candidate.notice_core_intact()') is null or invoice_month_close_candidate.notice_core_intact() is distinct from true then return jsonb_build_object('status','unavailable');end if;
+ begin
+  v:=invoice_month_close_candidate.preview_for_notice(p_invoice,p_recipient);
+  if jsonb_typeof(v) is distinct from 'object' or v->>'original_invoice_id' is distinct from p_invoice::text or v->'calculation_blocked' is distinct from 'false'::jsonb or v->>'source_fingerprint' is null or v->>'source_fingerprint' !~ '^[0-9a-f]{64}$' or v->>'original_invoice_fingerprint' is null or v->>'original_invoice_fingerprint' !~ '^[0-9a-f]{64}$' then return jsonb_build_object('status','unavailable');end if;
+  perform invoice_month_close_candidate.revalidate_for_notice(p_invoice,p_recipient,v->>'source_fingerprint',v->>'original_invoice_fingerprint');
+  if invoice_month_close_candidate.notice_core_intact() is distinct from true then return jsonb_build_object('status','unavailable');end if;
+  status:=invoice_month_close_candidate.precheck(p_invoice);
+  if status<>'source_proof_missing' then return jsonb_build_object('status',status);end if;
+  select * into inv from public.invoices where id=p_invoice;
+  if not found or inv.updated_at is null or inv.calculation_blocked is distinct from false or (inv.snapshot-'company_seal_snapshot') is distinct from v->'proposed_snapshot' or to_jsonb(inv.subtotal) is distinct from v->'subtotal' or to_jsonb(inv.tax) is distinct from v->'tax' or to_jsonb(inv.welfare_amount) is distinct from v->'welfare' or to_jsonb(inv.grand_total) is distinct from v->'grand_total' then return jsonb_build_object('status','data_changed');end if;
+  return jsonb_build_object('status','ready','invoice_revision',inv.updated_at::text,'source_fingerprint',v->>'source_fingerprint');
+ exception when query_canceled then raise;
+ when lock_not_available or serialization_failure or deadlock_detected then raise;
+ when others then return jsonb_build_object('status','unavailable');
+ end;
+end $$;
+revoke all on function invoice_month_close_candidate.notification_readiness(uuid,uuid) from public,anon,authenticated,service_role;

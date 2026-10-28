@@ -1,0 +1,127 @@
+name: Master new device proof candidate
+on:
+  pull_request:
+    paths:
+      - 'tool/security/master-device-enrollment-candidate/new-device-proof*'
+      - 'tool/security/master-device-enrollment-candidate/verified-dual-proof*'
+      - 'tool/security/master-device-enrollment-candidate/session-bound-approval*'
+      - 'tool/security/master-device-enrollment-candidate/key-migration-proposal*'
+      - 'tool/security/master-device-enrollment-candidate/key-migration-possession*'
+      - 'tool/security/master-device-enrollment-candidate/key-migration-pending-adapter*'
+      - 'tool/security/master-device-enrollment-candidate/key-migration-proven*'
+      - 'tool/security/master-device-enrollment-candidate/key-migration-challenges*'
+      - 'tool/security/master-device-enrollment-candidate/key-migration-owner-request*'
+      - 'tool/security/master-device-enrollment-candidate/owner-decision-attestation*'
+      - 'tool/security/master-device-enrollment-candidate/owner-decision-evidence*'
+      - 'tool/security/master-device-enrollment-candidate/key-migration-challenge-issuer*'
+      - 'tool/security/master-device-enrollment-candidate/key-migration-challenge-http*'
+      - '.github/workflows/master-new-device-proof.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --test tool/security/master-device-enrollment-candidate/owner-decision-attestation.test.mjs tool/security/master-device-enrollment-candidate/key-migration-challenge-http-candidate.test.mjs tool/security/master-device-enrollment-candidate/key-migration-proven-adapter.test.mjs tool/security/master-device-enrollment-candidate/key-migration-possession.test.mjs tool/security/master-device-enrollment-candidate/key-migration-pending-adapter.test.mjs tool/security/master-device-enrollment-candidate/key-migration-proposal.test.mjs tool/security/master-device-enrollment-candidate/new-device-proof.test.mjs tool/security/master-device-enrollment-candidate/verified-dual-proof.test.mjs tool/security/master-device-enrollment-candidate/session-bound-approval.test.mjs
+
+  native-pending-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic-fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: synthetic-fixture
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/security/master-device-enrollment-candidate/key-migration-pending-adapter.native.mjs
+
+  native-proven-pending-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic-fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: synthetic-fixture
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/security/master-device-enrollment-candidate/key-migration-proven-adapter.native.mjs
+
+  real-gotrue-pending-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --prefix tool/security/fixture_dependencies
+      - run: node --check tool/security/master-device-enrollment-candidate/key-migration-pending-adapter.gotrue.mjs
+      - name: Real GoTrue JWT and live session with isolated pending adapter
+        run: node tool/security/master-device-enrollment-candidate/key-migration-pending-adapter.gotrue.mjs
+
+  native-challenge-issuance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: synthetic-fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: synthetic-fixture
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - run: node tool/security/master-device-enrollment-candidate/key-migration-challenge-issuer.native.mjs
+

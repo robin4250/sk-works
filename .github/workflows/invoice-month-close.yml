@@ -1,0 +1,123 @@
+name: Invoice month close review
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/review/invoice-month-close/**'
+      - '.github/workflows/invoice-month-close.yml'
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_document_adjustment_fixture
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 4f04488f77ff909d0d48a9a74247eb549823ca83
+          path: invoice-calculation-candidate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts pg@8.16.3
+      - run: python3 docs/review/invoice-month-close/generate_legacy_notice_guard.py invoice-calculation-candidate/docs/review/invoice-correction-preview/integration_trigger_bodies.sql.review-only "$RUNNER_TEMP/legacy-notice-guard.sql"
+      - run: node docs/review/invoice-month-close/verify_legacy_notice.mjs
+        env:
+          SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
+          SKO_LEGACY_TEST: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/verify_invoice_trigger_contract.mjs
+          SKO_NOTIFY_TRIGGER: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/integration_trigger_bodies.sql.review-only
+          SKO_PUBLIC_ENTRY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/public_entry.sql.review-only
+          SKO_APPROVAL_GUARD_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approval_guard.sql.review-only
+          SKO_LEGACY_GUARD_SQL: ${{ runner.temp }}/legacy-notice-guard.sql
+          SKO_TEMP_DIR: ${{ github.workspace }}/docs/review/invoice-month-close
+      - run: node docs/review/invoice-month-close/verify.mjs "$PWD/tool/trade_document_adjustments_native_pg17_runtime.mjs"
+        env:
+          SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
+          SKO_APPROVAL_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approve.sql.review-only
+          SKO_GUARDED_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/guarded.sql.review-only
+          SKO_LATE_CHANGE_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/late_change.sql.review-only
+          SKO_NOTICE_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification.sql.review-only
+          SKO_ROUTE_COMPONENTS: ${{ github.workspace }}/docs/review/invoice-month-close/route_components.production.sql.review-only
+          SKO_ROUTE_HELPERS: ${{ github.workspace }}/docs/review/invoice-month-close/route_helpers.production.sql.review-only
+          SKO_MONTH_CLOSE_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/precheck.sql.review-only
+  integrated-calculation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sko_document_adjustment_fixture
+          POSTGRES_PASSWORD: fixture-only-password
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 4f04488f77ff909d0d48a9a74247eb549823ca83
+          path: invoice-calculation-candidate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts pg@8.16.3
+      - run: python3 docs/review/invoice-month-close/generate_legacy_notice_guard.py invoice-calculation-candidate/docs/review/invoice-correction-preview/integration_trigger_bodies.sql.review-only "$RUNNER_TEMP/legacy-notice-guard.sql"
+      - run: python3 docs/review/invoice-month-close/generate_approver_core.py invoice-calculation-candidate/docs/review/invoice-correction-preview/preview.sql.review-only "$RUNNER_TEMP/approver-core.sql"
+      - run: node docs/review/invoice-month-close/verify_integration.mjs "$PWD/tool/trade_document_adjustments_native_pg17_runtime.mjs"
+        env:
+          SKO_DOCUMENT_ADJUSTMENT_FIXTURE_URL: postgresql://postgres:fixture-only-password@127.0.0.1:5432/sko_document_adjustment_fixture
+          SKO_ADJUSTMENT_ROOT: ${{ github.workspace }}
+          SKO_NOTICE_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification.sql.review-only
+          SKO_LEGACY_GUARD_SQL: ${{ runner.temp }}/legacy-notice-guard.sql
+          SKO_PUBLIC_ENTRY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/public_entry.sql.review-only
+          SKO_APPROVAL_GUARD_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approval_guard.sql.review-only
+          SKO_APPROVAL_ENTRY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approval_entry.sql.review-only
+          SKO_DELIVERY_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification_delivery.sql.review-only
+          SKO_NOTIFY_TRIGGER: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/integration_trigger_bodies.sql.review-only
+          SKO_NOTIFICATION_READINESS_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/notification_readiness.sql.review-only
+          SKO_APPROVER_CORE: ${{ runner.temp }}/approver-core.sql
+          SKO_PREVIEW_WRAPPER: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/verify.mjs
+          SKO_PREVIEW_SQL: ${{ github.workspace }}/invoice-calculation-candidate/docs/review/invoice-correction-preview/preview.sql.review-only
+          SKO_APPROVAL_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/approve.sql.review-only
+          SKO_GUARDED_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/guarded.sql.review-only
+          SKO_MONTH_CLOSE_SQL: ${{ github.workspace }}/docs/review/invoice-month-close/precheck.sql.review-only
+
+  notice-real-gotrue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 02e532e500a2ebd1629bbbb5ecc11321d09e19f7
+          path: reauth-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix tool/security/fixture_dependencies
+      - run: node --check docs/review/invoice-month-close/verify_notice_gotrue.mjs
+      - uses: actions/checkout@v4
+        with:
+          ref: 4f04488f77ff909d0d48a9a74247eb549823ca83
+          path: invoice-calculation-candidate
+          persist-credentials: false
+      - name: Disposable GoTrue with real financial readiness
+        env:
+          SKO_INVOICE_NOTICE_AUTH_HOOK: contract-v1
+        run: node docs/review/invoice-month-close/verify_gotrue_finance.mjs
+      - name: Disposable GoTrue and PostgREST notice ticket
+        env:
+          SKO_INVOICE_NOTICE_AUTH_HOOK: contract-v1
+        run: node docs/review/invoice-month-close/verify_notice_gotrue.mjs

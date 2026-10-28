@@ -1,0 +1,34 @@
+-- Review-only pending key inventory. NO key activation, trust, or legacy RPC changes.
+-- Do not deploy before key custody, independent owner verification, retention,
+-- recovery and owner/device deletion compatibility have been reviewed.
+begin;
+create schema if not exists master_device_enrollment_candidate;
+revoke all on schema master_device_enrollment_candidate from public,anon,authenticated;
+create table master_device_enrollment_candidate.pending_key_migrations (
+ id uuid primary key default gen_random_uuid(),
+ actor uuid not null,
+ device_id uuid not null references private.master_devices(id) on delete restrict,
+ public_key_pem text not null check(length(public_key_pem) between 100 and 1024),
+ key_sha256 text not null check(key_sha256 ~ '^[a-f0-9]{64}$'),
+ status text not null default 'pending' check(status='pending'),
+ created_at timestamptz not null default clock_timestamp(),
+ unique(device_id,key_sha256)
+);
+alter table master_device_enrollment_candidate.pending_key_migrations enable row level security;
+revoke all on master_device_enrollment_candidate.pending_key_migrations from public,anon,authenticated;
+-- INVOKER: callers require existing private device read rights. No endpoint or
+-- service-role grant is introduced. The adapter must recheck under owner lock.
+create function master_device_enrollment_candidate.check_pending_key_owner()
+returns trigger language plpgsql security invoker set search_path='' as $$
+begin
+ if not exists(select 1 from private.master_devices d where d.id=new.device_id
+    and d.master_user_id=new.actor and d.is_locked=false and d.revoked_at is null) then
+  raise sqlstate '42501' using message='eligible_owned_device_required';
+ end if;
+ return new;
+end $$;
+revoke all on function master_device_enrollment_candidate.check_pending_key_owner() from public,anon,authenticated;
+create trigger check_pending_key_owner before insert or update
+ on master_device_enrollment_candidate.pending_key_migrations for each row
+ execute function master_device_enrollment_candidate.check_pending_key_owner();
+commit;

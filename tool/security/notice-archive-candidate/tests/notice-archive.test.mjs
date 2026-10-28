@@ -1,0 +1,251 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {createHash,createHmac,generateKeyPairSync,randomBytes,sign,randomUUID} from 'node:crypto';
+import {verifyFixtureSource,encryptFixtureEvidence,decryptFixtureEvidence} from '../src/source-evidence-fixture.mjs';
+import {mkdtemp,rm,mkdir,copyFile,readFile,writeFile} from 'node:fs/promises';
+import {resolve,join} from 'node:path';import {tmpdir} from 'node:os';import {createRequire} from 'node:module';
+const require=createRequire(resolve(process.env.SKO_WORKER_TEST_ROOT??'../security-free-worker-candidate','package.json'));
+const {Miniflare,Log,LogLevel}=require('miniflare');
+const source=resolve(process.env.SKO_AUDIT_CORE??'../security-free-worker-candidate/src/security-audit.mjs');
+const bytes=await readFile(source);if(createHash('sha256').update(bytes).digest('hex')!=='c52da32183a947cfac8e37470dd777e9c5de24acf224b9ee445376a82a3d5e58')throw Error('Existing security audit core differs');
+const anchorSource=resolve(process.env.SKO_ANCHOR_CORE??'../security-off-finish/remaining-defense/src/anchor-authority.mjs');
+if(createHash('sha256').update(await readFile(anchorSource)).digest('hex')!=='7b9425407013d9441486e9a1c8d8538f260a0176da79fc9d8333ed9636623ec4')throw Error('Existing anchor authority differs');
+const sha=x=>createHash('sha256').update(x).digest('hex');const key=()=>{const x=generateKeyPairSync('ed25519');return{priv:x.privateKey,pub:x.publicKey.export({format:'jwk'}),privateJwk:x.privateKey.export({format:'jwk'})}};
+const signature=(key,domain,body)=>sign(null,Buffer.from(domain+'\n'+body),key).toString('hex');
+const now=Date.UTC(2026,9,27),day=86400000,zero='0'.repeat(64),owner='owner_1',company='10000000-0000-0000-0000-000000000001',deployment='notice_archive_1';
+async function fixture(t){
+ const dir=await mkdtemp(join(tmpdir(),'sko-notice-archive-')),src=join(dir,'src'),tests=join(dir,'tests');await mkdir(src);await mkdir(tests);
+ await copyFile(source,join(src,'security-audit.mjs'));await copyFile(anchorSource,join(src,'anchor-authority.mjs'));await copyFile(new URL('../src/notice-archive.mjs', import.meta.url),join(src,'notice-archive.mjs'));await copyFile(new URL('../src/anchor-rotation-fixture.mjs', import.meta.url),join(src,'anchor-rotation-fixture.mjs'));await copyFile(new URL('../src/recovery-proposal-fixture.mjs', import.meta.url),join(src,'recovery-proposal-fixture.mjs'));await copyFile(new URL('./notice-archive-fixture.mjs', import.meta.url),join(tests,'notice-archive-fixture.mjs'));
+ const audit=key(),anchor=key(),config={deploymentId:deployment,companyId:company,ownerId:owner,auditKeyId:'archive_audit_1',anchorKeyId:'archive_anchor_1',auditJwk:audit.pub,anchorJwk:anchor.pub,retentionMs:7*day};
+ const options={modules:true,scriptPath:join(tests,'notice-archive-fixture.mjs'),modulesRoot:dir,compatibilityDate:'2026-07-30',durableObjects:{ARCHIVE:{className:'ArchiveFixture',useSQLite:true},AUTHORITY:{className:'AuthorityFixture',useSQLite:true}},bindings:{FIXTURE_ANCHOR_PRIVATE:JSON.stringify(anchor.privateJwk)},durableObjectsPersist:join(dir,'state'),log:new Log(LogLevel.ERROR)};
+ let mf=new Miniflare(options);t.after(async()=>{await mf.dispose();await rm(dir,{recursive:true,force:true});});
+ const call=async(route,data={},namespace='ARCHIVE')=>{const ns=await mf.getDurableObjectNamespace(namespace);return ns.get(ns.idFromName('fixture')).fetch('https://fixture.invalid/'+route,{method:'POST',body:JSON.stringify(data)});};
+ assert.equal((await call('initialize',config)).status,200);const {retentionMs,...authorityConfig}=config;assert.equal((await call('initialize',authorityConfig,'AUTHORITY')).status,200);
+ return{call,audit,anchor,config,restart:async()=>{await mf.dispose();mf=new Miniflare(options)}};
+}
+function createBatch(f,{seq=1,previous=zero,anchorSeq=1,previousAudit=zero,eventId=randomUUID(),reviewed=now-8*day,evidenceDigest=sha('synthetic signed event')}={}){
+ const m={v:1,deployment_id:deployment,company_id:company,batch_sequence:seq,previous_hash:previous,archived_at:now,events:[{event_id:eventId,event_kind:'current_lure_touched',evidence_digest:evidenceDigest,generation:1,occurred_at:reviewed-1000,review_state:'resolved',reviewed_at:reviewed,history:[{action:'resolved',actor_id:owner,occurred_at:reviewed,reason:'fixture reviewed'}]}]};
+ const body=JSON.stringify({v:1,deployment_id:deployment,sequence:anchorSeq,previous_hash:previousAudit,kind:'retention',action:'archive_notice_batch',reason:'retention_expired',actor_id:'system_retention',company_id:company,occurred_at:now,before:{},after:{manifest_sha256:sha(JSON.stringify(m)),batch_sequence:seq,event_count:m.events.length}});
+ const audit={sequence:anchorSeq,previous_hash:previousAudit,hash:sha(body),body,signature:signature(f.audit.priv,'sko-decoy-audit-v1',body),key_id:'archive_audit_1',occurred_at:now};
+ const payload={v:1,deployment_id:deployment,sequence:anchorSeq,hash:audit.hash,issued_at:now,key_id:'archive_anchor_1'},anchor={payload,signature:signature(f.anchor.priv,'sko-decoy-anchor-v1',JSON.stringify(payload))};
+ return{manifest:m,audit,anchor,latestIndependentAnchor:anchor,now};
+}
+test('signed closed evidence is retained separately; exact retry and restart are stable',async t=>{
+ const f=await fixture(t),batch=createBatch(f),saved=await f.call('store',batch);assert.equal(saved.status,200);const receipt=await saved.json();assert.equal(receipt.replayed,false);assert.equal((await(await f.call('store',batch)).json()).replayed,true);
+ await f.restart();const read=await f.call('read',{batchSequence:1,latestIndependentAnchor:batch.anchor,now});assert.equal(read.status,200);assert.deepEqual(await read.json(),batch.manifest);assert.equal((await(await f.call('snapshot')).json()).rows.length,1);
+});
+test('unresolved, too recent, wrong source or wrong signature never changes archive',async t=>{
+ const f=await fixture(t),batch=createBatch(f),before=await(await f.call('snapshot')).json();
+ for(const mutate of [x=>x.manifest.events[0].review_state='investigating',x=>x.manifest.events[0].reviewed_at=now,x=>x.manifest.events[0].ip='127.0.0.1',x=>x.audit.signature='0'.repeat(128),x=>x.anchor.signature='0'.repeat(128),x=>x.latestIndependentAnchor=null,x=>x.manifest.company_id='other']){const x=structuredClone(batch);mutate(x);assert.equal((await f.call('store',x)).status,409);assert.deepEqual(await(await f.call('snapshot')).json(),before);}
+});
+test('lost head, stored-body corruption and database insertion failure refuse without partial write',async t=>{
+ const f=await fixture(t),batch=createBatch(f);assert.equal((await f.call('store',batch)).status,200);const before=await(await f.call('snapshot')).json();
+ await f.call('tamper',{sequence:1,manifest:before.rows[0].manifest.replace('fixture reviewed','changed')});assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:batch.anchor,now})).status,409);
+ const g=await fixture(t),other=createBatch(g);await g.call('fail');assert.equal((await g.call('store',other)).status,409);const state=await(await g.call('snapshot')).json();assert.equal(state.rows.length,0);assert.equal(state.state[0].batch_sequence,0);
+});
+test('concurrent same batch, new signed head and deleted historical batch are detected',async t=>{
+ const f=await fixture(t),first=createBatch(f);const rs=await Promise.all([f.call('store',first),f.call('store',first)]);assert.ok(rs.some(x=>x.status===200));const firstHash=sha(JSON.stringify(first.manifest));
+ const second=createBatch(f,{seq:2,previous:firstHash,anchorSeq:2,previousAudit:first.audit.hash});assert.equal((await f.call('store',second)).status,200);
+ assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:first.anchor,now})).status,409);
+ assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:second.anchor,now})).status,200);
+ await f.call('delete',{sequence:1});assert.equal((await f.call('read',{batchSequence:2,latestIndependentAnchor:second.anchor,now})).status,409);
+});
+
+test('existing independent authority anchors archive audit before immutable storage',async t=>{
+ const f=await fixture(t),batch=createBatch(f);
+ const publication={expected_sequence:0,expected_hash:zero,records:[batch.audit]};
+ const anchored=await f.call('publish',{publication,now},'AUTHORITY');assert.equal(anchored.status,200);
+ const authorityReceipt=await anchored.json();assert.equal(authorityReceipt.payload.hash,batch.audit.hash);
+ batch.anchor=authorityReceipt;batch.latestIndependentAnchor=await(await f.call('latest',{},'AUTHORITY')).json();
+ assert.equal((await f.call('store',batch)).status,200);await f.restart();
+ batch.latestIndependentAnchor=await(await f.call('latest',{},'AUTHORITY')).json();
+ assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:batch.latestIndependentAnchor,now})).status,200);
+});
+
+test('archive alone cannot establish ancestry of a higher signed anchor; authority rejects fork',async t=>{
+ const f=await fixture(t), first=createBatch(f);
+ assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ first.anchor=await(await f.call('latest',{},'AUTHORITY')).json();first.latestIndependentAnchor=first.anchor;
+ assert.equal((await f.call('store',first)).status,200);
+ const fork=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:'f'.repeat(64)});
+ const rejected=await f.call('publish',{publication:{expected_sequence:1,expected_hash:first.audit.hash,records:[fork.audit]},now},'AUTHORITY');
+ assert.equal(rejected.status,409);
+ // Deliberately model a trusted anchor key issuing an inconsistent head. The
+ // archive checks signatures and increasing sequence, not intervening ancestry.
+ // Acceptance here is a counterexample, not a claim that the real authority
+ // issues such a receipt, nor permission to connect this fixture to production.
+ assert.equal((await f.call('store',fork)).status,200);
+});
+
+test('strict archive checks signed continuity, rejects forks and allows exact retry',async t=>{
+ const f=await fixture(t),first=createBatch(f);
+ first.auditExtension=[first.audit];
+ assert.equal((await f.call('store-strict',first)).status,200);
+ const firstHash=sha(JSON.stringify(first.manifest));
+ const fork=createBatch(f,{seq:2,previous:firstHash,anchorSeq:2,previousAudit:'f'.repeat(64)});
+ fork.auditExtension=[fork.audit];
+ const before=await(await f.call('snapshot')).json();
+ assert.equal((await f.call('store-strict',fork)).status,409);
+ assert.deepEqual(await(await f.call('snapshot')).json(),before);
+ const next=createBatch(f,{seq:2,previous:firstHash,anchorSeq:2,previousAudit:first.audit.hash});
+ assert.equal((await f.call('store-strict',{...next,auditExtension:[]})).status,409);
+ const changed=structuredClone(next.audit);changed.body=changed.body.replace('retention_expired','changed');
+ assert.equal((await f.call('store-strict',{...next,auditExtension:[changed]})).status,409);
+ assert.equal((await f.call('store-strict',{...next,auditExtension:[next.audit]})).status,200);
+ assert.equal((await(await f.call('store-strict',{...next,auditExtension:[]})).json()).replayed,true);
+});
+
+test('strict archive accepts complete intermediate history but rejects missing or reordered rows',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('store-strict',{...first,auditExtension:[first.audit]})).status,200);
+ const previous=sha(JSON.stringify(first.manifest));
+ const intermediate=createBatch(f,{seq:2,previous,anchorSeq:2,previousAudit:first.audit.hash});
+ const last=createBatch(f,{seq:2,previous,anchorSeq:3,previousAudit:intermediate.audit.hash});
+ for(const rows of [[last.audit],[last.audit,intermediate.audit],[intermediate.audit]]){
+  assert.equal((await f.call('store-strict',{...last,auditExtension:rows})).status,409);
+ }
+ const results=await Promise.all([f.call('store-strict',{...last,auditExtension:[intermediate.audit,last.audit]}),f.call('store-strict',{...last,auditExtension:[intermediate.audit,last.audit]})]);
+ assert.ok(results.some(r=>r.status===200));
+ const state=await(await f.call('snapshot')).json();assert.equal(state.rows.length,2);assert.equal(state.state[0].anchor_sequence,3);
+});
+
+test('stale signed authority receipt is not evidence of a fresh head',async t=>{
+ const f=await fixture(t),first=createBatch(f);
+ assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ first.anchor=await(await f.call('latest',{},'AUTHORITY')).json();first.latestIndependentAnchor=first.anchor;
+ assert.equal((await f.call('store',first)).status,200);
+ const second=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:first.audit.hash});
+ assert.equal((await f.call('publish',{publication:{expected_sequence:1,expected_hash:first.audit.hash,records:[second.audit]},now},'AUTHORITY')).status,200);
+ const actualHead=await(await f.call('latest',{},'AUTHORITY')).json();
+ assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:actualHead,now})).status,409);
+ // A legitimate but stale signed receipt matches the old archive and is accepted.
+ // This intentionally exposes why external fresh, authenticated head retrieval
+ // is a mandatory prerequisite; the fixture is not rollback protection.
+ assert.equal((await f.call('read',{batchSequence:1,latestIndependentAnchor:first.anchor,now})).status,200);
+});
+
+// Integration experiment: real existing signed audit/anchor and workerd archive,
+// fixture source HMAC and encrypted copy on a separate local file. Not a real
+// DB export or authenticated independent-host / key custody implementation.
+test('fixture source MAC and encrypted original match independently anchored manifest after restart',async t=>{
+ const f=await fixture(t),eventId=randomUUID(),collector=randomUUID(),sourceKey=randomBytes(32),archiveKey=randomBytes(32),reviewed=now-8*day,occurred=reviewed-1000;
+ const metadata={event_id:eventId,collector_id:collector,occurred_at:new Date(occurred).toISOString(),event_kind:'current_lure_touched',generation:1,correlation_key:sha('synthetic correlation'),key_epoch:new Date(occurred).toISOString().slice(0,10)};
+ const raw=Buffer.from(JSON.stringify(metadata)),timestamp=now,source={collector_id:collector,key_version:1,timestamp,body_base64:raw.toString('base64'),signature:createHmac('sha256',sourceKey).update(`sko-collector-v2\n${collector}\n1\n${timestamp}\n`).update(raw).digest('hex')};
+ const proof=verifyFixtureSource(source,metadata,sourceKey),box=encryptFixtureEvidence(source,metadata,sourceKey,archiveKey,company),batch=createBatch(f,{eventId,reviewed,evidenceDigest:proof.raw_sha256});
+ const dir=await mkdtemp(join(tmpdir(),'sko-fixture-envelope-'));t.after(()=>rm(dir,{recursive:true,force:true}));const file=join(dir,'encrypted-fixture.json');await writeFile(file,JSON.stringify(box));
+ const publication={expected_sequence:0,expected_hash:zero,records:[batch.audit]},anchored=await f.call('publish',{publication,now},'AUTHORITY');assert.equal(anchored.status,200);
+ batch.anchor=await anchored.json();batch.latestIndependentAnchor=await(await f.call('latest',{},'AUTHORITY')).json();assert.equal((await f.call('store',batch)).status,200);await f.restart();
+ const latest=await(await f.call('latest',{},'AUTHORITY')).json(),saved=await f.call('read',{batchSequence:1,latestIndependentAnchor:latest,now});assert.equal(saved.status,200);const manifest=await saved.json();
+ const restored=decryptFixtureEvidence(JSON.parse(await readFile(file,'utf8')),company,archiveKey),verified=verifyFixtureSource(restored,metadata,sourceKey);assert.equal(manifest.events[0].event_id,verified.event_id);assert.equal(manifest.events[0].evidence_digest,verified.raw_sha256);assert.equal(manifest.events[0].occurred_at,occurred);
+ assert.throws(()=>verifyFixtureSource({...restored,signature:'0'.repeat(64)},metadata,sourceKey));assert.throws(()=>decryptFixtureEvidence({...box,tag:Buffer.alloc(16).toString('base64')},company,archiveKey));
+});
+
+
+test('strict extension rows persist through restart and failed insertion rolls back batch',async t=>{
+ const f=await fixture(t),first=createBatch(f);
+ assert.equal((await f.call('store-strict',{...first,auditExtension:[first.audit]})).status,200);
+ await f.restart();let rows=await(await f.call('extensions')).json();
+ assert.equal(rows.length,1);assert.deepEqual(JSON.parse(rows[0].rows_json),[first.audit]);
+ const before=await(await f.call('snapshot')).json(),second=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:first.audit.hash});
+ assert.equal((await f.call('fail-extension')).status,200);
+ assert.equal((await f.call('store-strict',{...second,auditExtension:[second.audit]})).status,409);
+ assert.deepEqual(await(await f.call('snapshot')).json(),before);
+ assert.deepEqual(await(await f.call('extensions')).json(),rows);
+});
+
+
+test('strict read verifies retained intermediate signatures after restart and rejects corruption or missing rows',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('store-strict',{...first,auditExtension:[first.audit]})).status,200);
+ const previous=sha(JSON.stringify(first.manifest)),middle=createBatch(f,{seq:2,previous,anchorSeq:2,previousAudit:first.audit.hash}),last=createBatch(f,{seq:2,previous,anchorSeq:3,previousAudit:middle.audit.hash});
+ assert.equal((await f.call('store-strict',{...last,auditExtension:[middle.audit,last.audit]})).status,200);await f.restart();
+ const args={batchSequence:1,latestIndependentAnchor:last.anchor,now};assert.equal((await f.call('read-strict',args)).status,200);
+ const rows=await(await f.call('extensions')).json(),original=rows[1].rows_json,broken=JSON.parse(original);broken[0].signature='0'.repeat(128);
+ assert.equal((await f.call('tamper-extension',{sequence:2,rows:JSON.stringify(broken)})).status,200);assert.equal((await f.call('read-strict',args)).status,409);
+ assert.equal((await f.call('tamper-extension',{sequence:2,rows:original})).status,200);assert.equal((await f.call('read-strict',args)).status,200);
+ assert.equal((await f.call('delete-extension',{sequence:2})).status,200);assert.equal((await f.call('read-strict',args)).status,409);
+});
+
+test('isolated planned rotation is bound to the existing independent authority receipt',async t=>{
+ const {verifyRotation,rotationBytes}=await import('../src/head-trust-fixture.mjs');
+ const f=await fixture(t),first=createBatch(f);
+ const sent=await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY');assert.equal(sent.status,200);
+ const authority=await sent.json(),replacement=key();
+ const payload={v:1,scope:deployment,from_epoch:1,to_epoch:2,checkpoint_sequence:authority.payload.sequence,checkpoint_hash:authority.payload.hash,new_key:replacement.pub};
+ const bytes=rotationBytes(payload),proof={payload,old_signature:sign(null,bytes,f.anchor.priv).toString('hex'),new_signature:sign(null,bytes,replacement.priv).toString('hex')};
+ const context={scope:deployment,checkpoint:{sequence:authority.payload.sequence,hash:authority.payload.hash},oldKey:f.anchor.pub,oldEpoch:1};
+ assert.equal(verifyRotation(proof,context).key.x,replacement.pub.x);
+ assert.throws(()=>verifyRotation(proof,{...context,scope:'another_deployment'}));
+ assert.throws(()=>verifyRotation(proof,{...context,checkpoint:{...context.checkpoint,hash:'f'.repeat(64)}}));
+ await f.restart();const restored=await(await f.call('latest',{},'AUTHORITY')).json();assert.deepEqual(restored,authority);
+ // No live key is switched by this test; the original authority is unchanged.
+});
+
+
+test('isolated existing authority rotates keys atomically and verifies retained receipt history',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const prior=await(await f.call('latest',{},'AUTHORITY')).json(),replacement=key(),args={newId:'anchor_2',newJwk:replacement.pub,oldKey:f.anchor.privateJwk,newKey:replacement.privateJwk,now:now+1};
+ assert.equal((await f.call('rotate',args,'AUTHORITY')).status,200);await f.restart();const current=await(await f.call('latest',{},'AUTHORITY')).json();assert.equal(current.payload.hash,prior.payload.hash);assert.equal(current.payload.key_id,'anchor_2');
+ const check={genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'};assert.equal((await f.call('rotation-history',check,'AUTHORITY')).status,200);
+ const second=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:first.audit.hash});
+ assert.equal((await f.call('publish-with-key',{publication:{expected_sequence:1,expected_hash:first.audit.hash,records:[second.audit]},now:now+2,key:replacement.privateJwk},'AUTHORITY')).status,200);
+ assert.equal((await f.call('rotation-history',check,'AUTHORITY')).status,200);
+ assert.equal((await f.call('rotate',args,'AUTHORITY')).status,409);
+ assert.equal((await f.call('rotation-tamper',{value:'0'.repeat(128)},'AUTHORITY')).status,200);assert.equal((await f.call('rotation-history',check,'AUTHORITY')).status,409);
+});
+test('isolated rotation failure restores the pre-rotation authority receipt',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const prior=await(await f.call('latest',{},'AUTHORITY')).json(),replacement=key();assert.equal((await f.call('rotation-fail',{},'AUTHORITY')).status,200);
+ assert.equal((await f.call('rotate',{newId:'anchor_2',newJwk:replacement.pub,oldKey:f.anchor.privateJwk,newKey:replacement.privateJwk,now:now+1},'AUTHORITY')).status,409);
+ assert.deepEqual(await(await f.call('latest',{},'AUTHORITY')).json(),prior);
+});
+
+test('concurrent planned rotations allow one successor and retain one verifiable transition',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const a=key(),b=key(),mk=(k,id)=>({newId:id,newJwk:k.pub,oldKey:f.anchor.privateJwk,newKey:k.privateJwk,now:now+1});
+ const results=await Promise.all([f.call('rotate',mk(a,'next_a'),'AUTHORITY'),f.call('rotate',mk(b,'next_b'),'AUTHORITY')]);
+ assert.equal(results.filter(x=>x.status===200).length,1);assert.equal(results.filter(x=>x.status===409).length,1);
+ const verify={genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'},history=await f.call('rotation-history',verify,'AUTHORITY');assert.equal(history.status,200);assert.equal((await history.json()).rotations,1);
+});
+
+
+test('old signed receipts stay verifiable after rotation and restart while forged retired-key receipts fail',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const original=await(await f.call('latest',{},'AUTHORITY')).json(),replacement=key(),args={newId:'anchor_2',newJwk:replacement.pub,oldKey:f.anchor.privateJwk,newKey:replacement.privateJwk,now:now+1};assert.equal((await f.call('rotate',args,'AUTHORITY')).status,200);await f.restart();
+ const request={receipt:original,genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'};assert.equal((await f.call('historical-receipt',request,'AUTHORITY')).status,200);
+ const forged=structuredClone(original);forged.payload.hash='f'.repeat(64);forged.signature=signature(f.anchor.priv,'sko-decoy-anchor-v1',JSON.stringify(forged.payload));assert.equal((await f.call('historical-receipt',{...request,receipt:forged},'AUTHORITY')).status,409);
+ const invalid=structuredClone(original);invalid.signature='0'.repeat(128);assert.equal((await f.call('historical-receipt',{...request,receipt:invalid},'AUTHORITY')).status,409);
+});
+
+test('two rotations preserve each original receipt and reject tampered transition history',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const a=key(),b=key(),r1=await(await f.call('latest',{},'AUTHORITY')).json();assert.equal((await f.call('rotate',{newId:'anchor_2',newJwk:a.pub,oldKey:f.anchor.privateJwk,newKey:a.privateJwk,now:now+1},'AUTHORITY')).status,200);
+ const r2=await(await f.call('latest',{},'AUTHORITY')).json();assert.equal((await f.call('rotate',{newId:'anchor_3',newJwk:b.pub,oldKey:a.privateJwk,newKey:b.privateJwk,now:now+2},'AUTHORITY')).status,200);await f.restart();
+ const ctx={genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'};for(const receipt of [r1,r2])assert.equal((await f.call('historical-receipt',{...ctx,receipt},'AUTHORITY')).status,200);
+ assert.equal((await f.call('rotation-tamper',{value:'0'.repeat(128)},'AUTHORITY')).status,200);assert.equal((await f.call('historical-receipt',{...ctx,receipt:r2},'AUTHORITY')).status,409);
+});
+
+
+test('fixture archive client reads historical receipt after rotation but holds for newer authority head',async t=>{
+ const f=await fixture(t),first=createBatch(f),pub=await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY');assert.equal(pub.status,200);
+ first.anchor=await pub.json();first.latestIndependentAnchor=first.anchor;assert.equal((await f.call('store-strict',{...first,auditExtension:[first.audit]})).status,200);
+ const replacement=key();assert.equal((await f.call('rotate',{newId:'anchor_2',newJwk:replacement.pub,oldKey:f.anchor.privateJwk,newKey:replacement.privateJwk,now:now+1},'AUTHORITY')).status,200);await f.restart();
+ const newReceipt=await(await f.call('latest',{},'AUTHORITY')).json();assert.equal((await f.call('read-strict',{batchSequence:1,now:now+1,latestIndependentAnchor:newReceipt})).status,409);
+ const args={batchSequence:1,now:now+1,genesisKey:f.anchor.pub,genesisId:'archive_anchor_1'},compatible=await f.call('read-rotated',args);assert.equal(compatible.status,200);assert.deepEqual(await compatible.json(),first.manifest);
+ const second=createBatch(f,{seq:2,previous:sha(JSON.stringify(first.manifest)),anchorSeq:2,previousAudit:first.audit.hash});assert.equal((await f.call('publish-with-key',{publication:{expected_sequence:1,expected_hash:first.audit.hash,records:[second.audit]},now:now+2,key:replacement.privateJwk},'AUTHORITY')).status,200);
+ assert.equal((await f.call('read-rotated',{...args,now:now+2})).status,409);
+});
+
+
+test('lost-key recovery proposal requires independent signers and never changes authority',async t=>{
+ const f=await fixture(t),first=createBatch(f);assert.equal((await f.call('publish',{publication:{expected_sequence:0,expected_hash:zero,records:[first.audit]},now},'AUTHORITY')).status,200);
+ const before=await(await f.call('latest',{},'AUTHORITY')).json(),recovery=key(),witness=key(),replacement=key();
+ const config={recoveryKeyId:'recovery_1',recoveryJwk:recovery.pub,witnessKeyId:'witness_1',witnessJwk:witness.pub};assert.equal((await f.call('recovery-init',config,'AUTHORITY')).status,200);
+ const proposal={v:1,company_id:company,deployment_id:deployment,checkpoint_sequence:before.payload.sequence,checkpoint_hash:before.payload.hash,old_key_id:before.payload.key_id,new_key_id:'recovered_1',new_jwk:replacement.pub,nonce:randomBytes(32).toString('hex'),issued:now,expires:now+30000};
+ const proof={proposal,recoverySignature:signature(recovery.priv,'sko-anchor-recovery-proposal-fixture-v1',JSON.stringify(proposal)),witnessSignature:signature(witness.priv,'sko-anchor-recovery-proposal-fixture-v1',JSON.stringify(proposal)),newSignature:signature(replacement.priv,'sko-anchor-recovery-proposal-fixture-v1',JSON.stringify(proposal)),now};
+ for(const altered of [{...proof,witnessSignature:'0'.repeat(128)},{...proof,newSignature:'0'.repeat(128)},{...proof,now:now+30001},{...proof,proposal:{...proposal,company_id:'other'}}])assert.equal((await f.call('recovery-stage',altered,'AUTHORITY')).status,409);
+ const attempts=await Promise.all([f.call('recovery-stage',proof,'AUTHORITY'),f.call('recovery-stage',proof,'AUTHORITY')]);assert.equal(attempts.filter(x=>x.status===200).length,1);assert.equal(attempts.filter(x=>x.status===409).length,1);
+ await f.restart();assert.deepEqual(await(await f.call('latest',{},'AUTHORITY')).json(),before);assert.equal((await(await f.call('recovery-list',{},'AUTHORITY')).json()).length,1);
+ // A rollback of the local proposal ledger erases its nonce: this counterexample
+ // is why a separately retained, authenticated replay ledger is mandatory.
+ assert.equal((await f.call('recovery-simulate-old-restore',{},'AUTHORITY')).status,200);
+ assert.equal((await f.call('recovery-stage',proof,'AUTHORITY')).status,200);
+ assert.deepEqual(await(await f.call('latest',{},'AUTHORITY')).json(),before);
+});
