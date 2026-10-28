@@ -64,6 +64,8 @@ try {
  await db.query(await fs.readFile(path.join(root,'tool/security/master-device-enrollment-candidate/native-real-functions.sql'),'utf8'));
  await db.query(await fs.readFile(path.join(root,'tool/security/master-device-enrollment-candidate/key-migration-registry.sql.review-only'),'utf8'));
  const {storePendingDeviceKey}=await import('./key-migration-pending-adapter.mjs');
+ const {handleMigrationChallengeRequest}=await import('./key-migration-challenge-http-candidate.mjs');
+ await db.query(await fs.readFile(path.join(root,'tool/security/master-device-enrollment-candidate/key-migration-challenges.sql.review-only'),'utf8'));
  const makeUser=async()=>{
   const email='master-pending-'+randomUUID()+'@example.invalid';
   const seed=await json(await request('/auth/v1/admin/users',{admin:true,body:{email,email_confirm:true}}));
@@ -84,7 +86,7 @@ try {
  // Harness-only bridge. /user verifies the real token before claims are decoded.
  // The bridge installs verified claims transaction-locally, never session-wide.
  // This is not a deployed API or a production trust/pool implementation.
- const enroll=async(token,extra={})=>{
+ const authenticatedContext=async token=>{
   const response=await request('/auth/v1/user',{method:'GET',token});
   if(response.status!==200) throw Error('GoTrue rejected token');
   const user=await response.json(),c=claims(token);
@@ -101,9 +103,14 @@ try {
     return result;
    },release:()=>client.release()};
   }};
-  return storePendingDeviceKey({pool:verifiedPool,actor:user.id,session:c.session_id,deviceId,
-   publicKeyPem:generateKeyPairSync('ec',{namedCurve:'prime256v1'}).publicKey.export({type:'spki',format:'pem'}).toString(),...extra});
+  return {pool:verifiedPool,actor:user.id,session:c.session_id};
  };
+ const enroll=async(token,extra={})=>storePendingDeviceKey({...await authenticatedContext(token),deviceId,
+  publicKeyPem:generateKeyPairSync('ec',{namedCurve:'prime256v1'}).publicKey.export({type:'spki',format:'pem'}).toString(),...extra});
+ const key=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).publicKey.export({type:'spki',format:'pem'}).toString();
+ const http=async(token,action,extra={})=>handleMigrationChallengeRequest(new Request('https://fixture.invalid/challenge',{
+  method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
+  body:JSON.stringify({action,deviceId,publicKeyPem:key,...extra})}),{authenticateBearer:authenticatedContext});
  const count=async()=>Number((await db.query('select count(*) from master_device_enrollment_candidate.pending_key_migrations')).rows[0].count);
  phase='valid-real-jwt';
  const first=await enroll(owner.access_token);
@@ -113,6 +120,24 @@ try {
   assert.equal(x.rows[0].actor,null);assert.equal(x.rows[0].jwt,null);
  };
  await clean();
+ phase='http-verified-password-issue-and-exact-session-readback';
+ const secret=randomBytes(24).toString('hex');
+ await db.query("insert into public.user_secondary_credentials(user_id,password_hash) values($1,extensions.crypt($2,extensions.gen_salt('bf')))",[owner.user.id,secret]);
+ const hashBefore=(await db.query('select password_hash from public.user_secondary_credentials where user_id=$1',[owner.user.id])).rows[0].password_hash;
+ const wrong=await http(owner.access_token,'issue',{secondPassword:'synthetic-wrong'});
+ assert.equal(wrong.status,403);assert.deepEqual(await wrong.json(),{accepted:false});
+ assert.equal((await db.query('select failed_attempts from public.user_secondary_credentials where user_id=$1',[owner.user.id])).rows[0].failed_attempts,1);
+ const issued=await http(owner.access_token,'issue',{secondPassword:secret});
+ assert.equal(issued.status,200);const original=await issued.json();
+ assert.equal(original.accepted,true);assert.equal(original.challenge.actor,owner.user.id);
+ assert.equal(original.challenge.session,claims(owner.access_token).session_id);
+ const readback=await http(owner.access_token,'read');assert.equal(readback.status,200);
+ assert.deepEqual(await readback.json(),original);
+ assert.equal((await http(owner.access_token,'issue',{secondPassword:secret})).status,409);
+ assert.equal((await http(owner.access_token,'read',{actor:other.user.id})).status,400);
+ assert.equal(Number((await db.query('select count(*) from master_device_enrollment_candidate.key_possession_challenges')).rows[0].count),1);
+ assert.equal((await db.query('select password_hash from public.user_secondary_credentials where user_id=$1',[owner.user.id])).rows[0].password_hash,hashBefore);
+ await clean();
  phase='tampered-token-rejected-before-pool';
  const parts=owner.access_token.split('.');
  const altered={...claims(owner.access_token),sub:other.user.id};
@@ -120,13 +145,16 @@ try {
  const before=acquisitions;
  await assert.rejects(enroll(forged));
  assert.equal(acquisitions,before);assert.equal(await count(),1);
+ assert.equal((await http(forged,'read')).status,409);assert.equal(acquisitions,before);
  phase='other-real-user-not-master';
  await assert.rejects(enroll(other.access_token));
  assert.equal(await count(),1);await clean();
+ assert.equal((await http(other.access_token,'read')).status,409);await clean();
  phase='user-editable-metadata-not-master';
  await json(await request('/auth/v1/user',{method:'PUT',token:other.access_token,body:{data:{master:true,is_master_admin:true}}}));
  await assert.rejects(enroll(other.access_token));
  assert.equal(await count(),1);await clean();
+ assert.equal((await http(other.access_token,'read')).status,409);await clean();
  phase='verified-owner-cannot-substitute-session';
  await assert.rejects(enroll(owner.access_token,{session:claims(other.access_token).session_id}));
  assert.equal(await count(),1);await clean();
@@ -134,11 +162,14 @@ try {
  await db.query("update auth.sessions set not_after=clock_timestamp()-interval '1 second' where id=$1",[claims(owner.access_token).session_id]);
  await assert.rejects(enroll(owner.access_token));
  assert.equal(await count(),1);await clean();
+ assert.equal((await http(owner.access_token,'read')).status,409);await clean();
  await db.query('update auth.sessions set not_after=null where id=$1',[claims(owner.access_token).session_id]);
  phase='revoked-session-row-rejected';
  await db.query('delete from auth.sessions where id=$1',[claims(owner.access_token).session_id]);
  await assert.rejects(enroll(owner.access_token));
  assert.equal(await count(),1);await clean();
+ assert.equal((await http(owner.access_token,'read')).status,409);await clean();
+ assert.equal(Number((await db.query('select count(*) from master_device_enrollment_candidate.key_possession_challenges')).rows[0].count),1);
  phase='preserved-existing-identifier';
  assert.equal((await db.query('select device_key from private.master_devices where id=$1',[deviceId])).rows[0].device_key,'fixture-legacy-identifier');
  assert.equal((await db.query('select count(*)::int n from auth.users')).rows[0].n,2);
@@ -146,6 +177,7 @@ try {
   real_auth_user_token_validation:true,real_auth_uid_and_sessions:true,forged_jwt_rejected:true,
   foreign_user_and_metadata_not_master:true,session_substitution_rejected:true,
   expired_and_revoked_sessions_rejected:true,transaction_claim_cleanup:true,
+  http_request_boundary_with_real_gotrue:true,http_password_counter_commit:true,http_original_challenge_readback:true,
   master_and_device_fixtures:true,public_endpoint:false,key_activation:false,production_changed:false}));
 } catch(error) {
  console.error(JSON.stringify({result:'FAIL isolated real GoTrue pending-key boundary',phase,
