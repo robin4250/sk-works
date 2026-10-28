@@ -49,6 +49,8 @@ begin
  or not exists(select 1 from apple_native_enrollment_private.successor_attempts a where a.request_id=p_request
   and a.actor_id=p_actor and a.original_session_id=r.session_id and a.snapshot_sha256=r.snapshot_sha256)
  or not exists(select 1 from apple_owner_policy.subject_permits where apple_subject=r.subject and expected_user_id=p_actor)
+ or not exists(select 1 from auth.identities i where i.user_id=p_actor and i.provider='apple'
+  and i.provider_id=r.subject and i.identity_data->>'sub'=r.subject)
  then return null;end if;
  if r.status<>'completed' or rec.actor_id is distinct from p_actor or rec.original_session_id is distinct from r.session_id
    or c->'apple_subjects' is distinct from jsonb_build_array(r.subject) then return null;end if;

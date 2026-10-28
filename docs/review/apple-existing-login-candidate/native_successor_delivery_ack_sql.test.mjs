@@ -97,6 +97,7 @@ test('company/Google/profile/password/account/permit/claim/receipt drift rejects
   "update public.company_members set role='worker'", "delete from auth.identities where provider='google'",
   "update auth.users set raw_user_meta_data='{\"changed\":true}' where id='"+actor+"'",
   "update auth.users set encrypted_password='changed' where id='"+actor+"'",
+  "update auth.identities set identity_data='{\"sub\":\"wrong-apple-subject\"}' where provider='apple'",
   "update auth.users set is_anonymous=true where id='"+actor+"'",
   "update auth.users set banned_until=clock_timestamp()+interval '1 hour' where id='"+actor+"'",
   "update auth.sessions set not_after=clock_timestamp()-interval '1 second' where id='"+successor+"'",
