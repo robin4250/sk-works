@@ -34,3 +34,19 @@ The coordinator detaches the selected list entry before source lookup and indepe
 This is **not immutable retention/object lock or independent owner-content inspection**. Privileged Storage operators can still alter/delete provider objects, and no authenticated upload route or application INSERT grant is added. The real disposable Storage test uses an explicit fixture bridge with its isolated exporter credential and proves duplicate POSTs preserve the original bytes/version; it is not a production owner-upload authorization test. Existing signature/seal originals and renderers are unchanged.
 
 Official API references: [standard uploads](https://supabase.com/docs/guides/storage/uploads/standard-uploads), [Storage access control](https://supabase.com/docs/guides/storage/security/access-control), [Storage schema is read-only](https://supabase.com/docs/guides/storage/schema/design). Local Node synthetic tests cover exact POST/no overwrite, byte detachment, invalid digest/size/path, deadline and redirect/error handling. Real Storage duplicate preservation runs in the existing disposable CI. Production deployment, independently controlled retention, frozen original-owner snapshot inspection and endpoint wiring remain incomplete.
+# App read-session history (2026-10-28, OFF)
+
+The candidate Dart repository now subscribes before each list/download operation
+and rejects historical actor/token changes, sign-out, Auth stream errors and
+stream completion. Queued events are drained before accepting the catalog or
+PDF response, so an observed A -> B -> A does not regain permission. Catalog
+RPCs bind the captured exact bearer; the expected Storage owner is captured
+with it. Each operation releases its subscription on success or failure.
+
+Seven focused SDK/HTTP fixture tests cover the unchanged-session path and
+history invalidation before/after Storage. These tests are pending the new CI;
+no local Flutter/Dart execution is claimed. This does not detect silent SDK ABA,
+serialize application Auth writes, bound the Dart Storage download stream, or
+connect the server's independent privacy proof/immutable storage to this UI.
+Those remain activation blockers. The candidate route is still unexposed and
+production DB, Storage, original PDFs and signatures are unchanged.
