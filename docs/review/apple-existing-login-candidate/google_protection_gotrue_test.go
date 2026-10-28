@@ -52,7 +52,7 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
  })}
  ctx:=oidc.ClientContext(context.Background(),client)
  type tokenResult struct{AccessToken string `json:"access_token"`;RefreshToken string `json:"refresh_token"`;User struct{ID string `json:"id"`} `json:"user"`}
- for _,name:=range []string{"single session Apple native link while original refresh races","single session Apple native cleanup before original refresh","single session original refresh while temporary session remains","single session temporary logout before refresh preserves original","inactivity refresh rejects despite live session row","existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID","Apple subject cannot transfer between existing users"}{t.Run(name,func(t *testing.T){
+ for _,name:=range []string{"single session same UID successor adoption preserves account","single session wrong password preserves usable current session","single session rejected Apple link preserves adopted password session","single session Apple native link while original refresh races","single session Apple native cleanup before original refresh","single session original refresh while temporary session remains","single session temporary logout before refresh preserves original","inactivity refresh rejects despite live session row","existing Google unknown Apple direct native","new Google registration protected immediately","returning Google and primary password remain usable","same-UID enrolled native Apple admitted","PKCE identity-stage commit is now rejected","reverse Google automatic merge denied","user metadata cannot remove protection","token-hook flag drift retains write guard","deleted Google subject cannot become new UID","official soft deletion keeps old subject ownership","lost Google response retry keeps original UID","unlink retains protection and Google can resume same UID","Apple subject cannot transfer between existing users"}{t.Run(name,func(t *testing.T){
   models.TruncateAll(api.db)
   require.NoError(t,api.db.RawQuery("truncate apple_owner_policy.subject_permits,apple_owner_policy.protected_users,apple_owner_policy.rollout,apple_google_protection.rollout,apple_google_protection.google_subject_owners,apple_google_protection.company_snapshot").Exec())
   createUser:=func(email,googleSub string)*models.User{
@@ -117,6 +117,48 @@ func TestSKOAppleGlobalGoogleProtection(t *testing.T){
    var old string;require.NoError(t,api.db.RawQuery("select user_id::text from apple_google_protection.google_subject_owners where provider_id='existing-google-sub'").First(&old));require.Equal(t,owner.ID.String(),old);return
   }
   original:=result(idToken("google","existing-google-sub",string(owner.Email),"",false));require.Equal(t,owner.ID.String(),original.User.ID)
+  if name=="single session same UID successor adoption preserves account"||name=="single session wrong password preserves usable current session"||name=="single session rejected Apple link preserves adopted password session"{
+   // Account continuity is not refresh-token continuity. Exercise the official
+   // password -> native link -> successor refresh chain without restoring or
+   // logging out a successfully adopted successor session. This does not wire
+   // credentials into the app or establish secure handoff/reauthentication.
+   config.Sessions.SinglePerUser=true
+   defer func(){config.Sessions.SinglePerUser=false}()
+   refresh:=func(token string)tokenResult{
+    require.NotEmpty(t,token)
+    next:=result(call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":token},""))
+    require.Equal(t,owner.ID.String(),next.User.ID)
+    require.NotEmpty(t,next.RefreshToken)
+    require.Equal(t,originalSnapshot,snapshot(owner),"same UID, Google identity, profile and company must survive session replacement")
+    return next
+   }
+   if name=="single session wrong password preserves usable current session"{
+    failed:=call("/token?grant_type=password",map[string]interface{}{"email":string(owner.Email),"password":"fixture-wrong-password"},"")
+    require.NotEqual(t,http.StatusOK,failed.Code)
+    refresh(original.RefreshToken)
+    return
+   }
+   verified:=result(call("/token?grant_type=password",map[string]interface{}{"email":string(owner.Email),"password":"fixture-primary-password"},""))
+   require.Equal(t,owner.ID.String(),verified.User.ID)
+   require.NotEqual(t,http.StatusOK,call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":original.RefreshToken},"").Code)
+   current:=refresh(verified.RefreshToken)
+   if name=="single session rejected Apple link preserves adopted password session"{
+    before:=counts()
+    denied(idToken("apple","not-permitted-successor","private-relay@example.test",current.AccessToken,true),before)
+    refresh(current.RefreshToken)
+    return
+   }
+   require.NoError(t,api.db.RawQuery("insert into apple_owner_policy.subject_permits values('verified-successor-subject',?)",owner.ID).Exec())
+   linked:=result(idToken("apple","verified-successor-subject","private-relay@example.test",current.AccessToken,true))
+   require.Equal(t,owner.ID.String(),linked.User.ID)
+   require.NotEqual(t,http.StatusOK,call("/token?grant_type=refresh_token",map[string]interface{}{"refresh_token":current.RefreshToken},"").Code)
+   adopted:=refresh(linked.RefreshToken)
+   refresh(adopted.RefreshToken)
+   var n int
+   require.NoError(t,api.db.RawQuery("select count(*) from auth.identities where user_id=? and provider='apple' and provider_id='verified-successor-subject'",owner.ID).First(&n))
+   require.Equal(t,1,n)
+   return
+  }
   if name=="single session Apple native link while original refresh races"||name=="single session Apple native cleanup before original refresh"{
    // A native identity link issues its own new session, independently of the
    // primary-password verifier. Do not infer whole-flow safety from PW cleanup.
