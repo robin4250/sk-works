@@ -194,11 +194,6 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
-          FilledButton.icon(
-            key: const ValueKey('signature-confirm-corner'),
-            onPressed: _landscape ? _submit : null,
-            icon: const Icon(Icons.check_circle_outline),
-            label: Text(widget.submitLabel)),
           if (widget.reviewText != null) IconButton(
             tooltip: 'サインする日報を確認', icon: const Icon(Icons.description_outlined),
             onPressed: () => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
@@ -252,6 +247,17 @@ class _SignatureCapturePageState extends State<SignatureCapturePage> {
                     ),
                   ),
                 )),
+                // Keep the action on top of the actual fitted signing frame,
+                // including after rotation/keyboard resizing preserves its ratio.
+                Positioned(
+                  right: (available.width - fitted.width) / 2 + 12,
+                  bottom: (available.height - fitted.height) / 2 + 12,
+                  child: FilledButton.icon(
+                    key: const ValueKey('signature-confirm-corner'),
+                    onPressed: _submit,
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: Text(widget.submitLabel)),
+                ),
                 if (!_landscape) const Positioned.fill(child: IgnorePointer(child: SignatureOrientationGuide())),
               ]);
             }),
