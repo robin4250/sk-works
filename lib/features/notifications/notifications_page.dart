@@ -599,7 +599,7 @@ Widget? notificationDestination(
     title: SkoLanguageController.tr('管理者用現場データ'),
     child: const AdminSiteFinancialPage(),
   ),
-  'invoice_approval' => InvoiceNotificationPage(invoiceId: item.actionId ?? ''),
+  'invoice_approval' => InvoiceNotificationPage(invoiceId: item.actionId ?? '', notificationId: item.id),
   'payment_certificate_settings' => SecondaryProtectedPage(
     title: SkoLanguageController.tr('支払証明書設定'),
     child: const PartnerPaymentSettingsPage(),

@@ -1,0 +1,35 @@
+-- REVIEW ONLY: isolated candidate, no public grants or production changes.
+-- Mirrors the current production approve_invoice lock/auth/write contract.
+-- Not deployable: other approval paths, lock impact and real auth are unproven.
+create function invoice_month_close_candidate.approve(p_invoice_id uuid)
+returns boolean language plpgsql security definer set search_path='' as $$
+declare uid uuid:=auth.uid(); cid uuid; final boolean; readiness text;
+begin
+ if uid is null then raise exception 'authentication required'; end if;
+ select i.company_id into cid from public.invoices i join public.company_members cm
+  on cm.company_id=i.company_id and cm.user_id=uid where i.id=p_invoice_id;
+ if cid is null then raise exception 'invoice not found'; end if;
+ -- Check eligibility before the potentially expensive global lock attempt.
+ if not exists(select 1 from public.invoice_approvals a where a.invoice_id=p_invoice_id and a.approver_user_id=uid) and not exists(select 1 from public.invoice_approvers a where a.company_id=cid and a.user_id=uid) then raise exception 'invoice approver permission required';end if;
+ perform 1 from public.companies where id=cid for update;
+ perform 1 from public.invoices where id=p_invoice_id and company_id=cid for update;
+ if not found then raise exception 'invoice not found'; end if;
+ -- Create any configured pending approval row within this transaction; a
+ -- readiness failure rolls this write back along with all other effects.
+ perform private.ensure_invoice_approval_rows(p_invoice_id);
+ if not exists(select 1 from public.invoice_approvals where invoice_id=p_invoice_id and approver_user_id=uid) then raise exception 'invoice approver permission required';end if;
+ -- This must run in the same transaction as the approval, with locks held.
+ readiness:=invoice_month_close_candidate.guarded(p_invoice_id);
+ if readiness is distinct from 'ready' then
+  raise exception 'invoice_not_ready' using errcode='55000',detail=coalesce(readiness,'unavailable');
+ end if;
+ update public.invoice_approvals set status='approved',approved_at=clock_timestamp()
+  where invoice_id=p_invoice_id and approver_user_id=uid and status='pending';
+ if found then
+  insert into public.invoice_approval_audit(invoice_id,company_id,actor_user_id,action)
+   values(p_invoice_id,cid,uid,'approved'); end if;
+ select count(*)>0 and bool_and(status='approved') into final from public.invoice_approvals where invoice_id=p_invoice_id;
+ if final then update public.invoices set approval_finalized_at=coalesce(approval_finalized_at,clock_timestamp()) where id=p_invoice_id; end if;
+ return coalesce(final,false);
+end $$;
+revoke all on function invoice_month_close_candidate.approve(uuid) from public,anon,authenticated,service_role;

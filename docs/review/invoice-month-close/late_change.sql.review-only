@@ -1,0 +1,28 @@
+-- REVIEW ONLY: site-attendance coverage experiment, not deployable.
+-- Does not install a trigger, issue a notice, change an invoice or block edits.
+create table invoice_month_close_candidate.late_change_settings(singleton boolean primary key default true check(singleton), enabled boolean not null default false);
+insert into invoice_month_close_candidate.late_change_settings values(true,false);
+create table invoice_month_close_candidate.late_change_events(
+ id bigint generated always as identity primary key,invoice_id uuid not null,company_id uuid not null,
+ source_id uuid,source_date date not null,operation text not null check(operation in ('INSERT','UPDATE','DELETE')),
+ actor_id uuid,recorded_at timestamptz not null default clock_timestamp());
+alter table invoice_month_close_candidate.late_change_settings enable row level security;
+alter table invoice_month_close_candidate.late_change_events enable row level security;
+revoke all on invoice_month_close_candidate.late_change_settings,invoice_month_close_candidate.late_change_events from public,anon,authenticated,service_role;
+create function invoice_month_close_candidate.record_site_attendance_change()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare enabled boolean;
+begin
+ select s.enabled into enabled from invoice_month_close_candidate.late_change_settings s where singleton for share;
+ if not coalesce(enabled,false) then if tg_op='DELETE' then return old;end if;return new;end if;
+ if tg_op='UPDATE' and (to_jsonb(old)-array['updated_at','updated_by'])=(to_jsonb(new)-array['updated_at','updated_by']) then return new;end if;
+ insert into invoice_month_close_candidate.late_change_events(invoice_id,company_id,source_id,source_date,operation,actor_id)
+ select distinct i.id,i.company_id,x.source_id,x.work_date,tg_op,auth.uid()
+ from (values(case when tg_op<>'INSERT' then old.company_id end,case when tg_op<>'INSERT' then old.site_id end,case when tg_op<>'INSERT' then old.work_date end,case when tg_op<>'INSERT' then old.id end),
+             (case when tg_op<>'DELETE' then new.company_id end,case when tg_op<>'DELETE' then new.site_id end,case when tg_op<>'DELETE' then new.work_date end,case when tg_op<>'DELETE' then new.id end)) x(company_id,site_id,work_date,source_id)
+ join public.sites s on s.id=x.site_id and s.company_id=x.company_id
+ join public.invoices i on i.company_id=x.company_id and i.customer_id=s.customer_id and x.work_date between i.billing_period_start and i.billing_period_end
+ where i.approval_finalized_at is not null or exists(select 1 from public.invoice_approvals a where a.invoice_id=i.id and a.status='approved');
+ if tg_op='DELETE' then return old;end if;return new;
+end $$;
+revoke all on function invoice_month_close_candidate.record_site_attendance_change() from public,anon,authenticated,service_role;

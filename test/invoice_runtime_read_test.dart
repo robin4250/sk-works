@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 const _company = '10000000-0000-0000-0000-000000000001';
 const _actor = '10000000-0000-0000-0000-000000000002';
+const _session = '10000000-0000-0000-0000-000000000004';
 const _invoice = '10000000-0000-0000-0000-000000000003';
 
 class _Fixture {
@@ -56,7 +57,7 @@ class _Fixture {
       String encode(Object value) =>
           base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
       final token =
-          '${encode({'alg': 'HS256', 'typ': 'JWT'})}.${encode({'sub': _actor, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.c3ludGhldGlj';
+          '${encode({'alg': 'HS256', 'typ': 'JWT'})}.${encode({'sub': _actor, 'session_id': _session, 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.c3ludGhldGlj';
       response = {
         'access_token': token,
         'refresh_token': 'synthetic-refresh',
@@ -135,7 +136,7 @@ void main() {
     final source = SupabaseInvoiceNoticeSource(
       fixture.client, InvoiceCloudRepository.forTesting(fixture.client),
     );
-    expect(source.actor, _actor);
+    expect(source.actor, '$_actor/$_session');
     final rows = await source.load();
     expect(rows.single.invoiceId, _invoice);
     expect(rows.single.grandTotalYen, 44000);
