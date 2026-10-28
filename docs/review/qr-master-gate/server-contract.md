@@ -59,3 +59,31 @@ client ACL preservation and expired-session rejection. It does NOT prove real
 GoTrue/proof issuance, production catalog compatibility, concurrent operations,
 all QR writer gate coverage, key ownership or owner-device behavior. Those
 remain activation blockers.
+
+## Unused bridge restore candidate
+
+The apply candidate now retains private original function definitions, owners,
+ACLs and CHECK text, together with before/installed hashes. If the apply would
+change a reviewed function's owner or ACL, it rolls back. The snapshot is RLS
+protected and has no client privileges.
+
+`qr-common-public-contract-unused-restore.sql.review-only` is only for a
+never-enabled, unused bridge under an operator-controlled maintenance window.
+It takes bounded locks and refuses any QR settings row, QR audit evidence,
+enabled rollout, catalog/owner/ACL drift, missing or modified backup, or unknown
+dependency. Independently reviewed original (`sko.review.qr_*`) and installed
+(`sko.restore.qr_*`) hashes must be supplied; deriving them live is not approval.
+It restores existing function OIDs/ACLs and the old CHECK in one transaction,
+never CASCADEs and never deletes business/audit rows. The earlier private QR gate
+and internal helpers remain; this restores the common bridge only.
+
+After any use, do not remove QR settings/history to make this restore pass.
+Keep data, turn the rollout OFF through a separately reviewed procedure and
+prepare a forward recovery. Full after-use rollback, real catalog evidence,
+concurrent maintenance, GoTrue and owner-device operation remain unverified.
+
+The shared test runner checks unused restore plus refusal for an enabled rollout,
+saved QR flag, audit evidence, function drift, altered original backup and an
+unexpected dependency. CI runs real PostgreSQL with synthetic auth/proof;
+local PGlite is not a substitute for native CI. Its hash inputs are fixture data,
+not production approval evidence.

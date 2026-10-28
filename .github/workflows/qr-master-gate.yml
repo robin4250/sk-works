@@ -36,3 +36,6 @@ jobs:
 
       - run: createdb qr_common_public_fixture
       - run: psql -d qr_common_public_fixture -v ON_ERROR_STOP=1 -f docs/review/qr-master-gate/qr-common-public-contract-test.sql
+
+      - name: Unused common bridge restoration
+        run: node docs/review/qr-master-gate/qr-common-unused-restore.test.mjs

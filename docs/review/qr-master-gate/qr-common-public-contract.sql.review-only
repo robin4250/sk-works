@@ -29,6 +29,35 @@ begin
  end if;
 end $guard$;
 
+-- Private restoration evidence for an unused, never-enabled rollout only.
+-- It is not an application authorization source and is never client-readable.
+create table qr_attendance_private.public_contract_restore_functions (
+ signature text primary key, original_definition text not null,
+ original_md5 text not null, installed_md5 text,
+ original_owner oid not null, original_acl aclitem[]
+);
+alter table qr_attendance_private.public_contract_restore_functions enable row level security;
+revoke all on qr_attendance_private.public_contract_restore_functions from public,anon,authenticated;
+insert into qr_attendance_private.public_contract_restore_functions
+(signature,original_definition,original_md5,original_owner,original_acl)
+select signature,pg_get_functiondef(to_regprocedure(signature)),
+ md5(pg_get_functiondef(to_regprocedure(signature))),p.proowner,p.proacl
+from unnest(array['public.current_master_feature_flags()','qr_attendance_private.require_enabled()',
+ 'public.set_master_feature_enabled(text,boolean)',
+ 'public.set_master_feature_enabled_with_proof(text,boolean,text)',
+ 'public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)']) signature
+join pg_proc p on p.oid=to_regprocedure(signature);
+create table qr_attendance_private.public_contract_restore_check (
+ singleton boolean primary key check(singleton), original_definition text not null,
+ original_md5 text not null, installed_md5 text
+);
+alter table qr_attendance_private.public_contract_restore_check enable row level security;
+revoke all on qr_attendance_private.public_contract_restore_check from public,anon,authenticated;
+insert into qr_attendance_private.public_contract_restore_check
+select true,pg_get_constraintdef(oid),md5(pg_get_constraintdef(oid)),null
+from pg_constraint where conrelid='private.master_feature_settings'::regclass
+and conname='master_feature_settings_feature_key_check';
+
 create table qr_attendance_private.public_contract_rollout (
  singleton boolean primary key default true check(singleton),
  enabled boolean not null default false
@@ -143,4 +172,20 @@ begin
 end $$;
 revoke all on function public.current_master_feature_flags() from public,anon;
 grant execute on function public.current_master_feature_flags() to authenticated;
+-- CREATE OR REPLACE must preserve the independently reviewed owner and ACL.
+do $restore_evidence$
+begin
+ if exists(select from qr_attendance_private.public_contract_restore_functions r
+  left join pg_proc p on p.oid=to_regprocedure(r.signature)
+  where p.oid is null or p.proowner is distinct from r.original_owner or
+   p.proacl is distinct from r.original_acl) then
+  raise exception 'QR function owner or ACL changed';
+ end if;
+ update qr_attendance_private.public_contract_restore_functions
+ set installed_md5=md5(pg_get_functiondef(to_regprocedure(signature)));
+ update qr_attendance_private.public_contract_restore_check set installed_md5=
+  (select md5(pg_get_constraintdef(oid)) from pg_constraint
+   where conrelid='private.master_feature_settings'::regclass
+   and conname='master_feature_settings_feature_key_check');
+end $restore_evidence$;
 commit;
