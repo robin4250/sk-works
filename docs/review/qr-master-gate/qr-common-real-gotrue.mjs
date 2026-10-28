@@ -8,6 +8,7 @@ import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createHash,randomBytes,randomUUID,generateKeyPairSync} from 'node:crypto';
+import {exerciseScannerRealAuth} from '../../../tool/qr-attendance/qr-scanner-real-auth-composition.mjs';
 
 const run=promisify(execFile),root=process.cwd();
 const parent=path.resolve(process.env.RUNNER_TEMP??'');
@@ -159,6 +160,8 @@ try {
  await db.query('delete from private.fixture_access_restrictions');
  phase='owner-off-and-audit';
  assert.equal((await change(owner.access_token,false)).qr_attendance,false);assert.equal(await auditCount(),2);await clean();
+ phase='scanner-real-auth-composition';
+ await exerciseScannerRealAuth({db,database,api,anon,makeUser,request});await clean();
  phase='expired-real-session';
  await db.query("update auth.sessions set not_after=clock_timestamp()-interval '1 second' where id=$1",[claims(owner.access_token).session_id]);
  await assert.rejects(read(owner.access_token));await assert.rejects(change(owner.access_token,true));await clean();

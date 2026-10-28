@@ -66,6 +66,9 @@ jobs:
       - name: Scanner registration challenge delivery and reconciliation
         run: node --test tool/qr-attendance/qr-scanner-challenge-adapter.test.mjs
 
+      - name: Exact-bearer scanner request session boundary
+        run: node --test tool/qr-attendance/qr-scanner-verified-session.test.mjs
+
       - name: Scanner registration second-password proof issuer
         run: node --test tool/qr-attendance/qr-scanner-proof-issuer.test.mjs
 

@@ -37,6 +37,28 @@ real-device key custody/user presence, proof lifecycle cleanup, independent
 catalog install/restore review, QR attendance mode and the regular attendance
 writer/route/photo compatibility. No production or existing account data changes.
 
+## Exact-bearer request-to-transaction candidate
+
+`qr-scanner-verified-session.mjs` adds a default-OFF internal bridge: verify the
+exact bearer through the configured HTTPS project's GoTrue `/user`, bound the
+response size/deadline, reject redirected/foreign/anonymous/mismatched claims,
+and return a one-use short-lived transaction initializer. It forwards only the
+verified minimal actor/session claims via transaction-local settings, then checks
+the existing SQL live-session helper and exact UID/SID before any registration
+operation. No employee/subject identity or user metadata becomes authority.
+
+The existing disposable real-GoTrue harness now composes this bridge with the
+actual challenge/second-password proof/Ed25519 registration candidates. It checks
+OFF denial, wrong-password counter commit, one registration, replay, foreign
+metadata spoofing, tampered JWT before pool acquisition, expired/deleted real Auth
+sessions and pool claim cleanup. Seven Node tests pass locally; real-stack CI is
+required and is not claimed passed yet. Business permission tables and the
+privileged fixture pool are explicit fixtures, not a deployed least-privilege
+service. A strict test-only HTTPS-to-owned-loopback bridge keeps product HTTPS
+validation intact. No public listener/route, production grant, real-device key
+custody, rate limits, independent install/restore, QR mode/regular attendance
+writer or deployment is completed here. All production flags remain OFF.
+
 ## Private challenge delivery and uncertain-result reconciliation
 
 The internal request-scoped challenge adapter now uses the actual challenge issuer and
