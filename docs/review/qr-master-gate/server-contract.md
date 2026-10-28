@@ -87,3 +87,23 @@ saved QR flag, audit evidence, function drift, altered original backup and an
 unexpected dependency. CI runs real PostgreSQL with synthetic auth/proof;
 local PGlite is not a substitute for native CI. Its hash inputs are fixture data,
 not production approval evidence.
+
+
+## Isolated real GoTrue common boundary
+
+`qr-common-real-gotrue.mjs` starts a disposable loopback-only Supabase CLI stack
+and verifies a real JWT with Auth /user before applying its claims transaction-
+locally to the existing common public API candidate. It preserves real auth.uid,
+auth.jwt, auth.users and auth.sessions. It exercises owner/default-OFF, owner
+ON/OFF with audit, worker rejection, editable metadata not granting master,
+tampered-token rejection before DB, restricted/expired/deleted sessions, anonymous
+ACL and cleared transaction claims. It does not print credentials or private
+responses and always stops its own stack.
+
+Master ownership, access restrictions and operation proofs remain synthetic
+fixtures. The session predicate is a harness mirror, not the entire deployed
+reauthentication implementation or deletion-barrier protocol. This is not a
+deployed JWT-to-database bridge, a real proof-issuance test, a test of all QR
+writers, production catalog approval, recovery after use or owner-device proof.
+CI success cannot enable QR. Local PGlite only checked expanded setup syntax
+with synthetic auth tables; the real GoTrue job is separate.

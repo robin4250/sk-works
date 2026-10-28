@@ -39,3 +39,15 @@ jobs:
 
       - name: Unused common bridge restoration
         run: node docs/review/qr-master-gate/qr-common-unused-restore.test.mjs
+
+  real-gotrue-common-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tool/security/fixture_dependencies
+      - name: Isolated real GoTrue common QR boundary
+        run: node docs/review/qr-master-gate/qr-common-real-gotrue.mjs
