@@ -28,7 +28,7 @@ void main() {
     expect(published.single.revision, 3);
     expect(find.text('シフトを確定しました。'), findsOneWidget);
   });
-  testWidgets('failed save preserves selection and can be retried', (tester) async {
+  testWidgets('unknown save result blocks further writes until authoritative reload', (tester) async {
     var calls = 0;
     List<ShiftDraftRequest> received = [];
     await tester.pumpWidget(MaterialApp(home: ShiftScheduleEditor(
@@ -45,19 +45,42 @@ void main() {
     await tester.ensureVisible(find.text('下書きを保存'));
     await tester.tap(find.text('下書きを保存'));
     await tester.pumpAndSettle();
-    expect(find.text('保存結果を確認できません。再読み込みして確認してください。'), findsOneWidget);
+    expect(find.text('保存結果を確認できません。画面を閉じて再読み込みしてください。'), findsOneWidget);
     expect(received.single.workerId, 'w');
     expect(received.single.revision, 2);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '下書きを保存')).onPressed, isNull);
+    // A server commit followed by a lost response must not be resent using
+    // the old revision, even if a user taps the disabled button again.
     await tester.ensureVisible(find.text('下書きを保存'));
     await tester.tap(find.text('下書きを保存'));
     await tester.pumpAndSettle();
-    expect(calls, 2);
-    expect(find.text('下書きを保存しました。'), findsOneWidget);
+    expect(calls, 1);
+  });
+
+  testWidgets('unknown publication result blocks both save and publication', (tester) async {
+    var saves = 0, publications = 0;
+    await tester.pumpWidget(MaterialApp(home: ShiftScheduleEditor(
+      companyId: 'c', date: DateTime(2026, 10, 26),
+      people: const [ShiftPersonOption(id: 'w', name: '従業員')],
+      sites: const [ShiftSiteOption(id: 's', name: '現場')],
+      initial: const ShiftDayDraft(holiday: false, night: false, siteId: 's',
+        start: TimeOfDay(hour: 8, minute: 0), end: TimeOfDay(hour: 17, minute: 0),
+        checkLate: true, checkEarly: true), revisions: const {'w': 2},
+      save: (_) async { saves++; },
+      publish: (_) async { publications++; throw StateError('response lost'); },
+    )));
+    await tester.tap(find.text('従業員'));
+    await tester.pump();
     await tester.ensureVisible(find.text('下書きを保存'));
     await tester.tap(find.text('下書きを保存'));
     await tester.pumpAndSettle();
-    expect(calls, 3);
-    expect(received.single.revision, 3);
-    expect(find.text('下書きを保存しました。'), findsOneWidget);
+    await tester.ensureVisible(find.text('保存したシフトを確定'));
+    await tester.tap(find.text('保存したシフトを確定'));
+    await tester.pumpAndSettle();
+    expect(find.text('確定結果を確認できません。画面を閉じて再読み込みしてください。'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '下書きを保存')).onPressed, isNull);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '保存したシフトを確定')).onPressed, isNull);
+    expect(saves, 1);
+    expect(publications, 1);
   });
 }
