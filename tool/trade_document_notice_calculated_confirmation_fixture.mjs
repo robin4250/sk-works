@@ -1,6 +1,6 @@
 // Isolated actual daily calculator -> durable notice -> financial/seal command.
 // Existing source/notice/financial functions are unchanged. Auth remains a fixture,
-// route remains empty; optional scenarios use the real adjustment/expense readers.
+// optional scenarios use the existing adjustment, expense and route readers.
 export async function verifyCalculatedNoticeConfirmation(db,c,prepareSource,scenario='daily'){
  const {A,B,UA,id,q,check,pending}=c;
  const before=await q('select to_jsonb(i) v from public.invoices i where id=$1',[pending.parent]);
@@ -38,12 +38,20 @@ export async function verifyCalculatedNoticeConfirmation(db,c,prepareSource,scen
   await c.deny(confirm,/unavailable|not_ready/);
   await db.exec('rollback to savepoint calculated_source_changed;release savepoint calculated_source_changed');
   check(await used(),false);check(await counts(),beforeCounts);
-  if(scenario==='named-adjustment-and-expense'){
+  if(scenario.includes('expense')){
    await db.exec('savepoint calculated_expense_changed');
    await db.query('update private.expense_settlement_choices set approval_current=false where claim_id=$1',[id(52001)]);
    await c.deny(confirm,/unavailable|not_ready/);
    await db.exec('rollback to savepoint calculated_expense_changed;release savepoint calculated_expense_changed');
    check(await used(),false);check(await counts(),beforeCounts);
+  }
+  if(scenario.includes('route')){
+   await db.exec('savepoint calculated_route_changed');
+   await db.query('delete from private.route_journey_visit_events where capture_id=$1',[id(53013)]);
+   await c.deny(confirm,/unavailable|not_ready/);
+   await db.exec('rollback to savepoint calculated_route_changed;release savepoint calculated_route_changed');
+   check(await used(),false);check(await counts(),beforeCounts);
+   check(await q('select invoice_seal_frozen v from public.invoices where id=$1',[pending.parent]),false);
   }
   // A failure after the actual financial approval and consent writers still
   // rolls every write back, including the durable notification consumption.
@@ -65,5 +73,5 @@ export async function verifyCalculatedNoticeConfirmation(db,c,prepareSource,scen
  check(await counts(),beforeCounts);
  check(await q('select current_revision v from trade_document_consent_private.documents where id=$1',[pending.doc]),1);
  check(await q('select invoice_month_close_candidate.guarded($1) v',[pending.parent]),'ready');
- console.log('PASS actual daily calculator -> real durable notice -> financial/seal single-transaction success and complete rollback; source scenario='+scenario+'; Auth/route and mutation APIs remain fixtures');
+ console.log('PASS actual daily calculator -> real durable notice -> financial/seal single-transaction success and complete rollback; source scenario='+scenario+'; Auth and mutation APIs remain fixtures; route readers exercised in the route scenario');
 }

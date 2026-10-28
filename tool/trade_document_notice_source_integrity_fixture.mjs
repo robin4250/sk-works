@@ -54,6 +54,7 @@ export async function verifyNoticeSourceIntegrity(db,c){
  await (await import('./trade_document_notice_daily_preview_fixture.mjs')).verifyNoticeDailyPreview(db,c);
  const prepareNamed=await (await import('./trade_document_notice_adjustment_provider_fixture.mjs')).installNoticeAdjustmentProvider(db,c);
  const prepareExpense=await (await import('./trade_document_notice_expense_provider_fixture.mjs')).installNoticeExpenseProvider(db,c);
+ const prepareRoute=await (await import('./trade_document_notice_route_provider_fixture.mjs')).installNoticeRouteProvider(db,c);
  const fp=await fingerprint();
  const original=await q("select encode(sha256(convert_to(to_jsonb(i)::text,'UTF8')),'hex') v from public.invoices i where id=$1",[pending.parent]);
  await db.query('select invoice_month_close_candidate.revalidate_for_approver($1,$2,$3)',[pending.parent,fp,original]);
@@ -68,6 +69,7 @@ export async function verifyNoticeSourceIntegrity(db,c){
  await (await import('./trade_document_notice_calculated_confirmation_fixture.mjs')).verifyCalculatedNoticeConfirmation(db,c);
  await (await import('./trade_document_notice_calculated_confirmation_fixture.mjs')).verifyCalculatedNoticeConfirmation(db,c,prepareNamed,'named-adjustment');
  await (await import('./trade_document_notice_calculated_confirmation_fixture.mjs')).verifyCalculatedNoticeConfirmation(db,c,async()=>{await prepareNamed();await prepareExpense();},'named-adjustment-and-expense');
+ await (await import('./trade_document_notice_calculated_confirmation_fixture.mjs')).verifyCalculatedNoticeConfirmation(db,c,async()=>{await prepareNamed();await prepareExpense();await prepareRoute();},'named-adjustment-expense-and-route');
  // A forged replacement cannot keep the actual integrity guard ready even
  // when a caller supplies a proposal or ticket matching the financial parent.
  await db.exec(`create or replace function invoice_month_close_candidate.preview_for_approver(p_invoice_id uuid) returns jsonb language plpgsql as $$begin return '{}'::jsonb;end$$;`);

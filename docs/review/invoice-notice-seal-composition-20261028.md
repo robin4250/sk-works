@@ -136,3 +136,29 @@ Expense approval/allocation/finalization mutation APIs, route providers, live
 Auth/session and production mapping remain incomplete. These fixture rows are
 not real expenses or business approvals. No product SQL, grant, source invoice,
 production database or signature is changed. Native CI must pass separately.
+
+
+## Signed route reader integration (2026-10-28)
+
+The isolated extension now loads the existing signed-checkout source, rate,
+component and invoice-component functions verbatim. Source/component/blocked
+bodies retain their independent existing MD5 expectations. The scenario uses
+two synthetic visits for one worker/day/customer and confirms one man-day,
+20000 yen plus 2000 tax, rather than charging once per visit. Other-company and
+other-customer reads return no amount. A missing visit exit or mismatched site
+rate rejects readiness. Client EXECUTE remains revoked.
+
+The combined daily-price, +1000/-250 adjustment, approved 2000 expense and route
+proposal is passed through the existing durable notice and financial/seal
+transaction. Removing a visit exit after ticket issuance refuses approval and
+leaves ticket, approval, seal and receipt untouched. The existing late-failure
+rollback and exactly-once success checks also run on this combined scenario.
+All synthetic rows are rolled back. PGlite passes the complete extended suite;
+Native PostgreSQL CI must pass separately.
+
+This closes the empty route *reader* boundary for this synthetic scenario.
+Actual route/expense/adjustment mutation APIs, live GoTrue/session composition,
+notification delivery, public transport, deployment/recovery and iPhone checks
+remain incomplete. Existing production invoices and test invoices are unchanged.
+The earlier sections describe progressive scenarios, not a claim that every
+source type or real production path is now verified.
