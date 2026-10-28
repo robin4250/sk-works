@@ -1,0 +1,26 @@
+name: Individual document exemption real Auth
+on:
+  pull_request:
+    paths:
+      - 'tool/worker_document_exemption_real_auth*'
+      - 'tool/staged/reauthentication_proofs.sql'
+      - 'docs/candidates/worker_document_exemption_20261027/**'
+      - '.github/workflows/worker-document-exemption-real-auth.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: exemption-real-auth-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  real-gotrue-postgrest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - run: npm ci --prefix tool/security/fixture_dependencies --no-audit --no-fund --ignore-scripts
+      - run: node --check tool/worker_document_exemption_real_auth.mjs
+      - run: node tool/worker_document_exemption_real_auth.mjs
