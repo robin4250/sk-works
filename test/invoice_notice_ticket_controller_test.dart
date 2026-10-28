@@ -43,4 +43,43 @@ void main() {
     expect(await d.open(notice, invoiceId: invoice), isTrue); session = 'next'; expect(d.hasValidTicket, isFalse);
     expect(await d.open(notice, invoiceId: invoice), isTrue); d.invalidate(); expect(d.hasValidTicket, isFalse);
   });
+
+  test('approval dispatch consumes once and ambiguous errors never retry', () async {
+    var calls = 0;
+    final response = Completer<Object?>();
+    final c = InvoiceNoticeTicketController(actor: () => 'a', session: () => 's', now: () => start,
+      openTicket: (_) async => {'notification_id': notice, 'invoice_id': invoice, 'ticket_id': ticket,
+        'expires_at': start.add(const Duration(minutes: 5)).toIso8601String()},
+      submitApproval: (id) { expect(id, ticket); calls++; return response.future; });
+    expect(await c.open(notice, invoiceId: invoice), isTrue);
+    final first = c.approve();
+    expect(await c.approve(), InvoiceNoticeApprovalResult.notSubmitted);
+    expect(await c.open(notice, invoiceId: invoice), isFalse);
+    response.completeError(StateError('connection lost after commit'));
+    expect(await first, InvoiceNoticeApprovalResult.unconfirmed);
+    expect(await c.approve(), InvoiceNoticeApprovalResult.notSubmitted);
+    expect(calls, 1);
+  });
+  test('late approval from an old actor or invalidated lifecycle is never success', () async {
+    var actor = 'a';
+    final response = Completer<Object?>();
+    final c = InvoiceNoticeTicketController(actor: () => actor, session: () => 's', now: () => start,
+      openTicket: (_) async => {'notification_id': notice, 'invoice_id': invoice, 'ticket_id': ticket,
+        'expires_at': start.add(const Duration(minutes: 5)).toIso8601String()},
+      submitApproval: (_) => response.future);
+    expect(await c.open(notice, invoiceId: invoice), isTrue);
+    final first = c.approve();
+    actor = 'b'; c.invalidate(); response.complete(true);
+    expect(await first, InvoiceNoticeApprovalResult.unconfirmed);
+  });
+  test('only exact server true confirms the approval', () async {
+    for (final result in [true, false, null, 'true', {'approved': true}]) {
+      final c = InvoiceNoticeTicketController(actor: () => 'a', session: () => 's', now: () => start,
+        openTicket: (_) async => {'notification_id': notice, 'invoice_id': invoice, 'ticket_id': ticket,
+          'expires_at': start.add(const Duration(minutes: 5)).toIso8601String()},
+        submitApproval: (_) async => result);
+      expect(await c.open(notice, invoiceId: invoice), isTrue);
+      expect(await c.approve(), result == true ? InvoiceNoticeApprovalResult.confirmed : InvoiceNoticeApprovalResult.unconfirmed);
+    }
+  });
 }
