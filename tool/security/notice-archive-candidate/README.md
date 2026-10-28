@@ -96,5 +96,34 @@ production signing service, or a deployment. The authority's atomic persistence,
 separately held key and rollback-resistant checkpoint remain trusted prerequisites.
 Credential/key provisioning, rotation, access logs, rate limits, independent
 hosting, availability/recovery policy and activation are still unimplemented.
-No listener, public route, credential, real network call or recovery action is
-created. Keep the feature OFF.
+The HTTP handler alone creates no listener, public route, credential, network
+call or recovery action. Keep the feature OFF.
+
+
+## Review-only Node TLS listener
+
+`src/recovery-witness-https-candidate.mjs` connects that same handler to a Node
+HTTPS server factory. It does not bind a port by itself. The caller supplies the
+TLS key/certificate through protected configuration; the module does not read
+server files or print credentials. It requires TLS 1.3, exact configured Host and
+path, rejects duplicate sensitive headers, bounds headers and bodies, limits
+concurrent requests, closes each connection and enforces a total request deadline.
+A consuming authority call is still made at most once and a timeout remains an
+unknown outcome requiring a separate explicit lookup.
+
+Four real loopback-TLS tests generate a temporary self-signed certificate and
+synthetic signing key, trust that certificate explicitly, and use the existing
+SQLite witness fixture. They verify certificate/TLS-version rejection, host/path/
+authentication/body limits, admission before authority work, signed consume plus
+fresh lookup, and deadline failure without retry. Only the socket address is
+bridged to an ephemeral loopback port; configured origin and certificate name
+remain `witness.local`. Test TLS keys and ledger files are removed and never
+committed. Existing handler/client tests plus these tests pass 16 cases locally.
+The existing isolated archive CI picks up the new test via its Node 24 test glob.
+
+This is a listener candidate and same-host TLS test, **not an independent witness
+or deployed service**. TLS does not prove authority key custody, rollback-resistant
+checkpoint storage, a trusted clock or disaster recovery. Per-client rate limits,
+access-log privacy/retention, real certificates and rotation, independent hosting,
+operational health checks, key-loss recovery and production activation remain
+unimplemented. No production listener was started and no external host was contacted.
