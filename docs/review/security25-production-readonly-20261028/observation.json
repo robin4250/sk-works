@@ -55,7 +55,8 @@
         "policies": 1
       }
     ],
-    "limits": "Catalog-only checks do not prove authenticated company/owner isolation or RPC authorization. No user records queried and no production changes."
+    "limits": "Catalog-only checks do not prove authenticated company/owner isolation or RPC authorization. No user records queried and no production changes.",
+    "anon_executable_public_security_definer_functions": 0
   },
   "personnel_policy_observation": {
     "date": "2026-10-28",
