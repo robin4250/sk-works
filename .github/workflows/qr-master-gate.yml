@@ -77,6 +77,15 @@ jobs:
           CI: 'true'
         run: node tool/qr-attendance/qr-scanner-proof-integration.mjs
 
+      - name: Scanner unknown-COMMIT recovery boundary
+        run: node --test tool/qr-attendance/qr-scanner-registration-recovery.test.mjs
+
+      - name: Native scanner registration receipt and recovery
+        env:
+          CI: 'true'
+          SKO_QR_REGISTRATION_RECEIPTS_FIXTURE: '1'
+        run: node tool/qr-attendance/qr-scanner-proof-integration.mjs
+
       - name: Native QR scan coordinator transaction
         env:
           CI: 'true'
