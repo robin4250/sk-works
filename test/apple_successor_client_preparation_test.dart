@@ -139,6 +139,17 @@ void main() {
     }
     expect(isolatedCreations, 0);unchanged();
   });
+  test('original session cannot be passed off as an Apple successor', () async {
+    final value = envelope()
+      ..['session_id'] = originalSid
+      ..['access_token'] = token(actor, originalSid);
+    await expectLater(
+      make(enabled: true).prepare(requestId: requestId, receiveOnce: () async => value),
+      throwsStateError,
+    );
+    expect(isolatedCreations, 0);
+    unchanged();
+  });
   test('server Auth user or Google identity mismatch never changes application session', () async {
     for (final value in [user(other, apple: true), user(actor, apple: true, googleId: 'replaced-google')]) {
       isolatedUser = value;

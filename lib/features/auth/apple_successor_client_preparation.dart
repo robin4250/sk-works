@@ -72,6 +72,19 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
     return jsonEncode(identities);
   }
 
+  String _sessionId(String token, String actor) {
+    try {
+      final pieces = token.split('.');
+      if (pieces.length != 3) { throw _failure(); }
+      final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(pieces[1]))));
+      if (claims is! Map || claims['sub'] != actor || claims['session_id'] is! String ||
+          !_uuid.hasMatch(claims['session_id'] as String)) { throw _failure(); }
+      return claims['session_id'] as String;
+    } catch (_) {
+      throw _failure();
+    }
+  }
+
   Future<String> _memberships(SupabaseClient client, String actor, String token) async {
     final rows = await client.from('company_members').select('company_id,role')
         .eq('user_id', actor).setHeader('Authorization', 'Bearer $token')
@@ -119,6 +132,7 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
           .timeout(const Duration(seconds: 15))).user;
       check();
       if (original == null || original.id != actor) { throw _failure(); }
+      final originalSessionId = _sessionId(originalToken, actor);
       final google = _google(original);
       final companies = await _memberships(applicationClient, actor, originalToken);
       check();
@@ -128,7 +142,8 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
       const fields = {'schema', 'request_id', 'user_id', 'session_id', 'token_type', 'access_token', 'refresh_token'};
       if (raw.length != fields.length || raw.keys.any((key) => !fields.contains(key)) ||
           raw['schema'] != 1 || raw['request_id'] != requestId || raw['user_id'] != actor ||
-          raw['session_id'] is! String || !_uuid.hasMatch(raw['session_id'] as String) || raw['token_type'] != 'bearer') {
+          raw['session_id'] is! String || !_uuid.hasMatch(raw['session_id'] as String) || raw['session_id'] == originalSessionId ||
+          raw['token_type'] != 'bearer') {
         throw _failure();
       }
       final access = raw['access_token'], refresh = raw['refresh_token'];
