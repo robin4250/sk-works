@@ -11,6 +11,12 @@ if(target.protocol!=='http:'||target.hostname!=='127.0.0.1'||target.username||ta
 const {default:pg}=await import(process.env.SKO_APPLE_BROKER_NATIVE_DRIVER);
 const pool=new pg.Pool({connectionString:dbURL,max:2});
 let deliveries=0,delivered=null,passwordCalls=0,appleCalls=0;
+const trace=[];
+const instrumentedPool={connect:async()=>{const db=await pool.connect();return {release:()=>db.release(),query:async(sql,args)=>{
+ const op=['begin_password_successor','reserve_password_successor','claim_successor_attempt','complete_with_successor','hold_apple_native_subject'].find(x=>sql.includes(x));
+ try{const result=await db.query(sql,args);if(op)trace.push({op,returned:!!result.rows[0]?.r});return result;}
+ catch(e){trace.push({op:op??'transaction',code:/^[A-Z0-9]{5}$/.test(e.code??'')?e.code:'unknown'});throw e;}
+ }}}};
 const fetcher=async(raw,options)=>{
  const u=new URL(raw);assert.equal(u.origin,origin);assert.ok(u.pathname.startsWith('/auth/v1/'));
  if(u.searchParams.get('grant_type')==='password')passwordCalls++;
@@ -20,7 +26,7 @@ const fetcher=async(raw,options)=>{
 try{
  const broker=createNativeApplePasswordSuccessorBroker({enabled:true,nativeOnlyReviewed:true,successorReviewed:true,
   passwordSuccessorReviewed:true,databaseReviewed:true,deliveryReviewed:true,audiences:['com.skworks.skWorks'],
-  baseUrl:origin,publicKey:'sb_publishable_fixture',authTimeoutMs:10000},{pool,fetcher,
+  baseUrl:origin,publicKey:'sb_publishable_fixture',authTimeoutMs:10000},{pool:instrumentedPool,fetcher,
   resolveKey:async kid=>{assert.equal(kid,input.jwk.kid);return input.jwk;},
   deliverVerifiedSuccessor:async credential=>{deliveries++;delivered=credential;return true;}});
  const args={exactBearer:input.originalBearer,password:input.password,idToken:input.idToken,rawNonce:input.rawNonce};
@@ -47,5 +53,5 @@ try{
  process.stdout.write(JSON.stringify({verified:true,case:input.expected,deliveries,passwordCalls,appleCalls}));
 }catch{
  // Never include Auth responses, SQL parameters or credentials in CI output.
- process.stderr.write('isolated_password_successor_broker_failed\n');process.exitCode=1;
+ process.stderr.write(JSON.stringify({error:'isolated_password_successor_broker_failed',passwordCalls,appleCalls,trace})+'\n');process.exitCode=1;
 }finally{delivered=null;await pool.end();}
