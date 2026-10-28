@@ -14,7 +14,24 @@ let deliveries=0,delivered=null,passwordCalls=0,appleCalls=0;
 const trace=[];
 const instrumentedPool={connect:async()=>{const db=await pool.connect();return {release:()=>db.release(),query:async(sql,args)=>{
  const op=['begin_password_successor','reserve_password_successor','claim_successor_attempt','complete_with_successor','hold_apple_native_subject'].find(x=>sql.includes(x));
- try{const result=await db.query(sql,args);if(op)trace.push({op,returned:!!result.rows[0]?.r});return result;}
+ try{const result=await db.query(sql,args);if(op)trace.push({op,returned:!!result.rows[0]?.r});
+ if(op==='reserve_password_successor'&&!result.rows[0]?.r){
+  const diagnostic=await db.query(`select c is not null context_present,
+    (c-array['account_allowed','primary_password_configured','session_id'])=(i.snapshot-'session_id') snapshot_same,
+    c->'primary_credential_version'=i.snapshot->'primary_credential_version' credential_same,
+    c->'profile_version'=i.snapshot->'profile_version' profile_same,
+    c->'memberships'=i.snapshot->'memberships' memberships_same,
+    c->'google_identities'=i.snapshot->'google_identities' google_same,
+    s.created_at>=i.created_at session_fresh,
+    a.created_at>=i.created_at amr_fresh,a.authentication_method='password' amr_password
+   from apple_native_enrollment_private.password_successor_intents i
+   left join auth.sessions s on s.id=$2
+   left join auth.mfa_amr_claims a on a.session_id=s.id and a.authentication_method='password'
+   cross join lateral(select apple_native_enrollment_private.context(i.actor_id,s.id) c) x
+   where i.id=$1`,[args[0],args[3]]);
+  trace.push({diagnostic:diagnostic.rows[0]??null});
+ }
+ return result;}
  catch(e){trace.push({op:op??'transaction',code:/^[A-Z0-9]{5}$/.test(e.code??'')?e.code:'unknown'});throw e;}
  }}}};
 const fetcher=async(raw,options)=>{
