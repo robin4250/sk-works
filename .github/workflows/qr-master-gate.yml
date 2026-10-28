@@ -63,6 +63,14 @@ jobs:
           CI: 'true'
         run: node tool/qr-attendance/qr-scanner-possession-integration.mjs
 
+      - name: Scanner registration second-password proof issuer
+        run: node --test tool/qr-attendance/qr-scanner-proof-issuer.test.mjs
+
+      - name: Native scanner registration exact proof
+        env:
+          CI: 'true'
+        run: node tool/qr-attendance/qr-scanner-proof-integration.mjs
+
       - name: Native QR scan coordinator transaction
         env:
           CI: 'true'
