@@ -129,3 +129,17 @@ write. The native PostgreSQL fixture holds a device lock, verifies timeout with
 no pending row left behind, then explicitly retries after releasing the lock.
 This does not implement trusted key activation, independent owner approval,
 key migration or recovery. Production remains unmodified and OFF.
+
+## Key-migration possession prerequisite (review only)
+
+`key-migration-possession.mjs` verifies a purpose-separated P-256 signature over
+an exact migration proposal, owner session, device, key hash, nonce and bounded
+server-issued challenge. The result stays `pending`; generating a key and signing
+with it never identifies its holder as the owner or approves migration. Three
+synthetic tests reject substitutions, expired/consumed challenges, ineligible
+devices, invalid intervals and another signature purpose.
+
+The trusted challenge issuer, database-backed nonce storage/atomic consumption,
+second-password/independent owner approval, platform key custody and the actual
+migration adapter remain unimplemented. This verifier is not connected to the
+pending storage adapter or an endpoint and cannot activate or replace a key.
