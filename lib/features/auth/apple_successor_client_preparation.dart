@@ -31,6 +31,7 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
   final Stream<AuthState>? _authChanges;
   StreamSubscription<AuthState>? _subscription;
   SupabaseClient? _preparedClient;
+  AppleSuccessorHttpsDelivery? _activeDelivery;
   bool _attempted = false, _disposed = false, _ready = false;
   int _generation = 0;
   String? _originalActor, _originalAccessToken, _successorAccessToken;
@@ -67,6 +68,8 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
     _generation++;
     _ready = false;
     _originalActor = _originalAccessToken = _successorAccessToken = null;
+    _activeDelivery?.cancel();
+    _activeDelivery = null;
     if (identical(_owners[applicationClient], this)) {
       _owners[applicationClient] = null;
     }
@@ -126,13 +129,20 @@ class AppleSuccessorClientPreparation with WidgetsBindingObserver {
     final initial = applicationClient.auth.currentSession;
     if (initial == null || initial.isExpired) { throw _failure(); }
     final actor = initial.user.id, bearer = initial.accessToken;
-    return prepare(requestId: requestId, receiveOnce: () {
-      final current = applicationClient.auth.currentSession;
-      if (current == null || current.isExpired || current.user.id != actor ||
-          current.accessToken != bearer) { throw _failure(); }
-      return delivery.receiveOnce(bearer: bearer, requestId: requestId, actor: actor,
-        password: password, idToken: idToken, rawNonce: rawNonce);
-    });
+    var ownsDelivery = false;
+    try {
+      await prepare(requestId: requestId, receiveOnce: () {
+        final current = applicationClient.auth.currentSession;
+        if (current == null || current.isExpired || current.user.id != actor ||
+            current.accessToken != bearer) { throw _failure(); }
+        _activeDelivery = delivery;
+        ownsDelivery = true;
+        return delivery.receiveOnce(bearer: bearer, requestId: requestId, actor: actor,
+          password: password, idToken: idToken, rawNonce: rawNonce);
+      });
+    } finally {
+      if (ownsDelivery && identical(_activeDelivery, delivery)) { _activeDelivery = null; }
+    }
   }
 
   /// Call before sending the enrollment request. receiveOnce must be the

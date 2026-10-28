@@ -30,13 +30,29 @@ global Auth-write serialization/CAS and the owner's iPhone flow remain required.
 The SDK's silent ABA limitation remains. No production/provider/grant, account,
 company, original signature/PDF or feature activation is changed.
 
-Eight new Dart tests use a real loopback HTTPS server and an isolated synthetic
+Seventeen new Dart tests use a real loopback HTTPS server and an isolated synthetic
 trusted CA (no bad-certificate callback). They cover OFF/config, one-use payload,
 303 rejection, declared/chunked limits, foreign envelope/cache/encoding/UTF-8,
 deadline/late result, generic errors and HTTPS -> isolated SDK composition with
 the original application session unchanged. The existing five Node real-TLS sink
 tests pass locally. Dart/Flutter is not installed locally; the new tests and
 analysis are added to the existing dedicated CI and are pending its result.
+
+Preparation invalidation now also cancels its owned active HTTPS delivery:
+dispose, backgrounding and observed Auth-history changes abort the request and
+force-close its dedicated client. A rejected overlapping preparation cannot
+release the active delivery owner. Tests stall real TLS headers and bodies and
+require cancellation to reject before server response release and the 20-second
+deadline; pre-send cancellation makes no client. This is local cancellation only,
+not proof that already-received server work was rolled back. The outcome remains
+unknown and the original one-attempt delivery cannot be reused.
+
+The first CI passed analysis and 29 cases; its single composition-fixture failure
+was hidden by the production generic error boundary. The followup keeps the real
+SDK Auth stream in that success case and adds safe path/event-type/boolean stage
+diagnostics rather than guessing a cause. Cancellation cases use explicit Auth
+history fixtures to control their invalidation event. New CI must pass before
+claiming this composition is verified.
 
 Primary references: [Dart HTTPS/certificate handling](https://api.dart.dev/dart-io/HttpClient-class.html),
 [redirect policy](https://api.dart.dev/dart-io/HttpClientRequest/followRedirects.html),

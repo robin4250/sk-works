@@ -18,15 +18,23 @@ class AppleSuccessorHttpsDelivery {
   final bool enabled;
   final Duration deadline;
   final HttpClient Function() _clientFactory;
-  bool _attempted = false;
+  bool _attempted = false, _cancelled = false;
+  void Function()? _abortActive;
   static const maxResponseBytes = 49152;
   static final _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
   static StateError _failure() => StateError('Apple連携の応答を確認できませんでした。再送せずログイン状態を確認してください。');
 
+  /// Terminal local cancellation. It closes the owned socket but cannot undo
+  /// server work already received. Never retry or infer enrollment rollback.
+  void cancel() {
+    _cancelled = true;
+    _abortActive?.call();
+  }
+
   Future<Map<String, dynamic>> receiveOnce({required String bearer,
     required String requestId, required String actor,
     required String password, required String idToken, required String rawNonce}) async {
-    if (_attempted || !enabled || kIsWeb) { throw _failure(); }
+    if (_attempted || _cancelled || !enabled || kIsWeb) { throw _failure(); }
     _attempted = true;
     if (endpoint.scheme != 'https' || endpoint.host.isEmpty || endpoint.userInfo.isNotEmpty ||
         endpoint.hasQuery || endpoint.hasFragment || endpoint.path.isEmpty ||
@@ -42,8 +50,15 @@ class AppleSuccessorHttpsDelivery {
     try { client = _clientFactory(); } catch (_) { throw _failure(); }
     HttpClientRequest? request;
     var terminal = false;
-    void check() { if (terminal) { throw _failure(); } }
+    void abort() {
+      terminal = true;
+      request?.abort(_failure());
+      client.close(force: true);
+    }
+    _abortActive = abort;
+    void check() { if (terminal || _cancelled) { throw _failure(); } }
     Future<Map<String, dynamic>> send() async {
+      check();
       request = await client.postUrl(endpoint);
       check();
       final outgoing = request!;
@@ -92,15 +107,14 @@ class AppleSuccessorHttpsDelivery {
       client.autoUncompress = false;
       client.connectionTimeout = deadline;
       return await send().timeout(deadline, onTimeout: () {
-        terminal = true;
-        request?.abort(_failure());
-        client.close(force: true);
+        abort();
         throw _failure();
       });
     } catch (_) {
       throw _failure();
     } finally {
       terminal = true;
+      _abortActive = null;
       request?.abort();
       client.close(force: true);
     }

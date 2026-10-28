@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -160,52 +161,116 @@ void main() {
     await expectLater(receive(value), throwsStateError);
     expect(calls, 1);
   });
-  test('original TLS response composes with isolated SDK preparation and never adopts application Auth', () async {
+  const project = 'https://successor-fixture.invalid';
+  const originalSid = '40000000-0000-0000-0000-000000000004';
+  String sdkToken(String session) {
+    String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
+    return '${part({'alg': 'HS256'})}.${part({'sub': actor, 'session_id': session,
+      'exp': 4102444800, 'iss': '$project/auth/v1', 'aud': 'authenticated'})}.${base64Url.encode(List<int>.filled(32, 7)).replaceAll('=', '')}';
+  }
+  Map<String, dynamic> sdkUser({bool apple = false}) => {
+    'id': actor, 'aud': 'authenticated', 'created_at': '2026-01-01T00:00:00Z',
+    'app_metadata': <String, dynamic>{}, 'user_metadata': <String, dynamic>{},
+    'identities': [
+      {'id': 'google-$actor', 'identity_id': actor, 'user_id': actor, 'provider': 'google',
+        'identity_data': {'sub': 'google-$actor'}, 'created_at': '2026-01-01T00:00:00Z', 'updated_at': '2026-01-01T00:00:00Z'},
+      if (apple) {'id': 'apple-$actor', 'identity_id': requestId, 'user_id': actor, 'provider': 'apple',
+        'identity_data': {'sub': 'synthetic-apple'}, 'created_at': '2026-01-01T00:00:00Z', 'updated_at': '2026-01-01T00:00:00Z'},
+    ],
+  };
+  Future<({SupabaseClient application, AppleSuccessorClientPreparation preparation,
+      StreamController<AuthState> events, List<String> paths})> sdkPreparation({bool actualHistory = false}) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     addTearDown(() { debugDefaultTargetPlatformOverride = null; });
-    const project = 'https://successor-fixture.invalid';
-    const originalSid = '40000000-0000-0000-0000-000000000004';
-    String token(String session) {
-      String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
-      return '${part({'alg': 'HS256'})}.${part({'sub': actor, 'session_id': session,
-        'exp': 4102444800, 'iss': '$project/auth/v1', 'aud': 'authenticated'})}.synthetic';
-    }
-    Map<String, dynamic> user({bool apple = false}) => {
-      'id': actor, 'aud': 'authenticated', 'created_at': '2026-01-01T00:00:00Z',
-      'app_metadata': <String, dynamic>{}, 'user_metadata': <String, dynamic>{},
-      'identities': [
-        {'id': 'google-subject', 'identity_id': actor, 'user_id': actor, 'provider': 'google',
-          'identity_data': {'sub': 'google-subject'}, 'created_at': '2026-01-01T00:00:00Z', 'updated_at': '2026-01-01T00:00:00Z'},
-        if (apple) {'id': 'apple-subject', 'identity_id': requestId, 'user_id': actor, 'provider': 'apple',
-          'identity_data': {'sub': 'apple-subject'}, 'created_at': '2026-01-01T00:00:00Z', 'updated_at': '2026-01-01T00:00:00Z'},
-      ],
-    };
+    final paths = <String>[], events = StreamController<AuthState>.broadcast();
     SupabaseClient sdk({bool apple = false}) => SupabaseClient(project, 'synthetic-public',
       authOptions: const AuthClientOptions(autoRefreshToken: false), httpClient: MockClient((request) async {
+        paths.add('${apple ? "isolated" : "original"}:${request.url.path}');
         expect(request.method, 'GET', reason: 'no global mutation or refresh request');
-        final result = request.url.path.endsWith('/user') ? user(apple: apple) : [{'company_id': requestId, 'role': 'owner'}];
+        final result = request.url.path.endsWith('/user') ? sdkUser(apple: apple) : [{'company_id': requestId, 'role': 'owner'}];
         return http.Response(jsonEncode(result), 200, headers: {'content-type': 'application/json'}, request: request);
       }));
     final application = sdk();
-    await application.auth.setInitialSession(jsonEncode({'access_token': token(originalSid),
-      'refresh_token': 'synthetic-original-refresh', 'token_type': 'bearer', 'expires_in': 3600, 'user': user()}));
+    await application.auth.setInitialSession(jsonEncode({'access_token': sdkToken(originalSid),
+      'refresh_token': 'synthetic-original-refresh', 'token_type': 'bearer', 'expires_in': 3600, 'user': sdkUser()}));
     final preparation = AppleSuccessorClientPreparation(application, projectUrl: project,
-      publicKey: 'synthetic-public', enabled: true, isolatedClientFactory: () => sdk(apple: true));
-    addTearDown(() async { await preparation.dispose(); await application.dispose(); });
+      publicKey: 'synthetic-public', enabled: true, authChanges: actualHistory ? null : events.stream,
+      isolatedClientFactory: () => sdk(apple: true));
+    addTearDown(() async { await preparation.dispose(); await events.close(); await application.dispose(); });
+    return (application: application, preparation: preparation, events: events, paths: paths);
+  }
+  Future<void> prepare(AppleSuccessorClientPreparation preparation, AppleSuccessorHttpsDelivery value) =>
+    preparation.prepareFromHttps(requestId: requestId, delivery: value,
+      password: 'synthetic-password', idToken: 'synthetic-apple-id-token', rawNonce: 'N' * 43);
+  test('original TLS response composes with isolated SDK preparation and never adopts application Auth', () async {
+    final fixture = await sdkPreparation(actualHistory: true);
+    final actualEvents = <String>[];
+    final subscription = fixture.application.auth.onAuthStateChange.listen((state) {
+      actualEvents.add('${state.event.name}:sameActor=${state.session?.user.id == actor}:sameToken=${state.session?.accessToken == sdkToken(originalSid)}');
+    });
+    addTearDown(subscription.cancel);
+    // Drain and describe the pinned SDK ReplaySubject baseline before this
+    // real-history composition. Diagnostics contain only event types/bools.
+    await Future<void>.delayed(Duration.zero);
     handler = (request) async {
-      expect(request.headers.value('authorization'), 'Bearer ${token(originalSid)}');
+      expect(request.headers.value('authorization'), 'Bearer ${sdkToken(originalSid)}');
       await request.drain<void>();
       request.response.headers.contentType = ContentType.json;
       request.response.headers.set('cache-control', 'no-store');
-      request.response.write(jsonEncode({...envelope(), 'access_token': token(sid)}));
+      request.response.write(jsonEncode({...envelope(), 'access_token': sdkToken(sid)}));
       await request.response.close();
     };
-    await preparation.prepareFromHttps(requestId: requestId, delivery: delivery(),
-      password: 'synthetic-password', idToken: 'synthetic-apple-id-token', rawNonce: 'N' * 43);
-    expect(preparation.ready, isTrue); expect(calls, 1);
-    expect(application.auth.currentSession!.accessToken, token(originalSid));
-    expect(application.auth.currentSession!.refreshToken, 'synthetic-original-refresh');
+    try { await prepare(fixture.preparation, delivery()); }
+    catch (_) { fail('HTTPS/SDK composition failed at safe fixture stages: ${fixture.paths}, TLS calls=$calls, Auth history=$actualEvents'); }
+    expect(fixture.preparation.ready, isTrue); expect(calls, 1);
+    expect(fixture.application.auth.currentSession!.accessToken, sdkToken(originalSid));
+    expect(fixture.application.auth.currentSession!.refreshToken, 'synthetic-original-refresh');
   });
+  test('cancellation before send cannot create a client or retry', () async {
+    final value = delivery()..cancel();
+    await expectLater(receive(value), throwsStateError);
+    expect(calls, 0); expect(creations, 0);
+  });
+  for (final phase in ['headers', 'body']) {
+    for (final cause in ['dispose', 'background', 'auth', 'overlap']) {
+      test('$cause cancellation closes stalled $phase without waiting for deadline or allowing retry', () async {
+        final fixture = await sdkPreparation();
+        final started = Completer<void>(), release = Completer<void>(), finished = Completer<void>();
+        addTearDown(() { if (!release.isCompleted) { release.complete(); } });
+        handler = (request) async {
+          try {
+            await request.drain<void>();
+            request.response.headers.contentType = ContentType.json;
+            request.response.headers.set('cache-control', 'no-store');
+            if (phase == 'body') { request.response.write('{'); await request.response.flush(); }
+            started.complete(); await release.future;
+            final lateBody = jsonEncode({...envelope(), 'access_token': sdkToken(sid)});
+            request.response.write(phase == 'body' ? lateBody.substring(1) : lateBody);
+            await request.response.close();
+          } finally { if (!finished.isCompleted) { finished.complete(); } }
+        };
+        final value = delivery(deadline: const Duration(seconds: 20));
+        final result = expectLater(prepare(fixture.preparation, value), throwsStateError);
+        await started.future.timeout(const Duration(seconds: 3));
+        switch (cause) {
+          case 'dispose': await fixture.preparation.dispose();
+          case 'background': fixture.preparation.didChangeAppLifecycleState(AppLifecycleState.paused);
+          case 'auth': fixture.events.add(const AuthState(AuthChangeEvent.signedOut, null));
+          case 'overlap':
+            await expectLater(prepare(fixture.preparation, value), throwsStateError);
+            fixture.preparation.invalidate();
+        }
+        // This completes before the response is released and far before the
+        // delivery deadline: invalidation must abort the actual owned socket.
+        await result.timeout(const Duration(seconds: 2));
+        expect(fixture.preparation.ready, isFalse);
+        await expectLater(receive(value), throwsStateError);
+        expect(calls, 1);
+        expect(fixture.application.auth.currentSession!.accessToken, sdkToken(originalSid));
+        release.complete(); await finished.future.timeout(const Duration(seconds: 3));
+      });
+    }
+  }
   test('network error content never escapes the generic delivery error', () async {
     final value = AppleSuccessorHttpsDelivery(endpoint: endpoint, enabled: true,
       clientFactory: () => throw StateError('synthetic-password-and-refresh-secret'));
