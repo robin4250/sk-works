@@ -28,7 +28,7 @@ Map<String, dynamic> user(String id, {bool apple = false, String? googleId}) => 
 String token(String id, String sid, {int expires = 4102444800}) {
   String part(Object value) => base64Url.encode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
   return '${part({'alg': 'HS256'})}.${part({'sub': id, 'session_id': sid, 'exp': expires, 'iat': 1767225600,
-    'iss': '$origin/auth/v1', 'aud': 'authenticated'})}.synthetic';
+    'iss': '$origin/auth/v1', 'aud': 'authenticated'})}.${base64Url.encode(List<int>.filled(32, 7)).replaceAll('=', '')}';
 }
 String initialSession(String id) => jsonEncode({'access_token': token(id, originalSid),
   'refresh_token': 'synthetic-original', 'token_type': 'bearer', 'expires_in': 3600, 'user': user(id)});
