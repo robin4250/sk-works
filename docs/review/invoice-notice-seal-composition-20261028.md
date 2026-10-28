@@ -17,9 +17,14 @@ No public endpoint, grant, production trigger, notification send or activation
 is introduced. Current broad month-close locks are not removed.
 
 The isolated composition test uses real existing invoice approval, freeze and
-issuer seal-consent writers but **synthetic notice/session/readiness adapters**.
+issuer seal-consent writers and loads the existing durable notice prepare,
+current-revision check, ticket issuance and consumption SQL verbatim. Session,
+source fingerprint and readiness adapters remain **synthetic**.
 It checks OFF, wrong financial parent, wrong session, readiness failure, missing
-explicit consent, rollback, one financial audit/consent/receipt, replay and ACL.
+explicit consent, rollback, changed invoice revision, one financial
+audit/consent/receipt, replay and ACL. A foreign-session ticket and wrong-parent
+ticket remain unconsumed after rejection. This is not notification delivery:
+the test invokes private notice preparation/issuance directly.
 It does not prove real JWT, full month-close source locks or concurrent lock
 ordering across both candidate systems. Separate native integration with the
 actual month-close adapters is required before merging or enabling this path.

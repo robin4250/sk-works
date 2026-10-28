@@ -5,6 +5,7 @@ on:
       - 'docs/candidates/trade_document_notice_seal_20261028.sql.review-only'
       - 'tool/trade_document_notice_seal_fixture.mjs'
       - 'tool/verify_trade_document_notice_seal.mjs'
+      - 'docs/review/invoice-month-close/notification.sql.review-only'
       - 'tool/trade_document_invoice_confirmation_fixture.mjs'
       - '.github/workflows/invoice-notice-seal-composition.yml'
 permissions:
