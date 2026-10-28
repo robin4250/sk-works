@@ -1,7 +1,7 @@
 // Isolated actual daily calculator -> durable notice -> financial/seal command.
 // Existing source/notice/financial functions are unchanged. Auth remains a fixture,
-// and route/expense/adjustment providers are explicitly empty in this scenario.
-export async function verifyCalculatedNoticeConfirmation(db,c){
+// and route/expense are explicitly empty; a second scenario uses real adjustments.
+export async function verifyCalculatedNoticeConfirmation(db,c,prepareSource){
  const {A,B,UA,id,q,check,pending}=c;
  const before=await q('select to_jsonb(i) v from public.invoices i where id=$1',[pending.parent]);
  const counts=()=>q(`select jsonb_build_object(
@@ -11,6 +11,7 @@ export async function verifyCalculatedNoticeConfirmation(db,c){
  const beforeCounts=await counts();
  await db.exec('begin');
  try{
+  if(prepareSource)await prepareSource();
   // The calculated invoice was legitimately changed after its first attachment.
   // Refresh that attachment via its existing API and create a new consent revision;
   // never rewrite an old immutable binding to make the later approval pass.
@@ -57,5 +58,5 @@ export async function verifyCalculatedNoticeConfirmation(db,c){
  check(await counts(),beforeCounts);
  check(await q('select current_revision v from trade_document_consent_private.documents where id=$1',[pending.doc]),1);
  check(await q('select invoice_month_close_candidate.guarded($1) v',[pending.parent]),'ready');
- console.log('PASS actual daily calculator -> real durable notice -> financial/seal single-transaction success and complete rollback; Auth and downstream providers remain fixtures');
+ console.log('PASS actual daily calculator -> real durable notice -> financial/seal single-transaction success and complete rollback; named adjustment scenario='+Boolean(prepareSource)+'; Auth/route/expense remain fixtures');
 }

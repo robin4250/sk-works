@@ -6,6 +6,7 @@ on:
       - 'tool/trade_document_notice_seal_fixture.mjs'
       - 'tool/trade_document_notice_source_integrity_fixture.mjs'
       - 'tool/trade_document_notice_daily_preview_fixture.mjs'
+      - 'tool/trade_document_notice_adjustment_provider_fixture.mjs'
       - 'tool/trade_document_notice_calculated_confirmation_fixture.mjs'
       - 'supabase/review/document_adjustment_install.incomplete.sql'
       - 'supabase/migrations/20261006180455_fix_rate_formula_combined_multipliers.sql'

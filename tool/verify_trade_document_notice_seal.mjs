@@ -37,11 +37,12 @@ try{
  }
  await fs.copyFile(path.join(root,'tool/trade_document_notice_seal_fixture.mjs'),path.join(temp,'tool/trade_document_notice_seal_fixture.mjs'));
  await fs.copyFile(path.join(root,'tool/trade_document_notice_source_integrity_fixture.mjs'),path.join(temp,'tool/trade_document_notice_source_integrity_fixture.mjs'));
+ await fs.copyFile(path.join(root,'tool/trade_document_notice_adjustment_provider_fixture.mjs'),path.join(temp,'tool/trade_document_notice_adjustment_provider_fixture.mjs'));
  await fs.copyFile(path.join(root,'tool/trade_document_notice_daily_preview_fixture.mjs'),path.join(temp,'tool/trade_document_notice_daily_preview_fixture.mjs'));
  await fs.copyFile(path.join(root,'tool/trade_document_notice_calculated_confirmation_fixture.mjs'),path.join(temp,'tool/trade_document_notice_calculated_confirmation_fixture.mjs'));
  await fs.copyFile(path.join(root,'supabase/migrations/20261014124714_monthly_trade_document_attachment.sql'),path.join(temp,'supabase/migrations/20261014124714_monthly_trade_document_attachment.sql'));
  if(process.argv[2]==='--check-generated'){
-  for(const name of [...names,'trade_document_notice_seal_fixture.mjs','trade_document_notice_source_integrity_fixture.mjs','trade_document_notice_daily_preview_fixture.mjs','trade_document_notice_calculated_confirmation_fixture.mjs']){
+  for(const name of [...names,'trade_document_notice_seal_fixture.mjs','trade_document_notice_source_integrity_fixture.mjs','trade_document_notice_daily_preview_fixture.mjs','trade_document_notice_calculated_confirmation_fixture.mjs','trade_document_notice_adjustment_provider_fixture.mjs']){
    const checked=spawnSync(process.execPath,['--check',path.join(temp,'tool',name)],{encoding:'utf8'});
    if(checked.status!==0)throw Error(checked.stderr);
   }

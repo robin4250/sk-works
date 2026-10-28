@@ -96,3 +96,20 @@ rollout or iPhone evidence. No production records or existing test invoices are
 modified. The previous paragraph's statement that successful financial approval
 only uses a synthetic proposal describes the earlier scenario; this new separate
 scenario closes that gap for the daily-price branch only.
+
+## Named-adjustment reader integration (2026-10-28)
+
+The isolated composition now installs the existing `ledger_items` and `active_items`
+readers verbatim from the reviewed adjustment source (including their revoked
+client EXECUTE permissions). It tests monthly and once-only settlement entries,
+plus/minus amounts, effective stop versions, occurrence overrides/cancellation,
+company/party isolation and OFF behavior. A nonempty +1000/-250 settlement case
+is recalculated by the actual daily calculator and passed through the real
+notice, financial approval and issuer-seal transaction, then the complete
+synthetic scenario is rolled back. The saved invoice total is 110750 rather than
+110000. PGlite has 201 successful checks; Native CI is required separately.
+
+This replaces one empty provider boundary, not the adjustment mutation APIs.
+Auth/session, route and expense remain fixtures, production mapping and the
+full-source/GoTrue composition are incomplete. No production SQL, grant, approval
+or existing invoice was changed.
