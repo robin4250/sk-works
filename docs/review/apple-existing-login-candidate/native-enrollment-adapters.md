@@ -227,3 +227,10 @@ least privilege/rate limits, immutable delivery reconciliation, client adoption,
 owner iPhone/Face ID and recovery remain incomplete. This is not a deployable
 production activation or migration. No production settings, identities or company
 records were changed.
+
+
+## Real Auth to PW-successor broker integration candidate (2026-10-28)
+
+`native_password_broker_gotrue_test.go` and the fixture-only Node runner exercise the existing PW-successor broker, Auth HTTP port, PostgreSQL adapter and exact private intent/reservation/claim/completion SQL in one chain. A dedicated workflow reuses the pinned official GoTrue commit and native Apple provider fixture. The Node fetch bridge only maps the pinned project-origin requests to the explicit loopback test server; it does not relax the application's production issuer or origin validation. The issuer string in the disposable fixture is synthetic configuration, not a request to the hosted project.
+
+The added cases require same-UID password and Apple successors, preserved Google identity/profile/company/password snapshot, one completed receipt, one delivery and continued refresh of the final successor, plus wrong-password rejection before native linking. Credentials remain in fixture process memory/stdin and are never printed or persisted. They do not establish real Apple credential acquisition, managed Auth schema compatibility, a least-privilege deployed pool, an actual TLS client delivery/adoption channel or failure recovery. No public route/grant or production change is added. Local Node syntax verification passed; real GoTrue/PG execution is pending the new CI result and must not be reported as passed before it completes.
