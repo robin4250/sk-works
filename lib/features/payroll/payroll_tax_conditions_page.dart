@@ -83,6 +83,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
   bool _incomeNeedsApplication = false;
   String? _incomeConversionError;
   String? _baseInputError;
+  String? _profileBirth;
   final _flags = <String, bool>{
     for (final key in const [
       'health',
@@ -241,7 +242,7 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
     for (final c in _manualPremiums.values) { c.clear(); }
     _insurance = 'rates';
     _income = 'koh';
-    _birth.clear();
+    _birth.text = _profileBirth ?? '';
     for (final controller in _amounts.values) {
       controller.text = '0';
     }
@@ -278,7 +279,22 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
         }
         return response;
       }, _scope);
+      String? profileBirth;
+      try {
+        final birthRaw = await _rpc('worker_profile_birth_date_for_payroll', _scope);
+        if (birthRaw is Map && birthRaw['company_id'] == widget.companyId &&
+            birthRaw['worker_id'] == widget.workerId && birthRaw['contract_version'] == 1) {
+          final value = birthRaw['birth_date'];
+          if (value is String && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) {
+            final date = DateTime.tryParse(value);
+            if (date != null && '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}' == value) profileBirth = value;
+          }
+        }
+      } catch (_) {
+        // An older server keeps the existing, effective-dated birthday intact.
+      }
       if (!mounted || generation != _generation) return;
+      _profileBirth = profileBirth;
       _accept(raw);
       if (_items.isNotEmpty) {
         final month = '$_targetMonth-01';
@@ -808,6 +824,12 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
                     ],
                   ),
                 ],
+                  if (_profileBirth != null && _birth.text != _profileBirth) ...[
+                    Text('プロフィールの生年月日：$_profileBirth。保存済みの適用月の値は保持しています。'),
+                    TextButton(onPressed: _canEdit && !_busy && !_uncertain
+                      ? () => setState(() => _birth.text = _profileBirth!) : null,
+                      child: const Text('この設定にプロフィールの生年月日を使う')),
+                  ],
                   Offstage(offstage: (_insurance != 'rates' || !_flags['nursing']!) && _birth.text.trim().isEmpty, child: TextFormField(
                     controller: _birth,
                     enabled: _canEdit && !_busy && !_uncertain,
@@ -894,4 +916,5 @@ class _PayrollTaxConditionsPageState extends State<PayrollTaxConditionsPage> {
           ),
   );
 }
+
 

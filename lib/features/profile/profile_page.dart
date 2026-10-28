@@ -34,6 +34,8 @@ class _ProfilePageState extends State<ProfilePage> {
   final _phone = TextEditingController();
   final _personalSkoId = TextEditingController();
   final _personnelName = TextEditingController();
+  final _personnelBirth = TextEditingController();
+  bool _birthSupported = false;
   final _personnelRole = TextEditingController();
   final _personnelPhone = TextEditingController();
   final _personnelAddress = TextEditingController();
@@ -66,6 +68,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _phone.dispose();
     _personalSkoId.dispose();
     _personnelName.dispose();
+    _personnelBirth.dispose();
     _personnelRole.dispose();
     _personnelPhone.dispose();
     _personnelAddress.dispose();
@@ -104,6 +107,8 @@ class _ProfilePageState extends State<ProfilePage> {
       _phone.text = ProfileRepository.domesticJapanesePhoneValue(data.phone);
       _personalSkoId.text = data.personalSkoId;
       _workerId = personnel?['worker_id']?.toString();
+      _birthSupported = personnel?['birth_date_contract_version'] == 1;
+      _personnelBirth.text = personnel?['birth_date']?.toString() ?? '';
       _employeeNumber = personnel?['employee_number']?.toString() ?? '';
       _department = personnel?['department']?.toString() ?? '';
       _hireDate = personnel?['hire_date']?.toString() ?? '';
@@ -291,6 +296,7 @@ class _ProfilePageState extends State<ProfilePage> {
         workerId: workerId,
         payload: {
           'name': _personnelName.text.trim(),
+          if (_birthSupported) 'birth_date': _personnelBirth.text.trim().isEmpty ? null : _personnelBirth.text.trim(),
           'kind': 'employee',
           'blood_type': _bloodType,
           'role': _personnelRole.text.trim(),
@@ -714,6 +720,30 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
                               const SizedBox(height: 10),
+                              TextField(
+                                controller: _personnelBirth,
+                                readOnly: true,
+                                enabled: _birthSupported && !_saving,
+                                decoration: const InputDecoration(
+                                  labelText: '生年月日',
+                                  hintText: 'タップして選択',
+                                  suffixIcon: Icon(Icons.calendar_month),
+                                  helperText: '保険料の年齢判定へ連動します',
+                                ),
+                                onTap: () async {
+                                  final now = DateTime.now();
+                                  final selected = await showDatePicker(
+                                    context: context,
+                                    initialDate: DateTime.tryParse(_personnelBirth.text) ?? DateTime(now.year - 30),
+                                    firstDate: DateTime(1900), lastDate: now,
+                                  );
+                                  if (!mounted || selected == null) return;
+                                  setState(() => _personnelBirth.text =
+                                    '${selected.year.toString().padLeft(4, '0')}-${selected.month.toString().padLeft(2, '0')}-${selected.day.toString().padLeft(2, '0')}');
+                                },
+                              ),
+                              if (!_birthSupported) const Text('生年月日の登録は準備中です。既存の保険料設定は保持されます。'),
+                              const SizedBox(height: 10),
                               DropdownButtonFormField<String>(
                                 initialValue: _bloodType.isEmpty ? null : _bloodType,
                                 decoration: InputDecoration(
@@ -950,3 +980,4 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
+
