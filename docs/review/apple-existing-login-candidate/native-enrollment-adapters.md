@@ -167,3 +167,26 @@ credential non-output and no successor logout. They are not real GoTrue-to-DB
 composition, TLS delivery or iPhone adoption tests. Durable reconciliation,
 public endpoint authentication/rate limits, rollout/restore, PW reservation and
 client adoption remain incomplete. No production setting or grant changed.
+
+
+## Primary-password successor Auth transport (2026-10-28, OFF)
+
+`authenticatePrimaryPasswordSuccessor` is an internal opt-in port on the existing
+Auth transport. It verifies the originally bound bearer, derives the email/phone
+only from that verified actor, performs the password login once, and independently
+verifies the same-UID, different-SID result and bounded refresh credential. It
+retains that new credential for a future reviewed reservation/handoff instead of
+logging it out or asserting that the obsolete Google refresh remains usable.
+The existing handler and broker do not enable this port. It does not rebind the
+Apple link operation, reserve a subject, deliver to a client, or update any password,
+Google identity, company or profile. A failed/unknown attempt is never automatically
+retried. Any created session is deliberately not revoked to pretend rollback.
+
+The caller must still revalidate the original versus successor company/Google/
+credential/profile snapshot atomically in SQL and create the PW-successor-bound
+reservation, with failure reconciliation and a safe client handoff. None of those
+steps or public endpoint wiring is implemented by this Auth-only change. Same UID
+alone is not sufficient evidence of the full enrollment policy. The three new
+HTTP-fixture tests and the eleven existing Auth/handler tests pass locally; these
+are synthetic transport tests, not a new real-GoTrue reservation proof. All gates
+remain OFF and no production configuration or grant changed.
