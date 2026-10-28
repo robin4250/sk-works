@@ -72,11 +72,13 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
         });
       }
     } catch (_) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         requiresReload = true;
         savedForPublication = null;
         message = '保存結果を確認できません。画面を閉じて再読み込みしてください。';
-      });
+        });
+      }
     } finally {
       if (mounted) setState(() => saving = false);
     }
@@ -90,11 +92,13 @@ class _ShiftScheduleEditorState extends State<ShiftScheduleEditor> {
       await widget.publish!(List.unmodifiable(rows));
       if (mounted) setState(() { savedForPublication = null; message = 'シフトを確定しました。'; });
     } catch (_) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         requiresReload = true;
         savedForPublication = null;
         message = '確定結果を確認できません。画面を閉じて再読み込みしてください。';
-      });
+        });
+      }
     } finally {
       if (mounted) setState(() => saving = false);
     }
