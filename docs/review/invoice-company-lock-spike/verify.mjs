@@ -152,8 +152,14 @@ try {
   ]) {
     await same.query('begin');
     await same.query("set local statement_timeout='2s'");
+    // Model a legacy compound operation that writes another company first.
+    // A busy-company failure must undo the complete transaction, not only the
+    // conflicting statement, and callers must not continue an aborted tx.
+    await same.query("insert into public.synthetic_work values($1,'rollback marker')",[b]);
     await assert.rejects(() => same.query(query,params),e => e.code === '55P03');
+    await assert.rejects(() => same.query('select 1'),e => e.code === '25P02');
     await same.query('rollback');
+    assert.equal((await setup.query("select count(*)::int as n from public.synthetic_work where v='rollback marker'")).rows[0].n,0);
   }
   await other.query('begin');
   await other.query("set local statement_timeout='2s'");
@@ -162,6 +168,13 @@ try {
   await other.query("delete from public.synthetic_work where company_id=$1 and v='unrelated changed'",[b]);
   await other.query('commit');
   await approval.query('rollback');
+  // Retry only after confirmed rollback and release, in a fresh transaction.
+  await same.query('begin');
+  const freshRetry=await same.query("insert into public.synthetic_work values($1,'fresh retry')",[a]);
+  assert.equal(freshRetry.rowCount,1);
+  await same.query('commit');
+  assert.equal((await setup.query("select count(*)::int as n from public.synthetic_work where company_id=$1 and v='fresh retry'",[a])).rows[0].n,1);
+  console.log('PASS: busy errors abort compound transactions; rollback removes earlier writes; fresh transaction can retry after release');
   // Indirect scope hazard: rows such as report workers have no company_id.
   // ON DELETE CASCADE fires the child trigger after the parent is no longer
   // visible to the same transaction. A fail-closed lookup must roll back the
