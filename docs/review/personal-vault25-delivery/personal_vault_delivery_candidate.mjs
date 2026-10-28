@@ -13,7 +13,9 @@ export async function downloadOwnVaultPdf({manifestId, artifactKey}, services) {
   const actor = Object.freeze({...await services.liveActor()});
   if (!uuid.test(actor?.ownerId ?? '') || !uuid.test(actor?.sessionId ?? '')) throw Error('vault_session_invalid');
   const entries = await services.listMine();
-  const matches = entries.filter(x => x.manifest_id === manifestId && x.artifact_key === artifactKey &&
+  // Preserve selected fields before awaiting another adapter. Later mutation
+  // must not change which own-document kind passed the first authorization.
+  const matches = entries.map(x => Object.freeze({...x})).filter(x => x.manifest_id === manifestId && x.artifact_key === artifactKey &&
     ['own_attendance','own_payroll'].includes(x.kind));
   if (matches.length !== 1) throw Error('vault_owner_or_manifest_rejected');
   const sourceRows = await services.sourceMine(manifestId, artifactKey);
@@ -22,6 +24,7 @@ export async function downloadOwnVaultPdf({manifestId, artifactKey}, services) {
   if (!['source_company_id','source_worker_id','source_id'].every(k => uuid.test(source[k] ?? '')) ||
       typeof source.source_revision !== 'string' || !source.source_revision || source.source_revision.length > 256 ||
       !hash.test(source.snapshot_hash ?? '') || !hash.test(source.manifest_hash ?? '') ||
+      !['own_attendance','own_payroll'].includes(source.kind) ||
       source.kind !== matches[0].kind || source.source_company_id !== matches[0].source_company_id)
     throw Error('vault_source_binding_rejected');
   const rows = await services.itemMine(manifestId, artifactKey);

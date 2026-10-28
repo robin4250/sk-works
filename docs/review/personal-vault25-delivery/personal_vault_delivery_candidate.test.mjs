@@ -103,3 +103,20 @@ test('receipt and metadata returned by adapters are detached before download awa
   await assert.rejects(downloadOwnVaultPdf({manifestId:mid,artifactKey:key},f.services),/vault_download_invalid|vault_pdf_digest_mismatch/);
  }finally{await f.db.close();}
 });
+
+test('selected list entry cannot change its allowed kind while awaiting source lookup',async()=>{
+ const f=await fixture();try{
+  const selected=(await f.services.listMine())[0];
+  const source=(await f.services.sourceMine(mid,key))[0];
+  f.services.listMine=async()=>[selected];
+  f.services.sourceMine=async()=>{
+   selected.kind='company_invoice';
+   return [{...source,kind:'company_invoice'}];
+  };
+  f.services.trustedPrivacyProof=async()=>({passed:true,policy:'own-snapshot-v2',
+   sourceBinding:{...source,kind:'company_invoice'},ownerId:owner,manifestId:mid,
+   artifactKey:key,kind:'company_invoice',pdfSha256:digest});
+  await assert.rejects(downloadOwnVaultPdf({manifestId:mid,artifactKey:key},f.services),/vault_source_binding_rejected/);
+  assert.equal(f.calls(),0);
+ }finally{await f.db.close();}
+});
