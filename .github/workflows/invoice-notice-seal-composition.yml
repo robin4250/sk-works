@@ -1,0 +1,42 @@
+name: Invoice notice seal composition review
+on:
+  pull_request:
+    paths:
+      - 'docs/candidates/trade_document_notice_seal_20261028.sql.review-only'
+      - 'tool/trade_document_notice_seal_fixture.mjs'
+      - 'tool/trade_document_invoice_confirmation_fixture.mjs'
+      - '.github/workflows/invoice-notice-seal-composition.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-composition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [pglite, postgres]
+    services:
+      database:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: sko_document_consent_fixture
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      SKO_NOTICE_SEAL_REVIEW_HOOK: contract-v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - if: matrix.runtime == 'pglite'
+        run: node tool/verify_trade_document_bound_seal_consent.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
+      - if: matrix.runtime == 'postgres'
+        run: node tool/verify_trade_document_bound_seal_consent.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/pg/lib/index.js" postgres
+        env:
+          SKO_CONSENT_FIXTURE_URL: postgresql://postgres:fixture-only@127.0.0.1:5432/sko_document_consent_fixture
