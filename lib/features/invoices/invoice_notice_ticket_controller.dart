@@ -22,6 +22,16 @@ class InvoiceNoticeTicketController {
   int _generation = 0;
   static final _uuid = RegExp(r'^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$');
 
+  // The same timestamptz may have a different offset or fractional padding.
+  // Keep microsecond precision and reject revisions without a timezone.
+  static bool _sameRevision(Object? receipt, String displayed) {
+    if (receipt is! String) { return false; }
+    final zone = RegExp(r'(?:Z|[+-][0-9]{2}:[0-9]{2})$');
+    if (!zone.hasMatch(receipt) || !zone.hasMatch(displayed)) { return false; }
+    final a = DateTime.tryParse(receipt), b = DateTime.tryParse(displayed);
+    return a != null && b != null && a.isAtSameMomentAs(b);
+  }
+
   void invalidate() {
     _generation++;
     _actor = null; _session = null; _ticket = null; _expires = null;
@@ -76,7 +86,7 @@ class InvoiceNoticeTicketController {
       // The UI must bind readiness to the exact displayed revision. Older
       // candidate servers without this evidence cannot enable the panel.
       if (sourceRevision != null && (sourceRevision.isEmpty ||
-          result['status'] != 'ready' || result['source_revision'] != sourceRevision)) { return false; }
+          result['status'] != 'ready' || !_sameRevision(result['source_revision'], sourceRevision))) { return false; }
       final ticket = result['ticket_id'];
       final expires = result['expires_at'];
       if (ticket is! String || !_uuid.hasMatch(ticket) || expires is! String ||

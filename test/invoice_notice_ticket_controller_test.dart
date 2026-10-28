@@ -82,4 +82,22 @@ void main() {
       expect(await c.approve(), result == true ? InvoiceNoticeApprovalResult.confirmed : InvoiceNoticeApprovalResult.unconfirmed);
     }
   });
+  test('readiness receipt is bound to displayed timestamp with microsecond precision', () async {
+    const revision = '2026-10-27T12:00:00.123456Z';
+    for (final row in [
+      ['2026-10-27T21:00:00.123456+09:00', 'ready', true],
+      ['2026-10-27T12:00:00.123457Z', 'ready', false],
+      ['2026-10-27T12:00:00.123456', 'ready', false],
+      [null, 'ready', false],
+      [revision, 'report_pending', false],
+    ]) {
+      final c = InvoiceNoticeTicketController(actor: () => 'a', session: () => 's', now: () => start,
+        openTicket: (_) async => {'notification_id': notice, 'invoice_id': invoice,
+          'ticket_id': ticket, 'expires_at': start.add(const Duration(minutes: 5)).toIso8601String(),
+          'source_revision': row[0], 'status': row[1]});
+      expect(await c.open(notice, invoiceId: invoice, sourceRevision: revision), row[2]);
+      expect(c.hasValidTicket, row[2]);
+    }
+  });
+
 }
