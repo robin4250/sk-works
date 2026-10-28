@@ -53,6 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/read-api-test.sql
+      - run: psql -h localhost -U postgres -d vault_fixture -v ON_ERROR_STOP=1 -f docs/review/personal-vault24/receipt-immutability-test.sql
       - run: createdb -h localhost -U postgres vault_native
       - run: psql -h localhost -U postgres -d vault_native -v ON_ERROR_STOP=1 -f vault-native-test.sql
         working-directory: docs/review/personal-vault24/feature-fixture

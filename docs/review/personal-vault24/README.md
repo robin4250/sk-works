@@ -34,3 +34,10 @@ Master gate `personal_pdf_vault` を既存の全体制御へ追加する担当�
 
 ## 追加renderer adapter
 `OwnPayrollArchivePdf` は本人確定明細の固定数値項目だけを渡し、経費詳細を空で明示して既存rendererの暗黙DB取得を止める。氏名・会社名は正規本人snapshot由来であることが呼出元の責務。固定内訳合計がgross/deduction/netと一致しない場合、追加支給/控除がある場合は未対応として拒否するため、通常の全明細をまだ出力できるわけではない。Fontを引数で受け、既存印影取得とネットワークfont取得を避ける。実rendererのCIはSupabase未初期化のまま実行し、元snapshot不変とPDF bytes生成を確認する。本文目視・日本語フォント・保存元ownerの実認可は未検証。
+
+
+## Catalog receipt immutability candidate
+
+`receipt-immutability.sql.review-only` adds row/statement guards to the isolated catalog: item receipts cannot be updated, deleted or truncated; an insert locks its parent and must target the owner's pending manifest; manifest identity and source metadata cannot change. A manifest can only transition from pending to complete with the expected item count. Repeating the same seal and exact receipt through the existing functions remains idempotent. Direct deletion, reopening, retiming and TRUNCATE are rejected, including when a trusted database writer bypasses the API. Existing signatures, seals, PDFs and source records are not altered.
+
+This is catalog integrity protection, **not immutable Storage or object lock**. A database owner can disable/drop triggers and a Storage operator can replace/delete objects. Separately controlled immutable retention, trusted source-owner snapshot validation, content privacy proof, lifecycle/retention and forward recovery remain required; no new application grants or production deployment are included. The new guards also intentionally block pending-receipt cleanup, so retention/administrative cleanup needs separate reviewed design. Local PGlite validation reuses the existing read/API/Storage fixture; Native PostgreSQL is added to the existing dedicated CI. No claim of real-source snapshot inspection or preservation against privileged infrastructure compromise is made.

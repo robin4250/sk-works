@@ -1,0 +1,43 @@
+-- Review-only catalog receipt protection. Not provider object lock or a migration.
+-- Apply only to the isolated catalog candidate after independent catalog review.
+begin;
+create function personal_vault24_candidate.protect_item_receipt()
+returns trigger language plpgsql security invoker set search_path='' as $$
+declare m personal_vault24_candidate.manifests;
+begin
+ if tg_op <> 'INSERT' then raise exception 'vault_receipt_immutable'; end if;
+ -- Serialize new receipts with seal_manifest, using its existing parent lock.
+ select * into m from personal_vault24_candidate.manifests where id=new.manifest_id for update;
+ if not found or m.status<>'pending' then raise exception 'vault_receipt_parent_rejected';end if;
+ if new.object_path is distinct from 'personal-vault/'||m.owner_id::text||'/'||new.artifact_key||'.pdf' then
+  raise exception 'vault_path_rejected';
+ end if;
+ return new;
+end $$;
+create function personal_vault24_candidate.protect_manifest_receipt()
+returns trigger language plpgsql security invoker set search_path='' as $$
+begin
+ if tg_op='DELETE' then raise exception 'vault_manifest_immutable';end if;
+ if new is not distinct from old then return new;end if;
+ if old.status<>'pending' or new.status<>'complete' or new.completed_at is null or
+    (to_jsonb(new)-'status'-'completed_at') is distinct from (to_jsonb(old)-'status'-'completed_at') or
+    (select count(*) from personal_vault24_candidate.items where manifest_id=old.id)<>old.expected_count then
+  raise exception 'vault_manifest_immutable';
+ end if;
+ return new;
+end $$;
+create function personal_vault24_candidate.reject_receipt_truncate()
+returns trigger language plpgsql security invoker set search_path='' as $$
+begin raise exception 'vault_receipt_truncate_rejected';end $$;
+revoke all on function personal_vault24_candidate.protect_item_receipt(),
+ personal_vault24_candidate.protect_manifest_receipt(),
+ personal_vault24_candidate.reject_receipt_truncate() from public,anon,authenticated,service_role;
+create trigger personal_vault_item_immutable before insert or update or delete
+ on personal_vault24_candidate.items for each row execute function personal_vault24_candidate.protect_item_receipt();
+create trigger personal_vault_manifest_immutable before update or delete
+ on personal_vault24_candidate.manifests for each row execute function personal_vault24_candidate.protect_manifest_receipt();
+create trigger personal_vault_items_no_truncate before truncate on personal_vault24_candidate.items
+ for each statement execute function personal_vault24_candidate.reject_receipt_truncate();
+create trigger personal_vault_manifests_no_truncate before truncate on personal_vault24_candidate.manifests
+ for each statement execute function personal_vault24_candidate.reject_receipt_truncate();
+commit;
