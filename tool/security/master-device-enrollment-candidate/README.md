@@ -204,3 +204,12 @@ Six Node boundary tests and the existing SQL issuer/readback composed through th
 
 
 The existing disposable GoTrue boundary runner now also routes real `/auth/v1/user`-verified JWTs through the request handler and a one-connection, transaction-local claims pool. It exercises wrong-password counter commit, password-verified issue, exact original challenge readback, duplicate issuance refusal, forged JWT rejection before pool acquisition, foreign-user/metadata impersonation refusal, and expired/deleted session refusal with no pool claim residue. This revision adds the real-stack CI test; its result must be confirmed separately. Master/device ownership and HTTP hosting remain fixtures, and no public endpoint, owner approval or key activation is provided.
+
+
+## Proof submission and result reconciliation request candidate
+
+The existing request boundary now connects `submit` to the server-owned, locked key-possession verifier and atomic pending-save/nonce-consume adapter. Only a canonical bounded DER signature transport and exact challenge ID are accepted; actor/session/pool still come exclusively from the independent verification adapter. A successful response is **pending only**, never owner approval, a trusted device, or activation.
+
+A separate `status` action reconciles a lost submit response by joining the original consumed challenge to its exact actor/session/device/key pending row. It returns only pending ID/status, no nonce or signature; no reissue, new nonce, expiry extension, activation or write occurs. It rejects a foreign or no-longer-live session and locked device. An already consumed challenge can be reconciled after its signing deadline, but only through the same live original session. Lost/revoked-session recovery remains unimplemented.
+
+Eight request-boundary Node tests and the real internal issuer/proof-save/status composition in PGlite passed. The existing Native composition runner now includes the same submission/status checks, and the disposable real-GoTrue runner includes signed proof submission, replay refusal, exact pending reconciliation, and foreign/expired/deleted-session refusal. New Native and real-GoTrue CI results must be confirmed separately. Authentication/device fixtures and HTTP hosting limits remain as documented; no public route, grant, deployed configuration, independent owner approval, key activation or production change is added.

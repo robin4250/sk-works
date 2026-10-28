@@ -15,6 +15,7 @@ function fixture({read=false,fail=false}={}) {
   if(sql.includes('select auth.uid()'))return {rows:[{actor,session,master:true}]};
   if(sql.includes('verify_secondary_password'))return {rows:[{verified:false}]};
   if(sql.includes('from private.master_devices'))return {rows:[{id:deviceId,master_user_id:actor,is_locked:false,revoked_at:null}]};
+  if(sql.includes('join master_device_enrollment_candidate.pending_key_migrations')&&read)return {rows:[{id:'00000000-0000-0000-0000-000000000005',status:'pending'}]};
   if(sql.includes('from master_device_enrollment_candidate.key_possession_challenges')&&read)return {rows:[challenge]};
   return {rows:[]};
  }})};
@@ -53,4 +54,17 @@ test('database failures are generic and never expose credentials or retry a writ
 test('unresponsive authentication is bounded without retry',async()=>{
  let calls=0;const r=await handleMigrationChallengeRequest(request(),{timeoutMs:10,authenticateBearer:()=>{calls++;return new Promise(()=>{});}});
  assert.equal(r.status,409);assert.equal(calls,1);
+});
+test('status returns only an original pending receipt, never the consumed nonce',async()=>{
+ const f=fixture({read:true});
+ const r=await handleMigrationChallengeRequest(request({action:'status',deviceId,publicKeyPem,challengeId:f.challenge.id}),f);
+ assert.equal(r.status,200);assert.deepEqual(await r.json(),{accepted:true,submission:{id:'00000000-0000-0000-0000-000000000005',status:'pending'}});
+ assert.ok(!f.calls.some(x=>/^(insert|update|delete)/.test(x.sql)));
+});
+test('submit requires a canonical bounded DER transport and cannot accept body identity',async()=>{
+ for(const extra of [{signature:'abcd==='},{signature:'x'.repeat(109)},{signature:'YQ=='},{signature:'YQ'},{signature:'AAAAAAAAAAA=',actor}]) {
+  const f=fixture();
+  const r=await handleMigrationChallengeRequest(request({action:'submit',deviceId,publicKeyPem,challengeId:f.challenge.id,...extra}),f);
+  assert.equal(r.status,400);assert.equal(f.calls.length,0);
+ }
 });

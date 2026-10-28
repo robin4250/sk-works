@@ -7,7 +7,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {createHash,randomBytes,randomUUID,generateKeyPairSync} from 'node:crypto';
+import {createHash,randomBytes,randomUUID,generateKeyPairSync,sign} from 'node:crypto';
+import {pendingDeviceKeyMigration} from './key-migration-proposal.mjs';
+import {migrationPossessionPayload} from './key-migration-possession.mjs';
 
 const run=promisify(execFile),root=process.cwd();
 const parent=path.resolve(process.env.RUNNER_TEMP??'');
@@ -107,7 +109,8 @@ try {
  };
  const enroll=async(token,extra={})=>storePendingDeviceKey({...await authenticatedContext(token),deviceId,
   publicKeyPem:generateKeyPairSync('ec',{namedCurve:'prime256v1'}).publicKey.export({type:'spki',format:'pem'}).toString(),...extra});
- const key=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).publicKey.export({type:'spki',format:'pem'}).toString();
+ const signingPair=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
+ const key=signingPair.publicKey.export({type:'spki',format:'pem'}).toString();
  const http=async(token,action,extra={})=>handleMigrationChallengeRequest(new Request('https://fixture.invalid/challenge',{
   method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
   body:JSON.stringify({action,deviceId,publicKeyPem:key,...extra})}),{authenticateBearer:authenticatedContext});
@@ -138,37 +141,50 @@ try {
  assert.equal(Number((await db.query('select count(*) from master_device_enrollment_candidate.key_possession_challenges')).rows[0].count),1);
  assert.equal((await db.query('select password_hash from public.user_secondary_credentials where user_id=$1',[owner.user.id])).rows[0].password_hash,hashBefore);
  await clean();
+ phase='http-submit-proof-and-read-original-pending';
+ const proposal=pendingDeviceKeyMigration({actor:owner.user.id,device:{id:deviceId,master_user_id:owner.user.id,is_locked:false,revoked_at:null},publicKeyPem:key});
+ const signature=sign('sha256',migrationPossessionPayload(original.challenge,proposal),signingPair.privateKey).toString('base64');
+ assert.equal((await http(owner.access_token,'status',{challengeId:original.challenge.id})).status,409);
+ const submitted=await http(owner.access_token,'submit',{challengeId:original.challenge.id,signature});
+ assert.equal(submitted.status,200);const pendingReceipt=await submitted.json();assert.equal(pendingReceipt.submission.status,'pending');
+ assert.equal((await http(owner.access_token,'submit',{challengeId:original.challenge.id,signature})).status,409);
+ const submissionStatus=await http(owner.access_token,'status',{challengeId:original.challenge.id});assert.equal(submissionStatus.status,200);
+ assert.deepEqual(await submissionStatus.json(),pendingReceipt);
+ assert.equal(await count(),2);await clean();
  phase='tampered-token-rejected-before-pool';
  const parts=owner.access_token.split('.');
  const altered={...claims(owner.access_token),sub:other.user.id};
  const forged=[parts[0],Buffer.from(JSON.stringify(altered)).toString('base64url'),parts[2]].join('.');
  const before=acquisitions;
  await assert.rejects(enroll(forged));
- assert.equal(acquisitions,before);assert.equal(await count(),1);
+ assert.equal(acquisitions,before);assert.equal(await count(),2);
  assert.equal((await http(forged,'read')).status,409);assert.equal(acquisitions,before);
  phase='other-real-user-not-master';
  await assert.rejects(enroll(other.access_token));
- assert.equal(await count(),1);await clean();
+ assert.equal(await count(),2);await clean();
  assert.equal((await http(other.access_token,'read')).status,409);await clean();
+ assert.equal((await http(other.access_token,'status',{challengeId:original.challenge.id})).status,409);await clean();
  phase='user-editable-metadata-not-master';
  await json(await request('/auth/v1/user',{method:'PUT',token:other.access_token,body:{data:{master:true,is_master_admin:true}}}));
  await assert.rejects(enroll(other.access_token));
- assert.equal(await count(),1);await clean();
+ assert.equal(await count(),2);await clean();
  assert.equal((await http(other.access_token,'read')).status,409);await clean();
  phase='verified-owner-cannot-substitute-session';
  await assert.rejects(enroll(owner.access_token,{session:claims(other.access_token).session_id}));
- assert.equal(await count(),1);await clean();
+ assert.equal(await count(),2);await clean();
  phase='expired-session-row-rejected';
  await db.query("update auth.sessions set not_after=clock_timestamp()-interval '1 second' where id=$1",[claims(owner.access_token).session_id]);
  await assert.rejects(enroll(owner.access_token));
- assert.equal(await count(),1);await clean();
+ assert.equal(await count(),2);await clean();
  assert.equal((await http(owner.access_token,'read')).status,409);await clean();
+ assert.equal((await http(owner.access_token,'status',{challengeId:original.challenge.id})).status,409);await clean();
  await db.query('update auth.sessions set not_after=null where id=$1',[claims(owner.access_token).session_id]);
  phase='revoked-session-row-rejected';
  await db.query('delete from auth.sessions where id=$1',[claims(owner.access_token).session_id]);
  await assert.rejects(enroll(owner.access_token));
- assert.equal(await count(),1);await clean();
+ assert.equal(await count(),2);await clean();
  assert.equal((await http(owner.access_token,'read')).status,409);await clean();
+ assert.equal((await http(owner.access_token,'status',{challengeId:original.challenge.id})).status,409);await clean();
  assert.equal(Number((await db.query('select count(*) from master_device_enrollment_candidate.key_possession_challenges')).rows[0].count),1);
  phase='preserved-existing-identifier';
  assert.equal((await db.query('select device_key from private.master_devices where id=$1',[deviceId])).rows[0].device_key,'fixture-legacy-identifier');
@@ -178,6 +194,7 @@ try {
   foreign_user_and_metadata_not_master:true,session_substitution_rejected:true,
   expired_and_revoked_sessions_rejected:true,transaction_claim_cleanup:true,
   http_request_boundary_with_real_gotrue:true,http_password_counter_commit:true,http_original_challenge_readback:true,
+  http_key_proof_submission_pending_only:true,http_consumed_result_reconciliation:true,
   master_and_device_fixtures:true,public_endpoint:false,key_activation:false,production_changed:false}));
 } catch(error) {
  console.error(JSON.stringify({result:'FAIL isolated real GoTrue pending-key boundary',phase,
@@ -191,3 +208,4 @@ try {
  if(started){try{await cli(['stop','--no-backup'],120000);stopped=true;}catch{process.exitCode=1;console.error('Disposable master stack cleanup failed; private logs omitted.');}}
  if(owned&&stopped)await fs.rm(workdir,{recursive:true,force:true});
 }
+
