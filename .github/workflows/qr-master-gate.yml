@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'docs/review/qr-master-gate/**'
+      - 'tool/qr-attendance/**'
       - '.github/workflows/qr-master-gate.yml'
 permissions:
   contents: read
@@ -42,6 +43,11 @@ jobs:
         env:
           CI: 'true'
         run: node docs/review/qr-master-gate/qr-common-concurrency.test.mjs
+
+      - name: Native QR scan coordinator transaction
+        env:
+          CI: 'true'
+        run: node tool/qr-attendance/qr-scan-postgres.test.mjs
 
       - name: Unused common bridge restoration
         run: node docs/review/qr-master-gate/qr-common-unused-restore.test.mjs

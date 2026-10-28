@@ -25,8 +25,25 @@ Five Node tests use a synthetic serialized adapter to exercise duplicate scans,
 failed-consume rollback, revocation/OFF, altered scope/token/signature and caller
 buffer mutation. They do not establish PostgreSQL isolation or authorization.
 
-No real database adapter, regular attendance integration, challenge issuance,
-device enrollment, HTTP endpoint, production grant or activation exists here.
+`qr-scan-postgres-adapter.mjs` now implements the transaction boundary on one
+PostgreSQL connection: SERIALIZABLE, bounded SQL/lock waits, the existing QR gate,
+database-only trusted hooks, COMMIT-before-return and rollback-before-release.
+It does not set an arbitrary employee JWT identity to impersonate the subject.
+The adapter is request-scoped; verified session initialization and the context,
+normal writer and receipt-consume hooks still require authoritative production
+implementations. They must use the supplied connection and may not perform
+remote writes. Database serialization errors are returned without automatic retry.
+
+The native CI reuses the candidate common QR gate SQL but uses synthetic scanner
+authentication, challenge and attendance tables. It verifies failed-consume
+rollback, two concurrent scans producing one receipt, explicit same-token retry,
+OFF denial and transaction-local claims cleared in pooled connections. It is not
+an authorization or real SKO attendance writer test. Existing normal client
+attendance inserts run under the worker's own RLS; a scanner cannot simply reuse
+that path for another employee. A reviewed authorized QR writer is still needed.
+
+No production context/writer/nonce adapter, challenge issuance, device enrollment,
+HTTP endpoint, production grant or activation exists here.
 In particular, this does not prove every QR writer calls the master gate.
 Native SQL/GoTrue integration, all real writer paths, actual signing keys,
 recovery and iPhone operation remain activation blockers. Production stays OFF.

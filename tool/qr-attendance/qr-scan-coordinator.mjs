@@ -1,4 +1,4 @@
-// Review-only orchestration. No endpoint or database adapter is implemented.
+// Review-only orchestration. No endpoint or production writer is implemented.
 // runLockedTransaction MUST hold the QR rollout/settings gate, session/device,
 // source attendance and challenge locks until commit, and rollback ALL writes
 // on any error. It must not retry callbacks with external side effects.
