@@ -73,5 +73,22 @@
       "Observed helper/hook does not itself establish general live-auth-session revocation; do not infer it from the deletion barrier.",
       "Do not automatically rewrite existing roles, RLS, helpers or hooks based on this observation."
     ]
+  },
+  "document_exemption_preparation": {
+    "date": "2026-10-28",
+    "candidate_prs": [
+      1492,
+      1495
+    ],
+    "new_objects_absent": true,
+    "previous_seven_business_table_hashes_unchanged": true,
+    "reviewed_function_catalog_unchanged": true,
+    "guard_sql_sha256": "7b3a960a0ffdfdf3d07ced205a7478344d37c242cfb4d7c9041e9c04a7e98970",
+    "backup_version": 54,
+    "previous_archive_entries_preserved": 321,
+    "added_archive_entries": 8,
+    "production_applied": false,
+    "activation": false,
+    "limits": "Fresh pre-write snapshot, reviewed activation/audit contract, actual GoTrue verification and required deployment approval remain necessary. Saved SQL is review-only. This record contains no business row hashes or personal row contents."
   }
 }
