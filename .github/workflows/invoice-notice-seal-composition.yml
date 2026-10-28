@@ -4,6 +4,7 @@ on:
     paths:
       - 'docs/candidates/trade_document_notice_seal_20261028.sql.review-only'
       - 'tool/trade_document_notice_seal_fixture.mjs'
+      - 'tool/trade_document_notice_result_races.mjs'
       - 'tool/trade_document_notice_source_integrity_fixture.mjs'
       - 'tool/trade_document_notice_daily_preview_fixture.mjs'
       - 'tool/trade_document_notice_adjustment_provider_fixture.mjs'

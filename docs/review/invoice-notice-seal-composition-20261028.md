@@ -162,3 +162,30 @@ notification delivery, public transport, deployment/recovery and iPhone checks
 remain incomplete. Existing production invoices and test invoices are unchanged.
 The earlier sections describe progressive scenarios, not a claim that every
 source type or real production path is now verified.
+
+## Private committed-result readback (2026-10-28)
+
+The default-OFF notice composition now records an immutable result in the same
+transaction as ticket consumption, the real financial approval and issuer seal.
+It stores the exact actor/session, company/local document/revision, ticket and
+request IDs and the canonical expected-preview hash. No token, password or seal
+image is copied. The private reader requires the same live session, current
+issuer authority and view/manage permissions and the original complete scope.
+It reports a historical `recorded` result, not a new approval or an assertion
+that the invoice remains current. An expired ticket does not erase the receipt;
+a missing receipt remains unknown and is never an instruction to approve again.
+
+The PGlite composition passes 357 checks, including actor/session/preview and
+permission rejection, immutable rows and denied client access. All four actual
+calculator scenarios check receipt insertion exactly once, outer rollback and
+failure at the result-store insert after the existing financial/seal writers:
+that failure rolls back ticket consumption, approval, seal, result and permit.
+Canonical fixture hash verification and generated Node syntax also pass.
+
+The new Native-only scenario observes a competing confirmation's company lock,
+requires an uncommitted result to be absent, denies the duplicate consumed-ticket
+command after COMMIT, and reads the same single result after reconnect. This
+scenario is pending CI; it does not establish an unknown-COMMIT-ACK protocol.
+Live Auth/full public transport, secure client reconciliation across logout,
+deployment/restore/retention and device verification remain incomplete. No
+public function/grant, automatic retry, production change or activation is added.

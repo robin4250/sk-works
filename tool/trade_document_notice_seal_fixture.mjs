@@ -57,6 +57,8 @@ export async function verifyNoticeSeal(db,c){
  const x=await prepare(21),p=await preview(x),before=await state(x),ticket=await issue(x);
  const call=(t,financial=true,seal=true)=>q('select trade_document_consent_private.confirm_invoice_from_notice($1,$2,$3,1,$4::jsonb,$5,$6,$7) v',[t,x.local,A,JSON.stringify(p),id(29000),financial,seal]);
  const used=t=>q('select consumed_at is not null v from invoice_month_close_candidate.notice_open_tickets where id=$1',[t]);
+ const read=(t=ticket,expected=p,request=id(29000))=>q('select trade_document_consent_private.read_invoice_notice_result($1,$2,$3,1,$4::jsonb,$5) v',[t,x.local,A,JSON.stringify(expected),request]);
+ await deny(()=>read(),/disabled/);
  await deny(()=>call(ticket),/disabled/);check(await used(ticket),false);check(await state(x),before);
  await db.exec('update trade_document_consent_private.notice_confirmation_settings set enabled=true');
  const wrong=await issue(await prepare(22));await deny(()=>call(wrong),/parent mismatch/);check(await used(wrong),false);check(await state(x),before);
@@ -81,10 +83,35 @@ export async function verifyNoticeSeal(db,c){
  await deny(()=>call(staleTicket),/unavailable/);check(await used(staleTicket),false);
  check(await q('select count(*)::int v from invoice_month_close_candidate.approval_permits'),0);
  const result=await call(ticket);check(result.financial_approved,true);check(result.seal_consent_recorded,true);check(await used(ticket),true);
+ check(await read(),{found:true,status:'recorded',result});
+ check(await read(ticket,p,id(29001)),{found:false});
+ await deny(()=>read(ticket,{...p,epoch:'wrong'}),/unavailable/);
+ await db.query("select set_config('test.notice_sid',$1,false)",[id(9002)]);
+ await deny(()=>read(),/unavailable/);
+ await db.query("select set_config('test.notice_sid',$1,false)",[sid]);
+ await actor(c.UB);await deny(()=>read(),/permission/);await actor(UA);
+ for(const flag of ['test.invoice_view','test.invoice_manage']){
+  await db.query("select set_config($1,'false',false)",[flag]);await deny(()=>read(),/unavailable/);
+  await db.query("select set_config($1,'true',false)",[flag]);
+ }
+ await deny(()=>db.query('update trade_document_consent_private.notice_confirmation_results set result=result where ticket_id=$1',[ticket]),/immutable/);
+ await deny(()=>db.query('delete from trade_document_consent_private.notice_confirmation_results where ticket_id=$1',[ticket]),/immutable/);
+ // Ticket expiry does not rewrite a known historical result into a new action.
+ await db.query("update invoice_month_close_candidate.notice_open_tickets set expires_at=clock_timestamp()-interval '1 second' where id=$1",[ticket]);
+ check(await read(),{found:true,status:'recorded',result});
  const after=await state(x);check(after.audit,1);check(after.consents,1);check(after.receipts,1);
  check(await q('select count(*)::int v from invoice_month_close_candidate.approval_permits'),0);
  await deny(()=>call(ticket),/unavailable/);check(await state(x),after);
- await db.exec('set role authenticated');await deny(()=>call(ticket),/permission denied/);await db.exec('reset role');
+ await db.exec('set role authenticated');await deny(()=>call(ticket),/permission denied/);await deny(()=>read(),/permission denied/);await db.exec('reset role');
+ for(const role of ['anon','authenticated','service_role']){
+  check(await q("select has_table_privilege($1,'trade_document_consent_private.notice_confirmation_results','SELECT') v",[role]),false);
+  check(await q("select has_function_privilege($1,'trade_document_consent_private.read_invoice_notice_result(uuid,uuid,uuid,integer,jsonb,uuid)','EXECUTE') v",[role]),false);
+ }
+ if(c.openNativePeer){
+  await (await import('./trade_document_notice_result_races.mjs')).verifyNoticeResultRaces(db,{...c,prepare,preview,issue,state});
+ }else{
+  console.log('SKIP native notice-result concurrency: independent PostgreSQL connections required');
+ }
  const pending=await prepare(24);await issue(pending);
  await (await import('./trade_document_notice_source_integrity_fixture.mjs')).verifyNoticeSourceIntegrity(db,{A,B:c.B,UA,id,q,check,deny,pending});
  console.log('PASS durable notice SQL + existing invoice/seal atomic composition; actual guarded/readiness SQL; earlier approval proposal/session synthetic, actual daily calculated approval verified separately, no public grant or product delivery');

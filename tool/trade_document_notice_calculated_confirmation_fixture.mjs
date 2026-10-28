@@ -7,7 +7,8 @@ export async function verifyCalculatedNoticeConfirmation(db,c,prepareSource,scen
  const counts=()=>q(`select jsonb_build_object(
   'audit',(select count(*) from invoice_approval_audit where invoice_id=$1),
   'consents',(select count(*) from trade_document_consent_private.consents where document_id=$2),
-  'receipts',(select count(*) from trade_document_consent_private.financial_receipts where document_id=$2)) v`,[pending.parent,pending.doc]);
+  'receipts',(select count(*) from trade_document_consent_private.financial_receipts where document_id=$2),
+  'notice_results',(select count(*) from trade_document_consent_private.notice_confirmation_results where local_document_id=$3)) v`,[pending.parent,pending.doc,pending.local]);
  const beforeCounts=await counts();
  await db.exec('begin');
  try{
@@ -30,6 +31,7 @@ export async function verifyCalculatedNoticeConfirmation(db,c,prepareSource,scen
   check(ticket.invoice_id,pending.parent);
   const expected=await q('select trade_document_consent_private.preview_confirmation($1,$2,2) v',[pending.local,A]);
   const confirm=()=>q('select trade_document_consent_private.confirm_invoice_from_notice($1,$2,$3,2,$4::jsonb,$5,true,true) v',[ticket.ticket_id,pending.local,A,JSON.stringify(expected),id(49000)]);
+  const readResult=()=>q('select trade_document_consent_private.read_invoice_notice_result($1,$2,$3,2,$4::jsonb,$5) v',[ticket.ticket_id,pending.local,A,JSON.stringify(expected),id(49000)]);
   const used=()=>q('select consumed_at is not null v from invoice_month_close_candidate.notice_open_tickets where id=$1',[ticket.ticket_id]);
   // The real calculator must invalidate an otherwise current notice when a
   // source day changes. Rejection must not consume the ticket or publish a seal.
@@ -62,10 +64,21 @@ export async function verifyCalculatedNoticeConfirmation(db,c,prepareSource,scen
   check(await used(),false);check(await counts(),beforeCounts);
   check(await q('select invoice_seal_frozen v from public.invoices where id=$1',[pending.parent]),false);
   check(await q('select count(*)::int v from invoice_month_close_candidate.approval_permits'),0);
+  check(await readResult(),{found:false});
+  // The new result-store insert is later than all financial/seal writes. Its
+  // failure must roll those writers and ticket consumption back as well.
+  await db.exec('savepoint calculated_result_failure');
+  await db.exec("create function private.fixture_calculated_result_failure() returns trigger language plpgsql as $$begin raise exception 'calculated result storage failure';end$$;create trigger fixture_calculated_result_failure before insert on trade_document_consent_private.notice_confirmation_results for each row execute function private.fixture_calculated_result_failure()");
+  await c.deny(confirm,/calculated result storage failure/);
+  await db.exec('rollback to savepoint calculated_result_failure;release savepoint calculated_result_failure');
+  check(await used(),false);check(await counts(),beforeCounts);check(await readResult(),{found:false});
+  check(await q('select invoice_seal_frozen v from public.invoices where id=$1',[pending.parent]),false);
+  check(await q('select count(*)::int v from invoice_month_close_candidate.approval_permits'),0);
   const result=await confirm();
   check(result.financial_approved,true);check(result.seal_consent_recorded,true);
   check(await q('select consumed_at is not null v from invoice_month_close_candidate.notice_open_tickets where id=$1',[ticket.ticket_id]),true);
-  check(await counts(),{audit:1,consents:1,receipts:1});
+  check(await counts(),{audit:1,consents:1,receipts:1,notice_results:1});
+  check(await readResult(),{found:true,status:'recorded',result});
   check(await q('select invoice_seal_frozen v from public.invoices where id=$1',[pending.parent]),true);
   check(await q('select count(*)::int v from invoice_month_close_candidate.approval_permits'),0);
  }finally{await db.exec('rollback');}

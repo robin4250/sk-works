@@ -7,6 +7,20 @@ insert into trade_document_consent_private.notice_confirmation_settings values(t
 alter table trade_document_consent_private.notice_confirmation_settings enable row level security;
 revoke all on trade_document_consent_private.notice_confirmation_settings from public,anon,authenticated,service_role;
 
+-- A known committed result is read back, never reconstructed by resubmitting a
+-- consumed notification ticket. No credential or signature image is duplicated.
+create table trade_document_consent_private.notice_confirmation_results (
+ ticket_id uuid primary key, company_id uuid not null, local_document_id uuid not null,
+ document_revision integer not null check(document_revision>0), request_id uuid not null,
+ actor_id uuid not null, session_id uuid not null,
+ expected_hash text not null check(expected_hash ~ '^[a-f0-9]{64}$'), result jsonb not null,
+ recorded_at timestamptz not null default clock_timestamp(), unique(company_id,request_id));
+alter table trade_document_consent_private.notice_confirmation_results enable row level security;
+revoke all on trade_document_consent_private.notice_confirmation_results from public,anon,authenticated,service_role;
+create trigger immutable_notice_confirmation_result before update or delete
+on trade_document_consent_private.notice_confirmation_results
+for each row execute function trade_document_consent_private.immutable();
+
 create function trade_document_consent_private.confirm_invoice_from_notice(
  p_ticket uuid,p_local uuid,p_company uuid,p_revision int,p_expected jsonb,p_request uuid,
  p_financial_confirmed boolean,p_seal_confirmed boolean) returns jsonb
@@ -41,7 +55,39 @@ begin
  result:=trade_document_consent_private.confirm_local_document(p_local,p_company,p_revision,p_expected,p_request,p_financial_confirmed,p_seal_confirmed);
  if result->'financial_approved' is distinct from 'true'::jsonb or result->'seal_consent_recorded' is distinct from 'true'::jsonb then
   raise exception 'combined confirmation incomplete';end if;
+ insert into trade_document_consent_private.notice_confirmation_results
+ (ticket_id,company_id,local_document_id,document_revision,request_id,actor_id,session_id,expected_hash,result)
+ values(p_ticket,p_company,p_local,p_revision,p_request,actor,sid,
+ encode(sha256(convert_to(p_expected::text,'UTF8')),'hex'),result);
  delete from invoice_month_close_candidate.approval_permits where tx=txid_current() and invoice_id=parent and actor_id=actor and session_id=sid;
  return result;
 end $$;
 revoke all on function trade_document_consent_private.confirm_invoice_from_notice(uuid,uuid,uuid,int,jsonb,uuid,boolean,boolean) from public,anon,authenticated,service_role;
+
+-- Private, same-live-session reconciliation only. This historical receipt is
+-- not a new approval and does not assert that today's invoice is still frozen.
+-- A missing result remains unknown; callers must not automatically approve again.
+create function trade_document_consent_private.read_invoice_notice_result(
+ p_ticket uuid,p_local uuid,p_company uuid,p_revision integer,p_expected jsonb,p_request uuid)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare actor uuid:=auth.uid();sid uuid;enabled boolean;r trade_document_consent_private.notice_confirmation_results%rowtype;
+begin
+ select s.enabled into enabled from trade_document_consent_private.notice_confirmation_settings s where singleton for share;
+ if enabled is distinct from true or invoice_month_close_candidate.notification_rollout_enabled() is distinct from true then
+  raise exception 'notice_seal_disabled' using errcode='55000';end if;
+ perform trade_document_consent_private.require_actor(p_company);
+ sid:=private.require_reauthentication_session();
+ if actor is null or sid is null then raise exception 'notice_result_unavailable' using errcode='42501';end if;
+ if private.has_company_feature(p_company,'can_manage_invoices') is not true
+ or private.has_company_feature(p_company,'can_view_invoices') is not true then
+  raise exception 'notice_result_unavailable' using errcode='42501';end if;
+ select * into r from trade_document_consent_private.notice_confirmation_results
+ where ticket_id=p_ticket and company_id=p_company and local_document_id=p_local
+ and document_revision=p_revision and request_id=p_request;
+ if not found then return jsonb_build_object('found',false);end if;
+ if r.actor_id is distinct from actor or r.session_id is distinct from sid
+ or r.expected_hash is distinct from encode(sha256(convert_to(p_expected::text,'UTF8')),'hex') then
+  raise exception 'notice_result_unavailable' using errcode='42501';end if;
+ return jsonb_build_object('found',true,'status','recorded','result',r.result);
+end $$;
+revoke all on function trade_document_consent_private.read_invoice_notice_result(uuid,uuid,uuid,integer,jsonb,uuid) from public,anon,authenticated,service_role;
