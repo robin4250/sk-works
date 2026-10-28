@@ -58,6 +58,7 @@ class _InvoiceNoticeApprovalPanelState extends State<InvoiceNoticeApprovalPanel>
   Future<void> _load() async {
     final generation = ++_generation;
     _receipt = null;
+    _busy = false;
     final controller = widget.controller;
     if (controller == null || _uncertain) { return; }
     setState(() => _busy = true);

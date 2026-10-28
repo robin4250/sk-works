@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sk_works/features/invoices/invoice_notice_approval_panel.dart';
@@ -16,6 +17,26 @@ void main() {
     await tester.pumpWidget(page(null, () async => true));
     expect(find.text('承認する'), findsNothing);
     expect(find.text('再読み込み'), findsNothing);
+  });
+  testWidgets('disabling during a pending ticket read clears loading and rejects the late receipt', (tester) async {
+    final pending = Completer<Object?>();
+    var sent = 0;
+    final controller = InvoiceNoticeTicketController(actor: () => 'actor', session: () => 'session',
+      openTicket: (_) => pending.future,
+      submitApproval: (_) async { sent++; return true; });
+    await tester.pumpWidget(page(controller, () async => true));
+    expect(find.text('承認できる状態を確認しています'), findsOneWidget);
+    await tester.pumpWidget(page(null, () async => true));
+    expect(find.text('承認できる状態を確認しています'), findsNothing);
+    expect(find.text('承認する'), findsNothing);
+    pending.complete({'notification_id': notice, 'invoice_id': invoice,
+      'ticket_id': ticket, 'expires_at': DateTime.now().toUtc().add(const Duration(minutes: 5)).toIso8601String(),
+      'status': 'ready', 'source_revision': revision});
+    await tester.pumpAndSettle();
+    expect(find.text('承認する'), findsNothing);
+    expect(find.text('再読み込み'), findsNothing);
+    expect(controller.hasValidTicket, isFalse);
+    expect(sent, 0);
   });
   testWidgets('revision proof is mandatory before approval can be dispatched', (tester) async {
     var sent = 0;
