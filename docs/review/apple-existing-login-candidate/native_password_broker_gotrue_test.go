@@ -18,6 +18,7 @@ import (
  "github.com/stretchr/testify/require"
  "golang.org/x/crypto/bcrypt"
  "github.com/supabase/auth/internal/api/provider"
+ authcrypto "github.com/supabase/auth/internal/crypto"
  "github.com/supabase/auth/internal/models"
 )
 
@@ -29,6 +30,7 @@ func TestSKOApplePasswordSuccessorBroker(t *testing.T){
  require.Equal(t,"postgresql://postgres:root@127.0.0.1:5432/postgres",url)
  root:=func(q string,args ...interface{})string{for _,arg:=range args{q=strings.Replace(q,"?","'"+strings.ReplaceAll(fmt.Sprint(arg),"'","''")+"'",1)};out,e:=exec.Command("psql",url,"-qAt","-v","ON_ERROR_STOP=1","-c",q).CombinedOutput();require.NoError(t,e,string(out));return strings.TrimSpace(string(out))}
  api,config,err:=setupAPIForTest();require.NoError(t,err);defer api.db.Close()
+ previousCost:=authcrypto.PasswordHashCost;authcrypto.PasswordHashCost=bcrypt.DefaultCost;defer func(){authcrypto.PasswordHashCost=previousCost}()
  models.TruncateAll(api.db)
  originalJWT:=root("select pg_get_functiondef('auth.jwt()'::regprocedure)")
  defer func(){root(originalJWT)}()
@@ -58,6 +60,9 @@ func TestSKOApplePasswordSuccessorBroker(t *testing.T){
   // The application snapshot guard remains strict for real credential changes.
   passwordHash,e:=bcrypt.GenerateFromPassword([]byte("fixture-primary-password"),bcrypt.DefaultCost);require.NoError(t,e)
   owner,e:=models.NewUserWithPasswordHash("","existing-google@example.test",string(passwordHash),config.JWT.Aud,map[string]interface{}{"full_name":"existing name"});require.NoError(t,e)
+  // Seed the existing user in the fixture's configured at-rest format too;
+  // do not disable DB encryption or loosen the credential version check.
+  require.NoError(t,owner.SetPassword(context.Background(),"fixture-primary-password",config.Security.DBEncryption.Encrypt,config.Security.DBEncryption.EncryptionKeyID,config.Security.DBEncryption.EncryptionKey))
   owner.Role="authenticated";owner.AppMetaData=models.JSONMap{"provider":"google","providers":[]string{"google"}};confirmed:=time.Now();owner.EmailConfirmedAt=&confirmed;require.NoError(t,api.db.Create(owner))
   google,e:=models.NewIdentity(owner,"google",map[string]interface{}{"sub":"existing-google-sub","email":"existing-google@example.test","email_verified":true});require.NoError(t,e);require.NoError(t,api.db.Create(google))
   root("insert into public.company_members values(?,'00000000-0000-0000-0000-000000000099','owner')",owner.ID)
