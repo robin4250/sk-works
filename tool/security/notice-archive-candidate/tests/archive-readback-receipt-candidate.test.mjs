@@ -95,7 +95,7 @@ test('store methods/public key are pinned and signer buffer/signature changes ca
  await assert.rejects(bad.observe({authority_id:authority,challenge:'7'.repeat(64),descriptor:f.descriptor}));
  assert.throws(()=>f.attestor({key:f.keys.privateKey.export({format:'jwk'})}));
 });
-test('restore deadline prevents late signing and signing timeout never auto-retries',async t=>{
+test('restore deadline prevents late signing and signing timeout never auto-retries',{timeout:5000},async t=>{
  const f=await fixture(t);let release;
  const wait=new Promise(r=>release=r),a=f.attestor({timeoutMs:5,store:{async restore(){await wait;return f.payload;}}}),i={authority_id:authority,challenge:'8'.repeat(64),descriptor:f.descriptor};
  await assert.rejects(a.observe(i),/readback unavailable/);release();await delay(10);assert.equal(f.signs(),0);
