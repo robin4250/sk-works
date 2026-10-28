@@ -19,7 +19,8 @@ function claimsFromVerifiedToken(jwt,user,now){
  const raw=Uint8Array.from(atob(parts[1].replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
  const claims=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));
  if(!claims||claims.sub!==user?.id||!uuid.test(claims.sub??'')||!uuid.test(claims.session_id??'')||claims.role!=='authenticated'||
- !Number.isSafeInteger(claims.exp)||claims.exp<=now||claims.iss!==project+'/auth/v1'||claims.aud!=='authenticated'||user.is_anonymous===true)throw deny();
+ !Number.isSafeInteger(claims.exp)||claims.exp<=now||claims.iss!==project+'/auth/v1'||!(claims.aud==='authenticated'||
+  (Array.isArray(claims.aud)&&claims.aud.length===1&&claims.aud[0]==='authenticated'))||user.is_anonymous===true)throw deny();
  return claims;
 }
 function publicCredential(value){

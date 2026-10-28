@@ -61,3 +61,15 @@ test('successor credential is internal opt-in and never cleanup-authorized as te
  assert.equal((await f.ports.authenticateIssuedSession(r.access_token)).actor_id,actor);
  await assert.rejects(f.ports.revokeLocal(r.access_token));assert.equal(f.calls.some(x=>x.url.includes('logout')),false);
 });
+
+// The official GoTrue custom-hook path may serialize a singleton aud as an
+// array before its JWT serializer has normalized the first token in a process.
+// Auth /user must still verify the exact token before either form is accepted.
+test('verified singleton JWT audience array is supported without accepting other audience sets',async()=>{
+ const valid=fixture();await valid.ports.bindOriginal(jwt(sid,{aud:['authenticated']}));assert.equal(valid.calls.length,1);
+ for(const aud of [[],['wrong'],['authenticated','wrong'],['authenticated','authenticated'],[null],[1],{0:'authenticated'},null]){
+  const f=fixture();await assert.rejects(f.ports.bindOriginal(jwt(sid,{aud})));assert.equal(f.calls.length,1);
+ }
+ const denied=fixture({fetcher:async()=>new Response('denied',{status:401})});
+ await assert.rejects(denied.ports.bindOriginal(jwt(sid,{aud:['authenticated']})));
+});
