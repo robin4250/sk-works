@@ -8,6 +8,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {createVaultStorageDownload} from './storage_download_transport.mjs';
+import {downloadOwnVaultPdf} from './personal_vault_delivery_candidate.mjs';
 
 const run=promisify(execFile),root=process.cwd();
 const parent=path.resolve(process.env.RUNNER_TEMP??'');
@@ -96,6 +97,8 @@ try {
  await db.query(await fs.readFile(path.join(root,'docs/review/personal-vault24/feature-fixture/native-auth-functions.sql'),'utf8'));
  await db.query(await fs.readFile(path.join(root,'docs/review/personal-vault24/catalog.sql.review-only'),'utf8'));
  await db.query(await fs.readFile(path.join(root,'docs/review/personal-vault24/storage-access.sql.review-only'),'utf8'));
+ await db.query(await fs.readFile(path.join(root,'docs/review/personal-vault24/read-api.sql.review-only'),'utf8'));
+ await db.query(await fs.readFile(path.join(root,'docs/review/personal-vault25-delivery/source-binding.sql.review-only'),'utf8'));
  await db.query(`insert into personal_vault24_candidate.manifests(id,owner_id,source_company_id,source_worker_id,transition_request_id,
  snapshot_hash,manifest_hash,expected_count,status,completed_at) values($1,$2,$3,$4,$5,$6,$6,1,'complete',clock_timestamp())`,
  [mid,owner.user.id,randomUUID(),randomUUID(),randomUUID(),hash]);
@@ -116,6 +119,67 @@ try {
     return fetch(new URL(checked.pathname,api),{...options,headers:{...options.headers,apikey:anon}});
    }});
  }
+ // Exercise the current v2 coordinator against real PostgREST RPCs and real
+ // private Storage bytes. The proof issuer and metadata adapter below remain
+ // test fixtures: this does not claim independent content inspection/custody.
+ await db.query("notify pgrst, 'reload schema'");
+ async function rpc(token,name,body={}) {
+  return json(await request('/rest/v1/rpc/'+name,{token,body}));
+ }
+ phase='rpc-schema-ready';
+ let ready=false;
+ for(let attempt=0;attempt<40;attempt++) {
+  const response=await request('/rest/v1/rpc/personal_vault24_list_mine',{token:owner.access_token,body:{}});
+  if(response.status===200){await response.json();ready=true;break;}
+  const error=await response.json();assert.equal(error.code,'PGRST202');await wait(250);
+ }
+ assert.equal(ready,true);
+ const sourceBody={mid,artifact};
+ const source=(await rpc(owner.access_token,'personal_vault25_source_mine',sourceBody))[0];
+ assert.equal(source.kind,'own_payroll');assert.equal(source.snapshot_hash,hash);
+ const fixtureProof={passed:true,policy:'own-snapshot-v2',sourceBinding:source,
+  ownerId:owner.user.id,manifestId:mid,artifactKey:artifact,kind:'own_payroll',pdfSha256:hash};
+ let coordinatorDownloads=0;
+ const servicesFor=token=>({
+  liveActor:async()=>{const user=await json(await request('/auth/v1/user',{token,method:'GET'}));
+   return {ownerId:user.id,sessionId:claims(token).session_id};},
+  listMine:()=>rpc(token,'personal_vault24_list_mine'),
+  sourceMine:(manifest,artifactKey)=>rpc(token,'personal_vault25_source_mine',{mid:manifest,artifact:artifactKey}),
+  itemMine:async(manifest,artifactKey)=>(await rpc(token,'personal_vault24_item_mine',{mid:manifest,artifact:artifactKey}))
+   .map(row=>({...row,byte_length:Number(row.byte_length)})),
+  storageMetadata:async(p,v)=>{const rows=(await db.query('select version from storage.objects where bucket_id=$1 and name=$2',[bucket,p])).rows;
+   return rows.length===1&&rows[0].version===v?{objectPath:p,version:v,contentType:'application/pdf',byteLength:bytes.length}:null;},
+  download:async(...args)=>{coordinatorDownloads++;return download(token)(...args);},
+  trustedPrivacyProof:async()=>structuredClone(fixtureProof),
+ });
+ const input={manifestId:mid,artifactKey:artifact},ownerServices=servicesFor(owner.access_token);
+ phase='v2-owner-coordinator';assert.deepEqual(await downloadOwnVaultPdf(input,ownerServices),bytes);
+ phase='v2-foreign-before-download';
+ const beforeForeign=coordinatorDownloads;
+ await assert.rejects(downloadOwnVaultPdf(input,servicesFor(other.access_token)));
+ assert.equal(coordinatorDownloads,beforeForeign);
+ phase='v2-proof-source-mismatch';
+ for(const field of ['source_company_id','source_worker_id','source_id','source_revision','snapshot_hash','manifest_hash','kind']) {
+  const altered=structuredClone(fixtureProof);altered.sourceBinding[field]='different';
+  await assert.rejects(downloadOwnVaultPdf(input,{...ownerServices,trustedPrivacyProof:async()=>altered}),/vault_privacy_proof_rejected/);
+ }
+ phase='v2-old-proof-rejected';
+ await assert.rejects(downloadOwnVaultPdf(input,{...ownerServices,trustedPrivacyProof:async()=>({...fixtureProof,policy:'own-snapshot-v1'})}),/vault_privacy_proof_rejected/);
+ phase='v2-real-source-change';
+ await assert.rejects(downloadOwnVaultPdf(input,{...ownerServices,trustedPrivacyProof:async()=>{
+  await db.query("update personal_vault24_candidate.items set source_revision='fixture-r2' where manifest_id=$1",[mid]);
+  return structuredClone(fixtureProof);
+ }}),/vault_source_changed/);
+ await db.query("update personal_vault24_candidate.items set source_revision='fixture-r1' where manifest_id=$1",[mid]);
+ phase='v2-revoked-during-inspection';
+ await assert.rejects(downloadOwnVaultPdf(input,{...ownerServices,trustedPrivacyProof:async()=>{
+  await db.query("update auth.sessions set not_after=clock_timestamp()-interval '1 second' where id=$1",[claims(owner.access_token).session_id]);
+  return structuredClone(fixtureProof);
+ }}));
+ await db.query('update auth.sessions set not_after=null where id=$1',[claims(owner.access_token).session_id]);
+ phase='v2-source-anonymous-acl';
+ const anonymousSource=await request('/rest/v1/rpc/personal_vault25_source_mine',{body:sourceBody});
+ assert.notEqual(anonymousSource.status,200);await anonymousSource.arrayBuffer();
  const opts={maxBytes:bytes.length,expectedSha256:hash};
  phase='owner-stream';assert.deepEqual(await download(owner.access_token)(objectPath,version,opts),bytes);
  phase='foreign-user';await assert.rejects(download(other.access_token)(objectPath,version,opts));
@@ -148,7 +212,9 @@ try {
  console.log(JSON.stringify({result:'PASS isolated real GoTrue and Storage boundary',real_gotrue:true,real_storage:true,
   owner_download:true,foreign_and_anon_denied:true,public_path_denied:true,broad_policy_not_bypass:true,
   version_and_completion_bound:true,expired_and_revoked_session_denied:true,size_and_hash_rejected:true,
-  loopback_gateway_bridge:true,synthetic_catalog:true,immutable_custody:false,content_inspection:false,production_changed:false}));
+  loopback_gateway_bridge:true,real_postgrest_source_binding:true,v2_coordinator:true,
+  exact_source_proof_required:true,source_change_and_midflight_revocation_denied:true,
+  synthetic_privacy_proof_issuer:true,synthetic_storage_metadata_adapter:true,synthetic_catalog:true,immutable_custody:false,content_inspection:false,production_changed:false}));
 } catch(error) {
  console.error(JSON.stringify({result:'FAIL isolated real GoTrue and Storage boundary',phase,
   kind:error?.code==='ERR_ASSERTION'?'assertion':/^[0-9A-Z]{5}$/.test(error?.code??'')?'postgres':'other',
