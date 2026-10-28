@@ -80,7 +80,7 @@ class _InvoiceNoticeApprovalPanelState extends State<InvoiceNoticeApprovalPanel>
     if (!mounted || generation != _generation) { return; }
     var confirmed = false;
     if (result == InvoiceNoticeApprovalResult.confirmed) {
-      try { confirmed = await widget.confirmSavedApproval(); } catch (_) {}
+      try { confirmed = await widget.confirmSavedApproval().timeout(const Duration(seconds: 20)); } catch (_) {}
     }
     if (!mounted || generation != _generation) { return; }
     setState(() {

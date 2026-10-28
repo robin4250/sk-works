@@ -66,4 +66,32 @@ void main() {
     expect(find.text('再読み込み'), findsNothing);
     expect(find.textContaining('再送せず'), findsOneWidget);
   });
+  testWidgets('saved approval reread has a deadline and late success cannot enable resend', (tester) async {
+    final pending = Completer<bool>();
+    var sent = 0, reads = 0;
+    final controller = InvoiceNoticeTicketController(actor: () => 'actor', session: () => 'session',
+      openTicket: (_) async => {'notification_id': notice, 'invoice_id': invoice,
+        'ticket_id': ticket, 'expires_at': DateTime.now().toUtc().add(const Duration(minutes: 5)).toIso8601String(),
+        'status': 'ready', 'source_revision': revision},
+      submitApproval: (_) async { sent++; return true; });
+    await tester.pumpWidget(page(controller, () { reads++; return pending.future; }));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('承認する'));
+    await tester.pump();
+    expect(sent, 1);
+    expect(reads, 1);
+    expect(find.text('承認できる状態を確認しています'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 21));
+    await tester.pump();
+    expect(find.text('承認できる状態を確認しています'), findsNothing);
+    expect(find.textContaining('再送せず'), findsOneWidget);
+    expect(find.text('承認する'), findsNothing);
+    expect(find.text('再読み込み'), findsNothing);
+    pending.complete(true);
+    await tester.pumpAndSettle();
+    expect(find.text('承認済み'), findsNothing);
+    expect(find.textContaining('再送せず'), findsOneWidget);
+    expect(sent, 1);
+  });
+
 }
