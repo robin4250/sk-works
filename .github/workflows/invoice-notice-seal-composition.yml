@@ -5,6 +5,7 @@ on:
       - 'docs/candidates/trade_document_notice_seal_20261028.sql.review-only'
       - 'tool/trade_document_notice_seal_fixture.mjs'
       - 'tool/trade_document_notice_result_races.mjs'
+      - 'tool/trade_document_notice_commit_ack*'
       - 'tool/trade_document_notice_source_integrity_fixture.mjs'
       - 'tool/trade_document_notice_daily_preview_fixture.mjs'
       - 'tool/trade_document_notice_adjustment_provider_fixture.mjs'
@@ -61,6 +62,8 @@ jobs:
         with:
           node-version: '24'
       - run: npm ci --prefix tool/security/fixture_dependencies --ignore-scripts --no-audit --no-fund
+      - if: matrix.runtime == 'postgres'
+        run: node --test tool/trade_document_notice_commit_ack_proxy.test.mjs
       - if: matrix.runtime == 'pglite'
         run: node tool/verify_trade_document_notice_seal.mjs "$GITHUB_WORKSPACE/tool/security/fixture_dependencies/node_modules/@electric-sql/pglite/dist/index.js"
       - if: matrix.runtime == 'postgres'
