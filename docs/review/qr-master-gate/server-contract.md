@@ -27,3 +27,33 @@ candidate SQL's live-state call, exact proof target, default OFF, master refusal
 null / invalid / replay refusal, actor/time attribution, shared flag/gate behavior,
 OFF preservation and private ACL. It is not a test of real proof cryptography,
 GoTrue/JWT, production CHECK compatibility or client/device authorization.
+
+## Common public bridge (review only, default OFF)
+
+`qr-common-public-contract.sql.review-only` connects the existing common flag
+reader and proof setter to the internal QR contract, while leaving the legacy
+no-proof setter unable to change QR. It extends the existing CHECK expression
+and the proof issuer's known allowlist; all other keys, proof validation and
+issuer ACLs are preserved. QR changes append an existing master audit-history
+row in the same transaction. A separate private rollout starts OFF and also
+protects the QR gate; a true settings row alone cannot enable QR. The new reader
+requires the existing live-session check, preserves old keys, and returns the
+versioned shared QR flag. No device/attendance data is deleted by OFF.
+
+The file refuses missing or mismatched independently reviewed hashes for all
+modified function sources and the existing CHECK. The guard inputs in the
+isolated test are derived from its fixtures and are NOT production catalog
+approval. A production package still needs independently recorded current
+catalog hashes, compatible schema/ACL/dependency review, a backup and explicit
+restore SQL. The retained old reader is private to clients, but dependencies on
+its original OID must be reviewed before deployment. Do not apply this candidate
+or turn on the rollout based on CI alone.
+
+The common bridge test executes copied existing getter/proof/legacy setter
+bodies, with synthetic session/master/proof issuer fixtures. It tests default
+OFF at both public setter and QR gate, non-master rejection without consuming
+proof, audit rows, legacy QR rejection, OFF preservation, old flag values,
+client ACL preservation and expired-session rejection. It does NOT prove real
+GoTrue/proof issuance, production catalog compatibility, concurrent operations,
+all QR writer gate coverage, key ownership or owner-device behavior. Those
+remain activation blockers.

@@ -1,0 +1,134 @@
+-- REVIEW ONLY. Not a deployment or permission to activate QR.
+-- Common API bridge with its own default-OFF rollout. Existing clients retain
+-- their current feature contracts. Run only after catalog/backup review.
+begin;
+set local lock_timeout='3s';
+set local statement_timeout='30s';
+
+-- Deployment tooling must supply hashes from an independently reviewed catalog;
+-- deriving them from the database immediately before apply is not a review.
+do $guard$
+declare signature text; expected text;
+begin
+ foreach signature in array array['public.current_master_feature_flags()','qr_attendance_private.require_enabled()',
+ 'public.set_master_feature_enabled(text,boolean)',
+ 'public.set_master_feature_enabled_with_proof(text,boolean,text)',
+ 'public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)'] loop
+  expected:=current_setting('sko.review.qr_'||md5(signature),true);
+  if to_regprocedure(signature) is null or expected is null or expected !~ '^[a-f0-9]{32}$'
+    or md5(pg_get_functiondef(to_regprocedure(signature)))<>expected then
+    raise exception 'QR reviewed function catalog differs: %',signature;
+  end if;
+ end loop;
+ expected:=current_setting('sko.review.qr_check_md5',true);
+ if expected is null or expected !~ '^[a-f0-9]{32}$' or expected is distinct from
+   (select md5(pg_get_constraintdef(oid)) from pg_constraint
+    where conrelid='private.master_feature_settings'::regclass
+    and conname='master_feature_settings_feature_key_check') then
+   raise exception 'QR reviewed CHECK catalog differs';
+ end if;
+end $guard$;
+
+create table qr_attendance_private.public_contract_rollout (
+ singleton boolean primary key default true check(singleton),
+ enabled boolean not null default false
+);
+insert into qr_attendance_private.public_contract_rollout(singleton) values(true);
+alter table qr_attendance_private.public_contract_rollout enable row level security;
+revoke all on qr_attendance_private.public_contract_rollout from public,anon,authenticated;
+
+create function qr_attendance_private.public_contract_enabled() returns boolean
+language sql security definer set search_path='' as $$
+ select coalesce((select enabled from qr_attendance_private.public_contract_rollout where singleton for share),false)
+$$;
+revoke all on function qr_attendance_private.public_contract_enabled() from public,anon,authenticated;
+
+-- The rollout also protects every existing QR gate call, not only its UI flag.
+-- Acquire rollout before settings locks so an OFF transition serializes safely.
+create or replace function qr_attendance_private.require_enabled() returns void
+language plpgsql security definer set search_path='' as $$
+declare is_enabled boolean;
+begin
+ if not qr_attendance_private.public_contract_enabled() then
+   raise sqlstate '42501' using message='qr_attendance_not_ready';
+ end if;
+ select enabled into is_enabled from private.master_feature_settings
+ where feature_key='qr_attendance' for share;
+ if is_enabled is distinct from true then
+   raise sqlstate '42501' using message='qr_attendance_disabled';
+ end if;
+end $$;
+revoke all on function qr_attendance_private.require_enabled() from public,anon,authenticated;
+
+-- Fail before changing any function when the expected common key contract differs.
+do $patch$
+declare definition text; old_keys text; new_keys text; anchor text; signature text;
+begin
+ old_keys:='''vehicle_management'',''route_assignment'',''traffic_nearest_station'',''traffic_train_transfer'',''traffic_bus_stop''';
+ new_keys:=old_keys||',''qr_attendance''';
+ -- CHECK extension must preserve a prior seal feature. Do not drop an unknown CHECK.
+ select pg_get_constraintdef(oid) into definition from pg_constraint
+ where conrelid='private.master_feature_settings'::regclass
+ and conname='master_feature_settings_feature_key_check';
+ if definition is null or definition not like '%vehicle_management%' or
+    definition not like '%traffic_bus_stop%' or definition like '%qr_attendance%' then
+   raise exception 'QR common CHECK prerequisite differs';
+ end if;
+ -- Preserve the complete existing expression rather than rebuild its allowlist.
+ if definition not like 'CHECK (%)' then raise exception 'QR common CHECK form differs'; end if;
+ execute 'alter table private.master_feature_settings drop constraint master_feature_settings_feature_key_check';
+ execute 'alter table private.master_feature_settings add constraint master_feature_settings_feature_key_check CHECK ('||
+   substr(definition,8,length(definition)-8)||' OR feature_key = ''qr_attendance'')';
+
+ -- Issuance remains service-only with its existing ACL, session, master and
+ -- exact-target checks. Only the known allowlist anchor is extended.
+ signature:='public.issue_reauthentication_proof(uuid,uuid,text,jsonb,text)';
+ if to_regprocedure(signature) is null then raise exception 'QR proof issuer missing'; end if;
+ definition:=pg_get_functiondef(to_regprocedure(signature));
+ if (length(definition)-length(replace(definition,old_keys,'')))/length(old_keys)<>1 then
+   raise exception 'QR proof issuer allowlist differs';
+ end if;
+ execute replace(definition,old_keys,new_keys);
+
+ signature:='public.set_master_feature_enabled_with_proof(text,boolean,text)';
+ if to_regprocedure(signature) is null then raise exception 'QR proof setter missing'; end if;
+ definition:=pg_get_functiondef(to_regprocedure(signature));
+ anchor:='perform private.consume_reauthentication_proof(''master.feature.set'',jsonb_build_object(''feature_key'',p_feature_key,''enabled'',p_enabled),p_proof);';
+ if (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 then
+   raise exception 'QR proof setter body differs';
+ end if;
+ execute replace(definition,anchor,
+   'if p_feature_key = ''qr_attendance'' then
+      if not qr_attendance_private.public_contract_enabled() then
+        raise sqlstate ''42501'' using message=''qr_attendance_not_ready'';
+      end if;
+      perform qr_attendance_private.set_master_feature_with_proof(p_enabled,p_proof);
+      insert into private.master_admin_audit_log(actor_user_id,action,target_user_id,details)
+      values(auth.uid(),''master_feature_set'',auth.uid(),jsonb_build_object(''feature_key'',''qr_attendance'',''enabled'',p_enabled));
+      return public.current_master_feature_flags();
+    end if;
+    '||anchor);
+ -- Legacy no-proof setter is intentionally unchanged and continues to reject QR.
+ if position('''qr_attendance''' in pg_get_functiondef('public.set_master_feature_enabled(text,boolean)'::regprocedure))>0 then
+   raise exception 'QR unexpectedly supported by legacy setter';
+ end if;
+end $patch$;
+
+-- Rename only in a review candidate: a separate immutable snapshot is required
+-- before actual rollout/rollback. Existing readers get the same keys plus QR.
+alter function public.current_master_feature_flags() rename to current_master_feature_flags_before_qr_candidate;
+revoke all on function public.current_master_feature_flags_before_qr_candidate() from public,anon,authenticated;
+create function public.current_master_feature_flags() returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare previous jsonb;
+begin
+ previous:=public.current_master_feature_flags_before_qr_candidate();
+ if previous is null then return null; end if;
+ perform private.require_reauthentication_session();
+ return previous || jsonb_build_object('qr_attendance_contract_version',1,
+   'qr_attendance',qr_attendance_private.public_contract_enabled() and
+     coalesce((qr_attendance_private.master_feature_fragment()->>'qr_attendance')::boolean,false));
+end $$;
+revoke all on function public.current_master_feature_flags() from public,anon;
+grant execute on function public.current_master_feature_flags() to authenticated;
+commit;
