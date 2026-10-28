@@ -1,0 +1,20 @@
+name: Personal vault bounded Storage transport
+on:
+  pull_request:
+    paths:
+      - 'docs/review/personal-vault25-delivery/**'
+      - 'docs/review/personal-vault24/bounded_stream*'
+      - '.github/workflows/personal-vault-storage-transport-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - run: node --test docs/review/personal-vault25-delivery/storage_download_transport.test.mjs docs/review/personal-vault24/bounded_stream.test.mjs docs/review/personal-vault25-delivery/verify_archive_bytes.test.mjs
