@@ -68,7 +68,31 @@ notification readiness functions. A duplicated source day recalculates to
 220,000 yen and the real guard returns `data_changed`; rollback restores ready.
 
 Route components, expense components and named adjustments are explicitly empty
-fixture providers in this extension. The successful financial/seal composition
-still runs before this extension with its synthetic proposal. This is a minimal
+fixture providers in this extension. The earlier financial/seal composition
+runs before this extension with its synthetic proposal; a later scenario below
+now confirms the actual calculated daily-price invoice. This is a minimal
 actual daily-calculator-to-readiness bridge, not full route/expense/adjustment
 calculation or a single end-to-end real-Auth financial/seal approval proof.
+
+
+## Calculated invoice through financial and seal confirmation
+
+The actual daily-price proposal now also passes through the existing durable
+notice prepare/issue/consume SQL and the combined financial approval plus issuer
+seal-consent command in one database transaction. Because recalculation changes
+the financial parent, the test uses the existing attachment save API and creates
+a new immutable consent revision; it does not rewrite an old binding.
+
+The fixture checks current-source rejection, late financial-receipt failure and
+complete rollback of ticket consumption, approval, consent, receipt and permit;
+then a fresh successful confirmation produces exactly one audit/consent/receipt.
+The enclosing test transaction is rolled back, restoring the original unapproved
+invoice and document revision. PGlite passes 162 checks including this extension.
+Native PostgreSQL runs through the same existing composition CI.
+
+Auth/session remains synthetic, and route/expense/adjustment providers remain
+explicitly empty. This is not all-source/real-GoTrue production approval, public
+rollout or iPhone evidence. No production records or existing test invoices are
+modified. The previous paragraph's statement that successful financial approval
+only uses a synthetic proposal describes the earlier scenario; this new separate
+scenario closes that gap for the daily-price branch only.

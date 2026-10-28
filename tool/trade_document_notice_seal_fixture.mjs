@@ -87,5 +87,5 @@ export async function verifyNoticeSeal(db,c){
  await db.exec('set role authenticated');await deny(()=>call(ticket),/permission denied/);await db.exec('reset role');
  const pending=await prepare(24);await issue(pending);
  await (await import('./trade_document_notice_source_integrity_fixture.mjs')).verifyNoticeSourceIntegrity(db,{A,B:c.B,UA,id,q,check,deny,pending});
- console.log('PASS durable notice SQL + existing invoice/seal atomic composition; actual guarded/readiness SQL; successful approval source proposal/session synthetic, exact core guards checked separately, no public grant or product delivery');
+ console.log('PASS durable notice SQL + existing invoice/seal atomic composition; actual guarded/readiness SQL; earlier approval proposal/session synthetic, actual daily calculated approval verified separately, no public grant or product delivery');
 }

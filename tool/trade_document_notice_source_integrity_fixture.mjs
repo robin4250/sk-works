@@ -63,6 +63,7 @@ export async function verifyNoticeSourceIntegrity(db,c){
   await deny(()=>db.query('select invoice_month_close_candidate.revalidate_for_notice($1,$2,$3,$4)',[pending.parent,UA,fp,original]),/invoice_revision_stale/);
  }finally{await db.exec('rollback');}
  check(await fingerprint(),fp);
+ await (await import('./trade_document_notice_calculated_confirmation_fixture.mjs')).verifyCalculatedNoticeConfirmation(db,c);
  // A forged replacement cannot keep the actual integrity guard ready even
  // when a caller supplies a proposal or ticket matching the financial parent.
  await db.exec(`create or replace function invoice_month_close_candidate.preview_for_approver(p_invoice_id uuid) returns jsonb language plpgsql as $$begin return '{}'::jsonb;end$$;`);
@@ -71,5 +72,5 @@ export async function verifyNoticeSourceIntegrity(db,c){
  await db.exec(`create or replace function invoice_month_close_candidate.preview_for_notice(p_invoice_id uuid,p_recipient uuid) returns jsonb language plpgsql as $$begin return '{}'::jsonb;end$$;`);
  check(await q('select invoice_month_close_candidate.notice_core_intact() v'),false);
  check(await q('select invoice_month_close_candidate.notification_readiness($1,$2) v',[pending.parent,UA]),{status:'unavailable'});
- console.log('PASS pinned real source hash/revalidators/core guards; full calculator success and GoTrue remain separate');
+ console.log('PASS pinned real source hash/revalidators/core guards; all-source calculator and GoTrue remain incomplete; actual daily financial composition verified separately');
 }
